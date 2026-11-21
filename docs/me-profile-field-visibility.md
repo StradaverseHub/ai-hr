@@ -144,6 +144,7 @@ not allocate migrations or grant employee rights.
 | `employment.employment_dates_and_service.extendedprobationunit` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `employment.employment_dates_and_service.finalconfirmationdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `employment.employment_dates_and_service.contractstartdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.contractnumber` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `employment.employment_dates_and_service.contractenddate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `employment.employment_dates_and_service.contractremark` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `employment.employment_dates_and_service.noticebeforeconfirmationvalue` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
@@ -242,6 +243,7 @@ not allocate migrations or grant employee rights.
 | `attendance.work_location_and_shift_arrangement.changedat` | Attendance | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `bank_statutory.bank_information.bankname` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
 | `bank_statutory.bank_information.bankaccountno` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
+| `bank_statutory.bank_information.bankpayeeresidency` | Bank & Statutory | Protected | specialist | Bank-file arrangement requires authorised HR review; no employee self-service writer is granted. |
 | `bank_statutory.bank_information.enablecustomholdername` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
 | `bank_statutory.bank_information.customholdername` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
 | `bank_statutory.bank_information.enablecustomholderid` | Bank & Statutory | Visible | approval | Employee proposal; authorized HR approval uses the canonical record owner. |
@@ -425,7 +427,7 @@ not allocate migrations or grant employee rights.
 | `leave.eligibility_and_explanation_details.formula` | Leave | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `profile.draft_only_saved_address_choice.sameaspermanent` | Profile | Protected | specialist | Draft creation control; not a saved employee fact. |
 | `employment.draft_only_employment_fields.costcenterid` | Employment | Protected | specialist | Draft creation control; not a saved employee fact. |
-| `employment.draft_only_employment_fields.internshipenddate` | Employment | Protected | specialist | Draft creation control; not a saved employee fact. |
+| `employment.draft_only_employment_fields.internshipenddate` | Employment | Protected | specialist | HR-maintained internship review date; not part of My Profile. |
 | `employment.draft_only_employment_fields.probationenddate` | Employment | Protected | specialist | Draft creation control; not a saved employee fact. |
 | `payroll.draft_initial_monthly_allowance.monthlyallowance` | Payroll | Protected | specialist | Draft creation control; not a saved employee fact. |
 | `employment.employment_dates_and_service.confirmationdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
@@ -451,3 +453,5 @@ not allocate migrations or grant employee rights.
 | `attendance.dated_holiday_calendar.calendar` | Attendance | Protected | specialist | HR-only dated calendar assignment workflow; no employee self-service mutation binding. |
 | `attendance.dated_holiday_calendar.startdate` | Attendance | Protected | specialist | HR-only dated calendar assignment workflow; no employee self-service mutation binding. |
 | `attendance.dated_holiday_calendar.enddate` | Attendance | Protected | specialist | HR-only dated calendar assignment workflow; no employee self-service mutation binding. |
+| `employment.employment_dates_and_service.extendedconfirmationdate` | Employment | Protected | specialist | Original Hired information is maintained through the audited hire-correction owner; generic imports and the Employment card do not change this lifecycle fact. |
+| `payroll.payment_method_and_payroll_policy.effectiveon` | Payroll | Protected | specialist | Dated payment routing is maintained by authorized HR. |

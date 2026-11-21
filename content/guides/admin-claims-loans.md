@@ -2,7 +2,7 @@ Configure [Claims](/admin/claims) before employees submit expenses. Check the co
 
 ## Claims setup and processing
 
-1. Review the forms/items under [Claim forms](/admin/claims/forms).
+1. Review the forms/items under each claim type in [Claims](/admin/claims).
 2. Configure [Limits](/admin/claims/limits) and [Mileage](/admin/claims/mileage). Check effective rules and amounts before changing an existing policy.
 3. Review claims through the authorized approval workflow. Inspect the expense date, amount or distance and receipt.
 4. Use [Reimbursements](/admin/claims/reimbursements) for the available reimbursement process, or consolidate eligible approved claims into the intended draft payroll run.

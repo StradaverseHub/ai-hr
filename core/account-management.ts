@@ -7,7 +7,8 @@ import {isAdmin} from '../lib/authz-model';
 import {internalSelected,internalIssuer} from '../lib/internal-auth/config';
 import {readRecord,writeRecord,revokeCredentialsSessions,type AuthSql} from '../lib/internal-auth/record-store';
 import type {Credential} from '../lib/internal-auth/credential';
-import {accountAvailable,type RecoveryExemption} from '../lib/internal-auth/account-state';
+import {accountAvailable,recoveryExemptionActive,type RecoveryExemption} from '../lib/internal-auth/account-state';
+import {cancelRecoveryExemption,recoveryExemptionKey,settleRecoveryExemption,validRecoveryExemptionEnd,writeRecoveryExemption} from '../lib/internal-auth/recovery-exemption';
 import {replacePassword,generateTemporaryPassword} from '../lib/internal-auth/password-policy';
 import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -35,26 +36,46 @@ async function withAccount<T>(ctx:SessionContext,userId:string,operation:(tx:Tx,
   return operation(tx,auth,c);
  });
 }
-export type AccountSummary={username:string;email:string;status:'active'|'suspended'|'expired'|'preparing';activeUntil:string|null;mustChange:boolean;temporaryPasswordExpiresAt:number|null;exemptionUntil:number|null};
-export function readManagedAccount(ctx:SessionContext,userId:string){return withAccount(ctx,userId,async(_tx,auth,c):Promise<AccountSummary>=>{
- const exemption=await readRecord<RecoveryExemption>(auth,`recovery-exemption:${c.subject}`);
- return {username:c.username,email:c.email,status:!c.enabled?'preparing':c.suspended?'suspended':!accountAvailable(c)?'expired':'active',activeUntil:c.accountActiveUntil??null,mustChange:c.mustChange,temporaryPasswordExpiresAt:c.temporaryPasswordExpiresAt??null,exemptionUntil:exemption?.expiresAt??null};
+export type AccountSummary={name?:string|null;username:string;email:string;status:'active'|'suspended'|'expired'|'preparing';activeUntil:string|null;mustChange:boolean;temporaryPasswordExpiresAt:number|null;exemptionUntil:number|null};
+const accountStatus=(c:Credential):AccountSummary['status']=>!c.enabled?'preparing':c.suspended?'suspended':!accountAvailable(c)?'expired':'active';
+/** The read settles an ended authenticator pause (deleted and audited once as expired) under the account lock. */
+export function readManagedAccount(ctx:SessionContext,userId:string){return withAccount(ctx,userId,async(tx,auth,c):Promise<AccountSummary>=>{
+ const exemption=await settleRecoveryExemption(auth,c);
+ const [person]=await tx.execute(sql`select p.full_name from app_user au left join person p on p.id=au.person_id and p.tenant_id=au.tenant_id where au.id=${userId}::uuid and au.tenant_id=${ctx.tenantId}::uuid`) as unknown as {full_name:string|null}[];
+ return {name:person?.full_name??null,username:c.username,email:c.email,status:accountStatus(c),activeUntil:c.accountActiveUntil??null,mustChange:c.mustChange,temporaryPasswordExpiresAt:c.temporaryPasswordExpiresAt??null,exemptionUntil:exemption?.expiresAt??null};
+});}
+/** A policy-conforming candidate for the Reset Password dialog. Nothing is stored or audited; the admin may edit it. */
+export function generateManagedAccountPassword(ctx:SessionContext,userId:string){return withAccount(ctx,userId,async(_tx,auth,c)=>{
+ if(!c.enabled||!accountAvailable(c))throw Error('invalid');
+ return generateTemporaryPassword(auth,c);
 });}
 export type AccountCommand=
  |{type:'suspend'|'reactivate';reason:string}
  |{type:'expiry';reason:string;activeUntil:string|null}
- |{type:'temporary-password';reason:string;password?:string;minutes:number}
- |{type:'recovery-exemption';reason:string;minutes:number}
+ |{type:'temporary-password';reason?:string;password?:string;minutes:number}
+ |{type:'recovery-exemption';reason:string;expiresAt:number}
+ |{type:'recovery-exemption-cancel';reason?:string}
  |{type:'reset-email';reason:string};
+/** Reason is required (5-500) for every command except issuing a temporary password and switching the
+ * authenticator check back on. A supplied reason keeps the same bounds. */
+const OPTIONAL_REASON=new Set(['temporary-password','recovery-exemption-cancel']);
 export async function manageAccount(ctx:SessionContext,userId:string,command:AccountCommand){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  command=structuredClone(command);
- if(!['suspend','reactivate','expiry','temporary-password','recovery-exemption','reset-email'].includes(command.type))throw Error('invalid');
- const reason=command.reason.trim();if(reason.length<5||reason.length>500)throw Error('invalid');
+ if(!['suspend','reactivate','expiry','temporary-password','recovery-exemption','recovery-exemption-cancel','reset-email'].includes(command.type))throw Error('invalid');
+ if(command.reason!==undefined&&typeof command.reason!=='string')throw Error('invalid');
+ const reason=(command.reason??'').trim();
+ if((reason.length>0||!OPTIONAL_REASON.has(command.type))&&(reason.length<5||reason.length>500))throw Error('invalid');
  const result=await withAccount(ctx,userId,async(tx,auth,c)=>{
   if(!c.enabled)throw Error('invalid'); // Provisioning/activation retains its existing owner.
   let password:string|undefined;
-  const metadata:Record<string,unknown>={reason,beforeStatus:c.suspended?'suspended':accountAvailable(c)?'active':'expired'};
+  if(command.type==='recovery-exemption-cancel'){
+   // Restoring the check changes no credential, so sessions stay. Nothing active means nothing to audit.
+   const active=await cancelRecoveryExemption(auth,c);
+   if(active)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-user',aggregateId:userId,eventType:'app-user.account-recovery-exemption-cancelled',actor:actorOf(ctx),payload:{...(reason?{reason}:{}),expiresAt:active.expiresAt}});
+   return {password,organization:c.organization,username:c.username};
+  }
+  const metadata:Record<string,unknown>={...(reason?{reason}:{}),beforeStatus:c.suspended?'suspended':accountAvailable(c)?'active':'expired'};
   if(command.type==='suspend'){c.suspended=true;}
   if(command.type==='reactivate'){
    if(c.accountActiveUntil&&c.accountActiveUntil<todayInKualaLumpur())throw Error('expired');
@@ -66,15 +87,16 @@ export async function manageAccount(ctx:SessionContext,userId:string,command:Acc
   }
   if(command.type==='temporary-password'){
    if(!accountAvailable(c)||!Number.isSafeInteger(command.minutes)||command.minutes<5||command.minutes>1440)throw Error('invalid');
+   if(command.password!==undefined&&typeof command.password!=='string')throw Error('invalid');
    password=command.password||await generateTemporaryPassword(auth,c);
    await replacePassword(auth,c,password);c.mustChange=true;c.temporaryPasswordUsed=false;c.temporaryPasswordExpiresAt=Date.now()+command.minutes*60_000;
    metadata.expiresAt=c.temporaryPasswordExpiresAt;
   }
   if(command.type==='recovery-exemption'){
-   if(!accountAvailable(c)||!Number.isSafeInteger(command.minutes)||command.minutes<5||command.minutes>60)throw Error('invalid');
-   const expiresAt=Date.now()+command.minutes*60_000;
-   await writeRecord(auth,`recovery-exemption:${c.subject}`,{purpose:'password-reset',expiresAt,reason} satisfies RecoveryExemption,c.subject,expiresAt);
-   metadata.purpose='password-reset';metadata.expiresAt=expiresAt;
+   // An absolute end chosen by the administrator, at most 7 days ahead. Single use; MFA stays mandatory.
+   if(!accountAvailable(c)||!validRecoveryExemptionEnd(command.expiresAt))throw Error('invalid');
+   await writeRecoveryExemption(auth,c,command.expiresAt,reason);
+   metadata.purpose='password-reset';metadata.expiresAt=command.expiresAt;
   }
   if(command.type==='reset-email'&&(!accountAvailable(c)||!c.emailVerified))throw Error('invalid');
   // Credential-version rotation invalidates challenges and remembered factors as well as live sessions.
@@ -93,28 +115,37 @@ export async function manageAccount(ctx:SessionContext,userId:string,command:Acc
  return {password:result.password,delivery};
 }
 
-/** Batched directory projection. A denied identity has no metadata and no account action link. */
+export type ManagedDirectoryAccount=Pick<AccountSummary,'username'|'status'|'activeUntil'|'exemptionUntil'>;
+/** Batched directory projection. A denied identity has no metadata and no account action link.
+ * Read-only: an ended authenticator pause shows as required here and is settled by the next locked read. */
 export async function readManagedAccountDirectory(ctx:SessionContext,userIds:string[]){
  if(!internalSelected()||!ctx.userId||!isAdmin(ctx))return {};
  return withTenant(ctx,async tx=>{
-  const result:Record<string,Pick<AccountSummary,'username'|'status'|'activeUntil'>>={};
-  const auth=authSql(tx),issuer=internalIssuer(ctx.tenantId);
+  const result:Record<string,ManagedDirectoryAccount>={};
+  const auth=authSql(tx),issuer=internalIssuer(ctx.tenantId),now=Date.now();
   for(const id of [...new Set(userIds)].sort()){
    const [identity]=await tx.execute(sql`select app.account_management_subject(${id}::uuid,${issuer}) subject`) as unknown as {subject:string|null}[];
    if(!identity?.subject)continue;
    const c=await readRecord<Credential>(auth,`credential:${identity.subject}`);
    if(!c||c.subject!==identity.subject||c.tenantId!==ctx.tenantId||c.issuer!==issuer)continue;
-   result[id]={username:c.username,status:!c.enabled?'preparing':c.suspended?'suspended':!accountAvailable(c)?'expired':'active',activeUntil:c.accountActiveUntil??null};
+   const exemption=await readRecord<RecoveryExemption>(auth,recoveryExemptionKey(c.subject));
+   result[id]={username:c.username,status:accountStatus(c),activeUntil:c.accountActiveUntil??null,exemptionUntil:exemption&&recoveryExemptionActive(exemption,now)?exemption.expiresAt:null};
   }
   return result;
  });
 }
-export function readManagedAccountHistory(ctx:SessionContext,userId:string){
- return withAccount(ctx,userId,async tx=>{
-  const rows=await tx.execute(sql`select event_type,occurred_at,actor_id,payload->>'reason' reason,payload->>'expiresAt' expires_at
-   from domain_event where tenant_id=${ctx.tenantId}::uuid and aggregate_type='app-user' and aggregate_id=${userId}::uuid
-   and (event_type like 'app-user.account-%' or event_type='app-user.recovery-exemption-consumed')
-   order by occurred_at desc,sequence desc limit 50`);
-  return rows as unknown as {event_type:string;occurred_at:Date;actor_id:string|null;reason:string|null;expires_at:string|null}[];
+/** Security history beyond the account-* commands. Payload fields are an allowlist (reason, expiresAt); no secret is ever read. */
+const HISTORY_EVENTS=['app-user.recovery-exemption-consumed','app-user.recovery-exemption-expired','app-user.logged-in','app-user.password-reset','app-user.mfa-enrolled','app-user.password-unlocked'];
+export type AccountHistoryEvent={event_type:string;occurred_at:Date|string;actor_id:string|null;actor_name:string|null;reason:string|null;expires_at:string|null};
+export function readManagedAccountHistory(ctx:SessionContext,userId:string,limit=50){
+ const bounded=Math.max(1,Math.min(50,Math.trunc(limit)||50));
+ return withAccount(ctx,userId,async(tx,auth,c)=>{
+  await settleRecoveryExemption(auth,c);
+  const rows=await tx.execute(sql`select d.event_type,d.occurred_at,d.actor_id,p.full_name actor_name,d.payload->>'reason' reason,d.payload->>'expiresAt' expires_at
+   from domain_event d left join app_user au on au.id=d.actor_id and au.tenant_id=d.tenant_id left join person p on p.id=au.person_id and p.tenant_id=d.tenant_id
+   where d.tenant_id=${ctx.tenantId}::uuid and d.aggregate_type='app-user' and d.aggregate_id=${userId}::uuid
+   and (d.event_type like 'app-user.account-%' or d.event_type in (${sql.join(HISTORY_EVENTS.map(e=>sql`${e}`),sql`,`)}))
+   order by d.occurred_at desc,d.sequence desc limit ${bounded}`);
+  return rows as unknown as AccountHistoryEvent[];
  });
 }

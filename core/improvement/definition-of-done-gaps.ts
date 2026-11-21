@@ -37,6 +37,8 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:leave.adjustment.apply','action:notifications.email_preferences.save',
  ],
  'semantic,corpus':[
+ // Existing guide links now cover these routes; their remaining requirements stay explicit.
+ 'page:/lifecycle/v9','page:/tasks',
  // AI Centre restructure (owner decisions 26–29, 4 Nov 2026), truthfully: the setup co-pilot's page was this one by mistake
  // (it shows no stages; the pointer moved to /payroll/setup, whose semantic and corpus gaps closed), so Record readiness, whose
  // own entity (readiness_gap) has no read yet, has none. The Build list is Opportunities' ranked list, moved here; no read
@@ -49,14 +51,20 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:org.employee_id_template.status','action:performance.checkin.cancel','action:performance.checkin.complete',
  'action:performance.checkin.schedule','action:rewards.cancel_review','action:toil.credit.grant','page:/admin/ai',
  'page:/admin/attendance/file-mappings','page:/admin/attendance/schedule-assignment','page:/admin/attendance/settings',
- 'page:/admin/attendance/settings/overtime-patterns','page:/admin/audit','page:/admin/claims','page:/admin/claims/forms','page:/admin/claims/limits',
+ 'page:/admin/attendance/settings/overtime-patterns','page:/admin/audit','page:/admin/claims','page:/admin/claims/limits',
  'page:/admin/claims/mileage','page:/admin/claims/reimbursements','page:/admin/holidays','page:/admin/leave-config/adjustments',
  'page:/admin/leave-config/approval-chains','page:/admin/leave-config/balance-health','page:/admin/leave-config/company-rules',
  'page:/admin/leave-config/earned-accrual','page:/admin/leave-config/generate','page:/admin/leave-config/leave-credit',
+ // 50d9b809 (Shared Leave Groups card): the admin leave guide now links Leave Settings, so its guide gap closed and the
+ // hub moved here from 'semantic,guide,corpus'. The new Shared Leave Groups page ships with no gap: its guide link, its
+ // semantic entry (core/semantic-model/entities-leave-settings.ts) and its corpus turn (test/explainer-corpus.ts).
+ 'page:/admin/leave-config/settings',
  'page:/admin/leave-config/types','page:/admin/lifecycle','page:/admin/loans','page:/admin/notice-board','page:/admin/organization',
- 'page:/admin/personnel','page:/admin/personnel/duplicates','page:/admin/personnel/import','page:/admin/privacy','page:/admin/rewards',
- 'page:/admin/rewards/access','page:/admin/rewards/shared','page:/admin/scheduled-actions','page:/admin/settings/email',
+ 'page:/admin/personnel','page:/admin/personnel/duplicates','page:/admin/personnel/import','page:/admin/privacy',
+ 'page:/admin/rewards/access','page:/admin/scheduled-actions','page:/admin/settings/email',
  'page:/admin/settings/email-templates','page:/admin/settings/employee-id','page:/admin/settings/hiring-defaults',
+ // arrived via 82748f92 (Irwin combined release 2026-11-12): the People > Settings card hub; no semantic read yet
+ 'page:/admin/settings/people',
  'page:/admin/settings/notifications','page:/admin/settings/profile-requests','page:/admin/settings/profile-requests/rules',
  'page:/admin/system-explorer','page:/admin/system-testing','page:/admin/users','page:/admin/work-locations/clocking',
  'page:/approvals','page:/approvals/history','page:/attendance','page:/attendance/breakdown','page:/attendance/clock','page:/attendance/import',
@@ -100,11 +108,11 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/leave-config/bf-import','page:/admin/leave-config/data-import','page:/admin/leave-config/entitlement-tables',
  'page:/admin/leave-config/history-import','page:/admin/leave-config/import','page:/admin/leave-config/leave-credit/rules',
  'page:/admin/leave-config/records','page:/admin/leave-config/records/balances','page:/admin/leave-config/records/entitlement',
- 'page:/admin/leave-config/settings','page:/admin/leave-config/special-setting','page:/admin/leave/adjustments','page:/admin/leave/application-rules',
+ 'page:/admin/leave-config/special-setting','page:/admin/leave/adjustments','page:/admin/leave/application-rules',
  'page:/admin/leave/approval','page:/admin/leave/audit','page:/admin/leave/entitlements','page:/admin/leave/entitlements/archive',
  'page:/admin/leave/entitlements/ledger-archive','page:/admin/leave/entitlements/templates','page:/admin/leave/generate','page:/admin/leave/import',
  'page:/admin/leave/payroll','page:/admin/leave/replacement','page:/admin/lifecycle/onboarding','page:/admin/lifecycle/onboarding/access',
- 'page:/admin/lifecycle/onboarding/groups','page:/admin/loans/new','page:/admin/locations','page:/admin/locations/clocking/new',
+ 'page:/admin/lifecycle/onboarding/groups','page:/admin/loans/new','page:/admin/locations/clocking/new',
  'page:/admin/notice-board/new','page:/admin/organization/new','page:/admin/pay-components','page:/admin/pay-components/new',
  'page:/admin/payroll-config','page:/admin/payroll-cycle','page:/admin/payroll-permissions','page:/admin/payroll-policy',
  'page:/admin/personnel/child-relief','page:/admin/personnel/import/history','page:/admin/personnel/new','page:/admin/personnel/profile-changes',
@@ -124,7 +132,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/leave/employee-records','page:/letters/approval','page:/letters/fields','page:/letters/generate','page:/letters/generate/new',
  'page:/letters/register','page:/letters/reports','page:/letters/settings','page:/letters/settings/automation','page:/letters/settings/policy',
  'page:/letters/templates','page:/letters/templates/new','page:/lifecycle/acknowledgement','page:/lifecycle/onboarding/checklists',
- 'page:/lifecycle/requisitions/onboarding','page:/lifecycle/v9','page:/me/calendar','page:/me/ea','page:/me/home','page:/me/letters',
+ 'page:/lifecycle/requisitions/onboarding','page:/me/calendar','page:/me/ea','page:/me/home','page:/me/letters',
  'page:/me/lifecycle','page:/me/tp3','page:/payroll/borang-8a/preview','page:/payroll/borang-8b/preview','page:/payroll/borang-a/preview',
  'page:/payroll/borang-bbcd/preview','page:/payroll/configuration','page:/payroll/configuration/eis','page:/payroll/configuration/epf',
  'page:/payroll/configuration/hrdf','page:/payroll/configuration/pcb','page:/payroll/configuration/skbbk','page:/payroll/configuration/socso',
@@ -141,7 +149,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/performance/feedback','page:/performance/home','page:/performance/leaders','page:/performance/led','page:/performance/my',
  'page:/performance/my/kpis','page:/performance/plan','page:/performance/plan/profile','page:/performance/plan/team','page:/performance/team',
  'page:/performance/team/kpis','page:/performance/workspace','page:/reports/employee-master','page:/rewards/approvals','page:/roster/exceptions',
- 'page:/roster/import','page:/system-testing','page:/tasks',
+ 'page:/roster/import','page:/system-testing',
  ],
  'semantic,readiness,corpus':[
  'action:claims.draft.save',

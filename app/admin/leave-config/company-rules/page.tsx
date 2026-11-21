@@ -12,6 +12,8 @@ import {
   leaveConfigScreenTitle,
 } from '@/components/leave-config-map';
 import { setLeaveEncashmentPolicyAction } from '../../actions';
+import { listLeaveTeamMinimums } from '@/packs/leave/service';
+import { LeaveTeamMinimumCard } from './team-minimum-card';
 
 /**
  * a6fe37fc ROUND 3 — COMPANY RULES (`/admin/leave-config/company-rules`).
@@ -101,6 +103,8 @@ export default async function LeaveConfigCompanyRulesPage({
   const companies = await listCompanies(s);
   const encashmentPolicies = await getEncashmentPolicies(s);
   const encashmentByCompany = new Map(encashmentPolicies.map((p) => [p.companyId, p]));
+  // 12 November 2026 — the companies this administrator may set a team minimum for (one statement).
+  const teamMinimums = await listLeaveTeamMinimums(s);
 
   const whoQualifiesTarget = await leaveConfigScreenTitle('leaveTypes');
   const payrollTitle = await leaveConfigScreenTitle('payrollImpact');
@@ -183,6 +187,10 @@ export default async function LeaveConfigCompanyRulesPage({
           <p>{t('encashmentRoundingFixed')}</p>
         </div>
       </Card>
+
+      {/* Owner decision 12 November 2026 — the "minimum people present" the leave recommendation checks a request
+          against (core/leave-team-minimum.ts). Its own component, so this page only mounts it. */}
+      <LeaveTeamMinimumCard rows={teamMinimums} />
 
       {/* r281 (cdd7500b) — THE SHARED LEAVE GROUPS CARD STOOD HERE and is DELIBERATELY GONE, not
           copied. The reporter asked for it on the Leave types screen, because a shared group is about

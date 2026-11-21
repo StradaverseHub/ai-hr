@@ -40,7 +40,7 @@ function CompanyEditor() {
   return <><WorkspaceSettings activeTab="shared" config={config} options={{ companies: [{ id: 'company', name: 'Fictional company', registrationNo: 'SOURCE-001', address: 'Source address' }], users: [{ id: 'hr', name: 'Fictional HR' }], employees: [] }} editable edit={change => setConfig(old => { const next = structuredClone(old); change(next); return next; })}/><output data-testid="company-settings">{JSON.stringify(config.companies)}</output></>;
 }
 it('starts letterhead settings from company facts and retains independent signatory and presentation edits', () => {
-  render(<CompanyEditor/>);
+  render(<NextIntlClientProvider locale="en" messages={messages}><CompanyEditor/></NextIntlClientProvider>);
   expect(screen.getByRole('textbox', { name: 'Fictional company · Registration no.' })).toHaveValue('SOURCE-001');
   fireEvent.change(screen.getByRole('textbox', { name: 'Fictional company · Registration no.' }), { target: { value: 'FORMATTED-001' } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Fictional company · Address' }), { target: { value: 'Printed address\nSecond line' } });
@@ -48,4 +48,20 @@ it('starts letterhead settings from company facts and retains independent signat
   fireEvent.click(screen.getByRole('checkbox',{name:'Permit Fictional HR to sign for Fictional company'}));
   fireEvent.change(screen.getByRole('combobox', { name: 'Fictional company · Signatory' }), { target: { value: 'hr' } });
   expect(JSON.parse(screen.getByTestId('company-settings').textContent!)).toEqual([{ companyId: 'company', signatoryUserId: 'hr', signatoryTitle: '', allowedSignatoryUserIds:['hr'], letterhead: { registrationNo: 'FORMATTED-001', address: 'Printed address\nSecond line', color: '#336699' } }]);
+});
+function OffboardingEditor(){
+ const [config,setConfig]=useState(()=>{const value=v9Defaults();value.groups=[{id:'first',name:'Configured Operations',members:['hr'],limit:20},{id:'empty',name:'Replacement group',members:[],limit:20}];value.peopleOpsGroup='first';return value;});
+ return <><WorkspaceSettings activeTab="off" config={config} options={{companies:[],users:[{id:'hr',name:'Fictional HR'}],employees:[]}} editable edit={change=>setConfig(old=>{const next=structuredClone(old);change(next);return next;})}/><output data-testid="offboarding-settings">{JSON.stringify(config.offboarding)}</output><output data-testid="people-ops-group">{config.peopleOpsGroup}</output></>;
+}
+it('stores explicit Offboarding posting and retention settings, including blank no-limit without changing shared People Ops',()=>{
+ render(<NextIntlClientProvider locale="en" messages={messages}><OffboardingEditor/></NextIntlClientProvider>);
+ expect(screen.getByRole('combobox',{name:'Who approves Personnel postings'})).toHaveValue('first');
+ const limit=screen.getByRole('spinbutton',{name:'No second retention offer within (months)'});
+ expect(limit).toHaveValue(12);
+ fireEvent.change(limit,{target:{value:''}});
+ expect(JSON.parse(screen.getByTestId('offboarding-settings').textContent!)).toEqual({postingApproverGroupId:'first',reofferMonths:null});
+ fireEvent.change(screen.getByRole('combobox',{name:'Who approves Personnel postings'}),{target:{value:'empty'}});
+ expect(JSON.parse(screen.getByTestId('offboarding-settings').textContent!)).toEqual({postingApproverGroupId:'empty',reofferMonths:null});
+ expect(screen.getByTestId('people-ops-group')).toHaveTextContent(/^first$/);
+ expect(screen.getByRole('alert')).toHaveTextContent('Existing pending postings keep their current approvers');
 });

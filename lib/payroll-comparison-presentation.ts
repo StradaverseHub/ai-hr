@@ -1,3 +1,4 @@
+import {payrollReconciliationItemLabel} from './payroll-reconciliation-items';
 /** Shared labels, columns and notes keep screen and downloaded sign-off outputs consistent. */
 import type { ComparisonRow } from './payroll-comparison-result';
 import { ALL_RECORDED_PAY_ITEMS, type PayrollComparisonDefinition, type PayrollComparisonReason } from './payroll-period-comparison';
@@ -24,6 +25,8 @@ export function payrollComparisonRemarks(row:ComparisonRow,t?:PayrollComparisonT
   return notes.join(' ');
 }
 export function payrollComparisonCell(row:ComparisonRow,id:string,t?:PayrollComparisonTranslate):string|null{
+  if(id==='variancePct'&&row.variancePct===null&&row.currency!==null&&row.previous==='0.00'&&row.current!=='0.00')return t?t('newAmount'):'New';
+  if(id==='payItemCode'&&row.payItemCode)return payrollReconciliationItemLabel(row.payItemCode);
   if(id==='reason')return t?t('reasons.'+row.reason.reason):PAYROLL_REASON_LABELS[row.reason.reason];
   if(id==='effectiveDate')return row.reason.effectiveDate;
   if(id==='remarks')return [payrollComparisonRemarks(row,t),row.hrRemark?.body].filter(Boolean).join(' ');

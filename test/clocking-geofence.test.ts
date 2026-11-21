@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * ADR-0070 — Clocking Location Management & Geofencing. Haversine golden vectors, CRUD + archive/
  * restore/delete-guard on the clocking_location catalog + its DomainEvent substrate, set-based
@@ -187,7 +188,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   locationByCompany.clear();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
 });
 
 describe('haversineMetres (pure)', () => {
@@ -842,7 +843,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
       checkOut: '18:00:00',
       reason: 'Correction',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     row = await attendanceRow(e.employmentId, '2026-07-06');
     expect(row.checkOutAt).toBe('18:00:00');

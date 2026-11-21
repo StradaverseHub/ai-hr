@@ -1,10 +1,12 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { formatImportActor, formatImportBatch } from '@/lib/import-reference';
 import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
@@ -228,13 +230,13 @@ export function LeaveHistoryImport({ runs, showRunLog = true, historyOnly = fals
       <Card id="leave-history-import-form" className="scroll-mt-6 p-5">
         {/* Step 1 — the template, in both forms. The Excel one carries the reporter's headings. */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <button
+          <ActionButton guardNavigation={false} actionKind="generating"
             type="button"
-            onClick={() => void downloadXlsxTemplate()}
+            onClick={() => downloadXlsxTemplate()}
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             {t('downloadTemplateXlsx')}
-          </button>
+          </ActionButton>
           <DownloadTemplate spec={leaveHistoryImportTemplate} onDownloaded={() => setTemplateTaken(true)} />
         </div>
 
@@ -331,7 +333,7 @@ export function LeaveHistoryImport({ runs, showRunLog = true, historyOnly = fals
 
         {/* Step 3 — validate. */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button onClick={() => runValidate(csv)} disabled={pending || reading || !csv.trim()}>
+          <Button aria-busy={pending} onClick={() => runValidate(csv)} disabled={pending || reading || !csv.trim()}>
             {pending && phase !== 'done' ? t('validating') : t('validate')}
           </Button>
         </div>
@@ -799,6 +801,7 @@ function ImportLog({
   onDownload: (rows: LeaveHistoryImportError[]) => void;
 }) {
   const t = useTranslations('admin.leaveHistoryImport');
+  const labels = useTranslations('importLog');
   const [openId, setOpenId] = useState<string | null>(null);
 
   return (
@@ -849,7 +852,8 @@ function ImportLog({
                       {new Date(run.createdAt).toLocaleString()}
                     </td>
                     <td className="px-3 py-2 font-medium">
-                      {run.fileName || <span className="font-normal text-muted-foreground">{t('historyPasted')}</span>}
+                      {formatImportBatch(labels, run.id)}
+                      <div className="break-all text-xs font-normal text-muted-foreground">{run.fileName || t('historyPasted')}</div>
                       <div className={`text-xs font-normal ${outcomeCls}`}>{outcomeLabel}</div>
                       {open && (
                         <div className="mt-2 max-w-md rounded-md bg-muted/40 p-2 text-xs font-normal">
@@ -884,7 +888,7 @@ function ImportLog({
                         </div>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-muted-foreground">{run.actorName || t('historyActorUnknown')}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{run.actor ? formatImportActor(labels, run.actor) : run.actorName || t('historyActorUnknown')}</td>
                     <td className="px-3 py-2 tabular-nums">{run.totalRows}</td>
                     <td className="px-3 py-2 tabular-nums text-emerald-700 dark:text-emerald-400">{run.importedRows}</td>
                     <td className="px-3 py-2 tabular-nums">{run.failedRows}</td>

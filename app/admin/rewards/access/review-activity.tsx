@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { formatMoney } from '@/lib/money';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { Card, btnPrimary, inputCls } from '@/components/ui';
 import type { SessionContext } from '@/db/client';
@@ -18,6 +19,11 @@ export async function RewardReviewActivity({ session, value, reviewId, actorId, 
     getTranslations('rewardsAccess.reviewActivity'), getTranslations('rewards'), getLocale(),
     rewardReviewActivity(session, selected ? [selected] : [...reviews.keys()], actor || undefined, subject),
   ]);
+  const changeField = (field: string) => {
+    const keys: Record<string,string> = { meritBp:'merit',promotionGrade:'promotionGrade',promotionBp:'promotion',specialBp:'special',multiplierBp:'bonusMultiplier',bonusCents:'bonus',lumpCents:'lumpSum',reason:'businessCase',note:'desk.person.notes',erDecision:'erDecision',pipDecision:'pipDecision',caseReason:'caseReason',withhold:'desk.panel.withheld',currentRoleSummary:'currentRoleSummary',proposedRoleSummary:'proposedRoleSummary' };
+    return keys[field] ? rewards(keys[field]) : field;
+  };
+  const changeValue = (field: string, value: unknown): string => value == null ? '—' : typeof value === 'number' ? field.endsWith('Cents') ? formatMoney(value / 100,'MYR',locale) : field === 'multiplierBp' ? (value / 10000).toFixed(2) : `${(value / 100).toFixed(2)}%` : typeof value === 'object' ? Object.values(value).join('; ') || '—' : ['erDecision','pipDecision'].includes(field) ? rewards(`case.${value}`) : String(value);
   const date = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
   return <Card className="space-y-4 p-4">
     <form method="get" className="flex flex-wrap items-end gap-3">
@@ -48,7 +54,7 @@ export async function RewardReviewActivity({ session, value, reviewId, actorId, 
         <td className="p-3">{entry.actorName ?? rewards('reviewList.restrictedName')}</td>
         <td className="p-3">{entry.subjectId && entry.subjectName ? <Link className="text-primary underline" href={activityUrl(entry.subjectId)}>{entry.subjectName}</Link> : '—'}</td>
         <td className="p-3">{t(`events.${entry.eventType.slice('reward-unit.'.length)}`)}</td>
-        <td className="p-3">{entry.reason || '—'}</td>
+        <td className="p-3">{entry.reason || '—'}{entry.changes?.length > 0 && <ul className="mt-2 space-y-1 text-xs text-muted-foreground">{entry.changes.map((change,index) => <li key={index}>{rewards('desk.panel.auditChange',{ field: changeField(change.field), before: changeValue(change.field,change.before), after: changeValue(change.field,change.after) })}</li>)}</ul>}</td>
       </tr>)}
       {!entries.length && <tr><td className="p-3" colSpan={6}>{t('empty')}</td></tr>}</tbody>
     </table></div>

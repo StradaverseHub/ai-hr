@@ -36,7 +36,6 @@ const {ClientPager}=await import('../components/client-pager');
 const {PageHeader}=await import('../components/ui');
 const {InternalAuthForm}=await import('../app/login/internal-form');
 const {WorkspaceComposer}=await import('../components/assistant/workspace-composer');
-const {AtelierAskBox}=await import('../components/atelier-ask-box');
 const themes:UiTheme[]=['atelier','classic','monolith'];
 const companies=[{id:'fictional-a',name:'Fictional Company A'},{id:'fictional-b',name:'Fictional Company B'}];
 const initialBodyClass=document.body.className;
@@ -56,8 +55,8 @@ function Screen({theme,title='Fictional personnel',admin=true}:{theme:UiTheme;ti
    </header>
    <main className={geometry.main} data-testid="release-main"><div className="space-y-4">
     <PageHeader title={title} description="Fictional fixture: production components and CSS; no server session or HR data." actions={<><label className="sr-only" htmlFor="fixture-search">Find fictional rows</label><input id="fixture-search" aria-label="Find fictional rows" className="max-w-full rounded border px-2 py-1" defaultValue="Fictional"/><button type="button" className="rounded border px-2 py-1">Read-only action</button></>}/>
-    <ClientPager state={state}/>
     <table className="w-full text-sm"><thead><tr><th>Fictional row</th></tr></thead><tbody>{Array.from({length:25},(_,i)=><tr key={i} style={{height:40}}><td>{`Fictional row ${state.from+i}`}</td></tr>)}</tbody></table>
+    <div className="flex justify-end border-t border-border"><ClientPager state={state}/></div>
     <NavProbe/>
    </div></main>
   </div>
@@ -89,7 +88,7 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   await mount(theme,width,dark);
   const main=screen.getByTestId('release-main'),header=main.querySelector('[data-page-header]')!;
   expect(main.scrollHeight).toBeGreaterThan(main.clientHeight+250);expect(main.clientHeight).toBeGreaterThan(80);
-  if(!dark&&width===1280)await capture(`${theme}-initial-pager`,document.querySelector('[data-app-shell]')!);
+  if(!dark&&width===1280)await capture(`${theme}-initial-personnel`,document.querySelector('[data-app-shell]')!);
   main.scrollTop=420;await tick();expect(main.scrollTop).toBeGreaterThan(300);
   expect(getComputedStyle(header).position).toBe(width>=640?'sticky':'static');
   if(width>=640){expect(box(header).top).toBeGreaterThanOrEqual(box(main).top-1);expect(box(header).bottom).toBeLessThan(box(main).bottom);expect(box(screen.getByLabelText('Find fictional rows')).bottom).toBeLessThan(box(main).bottom);if(theme==='atelier')expect(getComputedStyle(header).boxShadow).not.toBe('none');}
@@ -99,15 +98,22 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
  for(const theme of themes)it(`${theme} preserves filters while the real pager advances to rows 26–50`,async()=>{
   const view=await mount(theme,1280);const pager=document.querySelector('[data-ui-pager]')!;
   const next=within(pager as HTMLElement).getByRole('button',{name:theme==='atelier'?en.pagination.nextPage:en.pagination.next});
-  expect(box(pager).bottom).toBeLessThanOrEqual(box(screen.getByRole('table')).top+1);fireEvent.click(next);
+  expect(box(pager).top).toBeGreaterThanOrEqual(box(screen.getByRole('table')).bottom-1);
+  const main=screen.getByTestId('release-main');
+  main.scrollTop=main.scrollHeight;await tick();
+  expect(box(pager).bottom).toBeLessThanOrEqual(box(main).bottom+1);
+  fireEvent.click(next);
   expect(ports.replace).toHaveBeenCalledOnce();const [url,options]=ports.replace.mock.calls[0];const sp=new URLSearchParams(String(url).slice(1));expect(Object.fromEntries(sp)).toEqual({q:'Fictional',size:'25',page:'1'});expect(options).toEqual({scroll:false});
   ports.search=String(url).slice(1);view.rerender(<Screen theme={theme}/>);expect(screen.getByText('Fictional row 26')).toBeVisible();expect(screen.queryByText('Fictional row 1')).toBeNull();
  });
- it('uses actual rail destinations for module/list links and follows the real h1 when a record changes',async()=>{
-  ports.path='/attendance/individual/2026-10-29';const view=await mount('atelier',1280,false,true,'Fictional attendance A');
+ it.each([390,1280])('uses actual rail destinations for module/list links and follows the real h1 when a record changes at %i px',async(width)=>{
+  ports.path='/attendance/individual/2026-10-29';const view=await mount('atelier',width,false,true,'Fictional attendance A');
   const crumb=await screen.findByRole('navigation',{name:en.topbar.breadcrumb});
   await waitFor(()=>expect(crumb.querySelector('[aria-current=page]')?.textContent).toBe('Fictional attendance A'));
-  const hrefs=Array.from(crumb.querySelectorAll('a')).map(link=>link.getAttribute('href'));expect(hrefs).toContain('/attendance');expect(hrefs).toContain('/attendance/clock');
+  expect(crumb.querySelector('[aria-current=page]')).toBeVisible();
+  const hrefs=Array.from(crumb.querySelectorAll('a')).map(link=>link.getAttribute('href'));expect(hrefs).toEqual(['/attendance']);
+  expect(within(crumb).queryByRole('link',{name:en.nav.moduleAttendance})).toBeNull();
+  expect(crumb.textContent).toContain(en.nav.moduleAttendance);
   // A streamed route can commit its new pathname before the previous heading is replaced.
   ports.path='/attendance/individual/2026-10-30';view.rerender(<Screen theme="atelier" title="Fictional attendance A"/>);await tick();
   view.rerender(<Screen theme="atelier" title="Fictional attendance B"/>);
@@ -141,7 +147,16 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
  });
  for(const theme of themes)it(`${theme} public tour pauses and login remains contained on a phone`,async()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);await page.viewport(1440,900);
-  const noRequests=vi.fn(()=>{throw new Error('No authentication request is permitted in this blank fixture');});vi.stubGlobal('fetch',noRequests);
+  // Continuing to a workspace enables public Microsoft availability discovery. Keep the real
+  // watcher, but permit only its credential-free request, never a credential submission.
+  const publicDiscovery=vi.fn<typeof fetch>(async()=>Response.json({microsoft:false}));vi.stubGlobal('fetch',publicDiscovery);
+  const expectOnlyPublicDiscovery=()=>{
+   expect(publicDiscovery).toHaveBeenCalled();
+   for(const call of publicDiscovery.mock.calls)expect(call).toEqual([
+    '/login/entra/options?organization=fictional-workspace',
+    {credentials:'omit',redirect:'error',cache:'no-store',signal:expect.any(AbortSignal)},
+   ]);
+  };
   const view=render(providers(theme,<InternalAuthForm/>));
   const story=screen.getByRole('region',{name:editorial.storyLabel});
   fireEvent.click(await within(story).findByRole('button',{name:editorial.stop}));
@@ -154,9 +169,12 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   fireEvent.click(within(story).getByRole('button',{name:editorial.stop}));
   expect(screen.queryByLabelText(en.internalAuth.password)).toBeNull();
   fireEvent.change(screen.getByLabelText(editorial.workspaceLabel),{target:{value:'fictional-workspace'}});
+  expect(publicDiscovery).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button',{name:editorial.continueLabel}));
+  // Exercise the watcher's real focus refresh instead of racing its 250ms initial timer.
+  fireEvent.focus(window);await waitFor(expectOnlyPublicDiscovery);
   await page.viewport(390,844);await tick();const button=screen.getByRole('button',{name:en.internalAuth.signIn});expect(box(button).left).toBeGreaterThanOrEqual(0);expect(box(button).right).toBeLessThanOrEqual(390);expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
-  expect(screen.getByLabelText(en.internalAuth.password)).toHaveValue('');expect(screen.getByLabelText(en.internalAuth.username)).toHaveValue('');expect(noRequests).not.toHaveBeenCalled();await capture(`${theme}-blank-login-phone`,view.container.querySelector('main')!);
+  expect(screen.getByLabelText(en.internalAuth.password)).toHaveValue('');expect(screen.getByLabelText(en.internalAuth.username)).toHaveValue('');await capture(`${theme}-blank-login-phone`,view.container.querySelector('main')!);expectOnlyPublicDiscovery();
  },15000);
  for(const theme of themes)it(`${theme} workspace focus rings the whole composer including Send without submission`,async()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);await page.viewport(390,844);
@@ -165,26 +183,5 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   fireEvent.change(field,{target:{value:'A fictional question'}});field.focus();await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));expect(getComputedStyle(field).outlineStyle).toBe('none');const focusedShadow=getComputedStyle(frame).boxShadow;expect(focusedShadow).not.toBe('none');await capture(`${theme}-composer-textarea`,frame.closest('main')!);
   const send=screen.getByRole('button',{name:'Send fixture'});send.focus();expect(frame.matches(':focus-within')).toBe(true);await waitFor(()=>expect(getComputedStyle(frame).boxShadow).toBe(focusedShadow));expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();expect(ports.workspaceAsk).not.toHaveBeenCalled();await capture(`${theme}-composer`,frame.closest('main')!);
  });
- it('Atelier home composer focuses its whole frame without a second textarea outline',async()=>{
-  document.documentElement.setAttribute('data-ui-theme','atelier');document.body.className=geometry.body;await page.viewport(390,844);
-  const view=render(providers('atelier',<div data-app-shell className={geometry.shell}><div data-app-content className={geometry.content}><main className={geometry.main}>
-   <AtelierAskBox label="Fictional home question" placeholder="Ask about a fixture" submitLabel="Send home fixture" suggestions={[]}/>
-   <label htmlFor="focus-control">Ordinary field focus control</label><input id="focus-control"/>
-  </main></div></div>));view.container.style.height='100%';await tick();
-  const field=screen.getByLabelText('Fictional home question'),frame=document.querySelector('[data-ui-composer]')!,before=getComputedStyle(frame).boxShadow;
-  // Check the empty textarea while it actually owns focus; moving focus to Send hides this regression.
-  field.focus();await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));
-  expect(document.activeElement).toBe(field);expect(field.matches(':focus-visible')).toBe(true);
-  expect(getComputedStyle(field).outlineStyle).toBe('none');expect(getComputedStyle(field).boxShadow).toBe('none');
-  const focusedShadow=getComputedStyle(frame).boxShadow;expect(focusedShadow).not.toBe('none');
-  await capture('atelier-home-composer-textarea',frame.closest('main')!);
-  fireEvent.change(field,{target:{value:'A fictional question'}});
-  const send=screen.getByRole('button',{name:'Send home fixture'});send.focus();expect(document.activeElement).toBe(send);expect(frame.matches(':focus-within')).toBe(true);
-  await waitFor(()=>expect(getComputedStyle(frame).boxShadow).not.toBe(before));expect(getComputedStyle(frame).boxShadow).not.toBe('none');expect(box(send).bottom).toBeLessThanOrEqual(box(frame).bottom);expect(ports.ask).not.toHaveBeenCalled();expect(ports.workspaceAsk).not.toHaveBeenCalled();
-  await capture('atelier-home-composer-send',frame.closest('main')!);
-  // The composer exception must preserve the normal accessible field focus treatment.
-  const control=screen.getByLabelText('Ordinary field focus control');control.focus();expect(control.matches(':focus-visible')).toBe(true);
-  expect(getComputedStyle(control).outlineStyle).not.toBe('none');expect(parseFloat(getComputedStyle(control).outlineWidth)).toBeGreaterThan(0);
-  expect(getComputedStyle(control).boxShadow).not.toBe('none');expect(ports.ask).not.toHaveBeenCalled();expect(ports.workspaceAsk).not.toHaveBeenCalled();
- });
+
 });

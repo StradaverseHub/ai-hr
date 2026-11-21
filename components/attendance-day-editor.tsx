@@ -49,7 +49,7 @@ function AttendanceDateScheduleForm({data,employmentId,date,onSaved,onCancel,onP
     {data.leave.length>0&&<><input type="hidden" name="dayKind" value={data.dayKind??''}/><p className="rounded-md bg-muted p-3 text-sm">{t('onLeave')}: {data.leave.map(l=>`${l.name} (${l.duration})`).join(', ')} · <a className="text-primary underline" href={`/admin/personnel/${employmentId}?tab=leave`}>{t('manageLeave')}</a><span className="mt-1 block text-muted-foreground">{t('leaveOwner')}</span></p></>}
     <p className="text-xs text-muted-foreground">{t('beforeAfter',{before:`${data.schedule.shiftCode??'—'} · ${t(`kind.${data.schedule.dayKind}`)}`,after:`${selected?.code??(shift?data.schedule.shiftCode:t('automaticSchedule'))} · ${kind?t(`kind.${kind}`):t('automaticSchedule')}`})}</p>
     <SaveFields data={data} disabled={disabled}/><ErrorBanner message={error}/>{saved&&<p role="status" className="text-sm text-emerald-700">{t('saved')}</p>}
-    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{t('dateOnly')}</p><div className="flex gap-2"><Button type="button" variant="outline" disabled={pending} onClick={onCancel}>{t('cancel')}</Button><Button type="submit" disabled={disabled}>{t('saveSchedule')}</Button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs text-muted-foreground">{t('dateOnly')}</p><div className="flex gap-2"><Button aria-busy={pending} type="button" variant="outline" disabled={pending} onClick={onCancel}>{t('cancel')}</Button><Button type="submit" disabled={disabled}>{t('saveSchedule')}</Button></div></div>
   </form>;
 }
 

@@ -1,3 +1,5 @@
+import {withAiCentreFunction,assertAiCentreRunningTx} from './ai-centre-control';
+import {aiCentreActivity} from '../lib/ai/centre-activity';
 /** Explicit admin-controlled candidate evaluation. No HR fields, arbitrary prompts, endpoints or tools. */
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -7,23 +9,33 @@ import { actorOf, appendEvent } from '../db/events';
 import { encryptSecret, isSecretStorable, keyLast4 } from '../lib/ai/crypto';
 import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { OpenRouterModel, OpenRouterTransportConfiguration } from '../lib/ai/providers/openrouter-transport';
-import { assertProviderProtocolEvaluation, runProviderProtocolEvaluation, type ProviderProtocolSummary } from '../lib/ai/provider-protocol';
+import { assertProviderProtocolEvaluation, ProviderProtocolFailure, runProviderProtocolEvaluation, type ProviderProtocolSummary } from '../lib/ai/provider-protocol';
 import { openProviderEvaluationReceipt, sealProviderEvaluationReceipt } from '../lib/ai/provider-evaluation-receipt';
-import { currentAiProviderAdminTx } from './ai-provider-authority';
+import { currentAiProviderAdminTx, currentAiProviderPresentationAdminTx } from './ai-provider-authority';
 import { bindStrictAiSpendRoot, governedAiConfig } from './ai-governance';
 import { resolveAiProviderCandidateSnapshotTx } from './ai-provider-snapshot';
 
-export class AiProviderReadinessError extends Error {
-  constructor(readonly code: 'consent_required' | 'candidate_required' | 'probe_failed' | 'receipt_required' | 'unavailable') {
-    super('The AI provider evaluation could not be confirmed.'); this.name = 'AiProviderReadinessError';
-  }
-}
+import { AiProviderReadinessError } from '../lib/ai/provider-readiness-error';
+export { AiProviderReadinessError } from '../lib/ai/provider-readiness-error';
 const unavailable = (): never => { throw new AiProviderReadinessError('unavailable'); };
 const captured = (ctx: SessionContext) => ({ ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) });
-async function authority(tx: Tx, ctx: SessionContext) { if (!(await currentAiProviderAdminTx(tx, ctx))) return unavailable(); }
+async function authority(tx: Tx, ctx: SessionContext) {
+ if (!(await currentAiProviderAdminTx(tx, ctx))) return unavailable();
+ if(aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);
+}
 export type AiProviderCandidateView = Readonly<{ id: string; version: string; provider: 'openrouter'; model: string; keyLast4: string; providerOptions: OpenRouterOptions; updatedAt: string }>;
 export async function providerCandidatesTx(tx: Tx, ctx: SessionContext): Promise<AiProviderCandidateView[]> {
   await authority(tx, ctx);
+  return readProviderCandidatesTx(tx);
+}
+
+/** Candidate metadata for settings display, within the same snapshot as active settings. */
+export async function providerCandidatesPresentationTx(tx: Tx, ctx: SessionContext): Promise<AiProviderCandidateView[]> {
+  if (!(await currentAiProviderPresentationAdminTx(tx, ctx))) return unavailable();
+  return readProviderCandidatesTx(tx);
+}
+
+async function readProviderCandidatesTx(tx: Tx): Promise<AiProviderCandidateView[]> {
   try {
     const rows = await tx.execute<{ id: string; version_token: string; provider: string; model: string; key_last4: string; provider_options: unknown; updated_at: Date }>(sql`select * from app.ai_provider_candidate_view_v1()`);
     return rows.map(row => {
@@ -61,7 +73,11 @@ export type ProviderEvaluationResult = Readonly<{ receipt: string; expiresAt: st
  * bytes and uses a candidate-purpose snapshot through canonical admission/allowance/settlement.
  * Account settings are human-attested; these probes do not prove provider privacy or all task quality.
  */
-export async function evaluateProviderCandidate(ctx: SessionContext, input: ProviderEvaluationConsent): Promise<ProviderEvaluationResult> {
+export async function evaluateProviderCandidate(...args:Parameters<typeof evaluateProviderCandidateActivity>):Promise<Awaited<ReturnType<typeof evaluateProviderCandidateActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_provider_readiness',()=>evaluateProviderCandidateActivity(...args));
+}
+async function evaluateProviderCandidateActivity(ctx: SessionContext, input: ProviderEvaluationConsent): Promise<ProviderEvaluationResult> {
   ctx = captured(ctx);
   const consent = Consent.safeParse(input);
   if (!consent.success) throw new AiProviderReadinessError('consent_required');
@@ -80,8 +96,15 @@ export async function evaluateProviderCandidate(ctx: SessionContext, input: Prov
   const cfg = bindStrictAiSpendRoot(governedAiConfig(ctx, snapshot, 'provider_evaluation'),
     { rootTaskId: snapshot.candidate.id, kind: 'evaluation' });
   let summary: ProviderProtocolSummary;
-  try { summary = await runProviderProtocolEvaluation(cfg); assertProviderProtocolEvaluation(summary, cfg); }
-  catch { throw new AiProviderReadinessError('probe_failed'); }
+  // Name only which fixed call failed and how far it got; the refusal itself stays a non-enumerable typed value.
+  const model = OpenRouterModel.safeParse(cfg.model).success ? cfg.model : null;
+  try { summary = await runProviderProtocolEvaluation(cfg); }
+  catch (error) {
+    const failure = error instanceof ProviderProtocolFailure ? error : null;
+    throw new AiProviderReadinessError('probe_failed', { stage: failure?.stage ?? 'draft', origin: failure?.origin ?? 'local', model, refusal: failure?.refusal });
+  }
+  try { assertProviderProtocolEvaluation(summary, cfg); }
+  catch { throw new AiProviderReadinessError('probe_failed', { stage: 'summary', origin: 'local', model }); }
   return withTenant(ctx, async tx => {
     await authority(tx, ctx);
     const current = await resolveAiProviderCandidateSnapshotTx(tx, ctx, 'openrouter');

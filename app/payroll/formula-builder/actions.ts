@@ -1,8 +1,9 @@
 'use server';
 import {revalidatePath} from 'next/cache';
+import {after} from 'next/server';
 import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
-import {registerPayFormulaPersonnelField,getPayFormula,savePayFormula,testPayFormula,samplePayFormula,setPayFormulaActive,deletePayFormula,saveFormulaAccumulationGroup} from '@/packs/payroll/service';
+import {registerPayFormulaPersonnelField,getPayFormula,savePayFormula,testPayFormula,samplePayFormula,deletePayFormula,saveFormulaAccumulationGroup} from '@/packs/payroll/service';
 import {PAY_FORMULA_SAMPLE_VARIABLES,payFormulaSampleFields,type PayFormulaSampleValues} from '@/lib/pay-formula-sample';
 import {PayFormulaError,type PayFormulaContext,type PayFormulaMethod} from '@/lib/pay-formula-model';
 import {PayFormulaError as FormulaLanguageError} from '@/lib/pay-formula-language';
@@ -16,7 +17,7 @@ async function execute<T>(operation:()=>Promise<T>):Promise<FormulaActionResult<
  }
 }
 export async function saveFormulaAction(input:{id?:string;expectedRevisionId?:string;formulaId:string;description:string;method:PayFormulaMethod;source:string}){
- return execute(async()=>{const ctx=await getSession();const saved=await savePayFormula(ctx,{id:input.id,expectedRevisionId:input.expectedRevisionId,formulaId:input.formulaId,description:input.description,method:input.method,source:input.source});revalidatePath(PAGE);revalidatePath(PAGE+'/'+saved.id);const formula=await getPayFormula(ctx,saved.id);if(!formula){const t=await getTranslations('payFormula');throw new PayFormulaError(t('savedUnavailable'));}return formula;});
+ return execute(async()=>{const ctx=await getSession();const saved=await savePayFormula(ctx,{id:input.id,expectedRevisionId:input.expectedRevisionId,formulaId:input.formulaId,description:input.description,method:input.method,source:input.source});revalidatePath(PAGE);revalidatePath(PAGE+'/'+saved.id);revalidatePath(PAY_ITEMS,'layout');const formula=await getPayFormula(ctx,saved.id);if(!formula){const t=await getTranslations('payFormula');throw new PayFormulaError(t('savedUnavailable'));}return formula;});
 }
 export async function testFormulaAction(input:{id:string;revisionId:string;context:PayFormulaContext}){
  return execute(async()=>{const ctx=await getSession();const context={companyId:input.context.companyId,employmentId:input.context.employmentId,period:input.context.period,cycleId:input.context.cycleId,asOf:input.context.asOf,currentCode:input.context.currentCode,input:input.context.input,...(input.context.batchId?{batchId:input.context.batchId}:{})};const test=await testPayFormula(ctx,{id:input.id,revisionId:input.revisionId,context});const formula=await getPayFormula(ctx,input.id);revalidatePath(PAGE);return {test,formula};});
@@ -27,7 +28,7 @@ export async function sampleFormulaAction(input:{source:string;values:PayFormula
  return execute(async()=>{const values:PayFormulaSampleValues={};for(const name of PAY_FORMULA_SAMPLE_VARIABLES){const value=input?.values?.[name];if(typeof value==='string')values[name]=value.slice(0,40);}const source=String(input?.source??'');values.fields={};for(const field of payFormulaSampleFields(source)){const raw=input?.values?.fields?.[field.key];if(typeof raw==='string')values.fields[field.key]=raw.slice(0,501);}return samplePayFormula(await getSession(),{source,values});});
 }
 export async function formulaStateAction(input:{id:string;revisionId?:string;testId?:string;active:boolean}){
- return execute(async()=>{const ctx=await getSession();await setPayFormulaActive(ctx,{id:input.id,revisionId:input.revisionId,testId:input.testId,active:input.active});revalidatePath(PAGE);revalidatePath(PAGE+'/'+input.id);revalidatePath(PAY_ITEMS,'layout');return await getPayFormula(ctx,input.id);});
+ return execute(async()=>{await getSession();throw new PayFormulaError('Saved formulas are available immediately. Formula status changes are no longer supported.');});
 }
 export async function deleteFormulaAction(input:{id:string;reason:string}){
  return execute(async()=>{await deletePayFormula(await getSession(),{id:input.id,reason:input.reason});revalidatePath(PAGE);revalidatePath(PAY_ITEMS,'layout');return {id:input.id};});
@@ -41,15 +42,27 @@ export async function searchFormulaEmployeesAction(input:{query:string;companyId
 
 export async function listFormulaBatchesAction(input:{companyId:string;period:string;cycleId:string}){return execute(async()=>{const {listPayFormulaBatches}=await import('@/packs/payroll/service');return listPayFormulaBatches(await getSession(),input);});}
 
-export async function draftFormulaAction(input:unknown){
- try{const {draftPayFormula}=await import('@/packs/payroll/service');return {ok:true as const,value:await draftPayFormula(await getSession(),input)};}
- catch(error){
-  const t=await getTranslations('payFormula.generator');
-  const code=error instanceof Error&&error.name==='AiPrivacyGateError'?'reviewRequired':error instanceof Error&&error.message==='not_configured'?'unavailable':'failed';
-  return {ok:false as const,error:t(code)};
- }
+/** Starts the AI Formula Generator and returns at once: the draft is produced after this response (core/pay-formula-ai-job.ts,
+ * next/server `after`), and the screen polls readFormulaDraftAction. Nothing is saved, activated or applied. */
+export async function startFormulaDraftAction(input:unknown){
+ try{const {startPayFormulaDraftJob}=await import('@/packs/payroll/service');return {ok:true as const,value:await startPayFormulaDraftJob(await getSession(),input,work=>after(work))};}
+ catch{const t=await getTranslations('payFormula.generator');return {ok:false as const,error:t('failed')};}
+}
+/** The signed-in author's current generation (one primary-key read); null when there is none or it expired. */
+export async function readFormulaDraftAction(){
+ try{const {readPayFormulaDraftJob}=await import('@/packs/payroll/service');return {ok:true as const,value:await readPayFormulaDraftJob(await getSession())};}
+ catch{const t=await getTranslations('payFormula.generator');return {ok:false as const,error:t('failed')};}
+}
+/** Clear: removes the author's finished draft. A running generation is left to finish. */
+export async function discardFormulaDraftAction(){
+ try{const {discardPayFormulaDraftJob}=await import('@/packs/payroll/service');await discardPayFormulaDraftJob(await getSession());return {ok:true as const,value:null};}
+ catch{const t=await getTranslations('payFormula.generator');return {ok:false as const,error:t('failed')};}
 }
 
 export async function registerPersonnelFormulaFieldAction(input:{sourceKey:string;label:string;description:string;enabled:boolean}){
  return execute(async()=>{const result=await registerPayFormulaPersonnelField(await getSession(),{sourceKey:input.sourceKey,label:input.label,description:input.description,enabled:input.enabled});revalidatePath(PAGE,'layout');return result;});
+}
+
+export async function readFormulaCodeChoicesAction(input:{key:string;search?:string;offset?:number}){
+ return execute(async()=>{const {payFormulaCodeChoices}=await import('@/packs/payroll/service');return payFormulaCodeChoices(await getSession(),{key:String(input.key),search:typeof input.search==='string'?input.search.slice(0,100):'',offset:Number(input.offset)||0});});
 }

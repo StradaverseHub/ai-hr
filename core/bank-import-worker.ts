@@ -1,42 +1,53 @@
 /** Queue coordinator. Owner connection discovers/locks jobs only; HR writes ALWAYS use app RLS. */
 import {createHash} from 'node:crypto';
+import {withBackgroundDatabaseWork} from '../db/workload';
+import {DatabaseAdmissionError} from '../db/admission';
 import {sql} from 'drizzle-orm';
 import type postgres from 'postgres';
-import {client,withTenant,type SessionContext,type Tx} from '../db/client';
+import {client,withTenant,withPoolWork,type SessionContext,type Tx} from '../db/client';
 import {resolveEntitlementsInTenantTx} from './entitlements';
 import {bankJobTx,type BankImportJobRow} from './bank-import-job';
 import {ImportFileError} from '../lib/import-file';
+import {unexpectedErrorReference} from '../lib/public-error';
 import {PersonnelImportHeaderError} from '../lib/personnel-import-contract';
 import {PersonnelCsvError} from '../lib/personnel-csv';
-import {decodeBankImportSource} from '../lib/bank-import-source.server';
+import {BANK_IMPORT_STAGE_ROWS,bankImportStagedRecords,stageBankImportSource} from '../lib/bank-import-stream-source.server';
 import {BANK_IMPORT_BATCH_ROWS,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
-import {analyzeBankImportBatch,applyBankImportRowTx} from './import-sections';
+import {analyzeBankImportBatch,applyBankImportRowTx,BankImportRowRejectedError} from './import-sections';
 import {createImportAttemptTx,recordImportEventTx,sealImportPlan} from './import-history';
 import type {ImportPlanBase} from '../lib/import-history';
 import type {ImportRecord} from '../lib/import-schema';
 import type {SectionRowResult} from '../lib/import-sections';
 
 type QueueRow={ordinal:number;record:ImportRecord;preview:SectionRowResult;company_id:string|null;employment_id:string|null;binding:string;state:string;error:string|null};
-async function sourceTx(tx:Tx,id:string){const parts=await tx.execute<{content:Buffer}>(sql`select content from bank_import_chunk where job_id=${id}::uuid order by part`);return Buffer.concat(parts.map(p=>p.content));}
+async function sourcePartsTx(tx:Tx,id:string):Promise<Buffer[]>{return(await tx.execute<{content:Buffer}>(sql`select content from bank_import_chunk where job_id=${id}::uuid order by part`)).map(p=>p.content);}
+async function sourceTx(tx:Tx,id:string){return Buffer.concat(await sourcePartsTx(tx,id));}
 export async function freshImportContext(context:SessionContext):Promise<SessionContext>{
  const ctx=structuredClone(context);
- ctx.entitlements=await client.begin(async transaction=>resolveEntitlementsInTenantTx(async(q,params)=>[...await transaction.unsafe(q,params as postgres.ParameterOrJSON<never>[])],ctx.tenantId));
+ ctx.entitlements=await withBackgroundDatabaseWork(()=>withPoolWork(ctx.tenantId,()=>client.begin(async transaction=>resolveEntitlementsInTenantTx(async(q,params)=>[...await transaction.unsafe(q,params as postgres.ParameterOrJSON<never>[])],ctx.tenantId))));
  return ctx;
 }
 /** One bounded phase. Exported for real DB recovery/concurrency tests. */
-export async function processBankImportJob(ctx:SessionContext,id:string):Promise<void>{
+export function processBankImportJob(ctx:SessionContext,id:string):Promise<void>{
+ return withBackgroundDatabaseWork(()=>processBankImportPhase(ctx,id));
+}
+async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void>{
  const job=await withTenant(ctx,tx=>bankJobTx(tx,id));
  if(job.state==='queued'){
-  const content=await withTenant(ctx,tx=>sourceTx(tx,id));
-  if(content.length!==job.source_bytes||createHash('sha256').update(content).digest('hex')!==job.source_hash)throw new Error('The uploaded file is incomplete or its checksum differs. Upload it again.');
-  const decoded=await decodeBankImportSource(job.source_name,content);
+  // The parts stay separate: the hash and the decoder read them in order, and a CSV decode releases each one.
+  const parts=await withTenant(ctx,tx=>sourcePartsTx(tx,id));
+  const hash=createHash('sha256');let bytes=0;for(const part of parts){hash.update(part);bytes+=part.length;}
+  if(bytes!==job.source_bytes||hash.digest('hex')!==job.source_hash)throw new Error('The uploaded file is incomplete or its checksum differs. Upload it again.');
+  // Same rows, errors and refusals as decodeBankImportSource, staged as compact batches (lib/bank-import-stream-source.server.ts).
+  const staged=await stageBankImportSource(job.source_name,parts);
   await withTenant(ctx,async tx=>{
    const current=await bankJobTx(tx,id,true);if(current.state!=='queued')return;
-   for(let start=0;start<decoded.records.length;start+=1000){
-    const rows=decoded.records.slice(start,start+1000).map((record,i)=>({ordinal:start+i+1,record,error:decoded.errors.get(start+i+1)??null}));
+   for(let batch=0;batch<staged.batches.length;batch++){
+    const start=batch*BANK_IMPORT_STAGE_ROWS;
+    const rows=bankImportStagedRecords(staged,batch).map((record,i)=>({ordinal:start+i+1,record,error:staged.errors.get(start+i+1)??null}));
     await tx.execute(sql`insert into bank_import_row(job_id,ordinal,record,error) select ${id}::uuid,x.ordinal,x.record,x.error from jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) as x(ordinal int,record jsonb,error text)`);
    }
-   await tx.execute(sql`update bank_import_job set state='validating',total=${decoded.records.length},updated_at=now() where id=${id}::uuid`);
+   await tx.execute(sql`update bank_import_job set state='validating',total=${staged.total},updated_at=now() where id=${id}::uuid`);
   });
   return;
  }
@@ -90,6 +101,9 @@ export async function processBankImportJob(ctx:SessionContext,id:string):Promise
     await tx.execute(sql`update bank_import_job set processed=processed+1,saved=saved+${saved?1:0},updated_at=now() where id=${id}::uuid`);
    });
   }catch(error){
+   // Only the canonical analyzer can reject employee data. SQL/connection/unknown failures
+   // stop the job with its atomic checkpoints intact; they must never consume a valid row.
+   if(!(error instanceof BankImportRowRejectedError))throw error;
    // Permission revocation/infrastructure faults fail the job rather than pretending every row failed.
    await withTenant(ctx,async tx=>{
     const [proof]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);if(!proof?.ok)throw error;
@@ -119,8 +133,11 @@ export async function runBankImportTick(owner:postgres.Sql):Promise<boolean>{
    if(!job)return false;
    try{await processBankImportJob(await freshImportContext(job.context),job.id);}
    catch(error){
+    if(error instanceof DatabaseAdmissionError)return false;
     const message=error instanceof ImportFileError?(error.code==='FILE_TOO_LARGE'?'The file exceeds the import size or worksheet limits. Use up to 250,000 rows and 128 MiB.':'The file could not be read. Use the Bank & Statutory template and its reference sheets.'):
-     error instanceof PersonnelImportHeaderError||error instanceof PersonnelCsvError?error.message.slice(0,1000):'Import stopped. Rows already saved are retained. Review the result and your access before trying again.';
+     error instanceof PersonnelImportHeaderError||error instanceof PersonnelCsvError?error.message.slice(0,1000):
+     // d3ba1e9f: an unexpected stop carries a short reference (full error in the worker log) for the Error Log.
+     `Import stopped. Rows already saved are retained. Review the result and your access before trying again. Reference ${unexpectedErrorReference(error,'bank import job')}.`;
     // Bounded message only; raw DB failures can contain employee values. Already saved rows stay saved.
     await connection`update bank_import_job set state='failed',error=${message},updated_at=now() where id=${job.id}::uuid`;
    }

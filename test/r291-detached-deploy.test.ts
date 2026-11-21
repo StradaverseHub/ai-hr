@@ -477,6 +477,104 @@ describe('deployment status reads coherent records during publication', () => {
     return parseDeployStatus(run.stdout);
   }
 
+  function nativeRecord(box: Box, name: string) {
+    return Object.fromEntries(fs.readFileSync(path.join(box.stateDir, name), 'utf8').trimEnd().split('\n').map(line => {
+      const separator = line.indexOf('=');
+      return [line.slice(0, separator), line.slice(separator + 1)];
+    }));
+  }
+
+  function beginFinishFixture(box: Box) {
+    stateCommand(box, ['begin', 'aaaaaaa', '99999999', '/var/tmp/fictional-native-finish.log']);
+    stateCommand(box, ['phase', 'ci-build-health']);
+    stateCommand(box, ['built']);
+  }
+
+  it.each(['running', 'failed', 'ok'] as const)('native finish 0 publishes the same closed success pair from %s without copying an old verdict', previous => {
+    const box = snapshotBox();
+    beginFinishFixture(box);
+    if (previous !== 'running') stateCommand(box, ['finish', previous === 'failed' ? '1' : '0']);
+    const original = nativeRecord(box, 'current');
+    stateCommand(box, ['finish', '0']);
+    const current = nativeRecord(box, 'current'), lastOk = nativeRecord(box, 'last-ok');
+    expect(current.result).toBe('ok');
+    expect(lastOk.result).toBe('');
+    expect(current.exit_code).toBe('0');
+    expect(current.finished_at).toMatch(/^[1-9][0-9]*$/);
+    expect(lastOk).toEqual({ ...current, result: '' });
+    for (const key of ['ref', 'pid', 'log', 'started_at', 'phase', 'build_id', 'built_at']) expect(current[key]).toBe(original[key]);
+    expect(current).toMatchObject({ ref: 'aaaaaaa', build_id: 'buildA', phase: 'ci-build-health' });
+    expect(stateCommand(box, ['status'])).toMatchObject({ state: 'ok', stale_build: '0' });
+  });
+
+  it('native finish failure retains the previous successful record byte for byte', () => {
+    const box = snapshotBox();
+    beginFinishFixture(box);
+    stateCommand(box, ['finish', '0']);
+    const previousOk = fs.readFileSync(path.join(box.stateDir, 'last-ok'));
+    stateCommand(box, ['finish', '17']);
+    expect(nativeRecord(box, 'current')).toMatchObject({ result: 'failed', exit_code: '17' });
+    expect(fs.readFileSync(path.join(box.stateDir, 'last-ok'))).toEqual(previousOk);
+    expect(stateCommand(box, ['status']).state).toBe('failed');
+  });
+
+  it('native successful recovery publishes normalized last-ok before the current ok verdict', () => {
+    const box = snapshotBox();
+    beginFinishFixture(box);
+    stateCommand(box, ['finish', '1']);
+    const shim = path.join(box.bin, 'mv');
+    fs.writeFileSync(shim, `#!/bin/sh
+for destination do :; done
+if [ "$destination" = "$AIHR_DEPLOY_STATE_DIR/last-ok" ]; then
+  /bin/cp "$AIHR_DEPLOY_STATE_DIR/current" "$AIHR_DEPLOY_STATE_DIR/before-last-ok-current"
+  /bin/mv "$@" || exit $?
+  /bin/cp "$AIHR_DEPLOY_STATE_DIR/last-ok" "$AIHR_DEPLOY_STATE_DIR/published-last-ok"
+  exit 0
+fi
+if [ "$destination" = "$AIHR_DEPLOY_STATE_DIR/current" ] && /usr/bin/grep -q '^result=ok$' "$2"; then
+  /bin/cp "$AIHR_DEPLOY_STATE_DIR/last-ok" "$AIHR_DEPLOY_STATE_DIR/before-current-ok-last-ok"
+fi
+exec /bin/mv "$@"
+`);
+    fs.chmodSync(shim, 0o755);
+    stateCommand(box, ['finish', '0']);
+    expect(nativeRecord(box, 'before-last-ok-current')).toMatchObject({ result: 'failed', exit_code: '0' });
+    const published = nativeRecord(box, 'published-last-ok');
+    expect(published.result).toBe('');
+    expect(nativeRecord(box, 'before-current-ok-last-ok')).toEqual(published);
+    expect(nativeRecord(box, 'current')).toEqual({ ...published, result: 'ok' });
+  });
+
+  it.each([
+    ['running', 'snapshot'], ['running', 'publish'],
+    ['failed', 'snapshot'], ['failed', 'publish'],
+    ['ok', 'snapshot'], ['ok', 'publish'],
+  ] as const)('native finish from %s records a %s failure without successful publication and permits a genuine retry', (previous, failure) => {
+    const box = snapshotBox();
+    beginFinishFixture(box);
+    if (previous !== 'running') stateCommand(box, ['finish', previous === 'failed' ? '1' : '0']);
+    const previousOk = fs.readFileSync(path.join(box.stateDir, 'last-ok'));
+    const command = failure === 'snapshot' ? 'sed' : 'mv', shim = path.join(box.bin, command);
+    fs.writeFileSync(shim, failure === 'snapshot' ? `#!/bin/sh
+if [ "$AIHR_TEST_FAIL_LAST_OK" = snapshot ] && [ "$1" = '/^result=/d' ] && [ "$2" = "$AIHR_DEPLOY_STATE_DIR/current" ]; then exit 1; fi
+exec /usr/bin/sed "$@"
+` : `#!/bin/sh
+for destination do :; done
+if [ "$AIHR_TEST_FAIL_LAST_OK" = publish ] && [ "$destination" = "$AIHR_DEPLOY_STATE_DIR/last-ok" ]; then exit 1; fi
+exec /bin/mv "$@"
+`);
+    fs.chmodSync(shim, 0o755);
+    // Instrumentation remains best effort (exit zero); every prior state must publish failed, never retain ok.
+    stateCommand(box, ['finish', '0'], { AIHR_TEST_FAIL_LAST_OK: failure });
+    expect(nativeRecord(box, 'current')).toMatchObject({ result: 'failed', exit_code: '0' });
+    expect(fs.readFileSync(path.join(box.stateDir, 'last-ok'))).toEqual(previousOk);
+    expect(stateCommand(box, ['status']).state).toBe('failed');
+    stateCommand(box, ['finish', '0'], { AIHR_TEST_FAIL_LAST_OK: '' });
+    expect(nativeRecord(box, 'current').result).toBe('ok');
+    expect(nativeRecord(box, 'last-ok')).toEqual({ ...nativeRecord(box, 'current'), result: '' });
+    expect(stateCommand(box, ['status'])).toMatchObject({ state: 'ok', stale_build: '0' });
+  });
+
   function interleaveReads(box: Box) {
     // Both paths serve the real bytes first, then atomically replace current. The sed path also
     // exercises the old field-at-a-time reader, so the regression fails before the snapshot repair.

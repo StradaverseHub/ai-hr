@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -53,7 +54,7 @@ export default async function EditLocationPage({
   const site = locations.find((l) => l.id === rawId);
   if (!site) notFound();
 
-  const branchOptions = await listProfileOptions(s, 'branch', { activeOnly: true });
+  const branchOptions = await listProfileOptions(s, 'branch', { activeOnly: true,companyId:site.companyId });
 
   // WHAT IS ON FILE, as the form's raw strings — then WHAT WAS TYPED when a refusal echoed it, which wins.
   const onFile: LocationFormValues = {
@@ -92,13 +93,13 @@ export default async function EditLocationPage({
             <form action={restoreLocationAction}>
               <input type="hidden" name="locationId" value={site.id} />
               <input type="hidden" name="returnTo" value={backHref} />
-              <button className={btnGhost}>{t('restore')}</button>
+              <ActionButton actionKind="saving" className={btnGhost}>{t('restore')}</ActionButton>
             </form>
           ) : (
             <form action={archiveLocationAction}>
               <input type="hidden" name="locationId" value={site.id} />
               <input type="hidden" name="returnTo" value={backHref} />
-              <button className={btnGhost}>{t('archive')}</button>
+              <ActionButton actionKind="deleting" className={btnGhost}>{t('archive')}</ActionButton>
             </form>
           )}
         </div>

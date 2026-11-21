@@ -62,7 +62,8 @@ it('sends the immutable files/CID once through verified credentials and holds an
     const sender=await internalEmailRequest<{connectionId:string}>({op:'save',actor,revision:connectionView.revision,connectionName:'Fictional lifecycle HR sender',config:{...relay,from:senderAddress}});
     const selected=await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:sender.connectionId});
     await internalEmailRequest({op:'test',actor,connectionId:sender.connectionId,draftId:selected.draft!.id},async()=>{});
-    await internalEmailRequest({op:'apply',actor,connectionId:sender.connectionId,draftId:selected.draft!.id,received:true,lifecycleSender:'hr'});
+    await internalEmailRequest({op:'apply',actor,connectionId:sender.connectionId,draftId:selected.draft!.id,received:true,lifecycleSender:'noreply'});
+    await internalEmailRequest({op:'lifecycleSenderName',actor,name:'Fictional Group Sender'});
     expect((await internalEmailRequest<EmailSettingsView>({op:'view',actor})).active?.from).toBe(relay.from);
     await v9Setup(admin);let config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.module==='onb');config.workflows=[];
     config.groups[0].members=[base.adminUserId];config.peopleOpsGroup=config.groups[0].id;
@@ -71,7 +72,7 @@ it('sends the immutable files/CID once through verified credentials and holds an
     const fileBytes=Buffer.from('Fictional shared handbook bytes'),imageBytes=await(await import('sharp')).default({create:{width:2,height:2,channels:4,background:{r:79,g:70,b:229,alpha:1}}}).png().toBuffer();
     const file=await v9UploadEmailAsset(admin,{revision:saved.revision,emailId:'wire-email',kind:'file',name:'Fictional handbook.txt',content:fileBytes}),image=await v9UploadEmailAsset(admin,{revision:saved.revision,emailId:'wire-email',kind:'image',name:'Fictional logo.png',content:imageBytes});
     config=(await v9Workspace(admin)).config!;config.emails[0].files=[file];config.emails[0].images=[image];config.emails[0].body=`Fictional saved body\n{image:${image.id}}`;
-    config.workflows=[{id:'wire-workflow',name:'Fictional real delivery workflow',module:'off',status:'published',trigger:{event:'submitted',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'email',type:'email',template:'wire-email',to:'peopleOps',cc:[]}],description:''}];
+    config.workflows=[{id:'wire-workflow',name:'Fictional real delivery workflow',module:'off',status:'published',trigger:{event:'submitted',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'email',type:'email',template:'wire-email',to:`group:${config.groups[0].id}`,cc:[]}],description:''}];
     saved=await v9SaveConfig(admin,config.revision,config);
     const subject=await hireEmployee(admin,{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,employmentType:'full_time',hiredOn:'2026-01-01',person:{fullName:'Fictional private delivery subject',primaryEmail:'subject@test.invalid'}});
     const id=await v9CreateOffboarding(admin,{employmentId:subject.employmentId,type:'Resignation',noticeDate:todayInKualaLumpur(),lastDay:addDays(todayInKualaLumpur(),30)});await v9Command(admin,id,1,{type:'submit'});
@@ -79,8 +80,8 @@ it('sends the immutable files/CID once through verified credentials and holds an
     let childFailure: unknown;const outcomes: LifecycleV9DeliveryResult[]=[];
     const sent=await v9DeliverEmails(system,owner,async request=>{try{const result=await privateSender(request);outcomes.push(result);return result;}catch(error){childFailure=error;throw error;}});
     if(childFailure)throw childFailure;expect(outcomes).toEqual([{outcome:'sent',error:null}]);expect(sent).toEqual({attempted:1,sent:1,held:0,failed:0});expect(sink.messages).toHaveLength(1);expect(sink.messages[0].recipients).toEqual(['recipient@report-acceptance.invalid']);
-    expect(Buffer.from(sink.messages[0].raw).toString('utf8').replace(/\r?\n[ \t]+/g,' ')).toContain('From: Human Resource Department <'+senderAddress+'>');
-    const [receipt]=await owner.client`select recipient_proof from lc_v9_email_delivery where case_id=${id}::uuid`;expect(receipt.recipient_proof).toMatchObject({senderProfile:'hr',senderAddress});
+    expect(Buffer.from(sink.messages[0].raw).toString('utf8').replace(/\r?\n[ \t]+/g,' ')).toContain('From: Fictional Group Sender <'+senderAddress+'>');
+    const [receipt]=await owner.client`select recipient_proof from lc_v9_email_delivery where case_id=${id}::uuid`;expect(receipt.recipient_proof).toMatchObject({senderProfile:'noreply',senderName:'Fictional Group Sender',senderAddress});
     const attachments=fixtureMailAttachments(sink.messages[0].raw);expect(attachments).toHaveLength(2);
     expect(attachments.find(part=>part.mime==='text/plain')?.bytes).toEqual(fileBytes);expect(attachments.find(part=>part.mime==='image/png')).toMatchObject({bytes:imageBytes,cid:`v9-image.${image.id}@aihr`});
     expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:0,sent:0,held:0,failed:0});expect(sink.messages).toHaveLength(1);
@@ -106,7 +107,7 @@ it('sends the immutable files/CID once through verified credentials and holds an
     c=(await v9CaseDetail(admin,id)).case;expect(c.mails.at(-1)).toMatchObject({status:'uncertain',deliveredAt:null,failure:'uncertain'});
     expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:0,sent:0,held:0,failed:0});expect(sink.messages).toHaveLength(4);
     const literalConfig=(await v9Workspace(admin)).config!;
-    literalConfig.workflows.push({...structuredClone(literalConfig.workflows[0]),id:'literal-wire',name:'Fictional mailbox wire',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},steps:[{id:'mailbox',type:'email',template:'wire-email',to:['address:team@report-acceptance.invalid'],cc:['peopleOps','address:archive@report-acceptance.invalid']}]});
+    literalConfig.workflows.push({...structuredClone(literalConfig.workflows[0]),id:'literal-wire',name:'Fictional mailbox wire',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},steps:[{id:'mailbox',type:'email',template:'wire-email',to:['address:team@report-acceptance.invalid'],cc:[`group:${literalConfig.groups[0].id}`,'address:archive@report-acceptance.invalid']}]});
     await v9SaveConfig(admin,literalConfig.revision,literalConfig);
     c=(await v9CaseDetail(admin,id)).case;
     await v9Command(admin,id,c.revision,{type:'startWorkflow',workflowId:'literal-wire'});

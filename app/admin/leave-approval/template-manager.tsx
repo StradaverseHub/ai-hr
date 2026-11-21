@@ -441,12 +441,12 @@ export function ApprovalTemplateManager({
         }}
         footer={
           <div className="flex items-center justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={requestClose} disabled={saving}>
+            <Button aria-busy={saving} type="button" variant="ghost" size="sm" onClick={requestClose} disabled={saving}>
               {labels.cancel}
             </Button>
             {/* A named-approver level with nobody named is refused by the service (it would be a step that can
                 never be decided and can never be dropped), so the button says so BEFORE the round trip. */}
-            <Button
+            <Button aria-busy={saving}
               type="submit"
               form={TEMPLATE_FORM_ID}
               size="sm"

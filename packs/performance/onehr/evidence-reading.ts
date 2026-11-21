@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import { createHash } from 'node:crypto';
 import { and,asc,eq,inArray,sql } from 'drizzle-orm';
 import type { SessionContext,Tx } from '../../../db/client';
@@ -43,7 +44,12 @@ export async function getAssessmentFileTextsTx(tx:Tx,ctx:SessionContext,reviewId
  return new Map(rows.map(row=>[row.attachmentId,{status:row.status as EvidenceText['status'],text:row.text,method:row.method as EvidenceText['method']}]));
 }
 /** Explicit summary generation reads files outside transactions. Images: four workers, eight files, one 22s deadline. */
-export async function readAssessmentFileTexts(ctx:SessionContext,reviewId:string,{allowImages=false,budgetMs=30000,contextId}:{allowImages?:boolean;budgetMs?:number;contextId?:string}={}){
+export async function readAssessmentFileTexts(...args:Parameters<typeof readAssessmentFileTextsActivity>):Promise<Awaited<ReturnType<typeof readAssessmentFileTextsActivity>>>{
+ args=structuredClone(args);
+ if(!args[2]?.allowImages)return readAssessmentFileTextsActivity(...args);
+ return withAiCentreFunction(args[0],'read:operation_performance_evidence_vision',()=>readAssessmentFileTextsActivity(...args));
+}
+async function readAssessmentFileTextsActivity(ctx:SessionContext,reviewId:string,{allowImages=false,budgetMs=30000,contextId}:{allowImages?:boolean;budgetMs?:number;contextId?:string}={}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  const view=await context(ctx,reviewId,contextId),sourceFingerprint=fingerprint(view),ids=view.attachments.map(a=>a.id),idSet=new Set(ids),end=Date.now()+Math.min(30000,Math.max(1,budgetMs));
  if(!ids.length)return new Map<string,EvidenceText>();

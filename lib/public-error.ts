@@ -22,7 +22,7 @@
  * client components instead.
  */
 import { randomBytes } from 'node:crypto';
-import { pgErrorDetail, pgSqlState, isDatabaseError, type PgErrorDetail } from './db-error';
+import { pgErrorChain, pgErrorDetail, pgSqlState, isDatabaseError, type PgErrorDetail } from './db-error';
 import {
   formatDatabaseErrorReasonRef,
   formatDatabaseErrorRef,
@@ -131,10 +131,35 @@ export function publicErrorMessage(e: unknown): string {
   if (!isDatabaseError(e)) return e instanceof Error ? e.message : String(e);
   const sqlState = pgSqlState(e);
   const id = randomBytes(3).toString('hex').toUpperCase();
-  const reason = sqlState === 'PN001' ? undefined : databaseErrorReason(pgErrorDetail(e));
-  const kind = databaseErrorKind(sqlState);
+  // Admission refused before any SQL ran, so there is no SQLSTATE; the plain sentence is still "busy".
+  const admission = pgErrorChain(e).some(l => l.name === 'DatabaseAdmissionError');
+  const reason = admission || sqlState === 'PN001' ? undefined : databaseErrorReason(pgErrorDetail(e));
+  const kind = admission ? 'busy' : databaseErrorKind(sqlState);
   const ref = reason ? formatDatabaseErrorReasonRef(reason, id) : formatDatabaseErrorRef(kind, id);
   if (sqlState === 'PN001') console.error(`[database error ${ref}] sqlstate=PN001`);
   else console.error(`[database error ${ref}] sqlstate=${sqlState ?? 'none'}`, e);
   return (reason ? DATABASE_ERROR_REASON_TEXT_EN[reason] : DATABASE_ERROR_TEXT_EN[kind]).replace('{ref}', ref);
+}
+
+/**
+ * d3ba1e9f — a short reference for an UNEXPECTED failure of any kind (database or not), for screens and Error Logs
+ * that must tell HR something they can pass on to support instead of a bare "failed". The full error goes to the
+ * server log under the reference; the reference uses the system kind of the r388 format (`DB-S-<hex>`), so the
+ * existing parsers (parseDatabaseErrorRef, ErrorBanner) and common.databaseError.system recognise it.
+ */
+export function unexpectedErrorReference(e: unknown, context = 'unexpected error'): string {
+  const ref = formatDatabaseErrorRef('system', randomBytes(3).toString('hex').toUpperCase());
+  console.error(`[${context} ${ref}]`, e);
+  return ref;
+}
+
+/**
+ * d3ba1e9f — the text a user may see for an error the caller did NOT expect: a database error keeps its r388
+ * sentence (publicErrorMessage); anything else is logged under a reference and replaced by the plain system
+ * sentence carrying it. Never returns the thrown message, which for an unexpected error may hold internal detail.
+ * Callers keep their own domain refusals (known error classes) on publicErrorMessage / their own message.
+ */
+export function publicUnexpectedErrorMessage(e: unknown, context = 'unexpected error'): string {
+  if (isDatabaseError(e)) return publicErrorMessage(e);
+  return DATABASE_ERROR_TEXT_EN.system.replace('{ref}', unexpectedErrorReference(e, context));
 }

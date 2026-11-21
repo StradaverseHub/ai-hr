@@ -120,7 +120,8 @@ describe('/me — tabbed My Workspace (311ad7ba)', () => {
     expect(clockClient.slice(start, end)).toContain('void confirm(direction)');
     expect(clockClient).toContain('Object.entries({action:direction,requestId,');
     expect(clockClient).toContain("fetch('/api/attendance/clock',{method:'POST',body:command.current.body})");
-    expect(clockApi).toContain('export async function POST(request: Request)');
+    // 72233741d (fair database admission) wraps the same POST handler in capacityAwareRoute.
+    expect(clockApi).toContain('export const POST = capacityAwareRoute(async function POST(request: Request)');
     expect(clockApi).toContain('const session = await clockApiSession()');
     expect(clockApi).toContain("from '@/packs/attendance/service'");
     expect(clockApi).toContain("await captureEmployeeClock(session,{action:String(data.get('action')) as 'in'|'out'");

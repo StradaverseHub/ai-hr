@@ -1,11 +1,11 @@
 import {accountAvailable} from './account-state';
 import 'server-only';
 import { sql } from 'drizzle-orm';
-import { client, withTenant, type SessionContext } from '../../db/client';
+import { client, withPoolWork, withTenant, type SessionContext } from '../../db/client';
 import type { AccountEmailDeliveryView } from '../account-email-model';
 import { EmailSettingsError, type IdentityEmailActor } from '../identity/email-model';
 import { internalSelected } from './config';
-import { readRecord } from './store';
+import { admittedAuthSql, readRecord } from './store';
 import type { Credential } from './service';
 import type { RecoveryContext } from './recovery';
 /** View-only projection of immutable recovery context; never returns a credential or reset link. */
@@ -18,10 +18,10 @@ export async function withInternalRecoveryLabels(ctx: SessionContext, actor: Ide
   const byId = new Map(roots.map(row => [row.id, row.source_id]));
   const cached = new Map<string, Promise<{ account: { organization: string; username: string }; eligible: boolean } | null>>();
   async function projection(source: string) {
-    const context = await readRecord<RecoveryContext>(client, `recovery-mail:${source}`);
+    const context = await readRecord<RecoveryContext>(admittedAuthSql, `recovery-mail:${source}`);
     if (!context || typeof context.organization !== 'string' || typeof context.username !== 'string') return null;
-    const c = await readRecord<Credential>(client, `credential:${context.subject}`);
-    const active = c ? await client.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]) : [];
+    const c = await readRecord<Credential>(admittedAuthSql, `credential:${context.subject}`);
+    const active = c ? await withPoolWork('authentication', () => client.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]), undefined, {idempotent:true}) : [];
     return { account: { organization: context.organization, username: context.username }, eligible: Boolean(c && accountAvailable(c) && c.emailVerified &&
       c.version === context.version && c.email === context.email && c.issuer === context.issuer && c.tenantId === context.tenantId && active[0]?.tenant_id === c.tenantId) };
   }

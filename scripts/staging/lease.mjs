@@ -20,6 +20,10 @@ export function guardedRsync(g,args){return ['--rsync-path='+leasePrefix(g)+' py
 export function leasePhase(g,ssh,phase,build){
  return JSON.parse(ssh('python3 '+COORDINATOR,{input:JSON.stringify({protocol:g.protocol,action:'phase',actor:'ci-operator',batch:g.batch,epoch:g.epoch,token:g.token,candidate:g.candidate,phase,...(build?{build}: {})})}));
 }
+/** Read-only fencing check: the coordinator authenticates the token and returns the held batch/epoch/candidate/phase. */
+export function leaseAssert(g,ssh){
+ return JSON.parse(ssh('python3 '+COORDINATOR,{input:JSON.stringify({protocol:g.protocol,action:'assert',actor:'ci-operator',batch:g.batch,epoch:g.epoch,token:g.token,candidate:g.candidate})}));
+}
 /** Direct server CLIs re-exec under a kernel operation lock if coordination has been commissioned. */
 export function guardServerCli(candidate){
  if(resolve(process.cwd())!=='/opt/ai-hr'||!existsSync(COORDINATOR))return;

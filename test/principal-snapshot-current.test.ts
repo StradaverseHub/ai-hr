@@ -43,6 +43,18 @@ describe('canonical current principal snapshot foundation',()=>{
   await owner.db.update(appUser).set({archivedAt:new Date()}).where(eq(appUser.id,employee.userId));
   expect(await proof(employee.ctx)).toBe(false);
  });
+ it('rechecks a committed grant revocation on a backend with a warm statement plan',async()=>{
+  const hr=await principal('hr_admin');
+  await withTenant(hr.ctx,async tx=>{
+   const read=async()=>{
+    const [row]=await tx.execute<{valid:boolean}>(sql`select app.principal_snapshot_current() as valid`);
+    return row.valid;
+   };
+   for(let index=0;index<8;index++)expect(await read()).toBe(true);
+   await owner.db.update(roleAssignment).set({role:'employee'}).where(eq(roleAssignment.appUserId,hr.userId));
+   expect(await read()).toBe(false);
+  });
+ });
  it('keeps supplied Person binding separate from principal role and grant freshness',async()=>{
   const employee=await principal(),other=await principal();
   const [own]=await withTenant(employee.ctx,tx=>tx.execute<{current:boolean;own:boolean}>(sql`select app.principal_snapshot_current() as current,app.is_self_person(${employee.personId}::uuid) as own`));

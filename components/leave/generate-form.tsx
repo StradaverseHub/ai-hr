@@ -124,7 +124,7 @@ export function GenerateForm({
   const [anyCriteria, setAnyCriteria] = useState(false);
   const [preview, setPreview] = useState<LeaveGenerationResult | null>(null);
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
-  const [, startPreview] = useTransition();
+  const [previewPending, startPreview] = useTransition();
   /**
    * r287 — DID THE LAST PREVIEW FAIL? This flag is the reporter's screenshot.
    *
@@ -356,7 +356,7 @@ export function GenerateForm({
   const accrual = preview?.accrual ?? null;
 
   return (
-    <form ref={formRef} action={action} className="space-y-5" onChange={schedulePreview}>
+    <form ref={formRef} aria-busy={previewPending} data-action-region action={action} className="space-y-5" onChange={schedulePreview}>
       <SubStepBar
         ariaLabel={t('generateFlowAria')}
         active={step}

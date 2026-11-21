@@ -4,6 +4,7 @@ import { listEmployees } from '@/core/read';
 import { FIXED_TRANSACTION_CYCLES, listPayComponents } from '@/core/pay-components';
 import { payRuleInputUnit, type PayRule } from '@/core/pay-rule';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
+import { listPayrollCyclesForCompanies } from '@/core/payroll-cycle';
 import type { SessionContext } from '@/db/client';
 import type { TxnTemplateReference } from '@/lib/import-template-xlsx';
 
@@ -24,11 +25,24 @@ import type { TxnTemplateReference } from '@/lib/import-template-xlsx';
 export async function buildTxnTemplateReference(
   s: SessionContext,
   scopeIds: string[],
+  fixed?: { preferredCompanyId?: string },
 ): Promise<TxnTemplateReference> {
   const t = await getTranslations('payroll.txnImport');
   const tc = await getTranslations('payroll.transactions.individual');
   // An empty application scope must never become the tenant-wide default in a catalogue reader.
-  const [employees, components] = scopeIds.length === 0 ? [[], []] : await Promise.all([listEmployees(s, scopeIds), listPayComponents(s, { readyOnly: true })]);
+  const [employees, components, configuredCycles] = scopeIds.length === 0 ? [[], [], []] : await Promise.all([
+    listEmployees(s, scopeIds),
+    listPayComponents(s, { readyOnly: true }),
+    fixed ? listPayrollCyclesForCompanies(s, scopeIds, { activeOnly: true }) : [],
+  ]);
+  const companyNames = new Map(employees.map((e) => [e.companyId, e.company]));
+  const fixedCycles = configuredCycles.flatMap((cycle) => {
+    const company = companyNames.get(cycle.companyId);
+    return cycle.code && company ? [{ code: cycle.code, label: cycle.name, company }] : [];
+  });
+  const exampleCycle = configuredCycles.find((cycle) =>
+    cycle.code && cycle.companyId === fixed?.preferredCompanyId && cycle.runType === 'regular',
+  )?.code ?? fixedCycles[0]?.code ?? '';
 
   return {
     headings: {
@@ -73,12 +87,8 @@ export async function buildTxnTemplateReference(
         // amount", which is what a fixed-rule or ruleless item wants.
         input: payRuleInputUnit((c.rule ?? null) as PayRule | null) ?? '',
       })),
-    // The file's "Payroll cycle" column takes the run_type values, NOT a `payroll_cycle` name or code.
-    // 4fffe638 — employment_pay_component now has a payroll_cycle_id, but the import fills it only under
-    // the one-match rule (the employee's company has exactly one active cycle of that run type; see
-    // core/payroll-txn-import.ts loadOneMatchCycles). Listing the cycle catalogue here would still be
-    // listing values the import cannot accept.
-    cycles: FIXED_TRANSACTION_CYCLES.map((c) => ({ code: c, label: tc(`cycle.${c}` as never) })),
+    cycles: fixed ? fixedCycles : FIXED_TRANSACTION_CYCLES.map((c) => ({ code: c, label: tc(`cycle.${c}` as never) })),
+    ...(fixed ? { fixedExampleCycleCode: exampleCycle } : {}),
     kinds: TXN_KINDS.map((k) => ({ code: k, label: tc(`kindLabel.${k}` as never) })),
   };
 }

@@ -12,6 +12,8 @@ import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   publicErrorMessage,
+  publicUnexpectedErrorMessage,
+  unexpectedErrorReference,
   databaseErrorKind,
   databaseErrorReason,
   DATABASE_ERROR_REASON_TEXT_EN,
@@ -202,6 +204,17 @@ describe('03877e — the specific explanation for each refusal', () => {
     }
   });
 
+  it('an admission refusal stays the busy sentence even when its cause looks like an explainable rule', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const refused = Object.assign(new Error('database admission refused'), {
+      name: 'DatabaseAdmissionError',
+      cause: Object.assign(new Error('null value in column'), { code: '23502' }),
+    });
+    const parsed = parseDatabaseErrorRef(publicErrorMessage(refused));
+    expect(parsed).toMatchObject({ kind: 'busy' });
+    expect(parsed!.reason).toBeUndefined();
+  });
+
   it('every check rule with an explanation names a constraint that exists in db/migrations', () => {
     const sql = execFileSync('git', ['ls-files', 'db/migrations'], { encoding: 'utf8' })
       .split('\n')
@@ -276,6 +289,31 @@ describe('the shared redirect helpers', () => {
   it('a domain refusal still reaches ?error= verbatim', () => {
     const url = urlOf(() => fail('/admin/organization', new Error('Choose a signatory who is an active employee')));
     expect(url).toContain('?error=Choose a signatory who is an active employee');
+  });
+});
+
+describe('d3ba1e9f: an unexpected failure gets a short reference too', () => {
+  it('replaces a non-database error with the system sentence and its reference, and logs the original', () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const e = new RangeError(`Invalid array length while reading ${PERSON} ${ID}`);
+    const text = publicUnexpectedErrorMessage(e, 'import upload');
+    noLeak(text);
+    const parsed = parseDatabaseErrorRef(text);
+    expect(parsed?.kind).toBe('system');
+    expect(text).toBe(DATABASE_ERROR_TEXT_EN.system.replace('{ref}', parsed!.ref));
+    expect(String(log.mock.calls[0][0])).toContain('import upload');
+    expect(String(log.mock.calls[0][0])).toContain(parsed!.ref);
+    expect(log.mock.calls[0][1]).toBe(e);
+  });
+
+  it('keeps the r388 sentence for a database error, and each reference is fresh', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const text = publicUnexpectedErrorMessage(drizzleError('23505'));
+    noLeak(text);
+    expect(parseDatabaseErrorRef(text)?.kind).toBe('duplicate');
+    const a = unexpectedErrorReference(new Error('x')), b = unexpectedErrorReference(new Error('x'));
+    expect(a).toMatch(/^DB-S-[0-9A-F]{6}$/);
+    expect(a).not.toBe(b);
   });
 });
 

@@ -145,3 +145,16 @@ describe('RosterTemplateButton — the header it writes into the file (23390097)
     expect(ahmad![header.indexOf('2026-08-25')]).toBe('');
   });
 });
+
+it('loads the complete workbook rows only after an explicit Download click',async()=>{
+ const fetcher=vi.fn(async()=>({ok:true,json:async()=>({dates:DATES,rows:template.rows,codes:['MB28']})}));
+ vi.stubGlobal('fetch',fetcher);
+ try{
+  render(<RosterTemplateButton source="/roster/template?companyId=current&month=2026-08" month={MONTH} label="Download Template" notesTitle="Notes" notes={[]} failedLabel="Template failed"/>);
+  expect(fetcher).not.toHaveBeenCalled();screen.getByRole('button',{name:'Download Template'}).click();
+  await waitFor(()=>expect(captured).not.toBeNull());
+  expect(fetcher).toHaveBeenCalledWith('/roster/template?companyId=current&month=2026-08',{cache:'no-store'});
+  const csv=await workbookToCsvText(await (captured as unknown as Blob).arrayBuffer());
+  expect(csv).toContain('Ahmad Zulkifli');expect(csv).toContain('Nurul Ain');expect(csv).toContain('MB28');
+ }finally{vi.unstubAllGlobals();}
+});

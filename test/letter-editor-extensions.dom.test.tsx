@@ -25,3 +25,7 @@ it('keeps table row and column commands within the canonical document contract',
  const result=letterDocumentFromEditor(value.getJSON(),fields,'en'),table=result.blocks.find(block=>block.type==='table');expect(table?.type).toBe('table');if(table?.type!=='table')throw new Error('Missing table');expect(table.rows).toHaveLength(3);expect(table.rows.every(row=>row.length===3)).toBe(true);
  expect(value.commands.deleteColumn()).toBe(true);expect(value.commands.deleteRow()).toBe(true);expect(()=>letterDocumentFromEditor(value.getJSON(),fields,'en')).not.toThrow();
 });
+it('keeps the Contract default atom display unchanged while the inline consumer can display labels',()=>{
+ const original=editor({version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'field',key:'employeeName'}]}]});
+ expect(original.view.dom.querySelector('[data-letter-field]')).toHaveTextContent('{{employeeName}}');
+});

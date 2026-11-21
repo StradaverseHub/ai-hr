@@ -18,8 +18,9 @@
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionContext } from '../db/client';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { client, type SessionContext } from '../db/client';
+import { listBatchProcessedDates, payrollDashboardBatchMetadata } from '../core/payroll-view';
 import * as s from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -296,16 +297,33 @@ describe('cdb1c6ca · D — payroll.close is enforced by the service and mirrore
   it('a caller denied payroll.close for the company is refused, and the list does not offer Close there', async () => {
     await hire('Fictional Ada', 'CB001', 5000);
     const batchId = await processedRun();
-    expect([...(await payrollCloseCompanyIds(ctx, [b.companyId, b.companyId]))]).toEqual([b.companyId]);
+    const companies = [b.companyId, b.companyId];
+    const begin = vi.spyOn(client, 'begin');
+    try {
+      const processedOn = await listBatchProcessedDates(ctx, [batchId]);
+      const closeCompanies = await payrollCloseCompanyIds(ctx, companies);
+      expect(processedOn.get(batchId)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect([...closeCompanies]).toEqual([b.companyId]);
+      expect(begin).toHaveBeenCalledTimes(2);
+      begin.mockClear();
+      expect(await payrollDashboardBatchMetadata(ctx, [batchId], companies)).toEqual({ processedOn, closeCompanies });
+      expect(begin).toHaveBeenCalledTimes(1);
+    } finally {
+      begin.mockRestore();
+    }
     await setPayrollPermissionGrant(
       { ...adminCtx(b), grants: [{ role: 'hr_admin', companyId: null }] },
       { companyId: b.companyId, permissionKey: 'payroll.close', role: 'hr_admin', allowed: false },
     );
     expect(await payrollCloseCompanyIds(ctx, [b.companyId])).toEqual(new Set());
+    const denied = await payrollDashboardBatchMetadata(ctx, [batchId], [b.companyId]);
+    expect(denied.closeCompanies).toEqual(new Set());
+    expect(denied.processedOn.get(batchId)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     await refused(batchId, PayrollPermissionDeniedError);
   });
 
   it('the visibility read asks nothing for an empty list', async () => {
     expect(await payrollCloseCompanyIds(ctx, [])).toEqual(new Set());
+    expect(await payrollDashboardBatchMetadata(ctx, [], [])).toEqual({ processedOn: new Map(), closeCompanies: new Set() });
   });
 });

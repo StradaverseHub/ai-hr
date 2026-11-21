@@ -1,4 +1,4 @@
-import {readEffectiveTaxBasesTx,type TaxBasisCorrectionRef} from '../../core/payroll-tax-basis-read';
+import type {TaxBasisCorrectionRef} from '../../packs/payroll/service';
 /**
  * ADR-0024 §7 — THE ACCOUNTANT SIGN-OFF WORKSHEET, as a read-only replay over real payroll history.
  *
@@ -966,8 +966,8 @@ async function loadPriorAccumulators(
     .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
     .where(inArray(payslip.employmentId, employmentIds));
 
-  const corrections = await readEffectiveTaxBasesTx(tx, ctx, rows.filter(r=>years.includes(r.period.slice(0,4))).map(r=>r.id));
-  evidence.refs.push(...[...corrections.values()].map(value=>value.correction));
+  const corrections = await (await import('../../packs/payroll/service')).readEffectiveTaxBasesTx(tx, ctx, rows.filter(r=>years.includes(r.period.slice(0,4))).map(r=>r.id));
+  evidence.refs.push(...[...corrections.values()].flatMap(value=>value.correction?[value.correction]:[]));
   // (employment, tax year) → its months, each month → the slips written in it (a multi-run month has
   // several, and they all belong to the SAME monthly accumulator step).
   const byEmpYear = new Map<string, Map<string, typeof rows>>();

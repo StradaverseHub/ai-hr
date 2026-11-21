@@ -3,10 +3,10 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import {
-  batchDetail,
+  batchSummary,
   batchEditImpact,
   listBatches,
-  listRemovableEmployees,
+  payrollEmployeeSelectionPage,
   listRemovalHistory,
   removeEligibility,
 } from '@/core/payroll';
@@ -14,6 +14,7 @@ import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlem
 import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
 import { payrollListReturnTo } from '@/lib/return-to';
+import {parsePageQuery} from '@/lib/pagination';
 import { RemoveForm, type RemoveCandidate } from './remove-form';
 
 /**
@@ -49,7 +50,7 @@ export default async function RemoveEmployeePayrollPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; removed?: string; from?: string }>;
+  searchParams: Promise<{ error?: string; removed?: string; from?: string;page?:string;size?:string;q?:string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
@@ -68,9 +69,9 @@ export default async function RemoveEmployeePayrollPage({
   const back = payrollListReturnTo(sp.from);
   const from = back === '/payroll' ? null : back;
 
-  const data = await batchDetail(s, batchId);
+  const data = await batchSummary(s, batchId);
   if (!data) notFound();
-  const { batch, slips } = data;
+  const { batch, slipCount } = data;
 
   // The way BACK from a removal is the Reprocess screen's New / Pending group, which only exists with
   // multi-cycle on. Off ⇒ this route does not exist, matching the absence of the button that leads here
@@ -106,7 +107,7 @@ export default async function RemoveEmployeePayrollPage({
     },
     { label: tl('colCompany'), value: listed?.company ?? '—' },
     { label: t('summaryPaymentDate'), value: paymentDate },
-    { label: tl('colEmployees'), value: String(slips.length) },
+    { label: tl('colEmployees'), value: String(slipCount) },
     { label: t('totalNet'), value: formatMoney(totals.net, currency) },
   ];
 
@@ -147,7 +148,8 @@ export default async function RemoveEmployeePayrollPage({
     );
   }
 
-  const candidates: RemoveCandidate[] = (await listRemovableEmployees(s, { batchId })).map((r) => ({
+  const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'remove',page:parsePageQuery(sp),search:sp.q});
+  const candidates: RemoveCandidate[] = selection.rows.map((r) => ({
     employmentId: r.employmentId,
     employeeCode: r.employeeCode,
     name: r.name,
@@ -188,7 +190,7 @@ export default async function RemoveEmployeePayrollPage({
           second navigation. */}
       {removed > 0 && (
         <Card className="border-emerald-200 px-4 py-3 text-sm font-medium text-emerald-900 dark:border-emerald-500/30 dark:text-emerald-300">
-          ✓ {t('removeResultTitle', { n: removed, total: slips.length })}
+          ✓ {t('removeResultTitle', { n: removed, total: slipCount })}
         </Card>
       )}
 
@@ -209,7 +211,7 @@ export default async function RemoveEmployeePayrollPage({
           <p className="mb-3 text-xs text-muted-foreground">
             {t('removeHint')} {t('removeNotPersonnel')}
           </p>
-          <RemoveForm batchId={batchId} employees={candidates} currency={currency} from={from} />
+          <RemoveForm batchId={batchId} employees={candidates} currency={currency} from={from} paging={{state:selection.state,runTotal:selection.runTotal,search:sp.q??''}} />
         </div>
       </Card>
 

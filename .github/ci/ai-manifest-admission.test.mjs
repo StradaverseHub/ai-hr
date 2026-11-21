@@ -50,3 +50,14 @@ test('normal plan, canonical build, and all operator recovery source bindings re
  assert(operator.includes('admitAiManifests(candidatePath,p.candidate);'));
  for(const name of ['focused-recovery.mjs','repair-recovery.mjs','browser-recovery.mjs'])assert(readFileSync(join(root,'.github/ci',name),'utf8').includes('await sourceBoundBuild('));
 });
+
+test('Attendance native author admission changes invalidate the reviewed provider source binding',()=>withFixture((cwd)=>{
+ const before=readFileSync(join(cwd,'lib/ai/provider-data-source-manifest.ts'));
+ writeFixture(cwd,'core/attendance-formula-ai.ts','// Changed native principal/company/entitlement admission owner\n');
+ const changed=commitAiManifestFixture(cwd);
+ assert.throws(()=>admitAiManifests(cwd,changed),error=>error.message.includes('ai-provider-data-source-manifest.mjs'));
+ assert(readFileSync(join(cwd,'lib/ai/provider-data-source-manifest.ts')).equals(before));
+ regenerateAiManifests(cwd);const regenerated=commitAiManifestFixture(cwd);
+ assert.equal(admitAiManifests(cwd,regenerated).checks.length,2);
+ assert.equal(fixtureGit(cwd,'status','--porcelain'),'');
+}));

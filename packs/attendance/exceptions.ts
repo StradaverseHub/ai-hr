@@ -55,7 +55,22 @@ export type ExceptionDayInput = {
   shiftStart: string | null;
   shiftEnd: string | null;
   isRosterRest: boolean;
+  /** 2f803985 — the stored day trace, read ONLY for the Overtime Setting's recorded marker (see
+   *  latenessAfterOffsetOf). Optional so existing literal callers and tests are unchanged. */
+  calcTrace?: unknown;
 };
+
+/** 2f803985 — Show Lateness Exception After Offset. Lateness the overtime offset could not absorb, as
+ *  recorded by the policy calculation on the day's marker (packs/attendance/overtime-calculation.ts). It is
+ *  an ADDITIONAL figure: the original detected lateness and its Late In exception are unchanged. */
+export function latenessAfterOffsetOf(calcTrace: unknown): number | null {
+  if (!calcTrace || typeof calcTrace !== 'object' || Array.isArray(calcTrace)) return null;
+  const marker = (calcTrace as Record<string, unknown>).overtimePattern as Record<string, unknown> | undefined;
+  if (!marker || marker.status !== 'recorded') return null;
+  const residual = marker.latenessAfterOffset as Record<string, unknown> | undefined;
+  const minutes = residual?.remainingMinutes;
+  return typeof minutes === 'number' && Number.isSafeInteger(minutes) && minutes > 0 ? minutes : null;
+}
 
 /** One flagged day, ready to render and to prefill a request from. */
 export type ExceptionDay = {
@@ -77,6 +92,8 @@ export type ExceptionDay = {
    *  column). */
   lateMinutes: number | null;
   earlyOutMinutes: number | null;
+  /** 2f803985 — lateness remaining after the overtime offset, when the group shows that exception. */
+  latenessAfterOffsetMinutes: number | null;
   /** What the Fix panel opens with. Never invents a clock-in it does not have on a missing-out day —
    *  requestAttendanceCorrection refuses a clock-out with no clock-in, because it has no anchor. */
   prefillIn: string | null;
@@ -107,6 +124,7 @@ export function classifyDay(row: ExceptionDayInput): ExceptionDay | null {
     missing: null,
     lateMinutes: null,
     earlyOutMinutes: null,
+    latenessAfterOffsetMinutes: latenessAfterOffsetOf(row.calcTrace),
   } as const;
 
   if (flag === 'odd') {

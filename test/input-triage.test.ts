@@ -182,8 +182,13 @@ describe('the leash §2.7 puts on this layer is structural', () => {
   });
 
   it('the question reaches the CLAIMANT, and the notification says nothing is wrong', () => {
-    const notif = read('core/notifications.ts');
-    const entry = notif.slice(notif.indexOf("'claim-request.triage-queried'"), notif.indexOf("'claim-request.approved'"));
+    // d9788c580 moved the recipes into core/notification-registry.ts, where each one names its audience.
+    const notif = read('core/notification-registry.ts');
+    const start = notif.indexOf("'claim-request.triage-queried'"), end = notif.indexOf("'claim-request.approved'");
+    expect(start, 'the triage recipe exists').toBeGreaterThan(0);
+    expect(end, 'and is sliced on its own').toBeGreaterThan(start);
+    const entry = notif.slice(start, end);
+    expect(entry, 'the subject, who is the claimant, receives it').toContain("recipientAudience:'subject'");
     expect(entry, 'no recipients override — the default resolver is the subject, who is the claimant').not.toContain(
       'recipients:',
     );

@@ -76,7 +76,7 @@ export default async function RewardApprovalsPage({ searchParams }: { searchPara
   const section = (list: RewardBoardRow[], name: string) => view === 'matrix' ? <RewardBoardMatrix rows={list} section={name} /> : table(list);
 
   return <div className="w-full space-y-6">
-    <Link href="/rewards" className="text-sm text-primary hover:underline">← {nav('rewardsReviewing')}</Link>
+
     <PageHeader title={nav('rewardsApprovalsBoard')} description={steps.length ? t('board.yourStep', { steps: steps.join('; ') }) : t('board.nothingYours')}
       actions={<>
         {all.length > 0 && <nav aria-label={t('board.view.label')} className={SEGMENTED_GROUP}>{(['matrix', 'list'] as const).map(v =>

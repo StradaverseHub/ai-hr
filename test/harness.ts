@@ -17,8 +17,12 @@ import { isFixtureResetLockError } from './harness-reset-errors';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
+  'reward_offcycle_year',
+  'reward_unit_limit_pin','reward_limit_version',
+  'reward_config_change',
   'reward_pat_basis',
   'reward_uploaded_adjustment','reward_uploaded_award','reward_uploaded_version','reward_uploaded_review','reward_advisor_suggestion','reward_advisor_setting','reward_advisor_cycle_setting',
+  'reward_role_permission_request','reward_role_permission_version',
   'reward_access_view_session','reward_page_grant','reward_role_permission',
   'reward_setup_cycle','reward_unit_setup','reward_company_year_review','reward_plan_company','reward_plan_setup',
   'reward_snapshot_comp_movement','reward_pat_version','reward_library_revision_audit','reward_library_version','reward_library','reward_setup_grant',
@@ -40,9 +44,14 @@ const ALL_TABLES = [
   // ESS pending photo bytes must not survive a fixture reset.
   'profile_photo_proposal','profile_change_attachment',
   'lc_onboarding_case_revision','lc_onboarding_private_revision','lc_onboarding_notice','lc_onboarding_config','lc_onboarding_config_history','lc_onboarding_case','lc_onboarding_private','lc_onboarding_note','lc_onboarding_seen',
+  // Explicitly clear managed cases and transaction custody/notification receipts between fixtures.
+  // The singleton verifier is installation configuration, provisioned explicitly by its fixture.
+  'resignation_journey_file','resignation_journey','app.resignation_runtime_state','app.resignation_notification_receipt',
   'system_label_collision_baseline', 'system_label_criteria_epoch',
   'overtime_pattern_epoch','overtime_pattern','overtime_pattern_version','overtime_pattern_version_company','overtime_pattern_version_state','overtime_pattern_legacy_binding','overtime_pattern_assignment','overtime_pattern_assignment_employment',
   'app.attendance_policy_company_epoch','attendance_policy_request_contract',
+  'attendance_formula_ot_binding_day','attendance_formula_ot_binding_result','attendance_formula_ot_binding',
+  'attendance_formula_result_event','attendance_formula_result',
   'attendance_overtime_policy_part','attendance_overtime_source','attendance_overtime_personnel_context','attendance_overtime_calculation','attendance_overtime_calculation_evidence','attendance_overtime_line','overtime_source_settlement',
   'custom_report_occurrence','custom_report_schedule','custom_report_run',
   'ai_model_run', 'ai_control_policy', 'app.ai_agent_action_pause',
@@ -52,8 +61,11 @@ const ALL_TABLES = [
   'performance_assessment_summary',
   'performance_assessment_catalogue','performance_assessment_reminder_run','performance_assessment_reminder_recipient','performance_assessment_reminder_epoch',
   'performance_onehr_cycle', 'performance_onehr_review', 'performance_onehr_panel', 'performance_onehr_calibration', 'performance_onehr_calibration_entry', 'performance_onehr_plan', 'performance_onehr_evidence', 'performance_onehr_result',
-  'attendance_workflow_cc_delivery', 'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision',
+  'attendance_workflow_cc_delivery', 'attendance_workflow_preview', 'attendance_workflow_template', 'attendance_workflow_setting', 'attendance_workflow_request', 'attendance_workflow_decision',
   'reward_company_exclusion','reward_access_source_epoch','reward_access_bootstrap','reward_access_observation','reward_access_request','reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar',
+  // Approved Review Plans and history have explicit fixture-reset ownership (ADR-0071).
+  'reward_plan_year_company','reward_plan_year','reward_person_history',
+  'app.reward_review_plan_write_lease','app.reward_review_plan_company_outbox',
   'mobile_design_draft', 'mobile_design_release',
   'tenant', 'company', 'company_logo', 'person', 'position', 'department', 'cost_center', 'employment',
   'assignment', 'reporting_line', 'leave_type', 'leave_ledger',
@@ -113,7 +125,7 @@ const ALL_TABLES = [
   // 5249d43f — registered clocking devices: truncate between test files (the global unique token index
   // means a leaked row can't collide, but a surviving device would make a later gate test false-green).
   'employee_device', 'attendance_clock_capture', 'attendance_attention_review',
-  'notification', 'notification_pref', 'notification_delivery', 'notification_cursor', 'notification_email_policy',
+  'notification', 'notification_pref', 'notification_delivery', 'notification_cursor', 'notification_event_processing', 'notification_email_policy',
   'account_email_delivery',
   'email_design_version', 'email_design', 'email_asset',
   // 6e122302 — the Notice Board. `notice_recipient` cascades from `notice`, but BOTH are listed for the

@@ -348,9 +348,10 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
     // actions.ts parses and delegates and does nothing else, which the FormData/File check below is what
     // enforces.
     expect(actions).toMatch(/validateEmployeeImport\(s, \{[\s\S]{0,200}?companyId,[\s\S]{0,200}?records[\s\S]{0,200}?\}\)/);
-    // r88 (cf43c909): the commit payload gained `fileName` so the import-history row can name what was
-    // uploaded. Still the same delegate call with the same companyId + records — only extra scalars.
-    expect(actions).toMatch(/commitEmployeeImport\(s, \{[\s\S]{0,300}?companyId,[\s\S]{0,300}?records[\s\S]{0,300}?\}\)/);
+    // Staged-import job: the non-measured commit enqueues the sheets' text (the file bytes ride as `source`); the
+    // worker parses it through the same shared parser (`parseEmployeeImportUpload`) before any canonical writer runs.
+    expect(actions).toMatch(/createEmployeeImportJob\(s,\{companyId,csv,/);
+    expect(read('/core/employee-import-worker.ts')).toContain('parseEmployeeImportUpload(input)');
     // No file/FormData handling leaked to the server — the reader is browser-side by design so
     // d8471481 can swap it without touching anything that writes. A file NAME is a string and is fine;
     // a File OBJECT or FormData would mean the reader had moved server-side, which is what this forbids.
@@ -382,12 +383,13 @@ describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite
     expect(src).toMatch(/preview\.rows\.map\(\(r\) =>/);
     const tableBody = src.slice(src.indexOf('<tbody'), src.indexOf('</tbody>'));
     expect(tableBody).not.toMatch(/preview\.rows\.filter/);
-    expect(src).toMatch(/onDownloadErrors\(preview\.rows\.filter\(\(r\) => !r\.ok\)\)/);
-    expect(src).toMatch(/r\.errors\.map\(nricMessage\)\.join\('; '\)/);
-    expect(src).toMatch(/preview\.missingColumns\.map/);
-    // Result card: failures listed with row number and message.
-    expect(src).toMatch(/result\.failed\.map\(\(f\) =>/);
-    expect(src).toMatch(/\{nricMessage\(f\.message\)\}/);
+    // Board d3ba1e9f — every problem (refused rows, their reasons, missing columns) is one Error Log line from the
+    // adapter, shown in the problem table and downloaded as the Error Log; the result card does the same.
+    expect(src).toMatch(/employeePreviewProblemLines\(preview, problemT\)/);
+    expect(src).toMatch(/<ImportProblems lines=\{lines\}/);
+    expect(read('/lib/employee-import-problems.ts')).toMatch(/missingColumnLines\(preview\.missingColumns/);
+    expect(src).toMatch(/employeeResultProblemLines\(result,preview,problemT\)/);
+    expect(src).not.toMatch(/toCsv\(/);
   });
 
   it('does not paginate the preview (r75 — a hidden row is a row nobody approved)', () => {

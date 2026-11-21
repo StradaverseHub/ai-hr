@@ -12,7 +12,8 @@ type Controls=Parameters<typeof calculateRewards>[2];
 /** Native deterministic candidates. A provider can order explanation refs, never supply an amount. */
 export function buildRewardAdvisorCandidates(entries:readonly RewardEntry[],policy:RewardPolicy,controls:Controls={},longWithoutIncreaseYears=defaultAdvisorSettings.longWithoutIncreaseYears):{candidates:AdvisorCandidate[];poolUse:{standard:{salaryBp:number|null;bonusBp:number|null};h:{salaryBp:number|null;bonusBp:number|null}}}{
  const personCount=new Map<string,number>();for(const e of entries)personCount.set(e.source.personId,(personCount.get(e.source.personId)??0)+1);
- const suggestions=entries.map(e=>({...e,recommendation:{...emptyRecommendation(),promotionGrade:e.recommendation.promotionGrade,promotionBp:e.recommendation.promotionGrade?1000:null,reason:e.recommendation.promotionGrade?e.recommendation.reason:''}}));
+ const promotionBp=controls?.limits?.values['promotion.increment'].value??1000,crFloorBp=controls?.limits?.values['catchUp.crFloor'].value??9000;
+ const suggestions=entries.map(e=>({...e,recommendation:{...emptyRecommendation(),promotionGrade:e.recommendation.promotionGrade,promotionBp:e.recommendation.promotionGrade?promotionBp:null,reason:e.recommendation.promotionGrade?e.recommendation.reason:''}}));
  const calculation=calculateRewards(suggestions,policy,controls);
  const over=Object.values(calculation.budgets).some((b,i)=>i<2&&(b.used.some((used,n)=>used>b.pools[n])||b.bonusUsedCents>b.bonusPoolCents));
  const candidates=calculation.rows.map(e=>{
@@ -24,7 +25,7 @@ export function buildRewardAdvisorCandidates(entries:readonly RewardEntry[],poli
   if(calculation.flags.some(f=>f.entryId===e.id&&f.severity==='block'))missing.push('rules');if(over)missing.push('budget');
   if(controls.poolStatus==='not-set'||controls.poolStatus==='provisional')missing.push('final_pool');
   const range=policy.ranges[e.source.grade],reasons:AdvisorReasonRef[]=['matrix','separate_pools'];
-  if(range&&e.source.basicCents*10000<range[1]*9000)reasons.unshift('below_midpoint');else if(range&&e.source.basicCents>range[2])reasons.unshift('above_range');
+  if(range&&e.source.basicCents*10000<range[1]*crFloorBp)reasons.unshift('below_midpoint');else if(range&&e.source.basicCents>range[2])reasons.unshift('above_range');
   const lastRaise=e.source.lastPayChange??e.source.hiredOn;if(Number(lastRaise.slice(0,4))+longWithoutIncreaseYears<=policy.year)reasons.unshift('long_without_increase');
   if(e.recommendation.promotionGrade)reasons.unshift('promotion_nomination');if(e.bonusEligible)reasons.push('bonus_matrix');
   const recommendation:Recommendation|null=missing.length?null:{...e.recommendation,meritBp:e.meritBp,promotionBp:e.recommendation.promotionGrade?e.promotionBp:null,specialBp:null,multiplierBp:null,bonusCents:null,lumpCents:null,reason:e.recommendation.promotionGrade?e.recommendation.reason:''};
@@ -41,10 +42,11 @@ export function validatedAdvisorReasonOrder(raw:string,refs:readonly AdvisorReas
  const p=z.object({items:z.array(z.number().int().min(0).max(refs.length-1)).min(Math.min(2,refs.length)).max(3)}).strict().parse(JSON.parse(raw));if(new Set(p.items).size!==p.items.length)throw new Error('Explanation references must be distinct.');return p.items.map(i=>refs[i]);
 }
 export type RewardAdvisorInsights={belowTarget:number;longWithoutIncrease:number;rangeBefore:{below:number;within:number;above:number};rangeAfter:{below:number;within:number;above:number}};
-export function rewardAdvisorInsights(rows:readonly CalculatedEntry[],policy:RewardPolicy,settings:AdvisorSettings):RewardAdvisorInsights{
+/** `crFloorBp` is the confirmed Limit Controls CR catch-up floor (0.90 on the baseline). */
+export function rewardAdvisorInsights(rows:readonly CalculatedEntry[],policy:RewardPolicy,settings:AdvisorSettings,crFloorBp=9000):RewardAdvisorInsights{
  const pos=(cents:number,grade:string)=>{const r=policy.ranges[grade];return !r?null:cents<r[0]?'below' as const:cents>r[2]?'above' as const:'within' as const;},count={below:0,within:0,above:0},after={...count};
  for(const row of rows){const before=pos(row.source.basicCents,row.source.grade),next=pos(row.newBasicCents,row.recommendation.promotionGrade??row.source.grade);if(before)count[before]++;if(next)after[next]++;}
- return{belowTarget:rows.filter(r=>['STAR','SSTAR'].includes(r.facts.talent??'')&&policy.ranges[r.source.grade]&&r.newBasicCents*10000<policy.ranges[r.source.grade][1]*9000).length,longWithoutIncrease:rows.filter(r=>{const last=r.source.lastPayChange??r.source.hiredOn;return Number(last.slice(0,4))+settings.longWithoutIncreaseYears<=policy.year;}).length,rangeBefore:count,rangeAfter:after};
+ return{belowTarget:rows.filter(r=>['STAR','SSTAR'].includes(r.facts.talent??'')&&policy.ranges[r.source.grade]&&r.newBasicCents*10000<policy.ranges[r.source.grade][1]*crFloorBp).length,longWithoutIncrease:rows.filter(r=>{const last=r.source.lastPayChange??r.source.hiredOn;return Number(last.slice(0,4))+settings.longWithoutIncreaseYears<=policy.year;}).length,rangeBefore:count,rangeAfter:after};
 }
 export type AdvisorFairnessSubject={suggestedIncreaseBp:number|null;finalIncreaseBp:number;groups:Record<string,string|null>};
 /** Separate retrospective audit. Group attributes never enter candidate calculation or provider input. */

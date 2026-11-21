@@ -7,7 +7,7 @@ import {performanceCheckin,employment,person,company} from '../../db/schema';
 import {CheckInCancellation as C,type CheckInCancellationHuman as Human} from '../../lib/assistant-actions/checkin-cancellation-contract';
 import {cancelCheckInTx,readCheckInCancellationSourceTx} from '../../packs/performance/service';
 import {assertCanDecide} from '../approvals';
-import {lockAccessConfigurationTx} from '../access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../access-configuration-lock';
 import {withAgentActionGuard} from './agent-action-guard';
 import type {CheckInCancellationSubject} from './checkin-cancellation-custody-adapter';
 export const checkInCancellationUnavailable=():never=>{throw Error('Please reopen the check-in cancellation review.');};
@@ -19,7 +19,7 @@ async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{
  return row.scope;
 }
 export async function withCheckInCancellationSubjectTx<T>(tx:Tx,ctx:SessionContext,id:string,_mode:'pending'|'recorded',work:(fresh:SessionContext,s:CheckInCancellationSubject)=>Promise<T>):Promise<T>{
- const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await lockAccessConfigurationTx(tx,fresh.tenantId);return work(fresh,await subject(tx,fresh,id));
+ const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await lockAccessConfigurationWriteTx(tx,fresh.tenantId);return work(fresh,await subject(tx,fresh,id));
 }
 async function review(tx:Tx,ctx:SessionContext,human:Human){
  const s=await subject(tx,ctx,human.subjectId);if(s.employmentId!==human.employmentId)return fail();

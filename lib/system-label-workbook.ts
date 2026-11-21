@@ -1,15 +1,23 @@
 import JSZip from 'jszip';
 import { SaxesParser } from 'saxes';
+import { trimWorksheetToData } from './spreadsheet-data-extent';
 import { readSpreadsheetArchive, decodeSpreadsheetXml, SpreadsheetArchiveError } from './spreadsheet-archive';
 import { legacyLabelWorkbookStream } from './system-label-xls';
 import * as XLSX from 'xlsx';
-import { LABEL_IMPORT_DEFINITIONS, LABEL_TEMPLATE_DEFINITIONS, LABEL_TEMPLATE_NOTE, ORGANISATION_LABEL_KINDS, type LabelImportRow, type LabelImportPreviewRow } from './system-label-definition';
+import { createTranslator } from 'next-intl';
+import { LABEL_IMPORT_DEFINITIONS, LABEL_LEGACY_HEADERS_WARNING, LABEL_TEMPLATE_DEFINITIONS, LABEL_TEMPLATE_NOTE, ORGANISATION_LABEL_KINDS, type LabelImportRow, type LabelImportPreviewRow } from './system-label-definition';
+import { importProblemWorkbook } from './import-problem-workbook';
+import { labelImportProblemLines, labelProblemTranslator, type LabelProblemTranslator } from './system-label-import-problems';
+import en from '../messages/en.json';
 
-export const LABEL_WORKBOOK_GENERATION=2;
+export const LABEL_WORKBOOK_GENERATION=3;
 export const LABEL_WORKBOOK_MAX_BYTES = 5_000_000;
-export const LABEL_WORKBOOK_MAX_ROWS = 500;
 export const LABEL_WORKBOOK_TOTAL_ROWS = 7000;
-const LABEL_FORMATTED_ROW_CEILING = 1000;
+/** Board 2026-11-14 (production): a list may use the whole workbook allowance. The former 500-row per-list cap refused
+ * every export of a 1,349-row Positions list while the importer already accepted 7,000 rows in a workbook. */
+export const LABEL_WORKBOOK_MAX_ROWS = LABEL_WORKBOOK_TOTAL_ROWS;
+/** Depth of the pre-formatted (Text) entry area and dropdowns in blank templates; not a data limit. */
+const LABEL_TEMPLATE_ROWS = 500;
 export const LABEL_EXPORT_SHEET = '_Export';
 const safe = (s: string) => /^[\s]*[=+@-]/.test(s) ? "'" + s : s;
 
@@ -17,11 +25,11 @@ export function systemLabelTemplate(references: { companies: string[][]; grades:
   const wb = XLSX.utils.book_new();
   const instructions = [
     ['System Labels — Organisation Labels'],
-    ['Keep worksheet names and headers. Enter literal values; formulas are refused. Maximum 500 data rows per sheet, 7000 per workbook, 5 MB.'],
-    ['Company uses the exact company name from Reference (or its ID when names are ambiguous). Company is required for company-linked labels.'],
-    ['Criteria: global or companies. Criteria Companies is the complete selected-company list, separated by semicolons; it may exclude the creation Company. Global requires a group administrator.'],
+    ['Keep worksheet names and headers. Enter literal values; formulas are refused. Maximum 7000 data rows per workbook, 5 MB.'],
+    ['Leave Criteria, Criteria Companies and Company all blank for Global (All Companies). Global imports require a group administrator.'],
+    ['Company alone means only that company. Criteria Companies is a semicolon-separated list. If Company is also supplied, it must appear in that list. Explicit global leaves both company fields blank.'],
     ['Import adds new codes only. An existing code in any company in that category is blocked, including archived codes. Edit existing records on the System Labels page.'],
-    ['Division through Category, Grades and Grade Groups are tenant-wide; they have no Company or Criteria column.'],
+    ['The same Global and selected-company rules apply to all 23 categories. Review the resolved assignment before importing.'],
     ['Code is the new identifier. Department Code maps to Name; Position Code maps to Title.'],
     ['Cost Centre and Business Unit Description are required names. Other descriptions and labels are optional.'],
     ['Head Employee Code must belong to the origin company. Blank leaves a new code without a head.'],
@@ -34,11 +42,11 @@ export function systemLabelTemplate(references: { companies: string[][]; grades:
   for (const d of LABEL_IMPORT_DEFINITIONS) {
     const ws = XLSX.utils.aoa_to_sheet([d.columns]);
     ws['!cols'] = d.columns.map(() => ({ wch: 24 }));
-    for(let row=1;row<=LABEL_WORKBOOK_MAX_ROWS;row++)for(let col=0;col<d.columns.length;col++) {
+    for(let row=1;row<=LABEL_TEMPLATE_ROWS;row++)for(let col=0;col<d.columns.length;col++) {
       if(d.columns[col]==='Rank'||d.columns[col]==='Sort Order')continue;
       ws[XLSX.utils.encode_cell({r:row,c:col})]={t:'s',v:'',z:'@'};
     }
-    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:LABEL_WORKBOOK_MAX_ROWS,c:d.columns.length-1}});
+    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:LABEL_TEMPLATE_ROWS,c:d.columns.length-1}});
     XLSX.utils.book_append_sheet(wb, ws, d.kind);
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
@@ -109,46 +117,58 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
     const definition = LABEL_IMPORT_DEFINITIONS.find(d => d.kind === (template?.kind??sheet));
     if(definition&&seen.has(definition.kind))throw new Error(`Duplicate label worksheet: ${sheet}`);
     if(!definition){
-      const ws=wb.Sheets[sheet],range=XLSX.utils.decode_range(ws['!fullref']??ws['!ref']??'A1');
-      if(range.e.r>LABEL_FORMATTED_ROW_CEILING||range.e.c>20)throw new Error(`Unsupported worksheet ${sheet} exceeds the row or column limit.`);
+      // Board 2026-11-14: measure entries, not Excel's recorded range, which also covers formatted blank cells.
+      const ws=wb.Sheets[sheet],range=trimWorksheetToData(ws);
+      if(!range)continue;
+      if(range.e.r>LABEL_WORKBOOK_TOTAL_ROWS+1||range.e.c>20)throw new Error(`Unsupported worksheet ${sheet} exceeds the row or column limit.`);
       const values=XLSX.utils.sheet_to_json<string[]>(ws,{header:1,raw:false,defval:'',blankrows:true});
+      // values[0] is the first row of the used range, which is not Excel row 1 when the sheet starts lower down.
+      const origin=XLSX.utils.decode_range(ws['!ref']??'A1').s.r;
       let count=0;
       for(let i=1;i<values.length;i++)if(values[i].some(value=>String(value).trim())){
-        if(++count>LABEL_WORKBOOK_MAX_ROWS||rows.length>=LABEL_WORKBOOK_TOTAL_ROWS)throw new Error('Worksheet limit: 500 data rows per worksheet and 7000 per workbook.');
+        if(++count>LABEL_WORKBOOK_MAX_ROWS||rows.length>=LABEL_WORKBOOK_TOTAL_ROWS)throw new Error('Workbook limit: 7000 data rows in total.');
         if(values[i].some(value=>String(value).length>1000))throw new Error('A value is too long in an unsupported worksheet.');
-        rows.push({sheet,row:i+1,values:{Code:String(values[i][0]??'').trim()}});
+        rows.push({sheet,row:origin+i+1,values:{Code:String(values[i][0]??'').trim()}});
       }
       // An unrecognised one-line sheet may contain data rather than a header. Do not silently drop it.
       if(!count&&values[0]?.some(value=>String(value).trim())){
         if(rows.length>=LABEL_WORKBOOK_TOTAL_ROWS||values[0].some(value=>String(value).length>1000))throw new Error('Unsupported worksheet exceeds the supported size.');
-        rows.push({sheet,row:1,values:{Code:String(values[0][0]??'').trim()}});
+        rows.push({sheet,row:origin+1,values:{Code:String(values[0][0]??'').trim()}});
       }
       continue;
     }
     seen.add(definition.kind);
     const ws = wb.Sheets[sheet];
-    const range = XLSX.utils.decode_range(ws['!fullref'] ?? ws['!ref'] ?? 'A1');
-    if (range.e.r > LABEL_FORMATTED_ROW_CEILING || range.e.c > definition.columns.length)
+    // Board 2026-11-14: formatted blank rows and columns are not entries; only cells with content set the extent.
+    const range = trimWorksheetToData(ws);
+    if (range && (range.e.r > LABEL_WORKBOOK_TOTAL_ROWS + 2 || range.e.c > definition.columns.length))
       throw new Error(`Worksheet ${sheet} exceeds the row or column limit.`);
     for (const [key, cell] of Object.entries(ws)) if (!key.startsWith('!') && cell?.f)
       throw new Error(`Formula in ${sheet}!${key}. Enter a literal value.`);
     const values = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, raw: false, defval: '', blankrows: true });
+    // Board c074c6b8: row numbers are Excel's own. values[0] is the used range's first row, not always row 1.
+    const origin = XLSX.utils.decode_range(ws['!ref'] ?? 'A1').s.r;
     const newLayout=!!template&&values[0]?.[0]===LABEL_TEMPLATE_NOTE&&values[0].slice(1).every(value=>!value);
     if(template&&!newLayout)throw new Error(`Headers do not match the template in ${sheet}.`);
     const headerRow=newLayout?1:0,headers=values[headerRow];
-    const columns=newLayout?template!.columns.map(([,field])=>field):definition.columns;
+    const oldColumns=definition.scope==='tenant'?(definition.kind==='grade_groups'?['Name','Grade Codes']:definition.columns.filter(c=>!['Criteria','Criteria Companies','Company'].includes(c))):definition.columns;
+    const oldTemplate=template?.columns.filter(([,field])=>definition.scope==='company'||!['Criteria','Criteria Companies','Company'].includes(field));
+    const oldLayout=newLayout&&JSON.stringify(headers)===JSON.stringify(oldTemplate?.map(([header])=>header));
+    const oldExport=!newLayout&&(JSON.stringify(headers)===JSON.stringify(oldColumns)||JSON.stringify(headers)===JSON.stringify([...oldColumns,'Status']));
+    const columns=newLayout?(oldLayout?oldTemplate!:template!.columns).map(([,field])=>field):oldExport?oldColumns:definition.columns;
     const businessHeaders=newLayout?template!.columns.map(([header])=>header):definition.columns;
     const legacyColumns=definition.columns.map(column=>column==='Criteria'?'Scope':column==='Criteria Companies'?'Shared Companies':column);
     const matches=(columns:readonly string[])=>JSON.stringify(headers)===JSON.stringify(columns)||JSON.stringify(headers)===JSON.stringify([...columns,'Status']);
-    const legacy=!newLayout&&definition.scope==='company' && (options.generation??LABEL_WORKBOOK_GENERATION)===2 && matches(legacyColumns);
-    if (!(newLayout?JSON.stringify(headers)===JSON.stringify(businessHeaders):matches(definition.columns)) && !legacy)throw new Error(`Headers do not match the template in ${sheet}.`);
+    const legacy=!newLayout&&definition.scope==='company' && [2,3].includes(options.generation??LABEL_WORKBOOK_GENERATION) && matches(legacyColumns);
+    if (!(newLayout?JSON.stringify(headers)===JSON.stringify(businessHeaders)||oldLayout:matches(definition.columns)||oldExport) && !legacy)throw new Error(`Headers do not match the template in ${sheet}.`);
     let dataRows=0;
     for (let i = headerRow+1; i < values.length; i++) {
       if (!values[i].some(v => String(v).trim())) continue;
-      if (++dataRows>LABEL_WORKBOOK_MAX_ROWS||rows.length>=LABEL_WORKBOOK_TOTAL_ROWS)throw new Error('Worksheet limit: 500 data rows per worksheet and 7000 per workbook. Narrow the selected lists.');
+      if (++dataRows>LABEL_WORKBOOK_MAX_ROWS||rows.length>=LABEL_WORKBOOK_TOTAL_ROWS)throw new Error('Workbook limit: 7000 data rows in total. Narrow the selected lists.');
       const fields = Object.fromEntries(columns.map((c, n) => [c, String(values[i][n] ?? '').trim()]));
-      if(!newLayout&&headers[definition.columns.length]==='Status')fields.Status=String(values[i][definition.columns.length]??'').trim();
-      if (Object.values(fields).some(v => v.length > 1000)) throw new Error(`A value is too long in ${sheet}, row ${i + 1}.`);
+      if(!newLayout&&headers[columns.length]==='Status')fields.Status=String(values[i][columns.length]??'').trim();
+      if (Object.values(fields).some(v => v.length > 1000)) throw new Error(`A value is too long in ${sheet}, row ${origin + i + 1}.`);
+      if(['Criteria','Criteria Companies','Company'].every(field=>!fields[field]))for(const field of ['Criteria','Criteria Companies','Company'])delete fields[field];
       if(legacy) {
         const scope=fields.Criteria;
         if(scope==='own'||scope==='shared') {
@@ -158,54 +178,25 @@ export function readSystemLabelWorkbook(bytes: Buffer, options:{generation?:numb
           fields['Criteria Companies']=[fields.Company,fields['Criteria Companies']].filter(Boolean).join(';');
         }
       }
-      rows.push({ sheet:definition.kind, row: i + 1, values: fields, ...(legacy?{warnings:['Older Criteria headers were converted. Download the current template for the next upload.']}: {}) });
+      rows.push({ sheet:definition.kind, row: origin + i + 1, values: fields, ...(legacy?{warnings:[LABEL_LEGACY_HEADERS_WARNING]}: {}) });
     }
   }
   if(!seen.size)throw new Error('Unknown workbook: no recognised category sheets. Download the System Labels template.');
   return rows;
 }
 
-export function systemLabelErrorWorkbook(rows: LabelImportPreviewRow[]): Uint8Array {
-  const wb = XLSX.utils.book_new();
-  const data = [
-    ['Worksheet', 'Row', 'Code', 'Result', 'Message'],
-    ...rows.filter(r => r.outcome === 'error'||r.outcome === 'skip').map(r => [safe(r.sheet), r.row, safe(r.values.Code??r.values.Name??''), r.outcome, safe(r.message)]),
-  ];
-  const sheet = XLSX.utils.aoa_to_sheet(data), widths = [24, 8, 38, 12, 88];
-  sheet['!cols'] = widths.map(wch => ({ wch }));
-  // Reserve space for wrapped identifiers/messages. This is a conservative estimate, not font metrics;
-  // all cell text is retained and unusually long rows remain manually expandable in Excel.
-  sheet['!rows'] = data.map((row, index) => ({ hpt: index === 0 ? 24 : Math.min(240, Math.max(32,
-    8 + 15 * Math.max(...row.map((value, column) => String(value).split(/\r\n|\r|\n/).reduce((lines, line) => lines + Math.max(1, Math.ceil([...line].length / (widths[column] - 4))), 0))),
-  )) }));
-  XLSX.utils.book_append_sheet(wb, sheet, 'Errors');
-  // The installed SheetJS writer serializes widths/heights but not arbitrary cell.s alignment.
-  // Its public synchronous ZIP API styles only this freshly generated report, preserving our
-  // synchronous caller contract; no uploaded archive or business value is rewritten here.
-  const zip = XLSX.CFB.read(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), { type: 'buffer' });
-  const part = (name: string): string => {
-    // CFB resolves a leading slash relative to its synthetic Root Entry storage.
-    const entry = XLSX.CFB.find(zip, '/' + name);
-    if (!entry?.content) throw new Error('Error workbook layout is unavailable.');
-    return Buffer.from(entry.content).toString('utf8');
-  };
-  let styles = part('xl/styles.xml');
-  const cellXfs = /<cellXfs\b[^>]*\bcount="(\d+)"[^>]*>/.exec(styles);
-  if (!cellXfs || !styles.includes('</cellXfs>')) throw new Error('Error workbook styles are unavailable.');
-  const first = Number(cellXfs[1]);
-  const wrapped = [0, 49].map(numFmtId => `<xf numFmtId="${numFmtId}" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>`).join('');
-  styles = styles.replace(cellXfs[0], cellXfs[0].replace(/count="\d+"/, `count="${first + 2}"`)).replace('</cellXfs>', wrapped + '</cellXfs>');
-  const xml = part('xl/worksheets/sheet1.xml').replace(/<c\b[^>]*>/g, opening => {
-    const closed = opening.endsWith('/>'), attributes = opening.slice(2, closed ? -2 : -1).replace(/\s+s="[^"]*"/g, '');
-    const address = /\br="([A-Z]+)(\d+)"/.exec(attributes);
-    const style = first + (address?.[1] === 'B' && address[2] !== '1' ? 0 : 1);
-    return '<c' + attributes + ` s="${style}"` + (closed ? '/>' : '>');
-  });
-  XLSX.CFB.utils.cfb_add(zip, '/xl/styles.xml', Buffer.from(styles));
-  XLSX.CFB.utils.cfb_add(zip, '/xl/worksheets/sheet1.xml', Buffer.from(xml));
-  return new Uint8Array(XLSX.CFB.write(zip, { type: 'buffer', fileType: 'zip', compression: true }));
+/** English, for callers with no request locale (the stored report of an import, kept for older screens). */
+let english: LabelProblemTranslator | undefined;
+export const englishLabelProblemTranslator = (): LabelProblemTranslator =>
+  english ??= createTranslator({ locale: 'en', messages: en as never }) as unknown as LabelProblemTranslator;
+/**
+ * Board c074c6b8: the System Labels Error Log. A thin wrapper: the rows become problem lines through the same adapter
+ * the check screen uses (lib/system-label-import-problems.ts), and the shared writer lays them out
+ * (lib/import-problem-workbook.ts). Pass the request's translator; without one the file is in English.
+ */
+export function systemLabelErrorWorkbook(rows: LabelImportPreviewRow[], t: LabelProblemTranslator = englishLabelProblemTranslator()): Uint8Array {
+  return importProblemWorkbook({ lines: labelImportProblemLines(rows, t), t: labelProblemTranslator(t) });
 }
-
 
 export function systemLabelExportId(bytes:Buffer):string|null {
   const wb=readWorkbook(bytes);
@@ -223,9 +214,9 @@ const templateFieldHelp:Record<string,string>={
   Label:'Display label. Job Grade requires a label. For Division through Category, blank uses Code.',
   Description:'Optional detail, except Cost Centres and Business Units require this name.',
   'Head Employee Code':'Optional active employee from the creation company. Enter the employee code, or the exact code — name shown in Sample. This identifies a person, not Yes/No.',
-  Company:'Creation company: exact permitted company name or its ID if the name is ambiguous. This does not automatically include the company in Criteria.',
-  Criteria:'companies or global. Global requires a group administrator and leaves Criteria Companies blank.',
-  'Criteria Companies':'For companies, enter the complete nonempty list of permitted company names or IDs separated by semicolons. Include the creation company only if it should use this code.',
+  Company:'Optional permitted company name or ID. Company alone means that company only. Leave all three company fields blank for Global (All Companies).',
+  Criteria:'Optional companies or global. All three scope fields blank means Global (All Companies), requiring a group administrator. Explicit global leaves both company fields blank.',
+  'Criteria Companies':'Optional semicolon-separated permitted company names or IDs. Company must appear in this list if both are supplied. Companies criteria requires at least one company.',
   Status:'Active or Inactive for new rows only. Blank defaults to Active. Other values are refused. Existing codes never change status through import.',
   Rank:'Whole number. Blank defaults to zero.',
   Name:'Required new Grade Group name. Existing group names are skipped.',
@@ -244,8 +235,8 @@ export async function buildSystemLabelUploadTemplate(p:LabelTemplateData):Promis
     ['Instructions and Sample are reference only and never imported. Empty upload sheets are ignored. Formulas and protected upload sheets are refused.'],
     ['Import adds new codes only. Existing codes in this category, for any company, including inactive codes, are skipped. Other valid new rows can still import after preview.'],
     ['Status accepts Active or Inactive where present; blank means Active. Grade Groups has no Status. Import never updates, restores or deletes existing records.'],
-    ['Maximum 5 MB, 500 filled data rows per category and 7000 per workbook. Suggestions do not block typing or saving; the application validates your completed file.'],
-    ['Company is creation ownership. Criteria independently controls availability. Division through Category, Job Grade and Grade Groups are tenant-wide shared lists.'],
+    ['Maximum 5 MB and 7000 filled data rows per workbook. Suggestions do not block typing or saving; the application validates your completed file.'],
+    ['Leave Criteria, Criteria Companies and Company all blank for Global (All Companies). Global imports require a group administrator. Company alone means that company only; a company list means those companies only.'],
     ['Sample has up to three permitted current Active rows per category. An (example) row is fictional and appears only when there is no permitted current example.'],
     ['Sample is grey and protected against accidental edits without a password. This is not encryption or a security boundary.'],
     [],['Worksheet','Column','How to complete it'],
@@ -256,8 +247,8 @@ export async function buildSystemLabelUploadTemplate(p:LabelTemplateData):Promis
   for(const definition of LABEL_TEMPLATE_DEFINITIONS){
     const ws=XLSX.utils.aoa_to_sheet([[LABEL_TEMPLATE_NOTE],definition.columns.map(([header])=>header)]);
     ws['!cols']=definition.columns.map(([header])=>({wch:header==='Description'||header==='Head (leave approver)'?38:26}));
-    for(let row=2;row<LABEL_WORKBOOK_MAX_ROWS+2;row++)for(let col=0;col<definition.columns.length;col++)ws[XLSX.utils.encode_cell({r:row,c:col})]={t:'s',v:'',z:definition.columns[col][1]==='Rank'?'0':'@'};
-    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:LABEL_WORKBOOK_MAX_ROWS+1,c:definition.columns.length-1}});
+    for(let row=2;row<LABEL_TEMPLATE_ROWS+2;row++)for(let col=0;col<definition.columns.length;col++)ws[XLSX.utils.encode_cell({r:row,c:col})]={t:'s',v:'',z:definition.columns[col][1]==='Rank'?'0':'@'};
+    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:LABEL_TEMPLATE_ROWS+1,c:definition.columns.length-1}});
     ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:definition.columns.length-1}}];
     XLSX.utils.book_append_sheet(wb,ws,definition.sheet);
   }
@@ -265,7 +256,7 @@ export async function buildSystemLabelUploadTemplate(p:LabelTemplateData):Promis
   for(const definition of LABEL_TEMPLATE_DEFINITIONS){
     const rows=p.samples[definition.kind]??[];
     if(rows.length>3)throw new Error('A Sample category exceeds three examples.');
-    sampleRows.push([], [definition.sheet,...((ORGANISATION_LABEL_KINDS as readonly string[]).includes(definition.kind)?['Company-linked: creation ownership and Criteria are independent.']:['Tenant-wide shared list.'])],definition.columns.map(([header])=>header));
+    sampleRows.push([], [definition.sheet,...((ORGANISATION_LABEL_KINDS as readonly string[]).includes(definition.kind)?['Company-linked labels. Blank scope fields import as Global.']:['Global or selected-company list.'])],definition.columns.map(([header])=>header));
     for(const row of rows.length?rows:[fictionalSample(definition.kind)])sampleRows.push(definition.columns.map(([,field])=>safe(row[field]??'')));
   }
   const sample=XLSX.utils.aoa_to_sheet(sampleRows);sample['!cols']=Array.from({length:8},()=>({wch:30}));sample['!protect']={};
@@ -291,10 +282,10 @@ export async function buildSystemLabelUploadTemplate(p:LabelTemplateData):Promis
         // Inline OOXML lists have a 255-character limit. Omit long suggestions rather than truncate identities.
         if(!choices.length||choices.join(',').length>253)continue;
         const col=XLSX.utils.encode_col(column);
-        validations.push(`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${col}3:${col}${LABEL_WORKBOOK_MAX_ROWS+2}"><formula1>&quot;${xmlLiteral(choices.join(','))}&quot;</formula1></dataValidation>`);
+        validations.push(`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${col}3:${col}${LABEL_TEMPLATE_ROWS+2}"><formula1>&quot;${xmlLiteral(choices.join(','))}&quot;</formula1></dataValidation>`);
       }
       const validation=validations.length?`<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>`:'';
-      const filter=`<autoFilter ref="A2:${XLSX.utils.encode_col(definition.columns.length-1)}${LABEL_WORKBOOK_MAX_ROWS+2}"/>`;
+      const filter=`<autoFilter ref="A2:${XLSX.utils.encode_col(definition.columns.length-1)}${LABEL_TEMPLATE_ROWS+2}"/>`;
       xml=xml.replace('</sheetData>','</sheetData>'+filter);
       const after=xml.includes('</mergeCells>')?'</mergeCells>':'</autoFilter>';
       xml=xml.replace(after,after+validation);
@@ -312,22 +303,24 @@ export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookRefere
   if(definitions.length!==new Set(p.kinds).size||!definitions.length)throw new Error('Select valid lists.');
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
-    ['System Labels'],['Keep worksheet names and headers. Maximum 500 data rows per list, 7000 per workbook, 5 MB.'],
-    ['Import adds new codes only. Existing codes in that category, for any company, are blocked. Company is creation ownership; Criteria controls availability independently.'],
+    ['System Labels'],['Keep worksheet names and headers. Maximum 7000 data rows per workbook, 5 MB.'],
+    ['Import adds new codes only. Existing codes in that category are blocked. Leave all three company fields blank for Global (All Companies); global imports require a group administrator.'],
     ['Use the System Labels page to edit existing records. Uploading current data never updates or overwrites its saved values.'],
     ['Status accepts Active or Inactive for new codes; blank means Active. Archived / Inactive from older exports means Inactive. Grade Groups has no editable status. Removed workbook rows never delete records.'],
     ['Review new additions and blocked rows before confirming. Downloaded files may contain records you can view but cannot edit.'],
     ['Every supported data sheet is checked. Blocked rows are skipped; other valid new codes may be imported.'],
     ['Company and Head dropdowns provide reference values; heads must belong to the origin company.'],
-    ['Criteria Companies and Grade Codes accept semicolon-separated values. Global leaves Criteria Companies blank; companies requires a nonempty complete list, including the creation Company only when it should use the code. Dropdowns offer one value at a time; upload validates the completed list.'],
+    ['Company alone means that company only. Criteria Companies and Grade Codes accept semicolon-separated values. If both company fields are supplied, Company must be in the list. Explicit global requires both company fields blank. Global exports retain stored origin Company for review; clear that origin before importing a new global code.'],
   ]),'Instructions');
+  const formattedEnds:Record<string,number>={};
   for(const d of definitions){
     const values=p.rows?.[d.kind]??[];
-    if(values.length>LABEL_WORKBOOK_MAX_ROWS)throw new Error('A selected list exceeds 500 rows. Narrow the companies or lists.');
+    if(values.length>LABEL_WORKBOOK_MAX_ROWS)throw new Error('The selected lists exceed 7000 rows. Narrow the companies or lists.');
     const columns=p.includeStatus?[...d.columns,'Status']:d.columns;
     const ws=XLSX.utils.aoa_to_sheet([columns,...values.map(row=>columns.map(key=>['Rank','Sort Order'].includes(key)&&row[key]!=null&&row[key]!==''?Number(row[key]):row[key]??''))]);
     ws['!cols']=columns.map(key=>({wch:key==='Description'?40:key==='Company'||key==='Criteria Companies'?30:24}));
-    const formattedEnd=Math.min(LABEL_FORMATTED_ROW_CEILING,Math.max(500,values.length+100));
+    // Every exported row plus 100 blank Text-formatted rows for additions (never fewer than the template's 500).
+    const formattedEnd=Math.max(LABEL_TEMPLATE_ROWS,values.length+100);formattedEnds[d.kind]=formattedEnd;
     for(let row=1;row<=formattedEnd;row++)for(let col=0;col<columns.length;col++){
       const key=XLSX.utils.encode_cell({r:row,c:col});
       if(!ws[key])ws[key]={t:'s',v:''};
@@ -336,11 +329,22 @@ export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookRefere
     ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:formattedEnd,c:columns.length-1}});
     XLSX.utils.book_append_sheet(wb,ws,d.kind);
   }
-  const refRows:unknown[][]=[['Company Name','Company ID','Criteria','','Head Employee Code','Company ID','Grade Code','Label']];
-  const count=Math.max(p.references.companies.length,p.references.employees.length,p.references.grades.length,3);
+  const referencesColumn = (column:string) => definitions.some(definition=>definition.columns.includes(column));
+  const companies = referencesColumn('Company') || referencesColumn('Criteria Companies') ? p.references.companies : [];
+  const employees = referencesColumn('Head Employee Code') ? p.references.employees : [];
+  const grades = referencesColumn('Grade Codes') ? p.references.grades : [];
+  const criteria = referencesColumn('Criteria') ? ['global','companies'] : [];
+  // Keep the column addresses used by validation, leaving unrelated catalogue columns empty.
+  const refRows:unknown[][]=[[
+    companies.length ? 'Company Name' : '',companies.length ? 'Company ID' : '',criteria.length ? 'Criteria' : '','',
+    employees.length ? 'Head Employee Code' : '',employees.length ? 'Company ID' : '',
+    grades.length ? 'Grade Code' : '',grades.length ? 'Label' : '',
+  ]];
+  const count=Math.max(companies.length,employees.length,grades.length,3);
   if(count>10000)throw new Error('Reference lists exceed the supported size. Narrow the selection.');
-  for(let i=0;i<count;i++)refRows.push([p.references.companies[i]?.[0]??'',p.references.companies[i]?.[1]??'',['global','companies'][i]??'','',p.references.employees[i]?.[0]??'',p.references.employees[i]?.[1]??'',p.references.grades[i]?.[0]??'',p.references.grades[i]?.[1]??'']);
+  for(let i=0;i<count;i++)refRows.push([companies[i]?.[0]??'',companies[i]?.[1]??'',criteria[i]??'','',employees[i]?.[0]??'',employees[i]?.[1]??'',grades[i]?.[0]??'',grades[i]?.[1]??'']);
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(refRows),'Reference');
+  if(definitions.length===1)wb.SheetNames.unshift(...wb.SheetNames.splice(1,1));
   if(p.exportId){XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Version','Export ID'],['1',p.exportId]]),LABEL_EXPORT_SHEET);wb.Workbook={Sheets:wb.SheetNames.map(name=>({name,Hidden:name===LABEL_EXPORT_SHEET?2:0}))};}
   const zip=await JSZip.loadAsync(XLSX.write(wb,{type:'buffer',bookType:'xlsx',compression:true}));
   const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Aptos"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Aptos"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF4F46E5"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"><alignment wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
@@ -360,12 +364,12 @@ export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookRefere
     const d=definitions.find(d=>d.kind===name);
     if(d){
       const validations:string[]=[];
-      const ranges:Record<string,string>={Company:`Reference!$A$2:$A$${Math.max(2,p.references.companies.length+1)}`,Criteria:'Reference!$C$2:$C$3','Criteria Companies':`Reference!$A$2:$A$${Math.max(2,p.references.companies.length+1)}`,'Head Employee Code':`Reference!$E$2:$E$${Math.max(2,p.references.employees.length+1)}`,'Grade Codes':`Reference!$G$2:$G$${Math.max(2,p.references.grades.length+1)}`};
+      const ranges:Record<string,string>={Company:`Reference!$A$2:$A$${Math.max(2,companies.length+1)}`,Criteria:'Reference!$C$2:$C$3','Criteria Companies':`Reference!$A$2:$A$${Math.max(2,companies.length+1)}`,'Head Employee Code':`Reference!$E$2:$E$${Math.max(2,employees.length+1)}`,'Grade Codes':`Reference!$G$2:$G$${Math.max(2,grades.length+1)}`};
       // Cross-sheet list validation uses a quoted INDIRECT reference, supported by Excel and LibreOffice.
       for(const [column,range] of Object.entries(ranges)){
         const at=d.columns.indexOf(column);if(at<0)continue;
         const letter=XLSX.utils.encode_col(at);
-        validations.push(`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${letter}2:${letter}1001"><formula1>INDIRECT(&quot;${range}&quot;)</formula1></dataValidation>`);
+        validations.push(`<dataValidation type="list" allowBlank="1" showErrorMessage="0" sqref="${letter}2:${letter}${Math.max(1000,formattedEnds[name]??0)+1}"><formula1>INDIRECT(&quot;${range}&quot;)</formula1></dataValidation>`);
       }
       const validationXml=validations.length?`<dataValidations count="${validations.length}">${validations.join('')}</dataValidations>`:'';
       xml=xml.replace('</sheetData>',`</sheetData><autoFilter ref="A1:${XLSX.utils.encode_col(d.columns.length-(p.includeStatus?0:1))}${(p.rows?.[name]?.length??0)+1}"/>${validationXml}`);

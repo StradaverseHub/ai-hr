@@ -1,9 +1,10 @@
 /** Editor and save-time checks for Pay Formula source. Diagnostics only: payroll evaluation is owned by
  * lib/pay-formula-language.ts and is not changed by anything here. Errors block saving; warnings do not. */
 import {inspectPayFormula,addFormulaDecimal,multiplyFormulaDecimal,divideFormulaDecimal,normalizeFormulaDecimal,type FormulaExpression,type FormulaProgram,type FormulaStatement} from './pay-formula-language';
-import {PAY_FORMULA_FUNCTIONS} from './pay-formula-registry';
+import {PAY_FORMULA_FUNCTIONS,payFormulaFunction} from './pay-formula-registry';
+import {personnelFormulaAdapter,personnelFormulaInternalId} from './pay-formula-personnel';
 
-export type FormulaDiagnosticCode='unknown_function'|'unknown_variable'|'missing_return'|'division_by_zero'|'possible_zero_divisor'|'syntax';
+export type FormulaDiagnosticCode='unknown_function'|'unknown_variable'|'missing_return'|'division_by_zero'|'possible_zero_divisor'|'internal_id_compared'|'syntax';
 export type FormulaDiagnostic={
  severity:'error'|'warning';
  /** A translated message exists for every named code; any other engine problem uses `message`. */
@@ -12,11 +13,18 @@ export type FormulaDiagnostic={
  /** English engine text, used when no translated message exists for the code. */
  message:string;
  name?:string;suggestion?:string;
+ /** possible_zero_divisor: the divisor is a current-run Pay Item read, which is 0 when the item is not in the run. */
+ missingItem?:boolean;
+ /** internal_id_compared: the literal the internal ID is compared with. */
+ value?:string;
 };
 export const PAY_FORMULA_DIAGNOSTIC_CAP=50;
 /** Sources that are typed per employee or per run and can legitimately be 0. Named values derived from
- * them inherit the same possibility. CalendarDays and positive literals are never 0. */
-const MAY_BE_ZERO=new Set(['Input','PayItemInput','AnotherPayItems']);
+ * them inherit the same possibility. CalendarDays and positive literals are never 0. Since the owner rule of
+ * 13 Nov 2026 every current-run Pay Item read is 0 when the employee does not have the item in the run. */
+const MAY_BE_ZERO=new Set(['Input','PayItemInput','PayItem','PayItemNoProrate','Accumulation','AnotherPayItems']);
+/** Current-run Pay Item reads that count as 0 when the item is not in the run (lib/pay-formula-explain.ts). */
+const ZERO_WHEN_MISSING=new Set(['PayItem','PayItemNoProrate','PayItemInput','Accumulation']);
 
 const TOKEN=/^(?:\{#[A-Za-z][A-Za-z0-9_]*\}|\d+(?:\.\d*)?|\.\d+|[A-Za-z_][A-Za-z0-9_]*|"(?:[^"]|"")*"?|<=|>=|<>)/;
 /** Length of the source token that starts at a 1-based line/column; 1 when nothing recognisable starts there. */
@@ -58,8 +66,8 @@ function constant(e:FormulaExpression):string|null{
  }catch{return null;}
  return null;
 }
-type Source={key:string;label:string};
-const keyOf=(e:FormulaExpression):Source|null=>e.kind==='call'?{key:'call:'+e.code.toLowerCase(),label:'{#'+e.code+'}'}:e.kind==='name'?{key:'name:'+e.name.toLowerCase(),label:e.name}:null;
+type Source={key:string;label:string;missingItem?:boolean};
+const keyOf=(e:FormulaExpression):Source|null=>e.kind==='call'?{key:'call:'+e.code.toLowerCase(),label:'{#'+e.code+'}',...(ZERO_WHEN_MISSING.has(e.code)?{missingItem:true}:{})}:e.kind==='name'?{key:'name:'+e.name.toLowerCase(),label:e.name}:null;
 /** Facts a condition proves inside its own branch (x > 0, x <> 0, x >= positive), and facts its
  * failure proves in later branches (x = 0, x <= 0 failed). */
 function proves(c:FormulaExpression,when:boolean):string[]{
@@ -89,7 +97,7 @@ function divisionChecks(program:FormulaProgram,source:string):FormulaDiagnostic[
     const at={line:e.right.loc.line,column:e.right.loc.column,length:formulaTokenLength(source,e.right.loc.line,e.right.loc.column)};
     const value=constant(e.right);
     if(value!==null&&Number(value)===0)out.push({severity:'error',code:'division_by_zero',...at,message:'Division by zero is not allowed'});
-    else{const risky=zeroSources(e.right,taint).filter(s=>!guarded.has(s.key));if(risky.length)out.push({severity:'warning',code:'possible_zero_divisor',...at,name:risky[0].label,message:`This divides by ${risky[0].label}, which can be 0`});}
+    else{const risky=zeroSources(e.right,taint).filter(s=>!guarded.has(s.key));if(risky.length)out.push({severity:'warning',code:'possible_zero_divisor',...at,name:risky[0].label,...(risky[0].missingItem?{missingItem:true}:{}),message:`This divides by ${risky[0].label}, which can be 0`});}
    }
    visit(e.left,taint,guarded);visit(e.right,taint,guarded);
   }else if(e.kind==='unary')visit(e.operand,taint,guarded);
@@ -121,6 +129,51 @@ function divisionChecks(program:FormulaProgram,source:string):FormulaDiagnostic[
  return out;
 }
 
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const COMPARISONS=new Set(['=','<>','<','<=','>','>=']);
+/** What an author probably meant instead of an internal ID: the readable field on the same record. */
+const READABLE_ALTERNATIVE:Readonly<Record<string,string>>={companyId:'companyCode',departmentId:'departmentCode',positionId:'positionCode',gradeId:'gradeCode'};
+/** An internal-ID Personnel field (a UUID) compared with text that is not a UUID can never match, so every
+ * employee silently takes the other branch. Text with no letter or digit (blank, or an unresolved
+ * {#MISSING:...} placeholder's analysis surrogate) is not a code and is left alone. The company ID is the reported production case and blocks
+ * saving; the other internal-ID fields warn. Named values that hold such a field are followed. */
+function internalIdChecks(program:FormulaProgram,source:string):FormulaDiagnostic[]{
+ const out:FormulaDiagnostic[]=[];
+ const field=(e:FormulaExpression,names:Map<string,string>):string|undefined=>{
+  if(e.kind==='name')return names.get(e.name.toLowerCase());
+  if(e.kind!=='call'||e.args[0]?.kind!=='literal'||e.args[0].value.type!=='string')return undefined;
+  const code=payFormulaFunction(e.code)?.code,adapter=code?personnelFormulaAdapter(code,e.args[0].value.value):undefined;
+  return adapter&&personnelFormulaInternalId(adapter)?adapter.key:undefined;
+ };
+ const visit=(e:FormulaExpression,names:Map<string,string>)=>{
+  if(e.kind==='binary'){
+   if(COMPARISONS.has(e.operator))for(const [side,other] of [[e.left,e.right],[e.right,e.left]] as const){
+    const key=field(side,names);
+    if(key&&other.kind==='literal'&&other.value.type==='string'&&/[\p{L}\p{N}]/u.test(other.value.value)&&!UUID.test(other.value.value.trim())){
+     const value=other.value.value,company=key==='companyId',suggestion=READABLE_ALTERNATIVE[key];
+     out.push({severity:company?'error':'warning',code:'internal_id_compared',line:other.loc.line,column:other.loc.column,length:formulaTokenLength(source,other.loc.line,other.loc.column),name:key,value,suggestion,
+      message:company?`companyId is the company's internal ID, so it never equals "${value}". Use companyCode for the company code, or companyName for the legal name.`
+       :`${key} is an internal ID, so it never equals "${value}". Choose a value from the field's permitted list${suggestion?`, or use ${suggestion}`:''}.`});
+    }
+   }
+   visit(e.left,names);visit(e.right,names);
+  }else if(e.kind==='unary')visit(e.operand,names);
+  else if(e.kind==='call')for(const arg of e.args)visit(arg,names);
+ };
+ const block=(statements:FormulaStatement[],names:Map<string,string>)=>{
+  for(const s of statements){
+   switch(s.kind){
+    case 'declare':case 'assign':{visit(s.value,names);const key=field(s.value,names);if(key)names.set(s.name.toLowerCase(),key);else names.delete(s.name.toLowerCase());break;}
+    case 'return':case 'explain':visit(s.value,names);break;
+    case 'if':for(const branch of s.branches){visit(branch.condition,names);block(branch.body,new Map(names));}block(s.otherwise,new Map(names));break;
+    default:break;
+   }
+  }
+ };
+ block(program.statements,new Map());
+ return out;
+}
+
 /** Every problem the editor can find, sorted by position and capped. Never throws for user input. */
 export function diagnosePayFormula(source:string):FormulaDiagnostic[]{
  if(typeof source!=='string'||!source.trim())return [{severity:'error',code:'source',line:1,column:1,length:1,message:'Enter a formula'}];
@@ -137,7 +190,7 @@ export function diagnosePayFormula(source:string):FormulaDiagnostic[]{
   if(problem.code==='return')return {severity:'error',code:'missing_return',...at,message:problem.reason};
   return {severity:'error',code:problem.code,...at,message:problem.reason};
  });
- if(tree)diagnostics.push(...divisionChecks(tree,source));
+ if(tree)diagnostics.push(...divisionChecks(tree,source),...internalIdChecks(tree,source));
  const seen=new Set<string>();
  return diagnostics.filter(d=>{const key=d.severity+d.line+':'+d.column+':'+d.code;if(seen.has(key))return false;seen.add(key);return true;})
   .sort((a,b)=>a.line-b.line||a.column-b.column||(a.severity===b.severity?0:a.severity==='error'?-1:1)).slice(0,PAY_FORMULA_DIAGNOSTIC_CAP);

@@ -1,3 +1,4 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import { LOCATION_CAPTURE_STATUSES, type LocationCaptureStatus } from '@/lib/attendance-removal';
 import { clockApiSession } from '@/lib/attendance-clock-session';
 import { isSameOriginBrowserRequest } from '@/lib/request-origin';
@@ -6,7 +7,7 @@ import { ownClockReceipt, captureEmployeeClock, ClockIntegrityRequiredError, Clo
 import { GeolocationRequiredError, OutsideGeofenceError } from '@/packs/attendance/service';
 export const runtime = 'nodejs';
 const InvalidInput = class extends Error {};
-export async function GET(request: Request) {
+export const GET = capacityAwareRoute(async function GET(request: Request) {
   const session = await clockApiSession();
   if (!session) return Response.json({error:'authentication'},{status:401});
   const url = new URL(request.url);
@@ -14,8 +15,8 @@ export async function GET(request: Request) {
       || url.searchParams.getAll('employmentId').length>1 || url.searchParams.has('employmentId')&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(url.searchParams.get('employmentId')!)) return Response.json({error:'invalid'},{status:400});
   const receipt = await ownClockReceipt(session, url.searchParams.get('requestId') ?? '',url.searchParams.get('employmentId')??undefined);
   return Response.json(receipt ? {receipt} : {error:'notFound'}, {status:receipt ? 200 : 404, headers:{'Cache-Control':'private, no-store'}});
-}
-export async function POST(request: Request) {
+});
+export const POST = capacityAwareRoute(async function POST(request: Request) {
   if (!isSameOriginBrowserRequest(request)) return Response.json({error:'origin'},{status:403});
   const session = await clockApiSession();
   if(!session) return Response.json({error:'authentication'},{status:401});
@@ -58,4 +59,4 @@ export async function POST(request: Request) {
     const code=!known?'unconfirmed':error instanceof ClockContextChangedError||error instanceof OwnClockEmploymentUnavailableError?'accountChanged':error instanceof InvalidInput?'invalid':error instanceof CorrectedClockConflictError?'correctedDay':error instanceof ClockConflictError?'conflict':error instanceof AttendancePhotoRequiredError?'photoRequired':error instanceof OutsideGeofenceError?'outsideGeofence':error instanceof GeolocationRequiredError || error instanceof ClockLocationError?'locationRequired':'photoInvalid';
     return Response.json({error:code},{status:!known?500:error instanceof ClockConflictError || error instanceof ClockContextChangedError || error instanceof OwnClockEmploymentUnavailableError?409:400,headers:{'Cache-Control':'private, no-store'}});
   }
-}
+});

@@ -8,18 +8,26 @@ import type { Case, Config } from '../../../lib/lifecycle-v9-model';
 import { V9Error } from '../../../lib/lifecycle-v9-model';
 
 export type SettlementView = Settlement & { sourceRevision: string; basic: number | null; allowances: number; balanceSources: { id: string; name: string; balance: number }[] };
-export async function readSettlementTx(tx: Tx, ctx: SessionContext, c: Case, config: Config): Promise<SettlementView | null> {
-  if (c.module !== 'off') return null;
-  const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.is_admin_for(${c.facts.company}::uuid) OR (${!ctx.userId} AND (current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper))) as ok`);
-  if (!permission?.ok) throw new V9Error('Final figures are restricted to authorized HR administrators.', 'forbidden');
-  const [employment] = await tx.execute<{ notice_before_confirmation_value: number | null; notice_before_confirmation_unit: NoticePeriod['unit'] | null; notice_after_confirmation_value: number | null; notice_after_confirmation_unit: NoticePeriod['unit'] | null; final_confirmation_date: string | null; grade: string | null; source_version: string }>(sql`select e.notice_before_confirmation_value,e.notice_before_confirmation_unit,e.notice_after_confirmation_value,e.notice_after_confirmation_unit,e.final_confirmation_date::text,g.code as grade,e.xmin::text as source_version from employment e left join job_grade g on g.id=e.grade_id and g.tenant_id=e.tenant_id where e.id=${c.facts.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid and e.company_id=${c.facts.company}::uuid`);
-  if (!employment) throw new V9Error('The employee record is not available.', 'not_found');
+export type SettlementEmploymentDateSource={notice_before_confirmation_value:number|null;notice_before_confirmation_unit:NoticePeriod['unit']|null;notice_after_confirmation_value:number|null;notice_after_confirmation_unit:NoticePeriod['unit']|null;final_confirmation_date:string|null;grade:string|null;source_version:string};
+/** One source construction owns both date-only corrections and ordinary financial settlement. */
+function settlementInput(c:Case,config:Config,employment:SettlementEmploymentDateSource):{source:SettlementInput;policy:NonNullable<Config['settlementPolicy']>}{
   const probation = !!employment.final_confirmation_date && employment.final_confirmation_date > c.facts.noticeDate;
   const count = probation ? employment.notice_before_confirmation_value : employment.notice_after_confirmation_value;
   const unit = probation ? employment.notice_before_confirmation_unit : employment.notice_after_confirmation_unit;
   const policy = config.settlementPolicy ?? defaultSettlementPolicy();
   // A missing confirmation date does not establish probation. Contract status is independent.
   const source: SettlementInput = { type: c.facts.caseType as SettlementInput['type'], noticeDate: c.facts.noticeDate, sourceLastDay: c.facts.lastDay, grade: employment.grade ?? c.facts.grade, employmentType: c.facts.employmentType === 'contract' ? 'contract' : probation ? 'probation' : 'permanent', contractNotice: count !== null && unit ? { value: count, unit } : null, override: c.settlementOptions?.override ?? null, keepSourceDate: c.settlementOptions?.keepSourceDate ?? false, remainingLeave: null, basic: null, allowances: 0, currency: '', offsetLeave: c.settlementOptions?.offsetLeave ?? false, reduceEncashment: c.settlementOptions?.reduceEncashment ?? null };
+  return{source,policy};
+}
+/** Date selection is independent of salary/leave amounts; never grants those sources to a letter owner. */
+export function settlementDateForSource(c:Case,config:Config,employment:SettlementEmploymentDateSource):string{const{source,policy}=settlementInput(c,config,employment);return settlement(source,policy).lastDay;}
+export async function readSettlementTx(tx: Tx, ctx: SessionContext, c: Case, config: Config): Promise<SettlementView | null> {
+  if (c.module !== 'off') return null;
+  const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.is_admin_for(${c.facts.company}::uuid) OR (${!ctx.userId} AND (current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper))) as ok`);
+  if (!permission?.ok) throw new V9Error('Final figures are restricted to authorized HR administrators.', 'forbidden');
+  const [employment] = await tx.execute<{ notice_before_confirmation_value: number | null; notice_before_confirmation_unit: NoticePeriod['unit'] | null; notice_after_confirmation_value: number | null; notice_after_confirmation_unit: NoticePeriod['unit'] | null; final_confirmation_date: string | null; grade: string | null; source_version: string }>(sql`select e.notice_before_confirmation_value,e.notice_before_confirmation_unit,e.notice_after_confirmation_value,e.notice_after_confirmation_unit,e.final_confirmation_date::text,g.code as grade,e.xmin::text as source_version from employment e left join job_grade g on g.id=e.grade_id and g.tenant_id=e.tenant_id where e.id=${c.facts.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid and e.company_id=${c.facts.company}::uuid`);
+  if (!employment) throw new V9Error('The employee record is not available.', 'not_found');
+  const {source,policy}=settlementInput(c,config,employment);
   const date = settlement(source, policy).lastDay;
   const [salary] = await tx.execute<{ id: string; basic_salary: string; monthly_allowance: string; currency: string; source_version: string }>(sql`select id,basic_salary,monthly_allowance,currency,xmin::text as source_version from compensation where tenant_id=${ctx.tenantId}::uuid and employment_id=${c.facts.employmentId}::uuid and superseded_at is null and valid_from<=${date}::date and (valid_to is null or valid_to>${date}::date) order by valid_from desc,id desc limit 1`);
   const selected = await readSettlementLeaveSourceTx(tx, ctx, { employmentId: c.facts.employmentId, asOf: date, leaveTypeIds: policy.leaveTypeIds });

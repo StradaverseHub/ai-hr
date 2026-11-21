@@ -32,10 +32,10 @@ vi.mock('../core/agent-actions', () => ({ proposeActions: async () => [{ type: '
 vi.mock('../core/record-readiness', () => ({ recordReadiness: async () => ({ employees: 40, ready: 36, gaps: [] }) }));
 vi.mock('../core/ai-management', () => ({
   AI_RUN_STATE_FILTERS: ['blocked', 'failed'],
-  aiManagementView: async () => ({ provider: { provider: 'fictional', model: 'fictional/model' }, mayWriteUsers: true,
+  aiManagementPageView: async(_ctx:unknown,section:string)=>{const full=await (async () => ({ provider: { provider: 'fictional', model: 'fictional/model' }, mayWriteUsers: true,
     features: AI_FEATURES.map(feature => ({ ...feature, enabled: feature.setting === null, state: feature.setting === null ? 'ready' : 'paused', mayWrite: feature.kind !== 'platform' })),
     agentSwitches: {}, usage: [], policies: [], userDefault: null, companies: [], companyUsage: [], users: [], moreUsers: false, groups: [],
-    attention: { companies: [], users: [], blocked: [] }, runs: [], runFilter: {}, legacyBudget: null, spend: null }),
+    attention: { companies: [], users: [], blocked: [] }, runs: [], runFilter: {}, legacyBudget: null, spend: null }))();if(!full||typeof full!=='object'||!('users' in full)||!('moreUsers' in full)||!('legacyBudget' in full)||!('runs' in full)||!('runFilter' in full))throw new Error('AI management page fixture is missing');const {users,moreUsers,legacyBudget,runs:_runs,runFilter:_filter,...common}=full;return {...common,section,allowances:section==='allowances'?{users,moreUsers,legacyBudget}:null};},
   bulkAssistantDepartments: async () => [], previewBulkAssistantAccess: async () => ({ matched: 0, changing: 0 }),
 }));
 vi.mock('../core/ai-inventory', () => ({ aiInventoryView: async () => ({ scope: 'registry', rows: [] }), aiManagementAlerts: async () => ({ status: 'ok', alerts: [] }), aiRunHistory: async () => null }));

@@ -1,0 +1,44 @@
+/* Shared action state, scoped by the action owner rather than a particular visual theme. */
+.action-spinner {
+ display: inline-block;
+ inline-size: 1em;
+ block-size: 1em;
+ flex: 0 0 1em;
+ margin-inline-end: .4em;
+ vertical-align: -.1em;
+ border: 2px solid currentColor;
+ border-inline-end-color: transparent;
+ border-radius: 50%;
+ animation: action-feedback-spin .8s linear infinite;
+}
+.action-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin-block: .75rem; font-size: .875rem; }
+.action-feedback[data-action-state='failed'], .action-feedback[data-action-state='uncertain'] { color: var(--destructive); }
+.action-feedback progress { inline-size: 100%; accent-color: var(--primary); }
+.action-feedback-announcement { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+button[data-action-pending='true'],a[data-action-pending='true'] { cursor: progress; }
+@keyframes action-feedback-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .action-spinner { animation: none; border-style: dotted; } }
+/* Next's route-start instrumentation also covers Edit links and Button asChild/Link controls.
+   Preserve Atelier's existing line/local-filter treatment; supply the same honest state in other themes. */
+html:not([data-ui-theme='atelier']) .action-navigation-feedback {
+ display: block;
+ position: fixed;
+ z-index: 100;
+ inset: 0 0 auto;
+ height: 2px;
+ pointer-events: none;
+ overflow: hidden;
+}
+html:not([data-ui-theme='atelier']) .action-navigation-feedback[data-pending]::after,
+html:not([data-ui-theme='atelier']):has([data-route-loading], [data-today-loading]) .action-navigation-feedback::after {
+ content: '';
+ display: block;
+ width: 34%;
+ height: 2px;
+ background: var(--primary);
+ animation: action-navigation-travel 1.15s linear infinite;
+}
+@keyframes action-navigation-travel { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@media (prefers-reduced-motion: reduce) {
+ html:not([data-ui-theme='atelier']) .action-navigation-feedback::after { animation: none !important; }
+}

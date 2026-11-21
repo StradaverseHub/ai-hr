@@ -26,7 +26,7 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { agentSwitchStatesTx } from './agent-principal';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
-import { resolveActiveAiConfig } from './ai-config';
+import { readAiProviderPresentationTx } from './ai-provider-snapshot';
 import { isModuleEnabled, settingEnabled } from './entitlements';
 import { mayUseAssistant } from './assistant-grant';
 import { DETECTORS } from './payroll-anomaly-detectors';
@@ -143,7 +143,7 @@ export async function agentStatuses(ctx: SessionContext): Promise<AgentStatus[]>
       return row?.at ?? null;
     }),
     // The narrator and the assistant both need a provider; neither can run on the platform's goodwill.
-    withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx)).then((c) => c != null),
+    withTenant(ctx, tx => readAiProviderPresentationTx(tx, ctx), {readOnlySnapshot:true}).then(c => c != null),
     mayUseAssistant(ctx).then((a) => a.allowed),
     withTenant(ctx, tx => agentSwitchStatesTx(tx, ctx)),
   ]);

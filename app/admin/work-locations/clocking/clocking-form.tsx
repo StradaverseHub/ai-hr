@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { MAX_REPORT_LABEL_CHARS } from '@/packs/attendance/service';
@@ -280,7 +281,7 @@ export function ClockingLocationForm({
       </Card>
 
       <div className="flex items-center gap-3">
-        <button className={btnPrimary}>{t('save')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('save')}</ActionButton>
         {/* Cancel is a LINK to the list — never a second form; nothing is posted. */}
         <Link href={cancelHref} className="text-sm text-muted-foreground hover:text-foreground hover:underline">
           {t('cancel')}

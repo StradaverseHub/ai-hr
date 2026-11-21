@@ -7,6 +7,9 @@ import * as ts from 'typescript';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { inquirySearchParams, parseInquiryQuery } from '../lib/leave-inquiry-query';
+import { ExportDownloadLink } from '../components/export-download-link';
+import { NextIntlClientProvider } from 'next-intl';
+import en from '../messages/en.json';
 
 afterEach(cleanup);
 
@@ -39,7 +42,7 @@ function exportActions(page: 'employee-balances' | 'employee-records', selection
   visit(source);
   expect(actions, `${page} must expose both export actions`).toHaveLength(2);
   for (const action of actions) {
-    expect(action.openingElement.tagName.getText(source), `${page}: export bypasses SPA routing`).toBe('a');
+    expect(action.openingElement.tagName.getText(source), `${page}: export bypasses SPA routing`).toBe('ExportDownloadLink');
     const props = action.openingElement.attributes.properties;
     expect(props.some(prop => ts.isJsxAttribute(prop) && prop.name.getText(source) === 'download')).toBe(true);
     expect(props.some(prop => ts.isJsxSpreadAttribute(prop) || (ts.isJsxAttribute(prop) && /^on[A-Z]/.test(prop.name.getText(source))))).toBe(false);
@@ -60,6 +63,7 @@ function exportActions(page: 'employee-balances' | 'employee-records', selection
   }).outputText, {
     module: output,
     exports: output.exports,
+    ExportDownloadLink,
     params: () => new URLSearchParams(selection),
     sort: 'employeeCode',
     dir: 'desc',
@@ -69,7 +73,7 @@ function exportActions(page: 'employee-balances' | 'employee-records', selection
       throw new Error(`Unexpected export action dependency: ${name}`);
     },
   });
-  return output.exports.view;
+  return <NextIntlClientProvider locale="en" messages={en}>{output.exports.view}</NextIntlClientProvider>;
 }
 
 describe.each(['employee-balances', 'employee-records'] as const)('%s browser download actions', page => {

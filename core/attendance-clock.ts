@@ -8,7 +8,7 @@ import { actorOf, appendEvent } from '../db/events';
 import { withAttendanceTenant as withTenant } from './module-gate';
 import {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from './attendance-clock-subject';
 import {myEmployments, myEmployment, myOwnEmploymentSubjectsTx} from './read';
-import { lockAttendanceLeaveDependenciesTx, ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, clockPunchOrderRefusal, resolveGeofence, clockScheduleForTx, GeofenceQualityError, OutsideGeofenceError } from './attendance';
+import { lockAttendanceClockDependenciesTx, ClockConflictError, CorrectedClockConflictError, assertDayNotOwnedByCorrectionTx, appendGeofenceBlockedEvent, checkInTx, checkOutTx, clockPunchOrderRefusal, resolveGeofence, clockScheduleForTx, GeofenceQualityError, OutsideGeofenceError } from './attendance';
 import { enforceDeviceGateTx, DeviceNotRegisteredError } from './attendance-device';
 import { ClockPhotoError, decodeClockPhoto } from '../lib/attendance-photo';
 import { clockCommandContext } from '../lib/clock-command-context';
@@ -152,7 +152,7 @@ async function captureEmployeeClockTx(ctx: SessionContext, p: ClockIntent, nativ
  *  before the subject advisory lock, replay, device, policy, capture, schedule and legacy day locks. */
 async function planClockTx(tx:Tx,ctx:SessionContext,me:ClockSubject,p:ClockIntent,point:ReturnType<typeof clockLocation>,clock:ClockSource,native?:NativeCarrier,joined?:JoinedCarrier) {
     const offline=clock.source==='mobile_offline';
-    await lockAttendanceLeaveDependenciesTx(tx, ctx, [me.employmentId]);
+    await lockAttendanceClockDependenciesTx(tx, ctx, [me.employmentId]);
     // Outside-Tx selection nominates only. Repeat the SAME original selection owner after Access/
     // configuration/subject ownership before replay, policy, capture, schedule or legacy day locks.
     const fresh = joined ? (await myOwnEmploymentSubjectsTx(tx,ctx,{profileEdit:true})).find(row=>row.employmentId===me.employmentId)

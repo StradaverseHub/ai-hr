@@ -1,4 +1,5 @@
 import { saveCompanyDisplayGroupTx } from './company-display-group';
+import { enqueueLeaveA2cJobTx } from './leave-cohort-job';
 import {deriveCompanyOrganisationTx} from './company-organisation';
 import { tenantMutation } from '../db/tenant-mutation';
 /**
@@ -10,14 +11,14 @@ import { and, desc, eq, getTableName, inArray, isNotNull, isNull, or, sql, type 
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { actorOf, appendEvent } from '../db/events';
 // ADR-0077 slice 5 — the per-company install hook (see createCompany).
 import { companyInstallersFor } from './module-activation';
 import { CrossCompanyError } from './org';
 import { isEssViewComponentKey, type EssViewConfig } from './ess-view';
 import { normalizeLeaveFormulaConfig, type LeaveFormulaConfig } from './leave-formula';
-import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
+import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual-keys';
 import { isCurrencyCode } from '../lib/currencies';
 import { pgErrorChain, pgSqlState, isDatabaseError } from '../lib/db-error';
 // f1bbc572 — the tokens a label refusal may travel as, so the client can say it in the reader's language
@@ -35,6 +36,7 @@ import { configReferrers, historyReferrers } from './leave-type-refs';
 import { cascadedReferrers, companyDeleteBlockSqlText } from './company-refs';
 import { isCompanyDeleteBlock, type CompanyDeleteBlock } from '../lib/company-delete';
 import { isLoginBlocked } from './employment-status';
+import { currentEmployeeCode } from '../lib/current-employee-code';
 import {
   isValidMonthDay,
   // 6e9a126e — the write-time band validator, moved into the pure module (beside `isWellFormedBands`, the
@@ -380,11 +382,12 @@ type Role =
   | 'super_admin'
   | 'payroll_partner'
   | 'performance_comp_partner'
-  | 'performance_partner';
+  | 'performance_partner'
+  | 'recruiting_partner';
 
 /** Roles that carry a company scope (ADR-0049, ADR-0142): hr_admin plus the job-function partners. Every
  *  other role is normalized to a null (group-wide / inert) company_id by assignRole. */
-const SCOPABLE_ROLES = new Set<Role>(['hr_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner']);
+const SCOPABLE_ROLES = new Set<Role>(['hr_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner', 'recruiting_partner']);
 
 /** Resolve a create-form Default Payroll Cycle name to a canonical DEFAULT_PAYROLL_CYCLES name. The picker
  *  only ever offers the six seeded names, so an unknown/blank value falls back to 'Monthly' (the column
@@ -450,7 +453,7 @@ export async function createCompany(
   // seed. Defaults to 'Monthly' (the column default) so the common case is a single accept-and-move-on step.
   const defaultPayrollCycle = resolveDefaultCycleName(p.defaultPayrollCycle);
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     if (p.parentCompanyId) {
       const [parent] = await tx.select({ id: company.id }).from(company)
@@ -475,6 +478,7 @@ export async function createCompany(
         defaultPayrollCycle,
       })
       .returning({ id: company.id });
+    await packFor(country)?.companyStatutory.initialize?.(ctx, tx, row.id);
     if (p.displayGroup) await saveCompanyDisplayGroupTx(tx, ctx, row.id, p.displayGroup);
     // Organization Module (361e3b15) — the actual pain fix: seed the six standard payroll cycles inside THIS
     // transaction (tx-injection, the provisionTenant/seedCompanyCatalogs precedent) so a company added via the
@@ -539,7 +543,7 @@ export async function setCompanyDefaultPayrollCycle(
   const cycleName = (p.cycleName ?? '').replace(/\s+/g, ' ').trim();
   if (!cycleName) throw new Error('Choose a payroll cycle.');
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({ defaultPayrollCycle: company.defaultPayrollCycle })
@@ -580,7 +584,7 @@ export async function setCompanyParent(
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     if (p.displayGroup !== undefined) await saveCompanyDisplayGroupTx(tx, ctx, p.companyId, p.displayGroup);
     if (p.parentCompanyId === undefined) return { id: p.companyId };
@@ -650,7 +654,7 @@ export async function createDepartment(
   const name = cleanName(p.name, 'Department name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Belt-and-braces (mirrors the RLS clamp in app.heads_department_of, migration 0121): a parent
     // department must belong to the SAME company, so a cross-company department tree — which would leak
@@ -699,7 +703,7 @@ export async function createPosition(
   const title = cleanName(p.title, 'Position title');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(position)
@@ -730,7 +734,7 @@ export async function createCostCenter(
   const name = cleanName(p.name, 'Cost-center name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(costCenter)
@@ -764,7 +768,7 @@ export async function createBusinessUnit(
   const name = cleanName(p.name, 'Business-unit name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(businessUnit)
@@ -885,7 +889,7 @@ export async function createJobGrade(
   ctx: SessionContext,
   // `description` (e3c733df): optional display-only detail, mirroring profile_option.description. Omitted
   // ⇒ NULL, so every existing caller is unchanged.
-  p: { code: string; name: string; rank?: number; description?: string | null; active?: boolean },
+  p: { code: string; name: string; rank?: number; description?: string | null; active?: boolean; scopeCompanyIds?:string[]|null },
   existingTx?: Tx,
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
@@ -899,7 +903,7 @@ export async function createJobGrade(
   // the database rather than one storing '' and the other NULL.
   const description = p.description?.trim() ? p.description.trim() : null;
   return tenantMutation(ctx, existingTx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // r224 — RESTORE INSTEAD OF DUPLICATE. Both grade uniqueness indexes are PARTIAL —
     // job_grade_code_uq (0090) and job_grade_name_uq (0183) are `... WHERE archived_at IS NULL` — so an
@@ -939,7 +943,7 @@ export async function createJobGrade(
     }
     const [row] = await tx
       .insert(jobGrade)
-      .values({ tenantId: ctx.tenantId, code, name, rank, description, archivedAt: p.active === false ? sql`now()` : null })
+      .values({ tenantId: ctx.tenantId, code, name, rank, description, scopeCompanyIds:p.scopeCompanyIds??null, archivedAt: p.active === false ? sql`now()` : null })
       .returning({ id: jobGrade.id })
       .catch((e) => {
         // Grade Management (728a7db6): two partial-unique indexes now guard the row — map each to its own
@@ -956,7 +960,7 @@ export async function createJobGrade(
       aggregateId: row.id,
       eventType: 'job-grade.created',
       actor: actorOf(ctx),
-      payload: { code, name, rank, active: p.active ?? true },
+      payload: { code, name, rank, active: p.active ?? true,scopeCompanyIds:p.scopeCompanyIds??null },
     });
     return row;
   });
@@ -990,7 +994,7 @@ export async function updateJobGrade(
           return c;
         })();
   return tenantMutation(ctx, existingTx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // 4ec5a940 — read the prior row so the audit event carries a real before→after comparison (forward-only:
     // events that predate this change keep their new-values-only payload; the log is append-only).
@@ -1057,7 +1061,7 @@ export async function updateJobGrade(
 export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [g] = await tx
       .select({ code: jobGrade.code, name: jobGrade.name })
@@ -1106,7 +1110,7 @@ export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
 export async function archiveJobGrade(ctx: SessionContext, p: { id: string; archived: boolean }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx
       .update(jobGrade)
@@ -1346,6 +1350,8 @@ export async function assignRole(
   // so this never escalates privilege.
   const companyId = SCOPABLE_ROLES.has(p.role) ? p.companyId || null : null;
   return withTenant(ctx, async (tx) => {
+    // Role grants are authority inputs: the row trigger only tries the exclusive Access lock.
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     const [row] = await tx
       .insert(roleAssignment)
       .values({ tenantId: ctx.tenantId, appUserId: p.appUserId, role: p.role, companyId })
@@ -1364,6 +1370,7 @@ export async function assignRole(
 
 export async function revokeRole(ctx: SessionContext, p: { roleAssignmentId: string }) {
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     const [row] = await tx
       .select()
       .from(roleAssignment)
@@ -1764,7 +1771,7 @@ export async function createHoliday(
   // national and silently clear it on the next Save; better refused at the door, in the same words.
   if (state && !statesForCountries([country]).has(state)) throw new Error(`Unknown state “${state}”.`);
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     let companyName: string | null = null;
     if (companyId) {
@@ -1888,7 +1895,7 @@ export async function updateHoliday(
   const nextType = p.holidayType !== undefined ? cleanHolidayType(p.holidayType) : undefined;
   const nextState = p.state !== undefined ? p.state?.trim() || null : undefined;
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [before] = await tx
       .select({
@@ -1999,7 +2006,7 @@ export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
   p = { ...p };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [deleted] = await tx
       .delete(holiday)
@@ -2164,7 +2171,7 @@ async function setGroupHolidaysTx(
 ): Promise<void> {
   p = { ...p, holidayIds: p.holidayIds.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
-  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   const desired = [...new Set(p.holidayIds.map((s) => s.trim()).filter(Boolean))];
   // Validate every desired id belongs to THIS tenant's holiday set (RLS already scopes, but a clear error
@@ -2244,7 +2251,7 @@ export async function createHolidayGroup(
   const description = p.description?.trim() || null;
   const active = p.active ?? true;
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // Inside the tx: the vocabulary depends on which countries this tenant operates in.
     const states = cleanHolidayGroupStates(p.states, archetype, !!parentGroupId, await tenantCompanyCountries(tx));
@@ -2292,7 +2299,7 @@ export async function updateHolidayGroup(
   p = { ...p, states: p.states?.slice(), holidayIds: p.holidayIds?.slice() };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     const [before] = await tx
       .select({
@@ -2377,7 +2384,7 @@ export async function deleteHolidayGroup(ctx: SessionContext, p: { id: string })
   p = { ...p };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     // R18 a519a96e: block deleting a PARENT while child groups still inherit from it (lock the children so
     // a concurrent re-parent can't race the guard). The ON DELETE SET NULL FK is the backstop — a bypassed
@@ -2596,15 +2603,19 @@ export function listUsers(ctx: SessionContext, opts: { includeArchived?: boolean
             lastWorkingDate: employment.lastWorkingDate,
             terminatedOn: employment.terminatedOn,
             blacklistedAt: employment.blacklistedAt,
+            employeeCode: employment.employeeCode,
+            hiredOn: employment.hiredOn,
           })
           .from(employment)
           .where(inArray(employment.personId, personIds))
       : [];
+    const today = todayInKualaLumpur();
     const rows = users.map((u) => {
       const mine = u.personId ? emps.filter((e) => e.personId === u.personId) : [];
       return {
         ...u,
         hasEmployment: mine.length>0,
+        employeeCode: currentEmployeeCode(mine, today),
         roles: roles.filter((r) => r.appUserId === u.id),
         // Blocked purely by the employment dates — archivedAt is reported separately so the UI can
         // tell the two causes apart and only offer Restore for the manual one.
@@ -2630,7 +2641,7 @@ export async function updateDepartment(
   // description always overwrites (like name), stored null when blank — no tri-state.
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     // businessUnitId + headEmploymentId are tri-state: undefined → leave the column untouched (a name-only
@@ -2668,7 +2679,7 @@ export async function updateDepartment(
 export function archiveDepartment(ctx: SessionContext, p: { id: string; archived: boolean }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(department).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(department.id, p.id)).catch((e) => {
@@ -2681,7 +2692,7 @@ export function archiveDepartment(ctx: SessionContext, p: { id: string; archived
 export async function deleteDepartment(ctx: SessionContext, p: { id: string }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.departmentId, p.id));
@@ -2696,7 +2707,7 @@ export async function updatePosition(ctx: SessionContext, p: { id: string; title
   const title = cleanName(p.title, 'Position title');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(position).set({ title, jobFamily: p.jobFamily?.trim() || null, description }).where(eq(position.id, p.id)).catch((e) => {
@@ -2709,7 +2720,7 @@ export async function updatePosition(ctx: SessionContext, p: { id: string; title
 export function archivePosition(ctx: SessionContext, p: { id: string; archived: boolean }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(position).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(position.id, p.id)).catch((e) => {
@@ -2722,7 +2733,7 @@ export function archivePosition(ctx: SessionContext, p: { id: string; archived: 
 export async function deletePosition(ctx: SessionContext, p: { id: string }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.positionId, p.id));
@@ -2738,7 +2749,7 @@ export async function updateCostCenter(ctx: SessionContext, p: { id: string; cod
   const name = cleanName(p.name, 'Cost-center name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(costCenter).set({ code, name, description }).where(eq(costCenter.id, p.id)).catch((e) => {
@@ -2751,7 +2762,7 @@ export async function updateCostCenter(ctx: SessionContext, p: { id: string; cod
 export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived: boolean }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(costCenter).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(costCenter.id, p.id)).catch((e) => {
@@ -2764,7 +2775,7 @@ export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived
 export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     const [allocated]=await tx.execute<{used:boolean}>(sql`select app.cost_allocation_label_in_use(${p.id}::uuid) as used`);
@@ -2785,7 +2796,7 @@ export async function updateBusinessUnit(
   const name = cleanName(p.name, 'Business-unit name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     // headEmploymentId is tri-state (undefined ⇒ untouched; blank ⇒ clear; id ⇒ set, same-company-validated).
@@ -2813,7 +2824,7 @@ export async function updateBusinessUnit(
 export function archiveBusinessUnit(ctx: SessionContext, p: { id: string; archived: boolean }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx,ctx.tenantId);
     await tx.update(businessUnit).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(businessUnit.id, p.id)).catch((e) => {
@@ -2974,7 +2985,7 @@ export async function bulkSaveLabels(
  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const agg = KIND_AGG[kind];
   return tenantMutation(ctx, existingTx, async (tx) => {
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockLabelCriteriaTx(tx, ctx.tenantId);
     const errors: LabelRowError[] = [];
@@ -3457,6 +3468,9 @@ export async function updateLeaveType(
     /** f3a64d90: tenant-local (MYT) "today" anchoring the a2c day-by-day correction fired on an override
      *  change. The action layer passes it; tests pass a fixed date. Defaults to todayInKualaLumpur(). */
     asOf?: string;
+    /** Bulk-job conversion: the web save passes true so the a2c correction runs as the background A2C job
+     *  (admitted in this transaction, staged and released at once). Other callers keep the inline correction. */
+    a2cInBackground?: boolean;
     // Leave Type Employee Visibility (feedback 7b11f1c1; contract narrowed by 464b58e6). Both remain
     // tri-state (undefined = column untouched, null = clear), but they are no longer BOTH posted from one
     // sub-form and the old wording here described a form that no longer exists:
@@ -4226,46 +4240,60 @@ export async function updateLeaveType(
     }
     const payrollHits = touchPaid && before && p.paid !== before.paid
       ? await lockPayrollForLeavePaidSettingTx(tx, p.id, p.paid!) : [];
-    await tx
-      .update(leaveType)
-      .set({
-        name,
-        // Edit Leave Type Code (a7194511): the validated new code (only present when it actually changed for a
-        // non-locked type). All downstream relations key on leave_type_id, so nothing detaches.
-        ...codeSet,
-        ...(touchEligibility ? { eligibility: nextEligibility } : {}),
-        ...probationSet,
-        ...(touchDurations ? { durations: nextDurations } : {}),
-        ...docSet,
-        ...requestRuleSet,
-        ...partialSet,
-        ...descriptionSet,
-        ...visualSet,
-        ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
-        ...paidSet,
-        ...duplicatePolicySet,
-        ...negativeBalanceSet,
-        ...(touchBalanceSource ? { balanceSourceTypeId: p.balanceSourceTypeId ?? null } : {}),
-        ...allowUplSet,
-        ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
-        ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
-        ...(touchFormulaExplanations ? { formulaExplanations: nextFormulaExplanations } : {}),
-        ...dayTypeInclusionSet,
-        ...overrideRulesSet,
-        ...leaveUnitSet,
-        ...yearCycleSet,
-        ...visibleToEmployeeSet,
-        ...employeeCanApplySet,
-        // Leave grouping visibility (b653ac1b): the stored placement column + the shared visibility flag it
-        // drives (Hidden ⇒ flag false). Spread AFTER visibleToEmployeeSet so, in the (mutually-exclusive by
-        // marker) case both were somehow forwarded, the placement decision is authoritative.
-        ...placementColSet,
-        ...placementVisibilitySet,
-        // r299 (3de1453a): the Annual Leave switch's patch — empty unless the role actually moves.
-        ...roleSet,
-        // r301 (83511d3b): the Cancel Approved Leave card — empty unless that card saved.
-        ...cancelApprovedSet,
-      })
+    // Bulk-job conversion (drafts 5033/5036): a web save moving the type TO Anniversary-to-Calendar does not
+    // change year_cycle_override here. It admits the background A2C job and names it on the type; the job's
+    // release sets the override and makes every staged correction visible in ONE transaction, so readers see the
+    // old type with the old figures until then and the new type with the corrected figures after. Any other
+    // Leave Year Type save clears a waiting job (it is superseded and releases nothing).
+    const deferredA2cJobId =
+      touchYearCycle && p.a2cInBackground && ctx.userId &&
+      (p.yearCycleOverride ?? null) === A2C_OVERRIDE && (before?.yearCycleOverride ?? null) !== A2C_OVERRIDE
+        ? (await enqueueLeaveA2cJobTx(tx, ctx, { leaveTypeId: p.id, asOf: p.asOf ?? todayInKualaLumpur(), trigger: 'year_cycle_override', yearCycleOverride: A2C_OVERRIDE })).id
+        : null;
+    const leaveTypeUpdate = tx.update(leaveType);
+    type LeaveTypeUpdateValues = Parameters<typeof leaveTypeUpdate.set>[0];
+    const leaveTypeUpdateValues: LeaveTypeUpdateValues = { name };
+    // Check each patch against the native writer without inferring their exponential spread union.
+    const mergeLeaveTypeUpdateValues = (patch: LeaveTypeUpdateValues): void => {
+      Object.assign(leaveTypeUpdateValues, patch);
+    };
+    // Edit Leave Type Code (a7194511): the validated new code (only present when it actually changed for a
+    // non-locked type). All downstream relations key on leave_type_id, so nothing detaches.
+    mergeLeaveTypeUpdateValues(codeSet);
+    mergeLeaveTypeUpdateValues((touchEligibility ? { eligibility: nextEligibility } : {}));
+    mergeLeaveTypeUpdateValues(probationSet);
+    mergeLeaveTypeUpdateValues((touchDurations ? { durations: nextDurations } : {}));
+    mergeLeaveTypeUpdateValues(docSet);
+    mergeLeaveTypeUpdateValues(requestRuleSet);
+    mergeLeaveTypeUpdateValues(partialSet);
+    mergeLeaveTypeUpdateValues(descriptionSet);
+    mergeLeaveTypeUpdateValues(visualSet);
+    mergeLeaveTypeUpdateValues((touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}));
+    mergeLeaveTypeUpdateValues(paidSet);
+    mergeLeaveTypeUpdateValues(duplicatePolicySet);
+    mergeLeaveTypeUpdateValues(negativeBalanceSet);
+    mergeLeaveTypeUpdateValues((touchBalanceSource ? { balanceSourceTypeId: p.balanceSourceTypeId ?? null } : {}));
+    mergeLeaveTypeUpdateValues(allowUplSet);
+    mergeLeaveTypeUpdateValues((touchCustomMessages ? { customMessages: nextCustomMessages } : {}));
+    mergeLeaveTypeUpdateValues((touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}));
+    mergeLeaveTypeUpdateValues((touchFormulaExplanations ? { formulaExplanations: nextFormulaExplanations } : {}));
+    mergeLeaveTypeUpdateValues(dayTypeInclusionSet);
+    mergeLeaveTypeUpdateValues(overrideRulesSet);
+    mergeLeaveTypeUpdateValues(leaveUnitSet);
+    mergeLeaveTypeUpdateValues((deferredA2cJobId ? { pendingYearCycleJobId: deferredA2cJobId } : touchYearCycle ? { ...yearCycleSet, pendingYearCycleJobId: null } : {}));
+    mergeLeaveTypeUpdateValues(visibleToEmployeeSet);
+    mergeLeaveTypeUpdateValues(employeeCanApplySet);
+    // Leave grouping visibility (b653ac1b): the stored placement column + the shared visibility flag it
+    // drives (Hidden ⇒ flag false). Spread AFTER visibleToEmployeeSet so, in the (mutually-exclusive by
+    // marker) case both were somehow forwarded, the placement decision is authoritative.
+    mergeLeaveTypeUpdateValues(placementColSet);
+    mergeLeaveTypeUpdateValues(placementVisibilitySet);
+    // r299 (3de1453a): the Annual Leave switch's patch — empty unless the role actually moves.
+    mergeLeaveTypeUpdateValues(roleSet);
+    // r301 (83511d3b): the Cancel Approved Leave card — empty unless that card saved.
+    mergeLeaveTypeUpdateValues(cancelApprovedSet);
+    await leaveTypeUpdate
+      .set(leaveTypeUpdateValues)
       .where(eq(leaveType.id, p.id))
       // Edit Leave Type Code (a7194511): DB backstop — the migration 0031 partial unique index on
       // (tenant_id, lower(code)) WHERE archived_at IS NULL is the last line of defence against a duplicate code
@@ -4285,16 +4313,20 @@ export async function updateLeaveType(
     // accrual-class rows so YTD Entitled moves, plus the compensating reversal so Balance/Available agree.
     // Idempotent, so a re-save of the same value writes nothing. A move AWAY from a2c is a no-op inside the
     // helper (the type is no longer a2c) — the ordinary calendar engines own it from the next year-open.
+    //
+    // Bulk-job conversion (draft 5033): for a signed-in administrator the correction no longer runs inside this
+    // transaction (it held the tenant's locks over every live employee of the type). The background A2C job is
+    // admitted HERE, in the same transaction, so it exists exactly when this save commits; its batches stage their
+    // rows and one short release makes the whole correction visible at once (core/leave-follow-up-worker.ts).
+    // A move AWAY from a2c stays a provable no-op. Other callers (no signed-in user, scripts, tests of this
+    // service) keep the inline correction.
     if (
       touchYearCycle &&
       (p.yearCycleOverride ?? null) !== (before?.yearCycleOverride ?? null) &&
       ((p.yearCycleOverride ?? null) === A2C_OVERRIDE || (before?.yearCycleOverride ?? null) === A2C_OVERRIDE)
     ) {
-      await reprojectA2cEntitlement(tx, ctx, {
-        leaveTypeId: p.id,
-        asOf: p.asOf ?? todayInKualaLumpur(),
-        trigger: 'year_cycle_override',
-      });
+      // Inline for every other caller; a move AWAY from a2c is a no-op inside the helper.
+      if (!deferredA2cJobId) await reprojectA2cEntitlement(tx, ctx, { leaveTypeId: p.id, asOf: p.asOf ?? todayInKualaLumpur(), trigger: 'year_cycle_override' });
     }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -4359,7 +4391,8 @@ export async function updateLeaveType(
           ...(touchDayTypeInclusion ? { dayTypeInclusion: before?.dayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: before?.color ?? null, icon: before?.icon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: before?.leaveUnit ?? null } : {}),
-          ...(touchYearCycle ? { yearCycleOverride: before?.yearCycleOverride ?? null } : {}),
+          // A deferred move to a2c is recorded by the A2C job's release, with the change itself.
+          ...(touchYearCycle && !deferredA2cJobId ? { yearCycleOverride: before?.yearCycleOverride ?? null } : {}),
           ...(touchProbation ? { probationEligibility: before?.probationEligibility ?? null } : {}),
           ...(touchVisibleToEmployee ? { visibleToEmployee: before?.visibleToEmployee ?? null } : {}),
           ...(touchEmployeeCanApply ? { employeeCanApply: before?.employeeCanApply ?? null } : {}),
@@ -4440,7 +4473,7 @@ export async function updateLeaveType(
           ...(touchDayTypeInclusion ? { dayTypeInclusion: nextDayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: p.leaveUnit ?? before?.leaveUnit ?? null } : {}),
-          ...(touchYearCycle ? { yearCycleOverride: p.yearCycleOverride ?? null } : {}),
+          ...(touchYearCycle && !deferredA2cJobId ? { yearCycleOverride: p.yearCycleOverride ?? null } : {}),
           ...(touchProbation ? { probationEligibility: p.probationEligibility ?? null } : {}),
           ...(touchVisibleToEmployee ? { visibleToEmployee: p.visibleToEmployee ?? null } : {}),
           ...(touchEmployeeCanApply ? { employeeCanApply: p.employeeCanApply ?? null } : {}),
@@ -5047,7 +5080,7 @@ export async function updateCompany(
   };
   const nextCore = { legalName, registrationNo: p.registrationNo?.trim() || null, country, currency };
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // F7, the other half. createCompany gained requirePackFor above, but EDIT is the easier route into
     // the same state: the add-company form is a free-text 2-letter box, while the company panel renders
@@ -5105,7 +5138,7 @@ export async function setCompanyLeaveCycle(ctx: SessionContext, p: { companyId: 
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const cycle = p.cycle === 'anniversary' ? 'anniversary' : 'calendar';
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx.update(company).set({ leaveCycle: cycle }).where(eq(company.id, p.companyId));
     await appendEvent(tx, {
@@ -5125,7 +5158,7 @@ export async function setCompanyLeaveCycle(ctx: SessionContext, p: { companyId: 
 export async function setLeaveHalfDayFullDeduction(ctx: SessionContext, p: { companyId: string; enabled: boolean }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({ enabled: company.leaveHalfDayFullDeduction })
@@ -5176,7 +5209,7 @@ export async function setLeaveHalfDayFullDeductionCompanies(
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const wanted = new Set(p.companyIds);
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const candidates = await tx
       .select({ id: company.id, enabled: company.leaveHalfDayFullDeduction })
@@ -5303,7 +5336,7 @@ export async function getCompanyLogo(
 export function archiveCompany(ctx: SessionContext, p: { id: string; archived: boolean }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx.update(company).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(company.id, p.id));
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'company', aggregateId: p.id, eventType: p.archived ? 'company.archived' : 'company.unarchived', actor: actorOf(ctx), payload: {} });
@@ -5373,7 +5406,7 @@ export class CompanyNotFoundError extends Error {
 export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const rows = (await tx.execute(sql`
       select company.legal_name as "legalName", company.company_label as "code",

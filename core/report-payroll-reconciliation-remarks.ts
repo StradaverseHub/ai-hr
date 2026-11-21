@@ -19,8 +19,7 @@ function keys(run: PayrollComparisonExecution, row: ComparisonRow) {
 }
 
 export function builtInPayrollReconciliationSpec(payItemCode: unknown) {
-  return payrollComparisonSpec(payItemCode === undefined ? undefined
-    : validatePayrollComparisonDefinition({ ...DEFAULT_PAYROLL_COMPARISON, payItemCode }));
+  return payrollComparisonSpec(validatePayrollComparisonDefinition({...DEFAULT_PAYROLL_COMPARISON,runType:'all',minVariance:'0.00',onlyVariances:false,payItemCode:payItemCode??'@total/netPay'}));
 }
 
 export async function attachPayrollReconciliationRemarks(tx: Tx, ctx: SessionContext, run: PayrollComparisonExecution) {
@@ -52,11 +51,11 @@ export async function savePayrollReconciliationRemark(ctx: SessionContext, scope
   if (!ctx.userId || !scope.includes(input.companyId) || !uuid.test(input.employmentId) ||
     !Number.isSafeInteger(input.revision) || input.revision < 0 || input.revision >= 2147483647 || input.body.length > 1000)
     throw new MasterReportAccessError();
-  const { payItemCode, ...filters } = input.filters;
+  const { payItemCode, returnQuery:_returnQuery, ...filters } = input.filters;
   const spec = builtInPayrollReconciliationSpec(payItemCode);
   await withTenant(ctx, async tx => {
     await payrollComparisonAccessTx(tx, ctx, spec, 'edit', [input.companyId]);
-    const run = await executePayrollComparisonTx(tx, ctx, spec, scope, filters, 'view');
+    const run = await executePayrollComparisonTx(tx, ctx, spec, scope, filters, 'view', { readyCompanies: true });
     const row = run.result.available && run.result.rows.find(row => row.companyId === input.companyId &&
       row.employmentId === input.employmentId && row.currency === input.currency && row.payItemCode === input.rowPayItem);
     if (!row) throw new MasterReportAccessError();

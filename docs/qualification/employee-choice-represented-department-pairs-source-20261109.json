@@ -1,0 +1,37 @@
+{
+  "kind": "EMPLOYEE_CHOICE_REPRESENTED_DEPARTMENT_PAIRS_SOURCE_ONLY",
+  "releaseEligible": false,
+  "parent": "de90194466ac83509b99d7445962dc6faa5b796e",
+  "priorTerminalRun": 42553305798,
+  "priorTerminalOutcome": "FAILED_MATCHED_AND_RESTORATION_REFUSAL_BEFORE_FINAL_BASELINE_WITH_MANDATORY_OWNED_STOP",
+  "priorArtifact": 13646865497,
+  "priorArtifactSha256": "6a7c2b683a447f06e0254c184e16b6dcfdd5435ba62336b837f79e293f598c01",
+  "earlierNativeNegatives": [42390546115, 42392436988],
+  "productReader": "unchanged",
+  "nativeCourse": {
+    "scaleSelection": ["test/employee-choice-unicode-scale.test.ts"],
+    "paritySelection": ["test/employee-choice-db.test.ts"],
+    "separateSelections": true,
+    "originalEmployees": 50000,
+    "originalUnicodeReads": 4,
+    "originalStatementPositions": 305,
+    "caseTimeoutMs": 300000,
+    "originalReadStatementTimeoutMs": 20000,
+    "matchedStatementTimeoutMs": 3000,
+    "stressStatementTimeoutMs": 1000,
+    "lockTimeoutMs": 300,
+    "extraActiveCeilingMs": 30000,
+    "cleanupReserveMs": 10000,
+    "stressLimitsMs": {"wholeRead": 6000, "department": 1250, "explainExecution": 1000},
+    "comparison": ["A0", "B0", "B1", "A1"],
+    "sparseMaximumSuppliedIds": 25,
+    "catalogueDriftRefusesComparison": true,
+    "indexOrSchemaChanges": false
+  },
+  "unobserved": [
+    "hosted native candidate and parity execution",
+    "two-department candidate timing",
+    "production crossover and whole-port acceptance"
+  ],
+  "nativeOutcome": "PENDING"
+}

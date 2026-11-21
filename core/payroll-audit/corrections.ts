@@ -19,19 +19,33 @@ export type PostRunCorrection=Readonly<{correctionKey:string;batchId:string;runT
 
 /** The corrections of one company and month, each with its latest root cause, oldest first. */
 export async function postRunCorrectionsTx(tx:Tx,tenantId:string,p:Readonly<{companyId:string;payPeriod:string}>):Promise<PostRunCorrection[]>{
- const history=Array.from(await tx.execute(sql`select h.id,h.batch_id,h.action,h.created_at,h.actor_id,h.reason,b.run_type,b.run_seq from public.payroll_status_history h
-  join public.payroll_batch b on b.id=h.batch_id where b.tenant_id=${tenantId}::uuid and b.company_id=${p.companyId}::uuid and b.pay_period=${p.payPeriod}
-  and h.action in ('unlock','rollback') order by h.created_at,h.id`) as unknown as {id:string;batch_id:string;action:'unlock'|'rollback';created_at:string|Date;actor_id:string|null;
-  reason:string|null;run_type:string;run_seq:number}[]);
+ return (await postRunCorrectionsByCompanyTx(tx,tenantId,[p.companyId],p.payPeriod)).get(p.companyId)!;
+}
+
+/** postRunCorrectionsTx for many companies of one month in two statements, whatever the number of companies: each
+ * company's corrections, each with its latest root cause (a cause counts only for its own company), oldest first. */
+export async function postRunCorrectionsByCompanyTx(tx:Tx,tenantId:string,companyIds:readonly string[],payPeriod:string):Promise<Map<string,PostRunCorrection[]>>{
+ // Keyed as the database returns a uuid (lower case), whatever the caller's spelling.
+ const lists=new Map(companyIds.map(companyId=>[companyId.toLowerCase(),[] as PostRunCorrection[]]));
+ const out=new Map(companyIds.map(companyId=>[companyId,lists.get(companyId.toLowerCase())!]));
+ if(!companyIds.length)return out;
+ const history=Array.from(await tx.execute(sql`select h.id,h.batch_id,b.company_id,h.action,h.created_at,h.actor_id,h.reason,b.run_type,b.run_seq from public.payroll_status_history h
+  join public.payroll_batch b on b.id=h.batch_id where b.tenant_id=${tenantId}::uuid and b.company_id in (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)})
+  and b.pay_period=${payPeriod} and h.action in ('unlock','rollback') order by h.created_at,h.id`) as unknown as {id:string;batch_id:string;company_id:string;
+  action:'unlock'|'rollback';created_at:string|Date;actor_id:string|null;reason:string|null;run_type:string;run_seq:number}[]);
  const keys=history.map(row=>'status:'+row.id);
  const causes=keys.length?await tx.select().from(payrollAuditCorrectionCause).where(and(eq(payrollAuditCorrectionCause.tenantId,tenantId),
-  eq(payrollAuditCorrectionCause.companyId,p.companyId),inArray(payrollAuditCorrectionCause.correctionKey,keys)))
+  inArray(payrollAuditCorrectionCause.companyId,[...companyIds]),inArray(payrollAuditCorrectionCause.correctionKey,keys)))
   .orderBy(desc(payrollAuditCorrectionCause.recordedAt),desc(payrollAuditCorrectionCause.id)):[];
  const latest=new Map<string,(typeof causes)[number]>();
- for(const cause of causes)if(!latest.has(cause.correctionKey))latest.set(cause.correctionKey,cause);
- return history.map(row=>{const key='status:'+row.id,cause=latest.get(key);return Object.freeze({correctionKey:key,batchId:row.batch_id,runType:row.run_type,
-  runSeq:Number(row.run_seq),action:row.action,at:new Date(String(row.created_at)),actorId:row.actor_id,reason:row.reason?.trim()||null,rootCause:cause?.rootCause??null,
-  note:cause?.note??null,recordedBy:cause?.recordedByUserId??null,recordedAt:cause?.recordedAt??null});});
+ for(const cause of causes){const at=cause.companyId.toLowerCase()+'\u0000'+cause.correctionKey;if(!latest.has(at))latest.set(at,cause);}
+ for(const row of history){
+  const key='status:'+row.id,cause=latest.get(String(row.company_id).toLowerCase()+'\u0000'+key);
+  lists.get(String(row.company_id).toLowerCase())?.push(Object.freeze({correctionKey:key,batchId:row.batch_id,runType:row.run_type,
+   runSeq:Number(row.run_seq),action:row.action,at:new Date(String(row.created_at)),actorId:row.actor_id,reason:row.reason?.trim()||null,rootCause:cause?.rootCause??null,
+   note:cause?.note??null,recordedBy:cause?.recordedByUserId??null,recordedAt:cause?.recordedAt??null}));
+ }
+ return out;
 }
 
 /** A payroll administrator of the run's company states the root cause of one correction. */

@@ -1,5 +1,5 @@
-import {beforeAll,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
+import {beforeAll,beforeEach,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 import {readFileSync} from 'node:fs';
@@ -9,18 +9,67 @@ import {OnboardingCaseView} from '../app/lifecycle/onboarding/case-view';
 import {NativeCaseDocuments} from '../app/lifecycle/v9/native-case-documents';
 import {defaultV9CaseFields} from '../lib/lifecycle-v9-case-form';
 import {fictionalV9Case,fictionalV9Task} from './fixtures/lifecycle-v9/case';
+import type {Config} from '../lib/lifecycle-v9-model';
+import {readV9Case} from '../app/lifecycle/v9/actions';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {OffboardingCaseView,caseTasksByDue} from '../app/lifecycle/v9/offboarding-case-view';
+const communicationActions=vi.hoisted(()=>({
+ loadResignationCommunications:vi.fn<typeof import('../app/resignation/actions').loadResignationCommunications>(),
+ testResignationMessage:vi.fn<typeof import('../app/resignation/actions').testResignationMessage>(),
+ editResignationMessage:vi.fn<typeof import('../app/resignation/actions').editResignationMessage>(),
+}));
+vi.mock('../app/resignation/actions',()=>communicationActions);
+vi.mock('../components/resignation/offboarding-documents',()=>({ResignationOffboardingDocuments:({offboardingCaseId}:{offboardingCaseId:string})=><div role="region" aria-label="Linked resignation acceptance letters" data-offboarding-id={offboardingCaseId}/> }));
 vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),writeOnboardingNote:vi.fn(),markOnboardingSeen:vi.fn().mockResolvedValue(undefined)}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../app/lifecycle/v9/actions',()=>({readV9PersonnelPreview:vi.fn().mockResolvedValue({ok:true,values:{}}),commandV9:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Salary source unavailable'}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn()}));
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};});
-function fixture(state:'submitted'|'cleared'|'cancelled'|'pending'='submitted',locale='en'){
+beforeEach(()=>{
+ communicationActions.loadResignationCommunications.mockReset().mockResolvedValue({ok:true,value:{caseId:'managed-resignation',revision:1,items:[]}});
+ communicationActions.testResignationMessage.mockReset();
+ communicationActions.editResignationMessage.mockReset();
+});
+function fixture(state:'submitted'|'cleared'|'cancelled'|'pending'='submitted',locale='en',managed=false,options?:{scope?:{ownedTemplateIds:string[];configurationWarnings:string[]};config?:Config;canConfigure?:boolean;withFailedMail?:boolean}){
  const c=fictionalV9Case({state,tasks:[{...fictionalV9Task('Later task'),assignee:'recorded-owner',dueOn:'2026-12-02'},{...fictionalV9Task('Document task'),documentTemplate:'document',dueOn:'2026-11-28'},fictionalV9Task('Earlier task')],items:[{id:'item',name:'Fictional laptop',kind:'device',sourceId:null,group:null,assignee:null,dueOn:'2026-11-30',status:'todo',reason:'',returnReported:{at:'2026-11-01T00:00:00Z',by:'employee',note:'Reception receipt'},nativeSource:{caseId:'native-case',requestId:'request',itemId:'native-item',requestNumber:'IT-FICTIONAL'}}]});
+ if(managed)Object.assign(c,{resignationSourceCaseId:'managed-resignation'});
+ if(options?.withFailedMail)c.mails.push({id:'failed-mail',key:'legacy-failed',workflowId:'legacy-workflow',templateId:'email-legacy',to:['fictional-employee'],cc:[],subject:'Recorded legacy email',body:'Historical message',documentIds:[],fileIds:[],status:'failed',test:false,at:'2026-11-01T00:00:00Z',deliveredAt:null,failure:'smtpTemporary'});
+ if(options)vi.mocked(readV9Case).mockResolvedValueOnce({ok:true,detail:{case:c,calculation:null,personnelWritableKeys:[],...(options.scope?{resignationDocuments:options.scope}:{})}});
  const command=vi.fn().mockResolvedValue({ok:false,error:'Refresh your case.'}),onReason=vi.fn();
- const view=render(<NextIntlClientProvider locale={locale} messages={locale==='en'?messages:JSON.parse(readFileSync(`messages/${locale}.json`,'utf8'))}><div className="v9-workspace v9-workspace-global"><OffboardingCaseView c={c} config={v9Defaults()} users={[{id:'recorded-owner',name:'Recorded owner'}]} actor={{id:'hr',name:'Fictional HR'}} personnelWritableKeys={[]} busy={false} command={command} onDocument={vi.fn()} onReason={onReason} onOpenWorkflow={vi.fn()} onBack={vi.fn()} today="2026-11-02"/></div></NextIntlClientProvider>);
+ const view=render(<NextIntlClientProvider locale={locale} messages={locale==='en'?messages:JSON.parse(readFileSync(`messages/${locale}.json`,'utf8'))}><div className="v9-workspace v9-workspace-global"><OffboardingCaseView c={c} canConfigure={options?.canConfigure} config={options?.config??v9Defaults()} users={[{id:'recorded-owner',name:'Recorded owner'}]} actor={{id:'hr',name:'Fictional HR'}} personnelWritableKeys={[]} busy={false} command={command} onDocument={vi.fn()} onReason={onReason} onOpenWorkflow={vi.fn()} onBack={vi.fn()} today="2026-11-02"/></div></NextIntlClientProvider>);
  return {c,command,onReason,...view};
 }
+it('links managed acceptance letters inside the existing Documents section without copying them into the V9 case',async()=>{
+ const {c}=fixture('submitted','en',true),documents=screen.getByRole('heading',{name:'Documents'}).closest('section')!;
+ expect(await within(documents).findByRole('region',{name:'Linked resignation acceptance letters'})).toHaveAttribute('data-offboarding-id',c.id);expect(c.documents).toEqual([]);expect(within(documents).queryByText('Documents appear when their workflow runs.')).not.toBeInTheDocument();
+ cleanup();fixture();expect(screen.queryByRole('region',{name:'Linked resignation acceptance letters'})).not.toBeInTheDocument();
+});
+it('uses the verified managed scope to hide legacy communications, preserve clearance work and exclude journey-owned templates',async()=>{
+ const config=v9Defaults(),source=config.templates.find(template=>template.module==='off')!;config.templates=[{...structuredClone(source),id:'document',name:'Journey-owned acceptance',rules:{},versions:[{version:1,state:'published',at:'2026-11-01T00:00:00Z',by:'hr',fields:[],blocks:[]}],currentVersion:1},{...structuredClone(source),id:'clearance-form',name:'Unrelated clearance form',type:'Form',rules:{},versions:[{version:1,state:'published',at:'2026-11-01T00:00:00Z',by:'hr',fields:[],blocks:[]}],currentVersion:1}];
+ config.workflows=[{id:'legacy-workflow',module:'off',name:'Legacy case messages',status:'published',description:'',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'email-step',type:'notify',to:'employee',cc:[],subject:'Legacy message',body:''}]}];
+ vi.mocked(readV9Case).mockClear();const {c,command}=fixture('submitted','en',true,{scope:{ownedTemplateIds:['document'],configurationWarnings:['Authoritative checklist conflict']},config,canConfigure:true,withFailedMail:true});
+ const communications=within((await screen.findByRole('heading',{name:'Case communications'})).closest('section')!);
+ expect(screen.getByRole('heading',{name:'Shared journey communications'})).toBeInTheDocument();expect(readV9Case).toHaveBeenCalledTimes(1);
+ expect(communicationActions.loadResignationCommunications).toHaveBeenCalledExactlyOnceWith({caseId:undefined,offboardingCaseId:c.id});
+ fireEvent.click(communications.getByRole('button',{name:'Reload messages'}));
+ await waitFor(()=>expect(communicationActions.loadResignationCommunications).toHaveBeenCalledTimes(2));
+ expect(communicationActions.loadResignationCommunications).toHaveBeenNthCalledWith(2,{caseId:undefined,offboardingCaseId:c.id});
+ expect(screen.getByRole('link',{name:'Open shared Configuration'})).toHaveAttribute('href','/automation/workflows?module=off');expect(screen.getByText('The resignation journey handles this case’s letters, emails and communication workflows. Clearance tasks and return items continue here.')).toBeInTheDocument();
+ expect(screen.queryByRole('heading',{name:'Workflows'})).not.toBeInTheDocument();expect(screen.queryByRole('heading',{name:'Emails for this person'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:/Start now Legacy case messages/})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByText('Review delivery'));expect(screen.queryByRole('button',{name:'Queue retry'})).not.toBeInTheDocument();
+ expect(screen.getByRole('heading',{name:'Offboarding checklist'})).toBeInTheDocument();expect(screen.getByRole('table',{name:'Return and revoke'})).toBeInTheDocument();expect(screen.getByRole('checkbox',{name:'Mark task done Document task'})).toBeDisabled();expect(screen.getByText('The document for “Document task” belongs to the resignation journey. HR must update this checklist requirement before clearance.')).toBeInTheDocument();expect(c.tasks.find(task=>task.id==='Document task')?.status).toBe('todo');
+ const picker=screen.getByLabelText('Additional clearance form');expect(within(picker).queryByRole('option',{name:'Journey-owned acceptance'})).not.toBeInTheDocument();expect(within(picker).getByRole('option',{name:'Unrelated clearance form'})).toHaveValue('clearance-form');fireEvent.change(picker,{target:{value:'clearance-form'}});fireEvent.submit(screen.getByRole('button',{name:'Generate clearance form'}).closest('form')!);expect(command).toHaveBeenCalledWith({type:'generate',template:'clearance-form'});
+});
+it('keeps managed communications available without granting shared Configuration navigation',async()=>{
+ const {c}=fixture('submitted','en',true,{scope:{ownedTemplateIds:[],configurationWarnings:[]},canConfigure:false});
+ expect(await screen.findByRole('heading',{name:'Case communications'})).toBeInTheDocument();
+ expect(screen.getByRole('heading',{name:'Shared journey communications'})).toBeInTheDocument();
+ expect(screen.getByText('The resignation journey handles this case’s letters, emails and communication workflows. Clearance tasks and return items continue here.')).toBeInTheDocument();
+ expect(screen.queryByRole('link',{name:'Open shared Configuration'})).not.toBeInTheDocument();
+ expect(communicationActions.loadResignationCommunications).toHaveBeenCalledExactlyOnceWith({caseId:undefined,offboardingCaseId:c.id});
+});
+it('does not infer managed communication policy from the JSON source hint without verified scope',async()=>{
+ fixture('submitted','en',true,{withFailedMail:true});expect(await screen.findByRole('heading',{name:'Emails for this person'})).toBeInTheDocument();expect(screen.getByRole('heading',{name:'Workflows'})).toBeInTheDocument();expect(screen.queryByRole('heading',{name:'Shared journey communications'})).not.toBeInTheDocument();expect(screen.queryByRole('heading',{name:'Case communications'})).not.toBeInTheDocument();expect(screen.queryByRole('link',{name:'Open shared Configuration'})).not.toBeInTheDocument();expect(communicationActions.loadResignationCommunications).not.toHaveBeenCalled();expect(screen.queryByLabelText('Additional clearance form')).not.toBeInTheDocument();fireEvent.click(screen.getByText('Review delivery'));expect(screen.getByRole('button',{name:'Queue retry'})).toBeDisabled();
+});
 it('sorts only the visible tasks and preserves document completion, return provenance and rejected actions',async()=>{
  const {c,command,onReason,container}=fixture();
  const source=JSON.stringify(c);
@@ -34,7 +83,7 @@ it('sorts only the visible tasks and preserves document completion, return prove
  const table=within(screen.getByRole('table',{name:'Return and revoke'}));
  expect(table.getByRole('link',{name:/IT-FICTIONAL/})).toHaveAttribute('href','/lifecycle/requisitions/onboarding/native-case');
  expect(table.getByText(/Reception receipt/)).toHaveTextContent('Waiting for the providing team to confirm.');
- expect(screen.getByRole('heading',{name:'Sent emails'}).closest('section')).toHaveClass('lifecycle-case-section');
+ expect(screen.getByRole('tab',{name:/Sent log/})).toBeVisible();expect(screen.getByRole('region',{name:'Communications & documents'})).toBeVisible();
  expect(screen.queryByRole('heading',{name:'Notes'})).not.toBeInTheDocument();
  const details=screen.getByRole('heading',{name:'Case details'}).closest('section')!;
  expect(within(details.nextElementSibling as HTMLElement).getByRole('heading',{name:'Offboarding checklist'})).toBeVisible();
@@ -83,4 +132,16 @@ it('keeps old offboarding case notes inside details without a case-level editor'
  expect(details.getByText('Historical case note')).toBeVisible();
  expect(details.queryByRole('button',{name:'Edit note'})).not.toBeInTheDocument();
  expect(screen.queryByRole('heading',{name:'Notes'})).not.toBeInTheDocument();
+});
+
+it('shows the current tenant label for a retained inactive Contract handoff and preserves its date warning and manual termination guidance',()=>{
+ const code='custom_fictional_work_pass',c=fictionalV9Case({contractSharedSourceCaseId:'fictional-contract-case',contractSharedTerminationReason:code,contractSharedNoticeReviewRequired:true});
+ const source=JSON.stringify(c);
+ render(<NextIntlClientProvider locale="en" messages={messages}><OffboardingCaseView c={c} config={v9Defaults()} users={[]} terminationReasonLabels={[{code,label:'Fictional current work-pass reason'}]} actor={{id:'hr',name:'Fictional HR'}} personnelWritableKeys={[]} busy={false} command={vi.fn()} onDocument={vi.fn()} onReason={vi.fn()} onOpenWorkflow={vi.fn()} onBack={vi.fn()}/></NextIntlClientProvider>);
+ expect(screen.getByText(/Reason: Fictional current work-pass reason/)).toBeVisible();
+ expect(screen.getByText(/Access revocation date/)).toBeVisible();
+ expect(screen.queryByText(/Access revoked/)).not.toBeInTheDocument();
+ expect(screen.getByText('Needs HR review')).toBeVisible();
+ expect(screen.getByText(/People Ops records termination manually/)).toBeVisible();
+ expect(screen.queryByText(code)).not.toBeInTheDocument();expect(JSON.stringify(c)).toBe(source);
 });

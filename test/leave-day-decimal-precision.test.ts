@@ -302,7 +302,7 @@ describe('4a1abc4a · ONE formatter, and it stays one', () => {
     '/components/leave/leave-request-cells.tsx',
     '/components/leave/leave-history-cards.tsx',
     '/components/leave/entitlement-bands-editor.tsx',
-    '/components/leave-balance-card.tsx',
+    // The old dashboard's leave balance card (components/leave-balance-card.tsx) was retired with it on 12 Nov 2026.
     // a6fe37fc Round 5 — `/components/leave-type-panel.tsx` stood here and was deleted with its page.
     // The day figures it rendered (the rounding-band editor, the carry/expiry fields) are in the sub-forms
     // file; `leave-type-tabs.tsx` composes them and renders no day count of its own, so listing it would
@@ -388,10 +388,9 @@ describe('4a1abc4a · the two day SENTENCES print the same figure as the tables'
     });
 
   it('print exactly two decimals, in every locale', () => {
-    // The reported fault: the dashboard said "12.5 days remaining" while the balance grid said "12.50".
+    // The reported fault: the dashboard said "12.5 days remaining" while the balance grid said "12.50". That card was
+    // retired with the old dashboard (12 Nov 2026); the leave duration sentence keeps the rule.
     for (const loc of LOCALES) {
-      expect(say(loc, 'dashboard', 'daysRemaining', 12.5), loc).toContain('12.50');
-      expect(say(loc, 'dashboard', 'daysRemaining', 12), loc).toContain('12.00');
       expect(say(loc, 'leave', 'durationLine', 1), loc).toContain('1.00');
     }
   });
@@ -411,9 +410,6 @@ describe('4a1abc4a · the two day SENTENCES print the same figure as the tables'
     expect(dayPluralCategory(1, 'en')).toBe('other');
     expect(dayPluralCategory(2, 'ta')).toBe('other');
 
-    expect(say('en', 'dashboard', 'daysRemaining', 1)).toBe('1.00 days remaining');
-    expect(say('ta', 'dashboard', 'daysRemaining', 1)).toContain('நாள்');
-    expect(say('ta', 'dashboard', 'daysRemaining', 2)).toContain('நாட்கள்');
     expect(say('ta', 'leave', 'durationLine', 1)).toContain('நாள்');
     expect(say('ta', 'leave', 'durationLine', 2)).toContain('நாட்கள்');
   });
@@ -424,7 +420,6 @@ describe('4a1abc4a · the two day SENTENCES print the same figure as the tables'
     for (const loc of LOCALES) {
       const c = catalog(loc);
       for (const [label, msg] of [
-        [`${loc} dashboard.daysRemaining`, c.dashboard.daysRemaining as string],
         [`${loc} leave.durationLine`, c.leave.durationLine as string],
       ] as const) {
         expect(msg, `${label} must print the pre-formatted value`).toContain('{v}');
@@ -434,7 +429,7 @@ describe('4a1abc4a · the two day SENTENCES print the same figure as the tables'
   });
 
   it('and their call sites hand them the formatted text AND the category', () => {
-    for (const f of ['/components/leave-balance-card.tsx', '/components/leave/leave-history-cards.tsx'] as const) {
+    for (const f of ['/components/leave/leave-history-cards.tsx'] as const) {
       const src = read(f);
       expect(src, `${f} must print through the shared formatter`).toMatch(/v: formatDays\(/);
       expect(src, `${f} must select the plural at display precision`).toMatch(/cat: dayPluralCategory\(/);

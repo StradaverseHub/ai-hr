@@ -1,3 +1,4 @@
+import {assertAiCentreRunningTx} from '../ai-centre-control';
 /** Payroll history learning, P1 — the learning run: recompute each company's learned baselines.
  *
  * When (the trigger, owner brief of 4 November 2026):
@@ -89,8 +90,9 @@ export async function historyChangedTx(tx:Tx,tenantId:string,companyId:string,si
 }
 
 /** One company's recompute as the sponsor: the counts, or null when the sponsor may no longer learn for it. */
-async function learnCompany(sponsor:SessionContext,companyId:string,componentIds:ReadonlyMap<string,string>):Promise<(LearningRunCounts&{asOf:string|null})|null>{
+async function learnCompany(sponsor:SessionContext,companyId:string,componentIds:ReadonlyMap<string,string>,generation:number):Promise<(LearningRunCounts&{asOf:string|null})|null>{
  return withTenant(sponsor,async tx=>{
+  await assertAiCentreRunningTx(tx,sponsor,generation);
   const [authority]=await tx.execute(sql`select app.principal_snapshot_current() is true and app.can_admin_payroll_for(${companyId}::uuid) is true
    and app.payroll_learning_mode_of(${companyId}::uuid) in ('evidence','classify') as ok`) as unknown as {ok:boolean}[];
   if(authority?.ok!==true)return null;
@@ -156,6 +158,7 @@ export async function runPayrollLearning(options:LearningRunOptions):Promise<Lea
  // The tenant's stop switch halts learning itself (no recompute, no evidence); the purge above has already run.
  if(await withTenant(agent,tx=>tenantStoppedTx(tx,options.tenantId)))
   return Object.freeze({runId,companies:Object.freeze([]),purged:[...purgedBy.values()].reduce((sum,n)=>sum+n,0),stopped:true});
+ const generation=await withTenant(agent,tx=>assertAiCentreRunningTx(tx,agent));
  const payroll=modes.filter(row=>isModuleEnabled(agent,'payroll',row.companyId));
  const on=payroll.filter(row=>row.mode==='evidence'||row.mode==='classify');
  const last=on.length?await withTenant(agent,tx=>lastRunsTx(tx,options.tenantId,on.map(row=>row.companyId))):new Map<string,Date>();
@@ -184,7 +187,7 @@ export async function runPayrollLearning(options:LearningRunOptions):Promise<Lea
     componentIds=new Map((await listPayComponents(sponsor,{includeArchived:true})).map(component=>[component.code,component.id]));
     componentCache.set(sponsor.userId!,componentIds);
    }
-   const counts=await learnCompany(sponsor,row.companyId,componentIds);
+   const counts=await learnCompany(sponsor,row.companyId,componentIds,generation);
    if(!counts){await lost(row.companyId,startedAt,row.setByUserId);continue;}
    const {asOf,...rest}=counts;
    const final=Object.freeze({...rest,purged:purgedBy.get(row.companyId)??0});

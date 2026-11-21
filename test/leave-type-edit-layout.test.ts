@@ -6,10 +6,10 @@
  * oversized, and fields compressed instead of wrapping cleanly.
  *
  * The fix is a pure Tailwind re-layout of the identity edit sub-form into a responsive grid:
- *   - container: grid, 1 col → 2 (sm) → 4 (lg)
+ *   - container: grid, 1 col → 3 (lg) since 73cbffa1 (was 1 → 2 sm → 4 lg)
  *   - every field input goes w-full (no fixed w-40 / w-52 / w-64)
  *   - Description spans the full row and flows fluid (col-span-full + w-full, keeps resize-y)
- *   - Leave Unit and Paid share ONE grid cell (a flex row, 13ec5d3b) so Paid sits immediately beside the
+ *   - Leave Unit and Paid sit in adjacent cells of their own row (13ec5d3b; regridded by 73cbffa1) so Paid sits immediately beside the
  *     unit select instead of wrapping onto an orphaned row
  *   - Save/Cancel live in their own full-width cell
  *
@@ -63,8 +63,9 @@ describe('Leave Type edit form layout (6ef6e355) — responsive grid', () => {
     expect(classMatch, 'form container className present').not.toBeNull();
     const containerClass = classMatch![1];
     expect(containerClass).toMatch(/\bgrid\b/);
-    expect(containerClass).toMatch(/sm:grid-cols-2/);
-    expect(containerClass).toMatch(/lg:grid-cols-4/);
+    // 73cbffa1 — 1 column below lg, 3 at lg: Code · Icon · Colour / Name · Reason / Leave Unit · Paid.
+    expect(containerClass).toMatch(/grid-cols-1/);
+    expect(containerClass).toMatch(/lg:grid-cols-3/);
     expect(containerClass).toMatch(/items-start/);
     // The old squeezed layout must be gone from the actual classes.
     expect(containerClass).not.toMatch(/flex-wrap/);
@@ -97,34 +98,28 @@ describe('Leave Type edit form layout (6ef6e355) — responsive grid', () => {
     void ta;
   });
 
-  it('keeps Leave Unit and Paid together in one cell (13ec5d3b)', () => {
+  it('keeps Paid immediately beside Leave Unit on its own row (13ec5d3b, 73cbffa1)', () => {
+    // 13ec5d3b's point was that Paid must not be orphaned or squeezed between text inputs. 73cbffa1's
+    // 3-column grid gives Leave Unit and Paid adjacent cells of their own row (Leave Unit starts the row).
     const unitLabelIdx = form.indexOf("t('leaveUnitLabel')");
     const paidLabelIdx = form.indexOf("t('paidLabel')");
     const descLabelIdx = form.indexOf("t('descriptionLabel')");
     expect(unitLabelIdx).toBeGreaterThan(-1);
     expect(paidLabelIdx).toBeGreaterThan(-1);
     expect(descLabelIdx).toBeGreaterThan(-1);
-    // The shared-cell wrapper is the flex div immediately preceding the Leave Unit Field. Anchor/order-based
-    // on purpose: the Paid Field nests its own inner div, so slicing wrapper-open → first </div> would cut
-    // BEFORE t('paidLabel') and silently weaken the assertion.
-    const wrapperOpen = form.lastIndexOf('<div', unitLabelIdx);
-    expect(wrapperOpen).toBeGreaterThan(-1);
-    const wrapperTag = form.slice(wrapperOpen, form.indexOf('>', wrapperOpen));
-    // A flex row with a gap; items-end vs items-start is a visual equivalence we deliberately do not pin.
-    expect(wrapperTag).toMatch(/\bflex\b/);
-    expect(wrapperTag).toMatch(/gap-/);
-    // Order: wrapper opens, then Leave Unit, then Paid — both before Description, i.e. inside the same cell.
-    expect(wrapperOpen).toBeLessThan(unitLabelIdx);
+    const unitFieldStart = form.lastIndexOf('<Field', unitLabelIdx);
+    const unitFieldTag = form.slice(unitFieldStart, form.indexOf('>', unitFieldStart));
+    expect(unitFieldTag).toMatch(/lg:col-start-1/);
+    // No other field between Leave Unit and Paid.
+    const between = form.slice(unitLabelIdx, paidLabelIdx);
+    expect(between.match(/<Field/g)?.length ?? 0).toBe(1);
     expect(unitLabelIdx).toBeLessThan(paidLabelIdx);
     expect(paidLabelIdx).toBeLessThan(descLabelIdx);
-    // The old far-right push is gone from the Paid Field tag.
     const paidFieldStart = form.lastIndexOf('<Field', paidLabelIdx);
     const paidFieldTag = form.slice(paidFieldStart, form.indexOf('>', paidFieldStart));
     expect(paidFieldTag).not.toMatch(/justify-self-end/);
-    // Paid must come AFTER the compact text inputs (name, reason) so it is not squeezed between them.
     expect(form.indexOf("t('nameLabel')")).toBeLessThan(paidLabelIdx);
     expect(form.indexOf("t('reasonLabel')")).toBeLessThan(paidLabelIdx);
-    // The Paid checkbox is still the same posted field.
     const paidBlock = form.slice(form.indexOf('type="checkbox"'), form.indexOf('/>', form.indexOf('type="checkbox"')) + 2);
     expect(paidBlock).toMatch(/name="paid"/);
     expect(paidBlock).toMatch(/defaultChecked=\{paid\}/);

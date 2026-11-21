@@ -1,3 +1,4 @@
+import {withAiCentreActivity,assertAiCentreRunningTx} from '../ai-centre-control';
 /** AI v2 P2-2b — one daily run of the Audit loop for one tenant, at the Prepare level (the W8 runner's shape, core/loops/run.ts).
  *
  *  1. Gate, as the tenant's agent principal: the loop is registered, its own switch is on (teras_worker_control
@@ -59,7 +60,11 @@ async function pausedTx(tx:Tx,tenantId:string):Promise<Set<string>>{
  return new Set(rows.map(row=>row.companyId));
 }
 
-export async function runPayrollAuditLoop(options:AuditRunOptions):Promise<AuditRunResult>{
+export async function runPayrollAuditLoop(...args:Parameters<typeof runPayrollAuditLoopActivity>):Promise<Awaited<ReturnType<typeof runPayrollAuditLoopActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreActivity(agentContext(args[0].tenantId,args[0].principalId,args[0].entitlements),()=>runPayrollAuditLoopActivity(...args)).catch(error=>{if(error instanceof Error&&error.name==='AiAllowanceError')return Object.freeze({workerId:'loop_payroll_audit',status:'not_run' as const,reasons:Object.freeze(['stopped'])});throw error;});
+}
+async function runPayrollAuditLoopActivity(options:AuditRunOptions):Promise<AuditRunResult>{
  const workerId=AUDIT_LOOP_ID,today=options.today??todayInKualaLumpur(),runId=randomUUID(),startedAt=new Date();
  const agent=agentContext(options.tenantId,options.principalId,options.entitlements);
  const first=await withTenant(agent,async tx=>{
@@ -101,11 +106,11 @@ export async function runPayrollAuditLoop(options:AuditRunOptions):Promise<Audit
     const p={companyId,payPeriod};
     // Checks first, as the sponsor; their findings are recorded, then captured with the rest of the month's evidence.
     const observations:ControlObservation[]=await withTenant(sponsor,tx=>detectControlFindingsTx(tx,sponsor,p));
-    if(observations.length)opened+=await withTenant(agent,tx=>recordFindingsTx(tx,options.tenantId,{kind:'agent',principalId:options.principalId,runId},observations));
+    if(observations.length)opened+=await withTenant(agent,async tx=>{await assertAiCentreRunningTx(tx,agent);return recordFindingsTx(tx,options.tenantId,{kind:'agent',principalId:options.principalId,runId},observations);});
     const artefacts:AuditArtefact[]=await withTenant(sponsor,tx=>collectPayrollPeriodArtefactsTx(tx,sponsor,p));
     if(!artefacts.some(item=>item.kind==='run'||item.kind==='statutory_file'||item.kind==='bank_file'))continue;
     observed+=artefacts.length;
-    captured+=await withTenant(agent,tx=>appendCapturesTx(tx,options.tenantId,{kind:'agent',principalId:options.principalId,runId},p,artefacts));
+    captured+=await withTenant(agent,async tx=>{await assertAiCentreRunningTx(tx,agent);return appendCapturesTx(tx,options.tenantId,{kind:'agent',principalId:options.principalId,runId},p,artefacts);});
    }
   }catch{status='failed';failed++;}
   findingsOpened+=opened;

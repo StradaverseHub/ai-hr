@@ -1,3 +1,4 @@
+import {attendancePolicyLatenessAfterOffset} from './policy-duration';
 import { organisationChoiceLabels } from '../../lib/organisation-choice-label';
 import {attendancePolicySourceReservationCoverage} from './policy-source-reservation-coverage';
 import {isDeepStrictEqual} from 'node:util';
@@ -18,13 +19,13 @@ import { payComponentReferenceStamp } from '../../lib/pay-component-contract';
  * binds the canonical input reader once; the pure owner alone resolves/evaluates definitions. */
 import {createHash,randomUUID} from 'node:crypto';
 import {lockLeaveDependencyConfigurationTx,LeaveDependencyUnavailable} from '../../core/leave-dependency-lock';
-import {and,asc,desc,eq,gt,gte,inArray,isNull,lt,lte,or,sql,type SQL} from 'drizzle-orm';
+import {and,asc,desc,eq,gt,gte,inArray,isNull,isNotNull,lt,lte,or,sql,type SQL} from 'drizzle-orm';
 import {type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent,appendEvents} from '../../db/events';
 import * as s from '../../db/schema';
 import {assertModuleGate,withAttendanceTenant} from '../../core/module-gate';
 import {provenCompanyDatesTx} from '../../core/employment-company';
-import {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
+import {hasRecordedAttendanceGroupPolicyTx,resolveRecordedAttendanceGroupPolicyFromDayTx} from './policy-selection';
 import type {ResolvedAttendanceGroupPolicy} from '../../core/attendance-group-policy';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import type {RecordedPolicyClockSource} from './policy-clock-input';
@@ -127,6 +128,15 @@ async function validateReferencesTx(tx:Tx,ctx:SessionContext,definition:unknown,
  return digest(stamps);
 }
 async function patternWritable(tx:Tx,ctx:SessionContext,pattern:typeof s.overtimePattern.$inferSelect){if(pattern.kind!=='formula'||!pattern.creationCompanyId)return false;const ids=await tx.select({id:s.overtimePatternVersionCompany.companyId}).from(s.overtimePatternVersionCompany).innerJoin(s.overtimePatternVersion,eq(s.overtimePatternVersion.id,s.overtimePatternVersionCompany.versionId)).where(eq(s.overtimePatternVersion.patternId,pattern.id));try{await administerCompanies(tx,ctx,[pattern.creationCompanyId,...ids.map(row=>row.id)]);return true;}catch(error){if(error instanceof OvertimeOwnerError&&error.code==='permission')return false;throw error;}}
+/** 2f803985 — the legacy compatibility pattern that carries a Schedule Group's overtime bands (one per group,
+ * written by the 0551 snapshot trigger). A bounded single-row read under the shared configuration reader; it
+ * takes no Access or overtime configuration lock. Null when the group has no snapshot or the caller is not an
+ * administrator. */
+export function legacyOvertimePatternIdForRule(ctx:SessionContext,ruleId:string):Promise<string|null>{return withAttendanceTenant(ctx,async tx=>{
+ const allowed=await tx.execute(sql`select app.is_admin() as allowed`) as unknown as {allowed:boolean}[];if(!allowed[0]?.allowed)return null;
+ const [row]=await tx.select({id:s.overtimePattern.id}).from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),eq(s.overtimePattern.kind,'legacy'),eq(s.overtimePattern.legacyRuleRef,uuid(ruleId)))).limit(1);
+ return row?.id??null;
+});}
 export function getOvertimePattern(ctx:SessionContext,patternId:string):Promise<OvertimePatternDetail|null>{return withAttendanceTenant(ctx,async tx=>{await configurationReader(tx);const [pattern]=await tx.select().from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),eq(s.overtimePattern.id,uuid(patternId)),sql`(${s.overtimePattern.kind}='legacy' OR app.is_admin_for(${s.overtimePattern.creationCompanyId}) OR EXISTS(SELECT 1 FROM overtime_pattern_version v JOIN overtime_pattern_version_company co ON co.version_id=v.id WHERE v.pattern_id=${s.overtimePattern.id} AND app.is_admin_for(co.company_id)))`)).limit(1);if(!pattern)return null;const versions=bounded(await tx.select().from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,pattern.id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(101),100);const ids=versions.map(v=>v.id),assignments=ids.length?bounded(await tx.select().from(s.overtimePatternAssignment).where(inArray(s.overtimePatternAssignment.versionId,ids)).orderBy(asc(s.overtimePatternAssignment.validFrom),asc(s.overtimePatternAssignment.id)).limit(501),500):[];return {pattern,versions:await Promise.all(versions.map(v=>versionView(tx,v))),assignments,writable:await patternWritable(tx,ctx,pattern)};});}
 export function listOvertimePatterns(ctx:SessionContext,p:{companyIds?:string[];search?:string;status?:OvertimePatternStatus;method?:'hourly'|'flat'|'formula';assignmentSearch?:string;cursor?:string;limit?:number}={}):Promise<{items:OvertimePatternListItem[];nextCursor:string|null}>{return withAttendanceTenant(ctx,async tx=>{
  await configurationReader(tx);if(p.limit!==undefined&&(!Number.isInteger(p.limit)||p.limit<1||p.limit>100))fail('invalid','Choose a whole-number page size from one to 100.');const limit=Math.max(1,Math.min(100,p.limit??25));if(p.companyIds)await administerCompanies(tx,ctx,p.companyIds);if(p.cursor)uuid(p.cursor);const search=(p.search??'').trim().slice(0,160),assignmentSearch=(p.assignmentSearch??'').trim().slice(0,160);
@@ -303,7 +313,7 @@ async function selectedInput(tx:Tx,ctx:SessionContext,snapshot:CanonicalOvertime
  }
  return {resolution,input,version,evaluation,duration,durationInputDigest};
 }
-export type OvertimeRecordOutcome={status:'legacy';sourceId:string;revision:number;resolution:Extract<StoredOvertimeResolution,{status:'legacy'}>}|{status:'recorded';sourceId:string;calculationId:string;revision:number;policyRevisionId?:string;policyFinancialContract?:PolicyFinancialContract;policyFinancialDurationContract?:PolicyFinancialDurationContract;evaluation:OvertimeEvaluation|null;duration:OvertimeDurationEvaluation|null;resolution:Exclude<StoredOvertimeResolution,{status:'legacy'}>};
+export type OvertimeRecordOutcome={status:'legacy';sourceId:string;revision:number;resolution:Extract<StoredOvertimeResolution,{status:'legacy'}>}|{status:'recorded';sourceId:string;calculationId:string;revision:number;policyRevisionId?:string;policyFinancialContract?:PolicyFinancialContract;policyFinancialDurationContract?:PolicyFinancialDurationContract;policyLatenessAfterOffset?:{lateMinutes:number;offsetMinutes:number;remainingMinutes:number}|null;evaluation:OvertimeEvaluation|null;duration:OvertimeDurationEvaluation|null;resolution:Exclude<StoredOvertimeResolution,{status:'legacy'}>};
 /** Bind ONCE in trusted server integration. No action accepts a reader, result, role flags or handle JSON. */
 export function createOvertimeCalculationOwner(readCanonicalInputsTx:CanonicalOvertimeReader){
  const handles=new WeakMap<object,{tx:Tx;principal:string;p:{employmentId:string;date:string};snapshotDigest:string;sourceId:string;resolutionDigest:string}>();const principal=(ctx:SessionContext)=>ctx.tenantId+':'+(ctx.userId??'');
@@ -362,7 +372,8 @@ export function createOvertimeCalculationOwner(readCanonicalInputsTx:CanonicalOv
    if(evaluation&&evaluation.status==='ready'&&evaluation.lines.length)await tx.insert(s.attendanceOvertimeLine).values(evaluation.lines.map((line,sequence)=>({tenantId:ctx.tenantId,companyId:source.companyId,calculationId,lineKey:line.id,sequence,componentId:line.mapping.earningItemId,amountMinorUnits:line.amountMinorUnits,evidence:json(line)})));
    await tx.update(s.attendanceOvertimeSource).set({currentCalculationId:calculationId,revision:ordinal}).where(and(eq(s.attendanceOvertimeSource.id,source.id),eq(s.attendanceOvertimeSource.revision,p.expectedCurrentRevision)));
    await event(tx,ctx,source.id,'calculation.recorded',{sourceId:source.id,calculationId,ordinal,previousCalculationId:source.currentCalculationId,inputDigest:snapshot.input.source.inputDigest,approvalDigest:snapshot.input.source.approvalDigest,referenceDigest:snapshot.referenceDigest,outcome:recordedOutcome,versionId:selected.version?.id??null,reason:why},source.employmentId);
-   return {status:'recorded',sourceId:source.id,calculationId,revision:ordinal,...(snapshot.attendanceGroupPolicy?{policyRevisionId:snapshot.attendanceGroupPolicy.id,policyFinancialContract:policyFinancial,policyFinancialDurationContract:policyFinancialDuration}:{}),evaluation,duration:selected.duration,resolution:selected.resolution};
+   return {status:'recorded',sourceId:source.id,calculationId,revision:ordinal,...(snapshot.attendanceGroupPolicy?{policyRevisionId:snapshot.attendanceGroupPolicy.id,policyFinancialContract:policyFinancial,policyFinancialDurationContract:policyFinancialDuration,
+    policyLatenessAfterOffset:snapshot.policyExecutionProposal?.state==='proposed'?attendancePolicyLatenessAfterOffset(snapshot.attendanceGroupPolicy.policy,snapshot.policyExecutionProposal.duration):null}:{}),evaluation,duration:selected.duration,resolution:selected.resolution};
   },
   async preview(ctx:SessionContext,p:{patternId:string;versionId:string;employmentId:string;date:string}):Promise<OvertimeEvaluation>{return withAttendanceTenant(ctx,async tx=>{await configurationReader(tx);date(p.date);const version=await versionRow(tx,ctx,p.versionId);if(version.patternId!==p.patternId)fail('invalid','Choose a version belonging to this pattern.');const snapshot=await readCanonicalInputsTx(tx,ctx,p);validateSnapshot(snapshot,ctx,p);if(snapshot.attendanceGroupPolicy)fail('unavailable','Dated policy preview requires its complete execution evidence.');const co=snapshot.input.facts.companyId;if(co?.state!=='known'||!co.value)fail('unavailable','The dated company is unavailable.');await administerCompanies(tx,ctx,[co.value]);if(!(await companiesForVersion(tx,version.id)).includes(co.value))fail('permission','The selected employee is outside this pattern company scope.');const definition=validateOvertimePattern(version.definition);await validateReferencesTx(tx,ctx,definition,[co.value],true);return evaluateOvertimePattern(definition,{...snapshot.input,mode:'preview',patternVersionId:version.id,assignmentId:'00000000-0000-0000-0000-000000000000'} as OvertimeInput);});},
   async previewSample(ctx:SessionContext,p:{patternId:string;versionId:string;sample:OvertimeInput}):Promise<OvertimeEvaluation>{return withAttendanceTenant(ctx,async tx=>{await configurationReader(tx);const version=await versionRow(tx,ctx,p.versionId);if(version.patternId!==p.patternId)fail('invalid','Choose a version belonging to this pattern.');await assertVersionAdmin(tx,ctx,version);const definition=validateOvertimePattern(version.definition),sample=json(p.sample) as unknown as OvertimeInput;date(sample.source.date);const zero='00000000-0000-0000-0000-000000000000',provenance={owner:'sample',reference:'sample',asOf:sample.source.date,basis:'sample'};
@@ -450,7 +461,7 @@ export type OvertimeSettlementReservation={employmentId:string;date:string}&({mo
 export async function reserveOvertimeSettlementTx(tx:Tx,ctx:SessionContext,p:OvertimeSettlementReservation){
  const {source,existing}=await assertOvertimeSettlementAvailableTx(tx,ctx,p);
  if(p.mode==='cash'){assertModuleGate(ctx,'payroll');const [batch]=await tx.select({id:s.payrollBatch.id,companyId:s.payrollBatch.companyId,status:s.payrollBatch.status,allowed:sql<boolean>`app.can_admin_payroll_for(${s.payrollBatch.companyId})`}).from(s.payrollBatch).where(and(eq(s.payrollBatch.tenantId,ctx.tenantId),eq(s.payrollBatch.id,uuid(p.payrollBatchId)),eq(s.payrollBatch.companyId,source.companyId))).limit(1).for('update');if(!batch?.allowed||batch.status!=='draft')fail('closed','Use an authorized draft Payroll run for a new overtime settlement.');if(p.calculationId!==source.currentCalculationId)fail('stale','Use the exact current overtime revision.');if(p.calculationId){const [calculation]=await tx.select().from(s.attendanceOvertimeCalculation).where(and(eq(s.attendanceOvertimeCalculation.id,uuid(p.calculationId)),eq(s.attendanceOvertimeCalculation.sourceId,source.id))).limit(1);if(!calculation||calculation.outcome!=='ready'||!calculation.transferable||!['approved','notRequired'].includes(calculation.approvalStatus))fail('unavailable','Only canonical approved payable overtime may settle in Payroll.');}else{const [attendance]=await tx.select({minutes:s.attendance.otMinutes}).from(s.attendance).where(eq(s.attendance.id,source.attendanceId)).limit(1);if(!attendance?.minutes||attendance.minutes<=0)fail('unavailable','Legacy cash settlement requires canonical positive overtime.');}
-  if(existing){if(existing.payrollBatchId!==p.payrollBatchId||existing.calculationId!==p.calculationId)fail('conflict','This source already belongs to a different Payroll contribution.');return existing;}
+  if(existing){if(existing.payrollBatchId!==p.payrollBatchId||existing.calculationId!==p.calculationId||existing.formulaBindingId!==null)fail('conflict','This source already belongs to a different Payroll contribution.');return existing;}
  }else{if(!existing)assertModuleGate(ctx,'toil');const [accrual]=await tx.select().from(s.toilAccrual).where(and(eq(s.toilAccrual.tenantId,ctx.tenantId),eq(s.toilAccrual.id,uuid(p.toilAccrualId)),eq(s.toilAccrual.employmentId,source.employmentId),eq(s.toilAccrual.workedDate,source.attendanceDate))).limit(1).for('update');if(!accrual||accrual.status==='reversed')fail('unavailable','Use the canonical active TOIL accrual for this exact employee/date.');if(existing){if(existing.toilAccrualId!==p.toilAccrualId)fail('conflict','A different TOIL accrual holds this overtime source.');return existing;}}
  const [settlement]=await tx.insert(s.overtimeSourceSettlement).values({tenantId:ctx.tenantId,companyId:source.companyId,sourceId:source.id,mode:p.mode,ownerReference:p.mode==='cash'?{type:'payroll_batch',id:p.payrollBatchId}:{type:'toil_accrual',id:p.toilAccrualId},calculationId:p.mode==='cash'?p.calculationId:null,payrollBatchId:p.mode==='cash'?p.payrollBatchId:null,toilAccrualId:p.mode==='toil'?p.toilAccrualId:null}).returning();await event(tx,ctx,source.id,'settlement.reserved',{settlementId:settlement.id,mode:settlement.mode,calculationId:settlement.calculationId,payrollBatchId:settlement.payrollBatchId,toilAccrualId:settlement.toilAccrualId},source.employmentId);return settlement;
 }
@@ -467,20 +478,21 @@ export type OvertimeCashSettlementRead={settlement:typeof s.overtimeSourceSettle
 export async function readOvertimeCashSettlementsTx(tx:Tx,ctx:SessionContext,p:{batchId:string}):Promise<OvertimeCashSettlementRead[]>{
  assertModuleGate(ctx,'payroll');const [batch]=await tx.select({id:s.payrollBatch.id,companyId:s.payrollBatch.companyId,allowed:sql<boolean>`app.can_admin_payroll_for(${s.payrollBatch.companyId})`}).from(s.payrollBatch).where(and(eq(s.payrollBatch.tenantId,ctx.tenantId),eq(s.payrollBatch.id,uuid(p.batchId)))).limit(1);if(!batch?.allowed)fail('permission','The Payroll run is outside your financial authority.');
  const rows=bounded(await tx.select({settlement:s.overtimeSourceSettlement,source:s.attendanceOvertimeSource}).from(s.overtimeSourceSettlement).innerJoin(s.attendanceOvertimeSource,eq(s.attendanceOvertimeSource.id,s.overtimeSourceSettlement.sourceId)).where(and(eq(s.overtimeSourceSettlement.tenantId,ctx.tenantId),eq(s.overtimeSourceSettlement.payrollBatchId,batch.id),eq(s.overtimeSourceSettlement.companyId,batch.companyId),eq(s.overtimeSourceSettlement.mode,'cash'),isNull(s.overtimeSourceSettlement.releasedAt))).orderBy(asc(s.attendanceOvertimeSource.employmentId),asc(s.attendanceOvertimeSource.attendanceDate),asc(s.overtimeSourceSettlement.id)).limit(5001),5000);
- const result:OvertimeCashSettlementRead[]=[];let bytes=0;for(const row of rows){let calculation:OvertimeCashSettlementRead['calculation']=null,evidence:OvertimeCashSettlementRead['evidence']=null,lines:OvertimeCashSettlementRead['lines']=[];if(row.settlement.calculationId){[calculation]=await tx.select().from(s.attendanceOvertimeCalculation).where(and(eq(s.attendanceOvertimeCalculation.id,row.settlement.calculationId),eq(s.attendanceOvertimeCalculation.sourceId,row.source.id))).limit(1);[evidence]=await tx.select().from(s.attendanceOvertimeCalculationEvidence).where(eq(s.attendanceOvertimeCalculationEvidence.calculationId,row.settlement.calculationId)).limit(1);lines=bounded(await tx.select().from(s.attendanceOvertimeLine).where(eq(s.attendanceOvertimeLine.calculationId,row.settlement.calculationId)).orderBy(asc(s.attendanceOvertimeLine.sequence),asc(s.attendanceOvertimeLine.id)).limit(16385),16384);if(!calculation||!evidence||row.source.currentCalculationId!==calculation.id)fail('stale','A cash settlement no longer binds the current immutable calculation.');}const item={...row,calculation,evidence,lines};bytes+=Buffer.byteLength(JSON.stringify(item));if(bytes>20*1024*1024)fail('limit','Narrow the Payroll run: overtime evidence exceeds the bounded read size.');result.push(item);}return result;
+ const result:OvertimeCashSettlementRead[]=[];let bytes=0;for(const row of rows){let calculation:OvertimeCashSettlementRead['calculation']=null,evidence:OvertimeCashSettlementRead['evidence']=null,lines:OvertimeCashSettlementRead['lines']=[];if(row.settlement.calculationId&&!row.settlement.formulaBindingId){[calculation]=await tx.select().from(s.attendanceOvertimeCalculation).where(and(eq(s.attendanceOvertimeCalculation.id,row.settlement.calculationId),eq(s.attendanceOvertimeCalculation.sourceId,row.source.id))).limit(1);[evidence]=await tx.select().from(s.attendanceOvertimeCalculationEvidence).where(eq(s.attendanceOvertimeCalculationEvidence.calculationId,row.settlement.calculationId)).limit(1);lines=bounded(await tx.select().from(s.attendanceOvertimeLine).where(eq(s.attendanceOvertimeLine.calculationId,row.settlement.calculationId)).orderBy(asc(s.attendanceOvertimeLine.sequence),asc(s.attendanceOvertimeLine.id)).limit(16385),16384);if(!calculation||!evidence||row.source.currentCalculationId!==calculation.id)fail('stale','A cash settlement no longer binds the current immutable calculation.');}const item={...row,calculation,evidence,lines};bytes+=Buffer.byteLength(JSON.stringify(item));if(bytes>20*1024*1024)fail('limit','Narrow the Payroll run: overtime evidence exceeds the bounded read size.');result.push(item);}return result;
 }
 export async function listCoveredOvertimeDaysTx(tx:Tx,ctx:SessionContext,p:{employmentIds:readonly string[];from:string;to:string}){
  bounded([...p.employmentIds],5000).forEach(uuid);date(p.from);date(p.to);if(p.to<p.from)fail('invalid','Choose an ordered overtime date interval.');if(!p.employmentIds.length)return [];
  const calculations=bounded(await tx.select({sourceId:s.attendanceOvertimeSource.id,employmentId:s.attendanceOvertimeSource.employmentId,date:s.attendanceOvertimeSource.attendanceDate,companyId:s.attendanceOvertimeSource.companyId,calculationId:s.attendanceOvertimeCalculation.id,versionId:s.attendanceOvertimeCalculation.versionId,outcome:s.attendanceOvertimeCalculation.outcome,inputDigest:s.attendanceOvertimeCalculation.inputDigest,approvalDigest:s.attendanceOvertimeCalculation.approvalDigest,referenceDigest:s.attendanceOvertimeCalculation.referenceDigest}).from(s.attendanceOvertimeSource).innerJoin(s.attendanceOvertimeCalculation,eq(s.attendanceOvertimeCalculation.id,s.attendanceOvertimeSource.currentCalculationId)).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),inArray(s.attendanceOvertimeSource.employmentId,[...p.employmentIds]),gte(s.attendanceOvertimeSource.attendanceDate,p.from),lte(s.attendanceOvertimeSource.attendanceDate,p.to))).orderBy(asc(s.attendanceOvertimeSource.employmentId),asc(s.attendanceOvertimeSource.attendanceDate),asc(s.attendanceOvertimeSource.id)).limit(50001),50000).map(row=>({...row,coverage:'calculation' as const}));
  const unavailable=bounded(await tx.select({employmentId:s.attendance.employmentId,date:s.attendance.attendanceDate}).from(s.attendance).where(and(eq(s.attendance.tenantId,ctx.tenantId),inArray(s.attendance.employmentId,[...p.employmentIds]),gte(s.attendance.attendanceDate,p.from),lte(s.attendance.attendanceDate,p.to),sql`${s.attendance.calcTrace}->'overtimePattern'->>'status'='refused' and ${s.attendance.calcTrace}->'overtimePattern'->>'reason'='sourceUnavailable'`,sql`not exists(select 1 from attendance_overtime_source d where d.tenant_id=${s.attendance.tenantId} and d.employment_id=${s.attendance.employmentId} and d.attendance_date=${s.attendance.attendanceDate} and d.current_calculation_id is not null)`)).orderBy(asc(s.attendance.employmentId),asc(s.attendance.attendanceDate)).limit(50001),50000).map(row=>({...row,coverage:'sourceUnavailable' as const,sourceId:null,companyId:null,calculationId:null,versionId:null,outcome:'refused' as const,inputDigest:null,approvalDigest:null,referenceDigest:null}));
- return bounded([...calculations,...unavailable],50000).sort((a,b)=>a.employmentId.localeCompare(b.employmentId)||a.date.localeCompare(b.date));
+ const formulaClaims=bounded(await tx.select({sourceId:s.attendanceOvertimeSource.id,employmentId:s.attendanceOvertimeSource.employmentId,date:s.attendanceOvertimeSource.attendanceDate,companyId:s.attendanceOvertimeSource.companyId}).from(s.attendanceOvertimeSource).innerJoin(s.overtimeSourceSettlement,and(eq(s.overtimeSourceSettlement.sourceId,s.attendanceOvertimeSource.id),isNull(s.overtimeSourceSettlement.releasedAt),isNotNull(s.overtimeSourceSettlement.formulaBindingId))).where(and(inArray(s.attendanceOvertimeSource.employmentId,[...p.employmentIds]),gte(s.attendanceOvertimeSource.attendanceDate,p.from),lte(s.attendanceOvertimeSource.attendanceDate,p.to),isNull(s.attendanceOvertimeSource.currentCalculationId))).limit(50001),50000).map(row=>({...row,coverage:'formulaBinding' as const,calculationId:null,versionId:null,outcome:'ready' as const,inputDigest:null,approvalDigest:null,referenceDigest:null}));
+ return bounded([...calculations,...unavailable,...formulaClaims],50000).sort((a,b)=>a.employmentId.localeCompare(b.employmentId)||a.date.localeCompare(b.date));
 }
 
-/** Called inside canonical batch teardown AFTER removing payslips/contributions. No employee/source lock. */
-export async function releaseOvertimeSettlementsForDraftTeardownTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason:string}):Promise<{released:number}>{
+/** Release cash after draft teardown or the scoped retirement correction. No employee/source lock. */
+export async function releaseOvertimeSettlementsForDraftTeardownTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason:string;retiredFormulaOnly?:boolean}):Promise<{released:number}>{
  assertModuleGate(ctx,'payroll');reason(p.reason);const [batch]=await tx.select({id:s.payrollBatch.id,status:s.payrollBatch.status,allowed:sql<boolean>`app.can_admin_payroll_for(${s.payrollBatch.companyId})`}).from(s.payrollBatch).where(and(eq(s.payrollBatch.tenantId,ctx.tenantId),eq(s.payrollBatch.id,uuid(p.batchId)))).limit(1).for('update');if(!batch?.allowed||batch.status!=='draft'||(await tx.select({id:s.payslip.id}).from(s.payslip).where(eq(s.payslip.batchId,batch.id)).limit(1)).length)fail('closed','Complete the canonical draft teardown before releasing overtime sources.');
- const claims=bounded(await tx.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.tenantId,ctx.tenantId),eq(s.overtimeSourceSettlement.payrollBatchId,batch.id),isNull(s.overtimeSourceSettlement.releasedAt))).orderBy(asc(s.overtimeSourceSettlement.id)).limit(5001),5000);
- for(const claim of claims){await tx.update(s.overtimeSourceSettlement).set({releasedAt:new Date(),releaseReason:p.reason,revision:claim.revision+1}).where(and(eq(s.overtimeSourceSettlement.id,claim.id),isNull(s.overtimeSourceSettlement.releasedAt)));await event(tx,ctx,claim.sourceId,'settlement.released',{settlementId:claim.id,payrollBatchId:batch.id,reason:p.reason,operation:'draftTeardown'});}
+ const claims=bounded(await tx.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.tenantId,ctx.tenantId),eq(s.overtimeSourceSettlement.payrollBatchId,batch.id),isNull(s.overtimeSourceSettlement.releasedAt),p.retiredFormulaOnly?isNotNull(s.overtimeSourceSettlement.formulaBindingId):undefined)).orderBy(asc(s.overtimeSourceSettlement.id)).limit(5001),5000);
+ for(const claim of claims){await tx.update(s.overtimeSourceSettlement).set({releasedAt:new Date(),releaseReason:p.reason,revision:claim.revision+1}).where(and(eq(s.overtimeSourceSettlement.id,claim.id),isNull(s.overtimeSourceSettlement.releasedAt)));await event(tx,ctx,claim.sourceId,'settlement.released',{settlementId:claim.id,payrollBatchId:batch.id,reason:p.reason,operation:p.retiredFormulaOnly?'retiredFormulaCorrection':'draftTeardown'});}
  return {released:claims.length};
 }
 /** Legacy edit hook snapshots DB-owned OT configuration, never a supplied definition. */
@@ -512,14 +524,90 @@ export async function readOvertimeCashDefinitionTx(tx:Tx,ctx:SessionContext,p:{v
  return {definition:validateOvertimePattern(version.definition),versionId:version.id,assignmentId:assignment.id,companyIds};
 }
 
+function overtimeRefreshDayWhere(ctx:SessionContext,p:{employmentId:string;date:string}){
+ const day=s.attendance;
+ return and(eq(day.tenantId,ctx.tenantId),eq(day.employmentId,p.employmentId),eq(day.attendanceDate,p.date));
+}
+
+function retainedOvertimeCalculation(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
+ const source=s.attendanceOvertimeSource;
+ return tx.select({id:source.id}).from(source).where(and(
+  eq(source.tenantId,ctx.tenantId),eq(source.employmentId,p.employmentId),
+  eq(source.attendanceDate,p.date),sql`${source.currentCalculationId} is not null`,
+ ));
+}
+
+const refusedOvertimeMarker=sql`${s.attendance.calcTrace}->'overtimePattern'->>'status'='refused' and ${s.attendance.calcTrace}->'overtimePattern'->>'reason'='sourceUnavailable'`;
+
 /** Cheap canonical OT-stage detection. No salary/currency reader and no source creation.
  * Unknown dated company is not proof of absence when visible formula candidates exist. */
 export async function hasOvertimePatternForDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<boolean>{
- uuid(p.employmentId);date(p.date);const [recorded]=await tx.select({id:s.attendanceOvertimeSource.id}).from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date),sql`${s.attendanceOvertimeSource.currentCalculationId} is not null`)).limit(1);if(recorded)return true;
- const [marker]=await tx.select({id:s.attendance.id}).from(s.attendance).where(and(eq(s.attendance.tenantId,ctx.tenantId),eq(s.attendance.employmentId,p.employmentId),eq(s.attendance.attendanceDate,p.date),sql`${s.attendance.calcTrace}->'overtimePattern'->>'status'='refused' and ${s.attendance.calcTrace}->'overtimePattern'->>'reason'='sourceUnavailable'`)).limit(1);if(marker)return true;
- if(await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p))return true;
- const proof=(await provenCompanyDatesTx(tx,[{employmentId:p.employmentId,date:p.date}])).get(p.employmentId+'|'+p.date);
- const [candidate]=await tx.select({id:s.overtimePatternAssignment.id}).from(s.overtimePatternAssignment).innerJoin(s.overtimePatternVersion,eq(s.overtimePatternVersion.id,s.overtimePatternAssignment.versionId)).innerJoin(s.overtimePattern,eq(s.overtimePattern.id,s.overtimePatternVersion.patternId)).where(and(eq(s.overtimePatternAssignment.tenantId,ctx.tenantId),eq(s.overtimePatternVersion.kind,'formula'),isNull(s.overtimePattern.archivedAt),isNull(s.overtimePatternAssignment.supersededAt),lte(s.overtimePatternAssignment.validFrom,p.date),or(isNull(s.overtimePatternAssignment.validTo),gt(s.overtimePatternAssignment.validTo,p.date)),sql`(${s.overtimePatternAssignment.target}->>'type'='group' OR ${s.overtimePatternAssignment.target}->'employmentIds' ? ${p.employmentId})`,proof?.companyId?sql`exists(select 1 from overtime_pattern_version_company co where co.version_id=${s.overtimePatternVersion.id} and co.company_id=${proof.companyId}::uuid)`:undefined,sql`(select state from overtime_pattern_version_state st where st.version_id=${s.overtimePatternVersion.id} and st.effective_from<=${p.date}::date order by effective_from desc,sequence desc limit 1)='active'`)).orderBy(asc(s.overtimePatternAssignment.id)).limit(1);return !!candidate;
+ uuid(p.employmentId);date(p.date);
+ const recorded=retainedOvertimeCalculation(tx,ctx,p);
+ const refused=tx.select({id:s.attendance.id}).from(s.attendance).where(and(overtimeRefreshDayWhere(ctx,p),refusedOvertimeMarker));
+ const [retained]=await tx.execute<{present:boolean}>(sql`
+  select case when exists (${recorded}) then true else exists (${refused}) end as present
+ `);
+ return retained?.present===true || await hasDatedOvertimePatternForDayTx(tx,ctx,p);
+}
+
+/** Refresh requires a visible day. Read its identity and retained coverage together
+ * under the current transaction authority, including after approval status changes. */
+export async function readOvertimeRefreshDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}){
+ const recorded=retainedOvertimeCalculation(tx,ctx,p);
+ // Materialize the scoped day once so the retained path does not run a principal check.
+ const [day]=await tx.execute<{id:string;retained:boolean;allowed:boolean;trace:unknown;attestedWorkCorrectionId:string|null}>(sql`
+  with day as materialized (
+   select ${s.attendance.id} as id, ${s.attendance.calcTrace} as trace,
+    ${s.attendance.attestedWorkCorrectionId} as "attestedWorkCorrectionId",
+    case when exists (${recorded}) then true else coalesce(${refusedOvertimeMarker},false) end as retained
+   from ${s.attendance}
+   where ${overtimeRefreshDayWhere(ctx,p)}
+   limit 1
+  )
+  select day.*, case when retained then false else app.attendance_policy_principal_current() end as allowed
+  from day
+ `);
+ if(!day)return null;
+ uuid(p.employmentId);date(p.date);
+ if(day.retained)return {id:day.id,hasPattern:true};
+ const policy=await resolveRecordedAttendanceGroupPolicyFromDayTx(tx,ctx,p,day);
+ return {id:day.id,hasPattern:policy.state==='policy'||policy.state==='unavailable'
+  ||await hasDatedOvertimeFormulaForDayTx(tx,ctx,p)};
+}
+
+async function hasDatedOvertimePatternForDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<boolean>{
+ return await hasRecordedAttendanceGroupPolicyTx(tx,ctx,p)||await hasDatedOvertimeFormulaForDayTx(tx,ctx,p);
+}
+
+async function hasDatedOvertimeFormulaForDayTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string}):Promise<boolean>{
+ // Company proof can only narrow the formula candidates. A canonical input with
+ // no possible candidate needs no dated assignment read. The invoker proof still
+ // decides every remaining case, including unknown companies and noncanonical IDs.
+ const assignment=s.overtimePatternAssignment,version=s.overtimePatternVersion,pattern=s.overtimePattern;
+ const candidate=tx.selectDistinct({versionId:sql`${version.id}`.as('version_id')}).from(assignment)
+  .innerJoin(version,eq(version.id,assignment.versionId)).innerJoin(pattern,eq(pattern.id,version.patternId))
+  .where(and(eq(assignment.tenantId,ctx.tenantId),eq(version.kind,'formula'),isNull(pattern.archivedAt),
+   isNull(assignment.supersededAt),lte(assignment.validFrom,p.date),
+   or(isNull(assignment.validTo),gt(assignment.validTo,p.date)),
+   sql`(${assignment.target}->>'type'='group' or ${assignment.target}->'employmentIds' ? ${p.employmentId})`,
+   sql`(select state from overtime_pattern_version_state st where st.version_id=${version.id} and st.effective_from<=${p.date}::date order by effective_from desc,sequence desc limit 1)='active'`));
+ const [result]=await tx.execute<{present:boolean|null}>(sql`
+  with candidates as materialized (${candidate})
+  select case when ${p.employmentId===p.employmentId.toLowerCase()} and not exists(select 1 from candidates) then false
+   else (
+    select exists(
+     select 1 from candidates c
+     where proof.company_id is null or exists(
+      select 1 from overtime_pattern_version_company co
+      where co.version_id=c.version_id and co.company_id=proof.company_id)
+    )
+    from app.proven_company_date_points(${JSON.stringify([{employmentId:p.employmentId,date:p.date}])}::jsonb) proof
+    where proof.employment_id::text collate "C"=${p.employmentId}::text
+      and proof.on_date::text collate "C"=${p.date}::text
+   ) end as present`);
+ if(result?.present==null)throw Error('Dated company proof is incomplete.');
+ return result.present;
 }
 
 /** Canonical pre-batch order: existing Attendance day -> existing OT source -> caller's batch.

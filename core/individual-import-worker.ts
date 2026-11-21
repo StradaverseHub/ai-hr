@@ -13,6 +13,7 @@ type QueuedJob = IndividualImportJob & {
   tenant_id: string;
   method: IndividualImportMethod;
   source_hash: string;
+  template_version: number;
 };
 
 export async function runIndividualImportTick(
@@ -25,7 +26,7 @@ export async function runIndividualImportTick(
     if (!lock.ok) return false;
     try {
       const [job] = await connection<QueuedJob[]>`
-        select id, tenant_id, created_by, company_ids, context, source_name, source_hash, method, state, attempt_id
+        select id, tenant_id, created_by, company_ids, context, source_name, source_hash, method, template_version, state, attempt_id
         from payroll_individual_import_job where state in ('pending', 'validating', 'confirmed', 'importing')
         order by created_at, id limit 1`;
       if (!job) return false;
@@ -41,6 +42,7 @@ export async function runIndividualImportTick(
           });
           const attempt = await validateIndividualImport(ctx, {
             operationId: job.id, sourceName: job.source_name, csv: text, method: job.method, scopeIds: job.company_ids,
+            allowPreviousDaily: job.template_version === 1,
           });
           const error = attempt.preview.fileError ?? (attempt.preview.valid ? null : 'noValidRows');
           await connection`update payroll_individual_import_job set attempt_id = ${attempt.id},

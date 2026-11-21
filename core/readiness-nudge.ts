@@ -1,3 +1,4 @@
+import {withAiCentreActivity} from './ai-centre-control';
 /**
  * ADR-0084 §2.5 / §3 item 2 — THE NUDGE AGENT. The first thing in this product that contacts a person
  * without a human pressing send.
@@ -265,7 +266,11 @@ async function settleOutcomes(ctx: SessionContext, openGapKeys: Set<string>, act
  * Ordering matters: outcomes are settled FIRST, against the readiness read this run already needs, so a
  * gap fixed since the last run is credited before anything new is raised.
  */
-export async function sweepReadinessNudges(ctx: SessionContext): Promise<NudgeSweepResult> {
+export async function sweepReadinessNudges(...args:Parameters<typeof sweepReadinessNudgesActivity>):Promise<Awaited<ReturnType<typeof sweepReadinessNudgesActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreActivity(args[0],()=>sweepReadinessNudgesActivity(...args));
+}
+async function sweepReadinessNudgesActivity(ctx: SessionContext): Promise<NudgeSweepResult> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   const empty: NudgeSweepResult = {
     awaitingReview: 0,

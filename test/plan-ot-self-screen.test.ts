@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * f618065d (r362) — SELF OVERTIME: full width, chips with counts, a date window, and a paged list.
  *
@@ -126,7 +127,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
 });
 
 describe('A · the counts are an aggregate over the RECORDS, not over the page', () => {
@@ -154,9 +155,9 @@ describe('A · the counts are an aggregate over the RECORDS, not over the page',
     const emp = await employeeCtx(personId);
     await filePlan(a, employmentId, D(1), 60, 'pending one');
     const approved = await filePlan(a, employmentId, D(2), 120, 'approved one');
-    await decideAttendanceCorrection(a, { correctionId: approved.correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: approved.correctionId, decision: 'approved' });
     const rejected = await filePlan(a, employmentId, D(3), 180, 'rejected one');
-    await decideAttendanceCorrection(a, { correctionId: rejected.correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: rejected.correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     const withdrawn = await filePlan(a, employmentId, D(4), 240, 'withdrawn one');
     await cancelPlannedOvertime(emp, { correctionId: withdrawn.correctionId, today: D(1) });
     // A clock-time correction is NOT overtime and belongs to the other screen. Mixing the two is the
@@ -186,7 +187,7 @@ describe('A · the counts are an aggregate over the RECORDS, not over the page',
   it('counts follow the date window and the search, and IGNORE the status chip', async () => {
     const { a, employmentId } = await hire();
     const approved = await filePlan(a, employmentId, D(2), 60, 'Penang rollout support');
-    await decideAttendanceCorrection(a, { correctionId: approved.correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: approved.correctionId, decision: 'approved' });
     await filePlan(a, employmentId, D(20), 60, 'Month-end closing run');
 
     // The window narrows it…
@@ -208,7 +209,7 @@ describe('B · the list read: filters, sort and the page window', () => {
     const { a, employmentId } = await hire();
     await filePlan(a, employmentId, D(1), 60, 'still waiting');
     const approved = await filePlan(a, employmentId, D(2), 60, 'agreed');
-    await decideAttendanceCorrection(a, { correctionId: approved.correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: approved.correctionId, decision: 'approved' });
 
     expect(await myOvertimePlans(a, employmentId, { status: 'approved' })).toHaveLength(1);
     expect((await myOvertimePlans(a, employmentId, { status: 'approved' }))[0].attendanceDate).toBe(D(2));

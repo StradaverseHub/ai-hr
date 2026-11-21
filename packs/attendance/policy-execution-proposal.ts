@@ -3,7 +3,7 @@ import {attendancePolicyManualDurationInput,type PolicyRawEffectSource,type Poli
  * preparation, not final-effect approval, a payable calculation or a cash/TOIL capability. */
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import type {AttendancePolicyDayClass} from '../../lib/attendance-group-policy';
-import {attendancePolicyPlanInput,type PolicyPlanInput} from './policy-plan-input';
+import {attendancePolicyPlanInput,attendancePolicyPlanNotRequested,type PolicyPlanInput} from './policy-plan-input';
 import type {PolicyApprovalInput} from './policy-approval-input';
 import {attendancePolicyIntervalMinutes,intersectAttendancePolicyIntervals} from '../../lib/attendance-policy-intervals';
 import type {PolicyWorkInput} from './policy-work-input';
@@ -62,6 +62,8 @@ function composeAttendancePolicyDuration(context:AttendancePolicyExecutionContex
  const method=selected.policy.overtime.enabled&&!manual?selected.policy.overtime.autoMethod:'actual';
  if(selected.policy.overtime.enabled&&method!=='actual'){
   planned=attendancePolicyPlanInput(context,approvals,tenantId??'');
+  // No overtime request filed (or all rejected/cancelled): a known empty plan, so zero payable.
+  if(planned.state!=='known'&&planned.reason==='planUnavailable')planned=attendancePolicyPlanNotRequested(context,approvals,tenantId??'')??planned;
   if(planned.state!=='known'||context.placement.state!=='known')return unavailable('plannedProofRequired');
  }
  // The same schedule owner gates actual and plan eligibility. The plan union itself is neither

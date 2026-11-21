@@ -276,6 +276,7 @@ async function seedEmployeesAndAttendance() {
 }
 
 describe('evaluate + scope filter', () => {
+  // Explicit timeout: measured 24.8 s against the global 30 s in main gate 42949200222.
   it('scope post-filter awards only in-scope employees (dept A) and excludes dept B', async () => {
     const { a, perfect, absentee, otherDept } = await seedEmployeesAndAttendance();
     const componentId = await attendanceComponentId(a);
@@ -302,12 +303,13 @@ describe('evaluate + scope filter', () => {
     expect(absentRow.qualified).toBe(false);
     expect(absentRow.amount).toBe('0.00');
     expect(absentRow.reasons).toContain('attendanceAllowance.reason.maxAbsentDays');
-  });
+  }, 90_000);
 });
 
 // ─────────────────────────── C. Transfer ───────────────────────────
 
 describe('transferAllowancesToBatch', () => {
+  // Explicit timeout: measured 25.0 s against the global 30 s in main gate 42949200222.
   it('gated off (no typed_pay_components row): returns gated:true and writes nothing', async () => {
     const { a } = await seedEmployeesAndAttendance();
     const componentId = await attendanceComponentId(a);
@@ -327,8 +329,9 @@ describe('transferAllowancesToBatch', () => {
       .from(schema.payrollBatchComponent)
       .where(eq(schema.payrollBatchComponent.batchId, batchId));
     expect(rows).toHaveLength(0);
-  });
+  }, 90_000);
 
+  // Explicit timeout: measured 24.7 s against the global 30 s in main gate 42949200222.
   it('module entitled: one component per qualified in-scope employee at policy.amount; idempotent', async () => {
     const { a, perfect, absentee } = await seedEmployeesAndAttendance();
     const componentId = await attendanceComponentId(a);
@@ -359,8 +362,9 @@ describe('transferAllowancesToBatch', () => {
       .from(schema.payrollBatchComponent)
       .where(and(eq(schema.payrollBatchComponent.batchId, batchId), eq(schema.payrollBatchComponent.componentId, componentId)));
     expect(rows).toHaveLength(2);
-  });
+  }, 90_000);
 
+  // Explicit timeout: measured 24.3 s against the global 30 s in main gate 42949200222.
   it('refuses a non-draft batch', async () => {
     const { a } = await seedEmployeesAndAttendance();
     const componentId = await attendanceComponentId(a);
@@ -375,8 +379,9 @@ describe('transferAllowancesToBatch', () => {
     await setModule(b.tenantId, 'typed_pay_components', 'active');
     const onCtx = await entitledCtx(b);
     await expect(transferAllowancesToBatch(onCtx, { batchId, policyId: id })).rejects.toThrow();
-  });
+  }, 90_000);
 
+  // Explicit timeout: measured 24.7 s against the global 30 s in main gate 42949200222.
   it('throws UnsupportedBatchComponentError for a PCB-only non-payable component', async () => {
     const { a } = await seedEmployeesAndAttendance();
     const bad = await unsupportedComponentId();
@@ -392,8 +397,9 @@ describe('transferAllowancesToBatch', () => {
     await setModule(b.tenantId, 'typed_pay_components', 'active');
     const onCtx = await entitledCtx(b);
     await expect(transferAllowancesToBatch(onCtx, { batchId, policyId: id })).rejects.toBeInstanceOf(UnsupportedBatchComponentError);
-  });
+  }, 90_000);
 
+  // Explicit timeout: measured 25.2 s against the global 30 s in main gate 42949200222.
   it('REVERSAL: qualified -> transferred -> correction disqualifies -> re-transfer removes the row', async () => {
     const { a, perfect } = await seedEmployeesAndAttendance();
     const componentId = await attendanceComponentId(a);
@@ -421,7 +427,7 @@ describe('transferAllowancesToBatch', () => {
     const r = await transferAllowancesToBatch(onCtx, { batchId, policyId: id });
     expect(r.reversed).toBeGreaterThanOrEqual(1);
     expect(await componentAmount(batchId, perfect, componentId)).toBeNull();
-  });
+  }, 90_000);
 });
 
 async function componentAmount(batchId: string, employmentId: string, componentId: string): Promise<number | null> {

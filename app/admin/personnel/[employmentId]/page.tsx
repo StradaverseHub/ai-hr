@@ -1,12 +1,28 @@
+import type { MovementHistoryRow } from '@/core/movement';
+import {isContractPostingMovementKind} from '@/core/movement-kinds';
+import { MovementComparisonTable } from './movement-comparison-table';
+import {HIRE_SCALAR_INFORMATION_FIELDS} from '@/core/hire-employment-information';
+import {MOVEMENT_INFORMATION_FIELDS,type MovementInformationField} from '@/lib/movement-information-evidence';
+import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
+import {movementTypeControls} from '@/core/movement-type-controls';
+import {SalaryRecordingChoices,type SalaryRecordingOptions} from '@/components/salary-recording-choices';
+import {latestApplicableMovementCandidates} from '@/lib/movement-latest-applicable';
+import {isComparisonKind} from '@/core/movement-kinds';
+import {employmentPaymentMethodHistory} from '@/core/employment-payment-method';
+import {movementDeleteAccess} from '@/core/movement-delete-access';
+import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS } from '@/lib/movement-employment-periods';
+import { MOVEMENT_FORM_IDS } from '@/lib/movement-form-contract';
 import {DerivedOrganisationControl} from '@/components/derived-organisation-fields';
+import { ActionButton } from '@/components/ui/action-button';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import {latestPersonnelHistory} from '@/lib/personnel-history';
 import {movementHistoryHref,movementPageHref} from '@/lib/personnel-movement-navigation';
 import {MovementActionShell} from './movement-action-shell';
 import {MovementHistoryActions} from './movement-history-actions';
 import {movementScreenAccess} from '../../../../lib/movement-screen-access';
 import {informationCorrectionHistory} from '@/core/information-correction';
-import {HireCorrectionModes,InformationCorrectionAudit} from '../information-correction-form';
-import { getEmploymentCostAllocations } from '@/core/employment-cost-allocations';
+import {InformationCorrectionAudit} from '../information-correction-form';
+import { getEmploymentCostAllocations,CostAllocationError } from '@/core/employment-cost-allocations';
 import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {workforceEmploymentAccess} from '@/core/workforce-access';
@@ -35,7 +51,7 @@ import {
   reportingLinesFor,
 } from '@/core/read';
 import { PersonnelField } from '@/components/personnel-field';
-import { personnelControl, personnelInput, personnelFormName, personnelFormLabel, personnelFormChoices, personnelDisplay, personnelCarry, personnelPresence, personnelRadio, personnelWorkflowCarry } from '@/lib/personnel-form-contract';
+import { personnelControl, personnelInput, personnelFormName, personnelFormLabel, personnelFormChoices,personnelFormCatalog, personnelDisplay, personnelCarry, personnelPresence, personnelRadio, personnelWorkflowCarry } from '@/lib/personnel-form-contract';
 import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { LocationAssignment } from '@/components/attendance/location-assignment';
 import { hasPersonPhoto } from '@/core/person-photo';
@@ -53,6 +69,7 @@ import { EpfRegistrationFields } from '@/components/epf-registration-fields';
 // Direct Superior (dce55aff): the searchable employee picker reuses the shared Combobox — its label
 // carries "EMP-0008 – John Tan" so type-ahead matches Employee ID and name alike.
 import { Combobox } from '@/components/ui/combobox';
+import { DirectSuperiorChangeForm } from './direct-superior-change-form';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
@@ -100,12 +117,10 @@ import {
 } from './actions';
 // Movement tab redesign (78853b97): Employment History projection + New Event dispatcher.
 import {
-  movementHistory,
+  movementHistoryWithTypes,
   movementDetail,
   movementAttachments,
   movementPendingEditInput,
-  resignationInformation,
-  movementCurrentState,
   MOVEMENT_FLAT_FIELDS,
 } from '@/core/movement';
 // 95d17761 — the DEFAULT Employment History view drops the correction artefacts. A pure view filter, so
@@ -114,16 +129,25 @@ import { partitionMovementRows } from '@/lib/movement-visibility';
 // e6a144d4 — the Employment History event-type caption, shared with the Download Excel route so the file
 // and the screen cannot print different names for the same event.
 import { movementKindLabel as movementKindLabelOf } from '@/lib/movement-kind-label';
-// ae9350f2 — the built-in exit-reason catalogue behind the Termination movement.
-import { terminationReasonCatalogue } from '@/core/termination-reason-catalog';
 // 476f23ed — the tenant's configurable movement event-type catalogue.
 import { listMovementEventTypes } from '@/core/movement-type';
-// 1d58019a Step 2 — each type's offered reasons and Field Controls, for the New Event / Edit form.
-import { movementTypeControls, type MovementTypeControls } from '@/core/movement-type-controls';
+import { readPersonnelMovementFormData } from './movement-form-data';
+import { withTenant } from '@/db/client';
 import { MovementNewEvent } from './movement-new-event';
+// Personnel postings (ADR 2026-11-15 decision 4): ?posting=<id> on the New Event page prefills from a pending posting.
+import { personnelPosting } from '@/packs/personnel-postings/service';
+import { savePostingEventAction } from '@/app/lifecycle/probation/postings/actions';
+// Board 511aa74a — Rehired: eligibility/defaults, the Employment Periods card and the Rehired Roll Back.
+import { employmentPeriods, rehireFormDefaults } from '@/core/rehire';
+import { rollBackRehireAction } from './rehire-actions';
+import { EmploymentPeriodsCard } from './employment-periods-card';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
+import { historyMovementEditValues } from '@/core/movement-history-command';
+import { WorkforceAccessError } from '@/core/workforce-access';
+import { canWriteMovementHistoryPay } from '@/core/movement-history-pay';
+import { HistoryMovementEditForm } from './history-movement-edit-form';
 import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
-import { HireCorrectionForm, type HireCorrectionFormField } from './hire-correction-form';
+import { HireCorrectionForm, type HireCorrectionFormField,type HireInformationControl } from './hire-correction-form';
 import { serviceYearsMonthsDaysAt } from '@/core/leave';
 // 9d13221c — the Age figure beside Date of Birth no longer needs an import here at all: 35b7af0a group 3
 // moved both the derivation and the two Fields into components/birth-date-fields.tsx, which reads the same
@@ -132,10 +156,12 @@ import { deriveEmploymentStatus } from '@/core/employment-status';
 import {
   closedPayrollPeriodsFor,
   compensationHistoryDetailed,
+  compensationAmendmentHistory,
   overlapsClosedPeriod,
   type CompensationHistoryRow,
 } from '@/core/comp';
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
+import {SalaryAmendmentHistory} from '@/components/salary-amendment-history';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
 import { PERSONNEL_PAY_MODES, PERSONNEL_PAYMENT_TERMS } from '@/lib/personnel-choice-vocabulary';
@@ -153,6 +179,7 @@ import { addQualificationAction, editQualificationAction, archiveQualificationAc
 import { EMERGENCY_CONTACT_PRIORITIES, listEmergencyContacts, type EmergencyContactRow } from '@/core/emergency-contacts';
 import { addEmergencyContactAction, editEmergencyContactAction, deleteEmergencyContactAction } from './emergency-contact-actions';
 import { FamilyFormDialog } from '@/components/family-form-dialog';
+import { FamilyIdentityDates } from '@/components/family-identity-dates';
 import { FamilyRelationshipFields } from '@/components/family-relationship-fields';
 import { listAssignablePolicies } from '@/core/payroll-policy';
 // r393 (685d2380 step 2) — Payment Method and Payroll Policy are shared field groups now, rendered here in
@@ -194,7 +221,7 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 const MOVEMENT_DOCUMENT_FIELD_KEYS: Record<string, string> = {
   companyId: 'company', businessUnitId: 'businessUnit', departmentId: 'department', positionId: 'position',
   gradeId: 'grade', employmentType: 'employmentType', locationId: 'location', managerEmploymentId: 'manager',
-  basicSalary: 'basicSalary', currency: 'currency', payMode: 'payMode', paymentTerm: 'paymentTerm',
+  basicSalary: 'basicSalary', currency: 'currency', payMode: 'payMode', paymentTerm: 'paymentTerm', paymentMethod:'paymentMethod',
   orgDivision: 'orgDivision', employmentCategory: 'employmentCategory', orgRegion: 'orgRegion', orgBranch: 'orgBranch',
   orgTeam: 'orgTeam', orgSection: 'orgSection', orgLine: 'orgLine', orgBase: 'orgBase',
 };
@@ -206,6 +233,7 @@ export default async function EmployeePage({
   params: Promise<{ employmentId: string }>;
   searchParams: Promise<{
     movementPage?: string;
+    salaryAmendmentPage?: string;
     error?: string;
     from?: string;
     cp38Error?: string;
@@ -238,15 +266,17 @@ export default async function EmployeePage({
     incentiveError?: string;
     workforceCode?:string;
     workforceEdit?:string;
+    // Personnel postings: the pending posting the New Event page is prefilled from (movement page only).
+    posting?:string;
   }>;
 }) {
-  const {s,scopeIds}=await requireWorkforceAccess();
+  const {s}=await requireWorkforceAccess();
   const { employmentId } = await params;
   // Both the finite non-HR projection and the HR detail lane cast this pointer to uuid.
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!UUID_RE.test(employmentId)) notFound();
   if(!isAdmin(s)&&(await searchParams).movementPage)notFound();
-  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
+  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={employmentId} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
   const t = await getTranslations('people.detail');
   const tPersonnel=await getTranslations();
   const personnelLabel=(id:string)=>personnelFormLabel(id,(key,fallback)=>tPersonnel.has(key)?tPersonnel(key):fallback);
@@ -282,13 +312,22 @@ export default async function EmployeePage({
   // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
   // reader back onto a bare tab.
   const rawSearchParams = await searchParams;
-  const movementPage=rawSearchParams.movementPage;
+  const requestedMovementPage=rawSearchParams.movementPage;
   const movementContext={showCorrected:rawSearchParams.showCorrected,from:rawSearchParams.from};
-  const historyHref=movementHistoryHref(employmentId,movementContext);
-  if(!movementPage){
+  if(!requestedMovementPage){
     const legacy=rawSearchParams.newEvent?'new':rawSearchParams.correctHire?'correct-hire':rawSearchParams.editMovement?'edit':rawSearchParams.movement?'view':null;
     if(legacy)redirect(movementPageHref(employmentId,legacy,rawSearchParams.editMovement??rawSearchParams.movement,movementContext));
   }
+  // A direct history link needs the movement projection and header, not every profile tab.
+  // Other profile-specific query parameters still use their existing profile flow.
+  const directMovementHistory=!requestedMovementPage && rawSearchParams.tab==='careerMovement'
+    && Object.keys(rawSearchParams).every(key=>['tab','showCorrected','from','error'].includes(key));
+  const movementPage=requestedMovementPage??(directMovementHistory?'history':undefined);
+  const readProfileCards = admin && !movementPage;
+  const readMovementEditorChoices = admin && (!movementPage || movementPage === 'new' || movementPage === 'edit');
+  const historyHref=requestedMovementPage
+    ? movementPageHref(employmentId,'history',undefined,movementContext)
+    : movementHistoryHref(employmentId,movementContext);
   const retiredDestination = rawSearchParams.tab === 'others' ? RETIRED_PERSONNEL_TABS.others : undefined;
   if (retiredDestination) {
     const query = new URLSearchParams();
@@ -334,8 +373,8 @@ export default async function EmployeePage({
   // only stops a malformed id from becoming a crash instead of the "no such employee" it means. Worth
   // fixing here because this item puts a control on the page whose whole job is to hand this route ids.
   const emp = await employeeDetail(s,employmentId,'workforce');
-  if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
-  const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
+  if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
+  const [canMaintainWorkforce,canDeleteMovement]=await Promise.all([workforceEmploymentAccess(s,employmentId,'maintain'),movementDeleteAccess(s,employmentId)]);
   const tAccess=await getTranslations('accessConfiguration');
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
@@ -344,14 +383,14 @@ export default async function EmployeePage({
   const derivedStatus = deriveEmploymentStatus(emp, today);
   const derivedStatusLabel = tStatus(derivedStatus);
   // b4682879 — does this employee have a profile photo the viewer may see? (existence only; never the blob).
-  const photoExists = await hasPersonPhoto(s, emp.personId);
+  const photoExists = readProfileCards && await hasPersonPhoto(s, emp.personId);
 
   // Company change before any transaction (9464bd56) — admin-only inline correction of a mis-picked Company
   // while the employee has NO operational activity. `companyEditable` is the pre-transaction gate; when it is
   // false the Company field stays locked and points HR to Movement / Transfer. Phase 1 lets HR pick a
   // destination (companyChange param) which re-scopes the org dropdowns + shows a banner (nothing committed);
   // phase 2 Saves via changeEmploymentCompanyAction.
-  const companyEditable = admin ? await employmentCompanyEditable(s, employmentId) : false;
+  const companyEditable = readProfileCards ? await employmentCompanyEditable(s, employmentId) : false;
   // Destinations HR may pick = companies they administer (the writer requires is_admin_for(destination), so
   // offering only these keeps offered == acceptable). Only fetched when the field is actually editable.
   const managedCompanies = companyEditable ? await adminCompanies(s) : [];
@@ -363,40 +402,54 @@ export default async function EmployeePage({
   // The org-assignment dropdowns scope to the PENDING company when one is chosen, else the current company.
   const orgScopeCompanyId = pendingCompany?.id ?? emp.companyId;
 
-  const [history, departments, reporting, employees, grades, delegations] = await Promise.all([
-    assignmentHistory(s, employmentId),
-    // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
-    // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
-    // the Organisation Assignment department select and the MovementNewEvent departments prop.
-    listDepartments(s, { companyIds: [emp.companyId] }),
-    reportingLinesFor(s, employmentId),
-    listWorkforcePickOptions(s),
-    listJobGrades(s),
-    delegationsFor(s, employmentId),
+  // The assignment and Movement forms share the same company-scoped label readers.
+  const readOrganisationOptions = (companyId: string) => {
+    const companyIds = [companyId];
+    return withTenant(s, tx => Promise.all([
+      listDepartments(s, { companyIds }, tx),
+      listPositions(s, { companyIds }, tx),
+      listBusinessUnits(s, { companyIds }, tx),
+      listLocations(s, companyIds, {}, tx),
+    ]));
+  };
+  const emptyOrganisationOptions: Awaited<ReturnType<typeof readOrganisationOptions>> = [[], [], [], []];
+  const [history, currentOrganisationOptions, reporting, employees, grades, delegations] = await Promise.all([
+    readProfileCards ? assignmentHistory(s, employmentId) : [],
+    readMovementEditorChoices ? readOrganisationOptions(emp.companyId) : emptyOrganisationOptions,
+    readProfileCards ? reportingLinesFor(s, employmentId, undefined, { administrativeAsOf: today }) : {managers:[],reports:[]},
+    readMovementEditorChoices || movementPage === 'correct-hire' ? listWorkforcePickOptions(s) : [],
+    readMovementEditorChoices ? listJobGrades(s, { companyId: orgScopeCompanyId }) : [],
+    readProfileCards ? delegationsFor(s, employmentId) : [],
   ]);
+  const [departments, positions, businessUnits, locations] = currentOrganisationOptions;
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
-  const salaryHistory = admin ? await compensationHistoryDetailed(s, employmentId) : [];
+  const amendmentPage=Number(rawSearchParams.salaryAmendmentPage);
+  const [paymentMethodHistory,salaryHistory,salaryAmendments]=await Promise.all([
+    readProfileCards?employmentPaymentMethodHistory(s,employmentId):[],
+    readProfileCards?compensationHistoryDetailed(s,employmentId):[],
+    readProfileCards?compensationAmendmentHistory(s,employmentId,Number.isSafeInteger(amendmentPage)&&amendmentPage>0&&amendmentPage<=100000?amendmentPage:1):{page:1,hasMore:false,rows:[]},
+  ]);
   // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
-  const closedPayrollPeriods = admin ? await closedPayrollPeriodsFor(s, employmentId) : [];
+  const closedPayrollPeriods = readProfileCards || movementPage === 'edit' || spNewEvent ? await closedPayrollPeriodsFor(s, employmentId) : [];
   // Rung 5c — the acting company's country pack; statutory reads + the SOCSO/EIS default resolve through it.
   const countryPack = packFor('MY');
   // This scoped service verifies the owning company is MY; a person-level tax flag is not approval.
-  const taxSelection = admin && payrollOn
+  const taxSelection = readProfileCards && payrollOn
     ? await countryPack?.statutory.getTaxSelection?.(s, emp.employmentId) ?? null : null;
   // Rung 5c — the holiday-calendar state pick-list comes from the country packs via the registry
   // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
   const stateOptions = countryPacks().flatMap((p) => p.states);
-  const statutory = admin ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
+  const statutory = readProfileCards ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
   // 04b88724 — the QUALIFYING-CHILDREN figure and its working. `num_children` (the head count Form E, CP8D
   // and the EA statement read) and C (what the projection of P counts in) are two different numbers, and the
   // card used to show one of them under a caption that implied both. This resolves the ruleset and returns
   // the pack's own prices plus the Family register's child rows; the card multiplies those prices by the
   // counts on screen so the figure stays true while the admin types. null ⇒ no pack / no PCB reliefs, and
   // the card then names no figure rather than inventing a rate. 'MY' matches this page's own packFor('MY').
-  const qualifyingChildRelief = admin
+  const qualifyingChildRelief = readProfileCards
     ? await qualifyingChildReliefFor(s, { personId: emp.personId, country: 'MY', asOf: today })
     : null;
   // r351 — THE ONE INSTANT THE FAMILY TAB'S AGE AND RELIEF COLUMNS ARE TAKEN AT, and it is the same date the
@@ -430,11 +483,11 @@ export default async function EmployeePage({
   // company with no HRDF Contribution Rate is accepted by the save and then silently discarded at payroll
   // time (pack.payroll.hrdfSubject honours the flag, but hrdfLevy rates not_registered to 0). HR set
   // something and nothing happened, with nothing on any screen saying why. Must NOT touch defaultValue.
-  const companyHrdf = admin ? ((await countryPack?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
+  const companyHrdf = readProfileCards ? ((await countryPack?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
   const companyHrdfUnregistered = (companyHrdf?.hrdfStatus ?? 'not_registered') === 'not_registered';
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
-  const holidayGroups = admin ? await listHolidayGroups(s) : [];
-  const holidayCalendarRows=admin?await employmentHolidayCalendarHistory(s,employmentId):[];
+  const holidayGroups = readProfileCards ? await listHolidayGroups(s) : [];
+  const holidayCalendarRows=readProfileCards?await employmentHolidayCalendarHistory(s,employmentId):[];
   /**
    * f513ec02 — THE SCHEDULE GROUP PICKER'S OPTIONS AND ITS CURRENT VALUE.
    *
@@ -448,59 +501,48 @@ export default async function EmployeePage({
    * something other than what is stored, then persisting it), reached by a different route. The extra
    * option is marked inactive so the reader is told why it is there.
    */
-  const scheduleGroupCurrentId = admin ? await employmentScheduleGroupId(s, employmentId) : null;
-  const attendanceRules = admin ? await listAttendanceRules(s) : [];
+  const scheduleGroupCurrentId = readProfileCards ? await employmentScheduleGroupId(s, employmentId) : null;
+  const attendanceRules = readProfileCards ? await listAttendanceRules(s) : [];
   const scheduleGroupOptions = attendanceRules.filter(
     (r) => r.status === 'active' || r.id === scheduleGroupCurrentId,
   );
-  // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
-  // THIS employee's company (the assignment's position must belong to the same company). Admin-only.
-  const positions = admin ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
-  // 1001ff61 — Business Units for THIS employee's company (admin-only) — the Organisation Assignment BU picker
-  // options. Sourced company-scoped (origin ∪ shared ∪ global), mirroring the Position/Location pickers.
-  const businessUnits = admin ? await listBusinessUnits(s, { companyIds: [emp.companyId] }) : [];
-  // ADR-0054: locations for THIS employee's company (admin-only) — the "Set location" picker options.
-  const locations = admin ? await listLocations(s, [emp.companyId]) : [];
-  // Company change (9464bd56) — the Organisation Assignment selects re-scope to the PENDING company during a
-  // company change; everything else (MovementNewEvent, the Set-location picker) keeps the current-company
-  // lists. When no company is pending these ARE the current-company lists (byte-identical to before).
-  const orgDepartments = pendingCompany ? await listDepartments(s, { companyIds: [orgScopeCompanyId] }) : departments;
-  const orgPositions = pendingCompany ? await listPositions(s, { companyIds: [orgScopeCompanyId] }) : positions;
-  const orgBusinessUnits = pendingCompany ? await listBusinessUnits(s, { companyIds: [orgScopeCompanyId] }) : businessUnits;
-  const orgLocations = pendingCompany ? await listLocations(s, [orgScopeCompanyId]) : locations;
+  // A pending company changes only the Organisation Assignment picker scope.
+  const [orgDepartments, orgPositions, orgBusinessUnits, orgLocations] = pendingCompany
+    ? await readOrganisationOptions(orgScopeCompanyId)
+    : currentOrganisationOptions;
   // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
   // r298 — Payroll-owned: not read at all for a tenant without Payroll (see `payrollOn`).
-  const payComps = admin && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
-  const componentCatalog = admin && payrollOn ? await listPayComponents(s, { readyOnly: true }) : [];
+  const payComps = readProfileCards && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
+  const componentCatalog = readProfileCards && payrollOn ? await listPayComponents(s, { readyOnly: true }) : [];
   // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data). r298 — Payroll-owned.
-  const cp38Records = admin && payrollOn ? await listCp38(s, { employmentId }) : [];
+  const cp38Records = readProfileCards && payrollOn ? await listCp38(s, { employmentId }) : [];
   // ADR-0069 — leave encashment snapshot, admin-only card. Null when no resignation has been frozen
   // (policy off, or the employment was terminated directly bypassing the resignation flow).
-  const encashmentSnapshot = admin ? await encashmentSnapshotForEmployment(s, employmentId) : null;
+  const encashmentSnapshot = readProfileCards ? await encashmentSnapshotForEmployment(s, employmentId) : null;
   // Personnel — Family / Dependents (phase 1): per-person benefits/insurance register (admin-only). Keyed
   // on person_id (already loaded on emp), NOT employment_id. Does NOT feed the tax num_children figure.
-  const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
+  const dependents = readProfileCards ? await listDependents(s, { personId: emp.personId }) : [];
   // Feedback a949184a — Qualification tab: this employment's academic/professional qualification records
   // (admin-only surface; employment-keyed, unlike the person-keyed Family register). Sorted by the service:
   // most recent graduation first, in-progress (blank graduation date) last.
-  const qualifications = admin ? await listQualifications(s, { employmentId }) : [];
+  const qualifications = readProfileCards ? await listQualifications(s, { employmentId }) : [];
   // Feedback 23ad620e — Emergency Contact register: every person to call for this employee, in resolution
   // order (Primary → Secondary → Other). PERSON-keyed like the Family register, so it survives termination
   // and is visible to a second company's admin.
-  const emergencyContacts = admin ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
+  const emergencyContacts = readProfileCards ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   // r298 — Payroll-owned (core/payroll-policy.ts): not read for a tenant without Payroll.
-  const assignablePolicies = admin && payrollOn ? await listAssignablePolicies(s, emp.companyId) : [];
+  const assignablePolicies = readProfileCards && payrollOn ? await listAssignablePolicies(s, emp.companyId) : [];
   // 297ae65a — the company's currency: the Basic Salary form preselects it for a brand-new first record.
   // r79a (4fb8b75a step 3): read from `company.currency` (owned by Organization → General) instead of the
   // duplicate company_payroll_config.default_currency the pair collapsed into it (migration 0324).
-  const defaultSalaryCurrency = admin ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
+  const defaultSalaryCurrency = readProfileCards ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
   // ADR-0070 — Clocking Location & Geofencing: the picker's options + this employee's current assignment
   // (admin-only). r423 (83c0d3c8) REVERSES f9afd1ce's "every active site in the tenant": the picker offers
   // only the ACTIVE locations OPEN TO THIS EMPLOYEE'S COMPANY (clocking_location_company). The service
   // (setClockingControl) refuses anything else, so this filter is the courtesy and the service the rule.
-  const clockingLocations = admin ? await listClockingLocations(s, { companyId: emp.companyId }) : [];
-  const assignedClockingLocations = admin ? await listEmployeeClockingLocations(s, employmentId) : [];
+  const clockingLocations = readProfileCards ? await listClockingLocations(s, { companyId: emp.companyId }) : [];
+  const assignedClockingLocations = readProfileCards ? await listEmployeeClockingLocations(s, employmentId) : [];
   const assignedClockingLocationIds = new Set(assignedClockingLocations.map((l) => l.id));
   /**
    * r272 (0e8cf366) — THE PRE-TICK IS GONE, AND ITS REMOVAL IS THE POINT OF THE ITEM.
@@ -536,28 +578,11 @@ export default async function EmployeePage({
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
-  // c002b3c3 — Search Employee. NO NEW READ: this is the `listWorkforcePickOptions(s)` set already loaded above for
-  // the Direct Superior picker, narrowed to the active company context. Two consequences worth stating.
-  // (1) The search cannot be broader than what this page may already see, because it is literally the
-  // same rows — there is no second, looser query to drift. (2) Picking a result only changes the URL;
-  // the next request re-runs `employeeDetail(s,employmentId,'workforce')` at the top of this file, which returns
-  // null for anything out of scope and 404s. So the list is a convenience and the route is the guard,
-  // and an id typed straight into the address bar is refused exactly as it was before this box existed.
-  // Terminated employments stay IN: HR looks up leavers on this screen constantly (final pay, letters).
-  const switcherEmployees = employees
-    .filter((e) => scopeIds.includes(e.companyId))
-    .map((e) => ({
-      employmentId: e.employmentId,
-      name: e.name,
-      employeeCode: e.employeeCode,
-      company: e.company,
-      department: e.department,
-    }));
   // Direct Superior (dce55aff): the CURRENT superior is the active administrative reporting line (the
   // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
   // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
   const currentSuperior = reporting.managers.find((m) => m.lineType === 'administrative') ?? null;
-  const superiorHistory = admin ? await directSuperiorHistoryFor(s, employmentId) : [];
+  const superiorHistory = readProfileCards ? await directSuperiorHistoryFor(s, employmentId, today) : [];
   // "EMP-0008 – John Tan" labels: the Combobox filters on the label, so one picker searches Employee ID
   // and name alike. Active employees only (`others` already excludes self + terminated); the current
   // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
@@ -572,7 +597,11 @@ export default async function EmployeePage({
   // Movement tab redesign (78853b97): Employment History is a read-model projection over the
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
-  const movements = admin ? await movementHistory(s, employmentId) : [];
+  // Only the history table, the pending banner, and the edit lookup need the full projection.
+  const movementProjection = admin && (!movementPage || movementPage === 'history' || movementPage === 'edit')
+    ? await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards || directMovementHistory })
+    : null;
+  const movements = movementProjection?.movements ?? [];
   // 95d17761 — the DEFAULT view drops the correction artefacts (rolled back / corrected / cancelled /
   // superseded) so the tab reads as a career rather than a list of mistakes. Nothing is deleted and the
   // projection above is untouched: `movements` stays the complete history and is what the Edit lookup,
@@ -585,6 +614,9 @@ export default async function EmployeePage({
   // The Show / Hide link keeps the reader exactly where they are: same tab, same open detail view, same
   // every other param. Only `showCorrected` is rewritten.
   const movementVisibilityHref = (show: boolean): string => {
+    if(requestedMovementPage==='history')return movementPageHref(employmentId,'history',undefined,{
+      ...movementContext,showCorrected:show?'1':undefined,
+    });
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(rawSearchParams)) {
       if (k === 'showCorrected' || v === undefined) continue;
@@ -597,24 +629,16 @@ export default async function EmployeePage({
   // 476f23ed — the tenant's movement event-type catalogue. Read UNFILTERED, because Employment History has
   // to label a movement recorded under a type that has since been switched off; the New Event form filters
   // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
-  const movementTypes = admin ? await listMovementEventTypes(s) : [];
+  const movementTypes = movementProjection?.movementTypes ?? (admin ? await listMovementEventTypes(s, { includeUsage: false }) : []);
   const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
-  // 1d58019a Step 2 (ADR-0166) — the controls the form applies on screen; the writer enforces them again.
-  const movementControls = admin ? await movementTypeControls(s, movementTypes) : new Map<string, MovementTypeControls>();
-  const typeControls = (code: string) => {
-    const c = movementControls.get(code);
-    return { reasonCodes: c?.reasonCodes ?? null, ...(c?.configured ? { rules: c.rules } : {}) };
-  };
-  // 1d58019a — the tenant's exit reasons (built-ins with its renames, plus its own), switched-off ones
-  // included and flagged: the New Event form offers the active ones and keeps a switched-off reason that a
-  // termination being corrected already carries.
-  const terminationReasonRows = admin ? await terminationReasonCatalogue(s) : [];
+  const salaryTypeControls=readProfileCards&&canMaintainWorkforce?await movementTypeControls(s,movementTypes):null;
   const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
   // 1d58019a Step 2 — the movement's supporting documents; the service applies history visibility and the
   // table's pay rule, so a document this admin may not see is simply not listed.
   const movementDocuments = movementDetailData && spMovement ? await movementAttachments(s, employmentId, spMovement) : [];
-  const resignationInfo = admin ? await resignationInformation(s, employmentId) : null;
-  const costAllocationView = admin && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
+  const resignationInfo = movementProjection?.resignation ?? null;
+  const allocationDate=movementPage==='view'?movementDetailData?.row.effectiveDate:movementPage==='edit'?movements.find(row=>row.id===spEditMovement)?.effectiveDate:movementPage==='correct-hire'?emp.hiredOn:undefined;
+  const costAllocationView = (readProfileCards||!!movementPage&&movementPage!=='history') && emp.companyId ? await getEmploymentCostAllocations(s, employmentId,allocationDate).catch(error=>{if(error instanceof CostAllocationError&&error.code==='date')return null;throw error;}) : null;
   /**
    * c063eea9 — the Correct hire details form (?correctHire=1). Read ONLY while it is open, and only where
    * the caller may correct the employment, including after an exit.
@@ -633,9 +657,13 @@ export default async function EmployeePage({
           throw e;
         })
       : null;
+  const hireHeaderOptions=hireCorrection?await (async()=>{
+    const [managed,permitted,grades,labels]=await Promise.all([adminCompanies(s),personnelMaintenanceCompanyIds(s),listJobGrades(s),listAllProfileOptions(s,{activeOnly:true,companyId:hireCorrection.companyId})]);
+    const allowed=new Set(permitted);return {companies:managed.filter(company=>allowed.has(company.id)),grades,labels};
+  })():null;
   const hireCorrectionOptions = hireCorrection
     ? await (async () => {
-        const scope = [hireCorrection.companyId];
+        const scope = [...new Set([hireCorrection.companyId,...(hireHeaderOptions?.companies.map(company=>company.id)??[])])];
         const [deps, poss, bus, ccs, locs] = await Promise.all([
           listDepartments(s, { companyIds: scope }),
           listPositions(s, { companyIds: scope }),
@@ -656,11 +684,23 @@ export default async function EmployeePage({
         return byField;
       })()
     : null;
-  // 08913328 — the Current column of the New Event comparison screen. Only read when that screen is open.
-  // 66a63bd6 — the Edit screen is the same form, so it reads the same Current column: a correction is
-  // only offered on the LATEST movement, where "current" and "what this movement set" are the same values.
-  const movementCurrent =
-    admin && (spNewEvent || spEditMovement) ? await movementCurrentState(s, employmentId) : null;
+  // New and Edit use the same current values, configured controls and full reason catalogue.
+  // Read them together only for those forms; the History tab still uses the type labels above.
+  const { canCreateMovement, canCorrectMovement } = movementScreenAccess({ admin, canMaintainWorkforce, terminatedOn: emp.terminatedOn });
+  const movementEditRow = spEditMovement ? movements.find((row) => row.id === spEditMovement && row.canEdit) : undefined;
+  // Board 511aa74a — Rehired is the one event a Resigned (often terminated) employee may still receive. It is
+  // offered only while the service would accept it (core/rehire.ts applies the same rule on save).
+  const rehireTypeActive = movementTypes.some((r) => r.active && r.behaviourKind === 'rehire');
+  const rehireRead = canCorrectMovement && rehireTypeActive && derivedStatus === 'resigned'
+    ? await rehireFormDefaults(s, employmentId) : null;
+  const canRehire = !!rehireRead && !rehireRead.refusal;
+  const movementFormOpen = Boolean(((canCorrectMovement || canRehire) && spNewEvent) || (canCorrectMovement && movementEditRow));
+  const movementFormData = await readPersonnelMovementFormData(s, employmentId, movementTypes, movementFormOpen);
+  const movementCurrent = movementFormData?.current ?? null;
+  const typeControls = (code: string) => {
+    const c = movementFormData?.controls.get(code)??salaryTypeControls?.get(code);
+    return { reasonCodes: c?.reasonCodes ?? null, ...(c?.configured ? { rules: c.rules } : {}) };
+  };
   /**
    * b7b22514 — Entity Transfer's destination list, and the org option lists of every destination.
    *
@@ -683,7 +723,7 @@ export default async function EmployeePage({
     // have one option and silently re-affirm the move it is meant to be able to fix.
     movementCurrent
       ? await (async () => {
-          const managed = await adminCompanies(s);
+          const managed = companyEditable ? managedCompanies : await adminCompanies(s);
           // The current company leads and is always present, even for an actor who does not administer it:
           // it is the select's initial value, and a control whose value matches no option is a broken one.
           return [
@@ -695,12 +735,10 @@ export default async function EmployeePage({
   const movementOrgByCompany = Object.fromEntries(
     await Promise.all(
       movementCompanies.map(async (c) => {
-        const [deps, poss, bus, locs] = await Promise.all([
-          listDepartments(s, { companyIds: [c.id] }),
-          listPositions(s, { companyIds: [c.id] }),
-          listBusinessUnits(s, { companyIds: [c.id] }),
-          listLocations(s, [c.id]),
-        ]);
+        // The current-company form already loaded these exact scoped lists.
+        const [deps, poss, bus, locs] = c.id === emp.companyId
+          ? currentOrganisationOptions
+          : await readOrganisationOptions(c.id);
         return [
           c.id,
           {
@@ -716,8 +754,8 @@ export default async function EmployeePage({
   // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
   // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
-  const profileOptions = admin
-    ? await listAllProfileOptions(s, { activeOnly: true })
+  const profileOptions = readMovementEditorChoices
+    ? await listAllProfileOptions(s, { activeOnly: true, companyId: orgScopeCompanyId })
     : ({
         religion: [],
         race: [],
@@ -894,7 +932,7 @@ export default async function EmployeePage({
       <input type="hidden" name="tab" value="profile" data-tab-tracker="" />
       {emergencyFields(c)}
       <div className="flex justify-end sm:col-span-2">
-        <button className={btnPrimary}>{c ? t('emergency.save') : t('emergency.add')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{c ? t('emergency.save') : t('emergency.add')}</ActionButton>
       </div>
     </form>
   );
@@ -1033,7 +1071,7 @@ export default async function EmployeePage({
     payroll: [t('payMethodGroup'), ...whenPayroll(...whenLive(tp('assignTitle'))), t('tp3SectionTitle')],
   };
 
-  const canEditPassport=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
+  const canEditPassport=readProfileCards&&canMaintainWorkforce&&!!await countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
   const profilePanel = admin ? (
     <>
       {/* 420ebab5 part two — ONE "Save Changes" for the Profile tab. TabSaveScope wraps the bucket (a) cards
@@ -1329,7 +1367,7 @@ export default async function EmployeePage({
         </PersonnelField>
       </div>
       <div className="flex justify-end sm:col-span-2">
-        <button className={btnPrimary}>{t('payComponentSave')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('payComponentSave')}</ActionButton>
       </div>
     </form>
   );
@@ -1468,7 +1506,7 @@ export default async function EmployeePage({
         </PersonnelField>
       </div>
       <div className="flex justify-end sm:col-span-2">
-        <button className={btnPrimary}>{r ? t('cp38Save') : t('cp38Add')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{r ? t('cp38Save') : t('cp38Add')}</ActionButton>
       </div>
     </form>
   );
@@ -1666,7 +1704,7 @@ export default async function EmployeePage({
               <PersonnelField fieldId="payroll.leave_encashment.reason" mode="record">
                 <input {...personnelInput('payroll.leave_encashment.reason','record')} placeholder={t('encashmentReasonPlaceholder')} className={inputCls} />
               </PersonnelField>
-              <button className={btnPrimary}>{t('encashmentAdjust')}</button>
+              <ActionButton actionKind="saving" className={btnPrimary}>{t('encashmentAdjust')}</ActionButton>
             </form>
           </div>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{t('encashmentHint')}</p>
@@ -1763,19 +1801,18 @@ export default async function EmployeePage({
         </select>
       </PersonnelField>
     );
-    const dobField = (
-      <PersonnelField fieldId="family.family_and_dependents.dateofbirth" mode="edit">
-        <DateField {...personnelControl('family.family_and_dependents.dateofbirth','edit')} defaultValue={d?.dateOfBirth ?? ''} className={inputCls} label={personnelLabel('family.family_and_dependents.dateofbirth')} />
-      </PersonnelField>
+    const identityDates = (
+      <FamilyIdentityDates
+        child={section === 'child'}
+        initialIc={d?.icOrPassport ?? ''}
+        initialDob={d?.dateOfBirth ?? ''}
+        dobLabel={personnelLabel('family.family_and_dependents.dateofbirth')}
+        asOf={familyAsOf}
+      />
     );
     const phoneField = (
       <PersonnelField fieldId="family.family_and_dependents.phone" mode="edit">
         <input {...personnelInput('family.family_and_dependents.phone','edit')} defaultValue={d?.phone ?? ''} className={inputCls} />
-      </PersonnelField>
-    );
-    const icField = (
-      <PersonnelField fieldId={section==='child' ? 'family.family_and_dependents.icorpassport_8' : 'family.family_and_dependents.icorpassport'}>
-        <input {...personnelInput(section==='child' ? 'family.family_and_dependents.icorpassport_8' : 'family.family_and_dependents.icorpassport')} defaultValue={d?.icOrPassport ?? ''} className={inputCls} />
       </PersonnelField>
     );
     const remarksField = (
@@ -1792,9 +1829,8 @@ export default async function EmployeePage({
             <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
               {nameField}
               {genderField}
-              {dobField}
+              {identityDates}
               {phoneField}
-              {icField}
               {remarksField}
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
                 {familyCheckbox('isBeneficiary', d?.isBeneficiary ?? false, t('family.beneficiary'))}
@@ -1826,9 +1862,8 @@ export default async function EmployeePage({
             </div>
           </fieldset>
           {/* Item 6c635212 → R46 47146ea3 — Malaysia Income Tax Child Relief (PCB / TP1). Per-child relief
-              category, claim flag and 100|50 share. Age is derived read-only from DOB to guide the category
-              choice (the FamilyFormDialog island refreshes it live while a DOB is typed; the note is static
-              guidance and the category is NEVER auto-filled from an age-based guess). Since R46 removed the
+              category, claim flag and 100|50 share. Age in the Personal section informs the category choice.
+              Since R46 removed the
               "Use {count}" approval button, when employee_statutory_my.child_relief_mode === 'auto' the
               derived eligible-child head count DOES flow straight into num_children on save (see
               syncChildReliefFromFamily in core/dependents.ts and its four rails); on 'manual' the tax figure
@@ -1866,15 +1901,6 @@ export default async function EmployeePage({
                   <option value="50">{t('family.childReliefPct_50')}</option>
                 </select>
               </PersonnelField>
-              <PersonnelField fieldId="family.family_and_dependents.age" mode="edit">
-                <input {...personnelDisplay("family.family_and_dependents.age")}
-                  readOnly
-                  disabled
-                  data-child-age=""
-                  value={childAgeYears(d?.dateOfBirth) ?? '—'}
-                  className={`${inputCls} bg-muted/50`}
-                />
-              </PersonnelField>
               <div className="flex items-end pb-1">
                 {familyCheckbox('childTaxRelief', d?.childTaxRelief ?? false, t('family.childTaxRelief'))}
               </div>
@@ -1890,9 +1916,8 @@ export default async function EmployeePage({
       <>
         {nameField}
         {genderField}
-        {dobField}
+        {identityDates}
         {phoneField}
-        {icField}
         <PersonnelField fieldId="family.family_and_dependents.passportnumber" mode="edit">
           <input {...personnelInput('family.family_and_dependents.passportnumber','edit')} defaultValue={d?.passportNumber ?? ''} className={inputCls} />
         </PersonnelField>
@@ -1970,7 +1995,7 @@ export default async function EmployeePage({
         otherPanel={<div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{dependentFields('other', d)}</div>}
       />
       <div className="flex justify-end">
-        <button className={btnPrimary}>{d ? t('family.save') : t('family.add')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{d ? t('family.save') : t('family.add')}</ActionButton>
       </div>
     </form>
   );
@@ -2191,7 +2216,7 @@ export default async function EmployeePage({
       <input type="hidden" name="tab" value="qualification" data-tab-tracker="" />
       {qualificationFields(q)}
       <div className="flex justify-end sm:col-span-2">
-        <button className={btnPrimary}>{q ? t('qualification.save') : t('qualification.add')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{q ? t('qualification.save') : t('qualification.add')}</ActionButton>
       </div>
     </form>
   );
@@ -2468,7 +2493,7 @@ export default async function EmployeePage({
           <p className="text-xs text-muted-foreground">
             {t('gradeMovementOnlyNote')}{' '}
             <Link
-              href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&newEvent=1`}
+              href={movementPageHref(emp.employmentId, 'new')}
               className="text-primary hover:underline"
             >
               {t('movement.newEvent')}
@@ -2513,10 +2538,20 @@ export default async function EmployeePage({
   // Salary math is derived here on the server; the island only presents + filters (f2904eeb-safe, no
   // client fetch). Audit detail (created/updated by/on) is no longer serialized — it belongs to the
   // Audit Trail, not this screen (7c7c2f80).
+  const methodAtSalaryDate=(date:string)=>paymentMethodHistory.length?(paymentMethodHistory.filter(row=>!row.supersededAt&&row.effectiveOn<=date).sort((a,b)=>b.effectiveOn.localeCompare(a.effectiveOn))[0]?.paymentMethod??null):emp.paymentMethod;
+  const salaryRecordingOptions:SalaryRecordingOptions={
+    events:movementTypes.filter(type=>type.active&&isComparisonKind(type.behaviourKind)&&!['entityTransfer','confirmation'].includes(type.behaviourKind))
+      .filter(type=>!(typeControls(type.code).rules??[]).some(rule=>(rule.mustChange&&!['basicSalary','paymentMethod','currency','payMode','paymentTerm'].includes(rule.field))||(rule.document==='required'&&['basicSalary','paymentMethod'].includes(rule.field))||(['basicSalary','paymentMethod'].includes(rule.field)&&(!rule.included||!rule.editable))))
+      .map(type=>({code:type.code,label:movementKindLabelOf(type.code,type.label,t)})),
+    latest:latestApplicableMovementCandidates(movements,today).map(row=>({id:row.id,label:movementKindLabelOf(row.kind,movementTypeByCode.get(row.kind)?.label,t),effectiveDate:row.effectiveDate,
+      canUpdate:row.kind==='hired'||row.canEdit&&isComparisonKind(movementTypeByCode.get(row.correctionKind??row.kind)?.behaviourKind??row.kind),paymentMethod:methodAtSalaryDate(row.effectiveDate)})),
+    closedPeriods:closedPayrollPeriods,
+  };
   const salaryRowViews: SalaryRowView[] = salaryRows.map((r) => ({
     id: r.row.id,
     employmentId: emp.employmentId,
     effectiveDate: r.row.validFrom,
+    paymentMethod:methodAtSalaryDate(r.row.validFrom),
     currency: r.row.currency,
     basic: r.basic,
     previous: r.previous,
@@ -2548,18 +2583,7 @@ export default async function EmployeePage({
       <input type="hidden" name="employmentId" value={emp.employmentId} />
       <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.validfrom" mode="record">
-          <DateField {...personnelControl("payroll.basic_salary_and_salary_history.validfrom", 'record')}
-
-
-            defaultValue={salaryRows.length ? today : emp.hiredOn}
-            className={inputCls}
-            label={personnelLabel("payroll.basic_salary_and_salary_history.validfrom")}
-          />
-          {salaryRows.length === 0 && (
-            <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
-          )}
-        </PersonnelField>
+        <div className="sm:col-span-2"><SalaryRecordingChoices options={salaryRecordingOptions} defaultDate={salaryRows.length?today:emp.hiredOn} paymentMethod={emp.paymentMethod}/></div>
         {/* r374 (item 7dbaf677) — `required` DROPPED, `min="0"` KEPT. A Director paid Director Fees
             quarterly has no monthly basic; `required` meant HR could type a zero but not leave the box
             empty, and an empty box is the honest answer. A blank POST is read as an explicit zero by
@@ -2665,7 +2689,11 @@ export default async function EmployeePage({
             in-force revision carries its own Active badge and row tint rather than being identified by
             position: this table sorts and filters, so row order is the reader's choice, not the record's
             status. (The summary strip above states the same figure once more, in words.) */}
-        {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} />}
+        {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} recordingOptions={salaryRecordingOptions} />}
+        <SalaryAmendmentHistory {...salaryAmendments} href={page=>`/admin/personnel/${employmentId}?tab=payroll&salaryAmendmentPage=${page}#salary-amendments`}
+          labels={{title:t('salaryAmendments.title'),date:t('paymentMethodEffectiveDate'),amount:t('salaryAmendments.amount'),rate:t('rateAmount'),
+           payrollFrom:t('salaryPayrollFrom'),recordOnly:t('salaryAmendments.recordOnly'),reason:t('movement.correctionReasonLabel'),previous:t('salaryAmendments.previous'),next:t('salaryAmendments.next')}}/>
+
       </section>
 
       {/* ── R46 79eb7151, SUPERSEDED by ADR-0078 (642ecc55) — How this employee is paid ─────────────────────
@@ -2691,9 +2719,11 @@ export default async function EmployeePage({
             {/* r393 (685d2380 step 2) — the SHARED field group the draft's Payroll tab renders too, in
                 form mode (markup unchanged — pinned by test/r393-draft-payroll-tab.dom.test.tsx). */}
             <PaymentMethodField mode="form" defaultValue={emp.paymentMethod} disabled={!!emp.terminatedOn} />
+            <label className="text-xs text-muted-foreground">{t('paymentMethodEffectiveDate')}<DateField {...personnelControl('payroll.payment_method_and_payroll_policy.effectiveon','record')} defaultValue={today} className={inputCls} disabled={!!emp.terminatedOn}/></label>
           </form>
         </div>
         <p className="text-xs text-muted-foreground">{t('paymentMethodBankHint')}</p>
+        {paymentMethodHistory.length>0&&<div className="overflow-x-auto"><table className="w-full text-left text-sm"><caption className="pb-2 text-left font-medium">{t('paymentMethodHistoryTitle')}</caption><thead><tr><th className="p-2">{t('paymentMethodEffectiveDate')}</th><th className="p-2">{t('paymentMethod')}</th><th className="p-2">{t('paymentMethodRecordedAt')}</th><th className="p-2">{t('paymentMethodRevision')}</th></tr></thead><tbody>{paymentMethodHistory.map(row=><tr key={row.id} className="border-t border-border"><td className="p-2">{formatDmy(row.effectiveOn)}</td><td className="p-2">{row.paymentMethod?t(`paymentMethod_${row.paymentMethod}` as 'paymentMethod_cash'):t('movement.form.none')}</td><td className="p-2">{row.recordedAt}</td><td className="p-2">{row.source==='legacy_snapshot'?t('paymentMethodLegacySnapshot'):row.supersededAt?t('movement.status.superseded'):t('movement.status.applied')}</td></tr>)}</tbody></table></div>}
       </div>
     </Card>
   ) : null;
@@ -2899,7 +2929,7 @@ export default async function EmployeePage({
   // name is now a pick-from-catalog select and the card adds the custom-payment-holder function (pay salary
   // to a third party's account). It's a client island (interactive reveal/require) rendered as JSX only, so
   // the RSC server/client boundary is respected.
-  const canEditBank=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.bankEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
+  const canEditBank=readProfileCards&&canMaintainWorkforce&&!!await countryPack?.statutory.bankEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
   const bankCard = admin ? (
     <>
     {!canEditBank&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}
@@ -2912,6 +2942,7 @@ export default async function EmployeePage({
         bankName: statutory?.bankName ?? null,
         bankAccountNo: statutory?.bankAccountNo ?? null,
         enableCustomHolderName: statutory?.enableCustomHolderName ?? false,
+        bankPayeeResidency: statutory?.bankPayeeResidency ?? null,
         customHolderName: statutory?.customHolderName ?? null,
         enableCustomHolderId: statutory?.enableCustomHolderId ?? false,
         customHolderId: statutory?.customHolderId ?? null,
@@ -3098,14 +3129,26 @@ export default async function EmployeePage({
   // the identical caption (476f23ed tenant override included), and two copies of a twenty-case map is how
   // a file and the screen it reproduces start calling the same event different things. This closure is all
   // that stays here: it binds the tenant catalogue and the page's translator.
+  const superiorFactLabel = (value: NonNullable<MovementHistoryRow['superiorChange']>['before']) => {
+    switch (value.kind) {
+      case 'named': return value.name;
+      case 'none': return t('directSuperiorNone');
+      case 'unrecorded': return t('directSuperiorUnrecorded');
+      case 'unavailable': return t('directSuperiorUnavailable');
+    }
+  };
   const movementKindLabel = (kind: string): string =>
     movementKindLabelOf(kind, movementTypeByCode.get(kind)?.label, t);
+  const movementRecordLabel = (kind: string, superiorChange: MovementHistoryRow['superiorChange']) => {
+    const configured = movementTypeByCode.get(kind)?.label;
+    if (kind === 'reportingLineChange' && !superiorChange && !configured) {
+      return t('movement.eventType.legacyReportingLineChange');
+    }
+    return movementKindLabelOf(kind, configured, t);
+  };
   const movementEmpTypeLabel = (v: string | null): string | null =>
     v ? t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time') : null;
 
-  // New Event is hidden once terminated (the same gate that hid the old Transfer form); the history
-  // itself stays viewable. Rehire is a future, separate piece.
-  const {canCreateMovement, canCorrectMovement} = movementScreenAccess({admin, canMaintainWorkforce, terminatedOn: emp.terminatedOn});
   /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
   const hireFieldIds = {
   "businessUnitId": "employment.organisation_assignment.businessunitname",
@@ -3117,13 +3160,35 @@ export default async function EmployeePage({
 } as const;
   const hireFieldLabel = (f:HireCorrectionField):string => personnelLabel(hireFieldIds[f]);
 
+  // Board 511aa74a — Employment Periods: shown once the person has more than one period (a rehire).
+  const periods = admin && (!movementPage || movementPage === 'history') ? await employmentPeriods(s, employmentId) : [];
+  const employmentPeriodsCard = periods.length > 1 ? (
+    <EmploymentPeriodsCard
+      title={t('movement.periods.title')}
+      columns={{ period: t('movement.periods.period'), employeeId: t('movement.periods.employeeId'), company: t('movement.periods.company'), dates: t('movement.periods.dates'), status: t('movement.periods.status') }}
+      rows={periods.map((p) => {
+        const from = p.rehiredFromEmploymentId ? periods.find((q) => q.employmentId === p.rehiredFromEmploymentId) : undefined;
+        return {
+          employmentId: p.employmentId,
+          employeeCode: p.employeeCode,
+          companyName: p.companyName,
+          dates: p.end ? t('movement.periods.range', { start: formatDmy(p.start), end: formatDmy(p.end) }) : t('movement.periods.onwards', { start: formatDmy(p.start) }),
+          status: p.status,
+          statusLabel: tStatus(p.status),
+          periodLabel: p.current ? t('movement.periods.current') : t('movement.periods.previous'),
+          note: p.rehiredAs ? t('movement.periods.rehiredAs', { code: p.rehiredAs.employeeCode ?? '—' }) : from ? t('movement.periods.rehiredFrom', { code: from.employeeCode ?? '—' }) : null,
+          noteHref: p.rehiredAs ? `/admin/personnel/${p.rehiredAs.employmentId}?tab=careerMovement` : from ? `/admin/personnel/${from.employmentId}?tab=careerMovement` : null,
+          isThis: p.employmentId === employmentId,
+        };
+      })}
+    />
+  ) : null;
+
   const employmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
       <SectionHeader title={t('movement.title')} />
-      {/* e6a144d4 — the action bar is OUTSIDE the canCreateMovement gate; only New Event is inside it.
-          The bar used to disappear wholesale once `emp.terminatedOn` was set, and a terminated employee's
-          employment history is exactly the record HR needs for exit paperwork, group HR and auditors. So a
-          terminated employment now keeps the download and loses only the button that would write. */}
+      {/* Keep the history download available for a terminated employment. Its New Event form offers
+          historical records and the supported Rehire action when applicable. */}
       <div className="flex flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-2">
         {/* A plain link straight at the export route — no client component, no form, no approval step:
             one click and the file downloads. It carries no query string: the file is the COMPLETE
@@ -3142,14 +3207,23 @@ export default async function EmployeePage({
             downloads a workbook and leaves the reader exactly where they were, so intercepting it would
             raise an "Unsaved changes" dialog for an action that loses nothing and then router.push at a
             route handler that has no page to render. See UNSAVED_GUARD_ATTR in lib/unsaved-changes.ts. */}
-        <a
+        <ExportDownloadLink
           href={`/admin/personnel/${employmentId}/movement-export`}
           data-unsaved-guard="ignore"
           className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
           {t('movement.exportExcel')}
-        </a>
+        </ExportDownloadLink>
         {canCreateMovement && (
+          <Link
+            href={movementPageHref(employmentId,'new',undefined,movementContext)}
+            className={btnPrimary}
+          >
+            {t('movement.newEvent')}
+          </Link>
+        )}
+        {/* Ended employments can still record history under the maintainer's existing scope. */}
+        {!canCreateMovement && (canCorrectMovement || canRehire) && (
           <Link
             href={movementPageHref(employmentId,'new',undefined,movementContext)}
             className={btnPrimary}
@@ -3195,12 +3269,28 @@ export default async function EmployeePage({
             // never removed: the history is the evidence payroll and statutory reporting lean on.
             <tr
               key={m.id}
+              data-movement-id={m.id}
               className={m.reversed || m.status === 'superseded' ? 'text-muted-foreground' : undefined}
             >
               <td className="px-4 py-2.5 font-medium text-foreground">
                 <span className={m.reversed || m.status === 'superseded' ? 'line-through' : undefined}>
-                  {movementKindLabel(m.kind)}
+                  {movementRecordLabel(m.kind, m.superiorChange)}
                 </span>
+                {m.superiorChange && <dl className="mt-1 space-y-1 text-xs font-normal text-muted-foreground">
+                  <div><dt className="inline">{t('directSuperiorPrevious')} </dt><dd className="inline">{superiorFactLabel(m.superiorChange.before)}</dd></div>
+                  <div><dt className="inline">{t('directSuperiorNext')} </dt><dd className="inline">{superiorFactLabel(m.superiorChange.after)}</dd></div>
+                </dl>}
+                {m.history && (
+                  <span className="ml-2 rounded border border-sky-500/50 px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-sky-700 dark:text-sky-400">
+                    {t('movement.historyBadge')}
+                  </span>
+                )}
+                {m.rehiredFrom && (
+                  <Link href={`/admin/personnel/${m.rehiredFrom.employmentId}?tab=careerMovement`} data-testid="rehired-from" className="ml-2 text-xs text-primary underline underline-offset-2">
+                    {t('movement.rehire.previousId', { code: m.rehiredFrom.employeeCode ?? '—' })}
+                  </Link>
+                )}
+                {m.orderConflict&&<details className="mt-1 text-xs text-amber-700 dark:text-amber-300"><summary className="cursor-pointer">{t('movement.orderConflict')}</summary><p className="mt-1 max-w-sm">{t('movement.orderConflictHint')}</p></details>}
                 {!!m.informationCorrections?.length&&<Link href={movementPageHref(employmentId,'view',m.id,movementContext)+'#information-correction-history'} className="ml-2 text-xs text-primary underline underline-offset-2">{m.informationCorrections.some(c=>c.needsReview)?t('movement.informationNeedsReview'):t('movement.informationCorrected')}</Link>}
                 {m.reversed && (
                   <span className="ml-2 rounded border border-border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -3279,9 +3369,13 @@ export default async function EmployeePage({
               <td className="px-4 py-2.5 text-muted-foreground">{m.jobTitle ?? '—'}</td>
               <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{m.basic ?? '—'}</td>
               <td className="px-4 py-2.5">
-                <MovementHistoryActions context={movementContext} employmentId={employmentId} row={m}
-                  eventLabel={`${movementKindLabel(m.kind)} · ${formatDmy(m.effectiveDate)}`}
-                  canCorrect={canCorrectMovement} reverseAction={reverseMovementEventAction}
+                <MovementHistoryActions context={movementContext} employmentId={employmentId} row={m} standalone={movementPage==='history'}
+                  eventLabel={`${movementRecordLabel(m.kind, m.superiorChange)} · ${formatDmy(m.effectiveDate)}`}
+                  canCorrect={canCorrectMovement} canDelete={canDeleteMovement} reverseAction={reverseMovementEventAction}
+                  rehireRollBack={m.kind === 'rehire' ? {action: rollBackRehireAction, labels: {
+                    button: t('movement.rehire.rollBack'), title: t('movement.rehire.rollBackTitle'),
+                    description: t('movement.rehire.rollBackDescription'), reason: t('movement.correctionReasonLabel'), keep: t('movement.keepEvent'),
+                  }} : undefined}
                   labels={{
                     view:t('movement.view'), edit:t('movement.edit'), delete:t('movement.delete'),
                     deleteTitle:t('movement.deleteTitle'), deleteDescription:t('movement.deleteDescription'),
@@ -3326,24 +3420,50 @@ export default async function EmployeePage({
   // Detail view (?movement=<id>): event information + a side-by-side Before/After comparison built by
   // as-of reconstruction at the effective date (ids resolved to labels at read time). Salary is shown —
   // this page is admin-only (scopedAdmin, which calls requireAdmin), so no widening of pay visibility.
+  const movementInformationLabel=(field:MovementInformationField)=>{
+    const ids:Partial<Record<MovementInformationField,string>>={contractStartDate:'employment.employment_dates_and_service.contractstartdate',contractEndDate:'employment.employment_dates_and_service.contractenddate',internshipEndDate:'employment.draft_only_employment_fields.internshipenddate',tenderResignationDate:'employment.employment_dates_and_service.tenderresignationdate',resignationDate:'employment.employment_dates_and_service.resignationdate',lastWorkingDate:'employment.employment_dates_and_service.lastworkingdate'};
+    return field==='extendedConfirmationDate'?tPersonnel('people.import.movement.currentFields.extendedConfirmationDate'):field==='hiredOn'?t('employmentInfo.groupJoinDate'):field==='joinDate'?t('employmentInfo.joinDate'):ids[field]?personnelLabel(ids[field]!):field in MOVEMENT_FORM_IDS?personnelLabel(MOVEMENT_FORM_IDS[field as keyof typeof MOVEMENT_FORM_IDS]):t(`movement.field.${field}` as 'movement.field.orgDivision');
+  };
+  const recordedInformationDisplay=(field:MovementInformationField,known:boolean,value:string|null|undefined)=>{
+    if(!known)return t('movement.detail.notRecorded');
+    if(value==null)return null;
+    if(field.endsWith('Date')||field==='hiredOn')return formatDmy(value);
+    if(field.endsWith('Unit')&&['month','week','day'].includes(value))return t(`employmentInfo.unit_${value}` as 'employmentInfo.unit_month');
+    return value;
+  };
   const movementComparisonRows = movementDetailData
     ? [
         { key: 'company', label: t('movement.field.company'), before: movementDetailData.before?.company, after: movementDetailData.after.company },
-        ...(movementDetailData.after.groupJoinDate!==undefined?[{key:'groupJoinDate',label:t('employmentInfo.groupJoinDate'),before:movementDetailData.before?.groupJoinDate,after:formatDmy(movementDetailData.after.groupJoinDate)}]:[]),
-        ...(movementDetailData.after.joinDate!==undefined?[{key:'joinDate',label:t('employmentInfo.joinDate'),before:movementDetailData.before?.joinDate,after:formatDmy(movementDetailData.after.joinDate)}]:[]),
         { key: 'businessUnit', label: t('movement.field.businessUnit'), before: movementDetailData.before?.businessUnit, after: movementDetailData.after.businessUnit },
         { key: 'department', label: t('movement.field.department'), before: movementDetailData.before?.department, after: movementDetailData.after.department },
         { key: 'position', label: t('movement.field.position'), before: movementDetailData.before?.position, after: movementDetailData.after.position },
         { key: 'grade', label: t('movement.field.grade'), before: movementDetailData.before?.grade, after: movementDetailData.after.grade },
         { key: 'employmentType', label: t('movement.field.employmentType'), before: movementEmpTypeLabel(movementDetailData.before?.employmentType ?? null), after: movementEmpTypeLabel(movementDetailData.after.employmentType) },
-        { key: 'manager', label: t('movement.field.manager'), before: movementDetailData.before?.manager, after: movementDetailData.after.manager },
+        ...(movementDetailData.superiorChange ? [] : [{
+          key: 'manager', label: t('movement.field.manager'),
+          before: movementDetailData.before?.manager, after: movementDetailData.after.manager,
+        }]),
+        {key:'paymentMethod',label:t('paymentMethod'),before:movementDetailData.before?.paymentMethod?t(`paymentMethod_${movementDetailData.before.paymentMethod}` as 'paymentMethod_cash'):null,after:movementDetailData.after.paymentMethod?t(`paymentMethod_${movementDetailData.after.paymentMethod}` as 'paymentMethod_cash'):null},
         { key: 'salary', label: t('movement.field.salary'), before: movementDetailData.before?.salary, after: movementDetailData.after.salary },
-        // 08913328 — the flat, non-dated columns THIS movement moved (Division … Category). They cannot be
-        // reconstructed as-of, so they appear only when the movement's own event recorded a before/after —
-        // never as today's value pretending to be part of a years-old change.
-        ...MOVEMENT_FLAT_FIELDS.flatMap((f) => {
-          const c = movementDetailData.flatChanges.find((x) => x.field === f);
-          return c ? [{ key: f, label: t(`movement.field.${f}` as 'movement.field.orgDivision'), before: c.before, after: c.after }] : [];
+        // The Contract counter is shown only when this event recorded its own before/after.
+        ...movementDetailData.flatChanges.filter(change=>change.field==='contractNumber').map(change=>({key:'contractNumber',label:personnelLabel('employment.employment_dates_and_service.contractnumber'),before:change.before,after:change.after})),
+        ...(movementDetailData.after.salaryPayrollFrom?[{key:'salaryPayrollFrom',label:t('salaryPayrollFrom'),before:null,after:formatDmy(movementDetailData.after.salaryPayrollFrom)}]:[]),
+        ...MOVEMENT_INFORMATION_FIELDS.map(field=>{
+          const label=movementInformationLabel(field);
+          const diff=movementDetailData.flatChanges.find(change=>change.field===field);
+          const display=(side:'before'|'after')=>{
+            const snapshot=side==='before'?movementDetailData.before:movementDetailData.after;
+            if(!snapshot)return null;
+            const recorded=snapshot.informationEvidence?.[field];
+            const known=!!diff||recorded?.known;
+            if(!known)return t('movement.detail.notRecorded');
+            const value=diff?diff[side]:recorded?.value;
+            if(value===null||value===undefined)return null;
+            if(field.endsWith('Date')||field==='hiredOn')return formatDmy(value);
+            if(field.endsWith('Unit')&&['month','week','day'].includes(value))return t(`employmentInfo.unit_${value}` as 'employmentInfo.unit_month');
+            return value;
+          };
+          return {key:field,label,before:display('before'),after:display('after')};
         }),
       ]
     : [];
@@ -3355,7 +3475,7 @@ export default async function EmployeePage({
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-xs text-muted-foreground">{t('movement.columns.eventType')}</dt>
-          <dd className="font-medium text-foreground">{movementKindLabel(movementDetailData.row.kind)}</dd>
+          <dd className="font-medium text-foreground">{movementRecordLabel(movementDetailData.row.kind, movementDetailData.superiorChange)}</dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">{t('movement.columns.effectiveDate')}</dt>
@@ -3384,6 +3504,10 @@ export default async function EmployeePage({
           <dd className="font-medium text-foreground">{movementDetailData.row.remarks ?? '—'}</dd>
         </div>
       </dl>
+      {!!movementDetailData.payrollAdjustmentReview?.periods.length&&<div role="status" className="border-t border-border bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
+        <p>{t('movement.payrollAdjustmentReview')}</p>
+        <p className="mt-1">{movementDetailData.payrollAdjustmentReview.periods.join(', ')}</p>
+      </div>}
       {!!movementDetailData.informationCorrections?.length&&<div className="border-t border-border px-4 py-3 text-sm"><Link href={'#information-correction-history'} className="text-primary underline underline-offset-2">{movementDetailData.informationCorrections.some(c=>c.needsReview)?t('movement.informationNeedsReview'):t('movement.informationCorrected')}</Link></div>}
       {movementDetailData.recordedResignation && <dl className="grid gap-4 border-t border-border p-4 text-sm sm:grid-cols-3">
         {(['tenderResignationDate','resignationDate','lastWorkingDate'] as const).map(field=>{const recorded=movementDetailData.recordedResignation![field];return <div key={field}><dt className="text-xs text-muted-foreground">{t(`employmentInfo.${field}`)}</dt><dd className="mt-1 font-medium">{recorded.known ? recorded.value ? formatDmy(recorded.value) : t('optionNotSet') : t('resignationInformation.unknownSource')}</dd></div>;})}
@@ -3429,6 +3553,22 @@ export default async function EmployeePage({
           </ul>
         </div>
       )}
+      {!!movementDetailData.historyEdits?.length && (
+        <details className="border-t border-border px-4 py-3 text-sm">
+          <summary className="cursor-pointer font-medium">{t('movement.hireCorrection.details')}</summary>
+          <ul className="mt-2 space-y-3">
+            {movementDetailData.historyEdits.map((edit) => (
+              <li key={edit.id} className="border-t border-border pt-2">
+                <p className="text-muted-foreground">{formatDmyTime(new Date(edit.recordedAt))} · {edit.reason}</p>
+                <p>{t('movement.columns.effectiveDate')}: {formatDmy(edit.previousDate)} → {formatDmy(edit.correctedDate)}</p>
+                {(edit.previousCompany || edit.correctedCompany) && (
+                  <p>{t('movement.field.company')}: {edit.previousCompany ?? '—'} → {edit.correctedCompany ?? '—'}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {movementInformationAudit.length>0&&<div className="border-t border-border p-4"><InformationCorrectionAudit history={movementInformationAudit}/></div>}
       {movementDocuments.length > 0 && (
         // 1d58019a Step 2 — the supporting documents recorded with this movement.
@@ -3437,7 +3577,7 @@ export default async function EmployeePage({
           <ul className="mt-2 space-y-1">
             {movementDocuments.map((doc) => (
               <li key={doc.id} className="flex flex-wrap items-baseline gap-2">
-                <span className="text-xs text-muted-foreground">{t(`movement.field.${MOVEMENT_DOCUMENT_FIELD_KEYS[doc.field] ?? 'salary'}` as 'movement.field.salary')}</span>
+                <span className="text-xs text-muted-foreground">{((MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(doc.field) || doc.field === 'confirmationDate') ? personnelLabel(MOVEMENT_FORM_IDS[doc.field as typeof MOVEMENT_EMPLOYMENT_PERIOD_FIELDS[number] | 'confirmationDate']) : t(`movement.field.${MOVEMENT_DOCUMENT_FIELD_KEYS[doc.field] ?? 'salary'}` as 'movement.field.salary')}</span>
                 <a
                   href={`/admin/personnel/${employmentId}/movement-documents/${doc.id}`}
                   className="font-medium text-primary hover:underline"
@@ -3449,52 +3589,41 @@ export default async function EmployeePage({
           </ul>
         </section>
       )}
+      {movementDetailData.superiorChange && <dl className="grid gap-3 border-t border-border p-4 text-sm sm:grid-cols-2">
+        <div><dt className="text-muted-foreground">{t('directSuperiorPrevious')}</dt>
+          <dd className="font-medium">{superiorFactLabel(movementDetailData.superiorChange.before)}</dd></div>
+        <div><dt className="text-muted-foreground">{t('directSuperiorNext')}</dt>
+          <dd className="font-medium">{superiorFactLabel(movementDetailData.superiorChange.after)}</dd></div>
+      </dl>}
       {movementDetailData.pendingIntent ? (
         <section className="border-t border-border" aria-label={t('movement.detail.scheduledValues')}>
           <h3 className="px-4 pt-4 font-medium">{t('movement.detail.scheduledValues')}</h3>
           <p className="px-4 py-2 text-sm text-muted-foreground">{t('movement.detail.scheduledValuesNote')}</p>
           <dl className="divide-y divide-border">
-            {movementDetailData.pendingIntent.values.map(({field, value}) => {
+            {movementDetailData.pendingIntent.values
+              .filter(({ field }) => field !== 'manager' || !movementDetailData.superiorChange)
+              .map(({field, value}) => {
               const display = field === 'employmentType' ? movementEmpTypeLabel(value)
                 : field === 'payMode' && value !== null && PERSONNEL_PAY_MODES.some(option => option === value)
                   ? t(`payMode_${value}` as 'payMode_monthly')
                 : field === 'paymentTerm' && value !== null && PERSONNEL_PAYMENT_TERMS.some(option => option === value)
                   ? t(`paymentTerm_${value}` as 'paymentTerm_monthly') : value;
               return <div key={field} className="grid grid-cols-2 gap-4 px-4 py-2.5 text-sm">
-                <dt className="text-muted-foreground">{t(`movement.field.${field}`)}</dt>
+                <dt className="text-muted-foreground">{((MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(field) || field === 'confirmationDate') ? personnelLabel(MOVEMENT_FORM_IDS[field as typeof MOVEMENT_EMPLOYMENT_PERIOD_FIELDS[number] | 'confirmationDate']) : t(`movement.field.${field}`)}</dt>
                 <dd className="font-medium text-foreground">{display ?? '—'}</dd>
               </div>;
             })}
           </dl>
         </section>
       ) : (
-      <table className="w-full border-t border-border text-sm">
-        <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th className="px-4 py-2 font-medium">{t('movement.detail.field')}</th>
-            <th className="px-4 py-2 font-medium">{t('movement.detail.beforeChanges')}</th>
-            <th className="px-4 py-2 font-medium">{t('movement.detail.afterChanges')}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {movementComparisonRows.map((r) => {
-            // 08913328 — tint the fields this movement actually moved, so "what changed" is readable at a
-            // glance instead of being a diff the reader has to perform themselves.
-            const changed = !!movementDetailData.before && (r.before ?? null) !== (r.after ?? null);
-            return (
-              <tr key={r.key} className={changed ? 'bg-primary/5' : undefined}>
-                <td className="px-4 py-2.5 text-muted-foreground">{r.label}</td>
-                <td className="px-4 py-2.5 text-foreground">
-                  {movementDetailData.before ? (r.before ?? '—') : t('movement.detail.firstRecord')}
-                </td>
-                <td className={`px-4 py-2.5 font-medium ${changed ? 'text-primary' : 'text-foreground'}`}>
-                  {r.after ?? '—'}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <MovementComparisonTable rows={movementComparisonRows} hasBefore={!!movementDetailData.before}
+        labels={{field:t('movement.detail.field'),before:t('movement.detail.beforeChanges'),after:t('movement.detail.afterChanges'),firstRecord:t('movement.detail.firstRecord')}}
+        exit={movementDetailData.exitInformation ? {
+          title:t('movement.detail.exitInformation'),
+          note:t('movement.detail.exitInformationNote',{date:formatDmy(movementDetailData.exitInformation.effectiveDate)}),
+          column:t('movement.detail.atExit'),
+        } : undefined}
+      />
       )}
       <div className="p-4">
         <Link href={historyHref} className={btnGhost}>
@@ -3518,14 +3647,17 @@ export default async function EmployeePage({
     other: t('terminationOther'),
   };
 
-  const movementFormProps = movementCurrent
+  const historyPayAllowed = movementFormData ? await canWriteMovementHistoryPay(s, employmentId) : false;
+  const movementFormProps = movementFormData
     ? {
         employmentId: emp.employmentId,
         today,
+        closedPayrollPeriods,
+        historyPayAllowed,
         isBlacklisted: !!emp.blacklistedAt,
         // 08913328 — the read-only left column AND the pre-fill of the editable right column. One read,
         // so the two sides cannot disagree about what "current" means.
-        current: movementCurrent,
+        current: movementFormData.current,
         departments: organisationChoiceLabels(departments).map((d) => ({ id: d.id, name: d.displayLabel })),
         positions: organisationChoiceLabels(positions).map((pos) => ({ id: pos.id, name: pos.displayLabel })),
         businessUnits: organisationChoiceLabels(businessUnits).map((bu) => ({ id: bu.id, name: bu.displayLabel })),
@@ -3545,7 +3677,7 @@ export default async function EmployeePage({
         // `typeLabel` reuses the EXISTING termination-type labels, so the classification the reason derives
         // reads the same everywhere it already appears (turnover analytics included). 1d58019a — now the
         // TENANT's catalogue: its own name wins, a built-in it never renamed keeps the shipped label.
-        terminationReasons: terminationReasonRows.map((r) => ({
+        terminationReasons: movementFormData.reasons.map((r) => ({
           code: r.code,
           category: r.category,
           categoryLabel: t(`movement.terminationReasonCategory.${r.category}` as 'movement.terminationReasonCategory.voluntary'),
@@ -3559,35 +3691,117 @@ export default async function EmployeePage({
         // already labelled. The island holds no server imports, so the catalogue is resolved here; passing
         // `behaviourKind` is what lets the form ask for the right fields for one of their OWN types.
         types: movementTypes
-          .filter((r) => r.active)
-          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description, ...typeControls(r.code) })),
+          .filter((r) => r.active&&!isContractPostingMovementKind(r.behaviourKind))
+          .filter(r => canCorrectMovement || (r.behaviourKind === 'rehire' && canRehire))
+          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description,
+            historyOnly: r.behaviourKind === 'rehire' ? !canRehire : !canCreateMovement, ...typeControls(r.code) })),
         cancelHref:historyHref,
         pageContext:movementPage?movementContext:undefined,
       }
     : null;
 
-  const newEventCard = canCreateMovement && spNewEvent && movementFormProps ? (
+  // Board 511aa74a — the Rehired form's previous-period values and each offered company's Employee ID rule.
+  const rehireForm = canRehire && spNewEvent && movementFormProps
+    ? await rehireFormDefaults(s, employmentId, movementCompanies.map((c) => c.id)) : null;
+  const rehireProps = rehireForm && !rehireForm.refusal && movementFormProps ? {
+    employmentId: emp.employmentId,
+    personName: emp.name,
+    previousEmployeeCode: rehireForm.previousEmployeeCode,
+    previousStart: rehireForm.previousStart,
+    previousEnd: rehireForm.previousEnd,
+    notOnOrBefore: rehireForm.notOnOrBefore,
+    defaults: {
+      ...rehireForm.values,
+      // The previous company leads when the actor administers it; otherwise the first company offered.
+      companyId: movementCompanies.some((c) => c.id === rehireForm.values.companyId) ? rehireForm.values.companyId : (movementCompanies[0]?.id ?? emp.companyId),
+    },
+    companies: movementFormProps.companies,
+    orgByCompany: movementFormProps.orgByCompany,
+    grades: movementFormProps.grades,
+    managers: movementFormProps.managers,
+    employmentTypes: movementFormProps.employmentTypes,
+    employeeIdRules: rehireForm.employeeIdRules,
+    cancelHref: historyHref,
+  } : undefined;
+  // Personnel postings: read under row security; a posting for another employee or one this user cannot read is a 404.
+  const postingParam = movementPage === 'new' && canCreateMovement && rawSearchParams.posting ? rawSearchParams.posting : undefined;
+  const posting = postingParam ? await personnelPosting(s, postingParam) : null;
+  if (postingParam && (!posting || posting.employmentId !== employmentId)) notFound();
+  const tPostings = posting ? await getTranslations('personnelPostings') : null;
+  const newEventCard = (canCorrectMovement || canRehire) && spNewEvent && movementFormProps ? (
     <Card id="section-movement-new-event" className="overflow-hidden">
       <SectionHeader title={t('movement.newEvent')} />
-      <MovementNewEvent {...movementFormProps} />
+      {posting && tPostings && posting.status !== 'pending' ? (
+        <div className="space-y-3 p-4">
+          <p role="status" className="text-sm">{tPostings('movement.notPending', { posting: posting.label })}</p>
+          <Link href="/lifecycle/probation/postings" className={btnGhost}>{tPostings('movement.backToPostings')}</Link>
+        </div>
+      ) : posting ? (
+        <MovementNewEvent
+          {...movementFormProps}
+          cancelHref="/lifecycle/probation/postings"
+          posting={{
+            id: posting.id,
+            label: posting.label,
+            revision: posting.revision,
+            kind: posting.eventType,
+            effectiveDate: posting.current.effectiveDate,
+            endDate: posting.current.endDate ?? null,
+            remarks: posting.current.remarks ?? null,
+            canApprove: posting.canApprove,
+            labels: {
+              banner: tPostings!('movement.banner', { posting: posting.label }),
+              hint: posting.canApprove
+                ? tPostings!('movement.approverHint', { group: posting.approverGroupName ?? tPostings!('unknownGroup') })
+                : tPostings!('movement.editorHint', { group: posting.approverGroupName ?? tPostings!('unknownGroup') }),
+              leaveHint: tPostings!('movement.leaveHint'),
+              submit: posting.canApprove ? tPostings!('movement.saveAndApprove') : tPostings!('movement.saveForApproval'),
+            },
+          }}
+          postingAction={savePostingEventAction}
+        />
+      ) : (
+        <MovementNewEvent {...movementFormProps} rehire={rehireProps} historyOnly={!canCreateMovement && !canRehire} />
+      )}
     </Card>
   ) : null;
 
   // 66a63bd6 — Edit (?editMovement=<id>): the SAME comparison form, pre-filled from the movement being
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
-  const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
   // 1d58019a Step 2 — termination is decided by the catalogue, so a tenant's own Termination type pre-fills too.
-  const movementEditInput = movementEditRow
+  const historyEditValues = canCorrectMovement && movementEditRow?.history
+    ? await historyMovementEditValues(s, employmentId, movementEditRow.id).catch((error) => {
+        if (error instanceof WorkforceAccessError) return null;
+        throw error;
+      })
+    : null;
+  const movementEditInput = canCorrectMovement && movementEditRow && !movementEditRow.history
     ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
-  const editEventCard = canCorrectMovement && movementEditRow && movementFormProps ? (
+  const editEventCard = canCorrectMovement && movementEditRow && movementFormProps &&
+    (!movementEditRow.history || historyEditValues) ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
       <SectionHeader title={t('movement.editTitle')} />
+      {historyEditValues ? (
+        <HistoryMovementEditForm
+          key={historyEditValues.revisionId}
+          {...historyEditValues}
+          employmentId={employmentId}
+          movementId={movementEditRow.id}
+          companies={movementFormProps.companies}
+          orgByCompany={movementFormProps.orgByCompany}
+          selectedCompanyId={movementFormProps.current.companyId}
+          historyPayAllowed={historyPayAllowed}
+          fallbackOrganisation={movementFormProps}
+          cancelHref={historyHref}
+          context={movementContext}
+        />
+      ) : (
       <MovementNewEvent
         key={movementEditRow.id}
         {...movementFormProps}
         types={movementTypes
-          .filter((r) => r.active || r.code === (movementEditRow.correctionKind ?? movementEditRow.kind))
+          .filter((r) => !isContractPostingMovementKind(r.behaviourKind)&&(r.active || r.code === (movementEditRow.correctionKind ?? movementEditRow.kind)))
           .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, ...typeControls(r.code) }))}
         edit={{
           movementId: movementEditRow.id,
@@ -3598,12 +3812,13 @@ export default async function EmployeePage({
           pendingInput: movementEditInput?.values,
           pendingUnavailable: movementEditInput?.unavailable,
           // Every replacement goes through the destination's canonical validation in the same transaction.
-          allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active).map(r => r.code)])),
+          allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active&&!isContractPostingMovementKind(r.behaviourKind)).map(r => r.code)])),
           payrollWarning: movementEditRow.payrollWarning,
           payrollClosedPeriods: movementEditRow.payrollClosedPeriods,
           availableClosedPayrollPeriods: closedPayrollPeriods,
         }}
       />
+      )}
     </Card>
   ) : null;
 
@@ -3639,66 +3854,62 @@ export default async function EmployeePage({
             stoppedBy: f.stoppedBy ? recordLabel(f.stoppedBy) : null,
             reachesCurrent: f.reachesCurrent,
           }));
-          const readOnly = [
-            {
-              key: 'company',
-              label: t('movement.field.company'),
-              value: hireCorrection.companyName ?? '—',
-              // The pointer that APPLIES, not both: the inline Company correction is open only while the
-              // pre-transaction gate (employmentCompanyBlockedTx) says nothing has been recorded yet.
-              pointer: companyEditable
-                ? t('movement.hireCorrection.companyEditableNow', { tab: t('tabs.job') })
-                : t('movement.hireCorrection.companyLocked', { type: movementKindLabel('entityTransfer') }),
-            },
-            {
-              key: 'groupJoinDate',
-              label: t('employmentInfo.groupJoinDate'),
-              value: formatDmy(hireCorrection.groupJoinDate),
-              pointer: t('movement.hireCorrection.usePointer', { type: movementKindLabel('groupJoinDateCorrection') }),
-              note: t('movement.hireCorrection.payslipRefusal'),
-            },
-            {
-              key: 'joinDate',
-              label: t('employmentInfo.joinDate'),
-              value: formatDmy(hireCorrection.joinDate),
-              pointer: t('movement.hireCorrection.usePointer', { type: movementKindLabel('joinDateChange') }),
-              note: t('movement.hireCorrection.payslipRefusal'),
-            },
-            {
-              key: 'grade',
-              label: t('movement.field.grade'),
-              value: hireCorrection.gradeName ?? '—',
-              pointer: t('movement.hireCorrection.notYet'),
-            },
-            {
-              key: 'employmentType',
-              label: t('movement.field.employmentType'),
-              value: movementEmpTypeLabel(hireCorrection.employmentType) ?? '—',
-              pointer: t('movement.hireCorrection.notYet'),
-            },
-          ];
           return (
             <Card id="section-hire-correction" className="overflow-hidden">
               <SectionHeader title={t('movement.hireCorrection.title')} />
-              <HireCorrectionModes employmentId={employmentId} returnHref={movementPage?historyHref:undefined}><HireCorrectionForm
+              {!!hireCorrection.companyReviewFields?.length&&<div role="status" className="mx-4 my-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                <p>{t('movement.detail.companyReviewNeeded')}</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">{hireCorrection.companyReviewFields.map(field=><li key={field}><Link className="underline" href={`/admin/personnel/${employmentId}?tab=${field==='payrollPolicyId'?'payroll':'job'}${field==='costAllocation'?'#section-cost-center-allocations':''}`}>{field==='gradeId'?t('movement.field.grade'):field==='costAllocation'?tPersonnel('costAllocations.title'):field==='payrollPolicyId'?tp('title'):movementInformationLabel(field as MovementInformationField)}</Link></li>)}</ul>
+              </div>}
+              <HireCorrectionForm
                 employmentId={employmentId}
                 heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
                 fields={fields}
+                information={[
+                  {field:'companyId',label:t('movement.field.company'),value:hireCorrection.companyId,display:hireCorrection.companyName??'—',type:'select',required:true,options:hireHeaderOptions?.companies},
+                  {field:'hiredOn',label:t('employmentInfo.groupJoinDate'),value:hireCorrection.groupJoinDate,display:formatDmy(hireCorrection.groupJoinDate),type:'date',required:true},
+                  {field:'joinDate',label:t('employmentInfo.joinDate'),value:hireCorrection.joinDate,display:formatDmy(hireCorrection.joinDate),type:'date'},
+                  {field:'gradeId',label:t('movement.field.grade'),value:hireCorrection.gradeId??null,display:hireCorrection.gradeName??'—',type:'select',options:hireHeaderOptions?.grades.map(grade=>({id:grade.id,name:grade.name}))},
+                  {field:'employmentType',label:t('movement.field.employmentType'),value:hireCorrection.employmentType,display:movementEmpTypeLabel(hireCorrection.employmentType)??'—',type:'select',required:true,options:['full_time','part_time','contract','intern'].map(value=>({id:value,name:movementEmpTypeLabel(value)??value}))},
+                  ...HIRE_SCALAR_INFORMATION_FIELDS.map((field):HireInformationControl=>{
+                    const value=hireCorrection.information?.[field]?.value??null;
+                    const options=field.endsWith('Unit')?['day','week','month'].map(unit=>({id:unit,name:t(`employmentInfo.unit_${unit}` as 'employmentInfo.unit_month')})):
+                      MOVEMENT_FLAT_FIELDS.includes(field as typeof MOVEMENT_FLAT_FIELDS[number])&&hireHeaderOptions?personnelFormCatalog(MOVEMENT_FORM_IDS[field as keyof typeof MOVEMENT_FORM_IDS],hireHeaderOptions.labels).map(option=>({id:option.value,name:option.label})):undefined;
+                    return {field,fieldId:field in MOVEMENT_FORM_IDS?MOVEMENT_FORM_IDS[field as keyof typeof MOVEMENT_FORM_IDS]:undefined,label:movementInformationLabel(field),value,display:recordedInformationDisplay(field,hireCorrection.information?.[field]?.known===true,value)??'—',type:options?.length?'select':field.endsWith('Date')?'date':field.endsWith('Value')?'number':'text',options};
+                  }),
+                ]}
                 salaryAtHire={hireCorrection.salaryAtHire}
-                readOnly={readOnly}
+                paymentMethodAtHire={hireCorrection.paymentMethodAtHire}
+                contextFields={MOVEMENT_INFORMATION_FIELDS.filter(field=>!['hiredOn','joinDate',...HIRE_SCALAR_INFORMATION_FIELDS].includes(field)).map(field=>({field,label:movementInformationLabel(field),value:recordedInformationDisplay(field,hireCorrection.information?.[field]?.known===true,hireCorrection.information?.[field]?.value)}))}
+                endDate={hireCorrection.endDate ? { field: hireCorrection.endDate.field, value: hireCorrection.endDate.value } : undefined}
                 cancelHref={historyHref}
                 pageContext={movementPage?movementContext:undefined}
-              /></HireCorrectionModes>
+              />
             </Card>
           );
         })()
       : null;
 
+  if(movementPage==='history'){
+    return <div className="mx-auto max-w-[100rem] space-y-6">
+      <PageHeader back={{href:`/admin/personnel/${employmentId}${from==='org'?'?from=org':''}`,label:t('tabs.profile')}}
+        title={emp.name} description={`${emp.employeeCode??'—'} · ${emp.company}`}
+        actions={directMovementHistory ? <>
+          <EmployeeSwitcher remote currentEmploymentId={emp.employmentId} tab="careerMovement" />
+          <Link href={`/admin/audit?employment=${emp.employmentId}`} className={btnGhost}>{t('employeeAuditLink')}</Link>
+          <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
+        </> : undefined}/>
+      <ErrorBanner message={error}/>
+      {employmentPeriodsCard}
+      {employmentHistoryCard}
+    </div>;
+  }
+
   if(movementPage){
     const actionCard=movementPage==='new'?newEventCard:movementPage==='edit'?editEventCard:movementPage==='correct-hire'?hireCorrectionCard:movementPage==='view'?movementDetailCard:null;
     if(!actionCard)notFound();
     const title=movementPage==='new'?t('movement.newEvent'):movementPage==='edit'?t('movement.editTitle'):movementPage==='correct-hire'?t('movement.hireCorrection.title'):t('movement.detail.eventInformation');
-    return <div className="mx-auto max-w-[100rem] space-y-6"><PageHeader back={{href:historyHref,label:t('movement.detail.backToHistory')}} title={title} description={`${emp.name} · ${emp.employeeCode??'—'} · ${emp.company}`}/><ErrorBanner message={error}/><MovementActionShell readOnly={movementPage==='view'}>{actionCard}</MovementActionShell></div>;
+    return <div className="mx-auto max-w-[100rem] space-y-6"><PageHeader back={{href:historyHref,label:t('movement.detail.backToHistory')}} title={title} description={`${emp.name} · ${emp.employeeCode??'—'} · ${emp.company}`}/><ErrorBanner message={error}/><MovementActionShell readOnly={movementPage==='view'}>{actionCard}{costAllocationView&&<CostCenterAllocations key={employmentId+':'+costAllocationView.effectiveDate} value={{...costAllocationView,canEdit:movementPage==='view'?false:costAllocationView.canEdit}}/>}</MovementActionShell></div>;
   }
 
   const dataPrivacyCard = admin ? (
@@ -3802,9 +4013,8 @@ export default async function EmployeePage({
     />
   );
   // Movement → New Event, pre-opened. Every "change this through Movement" pointer on the tab links here so
-  // the administrator lands on the form that actually performs the change rather than on a tab they must
-  // then navigate. Tab-qualified so the panel is already selected.
-  const newMovementHref = `/admin/personnel/${emp.employmentId}?tab=careerMovement&newEvent=1`;
+  // the administrator lands directly on the dedicated form.
+  const newMovementHref = movementPageHref(emp.employmentId, 'new');
   const currentGrade=emp.gradeId?grades.find(g=>g.id===emp.gradeId):undefined;
   const gradeName=currentGrade?.name?.trim() || currentGrade?.code || null;
   const employmentTypeLabel =
@@ -3831,7 +4041,7 @@ export default async function EmployeePage({
               {pendingMovements.map((m) => (
                 <li key={m.id}>
                   {t('employmentInfo.pendingMovementItem', {
-                    kind: movementKindLabel(m.kind),
+                    kind: movementRecordLabel(m.kind, m.superiorChange),
                     date: formatDmy(m.effectiveDate),
                   })}
                 </li>
@@ -3901,7 +4111,7 @@ export default async function EmployeePage({
             </PersonnelField>
           </div>
           <div className="flex items-center gap-3">
-            <button className={btnPrimary}>{t('employmentInfo.companyChangeSave')}</button>
+            <ActionButton actionKind="saving" className={btnPrimary}>{t('employmentInfo.companyChangeSave')}</ActionButton>
             <Link
               href={`/admin/personnel/${emp.employmentId}${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`}
               className="text-xs text-primary underline"
@@ -4161,6 +4371,7 @@ export default async function EmployeePage({
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.contractGroup')}</h4>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <PersonnelField fieldId="employment.employment_dates_and_service.contractnumber" mode="record"><label className="block space-y-1"><span className="text-xs font-medium">{personnelLabel('employment.employment_dates_and_service.contractnumber')}</span><input {...personnelInput('employment.employment_dates_and_service.contractnumber','record')} defaultValue={emp.contractNumber??''} className={inputCls}/></label></PersonnelField>
                 <PersonnelField fieldId="employment.employment_dates_and_service.contractstartdate" mode="record">
                   <DateField {...personnelControl('employment.employment_dates_and_service.contractstartdate','record')}
 
@@ -4195,6 +4406,25 @@ export default async function EmployeePage({
             </div>
           )}
 
+          {/* 2260a06b — Internship Information: the Intern twin of the Contract block above, rendered ONLY while the
+              current open assignment is 'intern'. It writes employment.internship_end_date (the internship review
+              column hireEmployee now seeds from the Draft). An intern activated before that falls back to the
+              provisional end date the Draft captured, so the date is shown and re-saved rather than lost. */}
+          {current?.employmentType === 'intern' && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.internshipGroup')}</h4>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <PersonnelField fieldId="employment.draft_only_employment_fields.internshipenddate" mode="record">
+                  <DateField {...personnelControl('employment.draft_only_employment_fields.internshipenddate','record')}
+                    defaultValue={emp.internshipEndDate ?? emp.provisionalEndOn ?? ''}
+                    className={inputCls}
+                    label={personnelLabel('employment.draft_only_employment_fields.internshipenddate')}
+                  />
+                </PersonnelField>
+              </div>
+            </div>
+          )}
+
           {/* Notice Period Information */}
           <div className="space-y-3">
             <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.noticeGroup')}</h4>
@@ -4224,15 +4454,15 @@ export default async function EmployeePage({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <PersonnelField fieldId="employment.employment_dates_and_service.tenderresignationdate" mode="record">
                 {readOnlyValue("employment.employment_dates_and_service.tenderresignationdate", resignationInfo?.tenderResignationDate.value ? formatDmy(resignationInfo.tenderResignationDate.value) : null)}
-                {resignationInfo?.tenderResignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.tenderResignationDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.tenderResignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.tenderResignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+                {resignationInfo?.tenderResignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={movementPageHref(emp.employmentId, 'view', resignationInfo.tenderResignationDate.source.movementId)}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.tenderResignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.tenderResignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
               </PersonnelField>
               <PersonnelField fieldId="employment.employment_dates_and_service.resignationdate" mode="record">
                 {readOnlyValue("employment.employment_dates_and_service.resignationdate", resignationInfo?.resignationDate.value ? formatDmy(resignationInfo.resignationDate.value) : null)}
-                {resignationInfo?.resignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.resignationDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.resignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.resignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+                {resignationInfo?.resignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={movementPageHref(emp.employmentId, 'view', resignationInfo.resignationDate.source.movementId)}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.resignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.resignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
               </PersonnelField>
               <PersonnelField fieldId="employment.employment_dates_and_service.lastworkingdate" mode="record">
                 {readOnlyValue("employment.employment_dates_and_service.lastworkingdate", resignationInfo?.lastWorkingDate.value ? formatDmy(resignationInfo.lastWorkingDate.value) : null)}
-                {resignationInfo?.lastWorkingDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.lastWorkingDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.lastWorkingDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.lastWorkingDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+                {resignationInfo?.lastWorkingDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={movementPageHref(emp.employmentId, 'view', resignationInfo.lastWorkingDate.source.movementId)}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.lastWorkingDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.lastWorkingDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
               </PersonnelField>
             </div>
             <p className="text-xs text-muted-foreground">{t('employmentInfo.resignationMovementNote')}</p>
@@ -4249,15 +4479,6 @@ export default async function EmployeePage({
      into the New Event form — kind "Blacklist" routes to the same audited setEmploymentBlacklist
      service (set AND clear), so nothing about the columns or events changed. */
 
-  /* Direct Superior (dce55aff) — replaces the Reporting Lines card. ONE searchable field (Employee ID
-     or name) answers the one question the system actually asks: who does this person report to. Saving
-     writes the administrative reporting line via setDirectSuperiorAction → setReportingLine (CLOSE +
-     INSERT supersede, validFrom = today, cycle + self-assignment refusal, DomainEvents) — the same
-     engine every approval/visibility consumer already follows, so the change takes effect everywhere
-     immediately. Manager / Line Type / Effective From / multi-line management are gone from the UI;
-     existing functional/project/dotted rows remain in the data (org chart still renders them — their
-     retirement is a follow-up decision, not decided here). Prior superiors stay visible read-only in
-     the compact history disclosure below the field. */
   const directSuperiorCard = (
     <Card id="section-direct-superior">
       <SectionHeader title={t('directSuperiorTitle')} />
@@ -4273,11 +4494,11 @@ export default async function EmployeePage({
           )}
         </div>
         {!emp.terminatedOn && others.length > 0 && (
-          <form action={setDirectSuperiorAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            {/* The no-change guard + the "clear → end current line" path both need the current state. */}
-            <input type="hidden" name="currentSuperiorEmploymentId" value={currentSuperior?.employmentId ?? ''} />
-            <input type="hidden" name="currentLineId" value={currentSuperior?.id ?? ''} />
+          <DirectSuperiorChangeForm key={currentSuperior?.id ?? 'unassigned'} action={setDirectSuperiorAction}
+            employmentId={emp.employmentId} currentLineId={currentSuperior?.id ?? null}
+            labels={{ title: t('directSuperiorChangeTitle'), amendment: t('directSuperiorAmend'),
+              movement: t('directSuperiorMovement'), effectiveDate: t('movement.columns.effectiveDate'),
+              reason: t('directSuperiorReason'), cancel: t('directSuperiorCancel'), save: t('directSuperiorSave') }}>
             <div className="sm:col-span-2">
               <PersonnelField fieldId="employment.direct_superior_and_history.superioremploymentid" mode="record">
                 <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'record')}
@@ -4291,10 +4512,7 @@ export default async function EmployeePage({
                 />
               </PersonnelField>
             </div>
-            <div>
-              <button className={btnPrimary}>{t('directSuperiorSave')}</button>
-            </div>
-          </form>
+          </DirectSuperiorChangeForm>
         )}
         {superiorHistory.length > 0 && (
           <details className="text-sm">
@@ -4345,9 +4563,9 @@ export default async function EmployeePage({
                     <input type="hidden" name="employmentId" value={emp.employmentId} />
                     <input type="hidden" name="reportingLineId" value={d.id} />
                     <input {...personnelWorkflowCarry('employment.approval_delegations.validto','delegationEnd')} value={today} />
-                    <button type="submit" title={t('delegationEnd')} className="text-muted-foreground transition-colors hover:text-red-500">
+                    <ActionButton type="submit" title={t('delegationEnd')} className="text-muted-foreground transition-colors hover:text-red-500">
                       ×
-                    </button>
+                    </ActionButton>
                   </form>
                 </li>
               ))}
@@ -4376,7 +4594,7 @@ export default async function EmployeePage({
               <DateField {...personnelControl('employment.approval_delegations.validto','edit')} className={inputCls} label={personnelLabel('employment.approval_delegations.validto')} />
             </PersonnelField>
             <div>
-              <button className={btnPrimary}>{t('delegationAdd')}</button>
+              <ActionButton actionKind="saving" className={btnPrimary}>{t('delegationAdd')}</ActionButton>
             </div>
           </form>
         )}
@@ -4509,6 +4727,7 @@ export default async function EmployeePage({
         {newEventCard}
         {editEventCard}
         {hireCorrectionCard}
+        {employmentPeriodsCard}
         {employmentHistoryCard}
       </>
     ),
@@ -4657,7 +4876,7 @@ export default async function EmployeePage({
                 control does not move as you navigate. `tab` rides along so jumping to the next person
                 keeps the tab you were reading instead of resetting to Profile. */}
             <EmployeeSwitcher
-              employees={switcherEmployees}
+              remote
               currentEmploymentId={emp.employmentId}
               tab={tab ?? null}
             />
@@ -4726,7 +4945,7 @@ export default async function EmployeePage({
                       {t('photoReplace')}
                     </ConfirmSubmit>
                   ) : (
-                    <button className={`${btnPrimary} h-7 px-2 text-xs`}>{t('photoUpload')}</button>
+                    <ActionButton actionKind="saving" className={`${btnPrimary} h-7 px-2 text-xs`}>{t('photoUpload')}</ActionButton>
                   )}
                 </form>
                 {photoExists && (

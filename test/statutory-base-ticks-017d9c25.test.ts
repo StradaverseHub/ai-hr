@@ -217,6 +217,18 @@ describe('017d9c25 — the ticks decide the statutory bases, on a generated pays
     expect(st.bases!.socsoEis).toBeCloseTo(6052, 2);
     expect(st.bases!.pcb).toBeCloseTo(7552, 2);
     expect(st.bases!.hrdf).toBeCloseTo(6052, 2);
+    // c2ea9567 — the same base, itemised on the payslip: the HRDF tick alone decides membership, so the
+    // two unticked allowances (A0080, A0020) and the unticked parking deduction are absent.
+    const hrdfWorking = (s.statutory as { hrdfWorking?: { items: unknown[]; wages: number; rate: number; levy: number } }).hrdfWorking;
+    expect(hrdfWorking).toMatchObject({
+      items: [
+        { kind: 'basic', amount: 5952 },
+        { kind: 'earning', code: 'A0027', amount: 100 },
+      ],
+      wages: 6052,
+      rate: 0.01,
+      levy: 60.52,
+    });
 
     // THE MONEY, to the cent, against the stored production payslip (1,476.30 / 6,075.70):
     //   deductions 660 + 29.75 + 11.90 + 429.05 + parking 169.60 = 1,300.30  (was 1,476.30)
@@ -373,15 +385,13 @@ describe('017d9c25 — the ticks decide the statutory bases, on a generated pays
   });
 });
 
-describe('017d9c25 — a DECLARED bonus stays out of SOCSO/EIS even when the box is ticked', () => {
+describe('017d9c25 — declared bonus EPF classification is independent of SOCSO/EIS (ffb6c2e0)', () => {
   /**
-   * The one exception to tick authority, and the reason it exists. `epfBonus2012` is not an "is this in
-   * that agency's base" answer like the other flags — it is the operator saying "this money IS a bonus"
-   * (it forces the additional-remuneration EPF rate). SOCSO Act 1969 s.2 excludes a bonus from wages, so
-   * honouring a ticked SOCSO box on a declared bonus would compute an illegal contribution. The seeded
-   * BONUS code carries epfBonus2012, so the ordinary bonus is covered without anyone knowing the rule.
+   * Restated for approved ffb6c2e0 (17 Nov 2026): EPF Bonus 2012 retains its EPF stream, while
+   * the independent SOCSO/EIS tick controls the non-EPF wage base. The old exclusion is deliberately
+   * reversed here; contribution schedules and EPF/PCB routing remain unchanged.
    */
-  it('epfBonus2012 + SOCSO ticked: EPF charged on the bonus, SOCSO is not', async () => {
+  it('epfBonus2012 + SOCSO ticked: each agency follows its independent setting', async () => {
     await seedPayComponentCatalog(a);
     await upsertPayComponent(a, input('DECLBONUS', {
       includedInEpf: true, includedInSocsoEis: true,
@@ -397,10 +407,10 @@ describe('017d9c25 — a DECLARED bonus stays out of SOCSO/EIS even when the box
 
     // EPF: wage band 4,000 (440) + the bonus at the normal-wage-band employee rate (11% of 1,000).
     expect(st.epfEmployee).toBe(440 + 110);
-    // SOCSO/EIS: the RM4,000 band only — the bonus is NOT wages under the SOCSO Act.
-    expect(Number(st.socsoEmployee)).toBeCloseTo(19.75, 2);
-    expect(Number(st.eisEmployee)).toBeCloseTo(7.9, 2);
-    expect(st.bases!.socsoEis).toBeCloseTo(4000, 2);
+    // Approved inclusion: 4,000 basic + 1,000 ticked additional pay = unchanged 5,000 schedule row.
+    expect(Number(st.socsoEmployee)).toBeCloseTo(24.75, 2);
+    expect(Number(st.eisEmployee)).toBeCloseTo(9.9, 2);
+    expect(st.bases!.socsoEis).toBeCloseTo(5000, 2);
   });
 });
 

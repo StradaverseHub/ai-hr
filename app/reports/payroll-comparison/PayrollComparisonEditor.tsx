@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useEffect,useRef,useState,useTransition} from 'react';
 import {useFormStatus} from 'react-dom';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -8,8 +9,8 @@ import Link from 'next/link';
 import {ALL_RECORDED_PAY_ITEMS,DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_COLUMNS,type PayrollComparisonDefinition} from '@/lib/payroll-period-comparison';
 import {savePayrollComparisonAction,createPayrollComparisonSampleAction} from './actions';
 
-function Submit({pending}:{pending:boolean}){const t=useTranslations('payrollComparison');return <button disabled={pending} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50" type="submit">{t('saveRun')}</button>;}
-function SampleSubmit(){const {pending}=useFormStatus(),t=useTranslations('payrollComparison');return <button type="submit" disabled={pending} className="rounded-lg border border-border px-3 py-2 text-sm font-medium disabled:opacity-50">{t(pending?'creatingSample':'createSample')}</button>;}
+function Submit({pending}:{pending:boolean}){const t=useTranslations('payrollComparison');return <ActionButton aria-busy={pending} disabled={pending} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50" type="submit">{t('saveRun')}</ActionButton>;}
+function SampleSubmit(){const {pending}=useFormStatus(),t=useTranslations('payrollComparison');return <ActionButton aria-busy={pending} type="submit" disabled={pending} className="rounded-lg border border-border px-3 py-2 text-sm font-medium disabled:opacity-50">{t(pending?'creatingSample':'createSample')}</ActionButton>;}
 
 type Props={payItems:{code:string;name:string}[];initial?:PayrollComparisonDefinition;id?:string;version?:number;name?:string;description?:string;onCancel?:()=>void};
 export function PayrollComparisonEditor({payItems,initial=DEFAULT_PAYROLL_COMPARISON,id,version,name,description,onCancel}:Props){

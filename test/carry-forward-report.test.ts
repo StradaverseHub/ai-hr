@@ -35,7 +35,8 @@ import { hireEmployee, terminateEmployment } from '../core/org';
 import { setCompanyLeaveCycle } from '../core/admin';
 import { updateEntitlementTemplate } from '../core/entitlement-template';
 import { openLeaveYear, expireCarriedLeave, accrueEarnedLeave } from '../core/leave';
-import { carryForwardReport } from '../core/analytics';
+import { carryForwardReport, carryForwardReportPage } from '../core/analytics';
+import { parsePageQuery } from '../lib/pagination';
 import { leaveEntitlementBreakdown } from '../core/read';
 import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
@@ -96,7 +97,13 @@ const post = (employmentId: string, entryType: 'accrual' | 'debit' | 'adjustment
     reason: reason ?? null,
   });
 
-const report = (year: number) => carryForwardReport(adminCtx(b), undefined, { year });
+const report = async (year:number) => {
+  const rows=await carryForwardReport(adminCtx(b),undefined,{year});
+  const page=await carryForwardReportPage(adminCtx(b),undefined,{year,page:parsePageQuery({size:'all'})});
+  expect(page.rows).toEqual(rows);
+  expect(page.state.total).toBe(rows.length);
+  return rows;
+};
 
 beforeAll(async () => {
   await migrateTestDb();

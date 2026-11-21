@@ -7,6 +7,7 @@ import { listPayComponents } from '@/core/pay-components';
 import { listPayrollCycles } from '@/core/payroll-cycle';
 import { payRuleAllowsDayByDay, payRuleDerivesAmount, payRuleInputUnit, payRuleReadsOperand, type PayRule } from '@/core/pay-rule';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+import { payrollLeavingDate } from '@/lib/payroll-leaving-date';
 import { ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { TxnWorkspace, type TxnBatch, type TxnEmployee, type TxnPayrollCycle } from './txn-workspace';
 import { IndividualImportButtons } from '../import-excel/individual-import';
@@ -48,26 +49,28 @@ export default async function IndividualTransactionPage({
   // earning/deduction options accordingly; the service re-enforces (ComponentRequiredError).
   const individualTxnPayOn = settingEnabledOrDefault(s, 'payroll.individual_txn_pay_enabled');
 
-  const [allBatches, employees, companies, payComponents] = await Promise.all([
-    listBatches(s, scopeIds),
+  const [writableBatches, employees, companies, payComponents] = await Promise.all([
+    listBatches(s, scopeIds, undefined, ['draft', 'processed']),
     listEmployees(s, scopeIds),
     listCompanies(s),
     listPayComponents(s, { readyOnly: true }), // Payroll Item Master — the form's item picker is sourced from these active items.
   ]);
-  // 49e7e0a2 — the form used to be handed DRAFT runs only, which is why a processed run could not even be
-  // named as a target. Both writable statuses are offered now; `closed` is not, because the service
-  // refuses it and the 0011 database triggers refuse it underneath, so listing one would only produce a
-  // save that always fails. The status rides along so the form can warn before it lands on a processed run.
-  const writableBatches = allBatches.filter((b) => b.status === 'draft' || b.status === 'processed');
   // 2da9937a — the two things the entry form needs to know about a pay item's rule, resolved on the SERVER
   // with the same pure predicates the write path uses. The rule VALUE never crosses to the client: the
   // form's questions are only "is the Amount box mine to fill?" and "which quantity does it want?", and
   // answering them here is what stops the screen and the service disagreeing about which items calculate.
   const payItems = payComponents.map((c) => ({
     id: c.id,
+    appliedCompanyIds: c.appliedCompanyIds?.filter(id => scopeIds.includes(id)) ?? null,
     code: c.code,
     name: c.name,
+    description: c.description,
+    nonPayable: c.isNonPayable,
     kind: c.kind,
+    formulaBuilder: c.rule?.kind === 'formula_builder',
+    // aac17dd0 — whether this item's single Add/Edit form may offer a typed Amount: both formula kinds do
+    // ("Calculated by Formula" and a Pay Formula Builder Formula ID). The rule itself never crosses.
+    amountEntryAllowed: c.rule?.kind === 'formula' || c.rule?.kind === 'formula_builder',
     derives: payRuleDerivesAmount(c.rule as PayRule | null),
     inputUnit: payRuleInputUnit(c.rule as PayRule | null),
     // c11e81aa — the THIRD question, and the same discipline: whether a day can be worth something
@@ -108,6 +111,7 @@ export default async function IndividualTransactionPage({
     cycles.map((c) => ({ id: c.id, companyId, name: c.name, runType: c.runType })),
   );
 
+  const today = todayInKualaLumpur();
   const txnEmployees: TxnEmployee[] = employees.map((e) => ({
     employmentId: e.employmentId,
     name: e.name,
@@ -123,6 +127,10 @@ export default async function IndividualTransactionPage({
     companyId: e.companyId,
     // Derive employment status from termination (matches the View page convention) — the status filter.
     status: e.terminatedOn == null ? 'active' : 'ended',
+    // ad6ed930 — the last day payroll reads (payrollEmploymentEnd's rule over the same three columns), so the
+    // New transaction window can start a leaver's entry there and cap its date picker. The save re-checks it.
+    leftOn: payrollLeavingDate(e),
+    hasLeft: (payrollLeavingDate(e) ?? '9999-12-31') < today,
   }));
   const txnBatches: TxnBatch[] = writableBatches.map((b) => ({
     id: b.id,
@@ -213,7 +221,7 @@ export default async function IndividualTransactionPage({
         panelCookieKey={INDIVIDUAL_PANEL_COOKIE}
         // Resolved on the SERVER through the tenant timezone: a browser an hour either side of MYT
         // midnight would otherwise default a new transaction into the wrong month.
-        currentPeriod={todayInKualaLumpur().slice(0, 7)}
+        currentPeriod={today.slice(0, 7)}
       />
     </div>
   );

@@ -539,13 +539,11 @@ describe('the five "Goes to" places — pinned across both files', () => {
   const GOES_TO_FILES = [
     'app/attendance/request-status/page.tsx',
     'app/attendance/request-status/export/route.ts',
-    'app/attendance/requests/page.tsx',
     'app/attendance/plan-ot/page.tsx',
-    'app/attendance/plan-ot/apply/page.tsx',
   ];
 
-  it('all five still resolve the name through reportingLinesFor, with the fallback behind it', () => {
-    expect(GOES_TO_FILES, 'five, per the item — a sixth place would need its own look').toHaveLength(5);
+  it('historical list fallbacks still resolve the name through reportingLinesFor', () => {
+    expect(GOES_TO_FILES, 'new submissions now use the configured workflow; legacy history retains its original fallback').toHaveLength(3);
     for (const rel of GOES_TO_FILES) {
       const src = fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
       // A grep over source asserts NOTHING unless the source was actually read (CLAUDE.md §8). The

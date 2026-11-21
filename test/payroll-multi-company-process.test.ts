@@ -25,12 +25,15 @@ import {
   overallStatusOf,
   reasonForError,
   reasonForPayrollError,
-  runMultiCompanyPayroll,
   saveMultiCompanyPayrollDrafts,
   summarize,
   type CompanyOutcome,
 } from '../core/payroll-run-group';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+// The run now processes each company as a background job; the helper drives the worker to the settled result.
+import { drainRunGroup, runMultiCompanyPayrollToEnd as runMultiCompanyPayroll } from './payroll-run-group-helpers';
+import { startMultiCompanyPayroll } from '../core/payroll-run-group';
+import { readRunGroup } from '../core/payroll-run-group-store';
 
 describe('multi-company payroll — pure helpers', () => {
   it('reasonForError maps the known engine throws to stable codes', () => {
@@ -54,9 +57,12 @@ describe('multi-company payroll — pure helpers', () => {
     for(const code of ['not_found','invalid_period','stale_context'] as const)expect(reasonForPayrollError(new TaxSelectionError(code))).toBe('SYSTEM_VALIDATION_ERROR');
     expect(reasonForPayrollError(new Error('private SQL failure'))).toBe('SYSTEM_VALIDATION_ERROR');expect(reasonForPayrollError(null)).toBe('SYSTEM_VALIDATION_ERROR');
     expect(reasonForPayrollError(new Error('No localization pack for MY'))).toBe('NO_PAYROLL_CONFIG');
-    const actions=readFileSync(new URL('../app/payroll/process/actions.ts',import.meta.url),'utf8');
+    // Both wizard paths (multi-company and resume) map a refusal before the job here, and the background job maps a
+    // refusal inside the run with the same function, so the result screen's reason is the synchronous one.
     const orchestration=readFileSync(new URL('../core/payroll-run-group.ts',import.meta.url),'utf8');
-    expect(actions).toContain('reason: reasonForPayrollError(e)');expect(orchestration).toContain('reason: reasonForPayrollError(e)');
+    const job=readFileSync(new URL('../core/payroll-processing-job.ts',import.meta.url),'utf8');
+    expect(orchestration.split('reason: reasonForPayrollError(e)').length-1).toBe(2);
+    expect(job).toContain('failureReason:reasonForPayrollError(error)');
   });
 
   it('overallStatusOf: all ok → succeeded, some fail → partial, all fail → failed', () => {
@@ -216,6 +222,35 @@ describe('multi-company payroll — orchestration (DB)', () => {
     }
   });
 
+  it('preserves exact legacy Payroll Process counts and posted selection without loading employee detail',async()=>{
+    const group=groupAdmin(),scoped=await scopedAdminFor(base.companyId);
+    const [own]=await payrollRead.listEmployees(group,[base.companyId]);
+    const [other]=await payrollRead.listEmployees(group,[companyB]);
+    expect(own.employmentId).not.toBe(other.employmentId);
+    await terminateEmployment(group,{employmentId:own.employmentId,terminationDate:'2026-05-15'});
+    const posted=[other.employmentId,own.employmentId.toUpperCase(),'not-a-uuid',own.employmentId,own.employmentId,randomUUID()];
+    for(const ctx of [group,scoped]){
+      for(const companyId of [base.companyId,companyB]){
+        const legacy=await payrollRead.listEmployees(ctx,[companyId]),ids=new Set(legacy.map(row=>row.employmentId));
+        expect(await payrollRead.payrollProcessEmployeeCount(ctx,companyId)).toBe(legacy.length);
+        expect(await payrollRead.payrollProcessEmployeeSelection(ctx,companyId,posted)).toEqual(posted.filter(id=>ids.has(id)));
+      }
+    }
+    for(const ctx of [group,scoped]){
+      for(const companyIds of [[],[base.companyId],[companyB],[base.companyId,companyB]]){
+        const legacy=await payrollRead.listEmployees(ctx,companyIds);
+        expect(await payrollRead.listPayrollTransactionEmployees(ctx,companyIds)).toEqual(legacy.map(row=>({
+          employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode,company:row.company,companyId:row.companyId,
+          department:row.department,departmentLabel:row.departmentLabel,departmentCode:row.departmentCode,departmentId:row.departmentId,
+          businessUnit:row.businessUnit,businessUnitLabel:row.businessUnitLabel,businessUnitCode:row.businessUnitCode,
+          businessUnitId:row.businessUnitId,terminatedOn:row.terminatedOn,
+        })));
+      }
+    }
+    expect(await payrollRead.payrollProcessEmployeeSelection(scoped,base.companyId,posted)).toEqual([own.employmentId,own.employmentId]);
+    expect(await payrollRead.payrollProcessEmployeeCount(scoped,companyB)).toBe(0);
+  });
+
   it('draft scope uses the Payroll period population, retaining a mid-period leaver',async()=>{
     const a=groupAdmin(),employees=await owner.db.select().from(schema.employment).where(eq(schema.employment.companyId,base.companyId)).orderBy(schema.employment.id);expect(employees).toHaveLength(1);const employee=employees[0];
     await terminateEmployment(a,{employmentId:employee.id,terminationDate:'2026-05-15'});
@@ -287,6 +322,35 @@ describe('multi-company payroll — orchestration (DB)', () => {
     // A batch exists for each company this period.
     const batches = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.payPeriod, '2026-05'));
     expect(new Set(batches.map((b) => b.companyId))).toEqual(new Set([base.companyId, companyB]));
+  });
+
+  it('follows the run while its companies process in the background, one company after another, then shows the outcomes', async () => {
+    const a = groupAdmin();
+    const { groupId } = await startMultiCompanyPayroll(a, { companyIds: [base.companyId, companyB], payPeriod: '2026-05', payrollCycleId: await regularCycleId(base.companyId), employmentIds: [] });
+    // Nothing is processed inside the request: both runs are 'processing' and the screen shows their jobs.
+    const waiting = await readRunGroup(a, groupId);
+    expect(waiting).toMatchObject({ done: false, result: null, payPeriod: '2026-05' });
+    expect(waiting!.companies.map((c) => c.job?.state)).toEqual(['queued', 'queued']);
+    const runs = await owner.db.select({ status: schema.payrollBatch.status, companyId: schema.payrollBatch.companyId, jobId: schema.payrollBatch.processingJobId }).from(schema.payrollBatch);
+    expect(runs.map((r) => r.status)).toEqual(['processing', 'processing']);
+    expect(await owner.db.select().from(schema.payslip)).toHaveLength(0);
+    // The second company's job waits for the first company's run, as the synchronous loop processed them in order.
+    const [second] = await owner.client<{ after: string[] }[]>`select input->'after' as after from bulk_job where id=${runs.find((r) => r.companyId === companyB)!.jobId}::uuid`;
+    expect(second.after).toEqual([runs.find((r) => r.companyId === base.companyId)!.jobId]);
+    // No outcome event until the run has finished.
+    const runEvents = () => owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType, 'payroll-run-group.completed'));
+    expect(await runEvents()).toHaveLength(0);
+    const result = await drainRunGroup(groupId);
+    expect(result).toMatchObject({ overallStatus: 'succeeded', totalCompanies: 2, totalEmployeesSucceeded: 2 });
+    expect((await readRunGroup(a, groupId))?.result).toEqual(result);
+    const events = await runEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].payload).toMatchObject({ overallStatus: 'succeeded', startedAt: result.startedAt, endedAt: result.endedAt, companyIds: [base.companyId, companyB] });
+    // The group is settled by its last job's settle, in the kernel's owner transaction (unit.ownerTx): the event
+    // carries that job (migration 5014). The second company's job waited for the first, so it is the last.
+    expect((events[0].payload as { bulkJob?: unknown }).bulkJob).toEqual({ id: runs.find((r) => r.companyId === companyB)!.jobId, kind: 'payroll_process' });
+    // Only the run's creator follows it.
+    expect(await readRunGroup({ ...a, userId: randomUUID() }, groupId).catch(() => null)).toBeNull();
   });
 
   it('HAZARD 2: one company already processed this month → that company fails, the other still runs (partial)', async () => {

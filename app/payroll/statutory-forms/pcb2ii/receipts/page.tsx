@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { validPcb2iiSelectedDate } from '@/lib/pcb2ii-form';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -187,7 +188,7 @@ export default async function Pcb2iiReceiptsPage({ searchParams }: { searchParam
                         <Field label={tPay('pcbPaymentPaidOn')}>
                           <input type="date" name="paidOn" defaultValue={rec?.paidOn ?? ''} className={inputCls} />
                         </Field>
-                        <button className={btnGhost}>{tPay('pcbPaymentSave')}</button>
+                        <ActionButton actionKind="saving" className={btnGhost}>{tPay('pcbPaymentSave')}</ActionButton>
                       </form>
                     );
                   })}

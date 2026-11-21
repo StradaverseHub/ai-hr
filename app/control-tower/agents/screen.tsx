@@ -1,10 +1,11 @@
+import { ActionButton } from '@/components/ui/action-button';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import {nanosToUsd} from '@/lib/ai/spend-allocation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { type requireAdmin, isAdmin, isGroupAdmin } from '@/lib/authz';
-import { AI_RUN_STATE_FILTERS, aiManagementView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary } from '@/core/ai-management';
+import { AI_RUN_STATE_FILTERS, aiManagementPageView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary, type AiManagementAllowanceUser } from '@/core/ai-management';
 import { AI_FEATURES, isAiFeature } from '@/lib/ai/features';
 import type { AgentFeature } from '@/core/agent-principal';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
@@ -38,7 +39,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const t = await getTranslations('aiManagement');
   const f = await getFormatter();
   const runFilter:AiRunFilter = {state:AI_RUN_STATE_FILTERS.find(v=>v===sp.runs),feature:isAiFeature(sp.feature)?sp.feature:undefined};
-  const view = await aiManagementView(s, sp.q, runFilter);
+  const view = await aiManagementPageView(s, section, sp.q, runFilter);
   // One section per page, chosen in the sidebar's AI management menu. A section this session cannot use
   // goes to the Overview.
   // Only the orchestrator page reads the work queue.
@@ -89,7 +90,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     <label className="text-xs">{t('monthly')}<input aria-label={`${label} · ${t('monthly')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000000000" step="1" name="monthlyTokens" defaultValue={u.tokens.limit??''} placeholder={t('unlimited')}/></label>
     <label className="text-xs">{t('concurrent')}<input aria-label={`${label} · ${t('concurrent')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000" step="1" name="maxConcurrent" defaultValue={u.maxConcurrent??''} placeholder={t('unlimited')}/></label>
     <label className="text-xs">{t('access')}<select aria-label={`${label} · ${t('access')}`} name="enabled" defaultValue={String(u.enabled)} className={`${inputCls} mt-1`}><option value="true">{t('allowed')}</option><option value="false">{t('paused')}</option></select></label>
-    <button className={btnPrimary} type="submit">{t('save')}</button>
+    <ActionButton actionKind="saving" className={btnPrimary} type="submit">{t('save')}</ActionButton>
   </>;
   const formGrid = 'grid items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_minmax(7rem,10rem)_minmax(8rem,12rem)_minmax(7rem,10rem)_minmax(6rem,8rem)_auto]';
   // WP14 / R19 — per-feature caps: the shared feature row (0694) holds the same three limits; its on/off switch stays
@@ -109,7 +110,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         <label className="text-xs">{t('monthly')}<input aria-label={`${label} · ${t('monthly')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000000000" step="1" name="monthlyTokens" defaultValue={use.tokens.limit??''} placeholder={t('unlimited')}/></label>
         <label className="text-xs">{t('concurrent')}<input aria-label={`${label} · ${t('concurrent')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000" step="1" name="maxConcurrent" defaultValue={use.maxConcurrent??''} placeholder={t('unlimited')}/></label>
         <span aria-hidden className="hidden xl:block"/>
-        <button className={btnPrimary} type="submit">{t('save')}</button>
+        <ActionButton className={btnPrimary} type="submit">{t('save')}</ActionButton>
       </form>
     </li>;
   };
@@ -120,7 +121,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       {limitFields(c.label,c)}
     </form>
   </li>;
-  const userRow = (u:typeof view.users[number]) => <li key={u.id} id={`ai-user-${u.id}`} className="scroll-mt-4 py-4">
+  const userRow = (u:AiManagementAllowanceUser) => <li key={u.id} id={`ai-user-${u.id}`} className="scroll-mt-4 py-4">
     <label className="mb-2 flex min-h-11 w-fit items-center gap-2 text-xs"><input type="checkbox" form="ai-bulk-selected" name="bulkUser" value={u.id} className="size-4"/>{t('bulkSelect',{name:u.label})}</label>
     {/* A login following the default is prefilled with the default's values: saving it creates an individual copy, never an accidental "no cap". */}
     <form action={setAiAllowanceAction} className={formGrid}>
@@ -132,11 +133,11 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <form action={setAssistantPermissionAction} className="flex flex-wrap items-center gap-3">
         <input type="hidden" name="userId" value={u.id}/><input type="hidden" name="q" value={query}/><input type="hidden" name="enabled" value={String(!u.assistantGranted)}/>
         <span>{t(u.assistantGranted?'assistantGranted':'assistantNotGranted')}</span>
-        <button type="submit" className="font-medium text-primary hover:underline" aria-label={`${u.label} · ${t(u.assistantGranted?'revokeAssistant':'grantAssistant')}`}>{t(u.assistantGranted?'revokeAssistant':'grantAssistant')}</button>
+        <ActionButton type="submit" className="font-medium text-primary hover:underline" aria-label={`${u.label} · ${t(u.assistantGranted?'revokeAssistant':'grantAssistant')}`}>{t(u.assistantGranted?'revokeAssistant':'grantAssistant')}</ActionButton>
       </form>
       {u.source==='individual'&&<form action={clearUserAllowanceAction}>
         <input type="hidden" name="userId" value={u.id}/><input type="hidden" name="q" value={query}/>
-        <button type="submit" className="font-medium text-primary hover:underline" aria-label={`${u.label} · ${t('useDefault')}`}>{t('useDefault')}</button>
+        <ActionButton type="submit" className="font-medium text-primary hover:underline" aria-label={`${u.label} · ${t('useDefault')}`}>{t('useDefault')}</ActionButton>
       </form>}
     </div>
   </li>;
@@ -210,6 +211,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         {attention.blocked.length>0&&<section><h3 className="text-sm font-medium">{t('attentionBlocked')}</h3><ul className="mt-1 divide-y divide-border">{attention.blocked.map(b=><li key={b.id} className="py-2"><Link href={userLink(b.label)} className="break-words text-sm text-primary hover:underline">{b.label}</Link><p className="mt-1 text-xs text-muted-foreground">{t('blockedToday',{count:b.count})}{b.reason&&t.has(`reasons.${b.reason}`)?` · ${t(`reasons.${b.reason}`)}`:''}</p></li>)}</ul></section>}
       </div>}
     </Card>}
+    {section==='features'&&children}
     {section==='features'&&registry&&<WorkerRegistry rows={registry.rows} summary={registry.summary} detail={registry.detail}/>}
     {section==='features'&&<Card id="ai-features" className="scroll-mt-4 overflow-hidden">
       <div className="p-5"><SectionHeader title={t('inventory')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('inventoryHelp')}</p>{!isGroupAdmin(s)&&<p className="mt-2 text-sm text-muted-foreground">{t('scopedNotice')}</p>}</div>
@@ -229,7 +231,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
               {feature.staleOverride&&<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t(feature.staleOverride.enabled?'staleOverrideOn':'staleOverrideOff')}</p>}</td>
             <td className="px-5 py-4"><span className={feature.state==='ready'?'text-emerald-700 dark:text-emerald-300':'text-muted-foreground'}>{t(`states.${feature.state}`)}</span></td>
             <td className="px-5 py-4">{usage(activity)}{activity&&<p className="mt-1 text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(activity.blocked),failed:numbers(activity.failed)})}</p>}</td>
-            <td className="px-5 py-4">{feature.mayWrite?<form action={setAiFeatureAction}><input type="hidden" name="feature" value={feature.id}/><input type="hidden" name="enabled" value={String(!feature.enabled)}/><button type="submit" className={btnGhost} aria-label={`${t(feature.enabled?'pause':'enable')} · ${t(`features.${feature.id}`)}`}>{t(feature.enabled?'pause':'enable')}</button></form>:t(feature.kind==='platform'?'platformManaged':'readOnly')}</td>
+            <td className="px-5 py-4">{feature.mayWrite?<form action={setAiFeatureAction}><input type="hidden" name="feature" value={feature.id}/><input type="hidden" name="enabled" value={String(!feature.enabled)}/><ActionButton type="submit" className={btnGhost} aria-label={`${t(feature.enabled?'pause':'enable')} · ${t(`features.${feature.id}`)}`}>{t(feature.enabled?'pause':'enable')}</ActionButton></form>:t(feature.kind==='platform'?'platformManaged':'readOnly')}</td>
           </tr>;
         })}</tbody>)}</table></div>
       <p className="border-t border-border p-5 text-xs text-muted-foreground">{t('noHistory')} {t('reservationHelp')}</p>
@@ -248,7 +250,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     </Card>}
     {/* The inventory and audit columns, on the same page: the one list of every AI piece (owner decision 29). */}
     {section==='features'&&(inventorySection ?? <p role="status" data-inventory-unavailable className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>)}
-    {section==='allowances'&&<>
+    {view.section==='allowances'&&<>
     <Card id="company-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('companyLimits')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('limitHelp')}</p><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('concurrentHelp')}</p><p className="mt-2 max-w-4xl text-xs text-muted-foreground">{t('attribution')}</p>
       <ul className="mt-2 divide-y divide-border">{view.companies.map(companyRow)}</ul>{view.companies.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noCompanies')}</p>}
@@ -266,7 +268,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
             <p className="font-medium">{bulkPreview.changing===0 ? t('bulkNothing') : t(bulkEnabled?'bulkConfirmGrant':'bulkConfirmRevoke',{count:bulkPreview.changing})}</p>
             <p className="mt-1 text-xs text-muted-foreground">{t('bulkMatched',{matched:bulkPreview.matched,changing:bulkPreview.changing})}</p>
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              {bulkPreview.changing>0&&<form action={applyBulkAssistantAction}><input type="hidden" name="scope" value={JSON.stringify(bulkScope)}/><input type="hidden" name="enabled" value={String(bulkEnabled)}/><input type="hidden" name="confirmed" value={bulkPreview.changing}/><button type="submit" className={btnPrimary}>{t(bulkEnabled?'bulkConfirmGrantButton':'bulkConfirmRevokeButton',{count:bulkPreview.changing})}</button></form>}
+              {bulkPreview.changing>0&&<form action={applyBulkAssistantAction}><input type="hidden" name="scope" value={JSON.stringify(bulkScope)}/><input type="hidden" name="enabled" value={String(bulkEnabled)}/><input type="hidden" name="confirmed" value={bulkPreview.changing}/><ActionButton type="submit" className={btnPrimary}>{t(bulkEnabled?'bulkConfirmGrantButton':'bulkConfirmRevokeButton',{count:bulkPreview.changing})}</ActionButton></form>}
               <Link href={aiManagementHref('allowances',{q:query,anchor:'#ai-bulk'})} className="py-2 text-sm font-medium text-primary hover:underline">{t('bulkCancel')}</Link>
             </div></>}
         </div>}
@@ -279,7 +281,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
             <optgroup label={t('bulkRole')}>{(['employee','manager','hr_admin','super_admin','payroll_partner','performance_comp_partner','performance_partner'] as const).map(r=><option key={r} value={`role:${r}`}>{roleLabels(r)}</option>)}</optgroup>
           </select></label>
           <label className="text-xs">{t('bulkChange')}<select name="bulk" defaultValue="grant" className={`${inputCls} mt-1`}><option value="grant">{t('bulkGrant')}</option><option value="revoke">{t('bulkRevoke')}</option></select></label>
-          <button type="submit" className={btnGhost}>{t('bulkReviewButton')}</button>
+          <ActionButton type="submit" className={btnGhost}>{t('bulkReviewButton')}</ActionButton>
         </form>
       </section>
       <section id="ai-groups" aria-labelledby="ai-groups-heading" className="mt-4 scroll-mt-4 rounded-lg border border-border p-4">
@@ -290,7 +292,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
             <div className="min-w-0 md:col-span-2 xl:col-span-1"><p className="break-words text-sm font-medium">{label}</p></div>
             {limitFields(label,{daily:{used:0,limit:g.dailyRequests,level:null},tokens:{used:0,limit:g.monthlyTokens,level:null},enabled:g.enabled,maxConcurrent:g.maxConcurrent??null})}
           </form>
-          <form action={clearGroupAllowanceAction} className="mt-2"><input type="hidden" name="group" value={key}/><button type="submit" className="text-xs font-medium text-primary hover:underline" aria-label={`${label} · ${t('groupRemove')}`}>{t('groupRemove')}</button></form>
+          <form action={clearGroupAllowanceAction} className="mt-2"><input type="hidden" name="group" value={key}/><ActionButton type="submit" className="text-xs font-medium text-primary hover:underline" aria-label={`${label} · ${t('groupRemove')}`}>{t('groupRemove')}</ActionButton></form>
         </li>;})}</ul>}
         <form action={setGroupAllowanceAction} className={`mt-3 ${formGrid}`}>
           <label className="min-w-0 text-xs md:col-span-2 xl:col-span-1">{t('groupAdd')}<select name="group" required defaultValue="" className={`${inputCls} mt-1 w-full`}>
@@ -312,18 +314,18 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         </form>
       </section>
       <p className="mt-4 text-xs text-muted-foreground">{t('individualHelp')}</p>
-      <form method="get" action={aiManagementHref('allowances',{anchor:'#user-limits'})} className="mt-3 flex max-w-lg gap-2"><label className="flex-1"><span className="sr-only">{t('searchUsers')}</span><input name="q" defaultValue={query} placeholder={t('searchUsers')} className={inputCls}/></label><button className={btnGhost} type="submit">{t('search')}</button></form>
+      <form method="get" action={aiManagementHref('allowances',{anchor:'#user-limits'})} className="mt-3 flex max-w-lg gap-2"><label className="flex-1"><span className="sr-only">{t('searchUsers')}</span><input name="q" defaultValue={query} placeholder={t('searchUsers')} className={inputCls}/></label><ActionButton className={btnGhost} type="submit">{t('search')}</ActionButton></form>
       <p className="mt-2 text-xs text-muted-foreground">{t('userSort')}</p>
       <form id="ai-bulk-selected" method="get" action={aiManagementHref('allowances',{anchor:'#ai-bulk'})} className="mt-3 flex flex-wrap items-end gap-3 text-xs">
         {query&&<input type="hidden" name="q" value={query}/>}
         <label>{t('bulkSelectedChange')}<select name="bulk" defaultValue="grant" className={`${inputCls} mt-1`}><option value="grant">{t('bulkGrant')}</option><option value="revoke">{t('bulkRevoke')}</option></select></label>
-        <button type="submit" className={btnGhost}>{t('bulkSelectedButton')}</button>
-        {query&&<button type="submit" name="bulkWho" value="search" className={btnGhost}>{t('bulkAllMatching',{q:query})}</button>}
+        <ActionButton type="submit" className={btnGhost}>{t('bulkSelectedButton')}</ActionButton>
+        {query&&<ActionButton type="submit" name="bulkWho" value="search" className={btnGhost}>{t('bulkAllMatching',{q:query})}</ActionButton>}
       </form>
-      <ul className="mt-2 divide-y divide-border">{view.users.map(userRow)}</ul>
-      {view.users.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noUsers')}</p>}{view.moreUsers&&<p className="text-xs text-muted-foreground">{t('moreUsers')}</p>}
+      <ul className="mt-2 divide-y divide-border">{view.allowances.users.map(userRow)}</ul>
+      {view.allowances.users.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noUsers')}</p>}{view.allowances.moreUsers&&<p className="text-xs text-muted-foreground">{t('moreUsers')}</p>}
     </Card>}
-    <Card className="p-5"><SectionHeader title={t('inherited')}/><p className="mt-1 text-sm text-muted-foreground">{t('businessLimits')}</p>{view.legacyBudget&&<p className="mt-2 text-sm">{t('legacyAssistant',{daily:numbers(view.legacyBudget.daily),tokens:numbers(view.legacyBudget.monthly)})}</p>}<p className="mt-2 text-xs text-muted-foreground">{t('humanDecisions')}</p></Card>
+    <Card className="p-5"><SectionHeader title={t('inherited')}/><p className="mt-1 text-sm text-muted-foreground">{t('businessLimits')}</p>{view.allowances.legacyBudget&&<p className="mt-2 text-sm">{t('legacyAssistant',{daily:numbers(view.allowances.legacyBudget.daily),tokens:numbers(view.allowances.legacyBudget.monthly)})}</p>}<p className="mt-2 text-xs text-muted-foreground">{t('humanDecisions')}</p></Card>
     </>}
     {section==='spending'&&view.spend&&<Card id="ai-spend" className="scroll-mt-4 p-5"><SectionHeader title={t('spendTitle')}/>
       <p className="mt-2 text-sm">{t('spendOptionalPolicy')}</p><p className="mt-2 text-sm">{view.spend.reviewedCarrierRecords===null?t('spendRecordsUnknown'):t('spendRecords',{count:view.spend.reviewedCarrierRecords})}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendLiveUnverified')}</p><p className="mt-2 text-xs text-muted-foreground">{t('spendSemantics')}</p>
@@ -334,7 +336,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <form action={setAiSpendBudgetAction} className="mt-4 flex flex-wrap items-end gap-3">
         <label htmlFor="ai-spend-monthly" className="text-sm">{t('spendMonthly')}<input id="ai-spend-monthly" className={inputCls} name="monthlyUsd" inputMode="decimal" defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?.monthlyNanos!=null?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.monthlyNanos!):''}/></label>
         <label htmlFor="ai-spend-root" className="text-sm">{t('spendRoot')}<input id="ai-spend-root" className={inputCls} name="rootUsd" inputMode="decimal" defaultValue={view.spend.budgets.find(b=>b.scopeKey==='tenant')?.rootNanos!=null?nanosToUsd(view.spend.budgets.find(b=>b.scopeKey==='tenant')!.rootNanos!):''}/></label>
-        <button className={btnPrimary}>{t('save')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('save')}</ActionButton>
       </form></Card>}
     {(section==='provider'||section==='assistant')&&children}
     {section==='orchestrator'&&queue&&<section id="orchestrator" aria-labelledby="ai-orchestrator-heading" className="scroll-mt-4 rounded-xl border border-border p-5"><h2 id="ai-orchestrator-heading" className="font-semibold">{t('orchestrator')}</h2><p className="my-3 max-w-4xl text-sm text-muted-foreground">{t('orchestratorHelp')}</p><OrchestrationWorkQueue view={queue} refresh={sp.refresh} canViewRuns={isGroupAdmin(s)}/></section>}
@@ -345,7 +347,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         <label>{t('inv.rangeTo')}<input type="date" name="to" defaultValue={history?.range.to} className={`${inputCls} mt-1`}/></label>
         <label>{t('runFilter')}<select name="runs" defaultValue={runFilter.state??''} className={`${inputCls} mt-1`}><option value="">{t('runAll')}</option><option value="blocked">{t('runBlocked')}</option><option value="failed">{t('runFailed')}</option></select></label>
         <label>{t('feature')}<select name="feature" defaultValue={runFilter.feature??''} className={`${inputCls} mt-1`}><option value="">{t('allFeatures')}</option>{AI_FEATURES.map(feature=><option key={feature.id} value={feature.id}>{t(`features.${feature.id}`)}</option>)}</select></label>
-        <button type="submit" className={btnGhost}>{t('applyFilter')}</button>
+        <ActionButton type="submit" className={btnGhost}>{t('applyFilter')}</ActionButton>
         {filtered&&<Link href={aiManagementHref('runs',{q:query,anchor:'#ai-runs'})} className="py-2 font-medium text-primary hover:underline">{t('clearFilter')}</Link>}
       </form>}
       {isGroupAdmin(s)&&filtered&&<p className="mt-2 text-xs text-muted-foreground">{t('runsFiltered')}</p>}

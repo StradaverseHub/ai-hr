@@ -249,7 +249,8 @@ describe('the dedicated screen carries the whole job', () => {
     // be rendered in a test (this page is an async server component). The requirement is unchanged and is
     // still asserted end to end — the listing emits the row inside its table, and the row still carries
     // the Draft badge and the held Employee ID.
-    expect(listPage).toContain('<DraftRow');
+    expect(listPage).toContain('<PersonnelListTable');
+    expect(read('app/admin/personnel/list-table.tsx')).toContain('<DraftRow');
     expect(read('app/admin/personnel/draft-row.tsx')).toContain('<StatusBadge status="draft"');
     expect(listPage).toContain('d.reservedEmployeeCode');
     // And Draft is an option on the status filter, so HR can pull up exactly who is outstanding.

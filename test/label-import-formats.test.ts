@@ -13,6 +13,15 @@ describe('bounded real XLS and XLSX Labels admission',()=>{
   const bytes=make(type);expect(bytes.subarray(0,type==='biff8'?8:4).toString('hex')).toBe(type==='biff8'?'d0cf11e0a1b11ae1':'504b0304');
   expect(readSystemLabelWorkbook(bytes)).toEqual([{sheet:'division',row:2,values:{Code:'00007',Label:'Fictional label',Description:'Description','Sort Order':'1'}}]);
  });
+ // Board c074c6b8: a row number is the one Excel shows, also when the sheet's data starts below row 1.
+ it.each(['biff8','xlsx'] as const)('numbers %s rows as Excel does when the used range starts lower down',type=>{
+  const ws:XLSX.WorkSheet={};XLSX.utils.sheet_add_aoa(ws,[headers,['LOW','Fictional low','',''],[],['LOWER','Fictional lower','','']],{origin:'A3'});
+  // As Excel writes it: the used range (and so the file's dimension) starts at the first row with data.
+  ws['!ref']='A3:D6';
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'division');
+  const bytes=XLSX.write(wb,{type:'buffer',bookType:type,compression:false}) as Buffer;
+  expect(readSystemLabelWorkbook(bytes).map(row=>[row.values.Code,row.row])).toEqual([['LOW',4],['LOWER',6]]);
+ });
  it('admits a genuine uncompressed XLSX larger than the former 750 KB cap without raising row/cell limits',()=>{
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([headers,...Array.from({length:500},(_,i)=>['C'+i,'L'.repeat(1000),'D'.repeat(1000),'0'])]),'division');
   const bytes=XLSX.write(wb,{type:'buffer',bookType:'xlsx',compression:false}) as Buffer;
@@ -44,7 +53,7 @@ describe('bounded real XLS and XLSX Labels admission',()=>{
   const zip=new JSZip();zip.file('unrelated.txt','Not Excel');const bytes=await zip.generateAsync({type:'nodebuffer'});expect(()=>readSystemLabelWorkbook(bytes)).toThrow(/Invalid Excel archive/);
   for(const type of ['biff8','xlsx'] as const){
    expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.SheetNames=['Reference'];wb.Sheets={Reference:wb.Sheets.division};}))).toThrow(/no recognised/);
-   expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.Sheets.division=XLSX.utils.aoa_to_sheet([headers,...Array.from({length:501},(_,i)=>[String(i),'X','',''])]);}))).toThrow(/limit/);
+   expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.Sheets.division=XLSX.utils.aoa_to_sheet([headers,...Array.from({length:7001},(_,i)=>[String(i),'X','',''])]);}))).toThrow(/limit/); // Board 2026-11-14: 7000-row workbook allowance per list.
   }
  });
  it('rejects encrypted ZIP flags and bounded archive expansion before SheetJS reads worksheets',async()=>{
@@ -57,7 +66,7 @@ describe('bounded real XLS and XLSX Labels admission',()=>{
  it.each(['biff8','xlsx'] as const)('retains the cell-length and sheet-count caps for %s',type=>{
   // BIFF8's standard literal label writer truncates at 255 characters; XLSX can carry the 1001-character refusal case.
   if(type==='xlsx')expect(()=>readSystemLabelWorkbook(make(type,wb=>{wb.Sheets.division.B2.v='X'.repeat(1001);}))).toThrow(/too long/);
-  expect(()=>readSystemLabelWorkbook(make(type,wb=>{for(let i=0;i<17;i++)XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Code'],['X']]),'extra'+i);}))).toThrow(/Too many worksheets/);
+  expect(()=>readSystemLabelWorkbook(make(type,wb=>{for(let i=0;i<26;i++)XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Code'],['X']]),'extra'+i);}))).toThrow(/Too many worksheets/);
  });
  it('does not silently drop a single populated row in an unsupported sheet',()=>{
   const bytes=make('xlsx',wb=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['POSSIBLE_DATA']]),'unknown'));

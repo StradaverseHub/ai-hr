@@ -1,0 +1,57 @@
+'use client';
+
+import {forwardRef,useEffect,useRef,useState,type ButtonHTMLAttributes,type MouseEvent} from 'react';
+import {toast} from 'sonner';
+import {isHandledActionRedirect} from '@/lib/action-feedback-result';
+import {useExternalActionFormPending} from './action-form-status';
+import {useFormStatus} from 'react-dom';
+import {useActionFeedbackLabels,usePendingAction,type ActionKind} from '@/components/action-feedback';
+
+type Props=ButtonHTMLAttributes<HTMLButtonElement>&{pendingLabel?:string;actionKind?:ActionKind;guardNavigation?:boolean};
+
+/** Shared React-form and explicit async feedback. Outcomes remain owned by the confirmed action response. */
+export const ActionButton=forwardRef<HTMLButtonElement,Props>(function ActionButton(
+ {children,disabled,pendingLabel,actionKind:declaredKind,guardNavigation,onClick,'aria-busy':explicitBusy,...props},ref,
+){
+ const actionKind=declaredKind??'processing';
+ const form=useFormStatus(),externalFormPending=useExternalActionFormPending(props.form),labels=useActionFeedbackLabels();
+ const [callbackPending,setCallbackPending]=useState(false);
+ const activating=useRef(false),mounted=useRef(true),activated=useRef(false),currentPending=useRef(false);
+ const activationTimeout=useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;clearTimeout(activationTimeout.current);};},[]);
+ const formPending=props.type!=='button'&&props.type!=='reset'&&(form.pending||externalFormPending);
+ const pending=formPending||callbackPending||explicitBusy===true||explicitBusy==='true';
+ currentPending.current=pending;
+ useEffect(()=>{if(!pending)activated.current=false;},[pending]);
+ const label=pendingLabel??labels[actionKind];
+ const content=pendingLabel??(actionKind==='processing'&&(explicitBusy===true||explicitBusy==='true')?children:label);
+ // A dormant Save can share a pending flag with Preview. Only the activated callback owns its guard.
+ const important=guardNavigation??(props.type!=='button'&&form.method!=='get');
+ usePendingAction(pending,label,important&&(props.type!=='button'||activated.current));
+ const click=(event:MouseEvent<HTMLButtonElement>)=>{
+  if(pending||activating.current){event.preventDefault();return;}
+  activating.current=true;activated.current=true;
+  let result:unknown;
+  try{result=onClick?.(event);}catch(error){queueMicrotask(()=>{activating.current=false;});throw error;}
+  const promise=result!==null&&result!==undefined&&typeof (result as Promise<unknown>).then==='function';
+  const submitting=props.type!=='button'&&props.type!=='reset'&&event.currentTarget.form!==null;
+  const ownsProcessing=submitting||explicitBusy!==undefined||declaredKind!==undefined||pendingLabel!==undefined||guardNavigation===true||promise;
+  // Form/async owners need the event-turn gap until pending renders. Pure local editing has no such operation.
+  // Keep the latch during the callback itself to refuse reentry, then permit the next local edit immediately.
+  if(ownsProcessing)queueMicrotask(()=>{activating.current=false;});
+  else{activating.current=false;activated.current=false;}
+  if(!promise&&props.type==='button'&&guardNavigation===true){
+   clearTimeout(activationTimeout.current);
+   activationTimeout.current=setTimeout(()=>{if(!currentPending.current)activated.current=false;},0);
+  }
+  if(promise&&(props.type==='button'||!event.currentTarget.form||event.defaultPrevented)){
+   setCallbackPending(true);
+   // The callback owns its confirmed success/error messaging. A rejected callback must remain visible.
+   void Promise.resolve(result).then(()=>{if(mounted.current)setCallbackPending(false);},error=>{if(mounted.current){setCallbackPending(false);if(!isHandledActionRedirect(error))toast.error(labels.uncertain);}});
+  }
+ };
+ return <button {...props} ref={ref} onClick={click} disabled={disabled||pending}
+  aria-busy={pending||explicitBusy} data-action-pending={pending||undefined}>
+  {pending&&<span className="action-spinner" aria-hidden="true"/>}{pending?content:children}
+ </button>;
+});

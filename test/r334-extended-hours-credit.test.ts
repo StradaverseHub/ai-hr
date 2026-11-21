@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * r334 · 928f0454 — EXTENDED-HOURS REPLACEMENT LEAVE CREDIT.
  *
@@ -207,7 +208,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
   await setModule(b.tenantId, 'toil', 'active');
   ctx = await entitledCtx(b);
 });
@@ -469,7 +470,7 @@ describe('r334 · auto-accrual on an approved attendance correction', () => {
       checkOut: '23:00',
       reason: 'Forgot to clock out after the release',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved', today: TODAY });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved', today: TODAY });
   };
 
   it('with the switch OFF, approving a workday correction banks nothing (and does not fail the approval)', async () => {

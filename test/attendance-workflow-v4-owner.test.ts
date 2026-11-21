@@ -1,3 +1,5 @@
+import {verifyWorkflowOnlyAttendanceHeader} from './helpers/attendance-task-header-prototype';
+import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
 import {assignedApprovalHref} from '../lib/assigned-approval-focus';
 import {listPendingTasks} from '../core/approvals-inbox';
 import {randomUUID} from 'node:crypto';
@@ -6,8 +8,8 @@ import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
-import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
+import {checkIn,checkOut,requestAttendanceCorrection,pendingAttendanceTaskMetadata,decideAttendanceCorrection,cancelAttendanceApplication,listAttendanceCorrections,myOvertimePlans} from '../core/attendance';
+import {ownAttendanceSubmissionRoute,prepareAttendanceWorkflowSnapshotTx,saveAttendanceWorkflow,setAttendanceWorkflowEnabled,previewAttendanceWorkflow,attendanceWorkflowWarningPage,archiveAttendanceWorkflow,retireAttendanceWorkflow,restoreAttendanceWorkflow,listAttendanceWorkflows,listRetiredAttendanceWorkflows,decideAttendanceWorkflowStageTx} from '../core/attendance-workflow';
 import {attendanceApplicationDetail,attendanceApplicationFilterOptions} from '../core/attendance-application-history';
 import {saveNotificationEmailPolicy,saveNotificationEmailPreferences} from '../core/notification-email';
 import {createNotificationEmailService} from '../deploy/identity-email/notifications';
@@ -16,9 +18,9 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,createAppUser,owner,closeAll,migrateTestDb,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();base=await seedBase();});
-async function actor(name:string,role:'employee'|'hr_admin'='employee',departmentId=base.deptB) {
+async function actor(name:string,role:'employee'|'hr_admin'='employee',departmentId=base.deptB,employeeCode?:string) {
  const email=`${randomUUID()}@example.invalid`;
- const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:email},companyId:base.companyId,departmentId,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:email},companyId:base.companyId,departmentId,...(employeeCode?{employeeCode}:{}),employmentType:'full_time',hiredOn:'2020-01-01'});
  const userId=await createAppUser(base.tenantId,hired.personId,role);
  const ctx:SessionContext={...adminCtx(base),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:base.companyId}]};return{...hired,ctx,email};
 }
@@ -37,6 +39,93 @@ const detail=async(f:Fixture)=>(await attendanceApplicationDetail(f.root,[base.c
 const decide=(f:Fixture,who:Fixture['first'],slot:string,decision:'approved'|'rejected'='approved')=>decideAttendanceCorrection(who.ctx,{correctionId:f.id,expectedStageIndex:0,expectedParticipantSlot:slot,decision,...(decision==='rejected'?{rejectReason:'Fictional rejection'}:{})});
 const day=async(f:Fixture)=>(await owner.db.select().from(schema.attendance).where(and(eq(schema.attendance.employmentId,f.worker.employmentId),eq(schema.attendance.attendanceDate,f.on))).orderBy(asc(schema.attendance.id)))[0];
 describe('v4 uses the immutable participant and final Attendance owners',()=>{
+ it('submits a frozen workflow while another submission holds the company configuration lock',async()=>{
+  const f=await fixture();
+  const prior=new Date(f.on+'T12:00:00Z');prior.setUTCDate(prior.getUTCDate()-1);
+  const key=base.tenantId+':attendance-workflow:'+base.companyId+':irregularity';
+  let submission:ReturnType<typeof requestAttendanceCorrection>|undefined;
+  try{
+   const completed=await owner.db.transaction(async tx=>{
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
+    submission=requestAttendanceCorrection(f.worker.ctx,{employmentId:f.worker.employmentId,date:prior.toISOString().slice(0,10),
+     checkIn:'09:00',checkOut:'18:00',reason:'Fictional overlapping workflow submission'});
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try{
+     return await Promise.race([submission,new Promise<null>(resolve=>{timer=setTimeout(()=>resolve(null),3000);})]);
+    }finally{clearTimeout(timer);}
+   });
+   expect(completed).not.toBeNull();
+   expect((await detail({...f,id:completed!.correctionId})).workflow).toMatchObject({templateVersion:1});
+  }finally{await submission;}
+ });
+
+ it('makes a workflow configuration edit wait for the shared submission lock',async()=>{
+  const f=await fixture();
+  const key=base.tenantId+':attendance-workflow:'+base.companyId+':irregularity';
+  let update:ReturnType<typeof setAttendanceWorkflowEnabled>|undefined;
+  try{
+   await owner.db.transaction(async tx=>{
+    await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
+    update=setAttendanceWorkflowEnabled(f.root,base.companyId,'irregularity',false);
+    const deadline=Date.now()+3000;
+    while(Date.now()<deadline){
+     const [result]=await tx.execute<{blocked:boolean}>(sql`select exists(
+      select 1 from pg_stat_activity activity where activity.datname=current_database()
+       and pg_backend_pid()=any(pg_blocking_pids(activity.pid))
+     ) as blocked`);
+     if(result.blocked)return;
+     await new Promise<void>(resolve=>setTimeout(resolve,20));
+    }
+    throw new Error('Workflow edit did not wait for the shared submission lock');
+   });
+  }finally{await update;}
+  expect((await owner.db.select({enabled:schema.attendanceWorkflowSetting.enabled})
+   .from(schema.attendanceWorkflowSetting).where(eq(schema.attendanceWorkflowSetting.companyId,base.companyId)))[0]?.enabled).toBe(false);
+ });
+
+ it.each(['sequential','any_one','all_required'] as const)('previews only the first actionable approvers for %s',async mode=>{
+  const f=await fixture(mode);
+  const route=await ownAttendanceSubmissionRoute(f.worker.ctx,f.worker.employmentId,'irregularity');
+  if(!route.available)throw Error('Expected configured route');
+  expect(route.firstApprovers.map(actor=>actor.name)).toEqual(mode==='sequential'
+   ? ['Fictional v4 superior']
+   : ['Fictional v4 superior','Fictional v4 selected participant']);
+ });
+ it('previews its own saved route while configuration is locked and rechecks its fingerprint on submit',async()=>{
+  const f=await fixture();
+  // The saved active template is authoritative even when the legacy setting is off.
+  await setAttendanceWorkflowEnabled(f.root,base.companyId,'irregularity',false);
+  const lifecycle=base.tenantId+':attendance-workflow-scope:irregularity';
+  const company=base.tenantId+':attendance-workflow:'+base.companyId+':irregularity';
+  let pending:ReturnType<typeof ownAttendanceSubmissionRoute>|undefined;
+  const preview=await (async()=>{
+   try{
+    return await owner.db.transaction(async tx=>{
+     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lifecycle},0))`);
+     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${company},0))`);
+     pending=ownAttendanceSubmissionRoute(f.worker.ctx,f.worker.employmentId,'irregularity');
+     let timer:ReturnType<typeof setTimeout>|undefined;
+     try{
+      return await Promise.race([pending,new Promise<null>(resolve=>{timer=setTimeout(()=>resolve(null),3000);})]);
+     }finally{clearTimeout(timer);}
+    });
+   }finally{await pending;}
+  })();
+  if(!preview?.available)throw Error('Expected an own route preview while the configuration locks are held');
+  const locked=await withTenant(f.worker.ctx,tx=>prepareAttendanceWorkflowSnapshotTx(tx,f.worker.ctx,f.worker.employmentId,'irregularity'));
+  expect(preview.fingerprint).toBe(locked.fingerprint);
+  expect(preview.stages).toEqual(locked.stages);
+  await expect(ownAttendanceSubmissionRoute({...f.second.ctx,personId:f.worker.personId},f.worker.employmentId,'irregularity'))
+   .rejects.toMatchObject({code:'scope'});
+  const prior=new Date(f.on+'T12:00:00Z');prior.setUTCDate(prior.getUTCDate()-1);
+  const input={employmentId:f.worker.employmentId,date:prior.toISOString().slice(0,10),
+   checkIn:'09:00',checkOut:'18:00',reason:'Fictional route verification'};
+  await expect(requestAttendanceCorrection(f.worker.ctx,{...input,workflowFingerprint:'0'.repeat(64)}))
+   .rejects.toMatchObject({reason:'routeChanged'});
+  const submitted=await requestAttendanceCorrection(f.worker.ctx,{...input,workflowFingerprint:preview.fingerprint});
+  expect((await detail({...f,id:submitted.correctionId})).workflow).toMatchObject({templateVersion:1});
+ });
+
  it('shows the saved current overtime level instead of substituting the live reporting-line superior',async()=>{
   const f=await fixture('all_required','self_overtime');
   const plan=async()=> (await myOvertimePlans(f.worker.ctx,f.worker.employmentId)).find(row=>row.id===f.id);
@@ -46,7 +135,9 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
  });
  it('exposes a real named v4 assignment through the canonical inbox without granting unrelated queues',async()=>{
   const f=await fixture('all_required');
-  const modules={attendance:true,claims:true,performance:false,rewards:false};
+  const modules={attendance:true,claims:true,performance:false,rewards:false,probation:false};
+  expect(await pendingAttendanceTaskMetadata(f.second.ctx,[base.companyId])).toEqual(await legacyPendingAttendanceTaskMetadata(f.second.ctx,[base.companyId]));
+  await verifyWorkflowOnlyAttendanceHeader(f.second.ctx,f.id,f.worker.employmentId);
   expect(await listPendingTasks(f.second.ctx,[base.companyId],modules)).toEqual([
    expect.objectContaining({id:f.id,kind:'attendance',linkPath:assignedApprovalHref({kind:'attendance',id:f.id})})
   ]);
@@ -73,8 +164,8 @@ describe('v4 uses the immutable participant and final Attendance owners',()=>{
  it('sequential refuses the exact out-of-order click that all-required accepts',async()=>{const f=await fixture('sequential');await expect(decide(f,f.second,'0:1')).rejects.toThrow();expect((await detail(f)).workflow!.participantDecisions).toHaveLength(0);await decide(f,f.first,'0:0');expect((await detail(f)).workflow!.currentParticipantSlot).toBeNull();expect((await listAttendanceCorrections(f.second.ctx,{status:'pending'})).find(row=>row.id===f.id)?.canDecide).toBe(true);});
  it('serializes competing any-one clicks into one participant and one level completion',async()=>{const f=await fixture('any_one');const outcomes=await Promise.allSettled([decide(f,f.first,'0:0'),decide(f,f.second,'0:1')]);expect(outcomes.filter(r=>r.status==='fulfilled')).toHaveLength(1);const current=await detail(f);expect(current.workflow!.participantDecisions).toHaveLength(1);expect(current.workflow!.decisions).toHaveLength(1);expect(current.workflow!.currentStage).toBe(1);expect((await day(f)).checkInAt).toBe('08:00:00');});
  it('keeps the submitted sources and evidence after future configuration changes; rejection is terminal',async()=>{const f=await fixture(),before=await detail(f);await saveAttendanceWorkflow(f.root,{...f.input,stages:[f.input.stages[1]]},f.template.lineageId);await decide(f,f.second,'0:1','rejected');const current=await detail(f);expect(current.workflow!.stages).toEqual(before.workflow!.stages);expect(current.workflow!.templateVersion).toBe(1);expect(current.application.status).toBe('rejected');await expect(decide(f,f.first,'0:0')).rejects.toThrow();expect((await day(f)).checkInAt).toBe('08:00:00');});
- it('refuses self/duplicate identities and a caller-supplied administrator role that is absent from actual grants',async()=>{const f=await fixture();await expect(saveAttendanceWorkflow(f.root,{...f.input,stages:[{...f.input.stages[0],sources:[{kind:'specific_employee',employmentIds:[f.worker.employmentId]}]}]},f.template.lineageId)).rejects.toThrow();await expect(saveAttendanceWorkflow(f.root,{...f.input,stages:[{...f.input.stages[0],sources:[...f.input.stages[0].sources,{kind:'specific_employee',employmentIds:[f.first.employmentId]}]}]},f.template.lineageId)).rejects.toThrow();await expect(saveAttendanceWorkflow({...f.second.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]},{...f.input,code:'FORGED',active:false})).rejects.toThrow();});
- it('explains no linked login and then exposes only the genuinely eligible named ID after linking',async()=>{const root=adminCtx(base);await hireEmployee(root,{person:{fullName:'Fictional unlinked worker',primaryEmail:`${randomUUID()}@example.invalid`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});const empty=await attendanceApplicationFilterOptions(root,[base.companyId]);expect(empty.approverEmployees).toEqual([]);expect(empty.approverAvailability).toBe('noLinkedLogin');const linked=await actor('Fictional linked approver');const populated=await attendanceApplicationFilterOptions(root,[base.companyId]);expect(populated.approverAvailability).toBe('available');expect(populated.approverEmployees).toEqual([expect.objectContaining({id:linked.employmentId,name:'Fictional linked approver'})]);});
+ it('refuses self/duplicate identities and a caller-supplied administrator role that is absent from actual grants',async()=>{const f=await fixture();await expect(saveAttendanceWorkflow(f.root,{...f.input,stages:[{...f.input.stages[0],sources:[{kind:'specific_employee',employmentIds:[f.worker.employmentId]}]}]},f.template.lineageId)).rejects.toThrow();const duplicate=await saveAttendanceWorkflow(f.root,{...f.input,stages:[{...f.input.stages[0],sources:[...f.input.stages[0].sources,{kind:'specific_employee',employmentIds:[f.first.employmentId]}]}]},f.template.lineageId);/* 4452ba3c: a per-employee duplicate is a Preview Assignment warning; submission still refuses it. */expect((await attendanceWorkflowWarningPage(f.root,duplicate.lineageId,[base.companyId])).rows.map(row=>row.problem?.code)).toEqual([expect.stringMatching(/^duplicate_/)]);await expect(saveAttendanceWorkflow({...f.second.ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]},{...f.input,code:'FORGED',active:false})).rejects.toThrow();});
+ it('explains no linked login and then exposes only the genuinely eligible named ID after linking',async()=>{const root=adminCtx(base);const unlinked=await hireEmployee(root,{person:{fullName:'Fictional unlinked worker',primaryEmail:`${randomUUID()}@example.invalid`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});/* daa76ed4: a person with no account at all is a pending-activation approver and IS offered; only an unusable (here archived) login leaves them out. */const pendingOptions=await attendanceApplicationFilterOptions(root,[base.companyId]);expect(pendingOptions.approverAvailability).toBe('available');expect(pendingOptions.approverEmployees).toEqual([expect.objectContaining({name:'Fictional unlinked worker'})]);const archivedLogin=await createAppUser(base.tenantId,unlinked.personId,'employee');await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,archivedLogin));const empty=await attendanceApplicationFilterOptions(root,[base.companyId]);expect(empty.approverEmployees).toEqual([]);expect(empty.approverAvailability).toBe('noLinkedLogin');const linked=await actor('Fictional linked approver');const populated=await attendanceApplicationFilterOptions(root,[base.companyId]);expect(populated.approverAvailability).toBe('available');expect(populated.approverEmployees).toEqual([expect.objectContaining({id:linked.employmentId,name:'Fictional linked approver'})]);});
 });
 describe('v4 final effects require fresh real-actor writes and the actual target day',()=>{
  async function readyForFinal(){
@@ -143,11 +234,18 @@ describe('v4 final effects require fresh real-actor writes and the actual target
 });
 describe('retirement preserves dependencies and requires a fresh revision',()=>{
  it('refuses a pending dependency in an older version and preserves its frozen route',async()=>{const f=await fixture(),before=await detail(f);const newer=await saveAttendanceWorkflow(f.root,{...f.input,name:'Fictional next version'},f.template.lineageId);await expect(retireAttendanceWorkflow(f.root,f.template.lineageId,newer.version)).rejects.toMatchObject({code:'inUse'});expect((await detail(f)).workflow!.stages).toEqual(before.workflow!.stages);expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([expect.objectContaining({version:2})]);});
- it('deletes future configuration, retains history, refuses no-match fallback and restores as a new version',async()=>{
-  const f=await fixture();await decide(f,f.first,'0:0','rejected');await expect(retireAttendanceWorkflow(f.root,f.template.lineageId,f.template.version+1)).rejects.toMatchObject({code:'stale'});await retireAttendanceWorkflow(f.root,f.template.lineageId,f.template.version);expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([]);expect((await detail(f)).workflow!.templateVersion).toBe(1);expect(await listRetiredAttendanceWorkflows(f.root,[base.companyId])).toEqual([expect.objectContaining({lineageId:f.template.lineageId})]);
+ it('archives used configuration, retains history, refuses no-match fallback and restores as a new version',async()=>{
+  const f=await fixture();await decide(f,f.first,'0:0','rejected');await expect(retireAttendanceWorkflow(f.root,f.template.lineageId,f.template.version+1)).rejects.toMatchObject({code:'stale'});await expect(retireAttendanceWorkflow(f.root,f.template.lineageId,f.template.version)).rejects.toMatchObject({code:'inUse'});await archiveAttendanceWorkflow(f.root,f.template.lineageId,f.template.version);expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([]);expect((await detail(f)).workflow!.templateVersion).toBe(1);expect(await listRetiredAttendanceWorkflows(f.root,[base.companyId])).toEqual([expect.objectContaining({lineageId:f.template.lineageId})]);
   await expect(f.submit()).rejects.toMatchObject({code:'noMatch'});const restored=await restoreAttendanceWorkflow(f.root,f.template.lineageId,1,[base.companyId]);expect(restored.version).toBe(2);expect((await detail(f)).workflow!.templateVersion).toBe(1);expect(await listRetiredAttendanceWorkflows(f.root,[base.companyId])).toEqual([]);
  });
- it('serializes a racing submission and retirement without losing a pending route',async()=>{const f=await fixture();await decide(f,f.first,'0:0','rejected');const outcomes=await Promise.allSettled([f.submit(),retireAttendanceWorkflow(f.root,f.template.lineageId,1)]);expect(outcomes.filter(result=>result.status==='fulfilled')).toHaveLength(1);const submitted=outcomes[0];if(submitted.status==='fulfilled'){const pending=await attendanceApplicationDetail(f.root,[base.companyId],submitted.value.correctionId);expect(pending!.application.status).toBe('pending');expect(pending!.workflow!.templateId).toBe(f.template.id);expect(await listAttendanceWorkflows(f.root,[base.companyId])).toHaveLength(1);}else{expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([]);expect(await listRetiredAttendanceWorkflows(f.root,[base.companyId])).toHaveLength(1);}});
+ it('serializes racing submission and archive while retaining every committed request',async()=>{
+  const f=await fixture();await decide(f,f.first,'0:0','rejected');
+  const outcomes=await Promise.allSettled([f.submit(),archiveAttendanceWorkflow(f.root,f.template.lineageId,1)]);
+  expect(outcomes[1].status).toBe('fulfilled');
+  expect(await listAttendanceWorkflows(f.root,[base.companyId])).toEqual([]);
+  expect(await listRetiredAttendanceWorkflows(f.root,[base.companyId])).toHaveLength(1);
+  const submitted=outcomes[0];if(submitted.status==='fulfilled'){const pending=await attendanceApplicationDetail(f.root,[base.companyId],submitted.value.correctionId);expect(pending!.workflow!.templateId).toBe(f.template.id);}
+ });
  it('cannot bypass retirement checks by superseding a current version without a successor',async()=>{const f=await fixture();await expect(withTenant(f.root,tx=>tx.update(schema.attendanceWorkflowTemplate).set({supersededAt:new Date()}).where(eq(schema.attendanceWorkflowTemplate.id,f.template.id)))).rejects.toThrow();expect(await listAttendanceWorkflows(f.root,[base.companyId])).toHaveLength(1);});
 });
 describe('CC outbox follows real committed actions only',()=>{
@@ -292,4 +390,114 @@ it('private CC delivery derives its tenant from the validated lease even with ab
  const [company]=await owner.db.insert(schema.company).values({tenantId:foreign.id,legalName:'Fictional foreign CC company'}).returning();
  const proofs=await owner.client`select app.company_org_descendant_for_tenant(${base.tenantId}::uuid,${company.id}::uuid,${company.id}::uuid) as wrong_tenant,app.company_org_descendant_for_tenant(${foreign.id}::uuid,${base.companyId}::uuid,${base.companyId}::uuid) as wrong_child`;
  expect(proofs[0]).toEqual({wrong_tenant:false,wrong_child:false});
+});
+
+describe('approved shared workflows and actor-scoped approver search',()=>{
+ it('saves a shared definition with missing dynamic superiors, previews warnings and refuses an unresolved application',async()=>{
+  const root=adminCtx(base),worker=await actor('Fictional missing-superior applicant','employee',base.deptA,'WARN-001');
+  const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional shared company'}).returning();
+  const input={companyId:base.companyId,companyIds:[base.companyId,other.id],applicationType:'irregularity' as const,routingVersion:4 as const,code:'SHARED_WARNING',name:'Shared warning workflow',priority:1,active:true,criteria:{employeeIds:[worker.employmentId]},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'direct_manager' as const,depth:1}],hrAlternative:false}],cc:[]};
+  const saved=await saveAttendanceWorkflow(root,input);
+  expect(saved.companyIds.sort()).toEqual([base.companyId,other.id].sort());
+  const assignments=await owner.client`select company_id from attendance_workflow_company where template_id=${saved.id} order by company_id`;
+  expect(assignments.map(row=>row.company_id)).toEqual([base.companyId,other.id].sort());
+  const preview=await previewAttendanceWorkflow(root,input,saved.lineageId);
+  expect(preview.rows.find(row=>row.employmentId===worker.employmentId)).toMatchObject({employeeCode:'WARN-001',levelProblem:{code:'missing_superior',levelIndex:0}});
+  await setAttendanceWorkflowEnabled(root,base.companyId,'irregularity',true);
+  // Company B has no matching employees, but its shared definition legitimately names A's employee.
+  // Enabling B must validate against the complete assignment set rather than treating that ID as foreign.
+  await setAttendanceWorkflowEnabled(root,other.id,'irregularity',true);
+  const on=todayInKualaLumpur();await checkIn(root,{employmentId:worker.employmentId,date:on,time:'08:00',manual:true});await checkOut(root,{employmentId:worker.employmentId,date:on,time:'17:00',manual:true});
+  await expect(requestAttendanceCorrection(worker.ctx,{employmentId:worker.employmentId,date:on,checkIn:'09:00',checkOut:'18:00',reason:'No silent approval bypass'})).rejects.toThrow();
+  expect(await owner.db.select().from(schema.attendanceWorkflowRequest)).toHaveLength(0);
+  const updated=await saveAttendanceWorkflow(root,{...input,name:'Shared revision',expectedVersion:1},saved.lineageId);
+  expect(updated.version).toBe(2);
+  await expect(saveAttendanceWorkflow(root,{...input,expectedVersion:1},saved.lineageId)).rejects.toMatchObject({code:'stale'});
+ });
+ it('discovers an authorized sibling-company approver but does not grant an unqualified candidate new rights',async()=>{
+  const root=adminCtx(base),worker=await actor('Fictional group applicant','employee',base.deptA),reviewer=await actor('Fictional group reviewer');
+  const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional sibling approval company'}).returning();
+  await owner.db.update(schema.employment).set({companyId:other.id}).where(eq(schema.employment.id,reviewer.employmentId));
+  const {searchAttendanceApprovers}=await import('../core/attendance-workflow');
+  const search=await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0});
+  expect(search.rows).toEqual([expect.objectContaining({id:reviewer.employmentId,eligible:true,company:'Fictional sibling approval company'})]);
+  const input={companyId:base.companyId,routingVersion:4 as const,applicationType:'irregularity' as const,code:'SIBLING_SELECTED',name:'Authorized sibling reviewer',priority:1,active:true,criteria:{employeeIds:[worker.employmentId]},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'specific_employee' as const,employmentIds:[reviewer.employmentId]}],hrAlternative:false}],cc:[]};
+  const saved=await saveAttendanceWorkflow(root,input);
+  expect((await previewAttendanceWorkflow(root,input,saved.lineageId)).rows[0].resolvedStages[0].approvers[0].employmentId).toBe(reviewer.employmentId);
+  // daa76ed4: a login holding a role in any company of the tenant qualifies (Organization Code boundary); an
+  // archived login does not.
+  await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(eq(schema.roleAssignment.appUserId,reviewer.ctx.userId!));
+  expect((await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0})).rows[0].eligible).toBe(true);
+  expect(await attendanceWorkflowWarningPage(root,saved.lineageId,[base.companyId])).toMatchObject({total:0});
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,reviewer.ctx.userId!));
+  expect((await searchAttendanceApprovers(root,{companyIds:[base.companyId],query:'Fictional group reviewer',page:0})).rows[0].eligible).toBe(false);
+  // The group administrator still has permission to configure this selected person. It is the
+  // reviewer's qualifying login grant for the applicant's company that now needs correction.
+  const [visible]=await withTenant(root,tx=>tx.execute<{allowed:boolean}>(sql`select app.is_admin_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.view') allowed from employment e where e.id=${reviewer.employmentId}::uuid`));
+  expect(visible.allowed).toBe(true);
+  const warned=await saveAttendanceWorkflow(root,{...input,expectedVersion:1},saved.lineageId);
+  expect(warned).toMatchObject({version:2});
+  expect(await attendanceWorkflowWarningPage(root,saved.lineageId,[base.companyId])).toMatchObject({total:1,rows:[{employmentId:worker.employmentId,name:'Fictional group applicant',levelIndex:0,problem:{code:'missing_or_ambiguous_login',levelIndex:0}}]});
+  // Saving correctable setup does not grant approval authority or leave an orphan application.
+  await setAttendanceWorkflowEnabled(root,base.companyId,'irregularity',true);
+  const on=todayInKualaLumpur();await checkIn(root,{employmentId:worker.employmentId,date:on,time:'08:00',manual:true});await checkOut(root,{employmentId:worker.employmentId,date:on,time:'17:00',manual:true});
+  await expect(requestAttendanceCorrection(worker.ctx,{employmentId:worker.employmentId,date:on,checkIn:'09:00',checkOut:'18:00',reason:'Unqualified reviewer must not become an approver'})).rejects.toThrow();
+  expect(await owner.db.select().from(schema.attendanceCorrection)).toEqual([]);
+  expect(await owner.db.select().from(schema.attendanceWorkflowRequest)).toEqual([]);
+  expect(await owner.db.select().from(schema.attendanceWorkflowDecision)).toEqual([]);
+  // A company-only administrator cannot turn an inaccessible sibling employee into a warning.
+  const scoped=await actor('Fictional applicant-company HR','hr_admin');
+  await owner.db.update(schema.roleAssignment).set({companyId:base.companyId}).where(eq(schema.roleAssignment.appUserId,scoped.ctx.userId!));
+  await expect(saveAttendanceWorkflow(scoped.ctx,{...input,expectedVersion:2},saved.lineageId)).rejects.toMatchObject({problem:{code:'employee_unavailable',levelIndex:0}});
+  expect((await listAttendanceWorkflows(root,[base.companyId])).find(row=>row.lineageId===saved.lineageId)?.version).toBe(2);
+ });
+});
+it('refuses a partial-scope edit and serializes shared automatic priorities across reversed company selections',async()=>{
+ const root=adminCtx(base),scoped=await actor('Fictional company-only HR','hr_admin');
+ await owner.db.update(schema.roleAssignment).set({companyId:base.companyId}).where(eq(schema.roleAssignment.appUserId,scoped.ctx.userId!));
+ const [other]=await owner.db.insert(schema.company).values({tenantId:base.tenantId,legalName:'Fictional second shared scope'}).returning();
+ const input={companyId:base.companyId,companyIds:[base.companyId,other.id],applicationType:'irregularity' as const,routingVersion:4 as const,code:'SHARED_LOCK',name:'Shared allocation',priority:1,active:false,criteria:{},stages:[{name:'Level 1',mode:'any_one' as const,sources:[{kind:'direct_manager' as const,depth:1}],hrAlternative:false}],cc:[]};
+ const first=await saveAttendanceWorkflow(root,input);
+ expect((await listAttendanceWorkflows(root,[base.companyId])).map(row=>row.lineageId)).toContain(first.lineageId);
+ await expect(saveAttendanceWorkflow(scoped.ctx,{...input,name:'Must not alter the other company',expectedVersion:1},first.lineageId)).rejects.toMatchObject({code:'scope'});
+ expect((await listAttendanceWorkflows(root,[base.companyId,other.id])).find(row=>row.lineageId===first.lineageId)?.name).toBe('Shared allocation');
+ expect(await listAttendanceWorkflows(scoped.ctx,[base.companyId,other.id])).toEqual([]);
+ await expect(withTenant(root,tx=>tx.execute(sql`insert into attendance_workflow_company(tenant_id,template_id,company_id) values(${base.tenantId}::uuid,${first.id}::uuid,${other.id}::uuid)`))).rejects.toThrow();
+ const created=await Promise.all([
+  saveAttendanceWorkflow(root,{...input,code:'SHARED_AUTO_A'},undefined,undefined,true),
+  saveAttendanceWorkflow(root,{...input,companyId:other.id,companyIds:[other.id,base.companyId],code:'SHARED_AUTO_B'},undefined,undefined,true),
+ ]);
+ expect(created.map(row=>row.priority).sort()).toEqual([2,3]);
+});
+
+
+it('lists approvers with forced RLS under a non-superuser schema-owner identity',async()=>{
+ const eligible=await actor('Fictional real-owner approver');
+ const ctx=adminCtx(base),roles=ctx.roles??[],role='pr233_owner_'+randomUUID().replaceAll('-','');
+ const rollback=new Error('Rollback only this ownership-parity fixture');
+ await expect(owner.client.begin(async connection=>{
+  await connection.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`);
+  const [identity]=await connection`select pg_get_userbyid(relowner) as name from pg_class where oid='public.app_user'::regclass`;
+  const parent=String(identity.name);expect(parent).toMatch(/^[A-Za-z_][A-Za-z0-9_]*$/);
+  // Object ownership is inherited; SUPERUSER/BYPASSRLS attributes are not. The role has no login
+  // or application membership, and every ownership/membership change rolls back with this tx.
+  await connection.unsafe(`GRANT "${parent}" TO "${role}"`);
+  const [attributes]=await connection`select rolsuper,rolbypassrls from pg_roles where rolname=${role}`;
+  expect(attributes).toMatchObject({rolsuper:false,rolbypassrls:false});
+  const functions=await connection`select p.oid::regprocedure::text as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f' order by p.oid`;
+  expect(functions.length).toBeGreaterThan(0);
+  for(const fn of functions)await connection.unsafe(`ALTER FUNCTION ${String(fn.signature)} OWNER TO "${role}"`);
+  await connection.unsafe('SET LOCAL ROLE ai_hr_app');
+  await connection.unsafe('SET LOCAL row_security=on');
+  const grants=ctx.grants??roles.map(value=>({role:value,companyId:null}));
+  await connection`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true),set_config('app.agent_principal_id','',true),set_config('app.payroll_tax_basis_reader','1',true)`;
+  const rows=await connection.unsafe('select id from app.attendance_workflow_v3_approver_options($1::uuid[])',['{'+base.companyId+'}']);
+  expect(rows.map(row=>row.id)).toContain(eligible.employmentId);
+  const employeeRoles=eligible.ctx.roles??[],employeeGrants=eligible.ctx.grants??employeeRoles.map(role=>({role,companyId:null}));
+  await connection`select set_config('app.user_id',${eligible.ctx.userId??''},true),set_config('app.roles',${employeeRoles.join(',')},true),set_config('app.grants',${JSON.stringify(employeeGrants)},true)`;
+  expect(await connection.unsafe('select id from app.attendance_workflow_v3_approver_options($1::uuid[])',['{'+base.companyId+'}'])).toEqual([]);
+  await connection`select set_config('app.tenant_id',${randomUUID()},true),set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true)`;
+  expect(await connection.unsafe('select id from app.attendance_workflow_v3_approver_options($1::uuid[])',['{'+base.companyId+'}'])).toEqual([]);
+  throw rollback;
+ })).rejects.toBe(rollback);
 });

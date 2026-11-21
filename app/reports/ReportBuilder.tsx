@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useTranslations} from 'next-intl';
 import {ProtectedInputHelp} from '@/components/assistant/protected-input-help';
 
@@ -412,14 +413,14 @@ export function ReportBuilder({
           <div className="mt-4">
             <div className="mb-2 flex items-center justify-between">
               <h4 className="text-sm font-semibold">{labels.preview}</h4>
-              <button
+              <ActionButton aria-busy={pending}
                 type="button"
                 onClick={runPreview}
                 disabled={pending || columns.length === 0}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50"
               >
                 {labels.refreshPreview}
-              </button>
+              </ActionButton>
             </div>
             {preview ? (
               <div className={`relative rounded-lg border border-border bg-white p-3 text-black dark:bg-neutral-100 ${orientation === 'landscape' ? '' : ''}`}>
@@ -724,7 +725,7 @@ export function ReportBuilder({
               disabled={!aiEnabled}
               className={`${inputCls} resize-none disabled:opacity-60`}
             />
-            <button
+            <ActionButton aria-busy={pending}
               type="button"
               onClick={runAi}
               disabled={!aiEnabled || pending || !aiText.trim()}
@@ -732,7 +733,7 @@ export function ReportBuilder({
               title={aiEnabled ? undefined : labels.aiNotConfigured}
             >
               {pending ? labels.aiGenerating : labels.aiGenerate}
-            </button>
+            </ActionButton>
             {!aiEnabled && <p className="mt-1 text-[11px] text-muted-foreground">{labels.aiNotConfigured}</p>}
             {aiMsg && <p className="mt-2 rounded-lg bg-muted/60 px-2.5 py-1.5 text-[11px] text-muted-foreground">{aiMsg}</p>}
             {recs && (recs.extraColumns.length > 0 || recs.bestFormat || recs.note) && (
@@ -765,18 +766,18 @@ export function ReportBuilder({
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">{labels.exportHint}</span>
-          <button type="button" onClick={() => exportAs('csv')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportCsv}</button>
-          <button type="button" onClick={() => exportAs('xlsx')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportXlsx}</button>
-          <button type="button" onClick={() => exportAs('pdf')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportPdf}</button>
-          <button type="button" onClick={() => exportAs('docx')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportDocx}</button>
+          <ActionButton guardNavigation={false} actionKind="generating" type="button" onClick={() => exportAs('csv')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportCsv}</ActionButton>
+          <ActionButton guardNavigation={false} actionKind="generating" type="button" onClick={() => exportAs('xlsx')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportXlsx}</ActionButton>
+          <ActionButton guardNavigation={false} actionKind="generating" type="button" onClick={() => exportAs('pdf')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportPdf}</ActionButton>
+          <ActionButton guardNavigation={false} actionKind="generating" type="button" onClick={() => exportAs('docx')} disabled={columns.length === 0} className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50">{labels.exportDocx}</ActionButton>
         </div>
         <div className="flex items-center gap-2">
           {reportId && (
             <form action={saveAsTemplateAction}>
               <input type="hidden" name="id" value={reportId} />
-              <button type="submit" className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent/60">
+              <ActionButton type="submit" className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent/60">
                 {labels.saveAsTemplate}
-              </button>
+              </ActionButton>
             </form>
           )}
           <form action={saveReportAction}>
@@ -784,13 +785,13 @@ export function ReportBuilder({
             <input type="hidden" name="name" value={name} />
             <input type="hidden" name="shared" value={shared ? 'true' : 'false'} />
             <input type="hidden" name="spec" value={JSON.stringify(buildSpec())} />
-            <button
+            <ActionButton
               type="submit"
               disabled={columns.length === 0 || !name.trim()}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
             >
               {labels.save}
-            </button>
+            </ActionButton>
           </form>
         </div>
       </div>

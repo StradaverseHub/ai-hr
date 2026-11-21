@@ -1,3 +1,4 @@
+import { bulkAssignmentProblem, EQUIPMENT_BULK_LABELS } from './lifecycle-bulk-assignment';
 import type { JoinerSectionSetting, JoinerSections } from './onboarding-page-access';
 import { resolveV9CaseFields, missingV9CaseFields, validateV9CaseValue, type CaseField } from './lifecycle-v9-case-form';
 import { v9EmploymentRule } from './lifecycle-v9-employment';
@@ -212,6 +213,7 @@ export type Extra = {
     reason: string;
     approval: boolean;
 };
+export type CaseLocalFacts = Partial<Facts> & { /** Case-owned selected account; old gbsTa text is never an identity. */ taUserId?: string };
 export type Case = {
     version: 1;
     id: Id;
@@ -224,7 +226,7 @@ export type Case = {
     syncedAt: string;
     source: Partial<Facts>;
     sourceVersion: string;
-    local: Partial<Facts>;
+    local: CaseLocalFacts;
     state: 'pending' | 'submitted' | 'cancelled';
     submittedAt: string | null;
     submittedBy: Id | null;
@@ -357,7 +359,7 @@ export function progress(config: Config, c: Case) {
     return { done, total, ready, active: active.length, handed: !!r?.handedAt, percent: denominator ? Math.round(100 * (done + (count ? credit : 0)) / denominator) : 0 };
 }
 /** Display window only. Access is still enforced by the tenant/company and module guards. */
-export function visibleRecentJoiner(config: Config, c: Case, today: string) {
+export function visibleRecentJoiner(config: Pick<Config, 'recentActiveDays'>, c: Case, today: string) {
     return c.personnelStatus === 'Draft' || c.state !== 'cancelled' && (c.state === 'pending' || c.tasks.some(t => t.status !== 'done') || !!currentReq(c) && !currentReq(c)?.handedAt) || effectiveFacts(c).joinDate >= dayDate(today, -config.recentActiveDays);
 }
 export function log(c: Case, a: Actor, env: Environment, action: string, detail = '') {
@@ -483,10 +485,8 @@ export function manualEquipment(config: Config, c: Case, id: string, user: strin
 }
 export function bulkEquipment(config: Config, c: Case, change: EquipmentBulk, a: Actor, env: Environment) {
     if(!a.module&&!(a.caseActions&&a.sections?.equip==='act'))fail('Equipment case actions are required.','forbidden');
-    if (!change.ids.length || new Set(change.ids).size !== change.ids.length || change.group === undefined && change.method === undefined && change.due === undefined) fail('Choose items and at least one equipment change.');
-    if (change.group !== undefined && !config.groups.some(group => group.id === change.group)) fail('Choose an existing assignment group.');
-    if (change.method !== undefined && !['rr','manual'].includes(change.method)) fail('Choose Round robin or Manual.');
-    if (change.due !== undefined && (!Number.isInteger(change.due) || change.due < -999 || change.due > 9999)) fail('Choose an equipment due day from -999 to 9999.');
+    const problem = bulkAssignmentProblem(change, config.groups.map(group => group.id), EQUIPMENT_BULK_LABELS);
+    if (problem) fail(problem);
     let changed = change.ids.length;
     if (c.state === 'pending') {
         if (change.ids.some(id => ![...c.selected, ...c.extras.map(item => item.catalogueId)].includes(id) || !config.catalogue.some(item => item.id === id))) fail('Choose only items selected on this case.');
@@ -546,7 +546,7 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = { fullName: 'Full name', j
 /** Shared required-field projection for validation and the onboarding preparation UI. */
 export function nativeCaseFormValues(c: Case): Record<string,string> {
     const f = effectiveFacts(c);
-    return { ...c.caseValues, name: f.fullName, empNo: f.employeeId, joinInput: f.joinDate, position: f.title, dept: f.department, company: f.company, group: f.businessGroup, supervisor: f.supervisor, ta: f.gbsTa, hireType: c.hiring, replacing: c.replacedEmployee, email: c.caseContactEmail ?? f.email, floor: c.floor, costCentre: f.costCentre, icNo: f.ic, passportNo: f.passport, notes: c.notes };
+    return { ...c.caseValues, name: f.fullName, empNo: f.employeeId, joinInput: f.joinDate, position: f.title, dept: f.department, company: f.company, group: f.businessGroup, supervisor: f.supervisor, ta: c.local.taUserId ?? '', hireType: c.hiring, replacing: c.replacedEmployee, email: c.caseContactEmail ?? f.email, floor: c.floor, costCentre: f.costCentre, icNo: f.ic, passportNo: f.passport, notes: c.notes };
 }
 export function missingCaseFields(c: Case, config?: Config, hr = true): string[] {
     if (config?.v9CaseFields) return missingV9CaseFields(resolveV9CaseFields('onb', config.v9CaseFields), effectiveFacts(c), nativeCaseFormValues(c), hr).map(field => field.key);
@@ -697,7 +697,7 @@ export function reconcileItems(config: Config, c: Case, a: Actor, env: Environme
     }
 }
 export type CasePatch = Partial<Pick<Case, 'hiring' | 'replacedEmployee' | 'deviceType' | 'floor' | 'notes' | 'selected' | 'extras' | 'checklistOverride' | 'equipmentOverrides' | 'caseValues' | 'caseContactEmail'>> & {
-    local?: Partial<Facts>;
+    local?: CaseLocalFacts;
 };
 export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, env: Environment) {
     caseActor(a);
@@ -705,7 +705,7 @@ export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, en
         const equal=(left:unknown,right:unknown)=>JSON.stringify(left)===JSON.stringify(right);
         for(const [key,value] of Object.entries(patch)){
             if(value===undefined)continue;
-            const changed=key==='local'?Object.entries(patch.local??{}).some(([field,value])=>value!==effectiveFacts(c)[field as keyof Facts]):!equal(value,c[key as keyof Case]);
+            const changed=key==='local'?Object.entries(patch.local??{}).some(([field,value])=>value!==(field==='taUserId'?c.local.taUserId:effectiveFacts(c)[field as keyof Facts])):!equal(value,c[key as keyof Case]);
             if(!changed)continue;
             const permitted=['selected','extras','equipmentOverrides','deviceType'].includes(key)?a.sections.equip==='act':key==='checklistOverride'?a.sections.checklist==='all':key==='notes'?a.sections.notes==='view':a.sections.case==='view';
             if(!permitted)fail('This case section is hidden or read-only for your group.','forbidden');
@@ -736,6 +736,12 @@ export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, en
     }
     const priorChecklist = JSON.stringify(matchChecklist(config, c).checklist);
     for (const [key, value] of Object.entries(patch.local ?? {})) {
+        if (key === 'taUserId') {
+            if (config.v9CaseFields?.find(field => field.key === 'ta')?.hrOnly && !a.hr) fail('Company HR access is required for this case field.', 'forbidden');
+            if (value && !env.users.includes(value)) fail('Choose a current active user for the TA.');
+            c.local.taUserId = value;
+            continue;
+        }
         if (config.v9CaseFields && value !== effectiveFacts(c)[key as keyof Facts]) fail('This field comes from Personnel Management. Edit it there.');
         if (c.source[key as keyof Facts] !== undefined && value !== c.source[key as keyof Facts])
             fail('This field comes from Personnel Management. Edit it there.');
@@ -1032,4 +1038,32 @@ export function retryApprovals(config: Config, c: Case, itemId: Id, a: Actor, en
     }
     autoApprove(item, c, a, env);
     log(c, a, env, 'approval.routing_retried', item.name);
+}
+/**
+ * 259c6162 — Audit Trail entries for routing-rule edits: created, updated (name and row changes, with
+ * before/after rules and group ids) and deleted (with the replacement routing and the re-pointed steps).
+ * Ids and organisation references only; no personal data. Compare `old` with the persisted `next`.
+ */
+export type RoutingAuditChange = { eventType: 'onboarding.routing.created' | 'onboarding.routing.updated' | 'onboarding.routing.deleted'; payload: Record<string, unknown> };
+export function routingAuditChanges(old: Pick<Config, 'routings' | 'workflows'>, next: Pick<Config, 'routings' | 'workflows'>): RoutingAuditChange[] {
+    const out: RoutingAuditChange[] = [];
+    const rules = (r: Rules): Rules => Object.fromEntries(JSON.parse(canonicalRules(r)));
+    const row = (r: Routing['rows'][number]) => ({ rowId: r.id, rules: rules(r.rules), group: r.group });
+    for (const r of next.routings) {
+        const before = old.routings.find(x => x.id === r.id);
+        if (!before) { out.push({ eventType: 'onboarding.routing.created', payload: { routingId: r.id, name: r.name, rows: r.rows.map(row) } }); continue; }
+        const added = r.rows.filter(x => !before.rows.some(y => y.id === x.id)).map(row);
+        const removed = before.rows.filter(x => !r.rows.some(y => y.id === x.id)).map(row);
+        const changed = r.rows.flatMap(x => { const y = before.rows.find(z => z.id === x.id); return y && (canonicalRules(y.rules) !== canonicalRules(x.rules) || y.group !== x.group) ? [{ rowId: x.id, before: { rules: rules(y.rules), group: y.group }, after: { rules: rules(x.rules), group: x.group } }] : []; });
+        const order = before.rows.map(x => x.id).filter(id => r.rows.some(y => y.id === id)).join() !== r.rows.map(x => x.id).filter(id => before.rows.some(y => y.id === id)).join();
+        if (before.name !== r.name || added.length || removed.length || changed.length || order)
+            out.push({ eventType: 'onboarding.routing.updated', payload: { routingId: r.id, ...(before.name !== r.name ? { name: { before: before.name, after: r.name } } : {}), rowsAdded: added, rowsRemoved: removed, rowsChanged: changed, ...(order ? { rowOrder: r.rows.map(x => x.id) } : {}) } });
+    }
+    for (const r of old.routings) {
+        if (next.routings.some(x => x.id === r.id)) continue;
+        const repointed = next.workflows.flatMap(w => w.steps.filter(s => s.type === 'routing' && old.workflows.find(x => x.id === w.id)?.steps.find(x => x.id === s.id)?.target === r.id && s.target !== r.id).map(s => ({ workflowId: w.id, stepId: s.id, routingId: s.target })));
+        const replacements = [...new Set(repointed.map(s => s.routingId))];
+        out.push({ eventType: 'onboarding.routing.deleted', payload: { routingId: r.id, name: r.name, replacementRoutingId: replacements.length === 1 ? replacements[0] : replacements.length ? replacements : null, repointedSteps: repointed.map(({ workflowId, stepId }) => ({ workflowId, stepId })) } });
+    }
+    return out;
 }

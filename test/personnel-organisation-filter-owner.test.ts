@@ -1,21 +1,31 @@
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
+import {client,withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,setEmploymentAssignment} from '../core/org';
 import {listEmployeesPage,countEmployeesByStatus,personnelFilterChoices,readPersonnelOverview} from '../core/read';
-import {createPersonnelPrivateSearch,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
-import {lockAccessConfigurationTx,tryLockAccessConfigurationReadTx} from '../core/access-configuration-lock';
-import {PersonnelReadBusyError} from '../core/personnel-read-bounds';
-import {personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
+import {createPersonnelPrivateSearch,readPersonnelPrivateCriteria,personnelPrivateSearchAvailable,privateSearchHash} from '../core/personnel-private-search';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx,tryLockAccessConfigurationReadTx} from '../core/access-configuration-lock';
+import {canOpenWorkforce,personnelMaintenanceCompanyIds,workforceViewScope} from '../core/workforce-access';
+import {canConfigureAccess} from '../core/access-configuration-editor';
+import {readShellNavigationAccess} from '../core/shell-navigation-access';
+import {getOnboardingStatus} from '../core/onboarding';
 import {personnelGroupingReadinessTx} from '../core/personnel-quality';
-import {canViewJobArchitecture} from '../packs/job-architecture/owner';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);});
 const hire=(name:string,extra:Partial<Parameters<typeof hireEmployee>[1]>={})=>hireEmployee(ctx,{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01',...extra});
-const list=(filters:Partial<Parameters<typeof listEmployeesPage>[1]>={})=>listEmployeesPage(ctx,{companyIds:[b.companyId],limit:100,offset:0,...filters},'workforce');
+const list=async(filters:Partial<Parameters<typeof listEmployeesPage>[1]>={})=>{
+ const input={companyIds:[b.companyId],limit:100,offset:0,...filters};
+ const exact=await listEmployeesPage(ctx,input,'workforce');
+ if(input.privateSearch&&input.companyIds){
+  const overview=await readPersonnelOverview(ctx,{...input,companyIds:input.companyIds},filters);
+  expect(overview.employees).toEqual(exact);
+  expect(overview.headcount.total).toBe(exact.total);
+ }
+ return exact;
+};
 async function identity(personId:string,icNumber:string){await owner.db.insert(s.employeeStatutoryMy).values({tenantId:b.tenantId,personId,icNumber}).onConflictDoUpdate({target:s.employeeStatutoryMy.personId,set:{icNumber}});}
 it('searches permitted identity only through private results; page/count/export-size read agree and no identity enters row JSON',async()=>{
  const employee=await hire('Fictional Identity Owner',{employeeCode:'FILTER-1'});await identity(employee.personId,'900101-01-4321');
@@ -97,21 +107,88 @@ it('scoped company options and duplicate evidence cannot expose another company 
  expect((await listEmployeesPage(scoped,{companyIds:[b.companyId,company.id],limit:100,offset:0},'workforce')).rows.map(row=>row.employmentId)).toEqual([mine.employmentId]);expect(rows.rows.map(row=>row.employmentId)).not.toContain(theirs.employmentId);
 });
 
-it('refuses queued Personnel scope, list and export reads while the tenant access lock is held', async () => {
+it('completes authorized Personnel scope, list, export and private search while a tenant writer is active', async () => {
+  const employee=await hire('Fictional nonblocking reader');
   const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
   await owner.withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
-    await expect(workforceViewScope(ctx, { personnelList: true })).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(personnelMaintenanceCompanyIds(ctx)).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(readPersonnelOverview(ctx, input, {})).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(listEmployeesPage(ctx, input, 'workforce')).rejects.toBeInstanceOf(PersonnelReadBusyError);
-    await expect(createPersonnelPrivateSearch(ctx, { text: 'Fictional', companyIds: [b.companyId] }))
-      .rejects.toMatchObject({ reason: 'access-lock' });
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    try {
+      await Promise.race([
+        (async()=>{
+          expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
+          expect(await personnelMaintenanceCompanyIds(ctx)).toContain(b.companyId);
+          expect((await readPersonnelOverview(ctx, input, {})).employees.rows).toEqual([expect.objectContaining({employmentId:employee.employmentId})]);
+          expect((await listEmployeesPage(ctx, input, 'workforce')).rows).toEqual([expect.objectContaining({employmentId:employee.employmentId})]);
+          const token=await createPersonnelPrivateSearch(ctx, { text: 'Fictional nonblocking reader', companyIds: [b.companyId] });
+          expect(await personnelPrivateSearchAvailable(ctx,token,[b.companyId])).toBe(true);
+          expect((await listEmployeesPage(ctx,{...input,privateSearch:token},'workforce')).rows).toEqual([expect.objectContaining({employmentId:employee.employmentId})]);
+        })(),
+        new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Personnel waited for an unrelated tenant writer')),4000);}),
+      ]);
+    } finally {clearTimeout(timer);}
   });
-  expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
-  await expect(readPersonnelOverview(ctx, input, {})).resolves.toHaveProperty('employees.rows');
-  const token = await createPersonnelPrivateSearch(ctx, { text: 'Fictional', companyIds: [b.companyId] });
-  expect(await personnelPrivateSearchAvailable(ctx, token, [b.companyId])).toBe(true);
+});
+
+it('creates private searches alongside Personnel readers and retains only the native token limit', async () => {
+  await hire('Fictional Shared Search');
+  const tokens = await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+    return Promise.all(Array.from({ length: 10 }, () =>
+      createPersonnelPrivateSearch(ctx, { text: 'Fictional Shared Search', companyIds: [b.companyId] })));
+  });
+  expect(new Set(tokens).size).toBe(10);
+  const available = await Promise.all(tokens.map(token => personnelPrivateSearchAvailable(ctx, token, [b.companyId])));
+  expect(available.filter(Boolean)).toHaveLength(8);
+});
+
+it('batches current shell navigation permissions and onboarding status in one transaction', async () => {
+  const employee = await hire('Fictional Navigation Viewer');
+  const userId = await createAppUser(b.tenantId, employee.personId, 'employee');
+  const actor = {...ctx, userId, personId: employee.personId, roles: ['employee'], grants: [{role:'employee',companyId:null}]};
+  for (const session of [ctx, actor]) {
+    const [accessConfigurationAvailable, workforceAvailable, onboarded] = await Promise.all([
+      canConfigureAccess(session), canOpenWorkforce(session), getOnboardingStatus(session),
+    ]);
+    const begins = vi.spyOn(client, 'begin');
+    try {
+      expect(await readShellNavigationAccess(session, true)).toEqual({
+        accessConfigurationAvailable, workforceAvailable, onboarded,
+      });
+      expect(begins).toHaveBeenCalledTimes(1);
+    } finally {
+      begins.mockRestore();
+    }
+  }
+});
+
+it('reads the shared navigation hints while an Access writer holds the tenant lock', async () => {
+  const expected = await readShellNavigationAccess(ctx, true);
+  await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await expect(Promise.race([
+        readShellNavigationAccess(ctx, true),
+        new Promise<never>((_, reject) => {
+          deadline = setTimeout(() => reject(new Error('Navigation waited for the Access lock')), 2000);
+        }),
+      ])).resolves.toEqual(expected);
+    } finally {
+      clearTimeout(deadline);
+    }
+  });
+});
+
+it('recovers a standalone Personnel read when a brief Access writer releases its lock', async () => {
+  let read: ReturnType<typeof workforceViewScope> | undefined;
+  await owner.withTenant(ctx, async tx => {
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    read = workforceViewScope(ctx, { personnelList: true });
+    // The standalone snapshot can finish while the writer still holds its lock.
+    await new Promise(resolve => setTimeout(resolve, 80));
+  });
+  await expect(read).resolves.toMatchObject({ companyIds: [b.companyId] });
 });
 
 it('opens Personnel scope, maintenance choices and the list while another authorised reader holds the same tenant lock', async () => {
@@ -119,7 +196,6 @@ it('opens Personnel scope, maintenance choices and the list while another author
   const input = { companyIds: [b.companyId], limit: 1, offset: 0 };
   await owner.withTenant(ctx, async tx => {
     expect(await tryLockAccessConfigurationReadTx(tx, ctx.tenantId)).toBe(true);
-    expect(await canViewJobArchitecture(ctx)).toBe(true);
     expect((await workforceViewScope(ctx, { personnelList: true })).companyIds).toContain(b.companyId);
     expect(await personnelMaintenanceCompanyIds(ctx)).toContain(b.companyId);
     const overview = await readPersonnelOverview(ctx, input, {});
@@ -140,4 +216,49 @@ it('retains unpaginated totals, status counts and company choices past the last 
   expect(pastEnd.headcount).toEqual(await countEmployeesByStatus(ctx, { companyIds, ...filter }, 'workforce'));
   expect(pastEnd.headcount.total).toBe(1);
   expect(pastEnd.organisationChoices.companies.map(company => company.id)).toContain(b.companyId);
+});
+it('sorts the full matching population by typed dates before pagination, with ID ties and nulls last',async()=>{
+ const older=await hire('Z Older',{hiredOn:'2020-01-01'}),newer=await hire('A Newer',{hiredOn:'2024-01-01'});
+ await owner.db.update(s.employment).set({joinDate:'2020-02-01'}).where(eq(s.employment.id,older.employmentId));await owner.db.update(s.employment).set({joinDate:'2024-03-01'}).where(eq(s.employment.id,newer.employmentId));
+ expect((await list({columnSort:'joinDate',sortDirection:'asc',limit:1,offset:0})).rows.map(row=>row.employmentId)).toEqual([older.employmentId]);
+ expect((await list({columnSort:'joinDate',sortDirection:'desc',limit:1,offset:0})).rows.map(row=>row.employmentId)).toEqual([newer.employmentId]);
+ expect((await list({columnSort:'joinDate',sortDirection:'asc',limit:1,offset:1})).rows.map(row=>row.employmentId)).toEqual([newer.employmentId]);
+});
+it('privately combines column and Employment facts and invalidates membership after assignment changes',async()=>{
+ const employee=await hire('Column Filter Fixture');await hire('Unrelated employee');await owner.db.update(s.employment).set({probationValue:12,orgDivision:'Fictional Division'}).where(eq(s.employment.id,employee.employmentId));
+ const token=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:[b.companyId],columnFilters:[{field:'name',operator:'contains',value:'Column Filter'},{field:'employment.probationValue',operator:'from',value:'10'},{field:'employment.orgDivision',operator:'equals',value:'Fictional Division'}]});
+ expect((await list({privateSearch:token})).rows.map(row=>row.employmentId)).toEqual([employee.employmentId]);
+ const stored=await owner.withTenant(ctx,tx=>tx.execute<{matches:unknown}>(sql`select matches from personnel_private_search where token_hash=${privateSearchHash(token)}`));expect(JSON.stringify(stored)).not.toContain('Fictional Division');expect(JSON.stringify(stored)).not.toContain('Column Filter');
+ await setEmploymentAssignment(ctx,{employmentId:employee.employmentId,effectiveDate:'2026-01-01',departmentId:b.deptB});expect((await list({privateSearch:token})).total).toBe(0);
+});
+it('retains identity permission provenance when another column filter narrows an identity result',async()=>{
+ const employee=await hire('Identity provenance');await identity(employee.personId,'800202-02-3456');
+ const first=await createPersonnelPrivateSearch(ctx,{text:'800202-02-3456',companyIds:[b.companyId]});
+ const narrowed=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:[b.companyId],previousToken:first,columnFilters:[{field:'name',operator:'contains',value:'Identity'}]});
+ expect((await list({privateSearch:narrowed})).total).toBe(1);
+ await owner.db.insert(s.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:b.companyId,role:'hr_admin',permissionKey:'report.read.identity',allowed:false});
+ expect((await list({privateSearch:narrowed})).total).toBe(0);
+});
+
+it('replaces a Company criterion against the full authorised population and retains editable criteria',async()=>{
+ const [otherCompany]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional Company B'}).returning();
+ const [otherDepartment]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:otherCompany.id,name:'Company B department'}).returning();
+ const a=await hire('Company A person');const other=await hireEmployee(ctx,{person:{fullName:'Company B person',primaryEmail:'company-b@fixture.test'},companyId:otherCompany.id,departmentId:otherDepartment.id,employmentType:'full_time',hiredOn:'2024-01-01'});
+ const scope=[b.companyId,otherCompany.id];
+ const first=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:scope,columnFilters:[{field:'company',operator:'equals',value:b.companyId}]});
+ const changed=await createPersonnelPrivateSearch(ctx,{text:'',companyIds:scope,previousToken:first,columnFilters:[{field:'company',operator:'equals',value:otherCompany.id}]});
+ expect((await listEmployeesPage(ctx,{companyIds:scope,privateSearch:changed,limit:100,offset:0},'workforce')).rows.map(row=>row.employmentId)).toEqual([other.employmentId]);
+ expect((await readPersonnelPrivateCriteria(ctx,changed,scope))?.filters).toEqual([{field:'company',operator:'equals',value:otherCompany.id}]);
+ const broadened=await createPersonnelPrivateSearch(ctx,{text:'person',companyIds:scope,replaceCriteria:true,columnFilters:[]});
+ expect((await listEmployeesPage(ctx,{companyIds:scope,privateSearch:broadened,limit:100,offset:0},'workforce')).rows.map(row=>row.employmentId).sort()).toEqual([a.employmentId,other.employmentId].sort());
+});
+it('private criteria are readable only by the bound actor, current exact scope and live token',async()=>{
+ await hire('Retained private text');const token=await createPersonnelPrivateSearch(ctx,{text:'Retained private text',companyIds:[b.companyId]});
+ expect(await readPersonnelPrivateCriteria(ctx,token,[b.companyId])).toEqual({term:'Retained private text',filters:[]});
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select criteria from personnel_private_search`))).rejects.toThrow();
+ const other={...ctx,userId:await createAppUser(b.tenantId,null,'hr_admin')};expect(await readPersonnelPrivateCriteria(other,token,[b.companyId])).toBeNull();
+ expect(await readPersonnelPrivateCriteria(ctx,token,[])).toBeNull();
+ await owner.withTenant(ctx,tx=>tx.execute(sql`update personnel_private_search set created_at=now()-interval '10 minutes',expires_at=now()-interval '5 minutes' where token_hash=${privateSearchHash(token)}`));
+ expect(await readPersonnelPrivateCriteria(ctx,token,[b.companyId])).toBeNull();
+ await expect(createPersonnelPrivateSearch(ctx,{text:'new',companyIds:[b.companyId],previousToken:token})).rejects.toThrow(/expired/);
 });

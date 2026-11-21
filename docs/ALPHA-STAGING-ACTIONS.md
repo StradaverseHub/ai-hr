@@ -44,6 +44,14 @@ Ready same-repository PRs targeting `alpha` and pushes to `alpha` are also decla
 
 Node/DOM unit artifacts are retained for 14 days; the final CI receipt for 30 days. Staging secrets are absent from every verification job. Read actual workflow conclusions and artifact totals; a workflow being installed or dispatched is not a passing pilot.
 
+## Manual expected-baseline prequalification
+
+The optional `migration_base` input on a manual `alpha-staging-ci` dispatch accepts a full lowercase 40-character commit SHA. Omit it (or leave it empty) to keep the existing `STAGING_DEPLOYED_SHA` default. Push and PR executions cannot override the baseline; other workflows cannot use this selector. Resolution authenticates the candidate branch's exact expected SHA, then uses GitHub's immutable comparison to require that the selected baseline is its ancestor (or the identical commit). A foreign/diverged/behind or mismatched-base comparison refuses before application work.
+
+This permits complete CI qualification against an **expected future installed commit** while another release is finishing. The summary labels it expected prequalification, not an installation observation. The selected SHA enters the existing plan/receipt baseline field; no receipt schema, CI policy, trusted main/alpha controller rule, global repository variable or deployment switch changes. Record the exact candidate, controller, expected baseline and authenticated run identity; never relabel evidence to a later source.
+
+A passing run grants no staging lease or deployment authority. Before release, the operator must independently observe the actual healthy/ready installed baseline and complete migration ledger through the existing preflight **before** CI verification. They must match the receipt's expected baseline exactly. If the earlier release installs a different commit or ledger, hold deployment and qualify the correct baseline; do not change `STAGING_DEPLOYED_SHA` early or bypass the check. The original release owner retains the shared target until handback.
+
 ## Focused diagnostics
 
 `alpha-staging-diagnostics` is a separate manual-only workflow. It checks out the exact candidate and collects measurements on isolated standard Linux runners. It cannot authorize release and emits no gate receipt. Original failing Node/DOM files run separately with their original assertions and timeouts; explicitly labelled ignored copies record timing and disabled-button transitions. Browser replicas record computed font/style/geometry and PNGs in three engines. Schibsted used with Classic geometry is explicitly a proxy, not actual Classic Jakarta; Monolith replica measurements are not an authenticated application walkthrough. Diagnostic artifacts remain separate from the full gate, and individual failure exit codes are retained.

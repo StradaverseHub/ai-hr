@@ -22,6 +22,7 @@
  * setSetting writes it must see, because the snapshot is point-in-time. `adminCtx` is retained only for
  * gate-independent fixture work (hiring, compensation, batch creation, plain ledger CRUD).
  */
+import {normalizeEmptyTaxOpeningProvenance} from './helpers/payroll-opening-provenance';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -361,7 +362,7 @@ describe('1.2.2 Individual Transaction', () => {
         basicSalary: '4321.00', payMode: 'monthly' });
       // Distinct fixture employees have distinct authority UUIDs. Preserve all financial fields and
       // complete statutory JSON; normalize only the independently validated ownership UUIDs.
-      return {...figures,statutory:{...statutory,reportContext:{...report,payingCompanyId:'validated-paying-company'},
+      return {...figures,statutory:{...normalizeEmptyTaxOpeningProvenance(statutory,{year:2026,companyId:savedBatch.companyId,employmentId:e.employmentId}),reportContext:{...report,payingCompanyId:'validated-paying-company'},
         salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
         pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}}};
     }

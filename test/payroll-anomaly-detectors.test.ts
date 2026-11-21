@@ -9,6 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   DETECTORS,
+  MISSING_BANK_PROFILE_REASONS,
   resolveDisposition,
   type DetectorContext,
   type PayslipFigures,
@@ -114,6 +115,53 @@ describe('ADR-0076 tripwires — every one works with zero history', () => {
     expect(run('missing-bank-profile', ctxOf({ profile: { ...noBank, paymentMethod: null } }))).toHaveLength(1);
   });
 
+  it('missing-bank-profile: cash and cheque NEVER fire, whatever the bank details or the amount', () => {
+    for (const paymentMethod of ['cash', 'cheque'] as const) {
+      for (const hasBankProfile of [false, true]) {
+        for (const netPay of [1, 4200, 250000]) {
+          const ctx = ctxOf({ current: figures({ netPay }), profile: { ...ctxOf().profile, paymentMethod, hasBankProfile } });
+          expect(run('missing-bank-profile', ctx), `${paymentMethod} bank=${hasBankProfile} net=${netPay}`).toEqual([]);
+        }
+      }
+    }
+  });
+
+  it('missing-bank-profile: a NULL payment method still BLOCKS, with the reason payment-method-not-set', () => {
+    const out = run('missing-bank-profile', ctxOf({ profile: { ...ctxOf().profile, paymentMethod: null, hasBankProfile: false } }));
+    expect(out).toHaveLength(1);
+    expect(out[0].severity).toBe('block');
+    // ADDITIVE: the facts a verdict stored before `reason` existed carried (netPay, paymentMethod) keep their keys and
+    // values, so a screen that reads them — or renders an old finding without `reason` — reads exactly as before.
+    expect(out[0].facts).toEqual({ netPay: 4200, paymentMethod: 'unset', reason: 'payment-method-not-set' });
+    expect(out[0].suggestedAction).toBe('anomaly.action.missingBankProfile');
+    expect(MISSING_BANK_PROFILE_REASONS).toContain(out[0].facts.reason);
+  });
+
+  it('missing-bank-profile: a bank-transfer employee with no bank details BLOCKS, with the reason bank-details-missing', () => {
+    const out = run('missing-bank-profile', ctxOf({ profile: { ...ctxOf().profile, paymentMethod: 'bank_transfer', hasBankProfile: false } }));
+    expect(out).toHaveLength(1);
+    expect(out[0].severity).toBe('block');
+    expect(out[0].facts).toEqual({ netPay: 4200, paymentMethod: 'bank_transfer', reason: 'bank-details-missing' });
+    // With the details present it is silent, for both bank cases.
+    for (const paymentMethod of ['bank_transfer', null] as const) {
+      expect(run('missing-bank-profile', ctxOf({ profile: { ...ctxOf().profile, paymentMethod, hasBankProfile: true } }))).toEqual([]);
+    }
+  });
+
+  it('pay-without-attendance is skipped ONLY when attendance is off for the company (attendanceInUse === false)', () => {
+    const ghost = { attendanceDays: 0, approvedLeaveDays: 0 };
+    // Off for the company: nobody there records attendance, so zero days is the normal set-up.
+    expect(run('pay-without-attendance', ctxOf({ activity: { ...ghost, attendanceInUse: false } }))).toEqual([]);
+    // In use, or a context built before the fact existed (absent): still flagged.
+    expect(run('pay-without-attendance', ctxOf({ activity: { ...ghost, attendanceInUse: true } }))).toHaveLength(1);
+    expect(run('pay-without-attendance', ctxOf({ activity: { ...ghost } }))).toHaveLength(1);
+    // Attendance off is no excuse for anything else the detector does not judge: someone WITH attendance is not a
+    // ghost either way, and the other detectors do not read this fact at all.
+    expect(run('pay-without-attendance', ctxOf({ activity: { attendanceDays: 20, approvedLeaveDays: 0, attendanceInUse: true } }))).toEqual([]);
+    const off = ctxOf({ activity: { ...ghost, attendanceInUse: false }, current: figures({ netPay: -1 }) });
+    expect(run('negative-net', off)).toHaveLength(1);
+  });
+
   it('pay-without-attendance needs BOTH zero attendance and zero approved leave', () => {
     const noActivity = { attendanceDays: 0, approvedLeaveDays: 0 };
     expect(run('pay-without-attendance', ctxOf({ activity: noActivity }))).toHaveLength(1);
@@ -153,12 +201,16 @@ describe('ADR-0076 prior-period detectors — self-disable on cycle 1', () => {
     }
   });
 
-  it('net-swing respects the configured threshold rather than a hardcoded one', () => {
-    const ctx = ctxOf({ current: figures({ netPay: 6000 }), prior: figures({ netPay: 4000 }) }); // +50%
-    expect(run('net-swing', ctx, { netSwingPct: 30 })).toHaveLength(1);
-    // The SAME movement is unremarkable under a looser threshold — proving the value is read from config,
-    // which is the whole point of thresholds-as-data (calibration must not require a deploy).
-    expect(run('net-swing', ctx, { netSwingPct: 60 })).toHaveLength(0);
+  it('net-swing has ONE threshold, the Salary loop\'s: a per-detector netSwingPct no longer changes anything', () => {
+    // Owner, 11 November 2026. Without payroll months in the context, the plain swing is judged at the 15% default;
+    // test/net-swing-explained.test.ts covers the company's own threshold and "check the payroll first".
+    const ctx = ctxOf({ current: figures({ netPay: 4800 }), prior: figures({ netPay: 4000 }) }); // +20%
+    for (const params of [{}, { netSwingPct: 30 }, { netSwingPct: 60 }]) {
+      const out = run('net-swing', ctx, params);
+      expect(out).toHaveLength(1);
+      expect(out[0].facts).toMatchObject({ movementPct: 20, thresholdPct: 15, unexplainedShare: 1 });
+    }
+    expect(run('net-swing', ctxOf({ current: figures({ netPay: 4400 }), prior: figures({ netPay: 4000 }) }), { netSwingPct: 5 })).toHaveLength(0); // +10%
   });
 
   it('net-swing reports the movement it measured, in both directions', () => {

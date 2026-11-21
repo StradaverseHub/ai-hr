@@ -19,6 +19,8 @@ import {
   type ServiceBand,
 } from '@/packs/leave/service';
 import type { SessionContext } from '@/db/client';
+import { createLeaveRecalcJob } from '@/core/leave-cohort-job';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
  * 6e9a126e RELEASE TWO — the writes behind the Entitlement Tables + Employee Eligibility editor.
@@ -142,7 +144,11 @@ function criteriaFrom(fd: FormData) {
 async function recomputeAfterSave(s: SessionContext, leaveTypeId: string | null, trigger: string) {
   if (!leaveTypeId) return;
   try {
-    await reprojectEntitlementForLeaveTypeCohort(s, { leaveTypeId, trigger });
+    // Bulk-job conversion: the same recalculation, one employee per step in the background (core/leave-follow-up-
+    // worker.ts), admitted here at the same moment, after the write committed. Its as-at date is fixed now, as the
+    // synchronous call fixed it. Without a signed-in user (no job owner) it still runs here.
+    if (s.userId) await createLeaveRecalcJob(s, { leaveTypeId, trigger, asOf: todayInKualaLumpur() });
+    else await reprojectEntitlementForLeaveTypeCohort(s, { leaveTypeId, trigger });
   } catch (e) {
     console.error(`entitlement recompute after ${trigger} failed for leave type ${leaveTypeId}:`, e);
   }

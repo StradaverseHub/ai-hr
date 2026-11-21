@@ -2,7 +2,7 @@
 export type NavigationWorkspace = 'ops' | 'strata';
 export type NavigationSection = 'mine' | 'team' | 'hr' | 'ai' | 'config';
 export type NavigationModule = 'people' | 'eLetter' | 'onboarding' | 'leave' | 'attendance' | 'claims' | 'payroll' | 'probation' | 'contracts'
-  | 'performance' | 'performanceAdmin' | 'rewards' | 'workforceInsights';
+  | 'automation' | 'performance' | 'performanceAdmin' | 'rewards' | 'workforceInsights' | 'recruitment';
 export type NavigationPlacement = {area:'shared' | 'system'} | {area:NavigationWorkspace;module:NavigationModule;section:NavigationSection};
 export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:NavigationWorkspace;labelKey:string}[] = [
   // Issue 17 (owner: "Merge both entirely", 3 November 2026): the Control Tower module left Ops. Its pages are
@@ -17,6 +17,11 @@ export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:Navigat
   {id:'payroll',workspace:'ops',labelKey:'payroll'},
   {id:'probation',workspace:'ops',labelKey:'probationConfirmation'},
   {id:'contracts',workspace:'ops',labelKey:'contractManagement'},
+  // ADR-0080 D10 — Recruitment sits with People operations: it hands a hire to Onboarding. One entry.
+  {id:'recruitment',workspace:'ops',labelKey:'recruitment'},
+  // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders (Workflows, Templates, Assignment groups)
+  // have one Configuration section. Legacy builder URLs and On/Off Boarding settings belong to that section.
+  {id:'automation',workspace:'ops',labelKey:'moduleHrAutomation'},
   // D-P1-32 PT-X5 (APR-025 D4): Performance & Talent and Performance admin, one entry each. The former Talent and
   // Development modules held the journey's ?module= entry points, which retired into the area's tabs.
   {id:'performance',workspace:'strata',labelKey:'performanceTalent'},
@@ -30,11 +35,12 @@ const modulePlacement = (module:NavigationModule,section:NavigationSection):Navi
   area:NAVIGATION_MODULES.find(item=>item.id===module)!.workspace,module,section,
 });
 // AI v2 W11: a person's own private cases sit with My workspace; a handler's queue is personal to them too.
-const shared = new Set(['/','/me','/org','/tasks','/approvals','/system-testing','/assistant','/knowledge-base','/feedback','/me/cases','/cases']);
+const shared = new Set(['/','/me','/org','/tasks','/approvals','/system-testing','/assistant','/policies','/knowledge-base','/feedback','/me/cases','/cases']);
 const system = new Set(['/admin/holidays','/admin/system-settings/approval-delegation',
   '/admin/settings/entra','/admin/settings/email','/admin/settings/email-templates','/admin/settings/login','/admin/settings/notifications','/admin/scheduled-actions','/admin/privacy','/admin/audit',
   '/admin/ai','/admin/security-center/password-policy','/admin/security-center','/admin/users/access','/admin/users/function-access','/admin/users/create','/admin/users/invite','/admin/users','/admin/system-explorer','/admin/system-testing','/mobile-preview','/admin/settings/dashboard']);
-const peopleConfig = new Set(['/admin/settings/system-labels','/admin/organization','/admin/settings/employee-id','/admin/settings/hiring-defaults',
+// 82748f92: '/admin/settings/people' is the People › Settings card page; the six sections keep their placement.
+const peopleConfig = new Set(['/admin/settings/people','/admin/settings/system-labels','/admin/organization','/admin/settings/employee-id','/admin/settings/hiring-defaults',
   '/admin/settings/movement','/admin/settings/profile-requests','/admin/settings/people-general']);
 const leaveHr = new Set(['/admin/leave-config/adjustments','/admin/leave-config/data-import',
   '/admin/leave-config/generate','/admin/leave-config/earned-accrual','/admin/leave-config/balance-health',
@@ -47,12 +53,14 @@ const attendanceMine = new Set(['/attendance/clock','/attendance/my-records','/a
 export function navigationPlacement(href:string):NavigationPlacement | undefined {
   const [path,query]=href.split('?'),params=new URLSearchParams(query);
   if(path==='/lifecycle/v9'&&['tasks','records'].includes(params.get('view')??''))return {area:'shared'};
+  if(path==='/lifecycle/v9'&&['templates','workflows','groups','settings'].includes(params.get('view')??''))return modulePlacement('automation','config');
+  if(path==='/automation'||path.startsWith('/automation/'))return modulePlacement('automation','config');
   if(path==='/me'&&params.get('tab')==='payroll'||path==='/me/tax-relief'||path.startsWith('/me/payslip')||path==='/me/ea'||path==='/me/tp3')return modulePlacement('payroll','mine');
   if(shared.has(path)||path==='/reports'&&!params.has('cat'))return {area:'shared'};
   if(system.has(path))return {area:'system'};
   if(peopleConfig.has(path)||path.startsWith('/admin/settings/system-labels/'))return modulePlacement('people','config');
   if(path==='/personnel')return modulePlacement('people','mine');
-  if(path.startsWith('/lifecycle/probation'))return modulePlacement('probation',/^\/lifecycle\/probation\/(settings|forms|routes|workflows|templates|intake)(\/|$)/.test(path)?'config':'hr');
+  if(path.startsWith('/lifecycle/probation'))return modulePlacement('probation',/^\/lifecycle\/probation\/(settings|forms|routes|workflows|templates|intake|access)(\/|$)/.test(path)?'config':'hr');
   if(path.startsWith('/lifecycle/contracts'))return modulePlacement('contracts',/^\/lifecycle\/contracts\/(settings|workflows|templates|intake)(\/|$)/.test(path)?'config':'hr');
   if(path.startsWith('/me/letters'))return modulePlacement('eLetter','mine');
   if(path.startsWith('/letters/settings'))return modulePlacement('eLetter','config');
@@ -64,6 +72,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path==='/control-tower'||path.startsWith('/control-tower/'))return {area:'shared'};
   if(path.startsWith('/admin/lifecycle'))return modulePlacement('onboarding','config');
   if(path==='/me/lifecycle')return modulePlacement('onboarding','mine');
+  if(path.startsWith('/lifecycle/offboarding/postings'))return modulePlacement('onboarding','hr');
   if(path.startsWith('/lifecycle/v9'))return modulePlacement('onboarding','hr');
   if(path.startsWith('/lifecycle/onboarding')||path.startsWith('/lifecycle/requisitions'))return modulePlacement('onboarding','hr');
   if(path==='/lifecycle')return modulePlacement('onboarding','mine');
@@ -85,6 +94,9 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path.startsWith('/performance'))return modulePlacement('performance','mine');
   if(path==='/rewards/rules'||path.startsWith('/admin/rewards'))return modulePlacement('rewards','config');
   if(path.startsWith('/rewards'))return modulePlacement('rewards','mine');
+  if(path==='/me/referrals'||path.startsWith('/me/referrals/'))return modulePlacement('recruitment','mine');
+  if(path==='/recruitment/settings'||path.startsWith('/recruitment/settings/'))return modulePlacement('recruitment','config');
+  if(path==='/recruitment'||path.startsWith('/recruitment/'))return modulePlacement('recruitment','hr');
   if(path==='/analytics'||path.startsWith('/reports'))return modulePlacement('workforceInsights','hr');
   return undefined;
 }

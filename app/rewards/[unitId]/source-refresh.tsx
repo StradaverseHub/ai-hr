@@ -18,7 +18,7 @@ export function SourceRefresh({ unitId, revision, snapshotDate, today }: { unitI
     <p className="text-sm text-muted-foreground">{t('help', { date: snapshotDate })}</p>
     <div className="flex flex-wrap items-end gap-3">
       <Field label={t('asOf')}><input type="date" value={asOf} min={snapshotDate} max={today} disabled={busy} onChange={event => { setAsOf(event.target.value); setPreview(null); setError(''); }} className={inputCls} /></Field>
-      <Button type="button" variant="outline" disabled={busy || !asOf} onClick={() => start(async () => {
+      <Button aria-busy={busy} type="button" variant="outline" disabled={busy || !asOf} onClick={() => start(async () => {
         setError(''); const result = await previewSourceRefreshAction(unitId, revision, asOf);
         if (result.ok) setPreview(result.preview); else { setPreview(null); setError(result.error); }
       })}>{t('preview')}</Button>
@@ -33,11 +33,11 @@ export function SourceRefresh({ unitId, revision, snapshotDate, today }: { unitI
       </li>)}</ul>
       <p className="text-sm text-muted-foreground">{t('confirmHelp')}</p>
       <div className="flex flex-wrap gap-3">
-        <Button type="button" disabled={busy} onClick={() => start(async () => {
+        <Button aria-busy={busy} type="button" disabled={busy} onClick={() => start(async () => {
           setError(''); const result = await saveSourceRefreshAction(unitId, revision, preview.asOf, preview.digest);
           setPreview(null); if (result.ok) router.refresh(); else setError(result.error);
         })}>{t('confirm')}</Button>
-        <Button type="button" variant="outline" disabled={busy} onClick={() => setPreview(null)}>{t('cancel')}</Button>
+        <Button aria-busy={busy} type="button" variant="outline" disabled={busy} onClick={() => setPreview(null)}>{t('cancel')}</Button>
       </div>
     </div>}
   </section>;

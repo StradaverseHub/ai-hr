@@ -6,7 +6,7 @@
  * pin the two properties that matter for a TRANSPARENCY screen — completeness in both directions:
  *
  *   1. Forward completeness: every role has a defined access answer for every screen (no blank cells).
- *   2. Reverse completeness: every guarded app/**\/page.tsx route on disk is covered by a screen column,
+ *   2. Reverse completeness: every guarded page and the reviewed Claims bookmark handler is covered by a screen column,
  *      so a NEW screen shipped without a matrix column FAILS the build (the under-reporting failure mode
  *      — the grid silently omitting a screen users can reach — which is the dangerous one for a security
  *      view). Implemented as a filesystem glob vs the registry's REGISTERED_ROUTES set (no RLS parsing).
@@ -31,7 +31,7 @@ import en from '../messages/en.json';
 
 const APP = path.resolve(__dirname, '../app');
 // ADR-0142: requireOnehrAdminAccess replaced requirePerfCompAccess on the /performance/[cycleId] pages.
-const GUARD_RE = /requireSecurityCenter|requireGroupAdministration|requireWorkforceAccess|requireAccessConfiguration|requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|requireOnehrAdminAccess|scopedAdmin|scopedSession|readV9Workspace\s*\(|onboarding(?:Context|Detail|MyAcknowledgements|Requisitions)\s*\(/;
+const GUARD_RE = /requireSecurityCenter|requireGroupAdministration|requireWorkforceAccess|requireAccessConfiguration|requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|requireOnehrAdminAccess|scopedAdmin|scopedSession|readV9Workspace\s*\(|onboarding(?:Context|Detail|MyAcknowledgements|RegisterContext|Requisitions)\s*\(/;
 
 /**
  * r362 — THIS USED TO TEST THE RAW SOURCE, SO A COMMENT COUNTED AS A GUARD.
@@ -70,24 +70,107 @@ function codeWithoutComments(src: string): string {
  * A route belongs here ONLY if it reads no session and no data. Anything that reads gets a real guard.
  */
 // '/admin/ai' forwards to AI management › Provider, where the requireAdmin guard applies.
-const REDIRECT_ONLY_ROUTES = ['/admin/ai', '/payroll/transactions/tp1/[year]'] as const;
+// '/rewards/[unitId]/setup' (70d5e7c5) only forwards old links to Configuration › Review Set-up, which applies its own guard.
+const REDIRECT_ONLY_ROUTES = ['/admin/ai', '/payroll/transactions/tp1/[year]', '/rewards/[unitId]/setup'] as const;
 
 /** An actual awaited call, not a comment/string bearing an auth helper's name. */
 function hasAssistantSessionGuard(source:string){
  const ast=ts.createSourceFile('layout.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let guarded=false;
  const visit=(node:ts.Node)=>{if(ts.isAwaitExpression(node)&&ts.isCallExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&node.expression.expression.text==='getBrowserCommandSession')guarded=true;ts.forEachChild(node,visit);};visit(ast);return guarded;
 }
-/** Recursively collect every `page.tsx` under app/ whose CODE calls a page guard, as a normalized route. */
+/** Review Plans resolves one authenticated module session, then the native SQL owner admits it.
+ * Only this actual exported page/import/call chain counts; inert names and coarse roles do not. */
+function hasRewardReviewPlansGuard(source:string):boolean{
+ const ast=ts.createSourceFile('page.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const imports=(module:string,name:string)=>ast.statements.some(statement=>ts.isImportDeclaration(statement)&&ts.isStringLiteral(statement.moduleSpecifier)
+  &&statement.moduleSpecifier.text===module&&statement.importClause?.namedBindings&&ts.isNamedImports(statement.importClause.namedBindings)
+  &&statement.importClause.namedBindings.elements.some(binding=>!binding.propertyName&&binding.name.text===name));
+ if(!imports('@/lib/authz','requireModule')||!imports('@/packs/rewards/review-plans','rewardReviewPlans'))return false;
+ const page=ast.statements.find(statement=>ts.isFunctionDeclaration(statement)&&statement.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.ExportKeyword)
+  &&statement.modifiers.some(modifier=>modifier.kind===ts.SyntaxKind.DefaultKeyword)&&statement.modifiers.some(modifier=>modifier.kind===ts.SyntaxKind.AsyncKeyword));
+ if(!page||!ts.isFunctionDeclaration(page)||!page.body)return false;
+ const sessions=new Map<string,number>();let guarded=false;
+ // A disconnected nested helper is not the exported page's admission chain.
+ const walk=(node:ts.Node)=>{if(node!==page.body&&(ts.isFunctionDeclaration(node)||ts.isArrowFunction(node)||ts.isFunctionExpression(node)))return;visitShallow(node);ts.forEachChild(node,walk);};
+ const visitShallow=(node:ts.Node)=>{
+  if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&node.initializer&&ts.isAwaitExpression(node.initializer)&&ts.isCallExpression(node.initializer.expression)){
+   const call=node.initializer.expression;
+   if(ts.isIdentifier(call.expression)&&call.expression.text==='requireModule'&&call.arguments.length===1&&ts.isStringLiteral(call.arguments[0])&&call.arguments[0].text==='rewards')sessions.set(node.name.text,node.end);
+  }
+  if(ts.isAwaitExpression(node)&&ts.isCallExpression(node.expression)){
+   const call=node.expression;
+   if(ts.isIdentifier(call.expression)&&call.expression.text==='rewardReviewPlans'&&call.arguments.length===2&&ts.isIdentifier(call.arguments[0])&&(sessions.get(call.arguments[0].text)??Infinity)<node.pos)guarded=true;
+  }
+ };
+ walk(page.body);return guarded;
+}
+function hasBookmarkHandlerGuards(source: string, requiredModule?: 'claims' | 'rewards', requiresAdmin = true): boolean {
+  const ast = ts.createSourceFile('route.ts', source, ts.ScriptTarget.Latest, true);
+  for (const statement of ast.statements) {
+    if (!ts.isFunctionDeclaration(statement) || statement.name?.text !== 'GET'
+        || !statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)
+        || !statement.modifiers.some(modifier => modifier.kind === ts.SyntaxKind.AsyncKeyword)) continue;
+    const guarded = statement.body?.statements[0];
+    if (!guarded || !ts.isTryStatement(guarded)) return false;
+    const identity = guarded.tryBlock.statements[0];
+    if (!identity || !ts.isVariableStatement(identity) || identity.declarationList.declarations.length !== 1
+        || !(identity.declarationList.flags & ts.NodeFlags.Const)) return false;
+    const binding = identity.declarationList.declarations[0];
+    const read = binding.initializer;
+    if (!ts.isIdentifier(binding.name) || !read || !ts.isAwaitExpression(read) || !ts.isCallExpression(read.expression)
+        || !ts.isIdentifier(read.expression.expression) || read.expression.expression.text !== 'getSession'
+        || read.expression.arguments.length !== 0) return false;
+
+    let sessionReads = 0;
+    const countReads = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'getSession') sessionReads++;
+      ts.forEachChild(node, countReads);
+    };
+    countReads(statement);
+    const sessionName = binding.name.text;
+    const isSession = (node: ts.Node) => ts.isIdentifier(node) && node.text === sessionName;
+    const operatorGuard = guarded.tryBlock.statements[1];
+    if (!operatorGuard || !ts.isIfStatement(operatorGuard)) return false;
+    const guardLines = guarded.tryBlock.statements.slice(2);
+    const calls = guardLines.flatMap(line =>
+      ts.isExpressionStatement(line) && ts.isAwaitExpression(line.expression)
+        && ts.isCallExpression(line.expression.expression) ? [line.expression.expression] : []);
+    const expectedCount = Number(requiredModule !== undefined) + Number(requiresAdmin);
+    if (sessionReads !== 1 || calls.length !== guardLines.length || calls.length !== expectedCount) return false;
+    if (requiresAdmin) {
+      const admin = calls.at(-1);
+      if (!admin || !ts.isIdentifier(admin.expression) || admin.expression.text !== 'requireAdmin'
+          || admin.arguments.length !== 1 || !isSession(admin.arguments[0])) return false;
+    }
+    if (!requiredModule) return true;
+    const [module] = calls;
+    return ts.isIdentifier(module.expression) && module.expression.text === 'requireModule'
+      && module.arguments.length === 2 && ts.isStringLiteral(module.arguments[0]) && module.arguments[0].text === requiredModule
+      && isSession(module.arguments[1]);
+  }
+  return false;
+}
+
+/** Collect guarded pages and the exact guarded bookmark handlers. */
 function guardedRoutes(): string[] {
   const out: string[] = [];
   // This actual layout call guards every descendant, including pages whose data guards live in
   // server sections. A removed/renamed guard makes registered Assistant routes fail the stale set.
   const layout=path.join(APP,'assistant/layout.tsx'),assistantGuard=fs.existsSync(layout)&&hasAssistantSessionGuard(fs.readFileSync(layout,'utf8'));
+  // The Analytics page and download share a report loader that requires the module and scoped session.
+  const analyticsReport = codeWithoutComments(fs.readFileSync(path.join(APP, 'rewards/analytics/report.ts'), 'utf8'));
+  const analyticsGuard = /\bawait requireModule\('rewards'\)/.test(analyticsReport) && /\bawait scopedSession\(\)/.test(analyticsReport);
   const walk = (dir: string) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p);
-      else if (e.name === 'page.tsx' && (GUARD_RE.test(codeWithoutComments(fs.readFileSync(p, 'utf8')))||assistantGuard&&path.relative(APP,p).split(path.sep)[0]==='assistant')) {
+      else if (e.name === 'page.tsx') {
+        const source = codeWithoutComments(fs.readFileSync(p, 'utf8'));
+        const guardedAssistant = assistantGuard && path.relative(APP, p).split(path.sep)[0] === 'assistant';
+        const guardedAnalytics = analyticsGuard && p === path.join(APP, 'rewards/analytics/page.tsx')
+          && /from '\.\/report'/.test(source) && /\bloadRewardsAnalytics\s*\(/.test(source);
+        const guardedRewardPlans=p===path.join(APP,'admin/rewards/review-plans/page.tsx')&&hasRewardReviewPlansGuard(source);
+        if (!GUARD_RE.test(source) && !guardedAssistant && !guardedAnalytics && !guardedRewardPlans) continue;
         // app/foo/bar/page.tsx -> /foo/bar ; app/page.tsx -> /
         const rel = path.relative(APP, p).replace(/\\/g, '/'); // e.g. "foo/bar/page.tsx" or "page.tsx"
         const route = rel.replace(/(^|\/)page\.tsx$/, '');
@@ -96,6 +179,15 @@ function guardedRoutes(): string[] {
     }
   };
   walk(APP);
+  const bookmarks = [
+    ['/admin/claims/forms', 'claims', true],
+    ['/admin/locations', undefined, true],
+    ['/admin/rewards', 'rewards', false],
+  ] as const;
+  for (const [href, module, requiresAdmin] of bookmarks) {
+    const file = path.join(APP, href.slice(1), 'route.ts');
+    if (fs.existsSync(file) && hasBookmarkHandlerGuards(fs.readFileSync(file, 'utf8'), module, requiresAdmin)) out.push(href);
+  }
   return out;
 }
 
@@ -106,6 +198,42 @@ function getPath(obj: unknown, dotted: string): unknown {
 }
 
 describe('function-access registry (lib/permissions)', () => {
+  it('keeps the Rewards bookmark under the same-session module guard', () => {
+    const source = fs.readFileSync(path.join(APP, 'admin/rewards/route.ts'), 'utf8');
+    const admits = (candidate: string) => hasBookmarkHandlerGuards(candidate, 'rewards', false);
+    expect(admits(source)).toBe(true);
+    expect(admits(source.replace("await requireModule('rewards', session)", "await requireModule('rewards', await getSession())"))).toBe(false);
+    expect(admits(source.replace("await requireModule('rewards', session);", "await requireModule('rewards', session); await requireAdmin(session);"))).toBe(false);
+    expect(guardedRoutes()).toContain('/admin/rewards');
+  });
+  it('recognizes only the exported Claims Forms GET with one session read and both guards in order', () => {
+    const hasClaimsFormsGuards = (candidate: string) => hasBookmarkHandlerGuards(candidate, 'claims');
+    const source = fs.readFileSync(path.join(APP, 'admin/claims/forms/route.ts'), 'utf8');
+    expect(hasClaimsFormsGuards(source)).toBe(true);
+    expect(hasClaimsFormsGuards(source.replace('await requireModule', 'requireModule'))).toBe(false);
+    expect(hasClaimsFormsGuards(source.replace("requireModule('claims',", "requireModule('rewards',"))).toBe(false);
+    expect(hasClaimsFormsGuards(source.replace('function GET', 'function POST'))).toBe(false);
+    expect(hasClaimsFormsGuards(source.replace('requireAdmin(session)', 'requireAdmin()'))).toBe(false);
+    expect(hasClaimsFormsGuards(source.replace('requireAdmin(session)', 'requireAdmin(await getSession())'))).toBe(false);
+    expect(hasClaimsFormsGuards(source.replace(
+      "await requireModule('claims', session);\n    await requireAdmin(session);",
+      "await requireAdmin(session);\n    await requireModule('claims', session);"))).toBe(false);
+  });
+  it('recognizes the Locations bookmark only with the actual exported GET and existing admin guard', () => {
+    const source = fs.readFileSync(path.join(APP, 'admin/locations/route.ts'), 'utf8');
+    expect(hasBookmarkHandlerGuards(source)).toBe(true);
+    for (const changed of [
+      source.replace('function GET', 'function POST'),
+      source.replace('await getSession()', 'getSession()'),
+      source.replace('await requireAdmin(session)', 'requireAdmin(session)'),
+      source.replace('requireAdmin(session)', 'requireAdmin(await getSession())'),
+      source.replace('await requireAdmin(session)', "await requireModule('claims', session); await requireAdmin(session)"),
+      source.replace('await requireAdmin(session)', "requireModule('claims', session); await requireAdmin(session)"),
+    ]) {
+      expect(changed).not.toBe(source);
+      expect(hasBookmarkHandlerGuards(changed)).toBe(false);
+    }
+  });
   it('recognizes the real inherited Assistant guard and rejects inert prose or an unawaited call',()=>{
     expect(hasAssistantSessionGuard('export default async function Layout(){await getBrowserCommandSession();return null;}')).toBe(true);
     for(const source of ['', '// await getBrowserCommandSession();', 'const label="await getBrowserCommandSession()";', 'function Layout(){getBrowserCommandSession();return null;}'])expect(hasAssistantSessionGuard(source)).toBe(false);
@@ -170,8 +298,8 @@ describe('function-access registry (lib/permissions)', () => {
     const actual=guardedRoutes().filter(route=>route==='/assistant'||route.startsWith('/assistant/')).sort();expect(screen?.routes.slice().sort()).toEqual(actual);expect(actual.length).toBeGreaterThan(1);
     expect(actual).toEqual(expectedAssistantRoutes);expect(screen?.routes.slice().sort()).toEqual(expectedAssistantRoutes);
     // This is CONDITIONAL shell reach, never a role grant to HR choices, fields, approval or effects.
-    // The actual roleEnum has8 roles; no new role or automatic permission is invented for added routes.
-    const expectedShellReach={employee:true,manager:true,hr_admin:true,super_admin:true,payroll_partner:true,performance_comp_partner:true,operator:true,performance_partner:true};
+    // The actual roleEnum has 9 roles (ADR-0049's recruiting_partner joined in 5850); no new role or automatic permission is invented for added routes.
+    const expectedShellReach={employee:true,manager:true,hr_admin:true,super_admin:true,payroll_partner:true,performance_comp_partner:true,operator:true,performance_partner:true,recruiting_partner:true};
     expect(Object.keys(expectedShellReach).sort()).toEqual([...roleEnum.enumValues].sort());
     for(const [role,reachable] of Object.entries(expectedShellReach))expect(canReach(role as typeof roleEnum.enumValues[number],screen!),role).toBe(reachable);
     const layout=codeWithoutComments(fs.readFileSync(path.join(APP,'assistant/layout.tsx'),'utf8'));
@@ -179,6 +307,25 @@ describe('function-access registry (lib/permissions)', () => {
     expect(String(getPath(en,'admin.users.scope.assistantWorkspace'))).toContain('do not grant effect permission');
   });
 
+  it('recognizes the actual Review Plans native guard chain and rejects inert or disconnected calls',()=>{
+    const source=fs.readFileSync(path.join(APP,'admin/rewards/review-plans/page.tsx'),'utf8');
+    expect(hasRewardReviewPlansGuard(source)).toBe(true);
+    for(const altered of [source.replace("await requireModule('rewards')","requireModule('rewards')"),source.replace("requireModule('rewards')","requireModule('payroll')"),
+      source.replace('await rewardReviewPlans(s,','rewardReviewPlans(s,'),source.replace('rewardReviewPlans(s,','rewardReviewPlans(otherSession,'),
+      source.replace("from '@/packs/rewards/review-plans'","from '@/packs/rewards/foreign'"),source.replace('data=await rewardReviewPlans(s,','data=await foreignReader(s,')])expect(hasRewardReviewPlansGuard(altered)).toBe(false);
+    const imports="import {requireModule} from '@/lib/authz'; import {rewardReviewPlans} from '@/packs/rewards/review-plans';";
+    expect(hasRewardReviewPlansGuard(imports+"export default async function Page(){/* await requireModule('rewards'); await rewardReviewPlans(s,{year:2026}); */ return 'requireModule rewardReviewPlans';}")).toBe(false);
+    expect(hasRewardReviewPlansGuard(imports+"export default async function Page(){async function unused(){const s=await requireModule('rewards');await rewardReviewPlans(s,{year:2026});}return null;}")).toBe(false);
+  });
+  it('presents native Rewards plan and history access conditionally for every platform role',()=>{
+    const plans=SCREENS.find(row=>row.screenKey==='rewardsAdmin')!,history=SCREENS.find(row=>row.screenKey==='rewardsHistoryUpload')!;
+    expect(plans).toMatchObject({guard:'rewardReviewPlans',conditionalAccess:true,hasScopeNote:true});
+    expect(plans.routes).toContain('/admin/rewards/earlier-plans');
+    expect(history).toMatchObject({guard:'scopedSession',conditionalAccess:true,hasScopeNote:true,routes:['/rewards/history-upload']});
+    for(const role of MATRIX_ROLES){expect(canReach(role,plans)).toBe(true);expect(canReach(role,history)).toBe(true);}
+    expect(String(getPath(en,'admin.users.scope.rewardsAdmin'))).toContain('platform role alone');
+    expect(String(getPath(en,'admin.users.scope.rewardsHistoryUpload'))).toContain('HR administrator status alone does not grant');
+  });
   it('MATRIX_ROLES is exactly the roleEnum set (a new role forces a new grid row)', () => {
     expect([...MATRIX_ROLES].sort()).toEqual([...roleEnum.enumValues].sort());
   });
@@ -191,7 +338,7 @@ describe('function-access registry (lib/permissions)', () => {
     }
   });
 
-  it('reverse completeness: every guarded page.tsx route on disk has a screen column', () => {
+  it('reverse completeness: every guarded page or reviewed bookmark handler on disk has a screen column', () => {
     const onDisk = guardedRoutes();
     expect(onDisk.length, 'expected to find guarded routes on disk').toBeGreaterThan(0);
     const missing = onDisk.filter((r) => !REGISTERED_ROUTES.has(r));
@@ -239,11 +386,11 @@ describe('function-access registry (lib/permissions)', () => {
 
   // The scopedSession count tracks MATRIX_ROLES (that guard gates nothing at the page boundary, so every
   // authenticated role reaches it) and moved 6 → 7 when the operator tier was added in 0294, then 7 → 8
-  // with ADR-0142's performance_partner (0610). The two ADMIN counts stay pinned at 2, which is the
+  // with ADR-0142's performance_partner (0610), then 8 → 9 with ADR-0049's recruiting_partner (5850). The two ADMIN counts stay pinned at 2, which is the
   // assertion that matters: neither operator nor performance_partner is an admin role, so the loop below
   // also proves neither reaches a requireAdmin/scopedAdmin screen.
-  it('access is guard-derived and honest: admin/scopedAdmin → 2 admin roles, scopedSession → all 8', () => {
-    const guardExpect: Record<Guard, number> = { requireSecurityCenter:8, requireGroupAdministration:2, assistantSession: 8, requireWorkforceAccess: 8, requireAccessConfiguration: 8, requireAdmin: 2, scopedAdmin: 2, scopedSession: 8, requireTeamAccess: 3, onboardingAccess: 8, onboardingParticipant: 8, onboardingMaster: 2 };
+  it('access is guard-derived and honest: admin/scopedAdmin → 2 admin roles, scopedSession → all 9', () => {
+    const guardExpect: Record<Guard, number> = { rewardReviewPlans:9, requireSecurityCenter:9, requireGroupAdministration:2, assistantSession: 9, requireWorkforceAccess: 9, requireAccessConfiguration: 9, requireAdmin: 2, scopedAdmin: 2, scopedSession: 9, requireTeamAccess: 3, onboardingAccess: 9, onboardingParticipant: 9, onboardingMaster: 2 };
 
     for (const g of Object.keys(guardExpect) as Guard[]) {
       expect(rolesForGuard(g).size, g).toBe(guardExpect[g]);

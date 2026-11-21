@@ -13,3 +13,19 @@ The five-minute state stores only bounded matched employment IDs, public/identit
 The shared organisation quality owner defines missing BU, grade, superior and structure flags. Duplicate evidence follows the existing duplicate-person owner's normalized name plus hire date and distinct Person identities, over the permitted visible population only. Multiple employments of one Person are not suspected duplicates. Readers without the native administrative/identity evidence authority cannot acquire a duplicate flag or count from an inaccessible counterpart.
 
 No employee re-tag or mapping activation is performed by this feature's migration or deployment. Legacy grouping is retained until the separately reviewed initial mapping publication.
+
+## 2026-11-10 note: visible list search box and the Employee ID matching rule
+
+Approved feedback: eaa7697c-da54-4727-b577-8dd754356ab9.
+
+The listing again shows a "Search employee ID or name…" box beside Filter (`app/admin/personnel/list-search.tsx`). It is not a second search: it is another input for the same private term as the Filter dialog's employee-details field. It posts the complete criteria to the same route, receives the same five-minute principal-bound token, shares the same chip and request controller, and never places the term in a URL. Clearing the box posts an empty term with the remaining criteria, so only the search word is removed.
+
+The private term's name and Employee ID comparison now uses the shared employee-search rule (`matchesEmployeeSearch` and `foldEmployeeCode` in `lib/employee-search.ts`), the same rule as the profile switcher. Case does not matter, and spaces, dots, underscores and dashes in an Employee ID are ignored, so "emp0008" finds "EMP-0008". This replaces "compared literally" above for those two public fields only. Work email remains a literal case-insensitive substring. IC and passport matching is unchanged: literal, except the existing complete-NRIC separator rule, and only under the current identity permission. Legacy `q` and the column "Emp ID contains" filter remain literal.
+
+## 2026-11-11 note: suggestion dropdown and header filters
+
+Approved feedback: aa045103-265b-4af9-86e9-ba7be9bf2081.
+
+The listing search box shows up to eight suggestions while typing from the profile switcher's existing bounded reader (`GET /api/personnel/search`, the shared employee-search rule, the session's company scope, no exclusive Access lock). Suggestions never grant access and never narrow the list on their own: picking one applies that person's Employee ID as the private term, Enter applies the typed words, and emptying the box removes only the term. Typing alone no longer posts a private search.
+
+The column header filters write the ordinary params the Filter dialog owns, never the private criteria: `companies`, `bu`, `dept`, `position`, `grade`, `type` and `bucket` are multi-select (any of), and `__blank` means "Blank / unassigned" for Business Unit, Department, Position, Job Grade and Employment Type, combinable with chosen values. Join Date, Group Join Date and Confirmation Date take inclusive From/To ranges (`joinedFrom/To`, `hiredFrom/To`, `confirmedFrom/To`). Every change drops `page`. The reader evaluates them in the same single predicate (`employeeListWhere`/`workforceListWhere`) on the typed projections, so the list, headcount and export stay one parse and one predicate. Free-text columns keep the private type-to-filter path.

@@ -1,0 +1,96 @@
+{
+  "kind": "UNINSTALLED_REWARDS_NATIVE_CANONICAL_PREDECESSORS",
+  "base": "06be9fc60097edb870f2c7d9f4d30887ba6fd6d9",
+  "functions": [
+    {
+      "signature": "app.reward_setup_allowed(uuid,text)",
+      "owner": "ai_hr_reward_setup_reader",
+      "source": "db/migrations/2250_rewards_whole_group_grants.sql",
+      "bodyMd5": "b49b2eb7457182ca5770d4ebaf75e526",
+      "language": "sql",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": "search_path=pg_catalog, public, app"
+    },
+    {
+      "signature": "app.reward_library_used_by(uuid)",
+      "owner": "ai_hr_reward_setup_reader",
+      "source": "db/migrations/2204_rewards_plan_setup.sql",
+      "bodyMd5": "6e58d32ca23d982690ee131309c29aa2",
+      "language": "sql",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": "search_path=pg_catalog, public, app"
+    },
+    {
+      "signature": "app.reward_library_locked(uuid)",
+      "owner": "ai_hr_reward_setup_reader",
+      "source": "db/migrations/2204_rewards_plan_setup.sql",
+      "bodyMd5": "c4a444e6431828797272c1e0f3253371",
+      "language": "sql",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": "search_path=pg_catalog, public, app"
+    },
+    {
+      "signature": "app.reward_setup_companies(integer)",
+      "owner": "ai_hr_reward_setup_reader",
+      "source": "db/migrations/2204_rewards_plan_setup.sql",
+      "bodyMd5": "b1af144133d96175d962cd6d7ec14443",
+      "language": "sql",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": "search_path=pg_catalog, public, app"
+    },
+    {
+      "signature": "app.reward_private_pat_history(uuid,integer)",
+      "owner": "ai_hr_reward_setup_reader",
+      "source": "db/migrations/2205_rewards_review_creation.sql",
+      "bodyMd5": "d1913b119fe830fd51dc6c10c30e29bc",
+      "language": "plpgsql",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": "search_path=pg_catalog, public, app"
+    },
+    {
+      "signature": "app.reward_company_structure(uuid,date)",
+      "owner": "ai_hr_reward_setup_reader",
+      "source": "db/migrations/2205_rewards_review_creation.sql",
+      "bodyMd5": "cbd10859b7b4dec0c034dedb8a54ac96",
+      "language": "plpgsql",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": "search_path=pg_catalog, public, app"
+    },
+    {
+      "signature": "app.principal_snapshot_current()",
+      "owner": "native",
+      "source": "db/migrations/2509_principal_statement_plan_reuse.sql",
+      "bodyMd5": "4eac75e69dbb1793bb23c2b1f28a38f4",
+      "language": "plpgsql",
+      "securityDefiner": true,
+      "volatility": "s",
+      "config": "search_path=pg_catalog, public, pg_temp"
+    },
+    {
+      "signature": "app.domain_event_chain_tg()",
+      "owner": "native",
+      "source": "db/migrations/5090_audit_chain_commit_seal.sql",
+      "bodyMd5": "aeecd386c91435bd6d5f553e96da5edd",
+      "language": "plpgsql",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": "search_path=pg_catalog, public, pg_temp"
+    },
+    {
+      "signature": "app._domain_event_next(uuid,boolean)",
+      "owner": "native",
+      "source": "db/migrations/0863_assistant_bank_effect_closure.sql",
+      "bodyMd5": "e045132f89b378e39a8ecebce70da078",
+      "language": "plpgsql",
+      "securityDefiner": true,
+      "volatility": "v",
+      "config": "search_path=pg_catalog, public, pg_temp"
+    }
+  ]
+}

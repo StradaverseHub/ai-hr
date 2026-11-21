@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
@@ -41,7 +42,7 @@ export function LeaveCreditReverseDialog({ accrualId, action }: { accrualId: str
                   {t('cancel')}
                 </Button>
               </Dialog.Close>
-              <button className={btnPrimary}>{t('confirm')}</button>
+              <ActionButton actionKind="saving" className={btnPrimary}>{t('confirm')}</ActionButton>
             </div>
           </form>
         </Dialog.Content>

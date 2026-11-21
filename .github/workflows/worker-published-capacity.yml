@@ -1,0 +1,42 @@
+name: worker-published-capacity
+run-name: Existing F8 worker published recovery capacity · ${{ github.sha }}
+on:
+  push:
+    branches: ['codex/board-worker-published-capacity-*']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  published-capacity:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+      - name: Download the original source-bound worker artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 44146829002 --repo StradaverseHub/ai-hr --name worker-package-v1 --dir "$RUNNER_TEMP/original-worker"
+          python3 -I -B - "$RUNNER_TEMP/original-worker/worker-package.zip" <<'PY'
+          import hashlib,sys
+          from pathlib import Path
+          path=Path(sys.argv[1])
+          assert path.stat().st_size==276943489
+          with path.open('rb') as f:
+              assert hashlib.file_digest(f,'sha256').hexdigest()=='4f2fd63a7d65f78127ca8f1fda41a4cba66e53364e37e6e5437b25a7c4589823'
+          PY
+      - name: Qualify only the new complete published recovery graph at original package size
+        run: |
+          set -o pipefail
+          python3 -I -B test/fixtures/bank-import-worker-published-tests.py --package "$RUNNER_TEMP/original-worker/worker-package.zip" 2>&1 | tee "$RUNNER_TEMP/published-capacity.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() }}
+        with:
+          name: published-worker-capacity
+          path: ${{ runner.temp }}/published-capacity.log
+          if-no-files-found: warn

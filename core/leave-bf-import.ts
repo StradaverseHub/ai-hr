@@ -175,6 +175,7 @@ import { carryAllowanceFrom, carryEnabled } from './leave-compute';
 import { earnedCycleStart, resolveLeaveYearCycle } from './leave';
 import { listLeaveTypes } from './read';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
+import { creatorOf, resolveImportActors } from './import-actor-label';
 
 export {
   LEAVE_BF_COLUMNS,
@@ -1131,7 +1132,10 @@ export function listLeaveBfImportRuns(
       // in a stable order.
       .orderBy(sql`${leaveBfImportRun.createdAt} desc`, sql`${leaveBfImportRun.id} desc`)
       .limit(limit);
+    // Board 8d02748a: readable "Imported by" for the page in one set-wise read.
+    const actors = await resolveImportActors(tx, 'leave_bf_run', rows.map((r) => r.id));
     return rows.map((r) => ({
+      actor: creatorOf(actors, r.id),
       id: r.id,
       actorName: r.actorName,
       fileName: r.fileName,

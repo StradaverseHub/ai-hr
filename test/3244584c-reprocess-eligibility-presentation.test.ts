@@ -116,18 +116,35 @@ describe('3244584c exclusion outcomes and run-level stop reasons', () => {
     expect(await html([excluded], true, 'REPROCESS_STOPPED')).toContain(esc(m.reprocessStoppedPartial));
   });
 
+  it.each(LOCALES)('renders recalculated tax and a retained employee result in %s', async (locale) => {
+    state.locale = locale;
+    const m = msgs(locale);
+    const refreshed: ReprocessEmployeeOutcome = {
+      ...excluded, status:'reprocessed', reasonCode:null, validationCode:undefined, validationDetails:undefined,
+      payslipId:slipId, versionAfter:2, classification:'recalculated', taxBasisRecalculated:true,
+    };
+    const missing: ReprocessEmployeeOutcome = {
+      ...notEligible, status:'validation_failed', reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE',
+      validationCode:'payroll_tax_evidence',validationDetails:[{gap:'Original Pay Item detail was not saved.'}],
+    };
+    const out = await html([refreshed,missing]);
+    expect(out).toContain(esc(m.reprocessTaxBasisUpdated));
+    expect(out).toContain('Original Pay Item detail was not saved.');
+    expect(out).toContain(esc(m.reprocessPreviousResultRetained));
+  });
+
   it.each(LOCALES)('every new key exists in %s with the same placeholders as English', (locale) => {
     const en = msgs('en');
     const m = msgs(locale);
     const keys = Object.keys(en).filter((k) => k.startsWith('reprocessExclusion_') || k.startsWith('reprocessStopped_')
       || ['reprocessExcludedRemoved', 'reprocessNotEligibleRemovalOff', 'reprocessNotEligibleLastOnRun',
-        'reprocessOutcomeExclusionSummary', 'recalcChangeLine'].includes(k));
+        'reprocessOutcomeExclusionSummary', 'recalcChangeLine', 'reprocessTaxBasisUpdated', 'reprocessTaxEvidenceIssue'].includes(k));
     expect(keys.length).toBeGreaterThan(10);
     const ph = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((x) => x[1]).sort();
     for (const k of keys) {
       expect(typeof m[k], k).toBe('string');
       expect(ph(m[k]), k).toEqual(ph(en[k]));
     }
-    expect(Object.keys(m.recalcChangeCategory).sort()).toEqual(['compensation', 'hire_date', 'statutory', 'termination', 'transfer']);
+    expect(Object.keys(m.recalcChangeCategory).sort()).toEqual(['compensation', 'employment_information', 'hire_date', 'statutory', 'termination', 'transfer']);
   });
 });

@@ -53,7 +53,7 @@ it('preserves a concurrent Profile edit when the imported columns leave core ide
  await commitEmployeeImport(adminCtx(b),{companyId:b.companyId,records:[record()]});
  const [subject]=await owner.db.select().from(person).where(eq(person.primaryEmail,record().email));
  const original=tenantClient.withTenant;let injected=false;
- const intercept:typeof original=async<T>(ctx:tenantClient.SessionContext,fn:(tx:tenantClient.Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>{
+ const intercept:typeof original=async<T>(ctx:tenantClient.SessionContext,fn:(tx:tenantClient.Tx)=>Promise<T>,options?: Parameters<typeof tenantClient.withTenant>[2])=>{
    const result=await original(ctx,fn,options);
    if(!injected) {injected=true;await owner.db.update(person).set({phone:'NEW-PHONE',primaryEmail:'new-identity@fixture.test'}).where(eq(person.id,subject.id));}
    return result;

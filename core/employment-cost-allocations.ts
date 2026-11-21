@@ -1,26 +1,36 @@
+import {hasClosedPayrollCorrectionAuthorityTx} from './closed-payroll-correction-authority';
 import {organisationChoiceLabels} from '../lib/organisation-choice-label';
 /** One cost-distribution owner for manual entry, repeated-row imports and new-hire transactions. */
 import {createHash} from 'node:crypto';
-import {and,asc,desc,eq,isNull,lte,or,gt,sql} from 'drizzle-orm';
+import {and,asc,desc,eq,isNull,lte,or,gt,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {employment,assignment,company,costCenter,employmentCostAllocationHead as head,employmentCostAllocationSet as sets,employmentCostAllocationRow as rows} from '../db/schema';
 import {tenantMutation} from '../db/tenant-mutation';
-import {assertWorkforceEmploymentTx,assertWorkforceCompanyTx} from './workforce-access';
+import {assertWorkforceEmploymentTx,assertWorkforceCompanyTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
+import {withPersonnelRead} from './personnel-read-bounds';
 import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {provenCompanyDatesTx,dayBefore} from './employment-company';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {allocationInputSchema,normalizedAllocationRows,CostAllocationError,type CostAllocationInput,type AllocationSource} from '../lib/employment-cost-allocation';
 import {z} from 'zod';
 export {CostAllocationError} from '../lib/employment-cost-allocation';
-async function subjectTx(tx:Tx,ctx:SessionContext,id:string,date:string,write=false){
- await assertWorkforceEmploymentTx(tx,ctx,id,write?'maintain':'view');
- if(write)await lockLabelCriteriaTx(tx,ctx.tenantId);
- const query=tx.select().from(employment).where(eq(employment.id,id));const[e]=await(write?query.for('update'):query);if(!e)throw new CostAllocationError('scope');
- const proof=(await provenCompanyDatesTx(tx,[{employmentId:id,date}])).get(`${id}|${date}`);if(!proof?.companyId)throw new CostAllocationError('date');
- await assertWorkforceCompanyTx(tx,ctx,proof.companyId,write?'maintain':'view');if(write){const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,proof.companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');}return{employment:e,companyId:proof.companyId};
+async function assertAllocationPresentationTx(tx:Tx,authority:SQL){
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select ${authority} as allowed`);
+ if(!row?.allowed)throw new WorkforceAccessError();
 }
-async function defaultAllocationDateTx(tx:Tx,ctx:SessionContext,employmentId:string){
- await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
+/** 'review' (an import preview inside withAccessDisplayRead, core/cost-allocation-import.ts) runs the same 'maintain'
+ * checks as 'write' without the label-criteria and row locks a save holds; the save repeats them and compares. */
+async function subjectTx(tx:Tx,ctx:SessionContext,id:string,date:string,write=false,review=false){
+ if(write){await assertWorkforceEmploymentTx(tx,ctx,id,'maintain');if(!review)await lockLabelCriteriaTx(tx,ctx.tenantId);}
+ else await assertAllocationPresentationTx(tx,workforceEmploymentPredicate(sql`${id}::uuid`));
+ const query=tx.select().from(employment).where(eq(employment.id,id));const[e]=await(write&&!review?query.for('update'):query);if(!e)throw new CostAllocationError('scope');
+ const proof=(await provenCompanyDatesTx(tx,[{employmentId:id,date}])).get(`${id}|${date}`);if(!proof?.companyId)throw new CostAllocationError('date');
+ if(write){await assertWorkforceCompanyTx(tx,ctx,proof.companyId,'maintain');const[live]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,proof.companyId),isNull(company.archivedAt)));if(!live)throw new CostAllocationError('scope');}
+ else await assertAllocationPresentationTx(tx,sql`app.access_workforce_company(${proof.companyId}::uuid,'workforce.view')`);
+ return{employment:e,companyId:proof.companyId};
+}
+async function defaultAllocationDateTx(tx:Tx,employmentId:string){
+ await assertAllocationPresentationTx(tx,workforceEmploymentPredicate(sql`${employmentId}::uuid`));
  const[e]=await tx.select({terminatedOn:employment.terminatedOn}).from(employment).where(eq(employment.id,employmentId));
  if(!e)throw new CostAllocationError('scope');
  const versions=await tx.select({from:assignment.validFrom,to:assignment.validTo}).from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt))).orderBy(asc(assignment.validFrom),asc(assignment.id));
@@ -36,8 +46,9 @@ async function defaultAllocationDateTx(tx:Tx,ctx:SessionContext,employmentId:str
 export async function getEmploymentCostAllocations(ctx:SessionContext,employmentId:string,effectiveDate?:string){
  allocationInputSchema.pick({employmentId:true}).parse({employmentId});
  if(effectiveDate!==undefined)allocationInputSchema.pick({effectiveDate:true}).parse({effectiveDate});
- return withTenant(ctx,async tx=>{
-  const selectedDate=effectiveDate??await defaultAllocationDateTx(tx,ctx,employmentId);
+ // Keep display authority, dated company proof and allocation data in one read-only snapshot.
+ return withPersonnelRead(ctx,async tx=>{
+  const selectedDate=effectiveDate??await defaultAllocationDateTx(tx,employmentId);
   const subject=await subjectTx(tx,ctx,employmentId,selectedDate);
 
   const[h]=await tx.select().from(head).where(eq(head.employmentId,employmentId));
@@ -47,14 +58,18 @@ export async function getEmploymentCostAllocations(ctx:SessionContext,employment
   const saved=current?await tx.select({costCenterId:rows.costCenterId,hundredths:rows.hundredths,codeSnapshot:rows.codeSnapshot,labelSnapshot:rows.labelSnapshot,label:costCenter.label,code:costCenter.code}).from(rows).leftJoin(costCenter,eq(costCenter.id,rows.costCenterId)).where(eq(rows.setId,current.id)).orderBy(asc(rows.codeSnapshot),asc(rows.costCenterId)):[];
   const choices=await tx.select({id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[subject.companyId]))).orderBy(asc(costCenter.code),asc(costCenter.id));
   const[authority]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,'workforce.maintain') and app.access_workforce_company(${subject.companyId}::uuid,'workforce.maintain') as allowed`);
-  return{employmentId,companyId:subject.companyId,effectiveDate:selectedDate,revision:h?.revision??0,current:current?{id:current.id,validFrom:current.validFrom,validTo:current.validTo,companyId:current.companyId,source:current.source}:null,rows:saved.map(row=>({...row,displayLabel:row.label?.trim()||row.code||row.labelSnapshot||row.codeSnapshot})),choices:organisationChoiceLabels(choices),total:saved.reduce((n,r)=>n+r.hundredths,0),canEdit:authority?.allowed===true,history:history.map(v=>({id:v.id,revision:v.revision,effectiveDate:v.validFrom,validTo:v.validTo,companyId:v.companyId,operation:v.operation,source:v.source,superseded:!!v.supersededAt,rows:historicRows.filter(r=>r.setId===v.id),createdAt:v.createdAt.toISOString()})),needsReplacement:!!current&&current.companyId!==subject.companyId};
+  const [review]=current?await tx.execute<{needed:boolean}>(sql`select exists(select 1 from domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${employmentId}::uuid and event_type='employment.cost-allocations.company-corrected' and payload->>'reviewSetId'=${current.id} and payload->>'requiresReview'='true') as needed`):[];
+  return{employmentId,companyId:subject.companyId,effectiveDate:selectedDate,revision:h?.revision??0,current:current?{id:current.id,validFrom:current.validFrom,validTo:current.validTo,companyId:current.companyId,source:current.source}:null,rows:saved.map(row=>({...row,displayLabel:row.label?.trim()||row.code||row.labelSnapshot||row.codeSnapshot})),choices:organisationChoiceLabels(choices),total:saved.reduce((n,r)=>n+r.hundredths,0),canEdit:authority?.allowed===true,history:history.map(v=>({id:v.id,revision:v.revision,effectiveDate:v.validFrom,validTo:v.validTo,companyId:v.companyId,operation:v.operation,source:v.source,superseded:!!v.supersededAt,rows:historicRows.filter(r=>r.setId===v.id),createdAt:v.createdAt.toISOString()})),needsReplacement:!!current&&(current.companyId!==subject.companyId||review?.needed===true)};
  });
 }
 export type EmploymentCostAllocationView=Awaited<ReturnType<typeof getEmploymentCostAllocations>>;
-export async function prepareCostAllocationsTx(tx:Tx,ctx:SessionContext,raw:unknown){
- const input=allocationInputSchema.parse(raw),normalized=normalizedAllocationRows(input.rows,input.operation);const subject=await subjectTx(tx,ctx,input.employmentId,input.effectiveDate,true);
+/** `review` (an import preview under the shared Access lock) returns the same values and digest without row locks. */
+export async function prepareCostAllocationsTx(tx:Tx,ctx:SessionContext,raw:unknown,options:{review?:boolean}={}){
+ const review=options.review===true;
+ const input=allocationInputSchema.parse(raw),normalized=normalizedAllocationRows(input.rows,input.operation);const subject=await subjectTx(tx,ctx,input.employmentId,input.effectiveDate,true,review);
  const[h]=await tx.select().from(head).where(eq(head.employmentId,input.employmentId));if((h?.revision??0)!==input.expectedRevision)throw new CostAllocationError('changed');
- const labels=normalized.length?await tx.select({id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(sql`${costCenter.id} in (${sql.join(normalized.map(r=>sql`${r.costCenterId}::uuid`),sql`,`)})`,isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[subject.companyId]))).orderBy(asc(costCenter.id)).for('share'):[];
+ const labelRows=()=>tx.select({id:costCenter.id,code:costCenter.code,label:costCenter.label}).from(costCenter).where(and(sql`${costCenter.id} in (${sql.join(normalized.map(r=>sql`${r.costCenterId}::uuid`),sql`,`)})`,isNull(costCenter.archivedAt),visibleLabelIdsCondition(costCenter,'cost_center',[subject.companyId]))).orderBy(asc(costCenter.id));
+ const labels=normalized.length?(review?await labelRows():await labelRows().for('share')):[];
  if(labels.length!==normalized.length)throw new CostAllocationError('label');
  const digest=createHash('sha256').update(JSON.stringify({actor:ctx.userId,tenant:ctx.tenantId,input,companyId:subject.companyId,labels})).digest('hex');
  return{input,normalized,companyId:subject.companyId,labels,digest};
@@ -131,4 +146,14 @@ export async function readReviewedCostAllocationEffectsTx(tx:Tx,employmentId:str
 export async function assertCostAllocationTransferTx(tx:Tx,employmentId:string,date:string){
  const[used]=await tx.execute<{used:boolean}>(sql`select app.cost_allocation_transfer_required(${employmentId}::uuid,${date}::date) as used`);
  if(used?.used)throw new CostAllocationError('transfer');
+}
+
+/** A hire-company correction retires incompatible distribution revisions for review. The native
+ * allocation owner keeps every old percentage row, enforces the final company invariant and records
+ * an explicit empty destination revision; an ordinary transfer still requires its normal clear. */
+export async function reconcileHireCompanyCostAllocationsTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;correctionId:string;reason:string}){
+ if(!hasClosedPayrollCorrectionAuthorityTx(tx,input.employmentId))throw new CostAllocationError('scope');
+ await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');
+ const [row]=await tx.execute<{result:{changed:boolean;retiredSetIds?:string[];reviewSetId?:string;requiresReview?:boolean}}>(sql`select app.cost_allocations_after_hire_company_correction(${input.employmentId}::uuid,${input.correctionId}::uuid,${input.reason}) as result`);
+ return row?.result??{changed:false};
 }

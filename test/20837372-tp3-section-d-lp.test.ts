@@ -174,13 +174,15 @@ const statRow = (personId: string) =>
 
 type SlipStatutory = {
   salaryBasis?: Record<string, unknown>;
+  taxBasisOpeningSource?: {version:1;year:number;employmentId:string;companyId:string;prefix:{payslipId:string;sourceHash:string}[]};
+  taxBasisImportedSources?: {payslipId:string;sourceHash:string;importRevision:string}[];
   pcb: number;
   epfEmployee?: number;
   pcbMeta?: { P1: number; epfClaimed: number; taxSelectionId?: string; taxSelectionVersion?: number; taxSelectionSource?: string; calculationScheme?: string; trace?: { lpAccumulated: number; lpCurrent: number } };
 };
 
-/** Validate each fixture's scoped authority before omitting only its unique identity from a
- * comparison across two different employments. All money, LP, versions and other metadata remain. */
+/** Validate each fixture's scoped authority and opening lineage before normalizing only their unique
+ * identities across two employments. All money, LP, versions and other metadata remain. */
 async function comparableStatutory(st: SlipStatutory, employmentId: string) {
   const rows = await owner.db.select().from(schema.employmentTaxSelectionMy).where(and(
     eq(schema.employmentTaxSelectionMy.tenantId, b.tenantId),
@@ -211,8 +213,20 @@ async function comparableStatutory(st: SlipStatutory, employmentId: string) {
   const basis = st.salaryBasis;
   expect(basis).toEqual({ version: 1, referenceDate, compensationId: salaryOwners[0].id,
     effectiveFrom: `${YEAR}-01-01`, basicSalary: '6000.00', payMode: 'monthly' });
+  // These fixtures run their first July payroll. Independently inspect physical prior sources;
+  // never drop an unverified prefix or normalize a source hash/financial field to force equality.
+  const prior=await owner.db.select({id:schema.payslip.id}).from(schema.payslip)
+    .innerJoin(schema.payrollBatch,eq(schema.payrollBatch.id,schema.payslip.batchId)).where(and(
+      eq(schema.payslip.tenantId,b.tenantId),eq(schema.payslip.employmentId,employmentId),
+      eq(schema.payrollBatch.companyId,b.companyId),lte(schema.payrollBatch.payPeriod,`${YEAR}-06`),
+    ));
+  expect(prior).toEqual([]);
+  const opening=st.taxBasisOpeningSource;
+  expect(opening).toEqual({version:1,year:YEAR,employmentId,companyId:b.companyId,prefix:[]});
+  expect(st.taxBasisImportedSources).toEqual([]);
   const { taxSelectionId: _scopedIdentity, ...metadata } = st.pcbMeta!;
-  return { ...st, salaryBasis: { ...basis, compensationId: 'validated-compensation-selection' }, pcbMeta: metadata };
+  return { ...st, salaryBasis: { ...basis, compensationId: 'validated-compensation-selection' },
+    taxBasisOpeningSource:{...opening!,employmentId:'validated-tax-opening-employment'},pcbMeta: metadata };
 }
 
 /** One month's run, returning each named employee's statutory block. */

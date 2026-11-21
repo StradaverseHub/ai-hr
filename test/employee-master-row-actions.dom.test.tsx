@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
@@ -51,6 +51,9 @@ it('exports the existing saved id through the canonical XLSX endpoint without ch
  vi.stubGlobal('fetch', fetch); vi.stubGlobal('URL', Object.assign(class extends BaseURL {}, { createObjectURL, revokeObjectURL }));
  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {}); actions('en', false);
  await act(async () => { fireEvent.click(screen.getByRole('button', { name: en.employeeMasterReports.export+' Excel' })); });
- expect(fetch).toHaveBeenCalledWith('/reports/employee-master/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: reportId, format: 'xlsx' }) });
- expect(createObjectURL).toHaveBeenCalledTimes(1); expect(click).toHaveBeenCalledTimes(1); expect(revokeObjectURL).toHaveBeenCalledWith('blob:fictional-master'); expect(router.refresh).toHaveBeenCalledTimes(1); expect(duplicate).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
+ expect(fetch).toHaveBeenCalledWith(new URL('/reports/employee-master/export', window.location.href), {
+  method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ id: reportId, format: 'xlsx' }), cache: 'no-store', redirect: 'error',
+ });
+ expect(createObjectURL).toHaveBeenCalledTimes(1); expect(click).toHaveBeenCalledTimes(1); await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:fictional-master'), { timeout: 2000 }); expect(router.refresh).toHaveBeenCalledTimes(1); expect(duplicate).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
 });

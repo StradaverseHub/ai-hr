@@ -63,7 +63,7 @@ import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
-import type { SessionContext } from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createMovementEvent, editMovementEvent, movementHistory, reverseMovementEvent } from '../core/movement';
@@ -80,11 +80,20 @@ import {
   PayrollCounterpartClosedError,
   PayrollCoverageIncompleteError,
   coverageDefects,
+  segmentedCoverage,
 } from '../core/payroll-coverage';
 import { payPeriodBounds, payslipCoverage, payslipSegmentOf } from '../core/payslip-segment';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 const AUG = { from: '2026-08-01', to: '2026-08-31' };
+/** Read the independent coverage guard even when the new affected-input guard refuses closure first. */
+async function retainedCoverage(ctx:SessionContext,employmentId:string){
+ return withTenant(ctx,async tx=>{
+  const [emp]=await tx.select({companyId:schema.employment.companyId}).from(schema.employment).where(eq(schema.employment.id,employmentId));
+  return (await segmentedCoverage(tx,{payPeriod:'2026-08',periodStart:AUG.from,periodEnd:AUG.to,employmentIds:[employmentId],partialClaimIds:[employmentId],currentCompanyById:new Map([[employmentId,emp.companyId]])}))[0];
+ });
+}
+
 
 // ─────────────────────── 1. the tiling arithmetic, with no database at all ───────────────────────
 
@@ -689,12 +698,11 @@ describe('a transferred month, across the two batches that own it', () => {
     // 3. August now resolves to ONE segment — Fiamma for all thirty-one days — so the split-only fast
     //    path drops this employment before any arm is evaluated. That is the hole: Fiamma employed them
     //    the whole month and its run has issued ten days of it, and nothing else in the system would
-    //    notice. No movement or entity-history path marks a processed run, so needs-recalculation does
-    //    not cover it either. WHAT SAVES IT is the slip: a payslip narrower than its own period is a
+    //    notice. The movement now marks the processed run for recalculation before close. The independent
+    //    coverage control still sees the slip: a payslip narrower than its own period is a
     //    claim that the month was split, and it is read as one.
-    await expect(closeBatch(a, { batchId: outgoing.batchId })).rejects.toThrow(PayrollCoverageIncompleteError);
-    await closeBatch(a, { batchId: outgoing.batchId }).catch((e) => {
-      const problem = (e as PayrollCoverageIncompleteError).problems[0];
+    await expect(closeBatch(a, { batchId: outgoing.batchId })).rejects.toThrow(BatchNeedsRecalculationError);
+    await retainedCoverage(a,moved.employmentId).then(problem => {
       expect(problem.employmentId).toBe(moved.employmentId);
       expect(problem.expected.map((seg) => [seg.companyId, seg.from, seg.to])).toEqual([
         [b.companyId, '2026-08-01', '2026-08-31'],
@@ -744,9 +752,8 @@ describe('a transferred month, across the two batches that own it', () => {
       reason: 'effective date keyed a month early',
     });
 
-    await expect(closeBatch(a, { batchId: outgoing.batchId })).rejects.toThrow(PayrollCoverageIncompleteError);
-    await closeBatch(a, { batchId: outgoing.batchId }).catch((e) => {
-      const problem = (e as PayrollCoverageIncompleteError).problems[0];
+    await expect(closeBatch(a, { batchId: outgoing.batchId })).rejects.toThrow(BatchNeedsRecalculationError);
+    await retainedCoverage(a,moved.employmentId).then(problem => {
       expect(problem.employmentId).toBe(moved.employmentId);
       expect(problem.defects).toEqual([{ kind: 'gap', from: '2026-08-11', to: '2026-08-31' }]);
     });

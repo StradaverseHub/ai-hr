@@ -44,6 +44,8 @@ export function Combobox({
   legacySuffix,
   className,
   onValueChange,
+  controlled = false,
+  ariaLabel,
 }: {
   /** OPTIONAL (35b7af0a group 8). Omit it and no hidden input is rendered at all — the controlled mode of
    *  a shared field group must post nothing, so a source guard grepping for name="…" can never conclude
@@ -60,6 +62,8 @@ export function Combobox({
   // Lets a client parent react live to the choice (e.g. flip IC ⇄ passport identification by nationality)
   // without waiting for a form submit. Optional → existing form-only usages are unaffected.
   onValueChange?: (value: string) => void;
+  controlled?: boolean;
+  ariaLabel?: string;
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -68,7 +72,8 @@ export function Combobox({
   const panelRef = useRef<HTMLDivElement>(null);
 
   const initial = value ?? '';
-  const [selected, setSelected] = useState(initial);
+  const [localValue, setLocalValue] = useState(initial);
+  const selected = controlled ? initial : localValue;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
@@ -90,8 +95,8 @@ export function Combobox({
     const q = query.trim().toLowerCase();
     if (!q) return allRows;
     // Always keep the clear/placeholder row reachable; filter the rest by case-insensitive substring.
-    return allRows.filter((r) => r.value === '' || r.label.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || !!r.description?.toLowerCase().includes(q) || !!r.keywords?.toLowerCase().includes(q));
-  }, [allRows, query]);
+    return allRows.filter((r) => (r.value === '' ? !controlled : r.label.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || !!r.description?.toLowerCase().includes(q) || !!r.keywords?.toLowerCase().includes(q)));
+  }, [allRows, controlled, query]);
   // Opened near the bottom of the window or inside a dialog, the list opens upwards or shrinks to fit.
   useFitToView(open, panelRef, filtered.length);
 
@@ -121,11 +126,11 @@ export function Combobox({
   // Keep the active option scrolled into view as the highlight moves.
   useEffect(() => {
     if (!open) return;
-    optionRefs.current[activeIdx]?.scrollIntoView({ block: 'nearest' });
+    optionRefs.current[activeIdx]?.scrollIntoView?.({ block: 'nearest' });
   }, [activeIdx, open]);
 
   const commit = (v: string) => {
-    setSelected(v);
+    if (!controlled) setLocalValue(v);
     setOpen(false);
     onValueChange?.(v);
   };
@@ -166,6 +171,7 @@ export function Combobox({
       <button
         type="button"
         className={`${className ?? inputCls} flex items-center justify-between gap-2 text-left`}
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
@@ -181,7 +187,7 @@ export function Combobox({
           <div className="shrink-0 p-1.5">
             <input
               ref={searchRef}
-              type="text"
+              type={controlled ? 'search' : 'text'}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);

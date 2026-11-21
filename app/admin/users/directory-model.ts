@@ -12,6 +12,8 @@ export type UserDirectoryRow = {
   invitedCompanyId: string | null;
   manuallyArchived: boolean;
   hasEmployment?: boolean;
+  /** Employee ID: the current employment's employee code(s); absent for logins without employment. */
+  employeeCode?: string | null;
 };
 export type DirectoryGroupBy = 'none' | 'status' | 'role' | 'company' | 'type';
 export const directoryType = (u: UserDirectoryRow) => !u.personId ? 'unlinked' : u.hasEmployment === false ? 'standalone' : 'employee';

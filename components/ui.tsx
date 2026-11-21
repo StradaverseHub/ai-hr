@@ -12,7 +12,7 @@ export { Card } from './ui/card';
 
 // Legacy class strings, now token-based — kept for pages not yet migrated to primitives.
 export const inputCls =
-  'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
+  'ui-field flex h-9 min-w-0 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
 export const btnPrimary =
   'ui-control inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition duration-150 ease-snappy hover:bg-primary/90 active:scale-[0.98] disabled:opacity-50';
 export const btnGhost =
@@ -35,9 +35,12 @@ export const btnGhost =
  */
 export const pageWideCls = 'w-full space-y-6';
 
-export const tableWrapCls = 'overflow-x-auto rounded-md border border-border';
+export const tableWrapCls = 'ui-table-wrap overflow-x-auto rounded-md border border-border';
 export const theadCls = 'bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground';
 export const thCls = 'px-3 py-2 font-medium';
+/** Atomic values stay together; descriptions keep their natural wrapping. */
+export const tableDateCls = 'whitespace-nowrap tabular-nums';
+export const tableAmountCls = 'whitespace-nowrap text-right tabular-nums';
 export const tbodyCls = 'divide-y divide-border';
 
 /**
@@ -242,7 +245,7 @@ export function SectionHeader({
   return (
     <div data-ui-section-header className={className ? cn('border-b border-border px-4 py-3 text-sm font-medium', className) : 'border-b border-border px-4 py-3 text-sm font-medium'}>
       {title}
-      {count !== undefined && <span className="ml-2 text-muted-foreground">({count})</span>}
+      {count !== undefined && <span data-ui-section-count className="ml-2 text-muted-foreground">({count})</span>}
       {subtitle && <p className="mt-1 text-xs font-normal text-muted-foreground">{subtitle}</p>}
     </div>
   );
@@ -268,7 +271,7 @@ export function RoleTag({ role, label }: { role: string; label?: string }) {
  */
 export function EmployeeCode({ code, className }: { code?: string | null; className?: string }) {
   if (!code) return null;
-  return <span className={cn('font-mono text-xs text-muted-foreground', className)}>{code}</span>;
+  return <span className={cn('whitespace-nowrap font-mono text-xs text-muted-foreground', className)}>{code}</span>;
 }
 
 /**
@@ -324,7 +327,7 @@ export function EmployeeName({
      * full text width, ran past the org-chart card's border, and the name had nothing to clip against —
      * measured in Chromium: 25px past the card for "CHCE0292 ADLI BIN DAUD" (test/r391-employee-name-fits
      * .browser.test.tsx). The ceiling caps the group at its container; then the name shrinks and ellipsises. */
-    <span className={cn('inline-flex min-w-0 max-w-full items-baseline gap-1.5', className)}>
+    <span data-ui-employee-name className={cn('inline-flex min-w-0 max-w-full items-baseline gap-1.5', className)}>
       <EmployeeCode code={code} className={cn('shrink-0', codeClassName)} />
       <span className="min-w-0 truncate">{name}</span>
     </span>

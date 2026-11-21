@@ -1,0 +1,205 @@
+{
+  "status": "INACTIVE6011 reviewed-v11 source intent; literal expectations, no installed-DB-derived values",
+  "functionsAdded": [
+    {
+      "signature": "app.contract_posting_org_scope(uuid,uuid,date,text)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_company_org_tags(uuid,uuid,uuid,date)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_employment_org_tags(uuid,uuid,date)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.record_employment_organisation_tags_owner(uuid,uuid,date,text,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_record_org_tags(uuid,uuid,uuid,date,text)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_snapshot_identity_allowed(uuid,uuid,uuid,uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_snapshot_insert_allowed(jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_assignment_org_normalized(jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_assignment_org_prepare(uuid,uuid,uuid,uuid,jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_assignment_org_consumed_company(uuid,uuid,date)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_assignment_org_finish(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_assignment_org_capture()",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_assignment_org_before_row(uuid,uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_calendar_day(text)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_projected_org_day(jsonb,jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_recorded_org_day(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    }
+  ],
+  "existingFunctionsTouched": [
+    {
+      "signature": "app.record_employment_organisation_tags(uuid,uuid,date,text)",
+      "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.preserve_payroll_metadata_owner(uuid,boolean,boolean)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.company_org_assignment_record()",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    }
+  ],
+  "tablesAdded": [
+    {
+      "schema": "app",
+      "table": "contract_posting_snapshot_permit",
+      "owner": "MIGRATION_OWNER",
+      "rls": true,
+      "forceRls": true,
+      "publicGrants": [],
+      "appGrants": [],
+      "aiHrOwnerGrants": [
+        "DELETE",
+        "INSERT",
+        "SELECT"
+      ]
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_assignment_org_permit",
+      "owner": "MIGRATION_OWNER",
+      "rls": true,
+      "forceRls": true,
+      "publicGrants": [],
+      "appGrants": [],
+      "aiHrOwnerGrants": [
+        "DELETE",
+        "INSERT",
+        "SELECT",
+        "UPDATE"
+      ]
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_assignment_org_before",
+      "owner": "MIGRATION_OWNER",
+      "rls": true,
+      "forceRls": true,
+      "publicGrants": [],
+      "appGrants": [],
+      "aiHrOwnerGrants": [
+        "DELETE",
+        "INSERT",
+        "SELECT"
+      ]
+    }
+  ],
+  "policiesAdded": [
+    {
+      "schema": "app",
+      "table": "contract_posting_snapshot_permit",
+      "name": "contract_posting_snapshot_permit_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()"
+    },
+    {
+      "schema": "public",
+      "table": "information_payslip_snapshot",
+      "name": "contract_posting_snapshot_insert",
+      "cmd": "INSERT",
+      "roles": "ai_hr_owner",
+      "using": null,
+      "check": "app.contract_posting_snapshot_insert_allowed(to_jsonb(information_payslip_snapshot))"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_assignment_org_permit",
+      "name": "contract_posting_assignment_org_permit_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_assignment_org_before",
+      "name": "contract_posting_assignment_org_before_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()"
+    }
+  ],
+  "existingTableGrantsChanged": []
+}

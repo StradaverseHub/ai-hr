@@ -1,0 +1,30 @@
+# Copied-runtime dependency probe boundary
+
+Status: **NOT RUN** source successor of `ebd4bb8df651cc64c3cd18f128142fbaf195fdaa`. No local behavior checks, application, compiler, build, database or native runtime executed. Production held; nothing installed on staging or production.
+
+Actual commissioning 42423865389 is terminal failure. Resolve/plan and canonical build job128558201239 passed. Native job128559391923 recorded one failed assertion, zero skipped,127215.52518ms and successful owned cleanup. Its actual source/controller are both `ebd4bb8df651cc64c3cd18f128142fbaf195fdaa`; complete-plan fingerprint `d19648fa97bed59652c61596f61803c909f768acb088e60295fb442ca3c4ce26` independently matches the3573-file/100-unit plan. Summary correctly refused the failed unit. No Next process started.
+
+That run passed the actual slice proof (12 lookup directories,192 associated units), V2 pre-candidate/copy comparison (55263 entries,825089893 bytes) and the unchanged format2 receiver. It advanced to `nonroot-stock-native-dependency-probe` and failed with `AssertionError`. The old CJS helper discarded its exact failing stage. Its cause is therefore **unobserved**; neither the corrected CWD nor HOME mismatch is relabeled as its confirmed cause. The earlier old-source receiver/slice/installation phase evidence remains valid under its own source identity, not as new-source or boot acceptance.
+
+The probe previously inherited the mutable checkout CWD. It now starts only at the fixed copied `/var/lib/aihr-admission/release` and the CJS admission verifies the physical root and actual CWD again. `runuser` also resets HOME by default; `--preserve-environment` now preserves only the existing four-key subprocess environment: NODE_ENV, NEXT_TELEMETRY_DISABLED, HOME and PATH. Actual HOME must be `/var/empty/aihr`. No inherited platform token, DB URL, SSH agent, provider key, NODE_OPTIONS or NODE_PATH is added. UID remains nonroot and the parent independently requires the actual `nobody` UID. The direct Next/sharp/fontkit/config entry resolutions must remain inside the copied dependency namespace, refusing Node's same-version ambient fallback before it can execute.
+
+All original Next16.4.1/runtime, real sharp PNG, real CJK font layout, stock Next production-config, executable-mapping, nonroot and ambient-denial assertions remain. The fixture remains480s with reserved cleanup; the probe remains30s and256MiB. No heap increase, shortcut return, arbitrary module/cache/key override, source-Merkle/format2/shared-inventory change or application business-logic change is introduced.
+
+Six fixed source stages describe **entry**, not successful completion: admission, next-version, sharp-image, font-layout, next-config and executable-maps. The CJS helper emits their exact ordered records before the corresponding work, including before operations that could terminate the VM. Its caught failure record contains only an allowlisted stage. Python recognizes only an exact consecutive prefix and a matching fixed failure record. Unknown/malformed/duplicate/out-of-order/oversized/fatal child output is never reflected; at most the last valid owned entered stage survives with a generic refusal. Timeouts remain failures with a fixed timeout code. Raw exceptions, stderr, environment, paths and tracebacks are not copied into evidence. These records are diagnostics, not functional or capacity proof.
+
+After all real probe assertions pass, a small scoped native result records actual UID, image bytes, CJK glyph count, executable-map count and verified CWD/HOME. It explicitly says `NONROOT_NATIVE_DEPENDENCY_PROBE_NOT_APPLICATION_ACCEPTANCE` and `actualNextBootVerified=false`; the actual boot wrapper separately requires the later real boot/auth/Home outcome.
+
+Declared controls:17 stdlib diagnostic models (the previous14 plus fixed subprocess cwd/environment/uid-launch contract, ordered/private/unknown stage handling and unchanged real failure/timeout behavior) and5 new CJS/CLI controls. The latter execute real unprivileged Node against an empty disposable runtime: original checkout CWD must refuse at admission; exact copied CWD must advance only to the intentionally missing Next package. A real same-version ambient package/hostile executable fixture must refuse before executing that fallback. Other controls exercise physical-root/CWD, root-user/private-HOME/ambient-variable denial and closed diagnostic exports. These are source/negative CLI models; they do not load actual Next/sharp/fonts or authorize a root/native application claim.
+
+Required order: fresh root and independent review; hosted affected source selectors `test/runtime-next-prepackage-diagnostic.test.ts` and `test/runtime-next-dependency-probe.test.ts`, complete controller/plan validation; then new same-source canonical build and sole native unit `db-ef098640eeb0a97b`/`test/runtime-next-admission-native.test.ts`. No old compiled packet or receipt is relabeled. Real boot, actions/freshness, all module/submenu browser journeys,500-actor2/4 workload, explicitly labeled8-worker oversubscription/refusal, protected installation and cross-build compatibility remain separate gates.
+
+Retained API-verified ZIP identities for42423865389:
+
+| Artifact | ID | SHA256 |
+| --- | --- | --- |
+| Native unit |13595470240| `b32e30ff85647dc6f7d2f01ce8c021e8da0ff7bd5a01028eb17ccc14f6f664cd` |
+| Summary |13595370746| `5f79d16396a6926ce9be9d60d22d97e4af08fc59c0e411fa1291b5cc932286de` |
+| Plan |13594946298| `cc9fa7f08bab0fa3828eb4d18c15507415277dec97c73cde3dda6bd4b7ad3938` |
+| Canonical build |13594677652| `1d685ed67b301faf7f6f2f52e2d7a2773520a37bdae539485cb345c753558e42` |
+
+Build `VatdvS0_FXSJLgbipBiam` independently matches archive `28a72717dc359a4f6d53b1216452d881701c8bf9ed0592876d37e7846ea23132`, manifest `d9580d6603690c3988988aa1dcd6970fa963ffa1da5b7f0ced7a4fa33c546469` and provenance `8f190342739bd8001808903cdfa412adebd5140aa5a06d19585179d463327c17`. All planned chunks were terminal before preparing this successor.

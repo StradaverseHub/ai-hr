@@ -1,0 +1,7 @@
+# Employee lookup plan inspection recovery
+
+Parent: `527c2432646f444bc2d08de2a6de3804c2295910`. Standard hosted run `42403809918` finished all seven planned cases: six passed; the real plan case refused at application-role inspection of privileged `session_preload_libraries` (`42501`). Configuration restoration, authority and cleanup passed. Ordinary focused run `42403796274` retained 13 passing tests.
+
+The recovery removes only that unsupported privileged inspection. The owner still checks the exact original and instrumented database configuration before the distinct new application backend connects, and restores it exactly afterward. The actual app backend must expose every expected loaded auto_explain setting; all 34 actual PID-bound plan phases, SQL/body hashes, invocation row counts, buffers and all-node work checks remain mandatory. No role memberships, permissions, settings defaults, budgets, SQL prototype, baseline or application logic change. No synthesized preload assertion is substituted for the real nested-plan proof.
+
+The original uninstrumented timings remain valid development observations, not acceptance: initial 1.25s to 0.57s; organisation search 4.33s to 0.45s; empty unit 7.71s to 0.45s; complete IDs 2.29s to 0.41s. Native deep/search/missing-search were 1.10/1.24/1.06s and exceed the existing 1s target. Fixed ordering and few samples do not establish p95/capacity. The rerun must retain the performance failure evidence and cannot claim all paths are fast or the source release-ready. Production held.

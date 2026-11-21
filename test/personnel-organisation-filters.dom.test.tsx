@@ -1,15 +1,52 @@
-import {afterEach,expect,it} from 'vitest';
+import {afterEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
 import {PersonnelOrganisationFilters,PersonnelPrivateSearch} from '../app/admin/personnel/organisation-filters';
+import {PersonnelAutoFilters} from '../app/admin/personnel/auto-filter';
+import {PERSONNEL_PRIVATE_SEARCH_SELECTOR} from '../scripts/performance/navigation-protocol';
 import {EmployeeRow} from '../app/admin/personnel/employee-row';
 import {FilterChips,type FilterField} from '../components/filter-panel';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
-afterEach(cleanup);
+const navigation=vi.hoisted(()=>({replace:vi.fn()}));
+vi.mock('next/navigation',()=>({useRouter:()=>navigation}));
+afterEach(()=>{cleanup();vi.unstubAllGlobals();navigation.replace.mockReset();});
 const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',c='33333333-3333-4333-8333-333333333333';
-it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders one private employee search, scoped three-level company tree, removable chips and full BU names',async locale=>{
+it('posts one private search after editing the Personnel trigger’s portaled field',async()=>{
+ const href='/admin/personnel?search='+'a'.repeat(43)+'&size=50';
+ const fetchMock=vi.fn().mockResolvedValue(Response.json({href}));
+ vi.stubGlobal('fetch',fetchMock);
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><main><PersonnelAutoFilters>
+  <PersonnelOrganisationFilters fields={[]} values={{}} companies={[]} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'0'}} companySearchLabel="Companies" dataTour="people-search" pageSize="50"/>
+  <form method="post" action="/admin/personnel/search"><input name="term" type="hidden" value="" readOnly/></form>
+ </PersonnelAutoFilters></main></NextIntlClientProvider>);
+ const trigger=view.container.querySelector('main button[data-tour="people-search"]')!;
+ expect(trigger).toHaveAttribute('aria-expanded','false');
+ expect(view.container.querySelector(PERSONNEL_PRIVATE_SEARCH_SELECTOR)).toBeNull();
+ fireEvent.click(trigger);
+ const dialog=await screen.findByRole('dialog');
+ expect(trigger).toHaveAttribute('aria-controls',dialog.id);
+ expect(trigger).toHaveAttribute('aria-expanded','true');
+ expect(dialog.closest('main')).toBeNull();
+ const terms=dialog.querySelectorAll(PERSONNEL_PRIVATE_SEARCH_SELECTOR);
+ expect(terms).toHaveLength(1);expect(terms[0]).toBeVisible();expect(terms[0]).toBeEnabled();
+ const field=within(dialog).getByRole('textbox',{name:en.people.list.controls.employeeDetails});
+ expect(field).toBe(terms[0]);
+ fireEvent.change(field,{target:{value:'PERF0'}});
+ fireEvent.change(field,{target:{value:'PERF0250'}});
+ await waitFor(()=>expect(navigation.replace).toHaveBeenCalledExactlyOnceWith(href,{scroll:false}));
+ expect(fetchMock).toHaveBeenCalledTimes(1);
+ const [target,request]=fetchMock.mock.calls[0];
+ expect(target).toBe('/admin/personnel/search');
+ expect(request).toMatchObject({method:'POST',headers:{Accept:'application/json'},cache:'no-store',redirect:'error'});
+ expect(request.body.getAll('term')).toEqual(['PERF0250']);
+ expect(request.body.get('size')).toBe('50');
+ expect(href).not.toContain('PERF0250');
+ fireEvent.click(within(dialog).getByRole('button',{name:en.common.close}));
+ expect(screen.queryByRole('dialog')).toBeNull();
+});
+it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders one private employee search, independent company selection, removable chips and full BU names',async locale=>{
  const messages=catalogues[locale],copy=messages.personnelOrganisationFilters,base=messages.people.list;
  const longUnit=copy.businessUnit+' · Fictional shared manufacturing and property services organisation';
  const companies=[{id:a,name:'Fictional Company One',parentCompanyId:'root',parentCompany:'Fictional Group',businessGroupId:'root',businessGroup:'Fictional Group',businessUnitId:'unit',businessUnit:longUnit},{id:b,name:'Fictional Company Two',parentCompanyId:'root',parentCompany:'Fictional Group',businessGroupId:'root',businessGroup:'Fictional Group',businessUnitId:'unit',businessUnit:longUnit},{id:c,name:'Fictional Other Group Company',parentCompanyId:null,parentCompany:null,businessGroupId:'other',businessGroup:'Fictional Other Group',businessUnitId:null,businessUnit:null}];
@@ -20,10 +57,10 @@ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s renders one 
  expect(view.container.querySelectorAll('input[name="term"]')).toHaveLength(1);expect(view.container.querySelector('form[action="/admin/personnel/search"]')).toHaveAttribute('method','post');
  fireEvent.change(screen.getByRole('searchbox',{name:copy.search}),{target:{value:'FICTIONAL-PASSPORT-123'}});expect(screen.getByRole('link',{name:copy.shareView}).getAttribute('href')).not.toContain('PASSPORT');expect(screen.getByRole('link',{name:copy.shareView}).getAttribute('href')).not.toContain('search=');
  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'personnel-organisation-results','Actual Personnel private-search and full Business Unit cell components; fictional records; no authenticated staging acceptance','atelier');
- fireEvent.click(screen.getByText(base.filter));await waitFor(()=>expect(document.querySelector('form[action="/admin/personnel"]')).not.toBeNull());
- const form=document.querySelector<HTMLFormElement>('form[action="/admin/personnel"]')!,group=form.querySelector<HTMLDetailsElement>('[data-company-group="root"]')!;group.open=true;
- fireEvent.click(within(group).getByRole('button',{name:copy.selectAll}));expect(new FormData(form).getAll('companies').sort()).toEqual([a,b]);
- fireEvent.change(screen.getByRole('searchbox',{name:copy.companySearch}),{target:{value:'Company One'}});expect(new FormData(form).getAll('companies').sort()).toEqual([a,b]);
+ fireEvent.click(screen.getByText(base.filter));await waitFor(()=>expect(document.querySelector('[role="dialog"] form')).not.toBeNull());
+ const form=document.querySelector<HTMLFormElement>('[role="dialog"] form')!;expect(form).toHaveAttribute('method','post');expect(form.querySelector('[data-company-group]')).toBeNull();
+ fireEvent.click(within(form).getByRole('button',{name:copy.selectAll}));expect(new FormData(form).getAll('companies').sort()).toEqual([a,b,c]);
+ fireEvent.change(screen.getByRole('searchbox',{name:copy.companySearch}),{target:{value:'Company One'}});expect(new FormData(form).getAll('companies').sort()).toEqual([a,b,c]);
  fireEvent.change(screen.getByRole('searchbox',{name:copy.companySearch}),{target:{value:''}});
  for(const details of form.querySelectorAll('details'))details.open=true;
  expect(screen.getByText(longUnit,{selector:'span[title]'})).toHaveAttribute('title',longUnit);
@@ -35,4 +72,10 @@ it('keeps a denied duplicate filter fail-closed while offering no unapproved evi
  const view=render(<NextIntlClientProvider locale="en" messages={en}><PersonnelOrganisationFilters fields={[field]} values={{quality:['suspected_duplicate']}} companies={[]} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'1'}} companySearchLabel="Companies" duplicateHint={copy.duplicateUnavailable} canInspectDuplicates={false}/></NextIntlClientProvider>);
  fireEvent.click(screen.getByText('Filter'));await waitFor(()=>expect(document.querySelector('form')).not.toBeNull());
  expect(document.querySelector('input[type="checkbox"][value="suspected_duplicate"]')).toBeNull();expect(new FormData(document.querySelector('form')!).getAll('quality')).toEqual(['suspected_duplicate']);expect(screen.getByText(copy.duplicateUnavailable)).toBeVisible();
+});
+it('restores private field text and operators for editing instead of stacking invisible result memberships',async()=>{
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><PersonnelOrganisationFilters fields={[]} values={{}} companies={[]} labels={{filter:'Filter',apply:'Apply',clearAll:'Clear all',activeCount:'1'}} companySearchLabel="Companies" columnFields={[{key:'name',label:'Full Name',type:'text'}]} employmentFields={[{key:'probationValue',label:'Probation',type:'number'}]} privateCriteria={{term:'RETAINED-ID',filters:[{field:'name',operator:'equals',value:'Retained Employee'},{field:'employment.probationValue',operator:'from',value:'2'},{field:'company',operator:'equals',value:'fixture-company'}]}}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Filter'}));await waitFor(()=>expect(document.querySelector('[role="dialog"] form')).not.toBeNull());
+ expect(screen.getByLabelText('Full Name')).toHaveValue('Retained Employee');expect(screen.getByLabelText('Probation')).toHaveValue(2);expect(screen.getByLabelText('Filter operation for Probation')).toHaveValue('from');expect(document.querySelector('input[name="term"]')).toHaveValue('RETAINED-ID');
+ const form=document.querySelector<HTMLFormElement>('[role="dialog"] form')!;expect(new FormData(form).getAll('field.name')).toEqual(['Retained Employee']);expect(new FormData(form).get('field.company')).toBe('fixture-company');
 });

@@ -11,7 +11,8 @@ import {actionableLeaveRequests,myTeamLeaveProjection,decideLeave,decideLeaveDat
 import {leaveBalances} from './read';
 import {rosterWindowView,type RosterMonthView} from './roster';
 import {isModuleEnabled} from './entitlements';
-import {resolveMyTeamScope,assertMyTeamAccess,assertMyTeamSubjectTx,MyTeamAuthorizationError} from './my-team-scope';
+import {filterMyTeamSearch,resolveMyTeamScope,resolveMyTeamScopeTx,resolveMyTeamPrincipalTx,assertMyTeamAccess,assertMyTeamSubjectTx,MyTeamAuthorizationError} from './my-team-scope';
+import {isAiPresentationPrincipalCurrentTx} from './ai-principal';
 export type * from '../lib/my-team-types';
 export {MyTeamAuthorizationError} from './my-team-scope';
 
@@ -140,8 +141,7 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
    }
  }
  const tile=input.tile??'members',flag={checked_in:'checkedIn',late:'late',absent:'absent',on_leave:'onLeave',pending_approvals:'pendingApprovals'} as const;
- const gridEmploymentIds=employees.filter(e=>(!query.search||`${e.name} ${e.employeeCode??''}`.toLowerCase().includes(query.search.toLowerCase()))
-   &&(tile==='members'||e.today[flag[tile]])).map(e=>e.employmentId);
+ const gridEmploymentIds=filterMyTeamSearch(employees,query.search).filter(e=>tile==='members'||e.today[flag[tile]]).map(e=>e.employmentId);
  // Source owners retain their normal transactions; refuse a membership change rather than return old IDs.
  const finalScope=await resolveMyTeamScope(ctx,input);
  const scopeSignature=(value:typeof scope)=>JSON.stringify({
@@ -158,8 +158,25 @@ export async function readMyTeam(ctx:SessionContext,input:MyTeamQuery):Promise<M
      onLeave:leaveAvailable?count('onLeave'):null,halfDayLeave:leaveAvailable?count('halfDayLeave'):null,pendingApprovals:leaveAvailable?approvals.length:null}};
 }
 export async function resolveMyTeamRosterScope(ctx:SessionContext,query:MyTeamQuery):Promise<MyTeamRosterScope>{
- const snapshot=await readMyTeam(ctx,query);return {companyIds:snapshot.query.companyIds,employmentIds:snapshot.gridEmploymentIds,
+ ctx=structuredClone(ctx);query=structuredClone(query);
+ assertMyTeamAccess(ctx);
+ const normalized=normalizeQuery(query,todayInKualaLumpur()),period=periodOf(normalized);
+ // Old programmatic tile filters still need the canonical derived Today facts.
+ // Current routes retire tile during URL parsing; membership/search needs none of
+ // the roster cells, punches, leave ledgers or balances that a full team view owns.
+ if(normalized.tile&&normalized.tile!=='members'){
+  const snapshot=await readMyTeam(ctx,query);return {companyIds:snapshot.query.companyIds,employmentIds:snapshot.gridEmploymentIds,
    from:snapshot.period.gridDates[0],to:snapshot.period.gridDates.at(-1)!,canEditRoster:snapshot.scope.canEditRoster};
+ }
+ return withTenant(ctx,async tx=>{
+  const principal=await resolveMyTeamPrincipalTx(tx,ctx);
+  // The canonical team owner resolves the stored calling person, never a supplied
+  // person claim. Prove that actual identity in the same native read-only snapshot.
+  if(!await isAiPresentationPrincipalCurrentTx(tx,{...ctx,personId:principal.personId}))throw new MyTeamAuthorizationError();
+  const scope=await resolveMyTeamScopeTx(tx,ctx,query);
+  return {companyIds:scope.companies.map(row=>row.id),employmentIds:filterMyTeamSearch(scope.employees,normalized.search).map(row=>row.employmentId),
+   from:period.gridDates[0],to:period.gridDates.at(-1)!,canEditRoster:scope.canEditRoster};
+ },{readOnlySnapshot:true});
 }
 export function markMyTeamPunchReviewed(ctx:SessionContext,p:{attendanceId:string;fingerprint:string},query?:MyTeamQuery):Promise<MyTeamPunchReviewResult>{
  assertMyTeamAccess(ctx);if(!isModuleEnabled(ctx,'attendance'))throw new MyTeamAuthorizationError();

@@ -123,22 +123,3 @@ describe('one navigation source', () => {
   });
 });
 
-describe('Atelier Home', () => {
-  const page = read('app/page.tsx');
-  const home = read('app/dashboard-atelier.tsx');
-  it('offers the ask box only to someone the assistant can answer', () => {
-    expect(page).toContain('mayUseAssistant(s)');
-    expect(page).toContain('canAsk={assistant.allowed}');
-    expect(home).toMatch(/\{canAsk && \(\s*<AtelierAskBox/);
-  });
-  it('never labels anything as prepared by the assistant (the action layer does not exist yet)', () => {
-    const en = JSON.parse(read('messages/en.json'));
-    const strings = JSON.stringify(en.dashboard.atelier).toLowerCase();
-    expect(strings.length).toBeGreaterThan(200);
-    expect(strings).not.toContain('prepared');
-  });
-  it('the history read is gated exactly like the bell (approvers only) and dated in Malaysia', () => {
-    expect(page).toContain('const showHistory = admin || managerRole;');
-    expect(page).toContain('todayInKualaLumpur(now)');
-  });
-});

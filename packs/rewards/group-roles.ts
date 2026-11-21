@@ -66,7 +66,7 @@ export function rewardWholeGroupSetupCompanies(session: SessionContext) {
   return withRewardsTenant(session, tx => tx.execute<{ id: string; name: string }>(sql`
     select c.id, c.legal_name as name from company c
     where c.tenant_id=app.current_tenant_id()
-      and exists(select 1 from app.reward_current_group_roles() role where role='gr')
+      and app.reward_setup_allowed(NULL, 'manage')
     order by c.legal_name, c.id
   `));
 }

@@ -368,7 +368,9 @@ export function restorePayItemQuantities(
   if (sources.length === 0) return lines;
   const restored = new Map<string, PayItemInputQuantity[]>();
   for (const code of new Set(lines.map(line => line.code))) {
-    if (!code || (kind === 'deduction' && code !== 'ABSENT')) continue;
+    // 2026-11-13 — every deduction code, not only ABSENT: a keyed unpaid-leave day count (unit 'days') is
+    // restored the same way, so a grouped row can say "3 days". A bare null unit is still ABSENT-only below.
+    if (!code) continue;
     const items = lines.filter(line => line.code === code);
     if (items.some(line => line.detail || line.inputQuantity)) continue;
     const inputs = sources.filter(row => row.consumedByThisRun && row.kind === kind && row.componentCode === code);

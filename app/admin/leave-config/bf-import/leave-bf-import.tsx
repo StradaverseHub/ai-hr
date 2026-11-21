@@ -1,10 +1,12 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 
 import { useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { formatImportActor, formatImportBatch } from '@/lib/import-reference';
 import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
@@ -247,13 +249,13 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
       <Card id="leave-bf-import-form" className="scroll-mt-6 p-5">
         {/* Step 1 — the template, in both forms. The Excel one carries the reporter's headings. */}
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <button
+          <ActionButton guardNavigation={false} actionKind="generating"
             type="button"
-            onClick={() => void downloadXlsxTemplate()}
+            onClick={() => downloadXlsxTemplate()}
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             {t('downloadTemplateXlsx')}
-          </button>
+          </ActionButton>
           <DownloadTemplate spec={leaveBfImportTemplate} onDownloaded={() => setTemplateTaken(true)} />
         </div>
 
@@ -353,7 +355,7 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
 
         {/* Step 3 — validate. */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button onClick={() => runValidate(csv)} disabled={pending || reading || !csv.trim()}>
+          <Button aria-busy={pending} onClick={() => runValidate(csv)} disabled={pending || reading || !csv.trim()}>
             {pending && phase !== 'done' ? t('validating') : t('validate')}
           </Button>
         </div>
@@ -805,6 +807,7 @@ function ImportLog({
   busy: boolean;
 }) {
   const t = useTranslations('admin.leaveBfImport');
+  const labels = useTranslations('importLog');
   const [openId, setOpenId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
@@ -856,7 +859,8 @@ function ImportLog({
                       {new Date(run.createdAt).toLocaleString()}
                     </td>
                     <td className="px-3 py-2 font-medium">
-                      {run.fileName || <span className="font-normal text-muted-foreground">{t('historyPasted')}</span>}
+                      {formatImportBatch(labels, run.id)}
+                      <div className="break-all text-xs font-normal text-muted-foreground">{run.fileName || t('historyPasted')}</div>
                       <div className={`text-xs font-normal ${outcomeCls}`}>{outcomeLabel}</div>
                       {run.reversedAt && (
                         <div className="text-xs font-normal text-muted-foreground">
@@ -897,7 +901,7 @@ function ImportLog({
                       )}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{t(`mode.${run.mode}.short`)}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{run.actorName || t('historyActorUnknown')}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{run.actor ? formatImportActor(labels, run.actor) : run.actorName || t('historyActorUnknown')}</td>
                     <td className="px-3 py-2 tabular-nums">{run.totalRows}</td>
                     <td className="px-3 py-2 tabular-nums text-emerald-700 dark:text-emerald-400">
                       {run.importedRows}
@@ -920,7 +924,7 @@ function ImportLog({
                       {/* A rolled-back run is not offered again; a run that wrote nothing has nothing to
                           undo. Two clicks, because this moves days. */}
                       {!run.reversedAt && run.ledgerRows > 0 && (
-                        <button
+                        <ActionButton guardNavigation aria-busy={busy}
                           type="button"
                           disabled={busy}
                           onClick={() => (confirmId === run.id ? onRollback(run.id) : setConfirmId(run.id))}
@@ -931,7 +935,7 @@ function ImportLog({
                           }`}
                         >
                           {confirmId === run.id ? t('rollbackConfirm') : t('rollback')}
-                        </button>
+                        </ActionButton>
                       )}
                     </td>
                   </tr>

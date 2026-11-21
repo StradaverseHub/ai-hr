@@ -106,8 +106,8 @@ export default async function DailyAttendancePage({
       <Card className="overflow-hidden" data-tour="attendance-day">
         <SectionHeader title={date === todayIso ? t('today') : date} count={total} />
         {/* Filter panel — plain GET form (server-driven, no-JS): Search · Company · Department · Date. */}
-        <form method="GET" className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        <form method="GET" className="grid min-w-0 grid-cols-1 items-end gap-3 border-b border-border px-4 py-3 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,1fr)_10rem_auto]">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
             {t('filters.search')}
             <input
               type="search"
@@ -118,7 +118,7 @@ export default async function DailyAttendancePage({
               className={inputCls}
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
             {t('filters.company')}
             <select name="company" defaultValue={companyFilter ?? ''} className={inputCls}>
               <option value="">{t('filters.allCompanies')}</option>
@@ -131,7 +131,7 @@ export default async function DailyAttendancePage({
                 ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
             {t('filters.department')}
             <select name="dept" defaultValue={deptFilter ?? ''} className={inputCls}>
               <option value="">{t('filters.allDepartments')}</option>
@@ -142,11 +142,11 @@ export default async function DailyAttendancePage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
             {t('filters.date')}
             <input type="date" name="date" defaultValue={date} className={inputCls} />
           </label>
-          <Button type="submit" variant="outline" size="sm">
+          <Button type="submit" variant="outline">
             {t('filters.apply')}
           </Button>
         </form>

@@ -13,6 +13,7 @@ frozen candidate → verified gate → staging arrival/restart/migrations
 → human staging acceptance of SHA + build ID
 → private production packages
 → separately requested production installation → live acceptance
+→ board milestones recorded and read back → release complete
 ```
 
 `scripts/releases/approve_staging.py` already implements acceptance-to-package publication. Reuse it. It captures the existing Linux x64 staging build rather than rebuilding on the Mac. It does not install production. A `prod-*` tag or published package therefore proves neither a live installation nor a successful customer login.
@@ -99,7 +100,20 @@ The package contract extracts both source and Linux runtime archives into the sa
 
 Retain the actual prior release and matching database/key/configuration backups. Code rollback uses that retained compatible release, not an assumed previous main commit. Schema rollback requires the reviewed restore path or an approved forward repair; migrations have no general down-migration path.
 
-**Complete when:** the authorized live target independently proves source/build arrival, migration integrity, restart/health and real login/MFA plus changed workflows, including denied access. Record owner acceptance and remaining limitations. Keep package publication, staging acceptance and live acceptance as separate claims.
+**Complete when:** the authorized live target independently proves source/build arrival, migration integrity, restart/health and real login/MFA plus changed workflows, including denied access. Record owner acceptance and remaining limitations. Keep package publication, staging acceptance and live acceptance as separate claims. Continue through board reconciliation below before reporting the release complete.
+
+## 5. Reconcile the board before completing production
+
+Owner decision, 17 November 2026: **every production release includes board reconciliation.** The release controller owns this step after live verification, before final handback. A successful installation alone does not complete the release.
+
+1. Record the board database and the explicit list of feedback IDs included in the release record. Trace each item's approved plan/build and current feedback cycle into the exact installed source; include inherited staged items delivered by the aggregate release. Preserve unrelated, reopened, replanned and partially delivered work. For a release with no applicable board items, record an explicitly verified empty list and its reason.
+2. Use the existing [`record-release` operator command](../scripts/improve/README.md#environment-specific-feedback-release-milestones) against the database that owns those items. The board can live on staging while the milestone describes the separate production installation. Retain reporter/tenant bindings, plan revision, reopened count and the reviewed build reference. Record `staging`, then `production_ready`, then `production` for the same exact source SHA, build ID and feedback cycle, using the independently verified evidence for each milestone. Existing valid matching milestones can be retained. An older staged build needs its own trace into the accepted installed build before recording the new sequence. Keep acceptance limitations explicit and earlier events intact; avoid legacy `mark-deployed`, which clears release evidence.
+3. Independently read back **every included item** and its `feedback.release.recorded` events from the owning board database. Verify the board projection is Production: status `deployed`, release stage `production`, exact installed source/build, and matching build reference, plan revision and reopened count. Verify the milestone events exist and the expected and verified item counts match. A command exit code alone is insufficient. Retain the item IDs, read-back results and non-secret evidence references with the private release record.
+4. Final handback states the reconciled item count (including an explicit zero where applicable), the exact release/source/build and any outstanding acceptance limitations. Mark the release complete only when live verification and board read-back both pass.
+
+If board access or recording fails, report **production installed; board reconciliation pending**, retain the remaining IDs and resume this step once access is restored. Re-read the current feedback cycle before retrying. Keep the healthy installation running; a board failure calls for reconciliation, not another deployment. Never infer a production milestone from package publication, a merged commit or a historical deployed label.
+
+**Complete when:** every applicable item independently reads back as Production for the verified release and its current feedback cycle, with retained audit evidence; or the verified no-board-items case is explicitly recorded. This is an operator completion requirement using existing tooling, not a new automatic deployment hook.
 
 ## Recovery and handback
 
@@ -115,6 +129,6 @@ Retain the actual prior release and matching database/key/configuration backups.
 | Publisher interrupted | Resume with identical SHA, build ID, evidence, approval kind and output root. Preserve the checkpoint and prepared bytes. |
 | Existing asset differs or checkpoint is lost | Inspect the private draft/tag and recover deliberately under package policy; preserve published assets/tags. |
 
-Hand back: authorized scope; target; candidate/controller SHA; gate evidence and exceptions; staging source/build/migration/acceptance evidence; private tag/release URL and manifest; checkpoint location; production installed/accepted or not performed; remaining blockers. Keep credentials and private evidence contents out of public commits.
+Hand back: authorized scope; target; candidate/controller SHA; gate evidence and exceptions; staging source/build/migration/acceptance evidence; private tag/release URL and manifest; checkpoint location; production installed/accepted or not performed; board reconciliation count and read-back evidence (or pending item IDs); remaining blockers. Keep credentials and private evidence contents out of public commits.
 
 For a documentation-only handoff, check relative links, command flags against the actual CLI, and `git diff --check`. Publisher regression tests are documented in [PRODUCTION-PACKAGES.md](PRODUCTION-PACKAGES.md); running them does not perform a release.

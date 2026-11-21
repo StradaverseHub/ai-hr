@@ -87,6 +87,9 @@ const FILES = [
   // that omission let through: deleting the festive key block also deleted three generic multi-select
   // labels this SURVIVING card happened to share. Anything reading the admin.leave namespace belongs here.
   path.join(ROOT, 'components/earned-accrual-card.tsx'),
+  // The leave processing job panel reads admin.leave too. It sits beside earned-accrual-card.tsx, outside
+  // components/leave/, because its job-completion toasts are not leave-submission toasts (test/leave-submit-single-toast).
+  path.join(ROOT, 'components/leave-cohort-job-panel.tsx'),
 ].filter((f) => fs.existsSync(f));
 
 // DELIBERATELY NOT SCANNED: components/benefit-scheme-config.tsx and components/leave-rule-preview.tsx.

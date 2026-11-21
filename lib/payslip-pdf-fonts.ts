@@ -360,3 +360,10 @@ export function measurePayslipTextBounds(font: PDFFont, text: string, size: numb
     return conservative();
   }
 }
+
+/** Optional Contract typed-signature face. Existing payslip and letter paths do not load it. */
+export async function embedSignatureFace(doc:PDFDocument):Promise<PDFFont>{
+ const bytes=faceBytes('Caveat-Variable.ttf.br');if(!bytes)throw new Error('The signature font is unavailable.');
+ const mod=await import('fontkit');const fontkit=(mod.default??mod) as Parameters<PDFDocument['registerFontkit']>[0];
+ doc.registerFontkit(fontkit);return doc.embedFont(bytes,{subset:true,features:{liga:false,clig:false}});
+}

@@ -13,7 +13,10 @@ vi.mock('../lib/internal-auth/recovery', () => recovery);
 const invitations = vi.hoisted(() => ({ startInvitation: vi.fn(), acceptInternalInvitation: vi.fn() }));
 const identity = vi.hoisted(() => ({ currentInternalIdentity: vi.fn() }));
 vi.mock('../lib/internal-auth/invitations', () => invitations);
-vi.mock('../lib/internal-auth/web-session', () => identity);
+vi.mock('../lib/internal-auth/web-session', async original => ({
+  ...await original<typeof import('../lib/internal-auth/web-session')>(),
+  ...identity,
+}));
 import { POST } from '../app/login/api/[operation]/route';
 const access = 'aihr_' + 'a'.repeat(43), refresh = 'aihr_refresh_' + 'b'.repeat(43);
 function request(operation: string, body: unknown, headers: Record<string, string> = {}) {
@@ -97,7 +100,13 @@ describe('embedded auth HTTP trust and credential carriers', () => {
   it('records Microsoft activity before any non-enforcing fallback and retains the browser cookie', async () => {
     entra.touchEntraSession.mockResolvedValue({ idleTimeoutSeconds: 900, remainingSeconds: 880 });
     const response = await request('activity', {}, { origin: 'https://hr.test', cookie: '__Host-aihr_internal=microsoft-token' });
-    expect(response.status).toBe(200); expect(await response.json()).toEqual({ step: 'active', idleTimeoutSeconds: 900, remainingSeconds: 880 });
+    expect(response.status).toBe(200);
+    const reply = await response.json();
+    expect(reply).toEqual({
+      step: 'active', idleTimeoutSeconds: 900, remainingSeconds: 880,
+      sessionChannel: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
+    expect(JSON.stringify(reply)).not.toContain('microsoft-token');
     expect(entra.touchEntraSession).toHaveBeenCalledWith('microsoft-token');
     expect(identity.currentInternalIdentity).not.toHaveBeenCalled(); expect(response.headers.get('set-cookie')).toBeNull();
   });

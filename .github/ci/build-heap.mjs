@@ -14,6 +14,7 @@ import {spawn} from 'node:child_process';
 import {readFileSync,writeFileSync,mkdirSync,appendFileSync,existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {createBuildProcessObserver} from './build-process-memory.mjs';
 
 export const BUILD_HEAP_DEFAULT_MB=6144;
 export const BUILD_HEAP_CEILING_MB=8192; // Hard ceiling. Changing it needs owner review.
@@ -25,10 +26,13 @@ export const DEFAULT_BUILD_NODE_OPTIONS='--max-old-space-size='+BUILD_HEAP_DEFAU
 export const RUNNER_MEMTOTAL_MIN_KIB=15*1024**2;
 export const RUNNER_MEMTOTAL_MAX_KIB=17*1024**2;
 // Peak RSS budget for the largest single build process (GNU time ru_maxrss). 8 GiB V8 old space plus young
-// generation, code space and native buffers is expected below ~9.5 GiB. Above WARN the run warns; above FAIL a
-// successful build is still failed, because the 16 GB runner no longer has safe kernel-kill headroom.
+// generation, code space and native buffers also consume memory. The reviewed 8192 profile admits at most
+// 12.5 GiB single-process RSS and additionally requires sampled MemAvailable >=1.5 GiB. The default
+// 6144 profile retains its original 12 GiB RSS limit. See the owner decision in the capacity review.
 export const BUILD_RSS_WARN_KIB=10*1024**2;
-export const BUILD_RSS_FAIL_KIB=12*1024**2;
+export const BUILD_RSS_DEFAULT_FAIL_KIB=12*1024**2;
+export const BUILD_RSS_FAIL_KIB=12.5*1024**2;
+export const BUILD_MEM_AVAILABLE_MIN_KIB=1.5*1024**2;
 
 export function parseMemTotalKiB(meminfo){
  const m=typeof meminfo==='string'?meminfo.match(/^MemTotal:\s+(\d+) kB$/m):null;
@@ -96,11 +100,27 @@ export function rssVerdict(peakKiB,{warn=BUILD_RSS_WARN_KIB,fail=BUILD_RSS_FAIL_
  assert(Number.isSafeInteger(peakKiB)&&peakKiB>0);
  return peakKiB>fail?'fail':peakKiB>warn?'warn':'within';
 }
+export function buildMemoryBudget(heapMb){
+ assert(heapMb===BUILD_HEAP_DEFAULT_MB||heapMb===BUILD_HEAP_CEILING_MB);
+ return heapMb===BUILD_HEAP_CEILING_MB
+  ?{rssFailKiB:BUILD_RSS_FAIL_KIB,minAvailableKiB:BUILD_MEM_AVAILABLE_MIN_KIB}
+  :{rssFailKiB:BUILD_RSS_DEFAULT_FAIL_KIB,minAvailableKiB:null};
+}
+export function availableMemoryVerdict(availableKiB){
+ return Number.isSafeInteger(availableKiB)&&availableKiB>=BUILD_MEM_AVAILABLE_MIN_KIB?'within':'fail';
+}
+/** Shared acceptance model for both actual build wrappers; original command status remains separate. */
+export function buildMemoryVerdict(heapMb,peakKiB,minAvailableKiB){
+ const budget=buildMemoryBudget(heapMb),rss=rssVerdict(peakKiB,{fail:budget.rssFailKiB});
+ const available=budget.minAvailableKiB===null?'not_applicable':availableMemoryVerdict(minAvailableKiB);
+ return {rssVerdict:rss,availableMemoryVerdict:available,verdict:available==='fail'?'fail':rss};
+}
 const gib=kib=>(kib/1024**2).toFixed(2)+' GiB';
 
 async function measure(dir,argv){
  const e=process.env;
- assertBuildHeapEnvironment(e);
+ const bounded=assertBuildHeapEnvironment(e)===BUILD_HEAP_CEILING_MB;
+ const {rssFailKiB}=buildMemoryBudget(bounded?BUILD_HEAP_CEILING_MB:BUILD_HEAP_DEFAULT_MB);
  assert(argv.length>=1,'Measured command required');
  mkdirSync(dir,{recursive:true,mode:0o700});
  const timeFile=join(dir,'time-v.txt');assert(!existsSync(timeFile),'Fresh memory evidence directory required');
@@ -109,21 +129,31 @@ async function measure(dir,argv){
  sample();const timer=setInterval(sample,2000);
  const startedAt=new Date().toISOString();
  const child=spawn('/usr/bin/time',['-v','-o',timeFile,...argv],{stdio:'inherit',env:e});
- const exit=await new Promise((done,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>done({code,signal}));});
- clearInterval(timer);sample();
+ let observer,processTimer,exit,observerFailure=false;
+ const observe=()=>{try{observer?.sample();}catch{observerFailure=true;try{observer?.noteFailure();}catch{}}};
+ try{
+  try{observer=createBuildProcessObserver(child.pid);observe();processTimer=setInterval(observe,500);}catch{observerFailure=true;}
+  exit=await new Promise((done,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>done({code,signal}));});
+ }finally{
+  clearInterval(timer);clearInterval(processTimer);sample();
+  try{observe();const attribution=observer?.report()??{kind:'OBSERVED_BUILD_PROCESS_MEMORY_NOT_ACCEPTANCE',attributionComplete:false,error:'observer_unavailable'};attribution.observerFailure=observerFailure;writeFileSync(join(dir,'build-process-memory.json'),JSON.stringify(attribution,null,2)+'\n',{flag:'wx',mode:0o600});}
+  catch{console.log('::warning::Optional build-process attribution unavailable; GNU time verdict remains authoritative');}
+ }
  const report={kind:'NEXT_BUILD_MEMORY_TELEMETRY_NOT_RELEASE',releaseAuthorized:false,source:e.AIHR_CI_HEAD??null,controller:e.AIHR_CI_CONTROL_HEAD??e.GITHUB_SHA??null,
   runId:e.GITHUB_RUN_ID??null,job:e.GITHUB_JOB??null,command:argv,nodeOptions:e.NODE_OPTIONS,heapProfile:e.AIHR_CI_BUILD_HEAP_PROFILE??'default-6144',
   memTotalKiB:parseMemTotalKiB(readFileSync('/proc/meminfo','utf8')),startedAt,endedAt:new Date().toISOString(),exitCode:exit.code,signal:exit.signal,
   peakRssKiB:null,peakRssMeasure:'GNU time ru_maxrss: largest single waited descendant process, not the sum of concurrent processes',
-  minMemAvailableKiB:Number.isFinite(minAvailable)?minAvailable:null,memAvailableSamples:samples.length,rssBudgetKiB:{warn:BUILD_RSS_WARN_KIB,fail:BUILD_RSS_FAIL_KIB},verdict:null};
- try{report.peakRssKiB=parseMaxRssKiB(readFileSync(timeFile,'utf8'));report.verdict=rssVerdict(report.peakRssKiB);}catch(error){report.telemetryError=String(error);}
+  minMemAvailableKiB:Number.isFinite(minAvailable)?minAvailable:null,memAvailableSamples:samples.length,rssBudgetKiB:{warn:BUILD_RSS_WARN_KIB,fail:rssFailKiB},
+  minMemAvailableBudgetKiB:bounded?BUILD_MEM_AVAILABLE_MIN_KIB:null,availableMemoryVerdict:bounded?availableMemoryVerdict(Number.isFinite(minAvailable)?minAvailable:null):'not_applicable',verdict:null};
+ try{report.peakRssKiB=parseMaxRssKiB(readFileSync(timeFile,'utf8'));Object.assign(report,buildMemoryVerdict(bounded?BUILD_HEAP_CEILING_MB:BUILD_HEAP_DEFAULT_MB,report.peakRssKiB,report.minMemAvailableKiB));}catch(error){report.telemetryError=String(error);}
  writeFileSync(join(dir,'build-memory.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});
  const line=`next build memory: exit=${exit.code}${exit.signal?' signal='+exit.signal:''}; heap=${report.nodeOptions} (${report.heapProfile}); peak RSS=${report.peakRssKiB?gib(report.peakRssKiB):'unknown'}; `
-  +`min MemAvailable=${report.minMemAvailableKiB!=null?gib(report.minMemAvailableKiB):'unknown'} of MemTotal ${gib(report.memTotalKiB)}; budget warn>${gib(BUILD_RSS_WARN_KIB)} fail>${gib(BUILD_RSS_FAIL_KIB)}; verdict=${report.verdict??'unmeasured'}`;
+  +`min MemAvailable=${report.minMemAvailableKiB!=null?gib(report.minMemAvailableKiB):'unknown'} of MemTotal ${gib(report.memTotalKiB)}; budget warn>${gib(BUILD_RSS_WARN_KIB)} fail>${gib(rssFailKiB)}${bounded?'; sampled available floor='+gib(BUILD_MEM_AVAILABLE_MIN_KIB):''}; verdict=${report.verdict??'unmeasured'}`;
  console.log(line);if(e.GITHUB_STEP_SUMMARY)try{appendFileSync(e.GITHUB_STEP_SUMMARY,line+'\n');}catch{}
  if(exit.code!==0)return exit.code??1;
  if(report.verdict===null){console.log('::error::Build memory telemetry missing; refusing to treat the build as measured');return 1;}
- if(report.verdict==='fail'){console.log(`::error::next build peak RSS ${gib(report.peakRssKiB)} exceeds the ${gib(BUILD_RSS_FAIL_KIB)} budget`);return 1;}
+ if(bounded&&report.availableMemoryVerdict==='fail'){console.log('::error::next build sampled available memory is missing or below the reviewed 1.50 GiB floor');return 1;}
+ if(report.verdict==='fail'){console.log(`::error::next build peak RSS ${gib(report.peakRssKiB)} exceeds the ${gib(rssFailKiB)} budget`);return 1;}
  if(report.verdict==='warn')console.log(`::warning::next build peak RSS ${gib(report.peakRssKiB)} exceeds the ${gib(BUILD_RSS_WARN_KIB)} warning budget`);
  return 0;
 }

@@ -1,11 +1,12 @@
 'use client';
 
 import { Fragment, useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { paginateRows } from '@/lib/pagination';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 
 import { useTranslations } from 'next-intl';
-import { Badge, EmployeeName } from '@/components/ui';
+import { tableAmountCls, tableDateCls, Badge, EmployeeName } from '@/components/ui';
 import type { ReprocessEmployeeOutcome } from '@/packs/payroll/service';
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { deriveHistoryBreakdown, type BreakdownSubLine } from './history-breakdown';
@@ -19,7 +20,6 @@ import {
   recordLineIdentity,
   type OtLegKind,
   type PayItemNames,
-  type PayItemRateDetail,
 } from '@/core/payslip-earning-lines';
 // 3c88d593 — which days of the period a payslip claims, from the payslip's OWN record. Two lines for one
 // month is otherwise indistinguishable from a duplicate on this list.
@@ -171,26 +171,27 @@ export function HistoryTable({
     });
 
   return (
-    <div className="overflow-x-auto">
+    <div className="min-w-0">
       <ClientPager state={state} />
-      <table className="w-full text-sm">
+      <div className="ui-table-wrap overflow-x-auto" tabIndex={0} role="region" aria-label={t('view.tabs.history')}>
+      <table data-wrap-headings className="w-full text-sm">
         <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
-            <th className="w-8 px-2 py-2" />
-            <th className="px-4 py-2 font-medium">{tList('colPeriod')}</th>
-            <th className="px-4 py-2 font-medium">{tList('colCycle')}</th>
-            <th className="px-4 py-2 font-medium">{tBatch('colEmployee')}</th>
-            <th className="px-4 py-2 font-medium">{tList('colCompany')}</th>
-            <th className="px-4 py-2 text-right font-medium">{tBatch('colGross')}</th>
-            <th className="px-4 py-2 text-right font-medium">{tBatch('colEpf')}</th>
-            <th className="px-4 py-2 text-right font-medium">{tBatch('colSocso')}</th>
-            <th className="px-4 py-2 text-right font-medium">{tBatch('colEis')}</th>
-            <th className="px-4 py-2 text-right font-medium">{tBatch('colPcb')}</th>
-            <th className="px-4 py-2 text-right font-medium">{tBatch('totalDeductions')}</th>
-            <th className="px-4 py-2 text-right font-medium">{tBatch('colNet')}</th>
-            <th className="px-4 py-2 font-medium">{tList('colStatus')}</th>
-            <th className="px-4 py-2 font-medium">{tBatch('reprocessOutcomeStatusHeading')}</th>
-            <th className="px-4 py-2 font-medium">{tBatch('reprocessOutcomeRemarksHeading')}</th>
+            <th scope="col" data-table-control className="w-12 px-2 py-2" />
+            <th scope="col" className="min-w-72 px-4 py-2 font-medium">{tBatch('colEmployee')}</th>
+            <th scope="col" className="min-w-64 px-4 py-2 font-medium">{tList('colCompany')}</th>
+            <th scope="col" className="px-4 py-2 font-medium">{tList('colPeriod')}</th>
+            <th scope="col" className="min-w-40 px-4 py-2 font-medium">{tList('colCycle')}</th>
+            <th scope="col" className="px-4 py-2 text-right font-medium">{tBatch('colGross')}</th>
+            <th scope="col" className="px-4 py-2 text-right font-medium">{tBatch('colNet')}</th>
+            <th scope="col" className="px-4 py-2 font-medium">{tList('colStatus')}</th>
+            <th scope="col" className="px-4 py-2 text-right font-medium">{tBatch('colEpf')}</th>
+            <th scope="col" className="px-4 py-2 text-right font-medium">{tBatch('colSocso')}</th>
+            <th scope="col" className="px-4 py-2 text-right font-medium">{tBatch('colEis')}</th>
+            <th scope="col" className="px-4 py-2 text-right font-medium">{tBatch('colPcb')}</th>
+            <th scope="col" className="px-4 py-2 text-right font-medium">{tBatch('totalDeductions')}</th>
+            <th scope="col" className="px-4 py-2 font-medium">{tBatch('reprocessOutcomeStatusHeading')}</th>
+            <th scope="col" className="px-4 py-2 font-medium">{tBatch('reprocessOutcomeRemarksHeading')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -206,8 +207,8 @@ export function HistoryTable({
             const segment = payslipSegmentOf(r, r.payPeriod);
             return (
               <Fragment key={r.id}>
-                <tr className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => toggle(r.id)}>
-                  <td className="px-2 py-2.5 text-center align-middle">
+                <tr data-state={isOpen ? 'expanded' : undefined} className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => toggle(r.id)}>
+                  <td data-table-control className="px-2 py-2.5 text-center align-middle">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -215,61 +216,49 @@ export function HistoryTable({
                         toggle(r.id);
                       }}
                       aria-expanded={isOpen}
+                      aria-controls={isOpen ? `payslip-breakdown-${r.id}` : undefined}
                       aria-label={isOpen ? t('view.history.hideBreakdown') : t('view.history.showBreakdown')}
-                      className="text-muted-foreground transition-colors hover:text-foreground"
+                      data-table-disclosure
+                      className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring hover:text-foreground pointer-coarse:size-11"
                     >
-                      <span className={`inline-block text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`}>
-                        ▶
-                      </span>
+                      <ChevronRight aria-hidden="true" className={`size-4 ${isOpen ? 'rotate-90' : ''}`} />
                     </button>
                   </td>
-                  {/* 3c88d593 — WHY THERE ARE TWO AUGUST LINES. This list already showed a transferred
-                      employee's two results as two rows, and nothing on it said which days each employer
-                      paid for, so the second row read as a duplicate. The badge names the reason and the
-                      line under it gives the dates, in the same wording the payslip itself prints. An
-                      unsegmented payslip renders exactly the single period it always did. */}
-                  <td className="px-4 py-2.5 align-top tabular-nums">
+                  <td className="min-w-72 px-4 py-2.5 font-medium">
+                    {/* Employee ID left-of-name (feedback 38668d9b) */}
+                    <EmployeeName code={r.employeeCode} name={r.employeeName} />
+                  </td>
+                  <td className="min-w-56 max-w-72 whitespace-normal px-4 py-2.5 text-xs leading-5 text-muted-foreground">{r.company}</td>
+                  <td className={`px-4 py-2.5 align-top ${tableDateCls}`}>
                     <span className="block">{r.payPeriod}</span>
                     {segment && (
                       <>
                         <Badge variant="info" className="mt-1">
                           {t('view.history.splitBadge')}
                         </Badge>
-                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        <span className="mt-0.5 block whitespace-normal text-[11px] text-muted-foreground">
                           {t('view.history.coverageLine', { from: segment.from, to: segment.to })}
                         </span>
                       </>
                     )}
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td className="whitespace-nowrap px-4 py-2.5">
                     {payrollRunLabel(r, t(`individual.cycle.${r.runType}`))}
                     {r.runSeq > 1 && !r.historyImportAttemptId ? ` #${r.runSeq}` : ''}
                   </td>
-                  {/* 1372d169 — thirteen columns is the worst case on this screen, and employee + company
-                      were the two that wrapped onto a second line. They stay on one line; the wrapper's
-                      overflow-x-auto still covers a narrow window. The <th> captions are left wrappable on
-                      purpose — TOTAL DEDUCTIONS legitimately uses two header lines. */}
-                  <td className="whitespace-nowrap px-4 py-2.5 font-medium">
-                    {/* Employee ID left-of-name (feedback 38668d9b) */}
-                    <EmployeeName code={r.employeeCode} name={r.employeeName} />
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-muted-foreground">{r.company}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{rm(r.gross)}</td>
-                  {/* 3c473773 — the same employee-borne figures the expanded breakdown shows. Reading the
-                      raw blob here and the net figure there would put two contradictory numbers for one
-                      deduction on one screen. */}
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(b.employerBorne.employee.epf)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(b.employerBorne.employee.socso)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(b.employerBorne.employee.eis)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(b.employerBorne.employee.pcb)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(r.totalDeductions)}</td>
-                  <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(r.net)}</td>
+                  <td className={`px-4 py-2.5 ${tableAmountCls}`}>{rm(r.gross)}</td>
+                  <td className={`px-4 py-2.5 font-medium ${tableAmountCls}`}>{rm(r.net)}</td>
                   <td className="px-4 py-2.5">
                     <Badge variant="success">{tList(`status.${r.batchStatus}`)}</Badge>
                   </td>
+                  <td className={`px-4 py-2.5 text-muted-foreground ${tableAmountCls}`}>{rm(b.employerBorne.employee.epf)}</td>
+                  <td className={`px-4 py-2.5 text-muted-foreground ${tableAmountCls}`}>{rm(b.employerBorne.employee.socso)}</td>
+                  <td className={`px-4 py-2.5 text-muted-foreground ${tableAmountCls}`}>{rm(b.employerBorne.employee.eis)}</td>
+                  <td className={`px-4 py-2.5 text-muted-foreground ${tableAmountCls}`}>{rm(b.employerBorne.employee.pcb)}</td>
+                  <td className={`px-4 py-2.5 text-muted-foreground ${tableAmountCls}`}>{rm(r.totalDeductions)}</td>
                   <td className="px-4 py-2.5">{outcome ? <Badge variant={outcome.status==='reprocessed'?'success':outcome.status==='skipped'?'default':'warning'}>
                     {tBatch(`reprocessOutcomeStatus.${outcome.status}`)}</Badge> : '—'}</td>
-                  <td className="max-w-sm px-4 py-2.5 text-xs">
+                  <td className="min-w-56 max-w-sm px-4 py-2.5 text-xs">
                     {outcome ? <><p title={outcome.status==='skipped'?tBatch('reprocessNothingPayableFull'):undefined}>
                       {tBatch(outcome.status==='skipped'?'reprocessNothingPayableShort':outcome.status==='reprocessed'?'reprocessSucceededReason':'reprocessConfigurationReason')}</p>
                       {outcome.resultRetained && <p className="mt-1 font-medium text-amber-800 dark:text-amber-300">{tBatch('reprocessPreviousResultRetained')}</p>}
@@ -277,7 +266,7 @@ export function HistoryTable({
                   </td>
                 </tr>
                 {isOpen && (
-                  <tr className="bg-muted/20">
+                  <tr id={`payslip-breakdown-${r.id}`} className="bg-muted/20">
                     <td colSpan={COL_COUNT} className="px-4 py-4">
                       <div className="mx-auto grid max-w-3xl gap-5 sm:grid-cols-2">
                         {/* ── Earnings ── */}
@@ -602,6 +591,7 @@ export function HistoryTable({
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

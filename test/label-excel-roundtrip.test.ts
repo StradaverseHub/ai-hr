@@ -94,10 +94,11 @@ describe('System Labels populated workbook round trip',()=>{
   expect(wb.Sheets.division.A2.v).toBe('00123');expect(wb.Sheets.division.A2.t).toBe('s');expect(wb.Sheets.division.A2.z).toBe('@');
   expect(systemLabelExportId(bytes)).toMatch(/^[0-9a-f-]{36}$/);
   expect(wb.Workbook?.Sheets?.find(s=>s.name==='_Export')?.Hidden).toBe(2);
-  const zip=await JSZip.loadAsync(bytes),xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
+  const zip=await JSZip.loadAsync(bytes),xml=await zip.file(`xl/worksheets/sheet${wb.SheetNames.indexOf('division')+1}.xml`)!.async('string');
   expect(xml).toContain('state="frozen"');expect(xml).toContain('autoFilter');
   const companyBook=await buildSystemLabelWorkbook({kinds:['department'],references:{companies:[['Company','id']],grades:[],employees:[]}});
-  const archive=await JSZip.loadAsync(companyBook),sheet=await archive.file('xl/worksheets/sheet2.xml')!.async('string');
+  const archive=await JSZip.loadAsync(companyBook),companySheets=XLSX.read(companyBook,{type:'buffer'}).SheetNames;
+  const sheet=await archive.file(`xl/worksheets/sheet${companySheets.indexOf('department')+1}.xml`)!.async('string');
   expect(sheet).toContain('dataValidation');expect(sheet).toContain('sqref="A2:A1001"');
   expect(readSystemLabelWorkbook(bytes)[0].values).toMatchObject({Code:'00123',Label:'Original',Description:'Keep this','Sort Order':'7'});
  });
@@ -132,12 +133,13 @@ describe('System Labels populated workbook round trip',()=>{
   await updateProfileOption(adminCtx(b),{id:record.id,label:'Changed after preview',sortOrder:7});
   await expect(applySystemLabelImport(adminCtx(b),{bytes:changed,mode:'merge',token:preview.token,confirmUpdates:true})).rejects.toThrow('changed since preview');
   const refreshed=await previewSystemLabelImport(adminCtx(b),changed,'update');
-  expect(await applySystemLabelImport(adminCtx(b),{bytes:changed,mode:'update',token:refreshed.token,confirmUpdates:true})).toMatchObject({imported:1,updated:0,skipped:1});
+  expect(await applySystemLabelImport(adminCtx(b),{bytes:changed,mode:'update',token:refreshed.token,confirmUpdates:true})).toMatchObject({imported:1,updated:0,skipped:0,failed:1});
   expect((await owner.db.select().from(s.profileOption).where(eq(s.profileOption.id,record.id)))[0].label).toBe('Changed after preview');
  });
  it('accepts literal formula-looking text without changing it and refuses oversized lists',async()=>{
   const literal=await buildSystemLabelWorkbook({kinds:['division'],references:{companies:[],grades:[],employees:[]},rows:{division:[{Code:'=literal',Label:'+literal',Description:'@literal','Sort Order':'0'}]}});
   expect(readSystemLabelWorkbook(literal)[0].values).toMatchObject({Code:'=literal',Label:'+literal',Description:'@literal'});
-  await expect(buildSystemLabelWorkbook({kinds:['division'],references:{companies:[],grades:[],employees:[]},rows:{division:Array.from({length:501},(_,i)=>({Code:String(i),Label:'X'}))}})).rejects.toThrow(/Narrow/);
+  // Board 2026-11-14: one list may fill the 7000-row workbook allowance (production Positions: 1,349); beyond it is refused.
+  await expect(buildSystemLabelWorkbook({kinds:['division'],references:{companies:[],grades:[],employees:[]},rows:{division:Array.from({length:7001},(_,i)=>({Code:String(i),Label:'X'}))}})).rejects.toThrow(/Narrow/);
  });
 });

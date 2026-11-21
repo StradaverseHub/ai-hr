@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Check, Clock, Files, Home, Inbox, Moon, Save, Send, ShieldCheck, Smartphone, Sun, Undo2, UserRound, Users } from 'lucide-react';
@@ -87,12 +88,12 @@ export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; 
     <header className={styles.header}><div><h1>{t('title')}</h1><p><strong>{state.tenantName}</strong> · {t('tenantOnly')}</p></div><div data-tour="mobile-publication" className={styles.actions}>
       <button type="button" disabled={pending || mode !== 'draft' || !history.past.length} onClick={undo}>{t('composer.undo')}</button><button type="button" disabled={pending || mode !== 'draft' || !history.future.length} onClick={redo}>{t('composer.redo')}</button>
       <span className={styles.draftState}><span data-dirty={dirty} />{dirty ? t('unsaved') : t('draftSaved')}</span>
-      <button type="button" disabled={pending || !dirty || !valid || mode !== 'draft'} onClick={() => void change('save')}><Save size={16} />{t(pending ? 'working' : 'save')}</button>
+      <ActionButton guardNavigation pendingLabel={t('working')} type="button" disabled={pending || !dirty || !valid || mode !== 'draft'} onClick={()=>change('save')}><Save size={16} />{t('save')}</ActionButton>
       <button type="button" className={styles.primary} disabled={pending || dirty || mode !== 'draft' || Boolean(current && JSON.stringify(current.config) === JSON.stringify(state.draft))} onClick={() => setReview({ command: 'publish' })}><Send size={16} />{t('publish')}</button>
     </div></header>
     {!valid && <p className={styles.notice} role="alert">{t('composer.validation')}</p>}
     {(message || error) && <div className={styles.notice} data-error={!!error} role={error ? 'alert' : 'status'}>{t(error || message)}{['conflict', 'unavailable'].includes(error) && <button type="button" onClick={() => { if (!dirty || window.confirm(t('discard'))) { discarding.current = true; window.location.reload(); } }}>{t('reload')}</button>}</div>}
-    {review && <div className={styles.publishReview}><div><h2>{state.tenantName} · {t(review.command === 'publish' ? 'publishReview' : 'rollbackReview')}</h2><p>{t(review.command === 'publish' ? 'publishHelp' : 'rollbackHelp', { revision: review.revision ?? 0 })}</p></div><button type="button" disabled={pending} onClick={() => setReview(null)}>{t('cancel')}</button><button type="button" className={styles.primary} disabled={pending || dirty || !valid} onClick={() => void change(review.command, review.revision)}>{t(review.command === 'publish' ? 'confirmPublish' : 'confirmRollback')}</button></div>}
+    {review && <div className={styles.publishReview}><div><h2>{state.tenantName} · {t(review.command === 'publish' ? 'publishReview' : 'rollbackReview')}</h2><p>{t(review.command === 'publish' ? 'publishHelp' : 'rollbackHelp', { revision: review.revision ?? 0 })}</p></div><button type="button" disabled={pending} onClick={() => setReview(null)}>{t('cancel')}</button><ActionButton guardNavigation pendingLabel={t('working')} type="button" className={styles.primary} disabled={pending || dirty || !valid} onClick={()=>change(review.command, review.revision)}>{t(review.command === 'publish' ? 'confirmPublish' : 'confirmRollback')}</ActionButton></div>}
     <div className={styles.workspace}>
       <aside data-tour="mobile-navigation" className={styles.navigator}><h2>{t('screens')}</h2><nav aria-label={t('screens')}>{screens.map(item => <button type="button" key={item.id} aria-label={t(item.id)} aria-current={screen === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><item.icon size={17} /><span>{t(item.id)}</span></button>)}</nav>
         <CompositionNavigator design={design} change={setDesign} disabled={pending || mode !== 'draft'} screen={screen} navigate={navigate} selected={selectedBlock} select={id => { setSelectedBlock(id); setPanel('section'); }} />

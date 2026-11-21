@@ -17,9 +17,9 @@ import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation
 import { parseBulkItems, runBulkDecide, type BulkDecideItem } from '@/lib/approvals-bulk';
 import { approvalsReturnUrl } from '@/lib/approvals-categories';
 import { localizeLeaveError } from '@/app/me/actions';
-import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/core/attendance';
+import { decideAttendanceCorrection, MissingAttendanceRejectReasonError } from '@/packs/attendance/service';
 import { decideProfileChange } from '@/core/profile';
-import { ClaimError, decideClaim } from '@/core/claims';
+import { ClaimError, decideClaim, listPendingClaimSelection } from '@/packs/claims/service';
 import { decideResignation } from '@/core/offboarding';
 import {
   decideReview,
@@ -56,11 +56,12 @@ function revalidateShell(): void {
   revalidatePath('/', 'layout');
 }
 /** After the last request-bound task, keep feedback on an allowed neutral destination. */
-async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav: Nav, feedback: { toast?: string; error?: string }): Promise<string> {
+async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav: Nav, feedback: { toast?: string; error?: string; approvalSeal?: boolean }): Promise<string> {
   const neutralDestination = () => {
     const query = new URLSearchParams();
     if (feedback.toast) query.set('toast', feedback.toast);
     if (feedback.error) query.set('error', feedback.error);
+    if (feedback.approvalSeal && feedback.toast && !feedback.error) query.set('approvalSeal', '1');
     return `/?${query.toString()}`;
   };
   if (!isAdmin(s) && !(s.roles ?? []).includes('manager')) {
@@ -71,7 +72,7 @@ async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav:
         // WP-A1: Performance/Rewards task sources off — /approvals shows neither performance work nor a
         // second copy of the Rewards queue read beside it (same reasoning as app/approvals/page.tsx).
         const [tasks,rewards]=await Promise.all([
-          listPendingTasks(s,scopeIds,{attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims'),performance:false,rewards:false}),
+          listPendingTasks(s,scopeIds,{attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims'),performance:false,rewards:false,probation:false}),
           isModuleEnabledOrFalse(s, 'rewards') ? pendingRewardReviews(s, scopeIds) : Promise.resolve([]),
         ]);
         if (!tasks.length&&!rewards.length) return neutralDestination();
@@ -84,9 +85,9 @@ async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav:
   }
   return approvalsReturnUrl({ ...nav, ...feedback });
 }
-async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{
+async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>,approvalSeal=false):Promise<never>{
   revalidateShell();
-  redirect(await decisionReturnUrl(s,nav,{toast}));
+  redirect(await decisionReturnUrl(s,nav,{toast,approvalSeal}));
 }
 async function fail(e:unknown,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{
   redirect(await decisionReturnUrl(s,nav,{error:publicErrorMessage(e)}));
@@ -99,8 +100,9 @@ export async function approveLeaveAction(formData: FormData) {
   // Partial Leave Approval (0131): the reject-reason textarea (required when rejecting). Threaded through so
   // decideLeave can enforce the mandatory reason and stamp it onto the leave-request.rejected event.
   const rejectReason = String(formData.get('rejectReason') || '') || undefined;
+  let outcome: Awaited<ReturnType<typeof decideLeave>> | undefined;
   try {
-    await decideLeave(s, { leaveRequestId: String(formData.get('id')), decision, rejectReason });
+    outcome = await decideLeave(s, { leaveRequestId: String(formData.get('id')), decision, rejectReason });
   } catch (e) {
     // Partial Leave Approval (0131): re-localize the new MissingRejectReasonError (and the existing typed
     // leave errors) into the viewer's language, like the /me + leave-tab flows do.
@@ -108,7 +110,8 @@ export async function approveLeaveAction(formData: FormData) {
   }
   // AI v2 W6: after the decision committed, whether the approver followed the recommendation shown beside it.
   await followLeaveRecommendation(s, formData.get('recommendationRecordId'), decision);
-  await done(`Leave ${decision}`, nav, s);
+  const message = outcome?.status === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Leave ${decision}`;
+  await done(message, nav, s, outcome?.status === 'approved');
 }
 
 // Partial Leave Approval — single-request model (ADR-0068 §4D): decide ONE requested date of a per-date
@@ -132,7 +135,7 @@ export async function decideLeaveDateAction(formData: FormData) {
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
   await followPerDateRecommendation(s, formData, outcome);
-  await done(`Date ${decision}`, nav, s);
+  await done(`Date ${decision}`, nav, s, outcome?.status === 'approved');
 }
 
 // Partial Leave Approval — single-request model (R17 600be8ac): decide MANY requested dates in ONE submit
@@ -169,7 +172,7 @@ export async function decideLeaveDatesAction(formData: FormData) {
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
   await followPerDateRecommendation(s, formData, outcome);
-  await done('Leave decided', nav, s);
+  await done('Leave decided', nav, s, outcome?.status === 'approved');
 }
 
 /** AI v2 slice 3 follow-up: the per-date path records whether the approver followed the recommendation, as the
@@ -187,9 +190,10 @@ export async function decideLeaveCancellationAction(formData: FormData) {
   const s = await getSession();
   const nav = navOf(formData);
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
+  let outcome: Awaited<ReturnType<typeof decideLeaveCancellation>> | undefined;
   try {
     const me = await myEmployment(s);
-    await decideLeaveCancellation(s, {
+    outcome = await decideLeaveCancellation(s, {
       cancellationRequestId: String(formData.get('id')),
       decision,
       deciderEmploymentId: me?.employmentId,
@@ -197,7 +201,8 @@ export async function decideLeaveCancellationAction(formData: FormData) {
   } catch (e) {
     await fail(new Error(await localizeLeaveError(e)), nav, s);
   }
-  await done(`Cancellation ${decision}`, nav, s);
+  const message = outcome?.status === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Cancellation ${decision}`;
+  await done(message, nav, s, outcome?.status === 'approved');
 }
 
 export async function approveCorrectionAction(formData: FormData) {
@@ -214,7 +219,7 @@ export async function approveCorrectionAction(formData: FormData) {
   }
   const toast = outcomeStatus === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Correction ${decision}`;
   revalidateShell();
-  redirect(await decisionReturnUrl(s, nav, { toast }));
+  redirect(await decisionReturnUrl(s, nav, { toast, approvalSeal: outcomeStatus === 'approved' }));
 }
 
 /**
@@ -325,6 +330,17 @@ async function dispatchBulkItem(
   }
 }
 
+/** Capture the inbox's selectable claims across pages. The claims queue is not narrowed by the
+ * company switcher (same row set as listPendingClaims); the scope token only refuses a stale view
+ * rendered under a different session selection. The decide action still reauthorizes each ID. */
+export async function selectPendingClaimsAction(companyScope: string) {
+  const { s, scopeIds } = await scopedSession();
+  if ([...scopeIds].sort().join(',') !== companyScope || !isModuleEnabledOrFalse(s, 'claims')) {
+    return { ok: false as const };
+  }
+  return { ok: true as const, ids: await listPendingClaimSelection(s) };
+}
+
 export async function bulkDecideAction(formData: FormData) {
   const s = await getSession();
   const decision = String(formData.get('decision')) === 'rejected' ? 'rejected' : 'approved';
@@ -377,5 +393,5 @@ export async function approveClaimAction(formData: FormData) {
   } catch (e) {
     await fail(e, nav, s);
   }
-  await done(`Claim ${approved ? 'approved' : 'rejected'}`, nav, s);
+  await done(`Claim ${approved ? 'approved' : 'rejected'}`, nav, s, approved);
 }

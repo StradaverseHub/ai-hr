@@ -45,6 +45,18 @@ describe('Payroll comparison reflects saved authority',()=>{
   state.canExport=true;await show();expect(screen.getByRole('link',{name:'Export PDF'})).toHaveAttribute('href',expect.stringContaining('format=pdf'));
   expect(screen.getByRole('link',{name:'Export Excel'})).toHaveAttribute('href',expect.stringContaining('format=xlsx'));
  });
+ it('a refused reconciliation comparison links back to Payroll Reconciliation with its filters, not to Reports',async()=>{
+  vi.mocked(runPayrollComparisonReport).mockImplementation(async()=>{throw new Error('This comparison has too many employee and pay item combinations. Choose one company, pay cycle or pay item.');});
+  const currentPeriod=todayInKualaLumpur().slice(0,7),returnQuery=new URLSearchParams({currentPeriod}).toString();
+  render(<NextIntlClientProvider locale="en" messages={en}>{await PayrollComparisonPage({params:Promise.resolve({id:'reconciliation'}),
+   searchParams:Promise.resolve({employmentId:'00000000-0000-0000-0000-000000000003',returnQuery})})}</NextIntlClientProvider>);
+  expect(screen.getByText(/too many employee and pay item combinations/)).toBeVisible();
+  const back=screen.getByRole('link',{name:new RegExp(en.payrollComparison.backToReconciliation)});
+  expect(back.getAttribute('href')).toMatch(/^\/payroll\/reconciliation\?/);
+  expect(new URLSearchParams(back.getAttribute('href')!.split('?')[1]).get('currentPeriod')).toBe(currentPeriod);
+  expect(screen.queryByRole('link',{name:/Back to reports/})).not.toBeInTheDocument();
+  expect(screen.getByRole('link',{name:'Reset'}).getAttribute('href')).toContain('returnQuery=');
+ });
  it('turns a revoked financial option read into unavailable navigation before executing or recording the report',async()=>{
   state.denied=true;
   await expect(PayrollComparisonPage({params:Promise.resolve({id:'00000000-0000-0000-0000-000000000002'}),searchParams:Promise.resolve({})})).rejects.toThrow('NEXT_NOT_FOUND');

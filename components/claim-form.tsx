@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useMemo, useState, type ReactNode } from 'react';
+import { useActionState, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, ErrorBanner, Field, inputCls } from './ui';
 import { WhyLink } from './why/why-panel';
@@ -108,6 +108,8 @@ export function ClaimForm({
   whyPanel?: ReactNode;
 }) {
   const t = useTranslations('claims');
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => { formRef.current?.setAttribute('data-claim-form-ready', 'true'); }, []);
   const rm = (n: number) => formatMoney(n, currency);
   const amountLabel = currency ? t('amountLabelInCurrency', { currency }) : t('amountLabelNoCurrency');
   const [typeId, setTypeId] = useState(draft?.claimTypeId ?? types[0]?.id ?? '');
@@ -165,7 +167,7 @@ export function ClaimForm({
     itemBal?.remainingThisYear == null ? null : itemBal.remainingThisYear - currentAmount;
 
   return (
-    <form action={formAction} className="grid gap-4 sm:grid-cols-2">
+    <form action={formAction} ref={formRef} data-claim-form-ready="false" className="grid gap-4 sm:grid-cols-2">
       {employmentId!==undefined&&<input type="hidden" name="employmentId" value={employmentId}/>}
       {state.error && (
         <div className="sm:col-span-2">
@@ -346,8 +348,8 @@ export function ClaimForm({
       </Field>
 
       <Field label={t('receiptLabel')}>
-        <input name="receipt" type="file" accept="application/pdf,image/jpeg,image/png" className="text-sm" />
-        <span className="mt-1 text-xs text-muted-foreground">{t('attachmentHint')}</span>
+        <input name="receipt" type="file" accept="application/pdf,image/jpeg,image/png" className="h-9 min-w-0 w-full rounded-md border border-input bg-card px-3 py-1 text-sm file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-0.5" />
+        <span className="text-xs text-muted-foreground">{t('attachmentHint')}</span>
       </Field>
 
       <label className="flex flex-col gap-1.5 sm:col-span-2">
@@ -365,13 +367,13 @@ export function ClaimForm({
       {/* Two submitters on one form. The draft button carries name/value so the server action can tell
           which was pressed; the primary button carries none, so `intent` is absent on a real submit. */}
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-        <Button type="submit" disabled={isPending}>
+        <Button type="submit" disabled={isPending} aria-busy={isPending}>
           {isPending ? t('submitting') : draft ? t('submitDraft') : t('submit')}
         </Button>
-        <Button type="submit" name="intent" value="draft" variant="secondary" disabled={isPending}>
+        <Button aria-busy={isPending} type="submit" name="intent" value="draft" variant="secondary" disabled={isPending}>
           {draft ? t('updateDraft') : t('saveDraft')}
         </Button>
-        <span className="text-xs text-muted-foreground">{t('draftHint')}</span>
+        <p className="basis-full text-xs text-muted-foreground">{t('draftHint')}</p>
       </div>
     </form>
   );

@@ -102,6 +102,39 @@ export async function acknowledgedBlocks(supplied:SessionContext,input:Readonly<
  });
 }
 
+/** acknowledgedBlocks for several months at once (Operations › Exceptions reads every month with an open block on screen):
+ * ONE transaction of at most four statements however many months, where the screen used to open one transaction per
+ * month, all at once (staging, 11 November 2026: ten months, so ten pool connections for one page). The same guard, the
+ * same acknowledgements, rows, predicate and per-month order, under the same row-level security: each month's rows are
+ * exactly acknowledgedBlocks' for that month, months in the order given, each row carrying its month. */
+export async function acknowledgedBlocksForPeriods(supplied:SessionContext,input:Readonly<{companyIds:readonly string[];payPeriods:readonly string[]}>):Promise<readonly (AcknowledgedBlock&Readonly<{payPeriod:string}>)[]>{
+ const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+ if(!ctx.userId||ctx.agent||!canManagePayroll(ctx)||!input.companyIds.length||!input.payPeriods.length)return [];
+ const periods=[...new Set(input.payPeriods)];
+ return withTenant(ctx,async tx=>{
+  const list=await acknowledgementsTx(tx,ctx.tenantId,input.companyIds);
+  if(!list.some(item=>isBlockCheck(item.checkId)))return [];
+  const rows=Array.from(await tx.execute(sql`select b.pay_period,v.id,v.batch_id,b.company_id,v.employment_id,p.full_name,array_agg(distinct f.detector_id) as detectors,
+    bool_or(f.severity='block') as blocks from public.payroll_anomaly_verdict v join public.payroll_batch b on b.id=v.batch_id
+    join public.payroll_anomaly_finding f on f.verdict_id=v.id left join public.employment e on e.id=v.employment_id left join public.person p on p.id=e.person_id
+    where b.company_id in (${sql.join(input.companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) and b.pay_period in (${sql.join(periods.map(period=>sql`${period}`),sql`,`)})
+     and v.superseded_at is null and v.resolved_at is null and v.disposition='block'
+    group by b.pay_period,v.id,v.batch_id,b.company_id,v.employment_id,p.full_name order by b.pay_period,p.full_name nulls last,v.id`) as unknown as
+   {pay_period:string;id:string;batch_id:string;company_id:string;employment_id:string;full_name:string|null;detectors:string[];blocks:boolean}[]);
+  const departments=await currentDepartmentsTx(tx,rows.map(row=>row.employment_id));
+  const byPeriod=new Map<string,(AcknowledgedBlock&Readonly<{payPeriod:string}>)[]>();
+  for(const row of rows){
+   const acks=row.detectors.map(id=>acknowledgementFor(list,{companyId:row.company_id,checkId:`anomaly:${id}`,employmentId:row.employment_id,
+    departmentId:departments.get(row.employment_id)??null}));
+   if(!acks.every(Boolean))continue;
+   const first=acks[0]!;
+   (byPeriod.get(row.pay_period)??byPeriod.set(row.pay_period,[]).get(row.pay_period)!).push(Object.freeze({verdictId:row.id,batchId:row.batch_id,companyId:row.company_id,
+    employmentId:row.employment_id,personName:row.full_name,detectors:Object.freeze([...row.detectors].sort()),acknowledgementId:first.id,reason:first.reason,payPeriod:row.pay_period}));
+  }
+  return Object.freeze(input.payPeriods.flatMap(period=>byPeriod.get(period)??[]));
+ });
+}
+
 /** A person presses the pre-filled resolve of one acknowledged blocking exception: re-checked against the acknowledgements
  * in force now, then resolved as accepted through the anomaly owner with the acknowledgement's reason. */
 export async function resolveAcknowledgedBlock(supplied:SessionContext,input:Readonly<{verdictId:unknown;companyId:unknown;payPeriod:unknown}>){

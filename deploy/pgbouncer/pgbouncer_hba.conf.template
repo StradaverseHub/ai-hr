@@ -1,0 +1,6 @@
+# Rendered by deploy/pgbouncer/render-config.mjs. Who may use this pooler, top to bottom.
+# The aihr-pgbouncer OS account reads the admin console on the private socket with peer authentication.
+local   pgbouncer   aihr-pgbouncer                   peer
+# The application role, on loopback only, with SCRAM. No other role may reach the pooler.
+host    @@DATABASE_NAME@@   ai_hr_app   127.0.0.1/32    scram-sha-256
+host    @@DATABASE_NAME@@   ai_hr_app   ::1/128         scram-sha-256

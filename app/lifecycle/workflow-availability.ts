@@ -8,5 +8,5 @@ export async function lifecycleModuleNavigation(ctx:SessionContext){
 }
 export async function lifecycleWorkflowAvailability(ctx:SessionContext,legacy?:boolean){
  const [navigation,legacyAllowed]=await Promise.all([lifecycleModuleNavigation(ctx),legacy===undefined?v9WorkflowNavigationAllowed(ctx):Promise.resolve(legacy)]);
- return{legacy:legacyAllowed,probation:navigation.probation.configure,contract_staff:navigation.contractStaff.configure};
+ return{legacy:legacyAllowed,probation:navigation.probation.configure,contract_staff:navigation.contractStaff.automation};
 }

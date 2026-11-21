@@ -6,8 +6,9 @@ import {firstDirtyGuard} from '@/lib/unsaved-changes';
 /** A General save may reshape the ladder. Keep this independent draft's fields and structural
  * identity together until the page is reopened; the service refuses stale identities explicitly.
  * The live action form, save receipt and refusal banner remain outside this retained field body. */
-export function ScheduleOvertimeDraftFields({children,identity}:{children:ReactNode;identity:string}) {
-  const initial=useRef({children,identity});
+export function ScheduleOvertimeDraftFields({children,identity,savedReceipt}:{children:ReactNode;identity:string;savedReceipt?:string}) {
+  const initial=useRef({children,identity,savedReceipt});
+  if (savedReceipt && initial.current.savedReceipt!==savedReceipt) initial.current={children,identity,savedReceipt};
   const t=useTranslations('scheduleDrafts');
   const stale=initial.current.identity!==identity;
   const reload=()=>{

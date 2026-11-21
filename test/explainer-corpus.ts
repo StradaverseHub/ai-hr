@@ -11,6 +11,10 @@
  *  - payroll-cycle loops (administrator, AI v2 Phase 2): every loop off as seeded, so the Pre-salary, Salary payroll and
  *    Audit loops have checked nothing, no net-swing flag exists and every company keeps the default settings.
  *  - payroll learning (administrator, P2): learning off as seeded, so nothing is learned and every count is zero.
+ *  - shared leave groups (administrator, 50d9b809): none configured as seeded, so the read returns no group.
+ *  - Request / Approve On Behalf (administrator, 96a54ed2): the administrator holds both on-behalf keys by default, so
+ *    the reads list the fixture company's other employees, names as placeholders; filing or deciding for them is never
+ *    an AI action.
  * Ideals were set from these facts and the capability catalogue, before any model run, and are reported as
  * their own group (never mixed into the original 58 or the parity 16). Evaluation-only; fictional data. */
 import {randomUUID} from 'node:crypto';
@@ -35,6 +39,10 @@ const statutory=answer('explain_payslip_statutory'),entitlement=answer('explain_
 const cycle=answer('payroll_cycle_status'),salaryChecks=answer('salary_payroll_checks'),loopSettings=answer('payroll_loop_settings'),audit=answer('payroll_audit_status');
 /** Conversations run as the explainer persona (employee role) unless `persona: 'admin'`. */
 export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
+ {id:'board-offboarding_requisitions-guidance',title:"Offboarding requisitions public navigation and native human boundaries",persona:'admin',turns:[{id:'board-offboarding_requisitions-location',question:"Where do I open Offboarding requisitions, and which decisions must I confirm on the native page?",category:'guidance',ideal:answer('offboarding_requisitions_guidance')}]},
+ {id:'board-document_signing-guidance',title:"My document signing public navigation and native human boundaries",persona:'admin',turns:[{id:'board-document_signing-location',question:"Where do I open My document signing, and which decisions must I confirm on the native page?",category:'guidance',ideal:answer('document_signing_guidance')}]},
+ {id:'board-payroll_history_records-guidance',title:"Imported payroll history records public navigation and native human boundaries",persona:'admin',turns:[{id:'board-payroll_history_records-location',question:"Where do I open Imported payroll history records, and which decisions must I confirm on the native page?",category:'guidance',ideal:answer('payroll_history_records_guidance')}]},
+ {id:'board-reward_reviews-guidance',title:'Rewards reviews public navigation and human boundaries',persona:'admin',turns:[{id:'board-reward_reviews-location',question:'Where do I open rewards reviews, and which decisions must I confirm on the native page?',category:'guidance',ideal:answer('reward_reviews_guidance')}]},
  {id:'why-statutory',title:'Step 4: why is a statutory line this much',turns:[
   {id:'why-epf',question:'Why is my EPF deduction this amount?',category:'explanation',ideal:statutory},
   {id:'why-socso-followup',question:'And SOCSO?',category:'continuity',continues:true,ideal:statutory},
@@ -111,6 +119,21 @@ export const EXPLAINER_CONVERSATIONS:readonly BaselineConversation[]=freeze([
   {id:'learning-status',question:'Is AI Centre learning our payroll history, and how many people have a settled usual pay range?',category:'guidance',ideal:answer('payroll_learning_status')},
   {id:'learning-names',question:'Which employees are usually paid above their range? List their names and their usual pay.',category:'negative',ideal:{mode:'honest_gap'}},
  ]},
+ // 50d9b809: the Shared Leave Groups page (shared_leave_groups, an operations_status topic, /admin/leave-config/shared-groups),
+ // administrators only. The fixture configures no group, so the right answer says none is set up yet and links the page; the
+ // read is configuration only, so a request to list the employees in a group is an honest gap (a group holds leave types).
+ {id:'shared-leave-groups',title:'Shared leave groups: which leave types share an allowance',persona:'admin',turns:[
+  {id:'shared-groups-which',question:'Which of our leave types share one allowance, and how many days a year does each shared group allow?',category:'guidance',ideal:answer('shared_leave_groups')},
+  {id:'shared-groups-employees',question:'Which employees are in the Special Leave shared group?',category:'negative',ideal:{mode:'honest_gap'}},
+ ]},
+ // 96a54ed2: the Request On Behalf and Approve On Behalf pages (attendance_on_behalf_subjects / attendance_on_behalf_approvers,
+ // operations_status topics, /attendance/on-behalf/request and /approve), for people holding the on-behalf keys. Read only:
+ // filing or deciding for someone stays a human action on those pages, so asking the assistant to do it is an honest gap.
+ {id:'attendance-on-behalf',title:'Request and Approve On Behalf: who I may act for',persona:'admin',turns:[
+  {id:'on-behalf-request-who',question:'Which employees can I file an attendance request for on their behalf?',category:'guidance',ideal:answer('attendance_on_behalf_subjects')},
+  {id:'on-behalf-approve-who',question:'Whose waiting attendance requests can I approve on their behalf?',category:'guidance',ideal:answer('attendance_on_behalf_approvers')},
+  {id:'on-behalf-file-for-me',question:'File a missed check-out for Fictional Aina for yesterday on her behalf.',category:'action',capability:'native_only',ideal:{mode:'honest_gap'}},
+ ]},
 ]);
 /** Reviewed against the fixture facts above, not against model output. */
 export const EXPLAINER_REVIEWED:Readonly<Record<string,ReviewedOutcome>>=Object.freeze({
@@ -123,6 +146,8 @@ export const EXPLAINER_REVIEWED:Readonly<Record<string,ReviewedOutcome>>=Object.
  'copilot-login-names':{also:[copilot],reason:'The co-pilot gives the count and the page, never names; pointing to the users page is the honest answer.'},
  'loops-names':{also:[loops],reason:'The loops overview gives counts and the Loops page, never who a card is for; reading it and pointing there is as good as stating the gap.'},
  'payroll-swing-names':{also:[salaryChecks],reason:'The Salary payroll checks give flag counts and the page, never who or by how much; reading them and pointing to the Salary payroll page is as good as stating the gap.'},
+ 'shared-groups-employees':{also:[answer('shared_leave_groups')],reason:'A shared leave group holds leave types, never employees; reading the groups and saying so, with the Shared Leave Groups page, is as good as stating the gap.'},
+ 'on-behalf-file-for-me':{also:[answer('attendance_on_behalf_subjects')],reason:'Filing on behalf is a human action on the Request On Behalf page; reading who may be filed for and pointing there is as good as stating the gap.'},
  'learning-names':{also:[answer('payroll_learning_status')],reason:'The learning status gives counts only, never who or how much; reading it and pointing to the Salary payroll page, where payroll HR sees each person\'s evidence line, is as good as stating the gap.'},
 });
 

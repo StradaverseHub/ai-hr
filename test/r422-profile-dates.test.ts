@@ -19,8 +19,69 @@
  * hide it.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type englishMessages from '../messages/en.json';
 
 const { session } = vi.hoisted(() => ({ session: { s: null as unknown, scopeIds: [] as string[] } }));
+
+// Profile and movement renderers include real root field-label readers. Keep
+// their registry-owned labels as well as every reachable named namespace; never
+// substitute key echoes or hand-maintained message text. Provider APIs below
+// deliberately keep returning the complete original English catalogue.
+const profileNamespaces = [
+  'people.detail', 'people.detail.incentiveDeclarations', 'people.detail.documents',
+  'people.detail.movement', 'people.detail.movement.hireCorrection', 'people.detail.clocking',
+  'people.list', 'people.employeeStatus', 'people.switcher', 'people.informationCorrection',
+  'payroll.transactions.fixed', 'payrollPolicy', 'attendance', 'accessConfiguration',
+  'holidayCalendarAssignments', 'derivedOrganisation', 'costAllocations', 'currencySelect',
+  'pagination', 'common', 'common.databaseError', 'components.confirmSubmit',
+  'components.tabSave', 'components.drawer',
+  // 92f10a420 merged the Atelier download feedback: the Movement tab's Excel export is the shared
+  // ExportDownloadLink, whose hook reads these two namespaces (components/use-export-download.ts).
+  'letters.reports', 'labelExcelRoundTrip',
+  // 736b7f288 added the Maybank V7.4 payment-file fields to the profile's bank card (components/bank-info-card.tsx).
+  'maybankPayment',
+] as const;
+type ProfileNamespace = (typeof profileNamespaces)[number];
+function profileTranslator(
+  create: typeof import('next-intl').createTranslator,
+  messages: typeof englishMessages,
+  namespace?: ProfileNamespace,
+) {
+  if (namespace !== undefined && !profileNamespaces.includes(namespace)) {
+    throw new Error('Profile render requested an unreviewed translation namespace: ' + namespace);
+  }
+  return create({
+    locale: 'en',
+    messages: {
+      people: {
+        detail: messages.people.detail, list: messages.people.list,
+        employeeStatus: messages.people.employeeStatus, switcher: messages.people.switcher,
+        informationCorrection: messages.people.informationCorrection, wizard: messages.people.wizard,
+        // personnelFieldLabel can qualify a registry label with these two words.
+        import: { fieldUnit: messages.people.import.fieldUnit, fieldValue: messages.people.import.fieldValue },
+      },
+      // Registry form labels can point outside people.detail; preserve those
+      // owners, including optional/currently-empty profile registers.
+      admin: { personnel: messages.admin.personnel },
+      leave: { breakdown: messages.leave.breakdown, inquiry: messages.leave.inquiry, fieldStartDate: messages.leave.fieldStartDate },
+      leaveCreditHistory: { col: messages.leaveCreditHistory.col },
+      review: messages.review,
+      payroll: { transactions: { fixed: messages.payroll.transactions.fixed } },
+      payrollPolicy: messages.payrollPolicy, attendance: messages.attendance,
+      common: messages.common,
+      components: { confirmSubmit: messages.components.confirmSubmit, tabSave: messages.components.tabSave, drawer: messages.components.drawer },
+      accessConfiguration: messages.accessConfiguration,
+      holidayCalendarAssignments: messages.holidayCalendarAssignments,
+      derivedOrganisation: messages.derivedOrganisation, costAllocations: messages.costAllocations,
+      currencySelect: messages.currencySelect, pagination: messages.pagination,
+      letters: { reports: messages.letters.reports }, labelExcelRoundTrip: messages.labelExcelRoundTrip,
+      maybankPayment: messages.maybankPayment,
+    },
+    namespace,
+    timeZone: 'Asia/Kuala_Lumpur',
+    onError: () => undefined,
+  });
+}
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidateTag: vi.fn(() => undefined) }));
 vi.mock('next/navigation', () => ({
@@ -47,14 +108,8 @@ vi.mock('next-intl/server', async () => {
   const { createTranslator, createFormatter } = await import('next-intl');
   const messages = (await import('../messages/en.json')).default;
   return {
-    getTranslations: vi.fn(async (ns?: string | { namespace?: string }) =>
-      createTranslator({
-        locale: 'en',
-        messages,
-        namespace: (typeof ns === 'string' ? ns : ns?.namespace) as never,
-        timeZone: 'Asia/Kuala_Lumpur',
-        onError: () => undefined,
-      }),
+    getTranslations: vi.fn(async (ns?: ProfileNamespace | { namespace?: ProfileNamespace }) =>
+      profileTranslator(createTranslator, messages, typeof ns === 'string' ? ns : ns?.namespace),
     ),
     getLocale: vi.fn(async () => 'en'),
     getMessages: vi.fn(async () => messages),
@@ -66,14 +121,7 @@ vi.mock('next-intl', async (importOriginal) => {
   const messages = (await import('../messages/en.json')).default;
   return {
     ...real,
-    useTranslations: (ns?: string) =>
-      real.createTranslator({
-        locale: 'en',
-        messages,
-        namespace: ns as never,
-        timeZone: 'Asia/Kuala_Lumpur',
-        onError: () => undefined,
-      }),
+    useTranslations: (ns?: ProfileNamespace) => profileTranslator(real.createTranslator, messages, ns),
     useLocale: () => 'en',
     useFormatter: () => real.createFormatter({ locale: 'en', timeZone: 'Asia/Kuala_Lumpur' }),
     useTimeZone: () => 'Asia/Kuala_Lumpur',
@@ -369,6 +417,12 @@ describe('r422 — the employee profile draws every date as DD-MMM-YYYY', () => 
     for (const sp of views) {
       const markup = await html(e.employmentId, sp).catch(cause=>{throw new Error("Could not render the exact movement view: "+JSON.stringify(sp),{cause});});
       const strings = seenStrings(markup);
+      if (sp.tab === 'profile') {
+        const original = (await import('../messages/en.json')).default;
+        for (const label of [original.people.detail.personalDetails, original.people.detail.family.title, original.people.detail.qualification.title]) {
+          expect(strings, 'the full profile retains real translated section labels').toContain(label);
+        }
+      }
       raw.push(...strings.filter((t) => ISO.test(t)).map((t) => `${JSON.stringify(sp)} → ${t}`));
       seen.push(...strings);
       bare.push(...bareDateInputs(markup).map((n) => `${JSON.stringify(sp)} → ${n}`));

@@ -24,6 +24,7 @@
  *       'as of' a date that does not exist threw out of createBatch when this round was first written —
  *       found by test/cp39-form-report.test.ts, and pinned here at the stamp rather than at the screen.
  */
+import {withoutVerifiedTaxOpeningProvenance} from './helpers/payroll-opening-provenance';
 import { and, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -370,7 +371,9 @@ describe('00e28308 · the month records the ruleset version it was opened under'
     // Golden, captured from the code as it stood BEFORE the period stamp was added (RM5,000 basic, no
     // allowance, no OT, category 1, no children, 2026-05). Every stored column, so a change to any
     // figure — or to the immutable statutory snapshot the filings and the PDF read — fails here.
-    expect(slip).toEqual({
+    expect({...slip,statutory:withoutVerifiedTaxOpeningProvenance(slip.statutory as Record<string,unknown>,{
+      year:2026,companyId:base.companyId,employmentId,
+    })}).toEqual({
       basicSalary: '5000.00',
       allowance: '0.00',
       overtimePay: '0.00',
@@ -383,7 +386,31 @@ describe('00e28308 · the month records the ruleset version it was opened under'
         ...GOLDEN_STATUTORY,
         reportContext:{version:1,payingCompanyId:base.companyId,currency:'MYR',itemization:'partial',proration:{payMode:'monthly',from:'2025-01-01',to:null,factor:1,window:{from:'2026-05-01',to:'2026-05-31'}}},
         // Exact additive display evidence; all pre-existing monetary fields stay pinned below.
+        // c2ea9567 — the HRDF wages itemised (additive; the levy and base above are unchanged). The
+        // seeded company is not registered with HRD Corp, so the rate applied is 0 and the levy 0.
+        hrdfWorking: { version: 1, items: [{ kind: 'basic', amount: 5000 }], wages: 5000, status: 'not_registered',
+          subject: false, rate: 0, calculatedLevy: 0, levy: 0 },
         pcbExemptions: {version:1,payPeriod:MONTH,taxYear:2026,basis:'selected_calculation',rows:[]},
+        // 69d6ed3c — statutory trace v1 (additive display evidence; no figure above moves). Every amount in it
+        // is a golden figure above: EPF 5,000 on the KWSP Part A row 4,980.01–5,000.00 (550 / 650), SOCSO and EIS
+        // on the PERKESO row 4,900.01–5,000.00. This fixture's profile leaves Subject to SKBBK unticked.
+        statutoryTrace: {
+          version: 1, rulesetVersion: GOLDEN_STATUTORY.version,
+          epf: { method: 'schedule_row', base: 5000, band: { from: 4980.01, upTo: 5000 }, scheduleEmployee: 550, scheduleEmployer: 650,
+            part: 'A', mode: 'auto', age: null, citizenship: 'citizen', normalWage: 5000, bonusWage: 0,
+            employee: GOLDEN_STATUTORY.epfEmployee, employer: GOLDEN_STATUTORY.epfEmployer, employeeOnBonus: 0 },
+          socso: { category: 1, wage: 5000, band: { from: 4900.01, upTo: 5000 },
+            scheduleEmployee: GOLDEN_STATUTORY.socsoEmployee, scheduleEmployer: GOLDEN_STATUTORY.socsoEmployer,
+            employee: GOLDEN_STATUTORY.socsoEmployee, employer: GOLDEN_STATUTORY.socsoEmployer },
+          skbbk: { wage: 5000, employee: 0, employer: 0, notApplicable: 'not_subject' },
+          eis: { wage: 5000, band: { from: 4900.01, upTo: 5000 }, scheduleEmployee: GOLDEN_STATUTORY.eisEmployee,
+            scheduleEmployer: GOLDEN_STATUTORY.eisEmployer, employee: GOLDEN_STATUTORY.eisEmployee, employer: GOLDEN_STATUTORY.eisEmployer },
+          items: [{ kind: 'basic', amount: 5000, epfNormal: 5000, epfBonus: 0, socsoEis: 5000 }],
+          run: { kind: 'single', own: { epfAdditional: 0, socsoWageExtra: 0, epfWageExtra: 0, exemptEpfWage: 0, exemptEpfAdditional: 0, exemptSocsoWage: 0 },
+            thisRun: { epfEmployee: GOLDEN_STATUTORY.epfEmployee, epfEmployer: GOLDEN_STATUTORY.epfEmployer,
+              socsoEmployee: GOLDEN_STATUTORY.socsoEmployee, socsoEmployer: GOLDEN_STATUTORY.socsoEmployer, socsoSkbbk: 0,
+              eisEmployee: GOLDEN_STATUTORY.eisEmployee, eisEmployer: GOLDEN_STATUTORY.eisEmployer } },
+        },
         salaryBasis: { version: 1, referenceDate: '2026-05-31', compensationId: salaryOwners[0].id,
           effectiveFrom: '2025-01-01', basicSalary: '5000.00', payMode: 'monthly' },
         pcbMeta: {

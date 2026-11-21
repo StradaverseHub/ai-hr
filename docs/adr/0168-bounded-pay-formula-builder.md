@@ -108,3 +108,7 @@ data and writes no row or event. It is never activation evidence.
 Checks before saving collect every recoverable problem with a position and length. They are
 diagnostics only. Save-time refusal adds one rule: a divisor that is a plain or constant zero.
 Possibly-zero divisors are warnings, and runtime division behaviour is unchanged.
+
+## Approved saved-formula availability — 7 November 2026
+
+The owner approved feedback a6e02303 revision 2. This supersedes the mandatory test/activation availability decision above. Every successfully saved, non-deleted formula (including formerly inactive formulas) is selectable. Testing is optional, and historical activation/deactivation events remain audit history. A calculation pins the latest immutable saved revision under the catalogue and Access locks; it never silently falls back to an earlier revision. Saving validates the dependency graph and updates linked materialized dependencies atomically. Runtime checks current dependency membership, evaluator compatibility, exact source permissions and actual input failures. Changed accumulation membership requires a fresh saved revision, not an activation receipt. Historical payroll/evaluation revisions are immutable. This source decision grants no deployment authority.

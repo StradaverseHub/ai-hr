@@ -8,10 +8,11 @@ import {domainEvent,payComponent,payrollBatch,payrollIndividualTxn,payrollTxnImp
 import {adminCompaniesTx} from './read';
 import {isAdmin} from '../lib/authz-model';
 import {analyzeTxnImport,txnImportReason} from './payroll-txn-import';
-import {createIndividualTxnsBulkTx,deleteIndividualTxnTx,loadWritableBatch,lockNativePayrollPeriodsTx,deriveIndividualTxnAmountTx,payRuleAllowsDayByDay,payRuleDerivesAmount,payRuleInputUnit,type PayRule} from '../packs/payroll/service';
+import {createIndividualTxnsBulkTx,deleteIndividualTxnTx,loadWritableBatch,lockNativePayrollPeriodsTx,deriveIndividualTxnAmountTx,resolveDailyImportInput,type PayRule} from '../packs/payroll/service';
 import {parseIndividualImport} from '../lib/individual-txn-import-contract';
 import type {IndividualImportMethod,TxnImportPreview} from '../lib/payroll-txn-import-schema';
 import type {IndividualImportAttempt,IndividualImportOutcome} from '../lib/individual-txn-import-model';
+import {actorOn,creatorOf,resolveImportActors} from './import-actor-label';
 
 const uuid=z.uuid();
 export class IndividualImportError extends Error {}
@@ -25,12 +26,23 @@ async function scope(ctx:SessionContext,ids:string[],tx?:Tx){
 const safePreview=(p:TxnImportPreview):TxnImportPreview=>({...p,rows:p.rows.map(row=>row.reason==='unexpected'?{...row,detail:undefined}:row)});
 const digest=(s:string)=>createHash('sha256').update(s).digest('hex');
 const snapshot=(row:typeof payrollIndividualTxn.$inferSelect)=>JSON.parse(JSON.stringify(row)) as Record<string,unknown>;
+function matchesImportedSnapshot(row:typeof payrollIndividualTxn.$inferSelect,recorded:Record<string,unknown>|undefined){
+ const current=snapshot(row);
+ // Receipts written before explicit input methods have no calculationMethod key. NULL retains
+ // that exact legacy interpretation; an explicit method must still invalidate reversal.
+ if(recorded&&!Object.hasOwn(recorded,'calculationMethod')&&current.calculationMethod===null)delete current.calculationMethod;
+ // 792053e5 — receipts written before the pricing marker have no marker keys. Marking the row (the one-off script or
+ // a later re-pricing) is not an operator change; a re-priced amount still differs and still refuses reversal.
+ for(const key of ['pricingSource','pricingRef','pricedAt'])if(recorded&&!Object.hasOwn(recorded,key))delete current[key];
+ return isDeepStrictEqual(current,recorded);
+}
 type IndividualAnalysis=Extract<Awaited<ReturnType<typeof analyzeTxnImport>>,{kind:'individual'}>;
 type ResolvedRow=IndividualAnalysis['resolved'] extends Map<number,infer Row>?Row:never;
 function canonicalBinding(r:ResolvedRow):PayrollTxnImportBinding{return {
  employmentId:r.employmentId,companyId:r.companyId,departmentId:r.departmentId,componentId:r.componentId,
  intendedCycleId:r.intendedCycleId??null,targetBatchId:r.targetBatchId,targetCycle:r.targetCycle,payPeriod:r.payPeriod,
  txnDate:r.txnDate,kind:r.kind,quantity:r.quantity,unit:r.unit,sourceRef:r.sourceRef,notes:r.notes,
+ ...(r.explicitDailyRuleHash ? {dailyRuleHash:r.explicitDailyRuleHash} : {}),
 };}
 async function eventIds(tx:Tx,id:string){return (await tx.select({id:domainEvent.id}).from(domainEvent).where(and(eq(domainEvent.aggregateId,id),eq(domainEvent.aggregateType,'payroll-individual-txn'))).orderBy(asc(domainEvent.id))).map(e=>e.id);}
 function project(r:typeof attempt.$inferSelect):IndividualImportAttempt{return {id:r.id,sourceName:r.sourceName,method:r.method,createdBy:r.createdBy,createdAt:r.createdAt.toISOString(),state:r.state,records:r.records,preview:safePreview(r.preview),outcomes:r.outcomes,written:r.written,recalcBatchIds:r.recalcBatchIds,revertedAt:r.revertedAt?.toISOString()??null,revertedBy:r.revertedBy};}
@@ -44,13 +56,13 @@ async function stamp(tx:Tx,ctx:SessionContext,id:string,event:string,extra:Recor
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-txn-import',aggregateId:id,eventType:`payroll.txn-import.${event}`,actor:actorOf(ctx),payload:extra});
 }
 /** Persist the exact validated source. Repeated upload operation IDs cannot overwrite its meaning. */
-export async function validateIndividualImport(ctx:SessionContext,p:{operationId:string;sourceName:string;csv:string;method:IndividualImportMethod;scopeIds:string[]}):Promise<IndividualImportAttempt>{
+export async function validateIndividualImport(ctx:SessionContext,p:{operationId:string;sourceName:string;csv:string;method:IndividualImportMethod;scopeIds:string[];allowPreviousDaily?:boolean}):Promise<IndividualImportAttempt>{
  uuid.parse(p.operationId);if(p.method!=='monthly'&&p.method!=='daily')throw new IndividualImportError('templateMismatch');
  if(typeof p.csv!=='string'||new TextEncoder().encode(p.csv).byteLength>900000)throw new IndividualImportError('fileTooLarge');
  const ids=await scope(ctx,p.scopeIds);
  const name=p.sourceName.trim();if(!name.toLowerCase().endsWith('.xlsx')||name.length>255)throw new IndividualImportError('invalidFormat');
  let records:Record<string,string>[]=[],fileError:string|undefined;
- try{records=parseIndividualImport(p.csv,p.method);}catch(e){fileError=e instanceof Error?e.message:'templateMismatch';}
+ try{records=parseIndividualImport(p.csv,p.method,{allowPreviousDaily:p.allowPreviousDaily});}catch(e){fileError=e instanceof Error?e.message:'templateMismatch';}
  const analysis=fileError?null:await analyzeTxnImport(ctx,{kind:'individual',scopeIds:ids,records});
  const bindings:Record<string,PayrollTxnImportBinding>=analysis?.kind==='individual'?Object.fromEntries([...analysis.resolved].map(([number,row])=>[String(number),canonicalBinding(row)])):{};
  const preview=fileError?{kind:'individual' as const,total:0,valid:0,invalid:0,rows:[],fileError}:analysis!.preview;
@@ -98,7 +110,11 @@ export async function confirmIndividualImport(ctx:SessionContext,p:{id:string;sc
      const [item]=await savepoint.select({rule:payComponent.rule}).from(payComponent).where(eq(payComponent.id,resolved.componentId)).for('share');
      if(!item)throw new IndividualImportError('previewChanged');
      const rule=item.rule as PayRule|null;
-     if(r.method==='daily'&&(!payRuleAllowsDayByDay(rule)||!payRuleDerivesAmount(rule)||payRuleInputUnit(rule)==null))throw new IndividualImportError('previewChanged');
+     if (r.method === 'daily') {
+      const daily = resolveDailyImportInput(rule, resolved.explicitDailyInput);
+      if ('reason' in daily || daily.unit !== resolved.unit ||
+          resolved.explicitDailyRuleHash && resolved.explicitDailyRuleHash !== digest(JSON.stringify(rule ?? null))) throw new IndividualImportError('previewChanged');
+     }
      const priced=await deriveIndividualTxnAmountTx(savepoint,ctx,{componentId:resolved.componentId,employmentId:resolved.employmentId,companyId:resolved.companyId,payPeriod:resolved.payPeriod,quantity:resolved.quantity,unit:resolved.unit,effectiveDate:resolved.txnDate});
      if(priced.derived&&priced.amount.toFixed(2)!==row.amount)throw new IndividualImportError('previewChanged');
      const result=await createIndividualTxnsBulkTx(savepoint,ctx,{
@@ -122,12 +138,15 @@ export async function listIndividualImports(ctx:SessionContext,scopeIds:string[]
  await scope(ctx,scopeIds);if(before){z.iso.datetime().parse(before.at);uuid.parse(before.id);}
  return withTenant(ctx,async tx=>{
   const rows=await tx.select().from(attempt).where(and(eq(attempt.tenantId,ctx.tenantId),sql`${attempt.companyIds} <@ ${JSON.stringify(scopeIds)}::jsonb`,legacyOnly ? sql`not exists (select 1 from payroll_individual_import_job job where job.attempt_id = ${attempt.id})` : undefined,before?or(lt(attempt.createdAt,new Date(before.at)),and(eq(attempt.createdAt,new Date(before.at)),lt(attempt.id,before.id))):undefined)).orderBy(desc(attempt.createdAt),desc(attempt.id)).limit(101);
-  return rows.filter(r=>r.companyIds.every(c=>scopeIds.includes(c))).map(project);
+  const visible=rows.filter(r=>r.companyIds.every(c=>scopeIds.includes(c)));
+  const actors=await resolveImportActors(tx,'payroll_individual_attempt',visible.map(r=>r.id));
+  return visible.map(r=>({...project(r),createdByActor:creatorOf(actors,r.id)}));
  });
 }
 export async function readIndividualImport(ctx:SessionContext,id:string,scopeIds:string[]):Promise<IndividualImportAttempt>{return withTenant(ctx,async tx=>{
  const item=project(await owned(tx,ctx,id,scopeIds));const events=await tx.select({type:domainEvent.eventType,at:domainEvent.occurredAt,actorId:domainEvent.actorId,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.aggregateId,id),eq(domainEvent.aggregateType,'payroll-txn-import'))).orderBy(asc(domainEvent.occurredAt),asc(domainEvent.id));
- return {...item,events:events.map(event=>({type:event.type.slice('payroll.txn-import.'.length),at:event.at.toISOString(),actorId:event.actorId,...(typeof (event.payload as {reason?:unknown})?.reason==='string'?{reason:(event.payload as {reason:string}).reason}:{})}))};
+ const actors=await resolveImportActors(tx,'payroll_individual_attempt',[id]),jobs=await tx.execute<{id:string}>(sql`select id from payroll_individual_import_job where attempt_id=${id}::uuid limit 1`);
+ return {...item,createdByActor:creatorOf(actors,id),revertedByActor:item.revertedBy?actorOn(actors,id,item.revertedBy):null,jobId:[...jobs][0]?.id??null,events:events.map(event=>({type:event.type.slice('payroll.txn-import.'.length),at:event.at.toISOString(),actorId:event.actorId,actor:actorOn(actors,id,event.actorId),...(typeof (event.payload as {reason?:unknown})?.reason==='string'?{reason:(event.payload as {reason:string}).reason}:{})}))};
  });}
 /** Whole-batch reversal refuses any changed row; original outcomes remain immutable. */
 export async function revertIndividualImport(ctx:SessionContext,p:{id:string;scopeIds:string[];confirmProcessed:boolean}):Promise<IndividualImportAttempt>{
@@ -147,7 +166,7 @@ export async function revertIndividualImport(ctx:SessionContext,p:{id:string;sco
   if(rows.length!==ids.length||rows.some(row=>row.batchId&&!batchIds.includes(row.batchId)))throw new IndividualImportError('importRowsChanged');
   for(const row of rows){
    const original=imported.find(o=>o.transactionId===row.id)!;
-   if(!row.companyId||!p.scopeIds.includes(row.companyId)||!isDeepStrictEqual(snapshot(row),original.snapshot)||!isDeepStrictEqual(await eventIds(tx,row.id),original.eventIds))throw new IndividualImportError('importRowsChanged');
+   if(!row.companyId||!p.scopeIds.includes(row.companyId)||!matchesImportedSnapshot(row,original.snapshot)||!isDeepStrictEqual(await eventIds(tx,row.id),original.eventIds))throw new IndividualImportError('importRowsChanged');
    if(row.batchId){const b=await loadWritableBatch(tx,row.batchId);if(b.status==='processed'&&!p.confirmProcessed)throw new IndividualImportError('confirmProcessedRevert');}
   }
   for(const row of rows)await deleteIndividualTxnTx(tx,ctx,{id:row.id});

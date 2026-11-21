@@ -14,6 +14,11 @@
  *     the date, the clock-in on record and the proposed clock-out), or nothing is sent and the person is pointed to Edit;
  *  3. the correction's own Confirm (core/assistant-actions/attendance-request-proposal-confirm.ts) re-runs every
  *     owner check and sends the request for the usual approval. It is never approved here.
+ * One correction per day: the attendance service refuses a second while one for the day is waiting
+ * (core/attendance.ts AttendanceCorrectionPendingError and its unique index). Its prepare and confirm custody report
+ * that refusal only as unavailable, so the attendance owner's own read of the person's waiting requests, as the caller,
+ * names it `pending`: before preparing (a Confirm repeated after a lost response sends nothing and says so), and after
+ * a refused prepare or confirm (a Confirm sent at the same moment as another).
  * Errors are bounded to a refusal code; nothing private escapes. Never throws. */
 import {and,eq} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
@@ -22,6 +27,7 @@ import {terasLoopCase,terasLoopPause} from '../../db/teras-schema';
 import {workerRunGateTx} from '../agent-registry/controls';
 import {prepareChatAttendanceCorrectionProposal} from '../proposals/attendance-request';
 import {confirmAttendanceRequestProposal} from '../assistant-actions/attendance-request-proposal-confirm';
+import {myAttendanceCorrectionsPage} from '../../packs/attendance/service';
 import type {ClockOutConfirmResult,ClockOutRefusal} from '../../lib/today/clock-out-reasons';
 
 const LOOP='loop_missed_clock_outs' as const;
@@ -33,6 +39,9 @@ const isClock=(value:unknown):value is string=>typeof value==='string'&&/^(?:[01
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 
 type CaseFacts=Readonly<{employmentId:string;date:string;checkIn:string;proposedCheckOut:string}>;
+/** A request for the case's day already waiting for a decision, as the attendance owner shows the caller their own. */
+const waiting=async(ctx:SessionContext,shown:CaseFacts)=>
+ (await myAttendanceCorrectionsPage(ctx,shown.employmentId,{limit:1,date:shown.date,status:'pending'})).length>0;
 /** The caller's own open missed clock-out case, as row-level security lets them read it, or why not. */
 async function ownOpenCase(ctx:SessionContext,caseId:string):Promise<CaseFacts|'retired'|'unavailable'>{
  return withTenant(ctx,async tx=>{
@@ -60,9 +69,10 @@ export async function confirmMissedClockOut(supplied:SessionContext,input:Readon
   if(!ctx.userId||!ctx.personId||ctx.agent)return refused('access');
   const shown=await ownOpenCase(ctx,input.caseId);
   if(shown==='retired'||shown==='unavailable')return refused(shown);
+  if(await waiting(ctx,shown))return refused('pending');
   // The case's own employment: a person with two employments, or serving notice, corrects the day the case is about.
   const prepared=await prepareChatAttendanceCorrectionProposal(ctx,{date:shown.date,checkOut:shown.proposedCheckOut,reason:input.reason},input.reason,now,{employmentId:shown.employmentId,dayOnRecord:true});
-  if(!prepared)return refused('unavailable');
+  if(!prepared)return refused(await waiting(ctx,shown)?'pending':'unavailable');
   if(prepared.kind!=='proposal')return refused('changed');
   // What the attendance service prepared must be what the card showed: the employment, the day, its clock-in and the
   // proposed clock-out.
@@ -71,6 +81,7 @@ export async function confirmMissedClockOut(supplied:SessionContext,input:Readon
   if(facts.startDate!==shown.date||facts.checkOut!==shown.proposedCheckOut||facts.recordedCheckIn!==shown.checkIn||facts.recordedCheckOut!==undefined)return refused('changed');
   const result=await confirmAttendanceRequestProposal(ctx,{proposal:prepared.proposal,confirm:true},now);
   if(result.kind==='submitted')return Object.freeze({kind:'submitted' as const});
+  if(await waiting(ctx,shown))return refused('pending');
   const reason=result.reason;
   return refused(reason==='expired'?'expired':reason==='retired'?'retired':reason==='authority_mismatch'||reason==='authority_unsupported'?'access':'unavailable');
  }catch{return refused('unavailable');}

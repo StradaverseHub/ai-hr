@@ -11,7 +11,7 @@ describe('System Labels Excel contract',()=>{
     expect(wb.SheetNames).toEqual(['Instructions',...LABEL_IMPORT_DEFINITIONS.map(d=>d.kind),'Reference']);
     expect(readSystemLabelWorkbook(bytes)).toEqual([]);
     expect(LABEL_IMPORT_DEFINITIONS.find(d=>d.kind==='department')?.columns).toContain('Head Employee Code');
-    expect(LABEL_IMPORT_DEFINITIONS.find(d=>d.kind==='division')?.columns).not.toContain('Company');
+    expect(LABEL_IMPORT_DEFINITIONS.find(d=>d.kind==='division')?.columns).toContain('Company');
     expect(wb.SheetNames).not.toContain('employment_type');
     for(const d of LABEL_IMPORT_DEFINITIONS) {
       const cells=d.columns.map(c=>c==='Rank'||c==='Sort Order'?'2':c);
@@ -31,12 +31,15 @@ describe('System Labels Excel contract',()=>{
   it('rejects oversize, malformed archives and over-limit rows',()=>{
     expect(()=>readSystemLabelWorkbook(Buffer.alloc(LABEL_WORKBOOK_MAX_BYTES+1))).toThrow();
     expect(()=>readSystemLabelWorkbook(Buffer.from('not a workbook'))).toThrow();
-    expect(()=>readSystemLabelWorkbook(workbook('division',[['Code','Label','Description','Sort Order'],...Array.from({length:501},(_,i)=>[String(i),'X','',''])]))).toThrow('limit');
+    expect(()=>readSystemLabelWorkbook(workbook('division',[['Code','Label','Description','Sort Order'],...Array.from({length:7001},(_,i)=>[String(i),'X','',''])]))).toThrow('limit'); // Board 2026-11-14: one list may fill the 7000-row workbook allowance.
   });
   it('exports spreadsheet-safe errors with exact source row references',()=>{
     const bytes=systemLabelErrorWorkbook([{sheet:'division',row:2,values:{Code:'=HYPERLINK("bad")'},before:null,after:{},outcome:'error',message:'=1+1'}]);
     const wb=XLSX.read(bytes,{type:'array'}),rows=XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Errors,{header:1});
-    expect(rows[1]).toEqual(['division',2,"'=HYPERLINK(\"bad\")",'error',"'=1+1"]);
+    // Board c074c6b8: shared Error Log columns; the entered code is guarded wherever it appears (Reference here).
+    expect(rows[0].slice(0,3)).toEqual(['Excel row','Category','Reference']);
+    expect(rows[1].slice(0,3)).toEqual([2,'Division',"'=HYPERLINK(\"bad\")"]);
+    expect(JSON.stringify(rows)).not.toContain('=1+1');
     expect(Object.values(wb.Sheets.Errors).some(c=>c?.f)).toBe(false);
   });
 });
@@ -45,6 +48,6 @@ it('accepts only the bounded previous header generation and converts legacy own/
  const definition=LABEL_IMPORT_DEFINITIONS.find(row=>row.kind==='department')!,headers=definition.columns.map(column=>column==='Criteria'?'Scope':column==='Criteria Companies'?'Shared Companies':column);
  const bytes=workbook('department',[headers,['Origin','shared','Other','CODE','Label','Description','']]);
  const [row]=readSystemLabelWorkbook(bytes);expect(row.values).toMatchObject({Criteria:'companies','Criteria Companies':'Origin;Other'});expect(row.warnings?.length).toBeGreaterThan(0);
- expect(()=>readSystemLabelWorkbook(bytes,{generation:3})).toThrow('Headers');
+ expect(()=>readSystemLabelWorkbook(bytes,{generation:4})).toThrow('Headers');
  expect(()=>readSystemLabelWorkbook(workbook('department',[headers,['Origin','own','Other','CODE','Label','Description','']]))).toThrow('Legacy own');
 });

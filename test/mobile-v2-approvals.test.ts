@@ -65,7 +65,7 @@ const fund = (employmentId: string, b: Base = base) =>
   owner.db.insert(schema.leaveLedger).values({ tenantId: b.tenantId, employmentId, leaveTypeId: b.annualLeaveTypeId, entryType: 'accrual', days: '60.00', effectiveOn: TODAY });
 const line = (sub: string, mgr: string, validFrom = '2024-01-01') =>
   setReportingLine(adminCtx(base), { subordinateEmploymentId: sub, managerEmploymentId: mgr, lineType: 'administrative', validFrom });
-const modules = (ctx: SessionContext) => ({ attendance: isModuleEnabled(ctx, 'attendance'), claims: isModuleEnabled(ctx, 'claims'), performance: isModuleEnabled(ctx, 'performance'), rewards: isModuleEnabled(ctx, 'rewards') });
+const modules = (ctx: SessionContext) => ({ attendance: isModuleEnabled(ctx, 'attendance'), claims: isModuleEnabled(ctx, 'claims'), performance: isModuleEnabled(ctx, 'performance'), rewards: isModuleEnabled(ctx, 'rewards'), probation: false });
 const assigned = (who: Person, kind: Kind, id: string) => isCurrentAssignedApproval(who.ctx, { kind, id }, modules(who.ctx));
 
 const get = async (path: string) => {
@@ -141,6 +141,8 @@ describe('list summaries', () => {
     caller = manager.ctx;
     const items = (await get('')).body.items as { id: string; kind: string; summary?: Record<string, unknown> | null }[];
     const web = await listLeaveRequests(manager.ctx, undefined, 200, { status: 'pending' });
+    expect((await listLeaveRequests(manager.ctx,undefined,200,{status:'pending',requestIds:[ids[0]]})).map(r=>r.id)).toEqual([ids[0]]);
+    expect(await listLeaveRequests(manager.ctx,undefined,200,{status:'pending',requestIds:[]})).toEqual([]);
     for (const [n, id] of ids.entries()) {
       const row = web.find((r) => r.id === id)!;
       expect(items.find((t) => t.id === id)?.summary).toEqual({ label: row.leaveType, from: week(n).start, to: week(n).end, days: Number(row.days), amount: null, currency: null });
@@ -400,6 +402,8 @@ describe('attendance decisions (clock corrections and overtime share one decider
     expect(opened.body).toMatchObject({ outcome: 'found', task: { proposedCheckIn: '09:00', proposedCheckOut: '18:00', original: { state: 'recorded', checkIn: '08:00', checkOut: '17:00' }, proposedPunches: null } });
     // The same fact the web's approvals row prints (listAttendanceCorrections' snapshot), not a second read.
     const [webRow] = await listAttendanceCorrections(manager.ctx, { status: 'pending', requestId: id });
+    expect((await listAttendanceCorrections(manager.ctx,{status:'pending',requestIds:[id]})).map(r=>r.id)).toEqual([id]);
+    expect(await listAttendanceCorrections(manager.ctx,{status:'pending',requestIds:[]})).toEqual([]);
     expect(webRow.originalClockSnapshot).toMatchObject({ originalCheckIn: '08:00:00', originalCheckOut: '17:00:00' });
     // The list row says which date.
     caller = manager.ctx;

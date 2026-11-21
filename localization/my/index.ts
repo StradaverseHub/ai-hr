@@ -1,7 +1,8 @@
+import {MY_DOCUMENT_MERGE_KEYS} from './document-merge';
 import {replayMyTaxBasis} from './tax-basis-replay';
 import {ocbcBankPaymentFiles} from './ocbc-payment';
 import {childReliefTableHeadCount} from './statutory-tables';
-import {getTaxSelectionMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
+import {getTaxSelectionMY,getTaxSelectionsMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
 import {listTaxSchemeDeclarationsMY,saveTaxSchemeDeclarationMY,revokeTaxSchemeDeclarationMY,resolveTaxSchemeMY} from './tax-scheme-declarations';
 import { MY_EA_REPORTING } from './ea-reporting';
 /**
@@ -11,7 +12,7 @@ import { MY_EA_REPORTING } from './ea-reporting';
 import { validateEpfElection } from './epf-election';
 import { convertLegacyEpfTopupsMY } from './epf-topup-conversion-db';
 import { legacyTopupConversionCsv } from './epf-topup-conversion';
-import { readReviewedTp3OpeningMYTx,prepareReviewedTp3OpeningMYTx,canMaintainPassportProfileMY,canMaintainBankProfileMY,readReviewedPassportMYTx,prepareReviewedPassportMYTx,prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, initializeHiredStatutoryMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
+import { readReviewedTp3OpeningMYTx,prepareReviewedTp3OpeningMYTx,canMaintainPassportProfileMY,canMaintainBankProfileMY,readReviewedPassportMYTx,prepareReviewedPassportMYTx,prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryProfilesMYTx, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, initializeHiredStatutoryMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import {
@@ -20,6 +21,7 @@ import {
   epf,
   foldPriorSlipIntoAccumulators,
   hrdfLevy,
+  hrdfRate,
   hrdfSubject,
   openingAccumulatorsFromTp3,
   overtimePay,
@@ -65,7 +67,7 @@ import {
   validateStatutoryRuleset,
 } from './statutory-config';
 import { companyRegistrationReadinessMY } from './company-registration-readiness';
-import { getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
+import { initializeCompanyStatutoryMY, getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
 import { eaCompaniesInYear, eaStatement, MY_PLANNED_FORMS, MY_REPORTS, MY_STATUTORY_LINKS } from './reports';
 import { cp39PaymentFile } from './cp39-file';
 import { pcb2iiStatement } from './pcb2ii';
@@ -76,6 +78,7 @@ import type { CountryPack } from '../country-pack';
 export const myPack: CountryPack = {
   eaReporting: MY_EA_REPORTING,
   country: 'MY' as const,
+  documentMerge:{keys:MY_DOCUMENT_MERGE_KEYS},
   displayClock: {timeZone:'Asia/Kuala_Lumpur',label:'MYT'},
   // Rung 5b (ADR-0080 D4) — the client-safe vocabulary slice, ALSO served to 'use client'
   // components by localization/registry.client.ts (this reference makes it contract-declared).
@@ -89,6 +92,8 @@ export const myPack: CountryPack = {
     withWrite:withStatutoryProfileWriteMY,
     reviewed:{readEditable:readReviewedStatutoryEditableMYTx,choices:reviewedStatutoryChoiceMetadataMYTx,labels:readReviewedStatutoryLabelsMYTx,lockSubject:lockReviewedStatutoryProfileMYTx,prepare:prepareReviewedStatutoryProfileMYTx,confirm:confirmReviewedStatutoryProfileMYTx,readReference:readReviewedStatutoryProfileReferenceMYTx},
     get: getStatutoryProfileMY,
+    // The set-wise form of `get`, for one caller-held snapshot over many people (the Personnel export).
+    getManyTx: getStatutoryProfilesMYTx,
     getEditSnapshot: getStatutoryEditSnapshotMY,
     // Partial save of only the four TP3 opening-balance columns (item a6a47698 — TP3 relocated to the
     // Payroll tab with its own save; the full statutory overwrite no longer carries these).
@@ -111,6 +116,7 @@ export const myPack: CountryPack = {
     validatePassport:validatePassportProfileMY,
     setTax: setTaxProfileMY,
     getTaxSelection:getTaxSelectionMY,
+    getTaxSelections:getTaxSelectionsMY,
     saveTaxSelection:saveTaxSelectionMY,
     initializeHiredTaxSelectionTx:initializeHiredTaxSelectionMYTx,
     initializeTransferredTaxSelectionTx:initializeTransferredTaxSelectionMYTx,
@@ -145,6 +151,7 @@ export const myPack: CountryPack = {
     validateEpfElection,
   },
   companyStatutory: {
+    initialize: initializeCompanyStatutoryMY,
     set: setCompanyStatutoryMY,
     get: getCompanyStatutoryMY,
     // Rung 5c — the group Organization admin panel reads every company's statutory row through the pack.
@@ -176,6 +183,8 @@ export const myPack: CountryPack = {
     pcbMonth,
     overtimePay,
     hrdfLevy,
+    // Feedback c2ea9567 — the rate hrdfLevy applies, stamped beside the HRDF wages on the payslip.
+    hrdfRate,
     // Feedback 0df0c635 — effective per-employee HRDF subjectivity (tri-state subject_to_hrdf resolved
     // against the employer's registration band). D6 vocabulary: the kernel consumes it via the pack.
     hrdfSubject,

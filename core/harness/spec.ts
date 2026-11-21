@@ -135,8 +135,20 @@ export const HARNESS_SPEC=freeze({
   * the person's own words for a named day, and lib/hr-date-phrase.ts works the date out in Kuala Lumpur from today
   * (core/proposals/request-dates.ts); the reply states the date the result gives. Any other date is still worked out from
   * today. Only the change line's last two sentences differ from v24.
-  * 26: merge v25 with the deployed organisation review guidance, a literal public product_guidance topic. */
- version:26,
+  * 26: merge v25 with the deployed organisation review guidance, a literal public product_guidance topic.
+  * 27: public Attendance formula and Rewards review guidance topics; native decisions and private data remain outside guidance.
+  * 28: retire the Attendance formula builder guidance topics.
+  * 29: 50d9b809 (owner decision, 10 November 2026): operations_status gains the shared_leave_groups topic, the Shared
+  * Leave Groups page under Leave Settings (core/semantic-model/entities-leave-settings.ts: administrators only,
+  * configuration only, no new tool). No instruction line is added: the topic's own generated description says what the
+  * read returns, and the instructions stay within v18's character budget.
+  * 30: 96a54ed2 (owner decision, 12 November 2026): operations_status gains the attendance_on_behalf_subjects and
+  * attendance_on_behalf_approvers topics, the Request On Behalf and Approve On Behalf pages
+  * (core/semantic-model/entities-attendance-on-behalf.ts: managers and administrators holding the on-behalf permission
+  * key, read only, no new tool). No instruction line is added, as for v29.
+  * 31: three literal public page-guidance topics for Offboarding requisitions, document signing and Payroll history records;
+  * administrator/module gates, unchanged disclosure fields, no business records and no new standalone tool or action. */
+ version:31,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -181,11 +193,11 @@ export const HARNESS_SPEC=freeze({
   publicContextTools:['product_destinations','product_guidance','available_actions'],
   /** v22: the topics product_guidance serves besides its guide search, each one of main's administrator page guides
    * (core/explainers/capabilities.ts, gated as there). The harness refuses any other topic before the owner runs. */
-  guidanceTopics:['password_policy','correction_controls','organisation_tagging'],
+  guidanceTopics:['password_policy','correction_controls','organisation_tagging','reward_reviews','offboarding_requisitions','document_signing','payroll_history_records'],
   /** v23: the topic tools and their topics, in order (core/semantic-model/topic-tools.ts TOPIC_TOOLS). Each topic is one
    * declared read, bound only through its tool; the harness refuses any other topic before a runner. */
   topicTools:{
-   operations_status:['loops','payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','ai_quality','payroll_learning'],
+   operations_status:['loops','payroll_cycle','salary_payroll','payroll_loop_settings','payroll_audit','ai_quality','payroll_learning','shared_leave_groups','attendance_on_behalf_subjects','attendance_on_behalf_approvers'],
    explain_why:['pay_difference','payslip_statutory','claim_limit','leave_entitlement','attendance_day'],
   },
   /** v17: the capability catalogue, offered only on an open turn whose words ask what the person can do, how, or to
@@ -384,6 +396,14 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  25:'e3d5c13543380478704e0956ef7eef5f594e399485eefb1fb9f973b71fe9384c',
  // Main v25 plus deployed public organisation review guidance.
  26:'584e57dba0129ecb6c4c488137a82186f68c7cbfa171d2672a9b0d3f68b76dfa',
+ 27:'fdcc4753d0026dccf1d1eb14075944fa5bbd48a98d1e03ff80f2c5750381f04a',
+ 28:'8201900d74c1c75410f36439f671ba498f671c5ad647a746b6b3917a7c825cd0',
+ // 50d9b809: the shared_leave_groups operations_status topic.
+ 29:'e5108db742b9e4fcc58f0a341477390f3f2fd977f4f686cebf31e068ee8fc13c',
+ // 96a54ed2: the two attendance on-behalf operations_status topics.
+ 30:'750548d4761d28330d642919378c22a944532c8781d59784b5aa8e52c62942bd',
+ // Literal public page guidance, administrator/module gated, no new data or action.
+ 31:'72e606d0853616c03d0c406fa0c8478996caa31de90c571ee32103758d308246',
 });
 
 /** Parallel v24 deployed before the histories converged. Its number also identifies main's payroll-learning spec. */

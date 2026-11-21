@@ -1,6 +1,6 @@
 import { microsoftLoginEnabled } from '@/lib/entra/login-options-server';
 import { randomUUID } from 'node:crypto';
-import { client } from '@/db/client';
+import { client, withPoolWork } from '@/db/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { internalConfig, internalSelected, internalReady, INTERNAL_SESSION_COOKIE } from '@/lib/internal-auth/config';
 import { takeRate } from '@/lib/internal-auth/service';
@@ -37,7 +37,7 @@ export async function GET(req:NextRequest,{params}:{params:Promise<{operation:st
     return new NextResponse(null,{status:404,headers});
   }catch(error){
     const retry=rateResponse(error);if(retry!==null)return NextResponse.json({error:'rateLimited'},{status:429,headers:{...headers,'retry-after':String(retry)}});
-    try{await client.unsafe("select app.append_auth_event(NULL,'entra-login',$1::uuid,'entra.login-refused','external',NULL,NULL)",[randomUUID()]);}catch{/* Authentication still fails closed if audit storage is unavailable. */}
+    try{await withPoolWork('authentication',()=>client.unsafe("select app.append_auth_event(NULL,'entra-login',$1::uuid,'entra.login-refused','external',NULL,NULL)",[randomUUID()]));}catch{/* Authentication still fails closed if audit storage is unavailable. */}
     const response=NextResponse.redirect(new URL('/login?entraError=1',internalConfig().origin),303);
     for(const [k,v]of Object.entries(headers))response.headers.set(k,v);
     response.cookies.set(ENTRA_FLOW_COOKIE,'',{...cookie,maxAge:0});return response;

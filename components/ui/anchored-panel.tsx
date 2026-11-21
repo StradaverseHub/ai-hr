@@ -42,7 +42,15 @@ import { cn } from '@/lib/utils';
  * left between the anchor and the window edge it opens towards: a panel taller than that scrolls inside itself
  * instead of running off the screen, where a fixed box can never be scrolled into view.
  */
-export type AnchoredPlacement = { top: number; left: number; flip: boolean; maxHeight?: number };
+export type AnchoredPlacement = { top: number; left: number; flip: boolean; maxHeight?: number; width?: number };
+
+/**
+ * aa045103 · a panel whose width follows its anchor (the Personnel search suggestions: at least the box's
+ * width). Measured on every place, so a scroll, a resize or the sidebar collapsing re-measures it with the
+ * position. A value of 0 or less means "no layout to measure" (jsdom, a hidden ancestor): the placement then
+ * carries no width and the panel keeps its own class width.
+ */
+export type AnchoredPanelWidth = number | ((anchor: HTMLElement, rect: DOMRect) => number);
 
 /** The panel's width in px. 360 = the `w-[22.5rem]` the attendance panel has always rendered at. */
 export const ANCHORED_PANEL_WIDTH = 360;
@@ -50,6 +58,39 @@ export const ANCHORED_PANEL_WIDTH = 360;
 export const ANCHORED_PANEL_FLIP_HEIGHT = 340;
 /** The gap between the trigger's edge and the panel. */
 export const ANCHORED_PANEL_GAP = 6;
+
+/**
+ * The horizontal room an element can actually be SEEN in: the viewport, narrowed by every ancestor that
+ * clips or scrolls horizontally. In the app shell that ancestor is <main> (`overflow-y-auto`, so its x axis
+ * computes to `auto` too) — the box beside the sidebar. A popup that opens left of `left` slides under the
+ * sidebar; one that opens right of `right` scrolls the page sideways. Measured on the content box, so a
+ * scroll container's border and scrollbar are not counted as room.
+ */
+export function visibleHorizontalBounds(el: HTMLElement): { left: number; right: number } {
+  let left = 0;
+  let right = document.documentElement.clientWidth || window.innerWidth;
+  for (let node = el.parentElement; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
+    const overflowX = window.getComputedStyle(node).overflowX;
+    if (!overflowX || overflowX === 'visible') continue;
+    const r = node.getBoundingClientRect();
+    left = Math.max(left, r.left + node.clientLeft);
+    right = Math.min(right, r.left + node.clientLeft + (node.clientWidth || r.width));
+  }
+  return { left, right };
+}
+
+/**
+ * aa045103 · a START-aligned panel's left edge: the trigger's own left edge, moved left only as far as the
+ * panel needs to fit before the visible right edge, and never past the visible left edge (the sidebar).
+ *
+ * Round 2: never further left than "right edges meet" for a trigger that is itself in view. The 8px gutter
+ * is for a panel WIDER than its trigger; a box-width list under a box that already ends at the content's
+ * right edge would otherwise start 8px left of the box it belongs to.
+ */
+export function startAlignedLeft(rect: { left: number; right?: number }, bounds: { left: number; right: number }, width: number, edge = 8): number {
+  const fit = rect.right === undefined ? bounds.right - width - edge : Math.max(bounds.right - width - edge, Math.min(rect.right, bounds.right) - width);
+  return Math.max(bounds.left, Math.min(rect.left, fit));
+}
 
 /**
  * Placement state for ONE open panel, plus the dismissal listeners.
@@ -68,12 +109,21 @@ export function useAnchoredPanel({
   width = ANCHORED_PANEL_WIDTH,
   flipHeight = ANCHORED_PANEL_FLIP_HEIGHT,
   gap = ANCHORED_PANEL_GAP,
+  align = 'end',
 }: {
   open: boolean;
   onClose: () => void;
-  width?: number;
+  /** A fixed width in px, or a measure of the anchor (see AnchoredPanelWidth); pass a STABLE function. */
+  width?: AnchoredPanelWidth;
   flipHeight?: number;
   gap?: number;
+  /**
+   * `end` (the attendance panel's original rule): the panel's right edge meets the trigger's, clamped to
+   * the window. `start` (aa045103, the Personnel column filters): the panel opens from the trigger's LEFT
+   * edge and stays inside the content area — an end-aligned panel on a narrow first column would reach left
+   * over the sidebar.
+   */
+  align?: 'start' | 'end';
 }): {
   at: AnchoredPlacement | null;
   /** Anchor the panel to this element and place it now. */
@@ -92,15 +142,20 @@ export function useAnchoredPanel({
   const place = useCallback(
     (el: HTMLElement) => {
       const r = el.getBoundingClientRect();
+      const measured = typeof width === 'function' ? width(el, r) : null;
+      const w = measured != null && measured > 0 ? measured : typeof width === 'number' ? width : ANCHORED_PANEL_WIDTH;
       const flip = r.bottom + flipHeight > window.innerHeight && r.top > flipHeight;
       setAt({
         top: flip ? r.top - gap : r.bottom + gap,
-        left: Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8),
+        left: align === 'start'
+          ? startAlignedLeft(r, visibleHorizontalBounds(el), w)
+          : Math.min(Math.max(8, r.right - w), window.innerWidth - w - 8),
         flip,
         maxHeight: Math.max(160, (flip ? r.top : window.innerHeight - r.bottom) - gap - 8),
+        ...(measured != null && measured > 0 ? { width: measured } : {}),
       });
     },
-    [width, flipHeight, gap],
+    [width, flipHeight, gap, align],
   );
 
   const anchorTo = useCallback(
@@ -169,7 +224,7 @@ export function AnchoredPanel({
       id={id}
       role={role}
       className={cn(PANEL_CLS, className)}
-      style={{ top: at.top, left: at.left, maxHeight: at.maxHeight, transform: at.flip ? 'translateY(-100%)' : undefined }}
+      style={{ top: at.top, left: at.left, maxHeight: at.maxHeight, width: at.width, transform: at.flip ? 'translateY(-100%)' : undefined }}
       {...rest}
     >
       {children}

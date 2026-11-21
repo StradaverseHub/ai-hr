@@ -1,17 +1,19 @@
 import * as React from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
-import {NextIntlClientProvider} from 'next-intl';
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {createTranslator,NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import vietnamese from '../messages/vi.json';
 import {PayRuleEditor} from '../app/admin/pay-components/pay-rule-editor';
 import {FormulaEditor} from '../app/payroll/formula-builder/editor';
 import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 const visualFixture='Actual FormulaEditor and variable-library components; fictional employee/company/payroll owner fixtures; inert browser rendering; no authenticated server journey or installed acceptance claimed.';
 import {parsePayFormula,printPayFormula} from '../lib/pay-formula-language';
+import {describePayFormula} from '../lib/pay-formula-explain';
+import {payFormulaTemplateSource} from '../lib/pay-formula-templates';
 import {PAY_FORMULA_VARIABLE_CATEGORIES} from '../lib/pay-formula-registry';
 import type {FormulaBuilderOptions,FormulaBuilderView} from '../app/payroll/formula-builder/ui-types';
-const state=vi.hoisted(()=>({save:vi.fn(),test:vi.fn(),activate:vi.fn(),remove:vi.fn(),group:vi.fn(),search:vi.fn(),batches:vi.fn(),push:vi.fn(),refresh:vi.fn(),replace:vi.fn(),draft:vi.fn()}));
-vi.mock('../app/payroll/formula-builder/actions',()=>({draftFormulaAction:state.draft,saveFormulaAction:state.save,testFormulaAction:state.test,formulaStateAction:state.activate,deleteFormulaAction:state.remove,saveAccumulationAction:state.group,searchFormulaEmployeesAction:state.search,listFormulaBatchesAction:state.batches}));
+const state=vi.hoisted(()=>({save:vi.fn(),test:vi.fn(),activate:vi.fn(),remove:vi.fn(),group:vi.fn(),search:vi.fn(),batches:vi.fn(),push:vi.fn(),refresh:vi.fn(),replace:vi.fn(),draft:vi.fn(),read:vi.fn(),discard:vi.fn()}));
+vi.mock('../app/payroll/formula-builder/actions',()=>({startFormulaDraftAction:state.draft,readFormulaDraftAction:state.read,discardFormulaDraftAction:state.discard,saveFormulaAction:state.save,testFormulaAction:state.test,formulaStateAction:state.activate,deleteFormulaAction:state.remove,saveAccumulationAction:state.group,searchFormulaEmployeesAction:state.search,listFormulaBatchesAction:state.batches,readFormulaCodeChoicesAction:vi.fn(),registerPersonnelFormulaFieldAction:vi.fn()}));
 vi.mock('../app/admin/pay-components/actions',()=>({draftPayRuleAction:vi.fn(),previewPayRuleAction:vi.fn(),searchPreviewEmployeesAction:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:state.push,refresh:state.refresh,replace:state.replace})}));
 const catalogues={en,ms,zh,ta,th,vi:vietnamese};
@@ -38,7 +40,7 @@ End If
 Return Amount`;
 const fixture=():FormulaBuilderView=>{const latest={id:'revision-1',ordinal:1,description:'Fictional formula',method:'write' as const,source,program:parsePayFormula(source),contentHash:'hash',dependencies:[],createdAt:'2026-10-30T00:00:00Z'};return {id:'formula',formulaId:'OT_TEST',status:'tested',activeRevisionId:null,latest,versions:[latest],tests:[{id:'receipt',revisionId:latest.id,passed:true,amount:'1.01',explanations:['Example result'],error:null,context,sourceFingerprint:'source',dependencyFingerprint:'deps',readRequirements:{categories:[],fieldIds:[]},createdAt:'2026-10-30T01:00:00Z'}],usage:[],idLocked:false,updatedAt:'2026-10-30T01:00:00Z',capabilities};};
 function mount(locale:keyof typeof catalogues='en',formula=fixture(),readOnly=false,employeeOptions:FormulaBuilderOptions=options){return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]}><FormulaEditor initial={formula} options={employeeOptions} readOnly={readOnly}/></NextIntlClientProvider>);}
-beforeEach(()=>{vi.clearAllMocks();state.save.mockResolvedValue({ok:false,error:'Fictional save refusal'});state.test.mockResolvedValue({ok:false,error:'Fictional test refusal'});state.batches.mockResolvedValue({ok:true,value:[{id:'run-2',runSeq:2,status:'draft'}]});state.search.mockResolvedValue({ok:true,value:[{id:'employee2',companyId:'company',code:'E2',name:'Found employee'}]});});afterEach(cleanup);
+beforeEach(()=>{vi.clearAllMocks();state.read.mockResolvedValue({ok:true,value:null});state.discard.mockResolvedValue({ok:true,value:null});state.save.mockResolvedValue({ok:false,error:'Fictional save refusal'});state.test.mockResolvedValue({ok:false,error:'Fictional test refusal'});state.batches.mockResolvedValue({ok:true,value:[{id:'run-2',runSeq:2,status:'draft'}]});state.search.mockResolvedValue({ok:true,value:[{id:'employee2',companyId:'company',code:'E2',name:'Found employee'}]});});afterEach(cleanup);
 describe('Formula Builder actual editor',()=>{
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s labels both editors and all 14 variable categories',async locale=>{const rendered=mount(locale);const words=catalogues[locale].payFormula;expect(screen.getByRole('tab',{name:words.methods.write})).toHaveAttribute('aria-selected','true');expect(screen.getByRole('tab',{name:words.methods.conditions})).toBeVisible();const categories=screen.getByLabelText(words.category);expect(categories.querySelectorAll('option')).toHaveLength(15);for(const category of PAY_FORMULA_VARIABLE_CATEGORIES)expect(categories).toHaveTextContent(category.code==='profile'||category.code==='employee'?words.personnelLibrary.groups[category.code]:words.categories[category.code]);expect(screen.getByRole('button',{name:words.save})).toBeDisabled();await captureAiReviewScreenshots(aiReviewDomHtml(rendered.container),locale,'formula-write',visualFixture,'atelier');},120000);
  it('captures the actual English condition editor and guided variable library with fictional owners',async()=>{
@@ -57,23 +59,23 @@ End If`;
  it('round trips every statement type, all value types, nested branches and comments through actual visual controls',()=>{mount();fireEvent.click(screen.getByRole('tab',{name:en.payFormula.methods.conditions}));expect(screen.getByDisplayValue('Retained comment')).toBeVisible();expect(screen.getAllByRole('button',{name:en.payFormula.addElseIf})).toHaveLength(2);expect(screen.getAllByDisplayValue('Amount').length).toBeGreaterThan(0);fireEvent.click(screen.getByRole('tab',{name:en.payFormula.methods.write}));const text=screen.getByRole('textbox',{name:en.payFormula.source}) as HTMLTextAreaElement;expect(printPayFormula(parsePayFormula(text.value))).toBe(printPayFormula(parsePayFormula(source)));});
  it('inserts an unfinished AI suggestion through the real editor without saving or validating placeholders',async()=>{
   const partial='If {#MISSING:Company} = "EBAC" Then\nReturn {#Basic}\nElse\nReturn 0\nEnd If';
-  state.draft.mockResolvedValue({ok:true,value:{source:partial,valid:false,unresolved:true,explanation:'Choose the company field.',questions:['Resolve Company before saving.'],unsupported:[],variables:['Basic'],conditions:[]}});
+  state.draft.mockResolvedValue({ok:true,value:{outcome:'started',job:{id:'fictional-job',state:'succeeded',reason:null,timeoutSeconds:90,startedAt:'2026-11-12T00:00:00.000Z',result:{source:partial,valid:false,unresolved:true,explanation:'Choose the company field.',questions:['Resolve Company before saving.'],unsupported:[],variables:['Basic'],conditions:[]}}}});
   mount();fireEvent.change(screen.getByRole('textbox',{name:en.payFormula.generator.requirement}),{target:{value:'Use Basic for EBAC'}});fireEvent.click(screen.getByRole('checkbox',{name:en.payFormula.generator.consent}));fireEvent.click(screen.getByRole('button',{name:en.payFormula.generator.generate}));
   await screen.findByText('Resolve Company before saving.');fireEvent.click(screen.getByRole('button',{name:en.payFormula.generator.apply}));fireEvent.click(screen.getByRole('button',{name:en.payFormula.generator.replace}));
   expect(screen.getByRole('textbox',{name:en.payFormula.source})).toHaveValue(partial);expect(state.save).not.toHaveBeenCalled();expect(state.test).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('tab',{name:en.payFormula.methods.conditions}));expect(screen.getByRole('alert')).toBeVisible();expect(screen.getByRole('tab',{name:en.payFormula.methods.write})).toHaveAttribute('aria-selected','true');
  });
  it('refuses an invalid source switch with a precise error and preserves the source',()=>{mount();const text=screen.getByRole('textbox',{name:en.payFormula.source});fireEvent.change(text,{target:{value:'Return fetch("https://example.com")'}});fireEvent.click(screen.getByRole('tab',{name:en.payFormula.methods.conditions}));expect(screen.getByRole('alert')).toHaveTextContent(/line 1, column/);expect(text).toHaveValue('Return fetch("https://example.com")');expect(screen.getByRole('tab',{name:en.payFormula.methods.write})).toHaveAttribute('aria-selected','true');});
- it('blocks test and activation after edits and does not call the service',()=>{mount();fireEvent.change(screen.getByLabelText(en.payFormula.description),{target:{value:'Changed'}});expect(screen.getByRole('button',{name:en.payFormula.testSaved})).toBeDisabled();expect(screen.getByRole('button',{name:en.payFormula.activate})).toBeDisabled();expect(state.test).not.toHaveBeenCalled();expect(state.activate).not.toHaveBeenCalled();});
- it('invalidates activation when the simulation context changes',()=>{mount();expect(screen.getByRole('button',{name:en.payFormula.activate})).toBeEnabled();fireEvent.change(screen.getByLabelText(en.payFormula.input),{target:{value:'3'}});expect(screen.getByRole('button',{name:en.payFormula.activate})).toBeDisabled();expect(screen.getByText(en.payFormula.staleReceipt)).toBeVisible();});
+ it('blocks test and activation after edits and does not call the service',()=>{mount();fireEvent.change(screen.getByLabelText(en.payFormula.description),{target:{value:'Changed'}});expect(screen.getByRole('button',{name:en.payFormula.testSaved})).toBeDisabled();expect(screen.queryByRole('button',{name:en.payFormula.activate})).not.toBeInTheDocument();expect(state.test).not.toHaveBeenCalled();expect(state.activate).not.toHaveBeenCalled();});
+ it('invalidates activation when the simulation context changes',()=>{mount();expect(screen.queryByRole('button',{name:en.payFormula.activate})).not.toBeInTheDocument();fireEvent.change(screen.getByLabelText(en.payFormula.input),{target:{value:'3'}});expect(screen.queryByRole('button',{name:en.payFormula.activate})).not.toBeInTheDocument();expect(screen.getByText(en.payFormula.staleReceipt)).toBeVisible();});
  it('keeps an equal ordered test receipt eligible after a JSONB-reordered context and invalidates a real input change',async()=>{
   const formula=fixture(),reordered={input:context.input,currentCode:context.currentCode,asOf:context.asOf,cycleId:context.cycleId,period:context.period,employmentId:context.employmentId,companyId:context.companyId};
   formula.tests=[{...formula.tests[0],context:reordered}];
   const orderedReceipt={...formula.tests[0],id:'fresh-ordered-test',context:{...context,batchId:undefined},explanations:['Fresh ordered receipt']};
   state.test.mockResolvedValue({ok:true,value:{test:orderedReceipt,formula:{...formula,tests:[orderedReceipt]}}});mount('en',formula);
   fireEvent.click(screen.getByRole('button',{name:en.payFormula.testSaved}));await screen.findByText('Fresh ordered receipt');
-  expect(state.test).toHaveBeenCalledWith({id:'formula',revisionId:'revision-1',context:reordered});expect(screen.getByRole('button',{name:en.payFormula.activate})).toBeEnabled();expect(screen.queryByText(en.payFormula.staleReceipt)).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText(en.payFormula.input),{target:{value:'3'}});expect(screen.getByRole('button',{name:en.payFormula.activate})).toBeDisabled();expect(screen.getByText(en.payFormula.staleReceipt)).toBeVisible();
+  expect(state.test).toHaveBeenCalledWith({id:'formula',revisionId:'revision-1',context:reordered});expect(screen.queryByRole('button',{name:en.payFormula.activate})).not.toBeInTheDocument();expect(screen.queryByText(en.payFormula.staleReceipt)).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText(en.payFormula.input),{target:{value:'3'}});expect(screen.queryByRole('button',{name:en.payFormula.activate})).not.toBeInTheDocument();expect(screen.getByText(en.payFormula.staleReceipt)).toBeVisible();
  });
  it('adopts server-normalized metadata after saving so the saved revision is clean and testable',async()=>{
   const normalized=fixture();normalized.formulaId='NEW_ID';normalized.latest={...normalized.latest,id:'revision-2',ordinal:2,description:'Updated'};normalized.versions=[normalized.latest];normalized.tests=[];
@@ -124,7 +126,47 @@ End If`;
   expect(state.save.mock.calls[0][0].source).toBe(longSource);
  });
  it('inserts a date call into the actual text selection',()=>{const formula=fixture(),text='Dim Start As Date = {#Date}("2026-10-01")\nReturn 0';formula.latest={...formula.latest,source:text,program:parsePayFormula(text)};mount('en',formula);const input=screen.getByRole('textbox',{name:en.payFormula.source}) as HTMLTextAreaElement;input.setSelectionRange(text.indexOf('{#Date}'),text.indexOf('\n'));fireEvent.click(screen.getByRole('button',{name:en.payFormula.functions.JoinDate}));fireEvent.click(screen.getByRole('button',{name:en.payFormula.insertVariable}));expect(input.value).toBe('Dim Start As Date = {#JoinDate}\nReturn 0');expect(()=>parsePayFormula(input.value)).not.toThrow();expect(screen.queryByRole('alert')).not.toBeInTheDocument();});
- it('renders the native Formula Builder input kind and explicit context bindings',async()=>{const native=render(<NextIntlClientProvider locale="en" messages={en}><form><PayRuleEditor catalogueOnly code="FIXTURE_OT" kind="allowance" prorates={false} rule={null} aiEnabled={false} payItems={[{code:'BASIC',name:'Basic salary'}]} previewEmployees={[]} activeFormulas={[{formulaId:'OT_TEST',description:'Fictional tested overtime',dependencies:['BASIC']}]}/></form></NextIntlClientProvider>);fireEvent.change(screen.getByLabelText(en.payRule.kindLabel),{target:{value:'formula_builder'}});fireEvent.change(screen.getByLabelText(en.payRule.builderFormula),{target:{value:'OT_TEST'}});for(const [label,value] of [[en.payRule.builderOrdinaryRate,'26'],[en.payRule.builderHoursPerDay,'8'],[en.payRule.builderRate,'1.5']])fireEvent.change(screen.getByLabelText(label),{target:{value}});expect(JSON.parse((native.container.querySelector('input[name="rule"]') as HTMLInputElement).value)).toEqual({kind:'formula_builder',formulaId:'OT_TEST',dependencies:['BASIC']});expect(new FormData(native.container.querySelector('form')!).get('formulaHoursPerDay')).toBe('8');await captureAiReviewScreenshots(aiReviewDomHtml(native.container),'en','formula-pay-item',visualFixture,'atelier');},120000);
+ it('renders the native Formula Builder input kind and explicit context bindings',async()=>{const native=render(<NextIntlClientProvider locale="en" messages={en}><form><PayRuleEditor catalogueOnly code="FIXTURE_OT" kind="allowance" prorates={false} rule={null} aiEnabled={false} payItems={[{code:'BASIC',name:'Basic salary'}]} previewEmployees={[]} activeFormulas={[{formulaId:'OT_TEST',description:'Fictional tested overtime',dependencies:['BASIC'],explanation:[{depth:0,text:'The result is Basic salary.'}]}]}/></form></NextIntlClientProvider>);fireEvent.change(screen.getByLabelText(en.payRule.kindLabel),{target:{value:'formula_builder'}});fireEvent.change(screen.getByLabelText(en.payRule.builderFormula),{target:{value:'OT_TEST'}});for(const [label,value] of [[en.payRule.builderOrdinaryRate,'26'],[en.payRule.builderHoursPerDay,'8'],[en.payRule.builderRate,'1.5']])fireEvent.change(screen.getByLabelText(label),{target:{value}});expect(JSON.parse((native.container.querySelector('input[name="rule"]') as HTMLInputElement).value)).toEqual({kind:'formula_builder',formulaId:'OT_TEST',dependencies:['BASIC']});expect(new FormData(native.container.querySelector('form')!).get('formulaHoursPerDay')).toBe('8');await captureAiReviewScreenshots(aiReviewDomHtml(native.container),'en','formula-pay-item',visualFixture,'atelier');},120000);
+ it.each(['en','ms'] as const)('shows the reopened saved reference-template explanation in Pay Items (%s)',locale=>{
+  const messages=catalogues[locale],formula=fixture();
+  // The projection looks up message keys and interpolation values dynamically.
+  const t=createTranslator({locale,messages,namespace:'payFormula'}) as unknown as Parameters<typeof describePayFormula>[1];
+  const savedSource=payFormulaTemplateSource('OT_1_5',messages.payFormula.templates.hourlyRateNote);
+  formula.latest={...formula.latest,source:savedSource,program:parsePayFormula(savedSource)};
+  formula.versions=[formula.latest];
+  const builder=mount(locale,formula);
+  const expected=within(builder.container).getByRole('region',{name:messages.payFormula.explain.title});
+  const editor=render(<NextIntlClientProvider locale={locale} messages={messages}><PayRuleEditor catalogueOnly code="FIXTURE_OT"
+   kind="allowance" prorates={false} rule={{kind:'formula_builder',formulaId:formula.formulaId,dependencies:[]}}
+   aiEnabled={false} payItems={[]} previewEmployees={[]} activeFormulas={[{formulaId:formula.formulaId,
+    description:formula.latest.description,dependencies:[],explanation:describePayFormula(formula.latest.program,t)}]}/></NextIntlClientProvider>);
+  const displayed=within(editor.container).getByRole('region',{name:messages.payFormula.explain.title});
+  const rows=(region:HTMLElement)=>within(region).getAllByRole('listitem').map(row=>[row.textContent,row.style.paddingInlineStart]);
+  expect(rows(displayed)).toEqual(rows(expected));
+  expect(rows(displayed).length).toBeGreaterThan(2);
+ });
  it('shows immutable versions and disables editing in view mode',()=>{mount('en',fixture(),true);expect(screen.getByLabelText(en.payFormula.formulaId)).toBeDisabled();expect(screen.getByRole('textbox',{name:en.payFormula.source})).toBeDisabled();expect(screen.queryByRole('button',{name:en.payFormula.save})).not.toBeInTheDocument();expect(screen.getByText(en.payFormula.usageAndVersions)).toBeVisible();});
  it('honors authoritative view-only capabilities',()=>{const formula=fixture();formula.capabilities={view:true,edit:false,test:false,activate:false,deactivate:false,delete:false};mount('en',formula);expect(screen.getByLabelText(en.payFormula.description)).toBeDisabled();expect(screen.getByRole('button',{name:en.payFormula.testSaved})).toBeDisabled();expect(screen.queryByRole('button',{name:en.payFormula.activate})).not.toBeInTheDocument();});
 });
+
+it.each(['new','edit'] as const)('%s formula shows readable codes and requires reviewed draft conversion',async mode=>{
+ const codeField={fieldId:'employment.organisation_assignment.positionname',key:'positionBusinessCode',label:'Position code',labelKey:'payFormula.fields.positionBusinessCode',section:'Organisation assignment',group:'profile' as const,type:'choice',history:'dated',sensitivity:'personnel',grain:'single',unavailableReason:null,description:'Organisation assignment · Position code',formulaType:'string' as const,functionCode:'EmployeeProfile',dateBasis:'effective-date',enabled:true,codeValuesTotal:1,listValues:[{value:'J0113',label:'J0113 · Equipment controller'}]};
+ const older=fixture();older.latest.source='If {#EmployeeProfile}("positionCode") = "J0113" Then\nReturn 10\nElse\nReturn 0\nEnd If';older.latest.program=parsePayFormula(older.latest.source);
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><FormulaEditor initial={mode==='new'?null:older} options={{...options,personnelFields:[codeField,{...codeField,key:'positionId',label:'Position internal ID',labelKey:'unknown',compatibility:true,codeValuesTotal:undefined,listValues:[]}]}}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('tab',{name:en.payFormula.help.tabs.variables}));
+ expect(screen.getByRole('heading',{name:'Position code'})).toBeVisible();
+ expect(screen.queryByRole('heading',{name:'Position internal ID'})).toBeNull();
+ const codeArticle=screen.getByRole('heading',{name:'Position code'}).closest('article')!;
+ expect(within(codeArticle).getByText('{#EmployeeProfile}("positionBusinessCode")')).toBeVisible();
+ if(mode==='edit'){
+  const review=screen.getByRole('heading',{name:en.payFormula.businessCodes.reviewTitle}).closest('section')!;
+  expect(within(review).getByText(en.payFormula.businessCodes.preserved)).toBeVisible();
+  fireEvent.click(within(review).getByRole('button',{name:'J0113 · Equipment controller'}));
+  expect(within(review).getByRole('button',{name:en.payFormula.businessCodes.apply})).toBeDisabled();
+  fireEvent.click(within(review).getByRole('checkbox',{name:en.payFormula.businessCodes.reviewed}));
+  fireEvent.click(within(review).getByRole('button',{name:en.payFormula.businessCodes.apply}));
+  expect((screen.getByRole('textbox',{name:en.payFormula.source}) as HTMLTextAreaElement).value).toContain('"positionBusinessCode") = "J0113"');
+  expect(state.save).not.toHaveBeenCalled();
+ }
+ await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en',`feedback-formula-business-codes-${mode}`,'Actual FormulaEditor '+mode+' screen with fictional configured Code values, no authenticated server journey','atelier');
+},120_000);

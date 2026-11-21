@@ -117,6 +117,7 @@ import {
   GitBranch,
   HeartPulse,
   History,
+  Layers,
   Play,
   Settings2,
   Repeat2,
@@ -248,6 +249,20 @@ export const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
       icon: ClipboardList,
       ownedSubpaths: ['/admin/leave-config/entitlement-tables'],
     },
+    // 50d9b809 — SHARED LEAVE GROUPS, ITS OWN DESTINATION, DIRECTLY AFTER ENTITLEMENTS.
+    //
+    // The group editor was a "Shared leave groups" button on the Entitlements screen that opened a pop-up
+    // holding the whole catalogue — list, create, edit and delete. The reporter found it hard to find and
+    // cramped to work in, and asked for a card of its own under Leave Settings that opens a full page.
+    // Directly after Entitlements because that is the screen it came off, and because a group is about
+    // leave types: it pools several types' allowance into one limit. It holds no employees.
+    //
+    // It IS a group in components/leave-config-map.tsx (a group of ONE, so no tab strip is drawn), for the
+    // rule the Balance Health note below states: every row whose destination lives under
+    // `app/admin/leave-config/**` is a group, one for one, in order. Same `leaveConfig` permission column
+    // and `requireAdmin` guard as the screen it left, so exactly the people who could manage groups in
+    // the pop-up can open this page, and nobody else. NO `ownedSubpaths`: one screen, no tabs.
+    { href: '/admin/leave-config/shared-groups', labelKey: 'leaveSharedGroups', icon: Layers },
     // r279 (3fbf7a02) — LEAVE BALANCE HEALTH, THE SECOND ROW, AND ITS POSITION IS THE ANSWER.
     //
     // The listing that says which leave types can produce a balance at all was drawn at page level on
@@ -462,8 +477,9 @@ export const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
 //   · r392 (e6712304): `leaveHistory` likewise KEEPS ITS KEY; its VALUE (and leave.historyHeading's) is now
 //     "Leave Request Status" in six locales. Leave History Data Import (admin) is a different screen.
 /** 010fdbec: partition the existing destinations; their paths and guards remain authoritative. */
+// 50d9b809 — `leaveSharedGroups` joins the Settings cards (its page used to be a pop-up on Entitlements).
 const LEAVE_SETTINGS_KEYS = new Set([
-  'leaveEntitlements', 'leaveBalanceHealth', 'leaveGenerate', 'leaveEarnedAccrual',
+  'leaveEntitlements', 'leaveSharedGroups', 'leaveBalanceHealth', 'leaveGenerate', 'leaveEarnedAccrual',
   'leaveApprovalWorkflow', 'leaveCompanyRules', 'leaveSpecialSetting',
 ]);
 export const LEAVE_SETTINGS_DESTINATIONS = LEAVE_ADMIN_DESTINATIONS.children.filter(row => LEAVE_SETTINGS_KEYS.has(row.labelKey));

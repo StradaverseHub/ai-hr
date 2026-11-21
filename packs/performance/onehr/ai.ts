@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {createHash} from 'node:crypto';
 import {withAiAdmissionCheck,preparePrivateAiTask} from '../../../core/ai-governance';
 import type {GenerateArgs} from '../../../lib/ai/types';
@@ -32,7 +33,11 @@ async function narrativeViewTx(tx:Tx,ctx:SessionContext,reviewId:string,feature:
 }
 
 /** Extractive draft only: a model cannot introduce unsupported prose, ratings, pay or actions. */
-export async function draftOnehrNarrative(ctx:SessionContext,reviewId:string,words:string,feature:Extract<AssessmentAiFeature,'pm'|'tc'|'idp'>='pm') {
+export async function draftOnehrNarrative(...args:Parameters<typeof draftOnehrNarrativeActivity>):Promise<Awaited<ReturnType<typeof draftOnehrNarrativeActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_performance_narrative',()=>draftOnehrNarrativeActivity(...args));
+}
+async function draftOnehrNarrativeActivity(ctx:SessionContext,reviewId:string,words:string,feature:Extract<AssessmentAiFeature,'pm'|'tc'|'idp'>='pm') {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   z.enum(['pm','tc','idp']).parse(feature);z.uuid().parse(reviewId);const ownWords=z.string().trim().min(1).max(4000).parse(words);
   const view=await withPerformanceTenant(ctx,tx=>narrativeViewTx(tx,ctx,reviewId,feature));

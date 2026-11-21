@@ -76,6 +76,11 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
       '/attendance',
       // Approved Attendance Application History has its own permission and page guard.
       '/attendance/application-history',
+      // 96a54ed2 — Request/Approve On Behalf: scopedSession pages because superiors reach them from Manage too; each
+      // read and action enforces attendance.request_on_behalf / approve_on_behalf plus HR company scope or the
+      // caller's own reporting line in the service (test/attendance-on-behalf-96a54ed2.test.ts), not this row.
+      '/attendance/on-behalf/request',
+      '/attendance/on-behalf/approve',
       // 22d67223 (r311) — Attendance Breakdown. Unlike '/attendance' above it, this one is NOT an
       // exception to this file's premise: its page calls scopedAdmin in its own body and it is in the
       // loop below. See the note there for why it could not be scopedSession like its neighbour.
@@ -270,7 +275,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // What survived every inversion is the PROTECTION: an administrative screen is never reachable
     // because the rail happened to hide its link. The it.each above proves that directly, and it has not
     // changed.
-    const sidebar = read('components/sidebar.tsx');
+    const sidebar = read('lib/navigation/shell-inventory.ts');
     expect(sidebar, 'the pre-merge admin node stays gone').not.toContain('ATTENDANCE_ADMIN_NODE');
 
     // Ops/Strata replaces audience positions with module ownership. Source pack gates stay intact.
@@ -370,7 +375,8 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // r317 (1661123d) — ONE Manage row, not two. Import's was removed: it was managerUp in front of a
     // page that calls requireAdmin(), so it was a menu lying about a permission rather than a gate worth
     // keeping. Roster's page is scopedSession, so its row is a true statement and stays.
-    expect(manageLinks.map((l) => l.href).sort()).toEqual(['/roster']);
+    // 96a54ed2 — plus the two on-behalf screens for superiors (scopedSession pages; the service enforces the key and line).
+    expect(manageLinks.map((l) => l.href).sort()).toEqual(['/attendance/on-behalf/approve', '/attendance/on-behalf/request', '/roster']);
     expect(manageLinks.every((l) => l.managerUp === true), 'what is left stays managerUp').toBe(true);
   });
 
@@ -378,7 +384,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // MODULE_OF_HREF is built from the nav NODES' children. /roster and /attendance/import left the nodes,
     // so without an explicit navLinks line they would drop out of the map and stop being gated by the
     // attendance module entitlement — an un-gating hidden inside a menu move.
-    const sidebar = read('components/sidebar.tsx');
+    const sidebar = read('lib/navigation/shell-inventory.ts');
     expect(sidebar).toContain("(modulePackById('attendance')!.navLinks ?? []).map((l) => [l.href, 'attendance'] as const)");
   });
 

@@ -1,3 +1,15 @@
+import type {Routing as SharedDocumentRouting} from '../../../lib/automation/routing';
+import {raiseResignationClearancePostingTx,reassignOffboardingPostingsTx} from '../../../core/resignation-clearance';
+import {automationReferencesTx} from '../../../core/automation-builder';
+import {terminationReasonCatalogueTx} from '../../../core/termination-reason-catalog';
+import {updatePersonnelCompletionTx} from './personnel-completion';
+import {withAccessDisplayRead,lockAccessConfigurationWriteTx} from '../../../core/access-configuration-lock';
+import {communicationPreviewSource,type WorkflowPreviewContext} from '../../../lib/lifecycle-case-preview';
+import {v9SigningCanonicalText,reviseV9DocumentRouting} from '../../../lib/lifecycle-v9-document-routing';
+import {documentRoutingProblems,resolveDocumentRouting} from '../../../lib/document-signing-routing';
+import {resolveNativeDocumentRouting} from '../../../lib/document-signing-native-routing';
+import type {Routing as NativeDocumentRouting} from '../../../lib/onboarding-model';
+import { managerRecipientResult, type PersonnelManagerRecipient } from '../../../lib/personnel-manager-recipient';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import {joinerPageSections} from '../../../lib/onboarding-page-access';
 import type {Config as NativeConfig} from '../../../lib/onboarding-model';
@@ -8,21 +20,26 @@ import { randomUUID, createHash } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { SessionContext, Tx } from '../../../db/client';
+import type {SqlExecutor} from '../../../db/sql-executor';
 import { actorOf, appendEvent } from '../../../db/events';
 import { withLifecycleTenant } from '../../../core/module-gate';
 import { todayInKualaLumpur, timeInKualaLumpur } from '../../../lib/hr-date';
 import type { NotificationSweepConnection } from '../../../core/notice-projection';
 import { assertModuleEnabled } from '../../../core/entitlements';
 import * as M from '../../../lib/lifecycle-v9-model';
+import { lifecycleRecipientAddressesTx } from './recipient-directory';
+import { maskPersonalEmailView } from '../../../lib/lifecycle-v9-recipients';
 import { v9EmploymentLabels } from '../../../lib/lifecycle-v9-employment';
 import { projectNativeCase, nativeDocumentState } from '../../../lib/lifecycle-v9-native';
 import { OnboardingError, nativeCaseFormValues, effectiveFacts as nativeFacts } from '../../../lib/onboarding-model';
 import { changeV9Note, type CaseNoteCommand } from '../../../lib/lifecycle-v9-notes';
 import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
-import { parseV9Config, validateV9ConfigChange, v9Equal } from '../../../lib/lifecycle-v9-validation';
-import { readSettlementTx, type SettlementView } from './settlement';
+import { parseV9Config, validateV9ConfigChange, v9Equal, v9RoleSchema, v9ConfigSchema } from '../../../lib/lifecycle-v9-validation';
+import { readSettlementTx, settlementDateForSource,type SettlementEmploymentDateSource,type SettlementView } from './settlement';
+import { returnRows, plannedDue, offeredToCompany, existingGroup, type ReturnSources } from '../../../lib/lifecycle-v9-return-presets';
+import { bulkAssignmentProblem, RETURN_BULK_LABELS } from '../../../lib/lifecycle-bulk-assignment';
 import { readV9PersonnelTx, pushV9PersonnelTx, lockV9PersonnelWritesTx, v9PersonnelWritableKeys } from '../../../core/lifecycle-v9-personnel';
-import { onboardingFulfilmentGroupTx, onboardingHoldingsTx, onboardingReturnCatalogueTx, onboardingRecoverHoldingTx, onboardingCommand, onboardingV9ReadTx, onboardingV9StoreTx, onboardingSetupTx, onboardingEnableV9OffboardingTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
+import { onboardingFulfilmentGroupTx, onboardingHoldingsTx, onboardingReturnCatalogueTx, onboardingRecoverHoldingTx, onboardingCommand, onboardingV9ReadTx, onboardingV9DraftEmailFieldsTx, onboardingV9StoreTx, onboardingSetupTx, onboardingEnableV9OffboardingTx, onboardingSaveGroupsTx, onboardingV9DefinitionsChangedTx, onboardingAssignmentLoadsTx, onboardingUnavailableTx } from '../onboarding/service';
 import { issuedToTx, returnAssetTx } from '../../../core/lifecycle-assets';
 import { lifecycleV9EmailIpc } from '../../../lib/lifecycle-v9-email-ipc';
 import type { LifecycleV9DeliveryRequest, LifecycleV9DeliveryResult } from '../../../lib/lifecycle-v9-delivery-model';
@@ -30,14 +47,16 @@ import { resolveDocumentUpload } from '../../../core/employee-documents';
 
 type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
 export type DirectoryUser = { id: string; name: string };
-export type Options = { checklistOwnerIds?: string[]; users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; signatoryCandidatesByModule?:Record<M.Module,Record<string,string[]>>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
-export type Workspace = { permissions?:{onboarding:boolean;offboarding:boolean;administration:boolean;records?:boolean}; config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
+export type Options = { terminationReasonLabels?:{code:string;label:string|null}[]; nativeDocumentRoutingChoices?:{routings:{id:string;name:string}[];groups:{id:string;name:string}[];people:{id:string;name:string}[]}; checklistOwnerIds?: string[]; users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; signatoryCandidatesByModule?:Record<M.Module,Record<string,string[]>>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
+export type Workspace = { permissions?:{onboarding:boolean;offboarding:boolean;administration:boolean;records?:boolean}; config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[]; sender?: { name: string | null; configured: boolean } };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'documents'> & { items:(M.Item&{canFulfil?:boolean})[]; own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
-export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[] };
-export type CaseDetail = { returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
+export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[];
+  /** d1e26f81 — the rows submission will create, with their team, method and Day (presets applied). */
+  rows:{previewId:string;name:string;kind:'system'|'device';group:string|null;method:M.ReturnMethod;dueDay:number|null;dueOn:string;cardStep?:'collect'|'deactivate'}[] };
+export type CaseDetail = { resignationDocuments?:{ownedTemplateIds:string[];configurationWarnings:string[]}; canUploadFiles?:boolean; returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function identifier(value: string): string { if (!uuid.test(value)) throw new M.V9Error('A valid record identifier is required.'); return value; }
-async function admin(tx: Tx, companyId?: string): Promise<void> {
+async function admin(tx: SqlExecutor, companyId?: string): Promise<void> {
   const [result] = await tx.execute<{ ok: boolean }>(companyId ? sql`select app.is_admin_for(${companyId}::uuid) as ok` : sql`select app.is_group_admin() as ok`);
   if (!result?.ok) throw new M.V9Error('You do not have permission to change this lifecycle record.', 'forbidden');
 }
@@ -48,26 +67,73 @@ async function companySignersTx(tx:Tx,tenantId:string,companyId:string,module?:M
   return users.filter(user=>{const sections=joinerPageSections(configuration.data,user.id),onb=configuration.data.access.onboarding.includes(user.id)||sections?.actions==='allowed'&&sections.hr==='view',off=configuration.data.access.offboarding.includes(user.id);return module==='onb'?onb:module==='off'?off:onb||off;}).map(user=>user.id);
 }
 
-async function actor(tx: Tx, ctx: SessionContext): Promise<M.Actor> {
+/** Full case view: onboarding module access or a group with the "Full case view" preset; offboarding module access.
+ * Either way the account must be active and able to open the case's company. */
+function fullCaseViewer(configuration: NativeConfig, userId: string, module: M.Module): boolean {
+  if (module === 'off') return configuration.access.offboarding.includes(userId);
+  return configuration.access.onboarding.includes(userId) || configuration.groups.some(group => configuration.access.joinerViewGroups?.includes(group.id) && group.members.includes(userId) && (configuration.access.joinerSections?.[group.id]?.preset ?? 'fulfil') === 'full');
+}
+async function holdAlertUsersTx(tx: Tx, tenantId: string, companyId: string, module: M.Module): Promise<string[]> {
+  const [configuration] = await tx.execute<{ data: NativeConfig }>(sql`select data from lc_onboarding_config where tenant_id=${tenantId}::uuid`);
+  if (!configuration) return [];
+  const users = await tx.execute<{ id: string }>(sql`select u.id from app_user u where u.tenant_id=${tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and exists(select 1 from role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id and r.role in ('super_admin','hr_admin') and (r.company_id is null or r.company_id=${companyId}::uuid)) order by u.id`);
+  return users.map(user => user.id).filter(id => fullCaseViewer(configuration.data, id, module));
+}
+type HoldKey = { runId: string; stepId: string; at: string; workflow: string; email: string; missing: M.RecipientMissing[] };
+function openHolds(c: Pick<M.Case, 'runs' | 'state'>, config: M.Config | null): HoldKey[] {
+  if (c.state !== 'submitted') return [];
+  return c.runs.flatMap(run => (run.hold || run.lateEmail) && run.status === 'waiting' ? [(() => {
+    const hold = run.lateEmail ?? run.hold!;
+    const definition = run.definition ?? config?.workflows.find(workflow => workflow.id === run.workflowId), step = definition?.steps.find(step => step.id === hold.stepId);
+    const email = step?.type === 'email' ? config?.emails.find(email => email.id === step.template)?.name ?? 'Email' : step?.type === 'notify' ? step.subject || 'Notification' : 'Email';
+    const missing: M.RecipientMissing[] = run.lateEmail ? [{role:'supervisor',label:'Late email',reason:`Scheduled for ${run.lateEmail.dueOn}; HR must choose Send anyway or Skip this email`}] : run.hold!.missing;
+    return { runId: run.id, stepId: hold.stepId, at: hold.at, workflow: definition?.name ?? 'Workflow', email, missing };
+  })()] : []);
+}
+/** The Inbox projection of held emails, written in the same transaction as the case store. */
+async function syncEmailHoldsTx(tx: Tx, ctx: SessionContext, input: { caseId: string; companyId: string; before: Pick<M.Case, 'runs' | 'state'>; after: M.Case; config: M.Config | null; preserveUnchangedState?:boolean }): Promise<void> {
+  const key = (hold: HoldKey) => `${hold.runId}\u0000${hold.stepId}\u0000${hold.at}`;
+  const before = openHolds(input.before, input.config), after = openHolds(input.after, input.config), kept = new Set(after.map(key));
+  for (const hold of after) if (!before.some(previous => key(previous) === key(hold)))
+    await tx.execute(sql`insert into lc_v9_email_hold(tenant_id,company_id,module,case_id,case_number,subject_name,run_id,step_id,workflow_name,email_name,missing,held_at) values(${ctx.tenantId}::uuid,${input.companyId}::uuid,${input.after.module},${input.caseId}::uuid,${input.after.number},${input.after.facts.name.slice(0, 500)},${hold.runId},${hold.stepId},${hold.workflow.slice(0, 200)},${hold.email.slice(0, 1000)},${JSON.stringify(hold.missing.slice(0, 32).map(entry => ({ label: entry.label, reason: entry.reason })))}::jsonb,${hold.at}::timestamptz) on conflict do nothing`);
+  const released = before.filter(hold => !kept.has(key(hold)));
+  for (const hold of released) await tx.execute(sql`update lc_v9_email_hold set released_at=now(),released_by=${ctx.userId ?? null}::uuid where tenant_id=${ctx.tenantId}::uuid and case_id=${input.caseId}::uuid and run_id=${hold.runId} and step_id=${hold.stepId} and held_at=${hold.at}::timestamptz and released_at is null`);
+  // A cancelled, cleared or reopened case closes every hold it still has.
+  if (input.after.state !== 'submitted'&&(!input.preserveUnchangedState||input.after.state!==input.before.state)) await tx.execute(sql`update lc_v9_email_hold set released_at=now(),released_by=${ctx.userId ?? null}::uuid where tenant_id=${ctx.tenantId}::uuid and case_id=${input.caseId}::uuid and released_at is null`);
+}
+/** Personal email is shown only to viewers who may see that Personnel field in any company of the tenant. */
+async function personalEmailRevealTx(tx: Tx, ctx: SessionContext): Promise<boolean> {
+  if (!ctx.userId) return false;
+  const [row] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from company where tenant_id=${ctx.tenantId}::uuid and app.personnel_identity_search_permitted(id)) as ok`);
+  return row?.ok === true;
+}
+/** Server-side masking of personal email keys in a case projection. Other recipients are unchanged. */
+function maskCasePersonalEmail(c: M.Case): M.Case {
+  if (!c.mails.some(mail => mail.delivery?.personalKeys?.length)) return c;
+  return { ...c, mails: c.mails.map(mail => maskPersonalEmailView(mail, mail.delivery?.personalKeys ?? [])) };
+}
+
+async function actor(tx: SqlExecutor, ctx: SessionContext): Promise<M.Actor> {
   if (!ctx.userId) { const [owner] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`); if (owner?.ok) return { id: 'system', name: 'System' }; throw new M.V9Error('Sign in to continue.', 'forbidden'); }
   const [user] = await tx.execute<{ id: string; name: string }>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)`);
   if (!user) throw new M.V9Error('Your account is not available.', 'forbidden'); return user;
 }
-async function configTx(tx: Tx, ctx: SessionContext, lock = false): Promise<M.Config | null> {
+async function configTx(tx: SqlExecutor, ctx: SessionContext, lock = false): Promise<M.Config | null> {
   const [row] = await tx.execute<{ data: M.Config }>(sql`select data from lc_v9_config where tenant_id=${ctx.tenantId}::uuid ${lock ? sql`for update` : sql``}`);
   if (!row) return null;
   const [shared] = await tx.execute<{ revision: number; data: { groups: M.Group[] } }>(sql`select revision,data from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
-  return { ...row.data, groups: shared?.data.groups ?? [], groupsRevision: shared?.revision ?? 0 };
+  const data = { ...row.data } as M.Config & { bpRules?: unknown }; delete data.bpRules;
+  return { ...data, groups: shared?.data.groups ?? [], groupsRevision: shared?.revision ?? 0 };
 }
-async function lockTx(tx: Tx, ctx: SessionContext): Promise<void> {
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('audit-chain:' || ${ctx.tenantId}::uuid::text))`);
+async function lockTx(tx: SqlExecutor, ctx: SessionContext): Promise<void> {
+  // The onboarding key first, as lockOnboardingTx. The audit chain is sealed at commit.
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':onboarding'},0))`);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'lifecycle-v9:' + ctx.tenantId},0))`);
 }
-async function load(tx: Tx, ctx: SessionContext, id: string): Promise<Row> {
-  const [row] = await tx.execute<Row>(sql`select id,revision,company_id,data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and id=${identifier(id)}::uuid for update`);
+async function load(tx: Tx, ctx: SessionContext, id: string, lock = true): Promise<Row> {
+  const [row] = await tx.execute<Row>(sql`select id,revision,company_id,data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and id=${identifier(id)}::uuid ${lock ? sql`for update` : sql``}`);
   if (!row) {
-    const native = await onboardingV9ReadTx(ctx, tx, id);
+    const native = await onboardingV9ReadTx(ctx, tx, id, lock);
     return { id: native.c.id, revision: native.row.revision, company_id: native.row.companyId, data: projectNativeCase(native.c, native.row.revision, native.documentState, native.employeeUserId, native.supervisorUserId), native: true };
   }
   await admin(tx, row.company_id); return row;
@@ -75,36 +141,70 @@ async function load(tx: Tx, ctx: SessionContext, id: string): Promise<Row> {
 async function record(tx: Tx, ctx: SessionContext, id: string, employmentId: string, action: string): Promise<void> {
   await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-case', aggregateId: id, eventType: `lifecycle-v9.${action}`, actor: actorOf(ctx), subjectEmploymentId: employmentId || null, payload: { caseId: id, action } });
 }
-async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action: string): Promise<void> {
+type ResignationDateCorrection={journeyId:string;oldLastDay:string;newLastDay:string};
+async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action: string, config: M.Config | null = null,resignationDateCorrection?:ResignationDateCorrection): Promise<void> {
   if (row.native) {
     await onboardingV9StoreTx(ctx, tx, row.id, row.revision, nativeDocumentState(next), next.tasks.filter(task => task.status === 'done' && task.documentTemplate).map(task => task.id), action);
+    await syncEmailHoldsTx(tx, ctx, { caseId: row.id, companyId: row.company_id, before: row.data, after: next, config });
     return;
   }
+  if(resignationDateCorrection){
+    next.revision=row.revision+1;
+    const{prepareResignationProofTx}=await import('../../../core/resignation-proof');
+    const args={mode:'offboardingDateCorrectionSave',journeyId:resignationDateCorrection.journeyId,revision:row.revision,oldLastDay:resignationDateCorrection.oldLastDay,newLastDay:resignationDateCorrection.newLastDay,data:JSON.parse(JSON.stringify(next))};
+    await prepareResignationProofTx(tx,ctx,{operation:'context',caseId:resignationDateCorrection.journeyId,args});
+    await tx.execute(sql`select app.resignation_offboarding_date_store(${resignationDateCorrection.journeyId}::uuid,${row.revision},${resignationDateCorrection.oldLastDay}::date,${resignationDateCorrection.newLastDay}::date,${JSON.stringify(next)}::jsonb)`);
+  }else{
   await tx.execute(sql`insert into lc_v9_case_revision(tenant_id,case_id,company_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${row.id}::uuid,${row.company_id}::uuid,${row.revision},${JSON.stringify(row.data)}::jsonb,${ctx.userId ?? null}::uuid)`);
   next.revision = row.revision + 1;
   const updated = await tx.execute<{ id: string }>(sql`update lc_v9_case set data=${JSON.stringify(next)}::jsonb,revision=${next.revision},updated_at=now() where id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid and revision=${row.revision} returning id`);
   if (!updated.length) throw new M.V9Error('This case changed. Refresh it before trying again.', 'conflict');
+  }
   if (row.data.state !== 'cleared' && next.state === 'cleared' && next.finalFigures) await tx.execute(sql`insert into lc_v9_payroll_handover(id,tenant_id,company_id,case_id,employment_id,data) values(${next.finalFigures.payrollReference}::uuid,${ctx.tenantId}::uuid,${row.company_id}::uuid,${row.id}::uuid,${next.facts.employmentId}::uuid,${JSON.stringify(next.finalFigures)}::jsonb)`);
   if (row.data.state === 'cleared' && next.state !== 'cleared') await tx.execute(sql`update lc_v9_payroll_handover set status='withdrawn',updated_at=now() where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid and status in ('pending','reviewed')`);
+  if(row.data.state!=='cleared'&&next.state==='cleared')await raiseResignationClearancePostingTx(tx,ctx,{caseId:row.id,employmentId:next.facts.employmentId,lastWorkingDay:next.facts.lastDay,exitReason:next.facts.caseType});
+  // The native correction forbids state/run changes, so no hold can open or close.
+  await syncEmailHoldsTx(tx, ctx, { caseId: row.id, companyId: row.company_id, before: row.data, after: next, config,preserveUnchangedState:!!resignationDateCorrection });
   await record(tx, ctx, row.id, next.facts.employmentId, action);
 }
-async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Config): Promise<M.Environment> {
+async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Config, lockCase = true, selectedTemplates:readonly string[]=[]): Promise<M.Environment> {
   const who = await actor(tx, ctx), today = todayInKualaLumpur();
-  const users = await tx.execute<DirectoryUser>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)`);
-  const dates = new Set([today, c.facts.lastDay, c.facts.joinDate, ...c.tasks.map(t => t.dueOn)]);
+  const users = await tx.execute<DirectoryUser & {personId:string|null}>(sql`select u.id,u.person_id as "personId",coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)`);
+  const dates = new Set([today, c.facts.lastDay, c.facts.joinDate, ...c.tasks.map(t => t.dueOn), ...c.items.map(i => i.dueOn)]);
+  // d1e26f81 — Return and revoke items are due Day -1/0 from the effective last working day; leave is checked on those dates.
+  const calculation = c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
+  for (const day of [c.facts.lastDay, c.returnAnchor, calculation?.lastDay]) if (c.module === 'off' && day && M.validDate(day)) { dates.add(day); dates.add(M.addDays(day, -1)); }
   const anchor = c.module === 'onb' ? c.facts.joinDate : c.facts.lastDay;
   if (M.validDate(anchor)) for (const cl of config.checklists.filter(x => x.module === c.module)) for (const t of cl.tasks) dates.add(M.taskDate(c.module, anchor, t.due));
   const unavailable = await onboardingUnavailableTx(tx, [...dates]);
   const sharedLoads = await onboardingAssignmentLoadsTx(tx);
-  const company = await tx.execute<{ name: string; registrationNo: string; address: string }>(sql`select legal_name as name,coalesce(registration_no,'') as "registrationNo",concat_ws(', ',nullif(trim(address_line1),''),nullif(trim(address_line2),''),nullif(trim(address_line3),''),nullif(trim(postcode),''),nullif(trim(city),''),nullif(trim(state),''),nullif(trim(address_country),'')) as address from company where id=${c.facts.company}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  const company = await tx.execute<{ name: string; registrationNo: string; address: string;businessGroupId:string }>(sql`select coalesce(parent_company_id,id) as "businessGroupId",legal_name as name,coalesce(registration_no,'') as "registrationNo",concat_ws(', ',nullif(trim(address_line1),''),nullif(trim(address_line2),''),nullif(trim(address_line3),''),nullif(trim(postcode),''),nullif(trim(city),''),nullif(trim(state),''),nullif(trim(address_country),'')) as address from company where id=${c.facts.company}::uuid and tenant_id=${ctx.tenantId}::uuid`);
   const [personnel] = await tx.execute<{ position: string | null; department: string | null; business_group: string | null }>(sql`select (select title from position where id::text=${c.facts.title} and tenant_id=${ctx.tenantId}::uuid) as position,(select name from department where id::text=${c.facts.department} and tenant_id=${ctx.tenantId}::uuid) as department,(select name from business_unit where id::text=${c.facts.businessGroup} and tenant_id=${ctx.tenantId}::uuid) as business_group`);
-  const native = c.module === 'onb' ? await onboardingV9ReadTx(ctx, tx, c.id) : null;
+  const native = c.module === 'onb' ? await onboardingV9ReadTx(ctx, tx, c.id, lockCase) : null;
   const nf = native ? nativeFacts(native.c) : null;
-  const source = c.facts.employmentId ? await readV9PersonnelTx(tx, ctx, c.facts.employmentId) : { email: nf?.email ?? '', icNo: nf?.ic ?? '', passportNo: nf?.passport ?? '' };
+  const source: Record<string,string> = c.facts.employmentId
+    ? await readV9PersonnelTx(tx, ctx, c.facts.employmentId)
+    : { email: nf?.email ?? '', icNo: nf?.ic ?? '', passportNo: nf?.passport ?? '',
+        ...(native ? await onboardingV9DraftEmailFieldsTx(ctx, tx, native) : {}) };
+  const supervisorUserId = native ? native.supervisorUserId : source.supervisorUserId || null;
+  const [manager] = await tx.execute<{ recipient: PersonnelManagerRecipient }>(sql`select app.lifecycle_personnel_manager(${c.id}::uuid) as recipient`);
+  const supervisorRecipient = manager.recipient;
+  const currentBusinessUnit = native?.personnelLabels.businessGroup;
+  const [unit] = !native && ctx.userId && c.facts.employmentId
+    ? await tx.execute<{ name: string | null }>(sql`
+        select bu.name from employment e
+        left join business_unit bu on bu.tenant_id=e.tenant_id
+          and bu.id::text=app.employment_organisation_tags(e.id, greatest(${today}::date,e.hired_on))->>'businessUnitId'
+        where e.id=${c.facts.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid
+          and app.access_workforce_employment(e.id, 'workforce.maintain')
+      `)
+    : [];
+
   const fmt = (value: string) => M.validDate(value) ? value.slice(8) + '/' + value.slice(5, 7) + '/' + value.slice(0, 4) : '';
   const values: Record<string, string> = { ...source,
     'employee.name': c.facts.name, 'employee.empNo': c.facts.employeeNo, 'employee.position': personnel?.position ?? c.facts.title, 'employee.department': personnel?.department ?? c.facts.department,
-    'employee.icNo': source.icNo ?? '', 'employee.passportNo': source.passportNo ?? '', 'employee.supervisor': users.find(u => u.id === c.facts.supervisorUserId)?.name ?? '',
+    'employee.icNo': source.icNo ?? '', 'employee.passportNo': source.passportNo ?? '', 'employee.supervisor': supervisorRecipient.name ?? '',
+    'employee.businessUnit': currentBusinessUnit ?? (unit ? unit.name ?? '' : personnel?.business_group ?? ''),
     'company.name': company[0]?.name ?? '', 'joiner.joinDate': fmt(c.facts.joinDate), 'leaver.lastDay': fmt(c.facts.lastDay),
     'leaver.noticeDate': fmt(c.facts.noticeDate), 'leaver.type': c.facts.caseType, 'today.date': fmt(today), today: fmt(today),
     'signatory.name': who.name, 'onboarding.progress': M.work(c).percent + '%', name: c.facts.name, empNo: c.facts.employeeNo, company: company[0]?.name ?? '', position: personnel?.position ?? c.facts.title, group: personnel?.business_group ?? c.facts.businessGroup, icNo: source.icNo ?? '', email: source.email ?? '',
@@ -117,63 +217,152 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   values['company.color'] = signatory?.letterhead?.color ?? '#4F46E5';
   values['employee.company']=company[0]?.name??'';values['employee.businessGroup']=personnel?.business_group??'';
   const caseFields=resolveV9CaseFields(c.module,config.caseForms?.[c.module],true),caseValues=native?nativeCaseFormValues(native.c):offCaseFormValues(c);
-  const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:users.find(user=>user.id===c.facts.supervisorUserId)?.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
+  const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:supervisorRecipient.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
   for(const field of caseFields) values['case.'+field.key]=field.key in caseLabels?caseLabels[field.key]:field.type==='date'?fmt(caseValues[field.key]??''):caseValues[field.key]??'';
 
-  const calculation = c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
   if (calculation?.ready) Object.assign(values, { 'leave.remaining': String(calculation.remainingLeave), 'leave.encashDays': String(calculation.encashDays), 'leave.encashAmount': `${calculation.currency} ${calculation.amount!.toFixed(2)}`, 'leave.dailyRate': `${calculation.currency} ${calculation.dailyRate!.toFixed(2)}`, 'pay.finalPayDate': fmt(calculation.payDate) });
-  return { today, now: new Date().toISOString(), actor: who, nextId: randomUUID,
+  const journey = c.module === 'off' ? await (await import('../resignation/service')).resignationOffboardingTemplateScopeTx(tx,ctx,c.id) : null;
+  const [nativeRoutingConfig]=await tx.execute<{routings:NativeDocumentRouting[]}>(sql`select data->'routings' as routings from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+  const routedTemplateIds=[...new Set([...selectedTemplates,...c.documents.map(document=>document.templateId),...config.workflows.filter(workflow=>workflow.status==='published'&&M.workflowMatches(c,workflow,today)).flatMap(workflow=>workflow.steps.filter(step=>step.type==='doc').map(step=>step.template)),...c.runs.flatMap(run=>(run.definition?.steps??[]).filter(step=>step.type==='doc').map(step=>step.template))])].filter(id=>config.templates.some(template=>template.id===id&&template.module==='off'&&!template.retired&&M.matches(template.rules,c.facts))).slice(0,200);
+  const [sharedRoutingConfig]=c.module==='off'&&routedTemplateIds.length?await tx.execute<{routings:(SharedDocumentRouting&{revision:number})[]}>(sql`select app.v9_offboarding_document_routings(${c.id}::uuid,${c.revision},array(select jsonb_array_elements_text(${JSON.stringify(routedTemplateIds)}::jsonb))) as routings`):[];
+  const env:M.Environment={ managedResignation: journey?.managed ?? false,resignationOwnedTemplateIds:journey?.ownedTemplateIds??[], today, now: new Date().toISOString(), actor: who, supervisorUserId, supervisorRecipient, nextId: randomUUID,
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
-    eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, signatoryUserId: signatory?.signatoryUserId ?? null, actorSignatoryTitle:v9SignatoryTitle(config,who.id,c.facts.company), requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse((native.c.caseContactEmail ?? nf?.email)?.trim()).success ? { onboardingContact: { email: (native.c.caseContactEmail ?? nf!.email).trim(), sourceRevision: native.c.sourceVersion } } : {}) };
+    eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, ...(calculation?.lastDay ? { effectiveLastDay: calculation.lastDay } : {}), holdAlertUserIds: ['pending', 'submitted'].includes(c.state) ? await holdAlertUsersTx(tx, ctx.tenantId, c.facts.company, c.module) : [], signatoryUserId: signatory?.signatoryUserId ?? null, actorSignatoryTitle:v9SignatoryTitle(config,who.id,c.facts.company), requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse((native.c.caseContactEmail ?? nf?.email)?.trim()).success ? { onboardingContact: { email: (native.c.caseContactEmail ?? nf!.email).trim(), sourceRevision: native.c.sourceVersion } } : {}) };
+  const [routedPersonnel]=config.templates.some(template=>template.versions.some(version=>version.routing?.length||version.fields.some(field=>field.owner==='pmLocked')))?await tx.execute<{values:Record<string,string>|null}>(sql`select app.v9_document_personnel_values(${c.id}::uuid) as values`):[];
+  env.personnelCompletion={available:!!routedPersonnel?.values,country:routedPersonnel?.values?._country??null,source:routedPersonnel?.values??{},fingerprint:(values,country)=>createHash('sha256').update(v9SigningCanonicalText({country,values})).digest('hex')};
+  // Email recipients may be accounts without a Person. Only signing custody requires that binding.
+  const eligibleDocumentUser=(id:string)=>users.some(user=>user.id===id&&user.personId!==null);
+  const documentEnvironment:M.Environment={...env,eligibleUser:eligibleDocumentUser};
+  env.documentRouting={...(routedPersonnel?{...(routedPersonnel.values?{personnelSource:routedPersonnel.values}:{sourceUnavailable:true})}:{}),tenantId:ctx.tenantId,hash:text=>createHash('sha256').update(text).digest('hex'),resolve:routing=>{
+   const resolved=resolveDocumentRouting(routing,{employeeUserId:c.facts.employeeUserId&&eligibleDocumentUser(c.facts.employeeUserId)?c.facts.employeeUserId:null,directSuperiorUserId:supervisorUserId&&eligibleDocumentUser(supervisorUserId)?supervisorUserId:null,facts:{company:c.facts.company,businessGroup:[c.facts.businessGroup,company[0]?.businessGroupId??''],department:c.facts.department,jobTitle:c.facts.title},routing:id=>sharedRoutingConfig?.routings.find(route=>route.id===id)??null,
+    ...(c.module==='onb'?{nativeRouting:(id:string)=>{const definition=nativeRoutingConfig?.routings?.find(definition=>definition.id===id);return definition?resolveNativeDocumentRouting(definition,{...c.facts,finalConfirmationDate:c.facts.finalConfirmationDate??undefined,confirmationDate:c.facts.confirmationDate??undefined,probationEndDate:c.facts.probationEndDate??undefined,provisionalEndOn:c.facts.provisionalEndOn??undefined},config.groups,id=>eligibleDocumentUser(id)&&!env.onLeave(id,today)):{userIds:[],groupId:null,reason:'The On/Off Boarding routing no longer exists.'};}}:{}),
+    groupMembers:id=>config.groups.find(group=>group.id===id)?.members??null,fallback:null,describe:who=>who.kind==='employee'?'Employee':who.kind==='directSuperior'?'Direct Superior':who.kind==='people'?'Named people':who.kind==='routing'?'On/Off Boarding routing':'On/Off Boarding group',
+    choose:(candidates,pick,groupId)=>{if(groupId)return M.assign(config,groupId,today,documentEnvironment,{},pick==='roundRobin'?'recent':'memberOrder').userId;return candidates.filter(id=>eligibleDocumentUser(id)&&!env.onLeave(id,today)).sort((a,b)=>pick==='roundRobin'?env.lastAssigned(a,'')-env.lastAssigned(b,'')||candidates.indexOf(a)-candidates.indexOf(b):candidates.indexOf(a)-candidates.indexOf(b))[0]??null;}});
+   resolved.route.steps=resolved.route.steps.map(step=>{const holder=users.find(user=>user.id===step.holderId);return {...step,...(holder?.personId?{holderPersonId:holder.personId}:{}),label:step.holderId?env.userName(step.holderId):'Unassigned'};});return resolved;
+  }};
+  return env;
 }
-async function pendingReturnsTx(tx:Tx,ctx:SessionContext,c:M.Case):Promise<PendingReturns> {
+/** d1e26f81 — the sources a leaver's Return and revoke rows are built from, read once per command or view. */
+async function returnSourcesTx(tx:Tx,ctx:SessionContext,c:M.Case):Promise<ReturnSources> {
   const assets=c.facts.employeeNo.trim()?await issuedToTx(tx,c.facts.employeeNo,c.facts.company):[],holdings=await onboardingHoldingsTx(ctx,tx,c.facts.employmentId,c.facts.company);
-  return {held:[...assets.map(asset=>({id:'asset:'+asset.id,name:`${asset.code} · ${asset.model??asset.assetType}`,kind:'device' as const,group:null,source:'asset' as const})),...holdings.map(item=>({id:'onboarding:'+item.itemId,name:item.name,kind:item.kind,group:item.group,source:'onboarding' as const,catalogueId:item.catalogueId,requestNumber:item.requestNumber}))],catalogue:await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),selected:c.returnSelections??[]};
+  return {techGroup:await onboardingFulfilmentGroupTx(ctx,tx),assets,holdings,catalogue:await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),selections:c.returnSelections??[]};
+}
+async function pendingReturnsTx(tx:Tx,ctx:SessionContext,c:M.Case,config:M.Config,anchor:string):Promise<PendingReturns> {
+  const sources=await returnSourcesTx(tx,ctx,c);
+  const rows=returnRows(c,config,sources).map(row=>({previewId:row.previewId,name:row.name,kind:row.kind,group:row.group,method:row.method,...(M.validDate(anchor)?plannedDue(c,row,anchor,c.returnPresets):{dueOn:'',dueDay:row.dueDay}),...(row.cardStep?{cardStep:row.cardStep}:{})}));
+  return {held:[...sources.assets.map(asset=>({id:'asset:'+asset.id,name:`${asset.code} · ${asset.model??asset.assetType}`,kind:'device' as const,group:null,source:'asset' as const})),...sources.holdings.map(item=>({id:'onboarding:'+item.itemId,name:item.name,kind:item.kind,group:item.group,source:'onboarding' as const,catalogueId:item.catalogueId,requestNumber:item.requestNumber}))],catalogue:sources.catalogue.filter(item=>offeredToCompany(item,c.facts.company)||(c.returnSelections??[]).includes(item.id)).map(({id,name,kind,group,active})=>({id,name,kind,group,active})),selected:c.returnSelections??[],rows};
+}
+/** Read-only projection of the existing lc_v9_file INSERT policy after the exact upload writer's load authority. */
+async function v9UploadCapabilityTx(tx:Tx,ctx:SessionContext,row:Row):Promise<boolean>{
+ if(!ctx.userId||!['pending','submitted'].includes(row.data.state))return false;
+ const [access]=await tx.execute<{ok:boolean}>(row.native?sql`select app.is_admin_for(${row.company_id}::uuid) and (app.onboarding_page_access() or app.onboarding_v9_case_actor() or app.is_group_admin()) as ok`:sql`select app.lc_v9_off_access(${row.company_id}::uuid) as ok`);
+ return !!access?.ok;
 }
 export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<CaseDetail> {
   return withLifecycleTenant(ctx, async tx => {
     const row = await load(tx, ctx, id), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data)}:{}), case: row.data, calculation: await readSettlementTx(tx, ctx, row.data, config), personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
+    const calculation = await readSettlementTx(tx, ctx, row.data, config);
+    const [manager] = await tx.execute<{ recipient: PersonnelManagerRecipient }>(sql`select app.lifecycle_personnel_manager(${row.id}::uuid) as recipient`);
+    const managerResult = managerRecipientResult(manager.recipient);
+    row.data = { ...row.data, supervisorDelivery: { name: manager.recipient.name, problem: 'reason' in managerResult ? managerResult.reason : null, reason: 'reason' in managerResult ? manager.recipient.reason ?? (manager.recipient.email ? 'invalidEmail' : 'missingEmail') : null } };
+    const reveal = await personalEmailRevealTx(tx, ctx);
+    const journey=row.data.module==='off'?await (await import('../resignation/service')).resignationOffboardingTemplateScopeTx(tx,ctx,row.id):null;
+    const checklistTasks=row.data.state==='pending'?(M.matchChecklist(config,row.data).checklist?.tasks??[]):row.data.tasks;
+    const resignationDocuments=journey?.managed?{ownedTemplateIds:journey.ownedTemplateIds,configurationWarnings:checklistTasks.filter(task=>task.documentTemplate&&journey.ownedTemplateIds.includes(task.documentTemplate)).map(task=>`Review checklist task “${task.name}”: its linked document is owned by the resignation journey. HR must update this checklist requirement before clearance.`)}:undefined;
+    return { canUploadFiles:await v9UploadCapabilityTx(tx,ctx,row),...(resignationDocuments?{resignationDocuments}:{}), ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: reveal ? row.data : maskCasePersonalEmail(row.data), calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
   });
 }
 
 export async function v9PreviewPersonnelValues(ctx: SessionContext, caseId: string, module: M.Module) {
   const selectedModule = z.enum(['onb', 'off']).parse(module);
-  return withLifecycleTenant(ctx, async tx => {
+  return withAccessDisplayRead(() => withLifecycleTenant(ctx, async tx => {
     await admin(tx);
-    const row = await load(tx, ctx, caseId);
+    const row = await load(tx, ctx, caseId, false);
     if (row.data.module !== selectedModule) throw new M.V9Error('Choose a case from this module.', 'not_found');
     const config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    const { mergeValues } = await environment(tx, ctx, row.data, config);
-    return Object.fromEntries([...personnelMergeLabels.keys()].map(key => [key, mergeValues[key] ?? '']));
-  });
+    const { mergeValues } = await environment(tx, ctx, row.data, config, false);
+    const preview = Object.fromEntries([...personnelMergeLabels.keys()].map(key => [key, mergeValues[key] ?? '']));
+    return await personalEmailRevealTx(tx, ctx) ? preview : maskPersonalEmailView(preview, [mergeValues.personalEmail ?? '']);
+  }, {readOnlySnapshot:true}));
 }
 
-export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailId: string): Promise<M.EmailPreview> {
+export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailId: string,context?:WorkflowPreviewContext): Promise<M.EmailPreview> {
   emailId = z.string().min(1).max(120).parse(emailId);
-  return withLifecycleTenant(ctx, async tx => {
-    const row = await load(tx, ctx, caseId), config = await configTx(tx, ctx);
+  return withAccessDisplayRead(() => withLifecycleTenant(ctx, async tx => {
+    const row = await load(tx, ctx, caseId, false), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    return M.previewEmail(row.data, config, emailId, await environment(tx, ctx, row.data, config));
-  });
+    const env = await environment(tx, ctx, row.data, config, false);
+    const selected=context?communicationPreviewSource(row.data,config,parseCommunicationPreviewContext(context)):null;
+    const step=selected?.steps.find(step=>step.id===context?.stepId);if(context&&(step?.type!=='email'||step.template!==emailId))throw new M.V9Error('Choose the email step of this workflow version.','not_found');
+    const preview = M.previewEmail(row.data, config, emailId, env,selected&&step?.type==='email'?{workflowId:selected.id,step}:undefined);
+    return await personalEmailRevealTx(tx, ctx) ? preview : maskPersonalEmailView(preview, [env.mergeValues.personalEmail ?? '', ...preview.cc.filter(recipient => recipient.personal).map(recipient => recipient.id)]);
+  }, {readOnlySnapshot:true}));
 }
 
-export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, workflowId: string) {
+const parseCommunicationPreviewContext=(input:WorkflowPreviewContext)=>z.object({workflowId:z.string().min(1).max(120),runId:z.string().min(1).max(1000).optional(),stepId:z.string().min(1).max(120)}).strict().parse(input);
+export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, workflowId: string,context?:Omit<WorkflowPreviewContext,'workflowId'>) {
   workflowId=z.string().min(1).max(120).parse(workflowId);
-  return withLifecycleTenant(ctx, async tx => {
-    const row=await load(tx,ctx,caseId), config=await configTx(tx,ctx);
-    const workflow=config?.workflows.find(workflow=>workflow.id===workflowId&&workflow.module===row.data.module);
+  return withAccessDisplayRead(() => withLifecycleTenant(ctx, async tx => {
+    const row=await load(tx, ctx, caseId, false), config=await configTx(tx,ctx);
+    const workflow=config?(context?communicationPreviewSource(row.data,config,parseCommunicationPreviewContext({...context,workflowId})):config.workflows.find(workflow=>workflow.id===workflowId&&workflow.module===row.data.module)):null;
     if(!config||!workflow)throw new M.V9Error('Workflow not found.','not_found');
-    const c=structuredClone(row.data),env=await environment(tx,ctx,c,config);
-    const email=workflow.steps.find(step=>step.type==='email'),notification=workflow.steps.find(step=>step.type==='notify'),document=workflow.steps.find(step=>step.type==='doc');
+    if(workflow.status==='retired'&&!context?.runId)throw new M.V9Error('This workflow is retired. Restore it before previewing it.','conflict');
+    const c=structuredClone(row.data),env=await environment(tx, ctx, c, config, false);
+    const steps=context?workflow.steps.filter(step=>step.id===context.stepId):workflow.steps;
+    const email=steps.find(step=>step.type==='email'),notification=steps.find(step=>step.type==='notify'),document=steps.find(step=>step.type==='doc');
     // Match the reference's single-output priority; an unrelated later draft cannot break this preview.
-    const messages=notification?.type==='notify'&&!email?[{id:notification.id,name:'Notification',...M.previewWorkflowNotification(c,config,notification,env)}]:[];
-    const documents=!email&&!notification&&document?.type==='doc'?[M.generate({...c,documents:[]},config,document.template,env)]:[];
-    return {workflow, messages, documents};
+    const messages=notification?.type==='notify'&&!email?[{id:notification.id,name:'Notification',...M.previewWorkflowNotification(c,config,notification,env,workflow.id)}]:[];
+    let documents:M.Document[]=[];
+    if(!email&&!notification&&document?.type==='doc'){
+     if(!context)documents=[M.generate({...c,documents:[]},config,document.template,env)];else{
+     const saved=M.activeDocument(c,document.template),template=config.templates.find(template=>template.id===document.template&&template.module===c.module),version=template?M.currentVersion(template):null;
+     if(saved)documents=[saved];else if(template&&version)documents=[{id:'preview:'+document.id,templateId:template.id,version:version.version,name:template.name,status:'draft',blocks:structuredClone(version.blocks),fields:structuredClone(version.fields),values:Object.fromEntries(version.fields.filter(field=>field.pmKey).map(field=>[field.id,M.personnelFieldSourceValue(field,env.mergeValues)])),edits:{},hrSignature:null,employeeSignature:null,createdAt:env.now,sentAt:null,mergeValues:M.documentMergeValues(version,env.mergeValues),templateType:template.type,hrStep:template.hrStep,employeeAck:template.employeeAck}];
+     }
+    }
+    return {workflow, messages: await personalEmailRevealTx(tx, ctx) ? messages : maskPersonalEmailView(messages, [env.mergeValues.personalEmail ?? '']), documents};
+  }, {readOnlySnapshot:true}));
+}
+
+/** Board 4a60b3ec dry run: the real people and addresses each step reaches for this case, or why it would hold.
+ * Nothing is sent or saved. Personal email is masked unless the viewer may see that Personnel field. */
+export async function v9PlanWorkflow(ctx: SessionContext, caseId: string, input: unknown) {
+  const workflow = v9ConfigSchema.shape.workflows.element.parse(input) as M.Workflow;
+  return withAccessDisplayRead(() => withLifecycleTenant(ctx, async tx => {
+    const row = await load(tx, ctx, caseId, false), config = await configTx(tx, ctx);
+    if (!config) throw new M.V9Error('V9 configuration is not available.');
+    if (row.data.module !== workflow.module) throw new M.V9Error('Choose a case from this module.', 'not_found');
+    const c = structuredClone(row.data), env = await environment(tx, ctx, c, config, false);
+    const userIds = new Set<string>();
+    for (const step of workflow.steps) if (step.type === 'email' || step.type === 'notify') {
+      const template = step.type === 'email' ? config.emails.find(email => email.id === step.template) : null;
+      const recipients = M.resolveStepRecipients(c, config, M.stepRecipientRoles(c, workflow.id, step, template), env);
+      for (const recipient of [...recipients.to, ...recipients.cc]) if (uuid.test(recipient.key)) userIds.add(recipient.key);
+    }
+    const addresses = await lifecycleRecipientAddressesTx(tx, ctx, caseId, [...userIds]);
+    return M.planWorkflow(c, config, workflow, { ...env, userEmail: id => addresses[id] ?? null, revealPersonal: await personalEmailRevealTx(tx, ctx), workflowId: workflow.id });
+  }, {readOnlySnapshot:true}));
+}
+export type EmailHoldInboxItem = { caseId: string; module: M.Module; number: string; name: string; email: string; workflow: string; heldAt: string; missing: { label: string; reason: string }[] };
+/** Inbox: held emails for viewers with Full case view, rechecked on every read. Shared Access lock only (none here). */
+export async function v9EmailHoldInbox(ctx: SessionContext): Promise<{ count: number; items: EmailHoldInboxItem[] }> {
+  if (!ctx.userId) return { count: 0, items: [] };
+  return withLifecycleTenant(ctx, async tx => {
+    const [configuration] = await tx.execute<{ data: NativeConfig }>(sql`select data from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+    const modules = configuration ? (['onb', 'off'] as const).filter(module => fullCaseViewer(configuration.data, ctx.userId!, module)) : [];
+    if (!modules.length) return { count: 0, items: [] };
+    const rows = await tx.execute<{ case_id: string; module: M.Module; case_number: string; subject_name: string; email_name: string; workflow_name: string; held_at: string; missing: { label: string; reason: string }[]; total: number }>(sql`
+      select h.case_id,h.module,h.case_number,h.subject_name,h.email_name,h.workflow_name,h.held_at,h.missing,count(*) over() as total
+      from lc_v9_email_hold h
+      where h.tenant_id=${ctx.tenantId}::uuid and h.released_at is null and (h.module='onb' and ${modules.includes('onb')}::boolean or h.module='off' and ${modules.includes('off')}::boolean)
+        and not app.login_blocked(app.current_user_id()) and app.is_admin_for(h.company_id)
+        and (h.module='off' and exists(select 1 from lc_v9_case c where c.id=h.case_id and c.tenant_id=h.tenant_id and c.data->>'state'='submitted')
+          or h.module='onb' and exists(select 1 from lc_onboarding_case c where c.id=h.case_id and c.tenant_id=h.tenant_id and c.data->>'state'='submitted'))
+      order by h.held_at desc,h.id limit 20`);
+    return { count: Number(rows[0]?.total ?? 0), items: rows.map(row => ({ caseId: row.case_id, module: row.module, number: row.case_number, name: row.subject_name, email: row.email_name, workflow: row.workflow_name, heldAt: new Date(row.held_at).toISOString(), missing: row.missing })) };
   });
 }
 
@@ -188,19 +377,20 @@ async function updatedEmailAllowed(tx:Tx,id:string,mailId:string):Promise<void> 
 }
 export async function v9PreviewUpdatedEmail(ctx:SessionContext,id:string,mailId:string):Promise<UpdatedEmailPreview> {
   mailId=commandId.parse(mailId);
-  return withLifecycleTenant(ctx,async tx=>{
-    const row=await load(tx,ctx,id),config=await configTx(tx,ctx);if(!config)throw new M.V9Error('V9 configuration is unavailable.');
-    await updatedEmailAllowed(tx,id,mailId);const env=await environment(tx,ctx,row.data,config);let sequence=0;
+  return withAccessDisplayRead(() => withLifecycleTenant(ctx,async tx=>{
+    const row=await load(tx, ctx, id, false),config=await configTx(tx,ctx);if(!config)throw new M.V9Error('V9 configuration is unavailable.');
+    await updatedEmailAllowed(tx,id,mailId);const env=await environment(tx, ctx, row.data, config, false);let sequence=0;
     const plan=M.updatedDeliveryPlan(row.data,config,mailId,{...env,nextId:()=>`preview-${++sequence}`});
-    return {sourceRevision:updatedEmailRevision(row.data,config,env,plan),subject:plan.mail.subject,body:plan.mail.body,to:plan.mail.delivery!.toNames,cc:plan.mail.delivery!.ccNames,documents:plan.mail.documentIds.map(id=>plan.case.documents.find(document=>document.id===id)!).map(document=>({name:document.name,version:document.version})),files:[...plan.mail.fileIds.map(id=>plan.case.files.find(file=>file.id===id)!.name),...(plan.mail.delivery?.assets??[]).map(asset=>asset.name)]};
-  });
+    const preview = {sourceRevision:updatedEmailRevision(row.data,config,env,plan),subject:plan.mail.subject,body:plan.mail.body,to:plan.mail.delivery!.toNames,cc:plan.mail.delivery!.ccNames,documents:plan.mail.documentIds.map(id=>plan.case.documents.find(document=>document.id===id)!).map(document=>({name:document.name,version:document.version})),files:[...plan.mail.fileIds.map(id=>plan.case.files.find(file=>file.id===id)!.name),...(plan.mail.delivery?.assets??[]).map(asset=>asset.name)]};
+    return await personalEmailRevealTx(tx,ctx) ? preview : maskPersonalEmailView(preview,[env.mergeValues.personalEmail ?? '',...(plan.mail.delivery?.personalKeys ?? [])]);
+  }, {readOnlySnapshot:true}));
 }
 
 export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
   return withLifecycleTenant(ctx, async tx => {
     const who = await actor(tx, ctx); let config = await configTx(tx, ctx);
     const [permission] = await tx.execute<{ ok: boolean;onboarding:boolean;offboarding:boolean;administration:boolean;records:boolean;onboardingModule:boolean }>(sql`select app.is_group_admin() as ok, app.onboarding_v9_page_reader() as onboarding,app.onboarding_page_access() as "onboardingModule",app.onboarding_v9_record_reader() as records, app.lc_v9_off_access() as offboarding, app.is_admin() as administration`);
-    if((!config||!permission?.ok&&!permission?.onboardingModule&&!permission?.offboarding)&&(permission?.onboarding||permission?.records)){const [shell]=await tx.execute<{data:M.Config|null}>(sql`select app.lc_v9_onboarding_shell() as data`);config=shell?.data??null;}
+    if((!config||!permission?.ok&&!permission?.onboardingModule&&!permission?.offboarding)&&(permission?.onboarding||permission?.records)){const [shell]=await tx.execute<{data:M.Config|null}>(sql`select app.lc_v9_onboarding_shell() as data`);config=shell?.data??null;if(config)delete (config as M.Config & {bpRules?:unknown}).bpRules;}
     const companies = await tx.execute<{ id: string; name: string; registrationNo: string; address: string }>(sql`select id,legal_name as name,coalesce(registration_no,'') as "registrationNo",concat_ws(', ',nullif(trim(address_line1),''),nullif(trim(address_line2),''),nullif(trim(address_line3),''),nullif(trim(postcode),''),nullif(trim(city),''),nullif(trim(state),''),nullif(trim(address_country),'')) as address from company where tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(id) order by legal_name,id`);
     if (!permission?.ok && !permission?.offboarding && !permission?.onboarding && !permission?.records) throw new M.V9Error('Onboarding or Offboarding module access is required. Open your assigned lifecycle tasks instead.', 'forbidden');
     const users = await tx.execute<DirectoryUser>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) order by name,u.id`);
@@ -209,13 +399,18 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     const checklistOwners = permission?.ok ? await tx.execute<{id:string}>(sql`select distinct u.id from app_user u join role_assignment r on r.app_user_id=u.id and r.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and (r.role='super_admin' or r.role='hr_admin' and r.company_id is null)`) : [];
     const employees = await tx.execute<{ id: string; name: string; employeeNo: string; companyId: string }>(sql`select e.id,p.full_name as name,e.employee_code as "employeeNo",e.company_id as "companyId" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(e.company_id) order by p.full_name,e.id`);
     const rows = config ? await tx.execute<{ data: M.Case }>(sql`select data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid order by created_at desc,id desc`) : [];
+    // Native case RLS/visibility has already adjudicated this page. One catalogue read covers its retained handoffs.
+    const contractReasonCodes=new Set(rows.filter(row=>row.data.module==='off'&&row.data.contractSharedSourceCaseId&&row.data.contractSharedTerminationReason).map(row=>row.data.contractSharedTerminationReason!));
+    const terminationReasonLabels=contractReasonCodes.size?(await terminationReasonCatalogueTx(tx,ctx.tenantId)).filter(reason=>contractReasonCodes.has(reason.code)).map(({code,label})=>({code,label})):undefined;
+    const reveal = rows.length ? await personalEmailRevealTx(tx, ctx) : true;
     const masters = await tx.execute<{ kind: M.RuleField; id: string; name: string }>(sql`select 'businessGroup' as kind,id,name from business_unit where tenant_id=${ctx.tenantId}::uuid union all select 'department',id,name from department where tenant_id=${ctx.tenantId}::uuid union all select 'grade',id,name from job_grade where tenant_id=${ctx.tenantId}::uuid union all select 'title',id,title from position where tenant_id=${ctx.tenantId}::uuid`);
     const labels: NonNullable<Options['labels']> = { company: Object.fromEntries(companies.map(c => [c.id, c.name])), employmentType: v9EmploymentLabels, caseType: Object.fromEntries(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation'].map(value => [value, value])) };
     for (const master of masters) (labels[master.kind] ??= {})[master.id] = master.name;
     const leaveTypes = await tx.execute<{ id: string; name: string }>(sql`select id,name from leave_type where tenant_id=${ctx.tenantId}::uuid and archived_at is null order by name,id`);
     const usage = config && permission?.ok ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
     const definitionUsage = config && permission?.ok ? await tx.execute<M.DefinitionUsage>(sql`select kind,definition_id as "definitionId",messages,runs from app.lc_v9_definition_usage()`) : [];
-    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration&&(!!permission?.onboardingModule||!!permission?.offboarding),records:!!permission?.records}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => r.data), options: { checklistOwnerIds:checklistOwners.map(user=>user.id), signatoryCandidates:permission?.onboardingModule||permission?.offboarding?signatoryCandidates:{}, signatoryCandidatesByModule:permission?.onboardingModule||permission?.offboarding?signatoryCandidatesByModule:undefined, companies: [...companies], users: [...users], employees:permission?.onboardingModule||permission?.offboarding?[...employees]:[], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
+    const [nativeRoutes]=await tx.execute<{routings:NativeDocumentRouting[]}>(sql`select data->'routings' as routings from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration&&(!!permission?.onboardingModule||!!permission?.offboarding),records:!!permission?.records}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => reveal ? r.data : maskCasePersonalEmail(r.data)), options: { ...(terminationReasonLabels?{terminationReasonLabels}:{}),nativeDocumentRoutingChoices:{routings:(nativeRoutes?.routings??[]).map(route=>({id:route.id,name:route.name})),groups:config?.groups.map(group=>({id:group.id,name:group.name}))??[],people:[...users]},checklistOwnerIds:checklistOwners.map(user=>user.id), signatoryCandidates:permission?.onboardingModule||permission?.offboarding?signatoryCandidates:{}, signatoryCandidatesByModule:permission?.onboardingModule||permission?.offboarding?signatoryCandidatesByModule:undefined, companies: [...companies], users: [...users], employees:permission?.onboardingModule||permission?.offboarding?[...employees]:[], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
   });
 }
 export async function v9Setup(ctx: SessionContext): Promise<void> {
@@ -247,11 +442,39 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     await lockTx(tx, ctx); await admin(tx); const previous = await configTx(tx, ctx, true);
     if (!previous || previous.revision !== revision) throw new M.V9Error('Settings changed. Refresh before saving.', 'conflict');
     const config = parseV9Config(input, previous) as M.Config;
+    const publishedRoutes=config.templates.filter(t=>t.module==='off').flatMap(t=>t.versions.filter(v=>v.state==='published'&&v.routing?.length&&!v9Equal(previous.templates.find(p=>p.id===t.id)?.versions.find(p=>p.version===v.version),v)).map(v=>v.routing!));
+    const emailRecipients=config.emails.filter(e=>e.module==='off').flatMap(e=>[...(e.routingCc??[]),...(e.slots??[]).flatMap(s=>s.by?[s.by]:[])]);
+    if(publishedRoutes.length||emailRecipients.length){
+      const people=[...new Set([...publishedRoutes.flatMap(route=>route.flatMap(step=>step.who.kind==='people'?step.who.userIds:[])),...emailRecipients.flatMap(r=>r.kind==='person'?[r.userId]:[])])];
+      const refs=await automationReferencesTx(tx,people);
+      const problems=publishedRoutes.flatMap(route=>documentRoutingProblems(route,refs)).filter(p=>p!=='At least one step must be a Sign step, or nobody signs the document.');
+      for(const r of emailRecipients){if(r.kind==='routing'&&!refs.routingExists(r.routingId))problems.push('The email routing no longer exists.');if(r.kind==='group'&&!refs.groupExists(r.groupId))problems.push('The email assignment group no longer exists.');if(r.kind==='person'&&!refs.personExists(r.userId))problems.push('The email recipient is no longer active.');}
+      if(problems.length)throw new M.V9Error(problems[0]);
+    }
+    const [nativeRegistry]=await tx.execute<{routings:NativeDocumentRouting[]}>(sql`select data->'routings' as routings from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+    const routeUsers=await tx.execute<{id:string}>(sql`select id from app_user where tenant_id=${ctx.tenantId}::uuid and archived_at is null and not app.login_blocked(id)`);
+    for(const template of config.templates.filter(template=>template.module==='onb'))for(const version of template.versions){
+     // Published definitions are immutable and may retain an archived historical reference; new drafts/publications must resolve.
+     const old=previous.templates.find(item=>item.id===template.id)?.versions.find(item=>item.version===version.version);
+     if(version.routing?.length&&(!old||!v9Equal(old,version))){const problems=documentRoutingProblems(version.routing,{routingExists:id=>nativeRegistry?.routings?.some(route=>route.id===id)??false,groupExists:id=>config.groups.some(group=>group.id===id),personExists:id=>routeUsers.some(user=>user.id===id)});if(problems.length)throw new M.V9Error(problems[0]);}
+    }
     const references = config.emails.flatMap(email => [...(email.files ?? []), ...(email.images ?? [])].map(asset => ({ emailId: email.id, asset })));
     if (references.length) {
       const ids = [...new Set(references.map(reference => reference.asset.id))];
       const assets = await tx.execute<EmailAssetRow>(sql`select *,octet_length(content) as size from lc_v9_email_asset where tenant_id=${ctx.tenantId}::uuid and id in (${sql.join(ids.map(id => sql`${id}::uuid`),sql`,`)})`);
-      for (const reference of references) { const actual = assets.find(asset => asset.id === reference.asset.id && asset.email_template_id === reference.emailId); if (!actual || !v9Equal(emailAssetMetadata(actual), reference.asset)) throw new M.V9Error('An email file no longer matches its uploaded receipt. Upload or select the actual file again.', 'conflict'); }
+      for (const reference of references) {
+        const actual = assets.find(asset => asset.id === reference.asset.id && asset.email_template_id === reference.emailId);
+        // Alt text belongs to the template; the immutable upload receipt describes only the file.
+        const { alt: _alt, ...receipt } = reference.asset;
+        if (!actual || !v9Equal(emailAssetMetadata(actual), receipt)) throw new M.V9Error(`The email file “${reference.asset.name}” no longer matches its uploaded receipt. Upload or select the actual file again.`, 'conflict');
+      }
+    }
+    const removedVersions=previous.templates.flatMap(t=>t.versions.filter(v=>!config.templates.find(n=>n.id===t.id)?.versions.some(n=>n.version===v.version)).map(v=>({id:t.id,version:v.version})));
+    const removedEmails=previous.emails.filter(e=>!config.emails.some(n=>n.id===e.id)).map(e=>e.id);
+    if(removedVersions.length||removedEmails.length){
+      const docs=[...new Set(removedVersions.map(v=>v.id))];
+      const usage=await tx.execute<{kind:string;definition_id:string;version:number|null;documents:string|number;messages:string|number}>(sql`select * from app.resignation_configuration_usage(${`{${docs.join(',')}}`}::text[],${`{${removedEmails.join(',')}}`}::text[])`);
+      if(usage.some(u=>u.kind==='email'?removedEmails.includes(u.definition_id)&&Number(u.messages)>0:removedVersions.some(v=>v.id===u.definition_id&&v.version===u.version)&&Number(u.documents)>0))throw new M.V9Error('A template used by a resignation journey cannot be deleted. Retire it instead.');
     }
     const deletesVersion = previous.templates.some(template => { const retained = config.templates.find(next => next.id === template.id); return !retained || template.versions.some(version => !retained.versions.some(next => next.version === version.version)); });
     const usage = deletesVersion ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
@@ -275,7 +498,7 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
       if (role.startsWith('group:') && !config.groups.some(group => group.id === role.slice(6))) throw new M.V9Error('Choose an existing assignment group for the recipient.');
     }
 
-    if (config.bpRules.some(r => !users.some(u => u.id === r.userId)) || config.companies?.some(c => c.signatoryUserId && !users.some(u => u.id === c.signatoryUserId))) throw new M.V9Error('Choose an available user for the PBP and company signatory.');
+    if (config.companies?.some(c => c.signatoryUserId && !users.some(u => u.id === c.signatoryUserId))) throw new M.V9Error('Choose an available user for the company signatory.');
     const companies = await tx.execute<{ id: string }>(sql`select id from company where tenant_id=${ctx.tenantId}::uuid`);
     if (config.companies?.some(c => !companies.some(co => co.id === c.companyId))) throw new M.V9Error('Choose an available company.');
     for(const company of config.companies??[]) {
@@ -329,30 +552,130 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
       }
     }
     await tx.execute(sql`update lc_v9_config set data=${JSON.stringify(config)}::jsonb,revision=${config.revision},updated_at=now() where tenant_id=${ctx.tenantId}::uuid`);
+    await reassignOffboardingPostingsTx(tx,ctx,previous.offboarding&&Object.hasOwn(previous.offboarding,'postingApproverGroupId')?(previous.offboarding.postingApproverGroupId??null):previous.peopleOpsGroup??null,config.offboarding&&Object.hasOwn(config.offboarding,'postingApproverGroupId')?(config.offboarding.postingApproverGroupId??null):config.peopleOpsGroup??null);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: 'lifecycle-v9.configurationChanged', actor: actorOf(ctx), payload: { revision: config.revision } });
     return { revision: config.revision, groupsRevision: config.groupsRevision ?? 0, versionStamps: config.templates.flatMap(template => template.versions.map(version => ({ templateId: template.id, version: version.version, state: version.state, at: version.at, by: version.by }))) };
   });
 }
 
+export type WorkflowRemovalPreview = { revision: number; workflowId: string; name: string; module: M.Module; mode: 'delete' | 'retire'; cases: number; automatic: boolean; when: string };
+export type WorkflowRemovalResult = { done: true; mode: 'delete' | 'retire'; revision: number } | { done: false; preview: WorkflowRemovalPreview };
+const workflowIdSchema = z.string().min(1).max(120);
+const removalSchema = z.object({ revision: z.number().int().positive(), workflowId: workflowIdSchema, expected: z.object({ mode: z.enum(['delete', 'retire']), cases: z.number().int().nonnegative(), automatic: z.boolean() }).strict() }).strict();
+const restoreSchema = z.object({ revision: z.number().int().positive(), workflowId: workflowIdSchema, name: z.string().max(200).optional() }).strict();
+/** Distinct cases whose current or historical record (V9 offboarding or native onboarding) ran or queued mail for this workflow. */
+async function workflowCaseCountTx(tx: Tx, ctx: SessionContext, workflowId: string): Promise<number> {
+  const [row] = await tx.execute<{ cases: number }>(sql`with records as (
+    select id as case_id,data->'runs' as runs,data->'mails' as mails from lc_v9_case where tenant_id=${ctx.tenantId}::uuid
+    union all select case_id,data->'runs',data->'mails' from lc_v9_case_revision where tenant_id=${ctx.tenantId}::uuid
+    union all select case_id,data->'lifecycleV9'->'runs',data->'lifecycleV9'->'mails' from lc_onboarding_private where tenant_id=${ctx.tenantId}::uuid
+    union all select case_id,data->'lifecycleV9'->'runs',data->'lifecycleV9'->'mails' from lc_onboarding_private_revision where tenant_id=${ctx.tenantId}::uuid
+  ) select count(distinct case_id)::int as cases from records
+    where exists(select 1 from jsonb_array_elements(case when jsonb_typeof(runs)='array' then runs else '[]'::jsonb end) r where r->>'workflowId'=${workflowId})
+       or exists(select 1 from jsonb_array_elements(case when jsonb_typeof(mails)='array' then mails else '[]'::jsonb end) m where m->>'workflowId'=${workflowId})`);
+  return Number(row?.cases ?? 0);
+}
+async function workflowRemovalPreviewTx(tx: Tx, ctx: SessionContext, config: M.Config, workflowId: string): Promise<WorkflowRemovalPreview> {
+  const workflow = config.workflows.find(candidate => candidate.id === workflowId);
+  if (!workflow) throw new M.V9Error('Workflow not found.', 'not_found');
+  if (workflow.status === 'retired') throw new M.V9Error('This workflow is already retired.', 'conflict');
+  const cases = await workflowCaseCountTx(tx, ctx, workflow.id);
+  return { revision: config.revision, workflowId: workflow.id, name: workflow.name, module: workflow.module, mode: cases ? 'retire' : 'delete', cases, automatic: M.workflowStartsAutomatically(workflow), when: M.workflowWhen(workflow) };
+}
+async function saveWorkflowConfigTx(tx: Tx, ctx: SessionContext, previous: M.Config, next: M.Config): Promise<number> {
+  await tx.execute(sql`insert into lc_v9_config_revision(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${previous.revision},${JSON.stringify(previous)}::jsonb,${ctx.userId ?? null}::uuid)`);
+  next.revision = previous.revision + 1;
+  await tx.execute(sql`update lc_v9_config set data=${JSON.stringify(next)}::jsonb,revision=${next.revision},updated_at=now() where tenant_id=${ctx.tenantId}::uuid`);
+  return next.revision;
+}
+/** What Delete would do now: permanent for an unused workflow, Retired for one with case history. */
+export async function v9PreviewWorkflowRemoval(ctx: SessionContext, workflowId: string): Promise<WorkflowRemovalPreview> {
+  workflowId = workflowIdSchema.parse(workflowId);
+  return withLifecycleTenant(ctx, async tx => {
+    await admin(tx); const config = await configTx(tx, ctx);
+    if (!config) throw new M.V9Error('V9 configuration is unavailable.');
+    return workflowRemovalPreviewTx(tx, ctx, config, workflowId);
+  });
+}
+/** Re-decides under the lock that also guards workflow starts; a changed decision returns a fresh preview instead of acting. */
+export async function v9RemoveWorkflow(ctx: SessionContext, input: unknown): Promise<WorkflowRemovalResult> {
+  const request = removalSchema.parse(input);
+  return withLifecycleTenant(ctx, async tx => {
+    await lockTx(tx, ctx); await admin(tx);
+    const previous = await configTx(tx, ctx, true);
+    if (!previous) throw new M.V9Error('V9 configuration is unavailable.');
+    const preview = await workflowRemovalPreviewTx(tx, ctx, previous, request.workflowId);
+    if (previous.revision !== request.revision || preview.mode !== request.expected.mode || preview.cases !== request.expected.cases || preview.automatic !== request.expected.automatic) return { done: false, preview };
+    const next = structuredClone(previous), who = await actor(tx, ctx);
+    if (preview.mode === 'delete') next.workflows = next.workflows.filter(workflow => workflow.id !== preview.workflowId);
+    else { const workflow = next.workflows.find(candidate => candidate.id === preview.workflowId)!; workflow.status = 'retired'; workflow.retired = { at: new Date().toISOString(), by: who, cases: preview.cases, automatic: preview.automatic }; }
+    const revision = await saveWorkflowConfigTx(tx, ctx, previous, next);
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: preview.mode === 'delete' ? 'lifecycle-v9.workflowDeleted' : 'lifecycle-v9.workflowRetired', actor: actorOf(ctx), payload: { workflowId: preview.workflowId, name: preview.name, module: preview.module, outcome: preview.mode === 'delete' ? 'deleted' : 'retired', cases: preview.cases, stoppedAutomaticStart: preview.automatic, actorName: who.name, revision } });
+    return { done: true, mode: preview.mode, revision };
+  });
+}
+/** Restores a retired workflow as a draft: same steps and recipients, never live or automatic until HR makes it live again. */
+export async function v9RestoreWorkflow(ctx: SessionContext, input: unknown): Promise<{ revision: number }> {
+  const request = restoreSchema.parse(input);
+  return withLifecycleTenant(ctx, async tx => {
+    await lockTx(tx, ctx); await admin(tx);
+    const previous = await configTx(tx, ctx, true);
+    if (!previous) throw new M.V9Error('V9 configuration is unavailable.');
+    if (previous.revision !== request.revision) throw new M.V9Error('Settings changed. Refresh before restoring.', 'conflict');
+    const next = structuredClone(previous), workflow = next.workflows.find(candidate => candidate.id === request.workflowId);
+    if (!workflow) throw new M.V9Error('Workflow not found.', 'not_found');
+    if (workflow.status !== 'retired') throw new M.V9Error('Only a retired workflow can be restored.', 'conflict');
+    const before = workflow.name, name = request.name?.trim() || before;
+    const key = (value: string) => value.trim().toLocaleLowerCase();
+    const duplicate = next.workflows.find(candidate => candidate.id !== workflow.id && candidate.module === workflow.module && candidate.status !== 'retired' && key(candidate.name) === key(name));
+    if (duplicate) throw new M.V9Error(`An active workflow is already called "${duplicate.name}". Rename one of them before restoring.`, 'conflict');
+    workflow.name = name; workflow.status = 'draft'; delete workflow.retired;
+    const revision = await saveWorkflowConfigTx(tx, ctx, previous, next), who = await actor(tx, ctx);
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: 'lifecycle-v9.workflowRestored', actor: actorOf(ctx), payload: { workflowId: workflow.id, name, module: workflow.module, outcome: 'restored', ...(name !== before ? { previousName: before } : {}), actorName: who.name, revision } });
+    return { revision };
+  });
+}
 export async function v9CreateOffboarding(ctx: SessionContext, input: { employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string }): Promise<string> {
   return withLifecycleTenant(ctx, tx => v9CreateOffboardingTx(tx, ctx, input));
 }
+/** Preorders the canonical write locks before the protected Contract intent locks its flow row.
+ * Native proof resolves the source; this accepts no substitute employment or administrator identity. */
+export async function v9LockSharedContractOffboardingTx(tx:SqlExecutor,ctx:SessionContext,source:{caseId:string;runId:string;stepId:string}):Promise<void>{
+  if(ctx.userId)throw new M.V9Error('A protected Contract workflow owner is required.','forbidden');
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockTx(tx,ctx);
+  await tx.execute(sql`select app.contract_shared_offboarding_source_lock(${source.caseId}::uuid,${source.runId}::uuid,${source.stepId})`);
+}
 /** Canonical case construction for purpose-bound callers already holding an authorised tenant transaction.
  * Existing date, administrator, duplicate-exit and identity rules remain authoritative. */
-export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string },contractSource?:{kind:'contract'|'probation';caseId:string}):Promise<string>{
+export async function v9CreateOffboardingTx(tx:Tx|SqlExecutor,ctx:SessionContext,input:{ employmentId: string; type: M.ExitType; noticeDate: string; lastDay: string },contractSource?:{kind:'contract'|'probation'|'resignation';caseId:string}|{kind:'shared-contract';caseId:string;runId:string;stepId:string}):Promise<string>{
   input = z.object({ employmentId: z.string().uuid(), type: z.enum(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation']), noticeDate: z.string(), lastDay: z.string() }).strict().parse(input);
   identifier(input.employmentId);
   if (!M.validDate(input.lastDay) || !M.validDate(input.noticeDate)) throw new M.V9Error('Enter valid notice and last working dates.');
-  if (input.lastDay < input.noticeDate) throw new M.V9Error('Last working day cannot be before notice date.');
+  if (input.lastDay < input.noticeDate && contractSource?.kind!=='shared-contract') throw new M.V9Error('Last working day cannot be before notice date.');
 
     await lockTx(tx, ctx);
+    type Construction={employee:{id:string;company_id:string;person_id:string;name:string;employee_no:string;hired_on:string;grade_id:string|null;confirmation_date:string|null;final_confirmation_date:string|null;probation_end_date:string|null;provisional_end_on:string|null};assignment:{department_id:string|null;business_unit_id:string|null;position_id:string|null;employment_type:string|null}|null;logins:{id:string}[];managers:{id:string}[];openExit:boolean};
+    type ResignationHandoffIntent={employmentId:string;type:string;noticeDate:string;lastDay:string;manualHandoff:boolean;offboardingCaseId?:string;letterDocumentId?:string;employeeDocumentId?:string;letterHash?:string;construction:Construction};
+    let resignationProof:ResignationHandoffIntent|null=null;
+    if(contractSource?.kind==='resignation'){
+      const [row]=await tx.execute<{intent:ResignationHandoffIntent}>(sql`select app.resignation_offboarding_intent(${identifier(contractSource.caseId)}::uuid) as intent`);
+      resignationProof=row?.intent??null;
+      if(!resignationProof?.construction||resignationProof.employmentId!==input.employmentId||resignationProof.type!==input.type||resignationProof.noticeDate!==input.noticeDate||resignationProof.lastDay!==input.lastDay||resignationProof.manualHandoff||resignationProof.offboardingCaseId)throw new M.V9Error('Frozen resignation handoff intent does not match.','forbidden');
+    }
+    const construction=resignationProof?.construction;
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('Set up V9 first.');
-    const [employee] = await tx.execute<{ id: string; company_id: string; person_id: string; name: string; employee_no: string; hired_on: string; grade_id: string | null; confirmation_date: string | null; final_confirmation_date: string | null; probation_end_date: string | null; provisional_end_on: string | null }>(sql`select e.id,e.company_id,e.person_id,p.full_name as name,e.employee_code as employee_no,coalesce(e.join_date,e.hired_on)::text as hired_on,e.grade_id,e.confirmation_date::text,e.final_confirmation_date::text,e.probation_end_date::text,e.provisional_end_on::text from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.id=${input.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid for update of e`);
+    const [employee] = construction ? [construction.employee] : await tx.execute<{ id: string; company_id: string; person_id: string; name: string; employee_no: string; hired_on: string; grade_id: string | null; confirmation_date: string | null; final_confirmation_date: string | null; probation_end_date: string | null; provisional_end_on: string | null }>(sql`select e.id,e.company_id,e.person_id,p.full_name as name,e.employee_code as employee_no,coalesce(e.join_date,e.hired_on)::text as hired_on,e.grade_id,e.confirmation_date::text,e.final_confirmation_date::text,e.probation_end_date::text,e.provisional_end_on::text from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.id=${input.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid for update of e`);
     if (!employee) throw new M.V9Error('Employee not found or unavailable.', 'not_found');
     let contractLetter: {documentId:string;employeeDocumentId:string;hash:string}|undefined;
-    if(contractSource){
+    let sharedContractIntent:{reason:string;letterId:string;signingDocumentId:string;letterHash:string}|undefined;
+    if(contractSource?.kind==='shared-contract'){
+      const [proof]=await tx.execute<{intent:{employmentId:string;type:string;noticeDate:string;lastDay:string;offboardingCaseId:string|null;reason:string;letterId:string;signingDocumentId:string;letterHash:string}}>(sql`select app.contract_shared_offboarding_intent(${contractSource.caseId}::uuid,${contractSource.runId}::uuid,${contractSource.stepId}) as intent`);
+      if(!proof?.intent||proof.intent.offboardingCaseId||proof.intent.employmentId!==input.employmentId||proof.intent.type!==input.type||proof.intent.noticeDate!==input.noticeDate||proof.intent.lastDay!==input.lastDay)throw new M.V9Error('Frozen shared Contract handoff intent does not match.','forbidden');
+      sharedContractIntent=proof.intent;
+    }else if(contractSource){
       identifier(contractSource.caseId);
-      const [proof]=await tx.execute<{intent:{employmentId:string;type:string;noticeDate:string;lastDay:string;manualHandoff:boolean;offboardingCaseId?:string;letterDocumentId?:string;employeeDocumentId?:string;letterHash?:string}}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_intent(${contractSource.caseId}::uuid) as intent`:sql`select app.probation_offboarding_intent(${contractSource.caseId}::uuid) as intent`);
+      const [proof]=resignationProof?[{intent:resignationProof}]:await tx.execute<{intent:{employmentId:string;type:string;noticeDate:string;lastDay:string;manualHandoff:boolean;offboardingCaseId?:string;letterDocumentId?:string;employeeDocumentId?:string;letterHash?:string}}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_intent(${contractSource.caseId}::uuid) as intent`:contractSource.kind==='resignation'?sql`select app.resignation_offboarding_intent(${contractSource.caseId}::uuid) as intent`:sql`select app.probation_offboarding_intent(${contractSource.caseId}::uuid) as intent`);
       if(!proof?.intent||proof.intent.offboardingCaseId||proof.intent.manualHandoff||proof.intent.employmentId!==input.employmentId||proof.intent.type!==input.type||proof.intent.noticeDate!==input.noticeDate||proof.intent.lastDay!==input.lastDay)throw new M.V9Error('Frozen contract handoff intent does not match.','forbidden');
       if(contractSource.kind==='contract'){
         const {letterDocumentId,employeeDocumentId,letterHash}=proof.intent;
@@ -360,21 +683,46 @@ export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ emp
         contractLetter={documentId:letterDocumentId,employeeDocumentId,hash:letterHash};
       }
     }else await admin(tx, employee.company_id);
-    const [openExit] = await tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and employment_id=${employee.id}::uuid and module='off' and data->>'state' in ('pending','submitted') limit 1`);
+    const [openExit] = construction ? (construction.openExit?[{id:'existing'}]:[]) : await tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and employment_id=${employee.id}::uuid and module='off' and data->>'state' in ('pending','submitted') limit 1`);
     if (openExit) throw new M.V9Error('This employee already has an open offboarding case. Open it from Leavers.', 'conflict');
-    const [assignment] = await tx.execute<{ department_id: string | null; business_unit_id: string | null; position_id: string | null; employment_type: string | null }>(sql`select department_id,business_unit_id,position_id,employment_type from assignment where employment_id=${employee.id}::uuid and tenant_id=${ctx.tenantId}::uuid and superseded_at is null and valid_from<=${todayInKualaLumpur()}::date and (valid_to is null or valid_to>${todayInKualaLumpur()}::date) order by valid_from desc,id limit 1`);
-    const logins = await tx.execute<{ id: string }>(sql`select id from app_user where tenant_id=${ctx.tenantId}::uuid and person_id=${employee.person_id}::uuid and archived_at is null order by id`);
-    const managers = await tx.execute<{ id: string }>(sql`select u.id from reporting_line r join employment e on e.id=r.manager_employment_id and e.tenant_id=r.tenant_id join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id and u.archived_at is null where r.tenant_id=${ctx.tenantId}::uuid and r.subordinate_employment_id=${employee.id}::uuid and r.line_type='administrative' and r.superseded_at is null and r.valid_from<=${todayInKualaLumpur()}::date and (r.valid_to is null or r.valid_to>${todayInKualaLumpur()}::date) order by r.valid_from desc,r.id,u.id`);
+    const [assignment] = construction ? [construction.assignment] : await tx.execute<{ department_id: string | null; business_unit_id: string | null; position_id: string | null; employment_type: string | null }>(sql`select department_id,business_unit_id,position_id,employment_type from assignment where employment_id=${employee.id}::uuid and tenant_id=${ctx.tenantId}::uuid and superseded_at is null and valid_from<=${todayInKualaLumpur()}::date and (valid_to is null or valid_to>${todayInKualaLumpur()}::date) order by valid_from desc,id limit 1`);
+    const logins = construction ? construction.logins : await tx.execute<{ id: string }>(sql`select id from app_user where tenant_id=${ctx.tenantId}::uuid and person_id=${employee.person_id}::uuid and archived_at is null order by id`);
+    const managers = construction ? construction.managers : await tx.execute<{ id: string }>(sql`select u.id from reporting_line r join employment e on e.id=r.manager_employment_id and e.tenant_id=r.tenant_id join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id and u.archived_at is null where r.tenant_id=${ctx.tenantId}::uuid and r.subordinate_employment_id=${employee.id}::uuid and r.line_type='administrative' and r.superseded_at is null and r.valid_from<=${todayInKualaLumpur()}::date and (r.valid_to is null or r.valid_to>${todayInKualaLumpur()}::date) order by r.valid_from desc,r.id,u.id`);
     const { nextNumber } = await import('../../../core/lifecycle-base');
-    const id = randomUUID(), number = contractSource ? `OFB9-${String((await tx.execute<{n:number}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_sequence(${contractSource.caseId}::uuid) as n`:sql`select app.probation_offboarding_sequence(${contractSource.caseId}::uuid) as n`))[0].n).padStart(4,'0')}` : await nextNumber(tx, 'OFB9');
-    const c: M.Case = { version: 9, id, number, module: 'off', revision: 1, state: 'pending', facts: { confirmationDate: employee.confirmation_date, finalConfirmationDate: employee.final_confirmation_date, probationEndDate: employee.probation_end_date, provisionalEndOn: employee.provisional_end_on, name: employee.name, employeeNo: employee.employee_no, employmentId: employee.id, personId: employee.person_id, joinDate: employee.hired_on, lastDay: input.lastDay, noticeDate: input.noticeDate, employeeUserId: logins.length === 1 ? logins[0].id : null, supervisorUserId: managers.length === 1 ? managers[0].id : null, pbpUserId: null, taUserId: null, company: employee.company_id, businessGroup: assignment?.business_unit_id ?? '', department: assignment?.department_id ?? '', grade: employee.grade_id ?? '', title: assignment?.position_id ?? '', employmentType: assignment?.employment_type ?? '', caseType: input.type }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: '', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: input.lastDay, finalFigures: null, review: null };
-    const who = await actor(tx, ctx); c.log.push({ id: randomUUID(), at: new Date().toISOString(), actor: who, action: 'case.created', detail: 'Created from Personnel Management.' });
-    if(contractSource)Object.assign(c,contractSource.kind==='contract'?{contractSourceCaseId:contractSource.caseId,contractSourceLetter:contractLetter}:{probationSourceCaseId:contractSource.caseId});
+    const id = randomUUID(); let number:string;
+    if(contractSource){
+      const query=contractSource.kind==='shared-contract'?sql`select app.contract_shared_offboarding_sequence(${contractSource.caseId}::uuid,${contractSource.runId}::uuid,${contractSource.stepId}) as n`:contractSource.kind==='contract'?sql`select app.contract_offboarding_sequence(${contractSource.caseId}::uuid) as n`:contractSource.kind==='resignation'?sql`select app.resignation_offboarding_sequence(${contractSource.caseId}::uuid) as n`:sql`select app.probation_offboarding_sequence(${contractSource.caseId}::uuid) as n`;
+      number=`OFB9-${String((await tx.execute<{n:number}>(query))[0].n).padStart(4,'0')}`;
+    }else{
+      if(!('insert' in tx))throw new M.V9Error('An authorised application transaction is required.','forbidden');
+      number=await nextNumber(tx,'OFB9');
+    }
+    const c: M.Case = { version: 9, id, number, module: 'off', revision: 1, state: 'pending', facts: { confirmationDate: employee.confirmation_date, finalConfirmationDate: employee.final_confirmation_date, probationEndDate: employee.probation_end_date, provisionalEndOn: employee.provisional_end_on, name: employee.name, employeeNo: employee.employee_no, employmentId: employee.id, personId: employee.person_id, joinDate: employee.hired_on, lastDay: input.lastDay, noticeDate: input.noticeDate, employeeUserId: logins.length === 1 ? logins[0].id : null, supervisorUserId: managers.length === 1 ? managers[0].id : null, taUserId: null, company: employee.company_id, businessGroup: assignment?.business_unit_id ?? '', department: assignment?.department_id ?? '', grade: employee.grade_id ?? '', title: assignment?.position_id ?? '', employmentType: assignment?.employment_type ?? '', caseType: input.type }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: '', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: input.lastDay, finalFigures: null, review: null };
+    const who = await actor(tx, ctx); c.log.push({ id: randomUUID(), at: new Date().toISOString(), actor: who, action: 'case.created', detail: contractSource?.kind==='shared-contract'?'Created from Contract Management. Personnel termination remains manual until clearance is available.':'Created from Personnel Management.' });
+    if(contractSource)Object.assign(c,contractSource.kind==='shared-contract'?{contractSharedSourceCaseId:contractSource.caseId,contractSharedSourceLetter:{letterId:sharedContractIntent!.letterId,signingDocumentId:sharedContractIntent!.signingDocumentId,hash:sharedContractIntent!.letterHash},contractSharedTerminationReason:sharedContractIntent!.reason,contractSharedClearance:'pending-manual-personnel',contractSharedNoticeReviewRequired:input.noticeDate>input.lastDay}:contractSource.kind==='contract'?{contractSourceCaseId:contractSource.caseId,contractSourceLetter:contractLetter}:contractSource.kind==='resignation'?{resignationSourceCaseId:contractSource.caseId}:{probationSourceCaseId:contractSource.caseId});
     c.sourceRevision = createHash('sha256').update(JSON.stringify({ employee, assignment })).digest('hex');
-    await tx.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) values(${id}::uuid,${ctx.tenantId}::uuid,${employee.company_id}::uuid,${employee.id}::uuid,'off',${number},${JSON.stringify(c)}::jsonb)`);
-    await record(tx, ctx, id, employee.id, 'created'); return id;
+    await tx.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) values(${id}::uuid,${ctx.tenantId}::uuid,${employee.company_id}::uuid,${employee.id}::uuid,'off',${number},${JSON.stringify(c)}::text::jsonb)`);
+    if(contractSource?.kind==='shared-contract')await tx.execute(sql`select app.contract_shared_offboarding_record(${contractSource.caseId}::uuid,${contractSource.runId}::uuid,${contractSource.stepId},${id}::uuid)`);
+    else{if(!('insert' in tx))throw new M.V9Error('An authorised application transaction is required.','forbidden');await record(tx,ctx,id,employee.id,'created');} return id;
 }
+/** A correction follows its one canonical journey fact; the native owner binds every input and target row. */
+export async function v9SynchronizeResignationLastDayTx(tx:Tx,ctx:SessionContext,input:ResignationDateCorrection):Promise<void>{
+ await lockTx(tx,ctx);
+ const{prepareResignationProofTx}=await import('../../../core/resignation-proof');
+ await prepareResignationProofTx(tx,ctx,{operation:'context',caseId:input.journeyId,args:{mode:'offboardingDateCorrection',journeyId:input.journeyId,oldLastDay:input.oldLastDay,newLastDay:input.newLastDay}});
+ const[verified]=await tx.execute<{intent:{row?:Row;config?:M.Config;employmentDateSource?:SettlementEmploymentDateSource;blocked?:'closed'}}>(sql`select app.resignation_offboarding_date_intent(${input.journeyId}::uuid,${input.oldLastDay}::date,${input.newLastDay}::date) as intent`);
+ if(verified?.intent?.blocked==='closed')throw new M.V9Error('The linked clearance case is already completed or cancelled. Reopen it before correcting the last working day.','conflict');
+ if(!verified?.intent?.row||!verified.intent.config||!verified.intent.employmentDateSource)throw new M.V9Error('The linked resignation clearance case or its date sources are unavailable. Review its setup before correcting the last working day.','conflict');
+ const{row,config,employmentDateSource}=verified.intent,c=structuredClone(row.data);
+ // The existing settlement owner selects dates without reading salary or leave balances.
+ const effectiveLastDay=settlementDateForSource({...c,facts:{...c.facts,lastDay:input.newLastDay}},config,employmentDateSource);
+ const who=await actor(tx,ctx),env={now:new Date().toISOString(),actor:who,nextId:randomUUID};
+ M.synchronizeResignationLastDay(c,input.oldLastDay,input.newLastDay,effectiveLastDay,env);
+ await store(tx,ctx,row,c,'resignation.lastDayCorrected',config,input);
+}
+
 export type Command = CaseNoteCommand
+  | { type: 'recipientsOverride'; workflowId: string; stepId: string; to?: M.Role[]; cc?: M.Role[]; clear?: true }
   | { type: 'pmPush'; id: string }
   | { type: 'pmPushSelected' | 'pmKeep'; ids: string[] }
   | { type: 'caseFormSave'; values: Record<string,string>; reason: string; submit: boolean }
@@ -386,6 +734,7 @@ export type Command = CaseNoteCommand
   | { type: 'documentTextEdit'; id: string; edits: Record<string, string> }
   | { type: 'documentFillPersonnel'; id: string; values: Record<string, string> }
   | { type: 'documentSave'; id: string; values: Record<string, string> }
+  | {type:'documentCompletionOverride';id:string;fieldId:string;owner:'employee'|'hr';reason:string}
   | { type: 'documentSignatory'; id:string; userId:string }
   | { type: 'documentSign'; id: string; signature: Pick<M.Signature, 'method' | 'value' | 'consent'> }
   | { type: 'documentRefresh' | 'documentRegenerate'; id: string }
@@ -396,20 +745,27 @@ export type Command = CaseNoteCommand
   | {type:'emailReplace';id:string;reason:string;sourceRevision:string}
   | { type: 'runWorkflows' }
   | { type: 'retryWorkflow' | 'startWorkflow' | 'testWorkflow'; workflowId: string }
+  | { type: 'lateEmail'; workflowId: string; runId: string; stepId: string; decision: 'send' | 'skip' }
   | { type: 'override'; checklist: string }
   | {type:'returnSelections';ids:string[]}
+  | ({ type: 'returnPresets' } & M.ReturnPreset)
+  | ({ type: 'itemsBulk' } & M.ItemsBulk)
   | { type: 'assign' | 'assignItem'; id: string; userId: string }
   | { type: 'item'; id: string; status: M.Item['status']; reason: string };
 const commandId = z.string().min(1).max(120), reasonText = z.string().max(4000);
 const commandSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('recipientsOverride'), workflowId: commandId, stepId: commandId, to: z.array(v9RoleSchema).max(8).optional(), cc: z.array(v9RoleSchema).max(8).optional(), clear: z.literal(true).optional() }).strict().refine(value => value.clear ? value.to === undefined && value.cc === undefined : value.to !== undefined && value.cc !== undefined, 'Choose To and CC, or go back to the workflow recipients.'),
   z.object({type:z.literal('note'),id:commandId.optional(),context:commandId,body:z.string().max(10000),mentions:z.array(z.string().uuid()).max(50),deleted:z.boolean().optional()}).strict(),
   z.object({ type: z.literal('pmPush'), id: commandId }).strict(),
   z.object({ type: z.literal('pmPushSelected'), ids: z.array(commandId).min(1).max(500) }).strict(),
   z.object({ type: z.literal('pmKeep'), ids: z.array(commandId).min(1).max(500) }).strict(),
   z.object({ type: z.literal('caseFormSave'), values: z.record(commandId,z.string().max(10000)).refine(value=>Object.keys(value).length<=100), reason: reasonText, submit: z.boolean() }).strict(),
   z.object({type:z.literal('returnSelections'),ids:z.array(commandId).max(100).refine(ids=>new Set(ids).size===ids.length)}).strict(),
+  z.object({type:z.literal('returnPresets'),group:commandId.optional(),method:z.enum(['rr','manual']).optional(),due:z.number().int().min(-999).max(9999).optional()}).strict(),
+  z.object({type:z.literal('itemsBulk'),ids:z.array(commandId).min(1).max(500),group:commandId.optional(),method:z.enum(['rr','manual']).optional(),due:z.number().int().min(-999).max(9999).optional()}).strict(),
   z.object({ type: z.literal('submit') }).strict(), z.object({ type: z.literal('runWorkflows') }).strict(),
   z.object({ type: z.literal('retryWorkflow'), workflowId: commandId }).strict(),
+  z.object({ type: z.literal('lateEmail'), workflowId: commandId, runId: z.string().min(1).max(500), stepId: commandId, decision: z.enum(['send', 'skip']) }).strict(),
   z.object({ type: z.literal('startWorkflow'), workflowId: commandId }).strict(),
   z.object({ type: z.literal('testWorkflow'), workflowId: commandId }).strict(),
   z.object({ type: z.literal('task'), id: commandId, status: z.enum(['todo', 'progress', 'done', 'notNeeded']), reason: reasonText }).strict(),
@@ -420,6 +776,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('emailEdit'), emailId: commandId, subject: z.string().min(1).max(1000), body: z.string().max(20000) }).strict(),
   z.object({ type: z.literal('documentTextEdit'), id: commandId, edits: z.record(commandId, z.string().max(20000)).refine(value => Object.keys(value).length <= 500) }).strict(),
   z.object({ type: z.literal('documentFillPersonnel'), id: commandId, values: z.record(z.string().max(80), z.string().max(20000)) }).strict(),
+  z.object({type:z.literal('documentCompletionOverride'),id:commandId,fieldId:commandId,owner:z.enum(['employee','hr']),reason:reasonText}).strict(),
   z.object({ type: z.literal('documentSave'), id: commandId, values: z.record(commandId, z.string().max(20000)) }).strict(),
   z.object({type:z.literal('documentSignatory'),id:commandId,userId:z.string().uuid()}).strict(),
   z.object({ type: z.literal('documentSign'), id: commandId, signature: z.object({ method: z.enum(['typed', 'drawn']), value: z.string().min(1).max(500000), consent: z.literal(true) }).strict() }).strict(),
@@ -436,18 +793,30 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
   if (!Number.isSafeInteger(revision) || revision < 1) throw new M.V9Error('A current case revision is required.');
   await withLifecycleTenant(ctx, async tx => {
     if (command.type === 'pmPush' || command.type === 'pmPushSelected') await lockV9PersonnelWritesTx(tx, ctx);
+    if(['documentSave','documentRefresh','documentCompletionOverride','documentSign'].includes(command.type))await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockTx(tx, ctx);
-    const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
+    let row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
-    const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentFillPersonnel', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    let c = structuredClone(row.data); let env = await environment(tx, ctx, c, config,true,command.type==='generate'?[command.template]:command.type==='documentRegenerate'?c.documents.filter(document=>document.id===command.id).map(document=>document.templateId):[]);
+    if(command.type==='documentSign'&&c.documents.find(document=>document.id===command.id)?.personnelCompletion){const refreshed=await updatePersonnelCompletionTx(tx,{caseId:id,revision,documentId:command.id},'refresh');if(refreshed!==row.revision){row=await load(tx,ctx,id);c=structuredClone(row.data);env=await environment(tx,ctx,c,config);}}
+    if(command.type==='documentCompletionOverride'){await updatePersonnelCompletionTx(tx,{caseId:id,revision,documentId:command.id,override:{fieldId:command.fieldId,owner:command.owner,reason:command.reason}},'override');return;}
+    if((command.type==='documentSave'||command.type==='documentRefresh')&&c.documents.find(document=>document.id===command.id)?.personnelCompletion){await updatePersonnelCompletionTx(tx,{caseId:id,revision,documentId:command.id,...(command.type==='documentSave'?{values:command.values}:{})},command.type==='documentSave'?'save':'refresh');return;}
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentFillPersonnel', 'documentCompletionOverride', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'lateEmail', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected', 'recipientsOverride'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if(command.type==='note')changeV9Note(c,env,command);
     if(command.type==='returnSelections'){
       if(c.module!=='off'||c.state!=='pending')throw new M.V9Error('Return selections can change only before submission.');
       const available=await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),previous=new Set(c.returnSelections??[]);
-      if(command.ids.some(id=>!previous.has(id)&&!available.some(item=>item.id===id&&item.active)))throw new M.V9Error('Choose an active item from the existing catalogue.');
+      if(command.ids.some(id=>!previous.has(id)&&!available.some(item=>item.id===id&&item.active&&offeredToCompany(item,c.facts.company))))throw new M.V9Error('Choose an active item from the existing catalogue.');
       c.returnSelections=[...command.ids];M.appendLog(c,env,'returns.selectionChanged',`${command.ids.length} additional return/revoke items selected.`);
+    }
+    if(command.type==='returnPresets'){
+      // d1e26f81 — "Set for all items" before submission: stored with the case, applied when it is submitted.
+      if(c.module!=='off'||c.state!=='pending')throw new M.V9Error('Return presets can change only before submission.');
+      const change:M.ReturnPreset={...(command.group!==undefined?{group:command.group}:{}),...(command.method!==undefined?{method:command.method}:{}),...(command.due!==undefined?{due:command.due}:{})},ids=returnRows(c,config,await returnSourcesTx(tx,ctx,c)).map(row=>row.previewId),unique=[...new Set(ids)];
+      const problem=bulkAssignmentProblem({ids:unique,...change},config.groups.map(group=>group.id),RETURN_BULK_LABELS);if(problem)throw new M.V9Error(problem);
+      c.returnPresets={...c.returnPresets};for(const id of unique)c.returnPresets[id]={...c.returnPresets[id],...change};
+      M.appendLog(c,env,'returns.presetsChanged',unique.length+' items · '+[change.group?'team '+config.groups.find(group=>group.id===change.group)!.name:'',change.method??'',change.due!==undefined?'due Day '+change.due:''].filter(Boolean).join(' · '));
     }
     if (command.type === 'caseFormSave') {
       if (c.module !== 'off' || !['pending','submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before editing its fields.');
@@ -458,43 +827,43 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
         try { validateV9CaseValue(field,value); } catch (error) { throw new M.V9Error(error instanceof Error ? error.message : 'Review the case fields.'); }
       }
       const values = { ...before, ...command.values };
-      if (c.state==='submitted' && Object.entries(command.values).some(([key,value])=>['type','notice','revokeMode','revokeDate','pbp'].includes(key)&&value!==before[key]) && !command.reason.trim()) throw new M.V9Error('Record a reason for changing the submitted case details.');
+      if (c.state==='submitted' && Object.entries(command.values).some(([key,value])=>['type','notice','revokeMode','revokeDate'].includes(key)&&value!==before[key]) && !command.reason.trim()) throw new M.V9Error('Record a reason for changing the submitted case details.');
       if (!['Resignation','Termination','Contract end','Retirement','Non-confirmation'].includes(values.type) || !M.validDate(values.notice) || values.notice>c.facts.lastDay) throw new M.V9Error('Choose a valid case type and notice date on or before the last working day.');
       if (!['lastday','date'].includes(values.revokeMode) || values.revokeMode==='date'&&!M.validDate(values.revokeDate)) throw new M.V9Error('Choose when access must be revoked.');
-      if (values.pbp && !env.eligibleUser(values.pbp)) throw new M.V9Error('Choose an available People Business Partner.');
-      const priorRevoke = c.revokeDate;
-      c.facts.caseType=values.type;c.facts.noticeDate=values.notice;c.facts.pbpUserId=values.pbp||null;c.revokeMode=values.revokeMode as 'lastday'|'date';c.revokeDate=c.revokeMode==='lastday'?c.facts.lastDay:values.revokeDate;
+      const priorRevoke = c.revokeDate, priorMode = c.revokeMode ?? 'lastday';
+      c.facts.caseType=values.type;c.facts.noticeDate=values.notice;c.revokeMode=values.revokeMode as 'lastday'|'date';c.revokeDate=c.revokeMode==='lastday'?c.facts.lastDay:values.revokeDate;
       c.caseValues={...c.caseValues,...Object.fromEntries(Object.entries(command.values).filter(([key])=>fields.some(field=>field.key===key&&field.custom)))};
-      if (c.revokeDate!==priorRevoke) for (const item of c.items) if (!M.isResolved(item.status) && item.status!=='notReturned' && item.dueOn===priorRevoke) item.dueOn=c.revokeDate;
+      if (c.revokeDate!==priorRevoke || c.revokeMode!==priorMode) for (const item of c.items) {
+        if (!M.returnOpen(item)) continue;
+        // Rows created before d1e26f81 keep the earlier rule: an untouched revoke date follows the case.
+        if (item.method === undefined) { if (item.dueOn===priorRevoke) item.dueOn=c.revokeDate; continue; }
+        if (item.kind !== 'system') continue;
+        if (c.revokeMode==='date') { item.dueDay=null; item.dueOn=c.revokeDate; }
+        else if (item.dueDay===null && item.dueOn===priorRevoke) { item.dueDay=0; item.dueOn=M.returnDue(c.returnAnchor??c.facts.lastDay,0); }
+      }
       env=await environment(tx,ctx,c,config);
       M.appendLog(c,env,'case.fieldsSaved',command.reason.trim()?'Case form updated: '+command.reason.trim():'Case form updated.');
     }
     if (command.type === 'submit' || command.type === 'caseFormSave' && command.submit) {
       M.submit(c, config, env);
       if (c.module === 'off') {
-        const fulfillingGroup = await onboardingFulfilmentGroupTx(ctx, tx), group = config.groups.find(g => g.id === fulfillingGroup), extra: Record<string, number> = {};
+        // d1e26f81 — presets from settings: team, round robin (leaver excluded), Day -1/0 from the effective last working day.
+        const extra: Record<string, number> = {};
         for (const task of c.tasks) if (task.assignee) extra[task.assignee] = (extra[task.assignee] ?? 0) + 1;
-        const assets = c.facts.employeeNo.trim()?await issuedToTx(tx, c.facts.employeeNo, c.facts.company):[];
-        c.items = assets.map(asset => {
-          const assigned = M.assign(config, group?.id ?? null, c.revokeDate, env, extra, 'memberOrder');
-          if (assigned.userId) extra[assigned.userId] = (extra[assigned.userId] ?? 0) + 1;
-          return { id: randomUUID(), name: `${asset.code} · ${asset.model ?? asset.assetType}`, kind: 'device' as const, sourceId: asset.id, group: group?.id ?? null, assignee: assigned.userId, dueOn: c.revokeDate, status: 'todo' as const, reason: '' };
-        });
-        const catalogue=await onboardingReturnCatalogueTx(ctx,tx,c.facts.company),selections=(c.returnSelections??[]).map(id=>catalogue.find(item=>item.id===id&&item.active));
+        const sources = await returnSourcesTx(tx, ctx, c), selections=(c.returnSelections??[]).map(id=>sources.catalogue.find(item=>item.id===id&&item.active));
         if(selections.some(item=>!item))throw new M.V9Error('An additional return item is no longer available. Review the catalogue selections before submission.');
-        const holdings = await onboardingHoldingsTx(ctx, tx, c.facts.employmentId!, c.facts.company);
-        for (const holding of holdings) {
-          const groupId = config.groups.some(group => group.id === holding.group) ? holding.group : null;
-          const assigned = M.assign(config, groupId, c.revokeDate, env, extra, 'memberOrder');
-          if (assigned.userId) extra[assigned.userId] = (extra[assigned.userId] ?? 0) + 1;
-          c.items.push({ id: randomUUID(), name: holding.name, kind: holding.kind, sourceId: null, nativeSource: { caseId: holding.caseId, requestId: holding.requestId, requestNumber: holding.requestNumber, itemId: holding.itemId }, group: groupId, assignee: assigned.userId, dueOn: c.revokeDate, status: 'todo', reason: '' });
+        const assets = sources.assets, holdings = sources.holdings;
+        c.returnAnchor = env.effectiveLastDay && M.validDate(env.effectiveLastDay) ? env.effectiveLastDay : c.facts.lastDay;
+        const pairs = new Map<string, string>();
+        c.items = [];
+        for (const row of returnRows(c, config, sources)) {
+          const { pairKey, ...planned } = row, fields = Object.fromEntries(Object.entries(planned).filter(([key]) => key !== 'previewId')) as Omit<typeof planned, 'previewId'>, due = plannedDue(c, row, c.returnAnchor, c.returnPresets);
+          const item: M.Item = { ...fields, id: randomUUID(), assignee: null, assignmentFailure: null, dueOn: due.dueOn, dueDay: due.dueDay, status: 'todo', reason: '' };
+          if (pairKey) { if (!pairs.has(pairKey)) pairs.set(pairKey, randomUUID()); item.pairId = pairs.get(pairKey); }
+          M.assignReturnItem(c, config, item, env, extra);
+          c.items.push(item);
         }
-        for(const item of selections){
-          if(!item||holdings.some(holding=>holding.catalogueId===item.id))continue;
-          const groupId=config.groups.some(group=>group.id===item.group)?item.group:null,assigned=M.assign(config,groupId,c.revokeDate,env,extra,'memberOrder');
-          if(assigned.userId)extra[assigned.userId]=(extra[assigned.userId]??0)+1;
-          c.items.push({id:randomUUID(),name:item.name,kind:item.kind,sourceId:null,sourceCatalogueId:item.id,group:groupId,assignee:assigned.userId,dueOn:c.revokeDate,status:'todo',reason:''});
-        }
+        c.returnPresets = undefined;
         c.returnSelections=[];
         M.appendLog(c, env, 'returns.created', `${assets.length} issued inventory assets and ${holdings.length} handed onboarding items loaded from their original records.`);
       }
@@ -513,6 +882,8 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
           proposal.status = 'rejected';
           M.appendLog(c, env, 'personnel.kept', `${proposal.field}: kept on the case only`);
         } else {
+          const document=c.documents.find(document=>document.id===proposal.documentId);
+          if(document?.personnelCompletion&&(!M.currentDocumentCompletionProposal(document,proposal)||proposal.provenance?.kind==='missing-personnel'&&!document.personnelCompletion.submitted))throw new M.V9Error('This employee answer changed or is no longer submitted. Review the current document.','conflict');
           proposal.status = await pushV9PersonnelTx(tx, ctx, { employmentId: c.facts.employmentId, field: proposal.field, before: proposal.before, after: proposal.after });
           M.appendLog(c, env, proposal.status === 'pushed' ? 'personnel.pushed' : 'personnel.conflict', `${proposal.field}: ${proposal.status === 'pushed' ? 'reviewed change applied' : 'Personnel source changed; review in Personnel Management'}`);
         }
@@ -554,8 +925,18 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       M.signDocument(c, config, command.id, 'hr', { ...command.signature, by: env.actor, at: env.now }, env);
       if(c.documents.find(document=>document.id===command.id)?.status==='hrsigned')for(const workflow of config.workflows)M.runWorkflow(c,config,workflow,env,'hrSigned');
     }
-    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.signatoryUserId ??= env.signatoryUserId ?? null; document.mergeValues = M.documentMergeValues(document,{...env.mergeValues,'signatory.name':document.signatoryUserId?env.userName(document.signatoryUserId):'','signatory.title':v9SignatoryTitle(config,document.signatoryUserId,c.facts.company)}); for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = M.personnelFieldSourceValue(field, document.mergeValues); M.appendLog(c, env, 'document.refreshed', document.name); }
-    else if (command.type === 'settlementOptions') { if (!['pending', 'submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before changing its figures.'); c.settlementOptions = command.options; M.appendLog(c, env, 'settlement.adjusted', command.reason); }
+    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.signatoryUserId ??= env.signatoryUserId ?? null; document.mergeValues = M.documentMergeValues(document,{...env.mergeValues,'signatory.name':document.signatoryUserId?env.userName(document.signatoryUserId):'','signatory.title':v9SignatoryTitle(config,document.signatoryUserId,c.facts.company)}); for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = M.personnelFieldSourceValue(field, document.mergeValues); reviseV9DocumentRouting(document,env); M.appendLog(c, env, 'document.refreshed', document.name); }
+    else if (command.type === 'settlementOptions') {
+      if (!['pending', 'submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before changing its figures.'); c.settlementOptions = command.options; M.appendLog(c, env, 'settlement.adjusted', command.reason);
+      // d1e26f81 — default Return and revoke dates follow the effective last working day; fixed dates stay.
+      const anchor = c.state === 'submitted' ? (await readSettlementTx(tx, ctx, c, config))?.lastDay : undefined;
+      if (anchor && M.validDate(anchor) && anchor !== (c.returnAnchor ?? c.facts.lastDay)) {
+        c.returnAnchor = anchor; const moved=M.reanchorOpenReturnDates(c,anchor);
+        M.appendLog(c, env, 'returns.datesMoved', `${moved} return and revoke dates now count from ${anchor}.`);
+      }
+    }
+    else if (command.type === 'itemsBulk') M.bulkItems(c, config, { ids: command.ids, ...(command.group !== undefined ? { group: command.group } : {}), ...(command.method !== undefined ? { method: command.method } : {}), ...(command.due !== undefined ? { due: command.due } : {}) }, env);
+    else if (command.type === 'returnPresets' || command.type === 'returnSelections') { /* Applied above, before submission. */ }
     else if (command.type === 'clear') {
       const calculation = await readSettlementTx(tx, ctx, c, config);
       if (!calculation?.ready || calculation.lastDay !== c.facts.lastDay) throw new M.V9Error('Complete the Leave/Payroll sources and resolve the last working day before clearance.');
@@ -574,11 +955,17 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       const workflow=config.workflows.find(workflow=>workflow.id===command.workflowId&&workflow.module===c.module);
       if(!workflow||workflow.status!=='published'||c.state!=='submitted')throw new M.V9Error('Choose a live workflow on an open case.');
       if(!M.workflowMatches(c,workflow,env.today))throw new M.V9Error('This case does not match the workflow conditions.');
-      if(c.runs.some(run=>run.workflowId===workflow.id&&['waiting','failed'].includes(run.status)))M.runWorkflow(c,config,workflow,env,'resume');
+      if(c.runs.some(run=>run.workflowId===workflow.id&&['waiting','failed'].includes(run.status)))M.runWorkflow(c,config,workflow,env,'resume',{continueHeld:true});
       else M.runWorkflow(c,config,workflow,env,'manual',{startNow:true});
       M.appendLog(c,env,'workflow.startedByHand',workflow.name);
     }
-    else if (command.type === 'retryWorkflow') { const workflow = config.workflows.find(w => w.id === command.workflowId); if (!workflow) throw new M.V9Error('Workflow not found.'); M.runWorkflow(c, config, workflow, env, 'resume'); }
+    else if (command.type === 'lateEmail') { M.decideLateEmail(c, config, command, env); }
+    else if (command.type === 'retryWorkflow') { const workflow = config.workflows.find(w => w.id === command.workflowId); if (!workflow) throw new M.V9Error('Workflow not found.'); M.runWorkflow(c, config, workflow, env, 'resume', { continueHeld: true }); }
+    else if (command.type === 'recipientsOverride') {
+      // Case-edit authority: the same load/admin path (offboarding) or Native case actions (onboarding) as every case change.
+      M.overrideRecipients(c, config, command.clear ? { workflowId: command.workflowId, stepId: command.stepId, clear: true } : { workflowId: command.workflowId, stepId: command.stepId, to: command.to!, cc: command.cc! }, env);
+      await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-case', aggregateId: c.id, eventType: 'lifecycle-v9.recipientsChanged', actor: actorOf(ctx), subjectEmploymentId: c.facts.employmentId || null, payload: { caseId: c.id, workflowId: command.workflowId, stepId: command.stepId, cleared: !!command.clear, ...(command.clear ? {} : { to: command.to, cc: command.cc }) } });
+    }
     else if (command.type === 'override') { if (c.state !== 'pending') throw new M.V9Error('The submitted checklist is frozen.'); c.override = command.checklist; M.matchChecklist(config, c); M.appendLog(c, env, 'checklist.overridden', command.checklist); }
     else if (command.type === 'assign') {
       if (c.state !== 'submitted') throw new M.V9Error('This case is not open.');
@@ -591,7 +978,8 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       const item = c.items.find(item => item.id === command.id); if (!item) throw new M.V9Error('Item not found.');
       if (M.isResolved(item.status) || item.status === 'notReturned') throw new M.V9Error('Completed work keeps its recorded owner.');
       if (!config.groups.some(group => group.id === item.group && group.members.includes(command.userId)) || !env.eligibleUser(command.userId)) throw new M.V9Error('Choose an eligible member of the providing group.');
-      item.assignee = command.userId;
+      if (command.userId === c.facts.employeeUserId) throw new M.V9Error('The leaver cannot own their own return and revoke items.');
+      item.assignee = command.userId; item.assignmentFailure = null;
       M.appendLog(c, env, 'item.reassigned', `${item.name} · ${env.userName(command.userId)}`, { userId: command.userId, groupId: item.group! });
     } else if (command.type === 'item') {
       if (c.state !== 'submitted') throw new M.V9Error('This case is not open.');
@@ -607,7 +995,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       item.status = command.status; item.reason = command.reason.trim(); M.appendLog(c, env, 'item.updated', `${item.name}: ${item.status}`);
     }
     if (!['emailTest','testWorkflow'].includes(command.type)) for (const w of config.workflows) if (c.runs.some(r => r.workflowId === w.id && r.status === 'waiting')) M.runWorkflow(c, config, w, env, 'resume');
-    await store(tx, ctx, row, c, command.type);
+    await store(tx, ctx, row, c, command.type, config);
   });
 }
 /** Native submission and the privileged minute worker use the same idempotent workflow transition. */
@@ -626,6 +1014,7 @@ export async function v9NativeTransitionTx(ctx: SessionContext, tx: Tx, id: stri
   const state = nativeDocumentState(c);
   if (v9Equal(state, native.documentState)) return { revision: native.row.revision, changed: false };
   await onboardingV9StoreTx(ctx, tx, id, native.row.revision, state, c.tasks.filter(task => task.status === 'done' && task.documentTemplate).map(task => task.id), 'workflow');
+  await syncEmailHoldsTx(tx, ctx, { caseId: id, companyId: native.row.companyId, before: { runs: native.documentState?.runs ?? [], state: c.state }, after: c, config });
   return { revision: native.row.revision + 1, changed: true };
 }
 /** Existing privileged maintenance connection; daily dates run after 08:00 Malaysia time. */
@@ -651,7 +1040,7 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
       const figures = calculation?.ready && calculation.lastDay === c.facts.lastDay ? { sourceRevision: calculation.sourceRevision, lastDay: calculation.lastDay, leaveDays: String(calculation.encashDays), amount: calculation.amount!.toFixed(2), currency: calculation.currency, payDate: calculation.payDate, lockedAt: env.now, payrollReference: randomUUID() } : null;
       if (dates) M.lastDayCheck(c, config, env, figures);
       if (JSON.stringify(c) === JSON.stringify(row.data)) return false;
-      await store(tx, ctx, row, c, 'scheduled'); return true;
+      await store(tx, ctx, row, c, 'scheduled', config); return true;
     });
     if (changed) output.processed++;
   } catch { output.failed++; }
@@ -659,6 +1048,51 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
   for (const { id } of nativeIds) try {
     const changed = await connection.withTenant(ctx, async tx => { await lockTx(tx, ctx); return v9NativeTransitionTx(ctx, tx, id, now, dates); });
     if (changed.changed) output.processed++;
+  } catch { output.failed++; }
+  return output;
+}
+/**
+ * d1e26f81 — release back-fill for open offboarding cases. Only items still Unassigned, not done and never preset
+ * get the team from settings, round robin (leaver excluded) and, when the date is the untouched revoke-date
+ * default, the Day -1/0 date; any other date is kept as fixed. Chosen owners and done items are never touched.
+ * Safe to re-run: preset items carry `method`, so a second run finds nothing. One short transaction per case.
+ */
+export async function v9BackfillReturnPresets(ctx: SessionContext, connection: NotificationSweepConnection, opts: { apply: boolean }) {
+  assertModuleEnabled(ctx, 'lifecycle');
+  if (ctx.userId) throw new M.V9Error('The return back-fill runs as the storage owner.', 'forbidden');
+  const pending = sql`exists(select 1 from jsonb_array_elements(data->'items') i where i->>'status' in ('todo','progress') and i->>'assignee' is null and not (i ? 'method'))`;
+  const ids = await connection.withTenant(ctx, async tx => {
+    const [permission] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
+    if (!permission?.ok) throw new M.V9Error('The return back-fill requires the storage owner.', 'forbidden');
+    return tx.execute<{ id: string }>(sql`select id from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and module='off' and data->>'state'='submitted' and ${pending} order by id`);
+  });
+  const output = { cases: ids.length, items: 0, assigned: 0, updated: 0, failed: 0 };
+  for (const { id } of ids) try {
+    await connection.withTenant(ctx, async tx => {
+      await lockTx(tx, ctx);
+      const [row] = await tx.execute<Row>(sql`select id,company_id,revision,data from lc_v9_case where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid and module='off' and data->>'state'='submitted' and ${pending} for update`);
+      const config = row ? await configTx(tx, ctx) : null; if (!row || !config) return;
+      const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
+      const targets = c.items.filter(item => (item.status === 'todo' || item.status === 'progress') && !item.assignee && item.method === undefined);
+      if (!targets.length) return;
+      const sources = await returnSourcesTx(tx, ctx, c), anchor = c.returnAnchor ?? (env.effectiveLastDay && M.validDate(env.effectiveLastDay) ? env.effectiveLastDay : c.facts.lastDay), extra: Record<string, number> = {};
+      c.returnAnchor = anchor;
+      for (const item of targets) {
+        const holding = item.nativeSource ? sources.holdings.find(h => h.caseId === item.nativeSource!.caseId && h.itemId === item.nativeSource!.itemId) : undefined;
+        const entry = sources.catalogue.find(e => e.id === (holding?.catalogueId ?? item.sourceCatalogueId));
+        item.group = item.sourceId && !item.nativeSource ? existingGroup(config, sources.techGroup) ?? existingGroup(config, item.group) : existingGroup(config, entry?.group) ?? existingGroup(config, holding?.group) ?? existingGroup(config, item.group);
+        item.catalogueId = holding?.catalogueId ?? item.sourceCatalogueId ?? null;
+        if (holding) item.providedBy = { group: holding.group || null, userId: holding.claim, at: holding.handedAt };
+        item.method = 'rr';
+        if (item.dueOn === c.revokeDate && !(item.kind === 'system' && c.revokeMode === 'date')) { item.dueDay = M.defaultReturnDay(item.kind); item.dueOn = M.returnDue(anchor, item.dueDay); }
+        else item.dueDay = null;
+        M.assignReturnItem(c, config, item, env, extra);
+        if (item.assignee) output.assigned++;
+      }
+      output.items += targets.length;
+      M.appendLog(c, { ...env, actor: { id: 'system', name: 'System' } }, 'returns.presetsApplied', `${targets.length} unassigned return and revoke items received their team, owner and date from settings.`);
+      if (opts.apply) { await store(tx, ctx, row, c, 'returnsPresetsApplied'); output.updated++; }
+    });
   } catch { output.failed++; }
   return output;
 }
@@ -821,7 +1255,7 @@ export async function v9UploadFile(ctx: SessionContext, input: { caseId: string;
     const previousFile = row.data.files.find(file => file.slot === input.slot);
     if (previousFile && row.data.mails.some(mail => !mail.test && ['pending','sending','uncertain'].includes(mail.status) && mail.fileIds.includes(previousFile.id))) throw new M.V9Error('This file is reserved for a queued delivery. Review that delivery before replacing it.', 'conflict');
     if (row.revision !== input.revision) throw new M.V9Error('This case changed. Refresh before uploading.', 'conflict');
-    const slots = [...config.emails.filter(e => e.module === row.data.module).flatMap(e => e.slots.map(s => `${e.id}:${s.id}`)), ...config.workflows.filter(w => w.module === row.data.module).flatMap(w => w.steps.filter(s => s.type === 'waitFile').map(s => s.slot)), ...row.data.runs.flatMap(r => r.definition?.steps.filter(s => s.type === 'waitFile').map(s => s.slot) ?? [])];
+    const slots = [...config.emails.filter(e => e.module === row.data.module).flatMap(e => e.slots.map(s => `${e.id}:${s.id}`)), ...config.workflows.filter(w => w.module === row.data.module && w.status !== 'retired').flatMap(w => w.steps.filter(s => s.type === 'waitFile').map(s => s.slot)), ...row.data.runs.flatMap(r => r.definition?.steps.filter(s => s.type === 'waitFile').map(s => s.slot) ?? [])];
     if (!slots.includes(input.slot)) throw new M.V9Error('Choose a configured attachment slot for this case.');
     const id = randomUUID();
     await tx.execute(sql`insert into lc_v9_file(id,tenant_id,case_id,onboarding_case_id,company_id,slot,filename,mime_type,content,uploaded_by) values(${id}::uuid,${ctx.tenantId}::uuid,${row.native ? null : row.id}::uuid,${row.native ? row.id : null}::uuid,${row.company_id}::uuid,${input.slot},${input.name},${mimeType},decode(${content.toString('base64')},'base64'),${ctx.userId}::uuid)`);
@@ -846,8 +1280,17 @@ export async function v9OwnDocument(ctx: SessionContext, input: { caseId: string
   identifier(input.caseId);
   if (!Number.isSafeInteger(input.revision) || input.revision < 1 || !input.documentId || input.documentId.length > 120 || JSON.stringify(input.values).length > 1048576) throw new M.V9Error('Invalid document details.');
   await withLifecycleTenant(ctx, async tx => {
-    await lockTx(tx, ctx); await actor(tx, ctx);
-    const [result] = await tx.execute<{ employment: string }>(sql`select app.lc_v9_self_document(${input.caseId}::uuid,${input.revision},${input.documentId},${JSON.stringify(input.values)}::jsonb,${input.signature ? JSON.stringify(input.signature) : null}::jsonb) as employment`);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockTx(tx, ctx); await actor(tx, ctx);
+    const [completion]=await tx.execute<{document:M.Document|null}>(sql`select app.v9_personnel_completion_read(${input.caseId}::uuid,${input.documentId}) as document`);
+    let revision=input.revision,values=input.values;
+    if(completion.document){
+      if(input.signature){
+        if(completion.document.hrSignature||completion.document.employeeSignature){
+          if(Object.entries(values).some(([key,value])=>completion.document!.values[key]!==value))throw new M.V9Error('Signed content is locked.','conflict');values={};
+        }else {revision=await updatePersonnelCompletionTx(tx,{caseId:input.caseId,revision,documentId:input.documentId,values},'submit');values={};}
+      }else {await updatePersonnelCompletionTx(tx,{caseId:input.caseId,revision,documentId:input.documentId,values},'save');return;}
+    }
+    const [result] = await tx.execute<{ employment: string }>(sql`select app.lc_v9_self_document(${input.caseId}::uuid,${revision},${input.documentId},${JSON.stringify(values)}::jsonb,${input.signature ? JSON.stringify(input.signature) : null}::jsonb) as employment`);
     if (!result?.employment) throw new M.V9Error('Document not available.', 'not_found');
     await record(tx, ctx, input.caseId, result.employment, input.signature ? 'employeeDocumentSigned' : 'employeeDocumentSaved');
   });
@@ -888,15 +1331,75 @@ export async function v9DownloadEmailAsset(ctx: SessionContext, id: string): Pro
 /** Authorized saved instance only: HR scope or the linked employee's released-document projection. */
 export async function v9DownloadDocument(ctx: SessionContext, caseId: string, documentId: string): Promise<{ name: string; content: Uint8Array }> {
   identifier(caseId); documentId = commandId.parse(documentId);
-  let document: M.Document | undefined, reference = '';
+  let document: M.Document | undefined, reference = '',hrView=false;
   try {
-    const detail = await v9CaseDetail(ctx, caseId); document = detail.case.documents.find(d => d.id === documentId); reference = detail.case.number;
+    const detail = await v9CaseDetail(ctx, caseId);hrView=true; document = detail.case.documents.find(d => d.id === documentId); reference = detail.case.number;
   } catch (error) {
     if (!(error instanceof M.V9Error || error instanceof OnboardingError) || !['forbidden', 'not_found'].includes(error.code)) throw error;
     const own = (await v9OwnWork(ctx)).find(c => c.id === caseId); document = own?.documents.find(d => d.id === documentId); reference = own?.number ?? '';
   }
+  if(!document){const {v9ReadDocumentSigningWork}=await import('./document-routing');const routed=await v9ReadDocumentSigningWork(ctx,caseId,documentId).catch(()=>null);document=routed?.document??undefined;reference=routed?.number??'';}
+  if(!hrView&&document?.personnelCompletion?.preparation&&!document.sentAt){const {v9ReadDocumentSigningWork}=await import('./document-routing');const routed=await v9ReadDocumentSigningWork(ctx,caseId,documentId).catch(()=>null);if(!routed?.document)throw new M.V9Error('Unsigned preparation has no released document PDF.','forbidden');document=routed.document;reference=routed.number;}
   if (!document) throw new M.V9Error('Document not found or unavailable.', 'not_found');
   const { renderV9DocumentPdf } = await import('../../../lib/lifecycle-v9-pdf');
   const result = await renderV9DocumentPdf(document, reference);
   return { name: document.name.replace(/[^\p{L}\p{N} ._()-]/gu, '_') + '.pdf', content: result.bytes };
+}
+
+
+/** Exact no-supervisor recovery target. Private manifests keep these IDs off public source. */
+export type ManagerEmailRecoveryTarget = { tenantId: string; caseId: string; companyId: string; revision: number; runId: string; stepId: string; heldAt: string; dueOn: string | null; classification: 'future' | 'today' | 'late' | 'unknown' };
+/** SQL-paged read, no message or private answer blobs leave the service. The apply worker revalidates identities. */
+export async function managerEmailRecoveryPage(ctx: SessionContext, after = '', limit = 100) {
+  if (!ctx.userId) throw new M.V9Error('Sign in as authorised HR before reviewing recovery.', 'forbidden');
+  return withLifecycleTenant(ctx, async tx => {
+    const rows = await tx.execute<{case_id:string;company_id:string;revision:number;run:M.Run;facts:M.Case['facts'];total:string}>(sql`select * from app.lifecycle_manager_recovery_page(${after},${Math.max(1,Math.min(100,limit))})`);
+    const today=todayInKualaLumpur();
+    return {items:rows.map(row=>{const dueOn=M.heldEmailDueOn({facts:row.facts},row.run);return{tenantId:ctx.tenantId,caseId:row.case_id,companyId:row.company_id,revision:row.revision,runId:row.run.id,stepId:row.run.hold!.stepId,heldAt:row.run.hold!.at,dueOn,classification:!dueOn?'unknown':dueOn<today?'late':dueOn===today?'today':'future'} satisfies ManagerEmailRecoveryTarget;}),remainingCount:Number(rows[0]?.total??0),after:rows.length?rows.at(-1)!.case_id+':'+rows.at(-1)!.run.id:null};
+  });
+}
+/** One fenced bulk-job step: current permission/revision/hold and delivery state are rechecked together. */
+export async function recoverManagerEmailHoldTx(tx: Tx, ctx: SessionContext, target: ManagerEmailRecoveryTarget) {
+  if(target.tenantId!==ctx.tenantId||!ctx.userId)throw new M.V9Error('Recovery scope changed.', 'forbidden');
+  await lockTx(tx,ctx);
+  const row=await load(tx,ctx,target.caseId),config=await configTx(tx,ctx);
+  if(!config||row.revision!==target.revision)return{outcome:'changed'};
+  const c=structuredClone(row.data),run=c.runs.find(run=>run.id===target.runId&&run.status==='waiting'&&run.hold?.stepId===target.stepId&&run.hold.at===target.heldAt);
+  if(c.state!=='submitted'||!run||!run.hold?.missing.some(m=>m.role==='supervisor'&&m.reason==='no supervisor on the Personnel record'))return{outcome:'changed'};
+  if(c.mails.some(mail=>mail.workflowId===run.workflowId&&mail.key.startsWith(`${run.id}:${target.stepId}:`)))return{outcome:'deliveryExists'};
+  const workflow=run.definition??config.workflows.find(w=>w.id===run.workflowId),step=workflow?.steps[run.cursor];
+  if(!workflow||!step||step.id!==target.stepId||!(step.type==='email'||step.type==='notify'))return{outcome:'changed'};
+  const env=await environment(tx,ctx,c,config),email=step.type==='email'?config.emails.find(e=>e.id===step.template):null;
+  const recipients=M.resolveStepRecipients(c,config,M.stepRecipientRoles(c,workflow.id,step,email),env),dueOn=M.heldEmailDueOn(c,run);
+  if(recipients.missing.length){run.hold={stepId:step.id,missing:recipients.missing,at:env.now};M.appendLog(c,env,'workflow.managerRecoveryHeld','Current Personnel recipients still require review.');await store(tx,ctx,row,c,'managerRecoveryHeld',config);return{outcome:'stillHeld',revision:row.revision+1};}
+  if(!dueOn)return{outcome:'unknownDate'};
+  if(dueOn<env.today){run.lateEmail={stepId:step.id,dueOn,at:env.now};delete run.hold;run.reason=`This held email was due on ${dueOn}. HR must choose Send anyway or Skip this email.`;}
+  else if(dueOn>env.today){delete run.hold;run.resumeOn=dueOn;run.reason=`Scheduled for ${dueOn}.`;}
+  else M.runWorkflow(c,config,workflow,env,'resume',{continueHeld:true,resumeRunId:run.id});
+  M.appendLog(c,env,'workflow.managerRecovery',`${run.workflowId}: ${step.id} · due ${dueOn}`);
+  await store(tx,ctx,row,c,'managerRecovery',config);
+  return{outcome:dueOn<env.today?'late':dueOn>env.today?'scheduled':'resumed',revision:row.revision+1};
+}
+
+/** After the guarded SQL adoption, one fenced worker checkpoint resumes only its reviewed
+ * frozen runs. It never invokes transport or manufactures a source event. */
+export async function recoverPersonnelCompletionRunsTx(tx:Tx,ctx:SessionContext,target:{caseId:string;revision:number;documentId:string;runs:{id:string;stepId:string;dueOn:string}[]}){
+ if(!ctx.userId||ctx.agent)throw new M.V9Error('Current HR recovery authority is required.','forbidden');
+ await lockTx(tx,ctx);const row=await load(tx,ctx,target.caseId),config=await configTx(tx,ctx);
+ if(!config||row.revision!==target.revision)throw new M.V9Error('The adopted case changed. Review recovery again.','conflict');
+ const c=structuredClone(row.data),document=c.documents.find(d=>d.id===target.documentId);
+ if(c.state!=='submitted'||!document?.personnelCompletion||document.sentAt||document.status!=='draft')throw new M.V9Error('Only the reviewed unreleased completion draft can resume.','conflict');
+ if(!target.runs.length||new Set(target.runs.map(r=>r.id)).size!==target.runs.length)throw new M.V9Error('Choose the exact reviewed frozen runs.','conflict');
+ const env=await environment(tx,ctx,c,config),results:{runId:string;status:M.Run['status'];reason:string}[]=[];
+ for(const reviewed of target.runs){
+  const run=c.runs.find(r=>r.id===reviewed.id),step=run?.definition?.steps[run.cursor];
+  if(!run||run.status!=='waiting'||!run.definition||!step||step.id!==reviewed.stepId||step.type!=='doc'||!step.release||step.template!==document.templateId||!M.validDate(reviewed.dueOn))throw new M.V9Error('A reviewed document wait changed.','conflict');
+  if(run.completionHold&&(run.completionHold.documentId!==document.id||run.completionHold.stepId!==step.id||run.completionHold.dueOn!==reviewed.dueOn))throw new M.V9Error('The original scheduled document wait changed.','conflict');
+  run.completionHold??={documentId:document.id,stepId:step.id,dueOn:reviewed.dueOn,at:env.now};
+  if(reviewed.dueOn>env.today){run.resumeOn=reviewed.dueOn;run.reason=`Scheduled for ${reviewed.dueOn}.`;}
+  else M.runWorkflow(c,config,run.definition,env,'resume',{resumeRunId:run.id});
+  results.push({runId:run.id,status:run.status,reason:run.reason});
+ }
+ M.appendLog(c,env,'workflow.personnelCompletionRecovery',`${document.name}: ${target.runs.length} reviewed frozen run(s).`);await store(tx,ctx,row,c,'personnelCompletionRecovery',config);
+ return{outcome:target.runs.every(r=>r.dueOn>env.today)?'scheduled':c.runs.some(r=>target.runs.some(t=>t.id===r.id)&&r.lateEmail)?'late':'prepared',revision:row.revision+1,runs:results};
 }

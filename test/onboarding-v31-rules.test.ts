@@ -130,6 +130,31 @@ describe('V3.1 per-item approval precedence and resolution', () => {
         const i = request();
         expect(i.steps[0]).toMatchObject({ group: 'tech-bp', user: 'raj', viaDefault: 'Manufacturing' });
     });
+    it('259c6162: breaks a specificity tie by row order', () => {
+        config.groups.push({ id: 'manufacturing', name: 'Manufacturing', members: ['mei'], limit: 4 }, { id: 'finance-bp', name: 'Finance BP', members: ['hafiz'], limit: 4 });
+        config.routings = [{ id: 'tie', name: 'Tie routing', rows: [{ id: 'by-group', rules: { businessGroup: ['manufacturing'] }, group: 'manufacturing' }, { id: 'by-department', rules: { department: ['finance'] }, group: 'finance-bp' }] }];
+        config.workflows[0]!.steps = [{ id: 'route', label: 'Tech BP', type: 'routing', target: 'tie', method: 'rr' }];
+        expect(request().steps[0]).toMatchObject({ group: 'manufacturing', user: 'mei', viaDefault: null, status: 'pending' });
+        config.routings[0]!.rows.reverse();
+        c = M.blankCase('case-2', 'OB-2', 'draft-2', { fullName: 'Haziq', joinDate: fixtureJoin, company: 'company-a', businessGroup: 'manufacturing', title: 'analyst', department: 'finance' }, env);
+        c.local.supervisor = 'boss'; c.hiring = 'new_hire';
+        expect(request().steps[0]).toMatchObject({ group: 'finance-bp', user: 'hafiz' });
+    });
+    it('259c6162: no matching row and no default row leaves the step unresolved', () => {
+        config.routings = [{ id: 'narrow', name: 'Construction only', rows: [{ id: 'construction', rules: { businessGroup: ['construction'] }, group: 'tech-bp' }] }];
+        config.workflows[0]!.steps = [{ id: 'route', label: 'Tech BP', type: 'routing', target: 'narrow', method: 'rr' }];
+        expect(request().steps[0]).toMatchObject({ group: null, user: null, status: 'unresolved' });
+    });
+    it('259c6162: describes routing edits for the Audit Trail', () => {
+        const old: Pick<M.Config, 'routings' | 'workflows'> = { routings: [{ id: 'a', name: 'A', rows: [{ id: 'r1', rules: {}, group: 'tech-bp' }, { id: 'r2', rules: { company: ['company-a'] }, group: 'tech-bp' }] }, { id: 'b', name: 'B', rows: [{ id: 'r3', rules: {}, group: 'tech-bp' }] }], workflows: [{ id: 'w', name: 'Standard', mode: 'seq', steps: [{ id: 's1', label: 'Approve', type: 'routing', target: 'b', method: 'rr' }] }] };
+        const next: Pick<M.Config, 'routings' | 'workflows'> = { routings: [{ id: 'a', name: 'A renamed', rows: [{ id: 'r1', rules: {}, group: 'tech-bp' }, { id: 'r2', rules: { company: ['company-b'] }, group: 'facility' }, { id: 'r4', rules: { title: ['analyst'] }, group: 'tech-bp' }] }, { id: 'c', name: 'C', rows: [{ id: 'r5', rules: {}, group: 'facility' }] }], workflows: [{ id: 'w', name: 'Standard', mode: 'seq', steps: [{ id: 's1', label: 'Approve', type: 'routing', target: 'a', method: 'rr' }] }] };
+        expect(M.routingAuditChanges(old, next)).toEqual([
+            { eventType: 'onboarding.routing.updated', payload: { routingId: 'a', name: { before: 'A', after: 'A renamed' }, rowsAdded: [{ rowId: 'r4', rules: { title: ['analyst'] }, group: 'tech-bp' }], rowsRemoved: [], rowsChanged: [{ rowId: 'r2', before: { rules: { company: ['company-a'] }, group: 'tech-bp' }, after: { rules: { company: ['company-b'] }, group: 'facility' } }] } },
+            { eventType: 'onboarding.routing.created', payload: { routingId: 'c', name: 'C', rows: [{ rowId: 'r5', rules: {}, group: 'facility' }] } },
+            { eventType: 'onboarding.routing.deleted', payload: { routingId: 'b', name: 'B', replacementRoutingId: 'a', repointedSteps: [{ workflowId: 'w', stepId: 's1' }] } },
+        ]);
+        expect(M.routingAuditChanges(old, structuredClone(old))).toEqual([]);
+    });
     it('uses one approver for same group across items and supports a batch', () => {
         config.catalogue.push(cat('SAP', { workflow: 'standard' }));
         c.selected = ['VPN', 'SAP'];

@@ -27,9 +27,11 @@ export function attendancePolicyCountAttribution(duration:PolicyDurationProposal
   if(unionAttendancePolicyIntervals(intervals,4320).reduce((n,row)=>n+row.to-row.from,0)!==physical)return unavailable;
   const seen=new Set<string>();let rounded=0,minutes=0;
   for(const row of duration.classes){
-   if(seen.has(row.dayClass)||!integer(row.eligibleMinutes)||!integer(row.payableMinutes)||!integer(row.unplacedPayableMinutes))return unavailable;
-   seen.add(row.dayClass);
-   const indexes=parts.filter(part=>part.dayClass===row.dayClass),placed=indexes.reduce((n,part)=>n+part.physicalMinutes,0);
+   // Per-date rows (2f803985) own one date's part; older rows own their whole classification.
+   const key=row.calendarDate===undefined?row.dayClass:row.dayClass+'|'+row.calendarDate;
+   if(seen.has(key)||!integer(row.eligibleMinutes)||!integer(row.payableMinutes)||!integer(row.unplacedPayableMinutes))return unavailable;
+   seen.add(key);
+   const indexes=parts.filter(part=>part.dayClass===row.dayClass&&(row.calendarDate===undefined||part.calendarDate===row.calendarDate)),placed=indexes.reduce((n,part)=>n+part.physicalMinutes,0);
    if(!indexes.length||indexes.reduce((n,part)=>n+duration.parts[part.sequence].minutes,0)!==row.eligibleMinutes
     ||placed+row.unplacedPayableMinutes!==row.payableMinutes)return unavailable;
    const attribution=row.roundingCountAttribution;
@@ -48,7 +50,8 @@ export function attendancePolicyCountAttribution(duration:PolicyDurationProposal
    }
    minutes+=row.payableMinutes;
   }
-  if(parts.some(part=>!seen.has(part.dayClass))||minutes!==duration.payableMinutes||physical+rounded!==minutes)return unavailable;
+  if(parts.some(part=>!seen.has(part.dayClass)&&!seen.has(part.dayClass+'|'+part.calendarDate))
+   ||new Set(duration.classes.map(row=>row.calendarDate===undefined)).size>1||minutes!==duration.payableMinutes||physical+rounded!==minutes)return unavailable;
   return {state:'known',physicalMinutes:physical,roundedMinutes:rounded,minutes,parts};
  }catch{return unavailable;}
 }

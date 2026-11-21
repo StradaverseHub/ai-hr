@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * M12 (D13) — the kernel seams the mobile attendance composition needed, each optional and backward-compatible:
  *
@@ -30,7 +31,7 @@ import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, migrat
 let b: Base;
 beforeAll(migrateTestDb);
 afterAll(closeAll);
-beforeEach(async () => { await resetDb(); b = await seedBase(); });
+beforeEach(async () => { await resetDb(); b = await seedAttendanceSubmissionBase(); });
 
 async function employee(departmentId?: string) {
   const e = await hireEmployee(adminCtx(b), { person: { fullName: 'Seam Worker', primaryEmail: randomUUID() + '@seam.test' }, companyId: b.companyId, departmentId: departmentId ?? b.deptA, employmentType: 'full_time', hiredOn: '2024-01-01' });
@@ -46,7 +47,7 @@ describe('own attendance requests — the shared read', () => {
     const ids: string[] = [];
     for (const date of ['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04'])
       ids.push((await requestAttendanceCorrection(me.ctx, { employmentId: me.employmentId, date, checkIn: '09:00', checkOut: '18:00', reason: `Fix ${date}` })).correctionId);
-    await decideAttendanceCorrection(adminCtx(b), { correctionId: ids[1], decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(adminCtx(b), { expectedStageIndex: 0, correctionId: ids[1], decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
 
     const web = await myAttendanceCorrections(me.ctx, me.employmentId);
     expect(web.map((r) => r.id)).toEqual([...ids].reverse());
@@ -74,7 +75,7 @@ describe('cancelOwnAttendanceCorrection', () => {
     expect(await cancelOwnAttendanceCorrection(me.ctx, { correctionId })).toEqual({ status: 'cancelled' });
 
     const decided = (await requestAttendanceCorrection(me.ctx, { employmentId: me.employmentId, date: '2026-06-02', checkIn: '09:00', checkOut: '18:00', reason: 'r' })).correctionId;
-    await decideAttendanceCorrection(adminCtx(b), { correctionId: decided, decision: 'approved' });
+    await decideAttendanceCorrection(adminCtx(b), { expectedStageIndex: 0, correctionId: decided, decision: 'approved' });
     const late = cancelOwnAttendanceCorrection(me.ctx, { correctionId: decided });
     await expect(late).rejects.toBeInstanceOf(AttendanceWithdrawRefusedError);
     await expect(late).rejects.toMatchObject({ refusal: 'not_pending', message: 'This request is no longer waiting for a decision, so it can no longer be withdrawn.' });

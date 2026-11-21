@@ -322,7 +322,7 @@ describe('work lists (the kernel /performance queue and the assignments list)', 
     expect(await perf.getOnehrReview(f.U.M1, rid.S)).toMatchObject({ reviewer: true, manager: false, planReviewer: true });
     await bringBack(f.a, f.cycleId, saved.ruleId);
     expect([(await queue(f.U.M0)).includes(rid.S), (await queue(f.U.M1)).includes(rid.S)]).toEqual([true, false]);
-  });
+  },90_000); // Hosted run43943737895 exceeded30s across ten native reads and two rule writes; retain3x headroom.
 
   it('does not list a subject who is out for the reviewer one level up, and the assignments list follows the effective reviewer', async () => {
     await ruleX();

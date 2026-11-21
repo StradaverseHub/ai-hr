@@ -1,5 +1,5 @@
 import { cache } from 'react';
-import { client } from '../db/client';
+import { client, withPoolWork } from '../db/client';
 import { internalSelected } from './internal-auth/config';
 import { DEFAULT_LOGIN_PRESENTATION, validateLoginPresentation } from './login-presentation';
 
@@ -10,7 +10,7 @@ export async function loginPresentationTenantId(): Promise<string | null> {
   const organization = process.env.AUTH_DEFAULT_ORGANIZATION?.trim().toLowerCase();
   if (internalSelected() && organization) {
     const { readRecord } = await import('./internal-auth/record-store');
-    const entry = await readRecord<{ tenantId: string }>(client, `org:${organization}`);
+    const entry = await readRecord<{ tenantId: string }>((await import('./internal-auth/store')).admittedAuthSql, `org:${organization}`);
     return entry?.tenantId ?? null;
   }
   return null;
@@ -21,7 +21,7 @@ export const publicLoginPresentation = cache(async () => {
   try {
     const tenantId = await loginPresentationTenantId();
     if (!tenantId) return DEFAULT_LOGIN_PRESENTATION;
-    const rows = await client.unsafe('select app.public_login_presentation($1::uuid) as presentation', [tenantId]);
+    const rows = await withPoolWork('authentication', () => client.unsafe('select app.public_login_presentation($1::uuid) as presentation', [tenantId]), undefined, {idempotent:true});
     return rows[0]?.presentation ? validateLoginPresentation(rows[0].presentation) : DEFAULT_LOGIN_PRESENTATION;
   } catch {
     console.error('Public login artwork unavailable; using default presentation.');

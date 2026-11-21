@@ -46,16 +46,12 @@ import { createDb } from '../db/client';
 // (AGENTS 15). This file turned the gate red on exactly that.
 import { replayApprovalRouting, type RoutingSubject } from '../packs/leave/service';
 import {
-  businessUnit,
   company,
-  department,
-  gradeGroup,
-  jobGrade,
   leaveApprovalPolicy,
   leaveType,
-  position,
   tenant,
 } from '../db/schema';
+import { approvalRuleLabelNames } from './lib/approval-rule-label-names';
 
 /** The six scope dimensions a rule can carry, in the order an administrator reads them. */
 const DIMENSIONS = [
@@ -125,27 +121,8 @@ async function main() {
 
     const never = cov.rules.filter((r) => r.wins === 0);
 
-    // Explicit per table rather than a generic helper: the label column is NOT uniform — position uses
-    // `title` (its `name` does not exist) while the others use `name`, and a union of table types loses
-    // the common column anyway. Naming each one is what makes that difference visible.
-    const idName = async (rows: { id: string; name: string }[]) => new Map(rows.map((r) => [r.id, r.name]));
-    const names: Record<string, Map<string, string>> = {
-      businessUnitId: await idName(
-        await owner.db.select({ id: businessUnit.id, name: businessUnit.name }).from(businessUnit).where(eq(businessUnit.tenantId, t.id)),
-      ),
-      departmentId: await idName(
-        await owner.db.select({ id: department.id, name: department.name }).from(department).where(eq(department.tenantId, t.id)),
-      ),
-      positionId: await idName(
-        await owner.db.select({ id: position.id, name: position.title }).from(position).where(eq(position.tenantId, t.id)),
-      ),
-      gradeId: await idName(
-        await owner.db.select({ id: jobGrade.id, name: jobGrade.name }).from(jobGrade).where(eq(jobGrade.tenantId, t.id)),
-      ),
-      gradeGroupId: await idName(
-        await owner.db.select({ id: gradeGroup.id, name: gradeGroup.name }).from(gradeGroup).where(eq(gradeGroup.tenantId, t.id)),
-      ),
-    };
+    // Organisation code names (staged System Labels import codes excluded: owner connection, no row security).
+    const names: Record<string, Map<string, string>> = await approvalRuleLabelNames(owner.db, t.id);
     const companies = new Map(
       (await owner.db.select({ id: company.id, name: company.legalName }).from(company).where(eq(company.tenantId, t.id))).map(
         (r) => [r.id, r.name],

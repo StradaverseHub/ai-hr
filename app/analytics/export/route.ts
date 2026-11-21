@@ -7,6 +7,7 @@
  * ENGLISH (resolved from constants, not getTranslations) to keep CSV byte-identical for external
  * consumers and to avoid the unenforceable present-but-English i18n gap (ADR-0047 §9).
  */
+import {capacityAwareRead} from '@/lib/database-degraded';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { allowedCompanies } from '@/core/read';
@@ -37,7 +38,7 @@ function contentDisposition(base: string, ext: string): string {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
-export async function GET(req: Request) {
+export const GET = capacityAwareRead(async function GET(req: Request) {
   const s = await getSession();
   if (!isAdmin(s)) return new Response('Forbidden', { status: 403 });
 
@@ -158,4 +159,4 @@ export async function GET(req: Request) {
     console.error('analytics export failed', e);
     return new Response('Could not generate the report — please try again.', { status: 500 });
   }
-}
+});

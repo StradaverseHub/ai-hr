@@ -6,15 +6,16 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * Same request → approve rails as the profile-change / claims / leave flows.
  */
 import { and, desc, eq, inArray } from 'drizzle-orm';
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employment, person, resignationRequest, resignationRequestAttachment } from '../db/schema';
-import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
+import { assertCanDecide, assertAssignedWorkPrincipalTx, canDecideSql, isApprovalDecisionRefusal } from './approvals';
 import { freezeOnResignationApprovalTx } from './leave-encashment';
 import { validateLeaveDocument } from './leave';
 import { terminateEmploymentTx } from './org';
-import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
+import { lockAccessAdministratorSetTx, lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockEmploymentLeaveDependenciesTx } from './workforce-lock-mode';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
 import {isOwnPersonTx,ownPersonPredicate} from './own-person';
@@ -46,6 +47,8 @@ export async function submitResignation(
   const personId = ctx.personId;
   return withTenant(ctx, async (tx) => {
     if(!await isOwnPersonTx(tx,ctx))throw new ResignationError('This account is not linked to an employee profile.');
+    const [cutover]=await tx.execute<{enabled:boolean}>(sql`select app.resignation_managed_submission_enabled(${p.employmentId}::uuid) as enabled`);
+    if(cutover?.enabled)throw new ResignationError('Use the current resignation form in My Profile to submit this request.');
     const [subject]=await tx.select({id:employment.id}).from(employment).where(and(ownPersonPredicate(ctx),eq(employment.id,p.employmentId),eq(employment.personId,personId))).limit(1).for('update');
     if(!subject)throw new ResignationError('This account is not linked to the selected employee profile.');
     const [open] = await tx
@@ -119,13 +122,16 @@ export async function decideResignation(
     if (p.decision === 'accepted') {
       // Acceptance changes employment/assignment/reporting dependencies as well as leave state.
       // Preserve Access-before-dependency order: the existing consequence guard repeats this lock.
-      await tx.execute(sql`select app.access_workforce_write_lock()`);
-      await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+      // Reader/writer lock (S+A): shared Access unless the caller holds the exclusive lock, then the administrator
+      // guard before any other lock, because accepting ends the employment and the person may hold a login. Two
+      // decisions of one request queue on the guard; the second then sees the first's decision and is refused.
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      await lockAccessAdministratorSetTx(tx, ctx.tenantId);
       const [nominated] = await tx.select({ employmentId: resignationRequest.employmentId })
         .from(resignationRequest).where(eq(resignationRequest.id, p.requestId)).limit(1);
       if (!nominated) throw new ResignationError('Resignation not found (or not visible).');
       nominatedEmployment = nominated.employmentId;
-      await lockLeaveDependenciesTx(tx, ctx.tenantId, [nominatedEmployment]);
+      await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [nominatedEmployment], { configuration: true });
     }
     const req = await (async () => {
       try {
@@ -142,6 +148,8 @@ export async function decideResignation(
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
     if(p.expectedLastWorkingDay!==undefined&&p.expectedLastWorkingDay!==req.lastWorkingDay)throw new ResignationError('That resignation changed; review it again.');
+    const [managed]=await tx.execute<{managed:boolean;allowed:boolean}>(sql`select app.resignation_request_is_managed(${req.id}::uuid) as managed,app.resignation_managed_clearance_ready(${req.id}::uuid) as allowed`);
+    if(managed.managed&&(!managed.allowed||p.decision!=='accepted'))throw new ResignationError('Managed resignations record termination only after completed clearance and posting approval.');
     await assertResignationDecisionAuthorityTx(tx,ctx,req.employmentId);
 
     if (p.decision === 'accepted') {
@@ -210,7 +218,7 @@ export function listResignationRequests(
       .from(resignationRequest)
       .innerJoin(employment, eq(employment.id, resignationRequest.employmentId))
       .innerJoin(person, eq(person.id, resignationRequest.personId))
-      .where(and(opts.status ? eq(resignationRequest.status, opts.status) : undefined,opts.requestId?eq(resignationRequest.id,opts.requestId):undefined))
+      .where(and(sql`not app.resignation_request_is_managed(${resignationRequest.id})`,opts.status ? eq(resignationRequest.status, opts.status) : undefined,opts.requestId?eq(resignationRequest.id,opts.requestId):undefined))
       .orderBy(desc(resignationRequest.createdAt))
       .limit(100);
     // #42cff598: batch-fetch each request's attachments (metadata only) in one query so the inbox can
@@ -252,7 +260,7 @@ export function myResignation(ctx: SessionContext, employmentId: string) {
         createdAt: resignationRequest.createdAt,
       })
       .from(resignationRequest)
-      .where(and(ownPersonPredicate(ctx),eq(resignationRequest.personId,ctx.personId),eq(resignationRequest.employmentId, employmentId)))
+      .where(and(sql`not app.resignation_request_is_managed(${resignationRequest.id})`,ownPersonPredicate(ctx),eq(resignationRequest.personId,ctx.personId),eq(resignationRequest.employmentId, employmentId)))
       .orderBy(desc(resignationRequest.createdAt))
       .limit(1);
     return row ?? null;
@@ -354,17 +362,43 @@ export async function getResignationAttachmentById(
 }
 
 
-export function pendingResignationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
-  return withTenant(ctx,async tx=>{
-    await assertAssignedWorkPrincipalTx(tx,ctx);
-    const rows=await tx.select({id:resignationRequest.id,employmentId:resignationRequest.employmentId,
+function pendingResignationHeadersQuery(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+  return tx.select({id:resignationRequest.id,employmentId:resignationRequest.employmentId,
       personId:resignationRequest.personId,employee:person.fullName,createdAt:resignationRequest.createdAt})
       .from(resignationRequest)
       .innerJoin(employment,and(eq(employment.id,resignationRequest.employmentId),eq(employment.tenantId,resignationRequest.tenantId)))
       .leftJoin(person,and(eq(person.id,resignationRequest.personId),eq(person.tenantId,resignationRequest.tenantId)))
-      .where(and(eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
+      .where(and(sql`not app.resignation_request_is_managed(${resignationRequest.id})`,eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
         sql`NOT app.is_self_person(${resignationRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
       .orderBy(desc(resignationRequest.createdAt),resignationRequest.id);
+}
+
+export function pendingResignationCandidatesExistSql(tx:Tx,ctx:SessionContext,companyIds?:string[]){
+  return sql<boolean>`exists (${pendingResignationHeadersQuery(tx,ctx,companyIds).getSQL()})`;
+}
+/** pendingResignationTaskMetadata(ctx, companyIds) in one statement for the account task read (core/account-task-bundle.ts):
+ * the owner's header query unchanged, kept where assertResignationDecisionAuthorityTx returns: assertCanDecide (canDecideSql,
+ * no task scope, as the owner calls it), then an admin role. Both of its throws are refusals the owner skips, so every
+ * header is decided exactly here; without an admin role every header is refused whatever assertCanDecide answers (its
+ * statements read rows and a definer function, none of which can fail). jsonb array of the owner's rows in its order. */
+export function pendingResignationTaskBundleSql(tx:Tx,ctx:SessionContext,companyIds?:string[],own?:SQL):SQL{
+  const roles=ctx.roles??[],admin=roles.includes('super_admin')||roles.includes('hr_admin');
+  return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',resignation_header.id,'employmentId',resignation_header.employment_id,
+     'personId',resignation_header.person_id,'employee',resignation_header.employee,'createdAt',resignation_header.created_at)
+     order by resignation_header.created_at desc,resignation_header.id) filter(where decided.allowed),'[]'::jsonb)
+   from (${pendingResignationHeadersQuery(tx,ctx,companyIds).getSQL()}) as resignation_header(id,employment_id,person_id,employee,created_at)
+   cross join lateral (select ${admin?canDecideSql(ctx,sql`resignation_header.employment_id`,undefined,undefined,own):sql`false`} as allowed) decided)`;
+}
+type BundleResignationRow={id:string;employmentId:string;personId:string;employee:string|null;createdAt:string};
+/** The resignation section's owner result. */
+export function pendingResignationTasksFromBundle(value:unknown):AssignedApprovalMetadata[]{
+  return (value as BundleResignationRow[]).map(row=>({id:row.id,employmentId:row.employmentId,personId:row.personId,employee:row.employee,createdAt:new Date(row.createdAt)}));
+}
+
+export function pendingResignationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+  return withTenant(ctx,async tx=>{
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    const rows=await pendingResignationHeadersQuery(tx,ctx,companyIds);
     const result:AssignedApprovalMetadata[]=[];
     for(const row of rows){
       try{await assertResignationDecisionAuthorityTx(tx,ctx,row.employmentId);result.push(row);}

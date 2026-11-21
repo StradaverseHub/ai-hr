@@ -102,3 +102,18 @@ test('two supplemental graphs are allowed but cannot replace mandatory build or 
  assert.throws(()=>validateArtifacts(artifacts.filter(a=>!a.name.startsWith('unit-db-')),p,plan));
  assert.throws(()=>validateArtifacts([...artifacts,{...artifacts.at(-1),id:999}],p,plan));
 });
+
+// Both actual wrappers use this shared model; no compiler, build or database runs here.
+import {buildMemoryVerdict} from './build-heap.mjs';
+import {readFileSync} from 'node:fs';
+test('canonical and renderer wrappers enforce the same profile-specific RSS and free-memory model',()=>{
+ assert.equal(buildMemoryVerdict(6144,12*1024**2+1,null).verdict,'fail');
+ assert.equal(buildMemoryVerdict(6144,12*1024**2,null).verdict,'warn');
+ assert.equal(buildMemoryVerdict(8192,12.5*1024**2,1.5*1024**2).verdict,'warn');
+ assert.equal(buildMemoryVerdict(8192,12.5*1024**2+1,2*1024**2).verdict,'fail');
+ for(const available of [null,undefined,NaN,Infinity,1.5*1024**2-1])assert.equal(buildMemoryVerdict(8192,11*1024**2,available).verdict,'fail');
+ for(const name of ['build-heap.mjs','next-application-cache.mjs']){
+  const source=readFileSync(new URL(name,import.meta.url),'utf8');
+  assert.match(source,/Object.assign\(report(?:\.memory)?,buildMemoryVerdict\(/);
+ }
+});

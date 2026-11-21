@@ -1,0 +1,575 @@
+{
+  "kind": "AI_CENTRE_MOBILE_FIXTURE_RECOVERY_SOURCE_ONLY_NOT_QUALIFICATION",
+  "parent": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+  "sourceRef": "codex/ai-centre-mobile-fixture-recovery-20261109",
+  "historicalFailure": {
+    "repository": "StradaverseHub/ai-hr",
+    "runId": 42509856754,
+    "source": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+    "artifactId": 13628244134,
+    "artifactZipBytes": 52298051,
+    "artifactZipSha256": "24e950d3db64f85f777d37a9296f55ea60b4ab5e273780f1d71e139f1e487244",
+    "authenticationSha256": "4faba7474187b5bb1bb305f13abd2f8a0378cbbe7d6316227afc6940ab7cee65",
+    "courseCases": 198,
+    "passed": 190,
+    "failed": 8,
+    "domPassed": 100,
+    "domCases": 106,
+    "howMobileFailures": 6,
+    "dbSourceFixtureFailuresOutsideThisSlice": 2,
+    "originalResultsRemainFailed": true
+  },
+  "diagnosis": {
+    "allSixDesktop": {
+      "viewportWidth": 1440,
+      "capturedPngWidth": 1440,
+      "overflow": false
+    },
+    "allSixMobile": {
+      "viewportWidth": 390,
+      "capturedPngWidth": 454,
+      "overflow": true
+    },
+    "captureManifestSha256": "18680893cfbf625f64c3089ced47d3c9e51c109ac0107eaa8c821ea4756b5208",
+    "numericDomScrollWidthNotCaptured": true,
+    "sourceAndPixelInference": "Nine nonwrapping 44px mobile step buttons require396px;40px panel padding,2px border and16px page inset explain454px capture. Wrapping the strip and constraining its section removes that intrinsic width constraint; actual recovery unverified.",
+    "howFixtureAlreadyMergesAiCentre": true,
+    "fiveOtherClientFixturesOmittedSeparateCatalogue": true,
+    "warningGroupCount": 1022,
+    "warningRemovalNotOverflowProof": true
+  },
+  "wholeParentGitReferences": {
+    "components/ai-centre/how-it-works.tsx": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "path": "components/ai-centre/how-it-works.tsx",
+      "gitBlob": "068fe9a79d7c25d00cc5ecaef7221b287a9e5ac4",
+      "sha256": "89896bc43f2c94a8dc794e7b393f62bcd9c7d95dc578522f5dcf6453b8520e62",
+      "bytes": 19421
+    },
+    "test/ai-management-page.dom.test.tsx": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "path": "test/ai-management-page.dom.test.tsx",
+      "gitBlob": "21a9ead85448ee351fdd63d1e2b105bb933c2994",
+      "sha256": "99f7ff069d531178d63e5d63e9d236078b729eb0b39e6d178b70989cae22be0d",
+      "bytes": 18328
+    },
+    "test/ai-inventory-screen.dom.test.tsx": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "path": "test/ai-inventory-screen.dom.test.tsx",
+      "gitBlob": "270a2967cb0f0483526d4a3cd7adb8f42ac93526",
+      "sha256": "baa3a23c8fca70d880ba85c431d3a2107b8b36f9cf933ebe5119a6e86f0c2022",
+      "bytes": 10993
+    },
+    "test/ai-management-naming.dom.test.tsx": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "path": "test/ai-management-naming.dom.test.tsx",
+      "gitBlob": "742b569782dba941dd17503faedb4cf157d40a0e",
+      "sha256": "a021913c8197b4d5b0ae5bb6bc212129252fe9f024c454e9e99ca96cb712fd02",
+      "bytes": 7075
+    },
+    "test/ai-probe-history-page.dom.test.tsx": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "path": "test/ai-probe-history-page.dom.test.tsx",
+      "gitBlob": "48926ada59f43db27c0d608e29363a7121c6680c",
+      "sha256": "5a542bb1006998a816ac04326f98862b97f79a7e65fb275288e51bb26f48e778",
+      "bytes": 5284
+    },
+    "test/automatic-followup-features.dom.test.tsx": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "path": "test/automatic-followup-features.dom.test.tsx",
+      "gitBlob": "40fc02e8d86362bf6fed850b149b505508fe0b84",
+      "sha256": "6073798a23f0a48fbcfb871e4c42cdd33c5e321a22104b08c5ff2f8c0da9522c",
+      "bytes": 4626
+    },
+    "docs/adr/2026-11-09-ai-management-section-projection.md": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "gitBlob": "d1dacc7d0ed4ee8ec487988c1df42046967d005d",
+      "sha256": "4e22bbd109cdd9530d519878194e5eaf59b47f038b1b21b0e5843e93b86ef127",
+      "bytes": 4290
+    },
+    "docs/qualification/ai-management-section-projection-source-20261109.json": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "path": "docs/qualification/ai-management-section-projection-source-20261109.json",
+      "gitBlob": "abb54720b5950ea72453008fdce9c89291bec44d",
+      "sha256": "365a131f360aeb1400070a2476444e05d506b5f4111ced5e557d777dee4946f5",
+      "bytes": 23897
+    }
+  },
+  "reversibleSourceChanges": {
+    "components/ai-centre/how-it-works.tsx": {
+      "parent": {
+        "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+        "path": "components/ai-centre/how-it-works.tsx",
+        "gitBlob": "068fe9a79d7c25d00cc5ecaef7221b287a9e5ac4",
+        "sha256": "89896bc43f2c94a8dc794e7b393f62bcd9c7d95dc578522f5dcf6453b8520e62",
+        "bytes": 19421
+      },
+      "currentSha256": "e3e4e132419a5676d3be77c82883093b81d824ed2237ad03d508b4a232084265",
+      "currentBytes": 19469,
+      "inverseSubstitutions": [
+        {
+          "current": "data-how-steps className=\"order-first min-w-0 max-w-full rounded-2xl",
+          "parent": "data-how-steps className=\"order-first rounded-2xl",
+          "occurrences": 1
+        },
+        {
+          "current": "aria-label={t('stepsLabel')} className=\"ml-auto flex min-w-0 max-w-full flex-wrap\"",
+          "parent": "aria-label={t('stepsLabel')} className=\"ml-auto flex\"",
+          "occurrences": 1
+        }
+      ],
+      "inverseRestoresWholeGitParent": true
+    },
+    "test/ai-management-page.dom.test.tsx": {
+      "parent": {
+        "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+        "path": "test/ai-management-page.dom.test.tsx",
+        "gitBlob": "21a9ead85448ee351fdd63d1e2b105bb933c2994",
+        "sha256": "99f7ff069d531178d63e5d63e9d236078b729eb0b39e6d178b70989cae22be0d",
+        "bytes": 18328
+      },
+      "currentSha256": "d404fcd5e1628b718ce184bfea25aa23e05816ad3bf5335a230bf6b0dd1578a5",
+      "currentBytes": 18400,
+      "inverseSubstitutions": [
+        {
+          "current": "messages={enWithAiCentre}",
+          "parent": "messages={en}",
+          "occurrences": 6
+        }
+      ],
+      "inverseRestoresWholeGitParent": true
+    },
+    "test/ai-inventory-screen.dom.test.tsx": {
+      "parent": {
+        "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+        "path": "test/ai-inventory-screen.dom.test.tsx",
+        "gitBlob": "270a2967cb0f0483526d4a3cd7adb8f42ac93526",
+        "sha256": "baa3a23c8fca70d880ba85c431d3a2107b8b36f9cf933ebe5119a6e86f0c2022",
+        "bytes": 10993
+      },
+      "currentSha256": "29aa1f69f155ccfab0ffc6faf5429b76ef4eef95845eaf15f20268ec67752a37",
+      "currentBytes": 11014,
+      "inverseSubstitutions": [
+        {
+          "current": "messages={withAiCentre(locale,copies[locale] as any)}",
+          "parent": "messages={copies[locale] as any}",
+          "occurrences": 1
+        }
+      ],
+      "inverseRestoresWholeGitParent": true
+    },
+    "test/ai-management-naming.dom.test.tsx": {
+      "parent": {
+        "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+        "path": "test/ai-management-naming.dom.test.tsx",
+        "gitBlob": "742b569782dba941dd17503faedb4cf157d40a0e",
+        "sha256": "a021913c8197b4d5b0ae5bb6bc212129252fe9f024c454e9e99ca96cb712fd02",
+        "bytes": 7075
+      },
+      "currentSha256": "5bc2dd80e532fdfadc3b950cfc58cdb71343cc65c03ec4feeb2017b030b17d99",
+      "currentBytes": 7096,
+      "inverseSubstitutions": [
+        {
+          "current": "messages={withAiCentre(locale,copies[locale] as any)}",
+          "parent": "messages={copies[locale] as any}",
+          "occurrences": 1
+        }
+      ],
+      "inverseRestoresWholeGitParent": true
+    },
+    "test/ai-probe-history-page.dom.test.tsx": {
+      "parent": {
+        "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+        "path": "test/ai-probe-history-page.dom.test.tsx",
+        "gitBlob": "48926ada59f43db27c0d608e29363a7121c6680c",
+        "sha256": "5a542bb1006998a816ac04326f98862b97f79a7e65fb275288e51bb26f48e778",
+        "bytes": 5284
+      },
+      "currentSha256": "8499c2ae79f630e0195e15d95e24225fdc93fb747f44c0fe8f0c76131bb2eb15",
+      "currentBytes": 5305,
+      "inverseSubstitutions": [
+        {
+          "current": "messages={withAiCentre(locale,copies[locale] as any)}",
+          "parent": "messages={copies[locale] as any}",
+          "occurrences": 1
+        }
+      ],
+      "inverseRestoresWholeGitParent": true
+    },
+    "test/automatic-followup-features.dom.test.tsx": {
+      "parent": {
+        "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+        "path": "test/automatic-followup-features.dom.test.tsx",
+        "gitBlob": "40fc02e8d86362bf6fed850b149b505508fe0b84",
+        "sha256": "6073798a23f0a48fbcfb871e4c42cdd33c5e321a22104b08c5ff2f8c0da9522c",
+        "bytes": 4626
+      },
+      "currentSha256": "c442c9253dd293a278e7998fec67451d0732dc78a117c1752ff8ddb51467b6e2",
+      "currentBytes": 4647,
+      "inverseSubstitutions": [
+        {
+          "current": "messages={withAiCentre(locale,copies[locale] as any)}",
+          "parent": "messages={copies[locale] as any}",
+          "occurrences": 1
+        }
+      ],
+      "inverseRestoresWholeGitParent": true
+    }
+  },
+  "adrAppendOnly": {
+    "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "parent": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "path": "docs/adr/2026-11-09-ai-management-section-projection.md",
+      "gitBlob": "d1dacc7d0ed4ee8ec487988c1df42046967d005d",
+      "sha256": "4e22bbd109cdd9530d519878194e5eaf59b47f038b1b21b0e5843e93b86ef127",
+      "bytes": 4290
+    },
+    "currentSha256": "ad452bd80508d846914fe82902cb9f9cc9055edd330a25e4729dcea2a725fb13",
+    "currentBytes": 6396,
+    "parentWholePrefixPreserved": true
+  },
+  "sourceIndexTreatment": "Existing non-runtime index current-source hashes refreshed; original projection base/preimage/inverse/history and prior authored census retained. This record holds immediate1b78 Git references without nested whole-history duplication. Index and this record current hashes are externally bound by frozen Git, avoiding a self-hash cycle.",
+  "protectedWholeParent": {
+    "db/client.ts": {
+      "sha256": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f",
+      "bytes": 22595,
+      "wholeParentUnchanged": true
+    },
+    "db/schema.ts": {
+      "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112",
+      "bytes": 820303,
+      "wholeParentUnchanged": true
+    },
+    "core/ai-config.ts": {
+      "sha256": "6f6345624735f94d5c1faa9306d7a3fa913a61e0cbfb29c5e46b367aea8ea252",
+      "bytes": 21367,
+      "wholeParentUnchanged": true
+    },
+    "core/ai-principal.ts": {
+      "sha256": "3a77b8ed03ca1b9895310f6a7535473bbfd9a31d6c6d003612bd71e0dcbd6d21",
+      "bytes": 3793,
+      "wholeParentUnchanged": true
+    },
+    "core/ai-provider-snapshot.ts": {
+      "sha256": "2493d3e18549b2903032835525e67b90f0e00341bbfbbd65a34be79a9ab4675b",
+      "bytes": 12306,
+      "wholeParentUnchanged": true
+    },
+    "core/ai-provider-authority.ts": {
+      "sha256": "d37a6b5aa76de0ca92a5a2d3006f0b34b7a111458d51d0e783f7e9b471b7a38d",
+      "bytes": 508,
+      "wholeParentUnchanged": true
+    },
+    "core/ai-provider-readiness.ts": {
+      "sha256": "aad2948b7727b44c4e830ff4dc496bc7825127ab2a4e6bc493e54d2f6139a2d1",
+      "bytes": 10118,
+      "wholeParentUnchanged": true
+    },
+    "core/ai-spend-management.ts": {
+      "sha256": "c0d2ee3d5dd90e033f9e5968c34d41c624d287ed40a56c889da1196a6bbfe048",
+      "bytes": 2814,
+      "wholeParentUnchanged": true
+    },
+    "core/ai-centre-control.ts": {
+      "sha256": "90b4b0161664f5f17cc0f4cc548def2cc00271d117b1852301a29aa5769db33a",
+      "bytes": 3376,
+      "wholeParentUnchanged": true
+    },
+    "core/ai-centre-inventory.ts": {
+      "sha256": "60744c123a892115c8fc2ae8c5049cc82ecd02e622decbe88ebbcd10c56dd7c0",
+      "bytes": 4723,
+      "wholeParentUnchanged": true
+    },
+    "core/mandates/mandates.ts": {
+      "sha256": "f4deafef68d764f6405d29e8ae66b7a186f050718c0429b989bd188e96e34014",
+      "bytes": 17327,
+      "wholeParentUnchanged": true
+    },
+    "core/mandates/job-types.ts": {
+      "sha256": "9e0c9648dd55f85d020e236527a5f5be898885d88f4e7b9c4cbee5365eaa50cb",
+      "bytes": 5587,
+      "wholeParentUnchanged": true
+    },
+    "core/agent-registry/views.ts": {
+      "sha256": "fe8c5c30adbef31ab6db541c019d6651544df71ab1f31daacd1133cf3959f097",
+      "bytes": 13318,
+      "wholeParentUnchanged": true
+    },
+    "core/agent-registry/controls.ts": {
+      "sha256": "0371372b00ea597897202162724ba6541d93b1f0b983583d8b580f0ca89e6586",
+      "bytes": 13807,
+      "wholeParentUnchanged": true
+    },
+    "app/control-tower/agents/centre-control-actions.ts": {
+      "sha256": "ac8ea194970bfc3f0728b9c55bb92acc97d1ee8d3bbcb3c8873ba28c30dae921",
+      "bytes": 2227,
+      "wholeParentUnchanged": true
+    },
+    "app/control-tower/agents/features/page.tsx": {
+      "sha256": "1ce2e7d1e9a73aea4c4a40e3bf3820eba4ec4bcc19df965b09d36101b27e6da3",
+      "bytes": 1531,
+      "wholeParentUnchanged": true
+    },
+    "app/control-tower/agents/actions.ts": {
+      "sha256": "13a5168e02bfc9fa646714ad78204fd70bcc8fa338a6c3d750cee19e19ecb3a6",
+      "bytes": 12578,
+      "wholeParentUnchanged": true
+    },
+    "test/ai-management.test.ts": {
+      "sha256": "2bc9659cb731c284ca8a307461a2d55574fc2b4e4f246475f98dd159c2919015",
+      "bytes": 44749,
+      "wholeParentUnchanged": true
+    },
+    "test/ai-inventory-db.test.ts": {
+      "sha256": "9b010f60cf146ea6a0e7721f877b6dca68d3b0eb3dc550ef2dbd89da3b975716",
+      "bytes": 19196,
+      "wholeParentUnchanged": true
+    },
+    "test/ai-principal.test.ts": {
+      "sha256": "f69af9d90df93496934c819d24049e18dc67772f60d1b7b8259433bd87b3ab57",
+      "bytes": 5825,
+      "wholeParentUnchanged": true
+    },
+    "test/ai-centre-controls.dom.test.tsx": {
+      "sha256": "f718bdcc4cdff6d85b90e2b7d02209d0a864346efbb2cec9938089d811378059",
+      "bytes": 3873,
+      "wholeParentUnchanged": true
+    },
+    "test/ai-centre.test.ts": {
+      "sha256": "a67f8862aed73bce63e88c54a3e74f78d8e930b570590e69649aebbf428f7c67",
+      "bytes": 23560,
+      "wholeParentUnchanged": true
+    },
+    "db/migrations/3500_ai_centre_architecture_compatibility.sql": {
+      "sha256": "3286f17e76b8d997c46b22019df613b9eef1d1b82c85c125cdb57b80392884ca",
+      "bytes": 13020,
+      "wholeParentUnchanged": true
+    },
+    "db/migrations/3501_ai_centre_mandate_write_order.sql": {
+      "sha256": "821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76",
+      "bytes": 11230,
+      "wholeParentUnchanged": true
+    },
+    "package.json": {
+      "sha256": "7f67e35d869a29d2cb58d65c6f63413afc63db2cc6c6cf9dacb5086bce70ec2c",
+      "bytes": 6300,
+      "wholeParentUnchanged": true
+    },
+    "pnpm-lock.yaml": {
+      "sha256": "0413a070eca23d390fabdcd78cb63b2dcf4b0b69fe90408c7b57a4f672d21dbd",
+      "bytes": 356104,
+      "wholeParentUnchanged": true
+    },
+    "tsconfig.json": {
+      "sha256": "0ee72fb11a698bad9b18c39223569adf5758727272b35bfa99ec7bfa57c3530a",
+      "bytes": 676,
+      "wholeParentUnchanged": true
+    },
+    "test/ai-centre-evidence.dom.test.tsx": {
+      "sha256": "db1bd6f55113e6868576c33e8f533716203a5ab96611263098fc0edc46504a32",
+      "bytes": 14405,
+      "wholeParentUnchanged": true
+    },
+    "test/helpers/ai-centre-messages.ts": {
+      "sha256": "172b345334bb69ea606cfb2cab2b5f46783340038071221a3c93063e8f025d45",
+      "bytes": 1519,
+      "wholeParentUnchanged": true
+    },
+    "test/helpers/ai-review-screenshots.ts": {
+      "sha256": "0c0e1bb43892d3ce0c8a67fc96e47097f177e76c055aead019e2b36be99da5ad",
+      "bytes": 16892,
+      "wholeParentUnchanged": true
+    },
+    "app/globals.css": {
+      "sha256": "0614f8ac8fe5aacd543797fd6ab214840cd5cd8061357c4139b62a0cef3b0b37",
+      "bytes": 24423,
+      "wholeParentUnchanged": true
+    },
+    "app/atelier.css": {
+      "sha256": "3b827e4b81a6cbdeacdf45aaf81fcee2aa49f279c1053a7bb6a51d5ecaac4e13",
+      "bytes": 36877,
+      "wholeParentUnchanged": true
+    },
+    "i18n/catalogs.ts": {
+      "sha256": "636054d65a98eba18eab57a7e0600583202bc2e305996a14f4d86c09b7dc4ba1",
+      "bytes": 1752,
+      "wholeParentUnchanged": true
+    },
+    "i18n/request.ts": {
+      "sha256": "6b0e3c45732205ebb6a75d8b47d8b2186f5629ab3e2614cfa16f70da74e6f3cc",
+      "bytes": 1493,
+      "wholeParentUnchanged": true
+    },
+    "components/ai-centre/clockwork-figure.tsx": {
+      "sha256": "68f5778b9a5518cc0379f78cfae8894b9d74fc09bd2054e4d58be7ba708c223c",
+      "bytes": 16594,
+      "wholeParentUnchanged": true
+    },
+    "messages/ai-centre/en.json": {
+      "sha256": "1fd16052beca4617647cb6d829c7c1a9a33695307a033c5bb4b9d4051c225414",
+      "bytes": 155999,
+      "wholeParentUnchanged": true
+    },
+    "messages/ai-centre/ms.json": {
+      "sha256": "ee0729bfd1130f80e9cd1a439196bf22bea08be66fc78ca4046b284213527bdd",
+      "bytes": 165987,
+      "wholeParentUnchanged": true
+    },
+    "messages/ai-centre/ta.json": {
+      "sha256": "47e507bfccd40d7c8129c010f55050e2ae2b2e98175cd2a1a213fa1884dce6d3",
+      "bytes": 363630,
+      "wholeParentUnchanged": true
+    },
+    "messages/ai-centre/th.json": {
+      "sha256": "44c4258d85a1a4cb99ef2ad516718b1ff0398c50cdcaeee0e577580673d94527",
+      "bytes": 291707,
+      "wholeParentUnchanged": true
+    },
+    "messages/ai-centre/vi.json": {
+      "sha256": "e622a41fbf48d941294795c5cc206d8ecd548f9477b8172a5e21f649e7c4bc9a",
+      "bytes": 192206,
+      "wholeParentUnchanged": true
+    },
+    "messages/ai-centre/zh.json": {
+      "sha256": "775b0611d818bda7f285f2f2caefa149ca15d0f824bfb79059aab422958f25e4",
+      "bytes": 151187,
+      "wholeParentUnchanged": true
+    }
+  },
+  "sourceOnlyCensus": {
+    "rows": [
+      {
+        "path": "components/ai-centre/how-it-works.tsx",
+        "baseAssertions": 0,
+        "currentAssertions": 0,
+        "assertionCallBytesWhole": true,
+        "baseCallbackDefinitions": 0,
+        "currentCallbackDefinitions": 0,
+        "registrationCalleesAndTitlesWhole": true,
+        "captureCallBytesWhole": true,
+        "baseCaptureCalls": 0,
+        "currentCaptureCalls": 0
+      },
+      {
+        "path": "test/ai-management-page.dom.test.tsx",
+        "baseAssertions": 56,
+        "currentAssertions": 56,
+        "assertionCallBytesWhole": true,
+        "baseCallbackDefinitions": 13,
+        "currentCallbackDefinitions": 13,
+        "registrationCalleesAndTitlesWhole": true,
+        "captureCallBytesWhole": true,
+        "baseCaptureCalls": 0,
+        "currentCaptureCalls": 0
+      },
+      {
+        "path": "test/ai-inventory-screen.dom.test.tsx",
+        "baseAssertions": 31,
+        "currentAssertions": 31,
+        "assertionCallBytesWhole": true,
+        "baseCallbackDefinitions": 4,
+        "currentCallbackDefinitions": 4,
+        "registrationCalleesAndTitlesWhole": true,
+        "captureCallBytesWhole": true,
+        "baseCaptureCalls": 3,
+        "currentCaptureCalls": 3
+      },
+      {
+        "path": "test/ai-management-naming.dom.test.tsx",
+        "baseAssertions": 9,
+        "currentAssertions": 9,
+        "assertionCallBytesWhole": true,
+        "baseCallbackDefinitions": 1,
+        "currentCallbackDefinitions": 1,
+        "registrationCalleesAndTitlesWhole": true,
+        "captureCallBytesWhole": true,
+        "baseCaptureCalls": 2,
+        "currentCaptureCalls": 2
+      },
+      {
+        "path": "test/ai-probe-history-page.dom.test.tsx",
+        "baseAssertions": 2,
+        "currentAssertions": 2,
+        "assertionCallBytesWhole": true,
+        "baseCallbackDefinitions": 1,
+        "currentCallbackDefinitions": 1,
+        "registrationCalleesAndTitlesWhole": true,
+        "captureCallBytesWhole": true,
+        "baseCaptureCalls": 1,
+        "currentCaptureCalls": 1
+      },
+      {
+        "path": "test/automatic-followup-features.dom.test.tsx",
+        "baseAssertions": 4,
+        "currentAssertions": 4,
+        "assertionCallBytesWhole": true,
+        "baseCallbackDefinitions": 1,
+        "currentCallbackDefinitions": 1,
+        "registrationCalleesAndTitlesWhole": true,
+        "captureCallBytesWhole": true,
+        "baseCaptureCalls": 1,
+        "currentCaptureCalls": 1
+      },
+      {
+        "path": "test/ai-centre-evidence.dom.test.tsx",
+        "baseAssertions": 25,
+        "currentAssertions": 25,
+        "assertionCallBytesWhole": true,
+        "baseCallbackDefinitions": 7,
+        "currentCallbackDefinitions": 7,
+        "registrationCalleesAndTitlesWhole": true,
+        "captureCallBytesWhole": true,
+        "baseCaptureCalls": 6,
+        "currentCaptureCalls": 6
+      }
+    ],
+    "callbackDefinitionsAreNotExpandedRuntimeCaseCounts": true,
+    "allAssertionsRegistrationTitlesAndCaptureCallsPreserved": true,
+    "sixHowLocalesUnchanged": [
+      "en",
+      "ms",
+      "zh",
+      "th",
+      "ta",
+      "vi"
+    ],
+    "providerMountValueReplacements": 10,
+    "productClassListsChanged": 2
+  },
+  "affectedHostedSelectors": [
+    "test/ai-centre-evidence.dom.test.tsx",
+    "test/ai-management-page.dom.test.tsx",
+    "test/ai-inventory-screen.dom.test.tsx",
+    "test/ai-management-naming.dom.test.tsx",
+    "test/ai-probe-history-page.dom.test.tsx",
+    "test/automatic-followup-features.dom.test.tsx"
+  ],
+  "preservedProductRoles": [
+    "nine step tabs and44px mobile minimum",
+    "roving tab focus andArrow/Home/End handlers",
+    "playback and reduced-motion behavior",
+    "all translated text and captions",
+    "server catalogue owner and loaders",
+    "tenant/company/principal isolation",
+    "queries,commands,locks,provider egress and audit"
+  ],
+  "forbiddenChangesAbsent": [
+    "global CSS",
+    "Clockwork",
+    "screenshot helper,viewport or overflow threshold",
+    "translation catalogue content or production loader",
+    "semantic assertions,case or locale removal",
+    "Node DB fixture repairs owned separately"
+  ],
+  "repositoryImportsExecuted": false,
+  "testsExecutedLocally": false,
+  "browserExecuted": false,
+  "hostedRecoveryExecuted": false,
+  "renderedRecoveryVerified": false,
+  "releaseQualified": false,
+  "stagingDeployed": false,
+  "productionHeld": true,
+  "reviewRequirement": "Root plus different peer full affected source review before hosted execution; compose separately reviewed Node repair only afterward. Preserve original failed course and independently authenticate recovered identity and complete coverage."
+}

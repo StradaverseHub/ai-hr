@@ -3,7 +3,7 @@ Use this checklist when setting up a customer or adding a company. You need the 
 ## Set up in this order
 
 1. Open [Organization](/admin/organization). Create or review the company, departments, positions, grades and cost centres. Complete the employer identifiers and addresses needed by your country pack.
-2. Open [Personnel administration](/admin/personnel). Configure hiring defaults and employee numbering, then create employees or use [Personnel import](/admin/personnel/import). Review the import preview and errors before committing. An employee record is separate from a login.
+2. Under **People > Configuration > Settings**, configure [Hiring defaults](/admin/settings/hiring-defaults) and [Employee ID numbering](/admin/settings/employee-id). Then open [Personnel administration](/admin/personnel) and create employees or use [Personnel import](/admin/personnel/import). Review the import preview and errors before committing. An employee record is separate from a login.
 3. Open [Users](/admin/users). Group administrators can activate eligible staff from **Pending activation**, or manage existing users and grants. Choose employee access unless the person needs an explicitly approved higher role. A company-scoped administrator does not automatically have group-wide account administration.
 4. Configure [Leave](/admin/leave-config/types), company rules, approval chains, entitlement generation and opening data. Review [Balance health](/admin/leave-config/balance-health) after imports or policy changes.
 5. Configure [Attendance settings](/admin/attendance/settings), schedules, shifts, assignments, work locations and card assignments. If importing punches, save a file mapping and test its preview first.

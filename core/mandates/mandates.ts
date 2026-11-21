@@ -1,3 +1,4 @@
+import {lockAccessConfigurationWriteTx} from '../access-configuration-lock';
 /** ADR-0170 §3.10, step 5a — work-job mandates: grant, renew, revoke, the two keys and the stop switch.
  *
  * Off by default. Two keys: a group administrator enables a job type, with ceilings (key 1, default none
@@ -10,12 +11,13 @@
  * The database enforces the same rules (migration 0890 policies and the mandate guard trigger): a grant
  * without both keys, an edit other than revocation or renewal, or a delete is refused there as well.
  * Every change appends an audit event. Running a mandate lives in ./run.ts. Not imported by the production
- * Assistant; no screen is wired in this step. */
+ * Assistant. The one product path that grants (owner decision, 11 Nov 2026) is an administrator's own morning summary on
+ * Today (core/digest/own-digest.ts); the nightly sweep runs it (core/digest/run.ts runDueDailyDigests). */
 import {and,desc,eq,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
 import {terasMandate,terasMandateControl,terasMandateJobTypeEnablement} from '../../db/teras-schema';
-import {hasTeamAccess,isGroupAdmin} from '../../lib/authz-model';
+import {hasTeamAccess,isAdmin,isGroupAdmin} from '../../lib/authz-model';
 import {MandateRefused,WORK_JOB_TYPES,delegableJobType,type MandateLimits,type MandateSchedule,type MandateScope,type WorkJobType} from './job-types';
 
 export {MandateRefused} from './job-types';
@@ -41,6 +43,9 @@ export async function setJobTypeEnablement(supplied:SessionContext,input:Readonl
  const maxValidityDays=input.maxValidityDays??90,maxRunsPerDay=input.maxRunsPerDay??1;
  if(typeof input.enabled!=='boolean'||!intIn(maxValidityDays,1,MAX_VALIDITY_DAYS)||!intIn(maxRunsPerDay,1,24))throw new MandateRefused('invalid');
  return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+  const [authority]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() is true and app.is_group_admin() is true and not app.login_blocked(app.current_user_id()) as ok`);
+  if(authority?.ok!==true)throw new MandateRefused('not_administrator');
   const values={enabled:input.enabled,maxValidityDays,maxRunsPerDay,changedByUserId:ctx.userId!,changedAt:sql`now()`};
   const [row]=await tx.insert(terasMandateJobTypeEnablement).values({tenantId:ctx.tenantId,jobType,...values})
    .onConflictDoUpdate({target:[terasMandateJobTypeEnablement.tenantId,terasMandateJobTypeEnablement.jobType],set:values}).returning();
@@ -51,15 +56,22 @@ export async function setJobTypeEnablement(supplied:SessionContext,input:Readonl
  });
 }
 
-export async function setMandateStopSwitch(supplied:SessionContext,stopped:boolean){
+export async function setMandateStopSwitch(supplied:SessionContext,stopped:boolean,options:Readonly<{expectedGeneration?:number;reason?:string}>={}){
  const ctx=capture(supplied);requireGroupAdmin(ctx);
  if(typeof stopped!=='boolean')throw new MandateRefused('invalid');
+ if(options.expectedGeneration!==undefined&&(!Number.isSafeInteger(options.expectedGeneration)||options.expectedGeneration<0)||options.reason!==undefined&&(typeof options.reason!=='string'||options.reason.length>200))throw new MandateRefused('invalid');
  return withTenant(ctx,async tx=>{
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext('ai-control'),hashtext(${ctx.tenantId}::text))`);
+  const [authority]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() is true and app.is_group_admin() is true and not app.login_blocked(app.current_user_id()) and exists(select 1 from public.app_user u where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and u.archived_at is null) as ok`);
+  if(authority?.ok!==true)throw new MandateRefused('not_administrator');
+  const [current]=await tx.select({version:terasMandateControl.version}).from(terasMandateControl).where(eq(terasMandateControl.tenantId,ctx.tenantId)).limit(1);
+  if(options.expectedGeneration!==undefined&&options.expectedGeneration!==(current?.version??0))throw new MandateRefused('invalid');
   const values={stopped,changedByUserId:ctx.userId!,changedAt:sql`now()`};
   const [row]=await tx.insert(terasMandateControl).values({tenantId:ctx.tenantId,...values})
    .onConflictDoUpdate({target:terasMandateControl.tenantId,set:values}).returning();
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-mandate-control',aggregateId:ctx.tenantId,
-   eventType:stopped?'teras-mandate.stopped':'teras-mandate.resumed',actor:actorOf(ctx),payload:{version:row.version}});
+   eventType:stopped?'teras-mandate.stopped':'teras-mandate.resumed',actor:actorOf(ctx),payload:{version:row.version,...(options.reason?{reason:options.reason}:{})}});
   return Object.freeze(row);
  });
 }
@@ -123,20 +135,33 @@ async function clearForSingleGrantTx(tx:Tx,ctx:SessionContext,jobType:WorkJobTyp
  }
 }
 
-export async function grantMandate(supplied:SessionContext,input:GrantMandateInput,now:Date=new Date()){
+/** How a product path narrows a grant (core/digest/own-digest.ts, Today's morning summary, owner decision 11 Nov 2026).
+ * `requireAdministrator`: the grantor must hold an HR administrator role now, confirmed by the database inside the
+ * grant's own transaction (the same principal snapshot the key-1 setter checks), so authority, the insert and its audit
+ * event commit together. `validForCeiling`: the mandate runs for the tenant's current validity ceiling, read in that
+ * same transaction, instead of a caller-chosen number of days. Neither widens anything: both only refuse or narrow. */
+export type GrantMandateOptions=Readonly<{requireAdministrator?:boolean;validForCeiling?:boolean}>;
+
+export async function grantMandate(supplied:SessionContext,input:GrantMandateInput,now:Date=new Date(),options:GrantMandateOptions={}){
  const ctx=capture(supplied);
  const jobType=delegableJobType(input.jobType);
- const grant=parseGrant(jobType,input);
+ const grant=parseGrant(jobType,options.validForCeiling?{...input,validDays:1}:input);
  if(!holdsJobAuthority(ctx,jobType))throw new MandateRefused('no_authority');
+ if(options.requireAdministrator&&!isAdmin(ctx))throw new MandateRefused('not_administrator');
  return withTenant(ctx,async tx=>{
+  if(options.requireAdministrator){
+   const [authority]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() is true and app.is_admin() is true as ok`);
+   if(authority?.ok!==true)throw new MandateRefused('not_administrator');
+  }
   const {enablement,control}=await readMandateKeysTx(tx,ctx.tenantId,jobType);
   if(control?.stopped)throw new MandateRefused('stopped');
   if(!enablement?.enabled)throw new MandateRefused('not_enabled');
-  if(grant.validDays>enablement.maxValidityDays||grant.limits.maxRunsPerDay>enablement.maxRunsPerDay)throw new MandateRefused('over_ceiling');
+  const validDays=options.validForCeiling?enablement.maxValidityDays:grant.validDays;
+  if(validDays>enablement.maxValidityDays||grant.limits.maxRunsPerDay>enablement.maxRunsPerDay)throw new MandateRefused('over_ceiling');
   if(SINGLE_PER_GRANTOR.includes(jobType))await clearForSingleGrantTx(tx,ctx,jobType,now);
   const [row]=await tx.insert(terasMandate).values({tenantId:ctx.tenantId,jobType,grantorUserId:ctx.userId!,grantorPersonId:ctx.personId!,
    scope:grant.scope,limits:grant.limits,schedule:grant.schedule,notify:grant.notify,
-   validFrom:now,validUntil:new Date(now.getTime()+grant.validDays*DAY_MS)}).returning();
+   validFrom:now,validUntil:new Date(now.getTime()+validDays*DAY_MS)}).returning();
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-mandate',aggregateId:row.id,eventType:'teras-mandate.granted',actor:actorOf(ctx),
    payload:{jobType,version:row.version,agentIdentityId:row.agentIdentityId,validUntil:row.validUntil.toISOString(),scope:grant.scope,limits:grant.limits,
     schedule:grant.schedule,notify:grant.notify,enablementVersion:enablement.version}});

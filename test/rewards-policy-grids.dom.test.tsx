@@ -33,6 +33,55 @@ describe('approved Rewards policy grids',()=>{
   fireEvent.change(input,{target:{value:'2.5'}});expect(input.checkValidity()).toBe(true);
   const encoded=document.querySelector<HTMLInputElement>('input[name="bonusMatrix"]')!.value;expect(encoded).toContain('H, 0, 1, 2.5, 3, 4');
  });
+ it('keeps both pristine draft lists and native validation, then announces edits and attempted submission',()=>{
+  const draft=defaultPolicy(2026);
+  const {container}=render(wrap(<main><form><PolicyMatrixGrid kind="ranges" year={2026} matrix={draft.ranges} pristineValidationGuidance/>
+   <PolicyMatrixGrid kind="bonusMatrix" year={2026} matrix={draft.bonusMatrix} pristineValidationGuidance/>
+   <BranchPolicyFields structure={draft.bonusStructure} factors={draft.branchFactors} year={draft.year}/></form></main>));
+  const ranges=within(screen.getByRole('region',{name:en.rewards.policyGrids.ranges}));
+  const bonus=within(screen.getByRole('region',{name:en.rewards.policyGrids.bonusMatrix}));
+  const minimum=ranges.getByRole<HTMLInputElement>('spinbutton',{name:'H Minimum'});
+  const grade23=bonus.getByRole<HTMLInputElement>('spinbutton',{name:'23 UA'});
+  for(const [grid,cell,missing]of [[ranges,minimum,36],[bonus,grade23,5]]as const){
+   const guidance=grid.getByRole('status');
+   expect(within(guidance).getAllByRole('listitem')).toHaveLength(missing);
+   expect(cell).toHaveAttribute('aria-invalid','true');
+   expect(guidance.contains(document.getElementById(cell.getAttribute('aria-describedby')!))).toBe(true);
+   expect(cell.validity.valueMissing&&cell.validity.customError).toBe(true);
+  }
+  expect(screen.queryByRole('alert')).toBeNull();
+  // The document observer also inspects literal roles inside hidden DOM.
+  expect(container.querySelector('main [role="alert"]')).toBeNull();
+  const branchFeedback=container.querySelector('#branchFactors-errors');
+  expect(branchFeedback?.closest('[hidden]')).not.toBeNull();
+  expect(branchFeedback).not.toHaveAttribute('role');
+  const initialGuidance=ranges.getByRole('status');
+  fireEvent.change(minimum,{target:{value:'100'}});
+  const alert=ranges.getByRole('alert');
+  expect(alert).not.toBe(initialGuidance);
+  expect(within(alert).getAllByRole('listitem')).toHaveLength(35);
+  expect(minimum.validity.valid).toBe(true);
+  expect(bonus.getByRole('status')).toBeVisible();
+  fireEvent.invalid(grade23);
+  expect(within(bonus.getByRole('alert')).getAllByRole('listitem')).toHaveLength(5);
+  expect(grade23.validity.valid).toBe(false);
+ });
+ it('keeps stored policy grid alerts assertive at mount',()=>{
+  render(wrap(<PolicyMatrixGrid kind="ranges" year={2026} matrix={{}}/>));
+  expect(within(screen.getByRole('alert')).getAllByRole('listitem')).toHaveLength(36);
+  expect(screen.queryByRole('status')).toBeNull();
+ });
+ it('announces a failed import immediately and announces incomplete rows after applying a copy',async()=>{
+  render(wrap(<PolicyMatrixGrid kind="bonusMatrix" year={2026} matrix={defaultPolicy(2026).bonusMatrix} pristineValidationGuidance/>));
+  fireEvent.change(screen.getByLabelText(en.rewards.policyGrids.import),{target:{files:[new File(['bad'],'policy.csv')]}});
+  expect(await screen.findByRole('alert')).toHaveTextContent(en.rewards.policyGrids.fileError);
+  expect(screen.getByRole('status')).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:en.rewards.policyGrids.copy}));
+  fireEvent.click(await screen.findByRole('button',{name:'Previous policy · Version 2'}));
+  fireEvent.click(screen.getByRole('button',{name:en.rewards.policyGrids.apply}));
+  expect(within(screen.getByRole('alert')).getAllByRole('listitem')).toHaveLength(60);
+  expect(screen.queryByRole('status')).toBeNull();
+ });
  it('identifies only the failing salary comparison and gives each cell its own correction',()=>{
   cleanup();const ranges=Object.fromEntries(REWARD_POLICY_GRADES.filter(g=>g!=='23').map(g=>[g,[10000,20000,30000]]));
   render(wrap(<PolicyMatrixGrid kind="ranges" year={2026} matrix={ranges}/>));
@@ -52,13 +101,24 @@ describe('approved Rewards policy grids',()=>{
   fireEvent.click(screen.getByRole('button',{name:en.rewards.policyGrids.apply}));
   expect(screen.getByRole<HTMLInputElement>('textbox',{name:en.rewards.policyGrids.segment}).value).toBe('retail');
  });
- it('shows branch factors only for the branch structure and retains disabled values when hidden',()=>{
-  cleanup();render(wrap(<BranchPolicyFields structure="standard" factors={{retail:[0,10000,15000,20000,25000]}} year={2026}/>));
+ it('retains branch factors and only announces their errors while Branch is selected',async()=>{
+  const {container}=render(wrap(<BranchPolicyFields structure="standard" factors={{retail:[0,10000,15000,20000,25000]}} year={2026}/>));
   expect(screen.queryByRole('heading',{name:en.rewards.policyGrids.branchFactors})).toBeNull();
   fireEvent.change(screen.getByRole('combobox'),{target:{value:'branch'}});
   expect(screen.getByRole('heading',{name:en.rewards.policyGrids.branchFactors})).toBeVisible();
+  const grade=screen.getByRole<HTMLInputElement>('spinbutton',{name:'retail UA'});
+  fireEvent.change(grade,{target:{value:'1'}});
+  expect(grade.validity.customError).toBe(true);
+  expect(screen.getByRole('alert')).toContainElement(document.getElementById(grade.getAttribute('aria-describedby')!));
+  fireEvent.change(grade,{target:{value:'0'}});
+  expect(grade.validity.valid).toBe(true);
+  fireEvent.change(screen.getByLabelText(en.rewards.policyGrids.import),{target:{files:[new File(['bad'],'policy.csv')]}});
+  expect(await screen.findByRole('alert')).toHaveTextContent(en.rewards.policyGrids.fileError);
   fireEvent.change(screen.getByRole('combobox'),{target:{value:'standard'}});
+  expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(document.querySelector<HTMLInputElement>('input[name="branchFactors"]:not(:disabled)')?.value).toContain('retail, 0, 1, 1.5, 2, 2.5');
+  fireEvent.change(screen.getByRole('combobox'),{target:{value:'branch'}});
+  expect(screen.getByRole('alert')).toHaveTextContent(en.rewards.policyGrids.fileError);
  });
  it('closes prior-year copy choices and previews when the configuration year changes',async()=>{
   cleanup();const view=render(wrap(<RewardPolicyYearContext.Provider value={2026}><PolicyMatrixGrid kind="branchFactors" year={2026} matrix={{old:[0,10000,20000,30000,40000]}}/></RewardPolicyYearContext.Provider>));

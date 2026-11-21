@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * r336 · cbfa8b0b — THE LEAVE CREDIT REQUEST SCREEN: one modal, two kinds of claim, and the
  * double-claim check that runs in BOTH directions.
@@ -194,7 +195,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
   await setModule(b.tenantId, 'toil', 'active');
   ctx = await entitledCtx(b);
 });
@@ -757,7 +758,7 @@ describe('r336 · (e)(f) the double-claim check, in BOTH directions, from ONE pr
         today: TODAY,
       });
     await expect(claim()).rejects.toThrow(ClaimOverlapError);
-    await decideAttendanceCorrection(ctx, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(ctx, { expectedStageIndex: 0, correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     // Released. The employee whose overtime was refused may now claim the credit instead, which is the
     // whole point of asking.
     const res = await claim();
@@ -774,7 +775,7 @@ describe('r336 · (e)(f) the double-claim check, in BOTH directions, from ONE pr
       requestedOtMinutes: 240,
       reason: 'Stayed late',
     });
-    await decideAttendanceCorrection(ctx, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(ctx, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await expect(
       submitReplacementLeaveRequest(ctx, {
         employmentId,

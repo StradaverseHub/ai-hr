@@ -92,21 +92,18 @@ describe('e78fd03d (A) — the Year / Payroll month / SHOW area is gone from the
     expect(CODE).not.toContain('method="get"');
   });
 
-  it('still offers exactly one download affordance per AVAILABLE format, and names the reason for the rest', async () => {
+  it('offers the two company-first bank dialogs and preserves individual government downloads', async () => {
     const tree = await render();
-    const available = SUBMISSION_FORMATS.filter((f) => f.available).map((f) => f.id);
-    const unavailable = SUBMISSION_FORMATS.filter((f) => !f.available).map((f) => f.id);
-    // Compared against the registry rather than against a written list, so adding a format re-aims this.
-    expect(propValues(tree, 'data-download').sort()).toEqual([...available].sort());
-    expect(propValues(tree, 'data-unavailable').sort()).toEqual([...unavailable].sort());
-    expect(available.length, 'a screen with nothing downloadable would satisfy the equality above').toBeGreaterThan(0);
+    const government = formatsInGroup('governmentStatutory');
+    expect(propValues(tree, 'data-download').sort()).toEqual(government.filter(f => f.available).map(f => f.id).sort());
+    expect(propValues(tree, 'data-unavailable').sort()).toEqual(government.filter(f => !f.available).map(f => f.id).sort());
+    expect(propValues(tree, 'group')).toEqual(['salary', 'bankStatutory']);
+    expect(propValues(tree, 'endpoint')).toEqual(Array(2).fill('/payroll/payment-submission/bank-file'));
   });
 
-  it('hands the pop-up the FORMAT’s own declaration of what to ask for, not a branch on the shelf', () => {
-    expect(CODE, 'the modal reads periodKind off the registry entry').toContain('periodKind={f.periodKind}');
-    // If the screen decided this itself it would have to name a kind, a group or an id to decide it with.
+  it('passes the registry period kind to the individual format dialog', () => {
+    expect(CODE).toContain('periodKind={f.periodKind}');
     expect(CODE).not.toContain("'month-cycle'");
-    expect(CODE).not.toContain('governmentStatutory');
   });
 
   /**
@@ -124,8 +121,8 @@ describe('e78fd03d (A) — the Year / Payroll month / SHOW area is gone from the
    * it by accident fails here rather than quietly growing a control.
    */
   it('salary now has a bank writer and alone requires one money-moving cycle', () => {
-    expect(formatsInGroup('salary').map(f => f.id)).toEqual(['my.ocbc.salary']);
-    expect(SUBMISSION_FORMATS.filter(f => f.periodKind === 'month-cycle').map(f => f.id)).toEqual(['my.ocbc.salary']);
+    expect(formatsInGroup('salary').map(f => f.id)).toEqual(['my.ocbc.salary','my.maybank74.salary']);
+    expect(SUBMISSION_FORMATS.filter(f => f.periodKind === 'month-cycle').map(f => f.id).sort()).toEqual(['my.maybank74.salary','my.ocbc.salary']);
   });
 
   it('the three GOVERNMENT statutory formats declare the multi-run kind, and nothing else does', () => {

@@ -1,0 +1,53 @@
+{
+  "kind": "LOOKUP_BENCHMARK_CANCELLATION_IDENTITY_RECOVERY_NOT_RELEASE",
+  "base": "3024cb38231fb9f48d7df0f4d141b9a042cd3224",
+  "sourceRef": "codex/employee-native-cancellation-identity-recovery-20261108",
+  "qualification": "NOT_RUN",
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "selectors": [
+    "test/employee-choice-benchmark-ownership.test.ts"
+  ],
+  "declaredModels": 13,
+  "retainedOriginalModels": 12,
+  "lifetimeMs": {
+    "work": 840000,
+    "total": 900000,
+    "cleanupReserve": 60000
+  },
+  "retainedParent": {
+    "pure": {
+      "run": 42419086063,
+      "passed": 11,
+      "failed": 1,
+      "pending": 0,
+      "artifactId": 13593011341,
+      "zipSha256": "bc7e21c71330d93d59830168243d70dcc9d5fa32d6b47c727a63885b2e85c7b8"
+    },
+    "native": {
+      "run": 42419083419,
+      "passed": 5,
+      "failed": 1,
+      "pending": 0,
+      "artifactId": 13592199309,
+      "zipSha256": "557209fc553b0e5c4c2300a639b98ad7710c0f487f808f03cac3690822324039",
+      "timedNativePorts": 17,
+      "observedAllSamplesBelow1000ms": true,
+      "retainedPlanPhases": 37,
+      "requiredPlanPhases": 42,
+      "requiredNativeCallPairs": 25,
+      "complete": false,
+      "captureRepairInThisChild": false
+    }
+  },
+  "sourceSha256": {
+    "test/performance/employee-choice-benchmark-lifetime.ts": "ff248b59e427d03bd1ae8e9eed555f16198e3b211271515a9ec36811824e0a39",
+    "test/employee-choice-benchmark-ownership.test.ts": "1d43122e5dd17ca4661b29ac6ba29ea679d2ac1da248991448f68286922cd1e7",
+    "test/employee-choice-native-purpose-plan.test.ts": "7155c5e601943b1e476597977a49e37612a998af41233cce4104ed6b3bee7bc5",
+    "test/performance/employee-choice-benchmark-evidence.ts": "53f5a71f0324d8b5c5ffac70aa1638b2bfc04197e5dba6cd5bd4ba62d8bb904d",
+    "test/performance/employee-choice-auto-explain-parser.ts": "c2542db7f843bea0943f2e71cddc612db93c817f60baa120fb915fdb17fabbc6",
+    "test/fixtures/employee-choice-native-purpose.sql": "0ea638f797f57c22e6631d83f6d5d7bc63d752a5c6818d26ed34fd4441122d04",
+    "test/performance/employee-choice-native-purpose-reader.ts": "08e50db545dc32af18bddee7eae36a902ceacfbabc2c14a841b8a5b2b82cfd22",
+    "docs/qualification/employee-choice-cancellation-identity-recovery-20261108.md": "3abd68a47c301b702c4897f10b8d24093f517d52011b3b1b352ede111f7906df"
+  }
+}

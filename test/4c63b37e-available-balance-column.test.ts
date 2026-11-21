@@ -224,9 +224,20 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
     // The no-tx entry point still opens its own tenant transaction; the explicit-tx seam added for
     // canonical AI readers delegates to the SAME owner after re-checking the principal, never a copy.
     const read = code('core/read.ts');
-    expect(read).toContain('return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts));');
+    // Home's per-card reads (docs/adr/2026-11-10-home-request-read-scope.md) pass the caller's already-read own leave
+    // inputs through both entries to that same owner; without them it reads exactly as before.
+    expect(read).toContain('return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts, inputs),{presentationSnapshot:true});');
     expect(read).toContain('if (!existingTx) return withTenant(ctx, read);');
-    expect(read).toContain('await assertAiPrincipalTx(existingTx, ctx);');
+    // 4edf8b71b (docs/adr/2026-11-07-home-initial-read-cohort.md) lets a pure presentation snapshot
+    // re-check the principal through the read-composition owner. Either branch still re-checks it
+    // before the supplied transaction is used; neither waives the check.
+    expect(read).toContain('await (options?.presentationSnapshot?assertReadCompositionPrincipalTx:assertAiPrincipalTx)(existingTx, ctx);');
+    const composition = code('core/read-composition-principal.ts');
+    // Home (docs/adr/2026-11-10-home-request-read-scope.md) moved the snapshot probe into one shared statement
+    // owner so a request's carrier answers it once; the branch on it is unchanged.
+    expect(composition).toContain('if(await isRepeatableReadOnlyTx(tx))return assertAiPresentationPrincipalTx(tx,ctx);');
+    expect(code('core/read-only-snapshot.ts')).toContain("return sql`select current_setting('transaction_isolation')='repeatable read' and current_setting('transaction_read_only')='on' as snapshot`;");
+    expect(composition).toContain(' return assertAiPrincipalTx(tx,ctx);\n}');
     for (const src of [page, route, inquiry]) expect(src, 'presentation adds no separate balance read').not.toMatch(/\bleaveBalances(?:Tx)?\(/);
   });
 });

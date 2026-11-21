@@ -72,6 +72,12 @@ Attendance mutations lock the existing Attendance day, then source, before a Pay
 
 Actual Payroll consumption must validate approved current source, earning mapping, company/currency, period/cycle and jurisdiction/policy. Covered days are suppressed from legacy prefill and weekly-cycle reads for exactly those facts. Unassigned legacy days and independent manual amounts remain under existing owners. Retries reproduce one contribution; changed tier counts/mappings replace all current source lines before finalization. A disabled generated-transaction feature cannot turn an apparently successful transfer into record-only integration.
 
+### Amendment — b31981c0 editor simplification (10 November 2026)
+
+The reporter-approved b31981c0 plan hides, for one phase, the editor controls for owning/applicable companies, currency and precision, eligibility evaluation scope, payable-count allocation, rates/advanced calculation and the validate/activate/fork/stop/archive lifecycle. Storage, the evaluator, policy binding, Payroll and TOIL readers are unchanged, and the pack lifecycle services remain for the next phase; only their editor server-action wrappers were removed so no hidden endpoint remains.
+
+The editor save action derives every hidden value on the server and never from the browser: an existing draft keeps its saved creation company, affected companies and every definition field except eligibility; a new draft belongs to the single company in the server-side company selection (otherwise it is refused without a write), takes that company's currency and canonical precision, and stores the existing editor defaults `eligibilityBasis: 'day'` and `durationAllocation: 'earliest'`. This is a temporary departure from "the backend chooses neither": the editor currently exposes no activation, and any future activation path must re-establish an explicit earliest/latest and day/session choice (or record an owner decision) before a draft carrying these defaults can be activated.
+
 ## Options considered
 
 | Option | Consequence |

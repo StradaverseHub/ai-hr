@@ -5,17 +5,23 @@ export const rewardsPack: ModulePack = {
   id: 'rewards', kind: 'module', serviceFacade: 'packs/rewards/service',
   navLinks: [
     { group: 'manage', href: '/rewards', labelKey: 'rewardsReviewing', icon: Gift },
+    { group: 'manage', href: '/rewards/reviews', ownedSubpaths: ['/admin/rewards'], labelKey: 'rewardsAllReviews', icon: Gift },
     { group: 'manage', href: '/rewards/analytics', labelKey: 'rewardsAnalytics', icon: Gift },
+    { group: 'manage', href: '/rewards/promotions', labelKey: 'rewardsPromotions', icon: Gift },
     { group: 'manage', href: '/rewards/approvals', labelKey: 'rewardsApprovalsBoard', icon: Gift },
     { group: 'admin', href: '/rewards/rules', labelKey: 'rewardsRules', icon: Gift },
-    { group: 'admin', href: '/admin/rewards', labelKey: 'rewardsReviewCycles', icon: Gift },
-    { group: 'admin', href: '/admin/rewards/shared', labelKey: 'rewardsSharedConfiguration', icon: Gift },
+    { group: 'admin', href: '/admin/rewards/review-plans', ownedSubpaths: ['/admin/rewards/shared', '/admin/rewards/plans', '/admin/rewards/earlier-plans'], labelKey: 'rewardsReviewPlans', icon: Gift },
+    { group: 'admin', href: '/rewards/history-upload', labelKey: 'rewardsHistoryUpload', icon: Gift },
     { group: 'admin', href: '/admin/rewards/salary-structures', labelKey: 'rewardsSalaryStructures', icon: Gift },
     { group: 'admin', href: '/admin/rewards/bonus-matrices', labelKey: 'rewardsBonusMatrices', icon: Gift },
     { group: 'admin', href: '/admin/rewards/pat-inputs', labelKey: 'rewardsPatInputs', icon: Gift },
-    { group: 'admin', href: '/admin/rewards/access', labelKey: 'rewardsAccess', icon: Gift },
+    { group: 'admin', href: '/admin/rewards/limit-controls', labelKey: 'rewardsLimitControls', icon: Gift },
+    // 70d5e7c5: Review Set-up sits after PAT Inputs and Limit Controls.
+    { group: 'admin', href: '/admin/rewards/review-setup', labelKey: 'rewardsReviewSetup', icon: Gift },
+    { group: 'admin', href: '/admin/rewards/change-log', labelKey: 'rewardsChangeLog', icon: Gift },
+    { group: 'admin', href: '/admin/rewards/access', ownedSubpaths: ['/admin/rewards/setup-access'], labelKey: 'rewardsAccess', icon: Gift },
   ],
-  satelliteTables: ['reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar'].map(table => ({ table })),
+  satelliteTables: ['reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar', 'reward_plan_year', 'reward_plan_year_company', 'reward_person_history', 'reward_history_post_read_lease', 'app.reward_review_plan_write_lease', 'app.reward_review_plan_company_outbox'].map(table => ({ table })),
 };
 registerPack(rewardsPack);
 

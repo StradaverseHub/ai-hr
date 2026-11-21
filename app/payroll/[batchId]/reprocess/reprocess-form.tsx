@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState, type KeyboardEvent } from 'react';
+import { useMemo, useState, useTransition, type KeyboardEvent } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { Button, EmployeeCode } from '@/components/ui';
@@ -9,7 +9,11 @@ import { matchesEmployeeSearch } from '@/lib/employee-search';
 import { formatMoney } from '@/lib/money';
 import { withPayrollFrom } from '@/lib/return-to';
 import type { NothingPayableSkipKind } from '@/core/payroll-view';
-import { reprocessSelectedAction } from '../../actions';
+import {ClientPager} from '@/components/client-pager';
+import type {PageState} from '@/lib/pagination';
+import {PayrollSelectionSearch} from '../../selection-search';
+import { reprocessSelectedAction, reviewReprocessTaxAction } from '../../actions';
+import type { ReprocessTaxReadiness } from '@/lib/payroll-reprocess-readiness';
 
 export type ReprocessCandidate = {
   employmentId: string;
@@ -85,20 +89,23 @@ const DELIBERATE_SKIP = 'nothingPayable';
  * is the workflow the reporter rejected: the calculation was right and in weekly use, the route to it
  * was not.
  *
- * WHAT IS NOT HERE, AND WHY. There is no progress bar and no poller over
- * /api/payroll/reprocess-job/<id>. `reprocessSelectedEmployees` enqueues a job AND runs it inline, so
- * the submit is synchronous: the honest states are "running" (this form's pending state) and
- * "complete" (the results panel the page renders afterwards). A percentage bar would be drawing a
- * background worker that does not exist.
+ * The submit enqueues a background job (core/payroll-reprocess-job.ts) and lands back on this screen with its id;
+ * the page then shows the job's progress (./reprocess-progress.tsx, polling /api/payroll/reprocess-job/<id>) and
+ * replaces it with the results panel when the job ends.
  */
 export function ReprocessForm({
   batchId,
   employees,
   newCandidates,
   preselectedIds,
+  pendingIds = [],
+  previousJobId,
+  jobRunning = false,
   currency,
   from,
+  paging,
 }: {
+  paging?:{existing:PageState;additions:PageState;runTotal:number;existingTotal:number;search:string};
   batchId: string;
   employees: ReprocessCandidate[];
   /**
@@ -121,6 +128,9 @@ export function ReprocessForm({
    * reprocessed. Plain data, resolved on the server; the ticks stay editable.
    */
   preselectedIds?: string[];
+  pendingIds?: string[];
+  previousJobId?: string;
+  jobRunning?: boolean;
   currency: string | null;
   /**
    * b372e923 — the Payroll Process list's filter query, already whitelisted by shape on the server, or
@@ -139,15 +149,12 @@ export function ReprocessForm({
   const pendingAdditions = additions.filter((c) => !c.skip);
   const skippedAdditions = additions.filter((c) => !!c.skip);
   const addable = pendingAdditions.filter((c) => c.blockers.length === 0);
-  const [selected, setSelected] = useState<Set<string>>(
-    () =>
-      new Set([
-        ...(preselectedIds ?? []),
-        // Pre-ticked: everyone eligible whose record is ready and whom the run's chosen list already
-        // covers. See the prop's note for why the other two cases deliberately arrive unticked.
-        ...addable.filter((c) => !c.outsideScope).map((c) => c.employmentId),
-      ]),
-  );
+  type Selected=ReprocessCandidate|ReprocessAddCandidate;
+  // Page-local defaults are intentional (owner17Nov); navigation retains the exact already-picked records.
+  const [selected,setSelected]=useState<Map<string,Selected>>(()=>new Map([
+   ...employees.filter(e=>(preselectedIds??[]).includes(e.employmentId)).map(e=>[e.employmentId,e] as [string,Selected]),
+   ...addable.filter(c=>!c.outsideScope).map(c=>[c.employmentId,c] as [string,Selected]),
+  ]));
   /**
    * Idempotency token, minted ONCE PER MOUNT and posted with the form, so a double-clicked or retried
    * submit reuses the same `payroll_reprocess_job` row instead of enqueuing a second run.
@@ -160,10 +167,36 @@ export function ReprocessForm({
   const [idempotencyKey] = useState(() =>
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${batchId}-${Date.now()}`,
   );
-  const total = employees.length + additions.length;
-  const pickedExisting = employees.filter((e) => selected.has(e.employmentId));
-  const pickedNew = additions.filter((e) => selected.has(e.employmentId));
+  const total = paging?.runTotal ?? employees.length + additions.length;
+  const currentById=new Map<string,Selected>([...employees,...additions].map(e=>[e.employmentId,e]));
+  const pickedRows=[...selected.values()].map(e=>currentById.get(e.employmentId)??e);
+  const pickedExisting=pickedRows.filter((e):e is ReprocessCandidate=>'reprocessedTimes' in e);
+  const pickedNew=pickedRows.filter((e):e is ReprocessAddCandidate=>'hiredOn' in e);
   const picked = [...pickedNew, ...pickedExisting];
+
+  const [checking,startCheck] = useTransition();
+  const [reviewPending,setReviewPending] = useState(false);
+  const [checked,setChecked] = useState<{key:string;result:ReprocessTaxReadiness|null}|null>(null);
+  const selectedIds = picked.map(row=>row.employmentId);
+  const reviewIds = reviewPending ? pendingIds : selectedIds;
+  const selectionKey = (ids:string[]) => [...ids].sort().join(',');
+  const reviewKey = selectionKey(reviewIds);
+  const review = !checking && checked?.key===reviewKey ? checked.result : null;
+  const ready = review?.employees.filter(row=>row.status==='ready') ?? [];
+  const held = review?.employees.filter(row=>row.status!=='ready') ?? [];
+
+  function checkTax(ids:string[],pending:boolean){
+    setReviewPending(pending);
+    setChecked(null);
+    startCheck(async ()=>{
+      try {
+        const result=await reviewReprocessTaxAction(batchId,ids);
+        setChecked({key:selectionKey(ids),result:result.ok ? result.review : null});
+      } catch {
+        setChecked({key:selectionKey(ids),result:null});
+      }
+    });
+  }
 
   /**
    * 65e2d5de — SEARCH BY EMPLOYEE ID OR NAME, through the ONE SHARED RULE in `lib/employee-search.ts`.
@@ -184,44 +217,27 @@ export function ReprocessForm({
   // pre-mangling the query would silently defeat the fold it exists for.
   const needle = q.trim();
   const visibleEmployees = useMemo(
-    () => (needle === '' ? employees : employees.filter((e) => matchesEmployeeSearch(e, needle))),
-    [employees, needle],
+    () => (paging || needle === '' ? employees : employees.filter((e) => matchesEmployeeSearch(e, needle))),
+    [employees, needle,paging],
   );
   const visibleAdditions = useMemo(
-    () => (needle === '' ? additions : additions.filter((e) => matchesEmployeeSearch(e, needle))),
+    () => (paging || needle === '' ? additions : additions.filter((e) => matchesEmployeeSearch(e, needle))),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `additions` is derived from `newCandidates`
-    [newCandidates, needle],
+    [newCandidates, needle,paging],
   );
-  /**
-   * THE TICKED PEOPLE THE SEARCH IS CURRENTLY HIDING — and the reason the hidden inputs below exist.
-   *
-   * The table bodies render the VISIBLE rows, so a ticked row that stops matching the search box is
-   * UNMOUNTED and its `<input type="checkbox" name="employmentIds">` leaves the DOM with it. Everything
-   * else on this screen — the count, the review list, the button label — is computed from `selected` over
-   * the UNFILTERED lists, so without this the operator would be told "Reprocess 3 employee(s)", shown
-   * three names in the review, and ONE employment id would be posted. The set that is reviewed and the set
-   * that is submitted must be the same set. This is the exact defect 9066bd6c found on the Remove screen;
-   * it is a contract between the review block and the form, which is why it is pinned by a FormData test.
-   *
-   * Hidden inputs rather than clearing ticks on search, for the same reason as there: the review block
-   * below already NAMES every ticked person regardless of the search, so the full selection is on screen
-   * and honoured, whereas dropping ticks as the operator types silently discards work they can see listed.
-   */
   const visiblePending = visibleAdditions.filter((c) => !c.skip);
   const visibleSkipped = visibleAdditions.filter((c) => !!c.skip);
-  const visibleIds = useMemo(
-    () => new Set([...visibleEmployees, ...visibleAdditions].map((e) => e.employmentId)),
-    [visibleEmployees, visibleAdditions],
-  );
-  const pickedOffscreen = picked.filter((e) => !visibleIds.has(e.employmentId));
+  // One hidden input per reviewed row, independent of paging, filtering or a now-disabled checkbox.
 
-  const toggle = (id: string) =>
+  const toggle = (id: string) => {
+    setReviewPending(false);
     setSelected((prev) => {
-      const next = new Set(prev);
+      const next = new Map(prev);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else {const row=currentById.get(id);if(row)next.set(id,row);}
       return next;
     });
+  };
 
   /**
    * ENTER MUST NOT RUN THE PAYROLL. This is the reason the form carries a keydown handler at all.
@@ -282,7 +298,6 @@ export function ReprocessForm({
           <label className={`flex items-center gap-2 ${blocked ? 'opacity-60' : ''}`}>
             <input
               type="checkbox"
-              name="employmentIds"
               value={c.employmentId}
               checked={on}
               disabled={blocked}
@@ -318,7 +333,7 @@ export function ReprocessForm({
   };
 
   return (
-    <form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit} className="space-y-4">
+    <form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit} onSubmit={event=>{if(!ready.length || jobRunning)event.preventDefault();}} className="space-y-4">
       <input type="hidden" name="batchId" value={batchId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {/* See the `from` prop: the submit is the ordinary way off this screen, and it used to strip the
@@ -328,20 +343,18 @@ export function ReprocessForm({
       {/* 65e2d5de — Search Employee, at the top of the screen where the request put it. It filters the
           rows only; it never changes the selection — and, per `blockImplicitSubmit` above, Enter in it
           filters and nothing else. It cannot reach the submit button. */}
-      <input
-        type="search"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder={t('reprocessSearchPlaceholder')}
-        className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring dark:bg-input/30"
-      />
+      {paging?<PayrollSelectionSearch query={paging.search} placeholder={t('reprocessSearchPlaceholder')}/>:<input
+        type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder={t('reprocessSearchPlaceholder')}
+        className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-1.5 text-sm"/>}
+      {paging&&<>
+       <p className="text-xs text-muted-foreground">{t('reprocessPageDefaultsNote')}</p>
+       <ClientPager state={paging.additions} paramNames={{page:'newPage',size:'newSize'}} note={t('reprocessPageGroupNote')} rememberAs="payroll-reprocess-new"/>
+      </>}
 
-      {/* See `pickedOffscreen`: the checkbox of a ticked row the search has filtered away is no longer in
-          the DOM, so it carries its id here instead. Disjoint from the mounted checkboxes by construction
-          (these are exactly the picked ids NOT visible), so nothing is posted twice. */}
-      {pickedOffscreen.map((e) => (
-        <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
-      ))}
+
+      {previousJobId && <input type="hidden" name="previousReprocessJob" value={previousJobId} />}
+      {(review ? ready : picked).map(row=><input key={row.employmentId} type="hidden" name="employmentIds" value={row.employmentId} />)}
+      {held.map(row=><input key={row.employmentId} type="hidden" name="heldEmploymentIds" value={row.employmentId} />)}
 
       {/* fbcf706d — THE NEW / PENDING GROUP, above the people already paid. Rendered only when there is
           somebody in it, so a run with nobody waiting looks exactly as it did. */}
@@ -379,6 +392,7 @@ export function ReprocessForm({
         </div>
       )}
 
+      {paging&&<ClientPager state={paging.existing} note={t('selectionPagingNote')} rememberAs="payroll-reprocess-existing"/>}
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-[42rem] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -393,17 +407,17 @@ export function ReprocessForm({
                       search that is narrower than the word "all" — deliberately, and matching
                       remove-form.tsx. It cannot diverge from what the operator is told: the count, the
                       review list and the button label all move with it, and every id it leaves selected is
-                      still submitted (see `pickedOffscreen`). With no search it is exactly what it was. */}
+                      still submitted (the complete hidden selection below). With no search it is exactly what it was. */}
                   <button
                     type="button"
-                    onClick={() => setSelected(new Set(visibleEmployees.map((e) => e.employmentId)))}
+                    onClick={() => {setReviewPending(false);setSelected(new Map(visibleEmployees.map((e) => [e.employmentId,e])));}}
                     className="font-medium normal-case tracking-normal text-primary hover:underline"
                   >
                     {t('reprocessSelectAll')}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSelected(new Set())}
+                    onClick={() => {setReviewPending(false);setSelected(new Map());}}
                     className="font-medium normal-case tracking-normal text-primary hover:underline"
                   >
                     {t('reprocessClear')}
@@ -428,7 +442,6 @@ export function ReprocessForm({
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        name="employmentIds"
                         value={e.employmentId}
                         checked={on}
                         onChange={() => toggle(e.employmentId)}
@@ -471,7 +484,7 @@ export function ReprocessForm({
       {/* THE REVIEW STEP. Reprocessing is not destructive, but it does move somebody's pay, so what is
           about to happen is restated in names — and, just as importantly, what is NOT about to happen.
           Rendered from the same state as the ticks above, in the same form: see `idempotencyKey`. */}
-      {picked.length > 0 && (
+      {picked.length > 0 && !reviewPending && !review && (
         <div className="rounded-xl border border-dashed border-primary/45 bg-primary/5 px-4 py-3">
           <p className="text-sm font-medium">{t('reprocessReviewTitle', { n: picked.length, total })}</p>
           <p className="mt-1 text-sm">
@@ -485,7 +498,7 @@ export function ReprocessForm({
           <p className="mt-1.5 text-xs text-muted-foreground">
             {/* "The other N payslips are not touched" counts PAYSLIPS, so it is the unpicked people who
                 already have one — an addition has no payslip to leave alone. */}
-            {t('reprocessReviewNote', { n: employees.length - pickedExisting.length })}
+            {t('reprocessReviewNote', { n: (paging?.existingTotal ?? employees.length) - pickedExisting.length })}
           </p>
           {pickedNew.length > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -493,6 +506,53 @@ export function ReprocessForm({
             </p>
           )}
         </div>
+      )}
+
+      {(pendingIds.length>0 || selectedIds.length>0) && (
+        <div className="flex flex-wrap gap-2">
+          {selectedIds.length>0 && <Button type="button" variant="outline" disabled={checking || jobRunning}
+            onClick={()=>checkTax(selectedIds,false)}>
+            {t('reprocessCheckTax', {n:selectedIds.length})}
+          </Button>}
+          {pendingIds.length>0 && <Button type="button" variant="outline" disabled={checking || jobRunning}
+            onClick={()=>checkTax(pendingIds,true)}>
+            {t('reprocessCheckPending', {n:pendingIds.length})}
+          </Button>}
+        </div>
+      )}
+      {checking && <p role="status" className="text-sm text-muted-foreground">{t('reprocessCheckingTax')}</p>}
+      {!checking && checked?.key===reviewKey && !checked.result &&
+        <p role="alert" className="text-sm text-destructive">{t('reprocessCheckTaxError')}</p>}
+      {review && (
+        <section aria-label={t('reprocessTaxReadiness')} className="space-y-3 rounded-xl border border-border p-4 text-sm">
+          <h3 className="font-semibold">{t('reprocessTaxReadiness')}</h3>
+          <p role="status">
+            {t('reprocessTaxReadinessSummary', {ready:ready.length,recalculating:held.filter(row=>row.status==='recalculating').length,
+              blocked:held.filter(row=>row.status==='blocked').length})}
+          </p>
+          {ready.length>0 && <details>
+            <summary className="cursor-pointer font-medium">{t('reprocessTaxReadyList')}</summary>
+            <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+              {ready.map(row=><li key={row.employmentId} className="flex items-baseline gap-1.5">
+                <EmployeeCode code={row.employeeCode}/>{row.name}
+              </li>)}
+            </ul>
+          </details>}
+          {held.length>0 && <ul className="divide-y divide-border">
+            {held.map(row=><li key={row.employmentId} className="py-2">
+              <p className="flex items-baseline gap-1.5 font-medium"><EmployeeCode code={row.employeeCode}/>{row.name}</p>
+              <p className="text-muted-foreground">
+                {row.status==='blocked' ? row.reason : t('reprocessTaxRecalculating')}
+              </p>
+              {row.status==='blocked' && row.previousReviewReason && row.previousReviewReason!==row.reason &&
+                <p className="text-muted-foreground">{t('reprocessPreviousTaxReason',{reason:row.previousReviewReason})}</p>}
+            </li>)}
+          </ul>}
+          {review.taxReviewHref && held.some(row=>row.status==='blocked') &&
+            <Link href={review.taxReviewHref} target="_blank" rel="noopener noreferrer" className="inline-block font-medium text-primary underline">
+              {t('reprocessOpenTaxReview')}
+            </Link>}
+        </section>
       )}
 
       <label className="block">
@@ -515,8 +575,8 @@ export function ReprocessForm({
           {t('reprocessCancel')}
         </Link>
         <SubmitButton
-          count={picked.length}
-          label={t('reprocessSubmitN', { n: picked.length })}
+          count={jobRunning ? 0 : ready.length}
+          label={review ? t('reprocessSubmitTaxReady', { n: ready.length }) : t('reprocessSubmitN', { n: picked.length })}
           pendingLabel={t('reprocessRunning')}
         />
       </div>

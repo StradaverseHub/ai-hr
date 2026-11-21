@@ -32,10 +32,10 @@ describe('mobile-preview module (ca2f2fef)', () => {
   });
 
   it('the sidebar exposes exactly one /mobile-preview nav entry', () => {
-    const src = read('components/sidebar.tsx');
+    const src = read('lib/navigation/shell-inventory.ts');
     const matches = src.match(/\{\s*href:\s*'\/mobile-preview'/g) ?? [];
     expect(matches.length).toBe(1);
-    expect(src).toContain("row.href !== '/mobile-preview' || isAdmin");
+    expect(read('lib/navigation/shell-resolver.ts')).toContain("row.href !== '/mobile-preview' || isAdmin");
   });
 
   it('the live preview presents the five task destinations without sample identities', () => {

@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase,configureAttendanceSubmissionFixtures} from './helpers/attendance-submission-fixture';
 import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -11,7 +12,7 @@ import {clockCommandContext} from '../lib/clock-command-context';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();b=await seedBase();});
+beforeEach(async()=>{await resetDb();b=await seedAttendanceSubmissionBase();});
 async function worker(role:'employee'|'hr_admin'='employee'){
  const hired=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Home clock '+randomUUID(),primaryEmail:randomUUID()+'@example.test'},
   companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
@@ -25,6 +26,7 @@ describe('Home selected clock context',()=>{
   const [co]=await owner.db.insert(company).values({tenantId:b.tenantId,legalName:'Fictional concurrent employer'}).returning();
   const [dept]=await owner.db.insert(department).values({tenantId:b.tenantId,companyId:co.id,name:'Fictional concurrent department'}).returning();
   const second=await hireEmployee(adminCtx(b),{person:{id:own.personId},companyId:co.id,departmentId:dept.id,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  await configureAttendanceSubmissionFixtures(b,[co.id]);
   const firstState=await ownClockToday(own.ctx,undefined,own.employmentId),secondState=await ownClockToday(own.ctx,undefined,second.employmentId);
   expect(secondState.clockContext).not.toBe(firstState.clockContext);
   const intent={employmentId:second.employmentId,clockContext:secondState.clockContext,action:'in' as const,requestId:randomUUID(),lat:null,lng:null,accuracy:null};

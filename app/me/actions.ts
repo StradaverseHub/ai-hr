@@ -1,4 +1,6 @@
 'use server';
+import { AttendanceWorkflowSubmissionError } from '@/lib/attendance-workflow-submission';
+
 
 import { AttendanceLevelError } from '@/lib/attendance-workflow-v3';
 import { attendanceWorkflowErrorMessage } from '@/lib/attendance-workflow-error-message';
@@ -56,6 +58,7 @@ import {
   checkIn,
   checkOut,
   requestAttendanceCorrection,
+  requestAttendanceCorrectionOnBehalf,
   ATTENDANCE_ATTACHMENT_MAX_BYTES,
   ATTENDANCE_ATTACHMENT_MIME_TYPES,
   GeolocationRequiredError,
@@ -67,6 +70,9 @@ import {
   OvertimePlanAlreadyApprovedError,
   OvertimeAlreadyCountedError,
 } from '@/packs/attendance/service';
+// 87bd9656 — the Overtime Backdate Control refusal (thrown by the submission owner), printed in the employee's
+// (or, on behalf, HR's) own language.
+import { OvertimeBackdateNotAllowedError } from '@/lib/overtime-backdate';
 import {
   ATTENDANCE_REQUEST_KINDS,
   OT_REASON_CATEGORIES,
@@ -92,6 +98,16 @@ import {
   updateGoalProgress,
   type GoalStatus,
 } from '@/packs/performance/service';
+
+/** 96a54ed2 — the chosen employee of a Request On Behalf form: a UUID or nothing. Authority is decided by the
+ *  on-behalf service, never by this field. */
+function onBehalfParam(formData: FormData): string | null {
+  const raw = String(formData.get('onBehalfOf') ?? '').trim();
+  return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(raw) ? raw.toLowerCase() : null;
+}
+
+/** 96a54ed2 — the one Attendance submission owner, for the caller themselves or (re-checked) for a chosen employee. */
+const requestAttendanceCorrectionFor = (onBehalfOf: string | null) => onBehalfOf ? requestAttendanceCorrectionOnBehalf : requestAttendanceCorrection;
 
 /** Resolve the caller's own employment from the session — never from a form field. */
 async function resolveMe() {
@@ -236,10 +252,6 @@ export async function myEditLeave(formData: FormData) {
   const toTime = String(formData.get('toTime') ?? '').trim();
   const reason = String(formData.get('reason') ?? '').trim() || undefined;
   const employeeRemark = String(formData.get('employeeRemark') ?? '').trim() || undefined;
-  // Resolve the selected type's localized name for any validation error message (mirrors myRequestLeave).
-  const locale = await getLocale();
-  const types = await listEligibleLeaveTypesFor(s, employmentId, locale);
-  const selected = types.find((t) => t.id === leaveTypeId);
   try {
     await editLeaveRequest(s, {
       leaveRequestId,
@@ -254,6 +266,9 @@ export async function myEditLeave(formData: FormData) {
       today: todayInKualaLumpur(),
     });
   } catch (e) {
+    const locale = await getLocale();
+    const types = await listEligibleLeaveTypesFor(s, employmentId, locale);
+    const selected = types.find((t) => t.id === leaveTypeId);
     redirect(
       `/leave?error=${encodeURIComponent(
         await localizeLeaveError(e, selected?.name, { ctx: s, employmentId, leaveTypeId, subject: 'self' }),
@@ -552,7 +567,11 @@ const REQUEST_STATUS_PAGE = '/attendance/request-status';
 // missing clock-out is approved the day stops being an Incomplete Entry and a re-derived label would
 // relabel its own history). Every one of them is optional at every layer, so the plain form is unchanged.
 export async function myRequestCorrection(formData: FormData) {
-  const { s, employmentId } = await resolveMe();
+  // 96a54ed2 Request On Behalf: the same action and screen for a chosen employee. The service re-checks the
+  // permission key and scope for that employee; otherwise the caller's own employment, resolved from the session.
+  const onBehalfOf = onBehalfParam(formData);
+  const { s, employmentId } = onBehalfOf ? { s: await getSession(), employmentId: onBehalfOf } : await resolveMe();
+  const behalf = onBehalfOf ? `&onBehalfOf=${onBehalfOf}` : '';
   const date = String(formData.get('date'));
   const checkInTime = String(formData.get('checkIn') || '');
   const checkOutTime = String(formData.get('checkOut') || '');
@@ -577,7 +596,8 @@ export async function myRequestCorrection(formData: FormData) {
     if (hasFile) {
       assertAttendanceAttachmentAcceptable(file);
     }
-    const { correctionId } = await requestAttendanceCorrection(s, {
+    const { correctionId } = await requestAttendanceCorrectionFor(onBehalfOf)(s, {
+      workflowFingerprint: String(formData.get('workflowFingerprint') ?? '') || undefined,
       employmentId,
       date,
       checkIn: checkInTime || null,
@@ -595,10 +615,11 @@ export async function myRequestCorrection(formData: FormData) {
       });
     }
   } catch (e) {
-    redirect(`${REQUESTS_PAGE}?section=${section}&error=${encodeURIComponent(await attendanceWorkflowErrorMessage(e))}`);
+    if (e instanceof AttendanceWorkflowSubmissionError) return { error: await attendanceWorkflowErrorMessage(e) };
+    redirect(`${REQUESTS_PAGE}?section=${section}${behalf}&error=${encodeURIComponent(await attendanceWorkflowErrorMessage(e))}`);
   }
   revalidatePath(REQUESTS_PAGE);
-  redirect(`${REQUESTS_PAGE}?section=${section}&toast=Attendance+request+submitted`);
+  redirect(`${REQUESTS_PAGE}?section=${section}${behalf}&toast=Attendance+request+submitted`);
 }
 
 /** 2166ef79 — the employee WITHDRAWS their own pending clock-time request. Overtime is withdrawn from the
@@ -664,13 +685,15 @@ const PLAN_OT_PAGE = '/attendance/plan-ot';
  * localizeLeaveError already use in this file.
  */
 async function localizeOvertimeRequestError(e: unknown): Promise<string> {
-  if (e instanceof AttendanceLevelError) return attendanceWorkflowErrorMessage(e);
+  if (e instanceof AttendanceLevelError || e instanceof AttendanceWorkflowSubmissionError) return attendanceWorkflowErrorMessage(e);
   if (e instanceof OvertimePlanAlreadyApprovedError || e instanceof OvertimeAlreadyCountedError) {
     const t = await getTranslations('me');
     return e instanceof OvertimeAlreadyCountedError
       ? t('otAlreadyCountedForDate', { date: e.date })
       : t('otPlanApprovedNotCounted', { date: e.date });
   }
+  if (e instanceof OvertimeBackdateNotAllowedError)
+    return (await getTranslations('scheduleOvertimeSetting'))('backdateRefused', { days: e.limitDays, date: e.earliestDate });
   return publicErrorMessage(e);
 }
 
@@ -684,7 +707,10 @@ async function localizeOvertimeRequestError(e: unknown): Promise<string> {
 // worked — is byte-identical. `otHours` is still accepted and still authoritative; when the window is
 // supplied the form posts the derived figure in it, so there is exactly ONE number the engine reads.
 export async function myRequestOvertime(formData: FormData) {
-  const { s, employmentId } = await resolveMe();
+  // 96a54ed2 Request On Behalf — see myRequestCorrection.
+  const onBehalfOf = onBehalfParam(formData);
+  const { s, employmentId } = onBehalfOf ? { s: await getSession(), employmentId: onBehalfOf } : await resolveMe();
+  const behalf = onBehalfOf ? `&onBehalfOf=${onBehalfOf}` : '';
   const date = String(formData.get('date'));
   const reason = String(formData.get('reason') || '').trim();
   const otHoursRaw = String(formData.get('otHours') || '').trim();
@@ -724,7 +750,8 @@ export async function myRequestOvertime(formData: FormData) {
     if (hasFile) {
       assertAttendanceAttachmentAcceptable(file);
     }
-    const { correctionId } = await requestAttendanceCorrection(s, {
+    const { correctionId } = await requestAttendanceCorrectionFor(onBehalfOf)(s, {
+      workflowFingerprint: String(formData.get('workflowFingerprint') ?? '') || undefined,
       employmentId,
       date,
       requestedOtMinutes,
@@ -750,8 +777,9 @@ export async function myRequestOvertime(formData: FormData) {
     // bad figure, refusal, success) and asserts every one of them carries the date. A second refusal
     // redirect for the localized case would have been the easy shape and would have broken that guard —
     // and the guard is right, because a refusal that loses the date resets the form to tomorrow.
+    if (e instanceof AttendanceWorkflowSubmissionError) return { error: await attendanceWorkflowErrorMessage(e) };
     const msg = await localizeOvertimeRequestError(e);
-    redirect(`${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}&error=${encodeURIComponent(msg)}`);
+    redirect(`${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}${behalf}&error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(PLAN_OT_PAGE);
   revalidatePath(`${PLAN_OT_PAGE}/apply`);
@@ -760,7 +788,7 @@ export async function myRequestOvertime(formData: FormData) {
   // the same date still selected means the dot they just created is visible on the grid and the next day
   // is one click away; being thrown to the table meant navigating back in to plan a second day. The date
   // rides along so the month, the summary and the day card are the ones they were looking at.
-  redirect(`${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}&toast=Overtime+plan+submitted`);
+  redirect(`${PLAN_OT_PAGE}/apply?date=${encodeURIComponent(date)}${behalf}&toast=Overtime+plan+submitted`);
 }
 
 /** 1e9145d4 — withdraw an overtime plan. The service enforces subject-only and the allowed states (pending,

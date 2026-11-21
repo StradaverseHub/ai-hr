@@ -126,7 +126,7 @@ describe('Native financial authority is independent of protected Workforce-purpo
   await configure();const actor=await principal('unrelatedHybrid');await assertFinancialBoundary(actor,'unrelatedHybrid');
   const history=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,employee.employmentId));expect(history.length).toBeGreaterThan(1);
   await assertNativeSelection(actor,base.companyId,0);const batchId=await payrollBatchFor(actor);
-  const result=await generatePayslips(actor,{batchId});expect(result.payslips).toBe(0);
+  const result=await generatePayslips(actor,{batchId});if(!('payslips' in result))throw Error('Expected a whole-run generation result');expect(result.payslips).toBe(0);
   expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toHaveLength(0);
  });
  it.each(['fixed','builder'] as const)('%s current-company allowance remains payable with Payroll Partner only and no Workforce purpose',async mode=>{

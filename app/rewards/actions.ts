@@ -7,9 +7,10 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
-import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, getRewardConfiguration,importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
-import { payWindowReasons } from '@/packs/rewards/engine';
-import { emptyFacts, isSalaryReductionAttempt, isSeniorPlanMember, performances, talents, type RewardPolicy, type RewardRole } from '@/packs/rewards/model';
+import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, getRewardConfiguration,importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardEntryCell, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
+import { emptyFacts, isSalaryReductionAttempt, performances, talents, type RewardRole } from '@/packs/rewards/model';
+import { parseRewardCellValue, RewardCellInputError, type RewardCellField } from '@/packs/rewards/review-cell';
+import { deskRow, deskSummary, deskTotals, filterDeskRows, parseDeskFilters, type DeskRow, type DeskSummary, type DeskTotals, type RewardView } from './[unitId]/desk/desk-model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
 const number = (f: FormData, key: string) => Number(str(f, key));
@@ -169,29 +170,42 @@ export async function saveRewardAccessAction(input:unknown,digest:string){
 function maintenanceErrorCode(error:unknown){return error instanceof RewardMaintenanceError?error.code:'system';}
 export async function deleteRewardAction(f:FormData){
  try{await deleteRewardReview(await getSession(),str(f,'unitId'),number(f,'revision'),str(f,'confirmation'));}
- catch(error){redirect(`/admin/rewards?deletionError=${maintenanceErrorCode(error)}`);}
- revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');redirect('/admin/rewards?deleted=1');
+ catch(error){redirect(`/rewards/reviews?deletionError=${maintenanceErrorCode(error)}`);}
+ revalidatePath('/rewards','layout');revalidatePath('/admin/rewards','layout');redirect('/rewards/reviews?deleted=1');
 }
 
-/** A cell edit changes only its own override. The review owner still validates the revision and amount. */
-export async function saveInlineRewardIncrease(unitId: string, revision: number, entryId: string,
-  field: 'meritBp' | 'promotionBp' | 'specialBp', value: string) {
+/** 37f82412 — the People table cells and the person-panel note. */
+export type { RewardCellField } from '@/packs/rewards/review-cell';
+export type RewardCellResult =
+  | { ok: true; revision: number; row: DeskRow | null; summary: DeskSummary; totals: DeskTotals; flags: RewardView['flags'] }
+  | { ok: false; stale: boolean; error: string };
+
+/**
+ * A cell edit changes only its own override, through the one review owner (saveRewardEntry), which keeps
+ * the revision check, the stage and capability rules and every limit. The result carries the recalculated
+ * row, the summary tiles, the flags and the Total row for the same filters, so the screen never adds up pay.
+ */
+export async function saveRewardCell(unitId: string, revision: number, entryId: string, field: RewardCellField, value: string, rawFilters: unknown = {}): Promise<RewardCellResult> {
+  const t = await getTranslations('rewards');
   try {
-    if (!['meritBp', 'promotionBp', 'specialBp'].includes(field) || typeof value !== 'string' ||
-        value !== '' && !/^\d{1,3}(?:\.\d{1,2})?$/.test(value)) throw new Error('Enter a percentage with up to two decimal places.');
+    if (!Number.isInteger(revision)) throw new RewardCellInputError('percent');
+    parseRewardCellValue(field, value);
     const session = await getSession();
-    const view = await getRewardUnit(session, unitId);
-    const entry = view.rows.find(row => row.id === entryId);
-    if (!entry || view.uploaded || view.unit.kind !== 'annual' || view.unit.status !== 'draft' || !view.canEdit ||
-        isSeniorPlanMember(view.unit.policy, entry.facts, entry.source.grade) ||
-        entry.payChange && payWindowReasons.includes(entry.incrementReason)) {
-      throw new Error('This recommendation cannot be edited here.');
-    }
-    const override = value === '' ? null : Math.round(Number(value) * 100);
-    await saveRewardEntry(session, unitId, revision, entryId, { ...entry.recommendation, [field]: override });
-    revalidatePath('/rewards', 'layout');
-    return { ok: true as const, override };
+    const after = await saveRewardEntryCell(session, unitId, revision, entryId, field, value);
+    if (!after) throw new Error(t('desk.cell.unavailable'));
+    const filters = parseDeskFilters(rawFilters && typeof rawFilters === 'object' ? rawFilters as Record<string, unknown> : {});
+    const updated = after.rows.find(r => r.id === entryId);
+    const raw = rawFilters && typeof rawFilters === 'object' ? rawFilters as Record<string, unknown> : {};
+    const check = typeof raw.check === 'string' && raw.check.length <= 80 ? raw.check : undefined;
+    const flag = typeof raw.flag === 'string' && raw.flag.length <= 80 ? raw.flag : undefined;
+    const code = check ?? flag;
+    const flagged = code ? new Set(after.flags.filter(item => item.code === code && (!check || item.severity === 'exception')).map(item => item.entryId)) : null;
+    const filtered = filterDeskRows(after.rows, after.flags, filters).filter(item => !flagged || flagged.has(item.id)).map(r => deskRow(after, r, after.flags));
+    return { ok: true, revision: after.unit.revision, row: updated ? deskRow(after, updated, after.flags) : null, summary: deskSummary(after), totals: deskTotals(filtered), flags: after.flags };
   } catch (error) {
-    return { ok: false as const, error: await rewardErrorText(error) };
+    if (error instanceof RewardCellInputError) return { ok: false, stale: false, error: t(`desk.cell.invalid.${error.kind}`) };
+    const message = error instanceof Error ? error.message : '';
+    if (/changed in another session/.test(message)) return { ok: false, stale: true, error: t('desk.cell.stale') };
+    return { ok: false, stale: false, error: await rewardErrorText(error) };
   }
 }

@@ -23,7 +23,7 @@ function arcPath(cx: number, cy: number, r: number, a0: number, a1: number): str
 }
 
 export function PieChart({ id, data, height = 220, ariaLabel }: PieChartProps) {
-  const H = height;
+  const H = Math.max(height, data.length * 26 + 32);
   const W = 640;
   const r = Math.min(H, 240) / 2 - 16;
   const cx = r + 24;
@@ -40,13 +40,13 @@ export function PieChart({ id, data, height = 220, ariaLabel }: PieChartProps) {
   });
 
   return (
-    <svg
+    <div className="overflow-x-auto"><svg
       id={id}
       viewBox={`0 0 ${W} ${H}`}
       width="100%"
       role="img"
       aria-label={ariaLabel}
-      style={{ fontFamily: FONT, color: 'var(--muted-foreground)' }}
+      style={{ minWidth: 480, fontFamily: FONT, color: 'var(--muted-foreground)' }}
     >
       {total === 0 ? (
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border)" strokeWidth={1} />
@@ -65,17 +65,17 @@ export function PieChart({ id, data, height = 220, ariaLabel }: PieChartProps) {
       )}
 
       {/* legend */}
-      <g transform={`translate(${cx + r + 28}, ${cy - (slices.length * 18) / 2})`}>
+      <g transform={`translate(${cx + r + 28}, ${cy - (slices.length * 26) / 2})`}>
         {slices.map((s, i) => (
-          <g key={s.label} transform={`translate(0, ${i * 18})`}>
+          <g key={s.label} transform={`translate(0, ${i * 26})`}>
             <rect x={0} y={-9} width={11} height={11} rx={2} fill={s.color} />
-            <text x={18} y={0} fontSize={11} fill="var(--foreground)">
+            <text x={18} y={0} fontSize={16} fill="var(--foreground)">
               {s.label} · {s.value}
               {total > 0 ? ` (${Math.round(s.frac * 100)}%)` : ''}
             </text>
           </g>
         ))}
       </g>
-    </svg>
+    </svg></div>
   );
 }

@@ -1,3 +1,5 @@
+import {ActionFormStatus} from '@/components/ui/action-form-status';
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getFormatter, getTranslations } from 'next-intl/server';
@@ -40,7 +42,7 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
   const cert = view.certificate, loopHref = `/control-tower/loops/${encodeURIComponent(id)}`;
   const title = target === null ? t('promote.titleAt', { loop: t(`inSentence.${id}`), level: levelName(level), company: view.companyName })
     : t(`promote.titleTo.${levelKey(target)}`, { loop: t(`inSentence.${id}`), company: view.companyName });
-  const intro = target === null ? (view.capped ? t('capped') : view.maxLevel > 1 && !view.hasActor ? t('noActor') : view.maxLevel > 1 ? t('promote.top') : t('stayPrepare'))
+  const intro = id==='loop_missed_clock_outs' ? t('clockOutReviewOnly') : target === null ? (view.capped ? t('capped') : view.maxLevel > 1 && !view.hasActor ? t('noActor') : view.maxLevel > 1 ? t('promote.top') : t('stayPrepare'))
     : t(`promote.intro.${levelKey(target)}`);
   /** What a sample card was about, from its own facts, as the loop's page says it. */
   const what = (item: PromotionSample) => {
@@ -99,7 +101,7 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
         <input type="hidden" name="expectedVersion" value={view.version} />
         {limitFields(view.limits.maxActionsPerNight, UNDO_WINDOW_DAYS.filter(days => days >= view.limits.undoDays))}
         <p className="text-xs text-muted-foreground">{t('promote.changeLimitsNote')}</p>
-        <button type="submit" className={cn(btnGhost, TARGET)}>{t('promote.saveLimits')}</button>
+        <ActionButton type="submit" className={cn(btnGhost, TARGET)}>{t('promote.saveLimits')}</ActionButton>
       </form>
     ) : readOnlyLimits}
   </div>;
@@ -173,7 +175,7 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
           {target !== null && target >= 2 ? (<>
             <h2 className="text-sm font-semibold">{t('promote.limitsTitle', { n: target })}</h2>
             {view.canChange ? (
-              <form id="autonomy-promote" action={setLoopLevelAction} className="mt-3 space-y-4">
+              <form id="autonomy-promote" action={setLoopLevelAction} className="mt-3 space-y-4"><ActionFormStatus formId="autonomy-promote"/>
                 <input type="hidden" name="loop" value={id} /><input type="hidden" name="company" value={view.companyId} />
                 <input type="hidden" name="toLevel" value={target} /><input type="hidden" name="expectedLevel" value={level} />
                 {limitFields(MAX_ACTIONS_PER_NIGHT, UNDO_WINDOW_DAYS)}
@@ -194,18 +196,18 @@ export default async function PromoteLoopPage({ params, searchParams }: { params
           <form action={setLoopLevelAction}>
             <input type="hidden" name="loop" value={id} /><input type="hidden" name="company" value={view.companyId} />
             <input type="hidden" name="toLevel" value={target} /><input type="hidden" name="expectedLevel" value={level} />
-            <button type="submit" className={cn(btnPrimary, TARGET)}>{t('promote.submit', { n: target, company: view.companyName })}</button>
+            <ActionButton type="submit" className={cn(btnPrimary, TARGET)}>{t('promote.submit', { n: target, company: view.companyName })}</ActionButton>
           </form>
         ) : (
-          <button type="submit" form="autonomy-promote" disabled={!cert?.met} aria-describedby={cert?.met ? undefined : 'autonomy-not-met'}
-            className={cn(btnPrimary, TARGET)}>{t('promote.submit', { n: target, company: view.companyName })}</button>
+          <ActionButton actionKind="submitting" type="submit" form="autonomy-promote" disabled={!cert?.met} aria-describedby={cert?.met ? undefined : 'autonomy-not-met'}
+            className={cn(btnPrimary, TARGET)}>{t('promote.submit', { n: target, company: view.companyName })}</ActionButton>
         ))}
         {target !== null && <Link href={loopHref} className={cn(btnGhost, TARGET)}>{t('promote.notYet')}</Link>}
         {view.canChange && moveTo !== null && (
           <form action={setLoopLevelAction}>
             <input type="hidden" name="loop" value={id} /><input type="hidden" name="company" value={view.companyId} />
             <input type="hidden" name="toLevel" value={moveTo} /><input type="hidden" name="expectedLevel" value={level} />
-            <button type="submit" className={cn(btnGhost, TARGET)}>{t('promote.moveDown', { level: levelName(moveTo) })}</button>
+            <ActionButton type="submit" className={cn(btnGhost, TARGET)}>{t('promote.moveDown', { level: levelName(moveTo) })}</ActionButton>
           </form>
         )}
         <span className="text-xs text-muted-foreground">{view.canChange ? t('promote.groupOnly') : t('promote.readOnly')}</span>

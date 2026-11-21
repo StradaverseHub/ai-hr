@@ -49,7 +49,7 @@ export type CatalogueEntry=Readonly<{id:string;kind:CapabilityKind;mode:Capabili
 export const MODULE_AREA:Readonly<Record<string,CapabilityArea>>=Object.freeze({
  employees:'people',org:'organisation',leave:'leave',toil:'leave',ess:'self_service',approvals:'approvals',knowledge_base:'knowledge',
  payroll:'payroll',multi_cycle_payroll:'payroll',typed_pay_components:'payroll','country-my':'payroll',attendance:'attendance',claims:'claims',
- performance:'performance',rewards:'rewards',lifecycle:'lifecycle',notifications:'notifications',system_testing:'testing',system_explorer:'settings',assistant:'ai',
+ performance:'performance',rewards:'rewards',recruitment:'people',lifecycle:'lifecycle',notifications:'notifications',system_testing:'testing',system_explorer:'settings',assistant:'ai',
 });
 /** Pages without a module, by path prefix; the first match wins. */
 const PATH_AREA:readonly (readonly [string,CapabilityArea])[]=[
@@ -110,24 +110,49 @@ export const IMPORT_OWNERS:readonly ImportOwner[]=Object.freeze(([
 /** Core and pack files named for imports that are not an import a person runs, each with why. Classified here so that a
  * new import owner cannot appear unlisted (test/capability-catalogue-drift.test.ts). */
 export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze({
+ 'core/payroll-import-tax-source.ts':'Payroll-owned tax input projection for accepted historical imports; reads canonical rules and retained evidence, admits no import or payroll operation.',
+ 'core/attendance-clocking-import-job.ts':'Background job that runs the clocking import\'s own decisions and writes employee by employee.',
  'core/assistant-import.ts':'AI Centre file preparation; it hands a draft to the employee import and imports nothing itself.',
  'core/bank-import-worker.ts':'Queue worker that runs the bank and statutory import job.',
  'core/bank-statutory-import.ts':'Row rules of the bank and statutory import.',
  'core/employee-import-history.ts':'Revert support for the employee import.',
+ 'core/import-error-log-registry.ts':'Import History Error Log sources; it reads recorded entries and imports nothing.',
+ 'core/employee-import-job.ts':'Background admission and progress of the employee import.',
+ 'core/employee-import-revert-job.ts':'Background revert of the employee import (ADR-0155, ADR-0157).',
  'core/employee-import-upload.ts':'Upload transport of the employee import.',
+ 'core/employee-import-worker.ts':'Background worker of the staged employee import.',
  'core/import-history-handlers.ts':'Shared import history and revert.',
+ 'core/fixed-transaction-import-job.ts':'Scoped queue, audit log and background handoff for the fixed transaction import owner.',
  'core/individual-import-job.ts':'Scoped workbook custody, admission and confirmation queue for the individual transaction import.',
  'core/individual-import-worker.ts':'Background worker invoking the individual transaction import owner after human confirmation.',
  'core/import-history.ts':'Shared import history and revert.',
+ 'core/import-actor-label.ts':'Readable "Imported by" labels for import logs (8d02748a); reads only, imports nothing.',
+ 'core/leave-import-job.ts':'Admission and creator-scoped progress of the background leave ledger import.',
+ 'core/leave-import-worker.ts':'Bulk-job worker step that runs the leave ledger import owner one row at a time.',
  'core/movement-import-admission.ts':'Admission lock of the movement import.',
  'core/movement-import-history.ts':'Recorded upload preview and confirm of the movement import.',
+ 'core/movement-import-job.ts':'Admission and progress of the background movement import confirmation.',
+ 'core/movement-import-worker.ts':'Bulk-job worker that saves a confirmed movement import, one employee per chunk, through the movement import owner.',
+ 'core/movement-import-revert-job.ts':'Background whole-import revert of a movement import: rehearsed plan per employee, verified set-based release, synchronous fallback.',
+ 'core/movement-import-check-worker.ts':'Bulk-job worker that checks an uploaded movement file, one employee per chunk with every change rolled back, and records the attempt.',
  'core/movement-import-rules.ts':'Admission rules of the movement import.',
  'core/payslip-imported-lines.ts':'Payslip display of imported payroll history lines.',
  'core/personnel-import-assistance-store.ts':'Header-mapping assistance custody of the employee import.',
  'core/personnel-import-assistance.ts':'Header-mapping assistance of the employee import.',
  'core/personnel-import-evaluation.ts':'Evaluation custody of the employee import.',
  'core/personnel-import-operations.ts':'Operational field writes inside the employee import.',
+ // Recruitment slice 16: candidates are imported per company by recruitment administrators and the company's recruiters (the
+ // recruitment service decides, not an admin guard). Kept out of the AI Centre's import catalogue on purpose: the AI Centre's
+ // recruitment read stays counts only (docs/recruitment-reconstruction slice 16 case 113).
+ 'core/recruitment-candidate-import-worker.ts':'Bulk-job worker of the Recruitment candidate import (slice 16); not offered by the AI Centre.',
+ 'packs/recruitment/import.ts':'Recruitment candidate import and To assign list (slice 16), admitted per company by the recruitment service; not offered by the AI Centre.',
+ 'packs/recruitment/import-model.ts':'Pure file rules of the Recruitment candidate import (slice 16).',
  'core/personnel-register-import.ts':'Register sections inside the employee and section imports.',
+ 'core/register-import-worker.ts':'Background worker of the register section imports: captured writes applied in one release.',
+ 'core/section-import-job.ts':'Background admission and progress of the section and register imports.',
+ 'core/section-import-worker.ts':'Background worker of the Profile and Family section imports, one row per step.',
+ 'core/system-label-import-job.ts':'Background admission and progress of the system label import.',
+ 'core/system-label-import-worker.ts':'Background worker of the staged system label import.',
  // AI v2 slice 3 (issue 16b): imports prepared in chat run the owners above; they own no import of their own.
  'core/proposals/chat-import.ts':'AI Centre chat import preparer: runs the listed owners\' own previews and signs the card; imports nothing.',
  'core/semantic-model/entities-imports.ts':'Semantic declaration of the chat import result the model is shown (counts and reasons only).',
@@ -174,7 +199,9 @@ export const DECIDER_ACTORS:ReadonlySet<string>=new Set(['assigned_approver','pe
 /** The inbox kinds that make a deciding action this caller's work. Any other deciding action, by its module's kinds. */
 export const DECIDER_WORK:Readonly<Record<string,readonly PendingTaskKind[]>>=Object.freeze({
  'approvals.leave.decide':['leave'],'approvals.claim.decide':['claim'],'approvals.attendance.decide':['attendance'],'approvals.toil.decide':['replacementLeave']});
-export const MODULE_WORK:Readonly<Record<string,readonly PendingTaskKind[]>>=Object.freeze({performance:['performanceReview','assessmentWork','careerPlan','calibration'],rewards:['rewardReview']});
+export const MODULE_WORK:Readonly<Record<string,readonly PendingTaskKind[]>>=Object.freeze({performance:['performanceReview','assessmentWork','careerPlan','calibration'],rewards:['rewardReview'],
+ // Probation work (lib/assigned-work.ts): no suggestable deciding action in Lifecycle yet; listed so every pack kind has its module.
+ lifecycle:['probationApproval','probationTask']});
 const ACTOR:ReadonlyMap<string,string>=new Map(SUGGESTABLE_ACTIONS.map(action=>[action.id,action.permission.actor]));
 const decides=(row:Readonly<{id:string}>)=>DECIDER_ACTORS.has(ACTOR.get(row.id)??'');
 /** Which of the caller's actions to list: every one with team access; otherwise a deciding action only while the inbox
@@ -183,7 +210,7 @@ async function heldNow(ctx:SessionContext,catalogue:readonly SuggestableAction[]
  if(hasTeamAccess(ctx)||!catalogue.some(decides))return()=>true;
  let kinds:ReadonlySet<string>;
  try{kinds=new Set((await listPendingTasks(ctx,undefined,{attendance:moduleOn(ctx,'attendance'),claims:moduleOn(ctx,'claims'),performance:moduleOn(ctx,'performance'),
-  rewards:moduleOn(ctx,'rewards')},{noticeAcknowledgements:false})).map(task=>task.kind));}
+  rewards:moduleOn(ctx,'rewards'),probation:false},{noticeAcknowledgements:false})).map(task=>task.kind));}
  catch{kinds=new Set();}
  return row=>!decides(row)||(DECIDER_WORK[row.id]??MODULE_WORK[row.module]??[]).some(kind=>kinds.has(kind));
 }

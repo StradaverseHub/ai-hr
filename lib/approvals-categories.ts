@@ -25,10 +25,13 @@ export type ApprovalCategory =
   | 'resignations'
   | 'managerReviews'
   | 'hrReviews'
-  | 'rewards';
+  | 'rewards'
+  // Probation Approve steps (Head of Department, PBP, or a delegate on their behalf): each opens the case view.
+  | 'probation'
+  | 'contracts';
 
 /** Categories beyond the bulk taxonomy — the people matters, in panel order. */
-const PEOPLE_CATEGORIES = ['resignations', 'managerReviews', 'hrReviews', 'rewards'] as const;
+const PEOPLE_CATEGORIES = ['resignations', 'managerReviews', 'hrReviews', 'rewards', 'probation', 'contracts'] as const;
 
 /**
  * Every category in canonical order: all first, then the bulk taxonomy, then replacement leave, then the
@@ -60,12 +63,12 @@ export const ADMIN_ONLY_CATEGORIES: readonly ApprovalCategory[] = [
  */
 export function parseApprovalCategory(
   raw: string | string[] | undefined,
-  opts: { admin: boolean },
+  opts: { admin: boolean; resignationAccess?:boolean },
 ): ApprovalCategory {
   const v = Array.isArray(raw) ? raw[0] : raw;
   if (!v || !(APPROVAL_CATEGORIES as readonly string[]).includes(v)) return 'all';
   const cat = v as ApprovalCategory;
-  if (!opts.admin && ADMIN_ONLY_CATEGORIES.includes(cat)) return 'all';
+  if (!opts.admin && ADMIN_ONLY_CATEGORIES.includes(cat) && !(cat==='resignations'&&opts.resignationAccess)) return 'all';
   return cat;
 }
 
@@ -103,7 +106,9 @@ export type ApprovalSection =
   | 'resignations'
   | 'managerReviews'
   | 'hrReviews'
-  | 'rewards';
+  | 'rewards'
+  | 'probation'
+  | 'contracts';
 
 const SECTION_FOR_CATEGORY: Record<Exclude<ApprovalCategory, 'all'>, ApprovalSection> = {
   leave: 'leave',
@@ -116,6 +121,8 @@ const SECTION_FOR_CATEGORY: Record<Exclude<ApprovalCategory, 'all'>, ApprovalSec
   managerReviews: 'managerReviews',
   hrReviews: 'hrReviews',
   rewards: 'rewards',
+  probation: 'probation',
+  contracts: 'contracts',
 };
 
 /** Whether a page section renders under the selected category ('all' shows every section). */
@@ -147,12 +154,14 @@ export function approvalsReturnUrl(p: {
   sort?: string;
   toast?: string;
   error?: string;
+  approvalSeal?: boolean;
 }): string {
   const qs = new URLSearchParams();
   if (p.category && p.category !== 'all') qs.set('category', p.category);
   if (p.sort) qs.set('sort', p.sort);
   if (p.toast) qs.set('toast', p.toast);
   if (p.error) qs.set('error', p.error);
+  if (p.approvalSeal && p.toast && !p.error) qs.set('approvalSeal', '1');
   const s = qs.toString();
   return s ? `/approvals?${s}` : '/approvals';
 }

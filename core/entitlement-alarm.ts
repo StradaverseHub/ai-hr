@@ -251,7 +251,8 @@ export async function checkTenantEntitlementHealth(
     const owned = await tx
       .select({ id: employment.id })
       .from(employment)
-      .where(eq(employment.tenantId, ctx.tenantId));
+      // Owner connection: RLS does not hide a staged import's unactivated rows, so exclude them explicitly.
+      .where(and(eq(employment.tenantId, ctx.tenantId), isNull(employment.importPendingAttemptId)));
     const ownedIds = owned.map((e) => e.id);
 
     // "Who is an active employee as at today" — the criteria resolver's own answer to an EMPTY

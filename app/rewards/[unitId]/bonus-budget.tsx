@@ -6,7 +6,8 @@ type RewardView=Awaited<ReturnType<typeof getRewardUnit>>;
 type BudgetView=Pick<RewardView,'budgets'|'bonusCounts'|'suggestedMultiplierBp'> & {unit:Pick<RewardView['unit'],'policy'>};
 /** Presentation of the canonical calculated pools; no award or policy is calculated here. */
 /** The unit multiplier has its own card on the page (8296a4d9); this section is the two plans' pools only. */
-export function BonusBudgetCards({value:v,t,locale,hideWorking=false}:{value:BudgetView;t:(key:string)=>string;locale:string;hideWorking?:boolean}) {
+/** 37f82412: `hideSetupStates` leaves out set-up labels such as "No funded pool" in the approver view. */
+export function BonusBudgetCards({value:v,t,locale,hideWorking=false,hideSetupStates=false}:{value:BudgetView;t:(key:string)=>string;locale:string;hideWorking?:boolean;hideSetupStates?:boolean}) {
   const money=(cents:number)=>formatMoney(cents/100,'MYR');
   const decimal=(number:number,digits=2)=>new Intl.NumberFormat(locale,{minimumFractionDigits:digits,maximumFractionDigits:digits}).format(number);
   const percent=(amount:number,pool:number)=>pool>0?`${decimal(amount/pool*100,1)}%`:'—';
@@ -25,7 +26,7 @@ export function BonusBudgetCards({value:v,t,locale,hideWorking=false}:{value:Bud
           {key:'lumpCents',count:counts?.lump,amount:b.lumpCents,help:'lumpHelp'},
         ];
         return <Card key={plan} className="min-w-0 space-y-4 p-5">
-          <header className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-semibold">{t(plan)}</h3><span className={`rounded-full px-2 py-1 text-xs font-medium ${state==='over'?'bg-destructive/10 text-destructive':state==='under'?'bg-amber-100 text-amber-950 dark:bg-amber-950 dark:text-amber-100':'bg-muted text-foreground'}`}>{t(`bonusPresentation.${state}`)}</span></header>
+          <header className="flex flex-wrap items-start justify-between gap-2"><h3 className="font-semibold">{t(plan)}</h3>{!(hideSetupStates&&state==='empty')&&<span className={`rounded-full px-2 py-1 text-xs font-medium ${state==='over'?'bg-destructive/10 text-destructive':state==='under'?'bg-amber-100 text-amber-950 dark:bg-amber-950 dark:text-amber-100':'bg-muted text-foreground'}`}>{t(`bonusPresentation.${state}`)}</span>}</header>
           <p className="text-sm text-muted-foreground">{t('bonusPresentation.bonusPeople')}: {counts?.eligible??'—'} · {policy.bonusStructure==='branch'?t('branchStructure'):`${t('bonusPresentation.unitMultiplier')}: ${decimal((policy.multiplierBp??v.suggestedMultiplierBp)/10000)}`}</p>
           <p className="text-sm"><strong className={`mr-2 text-2xl tabular-nums ${state==='over'?'text-destructive':''}`}>{percent(b.bonusUsedCents,b.bonusPoolCents)}</strong>{t('bonusPresentation.poolUsed')}</p>
           <div role="meter" aria-label={t('bonusPresentation.poolUsed')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={b.bonusPoolCents>0?Math.max(0,Math.min(100,b.bonusUsedCents/b.bonusPoolCents*100)):0} aria-valuetext={b.bonusPoolCents>0?percent(b.bonusUsedCents,b.bonusPoolCents):t(`bonusPresentation.${state}`)} className="h-2 overflow-hidden rounded-full bg-muted">

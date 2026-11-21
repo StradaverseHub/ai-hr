@@ -1,0 +1,9 @@
+[
+ "test/performance-reminder-preparation.test.ts",
+ "test/performance-reminder-work.test.ts",
+ "test/performance-reminder-model.test.ts",
+ "test/performance-reminder-words.test.ts",
+ "test/performance-reminder-owner.test.ts",
+ "test/assessment-reminder-preview.test.ts",
+ "test/onehr-service-moderation-reminders.test.ts"
+]

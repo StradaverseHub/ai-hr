@@ -130,6 +130,7 @@ export async function myProfileRecord(ctx: SessionContext,selectedEmploymentId?:
       joinDate: emp.joinDate,
       confirmationDate: emp.finalConfirmationDate ?? emp.confirmationDate,
       contractStartDate: emp.contractStartDate,
+      contractNumber: emp.contractNumber,
       contractEndDate: emp.contractEndDate,
       tenderResignationDate: emp.tenderResignationDate,
       resignationDate: emp.resignationDate,

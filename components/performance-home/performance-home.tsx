@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
-import type { SessionContext } from '@/db/client';
+import { withSharedReadSnapshot, type SessionContext } from '@/db/client';
+import { requestReadScope } from '@/lib/request-read-scope';
 import { Card } from '@/components/ui/card';
 // Button is a client component: rendered with a server Link child (asChild), never called as a function here.
 import { Button } from '@/components/ui/button';
@@ -154,13 +155,15 @@ export async function PerformanceHomeView({ block }: { block: PerformanceHomeBlo
  * is logged, never shown as an empty or calm state.
  */
 export async function PerformanceHomeSlot({ session, scopeIds }: { session: SessionContext; scopeIds: string[] | undefined }) {
-  const block = await getPerformanceHomeBlock(session, scopeIds).catch((error: unknown) => {
+  // Both reads join the page render's read-only snapshot (lib/request-read-scope.ts).
+  const scope = requestReadScope();
+  const block = await withSharedReadSnapshot(session, () => getPerformanceHomeBlock(session, scopeIds), undefined, scope).catch((error: unknown) => {
     console.error('[performance-home] block unavailable', error);
     return null;
   });
   if (block) return <PerformanceHomeView block={block} />;
   // PT-X3: no own review open, but performance work is assigned (the bell's own projection): the door alone.
-  const assigned = await (async () => hasAssignedPerformanceWork(session, scopeIds))().catch((error: unknown) => {
+  const assigned = await withSharedReadSnapshot(session, async () => hasAssignedPerformanceWork(session, scopeIds), undefined, scope).catch((error: unknown) => {
     console.error('[performance-home] assigned work unavailable', error);
     return false;
   });

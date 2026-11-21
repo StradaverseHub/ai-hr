@@ -343,6 +343,7 @@ describe('579255c3 — the column catalogue normalises anything into something r
   });
 });
 
+const FICTIONAL_DEPT = '33333333-3333-4333-8333-333333333333';
 describe('579255c3 — one parse of the query string, for the screen and the export alike', () => {
   it('reads the derived bucket without touching the legacy lifecycle param', () => {
     const derived = parsePersonnelListQuery({ bucket: 'probation' });
@@ -366,13 +367,14 @@ describe('579255c3 — one parse of the query string, for the screen and the exp
   });
 
   it('the cards are counted with the bucket stripped and everything else kept', () => {
-    const query = parsePersonnelListQuery({ bucket: 'active', company: 'c1', dept: 'd1', q: 'ali', type: 'contract' });
+    const query = parsePersonnelListQuery({ bucket: 'active', company: 'c1', dept: FICTIONAL_DEPT, q: 'ali', type: 'contract' });
     const cards = headcountFilters(query);
     expect(cards.employmentStatuses).toBeUndefined();
     expect(cards.companyId).toBe('c1');
-    expect(cards.departmentId).toBe('d1');
+    // aa045103 — Department and Employment Type are multi-select; one value is a one-item list.
+    expect(cards.departmentIds).toEqual([FICTIONAL_DEPT]);
     expect(cards.q).toBe('ali');
-    expect(cards.employmentType).toBe('contract');
+    expect(cards.employmentTypes).toEqual(['contract']);
   });
 
   it('hides drafts behind exactly the filters a draft cannot answer', () => {
@@ -384,7 +386,7 @@ describe('579255c3 — one parse of the query string, for the screen and the exp
     expect(draftMatchesQuery(draft, parsePersonnelListQuery({ q: 'X00010' }))).toBe(true);
     expect(draftMatchesQuery(draft, parsePersonnelListQuery({ q: 'zzz' }))).toBe(false);
     // Department, employment type and any employment bucket hide every draft — it has none of them.
-    expect(draftMatchesQuery(draft, parsePersonnelListQuery({ dept: 'd1' }))).toBe(false);
+    expect(draftMatchesQuery(draft, parsePersonnelListQuery({ dept: FICTIONAL_DEPT }))).toBe(false);
     expect(draftMatchesQuery(draft, parsePersonnelListQuery({ type: 'contract' }))).toBe(false);
     expect(draftMatchesQuery(draft, parsePersonnelListQuery({ bucket: 'active' }))).toBe(false);
     expect(draftMatchesQuery(draft, parsePersonnelListQuery({ status: 'active' }))).toBe(false);
@@ -407,19 +409,7 @@ describe('579255c3 — one parse of the query string, for the screen and the exp
     expect(draftMatchesQuery(draft, { ...chosen, bucket: undefined })).toBe(true); // the CARD: click me
     // A filter a draft genuinely cannot satisfy still zeroes the card, because clicking KEEPS that
     // filter — so the card and the rows it leads to still agree.
-    const byDept = parsePersonnelListQuery({ dept: 'd1', bucket: 'active' });
+    const byDept = parsePersonnelListQuery({ dept: FICTIONAL_DEPT, bucket: 'active' });
     expect(draftMatchesQuery(draft, { ...byDept, bucket: undefined })).toBe(false);
-  });
-});
-
-describe('579255c3 — the page wires the Draft card to that preview, not to the visible rows', () => {
-  it('reads draftCardCount rather than the filtered row list', async () => {
-    const { readFileSync } = await import('node:fs');
-    const src = readFileSync(new URL('../app/admin/personnel/page.tsx', import.meta.url), 'utf8');
-    expect(src).toContain('const draftCardCount = allDrafts.filter');
-    expect(src).toContain('bucket: undefined');
-    expect(src).toContain("count: draftCardCount");
-    // The ROWS still come from the full query — the two must not be collapsed back into one.
-    expect(src).toContain('const matchingDrafts = allDrafts.filter((d) => draftMatchesQuery(d, query));');
   });
 });

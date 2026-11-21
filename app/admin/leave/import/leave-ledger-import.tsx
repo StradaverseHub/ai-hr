@@ -1,7 +1,8 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
 
-import { useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -17,6 +18,8 @@ import {
   type LeaveImportSource,
 } from '@/lib/leave-import-schema';
 import { validateLeaveImportAction, commitLeaveImportAction } from './actions';
+import { LeaveImportJobPanel } from './leave-import-progress';
+import type { LeaveImportJobProgress } from '@/lib/leave-import-job';
 import { useAssistantImportIntake } from '@/components/assistant/import-handoff';
 
 // Reporter's human-readable headers (Function 1). They normalise to the snake_case contract
@@ -67,6 +70,26 @@ export function LeaveLedgerImport() {
   const [dragging, setDragging] = useState(false);
   const [reading, setReading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // A running background import, rejoined after a reload.
+  const [job, setJob] = useState<LeaveImportJobProgress | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch('/admin/leave/import/jobs', { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => { if (alive && payload?.job) setJob(payload.job); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const onJobFinished = useCallback((finished: LeaveImportResult | null) => {
+    setJob(null);
+    if (finished) {
+      setResult(finished);
+      setPhase('done');
+      router.refresh();
+    } else {
+      setError(t('job.failed'));
+    }
+  }, [router, t]);
 
   // Any edit invalidates a stale preview/result — force a fresh validate before importing.
   const reset = () => {
@@ -99,10 +122,9 @@ export function LeaveLedgerImport() {
     startTransition(async () => {
       setError(null);
       try {
+        // The import runs in the background; the panel below follows it and hands over the result.
         const r = await commitLeaveImportAction(csv, source);
-        setResult(r);
-        setPhase('done');
-        router.refresh();
+        setJob(r.job);
       } catch (e) {
         setError((e as Error).message);
       }
@@ -268,10 +290,10 @@ export function LeaveLedgerImport() {
         </details>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button onClick={validate} disabled={pending || reading || !csv.trim()}>
+          <Button aria-busy={pending} onClick={validate} disabled={pending || reading || !csv.trim()}>
             {pending && phase !== 'done' ? t('validating') : t('validate')}
           </Button>
-          <Button
+          <Button aria-busy={pending}
             variant="outline"
             onClick={() => {
               setCsv(SAMPLE);
@@ -284,13 +306,13 @@ export function LeaveLedgerImport() {
             {t('loadSample')}
           </Button>
           <DownloadTemplate spec={leaveImportTemplate} />
-          <button
+          <ActionButton guardNavigation={false} actionKind="generating"
             type="button"
-            onClick={() => void downloadXlsxTemplate()}
+            onClick={() => downloadXlsxTemplate()}
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             {t('downloadTemplateXlsx')}
-          </button>
+          </ActionButton>
         </div>
 
         <details className="mt-4 border-t border-border pt-3 text-xs">
@@ -313,6 +335,8 @@ export function LeaveLedgerImport() {
           {error}
         </div>
       )}
+
+      {job && <LeaveImportJobPanel job={job} onFinished={onJobFinished} />}
 
       {result && (
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">

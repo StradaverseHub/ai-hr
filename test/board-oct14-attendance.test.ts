@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import {randomUUID} from 'node:crypto';
 import {and,eq} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
@@ -19,7 +20,7 @@ import {decideAttendanceHistorySelection} from '../packs/attendance/history-deci
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../core/attendance-workflow';
 let b:Base;
 const day=()=>todayInKualaLumpur(new Date(Date.now()-86400000));
-beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
+beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedAttendanceSubmissionBase();});
 async function worker(name='Board attendance worker'){
   const e=await hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:`${randomUUID()}@board.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
   const userId=await createAppUser(b.tenantId,e.personId,'employee');
@@ -48,8 +49,8 @@ describe('Own Web Clocking removal uses the existing approval owner',()=>{
     expect(await requestOwnClockRemoval(self,input)).toEqual(first);
     expect(await punches(e.employmentId)).toEqual(before);
     expect((await record(first.correctionId)).status).toBe('pending');
-    await expect(decideAttendanceCorrection(self,{correctionId:first.correctionId,decision:'approved'})).rejects.toThrow(/own/);
-    await decideAttendanceCorrection(a,{correctionId:first.correctionId,decision:'approved'});
+    await expect(decideAttendanceCorrection(self,{ expectedStageIndex: 0,correctionId:first.correctionId,decision:'approved'})).rejects.toThrow(/own/);
+    await decideAttendanceCorrection(a,{ expectedStageIndex: 0,correctionId:first.correctionId,decision:'approved'});
     const after=await punches(e.employmentId);expect(after.filter(p=>p.voidedAt).map(p=>p.id)).toEqual([input.punchId]);
     expect(after.find(p=>p.id===input.punchId)?.voidedBy).toBe(a.userId);
     expect(await owner.db.select().from(s.attendanceClockCapture).where(eq(s.attendanceClockCapture.employmentId,e.employmentId))).toHaveLength(2);
@@ -63,7 +64,7 @@ describe('Own Web Clocking removal uses the existing approval owner',()=>{
     await expect(requestOwnClockRemoval(self,{...input,reason:' '})).rejects.toThrow(/remark/);
     const first=await requestOwnClockRemoval(self,input);
     await expect(requestOwnClockRemoval(self,{...input,requestId:randomUUID()})).rejects.toThrow();
-    await decideAttendanceCorrection(a,{correctionId:first.correctionId,decision:'rejected',rejectReason:'Clock out was correct'});
+    await decideAttendanceCorrection(a,{ expectedStageIndex: 0,correctionId:first.correctionId,decision:'rejected',rejectReason:'Clock out was correct'});
     expect(await punches(e.employmentId)).toEqual(before);
   });
   it('refuses foreign employees, another tenant, account switches, altered retry and stale snapshots',async()=>{
@@ -86,7 +87,7 @@ describe('Own Web Clocking removal uses the existing approval owner',()=>{
     expect(attempts.filter(r=>r.status==='rejected')).toHaveLength(1);
     const winner=attempts.find(r=>r.status==='fulfilled')!;
     if(winner.status!=='fulfilled')throw Error('No successful request');
-    await decideAttendanceCorrection(a,{correctionId:winner.value.correctionId,decision:'approved'});
+    await decideAttendanceCorrection(a,{ expectedStageIndex: 0,correctionId:winner.value.correctionId,decision:'approved'});
     const original=await punches((await record(winner.value.correctionId)).employmentId);
     await expect(requestOwnClockRemoval(self,{...input,requestId:randomUUID(),punchId:original.find(p=>!p.voidedAt)!.id,baseline:clockFingerprint(original)})).rejects.toThrow(/owns this day/);
   });
@@ -96,8 +97,8 @@ describe('Own Web Clocking removal uses the existing approval owner',()=>{
     const {batchId}=await createBatch(a,{companyId:b.companyId,payPeriod:day().slice(0,7)});await generatePayslips(a,{batchId});
     const r=await requestOwnClockRemoval(self,input);
     await owner.db.update(s.payrollBatch).set({status:'closed'}).where(eq(s.payrollBatch.id,batchId));
-    await expect(decideAttendanceCorrection(a,{correctionId:r.correctionId,decision:'approved'})).rejects.toThrow(/closed payroll/);
-    await decideAttendanceCorrection(a,{correctionId:r.correctionId,decision:'rejected',rejectReason:'Payroll closed'});
+    await expect(decideAttendanceCorrection(a,{ expectedStageIndex: 0,correctionId:r.correctionId,decision:'approved'})).rejects.toThrow(/closed payroll/);
+    await decideAttendanceCorrection(a,{ expectedStageIndex: 0,correctionId:r.correctionId,decision:'rejected',rejectReason:'Payroll closed'});
     await expect(requestOwnClockRemoval(self,{...input,requestId:randomUUID()})).rejects.toThrow(/closed payroll/);
     await expect(withTenant(self,tx=>tx.execute(sql`select * from app.attendance_payroll_protection(${e.employmentId}::uuid)`))).rejects.toThrow();
     await expect(withTenant(self,tx=>tx.execute(sql`select * from app.attendance_payroll_protection_rows(${e.employmentId}::uuid)`))).rejects.toThrow();
@@ -106,7 +107,7 @@ describe('Own Web Clocking removal uses the existing approval owner',()=>{
   it('refuses a changed punch set at approval without a partial effect',async()=>{
     const {self,a,e,input}=await fixture();const r=await requestOwnClockRemoval(self,input);
     await owner.db.update(s.attendancePunch).set({punchAt:'17:10'}).where(eq(s.attendancePunch.id,input.punchId));
-    await expect(decideAttendanceCorrection(a,{correctionId:r.correctionId,decision:'approved'})).rejects.toThrow(/changed/);
+    await expect(decideAttendanceCorrection(a,{ expectedStageIndex: 0,correctionId:r.correctionId,decision:'approved'})).rejects.toThrow(/changed/);
     expect((await record(r.correctionId)).status).toBe('pending');expect((await punches(e.employmentId)).every(p=>!p.voidedAt)).toBe(true);
   });
 });
@@ -149,7 +150,7 @@ describe('History filters and independent current-stage decisions',()=>{
     expect((await decideAttendanceHistorySelection(a,[b.companyId],{items:[{id:r.correctionId,stage:1}],decision:'rejected',reason:'Needs correction'}))[0].status).toBe('rejected');
   });
   it('requires rejection remarks before processing any item and excludes self/unauthorized scope',async()=>{
-    const {e,self}=await worker(),a=adminCtx(b),r=await requestAttendanceCorrection(self,{employmentId:e.employmentId,date:day(),checkIn:'08:00',reason:'Missing out'}),items=[{id:r.correctionId,stage:null}];
+    const {e,self}=await worker(),a=adminCtx(b),r=await requestAttendanceCorrection(self,{employmentId:e.employmentId,date:day(),checkIn:'08:00',reason:'Missing out'}),items=[{id:r.correctionId,stage:0}];
     await expect(decideAttendanceHistorySelection(a,[b.companyId],{items,decision:'rejected',reason:' '})).rejects.toThrow(/remarks/);
     expect((await decideAttendanceHistorySelection({...a,personId:e.personId},[b.companyId],{items,decision:'approved',reason:''}))[0].status).toBe('failed');
     expect((await decideAttendanceHistorySelection(a,[],{items,decision:'approved',reason:''}))[0].status).toBe('failed');expect((await record(r.correctionId)).status).toBe('pending');

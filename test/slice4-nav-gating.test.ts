@@ -76,6 +76,7 @@ describe('slice 4 — which modules the rail may advertise', () => {
       'notifications',
       'payroll',
       'performance',
+      'recruitment',
       'rewards',
       'system_explorer',
       'system_testing',
@@ -102,7 +103,7 @@ describe('slice 4 — which modules the rail may advertise', () => {
     expect(off, 'fixture resolves a real snapshot').not.toBeNull();
     expect(off).not.toContain('assistant');
     // The sidebar row is owned by this code; without the mapping no entitlement could reach it.
-    const sidebar = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+    const sidebar = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
     expect(sidebar).toContain("['/assistant', 'assistant']");
   });
 
@@ -154,6 +155,8 @@ describe('slice 4 — the page-entry courtesy redirect', () => {
     payroll: 'app/payroll/page.tsx',
     performance: 'app/performance/page.tsx',
     rewards: 'app/rewards/page.tsx',
+    // ADR-0080 D10 — the Recruitment pack's entry page; its child routes carry the same guard pair.
+    recruitment: 'app/recruitment/page.tsx',
     // deec1691 — moved here from the operator plane at r79 and sold as a module (default OFF).
     system_explorer: 'app/admin/system-explorer/page.tsx',
     // 3fb1a611 (r299) — the RULES tab, not the Credits tab the row opens, and deliberately so. The Credits tab

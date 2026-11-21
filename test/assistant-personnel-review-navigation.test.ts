@@ -9,8 +9,10 @@ import {hireEmployee} from '../core/org';
 import {setWorkforceEmployeeCode} from '../core/workforce-code';
 import {createCompany,createDepartment} from '../core/admin';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {lockAccessConfigurationReadTx} from '../core/access-configuration-lock';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
+import {setMandateStopSwitch} from '../core/mandates/mandates';
 import * as profileChoices from '../core/assistant-actions/workforce-profile-maintenance-review-store';
 import * as codeChoices from '../core/assistant-actions/employee-code-maintenance-review-store';
 import * as editor from '../core/workforce-maintenance';
@@ -34,7 +36,26 @@ it('offers exact action metadata to a genuine unlinked positive non-HR USER with
 it('returns only native booleans and delegates exact scope instead of enumerating or projecting subjects',async()=>{
  const [row]=await withTenant(ctx,tx=>tx.execute(sql`select app.assistant_workforce_profile_navigation_available() as profile,app.assistant_employee_code_navigation_available() as code`));expect(row).toEqual({profile:true,code:true});
  const migration=readFileSync('db/migrations/0836_assistant_personnel_review_navigation.sql','utf8');expect(migration).toContain('app.assistant_workforce_profile_choice_scope(e.id) IS NOT NULL');expect(migration).toContain('app.assistant_employee_code_choice_scope(e.id)');expect(migration.match(/RETURNS boolean/g)).toHaveLength(2);expect(migration).not.toMatch(/(?:e|p)\.(?:full_name|employee_code)|SELECT \*|jsonb_build|count\(|access_workforce_list_rows|GRANT SELECT|CREATE POLICY/i);
- const source=readFileSync('core/assistant-actions/personnel-review-navigation.ts','utf8');expect(source).toContain('set transaction read only');expect(source).not.toContain('readOnlySnapshot');expect(source).not.toContain('repeatable read');expect(source).not.toMatch(/workforceEditor|read.*Choices|withAssistantRead|resolveAiProvider|assistantProposalCaller|\.transaction\(/);expect(source.indexOf("withAgentActionGuard(tx,ctx,action,'approve')")).toBeLessThan(source.indexOf('return witnesses[action](tx)'));
+ const source=readFileSync('core/assistant-actions/personnel-review-navigation.ts','utf8');expect(source).toContain('set transaction read only');expect(source).not.toContain('readOnlySnapshot');expect(source).not.toContain('repeatable read');expect(source).not.toMatch(/workforceEditor|read.*Choices|withAssistantRead|resolveAiProvider|assistantProposalCaller|withAgentActionGuard|\.transaction\(/);expect(source.indexOf('await assertPersonnelReviewNavigationTx(tx,ctx,action)')).toBeLessThan(source.indexOf('return witnesses[action](tx)'));
+});
+it('finishes both native navigation witnesses while another transaction holds shared Access',async()=>{
+ const before=await state();
+ let reads:ReturnType<typeof navigation>|undefined;
+ let deadline:ReturnType<typeof setTimeout>|undefined;
+ try{
+  await withTenant(group(),async tx=>{
+   await lockAccessConfigurationReadTx(tx,b.tenantId);
+   reads=navigation(ctx);
+   const timeout=new Promise<never>((_,reject)=>{
+    deadline=setTimeout(()=>reject(new Error('Personnel navigation waited for the held shared Access lock')),4000);
+   });
+   expect(await Promise.race([reads,timeout])).toEqual(ALL);
+  });
+ }finally{
+  clearTimeout(deadline);
+  await reads?.catch(()=>{});
+ }
+ expect(await state()).toEqual(before);
 });
 it.each(['workforce.view','workforce.maintain'] as const)('requires positive %s and respects its selected-company denial',async capability=>{await permission(capability,null);expect(await navigation(ctx)).toEqual([]);await permission(capability,'allow');expect(await navigation(ctx)).toEqual(ALL);await permission(capability,'deny');expect(await navigation(ctx)).toEqual([]);});
 it('keeps profile shared-person denial distinct from employment-company code authority',async()=>{const co=await createCompany(group(),{legalName:'Fictional retained navigation company',country:'MY'}),dept=await createDepartment(group(),{companyId:co.id,name:'Fictional department'});await hireEmployee(group(),{person:{id:target.personId},companyId:co.id,departmentId:dept.id,employmentType:'full_time',hiredOn:todayInKualaLumpur()});await permission('workforce.maintain','deny',co.id);expect(await navigation(ctx)).toEqual(['employees.code.maintain']);});
@@ -43,6 +64,13 @@ it('refuses an unrelated company-only grant and a forged tenant or role carrier'
 it('rechecks a revoked Assistant grant and archived login despite cached accessible workspace metadata',async()=>{expect(await navigation(ctx)).toEqual(ALL);await revokeAssistant(group(),{appUserId:ctx.userId!});expect(await navigation(ctx)).toEqual([]);await grantAssistant(group(),{appUserId:ctx.userId!});await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,ctx.userId!));expect(await navigation(ctx)).toEqual([]);});
 it('refreshes commercial Assistant status and expiry instead of trusting captured entitlements',async()=>{const module='assistant';await setModule(b.tenantId,module,'disabled');expect(await navigation(ctx)).toEqual([]);await setModule(b.tenantId,module,'active');expect(await navigation(ctx)).toEqual(ALL);await setModule(b.tenantId,module,'active',null,new Date(Date.now()-60000));expect(await navigation(ctx)).toEqual([]);});
 it('uses the existing shared Assistant pause and each action pause without widening another action',async()=>{await owner.db.insert(s.aiControlPolicy).values({tenantId:b.tenantId,kind:'feature',scopeKey:'feature:hr_assistant',featureId:'hr_assistant',enabled:false});expect(await navigation(ctx)).toEqual([]);await owner.db.update(s.aiControlPolicy).set({enabled:true}).where(and(eq(s.aiControlPolicy.tenantId,b.tenantId),eq(s.aiControlPolicy.kind,'feature'),eq(s.aiControlPolicy.scopeKey,'feature:hr_assistant')));expect(await navigation(ctx)).toEqual(ALL);await owner.db.execute(sql`insert into app.ai_agent_action_pause(tenant_id,action_id,paused) values (${b.tenantId}::uuid,'employees.workforce_profile.maintain',true)`);expect(await navigation(ctx)).toEqual(['employees.code.maintain']);await owner.db.execute(sql`update app.ai_agent_action_pause set action_id='employees.code.maintain' where tenant_id=${b.tenantId}::uuid`);expect(await navigation(ctx)).toEqual(['employees.workforce_profile.maintain']);});
+it('hides both links during the global AI Stop and restores their availability when resumed',async()=>{
+ expect(await navigation(ctx)).toEqual(ALL);
+ await setMandateStopSwitch(group(),true);
+ expect(await navigation(ctx)).toEqual([]);
+ await setMandateStopSwitch(group(),false);
+ expect(await navigation(ctx)).toEqual(ALL);
+});
 it('rolls a failed action witness transaction back before checking the other action',async()=>{const [definition]=await owner.db.execute<{body:string}>(sql`select pg_get_functiondef('app.assistant_workforce_profile_navigation_available()'::regprocedure) as body`),before=await state();await owner.client.unsafe("create or replace function app.assistant_workforce_profile_navigation_available() returns boolean language plpgsql security definer set search_path=pg_catalog,public,pg_temp as $$begin raise exception 'fictional witness storage failure';end$$");try{expect(await navigation(ctx)).toEqual(['employees.code.maintain']);expect(await state()).toEqual(before);}finally{await owner.client.unsafe(definition.body);}expect(await navigation(ctx)).toEqual(ALL);});
 it('keeps direct selected-subject/effect owners fresh after a navigation link was offered',async()=>{expect(await navigation(ctx)).toEqual(ALL);await permission('workforce.maintain','deny');expect(await navigation(ctx)).toEqual([]);expect(await profileChoices.readWorkforceProfileMaintenanceChoices(ctx,{query:'',employmentId:target.employmentId})).toEqual({kind:'unavailable'});expect(await codeChoices.readEmployeeCodeMaintenanceChoices(ctx,{query:'',employmentId:target.employmentId})).toEqual({kind:'unavailable'});});
 

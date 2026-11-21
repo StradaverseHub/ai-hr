@@ -37,7 +37,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { listPayslipRunsFor } from '../core/payroll-view';
-import { payslipPeriodOptions } from '../app/payroll/individual-payslip/period-options';
+import { matchingPayslipRuns, payslipPeriodOptions, resolvePayslipSelection } from '../app/payroll/individual-payslip/period-options';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -115,30 +115,12 @@ describe('5a29686c — the screen reads the employee’s runs, and the otherRuns
     expect(src, 'and no hard-coded twelve-month list either').not.toMatch(/'01',\s*'02',\s*'03'/);
   });
 
-  it('THE otherRuns CARD IS GONE — and the control that replaced it is here in the same assertion', () => {
-    // REVERSED FROM r209, NOT DELETED. This case used to read "still renders the otherRuns card, still
-    // gated on more than one match": r209 believed the card was deliberate disambiguation between a
-    // regular and a bonus run, because those two share company, year, month and cycle and no dropdown
-    // could tell them apart. That half was TRUE, and it is why the card outlived three rounds.
-    //
-    // What r209 (and da4af51f, and r207) missed is that all four dropdowns defaulted to "All", so the
-    // card's `matches.length > 1` gate was open on every employee with more than one payslip ever — it
-    // was the payslip history the reporter kept saying it was.
-    //
-    // THE TWO HALVES ARE ASSERTED TOGETHER ON PURPOSE. Removing the card without folding the run number
-    // into the cycle option would take away the only way to reach a bonus run; folding it in without
-    // removing the card would leave two controls doing one job. Neither half may ship alone.
+  it('uses a configured Payroll Cycle selector and offers exact saved runs only when there are siblings', () => {
     const src = code();
-    expect(src, 'the run-picker card is gone').not.toContain("t('otherRuns')");
-    expect(src, 'and so is the gate that made it a history list').not.toContain('matches.length > 1');
-    expect(src, 'and its subtitle').not.toContain('otherRunsHint');
-    // …because the cycle option now names the run. `runOptionValue` is `${runType}:${runSeq}`, and
-    // run_seq is unique within a pay period, so one cycle choice resolves to one payslip.
-    expect(src, 'the cycle option must carry the run number').toContain('runOptionValue');
-    expect(src, 'built from the employee’s own runs, not from the fixed CYCLES list').toContain(
-      'payslipRunChoices',
-    );
-    expect(src, 'and the run number is labelled when it is above one').toContain("t('cycleRun'");
+    expect(src).toContain('name="payrollCycleId"');
+    expect(src).toContain('listPayrollCyclesForCompanies');
+    expect(src).toContain('matchingRuns.length > 1');
+    expect(src).toContain("t('cycleRun'");
   });
 
   it('every locale carries a real run label, not the English one copied across', () => {
@@ -270,4 +252,21 @@ describe('5a29686c — listPayslipRunsFor', () => {
       }),
     ).toEqual([]);
   });
+});
+
+it('strictly matches configured cycle before a supplied payslip ID and keeps unassigned runs in All', () => {
+  const runs = [
+    {payslipId:'early',companyId:'A',payPeriod:'2026-04',runType:'off_cycle',runSeq:1,payrollCycleId:'cycle-a'},
+    {payslipId:'other',companyId:'A',payPeriod:'2026-04',runType:'off_cycle',runSeq:2,payrollCycleId:'cycle-b'},
+    {payslipId:'repeat',companyId:'A',payPeriod:'2026-04',runType:'off_cycle',runSeq:3,payrollCycleId:'cycle-a'},
+    {payslipId:'legacy',companyId:'A',payPeriod:'2026-04',runType:'off_cycle',runSeq:4},
+    {payslipId:'outside',companyId:'B',payPeriod:'2026-04',runType:'off_cycle',runSeq:9,payrollCycleId:'cycle-a'},
+  ];
+  const filter = {companyId:'A',year:2026,month:4,payrollCycleId:'cycle-a'};
+  expect(matchingPayslipRuns(runs,filter).map(run=>run.payslipId)).toEqual(['repeat','early']);
+  expect(resolvePayslipSelection(runs,filter).payslipId).toBe('repeat');
+  expect(resolvePayslipSelection(runs,{...filter,payslipId:'early'}).payslipId).toBe('early');
+  expect(resolvePayslipSelection(runs,{...filter,payslipId:'other'}).payslipId).toBeNull();
+  expect(resolvePayslipSelection(runs,{...filter,month:5}).payslipId).toBeNull();
+  expect(resolvePayslipSelection(runs,{...filter,payrollCycleId:undefined,strictFilter:true}).payslipId).toBe('legacy');
 });

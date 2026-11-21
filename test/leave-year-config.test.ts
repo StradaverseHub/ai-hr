@@ -35,6 +35,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq, gte, lte } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { runBulkJobTick } from '../core/bulk-job-worker';
+import { leaveGenerationJobHandler } from '../core/leave-cohort-worker';
 
 // redirect() in real Next.js THROWS to abort the request; the mock must throw too, or execution would fall
 // through. The sentinel carries the target path so the tests can assert WHERE the action lands.
@@ -194,6 +196,15 @@ describe('entitlementYearOptions — the ONE computed year list', () => {
 });
 
 // ── The grant sweep, re-homed onto the Generate page's action ───────────────────────────────────
+/** The protected worker's ticks, until every Generate Entitlement job has finished and notified. */
+async function runGenerationJobs() {
+  for (let i = 0; i < 500; i++) {
+    const [open] = await owner.client`select count(*)::int as n from bulk_job where kind='leave_generation' and (state not in ('completed','failed','cancelled') or notified_at is null)`;
+    if (open.n === 0) return;
+    if (!(await runBulkJobTick(owner.client, { handlers: [leaveGenerationJobHandler] }))) await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error('Generate Entitlement job did not finish');
+}
 describe('openLeaveYearAction — the re-homed grant sweep (4b0e76ae)', () => {
   it('posts the year’s grants, is idempotent, emits leave-year.opened, and lands back on the Generate screen', async () => {
     const { employmentId } = await hireEmployeeCtx(); // hired 2020 ⇒ eligible for a 2027 grant
@@ -202,11 +213,15 @@ describe('openLeaveYearAction — the re-homed grant sweep (4b0e76ae)', () => {
     const before = await ledgerBalance(employmentId, b.annualLeaveTypeId);
     const target = await captureRedirect(() => openLeaveYearAction(fd({ year: '2027' })));
     // Re-homed: the action used to redirect to /admin/leave (and, through setLeaveYearStatusAction, to the
-    // Entitlements tab). Its home is the Generate page now, and the counts ride back as a toast.
-    // a6fe37fc Round 5 repointed GENERATE at the new module; the contract — the grant counts come
-    // back to the screen the operator pressed the button on — is what is asserted, not the literal.
+    // Entitlements tab). Its home is the Generate page now. a6fe37fc Round 5 repointed GENERATE at the new
+    // module; the contract is that the operator lands back on the screen they pressed the button on. The run
+    // itself is a background job now (leave family on the bulk-job kernel): the page follows `?job=` and shows
+    // the grant counts as the same toast when it finishes.
     expect(target.startsWith('/admin/leave-config/generate')).toBe(true);
-    expect(target).toContain('toast=');
+    expect(target).toContain('job=');
+    // Nothing is granted in the request itself.
+    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(before);
+    await runGenerationJobs();
 
     // The Jan-1 grant for 2027 was posted (balance increased for the pre-2027 hire).
     const after = await ledgerBalance(employmentId, b.annualLeaveTypeId);
@@ -216,6 +231,7 @@ describe('openLeaveYearAction — the re-homed grant sweep (4b0e76ae)', () => {
     // set is built from existing ledger accrual rows at the year start, never from leave_year_config, so
     // clearing that table (migration 0385) cannot cause a double grant either.
     await captureRedirect(() => openLeaveYearAction(fd({ year: '2027' })));
+    await runGenerationJobs();
     const after2 = await ledgerBalance(employmentId, b.annualLeaveTypeId);
     expect(after2).toBe(after);
 

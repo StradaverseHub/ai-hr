@@ -124,6 +124,9 @@ describe('(A/B) field parity — Movement writes everything the Employment tab u
       businessUnitId: buId,
       gradeId,
       employmentType: 'contract',
+      // 2260a06b — a movement that changes the type to Contract must carry the Contract End Date (later than the
+      // effective date); the contract then starts on the effective date.
+      contractEndDate: '2027-02-28',
       ...flat,
     });
 
@@ -132,6 +135,8 @@ describe('(A/B) field parity — Movement writes everything the Employment tab u
     expect(state.positionId).toBe(posId);
     expect(state.gradeId).toBe(gradeId);
     expect(state.employmentType).toBe('contract');
+    expect(state.contractStartDate).toBe('2026-03-01');
+    expect(state.contractEndDate).toBe('2027-02-28');
     for (const [field, value] of Object.entries(flat)) {
       expect(state[field as 'orgDivision'], `${field} must be written by the movement`).toBe(value);
     }

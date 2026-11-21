@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 import {PersonnelImportEvaluationPanel,type PersonnelImportEvaluationHandle,type PersonnelImportEvaluationStatus} from '@/components/personnel-import-evaluation-panel';
 import {employeeImportSourceFingerprint,personnelImportLocalDigest,personnelImportLocalBytesDigest} from '@/lib/personnel-import-evaluation-client';
@@ -19,17 +20,20 @@ import {PERSONNEL_REGISTER_KINDS,PERSONNEL_REGISTER_SHEETS,personnelRegisterColu
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
 import { PersonnelImportValues } from '@/components/personnel-import-values';
 
-import { Fragment, useRef, useState, useTransition } from 'react';
+import { Fragment, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { employeeUploadErrorMessage } from '@/lib/employee-import-upload-errors';
 import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
 import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
 import { IMPORT_FILE_ACCEPT, MAX_IMPORT_CSV_BYTES, importFileMessageKey, readImportFile } from '@/lib/import-file';
-import { toCsv } from '@/lib/csv';
+import {csvDataExcelRows,lineRowOf,type ImportSourceRows} from '@/lib/import-problem-common';
+import {employeePreviewProblemLines,employeeResultProblemLines} from '@/lib/employee-import-problems';
+import {ImportProblems,useImportProblemTranslate} from './import-error-log';
 import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField } from '@/lib/personnel-import-contract';
 import {
   buildPersonnelInstructionRows,
@@ -43,7 +47,10 @@ import {
   EMPLOYEE_XLSX_FILENAME,
   EMPLOYEE_XLSX_SHEETS,
 } from '@/lib/import-template-xlsx';
-import { validateImportAction, commitImportAction } from './actions';
+import { validateImportAction, commitImportAction, reopenEmployeeImportEvaluationAction } from './actions';
+import type {EmployeeImportEvaluationBinding} from '@/lib/personnel-import-evaluation';
+import {EmployeeImportJobPanel} from './employee-import-progress';
+import {EMPLOYEE_IMPORT_ALREADY_RUNNING,employeeImportActive,type EmployeeImportProgress} from '@/lib/employee-import-job';
 
 const SAMPLE = `full_name,email,department,position,hired_on,employment_type,ic_number,basic_salary,monthly_allowance,bank_name,bank_account_no,tax_category,num_children
 Nadia Yusof,nadia@demo.test,Finance,,2026-06-01,full_time,910505051234,5200,400,Maybank,5566778899,2,1
@@ -88,6 +95,7 @@ export function EmployeeImport({
   onCommitPendingChange?: (pending: boolean) => void;
 }) {
   const t = useTranslations('people.import');
+  const tl = useTranslations('importErrorLogEmployee');
   const headerMessages:PersonnelImportHeaderReviewMessages={title:t('headerAssistance.title'),
 localOnly:t('headerAssistance.localOnly'),
 sheet:t('headerAssistance.sheet'),
@@ -149,6 +157,22 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   const [registerTexts,setRegisterTexts]=useState<PersonnelRegisterTexts>({});
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  // Background employee import (design B): the running job, resumed after navigation.
+  const [importJob, setImportJob] = useState<EmployeeImportProgress | null>(null);
+  // An evaluation-bound import runs as the same background job; its receipt is read once the job finishes.
+  const boundJob=useRef<{jobId:string;binding:EmployeeImportEvaluationBinding;companyId:string}|null>(null);
+  const settleBoundJob=(jobId:string,completed:boolean)=>{
+    const bound=boundJob.current;if(!bound||bound.jobId!==jobId)return;boundJob.current=null;
+    if(!completed){evaluation.current?.commitUncertain();return;}
+    void reopenEmployeeImportEvaluationAction(bound.binding,bound.companyId)
+      .then(outcome=>{if(outcome.kind==='evaluation'&&outcome.receipt.state==='committed')evaluation.current?.acceptCommit(outcome.receipt);else evaluation.current?.commitUncertain();})
+      .catch(()=>evaluation.current?.commitUncertain());
+  };
+  useEffect(()=>{
+    let alive=true;
+    fetch('/admin/personnel/import/employee/jobs',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{if(alive&&p?.jobs){const active=(p.jobs as EmployeeImportProgress[]).find(job=>employeeImportActive(job.state));if(active)setImportJob(active);}}).catch(()=>undefined);
+    return()=>{alive=false;};
+  },[]);
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [pending, startTransition] = useTransition();
@@ -164,16 +188,28 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   // 524303d9 — the ORIGINAL file and the text read from it, so Import History keeps the uploaded file. Used
   // only while the text being imported is still exactly that text (an edit or a prepared text is not it).
   const sourceFile = useRef<{file:File;text:string}|null>(null);
+  // Board d3ba1e9f — each sheet's Excel rows as read from the picked file (labels for the check and the Error Log).
+  // Sent only while the employee text is still that file's text, or a heading-only revision of it.
+  const sourceRows = useRef<{text:string;rows:ImportSourceRows}|null>(null);
+  const rowsFor=(text:string):ImportSourceRows|undefined=>{
+    const captured=sourceRows.current;if(!captured)return undefined;
+    if(captured.text===text||(importSource?.currentText===text&&importSource.originalText===captured.text))return captured.rows;
+    return undefined;
+  };
   // A preview belongs to exact input; a slower read/validation cannot restore superseded input.
   const inputRevision = useRef(0);
   const fileReadRevision = useRef(0);
   const commitPending = useRef(false);
+  // Item 1859cce0 — one upload operation per checked preview: sending the same preview again after a lost response
+  // reaches the same import (the job's operation key), never a second one. Any edit starts a new operation.
+  const uploadOperation = useRef<string|null>(null);
   // Keep the submitted file fixed until the real write reports its outcome; never discard success.
   const [committing, setCommitting] = useState(false);
 
   // Any edit invalidates a stale preview/result — force a fresh validate before importing.
   const reset = () => {
     inputRevision.current++;
+    uploadOperation.current = null;
     setPreview(null);
     setResult(null);
     setPhase('idle');
@@ -190,15 +226,16 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
     startTransition(async () => {
       setError(null);
       try {
-        const p = await validateImportAction(text, companyId, family,registers,allocations);
+        const p = await validateImportAction(text, companyId, family,registers,allocations,rowsFor(text));
         if (revision !== inputRevision.current) return;
+        if ('error' in p) { setError(p.error); return; }
         setPreview(p);
         setResult(null);
         setPhase('previewed');
         await evaluation.current?.record({kind:'preview',validRows:p.validCount,rejectedRows:p.total-p.validCount,fileErrors:p.fileErrors.length});
-      } catch (e) {
+      } catch {
         if (revision !== inputRevision.current) return;
-        setError((e as Error).message);
+        setError('The import could not be checked. Try again. If it keeps failing, contact your administrator.');
       }
     });
   };
@@ -258,6 +295,18 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
       }
       // Recognised/manual file flow adopts only after decode AND fingerprint await are current.
       originalSourceFingerprint.current=originalDigest;setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;
+      // Board d3ba1e9f — the Excel rows of every sheet read (blank rows are dropped from the text, not from Excel).
+      let rows:ImportSourceRows={};
+      try{
+        if(format==='csv')rows={employee:csvDataExcelRows(text)};
+        else{
+          const {workbookDataRowNumbers}=await import('@/lib/spreadsheet');
+          const read=await workbookDataRowNumbers(await file.arrayBuffer(),[EMPLOYEE_XLSX_SHEETS.family,...Object.values(PERSONNEL_REGISTER_SHEETS)]);
+          rows={employee:read.first,family:read.extra[EMPLOYEE_XLSX_SHEETS.family],qualification:read.extra[PERSONNEL_REGISTER_SHEETS.qualification],emergency:read.extra[PERSONNEL_REGISTER_SHEETS.emergency]};
+        }
+      }catch{rows={};}
+      if(revision!==inputRevision.current)return;
+      sourceRows.current={text,rows};
       setLocalEvidence([]);setCsv(text);headerAssistanceAnnotation.current=null;sourceFile.current={file,text};
       try{setImportSource(capturePersonnelImportSource({text,fileName:name,format,source},crypto.randomUUID()));}catch{setImportSource(null);}
 
@@ -407,21 +456,9 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
     }
   };
 
-  // Error feedback report (d8471481): just the rows that cannot be accepted, with the reason, so HR
-  // fixes those and re-uploads instead of hunting through the file. Uses toCsv's csvSafeCell
-  // formula-injection guard because it echoes user-supplied values back into a file opened in Excel.
-  const downloadErrors = (rows: { rowNum: number; fullName: string; email: string; errors: string[] }[]) => {
-    const csvOut = toCsv([
-      [t('colRow'), t('colName'), t('colEmail'), t('colResult')],
-      ...rows.map((r) => [r.rowNum, r.fullName, r.email, r.errors.map(nricMessage).join('; ')]),
-    ]);
-    const url = URL.createObjectURL(new Blob([csvOut], { type: 'text/csv;charset=utf-8;' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'employee-import-errors.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  // Board d3ba1e9f — the problems of the preview and of the result, built once by the import's adapter; the
+  // on-screen table and the downloaded Error Log are both drawn from these lines (the old CSV is replaced).
+  const problemT=useImportProblemTranslate();
 
   const commit = () => {
     if (commitPending.current || pending || reading || evaluationStatus.blocked || evaluationStatus.committed || !preview) return;
@@ -436,28 +473,38 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         const revision=inputRevision.current;
         const binding=await evaluation.current?.prepareCommit({csv,companyId,family:dependentsCsv,registers:registerTexts,allocations:allocationsCsv,revision});
         if(binding===null||revision!==inputRevision.current)return;
-        let r:Awaited<ReturnType<typeof commitImportAction>>;
+        let r:Exclude<Awaited<ReturnType<typeof commitImportAction>>, {error:string}|{job:EmployeeImportProgress;existing:boolean}>;
+        let started:{job:EmployeeImportProgress}|null=null;
         try{
           // 524303d9 — an uploaded file whose text is still exactly what is being imported goes to Import History
           // as the original bytes; a paste, an edited or a prepared text is recorded by the action as its CSV text.
           const original=!binding&&sourceFile.current&&sourceFile.current.text===csv?sourceFile.current.file:null;
-          if(!original)r=await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv, registerTexts, allocationsCsv, preview.allocations?.token, binding);
+          if(!original){
+            const outcome=await commitImportAction(csv, companyId, fileName ?? '', dependentsCsv, registerTexts, allocationsCsv, preview.allocations?.token, binding, rowsFor(csv));
+            if('error' in outcome){if(binding)evaluation.current?.commitUncertain();setError(outcome.error===EMPLOYEE_IMPORT_ALREADY_RUNNING?t('employeeJob.otherRunning'):outcome.error);return;}
+            if('job' in outcome)started=outcome;else r=outcome;
+          }
           else{
             const body=new FormData();
             body.append('file',original,original.name);
-            body.append('payload',JSON.stringify({companyId,csv,fileName:fileName??'',dependentsCsv,registers:registerTexts,allocationsCsv,allocationToken:preview.allocations?.token}));
-            const response=await fetch('/admin/personnel/import/employee/upload',{method:'POST',body,headers:{'x-upload-operation':crypto.randomUUID()}});
-            const payload=await response.json().catch(()=>({error:null}));
-            if(!response.ok)throw new Error(response.status===413?t('fileTooLarge'):payload.error??t('employeeUploadFailed'));
-            r=payload as Awaited<ReturnType<typeof commitImportAction>>;
+            body.append('payload',JSON.stringify({companyId,csv,fileName:fileName??'',dependentsCsv,registers:registerTexts,allocationsCsv,allocationToken:preview.allocations?.token,sourceRows:rowsFor(csv)}));
+            uploadOperation.current??=crypto.randomUUID();
+            let response:Response;
+            // A network failure is told apart from a slow or unavailable server: none of them claims "nothing changed".
+            try{response=await fetch('/admin/personnel/import/employee/upload',{method:'POST',body,headers:{'x-upload-operation':uploadOperation.current}});}
+            catch(cause){setError(employeeUploadErrorMessage({thrown:cause},t));return;}
+            const payload=await response.json().catch(()=>null) as {error?:string|null}|null;
+            if(!response.ok){setError(payload?.error===EMPLOYEE_IMPORT_ALREADY_RUNNING?t('employeeJob.otherRunning'):employeeUploadErrorMessage({status:response.status,error:payload?.error},t));return;}
+            started=payload as unknown as {job:EmployeeImportProgress};
           }
         }catch(cause){if(binding)evaluation.current?.commitUncertain();throw cause;}
-        if(binding)evaluation.current?.acceptCommit(r.evaluationReceipt);
-        setResult(r);
+        if(started){boundJob.current=binding?{jobId:started.job.id,binding,companyId}:null;setImportJob(started.job);setPhase('done');return;}
+        if(binding)evaluation.current?.acceptCommit(r!.evaluationReceipt);
+        setResult(r!);
         setPhase('done');
         router.refresh();
-      } catch (e) {
-        setError(evaluationStatus.tracked?t('measurement.commitUncertain'):(e as Error).message);
+      } catch {
+        setError(evaluationStatus.tracked?t('measurement.commitUncertain'):t('uploadErrors.unknown'));
       } finally {
         commitPending.current = false;
         setCommitting(false);
@@ -467,6 +514,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   };
 
   const company = companies.find((c) => c.id === companyId);
+  const excelRowOfPreview=(rowNum:number)=>{const row=preview?.rows.find(r=>r.rowNum===rowNum);return row?lineRowOf(row):rowNum+1;};
 
   // Item 2983802f — which numbered step the screen is on. Every arm is a thing the screen has EVIDENCE
   // for, and the rail paints only the steps before it as done, so it never claims a step that has not
@@ -536,13 +584,13 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           {/* d8471481 — the Excel template is the PRIMARY one now (text-typed identity columns +
               a live Reference sheet). The CSV template stays beside it: the reporter's existing
               files are CSV and removing that path would break a workflow that works. */}
-          <button
+          <ActionButton guardNavigation={false} actionKind="generating"
             type="button"
-            onClick={() => void downloadXlsxTemplate()}
+            onClick={() => downloadXlsxTemplate()}
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             {t('downloadTemplateXlsx')}
-          </button>
+          </ActionButton>
           <DownloadTemplate spec={employeeTemplate} onDownloaded={() => setTemplateDownloaded(true)} />
           <button type="button" onClick={downloadFamilyCsv} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">{t('sectionFamily')} CSV</button>
           {PERSONNEL_REGISTER_KINDS.map(kind=><button key={kind} type="button" onClick={()=>downloadRegisterCsv(kind)} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">{registerLabel(kind)} CSV</button>)}
@@ -636,7 +684,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           </div>
         </details>
 
-        <Button type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={beginTextPreparation}>{t('headerAssistance.workbook.prepareText')}</Button>
+        <Button aria-busy={pending} type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={beginTextPreparation}>{t('headerAssistance.workbook.prepareText')}</Button>
         {!baseline&&workbookReview&&<PersonnelImportWorkbookReview key={workbookReview.revisionId} workbook={workbookReview.workbook} revisionId={workbookReview.revisionId}
           knownRoles={Object.fromEntries(workbookReview.workbook.sheets.map(sheet=>{
             const key=sheet.sheetName.trim().toLowerCase(),roles:Record<string,PersonnelSheetRole>={[EMPLOYEE_XLSX_SHEETS.family.trim().toLowerCase()]:'family',[ALLOCATION_SHEET.trim().toLowerCase()]:'allocations',[PERSONNEL_REGISTER_SHEETS.qualification.trim().toLowerCase()]:'qualification',[PERSONNEL_REGISTER_SHEETS.emergency.trim().toLowerCase()]:'emergency'};
@@ -671,10 +719,10 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
             const capturedRevision=inputRevision.current;void personnelImportLocalDigest(applied.text).then(revision=>{if(capturedRevision===inputRevision.current)void evaluation.current?.record({kind:'preparation',revision,normalizations:null,corrections:null,unresolved:0,conflicts:null,duplicates:null,missingSourceEvidence:null});}).catch(()=>setHeaderNotice(t('measurement.observationUnavailable')));headerAssistanceAnnotation.current=null;
             setDependentsCsv(companions.family);setAllocationsCsv(companions.allocations);setRegisterTexts(companions.registers);setFileName(preparationReview.fileName);setPreparationReview(null);setHeaderNotice(headerMessages.acceptedRevision);
           }catch{setHeaderNotice(headerMessages.invalidSource);}
-        }}/><Button type="button" variant="outline" disabled={pending||reading||committing} onClick={()=>{if(preparationReview.pendingSource){setSourceEpoch(value=>value+1);setGuidedUsed(preparationReview.pendingSource.priorGuidedUsed);}setPreparationReview(null);}}>{workbookMessages.cancel}</Button></div>}
+        }}/><Button aria-busy={pending} type="button" variant="outline" disabled={pending||reading||committing} onClick={()=>{if(preparationReview.pendingSource){setSourceEpoch(value=>value+1);setGuidedUsed(preparationReview.pendingSource.priorGuidedUsed);}setPreparationReview(null);}}>{workbookMessages.cancel}</Button></div>}
 
         <div className="space-y-3">
-          <Button type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={()=>{
+          <Button aria-busy={pending} type="button" variant="outline" disabled={baseline||pending||reading||committing||!!workbookReview||!!preparationReview||!csv.trim()} onClick={()=>{
             if(commitPending.current||baseline)return;setGuidedUsed(true);
             try{const source=importSource?.currentText===csv?importSource:capturePersonnelImportSource({text:csv,format:'paste'},crypto.randomUUID());setImportSource(source);headerReviewInputRevision.current=inputRevision.current;setReviewHeaders(true);setHeaderNotice(null);}
             catch{setHeaderNotice(headerMessages.invalidSource);setReviewHeaders(false);}
@@ -696,10 +744,10 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         <PersonnelImportEvidenceReview entries={localEvidence} currentText={csv}/>
         <StepHeading num={4} label={t('step4')} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={validate} disabled={pending || reading || !!workbookReview || !!preparationReview || !csv.trim()}>
+          <Button aria-busy={pending} onClick={validate} disabled={pending || reading || !!workbookReview || !!preparationReview || !csv.trim()}>
             {pending && phase !== 'done' ? t('validating') : t('validate')}
           </Button>
-          <Button
+          <Button aria-busy={pending}
             variant="outline"
             onClick={() => {
               if (commitPending.current) return;
@@ -762,6 +810,8 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         </div>
       )}
 
+      {importJob && !result && <EmployeeImportJobPanel job={importJob} onFinished={r=>{settleBoundJob(importJob.id,r.fileErrors.length===0);setImportJob(null);setResult(r);setPhase('done');router.refresh();}}/>}
+
       {result && (
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">
           <div className="border-b border-border bg-emerald-50/60 px-4 py-3 dark:bg-emerald-500/10">
@@ -787,15 +837,11 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
           )}
           {!!result.warnings?.length && <p role="status" className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300">{result.warnings.join(' ')}</p>}
           {result.fileErrors.length > 0 && (
-            <div className="border-b border-border bg-red-50/60 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-              <div className="mb-1 font-semibold">{t('fileRejected')}</div>
-              <ul className="list-disc space-y-0.5 pl-5 text-xs">
-                {result.fileErrors.map((e) => (
-                  <li key={e}>{e}</li>
-                ))}
-              </ul>
+            <div className="border-b border-border bg-red-50/60 px-4 py-3 text-sm font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
+              {t('fileRejected')}
             </div>
           )}
+          <ImportProblems lines={employeeResultProblemLines(result,preview,problemT)} fileName={fileName} title={tl('problemsTitle')}/>
           {/* These people ARE imported — only their Direct Superior link is missing, which is why they are
               reported apart from the failures rather than counted among them. */}
           {result.superiorFailed.length > 0 && (
@@ -806,21 +852,11 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
               <ul className="list-disc space-y-0.5 pl-5">
                 {result.superiorFailed.map((f) => (
                   <li key={f.rowNum}>
-                    {t('row', { num: f.rowNum })} · {f.email} — {nricMessage(f.message)}
+                    {t('row', { num: excelRowOfPreview(f.rowNum) })} · {f.email} — {nricMessage(f.message)}
                   </li>
                 ))}
               </ul>
             </div>
-          )}
-          {result.failed.length > 0 && (
-            <ul className="divide-y divide-border text-sm">
-              {result.failed.map((f) => (
-                <li key={f.rowNum} className="px-4 py-2">
-                  <span className="text-muted-foreground">{t('row', { num: f.rowNum })}</span> ·{' '}
-                  {f.email} — <span className="text-red-600 dark:text-red-400">{nricMessage(f.message)}</span>
-                </li>
-              ))}
-            </ul>
           )}
           <div className="flex items-center gap-3 px-4 py-3 text-sm">
             <Link href="/admin/personnel" className="text-primary hover:underline">
@@ -846,7 +882,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         <PreviewTable
           preview={preview}
           onImport={commit}
-          onDownloadErrors={downloadErrors}
+          fileName={fileName}
           busy={pending||evaluationStatus.blocked||evaluationStatus.committed}
         />
       )}
@@ -914,16 +950,19 @@ function StepHeading({ num, label }: { num: number; label: string }) {
 function PreviewTable({
   preview,
   onImport,
-  onDownloadErrors,
+  fileName,
   busy,
 }: {
   preview: ImportPreview;
   onImport: () => void;
-  onDownloadErrors: (rows: ImportPreview['rows']) => void;
+  fileName: string | null;
   busy: boolean;
 }) {
   const t = useTranslations('people.import');
-  const nricMessage = useNricPolicyMessage();
+  const tl = useTranslations('importErrorLogEmployee');
+  const refused = useTranslations('importProblems')('result.refused');
+  const problemT = useImportProblemTranslate();
+  const lines = employeePreviewProblemLines(preview, problemT);
   const invalid = preview.total - preview.validCount;
   return (
     <Card className="overflow-hidden">
@@ -953,16 +992,6 @@ function PreviewTable({
             </>
           )}
         </h2>
-        {/* Function 3 of the reporter's flow: download just the rows that need correcting. */}
-        {invalid > 0 && (
-          <button
-            type="button"
-            onClick={() => onDownloadErrors(preview.rows.filter((r) => !r.ok))}
-            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
-          >
-            {t('downloadErrors')}
-          </button>
-        )}
       </div>
 
       {/* Item 2983802f — A WHOLE-FILE REFUSAL. Distinct from the per-row errors in the table below,
@@ -970,26 +999,14 @@ function PreviewTable({
           The Import button below is disabled while this is showing, and the server refuses independently
           — the button is the courtesy, not the guard. */}
       {preview.fileErrors.length > 0 && (
-        <div className="border-b border-border bg-red-50/60 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-          <div className="mb-1 font-semibold">{t('fileRejected')}</div>
-          <ul className="list-disc space-y-0.5 pl-5 text-xs">
-            {preview.fileErrors.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
+        <div className="border-b border-border bg-red-50/60 px-4 py-3 text-sm font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
+          {t('fileRejected')}
         </div>
       )}
 
-      {preview.missingColumns.length > 0 && (
-        <div className="border-b border-border bg-red-50/60 px-4 py-2.5 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-400">
-          {t('missingColumns', { count: preview.missingColumns.length })}{' '}
-          {preview.missingColumns.map((c) => (
-            <code key={c} className="mx-0.5">
-              {c}
-            </code>
-          ))}
-        </div>
-      )}
+      {/* Board d3ba1e9f — every problem of every sheet, with the Excel row, field, value and fix; the Error Log
+          download carries exactly these lines. */}
+      <ImportProblems lines={lines} fileName={fileName} title={tl('problemsTitle')} />
 
       <table className="w-full text-sm">
         <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -1006,7 +1023,7 @@ function PreviewTable({
         <tbody className="divide-y divide-border">
           {preview.rows.map((r) => (
             <Fragment key={r.rowNum}><tr className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
-              <td className="px-4 py-2 tabular-nums text-muted-foreground">{r.rowNum}</td>
+              <td className="px-4 py-2 tabular-nums text-muted-foreground">{lineRowOf(r)}</td>
               <td className="px-4 py-2 font-medium">{r.fullName || <span className="text-muted-foreground">—</span>}</td>
               <td className="px-4 py-2 text-muted-foreground">{r.email || '—'}</td>
               <td className="px-4 py-2 text-muted-foreground">{r.company || '—'}</td>
@@ -1019,7 +1036,7 @@ function PreviewTable({
                     )}
                   </span>
                 ) : (
-                  <span className="text-red-600 dark:text-red-400">{r.errors.map(nricMessage).join('; ')}</span>
+                  <span className="text-red-600 dark:text-red-400">{refused}</span>
                 )}
               </td>
             </tr>
@@ -1040,16 +1057,6 @@ function PreviewTable({
           <div className="bg-muted/30 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('familySheet')} · {t('familyRowsCount', { count: preview.dependents.total })}
           </div>
-          {preview.dependents.missingColumns.length > 0 && (
-            <div className="border-b border-border bg-red-50/60 px-4 py-2.5 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-400">
-              {t('missingColumns', { count: preview.dependents.missingColumns.length })}{' '}
-              {preview.dependents.missingColumns.map((c) => (
-                <code key={c} className="mx-0.5">
-                  {c}
-                </code>
-              ))}
-            </div>
-          )}
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
@@ -1063,7 +1070,7 @@ function PreviewTable({
             <tbody className="divide-y divide-border">
               {preview.dependents.rows.map((r) => (
                 <tr key={r.rowNum} className={r.ok ? '' : 'bg-red-50/40 dark:bg-red-500/5'}>
-                  <td className="px-4 py-2 tabular-nums text-muted-foreground">{r.rowNum}</td>
+                  <td className="px-4 py-2 tabular-nums text-muted-foreground">{lineRowOf(r)}</td>
                   <td className="px-4 py-2 font-mono text-xs">{r.employeeCode || '—'}</td>
                   <td className="px-4 py-2 font-medium">{r.fullName || '—'}</td>
                   <td className="px-4 py-2 text-muted-foreground">{r.relationship || '—'}</td>
@@ -1071,7 +1078,7 @@ function PreviewTable({
                     {r.ok ? (
                       <span className="text-emerald-600 dark:text-emerald-400">{t('ready')}</span>
                     ) : (
-                      <span className="text-red-600 dark:text-red-400">{r.errors.map(nricMessage).join('; ')}</span>
+                      <span className="text-red-600 dark:text-red-400">{refused}</span>
                     )}
                   </td>
                 </tr>
@@ -1084,7 +1091,7 @@ function PreviewTable({
       {preview.registers?.filter(register=>register.total>0).map(register=><div key={register.kind} className="overflow-x-auto border-t border-border">
         <h3 className="bg-muted/30 px-4 py-2 text-sm font-semibold">{register.kind==='qualification'?t('sectionQualification'):t('sectionEmergency')} · {register.total}</h3>
         <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs"><tr><th className="px-4 py-2">#</th><th>{t('colEmployeeCode')}</th><th>{t('colName')}</th><th>{t('colResult')}</th></tr></thead>
-          <tbody>{register.rows.map(row=><tr key={row.rowNum} className={row.ok?'':'bg-red-50/40 dark:bg-red-500/5'}><td className="px-4 py-2">{row.rowNum}</td><td className="font-mono text-xs">{row.employeeCode}</td><td>{row.employeeName}<PersonnelImportValues values={row.proposed} sheet={register.kind}/></td><td className={row.ok?'text-emerald-600':'text-red-600'}>{row.ok?(row.action==='create'?t('registerCreate'):t('verdictUpdate')):row.errors.map(nricMessage).join('; ')}</td></tr>)}</tbody>
+          <tbody>{register.rows.map(row=><tr key={row.rowNum} className={row.ok?'':'bg-red-50/40 dark:bg-red-500/5'}><td className="px-4 py-2 tabular-nums">{lineRowOf(row as typeof row&{excelRow?:number})}</td><td className="font-mono text-xs">{row.employeeCode}</td><td>{row.employeeName}<PersonnelImportValues values={row.proposed} sheet={register.kind}/></td><td className={row.ok?'text-emerald-600':'text-red-600'}>{row.ok?(row.action==='create'?t('registerCreate'):t('verdictUpdate')):refused}</td></tr>)}</tbody>
         </table>
       </div>)}
 

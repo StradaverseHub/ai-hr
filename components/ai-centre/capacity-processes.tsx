@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { Info } from 'lucide-react';
 import type { SessionContext } from '@/db/client';
@@ -246,7 +245,6 @@ export async function CapacityProcesses({ reads, query, companies, baselines, ke
         </ul>
         <p className="mt-3 text-xs text-muted-foreground">{t('version', { version: view.version })} · {o('version', { version: outcomes.version })}</p>
       </Card>
-      {only && minutes === null && <Link href={`/assistant?${new URLSearchParams({ view: 'insights', setup: only.id })}#capacity-setup`} className={cn(btnGhost, target)}>{tc('setBaseline', { company: only.name })}</Link>}
     </section>
   );
 }

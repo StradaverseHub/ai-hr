@@ -13,11 +13,15 @@ import {createJobGrade,createPosition} from '../core/admin';
 import {createMovementEvent,movementCurrentState,movementHistory} from '../core/movement';
 import {previewMovementUpload,confirmMovementUpload} from '../core/movement-import-history';
 import {getImportAttempt,listImportAttempts} from '../core/import-history';
-import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
+import {previewImportRevertForAttempt} from '../core/import-history-handlers';
+import {revertMovementByJob} from './movement-revert-job-helper';
 import {toCsv} from '../lib/csv';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {personnelImportLabelResolvers} from '../lib/personnel-import-labels.server';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {createTranslator} from 'next-intl';
+import {movementErrorLogFor} from '../core/movement-error-log';
+import ms from '../messages/ms.json';
 const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
 const HEADER=['Company ID','Employee ID','Employee Name','Effective Date','Event Type','System Fields','Before','After'];
 // The English catalogue, as the route's next-intl resolver supplies it.
@@ -75,12 +79,12 @@ describe('single-sheet Movement import, history and revert (ac6645ec)',()=>{
   expect((detail.items[0].after as {movementId:string}).movementId).toBe(history[0].id);
   expect(Object.keys((detail.items[0].after as {raw:Record<string,unknown>}).raw).sort()).toEqual(expect.arrayContaining(['basicSalary','gradeId','positionId']));
   const review=await previewImportRevertForAttempt(a,checked.attemptId);expect(review.eligible).toBe(true);expect(review.blockers).toEqual([]);
-  await revertImportForAttempt(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional wrong promotion batch'});
+  await revertMovementByJob(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional wrong promotion batch'});
   expect(await state(ac1)).toMatchObject({gradeId:junior,positionId:b.positionId,basicSalary:'3000.00'});
   const reverted=(await movementHistory(a,ac1)).find(row=>row.id===history[0].id)!;
   expect(reverted.reversed).toMatchObject({reason:'Fictional wrong promotion batch'});
   await expect(previewImportRevertForAttempt(a,checked.attemptId)).rejects.toThrow(/already been reverted/);
-  await expect(revertImportForAttempt(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional second try'})).rejects.toThrow(/already been reverted/);
+  await expect(revertMovementByJob(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional second try'})).rejects.toThrow(/already been reverted/);
  });
 
  it('resolves Company ID per row: mixed rights, unknown and ambiguous companies are row errors while permitted rows proceed',async()=>{
@@ -129,19 +133,22 @@ describe('single-sheet Movement import, history and revert (ac6645ec)',()=>{
   await createMovementEvent(a,{employmentId:ac1,kind:'transfer',effectiveDate:day(-1),departmentId:b.deptA});
   const review=await previewImportRevertForAttempt(a,checked.attemptId);
   expect(review.eligible).toBe(false);expect(review.blockers).toHaveLength(1);expect(review.blockers[0].reason).toMatch(/changed since this import/);
-  await expect(revertImportForAttempt(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional revert attempt'})).rejects.toThrow(/cannot be reverted/);
+  await expect(revertMovementByJob(a,checked.attemptId,{previewHash:review.previewHash,reason:'Fictional revert attempt'})).rejects.toThrow(/cannot be reverted/);
   expect((await state(ac2)).departmentId).toBe(b.deptB);
   const detail=(await getImportAttempt(a,checked.attemptId))!;expect(detail.events.at(-1)?.kind).toBe('revert_failed');
  });
 
- it('refuses the revert when a closed payroll relied on a movement, and admits a Join Date Change through its verified inverse',async()=>{
+ it('preserves closed payroll while reverting an import and admits a Join Date Change through its verified inverse',async()=>{
   const effective=day(-2),period=effective.slice(0,7);
   const{checked}=await importRows(a,[['ACME','AC001','',effective,'transfer','departmentId','Finance','Operations']]);
   const[pp]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period,status:'closed'}).returning({id:s.payPeriod.id});
   const[batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:pp.id,payPeriod:period,batchDate:period+'-25',status:'closed'}).returning({id:s.payrollBatch.id});
   await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:ac1,basicSalary:'3000.00',grossPay:'3000.00',statutory:{},totalDeductions:'0.00',netPay:'3000.00',employerCost:'3000.00'});
   const closed=await previewImportRevertForAttempt(a,checked.attemptId);
-  expect(closed.eligible).toBe(false);expect(closed.blockers[0].reason).toMatch(/closed payroll/);
+  expect(closed.eligible).toBe(true);expect(closed.blockers).toEqual([]);
+  const paid=await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId,batch.id)),issued=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batch.id));
+  await revertMovementByJob(a,checked.attemptId,{previewHash:closed.previewHash,reason:'Fictional incorrect imported placement'});
+  expect(await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId,batch.id))).toEqual(paid);expect(await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batch.id))).toEqual(issued);
   const joinDate=day(-30);
   const{checked:join,result}=await importRows(a,[['ACME','AC002','',joinDate,'joinDateChange','remarks','','Fictional join date correction']]);
   expect(result.imported).toBe(1);
@@ -159,6 +166,32 @@ describe('single-sheet Movement import, history and revert (ac6645ec)',()=>{
   expect((await listImportAttempts(acmeOnly,{kind:'movement'})).items.map(i=>i.id)).toContain(checked.attemptId);
   expect((await state(ac1)).departmentId).toBe(b.deptB);
   const items=await owner.db.select().from(s.importAttemptItem).where(and(eq(s.importAttemptItem.attemptId,checked.attemptId),eq(s.importAttemptItem.status,'applied')));expect(items).toHaveLength(1);
+ });
+
+ it('d3ba1e9f — the Error Log names each refused row in the viewer’s language; a company-scoped viewer sees only their companies',async()=>{
+  const date=day(-1);
+  await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:betaId,name:'Beta Operations'});
+  const checked=await upload(a,[
+   ['ACME','AC001','',date,'transfer','departmentId','Finance','Operations'],
+   ['ACME','AC002','',date,'transfer','departmentId','Operations','Operations'],
+   ['BETA','BE001','',date,'transfer','departmentId','Operations','Beta Operations'],
+  ]);
+  const byCode=Object.fromEntries(checked.preview.employees.map(e=>[e.employeeCode,e]));
+  expect(byCode.AC002.rows[0].errors).toEqual(['before_mismatch:departmentId']);expect(byCode.BE001.rows[0].errors).toEqual(['before_mismatch:departmentId']);
+  // The plan keeps the refused rows as codes (additive), so the log is rebuilt in any language.
+  const plan=(await getImportAttempt(a,checked.attemptId))!.plan as unknown as {employees:{employeeCode:string;checked?:{row:number;errors:string[]}[]}[]};
+  expect(plan.employees.find(e=>e.employeeCode==='AC002')!.checked).toMatchObject([{row:3,errors:['before_mismatch:departmentId']}]);
+  expect(plan.employees.find(e=>e.employeeCode==='AC001')!.checked).toBeUndefined();
+  const root=createTranslator({locale:'ms',messages:ms,onError:()=>undefined}),shared=createTranslator({locale:'ms',messages:ms,namespace:'importProblems'});
+  const t={problems:(k:string,v?:Record<string,unknown>)=>root(k as never,v as never),shared:(k:string)=>shared(k as never)};
+  const own=(await movementErrorLogFor(a,checked.attemptId,t))!;
+  expect(own.lines.map(l=>[l.sheet,l.row,l.reference,l.field,l.problem,l.stage,l.result])).toEqual([
+   ['Movements',3,'AC002',ms.people.detail.employmentInfo.department,ms.people.import.movement.issues.before_mismatch,'check','refused'],
+   ['Movements',4,'BE001',ms.people.detail.employmentInfo.department,ms.people.import.movement.issues.before_mismatch,'check','refused'],
+  ]);
+  expect(own.lines[0].employeeName).toBe('Fictional AC002');
+  expect((await movementErrorLogFor(acmeOnly,checked.attemptId,t))!.lines.map(l=>l.reference)).toEqual(['AC002']);
+  expect((await movementErrorLogFor(betaOnly,checked.attemptId,t))!.lines.map(l=>l.reference)).toEqual(['BE001']);
  });
 
  it('refuses the retired per-type layout with a message to download the new template',async()=>{

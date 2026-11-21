@@ -55,7 +55,11 @@ describe('Personnel filter panel: both pages use the consolidated component', ()
       for (const param of ['q?: string', 'page?: string', 'company?: string', 'dept?: string', 'status?: string', 'type?: string']) {
         expect(contract.includes(param), `${param} in the ${file} contract`).toBe(true);
       }
-      for (const arg of ['companyId: company', 'departmentId: dept', 'employmentType: type']) {
+      // aa045103 — the admin listing's Department and Employment Type are multi-select (one or many values).
+      const args = file.startsWith('app/admin/')
+        ? ['companyId: company', 'departmentIds: uuidValues(sp.dept)', 'employmentTypes: values(sp.type)']
+        : ['companyId: company', 'departmentId: dept', 'employmentType: type'];
+      for (const arg of args) {
         expect(contract.includes(arg), `${arg} in the ${file} contract`).toBe(true);
       }
       // The lifecycle `status` narrowing is still HONOURED — nothing writes it any more, but an existing
@@ -83,7 +87,8 @@ describe('Personnel filter panel: component fundamentals', () => {
   });
 
   it('keeps the GET-form semantics (no-JS submit, URL-carried filters)', () => {
-    expect(src.includes('method="get"')).toBe(true);
+    expect(src).toContain("import Form from 'next/form'");
+    expect(src).toContain('<Form action={action}');
     expect(src).toMatch(/action=\{action\}/);
     // Apply is a real submit; Clear all is a plain link back to the page's own base path. Feedback
     // 650b6eb8 gave that base an optional set of FOREIGN params (`hidden`) so a page carrying two

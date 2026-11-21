@@ -7,7 +7,7 @@ import type {CanonicalOvertimeSnapshot} from './overtime-patterns';
 import {attendancePolicyDurationFormulaProjection} from './policy-formula-source';
 import {attendancePolicyDurationExecutionProposal,attendancePolicyRecordedProposalComparison} from './policy-execution-proposal';
 import {overtimeDate,overtimeUuid} from '../../lib/overtime-pattern-schema';
-import {attendancePolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
+import {policyClockEvidence} from './policy-clock-evidence';
 import {attendancePolicyWorkInput} from './policy-work-input';
 import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
 import {attendancePolicyCountAttribution} from './policy-count-attribution';
@@ -47,7 +47,7 @@ export function attendancePolicyIndependentDurationReplay(snapshot:IndependentPo
   }else{
    if(snapshot.policyClockSource?.state!=='known'||snapshot.policyClockReview?.state!=='known'
     ||!snapshot.policyClockReview.evidence.complete||snapshot.policyClockReview.evidence.requiresReview)return refuse('sourceUnavailable');
-   const captured=attendancePolicyClockMillisecondEvidence(snapshot.policyClockSource.clocks,context.resolvedClock,4320);
+   const captured=policyClockEvidence(context,snapshot.policyClockSource.clocks);
    if(!isDeepStrictEqual(captured,snapshot.policyClockReview.evidence)
     ||!isDeepStrictEqual(attendancePolicyWorkInput(context,captured),snapshot.policyWorkInput)
     ||!isDeepStrictEqual(attendancePolicyClockMeasurements(context,captured),snapshot.policyClockMeasurements))return refuse('proposalMismatch');
@@ -112,6 +112,9 @@ export function attendancePolicyIndependentRecordedApprovalStatus(snapshot:Indep
   const overtime=policy.policy.overtime;
   if(!overtime.enabled||overtime.approval==='auto'&&overtime.autoMethod==='actual')return 'notRequired';
   const proposal=snapshot.policyExecutionProposal;
+  // 2f803985: no overtime request on the day — the known empty plan needs no approval.
+  if(overtime.approval==='auto'&&proposal?.state==='proposed'&&proposal.planEvidence?.references.length===0
+   &&attendancePolicyIndependentDurationReplay(snapshot).state==='known')return 'notRequired';
   if(attendancePolicyIndependentDurationReplay(snapshot).state==='known'&&proposal?.state==='proposed'
    &&(overtime.approval==='manual'?proposal.manualEvidence!==undefined:proposal.planEvidence!==undefined))return 'approved';
   const approvals=snapshot.policyApprovalInput;

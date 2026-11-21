@@ -24,6 +24,7 @@ vi.mock('../core/read', () => ({ listCompanies: async () => [], adminCompanies: 
 vi.mock('../components/function-access-grid', () => ({ FunctionAccessGrid: () => null }));
 vi.mock('../app/admin/actions', () => ({ archiveUserAction: vi.fn(), assignRoleAction: vi.fn(), inviteUserAction: vi.fn(), revokeInvitationAction: vi.fn(), revokeRoleAction: vi.fn(), setAssistantGrantAction: vi.fn() }));
 vi.mock('../app/admin/users/manual-actions', () => ({ createManualAccountAction: vi.fn(), resumeManualAccountAction: vi.fn(), cancelManualAccountAction: vi.fn() }));
+vi.mock('../app/admin/users/[userId]/account/actions', () => ({ accountAction: vi.fn(), generatePasswordAction: vi.fn(), accountHistoryAction: vi.fn() }));
 vi.mock('../app/admin/users/manual-setup', () => ({ ManualAccountSetup: (props: unknown) => { m.manual(props); return null; } }));
 import UsersPage from '../app/admin/users/page';
 import CreatePage from '../app/admin/users/create/page';
@@ -40,19 +41,19 @@ afterEach(cleanup);
 describe('employee activation actions and lifecycle display', () => {
   it('shows pending activation without access-management actions and links both methods by person ID', async () => {
     await show(); const d = within(directory());
-    expect(d.getByText('Pending activation')).toBeTruthy();
-    fireEvent.click(d.getByRole('button', {name:'Activate'}));
-    expect(d.getByRole('link', { name: 'Set username and password' }).getAttribute('href')).toBe('/admin/users/create?activate=person-a');
-    expect(d.getByRole('link', { name: 'Send invitation' }).getAttribute('href')).toBe('/admin/users/invite?activate=person-a');
+    // Board 07c98c36: Pending Activation shows its two actions directly on the row.
+    expect(d.getByText('Pending Activation')).toBeTruthy();expect(d.getByText('A-001')).toBeTruthy();expect(d.getByText('Never Logged In')).toBeTruthy();
+    expect(d.getByRole('link', { name: 'Set Username and Password' }).getAttribute('href')).toBe('/admin/users/create?activate=person-a');
+    expect(d.getByRole('link', { name: 'Send Invitation' }).getAttribute('href')).toBe('/admin/users/invite?activate=person-a');
+    expect(d.queryByRole('button',{name:'Edit'})).toBeNull();
     expect(d.queryByRole('button',{name:'Add role'})).toBeNull();
     expect(d.queryByRole('button',{name:'Archive'})).toBeNull();
   });
   it('offers the same person-bound activation course under embedded internal authentication', async () => {
     m.enabled.mockReturnValue(false);m.internal.mockReturnValue(true);
     await show();const d=within(directory());
-    fireEvent.click(d.getByRole('button',{name:'Activate'}));
-    expect(d.getByRole('link',{name:'Set username and password'})).toHaveAttribute('href','/admin/users/create?activate=person-a');
-    expect(d.getByRole('link',{name:'Send invitation'})).toHaveAttribute('href','/admin/users/invite?activate=person-a');
+    expect(d.getByRole('link',{name:'Set Username and Password'})).toHaveAttribute('href','/admin/users/create?activate=person-a');
+    expect(d.getByRole('link',{name:'Send Invitation'})).toHaveAttribute('href','/admin/users/invite?activate=person-a');
     expect(d.queryByRole('button',{name:'Archive'})).toBeNull();expect(d.queryByRole('button',{name:'Add role'})).toBeNull();
     expect(m.enrollments).toHaveBeenCalled();
   });
@@ -88,15 +89,15 @@ describe('employee activation actions and lifecycle display', () => {
     m.invitations.mockResolvedValue([{ id: 'invite-a', personId: person.id, email: person.email, role: 'employee', companyId: null }]);
     await show(); const d = within(directory());
     expect(d.getAllByText('Employee A')).toHaveLength(1); expect(d.getAllByText('Employee B')).toHaveLength(1);
-    expect(d.getAllByText('Pending activation')).toHaveLength(1); expect(d.getAllByText('Invited')).toHaveLength(1);
-    fireEvent.click(d.getByRole('button',{name:'Activate'}));
-    expect(d.getByRole('link', { name: 'Set username and password' }).getAttribute('href')).toContain('person-b');
+    expect(d.getAllByText('Pending Activation')).toHaveLength(2); expect(d.getAllByText('Invited')).toHaveLength(1);
+    expect(d.getAllByRole('link', { name: 'Set Username and Password' })).toHaveLength(1);
+    expect(d.getByRole('link', { name: 'Set Username and Password' }).getAttribute('href')).toContain('person-b');
   });
   it('shows unfinished manual setup once and offers resume instead of a second activation', async () => {
     m.enrollments.mockResolvedValue([{ id: 'setup', person_id: person.id, status: 'prepared', app_user_id: null }]);
     await show({ activate: person.id }); const d = within(directory());
     expect(d.getByText('Setup pending')).toBeTruthy(); expect(d.getByRole('link', { name: 'Resume setup' })).toBeTruthy();
-    expect(d.queryByText('Pending activation')).toBeNull();
+    expect(d.queryByRole('link',{name:'Set Username and Password'})).toBeNull();
     const data=await import('../app/admin/users/data');expect((await data.loadUsersData({tenantId:'tenant'} as never)).pendingEmployees).toEqual([]);
   });
   it('hidden archived logins cannot reappear through an invitation or a concurrent pending read', async () => {
@@ -111,7 +112,7 @@ describe('employee activation actions and lifecycle display', () => {
     m.users.mockResolvedValue({users:[{id:'external-user',personId:'external-person',name:'External admin',email:'external@example.test',hasEmployment:false,roles:[{id:'grant',role:'hr_admin',companyId:null}]}],hiddenCount:0});
     m.candidates.mockResolvedValue([]);await show();const d=within(directory());
     expect(d.getByText('External admin')).toBeTruthy();expect(d.queryByText('No employee record')).toBeNull();
-    fireEvent.click(d.getByRole('button',{name:'Manage'}));
+    fireEvent.click(d.getByRole('button',{name:'Edit'}));
     expect(d.getByText('No employee record')).toBeTruthy();
     expect(d.getByRole('button',{name:'Archive'})).toBeTruthy();expect(d.getByRole('button',{name:'Add role'})).toBeTruthy();
   });
@@ -130,6 +131,6 @@ describe('employee activation actions and lifecycle display', () => {
   it('delegated admins receive no pending roster or activation controls', async () => {
     m.group.mockReturnValue(false); await show();
     expect(m.candidates).not.toHaveBeenCalled(); expect(m.manual).not.toHaveBeenCalled();
-    expect(screen.queryByText('Pending activation')).toBeNull();
+    expect(screen.queryByText('Pending Activation')).toBeNull();
   });
 });

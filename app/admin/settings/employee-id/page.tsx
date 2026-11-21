@@ -1,4 +1,7 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
+import { peopleSettingsBack } from '@/app/admin/settings/people/back';
+import { PeopleSettingsNavigation } from '@/components/people-settings-navigation';
 import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
@@ -60,7 +63,8 @@ export default async function EmployeeIdConfigPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={t('title')} description={t('description')} back={await peopleSettingsBack()} />
+      <PeopleSettingsNavigation />
       {error && <ErrorBanner message={error} />}
 
       <p className="rounded-[1.25rem] border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
@@ -135,9 +139,9 @@ export default async function EmployeeIdConfigPage({
                         <input type="hidden" name="id" value={c.id} />
                         <input type="hidden" name="status" value={c.status === 'active' ? 'inactive' : 'active'} />
                         {returnFields}
-                        <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
+                        <ActionButton actionKind="saving" className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                           {c.status === 'active' ? t('deactivate') : t('activate')}
-                        </button>
+                        </ActionButton>
                       </form>
                       <form action={deleteConfigAction}>
                         <input type="hidden" name="id" value={c.id} />
@@ -286,9 +290,9 @@ export default async function EmployeeIdConfigPage({
             )}
 
             <div className="sm:col-span-2 flex items-center gap-3">
-              <button type="submit" className={btnPrimary}>
+              <ActionButton type="submit" className={btnPrimary}>
                 {t('save')}
-              </button>
+              </ActionButton>
               {/* Cancel returns to the page of the list the editor was opened from, not to page one. */}
               <Link
                 href={listQs ? `${PAGE}?${listQs}` : PAGE}

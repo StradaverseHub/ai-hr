@@ -28,6 +28,15 @@
  *   engine; it never recomputes a closed payslip and posts through the one-off ledger),
  *   `core/payroll-run-group.ts` (multi-company run groups),
  *   `core/payroll-view.ts` (processed-payslip read models + cross-company listings),
+ *   History maintenance and tax-source implementations remain private Payroll owners:
+ *   `core/payroll-history-maintenance-plan.ts` (canonical Payroll implementation),
+ *   `core/payroll-history-maintenance-read.ts` (canonical Payroll implementation),
+ *   `core/payroll-history-maintenance-state.ts` (canonical Payroll implementation),
+ *   `core/payroll-history-maintenance.ts` (canonical Payroll implementation),
+ *   `core/payroll-history-native-baseline.ts` (canonical Payroll implementation),
+ *   `core/payroll-import-tax-source.ts` (canonical Payroll implementation),
+ *   `core/payroll-tax-basis-read.ts` (canonical Payroll implementation),
+ *   `core/payroll-tax-basis.ts` (canonical Payroll implementation),
  *   `core/payroll-readiness.ts` (pre-run readiness checks), `core/payroll-history-import.ts`
  *   (historical payslip analysis), `core/payroll-history-revisions.ts` (immutable multi-company import,
  *   correction and guarded recovery), `core/payroll-permissions-admin.ts` (payroll permission grants +
@@ -201,7 +210,7 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     // efe1d230: ranked 0 in phases.ts, so this is the row the fly-out opens on and focuses. The
     // Workflow Guide row that used to sit above it is retired with its page (see phases.ts).
     { href: '/payroll', labelKey: 'payrollProcess', icon: Banknote },
-    { href: '/payroll/transactions', labelKey: 'payrollTransactions', icon: ArrowLeftRight },
+    { href: '/payroll/transactions', labelKey: 'payrollTransactions', icon: ArrowLeftRight, ownedSubpaths: ['/admin/loans','/payroll/history-import'] },
     // 4df29517 — THE LOANS ROW IS GONE, AND THIS IS 6d72816e REVERSED ON THE REPORTER'S OWN REQUEST.
     // 6d72816e added a menu row for /admin/loans because the screen was reachable only from a card on
     // the Transactions hub and the reporter concluded loans were not in Payroll. Having both, they now
@@ -239,7 +248,7 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     // This row is the home they were missing — the same complaint, and the same answer, as 956cec85's
     // Statutory Forms row. Ranked 9 in phases.ts, so it lands last; it is not spliced by hand here.
     { href: '/payroll/payment-submission', labelKey: 'payrollPaymentSubmission', icon: FileUp },
-    { href: '/payroll/setup', labelKey: 'payrollSettings', icon: Settings2 },
+    { href: '/payroll/setup', labelKey: 'payrollSettings', icon: Settings2, ownedSubpaths: ['/admin/payroll-config','/admin/payroll-cycle','/admin/pay-components','/admin/payroll-policy','/payroll/formula-builder','/payroll/income-tax-recalculation','/payroll/configuration','/payroll/payslip-information'] },
     // Sorted by the canonical sequence, NOT by the literal order above. Written declaratively so a
     // future row is placed by giving it a rank in phases.ts rather than by guessing where to splice
     // it in here. `sort` is stable, so two rows sharing a rank keep their literal order.

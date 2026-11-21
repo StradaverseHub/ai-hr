@@ -1,0 +1,15 @@
+{
+  "status": "Source guard for the single existing native date owner; review semantic source drift before updating these literal digests.",
+  "sha256": {
+    "groupEvidenceAndFallback": "fc45f1dc0f86e692dced86985201139ffcc47becb0a549ec16588ad366568fea",
+    "primaryDateSelection": "16a9416e3a8a513952a63b3cfd855d5c1a452407a705954b7ff561a2e3506dae",
+    "datedReportingAndRecorded": "bd67f5cf0e7a69fedef5d847fabe8a55acb7aa2c55e76b12a0607b4239c8e225",
+    "clockReference": "f12ea2a70a8d25da4a72e328a045402264a904201c1bdae8ca5ab150434af1a3",
+    "clockConstant": "203d70397f81185c5f6119a9156fb25b55d3065377b4489381792f34d99ca806",
+    "clockFormatter": "06f5dec743c0f1d2860dff85499c13e6db3f09f51dc85cb39060305eb93ba7a5",
+    "clockFunction": "50a426c13ca518128af5648cdfacc882da06ee084238bf782c2cd01a10dd12ae",
+    "calendarValidation": "26402672f174dbfdac800d752d8e85e54c968a6b7ae87564d99dd87bdc251824",
+    "reportingMovementLeg": "38d011aa2c30c7afc85a28d3254d2e901e6773ab6cb1f113b52fba7803df70b7"
+  },
+  "nativeGroupSourceProsrcMd5": "03912f3a421ca78cc63bb8aecf4789c5"
+}

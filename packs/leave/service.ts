@@ -96,6 +96,10 @@ export * from '../../core/entitlement-archive';
 // is already always-allowed, and the correction SCRIPT deliberately imports none of this — it talks to
 // db/schema and the SQL capture function directly, so an operator one-off never becomes a pack consumer.
 export * from '../../core/leave-ledger-archive';
+// Owner decision 12 November 2026 — the per-company "minimum people present" setting (migration 5161) and the team
+// presence count the approver recommendation reads. In BOTH BOUNDARIES and ALWAYS_ALLOWED in test/leave-pack-drift.test.ts;
+// its outside callers (the recommender and the Company rules action) reach it through this facade, so no allowlist entry.
+export * from '../../core/leave-team-minimum';
 // 93249794 — the Generate Entitlement service. Outside callers reach it HERE, never through core/,
 // which is what keeps it inside the pack boundary declared in test/leave-pack-drift.test.ts.
 export * from '../../core/leave-generation';
@@ -103,7 +107,7 @@ export * from '../../core/leave-generation';
 // Shared canonical reads, with explicit transaction handles for one read-only report snapshot.
 export { leaveBalancesTx, leaveEntitlementBreakdownTx } from '../../core/read';
 export type { LeaveBalanceReadOptions, LeaveEntitlementBreakdown } from '../../core/read';
-export {myLeaveDashboard} from '../../core/my-leave';
+export {myLeaveDashboard,myCurrentLeaveCards,myCurrentLeaveSnapshotCards} from '../../core/my-leave';
 export { benefitSchemeViewTx, ownBenefitSchemeViewTx } from '../../core/entitlement-scheme-view';
 // 23e87eef: authorized All/single inquiry read contract, registered with the pack drift guard.
 export * from '../../core/leave-inquiry';

@@ -1,0 +1,7 @@
+[
+ "test/roster-atomic-sql-batches.test.ts",
+ "test/leave-roster-dependency-participation.test.ts",
+ "test/board-schedule-configuration.test.ts",
+ "test/schedule-group-allowed-shifts.test.ts",
+ "test/schedule-group-resolution.test.ts"
+]

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { attendancePunch } from '../db/schema';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvent, appendEvents, type AppendEventArgs } from '../db/events';
 import { lockPayrollForAttendanceChange, markPayrollForAttendanceChange } from '../packs/payroll/service';
 export type ClockEntry = {
   id?: string;
@@ -71,12 +71,48 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
       throw new Error('Clocking does not belong to this attendance day.');
   const unchanged = new Set(entries.filter(e => e.id && rows.some(r => r.id === e.id && r.punchAt === e.punchAt && r.direction === e.direction)).map(e => e.id!));
   const now = new Date();
-  const event = (eventType: string, id: string, before: unknown, after: unknown) => appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-punch', aggregateId: id, eventType, actor: actorOf(ctx), subjectEmploymentId: p.employmentId, payload: { correctionId: p.correctionId, reason: p.reason, before, after } });
+  const auditEntry = (eventType: string, id: string, before: unknown, after: unknown): AppendEventArgs => ({
+    tenantId: ctx.tenantId, aggregateType: 'attendance-punch', aggregateId: id, eventType,
+    actor: actorOf(ctx), subjectEmploymentId: p.employmentId,
+    payload: { correctionId: p.correctionId, reason: p.reason, before, after },
+  });
+  const event = (eventType: string, id: string, before: unknown, after: unknown) =>
+    appendEvent(tx, auditEntry(eventType, id, before, after));
   // Void superseded entries before restoring/inserting, so the live unique index sees the final set.
-  for (const row of rows.filter(r => !r.voidedAt && !unchanged.has(r.id))) {
-    const metadata = { voidedAt: now, voidedBy: ctx.userId ?? 'system', voidReason: p.reason };
-    await tx.update(attendancePunch).set(metadata).where(eq(attendancePunch.id, row.id));
-    await event('attendance.punch.voided', row.id, { punchAt: row.punchAt, direction: row.direction }, metadata);
+  const superseded = rows.filter(row => !row.voidedAt && !unchanged.has(row.id));
+  const metadata = { voidedAt: now, voidedBy: ctx.userId ?? 'system', voidReason: p.reason };
+  const replacesWithNewPunches = entries.length > 1 && entries.every(e => !e.id);
+  const deferVoidAudit = replacesWithNewPunches && superseded.length + entries.length <= 500;
+  const replacementAudit: AppendEventArgs[] = [];
+  for (let offset = 0; offset < superseded.length; offset += 500) {
+    const batch = superseded.slice(offset, offset + 500);
+    await tx.update(attendancePunch).set(metadata)
+      .where(inArray(attendancePunch.id, batch.map(row => row.id)));
+    const events = batch.map(row => auditEntry(
+      'attendance.punch.voided', row.id, { punchAt: row.punchAt, direction: row.direction }, metadata,
+    ));
+    if (deferVoidAudit) replacementAudit.push(...events);
+    else await appendEvents(tx, events);
+  }
+  const newPunch = (e: ClockEntry) => ({
+    tenantId: ctx.tenantId, attendanceId: p.attendanceId, employmentId: p.employmentId,
+    attendanceDate: p.date, punchAt: e.punchAt, direction: e.direction, method: 'admin' as const,
+  });
+  // A replacement pair has no existing punch IDs. Insert it in one statement
+  // and retain the original per-punch audit order, independent of RETURNING order.
+  if (replacesWithNewPunches) {
+    const added = await tx.insert(attendancePunch).values(entries.map(newPunch)).returning({
+      id: attendancePunch.id, punchAt: attendancePunch.punchAt, direction: attendancePunch.direction,
+    });
+    const ids = new Map(added.map(row => [row.punchAt + ':' + row.direction, row.id]));
+    const events = entries.map(entry => {
+      const id = ids.get(entry.punchAt + ':' + entry.direction);
+      if (!id) throw new Error('The replacement clocking could not be recorded.');
+      return auditEntry('attendance.punch.added', id, null, { punchAt: entry.punchAt, direction: entry.direction, method: 'admin' });
+    });
+    // Append both sets in order after the punch writes, reducing time under the audit-chain lock.
+    await appendEvents(tx, [...replacementAudit, ...events]);
+    return;
   }
   for (const e of entries) {
     const original = e.id ? rows.find(r => r.id === e.id)! : null;
@@ -87,7 +123,7 @@ export async function applyClockChangesTx(tx: Tx, ctx: SessionContext, p: {
       }
     }
     else {
-      const [added] = await tx.insert(attendancePunch).values({ tenantId: ctx.tenantId, attendanceId: p.attendanceId, employmentId: p.employmentId, attendanceDate: p.date, punchAt: e.punchAt, direction: e.direction, method: 'admin' }).returning({ id: attendancePunch.id });
+      const [added] = await tx.insert(attendancePunch).values(newPunch(e)).returning({ id: attendancePunch.id });
       await event('attendance.punch.added', added.id, original ? { supersedes: original.id } : null, { punchAt: e.punchAt, direction: e.direction, method: 'admin' });
     }
   }

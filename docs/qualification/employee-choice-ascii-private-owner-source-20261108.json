@@ -1,0 +1,87 @@
+{
+  "kind": "EXACT_ASCII_PRIVATE_OWNER_SOURCE_NOT_NATIVE_QUALIFICATION",
+  "base": "42b538003c062b1fd041172100754e7e4c4563d4",
+  "approvedDesign": "8573f2785dd0b5786fc2bb558f5451ab2b188767",
+  "qualifiedFactory": "c73c8e15400890e5dfcb0d32d178929a5522ab5c",
+  "factoryNativeRun": 42441155209,
+  "sourceRef": "codex/employee-ascii-private-owner-20261108",
+  "qualification": "NOT_RUN; source and independent review before hosted checks",
+  "sourceSha256": {
+    "db/client.ts": "bdd700ea682bafbf0cad2c255b8dacb96c13d82dc7fa0ae9446d4a1da265cd3f",
+    "docs/adr/2026-11-08-exact-ascii-employee-choice-prototype.md": "2149fd33ca21a97ce43364ed482838894e02d36c2d6cecbc1f31a09734b83084",
+    "docs/qualification/employee-choice-ascii-private-owner-20261108.md": "05a64d5e3772b95c9afe24c4f82fe942920e15a9a65931b2f008639b644821bd",
+    "docs/qualification/employee-choice-ascii-private-owner-design-20261108.md": "aa2163cd3371cac981f0b1bf6a178fabecc50b12591a075d834a7c33f86ac367",
+    "docs/qualification/employee-choice-exact-ascii-prototype-20261108.md": "19e529ad2ee3bf9c481d7405f200bc400c09c6dbce1fcccb6bdc12f8dfe9b40c",
+    "test/employee-choice-ascii-terminal-witness.test.ts": "5c88b58549e0f14dfba796a546dbea8ff875e6abbfe252e2fce737f9f5b6d8ee",
+    "test/employee-choice-exact-ascii-owner-source.test.ts": "49a950ce097cb876063731c6c5440a8778144398f78d460f7d3996fc4d3ce0e3",
+    "test/employee-choice-exact-ascii-plan-work.test.ts": "5e43addb9eaa0efd92541eadd196d6f2ce79c94b455531559986c1d7576feaf2",
+    "test/employee-choice-exact-ascii-plan.test.ts": "b7cdc6700afa0ef0aeb1b846778f5f2e927c9467ecf70bed8ebc298b1e057763",
+    "test/employee-choice-exact-ascii-purpose.test.ts": "b4243c1cdc9345fbb273fa2bf576f373365a47d14b9228279857c9e514401ae1",
+    "test/employee-choice-exact-ascii-runtime.test.ts": "50a1d02f922a96c81f7e74913928c3c34188a87bef300b50418f60a07da2d9c0",
+    "test/fixtures/employee-choice-exact-ascii-owner-76b.source": "44c648ef808dc2a3db73480e315ed93b8830b4dd339980ac205af509ea7d3784",
+    "test/fixtures/employee-choice-exact-ascii-owner-inverse.json": "4a62bdecabf4802e8db4f12656a2300ff85e9e38f5d6c295cc1c5cb56948fac1",
+    "test/fixtures/employee-choice-exact-ascii-purpose.sql": "10b0d44d8943fdfbb76e748028e8fbd2938a514ea22c57b70cfcc665b6a41743",
+    "test/fixtures/employee-choice-native-purpose.sql": "d72e6ded4a07cbbb848856c35391e1e56fdd02ad793c71a18360754e11fe8efc",
+    "test/harness.ts": "ab992137979341edd6bc15ba47e38d99d3e96994b788f15afde27cea3ed6db9e",
+    "test/performance/employee-choice-ascii-terminal-witness.ts": "5cacd1dbf0154181de2b60bcdc4ed554e361eaaa61481414a9b58997063feaab",
+    "test/performance/employee-choice-auto-explain.ts": "db4eeea5172dd75617548acb11e574f68d70bc09260fdb2a96a68c6ac93ee30a",
+    "test/performance/employee-choice-benchmark-evidence.ts": "53f5a71f0324d8b5c5ffac70aa1638b2bfc04197e5dba6cd5bd4ba62d8bb904d",
+    "test/performance/employee-choice-benchmark-lifetime.ts": "275a28be7d38d815556c9d7ecc5ebaa245a3b559b8835d7c5f7afd3edd86a1d5",
+    "test/performance/employee-choice-benchmark-owner.ts": "6281fd843e2843b89806d57e415b9182d4985a2c5aa65c010e5d0b1d30034fbe",
+    "test/performance/employee-choice-exact-ascii-owner-factory.ts": "1d289fead9e6edfd010c6b8ff9afad2e39a4dc2602d4e8ad307a9b64e1fb4c39",
+    "test/performance/employee-choice-exact-ascii-owner.ts": "d66ca2fe7f67c2ee271e873ab2d035ff694da7bcbc4065a1dd6b13203873d26e",
+    "test/performance/employee-choice-exact-ascii-plan-work.ts": "0c2974cb27bd2c71985e80607383732af317ba71dcb960f4d0af9ee2b33ab3bb",
+    "test/performance/employee-choice-exact-ascii-reader.ts": "ed2e2fb304de2d78435c13ec9caf9d71161c68755abea459674d50fbf1a1a8fd",
+    "test/performance/employee-choice-exact-ascii-runtime-contract.ts": "14f1f74b60fedaf394c3b5a7c1b1e0661d6327bc34472d146c81830e69cd7813",
+    "test/performance/employee-choice-exact-ascii-runtime.ts": "3ba9e9aece28232badbccabb9ba13e731047a3327160081d01a4c03db3085921",
+    "test/performance/employee-choice-native-log-collector.ts": "765f4504a122b5b4a3c6d98609450eb7c7cc7cb0a039acbf7e3d83d134a8e639",
+    "test/performance/employee-choice-native-log-stream.ts": "5c5a215f509cd33e0aa4410eca27c626c96ffadeaa8fe79e297b101e1a8c53db",
+    "test/performance/employee-choice-native-object-identity.ts": "c9b3f20bd7cc304704575cfce9925e4b64db3cbd9258db2a1c5a7431ff250393",
+    "test/performance/employee-choice-native-purpose-owner-factory.ts": "481e5f20b38d02325570147c146428066213560d9066aa3141869454924a3e13",
+    "test/performance/employee-choice-native-purpose-owner.ts": "12f0873b15dfd86e8972bc1d951c62d8827227513b11a2726807c561faf625ef",
+    "test/performance/employee-choice-native-purpose-session.ts": "807a1983252ce6c49903baa5f561b17a3f66fd6c601c076820b3305a45587c32",
+    "test/performance/employee-choice-owned-binding.ts": "17b329a63aa79151e6bb066ffe10c70ebf253b9000cae2fe6ec1cf610b46d2b0",
+    "test/performance/employee-choice-owned-settlement.ts": "e4fe93308ee5ff14b89410f035cff9ed7c3d044151a1843d19919250a9930a27",
+    "test/performance/employee-choice-prototype-carriers.ts": "7e2b8dd195e69149c1f3e85b9043afd93d8891dde687666b7d20b1a29fdd8c14",
+    "test/performance/employee-choice-sql-frontier.ts": "cc086b95488cf1ba8b832a965a2737674be1f8b3abbde0cca2fafee7e7c74d8d"
+  },
+  "plannedCases": {
+    "retainedAsciiPure": 14,
+    "newSourceProvenance": 3,
+    "newTerminal": 4,
+    "totalAffectedPure": 21,
+    "nativePurposeDeclarations": 9,
+    "benchmarkExecutions": 6
+  },
+  "selectors": {
+    "pure": [
+      "test/employee-choice-exact-ascii-runtime.test.ts",
+      "test/employee-choice-exact-ascii-plan-work.test.ts",
+      "test/employee-choice-exact-ascii-owner-source.test.ts",
+      "test/employee-choice-ascii-terminal-witness.test.ts"
+    ],
+    "soleNative": [
+      "test/employee-choice-exact-ascii-purpose.test.ts"
+    ],
+    "soleBenchmark": [
+      "test/employee-choice-exact-ascii-plan.test.ts"
+    ]
+  },
+  "benchmark": {
+    "employees": 50000,
+    "wholePortsPerVariant": 18,
+    "actualPlanPhases": 44,
+    "actualNativePairs": 22,
+    "targetMs": 1000,
+    "workMs": 840000,
+    "totalMs": 900000,
+    "reserveMs": 60000
+  },
+  "nativeSqlChanged": false,
+  "applicationChanged": false,
+  "runtimeExecuted": false,
+  "normalCiAdmitted": false,
+  "focusedAsciiRoutesQualified": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

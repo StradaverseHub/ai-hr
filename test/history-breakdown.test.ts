@@ -546,3 +546,30 @@ it('uses matching consumed dated inputs to recover missing legacy quantities', (
   const mismatched = deriveHistoryBreakdown(slip, [{ ...sources[0], amount: '31' }, ...sources.slice(1)]);
   expect(mismatched.overtimeLines).toEqual([{ code: 'OT1_5', name: 'Overtime 1.5', amount: 60 }]);
 });
+
+// 2026-11-13 — every deduction code groups like overtime: three one-day UNPAID LEAVE (LUPL) transactions are
+// one row "3 days, 215.27" on Transaction History and the admin Individual Payslip (which borrows this breakdown).
+it('groups repeated lines of any deduction code into one row, adding days and reconciling to the residual', () => {
+  const total = (rows: { amount: number }[]) => Math.round(rows.reduce((t, r) => t + r.amount, 0) * 100) / 100;
+  const lupl = (amount: number) => ({ code: 'LUPL', name: 'UNPAID LEAVE', amount, buckets: [{ bucket: 'deduct' as const, amount }] });
+  const slip = row({ otherDeductions: '235.27', statutory: { componentLines: [
+    lupl(73.33),
+    { code: 'D0030', name: 'MONTHLY PARKING', amount: 20, buckets: [{ bucket: 'deduct' as const, amount: 20 }] },
+    lupl(70.97),
+    lupl(70.97),
+  ] } });
+  const day = (amount: string) => ({ componentCode: 'LUPL', consumedByThisRun: true, quantityEvidenceCurrent: true, kind: 'deduction', amount, quantity: '1', unit: 'days' });
+  const b = deriveHistoryBreakdown(slip, [day('73.33'), day('70.97'), day('70.97')]);
+  expect(b.deductionLines).toEqual([
+    { code: 'LUPL', name: 'UNPAID LEAVE', amount: 215.27, inputQuantity: { qty: 3, unit: 'days' } },
+    { code: 'D0030', name: 'MONTHLY PARKING', amount: 20 },
+  ]);
+  expect(total(b.deductionLines)).toBe(b.absence.residual);
+  // Without day evidence the row still groups, by amount only — never an invented day count.
+  expect(deriveHistoryBreakdown(slip).deductionLines).toEqual([
+    { code: 'LUPL', name: 'UNPAID LEAVE', amount: 215.27 },
+    { code: 'D0030', name: 'MONTHLY PARKING', amount: 20 },
+  ]);
+  // And a residual the grouped rows do not explain still shows the bare total, as before.
+  expect(deriveHistoryBreakdown(row({ otherDeductions: '300.00', statutory: slip.statutory })).deductionLines).toEqual([]);
+});

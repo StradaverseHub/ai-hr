@@ -1,0 +1,13 @@
+{
+  "kind": "NATIVE_REFERENCE_SHARED_MIRROR_DESIGN_NOT_QUALIFICATION",
+  "base": "6018b27d66d8635b88539d6c30f1beaaceefac86",
+  "sourceRef": "codex/compiler-native-reference-prototype-20261108",
+  "sourceHashes": {
+    "docs/adr/2026-11-08-native-compiler-reference-boundaries.md": "fe1b9c6ba3a998c440b0daa2ffbd97b663107d7cb046eef404753e0a60059c23",
+    "docs/qualification/compiler-native-reference-shared-layout-20261108.md": "06ecf5d4387fae4e56ddc5da660d85d4b6754922ed8ded844d79cca38595108f"
+  },
+  "checksExecuted": false,
+  "ordinaryCompilerQualified": false,
+  "releaseAuthorized": false,
+  "originalApplicationFiveNegativesStillRequired": true
+}

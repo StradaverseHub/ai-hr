@@ -5,6 +5,7 @@ import { afterAll,beforeAll,beforeEach,describe,expect,it,vi } from 'vitest';
 import { and,eq,sql } from 'drizzle-orm';
 import { adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base } from './harness';
 import { withTenant,type SessionContext } from '../db/client';
+import * as database from '../db/client';
 import { hireEmployee,setReportingLine } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dispatchNotifications } from '../core/notifications';
@@ -137,6 +138,45 @@ describe('workflow email configuration and outbox in the actual database',()=>{
   await owner.db.delete(schema.notificationDelivery).where(eq(schema.notificationDelivery.id,foreignJob.id));
   await withTenant(scoped,tx=>tx.execute(sql`select app.notification_email_enqueue(${foreignJob.notificationId}::uuid,'leave',${foreignEvent.sequence}::bigint)`));expect((await deliveries()).map(d=>d.id)).toEqual([ownJob.id]);
   await withTenant(adminCtx(b),tx=>tx.execute(sql`select app.notification_email_enqueue(${foreignJob.notificationId}::uuid,'leave',${foreignEvent.sequence}::bigint)`));expect(await deliveries()).toHaveLength(2);
+ });
+ it('leaves a busy cursor to its current owner during page catch-up',async()=>{
+  const e=await employee();
+  const source=await event(e.employmentId);
+  await raw.begin(async tx=>{
+   await tx`select pg_advisory_xact_lock(hashtextextended(${'notification-cursor:'+b.tenantId},0))`;
+   let timer:ReturnType<typeof setTimeout>|undefined;
+   try{
+    const skipped=await Promise.race([
+     dispatchNotifications(adminCtx(b),{skipIfBusy:true}),
+     new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(Error('Page catch-up waited for the cursor')),3000);}),
+    ]);
+    expect(skipped).toEqual({processed:0,created:0});
+   }finally{clearTimeout(timer);}
+  });
+  await dispatchNotifications(adminCtx(b));
+  expect(await owner.db.select().from(schema.notification).where(eq(schema.notification.sourceEventId,source.id))).toHaveLength(1);
+ });
+ it('skips duplicate page catch-up before borrowing a connection and admits a later attempt',async()=>{
+  const ctx=adminCtx(b),actual=database.withTenant;
+  let release!:()=>void;
+  const hold=new Promise<void>(resolve=>{release=resolve;});
+  const acquire=vi.spyOn(database,'withTenant').mockImplementationOnce(async (...args)=>{
+   await hold;
+   return actual(...args);
+  });
+  const first=dispatchNotifications(ctx,{skipIfBusy:true});
+  try{
+   expect(await dispatchNotifications(ctx,{skipIfBusy:true})).toEqual({processed:0,created:0});
+   expect(acquire).toHaveBeenCalledTimes(1);
+   release();
+   await first;
+   await dispatchNotifications(ctx,{skipIfBusy:true});
+   expect(acquire).toHaveBeenCalledTimes(2);
+  }finally{
+   release();
+   await first;
+   acquire.mockRestore();
+  }
  });
  it('serializes concurrent projection and coalesces concurrent employments for one exact account',async()=>{
   const e=await employee();const second=await hireEmployee(adminCtx(b),{person:{id:e.personId},companyId:b.companyId,departmentId:b.deptB,employmentType:'part_time',hiredOn:todayInKualaLumpur()});

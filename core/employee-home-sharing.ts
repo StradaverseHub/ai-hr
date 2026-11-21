@@ -2,34 +2,59 @@
  * interpret missing clock/leave evidence as office/WFH presence. SQL repeats current authority,
  * sharing configuration and person-wide celebration choices at each read, including pagination. */
 import {sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
-import {requireOwnHomeSubject} from './employee-home';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {HomeAccessError} from './employee-home';
+import {isCurrentOwnHomeEmploymentTx,reportingManagerIdsBundleSql,reportingManagerIdsFromBundle} from './read';
+import {ownerCardSectionReads} from './home-owner-reads';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {calendarWindowDates} from '../lib/calendar-window';
 import {homeSharingPageInput,validateHomeTeamPage,validateHomeCelebrationPage,validateHomeTeamCalendar} from '../lib/employee-home-sharing';
 
-export async function readHomeTeamPage(ctx:SessionContext,employmentId:string,p:{date?:string;after?:string;limit?:number;onlyLeave?:boolean}={}){
- const subject=await requireOwnHomeSubject(ctx,employmentId),on=p.date??todayInKualaLumpur();
- calendarWindowDates(on,on);const input=homeSharingPageInput(p.after,p.limit);
- return withTenant(ctx,async tx=>{
-  const query=p.onlyLeave?sql`SELECT app.home_team_leave_page(${subject.employmentId}::uuid,${on}::date,${input.after}::uuid,${input.limit}::integer) AS projection`:
-   sql`SELECT app.home_team_page(${subject.employmentId}::uuid,${on}::date,${input.after}::uuid,${input.limit}::integer) AS projection`;
+function withOwnHomeSharingRead<T>(ctx:SessionContext,employmentId:string,read:(tx:Tx)=>Promise<T>,signal?:AbortSignal,outerTx?:Tx){
+ if(!ctx.userId)throw new HomeAccessError('authentication');
+ const scopedRead=async(tx:Tx)=>{
+  if(!await isCurrentOwnHomeEmploymentTx(tx,ctx,employmentId))throw new HomeAccessError('employmentUnavailable');
+  signal?.throwIfAborted();
+  return read(tx);
+ };
+ return outerTx?scopedRead(outerTx):withTenant(ctx,scopedRead,{readSignal:signal});
+}
+
+export async function readHomeTeamPage(ctx:SessionContext,employmentId:string,p:{date?:string;after?:string;limit?:number;onlyLeave?:boolean}={},signal?:AbortSignal){
+ return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
+  const on=p.date??todayInKualaLumpur();
+  calendarWindowDates(on,on);const input=homeSharingPageInput(p.after,p.limit);
+  const query=p.onlyLeave?sql`SELECT app.home_team_leave_page(${employmentId}::uuid,${on}::date,${input.after}::uuid,${input.limit}::integer) AS projection`:
+   sql`SELECT app.home_team_page(${employmentId}::uuid,${on}::date,${input.after}::uuid,${input.limit}::integer) AS projection`;
   const [row]=await tx.execute(query) as unknown as {projection:unknown}[];
   return validateHomeTeamPage(row?.projection,on);
- });
+ },signal);
 }
-export async function readHomeTeamCalendar(ctx:SessionContext,employmentId:string,from:string,to:string){
- const subject=await requireOwnHomeSubject(ctx,employmentId);calendarWindowDates(from,to);
- return withTenant(ctx,async tx=>{
-  const [row]=await tx.execute(sql`SELECT app.home_team_calendar(${subject.employmentId}::uuid,${from}::date,${to}::date) AS projection`) as unknown as {projection:unknown}[];
+export async function readHomeTeamCalendar(ctx:SessionContext,employmentId:string,from:string,to:string,signal?:AbortSignal,outerTx?:Tx){
+ return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
+  calendarWindowDates(from,to);
+  const [row]=await tx.execute(sql`SELECT app.home_team_calendar(${employmentId}::uuid,${from}::date,${to}::date) AS projection`) as unknown as {projection:unknown}[];
   return validateHomeTeamCalendar(row?.projection,from,to);
- });
+ },signal,outerTx);
 }
-export async function readHomeCelebrationPage(ctx:SessionContext,employmentId:string,p:{after?:string;limit?:number}={}){
- const subject=await requireOwnHomeSubject(ctx,employmentId),input=homeSharingPageInput(p.after,p.limit,'celebration');
- return withTenant(ctx,async tx=>{
-  const [row]=await tx.execute(sql`SELECT app.home_celebration_page(${subject.employmentId}::uuid,
+/** Today's At a glance "Coming up" (docs/adr/2026-11-10-home-request-read-scope.md decision 13): readHomeTeamCalendar
+ * for [from, to], after its own-employment proof and window check, and the employment's current managers'
+ * employment ids (core/read.ts reportingManagerIdsBundleSql, the ids reportingLinesFor's `managers` carry) in the
+ * calendar's own statement. Null under withOwnerCardSectionReads, where both owners read on their own. */
+export async function readHomeTeamCalendarAndManagers(ctx:SessionContext,employmentId:string,from:string,to:string,signal?:AbortSignal){
+ if(ownerCardSectionReads())return null;
+ return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
+  calendarWindowDates(from,to);
+  const [row]=await tx.execute(sql`SELECT app.home_team_calendar(${employmentId}::uuid,${from}::date,${to}::date) AS projection,
+   ${reportingManagerIdsBundleSql(employmentId)} AS managers`) as unknown as {projection:unknown;managers:unknown}[];
+  return {calendar:validateHomeTeamCalendar(row?.projection,from,to),managerEmploymentIds:reportingManagerIdsFromBundle(row?.managers)};
+ },signal);
+}
+export async function readHomeCelebrationPage(ctx:SessionContext,employmentId:string,p:{after?:string;limit?:number}={},signal?:AbortSignal){
+ return withOwnHomeSharingRead(ctx,employmentId,async tx=>{
+  const input=homeSharingPageInput(p.after,p.limit,'celebration');
+  const [row]=await tx.execute(sql`SELECT app.home_celebration_page(${employmentId}::uuid,
    ${input.after}::text,${input.limit}::integer) AS projection`) as unknown as {projection:unknown}[];
   return validateHomeCelebrationPage(row?.projection);
- });
+ },signal);
 }

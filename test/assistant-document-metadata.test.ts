@@ -81,6 +81,19 @@ describe('Ordinary document exact three-field native review',()=>{
   await expect(store.prepare(ctx,{...human(),employmentId:other.employmentId})).rejects.toThrow();const company=await createCompany(group(),{legalName:'Fictional other company'}),department=await createDepartment(group(),{companyId:company.id,name:'Fictional Department'}),scoped=await login(await hire('Scoped other HR',b,company.id,department.id),'hr_admin',b,company.id);await expect(store.prepare(scoped,human())).rejects.toThrow();
   const foreign=await seedBase();await setModule(foreign.tenantId,'assistant','active');const foreignHr=await login(await hire('Foreign HR',foreign),'hr_admin',foreign);await expect(store.prepare(foreignHr,human())).rejects.toThrow();expect((await state()).documents).toEqual(before.documents);
  });
+ it('lists the same document choices under the shared lock for a group and a company administrator and refuses another company and tenant',async()=>{
+  // A read since 12 November 2026 (shared Access lock): the same rows and the same refusals as the exclusive read it replaced.
+  const company=await createCompany(group(),{legalName:'Fictional choices company'}),department=await createDepartment(group(),{companyId:company.id,name:'Fictional Department'});
+  const insider=await login(await hire('Fictional company document HR'),'hr_admin',b,b.companyId),outsider=await login(await hire('Fictional other company document HR',b,company.id,department.id),'hr_admin',b,company.id);
+  const selection={query:'Fictional Document Employee',employmentId:target.employmentId},whole=await readDocumentMetadataChoices(ctx,selection),own=await readDocumentMetadataChoices(insider,selection);
+  if(whole.kind!=='choices'||own.kind!=='choices')throw Error('Expected document choices');
+  expect(whole.documents.map(row=>(row as {id:string}).id)).toEqual([documentId]);expect(own).toEqual(whole);
+  expect(await readDocumentMetadataChoices(outsider,selection)).toEqual({kind:'unavailable'});
+  const listed=await readDocumentMetadataChoices(outsider,{query:'Fictional Document Employee'});if(listed.kind!=='choices')throw Error('Expected employee choices');expect(listed.employees).toEqual([]);
+  const foreign=await seedBase();await setModule(foreign.tenantId,'assistant','active');const foreignHr=await login(await hire('Foreign document HR',foreign),'hr_admin',foreign);
+  expect(await readDocumentMetadataChoices(foreignHr,selection)).toEqual({kind:'unavailable'});
+  const foreignList=await readDocumentMetadataChoices(foreignHr,{query:'Fictional Document Employee'});if(foreignList.kind!=='choices')throw Error('Expected foreign employee choices');expect(foreignList.employees).toEqual([]);
+ });
  it('rejects invented binary, letter, photo or authority fields',async()=>{
   const before=await state();for(const extra of [{content:'pretend stored file'},{fileName:'pretend.pdf'},{letterArtifactId:randomUUID()},{actor:'hr_admin'},{operation:'delete'},{fields:{...fields(),photo:'bytes'}}])await expect(store.prepare(ctx,{...human(),...extra})).rejects.toThrow();expect(await state()).toEqual(before);
  });

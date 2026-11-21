@@ -10,7 +10,7 @@ import { envFallbackConfig, isProvider } from '../lib/ai/registry';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { readGatewayOptions } from '../lib/ai/providers/gateway-options';
 import { OpenRouterTransportConfiguration } from '../lib/ai/providers/openrouter-transport';
-import { assertAiPrincipalTx } from './ai-principal';
+import { assertAiPresentationPrincipalTx, assertAiPrincipalTx } from './ai-principal';
 import { currentAiProviderAdminTx } from './ai-provider-authority';
 
 const issued = new WeakSet<object>();
@@ -43,6 +43,21 @@ const parameters = (cfg: ResolvedAiConfig) => digest([
  */
 export async function resolveAiProviderSnapshotTx(tx: Tx, ctx: SessionContext): Promise<AiProviderSnapshot | null> {
   await assertAiPrincipalTx(tx, ctx);
+  const binding = await readActiveProviderBindingTx(tx, ctx);
+  if (!binding) return null;
+  const snapshot = Object.freeze({ configuration: binding.configuration, purpose: 'active' as const, fingerprint: binding.fingerprint, principal: principal(ctx), preparedAt: Date.now() });
+  issued.add(snapshot);
+  return snapshot;
+}
+
+/** Checks the same key and options for display without issuing provider authority. */
+export async function readAiProviderPresentationTx(tx: Tx, ctx: SessionContext): Promise<Pick<ResolvedAiConfig, 'provider' | 'model'> | null> {
+  await assertAiPresentationPrincipalTx(tx, ctx);
+  const binding = await readActiveProviderBindingTx(tx, ctx);
+  return binding ? { provider: binding.configuration.provider, model: binding.configuration.model } : null;
+}
+
+async function readActiveProviderBindingTx(tx: Tx, ctx: SessionContext) {
   let rows: { provider: string; model: string; api_key_ciphertext: string; provider_options: unknown }[];
   try { rows = await tx.execute(sql`select provider, model, api_key_ciphertext, provider_options from app.ai_active_provider_config_v2()`) as unknown as typeof rows; }
   catch { return refuse(); }
@@ -70,9 +85,7 @@ export async function resolveAiProviderSnapshotTx(tx: Tx, ctx: SessionContext): 
     configuration = Object.freeze({ ...fallback });
     fingerprint = digest(['environment-v1', ctx.tenantId, parameters(configuration)]);
   }
-  const snapshot = Object.freeze({ configuration, purpose: 'active' as const, fingerprint, principal: principal(ctx), preparedAt: Date.now() });
-  issued.add(snapshot);
-  return snapshot;
+  return { configuration, fingerprint };
 }
 
 /** Explicit candidate preparation is group-admin-only even if the selected provider is already active.

@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import {requirePackFor} from '../localization/registry';
 import {requestCurrentProfileChange as requestProfileChange} from './helpers/profile-requests';
 /**
@@ -64,7 +65,7 @@ import {
   transferEmployee,
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, openLeaveYear, requestLeave } from '../core/leave';
-import { dashboardStats, groupBreakdown, listEmployees, listEmployeesPage, reportingLinesFor } from '../core/read';
+import { listEmployees, listEmployeesPage, reportingLinesFor } from '../core/read';
 import {
   archiveDepartment,
   assignRole,
@@ -146,7 +147,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  base = await seedBase();
+  base = await seedAttendanceSubmissionBase();
 });
 afterAll(async () => {
   await closeAll();
@@ -484,6 +485,7 @@ describe('Slice 4 — payroll', () => {
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     const res = await generatePayslips(a, { batchId });
+    if (!('payslips' in res)) throw Error('Expected a whole-run generation result');
     expect(res.payslips).toBe(1);
 
     const detail = await batchDetail(a, batchId);
@@ -804,55 +806,6 @@ describe('Slice B — company-scoped authorization', () => {
   });
 });
 
-describe('Slice C — consolidation (group vs per-company)', () => {
-  it('scopes dashboard stats to a company subtree and breaks headcount down per company', async () => {
-    const a = adminCtx(base);
-    const { id: parent } = await createCompany(a, { legalName: 'Parent Co' });
-    const { id: child } = await createCompany(a, { legalName: 'Child Co' });
-    await setCompanyParent(a, { companyId: child, parentCompanyId: parent });
-    const deptP = await createDepartment(a, { companyId: parent, name: 'P' });
-    const deptC = await createDepartment(a, { companyId: child, name: 'C' });
-    await hireEmployee(a, {
-      person: { fullName: 'P1', primaryEmail: 'p1@x.test' },
-      companyId: parent,
-      departmentId: deptP.id,
-      employmentType: 'full_time',
-      hiredOn: '2026-01-01',
-    });
-    await hireEmployee(a, {
-      person: { fullName: 'C1', primaryEmail: 'c1@x.test' },
-      companyId: child,
-      departmentId: deptC.id,
-      employmentType: 'full_time',
-      hiredOn: '2026-01-01',
-    });
-
-    // 11355c08 — `companies` is NO LONGER switcher-scoped, and these two assertions used to say it was.
-    // They read `.companies` as 2 then 1, which is `scopeIds.length`: the number of companies TICKED IN
-    // THE SWITCHER, not a count of companies. The tile links to /admin/organization, which ignores the
-    // switcher, so the two disagreed. It is now the number this admin can administer — `a` is a
-    // group-wide hr_admin, so that is every company the fixture has: Acme (seedBase) + Parent + Child.
-    // Every OTHER figure here stays switcher-scoped, which is what the headcount lines still pin.
-    const RESOLVED = 3;
-
-    // Company context = both companies (multi-select).
-    const groupStats = await dashboardStats(a, [parent, child]);
-    expect(groupStats.headcount).toBe(2);
-    expect(groupStats.companies).toBe(RESOLVED);
-
-    // Company context = the child alone. Headcount narrows; the company count does not follow the
-    // switcher (test/dashboard-companies-tile.test.ts is where that contract is stated in full).
-    const childStats = await dashboardStats(a, [child]);
-    expect(childStats.headcount).toBe(1);
-    expect(childStats.companies).toBe(RESOLVED);
-
-    // Per-company breakdown.
-    const bd = await groupBreakdown(a);
-    expect(bd.find((r) => r.id === parent)?.headcount).toBe(1);
-    expect(bd.find((r) => r.id === child)?.headcount).toBe(1);
-  });
-});
-
 describe('Slice D — concurrent employment + cost allocation', () => {
   it('lets one person hold employments at multiple companies, with a cost split', async () => {
     const a = adminCtx(base);
@@ -1017,9 +970,12 @@ describe('Slice 5 — bonus / additional-remuneration MTD (#68)', () => {
     // RM5,000 + RM5,000 is a RM10,000 month, so employee ceil(11% × 10,000) = 1,100 and employer
     // ceil(12% × 10,000) = 1,200. The employer figure was 1,300 while the rate was anchored to the
     // normal wage alone (13% of 5,000 + 13% of the bonus); that reading is the one this item reversed.
-    expect(epf(5000, 5000)).toEqual({ employee: 1100, employer: 1200 });
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): normal RM5,000 is at or below
+    // RM5,000 and the bonus takes the month above it, so KWSP's Part A bonus note sets the employer at 13%
+    // of the month: 10,000 × 13% = 1,300 (was 1,200, the 12% row). The employee row is unchanged at 1,100.
+    expect(epf(5000, 5000)).toEqual({ employee: 1100, employer: 1300 });
     expect(withBonus.epfEmployee).toBe(1100);
-    expect(withBonus.epfEmployer).toBe(1200);
+    expect(withBonus.epfEmployer).toBe(1300);
     expect(withBonus.epfEmployer).toBeGreaterThan(base.epfEmployer); // bonus added EPF
 
     // SOCSO + EIS: bonus EXCLUDED — identical with and without the bonus.
@@ -1501,7 +1457,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       checkOut: '19:30',
       reason: 'Forgot to clock in',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     const [row] = await attRow(employmentId, '2026-06-03');
     expect(row.checkInAt).toBe('09:00:00');
@@ -1533,7 +1489,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       checkOut: '19:00', // really stayed to 19:00
       reason: 'Correction',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
 
     const rows = await attRow(employmentId, '2026-06-04');
     expect(rows.length).toBe(1); // upsert, not a second row
@@ -1576,7 +1532,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       userId: uM,
       personId: M.personId,
     };
-    await decideAttendanceCorrection(mgrCtx, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(mgrCtx, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     const [row] = await attRow(E.employmentId, '2026-06-03');
     expect(row.status).toBe('present');
   });
@@ -1603,7 +1559,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       personId,
     };
     await expect(
-      decideAttendanceCorrection(selfCtx, { correctionId, decision: 'approved' }),
+      decideAttendanceCorrection(selfCtx, { expectedStageIndex: 0, correctionId, decision: 'approved' }),
     ).rejects.toThrow('You cannot decide your own attendance application');
   });
 
@@ -1617,7 +1573,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       checkOut: '18:00',
       reason: 'Correction',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
     const rows = await attRow(employmentId, '2026-06-03');
     expect(rows.length).toBe(0); // no attendance row materialized — that is the proof reject is a no-op
     const evs = await eventTypesFor(base.tenantId, correctionId);

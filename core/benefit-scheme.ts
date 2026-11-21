@@ -81,13 +81,14 @@ export type GradeGroupRow = {
   name: string;
   archived: boolean;
   gradeIds: string[];
+  scopeCompanyIds?:string[]|null;
 };
 
 export async function listGradeGroups(ctx: SessionContext): Promise<GradeGroupRow[]> {
   // Read-only — no events (CLAUDE.md skip rule).
   return withTenant(ctx, async (tx) => {
     const groups = await tx
-      .select({ id: gradeGroup.id, name: gradeGroup.name, archivedAt: gradeGroup.archivedAt })
+      .select({ id: gradeGroup.id, name: gradeGroup.name, archivedAt: gradeGroup.archivedAt,scopeCompanyIds:gradeGroup.scopeCompanyIds })
       .from(gradeGroup)
       .orderBy(asc(gradeGroup.name));
     const members = await tx
@@ -103,6 +104,7 @@ export async function listGradeGroups(ctx: SessionContext): Promise<GradeGroupRo
       id: g.id,
       name: g.name,
       archived: g.archivedAt != null,
+      scopeCompanyIds:g.scopeCompanyIds,
       gradeIds: byGroup.get(g.id) ?? [],
     }));
   });
@@ -110,18 +112,18 @@ export async function listGradeGroups(ctx: SessionContext): Promise<GradeGroupRo
 
 export async function createGradeGroup(
   ctx: SessionContext,
-  p: { name: string; gradeIds?: string[] },
+  p: { name: string; gradeIds?: string[]; scopeCompanyIds?:string[]|null },
   existingTx?: Tx,
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const name = cleanName(p.name, 'Grade group name');
   const gradeIds = [...new Set((p.gradeIds ?? []).filter(Boolean))];
   return tenantMutation(ctx, existingTx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .insert(gradeGroup)
-      .values({ tenantId: ctx.tenantId, name })
+      .values({ tenantId: ctx.tenantId, name,scopeCompanyIds:p.scopeCompanyIds??null })
       .returning({ id: gradeGroup.id })
       .catch((e) => {
         if (String((e as { code?: string })?.code) === '23505') {
@@ -136,7 +138,7 @@ export async function createGradeGroup(
       aggregateId: row.id,
       eventType: 'grade-group.created',
       actor: actorOf(ctx),
-      payload: { name, gradeIds },
+      payload: { name, gradeIds,scopeCompanyIds:p.scopeCompanyIds??null },
     });
     return row;
   });
@@ -151,7 +153,7 @@ export async function updateGradeGroup(
   const name = cleanName(p.name, 'Grade group name');
   const gradeIds = p.gradeIds === undefined ? undefined : [...new Set(p.gradeIds.filter(Boolean))];
   return tenantMutation(ctx, existingTx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // ae5b84d5: capture the BEFORE membership inside this tx — the action fires the cohort recalc over the
     // UNION of before/after grade ids, so both a grade that LEFT the group and one that JOINED are trued up
@@ -186,7 +188,7 @@ export async function updateGradeGroup(
 export async function deleteGradeGroup(ctx: SessionContext, p: { id: string }) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // 6e9a126e RELEASE THREE — THIS GUARD WAS REPOINTED, NOT DELETED, AND THAT IS THE WHOLE POINT.
     //

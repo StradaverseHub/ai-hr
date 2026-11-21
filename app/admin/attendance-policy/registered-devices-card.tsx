@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { listRegisteredDevices } from '@/core/attendance-device';
@@ -46,7 +47,7 @@ export async function RegisteredDevicesCard({s,companies}:{s:SessionContext;comp
                     <td className="px-4 py-2">
                       <form action={revokeDeviceAction} className="flex justify-end">
                         <input type="hidden" name="deviceId" value={d.id} />
-                        <button className="text-destructive hover:underline">{t('devRevoke')}</button>
+                        <ActionButton actionKind="deleting" className="text-destructive hover:underline">{t('devRevoke')}</ActionButton>
                       </form>
                     </td>
                   </tr>

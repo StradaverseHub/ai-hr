@@ -1,4 +1,4 @@
-import {APPROVED_UPGRADE_TAIL,assertApprovedUpgradeTail,migrateApprovedUpgrade} from './helpers/approved-upgrade';
+import {APPROVED_UPGRADE_TAIL,assertApprovedUpgradeTail,migrateApprovedUpgrade,withoutCombinedReleaseNulls} from './helpers/approved-upgrade';
 /** Exact post-Noveri populated upgrade, on a disposable hosted localhost database only: the 648-entry baseline, then
  * staging's 656-entry main ledger, then the AI v2 Phase 1 migrations 2000-2003, then the AI v2 Phase 2 migrations 2004-2011 and 2013.
  * Source bytes are pinned independently; this supplies no staging acceptance or AI approval. */
@@ -77,6 +77,9 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
   const [row]=await storage.client<Source[]>`select p.oid::text as oid,pg_get_userbyid(p.proowner)::text as owner,p.proacl::text[] as acl,p.proconfig as config,p.prosecdef as "securityDefiner",p.prosrc as body,has_schema_privilege('ai_hr_draft_discard_port','app','CREATE') as "childCreate" from pg_proc p where p.oid=${sourceFunction}::regprocedure`;
   expect(row).toBeDefined();return row;
  };
+ // Each table's {row} wrappers without the combined release's nullable columns (each must be null where present).
+ const withoutCombinedReleaseRowNulls=(rows:Record<string,unknown>)=>Object.fromEntries(Object.entries(rows).map(([table,list])=>[table,
+  (list as {row?:Record<string,unknown>}[]).map(item=>item.row?{...item,row:withoutCombinedReleaseNulls(table,item.row)}:item)]));
  const native=async()=>{
   const rows:Record<string,unknown>={};
   for(const table of ['tenant','company','person','app_user','role_assignment','employment','compensation','employee_draft']){
@@ -182,7 +185,9 @@ it('upgrades the exact 648-entry populated Noveri baseline without rewriting nat
    cutoff:true,handbook:'teras_policy_version',learning:'teras_learning_signal',hardening:'payroll_check_acknowledgement'}]);
   // The applied ledger rows after the 648-entry baseline, for the release record: ids, SQL hashes and when values only.
   console.info('[populated-upgrade-ledger]',JSON.stringify(afterLedger.slice(648).map(row=>({id:row.id,hash:row.hash,created_at:row.created_at}))));
-  expect(await native()).toEqual(upgradeNative);
+  // migrateApprovedUpgrade proved the combined release's person and employment staged-import markers (5010) present
+  // and null on every row; each retained row is compared without them, and any other change still fails.
+  expect(withoutCombinedReleaseRowNulls(await native())).toEqual(upgradeNative);
   const afterSource=await source();
   expect(afterSource).toEqual({...beforeSource,body:beforeSource.body.replace(oldNumericPredicate,newNumericPredicate).replace('No numeric leaf is serialized; timestamps are UTC.','Only the exact root creation cohort 1 may be numeric; timestamps are UTC.')});
   expect(await application.client`select has_function_privilege(current_user,'app.password_unlock_subject(uuid,text)','EXECUTE') as unlock,has_function_privilege(current_user,${sourceFunction},'EXECUTE') as private_source,has_table_privilege(current_user,'public.app_external_identity','SELECT') as raw_identity`).toEqual([{unlock:true,private_source:false,raw_identity:false}]);

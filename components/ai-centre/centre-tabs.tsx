@@ -1,6 +1,6 @@
 // The repository's tab rows prefetch the whole destination once the person shows intent (components/intent-link.tsx),
 // so a tab switch renders from the client cache instead of the loading shell (AI v2 W9).
-import Link from '@/components/intent-link';
+import {CentreNavigationLink as Link} from './centre-navigation-link';
 import { useTranslations } from 'next-intl';
 import { BookOpen, ChartNoAxesCombined, ChevronDown, Gauge, MessageSquareText, ScrollText, Settings2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';

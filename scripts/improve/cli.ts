@@ -32,6 +32,7 @@ import {
   boardStatus,
   fetchAttachment,
   listAttachments,
+  lifecycleRecipientReport,
   markBlocked,
   markBuildCompleted,
   markBuildStarted,
@@ -89,6 +90,9 @@ async function main() {
       process.stdout.write(JSON.stringify(pullItem(id), null, 2) + '\n');
       break;
     }
+    case 'recipient-report':
+      process.stdout.write(JSON.stringify(lifecycleRecipientReport(), null, 2) + '\n');
+      break;
     case 'pull-approved':
       process.stdout.write(JSON.stringify(pullApproved(), null, 2) + '\n');
       break;

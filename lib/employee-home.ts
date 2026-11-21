@@ -12,7 +12,7 @@ export const EMPLOYEE_HOME_CARD_DEFAULTS=EMPLOYEE_HOME_CARDS.map((cardKey,index)
 }));
 export const HOME_QUICK_ACTIONS=['leave','claim','payslip','profile','calendar','notices'] as const;
 export type HomeQuickAction=typeof HOME_QUICK_ACTIONS[number];
-export const HOME_TASK_KINDS=['leave','leaveCancellation','attendance','profile','claim','resignation','managerReview','hrReview','feedback','noticeAcknowledgement','replacementLeave','onboarding','performanceReview','assessmentWork','careerPlan','calibration','rewardReview'] as const;
+export const HOME_TASK_KINDS=['leave','leaveCancellation','attendance','profile','claim','resignation','managerReview','hrReview','feedback','noticeAcknowledgement','replacementLeave','onboarding','performanceReview','assessmentWork','careerPlan','calibration','rewardReview','probationApproval','probationTask','contractApproval','contractLetter','contractPosting','contractPay'] as const;
 export type HomeTaskKind=typeof HOME_TASK_KINDS[number];
 export const DEFAULT_HOME_QUICK_ACTIONS:readonly HomeQuickAction[]=['leave','claim','payslip','profile'];
 export const HOME_TEMPLATE_FIELDS={
@@ -55,7 +55,8 @@ function templateValues(key:HomeTemplateKey,raw:unknown,required:readonly string
  const values=object(raw,'template.values'),allowed:readonly string[]=HOME_TEMPLATE_FIELDS[key];keys(values,allowed,'template.values');
  for(const token of new Set([...required,...Object.keys(values)])){
   const value=values[token],numeric=token==='count'||token==='years';
-  if(numeric?typeof value!=='number'||!Number.isSafeInteger(value)||value<0||value>(token==='years'?200:10000):
+  // Work totals can exceed10,000; retain safe integer validation without hiding a large queue.
+  if(numeric?typeof value!=='number'||!Number.isSafeInteger(value)||value<0||(token==='years'&&value>200):
    typeof value!=='string'||!value.trim()||value.length>500||/[\x00-\x1f\x7f]/.test(value))refuse('template.values.'+token);
  }
  return values as Record<string,string|number>;

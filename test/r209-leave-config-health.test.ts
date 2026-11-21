@@ -872,7 +872,12 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
     ]) {
       expect(read(rel), rel).toContain('balanceStoryTypeId(');
     }
-    expect(read('app/leave/employee-balances/inquiry-data.ts')).toContain('await employeeBalanceRows(ctx, employmentId, query.asOf,');
+    // e066cf54f (docs/adr/2026-11-07-leave-inquiry-presentation-read-frame.md) hydrates through a private
+    // copy of the SAME session so the admitted snapshot cannot be mutated by its caller; it is still
+    // the canonical employeeBalanceRows owner, per employment, at the inquiry's as-at date.
+    const inquiryData = read('app/leave/employee-balances/inquiry-data.ts');
+    expect(inquiryData).toContain('const hydrationContext=structuredClone(ctx);');
+    expect(inquiryData).toContain('await employeeBalanceRows(hydrationContext, employmentId, query.asOf,');
     const inquiry = read('app/leave/employee-balances/page.tsx');
     const panelStart = inquiry.indexOf('<EntitlementBreakdown');
     const panelEnd = inquiry.indexOf('/>', panelStart);

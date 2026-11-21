@@ -46,12 +46,15 @@ export function displayComponentLines(statutory: unknown): StoredComponentLine[]
  * when their stored contributions reconcile; the named absence carve is applied once on every surface. */
 export function deductionLinesFor(statutory: unknown, residual: unknown, absence?: PayslipAbsenceLines, sources: readonly PayslipQuantitySource[] = []): NamedPayItemLine[] {
   const lines = payItemLinesForBuckets(displayComponentLines(statutory), ['deduct']);
-  // Group ABSENT separately from unrelated deductions and preserve their order.
+  // Repeated lines of ONE deduction code print as one row, the way overtime is grouped (2026-11-13: three
+  // one-day UNPAID LEAVE transactions were three rows). Grouping is per code and keeps first-seen order, the
+  // amounts add exactly (in cents), and a day count is shown only when every grouped line carries days — so
+  // the rows reconcile to the residual below exactly as the ungrouped ones did. Unrelated codes stay apart.
   const recorded = restorePayItemQuantities(lines, sources, 'deduction').map(line => {
     if (line.code !== 'ABSENT' || line.detail || line.inputQuantity?.unit !== null) return line;
     return { ...line, inputQuantity: { qty: line.inputQuantity.qty, unit: 'days' as const } };
   });
-  const items = groupNamedPayItemLines(recorded, 'ABSENT');
+  const items = groupNamedPayItemLines(recorded);
   if (payItemLinesReconcile(items, residual)) return items;
   // A named stamp can already account for a saved component. Confirm the
   // remaining total before suppressing that component.

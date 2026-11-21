@@ -137,6 +137,7 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
     if(calculated.day?.checkInAt){
       const figures=await recomputeDayFigures(tx,ctx,{employmentId:p.employmentId,date:p.date,checkInAt:calculated.day.checkInAt,
         checkOutAt:calculated.day.checkOutAt,approvedOtMinutes:calculated.approvedOtMinutes});
+      if(figures.clockPolicyReview)throw new Error('Review the clockings before applying a change to this attendance day.');
       await tx.update(s.attendance).set(figures.columns).where(eq(s.attendance.id,calculated.day.id));
       await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Corrected attendance day'});
     }

@@ -142,6 +142,10 @@ const ADDED_SINCE: readonly { href: string; labelKey: string }[] = [
  * destination into it, which is the one edit that list cannot survive honestly.
  */
 const ADDED_AFTER_ENTITLEMENTS: readonly { href: string; labelKey: string }[] = [
+  // 50d9b809 — Shared Leave Groups, FIRST after Entitlements: its editor was a pop-up ON the Entitlements
+  // screen, and the reporter asked for a Leave Settings card and a page of its own. Named here, at its own
+  // insertion point, for the reason this list gives above.
+  { href: '/admin/leave-config/shared-groups', labelKey: 'leaveSharedGroups' },
   { href: '/admin/leave-config/balance-health', labelKey: 'leaveBalanceHealth' },
 ] as const;
 
@@ -237,6 +241,10 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     const OWNING_SCREEN: Record<string, string> = {
       // Five Leave Config destinations on the one leaveConfig column…
       '/admin/leave-config/types': 'leaveConfig',
+      // 50d9b809 — Shared Leave Groups is on `leaveConfig` ON PURPOSE: its editor was a pop-up on the
+      // Entitlements screen (this key, requireAdmin), so anybody who could manage groups there can open it
+      // here and nobody new can. A screen key of its own would invent a permission for an editor that moved.
+      '/admin/leave-config/shared-groups': 'leaveConfig',
       // r279 (3fbf7a02) — Leave Balance Health is the fifth, and it is on `leaveConfig` ON PURPOSE: it
       // is the listing that WAS the Leave types tab, so anybody who could open that tab could already
       // read it. A screen key of its own would invent a permission for a page that moved address.
@@ -323,7 +331,9 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(BALANCE_HEALTH_ROW.href).toBe('/admin/leave-config/balance-health');
     // THE POSITION IS THE ANSWER, so it is pinned as the PAIR rather than as an index: it answers the
     // question you ask about entitlements, and it is the tab it left that sits above it.
-    expect(DESTINATIONS.children.map((c) => c.labelKey).slice(0, 2)).toEqual(['leaveEntitlements', 'leaveBalanceHealth']);
+    // 50d9b809 — UPDATED, NOT LOOSENED: Shared Leave Groups took the slot directly after Entitlements (it was
+    // a pop-up on that screen), so the run is pinned as three and Balance Health still follows it directly.
+    expect(DESTINATIONS.children.map((c) => c.labelKey).slice(0, 3)).toEqual(['leaveEntitlements', 'leaveSharedGroups', 'leaveBalanceHealth']);
     // A real page, guarded, with no tabs of its own to own.
     expect(exists('app/admin/leave-config/balance-health/page.tsx')).toBe(true);
     expect(BALANCE_HEALTH_ROW.ownedSubpaths ?? []).toEqual([]);
@@ -607,7 +617,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
   });
 
   it('retains the canonical authorized Leave descriptors while placing daily HR work separately from Configuration', () => {
-    const sidebar = stripComments(read('components/sidebar.tsx'));
+    const sidebar = stripComments(read('lib/navigation/shell-inventory.ts'));
     expect(sidebar.split('\n').some(line=>line.trim()==='LEAVE_CONFIG_NODE,'), 'the source owner is actually mounted').toBe(true);
     expect(sidebar, 'the old flat row must be gone, not merely unused').not.toContain('LEAVE_CONFIG_ROW');
     // Ops/Strata supersedes the old between-Attendance-and-Claims position. Every existing leaf

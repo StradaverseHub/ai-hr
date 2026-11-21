@@ -23,6 +23,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parseOtRows } from '../app/admin/attendance/schedule/overtime-fields';
 
 const root = join(__dirname, '..');
 const editor = readFileSync(join(root, 'components/attendance-rule-ot-editor.tsx'), 'utf8');
@@ -189,7 +190,11 @@ describe('7c834696: OT rounding direction, a free Round To, and no pre-filled 1.
     // `Number('')` is 0, and 0 is a real setting ("record the hours but do not pay them"). Both halves must
     // therefore carry the empty case through as null so core/attendance-rule.ts can refuse it by name.
     expect(stripComments(editor)).not.toMatch(/rate:\s*Number\(r\.rate\)\s*\|\|\s*0/);
-    expect(stripComments(actions)).not.toMatch(/rate:\s*Number\(x\.rate\s*\?\?\s*0\)\s*\|\|\s*0/);
-    expect(stripComments(actions)).toMatch(/rate:\s*x\.rate == null \|\| x\.rate === ''\s*\?\s*null/);
+    const scheduleActions = readFileSync(join(root, 'app/admin/attendance/schedule/actions.ts'), 'utf8');
+    for (const source of [actions, scheduleActions]) expect(stripComments(source)).toMatch(/\bparseOtRows\(/);
+    const raw = JSON.stringify([{ rate: '', phRate: '' }, {}, { rate: 0, phRate: 0 }]);
+    expect(parseOtRows(raw, true)).toMatchObject([
+      { rate: null, phRate: null }, { rate: null, phRate: null }, { rate: 0, phRate: 0 },
+    ]);
   });
 });

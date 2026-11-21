@@ -5,7 +5,7 @@
  * segment, so a page folder without one brings back the frozen-click navigation measured on 2026-10-07.
  * A new page is caught here, not in production. The exceptions are full-screen pages outside the app
  * shell (no sidebar to keep, their own design): sign-in, invitation, password reset, the mobile preview —
- * and the app/admin/locations redirect stubs.
+ * and the retired Attendance Formula Builder and Location redirect stubs.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -15,7 +15,7 @@ const ROOT = process.cwd();
 // app/admin/locations is a tree of guarded REDIRECT stubs (the screen moved to Organization); its own guard
 // (test/work-location-organization-relocation.test.ts) pins it to nothing but the stubs, and a page that only
 // redirects has nothing to show a skeleton for.
-const EXEMPT = [/^app\/login(\/|$)/, /^app\/invite(\/|$)/, /^app\/reset-password(\/|$)/, /^app\/mobile-preview(\/|$)/, /^app\/admin\/locations(\/|$)/];
+const EXEMPT = [/^app\/login(\/|$)/, /^app\/invite(\/|$)/, /^app\/reset-password(\/|$)/, /^app\/mobile-preview(\/|$)/, /^app\/admin\/locations(\/|$)/, /^app\/admin\/attendance\/settings\/formula-builder(?:\/(?:new|\[id\]))?$/];
 
 function pageDirs(dir: string): string[] {
   const out: string[] = [];

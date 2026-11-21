@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './attendance-submission-fixture';
 import {createApprovedRewardUnit} from '../rewards-setup-fixture';
 import {dayScheduleCorrectionReviews,readDayScheduleCorrectionChoices} from '../../core/assistant-actions/day-schedule-correction-review-store';
 import {attendanceDayEditor,saveAttendanceDayEdit} from '../../packs/attendance/service';
@@ -231,7 +232,7 @@ async function login(base:Base,person:Person,role:DbRole,companyId:string|null){
 }
 
 async function buildWorld():Promise<World>{
- const b=await seedBase();for(const code of MODULES)await setModule(b.tenantId,code,'active');
+ const b=await seedAttendanceSubmissionBase();for(const code of MODULES)await setModule(b.tenantId,code,'active');
  const group=groupOf(b);
  const other=await createCompany(group,{legalName:'Fictional other employer',country:'MY',currency:'MYR'} as never);
  const otherDept=await createDepartment(group,{companyId:other.id,name:'Fictional other department'} as never) as {id:string};
@@ -477,7 +478,7 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:(item,o)=>({action:ASSIGNED_ATTENDANCE_DECISION_ACTION,contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,decision:o.decision,...(o.decision==='rejected'?{note:REJECT_REASON}:{})}),
   offered:async(who,item)=>listed(await readAttendanceDecisionChoices(who),'items','subjectId',item.subjectId),
   // approveCorrectionAction posts the rendered workflow stage for a routed request.
-  screen:(tx,who,item,_d,o)=>decideAttendanceCorrection(who,{correctionId:item.subjectId,decision:o.decision,...(o.decision==='rejected'?{rejectReason:REJECT_REASON}:{}),...(o.workflow?{expectedStageIndex:0}:{})},tx)},
+  screen:(tx,who,item,_d,o)=>decideAttendanceCorrection(who,{correctionId:item.subjectId,decision:o.decision,...(o.decision==='rejected'?{rejectReason:REJECT_REASON}:{}),expectedStageIndex:0},tx)},
  'approvals.toil.decide':{family:'assigned_decision',store:toilDecisionReviews,
   async create(_w,h){const date=calendarDate(-3);await setRestDay(groupOf(h.base),{employmentId:h.person.employmentId,shiftDate:date});
    const done=await submitReplacementLeaveRequest(await h.session(),{employmentId:h.person.employmentId,unit:'day',lines:[{workedDate:date,days:1}],reason:'Fictional rest-day release support',today:todayInKualaLumpur()});

@@ -1,3 +1,4 @@
+import {assertAiCentreRunningSharedTx,assertAiCentreRunningTx,lockAccessForAiControlCheckTx} from './ai-centre-control';
 import {privateLocalData} from '../lib/ai/provider-policy-shape';
 import {privateTaskDescriptor} from '../lib/ai/provider-task-registry';
 import {adjudicateSnapshotAnalysis,SNAPSHOT_ANALYSIS_CONTRACT} from '../lib/ai/provider-snapshot-policy';
@@ -23,11 +24,13 @@ import { AI_FEATURES,isAiFeature,isTemplateOnlyAiFeature,type AiFeatureId } from
 import { resolveEntitlementsTx, getSetting } from './entitlements';
 import { assertAiProviderSnapshot, assertAiProviderSnapshotFeature, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
 import type { AiAdmission,AiGovernance } from '../lib/ai/governance';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationTx} from './access-configuration-lock';
+import {aiCentreActivity} from '../lib/ai/centre-activity';
 import {captureStrictAiSpendRoot,requiresAiTaskRoot,type StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 export type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 import {aiSpendAdmissionStep,resolveAiSpendPolicyTx,resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from './ai-spend-capability';
 import {aiSpendConfigurationDigest,createAiSpendReceiptScope} from '../lib/ai/spend-receipt';
+import {AiAdmissionRefusal,admissionStep} from '../lib/ai/admission-refusal';
 import {currentAgentActionScope} from './agent-action-pause-scope';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
@@ -46,17 +49,54 @@ async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promi
  */
 export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
+ // A read-only carrier outside an AI Centre activity stays on the shared barrier: it can produce no effect,
+ // writers still serialize against it, and ai_action_unpaused reads Stop under that barrier. Taking Access or
+ // ai-control exclusively here upgrades its earlier shared holds, so two concurrent readers deadlock (40P01).
+ const [carrier]=await tx.execute<{read_only:boolean}>(sql`select current_setting('transaction_read_only')='on' as read_only`);
+ const sharedBarrier=carrier?.read_only===true&&aiCentreActivity(ctx.tenantId)===undefined;
+ // Otherwise a read of the pause controls: joins the mode this transaction holds (exclusive when it holds none).
+ if(sharedBarrier)await lockAccessConfigurationReadTx(tx,ctx.tenantId);else await lockAccessForAiControlCheckTx(tx,ctx.tenantId);
+ await assertFeatureUnpausedTx(tx,ctx,feature);
+ if(!sharedBarrier)await assertAiCentreRunningTx(tx,ctx);
+ // WP12 (R8): inside an Assistant review-route command, that action's own pause key under hr_assistant (0696).
+ // A review-route command whose action could not be named fails closed.
+ const route=currentAgentActionScope();
+ if(route&&route.action===null)throw new AiAllowanceError('paused');
+ if(route?.action&&feature==='hr_assistant')await assertAgentActionUnpausedTx(tx,route.action);
+}
+
+/** Presentation-only offer/replay check. The native RC/RO policy uses shared AI control and
+ * checks Stop under that barrier. The command's generation and action scopes are not valid here. */
+export async function assertAiPresentationActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
+ if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
+ if(!ctx.userId||ctx.agent||ctx.entitlementsExempt!==undefined||ctx.statutoryOverride!==undefined||aiCentreActivity(ctx.tenantId)||currentAgentActionScope())
+  throw new AiGatewayError('AI presentation controls could not be confirmed.');
+ const [carrier]=await tx.execute<{allowed:boolean}>(sql`select
+  current_setting('transaction_isolation')='read committed' and current_setting('transaction_read_only')='on'
+  and nullif(current_setting('app.agent_principal_id',true),'') is null
+  and app.current_tenant_id()=${ctx.tenantId}::uuid and app.current_user_id()=${ctx.userId}::uuid as allowed`);
+ if(carrier?.allowed!==true)throw new AiGatewayError('AI presentation controls could not be confirmed.');
+ await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ await assertFeatureUnpausedTx(tx,ctx,feature);
+}
+
+/** Read per-function settings after the presentation owner holds shared AI control and has
+ * checked Stop. The locking native command predicate remains the effect owner. */
+export async function aiPresentationFunctionsEnabledTx(tx:Tx,keys:readonly string[]):Promise<boolean>{
+ if(!keys.length||keys.some(key=>!/^(read|module):[a-z][a-z0-9_-]{0,99}$/.test(key)))return false;
+ const rows=await tx.execute<{function_key:string;enabled:boolean}>(sql`select function_key,enabled
+  from app.ai_centre_read_controls() where current_setting('transaction_isolation')='read committed'
+  and current_setting('transaction_read_only')='on' and function_key in (${sql.join(keys.map(key=>sql`${key}`),sql`,`)})`);
+ return keys.every(key=>rows.some(row=>row.function_key===key&&row.enabled===true));
+}
+
+async function assertFeatureUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
  // WP13: template-only scheduled agents have no model admission at all.
  if(isTemplateOnlyAiFeature(feature))throw new AiGatewayError('This feature makes no model call.');
  const forcedPause=await forcedPauseTx(tx,ctx,feature);
  const [control]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_action_unpaused(${feature},${forcedPause}) as unpaused`);
  if(control?.unpaused===false)throw new AiAllowanceError('paused');
  if(control?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
- // WP12 (R8): inside an Assistant review-route command, that action's own pause key under hr_assistant (0696).
- // A review-route command whose action could not be named fails closed.
- const route=currentAgentActionScope();
- if(route&&route.action===null)throw new AiAllowanceError('paused');
- if(route?.action&&feature==='hr_assistant')await assertAgentActionUnpausedTx(tx,route.action);
 }
 
 /** Trusted command checks are additional refusal conditions, never model-supplied capabilities.
@@ -81,51 +121,57 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   const capturedRequest=Object.freeze({operation:request.operation,reservedTokens:request.reservedTokens,
    ...(request.inputDigest===undefined?{}:{inputDigest:request.inputDigest})});
   if(!['draft','conversation','image'].includes(capturedRequest.operation)||!Number.isSafeInteger(capturedRequest.reservedTokens)||capturedRequest.reservedTokens<0||capturedRequest.reservedTokens>1000000000||
-   (capturedRequest.inputDigest!==undefined&&!/^[a-f0-9]{64}$/.test(capturedRequest.inputDigest)))throw new AiGatewayError('The prepared AI request could not be confirmed.');
+   (capturedRequest.inputDigest!==undefined&&!/^[a-f0-9]{64}$/.test(capturedRequest.inputDigest)))throw new AiAdmissionRefusal('request_invalid','The prepared AI request could not be confirmed.');
   const preparedAdmission=await withTenant(ctx,async tx=>{
-   await assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,outgoing);
+   // Each untyped refusal below names its step with a closed code (lib/ai/admission-refusal); type and message are unchanged.
+   await admissionStep('provider_configuration_changed',()=>assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,outgoing));
+   const generation=await admissionStep('ai_controls_unavailable',()=>assertAiCentreRunningTx(tx,ctx));
    if(check)try{await check(tx,capturedRequest);}catch(error){
     if(error instanceof AiAllowanceError||error instanceof AiPrivacyGateError)throw error;
-    throw new AiGatewayError('The current AI source access could not be confirmed.');
+    throw new AiAdmissionRefusal('source_check_failed','The current AI source access could not be confirmed.');
    }
-   assertAiProviderSnapshot(snapshot,ctx);
-   assertAiProviderSnapshotFeature(snapshot,feature);
+   await admissionStep('provider_configuration_changed',()=>{assertAiProviderSnapshot(snapshot,ctx);assertAiProviderSnapshotFeature(snapshot,feature);});
    assertProviderPrivacyRequest(outgoing,capturedRequest.operation,capturedRequest.inputDigest,feature);
    const nativeRootRequired=requiresAiTaskRoot(feature)||spendRoot!==undefined;
-   if(nativeRootRequired&&!spendRoot)throw new AiGatewayError('The autonomous AI spend root could not be confirmed.');
+   if(nativeRootRequired&&!spendRoot)throw new AiAdmissionRefusal('spend_root_required','The autonomous AI spend root could not be confirmed.');
    // Every admission checks ALL applicable monetary scopes under the actual ai-control interval.
    // No configured USD cap promises no USD ceiling, not a pause/auth/token/concurrency bypass.
    // Any finite dimension still requires the unchanged reviewed carrier and reservation contract.
    const moneyPolicy=await resolveAiSpendPolicyTx(tx,ctx,feature,spendRoot);
    const envelope=moneyPolicy.requiresMonetaryCeiling?await resolveReviewedAiSpendCapabilityTx(tx,ctx,outgoing,capturedRequest):null;
-   if(envelope&&(!ctx.userId||envelope.requestDigest!==capturedRequest.inputDigest))throw new AiGatewayError('The exact AI spend request could not be confirmed.');
+   if(envelope&&(!ctx.userId||envelope.requestDigest!==capturedRequest.inputDigest))throw new AiAdmissionRefusal('spend_request_mismatch','The exact AI spend request could not be confirmed.');
    const forcedPause=await forcedPauseTx(tx,ctx,feature);
    // Admission and spend SQL refusals leave as typed AI refusals, never as driver text (SQL plus parameters).
    const rows=await aiSpendAdmissionStep(()=>tx.execute<{run_id:string;allowed:boolean;blocked_reason:string|null}>(sql`select * from app.ai_admit(${feature},${capturedRequest.operation},${cfg.provider},${cfg.model},${capturedRequest.reservedTokens}::bigint,${forcedPause})`));
-   if(rows[0]?.allowed&&envelope&&spendRoot)await aiSpendAdmissionStep(()=>tx.execute(sql`select app.ai_spend_reserve(${rows[0].run_id}::uuid,${spendRoot.rootTaskId}::uuid,${spendRoot.kind},${envelope.capabilityDigest},${envelope.requestDigest},${envelope.reservedNanos}::bigint,${aiSpendConfigurationDigest(outgoing)})`));
+   if(rows[0]?.allowed&&envelope&&spendRoot)await aiSpendAdmissionStep(()=>tx.execute(sql`select app.ai_spend_reserve(${rows[0].run_id}::uuid,${spendRoot.rootTaskId}::uuid,${spendRoot.kind},${envelope.capabilityDigest},${envelope.requestDigest},${envelope.reservedNanos}::bigint,${aiSpendConfigurationDigest(outgoing)})`),undefined,'spend_reservation_unavailable');
    // Root custody and real run association are mandatory even without monetary certification.
    // Unknown unpriced history persists; a later finite cap cannot retrospectively count it as zero.
-   if(rows[0]?.allowed)await aiSpendAdmissionStep(()=>tx.execute(sql`select app.ai_spend_record_admission(${rows[0].run_id}::uuid,${spendRoot?.rootTaskId??null}::uuid,${spendRoot?.kind??null},${capturedRequest.inputDigest??null},${aiSpendConfigurationDigest(outgoing)})`));
+   if(rows[0]?.allowed)await aiSpendAdmissionStep(()=>tx.execute(sql`select app.ai_spend_record_admission(${rows[0].run_id}::uuid,${spendRoot?.rootTaskId??null}::uuid,${spendRoot?.kind??null},${capturedRequest.inputDigest??null},${aiSpendConfigurationDigest(outgoing)})`),undefined,'admission_custody');
    if(rows[0]?.allowed&&lifecycle?.admitted)await lifecycle.admitted(tx,Object.freeze({runId:rows[0].run_id,request:capturedRequest}));
-   return{rows,envelope};
+   return{rows,envelope,generation};
   });
   const[admission]=preparedAdmission.rows,spendEnvelope=preparedAdmission.envelope;
   if(!admission?.allowed){
    const reason=admission?.blocked_reason;
    if(reason==='paused'||reason==='daily_limit'||reason==='monthly_limit'||reason==='concurrent_limit')throw new AiAllowanceError(reason);
-   throw new AiGatewayError('The AI request could not be admitted.');
+   throw new AiAdmissionRefusal('admission_refused','The AI request could not be admitted.');
   }
   let actual:number|null=null;
   const accounting=createAiRunAccounting(cfg.provider);
   const record=(usage:AiUsage)=>{const values=[usage.inputTokens,usage.outputTokens,usage.cachedInputTokens];if(values.every(n=>Number.isSafeInteger(n)&&n>=0))actual=values.reduce((a,b)=>a+b,0);};
   const scope=spendRoot&&spendEnvelope&&ctx.userId?createAiSpendReceiptScope({tenantId:ctx.tenantId,userId:ctx.userId,runId:admission.run_id,rootTaskId:spendRoot.rootTaskId,requestDigest:spendEnvelope.requestDigest,capabilityDigest:spendEnvelope.capabilityDigest,configurationDigest:aiSpendConfigurationDigest(outgoing)}):null;
   let succeeded=false;
-  try{const dispatch=()=>scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe);const result=await(spendEnvelope?withReviewedAiSpendDispatch(spendEnvelope,outgoing,capturedRequest,dispatch):dispatch());succeeded=true;return result;}
+  try{
+   // Check-only transactions around the provider call hold Access shared; stop writes still exclude them.
+   await withTenant(ctx,tx=>assertAiCentreRunningSharedTx(tx,ctx,preparedAdmission.generation));
+   const dispatch=()=>scope?scope.run(()=>call(record,accounting.observe)):call(record,accounting.observe);const result=await(spendEnvelope?withReviewedAiSpendDispatch(spendEnvelope,outgoing,capturedRequest,dispatch):dispatch());await withTenant(ctx,async tx=>{await assertAiCentreRunningSharedTx(tx,ctx,preparedAdmission.generation);await assertAiActionUnpausedTx(tx,ctx,feature);});succeeded=true;return result;}
   finally{
    // A failed write is visible and leaves the reservation held; it must never erase unconfirmed usage.
    let breach=false;
    try { const observed=accounting.snapshot(actual),receipt=scope?.receipt();await withTenant(ctx,async tx=>{
     // Same order as admission. This is ownership only: role revocation must not erase actual usage.
+    // Shared: role and AI control writers hold Access exclusively, and every accounting write below
+    // serialises on the tenant ai-control lock and the run's own row, so settlements may overlap.
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await tx.execute(sql`select app.ai_settle_observed(${admission.run_id}::uuid,${succeeded},${actual}::bigint,
     ${observed.providerObservationStatus},${observed.reportedInputTokens}::bigint,${observed.reportedOutputTokens}::bigint,${observed.reportedCachedInputTokens}::bigint,
@@ -135,6 +181,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
     if(lifecycle?.settled)await lifecycle.settled(tx,Object.freeze({runId:admission.run_id,succeeded,actualTokens:actual,accounting:observed}));}); }
    catch { throw new AiGatewayError('AI usage could not be confirmed. Its reservation remains held.'); }
    if(breach)throw new AiGatewayError('The AI inference charge exceeded its verified allocation ceiling. Further strict admissions are paused.');
+   if(succeeded)await withTenant(ctx,tx=>assertAiCentreRunningSharedTx(tx,ctx,preparedAdmission.generation));
   }
  }})});
  if(observer)resolved=Object.freeze({...resolved,governance:Object.freeze({run:observeAiRun(resolved.governance!.run,observer)})});

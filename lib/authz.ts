@@ -4,7 +4,7 @@ import { getSession } from './session';
 import { isModuleEnabled } from '@/core/entitlements';
 import { hasAuditReaderGrant } from '@/core/payroll-audit/reader-grant';
 import {isAdmin,hasTeamAccess,canManagePayroll,canManagePerfComp,canAdminOnehr} from './authz-model';
-export {isAdmin,hasTeamAccess,isGroupAdmin,isOperator,hasGrantFor,canManagePayroll,canManagePerfComp,isPayrollPartner,withEffectiveGrants,isPerfCompPartner,canAdminOnehr,isOnehrOnlyPerformanceAdmin} from './authz-model';
+export {isAdmin,hasTeamAccess,isGroupAdmin,isOperator,hasGrantFor,canManagePayroll,canManagePerfComp,isPayrollPartner,withEffectiveGrants,isPerfCompPartner,canAdminOnehr,isOnehrOnlyPerformanceAdmin,canAdminRecruitment} from './authz-model';
 
 /** Page-level team gate; scopedSession and the model enforce fresh company/report/module scope. */
 export async function requireTeamAccess(s?: SessionContext): Promise<SessionContext> {
@@ -28,9 +28,11 @@ export async function requireTeamAccess(s?: SessionContext): Promise<SessionCont
  * the service call, which refuses properly and names the real fault. Redirecting on an unresolved
  * snapshot would tell a paying customer their module had been removed during an infrastructure
  * incident.
+ *
+ * A caller may supply a session it already resolved for the current request.
  */
-export async function requireModule(code: string): Promise<SessionContext> {
-  const s = await getSession();
+export async function requireModule(code: string, session?: SessionContext): Promise<SessionContext> {
+  const s = session ?? await getSession();
   const ctx = s as SessionContext & { entitlements?: unknown };
   if (ctx.entitlements == null) return s; // unresolved — let the service layer speak
   let enabled = true;
@@ -54,9 +56,9 @@ export async function requireAdminOrAuditReader(): Promise<SessionContext> {
   return s;
 }
 
-/** Resolve the session, redirecting non-admins away from admin-only routes. */
-export async function requireAdmin(): Promise<SessionContext> {
-  const s = await getSession();
+/** Redirect non-admins, reusing a session already resolved for this request when supplied. */
+export async function requireAdmin(session?: SessionContext): Promise<SessionContext> {
+  const s = session ?? await getSession();
   if (!isAdmin(s)) redirect('/');
   return s;
 }

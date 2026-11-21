@@ -6,10 +6,11 @@ import * as tenantDb from '../db/client';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import * as canonical from '../core/read';
-import { withAssistantRead, withAssistantReadTx, type AssistantReadSession } from '../core/assistant-read-session';
+import { assistantFunctionAllowed,withAssistantRead, withAssistantReadTx, withAssistantPresentationReadTx, type AssistantReadSession } from '../core/assistant-read-session';
+import { setAiCentreReadControl } from '../core/ai-centre-inventory';
 import { ASSISTANT_TOOLS } from '../core/assistant-tools';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
-import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '../core/access-configuration-lock';
 import { setAiFeature } from '../core/ai-management';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -43,6 +44,29 @@ async function observeWaiting() {
 }
 
 describe('explicit Assistant read ownership', () => {
+  it('checks function and module switches on the existing real read carrier and refuses forged or expired ownership', async () => {
+    const { a,ctx } = await fixture(), group={...a,grants:[{role:'hr_admin',companyId:null}]};
+    let saved:AssistantReadSession|undefined;
+    const transactions=vi.spyOn(tenantDb,'withTenant');
+    try {
+      await withAssistantRead(ctx,null,async session=>{
+        saved=session;
+        expect(await assistantFunctionAllowed(ctx,session,'read:my_leave_balances')).toBe(true);
+        expect(await assistantFunctionAllowed(ctx,session,'module:employees')).toBe(true);
+        expect(await assistantFunctionAllowed(ctx,session,'read:unknown_future')).toBe(false);
+        await expect(assistantFunctionAllowed(ctx,{...session},'read:my_leave_balances')).rejects.toThrow('data access');
+        await expect(assistantFunctionAllowed({...ctx,userId:randomUUID()},session,'read:my_leave_balances')).rejects.toThrow('data access');
+      });
+      expect(transactions).toHaveBeenCalledTimes(1);
+      await expect(assistantFunctionAllowed(ctx,saved!,'read:my_leave_balances')).rejects.toThrow('data access');
+    } finally { transactions.mockRestore(); }
+    for(const key of ['read:my_leave_balances','module:employees']){
+      await setAiCentreReadControl(group,key,false);
+      expect(await withAssistantRead(ctx,null,session=>assistantFunctionAllowed(ctx,session,key))).toBe(false);
+      await setAiCentreReadControl(group,key,true);
+      expect(await withAssistantRead(ctx,null,session=>assistantFunctionAllowed(ctx,session,key))).toBe(true);
+    }
+  });
   it('runs two actual tools through one Read Committed/read-only backend and preserves RLS refusal', async () => {
     const { ctx, mine, other } = await fixture();
     const original = canonical.employeeDetail;
@@ -76,6 +100,55 @@ describe('explicit Assistant read ownership', () => {
       await expect(withAssistantReadTx({ ...ctx, userId: randomUUID() }, tx, async () => { consumed++; })).rejects.toThrow('data access');
     });
     expect(consumed).toBe(0);
+  });
+  it('shares Access between real presentation reads and queues read-only commands in exclusive mode', async () => {
+    const { ctx, mine } = await fixture();
+    const accessLocks = (pid: number) => owner.db.execute<{mode: string; granted: boolean}>(sql`select mode,granted from pg_locks
+      where pid=${pid} and locktype='advisory' and objsubid=1
+      and database=(select oid from pg_database where datname=current_database())
+      and ((classid::bigint << 32) | objid::bigint)=hashtextextended(${'access-configuration:' + base.tenantId},0)`);
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const reads: Promise<string[]>[] = [];
+    const admittedCommands: number[] = [];
+    const start = (presentation: boolean) => {
+      let ready!: (pid: number) => void, failed!: (error: unknown) => void;
+      const started = new Promise<number>((resolve, reject) => { ready = resolve; failed = reject; });
+      const reading = withTenant(ctx, async tx => {
+        await tx.execute(sql`SET TRANSACTION READ ONLY`);
+        const [{pid}] = await tx.execute<{pid: number}>(sql`select pg_backend_pid() as pid`);
+        if (!presentation) ready(pid);
+        const read = presentation ? withAssistantPresentationReadTx : withAssistantReadTx;
+        return read(ctx, tx, async session => {
+          const rows = (await session.myEmployments()).map(row => row.employmentId);
+          if (presentation) { ready(pid); await held; }
+          else admittedCommands.push(pid);
+          return rows;
+        });
+      });
+      reads.push(reading);
+      void reading.catch(failed);
+      return started;
+    };
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const startTimeout = new Promise<never>((_, reject) => {
+      watchdog = setTimeout(() => reject(new Error('Native Assistant carriers did not start')), 8_000);
+    });
+    try {
+      const presenters = await Promise.race([Promise.all([start(true), start(true)]), startTimeout]);
+      for (const pid of presenters) expect(await accessLocks(pid)).toEqual([{mode:'ShareLock',granted:true}]);
+      const commands = await Promise.race([Promise.all([start(false), start(false)]), startTimeout]);
+      expect(new Set([...presenters, ...commands]).size).toBe(4);
+      for (const pid of commands) {
+        await expect.poll(async () => (await accessLocks(pid)).some(lock => !lock.granted), {timeout:4_000}).toBe(true);
+        expect(await accessLocks(pid)).toEqual([{mode:'ExclusiveLock',granted:false}]);
+      }
+      expect(admittedCommands).toEqual([]);
+    } finally {
+      release(); clearTimeout(watchdog); await Promise.allSettled(reads);
+    }
+    expect(await Promise.all(reads)).toEqual(Array.from({length:4}, () => [mine.employmentId]));
+    expect(admittedCommands).toHaveLength(2);
   });
   it('exposes no query handle and rejects forged, cross-principal and escaped method sessions', async () => {
     const { ctx } = await fixture();
@@ -116,7 +189,7 @@ describe('explicit Assistant read ownership', () => {
     let ready!: () => void, failed!: (error: unknown) => void, release!: () => void;
     const started = new Promise<void>((resolve, reject) => { ready = resolve; failed = reject; }), held = new Promise<void>(resolve => { release = resolve; });
     const watchdog = setTimeout(release, 10_000);
-    const holder = withTenant(a, async tx => { await lockAccessConfigurationTx(tx, base.tenantId); ready(); await held; });
+    const holder = withTenant(a, async tx => { await lockAccessConfigurationWriteTx(tx, base.tenantId); ready(); await held; });
     void holder.catch(failed);
     let reading: Promise<Awaited<ReturnType<typeof canonical.myEmployments>>> | undefined;
     try {

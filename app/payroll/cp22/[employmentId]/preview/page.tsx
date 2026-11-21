@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -182,9 +183,9 @@ export default async function Cp22PreviewPage({
           <Link href={`${base}/pdf?${qs}&inline=1`} target="_blank" rel="noopener" className={btnGhost}>
             {t('reviewView')}
           </Link>
-          <Link href={`${base}/pdf?${qs}`} className={btnPrimary} title={t('downloadTitle')}>
+          <ExportDownloadLink href={`${base}/pdf?${qs}`} className={btnPrimary} title={t('downloadTitle')}>
             {t('download')}
-          </Link>
+          </ExportDownloadLink>
           <Link href={`${base}/text?${qs}`} className={btnGhost} title={t('reviewTextTitle')}>
             {t('reviewText')}
           </Link>

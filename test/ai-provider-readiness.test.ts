@@ -1,8 +1,8 @@
-/** Authored UNRUN. Actual app-role custody/governance transactions; ONLY provider transport mocked.
- * Requires the coordinated provider-readiness draft in the test migration journal first.
+/** Actual app-role custody and governance for a fictional provider transport.
+ * This suite supplies its own synthetic review boundary and spend capability.
  */
 import { and, eq, sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { getAiConfigView, resolveActiveAiConfig, saveAiProviderConfig, setActiveProvider } from '../core/ai-config';
@@ -12,14 +12,41 @@ import { installSyntheticSpendCapability } from './ai-spend-fixture';
 import { assertAiProviderSnapshotFeature, resolveAiProviderCandidateSnapshotTx, resolveAiProviderSnapshotTx } from '../core/ai-provider-snapshot';
 import { governedAiConfig } from '../core/ai-governance';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
+import { assertProviderDataContractReviewed } from '../lib/ai/provider-data-reviews';
+import { PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST } from '../lib/ai/provider-data-source-manifest';
 import { syntheticConsentFor, syntheticProviderTransport, evaluateSyntheticCandidate, activateSyntheticCandidate } from './provider-evaluation-fixture';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+const blockedProviderFetch = vi.hoisted(() => vi.fn<typeof fetch>(async () => {
+  throw new Error('Provider network is disabled in this fixture');
+}));
+const syntheticProtocolContracts = vi.hoisted(() => ['synthetic_protocol_echo_v1', 'synthetic_protocol_tools_v1']);
+
+// Keep real review for every other request and for this request outside the paired test transport.
+// The real privacy request, snapshot, accounting and one-use dispatch guards still execute.
+vi.mock('../lib/ai/provider-data-reviews', async importActual => {
+  const actual = await importActual<typeof import('../lib/ai/provider-data-reviews')>();
+  const {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} = await import('../lib/ai/provider-data-source-manifest');
+  const {isSyntheticProviderTransportInstalled} = await import('./provider-evaluation-fixture');
+  return {...actual, assertProviderDataContractReviewed(contract: string, digest: string) {
+    if (syntheticProtocolContracts.includes(contract) &&
+      digest === PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST && globalThis.fetch === blockedProviderFetch &&
+      isSyntheticProviderTransportInstalled()) return;
+    actual.assertProviderDataContractReviewed(contract, digest);
+  }};
+});
+
 let base: Base;
 beforeAll(migrateTestDb);
 beforeEach(async () => {
+  blockedProviderFetch.mockClear();
+  vi.stubGlobal('fetch', blockedProviderFetch);
   vi.stubEnv('AI_CONFIG_SECRET', 'fictional-provider-readiness-test-passphrase');
   for (const key of ['ANTHROPIC_API_KEY','OPENAI_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY']) vi.stubEnv(key,'');
   await resetDb(); base = await seedBase();
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  expect(blockedProviderFetch).not.toHaveBeenCalled();
 });
 afterAll(async () => { await closeAll(); vi.unstubAllEnvs(); });
 const options = (route = 'approved-a') => readOpenRouterOptions({ version: 1, routing: { allowedProviders: [route], allowFallbacks: false, sort: 'latency' } });
@@ -36,6 +63,27 @@ async function evaluateWithSyntheticSpend(...args:Parameters<typeof evaluateProv
 
 
 describe('explicit candidate evaluation and activation', () => {
+  it('keeps fictional review exact and confined to the installed no-network transport', async () => {
+    const actual = await vi.importActual<typeof import('../lib/ai/provider-data-reviews')>('../lib/ai/provider-data-reviews');
+    const staleDigest = PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST.replace(/^./, value => value === '0' ? '1' : '0');
+    const assertRealReview = () => {
+      for (const contract of syntheticProtocolContracts) {
+        const review = () => assertProviderDataContractReviewed(contract, PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST);
+        if (actual.providerDataReviewStatus(contract) === 'pending') expect(review).toThrow();
+        else expect(review).not.toThrow();
+      }
+    };
+    assertRealReview();
+    const mock = syntheticProviderTransport();
+    try {
+      for (const contract of syntheticProtocolContracts) {
+        expect(() => assertProviderDataContractReviewed(contract, PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)).not.toThrow();
+        expect(() => assertProviderDataContractReviewed(contract, staleDigest)).toThrow();
+      }
+      expect(() => assertProviderDataContractReviewed('fictional_readiness_unknown_v1', PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)).toThrow();
+    } finally { mock.restore(); }
+    assertRealReview();
+  });
   it('saves/edit candidates without changing live configuration or admitting model work', async () => {
     const ctx = adminCtx(base);
     await saveAiProviderConfig(ctx,{provider:'openai',model:'fictional-direct',apiKey:'fixture-live-key',makeActive:true});

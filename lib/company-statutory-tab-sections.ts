@@ -20,7 +20,7 @@
  *    scope enclosed that card. THIS screen prints the statutory identity READ-ONLY at the top (the
  *    approved plan: "The company's statutory identity stays at the top of the screen, read-only, so you
  *    can confirm whose configuration you are editing before you touch it"), and SSM / MyInvois keep
- *    their one editor on the company panel's Statutory tab, where r226 put them. A section id in this
+ *    their one editor in the company panel's General registration section (approved 6a2b463a). A section id in this
  *    vocabulary that no card on the screen carries is a door onto `company_statutory_my` that nothing on
  *    the screen can be seen to open — CLAUDE.md §8's "a screen that holds a server action it never
  *    submits is how the next round re-adds half a feature". So the vocabulary is exactly the eight

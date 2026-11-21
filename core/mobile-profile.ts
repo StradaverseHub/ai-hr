@@ -104,11 +104,11 @@ function proposalFieldIds(proposed: unknown): string[] {
   return Object.keys(value).flatMap((key) => PERSONNEL_FIELDS.filter((field) => field.ess.binding?.legacyKey === key).map((field) => field.id));
 }
 
-async function choicesFor(ctx: SessionContext, fields: readonly PersonnelFieldDescriptor[], labels: PersonnelLabelResolver): Promise<Map<string, ProfileOption[]>> {
+async function choicesFor(ctx: SessionContext, fields: readonly PersonnelFieldDescriptor[], labels: PersonnelLabelResolver,companyId?:string|null): Promise<Map<string, ProfileOption[]>> {
   const out = new Map<string, ProfileOption[]>();
   const choiceFields = fields.filter((field) => field.type === 'choice');
   const catalog: Readonly<Record<string, readonly { value: string; label: string }[] | undefined>> =
-    choiceFields.some((field) => field.allowedValuesOwner?.startsWith('profile_option:')) ? await listAllProfileOptions(ctx, { activeOnly: true }) : {};
+    choiceFields.some((field) => field.allowedValuesOwner?.startsWith('profile_option:')) ? await listAllProfileOptions(ctx, { activeOnly: true,companyId }) : {};
   for (const field of choiceFields) {
     const category = field.allowedValuesOwner?.startsWith('profile_option:') ? field.allowedValuesOwner.slice('profile_option:'.length) : null;
     const rows: readonly { value: string; label: string }[] = category && Object.hasOwn(catalog, category) ? catalog[category] ?? [] : [];
@@ -136,7 +136,7 @@ export async function ownProfileWorkspaceV2(ctx: SessionContext, employmentId: s
   const historyShown = !hiddenTabs(policy).has('Others');
   const [open, choices, requests] = await Promise.all([
     myOwnEmploymentSubjects(policy.ctx, { profileEdit: true }),
-    choicesFor(policy.ctx, shown, labels),
+    myOwnEmploymentSubjects(policy.ctx).then(rows=>choicesFor(policy.ctx, shown, labels,rows.find(r=>r.employmentId===employmentId)?.currentCompanyId)),
     historyShown ? myProfileChangeRequests(policy.ctx, PROFILE_REQUESTS_MAX, policy) : Promise.resolve([] as Awaited<ReturnType<typeof myProfileChangeRequests>>),
   ]);
   const employmentOpen = open.some((row) => row.employmentId === workspace.employmentId);

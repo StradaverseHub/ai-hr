@@ -1,5 +1,6 @@
+import { assertModuleEnabled } from '@/core/entitlements';
 import { recordPayrollExport } from '@/core/payroll-audit/access-log';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { withTenant } from '@/db/client';
 import { company } from '@/db/schema';
@@ -7,15 +8,14 @@ import { scopedAdmin } from '@/lib/scope';
 import { isCalendarDate } from '@/lib/calendar-date';
 import { isSameOriginBrowserRequest } from '@/lib/request-origin';
 import { readBoundedBody } from '@/lib/bounded-body';
-import { listCompanyBankProfiles } from '@/core/bank-profile';
-import { listBatches, listFilableRunsForPeriod } from '@/packs/payroll/service';
 import { packFor } from '@/localization/registry';
-import { BankPaymentFileError, type BankPaymentRequest } from '@/localization/country-pack';
+import { BANK_PAYMENT_CATEGORIES, BankPaymentFileError, type BankPaymentRequest } from '@/localization/country-pack';
 import { submissionFormat } from '../registry';
 
 export const runtime = 'nodejs';
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 const period = z.string().regex(/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/);
+const optionsQuery = z.object({ companyId: uuid, category: z.enum(BANK_PAYMENT_CATEGORIES) }).strict();
 const base = z.object({ companyId: uuid, formatId: z.string().min(1).max(64), periodKey: period }).strict();
 const request = base.extend({
   bankProfileId: uuid,
@@ -28,7 +28,7 @@ const generation = request.extend({ expectedDigest: z.string().regex(/^[0-9a-f]{
 const headers = { 'Cache-Control': 'private, no-store' };
 const failure = (message: string, status: number) => Response.json({ error: message }, { status, headers });
 
-function formatFor(p: BankPaymentRequest | z.infer<typeof base>) {
+function formatFor(p: { formatId: string }) {
   const format = submissionFormat(p.formatId);
   return format?.available && format.transport === 'bank-post' ? format : undefined;
 }
@@ -38,18 +38,19 @@ function validSelection(p: BankPaymentRequest) {
     && (f.testIndicator || p.testFile === false);
 }
 /** Scope, database permission and country contract are all checked before returning account/run data. */
-async function authorize(p: z.infer<typeof base>) {
+async function authorize(p: { companyId: string }) {
   const { s, scopeIds } = await scopedAdmin();
   if (!scopeIds.includes(p.companyId)) return null;
+  try { assertModuleEnabled(s, 'payroll', p.companyId); } catch { return null; }
   const country = await withTenant(s, async (tx) => {
     const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.is_admin_for(${p.companyId}::uuid) as ok`);
     if (!permission?.ok) return null;
     const [row] = await tx.select({ country: company.country }).from(company)
-      .where(and(eq(company.id, p.companyId), eq(company.tenantId, s.tenantId))).limit(1);
+      .where(and(eq(company.id, p.companyId), eq(company.tenantId, s.tenantId), isNull(company.archivedAt))).limit(1);
     return row?.country;
   });
   const service = country ? packFor(country)?.bankPaymentFiles : undefined;
-  return service ? { s, scopeIds, service } : null;
+  return service ? { s, service } : null;
 }
 function errorResponse(error: unknown) {
   if (error instanceof BankPaymentFileError) return failure(error.message, error.status);
@@ -64,21 +65,18 @@ export async function GET(req: Request) {
   const operation = raw.operation;
   delete raw.operation;
   if (operation === 'options') {
-    const parsed = base.safeParse(raw);
+    const parsed = optionsQuery.safeParse(raw);
     if (!parsed.success) return failure('Invalid bank file request.', 400);
-    if (!formatFor(parsed.data)) return failure('Not found', 404);
     const auth = await authorize(parsed.data);
     if (!auth) return failure('Not found', 404);
     try {
-      const [accounts, runs, batches] = await Promise.all([
-        listCompanyBankProfiles(auth.s, parsed.data.companyId),
-        listFilableRunsForPeriod(auth.s, { companyIds: auth.scopeIds, companyId: parsed.data.companyId, periodKey: parsed.data.periodKey }),
-        listBatches(auth.s, [parsed.data.companyId], parsed.data.periodKey),
-      ]);
-      const ready = new Set(batches.filter((b) => !b.historyImportAttemptId && !b.needsRecalcAt && ['processed', 'closed'].includes(b.status)).map((b) => b.runSeq));
+      const options = await auth.service.submissionOptions(auth.s, parsed.data);
+      const periodKind = parsed.data.category === 'salary' ? 'month-cycle' : 'month';
+      const accounts = options.accounts.filter(account => formatFor(account)?.periodKind === periodKind);
       return Response.json({
-        accounts: accounts.filter((a) => a.bank === 'ocbc_bank' && a.currency === 'MYR').map((a) => ({ id: a.id, label: a.accountLabel || 'OCBC', last4: a.debitAccountNo.replace(/\D/g, '').slice(-4) })),
-        runs: runs.filter((r) => ready.has(r.runSeq)),
+        ...options, accounts,
+        configuredAccountId: accounts.some(account => account.id === options.configuredAccountId) ? options.configuredAccountId : null,
+        accountIssue: options.accountIssue ?? (accounts.length ? null : 'incompatible'),
       }, { headers });
     } catch (error) { return errorResponse(error); }
   }
@@ -93,7 +91,7 @@ export async function GET(req: Request) {
   if (!validSelection(parsed.data)) return failure('Select exactly one ready salary run, or the whole month for statutory files.', 422);
   const auth = await authorize(parsed.data);
   if (!auth) return failure('Not found', 404);
-  try { return Response.json(await auth.service.preview(auth.s, parsed.data), { headers }); }
+  try { return Response.json(await auth.service.preview(auth.s, { ...parsed.data, closedPayrollOnly: true }), { headers }); }
   catch (error) { return errorResponse(error); }
 }
 
@@ -111,7 +109,7 @@ export async function POST(req: Request) {
   const auth = await authorize(parsed.data);
   if (!auth) return failure('Not found', 404);
   try {
-    const file = await auth.service.download(auth.s, parsed.data);
+    const file = await auth.service.download(auth.s, { ...parsed.data, closedPayrollOnly: true });
     if (!/^[A-Za-z0-9._-]{1,160}$/.test(file.filename)) throw new Error('Invalid filename');
     // AI v2 P2-2b: the bank file handed over is recorded with its sha256 before it leaves (fail closed).
     await recordPayrollExport(auth.s, { surface: 'bank_file', companyId: parsed.data.companyId, payPeriod: parsed.data.periodKey, format: 'txt', detail: parsed.data.formatId }, file.content);

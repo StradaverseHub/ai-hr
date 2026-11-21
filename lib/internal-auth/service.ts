@@ -1,14 +1,17 @@
 import {observeAccountExpiry,observeStoredAccountExpiry} from './account-expiry';
 import {accountAvailable,temporaryPasswordAvailable} from './account-state';
+import {settleRecoveryExemption,consumeRecoveryExemption} from './recovery-exemption';
 import { readRememberedMfaPolicy, rememberedFactorValid, rememberVerifiedFactor } from './remembered-mfa';
 import { passwordChangeRequired, replacePassword, effectivePasswordPolicy } from './password-policy';
 import {admitPasswordAttempt} from './login-lockout';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { generateSecret, verify } from 'otplib';
-import { client } from '../../db/client';
+import { client,withPoolWork } from '../../db/client';
+import { applicationDatabaseBudget } from '../../db/capacity';
 import { internalConfig, internalIssuer } from './config';
 import { digest, opaque, validOpaque, passwordMatches, DUMMY_PASSWORD_HASH } from './crypto';
-import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
+import { authTransaction, readRecord, readRecordPair, readAuthRecord, withAuthReadConnection, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
 import { InternalAuthError } from './errors';
 import { assertActiveCredential, type Credential } from './credential';
 import { idleTimeoutMinutesFor } from '../session-policy-server';
@@ -31,23 +34,55 @@ export const loginKey = (organization: string, username: string) => `login:${dig
 export const canonicalOrg = (value: string) => (value || internalConfig().organization).trim().toLowerCase();
 const canonicalUsername = (value: string) => value.trim().toLowerCase();
 export async function credentialByLogin(organization: string, username: string) {
-  const index = await readRecord<{ subject: string }>(client, loginKey(canonicalOrg(organization), canonicalUsername(username)));
-  return index ? readRecord<Credential>(client, credentialKey(index.subject)) : null;
+  const index = await readAuthRecord<{ subject: string }>(loginKey(canonicalOrg(organization), canonicalUsername(username)));
+  return index ? readAuthRecord<Credential>(credentialKey(index.subject)) : null;
 }
+const RATE_LOCK_RETRY_MS = [20, 40, 80, 160, 240] as const;
+const RATE_LOCK_RETRY_BUDGET_MS = 750;
 export async function takeRate(scope: string, limit: number, window = 15 * 60_000) {
   const now = Date.now(), start = Math.floor(now / window) * window;
   const key = `rate:${digest(`${scope}:${start}`)}`;
-  const ok = await authTransaction(key, async tx => {
+  const attempt = (deadline?: number, signal?: AbortSignal) => withPoolWork('authentication', () => client.begin(async tx => {
+    if (deadline !== undefined && performance.now() >= deadline) return null;
+    const [lock] = await tx.unsafe<{ acquired: boolean }[]>(
+      "select pg_try_advisory_xact_lock(hashtextextended('internal-auth:'||$1,0)) as acquired", [key],
+    );
+    if (lock?.acquired === false) return null;
+    if (lock?.acquired !== true) throw new InternalAuthError('unavailable');
+    if (deadline !== undefined && performance.now() >= deadline) return null;
     const count = (await readRecord<{ count: number }>(tx, key, true))?.count || 0;
     if (count >= limit) return false;
-    await writeRecord(tx, key, { count: count + 1 }, null, start + 2 * window); return true;
-  });
-  if (!ok) throw new InternalAuthError('rateLimited');
+    await writeRecord(tx, key, { count: count + 1 }, null, start + 2 * window);
+    return true;
+  }), signal);
+
+  let result = await attempt();
+  const deadline = performance.now() + RATE_LOCK_RETRY_BUDGET_MS;
+  // A null miss has settled without touching the counter and returned the pool permit.
+  // Once counter work starts, its result or storage error escapes without replay.
+  for (const delay of RATE_LOCK_RETRY_MS) {
+    if (result !== null || performance.now() + delay >= deadline) break;
+    await new Promise<void>(resolve => setTimeout(resolve, delay));
+    const remaining = Math.floor(deadline - performance.now());
+    if (remaining <= 0) break;
+    const signal = AbortSignal.timeout(remaining);
+    try { result = await attempt(deadline, signal); }
+    catch (error) {
+      if (signal.aborted && error === signal.reason) break;
+      throw error;
+    }
+  }
+  if (result === null) throw new InternalAuthError('unavailable');
+  if (!result) throw new InternalAuthError('rateLimited');
 }
-async function audit(tx: AuthSql, c: Credential, event: string, refused = false, system = false) {
+type AdmitAudit = () => Promise<boolean>;
+async function audit(tx: AuthSql, c: Credential, event: string, refused = false, system = false, admitAudit?: AdmitAudit) {
   const rows = await tx.unsafe('select app_user_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
-  if (rows[0]) await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,$3,$4,$5::uuid,NULL)",
+  if (!rows[0]) return true;
+  if (admitAudit && !await admitAudit()) return false;
+  await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,$3,$4,$5::uuid,NULL)",
     [c.tenantId, rows[0].app_user_id, event, system ? 'system' : refused ? 'external' : 'user', refused || system ? null : rows[0].app_user_id]);
+  return true;
 }
 async function makeSession(tx: AuthSql, c: Credential, native: boolean, recoveryCodes?: string[]): Promise<AuthReply> {
   await assertActiveCredential(tx, c);
@@ -82,8 +117,8 @@ export async function startLogin(input: { organization: string; username: string
     if(current?.enabled&&current.password===c.password)await admitPasswordAttempt(tx,current,false);
   });
   if (!c || !accountAvailable(c) || !temporaryPasswordAvailable(c) || c.temporaryPasswordUsed || !matched) {
-    await client.unsafe("select app.append_auth_event(NULL,'internal-login',$1::uuid,'app-user.login-refused','external',NULL,$2::jsonb)",
-      [randomUUID(), JSON.stringify({ loginHash: digest(`${org}\0${username}`), reason: 'invalidCredentials' })]);
+    await withPoolWork('authentication',()=>client.unsafe("select app.append_auth_event(NULL,'internal-login',$1::uuid,'app-user.login-refused','external',NULL,$2::jsonb)",
+      [randomUUID(), JSON.stringify({ loginHash: digest(`${org}\0${username}`), reason: 'invalidCredentials' })]));
     throw new InternalAuthError('invalidLogin');
   }
   const outcome = await authTransaction(c.subject, async tx => {
@@ -99,12 +134,22 @@ export async function startLogin(input: { organization: string; username: string
     }
     if(current.temporaryPasswordExpiresAt!==undefined){
       current.temporaryPasswordUsed=true;
+      // First sign-in with an administrator-issued temporary password: an active authenticator pause
+      // (single use) skips the old factor's code. The old factor is retired here, so the challenge can
+      // only continue through the forced password change and a fresh mandatory enrolment (ADR-0117).
+      if(current.totpSecret&&current.mustChange){
+        const exemption=await settleRecoveryExemption(tx,current);
+        if(exemption){
+          await consumeRecoveryExemption(tx,current,exemption,'temporary-password');
+          await revokeCredentialsSessions(tx,current.subject);
+        }
+      }
       await writeRecord(tx,credentialKey(current.subject),current,current.subject);
     }
     const rememberDays = (await readRememberedMfaPolicy(tx, current.tenantId)).policy.rememberDays;
     const raw = opaque();
     const phase = current.totpSecret ? 'mfa' : requirements?.firstResetVerification ? 'enroll' : await passwordChangeRequired(tx, current) ? 'password' : 'enroll';
-    const challenge: Challenge = { subject: c.subject, version: c.version, phase, attempts: 0, native: input.native, rememberDays, expiresAt: Date.now() + CHALLENGE_LIFE,
+    const challenge: Challenge = { subject: current.subject, version: current.version, phase, attempts: 0, native: input.native, rememberDays, expiresAt: Date.now() + CHALLENGE_LIFE,
       ...(phase === 'enroll' ? { secret: generateSecret() } : {}) };
     await writeRecord(tx, `challenge:${digest(raw)}`, challenge, c.subject, challenge.expiresAt);
     return reply(raw, current, challenge);
@@ -112,22 +157,66 @@ export async function startLogin(input: { organization: string; username: string
   if(!outcome)throw new InternalAuthError('invalidLogin');
   return outcome;
 }
-async function withChallenge(raw: string, native: boolean, operation: (tx: AuthSql, c: Credential, challenge: Challenge, key: string) => Promise<AuthReply | { failure: true }>) {
+const auditAdmissionMiss = Symbol('audit admission miss');
+type ChallengeResult = AuthReply | { failure: true } | typeof auditAdmissionMiss;
+
+async function withChallenge(
+  raw: string, native: boolean,
+  operation: (tx: AuthSql, c: Credential, challenge: Challenge, key: string, admitAudit?: AdmitAudit) => Promise<ChallengeResult>,
+  beforeLock?: (subject: string) => Promise<void>,
+  admitReturningAudit = false,
+) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');
-  const key = `challenge:${digest(raw)}`, initial = await readRecord<Challenge>(client, key);
+  const key = `challenge:${digest(raw)}`, initial = await readAuthRecord<Challenge>(key);
   if (!initial) throw new InternalAuthError('invalidChallenge');
-  const result = await authTransaction(initial.subject, async tx => {
+  // MFA admission commits independently of the challenge outcome.
+  if (beforeLock) await beforeLock(initial.subject);
+  const attempt = (deadline?: number, signal?: AbortSignal) => authTransaction<ChallengeResult>(initial.subject, async tx => {
+    if (deadline !== undefined && performance.now() >= deadline) return auditAdmissionMiss;
     const challenge = await readRecord<Challenge>(tx, key, true);
+    if (!challenge) throw new InternalAuthError('invalidChallenge');
     const c = await readRecord<Credential>(tx, credentialKey(initial.subject), true);
-    if (!challenge || challenge.native !== native || !c || c.version !== challenge.version || challenge.attempts >= 5 || challenge.subject !== c.subject || (!accountAvailable(c) && !challenge.invitation) || !temporaryPasswordAvailable(c)) throw new InternalAuthError('invalidChallenge');
-    const outcome = await operation(tx, c, challenge, key);
+    if (challenge.native !== native || !c || c.version !== challenge.version || challenge.attempts >= 5 || challenge.subject !== c.subject || (!accountAvailable(c) && !challenge.invitation) || !temporaryPasswordAvailable(c)) throw new InternalAuthError('invalidChallenge');
+    // Only returning MFA without enrollment or remembered-device writes can
+    // take the native event key here, after the existing subject and row owners.
+    const admitAudit = admitReturningAudit && challenge.phase === 'mfa' && !challenge.invitation ? async () => {
+      if (deadline !== undefined && performance.now() >= deadline) return false;
+      const [lock] = await tx.unsafe<{ acquired: boolean }[]>(
+        "select pg_try_advisory_xact_lock(hashtext('audit-chain:'||$1::uuid::text)) as acquired", [c.tenantId],
+      );
+      if (lock?.acquired === false) return false;
+      if (lock?.acquired !== true) throw new InternalAuthError('unavailable');
+      return deadline === undefined || performance.now() < deadline;
+    } : undefined;
+    const outcome = await operation(tx, c, challenge, key, admitAudit);
+    if (outcome === auditAdmissionMiss) return outcome;
     if ('failure' in outcome) {
+      if (!await audit(tx, c, 'app-user.mfa-refused', true, false, admitAudit)) return auditAdmissionMiss;
       challenge.attempts++;
-      await audit(tx, c, 'app-user.mfa-refused', true);
       await writeRecord(tx, key, challenge, c.subject, challenge.expiresAt);
     }
     return outcome;
-  });
+  }, signal);
+  let result = await attempt();
+  if (result === auditAdmissionMiss) {
+    // A miss committed no effects and released its connection. The rate charge above
+    // stays outside retry. Only the next owner may recheck and consume the challenge.
+    const deadline = performance.now() + applicationDatabaseBudget(process.env).waitMs;
+    for (let backoff = 25; result === auditAdmissionMiss; backoff = Math.min(400, backoff * 2)) {
+      const timeLeft = deadline - performance.now();
+      if (timeLeft <= 0) break;
+      await delay(Math.min(timeLeft, backoff + Math.floor(Math.random() * 25)));
+      const remaining = Math.floor(deadline - performance.now());
+      if (remaining <= 0) break;
+      const signal = AbortSignal.timeout(remaining);
+      try { result = await attempt(deadline, signal); }
+      catch (error) {
+        if (signal.aborted && error === signal.reason) break;
+        throw error;
+      }
+    }
+  }
+  if (result === auditAdmissionMiss) throw new InternalAuthError('unavailable');
   if ('failure' in result) throw new InternalAuthError('invalidCode');
   return result;
 }
@@ -144,10 +233,10 @@ export async function changeInitialPassword(raw: string, password: string, nativ
     return reply(raw, c, ch);
   });
 }
-async function checkFactor(c: Credential, code: string, secret = c.totpSecret): Promise<{ step?: number; recovery?: number } | null> {
+async function checkFactor(c: Credential, code: string, secret = c.totpSecret, epoch?: number): Promise<{ step?: number; recovery?: number } | null> {
   if (!secret) return null;
   if (/^\d{6}$/.test(code)) {
-    const match = await verify({ strategy: 'totp', secret, token: code, epochTolerance: 30 });
+    const match = await verify({ strategy: 'totp', secret, token: code, epochTolerance: 30, epoch });
     if (!match.valid || !('timeStep' in match) || !Number.isSafeInteger(match.timeStep)) return null;
     const step = match.timeStep;
     return step > c.lastStep ? { step } : null;
@@ -162,12 +251,21 @@ function consumeFactor(c: Credential, factor: { step?: number; recovery?: number
   if (factor.recovery !== undefined) c.recoveryHashes.splice(factor.recovery, 1);
 }
 export async function verifyMfa(raw: string, code: string, native = false, rememberDevice = false): Promise<AuthReply> {
-  const initial = validOpaque(raw) ? await readRecord<Challenge>(client, `challenge:${digest(raw)}`) : null;
-  if (initial) await takeRate(`mfa:${initial.subject}`, 15);
-  return withChallenge(raw, native, async (tx, c, ch, key) => {
+  let factorEpoch: number | undefined;
+  return withChallenge(raw, native, async (tx, c, ch, key, admitAudit) => {
     if (!['enroll', 'mfa'].includes(ch.phase)) throw new InternalAuthError('invalidChallenge');
-    const factor = await checkFactor(c, code, ch.phase === 'enroll' ? ch.secret : c.totpSecret);
+    // A retry must retain the original server-side TOTP decision time while
+    // rechecking the current credential and its one-use factor state.
+    if (admitAudit) factorEpoch ??= Math.floor(Date.now() / 1000);
+    const factor = await checkFactor(c, code, ch.phase === 'enroll' ? ch.secret : c.totpSecret, admitAudit ? factorEpoch : undefined);
     if (!factor || (ch.phase === 'enroll' && factor.recovery !== undefined)) return { failure: true };
+    // Forced password transitions write no audit event. Decide with the existing
+    // policy before any effects on this returning-only path; makeSession rechecks it.
+    const needsPassword = admitAudit ? await passwordChangeRequired(tx, c) : undefined;
+    if (admitAudit && !needsPassword) {
+      await assertActiveCredential(tx, c);
+      if (!await admitAudit()) return auditAdmissionMiss;
+    }
     consumeFactor(c, factor);
     let codes: string[] | undefined;
     if (ch.phase === 'enroll') {
@@ -188,7 +286,7 @@ export async function verifyMfa(raw: string, code: string, native = false, remem
       await audit(tx, c, 'app-user.mfa-enrolled');
     }
     await writeRecord(tx, credentialKey(c.subject), c, c.subject);
-    if (await passwordChangeRequired(tx, c)) {
+    if (needsPassword ?? await passwordChangeRequired(tx, c)) {
       ch.phase = 'password'; ch.mfaPassed = true; if(codes)ch.recoveryCodes=codes;
       await writeRecord(tx, key, ch, c.subject, ch.expiresAt);
       return reply(raw, c, ch);
@@ -207,19 +305,30 @@ export async function verifyMfa(raw: string, code: string, native = false, remem
       return { ...session, ...remembered };
     }
     return session;
-  });
+  }, subject => takeRate(`mfa:${subject}`, 15), !rememberDevice);
 }
 /** Web sessions also end after the organization's idle limit (ADR-0171); that check revokes and audits them. */
 async function loadSession(token: string | undefined, native: boolean) {
   if (native && !token?.startsWith('aihr_')) return null;
   const raw = native ? token!.slice(5) : token;
   if (!validOpaque(raw)) return null;
-  const key = `session:${digest(raw)}`, session = await readRecord<Session>(client, key);
-  if (!session || session.native !== native || session.absoluteExpiry <= Date.now()) return null;
-  const c = await readRecord<Credential>(client, credentialKey(session.subject));
-  if (!c || c.version !== session.version || !await readRecord(client, `family:${session.family}`)) return null;
-  if(c.accountActiveUntil&&!accountAvailable(c)){await authTransaction(c.subject,tx=>observeStoredAccountExpiry(tx,c.subject));return null;}
-  try { await assertActiveCredential(client, c); } catch (e) { if (e instanceof InternalAuthError) return null; throw e; }
+  const key = `session:${digest(raw)}`;
+  const facts=await withAuthReadConnection(async connection=>{
+    const session=await readRecord<Session>(connection,key);
+    if (!session || session.native !== native || session.absoluteExpiry <= Date.now()) return null;
+    const c=await readRecordPair<Credential>(connection,credentialKey(session.subject),`family:${session.family}`,
+      credential=>credential.version===session.version);
+    if(!c)return null;
+    const expiredAccount=Boolean(c.accountActiveUntil&&!accountAvailable(c));
+    if(!expiredAccount){
+      try{await assertActiveCredential(connection,c);}catch(error){if(error instanceof InternalAuthError)return null;throw error;}
+    }
+    return {session,c,expiredAccount};
+  });
+  if(!facts)return null;
+  const {session,c,expiredAccount}=facts;
+  // Account/idle writes keep their original independent transactions after the read lease ends.
+  if(expiredAccount){await authTransaction(c.subject,tx=>observeStoredAccountExpiry(tx,c.subject));return null;}
   if (native) return { key, session, c, idleMs: null };
   const idleMs = await idleTimeoutMinutesFor(c.tenantId) * 60_000;
   if (session.lastActivity === undefined) {
@@ -261,7 +370,7 @@ export async function touchSession(token: string | undefined): Promise<{ idleTim
 export async function rotateRefresh(token: string): Promise<AuthReply> {
   const raw = token.startsWith('aihr_refresh_') ? token.slice(13) : '';
   if (!validOpaque(raw)) throw new InternalAuthError('invalidLogin');
-  const key = `refresh:${digest(raw)}`, initial = await readRecord<Refresh>(client, key);
+  const key = `refresh:${digest(raw)}`, initial = await readAuthRecord<Refresh>(key);
   if (!initial) throw new InternalAuthError('invalidLogin');
   const result = await authTransaction(initial.subject, async tx => {
     const value = await readRecord<Refresh>(tx, key, true);
@@ -283,7 +392,7 @@ export async function rotateRefresh(token: string): Promise<AuthReply> {
 export async function revokeSession(token: string | undefined, native = false, refresh?: string) {
   const session = await readSession(token, native);
   let family = session?.family;
-  if (!family && refresh?.startsWith('aihr_refresh_') && validOpaque(refresh.slice(13))) family = (await readRecord<Refresh>(client, `refresh:${digest(refresh.slice(13))}`))?.family;
+  if (!family && refresh?.startsWith('aihr_refresh_') && validOpaque(refresh.slice(13))) family = (await readAuthRecord<Refresh>(`refresh:${digest(refresh.slice(13))}`))?.family;
   if (family) await authTransaction(`family:${family}`, async tx => {
     await deleteRecord(tx, `family:${family}`);
     if (session) { await deleteRecord(tx, session.sessionKey); await audit(tx, session.credential, 'app-user.logged-out'); }
@@ -291,7 +400,7 @@ export async function revokeSession(token: string | undefined, native = false, r
 }
 /** Called only after an operator or the audited manual-enrollment flow chooses a tenant/person. */
 export async function createDisabledCredential(input: { tenantId: string; username: string; email: string; enrollmentId?: string }) {
-  const organization = await readRecord<Organization>(client, `tenant:${input.tenantId}`);
+  const organization = await readAuthRecord<Organization>(`tenant:${input.tenantId}`);
   if (!organization) throw new InternalAuthError('unavailable');
   const username = canonicalUsername(input.username), email = input.email.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9._@+-]{2,63}$/.test(username) || !/^\S+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 255) throw new InternalAuthError('conflict');

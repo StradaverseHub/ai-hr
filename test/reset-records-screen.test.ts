@@ -284,6 +284,9 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
     const configRows = rows.filter((r) => r.href.startsWith('/admin/leave-config/'));
     expect(configRows.map((r) => r.href)).toEqual([
       '/admin/leave-config/types',
+      // 50d9b809 — Shared Leave Groups, the page the Entitlements pop-up became, named here for the same
+      // reason every other addition is. 7f69bd71's property is untouched.
+      '/admin/leave-config/shared-groups',
       '/admin/leave-config/balance-health',
       '/admin/leave-config/adjustments',
       // r378 consolidates importer rows; reset-record ownership remains unchanged.
@@ -528,7 +531,7 @@ describe('7f69bd71 — the Reset records page renders, for real, both sub-tabs w
     expect(html).toContain('r268-config-release-one · ');
     expect(html).toContain('>Show</button>');
     expect(html).toContain(`href="${CSV_CONFIGURATION}?capture=r268-config-2026-09-11"`);
-    expect(html).toContain('>Download as CSV</a>');
+    expect(html).toMatch(/>Download as CSV<span[^>]+role="status"[^>]*><\/span><\/a>/);
     // The rows of the newest capture, under the template/rule header, and not the older capture's.
     expect(html).toContain('Annual leave table — grade A');
     expect(html).toContain('Rule: everyone at Seeded Co');

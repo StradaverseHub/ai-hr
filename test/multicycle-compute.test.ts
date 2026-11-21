@@ -53,19 +53,19 @@ describe('Wave 2C — computeMonthlyRuns (ADR-0024 sign-off figures)', () => {
     expect(sum([r1.epfEmployee, r2.epfEmployee])).toBe(1650);
   });
 
-  it('#2 EPF employer resolves on the WHOLE MONTH → 12% of RM15,000 = RM1,800 (bdf7d248, r210)', () => {
-    // REVERSED, DELIBERATELY. This assertion used to read "anchored at 13% (normal wage ≤ RM5,000), not
-    // 12% → RM1,950", and that was the documented ADR-0024 §4 rule. Item bdf7d248 reversed it: the
-    // employer 13%/12% step is not a rate applied beside the schedule, it is a step BAKED INTO the Part
-    // A rows, so reading the row for the month's whole pay (RM5,000 salary + RM10,000 bonus = RM15,000)
-    // resolves it on the month. ADR-0024 §4 and §7 carry the restated figures and the date.
-    expect(monthly.epfEmployer).toBe(epf(5000, 10000, CFG.epf).employer);
-    expect(monthly.epfEmployer).toBe(1800); // the old reading gave 1,950
-    expect(sum([r1.epfEmployer, r2.epfEmployer])).toBe(1800);
-    // The increments still sum to the month: the regular run charged the 13% row on RM5,000 and the
-    // bonus run tops up to the month's figure rather than re-banding itself.
+  it('#2 EPF employer: normal RM5,000 ≤ RM5,000 and the bonus crosses it → 13% of RM15,000 = RM1,950 (7f5cc653)', () => {
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16, which restates §7 row 2).
+    // This read 1,800 after bdf7d248 (r210) resolved the 13%/12% employer step on the combined month.
+    // KWSP's Third Schedule Part A bonus note governs exactly this scenario: normal monthly wages of
+    // RM5,000 (at or below RM5,000) and a bonus that takes the month above RM5,000, so the employer pays
+    // 13% of the month's wages: 15,000 × 13% = 1,950.00 → 1,950 (was 1,800). It is the figure §7 was
+    // originally signed off on (2026-06-20), now on a cited basis rather than a rate anchored by assumption.
+    expect(monthly.epfEmployer).toBe(1950); // was 1,800
+    expect(sum([r1.epfEmployer, r2.epfEmployer])).toBe(1950);
+    // The regular run charged the 13% row on RM5,000 (0.13 × 5,000 = 650) and the bonus run tops up to the
+    // month's figure: 1,950 − 650 = 1,300 (was 1,150).
     expect(r1.epfEmployer).toBe(650);
-    expect(r2.epfEmployer).toBe(1150);
+    expect(r2.epfEmployer).toBe(1300);
   });
 
   it('#3 ONE SOCSO contribution for the month, on RM5,000; the bonus run adds RM0', () => {

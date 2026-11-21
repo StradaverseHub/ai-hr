@@ -1,3 +1,4 @@
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 // @vitest-environment jsdom
 /**
  * 34062f81 — Payroll > Pay Items: "Basic Salary / Calendar days in the month × Days worked" is VALID, and

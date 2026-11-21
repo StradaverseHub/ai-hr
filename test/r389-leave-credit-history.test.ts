@@ -648,7 +648,7 @@ describe('r389 · the My Leave menu, the renamed row, the retired link and the s
       // toil-gated, which the sidebar assertions below still prove (only leaveCreditHistory is named there).
       ['/leave/details', 'leaveDetails'],
     ]);
-    const sidebar = codeOnly(read('components/sidebar.tsx'));
+    const sidebar = codeOnly(read('lib/navigation/shell-inventory.ts'));
     expect(sidebar).toContain("c.labelKey === 'leaveCreditHistory'");
     expect(sidebar).not.toContain("c.labelKey === 'leaveHistory'");
     for (const l of LOCALES) {

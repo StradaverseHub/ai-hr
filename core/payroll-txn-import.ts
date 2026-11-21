@@ -5,7 +5,7 @@
  *
  * The reporter's own words: "Manual Entry = Excel Import = Same validation + Same business rules + Same
  * payroll calculation logic." That is not a nice-to-have here, it is the implementation strategy. Every
- * row goes through the LIVE service — `setEmploymentPayComponent` for a recurring item,
+ * row goes through the LIVE service — the Fixed Transaction writer for a recurring item,
  * `createIndividualTxnsBulk` for a one-off — so the typed errors those services already raise are the
  * import's error vocabulary, and a rule added to either service applies to the import on the day it
  * ships without anyone remembering to mirror it.
@@ -56,7 +56,7 @@ import { createHash } from 'node:crypto';
 
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { employmentPayComponent, payComponent, payrollCycle, payrollIndividualTxn } from '../db/schema';
 import { listEmployees } from './read';
 // ADR-0080 D9 — payroll is a PACK, and this module is spine, so every payroll service comes through the
@@ -72,16 +72,18 @@ import {
   FixedTransactionBackwardsError,
   FixedTransactionMidMonthError,
   FixedTransactionDateError,
+  FixedTransactionNotFoundError,
+  FixedTransactionStartDateCorrectionError,
   FixedTransactionOverlapError,
   FixedTransactionPaidError,
   TxnQuantityRequiredError,
   UnsupportedFixedCurrencyError,
   deriveIndividualTxnAmount,
-  setEmploymentPayComponent,
+  addFixedTransaction,
+  updateEmploymentPayComponent,
   type FixedTransactionCycle,
   payRuleInputUnit,
-  payRuleAllowsDayByDay,
-  payRuleDerivesAmount,
+  resolveDailyImportInput,
   isTxnUnit,
   PayRuleEvalError,
   type PayRule,
@@ -98,6 +100,7 @@ import {
   BatchNotDraftError,
   batchEditImpact,
   listBatches,
+  listPayrollCyclesForCompanies,
 } from '../packs/payroll/service';
 import {
   TXN_IMPORT_REQUIRED_COLUMNS,
@@ -138,6 +141,9 @@ export function txnImportReason(e: unknown): { reason: string; detail?: Record<s
     return { reason: 'midMonth', detail: { code: e.code, nextFirst: e.nextFirstOfMonth } };
   }
   if (e instanceof FixedTransactionPaidError) return { reason: 'closedRun', detail: { period: e.payPeriod } };
+  if (e instanceof FixedTransactionNotFoundError || e instanceof FixedTransactionStartDateCorrectionError) {
+    return { reason: 'startDateCorrection' };
+  }
   if (e instanceof FixedTransactionDateError) return { reason: 'endBeforeStart' };
   if (e instanceof UnsupportedFixedCurrencyError) return { reason: 'currencyUnsupported' };
   if (e instanceof FixedTransactionAmountError) return { reason: 'amountNotPositive' };
@@ -252,19 +258,25 @@ async function loadCatalogs(ctx: SessionContext, scopeIds: string[]): Promise<Ca
 
 /** The live (non-superseded) recurring rows for a set of employments — the left-hand side of the
  *  overlap test. Read once for the whole file rather than once per row. */
-async function loadLiveFixedRows(
-  ctx: SessionContext,
-  employmentIds: string[],
-): Promise<Map<string, { componentId: string; validFrom: string; validTo: string | null; code: string }[]>> {
-  const out = new Map<string, { componentId: string; validFrom: string; validTo: string | null; code: string }[]>();
+type LiveFixedRow = Pick<typeof employmentPayComponent.$inferSelect,
+  'id' | 'employmentId' | 'componentId' | 'validFrom' | 'validTo' | 'amount' | 'runType' | 'payrollCycleId' | 'remarks'> &
+  { code: string };
+
+async function loadLiveFixedRows(ctx: SessionContext, employmentIds: string[]) {
+  const out = new Map<string, LiveFixedRow[]>();
   if (employmentIds.length === 0) return out;
   const rows = await withTenant(ctx, (tx) =>
     tx
       .select({
+        id: employmentPayComponent.id,
         employmentId: employmentPayComponent.employmentId,
         componentId: employmentPayComponent.componentId,
         validFrom: employmentPayComponent.validFrom,
         validTo: employmentPayComponent.validTo,
+        amount: employmentPayComponent.amount,
+        runType: employmentPayComponent.runType,
+        payrollCycleId: employmentPayComponent.payrollCycleId,
+        remarks: employmentPayComponent.remarks,
         code: payComponent.code,
       })
       .from(employmentPayComponent)
@@ -278,50 +290,25 @@ async function loadLiveFixedRows(
   );
   for (const r of rows) {
     const list = out.get(r.employmentId) ?? [];
-    list.push({ componentId: r.componentId, validFrom: r.validFrom, validTo: r.validTo, code: r.code });
+    list.push(r);
     out.set(r.employmentId, list);
-  }
-  return out;
-}
-
-/**
- * 4fffe638 — the ONE-MATCH rule the 0514 backfill uses, for the import: company → run type → the single
- * ACTIVE configured cycle with that run type. A (company, run type) with two or more active cycles — the
- * usual off_cycle case (Off-cycle, Advance Salary, Mid-Month) — maps to null, because the file's Payroll
- * Cycle column names a run type and cannot say which of them was meant. Read once for the whole file.
- */
-async function loadOneMatchCycles(
-  ctx: SessionContext,
-  companyIds: string[],
-): Promise<Map<string, string | null>> {
-  const out = new Map<string, string | null>();
-  if (companyIds.length === 0) return out;
-  const rows = await withTenant(ctx, (tx) =>
-    tx
-      .select({ id: payrollCycle.id, companyId: payrollCycle.companyId, runType: payrollCycle.runType })
-      .from(payrollCycle)
-      .where(and(inArray(payrollCycle.companyId, companyIds), isNull(payrollCycle.archivedAt))),
-  );
-  for (const r of rows) {
-    const key = `${r.companyId}|${r.runType}`;
-    out.set(key, out.has(key) ? null : r.id);
   }
   return out;
 }
 
 /** A row that has passed every check, carrying everything the write needs — so the commit does not
  *  re-parse the file's strings a second time and cannot reach a different conclusion from the preview. */
-type ResolvedFixed = {
+export type ResolvedFixed = {
   employmentId: string;
+  companyId: string;
   componentId: string;
   amount: number;
   effectiveFrom: string;
   effectiveTo: string | null;
   runType: FixedTransactionCycle | null;
-  /** 4fffe638 — the configured cycle the row links to, under the 0514 ONE-MATCH rule only: set when the
-   *  employee's company has exactly one active cycle with `runType`, else null (no guessing). */
   payrollCycleId: string | null;
   remarks: string | null;
+  correction?: { id: string; previousStartDate: string };
 };
 type ResolvedIndividual = {
   employmentId: string;
@@ -344,6 +331,8 @@ type ResolvedIndividual = {
   sourceRef: string;
   intendedCycleId?: string | null;
   method?: string;
+  explicitDailyInput?: string;
+  explicitDailyRuleHash?: string;
 };
 
 /** The rows already in the ledger for the employments a file names, read ONCE for the whole file. The
@@ -547,14 +536,26 @@ async function analyzeFixed(
 ): Promise<{ preview: TxnImportPreview; resolved: Map<number, ResolvedFixed> }> {
   const rows: TxnImportRow[] = [];
   const resolved = new Map<number, ResolvedFixed>();
+  const companyIds = [...new Set(records.flatMap((record) => {
+    const employee = cat.employeeByCode.get((record.employee_id ?? '').trim().toUpperCase());
+    return employee && employee !== 'ambiguous' ? [employee.companyId] : [];
+  }))];
+  const cycles = await listPayrollCyclesForCompanies(ctx, companyIds, { activeOnly: true });
+  const byCompanyCode = new Map<string, (typeof cycles)[number]>();
+  const byCompanyRunType = new Map<string, string | null>();
+  for (const cycle of cycles) {
+    if (cycle.code) byCompanyCode.set(`${cycle.companyId}:${cycle.code.toLowerCase()}`, cycle);
+    const runTypeKey = `${cycle.companyId}:${cycle.runType}`;
+    byCompanyRunType.set(runTypeKey, byCompanyRunType.has(runTypeKey) ? null : cycle.id);
+  }
+
   // Resolve identity first so the live-row read can be one query for the whole file.
   const stage: {
     rowNum: number;
     base: Omit<TxnImportRow, 'ok' | 'reason'>;
     r: ResolvedFixed | null;
     failure?: TxnImportRow;
-    /** 4fffe638 — the employee's company, for the one-match cycle link. */
-    companyId?: string;
+    previousStartDate?: string;
   }[] = [];
 
   for (const [i, rec] of records.entries()) {
@@ -604,6 +605,11 @@ async function analyzeFixed(
       stage.push({ rowNum, base, r: null, failure: fail(base, 'startDateInvalid', { value: effectiveFrom }) });
       continue;
     }
+    const previousStartDate = (rec.previous_start_date ?? '').trim();
+    if (previousStartDate && (!isIsoDate(previousStartDate) || effectiveFrom >= previousStartDate)) {
+      stage.push({ rowNum, base, r: null, failure: fail(base, 'startDateCorrection') });
+      continue;
+    }
     const endRaw = (rec.end_date ?? '').trim();
     const effectiveTo = endRaw === '' ? null : endRaw;
     if (effectiveTo != null && !isIsoDate(effectiveTo)) {
@@ -614,43 +620,35 @@ async function analyzeFixed(
       stage.push({ rowNum, base, r: null, failure: fail(base, 'endBeforeStart') });
       continue;
     }
-    // The file's "Payroll cycle" column still takes the run_type values it always took (regular /
-    // off_cycle / bonus / adjustment), not a cycle name or code. 4fffe638 — the row is LINKED to a
-    // configured payroll_cycle only under the 0514 one-match rule (see loadOneMatchCycles, applied after
-    // this loop); an ambiguous run type stays an unlinked tag, exactly as the screen shows it.
     const cycleRaw = (rec.payroll_cycle ?? '').trim().toLowerCase();
-    let runType: FixedTransactionCycle | null = null;
-    if (cycleRaw !== '') {
+    const configuredCycle = byCompanyCode.get(`${emp.companyId}:${cycleRaw}`);
+    let runType: FixedTransactionCycle | null = configuredCycle?.runType ?? null;
+    if (cycleRaw && !configuredCycle) {
       if (!(FIXED_TRANSACTION_CYCLES as readonly string[]).includes(cycleRaw)) {
         stage.push({ rowNum, base, r: null, failure: fail(base, 'cycleUnknown', { value: rec.payroll_cycle ?? '' }) });
         continue;
       }
       runType = cycleRaw as FixedTransactionCycle;
     }
+    const payrollCycleId = configuredCycle?.id ??
+      (runType ? byCompanyRunType.get(`${emp.companyId}:${runType}`) ?? null : null);
 
     stage.push({
       rowNum,
+      previousStartDate,
       base: { ...base, amount: amount.toFixed(2), effectiveFrom },
       r: {
         employmentId: emp.employmentId,
+        companyId: emp.companyId,
         componentId: comp.id,
         amount,
         effectiveFrom,
         effectiveTo,
         runType,
-        payrollCycleId: null,
+        payrollCycleId,
         remarks: (rec.remarks ?? '').trim() || null,
       },
-      companyId: emp.companyId,
     });
-  }
-
-  // 4fffe638 — the one-match link, for rows whose file named a run type.
-  const oneMatch = await loadOneMatchCycles(ctx, [
-    ...new Set(stage.filter((x) => x.r?.runType && x.companyId).map((x) => x.companyId!)),
-  ]);
-  for (const x of stage) {
-    if (x.r?.runType && x.companyId) x.r.payrollCycleId = oneMatch.get(`${x.companyId}|${x.r.runType}`) ?? null;
   }
 
   // ── THE DUPLICATE PASS. The constraint's own predicate, against the rows on file AND against the
@@ -668,8 +666,18 @@ async function analyzeFixed(
     }
     const r = s.r!;
     const window = { validFrom: r.effectiveFrom, validTo: r.effectiveTo };
-    const onFile = (live.get(r.employmentId) ?? []).find(
-      (x) => x.componentId === r.componentId && fixedWindowsOverlap(window, x),
+    const matchingItems = (live.get(r.employmentId) ?? []).filter((row) => row.componentId === r.componentId);
+    if (s.previousStartDate) {
+      const original = matchingItems.find((row) => row.validFrom === s.previousStartDate);
+      if (!original || original.amount !== r.amount.toFixed(2) || original.validTo !== r.effectiveTo ||
+          original.runType !== r.runType || original.payrollCycleId !== r.payrollCycleId || original.remarks !== r.remarks) {
+        rows.push(fail(s.base, 'startDateCorrection'));
+        continue;
+      }
+      r.correction = { id: original.id, previousStartDate: s.previousStartDate };
+    }
+    const onFile = matchingItems.find(
+      (x) => x.id !== r.correction?.id && fixedWindowsOverlap(window, x),
     );
     if (onFile) {
       rows.push(fail(s.base, 'overlap', { code: onFile.code, from: onFile.validFrom, to: onFile.validTo ?? '' }));
@@ -780,18 +788,26 @@ async function analyzeIndividual(
     // is the same resolver the entry form asks, so a file and the form cannot disagree about it.
     const ruleInputUnit = payRuleInputUnit(comp.rule);
     let inputUnit:string|null = ruleInputUnit;
-    if(rec.__method==='daily'&&(!payRuleAllowsDayByDay(comp.rule)||!payRuleDerivesAmount(comp.rule)||inputUnit==null)){
-      push(fail(base,'dailyItemUnsupported'));continue;
+    const explicitDaily = rec.__method === 'daily' && rec.__explicit_daily_input === '1';
+    const typedUnit = (rec.__input_unit ?? '').trim().toLowerCase();
+    if (rec.__method === 'daily') {
+      const daily = resolveDailyImportInput(comp.rule, explicitDaily ? typedUnit : undefined);
+      if ('reason' in daily) {
+        push(fail(base, daily.reason, daily.expected ? { value: daily.expected } : undefined));
+        continue;
+      }
+      inputUnit = daily.unit;
     }
-    const typedUnit=(rec.__input_unit??'').trim().toLowerCase();
     if(rec.__method==='monthly'&&typedUnit){
       if(!isTxnUnit(typedUnit)||inputUnit!=null&&typedUnit!==inputUnit){push(fail(base,'inputTypeInvalid'));continue;}
       inputUnit=typedUnit;
     }
 
     const quantityRaw = (rec.quantity ?? '').trim();
-    const quantity = quantityRaw === '' ? null : parseAmountCell(quantityRaw);
-    if (quantityRaw !== '' && quantity == null) {
+    const enteredValue = quantityRaw === '' ? null : parseAmountCell(quantityRaw);
+    const directDaily = explicitDaily && inputUnit === 'amount';
+    const quantity = directDaily ? null : enteredValue;
+    if (quantityRaw !== '' && enteredValue == null) {
       push(fail(base, 'quantityInvalid', { value: quantityRaw }));
       continue;
     }
@@ -800,7 +816,7 @@ async function analyzeIndividual(
       continue;
     }
 
-    const typed = parseAmountCell(rec.amount ?? '');
+    const typed = directDaily ? enteredValue : parseAmountCell(rec.amount ?? '');
     // THE AMOUNT THE PREVIEW SHOWS IS THE AMOUNT THAT WILL BE STORED. On a calculating pay item that is
     // the SERVER's figure, from the same evaluator the payslip uses — never the typed one. Previewing
     // the typed figure and storing a different one would be a preview that lies.
@@ -829,7 +845,7 @@ async function analyzeIndividual(
       }
     }
     if (!(amount > 0)) {
-      push(fail(base, typed == null && comp.rule == null ? 'amountInvalid' : 'amountNotPositive', { value: rec.amount ?? '' }));
+      push(fail(base, typed == null && comp.rule == null ? 'amountInvalid' : 'amountNotPositive', { value: directDaily ? quantityRaw : rec.amount ?? '' }));
       continue;
     }
 
@@ -852,7 +868,8 @@ async function analyzeIndividual(
 
     stage.push({
       rowNum,
-      base: { ...base, payItem: comp.name, amount: amount.toFixed(2) },
+      base: { ...base, payItem: comp.name, amount: amount.toFixed(2),
+        ...(explicitDaily && unit && enteredValue != null ? {inputType:unit,inputValue:enteredValue} : {}) },
       failure: null,
       displayCategory: comp.displayCategory,
       cycleStated: cycleRaw !== '',
@@ -871,6 +888,7 @@ async function analyzeIndividual(
         targetCycle,
         sourceRef: fileRowRef(digest, rowNum),
         intendedCycleId, method:rec.__method,
+        ...(explicitDaily ? {explicitDailyInput: typedUnit, explicitDailyRuleHash: createHash('sha256').update(JSON.stringify(comp.rule ?? null)).digest('hex')} : {}),
       },
     });
   }
@@ -1007,6 +1025,23 @@ export async function validateTxnImport(
   return (await analyzeTxnImport(ctx, p)).preview;
 }
 
+export async function planFixedTxnImport(ctx: SessionContext, p: { scopeIds: string[]; records: TxnImportRecord[] }) {
+  const analysis = await analyzeTxnImport(ctx, { ...p, kind: 'fixed' });
+  if (analysis.kind !== 'fixed') throw new Error('Expected Fixed Transaction import');
+  return analysis;
+}
+
+export function writeFixedTxnImportRow(ctx: SessionContext, row: ResolvedFixed, tx?: Tx) {
+  if (row.correction) {
+    return updateEmploymentPayComponent(ctx, {
+      ...row,
+      id: row.correction.id,
+      expectedStartDate: row.correction.previousStartDate,
+    }, tx);
+  }
+  return addFixedTransaction(ctx, { ...row, rejectOverlap: true }, tx);
+}
+
 /**
  * Write the valid rows, one at a time, THROUGH THE LIVE SERVICES.
  *
@@ -1035,18 +1070,7 @@ export async function commitTxnImport(
   if (analysis.kind === 'fixed') {
     for (const [rowNum, r] of analysis.resolved) {
       try {
-        await setEmploymentPayComponent(ctx, {
-          employmentId: r.employmentId,
-          componentId: r.componentId,
-          amount: r.amount,
-          effectiveFrom: r.effectiveFrom,
-          effectiveTo: r.effectiveTo,
-          remarks: r.remarks,
-          runType: r.runType,
-          // 4fffe638 — null unless the one-match rule resolved a cycle; when set, the service re-validates
-          // it and the run type comes from the cycle (identical to `runType` by construction).
-          payrollCycleId: r.payrollCycleId,
-        });
+        await writeFixedTxnImportRow(ctx, r);
         written += 1;
       } catch (e) {
         const { reason, detail } = txnImportReason(e);

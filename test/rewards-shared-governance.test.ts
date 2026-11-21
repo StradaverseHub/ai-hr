@@ -84,11 +84,11 @@ describe('shared Rewards company participation and history',()=>{
  it('waits for access/workforce custody before looking up an off-cycle parent',async()=>{
   let ready!:()=>void,release!:()=>void;
   const held=new Promise<void>(resolve=>{ready=resolve;}),finish=new Promise<void>(resolve=>{release=resolve;});
-  const holder=owner.withTenant(admin,async tx=>{await tx.execute(sql`select app.access_workforce_write_lock()`);ready();await finish;});
+  const holder=owner.withTenant(admin,async tx=>{await tx.execute(sql`select app.access_configuration_write_lock()`);ready();await finish;});
   await held;
   const attempt=createOffcycleReview(admin,randomUUID(),{kind:'adhoc',entryIds:[randomUUID()],effectiveFrom:`${year+1}-02-01`,exceptionReason:''}).then(()=>({ok:true}),error=>({ok:false,error}));
   try{
-   await expect.poll(async()=>{const [row]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from pg_stat_activity where datname=current_database() and state='active' and wait_event_type='Lock' and query like '%select app.access_workforce_write_lock()%'`);return row.n;},{timeout:5000}).toBeGreaterThan(0);
+   await expect.poll(async()=>{const [row]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from pg_stat_activity where datname=current_database() and state='active' and wait_event_type='Lock' and query like '%select app.access_configuration_write_lock()%'`);return row.n;},{timeout:5000}).toBeGreaterThan(0);
   }finally{release();await holder;}
   expect((await attempt).ok).toBe(false);
  });

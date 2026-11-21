@@ -1,47 +1,47 @@
-import { client } from '../../db/client';
+import { client, withSystemWork } from '../../db/client';
 import { createNotificationEmailService, type WorkflowMailTarget } from '../../deploy/identity-email/notifications';
 import { workflowEmailMessage } from '../../deploy/identity-email/notification-message';
 import type { NotificationEmailRequest } from '../notification-email-model';
 import { internalConfig, internalIssuer } from './config';
 import { recoveryMailReady, sendInternalMail, type MailTransport } from './mail';
-import { readRecord } from './store';
+import { readRecord, admittedAuthSql } from './store';
 import { assertActiveCredential, InternalAuthError, type Credential } from './service';
 /** The same consent, fresh recipient and immutable event rules apply with HR-owned credentials. */
 export async function internalNotificationEmailRequest<T>(input: NotificationEmailRequest, transport?: MailTransport): Promise<T> {
   const origin = internalConfig().origin;
   const service = createNotificationEmailService({
     origin, ready: recoveryMailReady,
-    async design(id,token,kind,locale,cc=false){return (await client`select app.email_design_notification(${id}::uuid,${token}::uuid,${origin},${kind},${locale},${cc}) as design`)[0]?.design;},
-    async lettersReady(){try{return (await client`select app.internal_auth_letter_mail_ready() as ready`)[0]?.ready===true;}catch{return false;}},
+    async design(id,token,kind,locale,cc=false){return (await withSystemWork(()=>client`select app.email_design_notification(${id}::uuid,${token}::uuid,${origin},${kind},${locale},${cc}) as design`))[0]?.design;},
+    async lettersReady(){try{return (await withSystemWork(()=>client`select app.internal_auth_letter_mail_ready() as ready`))[0]?.ready===true;}catch{return false;}},
     async target(id, token) {
-      const rows = await client<WorkflowMailTarget[]>`select * from app.internal_auth_notification_target(${id}::uuid,${token}::uuid,${origin})`;
+      const rows = await withSystemWork(()=>client<WorkflowMailTarget[]>`select * from app.internal_auth_notification_target(${id}::uuid,${token}::uuid,${origin})`);
       return rows.length === 1 ? rows[0] : null;
     },
-    async privateMessage(id,token){const row=(await client`select app.private_workflow_mail(${id}::uuid,${token}::uuid,${origin},false) as content`)[0];return row?.content??{required:true,message:null};},
+    async privateMessage(id,token){const row=(await withSystemWork(()=>client`select app.private_workflow_mail(${id}::uuid,${token}::uuid,${origin},false) as content`))[0];return row?.content??{required:true,message:null};},
     async assessmentTasks(id, token) {
-      const rows = await client`select * from app.internal_auth_notification_summary(${id}::uuid,${token}::uuid,${origin})`;
+      const rows = await withSystemWork(()=>client`select * from app.internal_auth_notification_summary(${id}::uuid,${token}::uuid,${origin})`);
       return rows.length === 1 && !rows[0].required ? undefined : rows[0]?.summary ?? null;
     },
     cc:{
-      target:async(id,token)=>(await client`select app.internal_auth_attendance_cc_target(${id}::uuid,${token}::uuid,${origin}) as target`)[0]?.target,
-      start:async(id,token,target)=>(await client`select app.internal_auth_start_attendance_cc(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(target)}::jsonb) as started`)[0]?.started===true,
-      finish:async(id,token,outcome,error)=>(await client`select app.internal_auth_finish_attendance_cc(${id}::uuid,${token}::uuid,${outcome},${error}) as finished`)[0]?.finished===true,
+      target:async(id,token)=>(await withSystemWork(()=>client`select app.internal_auth_attendance_cc_target(${id}::uuid,${token}::uuid,${origin}) as target`))[0]?.target,
+      start:async(id,token,target)=>(await withSystemWork(()=>client`select app.internal_auth_start_attendance_cc(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(target)}::jsonb) as started`))[0]?.started===true,
+      finish:async(id,token,outcome,error)=>(await withSystemWork(()=>client`select app.internal_auth_finish_attendance_cc(${id}::uuid,${token}::uuid,${outcome},${error}) as finished`))[0]?.finished===true,
     },
     async verifyRecipient(target) {
-      const c = await readRecord<Credential>(client, `credential:${target.subject}`);
+      const c = await readRecord<Credential>(admittedAuthSql, `credential:${target.subject}`);
       if (!c || c.issuer !== internalIssuer(c.tenantId) || c.email.toLowerCase() !== target.email.toLowerCase()) return 'changed';
       try {
-        const p = await assertActiveCredential(client, c);
+        const p = await assertActiveCredential(admittedAuthSql, c);
         return p.app_user_id === target.user_id ? 'verified' : 'changed';
       } catch (error) { if (error instanceof InternalAuthError) return 'changed'; return 'unavailable'; }
     },
     async start(id, token, target) {
       // Drizzle configures this shared client's JSON serializers for pre-serialized values. The
       // standalone private email agent has different client options, so its sql.json is not portable.
-      return (await client`select app.internal_auth_notification_start(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(target)}::jsonb) started`)[0]?.started === true;
+      return (await withSystemWork(()=>client`select app.internal_auth_notification_start(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(target)}::jsonb) started`))[0]?.started === true;
     },
     async finish(id, token, outcome, error) {
-      return (await client`select app.internal_auth_notification_finish(${id}::uuid,${token}::uuid,${outcome},${error}) finished`)[0]?.finished === true;
+      return (await withSystemWork(()=>client`select app.internal_auth_notification_finish(${id}::uuid,${token}::uuid,${outcome},${error}) finished`))[0]?.finished === true;
     },
     async send(target, mail) { const message = workflowEmailMessage(mail); await sendInternalMail({ to: target.email, ...message }, transport); },
   });

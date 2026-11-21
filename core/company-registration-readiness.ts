@@ -4,7 +4,7 @@ import {z} from 'zod';
 import {withTenant,type SessionContext} from '../db/client';
 import {company,employment} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {listCompanies,listEmployeesForPayrollRun} from './read';
 import {employmentStatusSql} from './employment-status-sql';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -26,7 +26,7 @@ export async function companyRegistrationOverview(ctx:SessionContext){
 export async function changeCompanyRegistrationClassification(ctx:SessionContext,raw:unknown){
  const p=z.object({companyId:z.uuid(),entityKind:z.enum(['legal_entity','grouping_node']),isTestEntity:z.boolean(),expectedRevision:z.number().int().nonnegative()}).strict().parse(raw);
  if(!ctx.userId)throw Error('Sign in to continue.');
- return withTenant(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);const[c]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,p.companyId),eq(company.tenantId,ctx.tenantId),sql`app.is_admin_for(${company.id})`)).for('update');if(!c)throw Error('Company not available.');
+ return withTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,ctx.tenantId);const[c]=await tx.select({id:company.id}).from(company).where(and(eq(company.id,p.companyId),eq(company.tenantId,ctx.tenantId),sql`app.is_admin_for(${company.id})`)).for('update');if(!c)throw Error('Company not available.');
   const[before]=await tx.execute<{entity_kind:string;is_test_entity:boolean;revision:number}>(sql`select entity_kind,is_test_entity,revision from company_registration_classification where company_id=${p.companyId}::uuid and tenant_id=${ctx.tenantId}::uuid for update`);
   if((before?.revision??0)!==p.expectedRevision)throw Error('Company classification changed. Reopen the company.');
   await tx.execute(sql`insert into company_registration_classification(company_id,tenant_id,entity_kind,is_test_entity,changed_by) values(${p.companyId}::uuid,${ctx.tenantId}::uuid,${p.entityKind},${p.isTestEntity},${ctx.userId}::uuid) on conflict(company_id) do update set entity_kind=excluded.entity_kind,is_test_entity=excluded.is_test_entity,changed_by=excluded.changed_by,revision=company_registration_classification.revision+1,updated_at=now()`);

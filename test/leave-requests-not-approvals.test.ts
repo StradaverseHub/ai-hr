@@ -108,8 +108,16 @@ describe('§1 r80 removal: the leave decide path exists ONLY under Approval Item
     // admits admin OR manager and lets the SERVICES decide — so no role lost a route to a decision.
     expect(approvalsPage).toContain("const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');");
     // Rewards unit membership can assign an employee a review without a global manager role.
-    // Existing HR/manager admission remains; an ordinary employee needs a pending scoped reward.
-    expect(approvalsPage).toContain("if(!focus&&!admin&&!manager&&!rewardReviews.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');");
+    // Existing HR/manager admission remains. Other readers need a proved exact focus or an actual scoped
+    // assignment, now including managed resignation decisions/FYI. No assignment promotes their role.
+    const admission = approvalsPage.match(/if\(([^;\n]+)\)redirect\('\/'\);/);
+    expect(admission, 'the unassigned-reader redirect guard exists').not.toBeNull();
+    expect(admission![1].replace(/\s+/g, '').split('&&')).toEqual([
+      '!focus', '!admin', '!manager', '!resignationWork.total','!contractWork.total', '!rewardReviews.length',
+      '!probationApprovals.items.length', '!assignedAttendance', '!assignedTasks.length',
+    ]);
+    expect(approvalsPage).toContain("!focus&&probationOn?resignationInbox(s,{kind:'approvals',companyIds:scopeIds,limit:resignationQuery.limit,offset:resignationQuery.offset})");
+        expect(approvalsPage).toContain("!focus&&probationOn?contractSharedWorkPage(s,{category:'approvals',companyIds:scopeIds,limit:contractQuery.limit,offset:contractQuery.offset})");
     expect(approvalsPage).toContain("isModuleEnabledOrFalse(s,'rewards')");
   });
 });
@@ -202,10 +210,19 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     // The later approved plan requests All employees on this separate inquiry surface. The removed
     // /leave Requests subsection stays removed; its former single-employee restriction is no longer policy.
     expect(recordsPage).toContain('await scopedAdmin()');
-    expect(recordsPage).toContain('await leaveInquiryContext(session, scopeIds, query)');
-    expect(recordsPage).toContain('leaveInquiryRecordsPage(session, inquiry, query)');
+    // e066cf54 reads the authorized context and its records in ONE admitted read-only snapshot
+    // (docs/adr/2026-11-07-leave-inquiry-presentation-read-frame.md); the records page reader is
+    // still handed that freshly resolved scope, never a wider employee source.
+    expect(recordsPage).toContain('await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)');
+    expect(recordsPage).toContain('inquiry:scope,result:await leaveInquiryRecordsPageTx(tx,session,scope,query),');
     expect(recordsPage).not.toContain('listLeaveRequestsPage(session,');
     const owner = read('core/leave-inquiry.ts');
+    // The snapshot resolves the SAME authorized All/single context the page previously read separately.
+    const snapshotFrom = owner.indexOf('export async function leaveInquirySnapshot<T>(');
+    const snapshotTo = owner.indexOf('export async function leaveInquirySnapshotForContext<T>(', snapshotFrom);
+    expect(snapshotFrom, 'admitted inquiry snapshot owner exists').toBeGreaterThan(-1);
+    expect(snapshotTo, 'admitted inquiry snapshot owner has a closing boundary').toBeGreaterThan(snapshotFrom);
+    expect(owner.slice(snapshotFrom, snapshotTo)).toContain('read(tx, await leaveInquiryContextTx(tx,session,ids,captured,ctx,selectionOnly))');
     const from = owner.indexOf('export async function leaveInquiryRecordsPageTx(');
     const to = owner.indexOf('function checkWindow(', from);
     expect(from, 'canonical records page reader exists').toBeGreaterThan(-1);

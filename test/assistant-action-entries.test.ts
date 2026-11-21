@@ -8,7 +8,7 @@ vi.mock('../core/assistant-actions/position-archive-review-store',()=>({position
 vi.mock('../core/assistant-actions/employee-id-template-status-review-store',()=>({employeeIdTemplateStatusEntryAvailable:source.idTemplate}));
 vi.mock('../core/assistant-actions/department-archive-review-store',()=>({departmentArchiveEntryAvailable:source.department}));
 vi.mock('../packs/rewards/service',()=>({administersRewardsForAnyCompany:source.rewards}));
-vi.mock('../core/assistant-actions/module-action-server',()=>({readAssignedLeaveModuleActionChoices:source.assigned}));
+vi.mock('../core/assistant-actions/assigned-leave-presentation',()=>({hasAssignedLeaveActionForPresentation:source.assigned}));
 vi.mock('../core/assistant-actions/rewards-cancel-source',()=>({readRewardsCancelChoices:source.cancel}));
 vi.mock('../core/assistant-actions/rewards-return-source',()=>({readRewardsReturnChoices:source.annualReturn}));
 vi.mock('../core/assistant-actions/rewards-calendar-source',()=>({readRewardsCalendarChoices:source.calendar}));
@@ -18,8 +18,7 @@ import {moduleActionEntryAccess,allowedModuleActionEntries} from '../core/assist
 import {canAuthor} from '../core/knowledge-base';
 import {AGENT_MODULE_CODES} from '../lib/ai/module-agents';
 const ctxOf=(role:string)=>({tenantId:'t',userId:'u',roles:[role],grants:[{role,companyId:null}]}) as SessionContext;
-const task={leaveRequestId:'10000000-0000-4000-8000-000000000002',currentStepId:null,stepIndex:null,applicantLabel:'Fictional applicant',createdAt:'2026-10-27T00:00:00Z'};
-beforeEach(()=>{vi.clearAllMocks();source.companies.mockResolvedValue([]);source.assigned.mockResolvedValue({kind:'choices',truncated:false,tasks:[]});source.rewards.mockResolvedValue(false);source.cancel.mockResolvedValue({units:[]});source.calendar.mockResolvedValue({units:[]});source.position.mockResolvedValue(false);source.department.mockResolvedValue(false);source.idTemplate.mockResolvedValue(false);source.annualReturn.mockResolvedValue({units:[]});});
+beforeEach(()=>{vi.clearAllMocks();source.companies.mockResolvedValue([]);source.assigned.mockResolvedValue(false);source.rewards.mockResolvedValue(false);source.cancel.mockResolvedValue({units:[]});source.calendar.mockResolvedValue({units:[]});source.position.mockResolvedValue(false);source.department.mockResolvedValue(false);source.idTemplate.mockResolvedValue(false);source.annualReturn.mockResolvedValue({units:[]});});
 describe('role floors mirror the target gates',()=>{
  it('mirrors each target gate: admin-only floors refuse employees and managers, payroll floors admit the payroll partner only where the target does',()=>{
   const ctxOf=(role:string)=>({tenantId:'t',userId:'u',roles:[role],grants:[{role,companyId:null}]}) as SessionContext;
@@ -46,8 +45,7 @@ describe('live-scope shortcuts fail closed',()=>{
  it('offers assigned decisions to managers and admins, and to anyone else only with a current assigned task',async()=>{
   for(const role of ['manager','hr_admin','super_admin'])expect(await moduleActionEntryAccess(ctxOf(role),'assigned_leave')).toBe('allowed');expect(source.assigned).not.toHaveBeenCalled();
   expect(await moduleActionEntryAccess(ctxOf('employee'),'assigned_leave')).toBe('refused');
-  source.assigned.mockResolvedValueOnce({kind:'choices',truncated:false,tasks:[task]});expect(await moduleActionEntryAccess(ctxOf('employee'),'assigned_leave')).toBe('allowed');
-  source.assigned.mockResolvedValueOnce({kind:'unavailable'});expect(await moduleActionEntryAccess(ctxOf('employee'),'assigned_leave')).toBe('unknown');
+  source.assigned.mockResolvedValueOnce(true);expect(await moduleActionEntryAccess(ctxOf('employee'),'assigned_leave')).toBe('allowed');
   source.assigned.mockRejectedValueOnce(Error('PRIVATE'));expect(await moduleActionEntryAccess(ctxOf('employee'),'assigned_leave')).toBe('unknown');
  });
  it('offers Rewards posting only where the live app.reward_admin read admits the login, and hides it when the read fails',async()=>{

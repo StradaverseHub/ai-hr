@@ -1,0 +1,32 @@
+{
+  "kind": "NATIVE_REWARDS_FIXTURE_PARAMETER_BOUNDARY_RECOVERY_NOT_RELEASE",
+  "base": "6f233ef1fb40a32b8fd76445aafe22858b097554",
+  "sourceRef": "codex/rewards-audit-parameter-boundaries-20261108",
+  "selectors": [
+    "test/rewards-audited-read-prototype.test.ts"
+  ],
+  "nativeCases": 16,
+  "caseMs": 30000,
+  "statementMs": 20000,
+  "lockMs": 300,
+  "retainedFailure": {
+    "run": 42419587313,
+    "passed": 10,
+    "failed": 6,
+    "pending": 0,
+    "originatingSqlState": "42601",
+    "subsequentOwnerRefusals": 4
+  },
+  "sourceSha256": {
+    "test/rewards-audited-read-prototype.test.ts": "9b8e83e4928e5da9e4873a30d46d1694b43b5a8eb929383bd904883870fe0239",
+    "test/prototypes/rewards-audit-projection-race.ts": "891875a6ae921c2511f7757a26f93671d1094c8e3afa7f1cafd6217aaa09a76a",
+    "docs/qualification/rewards-audit-parameter-boundaries-20261108.md": "74c4c9131125dbd366f530200c101653b51b3f53463efbe7f67df25dfaadd465",
+    "test/prototypes/rewards-audited-read.sql": "cad7076c1263888257084dbf5b2eef77ebb6e360dbf08ae38e2029a00a58b654",
+    "test/prototypes/rewards-audited-read-owner.ts": "7a935b0eee7932838713d08183eaf39f96594695271fb2fc94c3f3542aae7ff5"
+  },
+  "qualification": "NOT_RUN",
+  "applicationOrNativeSqlChanged": false,
+  "assertionsChanged": false,
+  "releaseAuthorized": false,
+  "production": "HELD"
+}

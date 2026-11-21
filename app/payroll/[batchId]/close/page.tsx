@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, listBatches, payrollCloseCompanyIds } from '@/core/payroll';
+import { batchSummary, listBatches, payrollCloseCompanyIds } from '@/core/payroll';
 import { payrollCloseCycleLabel } from '@/core/payslip-cycle-label';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { formatPayPeriodMonth } from '@/lib/hr-date';
@@ -49,9 +49,9 @@ export default async function ClosePayrollPage({
   const back = payrollListReturnTo(sp.from);
   const from = back === '/payroll' ? null : back;
 
-  const data = await batchDetail(s, batchId);
+  const data = await batchSummary(s, batchId);
   if (!data) notFound();
-  const { batch, slips } = data;
+  const { batch, slipCount } = data;
 
   // The run's identity through the SAME projection the list renders, so the prompt cannot disagree with
   // the row that was clicked.
@@ -71,7 +71,7 @@ export default async function ClosePayrollPage({
     { label: tl('colCompany'), value: listed?.company ?? '—' },
     { label: t('summaryPeriod'), value: month },
     { label: t('summaryCycle'), value: cycle },
-    { label: t('closeSummaryPayslips'), value: String(slips.length) },
+    { label: t('closeSummaryPayslips'), value: String(slipCount) },
   ];
 
   const header = (
@@ -123,7 +123,7 @@ export default async function ClosePayrollPage({
         <SectionHeader title={t('closeBatch')} />
         <div className="px-4 pb-4">
           <p className="mb-2 text-sm font-medium text-foreground">{t('closeConfirmTitle', { month, cycle })}</p>
-          <p className="mb-4 text-xs text-muted-foreground">{t('closeConfirmBody', { n: slips.length })}</p>
+          <p className="mb-4 text-xs text-muted-foreground">{t('closeConfirmBody', { n: slipCount })}</p>
           <form action={closeAction} className="flex flex-wrap items-center justify-end gap-2">
             <input type="hidden" name="batchId" value={batchId} />
             {/* Which surface pressed it — a flag, never a destination (see closeAction). */}

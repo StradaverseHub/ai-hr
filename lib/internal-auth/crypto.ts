@@ -1,19 +1,19 @@
 import { createHash, createCipheriv, createDecipheriv, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { internalConfig } from './config';
+import {createPasswordAdmission} from './password-admission';
+export {AuthBusyError} from './password-admission';
 
 export const opaque = () => randomBytes(32).toString('base64url');
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 export const validOpaque = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.test(value);
 // OWASP's memory/CPU-equivalent scrypt profile: 32 MiB, r=8, p=3. Bound concurrent work per process.
-let active = 0;
-export class AuthBusyError extends Error {}
+const acquirePasswordSlot=createPasswordAdmission();
 export class AuthRecordExpiredError extends Error {}
 async function derive(password: string, salt: Buffer) {
-  if (active >= 2) throw new AuthBusyError('Authentication busy. Try again shortly.');
-  active++;
+  const release=await acquirePasswordSlot();
   try { return await new Promise<Buffer>((resolve, reject) => scrypt(password, salt, 64,
     { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 }, (error, key) => error ? reject(error) : resolve(key))); }
-  finally { active--; }
+  finally { release(); }
 }
 export function validatePassword(password: string, username = '', email = '') {
   const normalized = password.toLowerCase();

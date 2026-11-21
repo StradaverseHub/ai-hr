@@ -1,0 +1,32 @@
+{
+  "kind": "COMPILER_PROVEN_FIXTURE_PRINCIPAL_REPAIR",
+  "releaseAuthorized": false,
+  "base": "38b047c9f465990e3f26295c035ab9f69b3001d7",
+  "failedDiagnosticRun": 42410522319,
+  "failedController": "4e04ffc750e33d1d82b1aca9497ffa8296bd474d",
+  "nativeDiagnostics": [
+    {
+      "code": 1320,
+      "file": "test/rewards-setup-presentation-snapshot.test.ts",
+      "line": 91
+    },
+    {
+      "code": 2345,
+      "file": "test/rewards-setup-presentation-snapshot.test.ts",
+      "line": 91
+    }
+  ],
+  "focusedSelectors": [
+    "test/rewards-setup-presentation-snapshot.test.ts"
+  ],
+  "qualification": "NOT_RUN; static source only; root + independent review before hosted native fixture check",
+  "sourceSha256": {
+    "test/rewards-setup-presentation-snapshot.test.ts": "ec59ec40e7b08eec5a563200e1f225f93d3a6aed25c143bb3bcdc6f8145aecfe",
+    "docs/qualification/compiler-rewards-fixture-principal-20261108.md": "86861e83d3ab974f1dcac2f37caefc633623928cc3f15088d4923dc6dfbddcee"
+  },
+  "remoteMain": "b7c0393aa3c7606a33dd15103426e5c535324065",
+  "remoteAlpha": "b7c0393aa3c7606a33dd15103426e5c535324065",
+  "applicationSourceChanged": false,
+  "ordinaryCompilerQualified": false,
+  "productionAuthorized": false
+}

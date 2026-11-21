@@ -19,7 +19,7 @@ import {
   listResignationRequests,
   submitResignation,
 } from '../core/offboarding';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, resetDb, seedBase, setModule, type Base } from './harness';
 
 let b: Base;
 
@@ -43,6 +43,8 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
+  // Preserve the original attachment/legacy-approval authority for genuinely pre-cutover requests.
+  await setModule(b.tenantId,'lifecycle','disabled');
 });
 afterAll(async () => {
   await closeAll();

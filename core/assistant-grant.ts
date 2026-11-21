@@ -17,7 +17,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { appUser, assistantGrant, person } from '../db/schema';
 import { assertModuleEnabled, isModuleEnabled } from './entitlements';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 
 export const ASSISTANT_MODULE = 'assistant';
 
@@ -139,7 +139,7 @@ export async function grantAssistant(
   p = { ...p };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     assertAdmin(ctx);
     const [existing] = await tx
       .select({ id: assistantGrant.id })
@@ -191,7 +191,7 @@ export async function revokeAssistant(ctx: SessionContext, p: { appUserId: strin
   p = { ...p };
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
   await withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     assertAdmin(ctx);
     const [row] = await tx
       .update(assistantGrant)

@@ -1,0 +1,107 @@
+{
+  "kind": "NATIVE_PERSONNEL_FIXTURE_BOUNDED_WRITES_SOURCE_ONLY",
+  "version": 1,
+  "parent": "ecb921caab1aa1c20178a28477de2b0c7b3beffe",
+  "sourceRef": "codex/personnel-native-fixture-bounded-writes-20261109",
+  "changedPaths": [
+    "test/performance/personnel-native-fixture.ts",
+    "docs/qualification/personnel-native-fixture-bounded-writes-source-20261109.json"
+  ],
+  "wholeParentPreimage": {
+    "gitMode": "100644",
+    "gitBlob": "57046e76314873112959932ea562b52aca77b40b",
+    "bytes": 5736,
+    "sha256": "3b72cd22e8e97c730192454bca58b87795e362654b6a26250a2fe3cf752bc4fa"
+  },
+  "currentFixtureSource": {
+    "bytes": 6122,
+    "sha256": "e81771adfc1c896cc5bc20363ecb75752609d11232855d0462e52f8ce6e77d17"
+  },
+  "actualPriorHostedFailure": {
+    "runId": 42560027219,
+    "attempt": 1,
+    "source": "ecb921caab1aa1c20178a28477de2b0c7b3beffe",
+    "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "terminalJobs": 7,
+    "artifactId": 13648923052,
+    "artifact": {
+      "bytes": 9798,
+      "sha256": "acf15986106f5dca3dcae1657a8d1b9787f7b542b988f4672e5b7df9a3bdecd6"
+    },
+    "retainedMembers": {
+      "focused.json": {
+        "bytes": 11240,
+        "sha256": "759b8f6e90873c571c954ab5225389e9e5db926220737a97032657eb68617de2"
+      },
+      "db.vitest.json": {
+        "bytes": 2282,
+        "sha256": "505d1c65b3972b9239e4c464365499fc335655faec3687ce732b9ac7ea60f7c8"
+      },
+      "employee-choice-unicode-50k.json": {
+        "bytes": 411,
+        "sha256": "eea7d3825989d9641a1834a6a69810a32193685c8d69f3bdf007b068e712efb4"
+      },
+      "postgres.log": {
+        "bytes": 5762,
+        "sha256": "708fb2813e7aa94f093f0264448520d936063b2bda18a765a7683d6c45379712"
+      }
+    },
+    "actualCaseCounts": [
+      1,
+      0,
+      1,
+      0
+    ],
+    "phase": "fixture",
+    "firstLogicalRange": [
+      1,
+      5000
+    ],
+    "acknowledgedFixtureRowsReported": false,
+    "nativeLookupReached": false,
+    "nativeFailure": "statement timeout on the Assignment insert inside app.reward_access_source_changed Reward epoch upsert"
+  },
+  "unchangedNativeOwners": {
+    "test/employee-choice-unicode-scale.test.ts": {
+      "gitMode": "100644",
+      "gitBlob": "d9d5dd7a931223de842c8bdeb68346df10394df7",
+      "bytes": 60644,
+      "sha256": "8234ac0db9b0d859790124833ba925fa3410c0cdce3e77d4ed52ee661d9a72be"
+    },
+    "db/migrations/0681_rewards_approval_participation.sql": {
+      "gitMode": "100644",
+      "gitBlob": "a548bf46517dbbb59f8ca4eee92d5dcbc5795e7f",
+      "bytes": 57511,
+      "sha256": "2600e08cde3498f3ce5f2c1fbd4fb1418ab22b7e87db3852768a1b932baa9cdc"
+    }
+  },
+  "schedule": {
+    "logicalUuidSegmentRows": 5000,
+    "rowsPerSequentialCommit": 500,
+    "sameTransactionOrder": [
+      "person",
+      "employment",
+      "assignment"
+    ],
+    "fixtures": {
+      "5000": {
+        "logicalSegments": 1,
+        "transactionWrites": 10,
+        "rowsPerTable": 5000
+      },
+      "50000": {
+        "logicalSegments": 10,
+        "transactionWrites": 100,
+        "rowsPerTable": 50000
+      }
+    },
+    "knownCallers": 15,
+    "existingPhaseHookBeforeEachWrite": true,
+    "committedProgressOnlyAfterAcknowledgedCommit": true
+  },
+  "semantics": "Complete three-table chunks commit separately in the disposable native fixture. Native defaults and row/deferred triggers still run at their real statement and transaction boundaries. Generated identities, ordinals, labels, dates and exact terminal row-count and lookup assertions are preserved.",
+  "fixtureTimeoutAndPrivilegesChanged": false,
+  "authorHostedOrLocalBehaviorExecuted": false,
+  "lookupSpeedVerified": false,
+  "releaseEligible": false
+}

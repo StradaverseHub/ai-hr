@@ -165,6 +165,10 @@ describe('a6fe37fc — the leave configuration map', () => {
     // as membership.
     expect(LEAVE_CONFIG_MAP.map((g) => g.id)).toEqual([
       'entitlements',
+      // 50d9b809 — UPDATED, NOT LOOSENED: `sharedGroups` sits immediately after `entitlements`, because its
+      // ROW does. A group of ONE (no tab row), not a third tab of Entitlements: a group spans several leave
+      // types, which neither Entitlements tab does — and it was a pop-up ON that screen until this item.
+      'sharedGroups',
       'balanceHealth',
       'adjustments',
       // 3f15ffdb (r362) — UPDATED, NOT LOOSENED: `leaveHistoryImport` sits immediately after
@@ -200,6 +204,8 @@ describe('a6fe37fc — the leave configuration map', () => {
     expect(byGroup.entitlements).toEqual<LeaveConfigScreenId[]>(['leaveTypes', 'entitlementTables']);
     // r279 — one screen, so no tab row is drawn for it (`LeaveConfigMap` returns null below two items).
     expect(byGroup.balanceHealth).toEqual<LeaveConfigScreenId[]>(['balanceHealth']);
+    // 50d9b809 — one screen, so no tab row is drawn for it; the page carries only the Back to Leave Settings link.
+    expect(byGroup.sharedGroups).toEqual<LeaveConfigScreenId[]>(['sharedGroups']);
     expect(byGroup.adjustments).toEqual<LeaveConfigScreenId[]>(['adjustments', 'importLeaveData']);
     // 3f15ffdb (r362) — one screen, so no tab row is drawn for it (the Balance Health / earned-accrual
     // / Special Setting shape). A SECOND TAB of `adjustments` would have been the wrong shape.

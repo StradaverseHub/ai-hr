@@ -22,6 +22,7 @@ const PAGE = fs.readFileSync(
   path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
   'utf8',
 );
+const IDENTITY = fs.readFileSync(path.resolve(__dirname, '../components/family-identity-dates.tsx'), 'utf8');
 const DIALOG = fs.readFileSync(path.resolve(__dirname, '../components/family-form-dialog.tsx'), 'utf8');
 const REL_FIELDS = fs.readFileSync(
   path.resolve(__dirname, '../components/family-relationship-fields.tsx'),
@@ -37,9 +38,7 @@ describe('Personnel — consolidated Family & Dependents Information (ea36b7fa)'
     const named = [
       'fullName',
       'gender',
-      'dateOfBirth',
       'phone',
-      'icOrPassport',
       'passportNumber',
       'residentialAddress',
       'marriageDate',
@@ -56,6 +55,13 @@ describe('Personnel — consolidated Family & Dependents Information (ea36b7fa)'
     for (const field of named) {
       expect(hasPersonnelPostedBinding(PAGE, 'family.family_and_dependents.' + field.toLowerCase(), field), `missing dependent input name="${field}"`).toBe(true);
     }
+    expect(PAGE).toContain('<FamilyIdentityDates');
+    expect(IDENTITY).toContain("const dobField = 'family.family_and_dependents.dateofbirth'");
+    expect(IDENTITY).toContain('...personnelControl(dobField)');
+    expect(personnelControl('family.family_and_dependents.dateofbirth').name).toBe('dateOfBirth');
+    for (const id of ['icorpassport', 'icorpassport_8'])
+      expect(personnelInput('family.family_and_dependents.' + id).name).toBe('icOrPassport');
+    expect(IDENTITY).toContain('...personnelInput(icField)');
     // The ONE relationship select lives in the island (rendered FIRST, above the panels).
     expect(hasPersonnelPostedBinding(REL_FIELDS, 'family.family_and_dependents.relationship', 'relationship')).toBe(true);
     expect(personnelControl('family.family_and_dependents.relationship', 'record').required).toBe(true);

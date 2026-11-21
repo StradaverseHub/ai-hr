@@ -239,6 +239,22 @@ timedatectl | grep "Time zone"      # expect Asia/Kuala_Lumpur (+08)
 
 Install as the deploy user (no root needed):
 
+**The crontab must start with these two environment lines** (cron passes them to every job; Node's
+`--env-file` never overrides a variable that is already set, so they win over `.env.production`):
+
+```cron
+AIHR_DB_PROCESS_ROLE=worker
+AIHR_DB_POOL_MAX=2
+```
+
+`AIHR_DB_PROCESS_ROLE=worker` makes each job connect directly with a small pool (docs/SCALE-AND-RELEASE-RULES.md
+rule 5). The worker pool may be at most 8 (`db/capacity.ts`), but `.env.production` carries the WEB pool size
+(10 on staging), so without `AIHR_DB_POOL_MAX` every job refuses to start with "AIHR_DB_POOL_MAX must be an
+integer from 1 to 8". That is what happened on staging from 11 to 14 November 2026: every cron job (the minutely
+provision runner, the 15-minute payroll loop tick and all nightly sweeps) failed for three days until the second
+line was added. The heartbeat files under `/home/ubuntu/aihr-cron-logs/heartbeat/` show each job's last success.
+
+
 ```bash
 crontab -e
 ```
@@ -377,6 +393,10 @@ VALUES ('<tenant-uuid>', '<app-user-uuid>', NULL, 'operator');
 ```
 
 Note: **suspending or deleting a customer is not implemented** (ADR-0079, deferred).
+
+## 5b-pool. Optional: PgBouncer transaction pooling
+
+The web application can share a few real database connections through PgBouncer. It is off by default, is not installed by `deploy.sh`, and is a separate, owner-approved step: [deploy/pgbouncer/README.md](pgbouncer/README.md).
 
 ## 5c. Alerting and log rotation (readiness 1.6 — NOT installed by deploy.sh)
 
@@ -631,6 +651,21 @@ keeps the data, and restarts the service. Reset the demo with `--reseed`. `--mig
 the migrations and the catalog seed, without seeding demo data or restarting, for a deploy that needs a
 manual step in between (see the entitlement-parity one-shot below); run it again with no arguments to
 finish.
+
+### Online post-migration step
+
+Drizzle applies all pending migrations in one transaction, so a migration must not scan or lock a populated
+table: anything it takes is held until the whole batch commits. Migrations therefore record that work and
+`deploy.sh` finishes it right after `pnpm db:migrate`, before the service restarts:
+
+    node --env-file=.env.production --import tsx scripts/post-migrate-online.ts
+
+It builds the indexes listed in `online_migration.deferred_index` with `CREATE INDEX CONCURRENTLY` (tables under 8 MB
+are built inside the migration instead) and writes `notification_event_processing` receipts for existing
+`domain_event` history in small physical-range transactions (150 table pages each), frozen against the notification cursors recorded at cutover.
+Neither blocks application reads or writes. It is idempotent and resumable: if it fails, the release stops with the
+previous build still serving, and re-running it continues where it stopped. It exits non-zero unless every event has
+its receipt. `AIHR_ONLINE_BACKFILL_PAGES` and `AIHR_ONLINE_BACKFILL_PAUSE_MS` tune the batch size and pacing.
 
 ### Asking the box what happened to its last deploy (r291 / readiness 7.1)
 

@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
 import { CompanyPanel, type PanelCompany } from '../components/company-panel';
+import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 import { STATUTORY_AUTHORITIES } from '../lib/statutory-authorities';
 
 /**
@@ -66,7 +67,6 @@ const actions = {
   archiveCompany: noop,
   deleteCompany: noop,
   setParent: noop,
-  setStatutory: noop,
   setBankProfile: noop,
   removeBankProfile: noop,
   setStatutoryAuthority: noop,
@@ -114,8 +114,6 @@ const richProps = {
     epfEmployerNo: 'E123',
     socsoEmployerCode: 'S123',
     lhdnEmployerNo: 'L123',
-    myinvoisTin: null,
-    ssmRegistrationNo: null,
     hrdfStatus: 'mandatory' as const,
   },
   bankProfiles: [
@@ -370,7 +368,7 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
    * feature — it is a HALF-REMOVED one: a workspace pane left mounted with no Save above it, or a section
    * marker with no scope to read it, renders fine, passes tsc and quietly cannot save.
    */
-  it('the Statutory tab renders NO body editor and NO consolidated Save — only the registrations card', () => {
+  it('omits the legacy registration fields and keeps Statutory body editing on its dedicated screen', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
     // The workspace is gone, not hidden: no pane, no marker, no scope.
@@ -383,16 +381,10 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     // The General tab's scope is untouched: this round removed one scope, not the pattern.
     expect(html, "General's Save bar stays").toContain('data-tab-save-scope="general"');
 
-    // THE REGISTRATIONS CARD IS STILL HERE, still editable, and it has its own Save again.
-    expect(html).toContain('name="ssmRegistrationNo"');
-    expect(html).toContain('name="myinvoisTin"');
-    expect(html, 'the retired caption, back in service').toContain(inMarkup(en.saveStatutoryIdentity));
-    // …and it did NOT drift onto General. Pinned by position against the General scope's own bar, which is
-    // the failure 65b22c00 wrote its version of this case against.
-    const generalBar = html.indexOf('data-tab-save-bar');
-    expect(html.indexOf('name="ssmRegistrationNo"'), 'after the General bar, i.e. on another tab').toBeGreaterThan(
-      generalBar,
-    );
+    expect(html).not.toContain(inMarkup(en.saveStatutoryIdentity));
+    expect(html).not.toContain('data-save-section="registration"');
+    expect(html).not.toContain('name="ssmRegistrationNo"');
+    expect(html).not.toContain('name="myinvoisTin"');
 
     // NO PER-BODY SAVE ON THIS TAB EITHER: the bodies are not edited here at all.
     expect(html, 'no per-body Save reached the tab').not.toContain(inMarkup(en.authoritySave));
@@ -513,3 +505,13 @@ describe('3c2f55d7 render check — CompanyPanel in all six locales, real catalo
     expect(html, 'not even as a value left behind').not.toContain('gone-person');
   });
 });
+
+it('captures Company General after removing the retired controls', async () => {
+  const html = render('en', { ...richProps, initialTab: 'general' });
+  expect(html).toContain('Demo Sdn Bhd');
+  expect(html).not.toContain('name="ssmRegistrationNo"');
+  expect(html).not.toContain('name="myinvoisTin"');
+  expect(html).not.toContain('name="isTestEntity"');
+  await captureAiReviewScreenshots(html, 'en', 'company-registration',
+    'Actual Company General panel with a fictional company and bank settings');
+}, 120_000);

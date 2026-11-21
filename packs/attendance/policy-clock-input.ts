@@ -11,8 +11,10 @@ export type RecordedPolicyClockSource=
    clocks:{id:string;captureId:string;direction:'in'|'out';atMilliseconds:number;recordedAt:string}[]};
 /** Inputs are rows already selected by the canonical Attendance reader, never a posted interval set.
  * Preserve milliseconds: flooring to seconds before a minimum-gap test can accept a too-close event. */
+export type AttendanceClockSourcePunch = Pick<typeof attendancePunch.$inferSelect,
+  'id'|'tenantId'|'employmentId'|'attendanceId'|'attendanceDate'|'clockCaptureId'|'direction'|'punchAt'>;
 export async function recordedPolicyClockSourceTx(tx:Tx,ctx:SessionContext,p:{attendanceId:string;employmentId:string;date:string;
- punches:readonly (typeof attendancePunch.$inferSelect)[]}):Promise<RecordedPolicyClockSource>{
+ punches:readonly AttendanceClockSourcePunch[]}):Promise<RecordedPolicyClockSource>{
  const unavailable=(reason:Extract<RecordedPolicyClockSource,{state:'unavailable'}>['reason']):RecordedPolicyClockSource=>({state:'unavailable',authority:'sourceOnly',reason});
  if(p.punches.length>128)return unavailable('outsidePeriod');
  if(p.punches.some(punch=>!punch.clockCaptureId))return unavailable('missingCapture');

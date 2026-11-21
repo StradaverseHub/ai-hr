@@ -7,6 +7,6 @@ export async function previewMovementAction(companyId:string,csv:string,selectio
 export async function commitMovementAction(input:Parameters<typeof commitMovementImport>[1]){
  const {companyId,csv,selection,inputHash,fingerprints,acknowledgeExcluded}=input;
  const result=await commitMovementImport(await requireAdmin(),{companyId,csv,selection,inputHash,fingerprints,acknowledgeExcluded});
- if(result.imported){revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/import');for(const employee of result.employees)if(employee.employmentId&&employee.rows.some(row=>row.status==='imported'))revalidatePath('/admin/personnel/'+employee.employmentId);}
+ if(result.imported){revalidatePath('/admin/personnel');revalidatePath('/admin/personnel/import');revalidatePath('/admin/personnel/import/history');for(const employee of result.employees)if(employee.employmentId&&employee.rows.some(row=>row.status==='imported'))revalidatePath('/admin/personnel/'+employee.employmentId);}
  return result;
 }

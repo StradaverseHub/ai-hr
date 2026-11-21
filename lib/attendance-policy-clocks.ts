@@ -8,7 +8,7 @@ export type PolicyClockEvidence={
  complete:boolean;requiresReview:boolean;flags:PolicyClockFlag[];
  checkInAbs:number|null;checkOutAbs:number|null;intervals:ClosedClockInterval[];
 };
-function validatePolicy(policy:AttendanceGroupPolicy['clock'],periodMinutes:number,count:number){
+function validatePolicy(policy:ClockCalculationPolicy,periodMinutes:number,count:number){
  if(!Number.isSafeInteger(periodMinutes)||periodMinutes<1||periodMinutes>4320||count>1024)
   throw Error('Clock evidence exceeds the canonical attendance period.');
  if(!['auto','firstInLastOut'].includes(policy.pairing)||!Number.isSafeInteger(policy.minimumIntervalMinutes)||policy.minimumIntervalMinutes<0||policy.minimumIntervalMinutes>periodMinutes)
@@ -78,6 +78,7 @@ export type PolicyClockMillisecondEvidence={
  firstInIsArrival:boolean;
  checkInMillisecond:number|null;checkOutMillisecond:number|null;
  intervals:{inMillisecond:number;outMillisecond:number}[];minuteIntervals:ClosedClockInterval[];
+ exclusions?:ClockPolicyExclusion[];
 };
 /** Actual capture receipts carry milliseconds. Check gaps/pairing at that precision before the
  * canonical whole-minute boundary projection; second truncation may turn 59.950s into 60s. */
@@ -94,4 +95,60 @@ export function attendancePolicyClockMillisecondEvidence(raw:readonly PolicyCloc
   intervals:result.intervals.map(interval=>({inMillisecond:interval.inAbs,outMillisecond:interval.outAbs})),
   minuteIntervals:result.intervals.map(interval=>({inAbs:Math.floor(interval.inAbs/60000),outAbs:Math.floor(interval.outAbs/60000)}))
    .filter(interval=>interval.inAbs<interval.outAbs)};
+}
+
+export type ClockCalculationPolicy = Pick<AttendanceGroupPolicy['clock'], 'pairing' | 'minimumIntervalMinutes'>;
+export type ClockPolicyExclusion =
+  | { punchId: string; reason: 'minimumInterval'; afterPunchId: string }
+  | { punchId: string; reason: 'intermediatePunch' };
+
+/** Independently dated clock settings. Historic policies still use the strict v1 processor above. */
+export function attendanceClockPolicyEvidence(
+  raw: readonly PolicyClockMillisecond[],
+  policy: ClockCalculationPolicy,
+  periodMinutes: number,
+): PolicyClockMillisecondEvidence & { exclusions: ClockPolicyExclusion[] } {
+  const ordered = [...raw].sort((a,b)=>a.atMilliseconds-b.atMilliseconds || a.id.localeCompare(b.id));
+  const exclusions: ClockPolicyExclusion[] = [];
+  const accepted: PolicyClockMillisecond[] = [];
+  const minimumMs = policy.minimumIntervalMinutes * 60_000;
+  if(!Number.isSafeInteger(policy.minimumIntervalMinutes)||policy.minimumIntervalMinutes<0||policy.minimumIntervalMinutes>4320)
+    throw Error('Invalid clock policy.');
+  validatePolicy({...policy,minimumIntervalMinutes:Math.min(periodMinutes,policy.minimumIntervalMinutes)},periodMinutes,raw.length);
+  const ids = new Set<string>();
+  for (const punch of ordered) {
+    if (typeof punch.id!=='string'||!punch.id.trim() || punch.id.length>160 || ids.has(punch.id)
+        || !Number.isSafeInteger(punch.atMilliseconds) || punch.atMilliseconds<0 || punch.atMilliseconds>periodMinutes*60_000
+        || !['in','out'].includes(punch.direction)) throw Error('Invalid canonical clock evidence.');
+    ids.add(punch.id);
+    const last = accepted.at(-1);
+    if (minimumMs>0 && last && punch.atMilliseconds-last.atMilliseconds<minimumMs) {
+      exclusions.push({punchId:punch.id,reason:'minimumInterval',afterPunchId:last.id});
+      continue;
+    }
+    accepted.push(punch);
+  }
+  const first = accepted[0], last = accepted.at(-1);
+  const firstIn = accepted.find(punch=>punch.direction==='in');
+  const lastOut = accepted.filter(punch=>punch.direction==='out').at(-1);
+  const firstInIsArrival = !!first && accepted.every(punch=>punch.atMilliseconds!==first.atMilliseconds||punch.direction==='in');
+  const paired = closedClockPairs(accepted.map(punch=>({at:punch.atMilliseconds,direction:punch.direction})));
+  const validEnvelope = !!first && !!last && firstInIsArrival && last.direction==='out'
+    && last.atMilliseconds>first.atMilliseconds
+    && accepted.every(punch=>punch.atMilliseconds!==last.atMilliseconds||punch.direction==='out');
+  const complete = policy.pairing==='auto' ? paired.complete : validEnvelope;
+  if (policy.pairing==='firstInLastOut' && complete) {
+    for (const punch of accepted.slice(1,-1)) exclusions.push({punchId:punch.id,reason:'intermediatePunch'});
+  }
+  const intervals = !complete ? [] : policy.pairing==='auto' ? paired.intervals : [{inAbs:first!.atMilliseconds,outAbs:last!.atMilliseconds}];
+  const requiresReview = accepted.length>0 && !complete;
+  return {
+    complete, requiresReview, firstInIsArrival,
+    flags: requiresReview ? [{kind:'unmatched',clockIds:accepted.map(punch=>punch.id)}] : [],
+    checkInMillisecond:firstIn?.atMilliseconds??null,checkOutMillisecond:lastOut?.atMilliseconds??null,
+    intervals:intervals.map(interval=>({inMillisecond:interval.inAbs,outMillisecond:interval.outAbs})),
+    minuteIntervals:intervals.map(interval=>({inAbs:Math.floor(interval.inAbs/60_000),outAbs:Math.floor(interval.outAbs/60_000)}))
+      .filter(interval=>interval.inAbs<interval.outAbs),
+    exclusions,
+  };
 }

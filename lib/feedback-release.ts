@@ -1,16 +1,8 @@
+import type { FeedbackRelease, FeedbackReleaseStage, FeedbackReleaseStages } from './feedback-release-types';
+export type { FeedbackRelease, FeedbackReleaseStage } from './feedback-release-types';
+
 /** Release progress is separate from plan/build status. Legacy deployments are unverified. */
-export const RELEASE_STAGES = ['staging', 'production_ready', 'production'] as const;
-export type FeedbackReleaseStage = (typeof RELEASE_STAGES)[number];
-export type FeedbackRelease = {
-  stage: FeedbackReleaseStage;
-  sourceSha: string;
-  buildId: string;
-  evidence: string;
-  recordedAt: string;
-  planRevision: number;
-  reopenedCount: number;
-  buildRef: string;
-};
+export const RELEASE_STAGES = ['staging', 'production_ready', 'production'] as const satisfies FeedbackReleaseStages;
 export type FeedbackBoardStatus = import('../db/schema').FeedbackStatus | FeedbackReleaseStage;
 export const FEEDBACK_BOARD_STATUSES = ['open', 'planned', 'contested', 'approved', 'blocked', 'building', 'done', 'staging', 'production_ready', 'production', 'deployed', 'rejected', 'cancelled'] as const satisfies readonly FeedbackBoardStatus[];
 

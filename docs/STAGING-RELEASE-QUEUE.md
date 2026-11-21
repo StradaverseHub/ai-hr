@@ -80,6 +80,12 @@ lease; `deploy` and `deploy-recovery` require the matching lease. The operator e
 and `arrived` without releasing the lease. Continue the existing human acceptance and capture process;
 use the same credential for `approve_staging.py`. Production remains separately authorized.
 
+**Resume after activation.** If `deploy` activated and health-verified the CI build but deploy.sh failed only at its
+final import-worker check, keep the lease (phase `installing`). Restore the worker, then run `verify-resume-arrival`
+and `resume-arrival` with the same lease and controller ([policy](CI-STAGING-VERIFICATION-POLICY.md#resume-after-activation--aihr-resume-arrivalv1)).
+It closes the failed deploy record through the guard and enters `arrived`. Do not `abort`, `recover` or hand-edit the
+deploy state for this case.
+
 ```sh
 python3 scripts/staging/release_queue.py phase --actor CONTROLLER_ID --request /PRIVATE/accepting.json --lease-file /PRIVATE/new-lease.json --ssh-config /PRIVATE/ssh_config
 python3 scripts/staging/release_queue.py finish --actor CONTROLLER_ID --request /PRIVATE/handback.json --lease-file /PRIVATE/new-lease.json --ssh-config /PRIVATE/ssh_config

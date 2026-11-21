@@ -247,7 +247,7 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     expect((lpFeb.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ LP_SOCSO: 50 });
   });
 
-  it('PCB_* exemption caps: under in Jan, over in Feb (YTD carry) — the exempt slice is paid but leaves the statutory bases; EA accumulates it', async () => {
+  it('PCB_* exemption caps: under in Jan, over in Feb (YTD carry) — the exempt slice is paid and leaves the PCB base only; EA accumulates it', async () => {
     await seedPayComponentCatalog(a);
     // PCB_CHILD_CARE cap RM3,000/year; RM2,000/month ⇒ Jan fully exempt, Feb 1,000 exempt + 1,000 taxable.
     await upsertPayComponent(a, input('CHILDCARE', { pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_CHILD_CARE' }));
@@ -260,16 +260,20 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     const sJan = await slipOf(jan.batchId, e.employmentId);
     // Paid in full…
     expect(Number(sJan.allowance)).toBeCloseTo(2000, 2);
-    // …but fully exempt: EPF sees the RM4,000 basic only (Third Schedule band ⇒ RM440 employee).
-    expect(Number((sJan.statutory as { epfEmployee: number }).epfEmployee)).toBe(440);
+    // …and fully exempt FROM PCB only. REVERSED 2026-11-13 (owner decision A): this line used to pin
+    // "EPF sees the RM4,000 basic only (RM440)" — the exempt slice left every statutory base. A PCB
+    // exemption is an income-tax exemption; CHILDCARE is ticked EPF, so EPF is on the whole RM6,000 (RM660).
+    expect(Number((sJan.statutory as { epfEmployee: number }).epfEmployee)).toBe(660);
+    expect((sJan.statutory as { bases?: { epf?: number } }).bases?.epf).toBeCloseTo(6000, 2);
     expect((sJan.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ PCB_CHILD_CARE: 2000 });
 
     const feb = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-02' });
     await generatePayslips(a, { batchId: feb.batchId });
     const sFeb = await slipOf(feb.batchId, e.employmentId);
     expect(Number(sFeb.allowance)).toBeCloseTo(2000, 2); // still paid in full
-    // Only RM1,000 headroom left ⇒ RM1,000 taxable rides the wage: EPF on RM5,000 ⇒ RM550 employee.
-    expect(Number((sFeb.statutory as { epfEmployee: number }).epfEmployee)).toBe(550);
+    // Only RM1,000 headroom left ⇒ RM1,000 taxable rides the wage. REVERSED 2026-11-13 (owner decision A):
+    // EPF used to be on RM5,000 (RM550); it now follows the EPF tick on the whole RM6,000 ⇒ RM660.
+    expect(Number((sFeb.statutory as { epfEmployee: number }).epfEmployee)).toBe(660);
     expect((sFeb.statutory as { exemptionUsed?: Record<string, number> }).exemptionUsed).toEqual({ PCB_CHILD_CARE: 1000 });
 
     // EA: the exempt portions accumulate to the exempt-allowances figure (2,000 + 1,000).
@@ -364,14 +368,14 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     // employer rate for the month is 12%: 770 and 840. The employee figure is unchanged at 770 by
     // coincidence, not by rule — 11% of 7,000 and 440 + 11% of 3,000 are the same number.
     expect(st.epfEmployee).toBe(770); // 11% × 7,000, the combined month
-    expect(st.epfEmployer).toBe(840); // 12% × 7,000 — was 910 under the pre-r210 additional-wage rule
-    // ⚠️ WHAT THIS CASE STILL TESTS. The EPF Bonus 2012 flag no longer changes the EPF AMOUNT at all —
-    // epf(4000, 3000) and epf(7000, 0) are now the same figures — so this is no longer an EPF assertion
-    // in disguise. It remains the acceptance test for the classification because the flag still decides
-    // the PCB stream (Yt, the difference method) and still keeps the bonus out of the SOCSO/EIS base,
-    // which is what the two assertions below pin. Do not delete it as redundant.
-    // SOCSO excludes the bonus (Act 4 wages): the RM4,000 band employee share.
-    expect(st.socsoEmployee).toBeCloseTo(19.75, 2);
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): this read 840 (12% × 7,000)
+    // under the r210 combined reading. KWSP's Part A bonus note keeps a ≤RM5,000 normal wage whose EPF
+    // Bonus 2012 bonus takes the month above RM5,000 at 13% of the month's wages: normal 4,000, bonus
+    // 3,000 → 7,000 × 13% = 910.00 → 910 (was 840). The employee share keeps the combined row (770).
+    expect(st.epfEmployer).toBe(910);
+    // Approved ffb6c2e0 (17 Nov): EPF classification and PCB routing above are unchanged.
+    // The independent SOCSO/EIS tick includes the 3,000, reaching the unchanged 6,000 cap row.
+    expect(st.socsoEmployee).toBeCloseTo(29.75, 2);
   });
 
   it('fail-closed guard: an unclassified PCB-only earning still throws; a classified one computes', async () => {

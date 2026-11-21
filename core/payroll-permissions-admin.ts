@@ -1,4 +1,4 @@
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {assertAiPrincipalTx} from './ai-principal';
 /**
  * Granular payroll permission-grant administration (feedback 9bc442bc, reporter expected_function:
@@ -39,7 +39,7 @@ export async function setPayrollPermissionGrant(
   const companyId = p.companyId || null;
   p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await assertAiPrincipalTx(tx,ctx);
     const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
     if(admin?.allowed!==true)throw new Error('Payroll permission administration required.');
@@ -83,7 +83,7 @@ export async function setPayrollPermissionGrant(
 export async function deletePayrollPermissionGrant(ctx: SessionContext, p: { id: string }) {
   p={...p};ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await assertAiPrincipalTx(tx,ctx);
     const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
     if(admin?.allowed!==true)throw new Error('Payroll permission administration required.');

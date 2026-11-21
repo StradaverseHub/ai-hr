@@ -1,13 +1,14 @@
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import * as database from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {validateEmployeeHomeConfiguration,HOME_TEMPLATE_FIELDS,HOME_QUICK_ACTIONS} from '../lib/employee-home';
-import {employeeHomeConfigurationCompanies,readEmployeeHomeConfigurationEditor,readOwnEmployeeHomeConfiguration,
+import {employeeHomeConfigurationCompanies,readEmployeeHomeConfigurationEditor,readOwnEmployeeHomeConfiguration,OwnHomeConfigurationRead,
  saveEmployeeHomeConfiguration,employeeHomeConfigurationHistory,readEmployeeHomeConfigurationVersion} from '../core/employee-home-configuration';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base;
@@ -45,6 +46,40 @@ describe('validated deterministic Home configuration',()=>{
  });
 });
 describe('scoped immutable company/role Home versions',()=>{
+ it('reads the same authorized presentation snapshot while an Access edit owns its lock',async()=>{
+  const employee=await worker(),foreign=await worker();
+  const expected=await readOwnEmployeeHomeConfiguration(employee.ctx,employee.employmentId);
+  const actual=database.withTenant;
+  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(ctx:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof actual>[2])=>actual(ctx,async tx=>{
+   await tx.execute(sql`set local lock_timeout='300ms'`);
+   return read(tx);
+  },options));
+  try{
+   await owner.client.begin(async holder=>{
+    await holder`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+    await expect(readOwnEmployeeHomeConfiguration(employee.ctx,employee.employmentId)).resolves.toEqual(expected);
+    await expect(readOwnEmployeeHomeConfiguration(employee.ctx,foreign.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+   });
+   await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,employee.ctx.userId!));
+   await expect(readOwnEmployeeHomeConfiguration(employee.ctx,employee.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+  }finally{spy.mockRestore();}
+ });
+
+ it('reuses only the exact request principal and selected subject proof',async()=>{
+  const employee=await worker(),other=await worker();
+  const read=new OwnHomeConfigurationRead(employee.ctx,employee.employmentId);
+  expect(()=>read.read({...employee.ctx},employee.employmentId)).toThrow();
+  expect(()=>read.read(employee.ctx,other.employmentId)).toThrow();
+  expect(()=>read.read(other.ctx,employee.employmentId)).toThrow();
+  const first=read.read(employee.ctx,employee.employmentId);
+  expect(read.read(employee.ctx,employee.employmentId)).toBe(first);
+  await expect(first).resolves.toMatchObject({employmentId:employee.employmentId,companyId:b.companyId,audienceRole:'employee'});
+  const foreign=new OwnHomeConfigurationRead(employee.ctx,other.employmentId);
+  await expect(foreign.read(employee.ctx,other.employmentId)).rejects.toMatchObject({code:'employmentUnavailable'});
+  await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,employee.ctx.userId!));
+  const next=new OwnHomeConfigurationRead(employee.ctx,employee.employmentId);
+  await expect(next.read(employee.ctx,employee.employmentId)).rejects.toThrow();
+ });
  it('saves/reopens a version and resolves own company/role without accepting a caller-picked company',async()=>{
   const hr=await worker('hr_admin'),employee=await worker(),configuration=defaultEmployeeHomeConfiguration();
   configuration.quickActions=['leave','profile'];configuration.templates.find(row=>row.key==='calm')!.text.en='Fictional scoped wording.';

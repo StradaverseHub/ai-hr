@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
@@ -171,7 +172,7 @@ export async function ShiftForm({
               value={
                 <>
                   {group?.name ?? '—'}{' '}
-                  <Link href={scheduleGroupSectionHref(group?.id ?? '', 'workingDay')} className="text-primary hover:underline">
+                  <Link href={scheduleGroupSectionHref(group?.id ?? '', 'general')} className="text-primary hover:underline">
                     {t('shiftScheduleGroupChangeLink')}
                   </Link>
                 </>
@@ -218,7 +219,7 @@ export async function ShiftForm({
 
 
         <div className="flex items-center gap-3">
-          <button className={btnPrimary}>{editing ? t('saveShift') : t('addShift')}</button>
+          <ActionButton actionKind="saving" className={btnPrimary}>{editing ? t('saveShift') : t('addShift')}</ActionButton>
           <Link href={LIST} className="text-sm text-muted-foreground hover:text-foreground hover:underline">
             {t('cancelEdit')}
           </Link>

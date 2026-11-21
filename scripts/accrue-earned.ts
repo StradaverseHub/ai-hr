@@ -6,7 +6,8 @@
 //   0 2 1 * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/accrue-earned.ts
 import { createDb } from '../db/client';
 import { describeSkips, loadSweepScope } from '../core/sweep-scope';
-import { accrueEarnedLeave, todayInKualaLumpur } from '../core/leave';
+import { todayInKualaLumpur } from '../core/leave';
+import { accrueEarnedLeaveInBatches } from '../core/leave-cohort-run';
 import { recordJobRun } from '../core/job-run';
 
 async function main() {
@@ -36,7 +37,9 @@ async function main() {
     try {
       // SYSTEM context: no userId, so actorOf(ctx) records the event actor as `system`. accrueEarnedLeave
       // runs through the app-role connection (RLS enforced); the hr_admin role authorizes the writes.
-      const { granted } = await accrueEarnedLeave({ tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' }, { asOf });
+      // Batched (core/leave-cohort-run.ts): one short transaction per batch of employees instead of one
+      // tenant-wide transaction, so the run never holds the tenant's Access and leave locks for the whole cohort.
+      const { granted } = await accrueEarnedLeaveInBatches({ tenantId: t.id, roles: ['hr_admin'], entitlementsExempt: 'sweeps' }, { asOf });
       totalGranted += granted;
       console.log(`  ✓ ${t.name} (${t.id}): ${granted} grant(s)`);
     } catch (e) {

@@ -28,6 +28,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const sidebar = read('components/sidebar.tsx');
+const inventory = read('lib/navigation/shell-inventory.ts');
 const flyout = read('components/nav-flyout.tsx');
 const layout = read('app/layout.tsx');
 const actions = read('app/approvals/actions.ts');
@@ -119,7 +120,7 @@ describe('nav rename: "Approvals" → "Approval Items" in every locale', () => {
   it('one rail row serves both Manager and HR Admin, so one label covers both', () => {
     // managerUp:true + the isAdmin||canApprove filter in canSeeChild — a single row, not one per role.
     expect(
-      sidebar.includes(
+      inventory.includes(
         "{ href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true }",
       ),
     ).toBe(true);
@@ -145,31 +146,24 @@ describe('accessible count label: nav.approvalsCount', () => {
 
 describe('the count is the viewer\'s own pending queue, computed once', () => {
   it('the layout derives the matching inbox destinations from the same canonical task read — no second query', () => {
-    expect(layout).toContain("const legacyApprovalCount = approvalTasks.filter(task => task.linkPath.split(/[?#]/, 1)[0] === '/approvals').length;");
-    expect(layout).toContain('approvalCount={legacyApprovalCount}');
-    expect(layout).not.toContain('approvalCount={pendingTasks.length}');
-    // The value it reuses is still the same single call already made for the bell.
-    //
-    // r292 UPDATED, NOT LOOSENED. Module gating gave listPendingTasks a third argument (the resolved
-    // InboxModules — the root layout must not throw, since a throw here 500s every authenticated route),
-    // so the old exact-spelling assertions broke while the decision they protect did not. The intent was
-    // always "exactly ONE call, and the count reuses it". That is now asserted directly by counting CALL
-    // sites rather than matching one argument list, which is both stronger and immune to the next
-    // argument change. Do not weaken this to "contains listPendingTasks".
-    expect(layout).toContain('const approvalTasks = await listPendingTasks(session, scopeIds,');
-    const callSites = layout.split('await listPendingTasks(').length - 1;
-    expect(callSites, 'exactly one listPendingTasks call in the root layout').toBe(1);
+    expect(layout).toContain('approvalCount:approvalSummary.approvalCount');
+    expect(layout).toContain('pendingTaskSummary(session, scopeIds,');
+    expect(layout).not.toContain('await pendingTaskSummary(');
+    expect(layout).toContain('<ShellApprovalFactsProvider source={approvalFacts}');
+    const callSites = layout.match(/\b(?:pendingTaskSummary|listPendingTasks)\(/g);
+    expect(callSites, 'exactly one task read in the root layout').toEqual(['pendingTaskSummary(']);
   });
 
   it('it is NOT the bell\'s taskCount (which also folds in action notifications)', () => {
     // Deliberate divergence: the bell counts unread action-severity notifications too, which are not
     // approval records. The nav badge is strictly approval items.
-    expect(layout).toContain('taskCount={pendingTaskCount + taskNotifCount}');
-    expect(layout).not.toContain('approvalCount={pendingTaskCount + taskNotifCount}');
+    const bellSlot=readFileSync(new URL('../app/shell-notification-center.tsx',import.meta.url),'utf8');
+    expect(bellSlot).toContain('taskCount={taskCount + bell.taskCount}');
+    expect(layout).not.toMatch(/approvalCount[:=][^\n]+taskNotifCount/);
     // Onboarding work joins My tasks/the bell, never the legacy Approval Items count.
-    expect(layout).toContain('const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];');
-    expect(layout).toContain('const pendingTaskCount=approvalTasks.length+onboardingQueue.length+lifecycleInbox.count;');
-    expect(layout).toContain('taskCount={pendingTaskCount}');
+    expect(layout).toContain('const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];');
+    expect(layout).toContain('const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;');
+    expect(layout).toContain('taskCount={lifecycleTaskCount}');
   });
 
   it('each work row renders its own count only when positive', () => {
@@ -196,8 +190,8 @@ describe('post-decision refresh', () => {
     // type 'page' and would leave both stale after a decision.
     expect(actions).toContain("revalidatePath('/', 'layout')");
     // Both decrement paths go through the shared helper: the row-level actions via done(), and bulk.
-    expect(actions).toContain('async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{\n  revalidateShell();');
-    expect(actions).toContain('redirect(await decisionReturnUrl(s,nav,{toast}))');
+    expect(actions).toContain('async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>,approvalSeal=false):Promise<never>{\n  revalidateShell();');
+    expect(actions).toContain('redirect(await decisionReturnUrl(s,nav,{toast,approvalSeal}))');
     expect(actions).toContain('revalidateShell();\n  const summary =');
     // fail() changes no state, so it must NOT pay for a shell revalidation.
     expect(actions).toContain('async function fail(e:unknown,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{\n  redirect(await decisionReturnUrl(s,nav,{error:publicErrorMessage(e)}))');

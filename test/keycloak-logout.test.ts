@@ -2,7 +2,7 @@ import { sealSessionHandle } from '../lib/identity/cookie';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const p=vi.hoisted(()=>({cookie:vi.fn(),set:vi.fn(),transaction:vi.fn(),sql:vi.fn(),revoke:vi.fn(),build:vi.fn(),client:vi.fn()}));
 vi.mock('next/headers',()=>({cookies:async()=>({get:p.cookie,set:p.set})}));
-vi.mock('../db/client',()=>({client:Object.assign(p.sql,{begin:p.transaction})}));
+vi.mock('../db/client',()=>({client:Object.assign(p.sql,{begin:p.transaction}),withPoolWork:(_lane:string,work:()=>unknown)=>work(),withSystemWork:(work:()=>unknown)=>work()}));
 vi.mock('../lib/identity/oidc',()=>({oidcClient:p.client,verifyKeycloakAccessToken:vi.fn(),oidc:{tokenRevocation:p.revoke,buildEndSessionUrl:p.build}}));
 import { endIdentitySession } from '../lib/identity/session';
 import { seal } from '../lib/identity/seal';

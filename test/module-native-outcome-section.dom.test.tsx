@@ -5,7 +5,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
-const copies:Record<string,typeof en>={en,ms,zh,ta,th,vi:viCopy};
+const copies:Record<string,Pick<typeof en,'assistant'>>={en,ms,zh,ta,th,vi:viCopy};
 const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),workspace:vi.fn(),reopen:vi.fn(),notification:vi.fn(),record:vi.fn(),erase:vi.fn(),copyLocale:null as string|null}));
 vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>(key:string)=>{if(source.copyLocale===null)return key;let value:unknown=copies[source.copyLocale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];if(typeof value!=='string')throw Error('Missing actual outcome translation');return value;},getLocale:source.locale}));

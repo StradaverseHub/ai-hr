@@ -1,38 +1,43 @@
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
-import { AlertTriangle, CheckCircle2, ChevronRight, Sparkles } from 'lucide-react';
+import { useFormatter, useLocale, useTranslations } from 'next-intl';
+import { AlertTriangle, CheckCircle2, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { LeaveRecommendationView } from '@/app/assistant/centre/recommendation';
+import type { LeaveRecommendationView, TeamCoverageView } from '@/app/assistant/centre/recommendation';
 
-/** The approver recommendation beside a leave decision card (ADR-0170 step 5). It is advice: "recommend
- * approve" when every native check passed, otherwise "needs your review" naming the failed rules. It never
- * recommends rejecting, never decides, and the decision still happens on the request's own page. It is read
- * only when the approver follows this link, never prefetched. */
-export function LeaveRecommendationLink({ leaveRequestId }: { leaveRequestId: string }) {
-  const t = useTranslations('aiCentre.recommendation');
-  return (
-    // No fragment and no scroll: the panel opens in place under its row (staging acceptance, 3 November 2026: the
-    // fragment scrolled the page and carried the tab row out of view). Focus moves to it on arrival (FocusOnMount).
-    // AI v2 Phase 1: the panel opens on Today, which replaced the AI Centre Inbox.
-    <Link href={`/?recommend=${leaveRequestId}`} scroll={false} prefetch={false} data-recommendation-loader
-      className="ml-12 inline-flex min-h-9 items-center gap-1.5 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
-      <Sparkles aria-hidden className="size-3.5" />{t('show')}
-    </Link>
-  );
-}
+/** How many short days are named before the rest are counted ("and 3 more days"). */
+const NAMED_DAYS = 7;
 
 /** Presentational, so tests and evidence render each state without a server.
  *
  * AI v2 W6, on the approval pages: `detail` lists all four checks with their result and the version each ran
  * under (not only the failed rules), `prepared` adds "How this was prepared" (the outcome record) and
  * `decideHere` says the decision is made right there. `inset={false}` drops the indent that lines the panel
- * up under a Today card. Today renders it as before. */
+ * up under a Today card. The approval pages and Manager Today render it.
+ *
+ * When the company sets a "minimum people present" (owner decision, 12 November 2026), team cover is worded from it:
+ * met on every day, or the days below it with how many of the team would be present, on both the detailed list and the
+ * short failed-rule list Manager Today shows. */
 export function RecommendationPanel({ view, id, detail = false, prepared, decideHere = false, inset = true }: {
   view: LeaveRecommendationView; id?: string; detail?: boolean; decideHere?: boolean; inset?: boolean;
   prepared?: Readonly<{ summary: string; rows: readonly (readonly [string, string])[] }>;
 }) {
   const t = useTranslations('aiCentre.recommendation');
+  const format = useFormatter();
+  const locale = useLocale();
   const checks = view.kind === 'recommendation' && detail ? view.checks ?? [] : [];
+  const coverage: TeamCoverageView | null = view.kind === 'recommendation' ? view.teamCoverage ?? null : null;
+  // The minimum's own words for team cover, or null where the generic wording applies (no minimum, or not read).
+  const minimumText = (result: string): string | null => {
+    if (!coverage) return null;
+    if (result === 'pass') return t('result.team_coverage.passMinimum', { minimum: coverage.minimum });
+    if (result !== 'fail' || coverage.shortDays.length === 0) return null;
+    const named = coverage.shortDays.slice(0, NAMED_DAYS).map(day => t('teamDay', {
+      date: format.dateTime(new Date(`${day.date}T00:00:00Z`), { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }),
+      present: day.present,
+    }));
+    const more = coverage.shortDays.length - named.length;
+    const days = new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(more > 0 ? [...named, t('teamMoreDays', { count: more })] : named);
+    return t('result.team_coverage.failMinimum', { minimum: coverage.minimum, count: coverage.shortDays.length, days });
+  };
   return (
     <section id={id} tabIndex={id ? -1 : undefined} role="status" data-recommendation={view.kind === 'recommendation' ? view.verdict : 'unavailable'}
       className={cn(inset && 'ml-12', 'mt-1 rounded-lg border border-border bg-muted/40 p-3 text-xs')}>
@@ -45,14 +50,14 @@ export function RecommendationPanel({ view, id, detail = false, prepared, decide
           <li key={check.check} data-check={check.check} data-result={check.result} className="flex items-start gap-1.5">
             {check.result === 'pass' ? <CheckCircle2 aria-hidden className="mt-px size-3.5 shrink-0 text-emerald-700 dark:text-emerald-300" /> : <AlertTriangle aria-hidden className="mt-px size-3.5 shrink-0 text-amber-700 dark:text-amber-300" />}
             <div className="min-w-0">
-              <p>{t(`result.${check.check}.${check.result}`)}</p>
+              <p>{(check.check === 'team_coverage' ? minimumText(check.result) : null) ?? t(`result.${check.check}.${check.result}`)}</p>
               {check.result === 'fail' && check.blocking && <p className="text-amber-800 dark:text-amber-300">{t('blocking')}</p>}
               {check.version && <p className="text-muted-foreground">{t(`version.${check.version.kind}`, { version: check.version.version })}</p>}
             </div>
           </li>
         ))}</ul> : view.failedRules.length > 0 && <ul className="mt-2 space-y-1.5">{view.failedRules.map(rule => (
-          <li key={rule.check}>
-            <p>{t(`check.${rule.check}`)}</p>
+          <li key={rule.check} data-failed-rule={rule.check}>
+            <p>{(rule.check === 'team_coverage' ? minimumText('fail') : null) ?? t(`check.${rule.check}`)}</p>
             {rule.blocking && <p className="text-amber-800 dark:text-amber-300">{t('blocking')}</p>}
             {rule.version && <p className="text-muted-foreground">{t(`version.${rule.version.kind}`, { version: rule.version.version })}</p>}
           </li>

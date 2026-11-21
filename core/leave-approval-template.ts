@@ -293,7 +293,7 @@ export async function createApprovalTemplate(ctx: SessionContext, p: ApprovalTem
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const c = cleanTemplate(p);
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     let row: { id: string };
     try {
@@ -323,7 +323,7 @@ export async function updateApprovalTemplate(ctx: SessionContext, id: string, p:
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const c = cleanTemplate(p);
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({ levels: leaveApprovalTemplate.levels, name: leaveApprovalTemplate.name })
@@ -357,7 +357,7 @@ export async function updateApprovalTemplate(ctx: SessionContext, id: string, p:
 export async function duplicateApprovalTemplate(ctx: SessionContext, id: string) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({
@@ -404,7 +404,7 @@ export async function duplicateApprovalTemplate(ctx: SessionContext, id: string)
 export async function setApprovalTemplateActive(ctx: SessionContext, id: string, active: boolean) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     if (!active) {
       // Block deactivation while any ACTIVE rule references the template — admin must reassign first
@@ -437,7 +437,7 @@ export async function setApprovalTemplateActive(ctx: SessionContext, id: string,
 export async function deleteApprovalTemplate(ctx: SessionContext, id: string) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Hard delete only when NO policy row (active OR archived) references it — the FK enforces this too,
     // but a pre-check gives a friendly error instead of a raw constraint failure.
@@ -466,7 +466,7 @@ export async function deleteApprovalTemplate(ctx: SessionContext, id: string) {
 export async function setTenantDefaultTemplate(ctx: SessionContext, id: string | null) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Clear whoever currently holds the flag (there is at most one).
     await tx
@@ -704,7 +704,7 @@ export async function assignApprovalTemplate(
   if (maxDays !== null && (!Number.isInteger(maxDays) || maxDays < 0)) throw new Error('Condition days must be a whole number of 0 or more');
   if (minDays !== null && maxDays !== null && minDays > maxDays) throw new Error('The condition range starts after it ends');
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [tpl] = await tx
       .select({ id: leaveApprovalTemplate.id, active: leaveApprovalTemplate.active })
@@ -832,7 +832,7 @@ export async function assignApprovalTemplate(
 export async function unassignApprovalTemplate(ctx: SessionContext, ruleId: string, companyId: string) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .select({ templateId: leaveApprovalPolicy.templateId, leaveTypeId: leaveApprovalPolicy.leaveTypeId })

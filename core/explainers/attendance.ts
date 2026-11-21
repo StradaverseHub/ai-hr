@@ -18,7 +18,7 @@ type AttendanceMessages={explain:Record<string,unknown>}&Record<string,unknown>;
 const MESSAGES:Readonly<Record<string,AttendanceMessages>>={en:en.attendance,ms:ms.attendance,zh:zh.attendance,vi:vi.attendance,ta:ta.attendance,th:th.attendance} as Record<string,AttendanceMessages>;
 // The panel's own argument classes (components/attendance-figure-cells.tsx CLOCK_ARGS, COUNT_ARGS, BUCKET_KEY).
 const CLOCK_ARGS=new Set(['at','threshold','end']),COUNT_ARGS=new Set(['blocks','count']);
-const BUCKET_KEY:Readonly<Record<string,string>>={flat:'colOtFlat',ot00:'colOt00',ot10:'colOt10',ot15:'colOt15',ot20:'colOt20',ot30:'colOt30'};
+const BUCKET_KEY:Readonly<Record<string,string>>={flat:'colOtFlat',ot00:'colOt00',ot10:'colOt10',ot15:'colOt15',ot20:'colOt20',ot30:'colOt30',other:'colOtOther'};
 const text=(messages:AttendanceMessages,path:readonly string[]):string|null=>{let node:unknown=messages;for(const key of path)node=node&&typeof node==='object'?(node as Record<string,unknown>)[key]:undefined;return typeof node==='string'?node:null;};
 /** One step as the panel words it, in `locale` (English when the locale lacks the sentence). */
 export function wordStep(step:ExplainStep,locale='en'):string{

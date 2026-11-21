@@ -1,4 +1,5 @@
 'use client';
+import {SalaryRecordingChoices,type SalaryRecordingOptions} from './salary-recording-choices';
 
 import { useMemo, useState } from 'react';
 import { paginateRows } from '@/lib/pagination';
@@ -26,6 +27,7 @@ export type SalaryRowView = {
   id: string;
   employmentId: string;
   effectiveDate: string;
+  paymentMethod?:string|null;
   currency: string;
   basic: number;
   previous: number | null;
@@ -64,7 +66,7 @@ const STATUS_VARIANT: Record<SalaryStatus, 'success' | 'warning' | 'default'> = 
  * Qualification tab the reporter asked all of these to look like. Same action, same fields, same
  * confirm step; only the container changed.
  */
-export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
+export function SalaryHistoryTable({ rows,recordingOptions }: { rows: SalaryRowView[];recordingOptions?:SalaryRecordingOptions }) {
   const t = useTranslations('people.detail');
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | SalaryStatus>('all');
@@ -184,10 +186,10 @@ export function SalaryHistoryTable({ rows }: { rows: SalaryRowView[] }) {
   // rate required for daily/hourly) on save.
   const salaryFields = (r: SalaryRowView) => (
     <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
-      <label className="flex flex-col gap-1.5">
+      {recordingOptions?<div className="sm:col-span-2"><SalaryRecordingChoices options={recordingOptions} defaultDate={r.effectiveDate} paymentMethod={r.paymentMethod??null} defaultChoice="amendment"/></div>:<label className="flex flex-col gap-1.5">
         <span className="text-xs font-medium text-muted-foreground">{personnelFormLabel('payroll.basic_salary_and_salary_history.validfrom',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)}</span>
         <DateField {...personnelControl('payroll.basic_salary_and_salary_history.validfrom','record')} defaultValue={r.effectiveDate} className={inputCls} label={personnelFormLabel('payroll.basic_salary_and_salary_history.validfrom',(key,fallback)=>t.has(key.slice(14))?t(key.slice(14)):fallback)} />
-      </label>
+      </label>}
       {/* r374 (item 7dbaf677) — `required` DROPPED here too, and the two forms HAD to move together.
           This is the EDIT half of the same screen whose Add half dropped it; leaving one of them is how
           the two drift. Clearing this box is a DELIBERATE clear, never an absent field — it always posts

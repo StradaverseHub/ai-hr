@@ -32,21 +32,31 @@ export async function ReprocessOutcomeStatus({ outcome }: { outcome: ReprocessEm
   </Badge>;
 }
 
+const PAY_ITEM_REPRICE_REASONS = new Set(['formula_failed', 'not_positive', 'zero_divisor', 'input_missing', 'no_longer_calculates']);
+const PAY_ITEM_QUANTITY_UNITS = new Set(['hours', 'days', 'qty', 'units']);
+
 export async function ReprocessOutcomeRemarks({
-  outcome, batchId, from, jobId,
-}: { outcome: ReprocessEmployeeOutcome; batchId: string; from?: string; jobId?: string }) {
+  outcome, batchId, from, jobId, currency = null,
+}: { outcome: ReprocessEmployeeOutcome; batchId: string; from?: string; jobId?: string; currency?: string | null }) {
   const t = await getTranslations('payroll.batch');
   const tp = await getTranslations('payroll.process');
   const locale = await getLocale();
   const noncashReason = outcome.validationDetails?.length === 1 ? outcome.validationDetails[0].gap : '';
   // 3244584c — WHY the employee no longer belongs to the month, with the date that decided it.
   const exclusionDate = outcome.validationDetails?.[0]?.date;
-  const fullReason = outcome.status === 'excluded' || outcome.status === 'not_eligible'
+  // ad6ed930 — a transaction dated after the employee's last day is not a formula fault: the remark names the
+  // leaving date and the way forward, and does not send HR to Payroll Items.
+  const leftOn = outcome.reasonCode === 'PAY_ITEM_FORMULA_FAILED' && outcome.formulaFailure?.reason === 'after_leaving_date'
+    ? outcome.formulaFailure.leftOn ?? null : null;
+  const fullReason = leftOn ? t('reprocessPayItemAfterLeavingDate', { date: formatDate(leftOn) })
+    : outcome.status === 'excluded' || outcome.status === 'not_eligible'
     ? t(`reprocessExclusion_${outcome.reasonCode}${exclusionDate ? 'Dated' : ''}`, exclusionDate ? { date: formatDate(exclusionDate) } : {})
     : outcome.status === 'skipped' ? t('reprocessNothingPayableFull')
-    : outcome.status === 'reprocessed' ? t('reprocessSucceededReason')
+    : outcome.status === 'reprocessed' ? t(outcome.taxBasisRecalculated ? 'reprocessTaxBasisUpdated' : 'reprocessSucceededReason')
+    : outcome.reasonCode === 'PAY_ITEM_FORMULA_FAILED' ? t('reprocessPayItemFormulaReason')
     : outcome.reasonCode === 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' && TAX_SELECTION_CODES.has(outcome.validationCode ?? '')
       ? tp(`taxSelection_${outcome.validationCode}`)
+    : outcome.validationCode === 'payroll_tax_evidence' && noncashReason ? t('reprocessTaxEvidenceIssue', { reason: noncashReason })
     : outcome.validationCode === 'pcb_non_cash_configuration_invalid'
       ? tp(NONCASH_CONFIGURATION_REASONS.has(noncashReason) ? `nonCash_${noncashReason}` : 'nonCash_configuration_invalid')
     : outcome.reasonCode === 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' && TAX_CODES.has(outcome.validationCode ?? '')
@@ -57,8 +67,27 @@ export async function ReprocessOutcomeRemarks({
   if (from) query.set('from', from);
   if (jobId) query.set('job', jobId);
   const taxHref = `/payroll/${batchId}/tax-configuration/${outcome.employmentId}${query.size ? `?${query}` : ''}`;
+  const failure = outcome.reasonCode === 'PAY_ITEM_FORMULA_FAILED' ? outcome.formulaFailure : undefined;
   return <div className="space-y-1 text-xs">
     <p>{outcome.status === 'skipped' ? t('reprocessNothingPayableShort') : fullReason}</p>
+    {/* 792053e5 — which Pay Item an updated formula re-priced, for how many transactions, old and new amounts. */}
+    {outcome.status === 'reprocessed' && outcome.repricedItems?.map(item => <div key={item.componentId} className="rounded-md bg-muted/60 px-2 py-1.5" data-testid="reprocess-repriced-item">
+      <p>{t('reprocessPayItemRepriced', { name: item.name })}</p>
+      <p className="font-medium tabular-nums">{t('reprocessPayItemRepricedDetail', {
+        count: item.count,
+        quantity: item.unit && PAY_ITEM_QUANTITY_UNITS.has(item.unit) && item.quantity > 0 ? t(`reprocessPayItemQuantity_${item.unit}`, { qty: item.quantity.toFixed(2) }) : '',
+        before: formatMoney(item.before, currency), after: formatMoney(item.after, currency),
+      })}</p>
+    </div>)}
+    {failure && <div className="rounded-md bg-red-50 px-2 py-1.5 text-red-800 dark:bg-red-500/10 dark:text-red-300" role="alert" data-testid="reprocess-formula-failure">
+      <p><strong>{t(leftOn ? 'reprocessPayItemDatedAfterLeaving' : 'reprocessPayItemFormulaFailed', { name: failure.name, code: failure.code, count: failure.dates.length, dates: failure.dates.map(d => formatDate(d)).join(', ') })}</strong></p>
+      {!leftOn && PAY_ITEM_REPRICE_REASONS.has(failure.reason) && <p>{t(`reprocessPayItemReason_${failure.reason}`)}</p>}
+      {failure.detail && <p className="text-red-700/80 dark:text-red-300/80">{failure.detail}</p>}
+    </div>}
+    {failure && <p className="space-x-3">
+      {!leftOn && <Link href={`/admin/pay-components/${encodeURIComponent(failure.code)}`} className="text-primary hover:underline">{t('reprocessOpenPayItem')}</Link>}
+      <Link href="/payroll/transactions/individual" className="text-primary hover:underline">{t('reprocessOpenTransactions')}</Link>
+    </p>}
     {outcome.status === 'excluded' && outcome.historyId && <p className="text-muted-foreground">{t('reprocessExcludedRemoved')}</p>}
     {outcome.status === 'not_eligible' && <p className="font-medium text-amber-800 dark:text-amber-300">
       {t(outcome.validationCode === 'last_on_run' ? 'reprocessNotEligibleLastOnRun' : 'reprocessNotEligibleRemovalOff')}
@@ -145,7 +174,7 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbBefore!=null?formatMoney(exactSnapshot.pcbBefore,currency):'—'}</td>
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbAfter!=null?formatMoney(exactSnapshot.pcbAfter,currency):'—'}</td>
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbBefore!=null&&exactSnapshot.pcbAfter!=null?formatMoney(Math.round((exactSnapshot.pcbAfter-exactSnapshot.pcbBefore)*100)/100,currency):'—'}</td>
-            <td className="max-w-sm px-3 py-3"><ReprocessOutcomeRemarks outcome={outcome} batchId={batchId} from={from} jobId={jobId} /></td>
+            <td className="max-w-sm px-3 py-3"><ReprocessOutcomeRemarks outcome={outcome} batchId={batchId} from={from} jobId={jobId} currency={currency} /></td>
           </tr>;
         })}</tbody>
       </table>

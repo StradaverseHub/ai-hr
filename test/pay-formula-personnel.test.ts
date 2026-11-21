@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
-import {PAY_FORMULA_PERSONNEL_ADAPTERS,PAY_FORMULA_PERSONNEL_INVENTORY} from '../lib/pay-formula-personnel';
+import {PAY_FORMULA_PERSONNEL_ADAPTERS,PAY_FORMULA_PERSONNEL_INVENTORY,personnelFormulaInternalId} from '../lib/pay-formula-personnel';
+import {PAY_FORMULA_FIELD_TYPES,payFormulaFunction} from '../lib/pay-formula-registry';
 import {parsePayFormula,evaluatePayFormula,applyFormulaAmount} from '../lib/pay-formula-language';
 const company='10000000-0000-4000-8000-000000000001';
 const branch=`If {#EmployeeProfile}("companyId") = "${company}" Then\n Return ({#Basic} + {#FixedAllowances}) / 26 / 8 * 1.5 * {#Input}\nElse\n Return {#Basic} / 26 / 8 * 1.5 * {#Input}\nEnd If`;
@@ -9,6 +10,11 @@ describe('typed Personnel formula vocabulary',()=>{
   expect(PAY_FORMULA_PERSONNEL_INVENTORY.map(f=>f.fieldId).sort()).toEqual(PERSONNEL_FIELDS.filter(f=>f.tab==='Profile'||f.tab==='Employment').map(f=>f.id).sort());
   expect(PAY_FORMULA_PERSONNEL_INVENTORY.filter(f=>f.grain==='many').every(f=>f.unavailableReason==='repeating')).toBe(true);
   expect(PAY_FORMULA_PERSONNEL_ADAPTERS.some(a=>a.key==='companyId'&&a.type==='string'&&a.dateBasis==='effective-date')).toBe(true);
+  // The company code is the employment's effective company's label, under the same field permission as the ID and name.
+  expect(PAY_FORMULA_PERSONNEL_ADAPTERS.find(a=>a.key==='companyCode')).toEqual({key:'companyCode',fieldId:'employment.organisation_assignment.companyname',group:'profile',type:'string',adapter:'company',column:'company_label',dateBasis:'effective-date'});
+  expect(PAY_FORMULA_FIELD_TYPES.profile.companyCode).toBe('string');
+  expect(payFormulaFunction('EmployeeProfile')!.parameters[0].choices).toEqual(expect.arrayContaining(['companyId','companyName','companyCode']));
+  expect(PAY_FORMULA_PERSONNEL_ADAPTERS.filter(personnelFormulaInternalId).map(a=>a.key).sort()).toEqual(['businessUnitId','companyId','departmentId','gradeId','positionId']);
   expect(PAY_FORMULA_PERSONNEL_ADAPTERS.every(a=>PERSONNEL_FIELDS.some(f=>f.id===a.fieldId&&f.grain==='single'))).toBe(true);
  });
  it.each([[company,'66'],['10000000-0000-4000-8000-000000000002','60']])('uses the verified stable company literal %s with independent exact branch result %s',(current,expected)=>{

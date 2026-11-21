@@ -1,12 +1,21 @@
 'use server';
 
+import { MOVEMENT_HISTORY_PAY_FIELDS, type HistoryPayFacts } from '@/lib/movement-history-pay';
+import { MOVEMENT_HISTORY_DATE_FIELDS, MOVEMENT_HISTORY_FIELDS } from '@/lib/movement-form-contract';
+import {recordPersonnelSalary,type SalaryRecordingChoice} from '@/core/personnel-salary-recording';
+
+import { editEntityHistoryMovement, recordHistoryMovement } from '@/core/movement-history-command';
+import { MovementHistoryError, type HistoryDateFacts } from '@/core/movement-history';
+import { movementImportIssueText } from '@/lib/movement-import-issues';
 import {setEmploymentBlacklist,setEmploymentInfo,setReportingLine} from '@/core/workforce-commands';
 import { publicErrorMessage } from '@/lib/public-error';
+import { amendDirectSuperior } from '@/core/information-correction';
+import { isCalendarDate } from '@/lib/calendar-date';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { redirect,unstable_rethrow } from 'next/navigation';
-import {movementHistoryHref} from '@/lib/personnel-movement-navigation';
+import {movementPageHref} from '@/lib/personnel-movement-navigation';
 import { getTranslations } from 'next-intl/server';
 import { setEmploymentCardId } from '@/core/attendance-card';
 import { requireAdmin } from '@/lib/authz';
@@ -33,7 +42,8 @@ import {
 import { reprojectEntitlementForEmployment } from '@/core/leave';
 // c063eea9 — the hire-details correction. Its form parser lives in core/ (a 'use server' module may only
 // export async functions) and reads ONLY the six allow-listed fields.
-import { correctHireDetails, parseHireCorrectionForm } from '@/core/hire-correction';
+import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS } from '@/lib/movement-employment-periods';
+import { correctHireDetails, parseHireInformationForm, parseHireCorrectionEndDate, parseHireCorrectionForm } from '@/core/hire-correction';
 // r256 420ebab5 — the SERVICE behind the Payroll tab's policy card. The per-card door is
 // assignPolicyAction (app/admin/payroll-policy/actions.ts, resolved through getSession); the consolidated
 // door reaches the same service directly, under requireAdmin, so both write through one implementation.
@@ -92,9 +102,10 @@ import { formatDmy } from '@/lib/date-display';
 function withTab(formData: FormData, url: string): string {
   if(formData.get('movementPage')){
     const id=String(formData.get('employmentId')??'');
-    const destination=movementHistoryHref(id,{showCorrected:String(formData.get('showCorrected')??''),from:String(formData.get('from')??'')});
+    const destination=movementPageHref(id,'history',undefined,{showCorrected:String(formData.get('showCorrected')??''),from:String(formData.get('from')??'')});
     const parsed=new URL(url,'https://personnel.invalid'),target=new URL(destination,'https://personnel.invalid');
     if(parsed.searchParams.has('toast'))target.searchParams.set('toast',parsed.searchParams.get('toast')!);
+    if(parsed.searchParams.has('error'))target.searchParams.set('error',parsed.searchParams.get('error')!);
     return target.pathname+target.search+target.hash;
   }
   const tab = String(formData.get('tab') ?? '').trim();
@@ -446,8 +457,14 @@ function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create
     currency: optional('currency') ?? undefined,
     payMode: optional('payMode') ?? undefined,
     paymentTerm: optional('paymentTerm') ?? undefined,
+    paymentMethod: optional('paymentMethod'),
     // The flat, non-dated org columns the comparison screen now carries (Division … Category).
     ...Object.fromEntries(MOVEMENT_FLAT_FIELDS.map((f) => [f, optional(f)])),
+    ...Object.fromEntries(MOVEMENT_EMPLOYMENT_PERIOD_FIELDS.map(field => [field, optional(field)])),
+    // 2260a06b — the end date of the Employee Type the movement leaves the employee with (only that row renders).
+    confirmationDate: optional('confirmationDate'),
+    contractEndDate: optional('contractEndDate'),
+    internshipEndDate: optional('internshipEndDate'),
     // ae9350f2 — the Termination movement's structured exit fields. The reason CODE is the only thing the
     // form posts for classification: core/movement.ts validates it against the built-in catalogue and
     // derives `terminationType` from it, so the two can never be submitted in contradiction.
@@ -484,19 +501,74 @@ async function parseMovementDocuments(formData: FormData): Promise<MovementDocum
   return out;
 }
 
+/** Board 154511c4 — the Before values of New Event's "Record history" (blank selections are left out). */
+function parseHistoryBefore(formData: FormData, editing = false): Record<string, string | null> | null {
+  if (!editing && formData.get('recordHistory') !== '1' && formData.get('historicalPageMode') !== '1') return null;
+  const before: Record<string, string | null> = {};
+  for (const field of MOVEMENT_HISTORY_FIELDS) {
+    const value = String(formData.get('history.' + field) ?? '').trim();
+    if (value) before[field] = value === '__clear__' && ['businessUnitId', 'positionId', 'locationId'].includes(field) ? null : value;
+  }
+  return before;
+}
+
+function parseHistoryDates(form: FormData): HistoryDateFacts {
+  const dates: HistoryDateFacts = {};
+  for (const field of MOVEMENT_HISTORY_DATE_FIELDS) {
+    const before = String(form.get('historyDate.before.' + field) ?? '').trim();
+    const after = String(form.get('historyDate.after.' + field) ?? '').trim();
+    if (!before && after) throw new MovementHistoryError('movement_history_before_required');
+    if (before) dates[field] = { before, ...(after ? { after } : {}) };
+  }
+  return dates;
+}
+
+function parseHistoryPay(form: FormData): HistoryPayFacts | undefined {
+  const pay: HistoryPayFacts = {};
+  for (const field of MOVEMENT_HISTORY_PAY_FIELDS) {
+    const before = String(form.get('historyPay.before.' + field) ?? '').trim();
+    const after = String(form.get('historyPay.after.' + field) ?? '').trim();
+    if (!before && after) throw new MovementHistoryError('movement_history_before_required');
+    if (before) pay[field] = { before, ...(after ? { after } : {}) };
+  }
+  return Object.keys(pay).length ? pay : undefined;
+}
+
 export async function createMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  const historyBefore = parseHistoryBefore(formData);
+  if (historyBefore) {
+    try {
+      await recordHistoryMovement(s, {
+        employmentId,
+        typeCode: String(formData.get('kind') ?? ''),
+        effectiveDate: String(formData.get('effectiveDate') ?? ''),
+        before: historyBefore,
+        dates: parseHistoryDates(formData),
+        pay: parseHistoryPay(formData),
+        remarks: String(formData.get('remarks') ?? '').trim() || null,
+      });
+    } catch (e) {
+      const labels = await getTranslations();
+      const message = e instanceof MovementHistoryError
+        ? movementImportIssueText(e.message, (key, fallback) => (labels.has(key) ? labels(key) : fallback))
+        : await compensationErrorMessage(e);
+      if (formData.get('movementPage')) throw new Error(message);
+      redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(message)}`));
+    }
+    revalidatePath(`/admin/personnel/${employmentId}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+  }
   /** ae9350f2 — 'YYYY-MM' payroll periods a backdated termination lands inside. Reported, never adjusted. */
   let payrollFlagged: string[] = [];
   try {
     const p = parseMovementForm(formData);
-    // 9e2a89e9 — READ BEFORE THE WRITE. After createMovementEvent has committed, employment.grade_id is
-    // the NEW grade and the old one is unrecoverable without replaying the event trail, so the history
-    // row could only ever have named one of the two. One indexed read, on the path that already opens
-    // several transactions.
-    const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
-    const res = await createMovementEvent(s, { employmentId, ...p, documents: await parseMovementDocuments(formData) });
+    const res = await createMovementEvent(s, {
+      employmentId, ...p, documents: await parseMovementDocuments(formData),
+      // Board 4604dccc r3 — the closed-payroll confirmation box; only the two date movements read it.
+      acknowledgeClosedPayroll: formData.get('acknowledgeClosedPayroll') === '1',
+    }, {captureGradeBefore:true});
     if (res && 'payrollFlaggedPeriods' in res && Array.isArray(res.payrollFlaggedPeriods)) {
       payrollFlagged = res.payrollFlaggedPeriods as string[];
     }
@@ -523,7 +595,7 @@ export async function createMovementEventAction(formData: FormData) {
       // recorded as having taken effect on 1 July. It reaches the AUDIT row only — the ledger row keeps
       // the posting date, because re-dating money is a separate decision (see the migration's header).
       await recomputeEntitlement(s, employmentId, 'movement_recorded', {
-        gradeBefore,
+        gradeBefore: res.gradeBefore,
         changeEffectiveOn: p.effectiveDate ?? null,
       });
     }
@@ -573,6 +645,30 @@ export async function createMovementEventAction(formData: FormData) {
 export async function editMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  if (formData.get('historyEdit') === '1') {
+    try {
+      await editEntityHistoryMovement(s, {
+        employmentId,
+        movementId: String(formData.get('movementId') ?? '').trim(),
+        revisionId: String(formData.get('revisionId') ?? '').trim(),
+        effectiveDate: String(formData.get('effectiveDate') ?? ''),
+        before: parseHistoryBefore(formData, true) ?? {},
+        dates: parseHistoryDates(formData),
+        pay: parseHistoryPay(formData),
+        remarks: orNull(formData.get('remarks')),
+        reason: String(formData.get('reason') ?? ''),
+      });
+    } catch (e) {
+      const labels = await getTranslations();
+      const message = e instanceof MovementHistoryError
+        ? movementImportIssueText(e.message, (key, fallback) => (labels.has(key) ? labels(key) : fallback))
+        : await compensationErrorMessage(e);
+      if (formData.get('movementPage')) throw new Error(message);
+      redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(message)}`));
+    }
+    revalidatePath(`/admin/personnel/${employmentId}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+  }
   try {
     const p = parseMovementForm(formData, 'edit');
     const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
@@ -647,13 +743,17 @@ export async function correctHireDetailsAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId'));
   try {
     const salary = formData.get('hireBasicSalary');
+    const hireMethod=formData.get('hirePaymentMethod');
     if (salary !== null && (typeof salary !== 'string' || !/^\d{1,10}(?:\.\d{1,2})?$/.test(salary.trim()))) {
       throw Error('Enter a valid Basic Salary amount.');
     }
     const res = await correctHireDetails(s, {
       employmentId,
       changes: parseHireCorrectionForm(formData),
+      hireInformation:parseHireInformationForm(formData),
+      endDates: parseHireCorrectionEndDate(formData),
       basicSalary: salary === null ? undefined : Number(salary),
+      paymentMethod:hireMethod===null?undefined:orNull(hireMethod) as import('@/lib/payment-methods').PaymentMethod|null,
       reason: orNull(formData.get('reason')),
     });
     await recomputeEntitlement(s, employmentId, 'hire_corrected', { changeEffectiveOn: res.hiredOn });
@@ -670,48 +770,37 @@ export async function correctHireDetailsAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-/** Direct Superior (dce55aff) — the Reporting Lines management UI is replaced by ONE field. Saving
- *  writes the administrative reporting line through the existing service path: setReportingLine
- *  supersedes (CLOSE + INSERT) any prior active admin line, refuses self-assignment and cycles
- *  (ReportingCycleError), and appends the reporting-line.set / .superseded DomainEvents — so the full
- *  audit trail (previous superior, new superior, actor, timestamp) is preserved without effort.
- *  Effective-dating stays internal: validFrom is always "today". An EMPTY selection clears the
- *  current superior (the employee becomes a hierarchy top) via endReportingLine. Line types
- *  functional/project/dotted are no longer maintainable from this screen. */
+/** Employment delegates dated reassignment and correction to their canonical owners. */
 export async function setDirectSuperiorAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  const superiorEmploymentId = String(formData.get('superiorEmploymentId') ?? '').trim();
-  const currentSuperiorEmploymentId = String(formData.get('currentSuperiorEmploymentId') ?? '').trim();
-  const currentLineId = String(formData.get('currentLineId') ?? '').trim();
-  const today = todayInKualaLumpur();
+  const session = await requireAdmin();
+  const employmentId = String(formData.get('employmentId') ?? '');
+  const href = `/admin/personnel/${encodeURIComponent(employmentId)}?tab=job`;
+  const mode = formData.get('superiorChangeMode');
+  const superior = formData.get('superiorEmploymentId');
+  const reason = String(formData.get('reason') ?? '').trim();
+  const t = await getTranslations('people.detail');
   try {
-    if (superiorEmploymentId === currentSuperiorEmploymentId) {
-      // No change — skip the write so the audit trail records only genuine superior moves.
-    } else if (superiorEmploymentId === '') {
-      if (currentLineId) await endReportingLine(s, { reportingLineId: currentLineId, endDate: today });
-    } else {
-      await setReportingLine(s, {
-        subordinateEmploymentId: employmentId,
-        managerEmploymentId: superiorEmploymentId,
-        lineType: 'administrative',
-        validFrom: today,
-        // 30325fc1 — TAG THIS WRITE. Employment History now requires a movement tag on every generic
-        // writer's event (core/movement.ts projectRows), because an untagged event is an ordinary edit and
-        // the fallback labels that invented a kind for one are gone. Direct Superior is the one generic
-        // writer r78 deliberately left outside the Movement module (the CLEAR path emits
-        // `reporting-line.ended`, not a movement event type, so routing only the SET path through Movement
-        // would remove the only way to clear a superior). Tagging it at source keeps the Reporting Line
-        // Change row it has always produced — now backed by a recorded intent instead of a guess — without
-        // touching the clear path. This EXTENDS r78's tagging; it untags nothing.
-        movement: { type: 'reportingLineChange', groupId: randomUUID() },
-      });
+    if (typeof superior !== 'string' || (mode !== 'amend' && mode !== 'movement')) {
+      throw new Error(t('directSuperiorChangeTitle'));
     }
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
+    if (!reason || reason.length > 200) throw new Error(t('directSuperiorReasonRequired'));
+    const managerEmploymentId = superior.trim() || null;
+    if (mode === 'amend') {
+      await amendDirectSuperior(session, {
+        employmentId, managerEmploymentId, reason,
+        expectedLineId: String(formData.get('currentLineId') ?? '').trim() || null,
+      });
+    } else {
+      const effectiveDate = String(formData.get('effectiveDate') ?? '').trim();
+      if (!isCalendarDate(effectiveDate)) throw new Error(t('directSuperiorDateRequired'));
+      await createMovementEvent(session, { employmentId, managerEmploymentId, effectiveDate, remarks: reason,
+        kind: 'reportingLineChange' });
+    }
+  } catch (error) {
+    redirect(`${href}&error=${encodeURIComponent(publicErrorMessage(error))}`);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+  redirect(`${href}&toast=Saved`);
 }
 
 /** Hierarchy Management (ADR-0052): create an approval delegation FROM this employment (the delegator
@@ -810,17 +899,28 @@ async function compensationErrorMessage(e: unknown): Promise<string> {
   return publicErrorMessage(e);
 }
 
-/* r78c — why the Basic Salary screen is NOT routed through the movement recorder, unlike Work Location.
- * It is the only writer of a FIRST salary record, and the only one that can move pay MODE, payment term
- * and rate_amount (a daily/hourly re-rating). applyComparisonMovementTx deliberately refuses a
- * structure-only change without an existing record and carries no rate_amount at all, so routing this
- * screen through it would remove both capabilities to fix a row that was never duplicated: an untagged
- * `compensation.set` projects ONE truthful "Salary Adjustment" row, not a second row beside a movement.
- * It is tagged below instead, which changes no label and no row count. */
+/** Salary Add and Edit share an explicit recording choice. The canonical composite command saves salary,
+ * payment method and date atomically. Older posts keep their original native owner for compatibility. */
+async function applySalaryRecordingChoice(s:Awaited<ReturnType<typeof requireAdmin>>,formData:FormData){
+ const mode=String(formData.get('salaryRecordingChoice')??'') as SalaryRecordingChoice;
+ const payMode=String(formData.get('payMode')??'').trim(),rate=String(formData.get('rateAmount')??'').trim();
+ return recordPersonnelSalary(s,{
+  employmentId:String(formData.get('employmentId')),choice:mode,effectiveDate:String(formData.get('effectiveFrom')??'').trim(),
+  basicSalary:Number(String(formData.get('basicSalary')??'').trim()),
+  ...(formData.has('paymentMethod')?{paymentMethod:(String(formData.get('paymentMethod')??'').trim()||null) as PaymentMethod|null}:{}),
+  eventType:String(formData.get('salaryMovementType')??'').trim()||undefined,movementId:String(formData.get('salaryMovementId')??'').trim()||undefined,
+  sourceCompensationId:String(formData.get('compensationId')??'').trim()||undefined,currency:String(formData.get('currency')??'').trim()||undefined,
+  payMode:payMode||undefined,paymentTerm:String(formData.get('paymentTerm')??'').trim()||undefined,rateAmount:payMode?(rate?Number(rate):null):undefined,
+  remarks:String(formData.get('remarks')??'').trim()||undefined,reason:String(formData.get('salaryRecordingReason')??'').trim()||undefined,
+ });
+}
+
 export async function setCompensationAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
+    if(formData.has('salaryRecordingChoice'))await applySalaryRecordingChoice(s,formData);
+    else {
     // ADR-0078 — the salary structure rides the same revision form. The three fields are always posted by
     // the redesigned form; older/partial posts (absent keys) fall through to the service's carry-forward.
     const payModeRaw = String(formData.get('payMode') ?? '').trim();
@@ -854,6 +954,7 @@ export async function setCompensationAction(formData: FormData) {
       // rather than loose, and every projected event this screen emits is accounted for.
       movement: { type: 'salaryAdjustment', groupId: randomUUID() },
     });
+    }
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await compensationErrorMessage(e))}`));
   }
@@ -872,6 +973,8 @@ export async function editCompensationAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
+    if(formData.has('salaryRecordingChoice'))await applySalaryRecordingChoice(s,formData);
+    else {
     const rawBasic = formData.get('basicSalary');
     const rawBasicStr = String(rawBasic ?? '').trim();
     const rawFrom = String(formData.get('effectiveFrom') ?? '').trim();
@@ -911,6 +1014,7 @@ export async function editCompensationAction(formData: FormData) {
       // Effective date (7c7c2f80): submitted by the edit form; the service no-ops when unchanged.
       validFrom: rawFrom !== '' ? rawFrom : undefined,
     });
+    }
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(await compensationErrorMessage(e))}`));
   }
@@ -1274,8 +1378,11 @@ async function applyEmploymentInfoSection(
     // both-dates-required check from firing on a non-contract save. contractEndDate is the pre-existing
     // employment-review column, written here on purpose so the two screens share one date.
     contractStartDate: str('contractStartDate'),
+    contractNumber: str('contractNumber'),
     contractEndDate: str('contractEndDate'),
     contractRemark: str('contractRemark'),
+    // 2260a06b — the Internship Information block, rendered only for an Intern; absent (undefined) otherwise.
+    internshipEndDate: str('internshipEndDate'),
     // c5ac75fa / 8ebabbf2 — the eight flat org columns (orgDivision/orgBranch/orgRegion/orgLine/orgSection/
     // orgTeam/orgBase/employmentCategory) are NOT written here. They were owned by
     // setOrganisationAssignmentAction, which 8ebabbf2 deleted along with the editable Organisation
@@ -1409,6 +1516,7 @@ async function applyPaymentMethodSection(
   }
   await setEmploymentPaymentMethod(s, {
     employmentId: String(formData.get('employmentId')),
+    effectiveDate:String(formData.get('paymentMethodEffectiveDate')??'').trim()||undefined,
     paymentMethod: raw === '' ? null : (raw as PaymentMethod),
   });
 }
@@ -1693,6 +1801,7 @@ async function applyBankSection(
   await pack.statutory.setBank(s, {
     personId,
     employmentId:String(formData.get('employmentId')),
+    ...(formData.has('bankPayeeResidency')?{bankPayeeResidency:(String(formData.get('bankPayeeResidency')??'')||null) as 'resident'|'non_resident'|null}:{}),
     bankName: (formData.get('bankName') as string) || null,
     bankAccountNo: (formData.get('bankAccountNo') as string) || null,
     enableCustomHolderName: formData.get('enableCustomHolderName') === 'on',

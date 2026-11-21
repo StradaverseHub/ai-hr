@@ -282,36 +282,35 @@ describe('420ebab5 · the draft row, in detail', () => {
 
 describe('420ebab5 · the listing renders those rows, and nothing else', () => {
   const LISTING = read('app/admin/personnel/page.tsx');
+  const TABLE = read('app/admin/personnel/list-table.tsx');
 
-  it('both kinds of row come from their components, not from a hand-built <tr>', () => {
-    expect(LISTING).toMatch(/import \{[^}]*\bEmployeeRow\b[^}]*\} from '\.\/employee-row';/);
-    expect(LISTING).toMatch(/import \{[^}]*\bDraftRow\b[^}]*\} from '\.\/draft-row';/);
-    // Ledger uses the same destination helpers, including Personnel's return context.
-    expect(LISTING).toContain('employmentId={e.employmentId}');
-    expect(LISTING).toContain('<EmployeeRow');
-    expect(LISTING).toContain('draftId={d.id}');
-    // The components are what the two maps return — re-inlining a row here is what this catches.
-    expect(LISTING).toMatch(/employees\.map\(\(e\) => \{[\s\S]{0,800}<EmployeeRow/);
-    expect(LISTING).toMatch(/drafts\.map\(\(d\) => \([\s\S]{0,200}<DraftRow/);
+  it('the listing island renders both canonical row components and preserves their destination helpers', () => {
+    expect(LISTING).toContain('<PersonnelListTable');
+    expect(TABLE).toMatch(/import \{[^}]*\bEmployeeRow\b[^}]*\} from '\.\/employee-row';/);
+    expect(TABLE).toMatch(/import \{[^}]*\bDraftRow\b[^}]*\} from '\.\/draft-row';/);
+    expect(TABLE).toMatch(/employees\.map\([^)]*=>\s*<EmployeeRow/);
+    expect(TABLE).toMatch(/drafts\.map\([^)]*=>\s*<DraftRow/);
+    expect(TABLE).toContain('key={row.employmentId} {...row} columns={order}');
+    expect(TABLE).toContain('key={row.draftId} {...row} columns={order}');
+    expect(read('app/admin/personnel/employee-row.tsx')).toContain('const href = employeeRowHref(employmentId);');
+    expect(read('app/admin/personnel/draft-row.tsx')).toContain('const href = draftRowHref(draftId);');
   });
 
-  it('the page still resolves the status, the labels and the column text itself', () => {
-    // The rows hold no translator and no clock: if these move into the components, the table and the
-    // Excel export stop sharing one projection.
-    expect(LISTING).toContain('const st = deriveEmploymentStatus(e, today);');
-    expect(LISTING).toContain('statusLabel={tStatus(st)}');
-    expect(LISTING).toContain('text[key] = textCell(e, key);');
-    // The draft wording is chosen here too, not inside the row.
-    expect(LISTING).toContain("statusLabel={t('statusDraft')}");
+  it('the server page still resolves the status, translated labels and shared column projection', () => {
+    expect(LISTING).toMatch(/deriveEmploymentStatus\(e,\s*today\)/);
+    expect(LISTING).toMatch(/statusLabel:\s*tStatus\(st\)/);
+    expect(LISTING).toContain('textCell(e,key)');
+    expect(LISTING).toContain('employeeColumnText(e, key,');
+    expect(LISTING).toContain("statusLabel:t('statusDraft')");
     expect(LISTING).toContain("t('draftUntitled')");
     expect(LISTING).toContain("t('draftNoCompany')");
   });
 
-  it('no row in this table is hand-built with the padding the row components own', () => {
-    // Both components put the cell padding on the SAME box as the positioning (row-link.tsx explains
-    // why). A cell written here with that padding and no positioning is a row that has quietly gone
-    // back to being dead outside its name — the defect this item reported.
-    const tbody = LISTING.slice(LISTING.indexOf('<tbody'), LISTING.indexOf('</tbody>'));
+  it('the actual table body preserves canonical cell hit targets instead of hand-building employee cells', () => {
+    const start=TABLE.indexOf('<tbody'),end=TABLE.indexOf('</tbody>');
+    expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start);
+    const tbody=TABLE.slice(start,end);
+    expect(tbody).toContain('<EmployeeRow');expect(tbody).toContain('<DraftRow');
     expect(tbody).not.toContain('className="px-4 py-3"');
   });
 });

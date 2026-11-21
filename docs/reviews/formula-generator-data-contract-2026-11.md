@@ -29,6 +29,21 @@ No formula, payroll, employment, activation or pay-item linking write occurs dur
 
 Current principal and catalogue authority are checked before configuration lookup, during provider preparation/admission and after a reply. The actual outgoing byte digest is bound to the admission. Requests have bounded output and a 30-second timeout. Changed requests and Clear fence late replies out of the UI.
 
+## Background generation (12 November 2026)
+
+The outgoing content, purpose, feature (`pay_rule_draft`), admission, privacy binding and spend accounting are
+unchanged. The screen no longer waits for the model inside its request: `startFormulaDraftAction` checks the author and
+returns at once, and the same governed draft runs afterwards (`core/pay-formula-ai-job.ts`) with a 90-second provider
+budget passed explicitly as `GenerateArgs.background` (the gateway bounds it at 120 s; request-path drafts keep the 22 s
+cap). No automatic retry is made, because a timed-out call may still be charged; a new attempt is always the author's
+own request, admitted and accounted separately.
+
+The outcome is kept in `pay_formula_ai_draft_job` (migration 5130): one row per login, readable only by that login in
+its tenant while its roles are current, holding the adjudicated draft or a closed reason code and a digest of the
+requirement (never its text). Finished rows are readable for 30 minutes and running rows for one hour; expired rows are
+removed by the next start in the tenant. The screen polls one primary-key read every 2 seconds and stops at the
+deadline. Nothing is saved, activated or applied by generation.
+
 ## Review evidence to complete before enabling
 
 Review the frozen aggregate diff, exact generated provider-data source digest, focused provider/admission and formula behavior results, and rendered desktop/mobile UI captures. The shared provider source closure also covers other changed files; existing literal approvals must not silently be renewed by regeneration. Record a real owner's decision and its exact reviewed source binding before enabling egress. Pending/stale records must continue to fail closed.

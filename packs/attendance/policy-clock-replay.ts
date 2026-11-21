@@ -4,7 +4,8 @@ import {isDeepStrictEqual} from 'node:util';
 import type {AttendancePolicyExecutionContext} from '../../core/attendance';
 import type {AttendanceTraceV1} from '../../core/attendance-trace';
 import type {RecordedPolicyClockSource} from './policy-clock-input';
-import {attendancePolicyClockMillisecondEvidence,type PolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
+import type {PolicyClockMillisecondEvidence} from '../../lib/attendance-policy-clocks';
+import {clockPolicyTrace,policyClockEvidence} from './policy-clock-evidence';
 import {attendancePolicyRawWorkedMinutes} from './policy-work-input';
 import {attendancePolicyClockMeasurements} from './policy-clock-measurements';
 export type PolicyRawClockReplay=
@@ -27,7 +28,8 @@ export function replayAttendancePolicyRawClocks(context:AttendancePolicyExecutio
   return refuse('scheduleOwnerUnavailable');
  const binding=attendancePolicyTraceBinding(context);
  if(!binding||!isDeepStrictEqual(trace.executionPolicy,binding))return refuse('policyBindingUnavailable');
- const evidence=attendancePolicyClockMillisecondEvidence(source.clocks,context.resolvedClock,4320);
+ const evidence=policyClockEvidence(context,source.clocks);
+ if(!isDeepStrictEqual(trace.clockPolicy,clockPolicyTrace(context,evidence)))return refuse('policyBindingUnavailable');
  const first=evidence.checkInMillisecond,last=evidence.checkOutMillisecond;
  if(first===null)return refuse('rawSourceMismatch');
  const complete=evidence.complete&&!evidence.requiresReview;

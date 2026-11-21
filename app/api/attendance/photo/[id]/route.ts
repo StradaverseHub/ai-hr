@@ -1,6 +1,7 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import { clockApiSession } from '@/lib/attendance-clock-session';
 import { clockCapturePhoto } from '@/packs/attendance/service';
-export async function GET(request:Request,{params}:{params:Promise<{id:string}>}) {
+export const GET = capacityAwareRoute(async function GET(request:Request,{params}:{params:Promise<{id:string}>}) {
   const session=await clockApiSession();
   if(!session) return Response.json({error:'authentication'},{status:401});
   const {id}=await params;
@@ -9,4 +10,4 @@ export async function GET(request:Request,{params}:{params:Promise<{id:string}>}
   if(!photo) return new Response(null,{status:404,headers});
   if(!photo.bytes) return new Response(null,{status:410,headers});
   return new Response(new Uint8Array(photo.bytes),{headers});
-}
+});

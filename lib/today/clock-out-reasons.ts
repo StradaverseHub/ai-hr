@@ -7,7 +7,8 @@ export type ClockOutReason=typeof CLOCK_OUT_REASONS[number];
 /** The longest reason the person may type (the correction's own limit, core/proposals/attendance-request.ts ownReason). */
 export const CLOCK_OUT_OTHER_MAX=500;
 
-export type ClockOutRefusal='not_confirmed'|'invalid'|'retired'|'changed'|'unavailable'|'expired'|'access';
+/** `pending`: a correction for the day is already waiting for approval (the attendance service keeps one per day). */
+export type ClockOutRefusal='not_confirmed'|'invalid'|'retired'|'changed'|'unavailable'|'expired'|'access'|'pending';
 export type ClockOutConfirmResult=Readonly<{kind:'submitted'}>|Readonly<{kind:'refused';reason:ClockOutRefusal}>;
 
 /** The person's reason as text: the label of the option they picked, in their language, or the words they typed for

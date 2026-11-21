@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * 2166ef79 · My Attendance stage one — what the REQUEST RECORD gained, and what it must keep refusing.
  *
@@ -50,7 +51,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
 });
 afterAll(async () => {
   await closeAll();
@@ -175,7 +176,7 @@ describe('2166ef79 — the remark and the stored kind', () => {
       reason: 'Forgot to clock out',
       requestKind: 'incomplete_entry',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     const [row] = await myAttendanceCorrections(a, employmentId);
     expect(row.status).toBe('approved');
     expect(row.requestKind).toBe('incomplete_entry');
@@ -272,7 +273,7 @@ describe('2166ef79 — the attachment (and, first of all, its GRANT)', () => {
       checkOut: '18:00',
       reason: 'r',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
     await expect(
       addAttendanceCorrectionAttachment(a, { correctionId, fileName: 'late.png', mimeType: 'image/png', content: png() }),
     ).rejects.toThrow('A file can only be attached while the request is waiting.');
@@ -297,7 +298,7 @@ describe('2166ef79 — the status filter, and cancelling your own request', () =
       reason: 'overtime one',
       requestKind: 'self_overtime',
     });
-    await decideAttendanceCorrection(a, { correctionId: ot.correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: ot.correctionId, decision: 'rejected', rejectReason: 'Fixture rejection explanation' });
 
     const all = await myAttendanceCorrections(a, employmentId);
     expect(all.map((r) => r.id).sort()).toEqual([pending.correctionId, ot.correctionId].sort());
@@ -347,7 +348,7 @@ describe('2166ef79 — the status filter, and cancelling your own request', () =
       checkOut: '18:00',
       reason: 'r',
     });
-    await decideAttendanceCorrection(a, { correctionId: decided.correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: decided.correctionId, decision: 'approved' });
     // r363 — THE REFUSAL NO LONGER NAMES THE PRIOR STATE, and that is the point rather than a
     // loosening. It used to interpolate the stored enum: `This request has already been ${status}…`.
     // 4c8aae68 made `cancelled` read "Withdrawn" everywhere the employee can see it, so on a

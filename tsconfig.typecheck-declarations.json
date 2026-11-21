@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noCheck": true,
+    "outDir": "node_modules/.cache/aihr-typecheck/declarations",
+    "tsBuildInfoFile": "node_modules/.cache/aihr-typecheck/declarations.tsbuildinfo"
+  }
+}

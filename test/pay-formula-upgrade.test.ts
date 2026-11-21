@@ -11,7 +11,7 @@ import {createDb} from '../db/client';
 import type {PayRule} from '../core/pay-rule';
 const nativeRule={kind:'per_hour',rate:12.55,onlyPullHoursWithinShiftSchedule:true} satisfies PayRule;
 const formulaTables=['pay_formula','pay_formula_revision','pay_formula_test','pay_formula_event','pay_formula_evaluation','pay_formula_accumulation'];
-const nativeTables=['tenant','company','person','app_user','role_assignment','employment','compensation','pay_component','pay_period','payroll_batch','payroll_input','payslip','domain_event'];
+const nativeTables=['tenant','company','person','app_user','role_assignment','employment','compensation','pay_component','pay_period','payroll_batch','payroll_input','payslip','payroll_individual_txn','domain_event'];
 it.each(['clean','populated'] as const)('rehearses the %s ordinary Formula Builder journal upgrade without changing Native payroll or prior receipts',async mode=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
  const boundary=journal.entries.findIndex(entry=>entry.tag==='0800_pay_formula_builder');expect(boundary).toBeGreaterThan(0);
@@ -29,7 +29,7 @@ it.each(['clean','populated'] as const)('rehearses the %s ordinary Formula Build
  const storage=createDb(ownerUrl.toString(),{max:1}),application=createDb(appUrl.toString(),{max:1});let created=false;
  const tenant=randomUUID(),company=randomUUID(),person=randomUUID(),user=randomUUID(),employment=randomUUID(),period=randomUUID(),batch=randomUUID(),slip=randomUUID(),component=randomUUID();
  const ledger=()=>storage.client`select id,hash,created_at::text as created_at from drizzle.__drizzle_migrations order by id`;
- async function native(){const result:Record<string,unknown>={};for(const table of nativeTables)result[table]=await storage.client.unsafe(`select ${table==='pay_component'?"to_jsonb(t)-'formula_context'":'to_jsonb(t)'} as row from public.${table} t ${table==='tenant'?'where id=$1':'where tenant_id=$1'} order by to_jsonb(t)::text`,[tenant]);return result;}
+ async function native(){const result:Record<string,unknown>={};for(const table of nativeTables)result[table]=await storage.client.unsafe(`select ${table==='pay_component'?"to_jsonb(t)-'formula_context'":table==='payroll_individual_txn'?"to_jsonb(t)-'calculation_method'":'to_jsonb(t)'} as row from public.${table} t ${table==='tenant'?'where id=$1':'where tenant_id=$1'} order by to_jsonb(t)::text`,[tenant]);return result;}
  try{
   await admin.unsafe(`CREATE DATABASE "${name}"`);created=true;let before:Record<string,unknown>|undefined,prefix:Awaited<ReturnType<typeof ledger>>|undefined;
   if(mode==='populated'){
@@ -47,11 +47,14 @@ it.each(['clean','populated'] as const)('rehearses the %s ordinary Formula Build
    await storage.client`insert into payroll_batch(id,tenant_id,company_id,pay_period_id,pay_period,batch_date,status,employee_count,totals) values(${batch},${tenant},${company},${period},'2025-01','2025-01-31','closed',1,'{"gross":3125.51,"net":2770.01}'::jsonb)`;
    await storage.client`insert into payroll_input(tenant_id,batch_id,employment_id,overtime_amount,bonus_amount,tp1_deduction,zakat) values(${tenant},${batch},${employment},125.50,0,12.34,1.25)`;
    await storage.client`insert into payslip(id,tenant_id,batch_id,employment_id,basic_salary,gross_pay,total_deductions,net_pay,employer_cost,statutory) values(${slip},${tenant},${batch},${employment},3000.01,3125.51,355.50,2770.01,3530.51,'{"epfEmployee":330,"epfEmployer":390,"pcb":25.50}'::jsonb)`;
+   await storage.client`insert into payroll_individual_txn(tenant_id,company_id,pay_period,employment_id,kind,txn_date,amount,quantity,unit,component_id) values(${tenant},${company},'2025-01',${employment},'earning','2025-01-10',123.45,2,'amount',${component})`;
    before=await native();prefix=await ledger();expect(prefix).toHaveLength(boundary);expect(before.pay_component).toHaveLength(1);expect(before.payslip).toHaveLength(1);expect(before.payroll_input).toHaveLength(1);
   }
   const approvedUpgrade=await migrateApprovedUpgrade(storage);const after=await ledger();expect(after).toHaveLength(journal.entries.length);
   expect(after.map(row=>({hash:row.hash,when:row.created_at}))).toEqual(journal.entries.map(entry=>({hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex'),when:String(entry.when)})));
   if(prefix){expect(after.slice(0,boundary)).toEqual(prefix);expect(retainedUpgradeSnapshot(await native(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));expect(await storage.client`select formula_context,rule,prorates,kind::text from pay_component where id=${component}`).toEqual([{formula_context:null,rule:nativeRule,prorates:false,kind:'allowance'}]);}
+  expect(await storage.client`select has_column_privilege('ai_hr_app','payroll_individual_txn','calculation_method','SELECT') as readable,has_column_privilege('ai_hr_app','payroll_individual_txn','calculation_method','INSERT') as insertable,has_column_privilege('ai_hr_app','payroll_individual_txn','calculation_method','UPDATE') as editable`).toEqual([{readable:true,insertable:true,editable:true}]);
+  if(mode==='populated')expect(await storage.client`select amount::text,quantity::text,unit,calculation_method from payroll_individual_txn where tenant_id=${tenant}`).toEqual([{amount:'123.45',quantity:'2.00',unit:'amount',calculation_method:null}]);
   for(const table of formulaTables){expect(await storage.client.unsafe(`select count(*)::int as count from public.${table}`)).toEqual([{count:0}]);
    expect(await storage.client`select has_table_privilege('ai_hr_app',${table},'SELECT') as readable,has_table_privilege('ai_hr_app',${table},'INSERT') as insertable,has_table_privilege('ai_hr_app',${table},'UPDATE') as mutable,has_table_privilege('ai_hr_app',${table},'DELETE') as deletable,has_table_privilege('ai_hr_app',${table},'TRUNCATE') as truncatable`).toEqual([{readable:true,insertable:true,mutable:false,deletable:false,truncatable:false}]);
    expect(await storage.client`select relrowsecurity,relforcerowsecurity,relowner=(select proowner from pg_proc where oid='app.pay_formula_company_in_use(uuid)'::regprocedure) as same_definer_owner,relowner=(select oid from pg_roles where rolname='ai_hr_app') as app_owned from pg_class where oid=${'public.'+table}::regclass`).toEqual([{relrowsecurity:true,relforcerowsecurity:false,same_definer_owner:true,app_owned:false}]);

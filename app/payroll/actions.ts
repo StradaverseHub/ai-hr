@@ -1,6 +1,8 @@
 'use server';
 
 import { publicErrorMessage } from '@/lib/public-error';
+import {requestSelectiveReprocess} from '@/core/payroll-reprocess-job';
+import {reviewReprocessTaxReadiness} from '@/packs/payroll/service';
 import { revalidatePath } from 'next/cache';
 import { payrollNonCashErrorMessage } from '@/lib/payroll-noncash-error';
 import { payrollTaxSchemeErrorMessage } from '@/lib/payroll-tax-scheme-error';
@@ -29,14 +31,12 @@ import {
   UnlockReasonRequiredError,
   closeBatch,
   deleteDraftBatch,
-  generatePayslips,
   preProcessAdvisory,
   prefillFixedZakat,
   prefillOvertimeFromAttendance,
   prefillShiftDifferentialFromRoster,
   prefillTp1FromSelfRelief,
   removeEmployeePayroll,
-  reprocessSelectedEmployees,
   PayrollReprocessStoppedError,
   ReprocessRunBlockedError,
   resetProcessedBatch,
@@ -46,6 +46,7 @@ import {
 // 1b0943d5 — the two refusals a transferred month can produce: the month does not tile (close), and
 // the counterpart employer's run is already closed so the days it owes can never be added (generate).
 import { PayrollCounterpartClosedError, PayrollCoverageIncompleteError } from '@/core/payroll-coverage';
+import { requestPayrollProcessing } from '@/core/payroll-processing-job';
 import { evaluateBatchAnomalies, resolveAnomalyVerdict } from '@/core/payroll-anomaly';
 import { narrateVerdict } from '@/core/payroll-anomaly-narrate';
 import { proposeHypotheses } from '@/core/payroll-hypothesis';
@@ -61,7 +62,7 @@ import { ModuleNotEnabledError, SettingNotEnabledError } from '@/core/entitlemen
 import '@/packs/claims/payroll';
 import { payrollInputContributorById } from '@/packs/contracts';
 import { prefillLoansForBatch } from '@/core/loans';
-import { transferAllowancesToBatch } from '@/core/attendance-allowance';
+import { transferAllowancesToBatch } from '@/packs/attendance/service';
 // 7076f8af — the draft-adjustment panel is no longer a fixture of the run screen (it is rendered on the
 // Payroll Process wizard's Review step and on a screen under Transactions), so the eight actions it drives
 // return to the screen they were pressed on. The destination is whitelisted, never echoed raw. See
@@ -99,7 +100,7 @@ export async function generateAction(formData: FormData) {
   const acknowledged = String(formData.get('ackWarnings') ?? '') === '1';
   const t = await getTranslations('payroll.batch');
   let errMsg: string | null = null;
-  let toastMsg = 'Payslips generated';
+  let toastMsg = '';
   try {
     const checks = await preProcessAdvisory(s, batchId);
     // BLOCKER count: no compensation row covering the period OR a zero basic/rate (feedback 64fb5e48) —
@@ -142,14 +143,16 @@ export async function generateAction(formData: FormData) {
       // no result payload to carry the names (that is the wizard's Step-3 page, which does list them), so
       // the toast at least says HOW MANY are absent rather than leaving forty missing payslips to be
       // noticed by counting. The run screen itself shows what was written.
-      const gen = await generatePayslips(s, { batchId });
-      const skipped = 'skipped' in gen && Array.isArray(gen.skipped) ? gen.skipped.length : 0;
-      if (skipped > 0) toastMsg = t('generatedWithSkipped', { n: skipped });
+      // The run is processed by the background payroll job (core/payroll-processing-job.ts): this request only
+      // admits it and moves the run to 'processing'. The run screen shows its progress; who was skipped is on the
+      // run once it is processed, and the operator gets the completion notice.
+      await requestPayrollProcessing(s, { batchId });
+      toastMsg = t('processingStarted');
     }
   } catch (e) {
     errMsg =
       e instanceof PreProcessBlockedError
-        ? t('preChecksBlockedError', { n: e.count })
+        ? t('preChecksNotReady')
         : // 1b0943d5 — a transferred employee whose OTHER employer's run for this period is already
           // closed. Refused in the kernel before anything commits; the operator gets the real reason,
           // in their own language, rather than the service's raw English.
@@ -503,6 +506,16 @@ export async function resetAction(formData: FormData) {
  * result screen. With none in the address bar the whole chain fell back to a bare, unfiltered list.
  * Whitelisted by shape here as well as on the page, because a FormData value is untrusted input.
  */
+export async function reviewReprocessTaxAction(batchId: string, employmentIds: string[]) {
+  const session = await getSession();
+  try {
+    return {ok:true as const, review:await reviewReprocessTaxReadiness(session,batchId,employmentIds)};
+  } catch (error) {
+    console.error('[payroll reprocess readiness]',error);
+    return {ok:false as const};
+  }
+}
+
 export async function reprocessSelectedAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
@@ -519,15 +532,24 @@ export async function reprocessSelectedAction(formData: FormData) {
   if (employmentIds.length === 0) {
     redirect(withQueryParam(back, 'error', t('reprocessNoneSelected')));
   }
+  const heldEmploymentIds = formData.getAll('heldEmploymentIds').map(String).filter(Boolean);
   let jobId = '';
+  let readinessChanged = false;
   try {
-    const r = await reprocessSelectedEmployees(s, {
-      batchId,
-      employmentIds,
-      reason: reason || undefined,
-      idempotencyKey: idempotencyKey || undefined,
-    });
-    jobId = r.jobId;
+    const reviewed = await reviewReprocessTaxReadiness(s,batchId,[...employmentIds,...heldEmploymentIds]);
+    const readyIds = new Set(reviewed.employees.filter(row=>row.status==='ready').map(row=>row.employmentId));
+    readinessChanged = employmentIds.some(id=>!readyIds.has(id));
+    // The recompute runs in the background (core/payroll-reprocess-job.ts); this screen follows the job it returns.
+    if (!readinessChanged) {
+      const r = await requestSelectiveReprocess(s, {
+        batchId,
+        employmentIds,
+        reason: reason || undefined,
+        idempotencyKey: idempotencyKey || undefined,
+        heldEmploymentIds,
+      });
+      jobId = r.jobId;
+    }
   } catch (e) {
     if (e instanceof PayrollReprocessStoppedError) {
       revalidatePath('/payroll');
@@ -549,6 +571,12 @@ export async function reprocessSelectedAction(formData: FormData) {
               ? t('reprocessStopped_PERIOD_CLOSED')
               : (await payrollNonCashErrorMessage(e)) ?? await payrollTaxSchemeErrorMessage(e);
     redirect(withQueryParam(back, 'error', msg));
+  }
+  if (readinessChanged) {
+    const priorJob = formData.get('previousReprocessJob');
+    const returnTo = typeof priorJob==='string' && /^[a-f0-9-]{36}$/i.test(priorJob)
+      ? withQueryParam(back,'job',priorJob) : back;
+    redirect(withQueryParam(returnTo,'error',t('reprocessTaxReadinessChanged')));
   }
   revalidatePath('/payroll');
   revalidatePath(`/payroll/${batchId}`);

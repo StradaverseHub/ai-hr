@@ -12,9 +12,13 @@
  * company/cycle identity, append-only corrections/recovery and one effective canonical snapshot.
  * The record-based compatibility writer at the end delegates there too; it owns no SQL writes.
  */
-import { and, eq, inArray } from 'drizzle-orm';
+import {createHash} from 'node:crypto';
+import {importedTaxSettingsTx,importedTaxRulesStateTx,importedTaxRulesStatesTx,projectImportedTaxBasis} from './payroll-import-tax-source';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { entitySegmentRow, mergeCompanySegments, segmentForCompany, type CompanySegment } from './employment-company';
 import {
+  assignment,
   company,
   employeeStatutoryMy,
   employment,
@@ -107,6 +111,7 @@ function money(raw: string): number | null {
 
 /** A single accepted line, already resolved. */
 type ParsedLine = {
+  employmentId:string;
   rowNum: number;
   employeeNo: string;
   period: string; // YYYY-MM
@@ -156,10 +161,16 @@ type ImportedStat = {
   /** CP38 — the LHDN/court instalment, DISTINCT from MTD. Stamped only when > 0 (mirrors the kernel), so
    *  cp39FileForBatch sums the instalment into the e-Data file's CP38 column. */
   cp38?: number;
+  /** Dated employer coverage, never a recalculation of the imported figures. */
+  segment?: {companyId:string;from:string;to:string};
   /** b240c0ff — the file's own pay item lines, in the kernel's `componentLines` shape, under their own key so
    *  no EA / statutory evidence reader sees them. See `importedComponentLines`. Absent when the month carried
    *  no allowance / overtime / bonus / deduction line. */
   importedLines?: ImportedComponentLine[];
+  importedTaxBasis?:import('./payroll-import-tax-source').ImportedTaxBasisStamp;
+  bases?:{pcb:number};
+  exemptionUsed?:Record<string,number>;
+  pcbNonCash?:unknown;
 };
 
 /** One imported pay item line, in the shape the kernel stamps (core/payroll.ts `PayComponentLine`), so every
@@ -253,12 +264,14 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
   const read = async (tx: Tx) => {
     const components = await tx
       .select({
+        id: payComponent.id,
         code: payComponent.code,
         name: payComponent.name,
         kind: payComponent.kind,
         displayCategory: payComponent.displayCategory,
         isNonPayable: payComponent.isNonPayable,
         archivedAt: payComponent.archivedAt,
+        includedInPcb:payComponent.includedInPcb,pcbRemunerationType:payComponent.pcbRemunerationType,pcbExemptionCode:payComponent.pcbExemptionCode,epfBonus2012:payComponent.epfBonus2012,eaFormLine:payComponent.eaFormLine,
       })
       .from(payComponent);
     const catalog = await tx.select().from(payrollImportCode);
@@ -266,21 +279,25 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
   };
   const { components, catalog } = await (transaction ? read(transaction) : withTenant(ctx, read));
 
+  const counts=new Map<string,number>();for(const component of components)counts.set(up(component.code),(counts.get(up(component.code))??0)+1);
+  const ambiguous=new Set([...counts].filter(([,count])=>count>1).map(([code])=>code));
   const byCode = new Map<string, ImportCodeEntry>();
   for (const s of STATUTORY_IMPORT_CODES) byCode.set(up(s.code), { ...s });
   for (const c of components) {
-    if (c.archivedAt != null || c.isNonPayable) continue;
+    if (c.archivedAt != null||ambiguous.has(up(c.code))) continue;
     const { destination, direction } = payComponentDestination({
       code: c.code,
       kind: c.kind,
       displayCategory: c.displayCategory,
     });
-    byCode.set(up(c.code), { code: c.code, label: c.name, destination, direction, source: 'component' });
+    byCode.set(up(c.code), { code: c.code, label: c.name, destination:c.isNonPayable?'noncash':destination, direction, source: 'component',targetCode:c.code,ownerId:c.id,taxSettings:c });
   }
+  for(const code of ambiguous)byCode.delete(code);
   // Pass 1: direct catalog rows (and removals). Pass 2: aliases, so an alias may point at a row added in
   // pass 1 regardless of the order they came back from the database.
   const aliases: typeof catalog = [];
   for (const row of catalog) {
+    if(ambiguous.has(up(row.code))){byCode.delete(up(row.code));continue;}
     if (row.aliasFor != null && norm(row.aliasFor) !== '') {
       aliases.push(row);
       continue;
@@ -295,7 +312,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
       label: row.label,
       destination: row.destination as PayrollImportDestination,
       direction: row.direction as ImportCodeEntry['direction'],
-      source: 'catalog',
+      source: 'catalog',targetCode:row.code,ownerId:components.find(component=>up(component.code)===up(row.code))?.id??row.id,taxSettings:components.find(component=>up(component.code)===up(row.code)),...(up(row.code)==='BASIC'&&row.destination==='basic'?{basicSalaryOwner:true}:{}),
     });
   }
   for (const row of aliases) {
@@ -310,7 +327,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
       label: row.label,
       destination: target.destination,
       direction: target.direction,
-      source: 'alias',
+      source: 'alias',targetCode:target.targetCode??target.code,ownerId:target.ownerId,basicSalaryOwner:target.basicSalaryOwner,
     });
   }
   return byCode;
@@ -341,17 +358,28 @@ async function occupiedHistoryPeriodsTx(tx:Tx,companyId:string,periods:string[])
     return new Set(rows.map((r) => r.period));
 }
 
-async function analyze(
-  ctx: SessionContext,
-  companyId: string,
-  records: PayrollHistoryRecord[],
-  options: { transaction?: Tx; prepareRevision?: boolean } = {},
-): Promise<{ preview: HistoryImportPreview; months: ResolvedMonth[]; statutoryVersion: string }> {
-  const codes = await resolveImportCodes(ctx, options.transaction);
-  const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => options.transaction ? fn(options.transaction) : withTenant(ctx, fn);
-
-  const { companyKeys, targetCompany, employees, cycles, statutoryVersion } = await read(
-    async (tx) => {
+/** Everything `analyze` reads for one company, as a canonical value: the payroll history revision owner digests it
+ * (with its own reads) to prove at release that the plan's inputs did not change (core/payroll-history-revisions.ts
+ * `historyPlanFactsTx`). Same reads, same order, as `analyze` itself. */
+export async function historyAnalyzeFactsTx(ctx: SessionContext, tx: Tx, companyId: string) {
+  const codes = await resolveImportCodes(ctx, tx);
+  const inputs = await readAnalyzeInputs(tx, companyId);
+  return analyzeFacts(codes, inputs);
+}
+type AnalyzeInputs = Awaited<ReturnType<typeof readAnalyzeInputs>>;
+function analyzeFacts(codes: Map<string, ImportCodeEntry>, inputs: AnalyzeInputs) {
+  const byId = <T extends { id?: string; employmentId?: string }>(a: T, b: T) => String(a.id ?? a.employmentId).localeCompare(String(b.id ?? b.employmentId));
+  return {
+    taxRulesState:inputs.taxRulesState,
+    codes: [...codes.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    companies: [...inputs.companies].sort(byId),
+    employees: [...inputs.employees].sort(byId),
+    cycles: [...inputs.cycles].sort(byId),
+    placements: [...inputs.placements].sort((a, b) => a.employmentId.localeCompare(b.employmentId) || a.validFrom.localeCompare(b.validFrom) || String(a.companyId).localeCompare(String(b.companyId))),
+  };
+}
+async function readAnalyzeInputs(tx: Tx, companyId: string|string[], employeeNos?: ReadonlySet<string>) {
+      const targets=Array.isArray(companyId)?companyId:[companyId];
       const companies = await tx
         .select({
           id: company.id,
@@ -362,6 +390,78 @@ async function analyze(
           archivedAt: company.archivedAt,
         })
         .from(company);
+      const payrollCompanies = tx.select({ id: company.id }).from(company).where(sql`app.can_admin_payroll_for(${company.id})`);
+      const authorizedSubject = and(isNull(employment.voidedAt), inArray(employment.companyId, payrollCompanies),
+        employeeNos && sql`upper(btrim(${employment.employeeCode})) in
+          (select jsonb_array_elements_text(${JSON.stringify([...employeeNos])}::jsonb))`);
+      const employees = await tx
+        .select({
+          employmentId: employment.id,
+          code: employment.employeeCode,
+          companyId: employment.companyId,
+          hiredOn: employment.hiredOn,
+          terminatedOn: employment.terminatedOn,
+          // leftJoin: the MY statutory profile may be absent, which is exactly the CP39 warning below.
+          taxNumber: employeeStatutoryMy.taxNumber,
+        })
+        .from(employment)
+        .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+        // A new payroll row requires authority over the visible subject as well as the workbook
+        // company. The existing accepted-record path handles original-employer maintenance separately.
+        .where(authorizedSubject);
+      const placements = await tx
+        .select({employmentId: assignment.employmentId, companyId: assignment.companyId, validFrom: assignment.validFrom, validTo: assignment.validTo})
+        .from(assignment)
+        .innerJoin(employment, eq(employment.id, assignment.employmentId))
+        .where(and(isNull(assignment.supersededAt), authorizedSubject))
+        .orderBy(asc(assignment.employmentId), asc(assignment.validFrom));
+      const cycles = await tx
+        .select({
+          id: payrollCycle.id,
+          companyId:payrollCycle.companyId,
+          name: payrollCycle.name,
+          code: payrollCycle.code,
+          archivedAt: payrollCycle.archivedAt,
+        })
+        .from(payrollCycle)
+        .where(inArray(payrollCycle.companyId,targets));
+      const taxRulesState=await importedTaxRulesStateTx(tx);
+      return { companies, employees, cycles, placements, taxRulesState };
+}
+
+export type HistoryMaintenanceSubject={recordId:string;companyId:string;employmentId:string;employeeNo:string;period:string;cycleId:string;hiredOn:string|null;terminatedOn:string|null;calendarEvidence?:'retained_segment'|'retained_record'|'unavailable';unavailableReason?:string|null;segment?:{companyId:string;from:string;to:string}|null};
+export type HistoryAnalyzeBatchContext={codes:Map<string,ImportCodeEntry>;inputs:Map<string,AnalyzeInputs>;taxSettings:Awaited<ReturnType<typeof importedTaxSettingsTx>>;rules:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;ruleStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>};
+/** One set of scoped source reads for all requested companies, then canonical per-company views. */
+export async function historyAnalyzeBatchTx(ctx: SessionContext, tx: Tx, employeeNosByCompany: ReadonlyMap<string, ReadonlySet<string>>): Promise<HistoryAnalyzeBatchContext> {
+ const employeeNos = new Set([...employeeNosByCompany.values()].flatMap(codes => [...codes]));
+ const codes = await resolveImportCodes(ctx, tx);
+ const all = await readAnalyzeInputs(tx, [...employeeNosByCompany.keys()], employeeNos);
+ const inputs = new Map<string, AnalyzeInputs>();
+ for (const [companyId, employeeNos] of employeeNosByCompany) {
+  const employees = all.employees.filter(employee => employeeNos.has(up(employee.code ?? '')));
+  const employeeIds = new Set(employees.map(employee => employee.employmentId));
+  inputs.set(companyId, {...all, employees, cycles: all.cycles.filter(row => row.companyId === companyId),
+   placements: all.placements.filter(row => employeeIds.has(row.employmentId))});
+ }
+ return {codes, inputs, taxSettings: await importedTaxSettingsTx(tx), rules: new Map()};
+}
+export function historyAnalyzeBatchFact(context:HistoryAnalyzeBatchContext,companyId:string){return analyzeFacts(context.codes,context.inputs.get(companyId)!);}
+
+async function analyze(
+  ctx: SessionContext,
+  companyId: string,
+  records: PayrollHistoryRecord[],
+  options: { transaction?: Tx; prepareRevision?: boolean; facts?: (facts: ReturnType<typeof analyzeFacts>) => void; batch?:HistoryAnalyzeBatchContext;retainedCodes?:ImportCodeEntry[];historical?:HistoryMaintenanceSubject[];netModes?:Map<string,'separate'|'zakat_in_pcb'> } = {},
+): Promise<{ preview: HistoryImportPreview; months: ResolvedMonth[]; statutoryVersion: string }> {
+  const originalCodes=options.batch?.codes??await resolveImportCodes(ctx,options.transaction),codes=new Map(originalCodes);
+  for(const entry of options.retainedCodes??[])codes.set(up(entry.code),entry);
+  const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => options.transaction ? fn(options.transaction) : withTenant(ctx, fn);
+
+  const { companyKeys, targetCompany, employees, cycles, statutoryVersion, placements, taxRulesState } = await read(
+    async (tx) => {
+      const inputs = options.batch?.inputs.get(companyId)??await readAnalyzeInputs(tx, companyId);
+      options.facts?.(analyzeFacts(originalCodes, inputs));
+      const { companies, employees, cycles,taxRulesState } = inputs;
       const targetCompany = companies.find((c) => c.id === companyId);
       const statutoryVersion = requirePackFor(targetCompany?.country).statutoryConfig.default.version;
 
@@ -380,37 +480,25 @@ async function analyze(
         }
       }
 
-      const employees = await tx
-        .select({
-          employmentId: employment.id,
-          code: employment.employeeCode,
-          hiredOn: employment.hiredOn,
-          terminatedOn: employment.terminatedOn,
-          // leftJoin: the MY statutory profile may be absent, which is exactly the CP39 warning below.
-          taxNumber: employeeStatutoryMy.taxNumber,
-        })
-        .from(employment)
-        .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-        .where(eq(employment.companyId, companyId));
-
-      const cycles = await tx
-        .select({
-          id: payrollCycle.id,
-          name: payrollCycle.name,
-          code: payrollCycle.code,
-          archivedAt: payrollCycle.archivedAt,
-        })
-        .from(payrollCycle)
-        .where(eq(payrollCycle.companyId, companyId));
-
-      return { companyKeys, targetCompany, employees, cycles, statutoryVersion };
+      return { companyKeys, targetCompany, employees, cycles, statutoryVersion, placements: inputs.placements, taxRulesState };
     },
   );
 
-  // ── Employee lookup by code, within THIS company. `employment_employee_code_uq` (tenant, code) already
-  // makes a code unique tenant-wide, so a within-company collision is impossible today — the guard stays
-  // because the code is now load-bearing for money and a future relaxation of that index must not turn
-  // into a silent mis-posting.
+  // Dated assignments can provide a payslip segment. Employee matching and workbook attribution
+  // are independent of whether a segment can be established.
+  const rowsOf = new Map<string, ReturnType<typeof entitySegmentRow>[]>();
+  for (const placement of placements) {
+    if (!placement.companyId) continue;
+    const rows = rowsOf.get(placement.employmentId) ?? [];
+    rows.push(entitySegmentRow({...placement, companyId: placement.companyId}));
+    rowsOf.set(placement.employmentId, rows);
+  }
+  const segmentsDuring = (emp: (typeof employees)[number], first: string, last: string): CompanySegment[] => {
+    const from = emp.hiredOn > first ? emp.hiredOn : first;
+    const to = emp.terminatedOn && emp.terminatedOn < last ? emp.terminatedOn : last;
+    return mergeCompanySegments(rowsOf.get(emp.employmentId) ?? [], emp.companyId, from, to, {requireRecordedHistory: true});
+  };
+  const coverageOf = new Map<string,{companyId:string;from:string;to:string}>();
   const employeesByCode = new Map<string, typeof employees>();
   for (const e of employees) {
     const key = up(e.code ?? '');
@@ -425,7 +513,7 @@ async function analyze(
   const cycleKeys = new Map<string, Set<string>>();
   for (const c of cycles) {
     if (c.archivedAt != null) continue;
-    for (const k of [c.code, c.name]) {
+    for (const k of [c.id, c.code, c.name]) {
       const kk = up(k ?? '');
       if (kk) { const ids = cycleKeys.get(kk) ?? new Set<string>(); ids.add(c.id); cycleKeys.set(kk, ids); }
     }
@@ -504,26 +592,36 @@ async function analyze(
       }
     }
 
-    // Employee No — by employee code within the resolved company, effective for the period.
+    // Prefer the retained identity for a reviewed correction. A reused Employee ID
+    // must never redirect a correction to a different employment.
     let employmentId = '';
     if (employeeNo) {
       const hits = employeesByCode.get(up(employeeNo)) ?? [];
-      if (hits.length === 0) {
-        issues.push(issue(ref, 'Invalid Employee No', `Employee does not exist in Employee Master for this company`));
+      const historical = (options.historical ?? []).filter(row =>
+        up(row.employeeNo) === up(employeeNo) && row.companyId === companyId && row.period === period && cycleKeys.get(up(cycle))?.has(row.cycleId));
+      const retained = historical[0];
+      if (historical.length > 1 || (retained && hits.some(hit => hit.employmentId !== retained.employmentId))) {
+        issues.push(issue(ref, 'Invalid Employee No', 'The retained Employee ID is ambiguous or now identifies a different employment.'));
+      } else if (retained && period) {
+        employmentId = retained.employmentId;
+        const {first, last} = periodBounds(period);
+        const segment = retained.segment;
+        if (segment && retained.calendarEvidence === 'retained_segment' && segment.companyId === companyId
+          && segment.from >= first && segment.to >= segment.from && segment.to <= last) {
+          coverageOf.set(employmentId + ':' + period, segment);
+        }
+      } else if (hits.length === 0) {
+        issues.push(issue(ref, 'Invalid Employee No', 'Employee ID does not exist in Employee Master or is outside your payroll scope.'));
       } else if (hits.length > 1) {
         issues.push(issue(ref, 'Invalid Employee No', `Employee No “${employeeNo}” matches ${hits.length} employments`));
-      } else if (period) {
-        const { last } = periodBounds(period);
-        const emp = hits[0];
-        if (emp.hiredOn > last) {
-          issues.push(
-            issue(ref, 'Invalid Employee No', `Employee was not employed during ${period} (joined ${emp.hiredOn}${emp.terminatedOn ? `, left ${emp.terminatedOn}` : ''})`),
-          );
-        } else {
-          employmentId = emp.employmentId;
-        }
       } else {
-        employmentId = hits[0].employmentId;
+        const emp = hits[0];
+        employmentId = emp.employmentId;
+        if (period) {
+          const {first, last} = periodBounds(period);
+          const segment = segmentForCompany(segmentsDuring(emp, first, last), companyId);
+          if (segment && !segment.split) coverageOf.set(employmentId + ':' + period, {companyId, from: segment.from, to: segment.to});
+        }
       }
     }
 
@@ -582,6 +680,7 @@ async function analyze(
     }
 
     lines.push({
+      employmentId,
       rowNum,
       employeeNo,
       period,
@@ -702,7 +801,7 @@ async function analyze(
         ),
       );
     }
-    let net = netCash;
+    let net = options.netModes?.get(b.key)==='zakat_in_pcb'?netZakatInPcb:netCash;
     if (statedNet.length > 0) {
       if (Math.abs(t.net - netCash) <= MONEY_TOL) {
         net = t.net;
@@ -834,7 +933,7 @@ async function analyze(
     const componentLines = importedComponentLines(b.lines);
     months.push({
       month: summary,
-      employmentId: employmentByCode.get(up(b.employeeNo))!,
+      employmentId: b.lines[0].employmentId,
       period: b.period,
       basicSalary: t.basic,
       allowance: t.allowance,
@@ -846,6 +945,7 @@ async function analyze(
       netPay: net,
       employerCost,
       statutory: {
+        segment: coverageOf.get(b.lines[0].employmentId+':'+b.period),
         epfEmployee: t.epf_employee,
         epfEmployer: t.epf_employer,
         socsoEmployee: t.socso_employee,
@@ -865,6 +965,23 @@ async function analyze(
         ...(componentLines.length ? { importedLines: componentLines } : {}),
       },
     });
+  }
+
+  // The accepted import snapshot owns these derived wage inputs, separately from every imported
+  // statutory amount. Confirmation recomputes this same projection and binds its settings/rules bytes.
+  const taxSettings=options.batch?.taxSettings??await read(importedTaxSettingsTx);
+  const pack=requirePackFor(targetCompany?.country);
+  const taxRuleStates=options.batch?.ruleStates??await read(tx=>importedTaxRulesStatesTx(tx,[...new Set(months.map(month=>month.period))]));
+  for(const period of targetCompany?.country==='MY'?[...new Set(months.map(month=>month.period))]:[]){
+    const ruleKey=(targetCompany?.country??'')+':'+period;
+    const resolution=options.batch?.rules.get(ruleKey)??await read(tx=>pack.payroll.loadRulesetResolved(tx,{asOf:period+'-01'}));options.batch?.rules.set(ruleKey,resolution);
+    const rulesHash=createHash('sha256').update(JSON.stringify(resolution)).digest('hex');
+    for(const month of months.filter(month=>month.period===period)){
+      const source=buckets.get(month.month.key)!;
+      const stamp=projectImportedTaxBasis({ownerKey:`${companyId}:${month.employmentId}:${source.cycles.join(',')}`,replay:pack.payroll.replayTaxBasis,period,rows:source.lines.map(line=>({rowNum:line.rowNum,code:line.doeCode,amount:line.amount})),codes,settings:taxSettings,rules:resolution.ruleset,rulesHash,rulesState:taxRuleStates.get(period),rulesEvidence:{version:resolution.version,source:resolution.source,effectiveFrom:resolution.effectiveFrom,packVersion:resolution.packVersion,signedKeyId:resolution.signedKeyId,pcbExemptions:resolution.ruleset.pcbExemptions},gross:month.grossPay,deductions:month.otherDeductions,statutory:month.statutory as unknown as Record<string,unknown>});
+      month.statutory.importedTaxBasis=stamp;
+      if(stamp.state==='ready'&&stamp.basis){month.statutory.bases={pcb:stamp.basis.pcb};month.statutory.exemptionUsed=stamp.basis.exemptionUsed;if(stamp.basis.pcbNonCash)month.statutory.pcbNonCash=stamp.basis.pcbNonCash;}
+    }
   }
 
   // A month EVERY line of which failed produced no bucket above, so it has no summary yet. Emit one, or
@@ -909,8 +1026,8 @@ async function analyze(
 
 /** Pure preparation for the revision owner. Occupancy is adjudicated there against exact imported
  * identities, inside this same transaction. This helper grants no write or replacement authority. */
-export function preparePayrollHistoryRevisionTx(ctx: SessionContext, tx: Tx, companyId: string, records: PayrollHistoryRecord[]) {
-  return analyze(ctx, companyId, records, {transaction: tx, prepareRevision: true});
+export function preparePayrollHistoryRevisionTx(ctx: SessionContext, tx: Tx, companyId: string, records: PayrollHistoryRecord[], facts?: (facts: Awaited<ReturnType<typeof historyAnalyzeFactsTx>>) => void,options?:{batch?:HistoryAnalyzeBatchContext;retainedCodes?:ImportCodeEntry[];historical?:HistoryMaintenanceSubject[];netModes?:Map<string,'separate'|'zakat_in_pcb'>}) {
+  return analyze(ctx, companyId, records, {transaction: tx, prepareRevision: true, facts,...options});
 }
 
 /** Dry run: validate the file against the company's master data; writes nothing. */

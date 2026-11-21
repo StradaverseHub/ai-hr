@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../ai-centre-control';
 /** AI v2 Phase 1, slice 3 (issue 16b) — the harness's `prepare_import`: "help me import data" answered with "Yes, I can",
  * and an attached file turned into a prepared import card.
  *
@@ -45,7 +46,7 @@ export async function runPrepareImport(ctx:SessionContext,kinds:readonly ChatImp
  const resolved=resolveChatImportKind(kinds,{choice:input.choice,requested:input.kind,personWords:scope.personWords,headerText:scope.importFile.text});
  if(resolved.kind==='unclear')return{ok:false,refusal:'missing_details',content:{ok:false,refusal:'missing_details',options:optionsOf(kinds),note:ASK_NOTE}};
  const info=resolved.info,named={kind:info.kind,title:info.title};
- const prepared=await prepareChatImportProposal(ctx,{info,companyId:scope.companyId,file:scope.importFile});
+ const prepared=await withAiCentreFunction(ctx,'read:import_'+info.kind,()=>prepareChatImportProposal(ctx,{info,companyId:scope.companyId,file:scope.importFile!}));
  if(prepared.kind==='wrong_format')return{ok:false,refusal:'wrong_format',content:{ok:false,refusal:'wrong_format',...named,formats:[...info.formats],note:FORMAT_NOTE}};
  if(prepared.kind==='not_permitted')return{ok:false,refusal:'not_permitted',content:{ok:false,refusal:'not_permitted',...named,note:NOT_PERMITTED_NOTE}};
  if(prepared.kind==='unreadable')return{ok:false,refusal:'unreadable',content:{ok:false,refusal:'unreadable',...named,...(info.linkablePage?{page:info.linkablePage}:{}),note:UNREADABLE_NOTE}};

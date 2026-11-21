@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {generatePerformanceNativeOutline} from './provider-source-draft';
 import {nativeParagraphOutline} from '../../../lib/ai/native-insight-outline';
 import {createHash} from 'node:crypto';
@@ -18,7 +19,12 @@ async function sourceTx(tx:Tx,reviewId:string,sessionId:string){
 async function configTx(tx:Tx,ctx:SessionContext){try{return await assessmentAiConfigTx(tx,ctx,'tc');}catch{return null;}}
 const fingerprint=(source:unknown,cfg:ResolvedAiConfig|null)=>createHash('sha256').update(JSON.stringify({v:2,operation:'native_outline_selection',source,writer:cfg?{provider:cfg.provider,model:cfg.model}:null})).digest('hex');
 /** No tier notes or private drafts: this evidence remains the same across the viewer's permitted cohorts. */
-export async function getAssessmentPotentialInsight(ctx:SessionContext,reviewId:string,sessionId:string,{generate=false}:{generate?:boolean}={}){
+export async function getAssessmentPotentialInsight(...args:Parameters<typeof getAssessmentPotentialInsightActivity>):Promise<Awaited<ReturnType<typeof getAssessmentPotentialInsightActivity>>>{
+ args=structuredClone(args);
+ if(!args[3]?.generate)return getAssessmentPotentialInsightActivity(...args);
+ return withAiCentreFunction(args[0],'read:operation_potential_insight',()=>getAssessmentPotentialInsightActivity(...args));
+}
+async function getAssessmentPotentialInsightActivity(ctx:SessionContext,reviewId:string,sessionId:string,{generate=false}:{generate?:boolean}={}){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(reviewId);z.uuid().parse(sessionId);
  const {source,cfg,cached}=await withPerformanceTenant(ctx,async tx=>{

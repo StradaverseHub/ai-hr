@@ -21,7 +21,9 @@ describe('brief workflow email contracts',()=>{
   for(const e of [new Error('timeout'),{code:'ETIMEDOUT'},{code:'ESOCKET'},null])expect(notificationSmtpFailure(e)).toEqual({outcome:'uncertain',error:'uncertain'});
  });
  it('the category catalogue exactly matches the registry, so a new producer cannot be silently unconfigurable',()=>{
-  const src=fs.readFileSync('core/notifications.ts','utf8'),start=src.indexOf('const REGISTRY:'),end=src.indexOf('export async function dispatchNotifications');
+  // d9788c580 extracted the registry into core/notification-registry.ts; dispatch still builds its REGISTRY from it.
+  expect(fs.readFileSync('core/notifications.ts','utf8')).toContain('const REGISTRY=createNotificationRegistry(');
+  const src=fs.readFileSync('core/notification-registry.ts','utf8'),start=src.indexOf('export function createNotificationRegistry'),end=src.indexOf('return registry;',start);
   expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start+10000);
   const categories=[...src.slice(start,end).matchAll(/category:\s*'([^']+)'/g)].map(m=>m[1]);
   expect(categories.length).toBeGreaterThan(25);// Letters uses its durable account-addressed queue rather than the employment event registry.

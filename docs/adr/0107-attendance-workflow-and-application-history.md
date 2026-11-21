@@ -159,3 +159,11 @@ decision; retained earlier decisions after payroll refusal or withdrawal; and fo
 remaining absent despite a forged company list. Required integration work remains: execute these tests,
 compile, run the full gate and browser-review all new screens and dirty/save/failure navigation. This
 ADR does not claim those checks have passed or either board item has been released.
+
+## Approved shared definitions and hierarchy warnings — 7 November 2026
+
+Feedback 7f30b571 revision1 and af1845cb revision2 authorize direct category navigation and one versioned workflow definition with explicit immutable company assignments. Existing versions are backfilled with their original single company. Every shared edit, removal, retirement or restoration requires current administrator authority for all affected companies. Company locks are acquired in stable order; stale edit versions refuse. Prior requests keep their frozen source definition and participant history.
+
+Actor Workforce visibility and candidate approval eligibility are separate checks. A Group-wide actor may search permitted sibling-company employments. A candidate still needs current employment, a uniquely usable linked login and an actual role grant covering the target company; the actor's role is never copied to the candidate. Search is bounded and paged, and assignment/submission recheck eligibility.
+
+Missing or otherwise unusable dynamic reporting chains are visible preview warnings and no longer prevent structurally valid general workflow configuration. Explicit selected-person identity and authority failures still refuse saving. Submission continues through the same canonical hierarchy/participant resolver and refuses an unresolved required level, without skipping a level, inventing an approver or approving the application. These decisions grant no deployment authority.

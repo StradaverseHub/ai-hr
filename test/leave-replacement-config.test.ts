@@ -99,8 +99,9 @@ describe('296fc027 · Replacement Leave configuration page', () => {
       '/admin/leave-config/adjustments', '/admin/leave-config/data-import',
       '/admin/leave-config/leave-credit', '/leave/employee-balances', '/admin/leave-config/settings',
     ]);
+    // 50d9b809 — Shared Leave Groups is a Settings card directly after Entitlements.
     expect(LEAVE_SETTINGS_DESTINATIONS.map(c => c.href)).toEqual([
-      '/admin/leave-config/types', '/admin/leave-config/balance-health',
+      '/admin/leave-config/types', '/admin/leave-config/shared-groups', '/admin/leave-config/balance-health',
       '/admin/leave-config/generate', '/admin/leave-config/earned-accrual',
       '/admin/leave-config/approval-chains', '/admin/leave-config/company-rules',
       '/admin/leave-config/special-setting',

@@ -7,9 +7,9 @@ import {withTenant} from '../db/client';
 import {assignment,domainEvent,employment,leaveLedger,leaveEntitlementRecalcAudit} from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createJobGrade} from '../core/admin';
-import {createMovementEvent,createMovementEventTx,movementCurrentStateTx,movementHistory} from '../core/movement';
+import {createMovementEvent,createMovementEventTx,movementCurrentStateTx,movementHistory,movementHistoryWithTypes} from '../core/movement';
 import {movementNeedsEntitlementReprojection} from '../core/movement-kinds';
-import {saveMovementEventType,setMovementEventTypeActive} from '../core/movement-type';
+import {listMovementEventTypes,saveMovementEventType,setMovementEventTypeActive} from '../core/movement-type';
 import {reprojectEntitlementForEmployment} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,type Base} from './harness';
@@ -47,9 +47,14 @@ describe('canonical Movement dispatcher caller transaction',()=>{
  it('uses the live tenant type code in both manual and caller-owned dispatch and refuses a switched-off type',async()=>{
   const e=await employee(),ctx=adminCtx(base),type=await saveMovementEventType(ctx,{label:'Fictional field placement',behaviourKind:'secondment'});
   await withTenant(ctx,tx=>createMovementEventTx(tx,ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:dateOffset(-2)}));
-  await createMovementEvent(ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:dateOffset(-1)});
+  const result=await createMovementEvent(ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:dateOffset(-1)},{captureGradeBefore:true});
+  expect(result).not.toHaveProperty('gradeBefore');
   const before=await rows(e.employmentId),recorded=before.events.filter(row=>row.eventType==='employment.movement.recorded');expect(recorded).toHaveLength(2);for(const row of recorded)expect(row.payload).toMatchObject({type:type.code});
   await setMovementEventTypeActive(ctx,{code:type.code,active:false});
+  const history=await movementHistoryWithTypes(ctx,e.employmentId);
+  expect(history.movements).toEqual(await movementHistory(ctx,e.employmentId));
+  expect(history.movementTypes).toEqual(await listMovementEventTypes(ctx,{includeUsage:false}));
+  expect(history.movementTypes.find(row=>row.code===type.code)?.active).toBe(false);
   await expect(withTenant(ctx,tx=>createMovementEventTx(tx,ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:todayInKualaLumpur()}))).rejects.toThrow('switched off');
   expect(await rows(e.employmentId)).toEqual(before);
  });
@@ -69,7 +74,8 @@ describe('canonical Movement dispatcher caller transaction',()=>{
   const beforeLedger=await ledger(),beforeAudit=await audit();expect(beforeLedger.reduce((sum,row)=>sum+Number(row.days),0)).toBe(8);
   await expect(withTenant(ctx,async tx=>{
    const gradeBefore={gradeId:(await movementCurrentStateTx(tx,e.employmentId)).gradeId};
-   const result=await createMovementEventTx(tx,ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:todayInKualaLumpur(),gradeId:grade.id});
+   const result=await createMovementEventTx(tx,ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:todayInKualaLumpur(),gradeId:grade.id},{captureGradeBefore:true});
+   expect(result.gradeBefore).toEqual(gradeBefore);
    expect(result.behaviourKind).toBe('promotion');expect(movementNeedsEntitlementReprojection(result.behaviourKind)).toBe(true);
    expect(movementNeedsEntitlementReprojection(type.code)).toBe(false); // The old raw-code action would skip this real effect.
    const recalc=await reprojectEntitlementForEmployment(ctx,{employmentId:e.employmentId,trigger:'movement_recorded',gradeBefore,changeEffectiveOn:todayInKualaLumpur()},tx);

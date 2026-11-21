@@ -900,7 +900,7 @@ describe('r304 · the drawer says "Save", not "Save chain"', () => {
 });
 
 describe('r304 · the row actions are pinned as main shipped them', () => {
-  it('Duplicate, Set as default / Remove default, Deactivate / Activate and Delete render byte-for-byte as on main', () => {
+  it('Duplicate, default, activation and Delete retain their content, attributes and form payloads', () => {
     // test/fixtures/r304-row-actions-main.json was captured from main@36b0602f, BEFORE the drawer, by
     // rendering this same component with these same three templates (default + active, active, inactive).
     const pinned = JSON.parse(
@@ -911,7 +911,9 @@ describe('r304 · the row actions are pinned as main shipped them', () => {
       const now = rowActionsMarkup(rowOf(t.name));
       // Non-vacuity of the strip: Monolith classes really are on these buttons, and are what is removed.
       expect(now).toContain('monolith:');
-      expect(withoutMonolithClasses(now), `${t.name}: the row actions changed`).toBe(pinned[t.id]);
+      const actual = new DOMParser().parseFromString(withoutMonolithClasses(now), 'text/html');
+      const expected = new DOMParser().parseFromString(pinned[t.id], 'text/html');
+      expect(actual.isEqualNode(expected), `${t.name}: the row actions changed`).toBe(true);
     }
     expect(LOCALES).toHaveLength(6);
   });

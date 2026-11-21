@@ -25,7 +25,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { withTenant } from '../db/client';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvent, appendEvents } from '../db/events';
 import { auditEvents, auditEventsCount } from '../core/read';
 import {createNotice} from '../core/notice';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -220,4 +220,18 @@ describe('f1b994e3 — Audit Trail Area filter', () => {
     const union = MODULE_KEYS.flatMap((m) => aggregateTypesForModule(m)).sort();
     expect(union).toEqual([...MAPPED_AGGREGATE_TYPES].sort());
   });
+});
+
+it('finds the latest exact lifecycle event after newer events on the same aggregate', async () => {
+  const ctx = adminCtx(b), aggregateId = randomUUID();
+  const earlier = randomUUID(), latest = randomUUID();
+  await withTenant(ctx, tx => appendEvents(tx, [
+    ...[earlier,latest].map(id=>({id,tenantId:ctx.tenantId,aggregateType:'test-lifecycle',aggregateId,
+      eventType:'test-lifecycle.closed',actor:actorOf(ctx)})),
+    ...Array.from({length:51},()=>({tenantId:ctx.tenantId,aggregateType:'test-lifecycle',aggregateId,
+      eventType:'test-lifecycle.viewed',actor:actorOf(ctx)})),
+  ]));
+  const query = {aggregateType:'test-lifecycle',aggregateId,eventType:'test-lifecycle.closed'};
+  expect((await auditEvents(ctx,{...query,limit:1})).map(row=>row.id)).toEqual([latest]);
+  expect(await auditEventsCount(ctx,query)).toBe(2);
 });

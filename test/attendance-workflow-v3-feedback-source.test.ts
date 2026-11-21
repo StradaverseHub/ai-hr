@@ -25,7 +25,7 @@ describe('last assigned Attendance task retains feedback without broadening inbo
     it('uses that destination after single and all-Attendance bulk decisions; the neutral shell renders feedback', () => {
         const action = actionSection('export async function approveCorrectionAction', '/**');
         expect(action.indexOf('await decideAttendanceCorrection')).toBeLessThan(action.indexOf('decisionReturnUrl'));
-        expect(action).toContain('decisionReturnUrl(s, nav, { toast })');
+        expect(action).toContain("decisionReturnUrl(s, nav, { toast, approvalSeal: outcomeStatus === 'approved' })");
         expect(actions).toContain('redirect(await decisionReturnUrl(s, nav, { toast: summary }))');
         expect(shell).toContain('<ToastFromQuery />');
         expect(toast).toContain("params.get('toast')");

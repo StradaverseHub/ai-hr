@@ -11,7 +11,7 @@ import {MODULE_CATALOG} from '../packs/catalog';
 import {ACTION_PURPOSE,SUGGESTABLE_ACTIONS} from '../core/product-context/actions';
 import {DECIDER_ACTORS,DECIDER_WORK,IMPORT_OWNERS,IMPORT_PAGES,IMPORT_SUPPORT_FILES,MAX_CAPABILITY_ENTRIES,MODULE_AREA,MODULE_WORK,PREPARED_ACTIONS,PRODUCT_CAPABILITIES_SPEC,areaOf,
  capabilitiesInput,capabilitiesResult,searchWords,type CatalogueEntry} from '../core/product-context/capability-catalogue';
-import {PACK_TASK_KINDS} from '../lib/assigned-work';
+import {PACK_TASK_KINDS,RECRUITMENT_TASK_KINDS} from '../lib/assigned-work';
 import {CAPABILITY_KINDS,CATALOGUE_ENTITIES,CATALOGUE_READS} from '../core/semantic-model/entities-catalogue';
 import {SEMANTIC_ACTIONS} from '../core/semantic-model/entities';
 import {describeRead,terasEntities,terasEntity} from '../core/semantic-model/generate';
@@ -64,10 +64,19 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/admin/leave-config/import/page.tsx':'leave_balances',
  'app/admin/leave/import/actions.ts':'leave_balances',
  'app/admin/leave/import/page.tsx':support('Redirect to the leave balance import page.'),
+ // Recruitment slice 16: the candidate import is admitted per company by the recruitment service (administrators and the company's
+ // recruiters), not by an admin guard, and is deliberately not an AI Centre import owner (the AI Centre recruitment read stays counts only).
+ 'app/recruitment/actions.ts':support('Recruitment server actions; the candidate import actions call the recruitment service, which admits operators per company.'),
+ 'app/recruitment/candidates/import/page.tsx':support('Recruitment candidate import page (slice 16); the recruitment service admits operators per company.'),
+ 'app/recruitment/candidates/import/template/route.ts':support('Recruitment candidate import template download (slice 16); no data, operators per company.'),
  'app/admin/pay-components/import/route.ts':'pay_codes',
  'app/admin/personnel/import/actions.ts':'employee_records',
  'app/admin/personnel/import/assistance-actions.ts':support('Header-mapping assistance of the employee import; its owner re-checks the caller.'),
+ 'app/admin/leave/import/jobs/[jobId]/route.ts':'leave_balances',
+ 'app/admin/leave/import/jobs/route.ts':'leave_balances',
  'app/admin/personnel/import/bank-statutory/jobs/[jobId]/errors/route.ts':'bank_statutory',
+ 'app/admin/personnel/import/bank-statutory/jobs/[jobId]/error-log/route.ts':'bank_statutory',
+ 'app/admin/personnel/import/bank-statutory/jobs/[jobId]/problems/route.ts':'bank_statutory',
  'app/admin/personnel/import/bank-statutory/jobs/[jobId]/route.ts':'bank_statutory',
  'app/admin/personnel/import/bank-statutory/jobs/route.ts':'bank_statutory',
  'app/admin/personnel/import/bank-statutory/upload/route.ts':'bank_statutory',
@@ -75,16 +84,32 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/admin/personnel/import/cost-allocation/upload/route.ts':'cost_allocation',
  'app/admin/personnel/import/employee/upload/route.ts':'employee_records',
  'app/admin/personnel/import/history/[attemptId]/page.tsx':support('Shared personnel import history and revert.'),
+ 'app/admin/personnel/import/history/[attemptId]/error-report/route.ts':support('Shared personnel import history and revert.'),
+ 'app/admin/personnel/import/history/[attemptId]/error-log/route.ts':support('Error Log download of an Import History entry (board d3ba1e9f); each kind\'s source keeps its page\'s visibility.'),
  'app/admin/personnel/import/history/[attemptId]/source/route.ts':support('Shared personnel import history and revert.'),
  'app/admin/personnel/import/history/actions.ts':support('Shared personnel import history and revert.'),
+ 'app/admin/personnel/import/history/employee-import-error-report.tsx':support('Shared personnel import history views.'),
  'app/admin/personnel/import/history/import-history-views.tsx':support('Shared personnel import history views.'),
  'app/admin/personnel/import/history/page.tsx':support('Shared personnel import history and revert.'),
+ 'app/admin/personnel/import/history/revert-jobs/[jobId]/route.ts':support('Shared personnel import history and revert.'),
+ 'app/admin/personnel/import/history/runs/[runId]/page.tsx':support('Import Log of a section import run (summary and rows not saved).'),
  'app/admin/personnel/import/information-correction-template/route.ts':'information_correction',
+ 'app/admin/personnel/import/movement/checks/[jobId]/route.ts':'employee_movement',
+ 'app/admin/personnel/import/movement/checks/route.ts':'employee_movement',
+ 'app/admin/personnel/import/movement/jobs/[jobId]/route.ts':'employee_movement',
+ 'app/admin/personnel/import/movement/jobs/route.ts':'employee_movement',
  'app/admin/personnel/import/movement/route.ts':'employee_movement',
  'app/admin/personnel/import/page.tsx':PERSONNEL_PAGE,
- 'app/admin/rewards/libraries/actions.ts':support('Previews a workbook for a Rewards setup manager. Saving and independent confirmation use the native library owner.'),
- 'app/admin/rewards/pat-inputs/actions.ts':support('Company-scoped PAT uploads propose drafts through the native owner. A separate checker confirms them.'),
+ 'app/admin/personnel/import/employee/jobs/[jobId]/route.ts':'employee_records',
+ 'app/admin/personnel/import/employee/jobs/route.ts':'employee_records',
+ 'app/admin/personnel/import/section/jobs/[jobId]/route.ts':['employee_profile','employee_family','employee_qualifications','employee_emergency_contacts'],
+ 'app/admin/personnel/import/section/jobs/route.ts':['employee_profile','employee_family','employee_qualifications','employee_emergency_contacts'],
+ 'app/admin/rewards/libraries/actions.ts':support('Previews a workbook for a Rewards setup manager. Saving, activation and restore use the native library owner.'),
+ 'app/admin/rewards/pat-inputs/actions.ts':support('Company-scoped PAT grid edits, uploads and last-year targets save through the native owner in one batch with a reason.'),
  'app/admin/settings/system-labels/import-actions.ts':'system_labels',
+ 'app/admin/settings/system-labels/import/jobs/[jobId]/route.ts':'system_labels',
+ 'app/admin/settings/system-labels/import/jobs/[jobId]/errors/route.ts':'system_labels',
+ 'app/admin/settings/system-labels/import/jobs/route.ts':'system_labels',
  'app/admin/settings/system-labels/import/route.ts':'system_labels',
  'app/assistant/file-import-actions.ts':support('AI Centre file preparation (core/assistant-import.ts); it imports nothing.'),
  'app/assistant/import-privacy-actions.ts':support('AI Centre import privacy controls.'),
@@ -93,6 +118,8 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/assistant/chat-import-actions.ts':support('AI Centre chat import Confirm through each import\'s own owner (core/chat-import/confirm.ts).'),
  'app/assistant/launcher-actions.ts':support('AI Centre chat command; chatImportOfferedAction only says whether Ask offers the paperclip.'),
  'app/attendance/import/actions.ts':'attendance_clockings',
+ 'app/attendance/import/jobs/[jobId]/route.ts':'attendance_clockings',
+ 'app/attendance/import/jobs/route.ts':'attendance_clockings',
  'app/attendance/import/logs/[runId]/page.tsx':'attendance_clockings',
  'app/attendance/import/logs/page.tsx':'attendance_clockings',
  'app/attendance/import/page.tsx':'attendance_clockings',
@@ -100,14 +127,21 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/lifecycle/onboarding/import/page.tsx':'onboarding_new_hires',
  'app/lifecycle/onboarding/import/template/route.ts':support('A blank onboarding template; it holds no data.'),
  'app/payroll/[batchId]/import-actions.ts':'run_pay_components',
+ 'app/payroll/history-import/job/route.ts':'payroll_history',
  'app/payroll/history-import/logs/[attemptId]/page.tsx':'payroll_history',
  'app/payroll/history-import/logs/[attemptId]/report/route.ts':'payroll_history',
  'app/payroll/history-import/logs/[attemptId]/source/route.ts':'payroll_history',
  'app/payroll/history-import/logs/page.tsx':'payroll_history',
  'app/payroll/history-import/page.tsx':'payroll_history',
+ 'app/payroll/history-import/records/page.tsx':'payroll_history',
+ 'app/payroll/history-import/records/[recordId]/page.tsx':'payroll_history',
  'app/payroll/history-import/upload/route.ts':'payroll_history',
  'app/payroll/transactions/import-components/page.tsx':'run_pay_components',
  'app/payroll/transactions/import-excel/actions.ts':'fixed_transactions',
+ 'app/payroll/transactions/import-excel/fixed-actions.ts':'fixed_transactions',
+ 'app/payroll/transactions/fixed/imports/page.tsx':'fixed_transactions',
+ 'app/payroll/transactions/fixed/imports/[id]/page.tsx':'fixed_transactions',
+ 'app/payroll/transactions/fixed/imports/[id]/errors/route.ts':'fixed_transactions',
  'app/payroll/transactions/import-excel/individual-actions.ts':'individual_transactions',
  'app/payroll/transactions/individual/imports/[attemptId]/page.tsx':'individual_transactions',
  'app/payroll/transactions/individual/imports/[attemptId]/errors/route.ts':'individual_transactions',
@@ -116,6 +150,7 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/payroll/transactions/individual/imports/batches/[jobId]/workbook/route.ts':'individual_transactions',
  'app/payroll/transactions/individual/imports/page.tsx':'individual_transactions',
  'app/performance/onehr-actions.ts':support('Record-scoped KPI and panel imports inside one OneHR cycle, admitted per cycle; not listed.'),
+ 'app/rewards/history-upload/actions.ts':support('Earlier reward history upload is admitted by the native Rewards service using effective Group Rewards and group/company setup authority; it is not a coarse-role AI Centre import owner.'),
  'app/rewards/actions.ts':support('Record-scoped facts import inside one rewards unit, admitted per unit; not listed.'),
  'app/roster/import/actions.ts':'shift_roster',
  'app/roster/import/page.tsx':'shift_roster',
@@ -184,6 +219,7 @@ const NOT_A_PAGE:Readonly<Record<string,string>>={
 const NOT_YET_LINKABLE:Readonly<Record<string,string>>={
  '/lifecycle/probation':'Main\'s Probation Confirmation pages: unlinkable until their semantic, guide and corpus entries exist.',
  '/lifecycle/contracts':'Main\'s Contract Management pages: unlinkable until their semantic, guide and corpus entries exist.',
+ '/automation':'The shared HR Automation builders (ADR 2026-11-15-probation-shared-automation): unlinkable until their semantic, guide and corpus entries exist.',
 };
 const pendingArea=(path:string)=>Object.keys(NOT_YET_LINKABLE).find(area=>path===area||path.startsWith(area+'/'));
 describe('destinations',()=>{
@@ -292,7 +328,25 @@ describe('deciding actions are mapped to the inbox work that makes them the call
   for(const action of deciding)expect((DECIDER_WORK[action.id]??MODULE_WORK[action.module]??[]).length,action.id).toBeGreaterThan(0);
   expect(DECIDER_WORK).toEqual({'approvals.leave.decide':['leave'],'approvals.claim.decide':['claim'],'approvals.attendance.decide':['attendance'],'approvals.toil.decide':['replacementLeave']});
   // Every pack task kind belongs to the module that owns it, and no kind is invented.
-  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards].sort()).toEqual([...PACK_TASK_KINDS].sort());
+  // Recruitment and Contract tasks belong to their native screens, without suggestable deciding actions.
+  // Account for the exact Contract owners instead of widening the AI's Lifecycle work mapping.
+  const nativeContractWork={
+   contractApproval:['core/contract-shared-tasks.ts','contractSharedWorkPage'],
+   contractLetter:['core/contract-shared-tasks.ts','contractSharedWorkPage'],
+   contractPosting:['core/contract-shared-postings.ts','contractSharedPostingWorkPage'],
+   contractPay:['core/contract-shared-postings.ts','contractSharedPostingWorkPage'],
+  } as const;
+  for(const [kind,[file,owner]] of Object.entries(nativeContractWork)){
+   expect(PACK_TASK_KINDS).toContain(kind);
+   expect(exportsName(file,owner),`${kind} has its native owner`).toBe(true);
+   expect(Object.values(MODULE_WORK).flat()).not.toContain(kind);
+   expect(Object.values(DECIDER_WORK).flat()).not.toContain(kind);
+  }
+  expect(SUGGESTABLE_ACTIONS.filter(action=>/^packs\/contracts\/|^core\/contract-/.test(action.service)
+   ||action.screen.entryPoints.some(entry=>entry.startsWith('app/lifecycle/contracts/')))).toEqual([]);
+  const nativeOnlyKinds=new Set<string>([...RECRUITMENT_TASK_KINDS,...Object.keys(nativeContractWork)]);
+  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards,...MODULE_WORK.lifecycle].sort()).toEqual(PACK_TASK_KINDS.filter(k=>!nativeOnlyKinds.has(k)).sort());
+  expect(Object.keys(MODULE_WORK).sort()).toEqual(['lifecycle','performance','rewards']);
   // Own, administrator, lifecycle staff and automatic classes are not per-item deciders.
   for(const actor of ['self','hr_admin','tenant_admin','payroll_admin','rewards_admin','workforce_maintainer','lifecycle_staff','agent_principal'])
    expect(DECIDER_ACTORS.has(actor),actor).toBe(false);

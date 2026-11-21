@@ -1,4 +1,5 @@
 'use client';
+import {DEFAULT_MAYBANK_PAYMENT_SETTINGS} from '@/lib/maybank-payment-settings';
 import { CompanyDisplayGroupFields } from './company-display-group-fields';
 import type { CompanyDisplayGroup, CompanyDisplayGroupOption } from '@/lib/company-display-group';
 
@@ -12,7 +13,8 @@ import { type CompanyPanelTab } from '@/lib/company-panel-tabs';
 import { type TabSaveResult } from '@/lib/tab-save-sections';
 import { firstDirtyGuard } from '@/lib/unsaved-changes';
 import { TabSaveScope } from './tab-save-scope';
-import { DISBURSEMENT_CAPABLE_BANKS, DISBURSEMENT_UNSUPPORTED_BANKS, MY_BANKS, myBankLabel } from '@/lib/my-banks';
+import { MY_BANKS, myBankLabel } from '@/lib/my-banks';
+import { salaryFileBankGroups, type SalaryFileCapability } from '@/lib/salary-file-capabilities';
 import { accountLast4 } from '@/lib/bank-account-last4';
 import { STATUTORY_AUTHORITIES } from '@/lib/statutory-authorities';
 // 15e5bd93 rev 2 (r353) — the marks and the r226 filing-field map moved to lib/, because the reporter's
@@ -153,8 +155,6 @@ export type PanelStatutory = {
   epfEmployerNo: string | null;
   socsoEmployerCode: string | null;
   lhdnEmployerNo: string | null;
-  myinvoisTin: string | null;
-  ssmRegistrationNo: string | null;
   hrdfStatus: 'not_registered' | 'mandatory' | 'optional' | null;
 } | null;
 // R46 orgbank (84719377) — `bank` is a key from the SHARED Malaysian bank master (lib/my-banks.ts), the
@@ -174,6 +174,7 @@ export type PanelBankProfile = {
   swiftCode: string | null;
   currency: string;
   isPrimary: boolean;
+  maybankPaymentSettings?:import('@/lib/maybank-payment-settings').MaybankPaymentSettings|null;
   fileContactName?:string|null;fileContactPhone?:string|null;fileStateCode?:string|null;requirePayeeIdCheck?:boolean;
 };
 
@@ -239,17 +240,20 @@ function BankAccountForm({
   action,
   companyId,
   companyName,
+  salaryFileCapabilities,
   profile,
   onCancel,
 }: {
   action: Action;
   companyId: string;
   companyName: string;
+  salaryFileCapabilities: readonly SalaryFileCapability[];
   profile: PanelBankProfile | null;
   onCancel?: () => void;
 }) {
-  const t = useTranslations('admin.organization');
+  const t = useTranslations('admin.organization'),mb=useTranslations('maybankPayment');
   const p = profile;
+  const bankGroups = salaryFileBankGroups(salaryFileCapabilities);
   // Legacy-tolerant: a stored bank key no longer in the master is still offered so editing any OTHER field
   // cannot silently drop it (same posture as OptionSelect).
   const known = !p?.bank || MY_BANKS.some((b) => b.key === p.bank);
@@ -264,13 +268,13 @@ function BankAccountForm({
             {t('bankSelect')}
           </option>
           {!known && p?.bank ? <option value={p.bank}>{p.bank}</option> : null}
-          {DISBURSEMENT_CAPABLE_BANKS.map((b) => (
+          {bankGroups.supported.map((b) => (
             <option key={b.key} value={b.key}>
               {b.canonical}
             </option>
           ))}
           <optgroup label={t('bankNoFileFormatGroup')}>
-            {DISBURSEMENT_UNSUPPORTED_BANKS.map((b) => (
+            {bankGroups.other.map((b) => (
               <option key={b.key} value={b.key}>
                 {b.canonical}
               </option>
@@ -278,6 +282,7 @@ function BankAccountForm({
           </optgroup>
         </select>
       </Field>
+      {selectedBank==='maybank'&&<fieldset className="space-y-3 sm:col-span-2"><input type="hidden" name="maybankSettingsPresent" value="1"/><legend className="font-medium">{mb('settings')}</legend><Field label={mb('version')}><select name="maybankVersion" aria-label={mb('version')} defaultValue={p?.maybankPaymentSettings?.version??DEFAULT_MAYBANK_PAYMENT_SETTINGS.version} className={inputCls}><option value="7.4">Maybank2E-RC V7.4</option></select></Field><p className="text-xs text-muted-foreground">{mb('hashHelp')}</p><Field label={mb('hashArrangement')}><select name="maybankHashMode" aria-label={mb('hashArrangement')} defaultValue={p?.maybankPaymentSettings?.hashMode??DEFAULT_MAYBANK_PAYMENT_SETTINGS.hashMode} className={inputCls}><option value="unconfirmed">{mb('unconfirmed')}</option><option value="not-required">{mb('noHash')}</option></select></Field><div className="grid gap-3 sm:grid-cols-3"><Field label={t('ocbcContactName')}><input name="fileContactName" defaultValue={p?.fileContactName??''} maxLength={40} className={inputCls}/></Field><Field label={t('ocbcContactPhone')}><input name="fileContactPhone" defaultValue={p?.fileContactPhone??''} maxLength={20} className={inputCls}/></Field><Field label={mb('stateCode')}><select name="fileStateCode" aria-label={mb('stateCode')} defaultValue={p?.fileStateCode??''} className={inputCls}><option value="">{mb('notConfigured')}</option>{[['01','Johor'],['02','Kedah'],['03','Kelantan'],['04','Melaka'],['05','Negeri Sembilan'],['06','Pahang'],['07','Pulau Pinang'],['08','Perak'],['09','Perlis'],['10','Selangor'],['11','Terengganu'],['12','Sabah'],['13','Sarawak'],['14','Wilayah Persekutuan']].map(([code,name])=><option key={code} value={code}>{code} · {name}</option>)}</select></Field></div><Field label={mb('zakatClass')}><select name="maybankZakatClass" aria-label={mb('zakatClass')} defaultValue={p?.maybankPaymentSettings?.zakatClassification??'1'} className={inputCls}>{[['1','Pendapatan'],['2','Harta'],['3','Perniagaan'],['4','Sumbangan Wajib'],['5','Wakaf Potongan Gaji']].map(([code,name])=><option key={code} value={code}>{code} · {name}</option>)}</select></Field><p className="text-xs text-muted-foreground">{mb('mappingHelp')}</p></fieldset>}
       {selectedBank==='ocbc_bank'&&<fieldset className="space-y-3 sm:col-span-2"><input type="hidden" name="bankFileSettingsPresent" value="1"/><legend className="font-medium">{t('ocbcFileSettings')}</legend><p className="text-xs text-muted-foreground">{t('ocbcFileSettingsHelp')}</p><div className="grid gap-3 sm:grid-cols-3">
         <Field label={t('ocbcContactName')}><input name="fileContactName" defaultValue={p?.fileContactName??''} maxLength={40} className={inputCls}/></Field>
         <Field label={t('ocbcContactPhone')}><input name="fileContactPhone" defaultValue={p?.fileContactPhone??''} inputMode="numeric" pattern="[0-9]{1,20}" maxLength={20} className={inputCls}/></Field>
@@ -594,7 +599,7 @@ function StatutoryBodyRow({
  * instruction and took the statutory FIELDS off this panel altogether — they are ONE dedicated screen
  * (components/statutory-setup-screen.tsx: every body as a card, every field open, one Save; r355's
  * per-body page was contested as "an unnecessary intermediate page" and deleted in r372) — so the
- * Statutory tab holds the company's own registrations and a read-only list of the eight bodies that
+ * Statutory tab holds a read-only list of the eight bodies that
  * LINKS there. See StatutoryBodyRow.
  *
  * ⚠️ ONE EXCEPTION, ON THE REPORTER'S APPROVED REQUEST (48652e18, r419): "Add a bank account" on the Bank
@@ -618,6 +623,7 @@ export function CompanyPanel({
   codesInUse = [],
   statutory,
   bankProfiles,
+  salaryFileCapabilities = [],
   statutoryAuthorities = [],
   signatories = [],
   stateOptions = [],
@@ -639,6 +645,7 @@ export function CompanyPanel({
   codesInUse?: readonly CompanyCodeHolder[];
   statutory: PanelStatutory;
   bankProfiles: PanelBankProfile[];
+  salaryFileCapabilities?: readonly SalaryFileCapability[];
   // R46 orgbank (84719377) — per-authority statutory payment configuration + the company-scoped
   // authorised-signatory candidates (active employees of THIS company).
   statutoryAuthorities?: PanelStatutoryAuthority[];
@@ -667,7 +674,6 @@ export function CompanyPanel({
     archiveCompany: Action;
     deleteCompany: Action;
     setParent: Action;
-    setStatutory: Action;
     setBankProfile: Action;
     removeBankProfile: Action;
     setStatutoryAuthority: Action;
@@ -683,19 +689,6 @@ export function CompanyPanel({
      * action at all would POST to the current URL.
      */
     saveGeneralTab: TabSaveAction;
-    /**
-     * 15e5bd93 rev 2 (r353) — `saveStatutoryTab` STOOD HERE AND IS GONE, with the consolidated statutory
-     * Save it named. The reporter contested r352's one-Save-for-the-tab shape along with the in-tab
-     * editing it depended on, and asked for Save and Cancel on each body's own card on a dedicated screen.
-     * `app/admin/organization/statutory-tab-actions.ts` is retired rather than left bound to nothing:
-     * a `'use server'` export nothing submits to is a second writer of `company_statutory_my` that no
-     * screen exercises and no reader can see is dead.
-     *
-     * The Statutory tab's SSM / MyInvois registrations card therefore has its own Save button again —
-     * which is exactly where 65b22c00's finding 1 left it, and that finding's objection to a scope on this
-     * tab ("a sticky bar above eight statutory-body editors it does not own") is true once more now that
-     * the editors have gone somewhere else entirely.
-     */
   };
 }) {
   const t = useTranslations('admin.organization');
@@ -885,8 +878,8 @@ export function CompanyPanel({
         </div>
 
         {/* 65b22c00 — ONE "Save Changes" for the General tab's field-edit cards. TabSaveScope wraps
-            bucket (a) only: the company master data, the default payroll cycle and the group parent —
-            plain columns on the `company` row, which is what a single Save, and therefore a single
+            bucket (a) only: company master data, registration details, the default payroll cycle and group parent —
+            field edits owned by the relevant company services, which is what a single Save, and therefore a single
             Discard, can honestly cover. The logo card ABOVE and the archive / delete row BELOW are
             bucket (b) and are rendered outside the scope, so the tab's Discard cannot reach them; see
             docs/audits/65b22c00-organization-save-classification.md.
@@ -895,15 +888,7 @@ export function CompanyPanel({
             bar reading only "Save Changes" would appear to cover the logo and the delete button too. The
             Default Payroll Cycle name is dropped for a tenant without Payroll, where that card is not
             drawn at all — a bar must not name a card the reader cannot find (r256 shipped that fault
-            twice before it was caught by rendering the screen).
-
-            ⚠️ THE STATUTORY REGISTRATIONS CARD IS BUCKET (a) AND IS DELIBERATELY NOT HERE — and as of
-            15e5bd93 (r352) that is no longer an unanswered question. A scope still cannot span two panes,
-            and moving the card to General would still reverse r226's placement (which
-            test/company-panel-bank-statutory-layout.test.ts pins). What changed is that the STATUTORY tab
-            now has a consolidated Save of its own, so the card is consolidated there, on the tab it
-            belongs to. Finding 1 of the audit has the original argument; the statutory pane below records
-            how it was settled. */}
+            twice before it was caught by rendering the screen). */}
         <TabSaveScope
           tabKey="general"
           identity={{ companyId: c.id }}
@@ -1216,6 +1201,7 @@ export function CompanyPanel({
                     action={actions.setBankProfile}
                     companyId={c.id}
                     companyName={c.name}
+                    salaryFileCapabilities={salaryFileCapabilities}
                     profile={null}
                     onCancel={() => setBankAddOpen(false)}
                   />
@@ -1243,7 +1229,7 @@ export function CompanyPanel({
                       </span>
                     </div>
                     <div className="border-t border-border/60 px-3 py-3">
-                      <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} profile={bp} />
+                      <BankAccountForm action={actions.setBankProfile} companyId={c.id} companyName={c.name} salaryFileCapabilities={salaryFileCapabilities} profile={bp} />
                       <form action={actions.removeBankProfile} className="mt-2">
                         <input type="hidden" name="id" value={bp.id} />
                         {/* 65b22c00 — identity is the ROW, so `id` is the profile's. The company rides
@@ -1297,94 +1283,8 @@ export function CompanyPanel({
             held statutory configuration). Country-pack section (ADR-0008). */}
         <div className={cn('space-y-4', tab === 'statutory' ? '' : 'hidden')}>
         {isMY ? (
-          /**
-           * ── 15e5bd93 REVISION 2 (r353) — THIS TAB SHOWS THE SETUP, IT NO LONGER EDITS IT ───────
-           *
-           * ⚠️ THIS REPLACES r352'S "ONE SAVE FOR THE WHOLE STATUTORY TAB", AND THE REPORTER CONTESTED
-           * THAT SHAPE. r352 answered 65b22c00's finding 1 by consolidating this tab: the eight bodies
-           * became a rail plus a workspace with no Save buttons of their own, so one sticky bar could own
-           * them and the SSM / MyInvois card together. The contest rejects the premise — "Do not expand
-           * the statutory settings directly within the existing Statutory tab" — so the editors are gone
-           * from here and the consolidated Save has nothing left to consolidate.
-           *
-           * FINDING 1 IS THEREFORE BACK WHERE IT WAS, AND THAT IS THE HONEST OUTCOME rather than a
-           * regression: the audit's objection to a scope on this tab was that a sticky bar would sit
-           * "above eight statutory-body editors it does not own". There are no editors here now, but there
-           * is also only ONE card left — and a sticky Save/Discard bar above a single two-field card is
-           * the "worse than none" that same finding named. So the registrations card keeps its own Save
-           * button, exactly as it did before r352, and it stays on the tab r226 put it on.
-           *
-           * WHAT THE TAB IS FOR NOW: the company's own registrations (editable, here), and a read-only
-           * list of the eight bodies with what is on file for each and a link to the dedicated screen
-           * that edits them. Approved point 1, in the reporter's words: "Open Settings" becomes a link to
-           * a real page.
-           */
+          /* Authority settings are edited on the dedicated Statutory screen. */
           <div className="flex flex-col gap-4 lg:flex-row">
-            {/* ── COMPANY REGISTRATIONS ───────────────────────────────────────────────
-                What is LEFT of the old flat identity list, and what is left is the point.
-
-                r226 moved EPF's, SOCSO's and LHDN's filing numbers, and HRD Corp's contribution rate, onto
-                their own body's editor, so that everything about one body is in one place. These two did
-                NOT move, deliberately: neither the SSM registration number nor the MyInvois TIN belongs to
-                a body an employer pays a contribution to, neither is in STATUTORY_AUTHORITIES, and the SSM
-                number is read by two statutory files we produce (localization/my/borang-8a.ts,
-                localization/my/socso-eis-file.ts). Giving either one a payment card would have been a
-                tidier screen making a false claim.
-
-                They did not move again in rev 2 either. The dedicated setup screen PRINTS both in its
-                heading so an operator can check them without coming back, and edits neither: one owner,
-                one editor, and a heading that reads rather than writes.
-
-                This form posts only the two boxes it renders. That is safe because the writer is a PARTIAL
-                PATCH (localization/my/company-statutory.ts): before r226 it was a full-row overwrite, and
-                a form this shape would have silently NULLed EPF, SOCSO and LHDN.
-
-                ⚠️ THE PACK FLAG IS `filingCountry`, NOT `country`, AND THE RENAME IS KEPT ON PURPOSE (r352,
-                carried forward by r353). It was `name="country"` before r352 and the collision that forced
-                the rename is real: lib/tab-save-dom.ts `syncCarriedValues` treats a HIDDEN input as a
-                mirror of any VISIBLE control with the same name in a sibling section of the same scope, and
-                every statutory body's editor carries a visible `country` for its postal address — so a
-                hidden `country` here was overwritten with "Malaysia" and posted into `packFor()`, killing
-                EVERY identity save with "No statutory pack for Malaysia".
-
-                This card is no longer inside a consolidated scope, so that particular door is shut — but
-                the name stays, and reverting it would be wrong twice over. `setCompanyStatutoryAction`
-                reads `country` and defaults an absent one to 'MY', which is the only value this MY-only
-                card ever posted; and the SAME collision is live on the dedicated setup screen, where a
-                body's filing field and its visible postal `country` sit on one form. One name for one
-                concept, on both screens. */}
-            <form
-              action={actions.setStatutory}
-              className="w-full shrink-0 space-y-2.5 rounded-lg border border-border bg-card p-3 lg:w-72"
-            >
-              <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
-              <input type="hidden" name="companyId" value={c.id} />
-              <input type="hidden" name="filingCountry" value="MY" />
-              <div className="grid grid-cols-1 gap-2">
-                <Field label={t('ssmRegistrationNo')}>
-                  <input
-                    name="ssmRegistrationNo"
-                    defaultValue={statutory?.ssmRegistrationNo ?? ''}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label={t('myinvoisTin')}>
-                  <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
-                </Field>
-              </div>
-              <p className="text-xs text-muted-foreground">{t('statutoryFilingsHint')}</p>
-              {/* `saveStatutoryIdentity` — THE RETIRED CAPTION, BACK IN SERVICE. r352 took this button off
-                  when the tab's one Save absorbed the card, and the key was kept in all six catalogues
-                  rather than deleted, on the rule this repo keeps proving right: a retired string costs
-                  nothing and re-translating a deleted one into six languages costs a round. */}
-              <Button type="submit" size="sm">
-                {t('saveStatutoryIdentity')}
-              </Button>
-              {/* The HRDF headcount hint ("mandatory at 10+, optional at 5–9") is deliberately gone —
-                  HRDF eligibility is a free company choice, not a headcount rule. It now lives on the
-                  HRD Corp body as that body's registration band. */}
-            </form>
-
             {/* R46 orgbank (84719377) — per-authority PAYMENT setup: for each statutory body, which company
                 bank account pays it, its address/contact, and the authorised signatory. Every authority in
                 the controlled set is listed whether configured or not, so nothing is silently missing.

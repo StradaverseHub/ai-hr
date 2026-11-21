@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -65,7 +66,7 @@ export default async function CompanyPayrollCyclesPage({
             <form action={seedCatalogAction}>
               <input type="hidden" name="companyId" value={company.id} />
               <input type="hidden" name="q" value={q ?? ''} />
-              <button className={btnPrimary}>{t('seedDefaults')}</button>
+              <ActionButton actionKind="saving" className={btnPrimary}>{t('seedDefaults')}</ActionButton>
             </form>
           )}
         </div>

@@ -10,7 +10,7 @@
  *
  * Future dates (Aug 2026) so no backdating/advance-notice gate interferes. 2026-08-10..12 = Mon–Wed (3 wd).
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -119,7 +119,82 @@ afterAll(async () => {
   await closeAll();
 });
 
+it('submits own annual leave while another transaction shares the Access lock', async () => {
+  let submission: ReturnType<typeof requestLeave> | undefined;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await owner.db.transaction(async tx => {
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + b.tenantId},0))`);
+      submission = requestLeave(subjectCtx, {
+        employmentId: subject.employmentId, leaveTypeId: b.annualLeaveTypeId,
+        startDate: '2026-08-10', endDate: '2026-08-12',
+        hasDocument: false, unpaidConsent: false, overrideConsent: [],
+      });
+      const result = await Promise.race([submission, new Promise<null>(resolve => {
+        timeout = setTimeout(() => resolve(null), 5000);
+      })]);
+      expect(result).toMatchObject({leaveRequestId: expect.any(String)});
+    });
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    await submission?.catch(() => undefined);
+  }
+});
+
 describe('editLeaveRequest — pending edit', () => {
+  it('allows an own pending edit while another transaction shares the Access lock', async () => {
+    const id = await pendingThreeDay();
+    let edit: ReturnType<typeof editLeaveRequest> | undefined;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await owner.db.transaction(async tx => {
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:' + b.tenantId},0))`);
+        edit = editLeaveRequest(subjectCtx, {
+          leaveRequestId: id, leaveTypeId: b.annualLeaveTypeId,
+          startDate: '2026-08-10', endDate: '2026-08-11',
+        });
+        const result = await Promise.race([edit, new Promise<null>(resolve => {
+          timeout = setTimeout(() => resolve(null), 5000);
+        })]);
+        expect(result).toEqual({leaveRequestId: id, days: 2});
+      });
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      await edit?.catch(() => undefined);
+    }
+  });
+
+  it('waits for the exclusive Access writer before reading or editing the request', async () => {
+    const id = await pendingThreeDay();
+    let edit: ReturnType<typeof editLeaveRequest> | undefined;
+    try {
+      await owner.db.transaction(async tx => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:' + b.tenantId},0))`);
+        const [writer] = await tx.execute<{pid: number}>(sql`select pg_backend_pid() as pid`);
+        edit = editLeaveRequest(subjectCtx, {
+          leaveRequestId: id, leaveTypeId: b.annualLeaveTypeId,
+          startDate: '2026-08-10', endDate: '2026-08-11',
+        });
+        void edit.catch(() => undefined);
+        let blocked = false;
+        const deadline = performance.now() + 5000;
+        while (!blocked && performance.now() < deadline) {
+          const [state] = await tx.execute<{blocked: boolean}>(sql`
+            select exists(select 1 from pg_locks l
+              where l.locktype = 'advisory' and l.mode = 'ShareLock' and not l.granted
+                and ${writer.pid}::integer = any(pg_blocking_pids(l.pid))) as blocked
+          `);
+          blocked = state.blocked;
+          if (!blocked) await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        expect(blocked).toBe(true);
+      });
+      await expect(edit).resolves.toEqual({leaveRequestId: id, days: 2});
+    } finally {
+      await edit?.catch(() => undefined);
+    }
+  });
+
   it('edits a pending leave in place, keeps it pending, recomputes days, appends leave-request.edited', async () => {
     const id = await pendingThreeDay();
     expect((await rowOf(id)).days).toBe('3.00');

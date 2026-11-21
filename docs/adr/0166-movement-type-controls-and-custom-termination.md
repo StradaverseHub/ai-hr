@@ -27,6 +27,7 @@ Step 1 gave each tenant its own termination reasons and moved event-type editing
 
 - Turnover and termination reports are unchanged: they read `employment.termination_type`, which a custom Termination writes through the same writer.
 - Workbooks downloaded before this change no longer match the catalogue fingerprint for a tenant with an active Termination type, and are refused as stale. A new download is needed.
+- Amended 13 November 2026 (production report): a workbook stays current when the only change since its signed download time is tenant termination reasons created after it. The check removes those reasons from the current catalogue and requires the result to hash to the signed fingerprint, so a rename, removal, reorder, reactivation, re-scoping, built-in override, type change or Field Control change still needs a new download. The fingerprint between Check and Confirm stays exact.
 - An Edit that only adds a document to an otherwise unchanged movement is still refused as "no change". Adding evidence to an old movement without correcting it is not built.
 - In the current role model every principal with workforce view of an employee also has pay access to that employee. The pay-field predicate on documents is therefore defence in depth that today's roles cannot exercise separately.
 - New translations in all six locales need translation review.

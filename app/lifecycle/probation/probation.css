@@ -39,3 +39,19 @@
  .v9-workspace.probation .probation-list-table table tbody td{height:auto;min-height:0;overflow-wrap:anywhere}
  .probation .probation-list-table .v9-badge{white-space:normal;max-width:100%}
 }
+.probation-stats a[data-flag=overridden]{border-inline-start-color:var(--chart-4,var(--primary))}
+
+/* Case view (lane L, L1; prototype CaseView): stepper, facts with a second line, tabs. Theme tokens only. */
+.probation .probation-stepper{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
+.probation-step{display:inline-flex;gap:6px;align-items:center;min-height:32px;padding:5px 13px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid transparent;background:var(--muted);color:var(--muted-foreground)}
+.probation-step[data-dashed=true]{border-style:dashed;border-color:var(--border)}
+.probation-step[data-state=done]{background:color-mix(in oklab,var(--chart-2,#1b6b43) 14%,transparent);color:var(--foreground)}
+.probation-step[data-state=current]{background:var(--card);border:1px solid var(--v9-accent);color:var(--v9-accent)}
+.probation-step[data-state=overdue]{background:color-mix(in oklab,var(--destructive) 12%,transparent);border:1px solid var(--destructive);color:var(--destructive)}
+.probation-step[data-state=returned]{background:color-mix(in oklab,var(--chart-4,#b7791f) 16%,transparent);border:1px solid var(--chart-4,#b7791f);color:var(--foreground)}
+.probation-facts dd small{display:block;font-weight:400;color:var(--muted-foreground);font-size:12px;margin-top:2px}
+.probation .probation-tabs{display:flex;gap:2px;border-bottom:1px solid var(--border);overflow-x:auto}
+.probation-tabs a{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:10px 14px;font-weight:600;color:var(--muted-foreground);border-bottom:2px solid transparent;text-decoration:none;white-space:nowrap}
+.probation-tabs a[aria-current=page]{color:var(--foreground);border-bottom-color:var(--v9-accent)}
+.probation-tab-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--v9-accent)}
+.probation .probation-tabpanel{display:grid;gap:24px;min-width:0}

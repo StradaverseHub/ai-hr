@@ -337,8 +337,10 @@ describe('splitOtMinutes — progressive bands', () => {
     expect(bucketForRate('variable', 1.5)).toBe('ot15');
     expect(bucketForRate('variable', 2)).toBe('ot20');
     expect(bucketForRate('variable', 3)).toBe('ot30');
-    // A multiplier no editor offers still has to land somewhere, or the sum invariant breaks.
-    expect(bucketForRate('variable', 2.75)).toBe('flat');
+    // A multiplier outside the usual columns still has to land somewhere, or the sum invariant breaks.
+    // c03670cc — typed rates (for example 2.75) land in their own `other` bucket instead of Flat.
+    expect(bucketForRate('variable', 2.75)).toBe('other');
+    expect(bucketForRate('flat', 2.75)).toBe('flat');
     expect(rateForDay(band({ rate: 1.5, phRate: 3 }), 'holiday')).toBe(3);
     expect(rateForDay(band({ rate: 1.5, phRate: 3 }), 'workday')).toBe(1.5);
     // 7c834696 rev 3: the statutory fallbacks. `phRate: null` on a holiday WAS 1.5.

@@ -10,6 +10,7 @@ import type {ProbationCaseView,ProbationPartView,ProbationPersonnel} from '../pa
 const mocks=vi.hoisted(()=>({save:vi.fn(),act:vi.fn(),refresh:vi.fn(),push:vi.fn(),reconcile:vi.fn(),supersede:vi.fn(),applyDate:vi.fn(),requestDate:vi.fn(),adjudicate:vi.fn()}));
 vi.mock('../app/lifecycle/probation/actions',()=>({saveDraft:mocks.save,performReview:mocks.act,reconcileDates:mocks.reconcile,supersedeDateShift:mocks.supersede,applyDateShift:mocks.applyDate,requestDateShift:mocks.requestDate,adjudicateOfflineFinal:mocks.adjudicate}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh,push:mocks.push})}));
+const form=messages.probation.caseView.form;
 const staff='11111111-1111-4111-8111-111111111111',manager='22222222-2222-4222-8222-222222222222';
 function fixture(){
  let serial=10;const id=()=>`00000000-0000-4000-8000-${String(serial++).padStart(12,'0')}`;
@@ -24,21 +25,25 @@ beforeEach(()=>{vi.clearAllMocks();mocks.save.mockResolvedValue({ok:true,result:
 describe('probation reviewer interactions',()=>{
  it('starts unrated, requires evidence for a low rating and preserves private manager drafts',()=>{
   const{view,part}=fixture();show(view,part);
-  expect(screen.getAllByRole('radio').every(r=>!(r as HTMLInputElement).checked)).toBe(true);
-  const criterion=within(screen.getByRole('heading',{name:'Employee assessment'}).closest('section')!).getByRole('group',{name:/KPI Achievement Progress/});fireEvent.click(within(criterion).getByRole('radio',{name:/1 · Unacceptable/}));
-  expect(within(criterion).getByRole('textbox',{name:/Evidence and examples/})).toBeRequired();
-  expect(screen.getByText("The manager's submitted assessment is not available yet.")).toBeInTheDocument();
+  const grid=screen.getByRole('table',{name:form.gridLabel});
+  expect(within(grid).queryAllByRole('button',{pressed:true})).toHaveLength(0);
+  const criterion=within(grid).getByRole('group',{name:'Employee rating for KPI Achievement Progress'});fireEvent.click(within(criterion).getByRole('button',{name:'1 · Unacceptable'}));
+  expect(within(criterion).getByRole('button',{name:'1 · Unacceptable'})).toHaveAttribute('aria-pressed','true');
+  expect(within(grid).getByRole('textbox',{name:'Your evidence for KPI Achievement Progress'})).toBeRequired();
+  expect(within(grid).getByText('Evidence required for a rating of 1')).toBeInTheDocument();
+  // The Line Manager's private draft stays hidden in every row until they submit.
+  expect(within(grid).getAllByText(form.hiddenLm)).toHaveLength(view.form.criteria.length);
   expect(screen.queryByRole('button',{name:'Record completed review'})).not.toBeInTheDocument();
  });
  it('retains entered ratings and error recovery when the guarded save fails',async()=>{
   mocks.save.mockResolvedValue({ok:false,detail:'The review changed. Reload before saving.'});const{view,part}=fixture();show(view,part);
-  const criterion=within(screen.getByRole('heading',{name:'Employee assessment'}).closest('section')!).getByRole('group',{name:/KPI Achievement Progress/});fireEvent.click(within(criterion).getByRole('radio',{name:/3 · Meets Expectations/}));fireEvent.click(screen.getByRole('button',{name:'Save draft'}));
-  await screen.findByRole('alert');expect(within(criterion).getByRole('radio',{name:/3 · Meets Expectations/})).toBeChecked();await waitFor(()=>expect(screen.getByText('You have unsaved changes')).toBeInTheDocument());expect(mocks.refresh).not.toHaveBeenCalled();
+  const criterion=screen.getByRole('group',{name:'Employee rating for KPI Achievement Progress'});fireEvent.click(within(criterion).getByRole('button',{name:'3 · Meets Expectations'}));fireEvent.click(screen.getByRole('button',{name:'Save draft'}));
+  await screen.findByRole('alert');expect(within(criterion).getByRole('button',{name:'3 · Meets Expectations'})).toHaveAttribute('aria-pressed','true');await waitFor(()=>expect(screen.getByText('You have unsaved changes')).toBeInTheDocument());expect(mocks.refresh).not.toHaveBeenCalled();
  });
  it('locks submitted self-ratings and saves only the permitted acknowledgement comment contribution',async()=>{
   const{view,part}=fixture();part.canEditSelfAssessment=false;part.canEditEmployeeComments=true;part.staffSubmittedAt='2026-12-01T01:00:00Z';part.managerSubmittedAt='2026-12-02T01:00:00Z';part.managerVisible=true;part.allowedCommands=['acknowledge','return'];part.state='pending_ack';
   const hash='a'.repeat(64);part.signing={id:'signing',document:{tenantId:'tenant',companyId:view.record.companyId,subjectId:part.id,subjectType:'probation',contentRevision:1,contentHash:hash,route:part.route,actions:[{id:'manager-signed',stepId:part.route.steps.find(s=>s.role==='lm')!.id,contentRevision:1,contentHash:hash,actorId:manager,actorPersonId:'manager-person',actorName:'Fictional Manager',representedId:manager,role:'lm',at:'2026-12-02T01:00:00Z',action:'signed',comment:'',signature:{method:'typed',value:'Fictional Manager',consent:true}}]}};
-  show(view,part);expect(screen.queryByRole('radio')).not.toBeInTheDocument();fireEvent.change(screen.getByRole('textbox',{name:'Employee comments'}),{target:{value:'The review was discussed; I have noted the feedback.'}});fireEvent.click(screen.getByRole('button',{name:'Save draft'}));
+  show(view,part);expect(screen.queryAllByRole('button',{name:/^\d · /}).every(button=>(button as HTMLButtonElement).disabled)).toBe(true);fireEvent.change(screen.getByRole('textbox',{name:form.employeeComments2}),{target:{value:'The review was discussed; I have noted the feedback.'}});fireEvent.click(screen.getByRole('button',{name:'Save draft'}));
   await waitFor(()=>expect(mocks.save).toHaveBeenCalled());expect(mocks.save.mock.calls[0][0].patch).toEqual({employeeComments:'The review was discussed; I have noted the feedback.'});
  });
  it('lets the employee save only Part 1 meeting-acknowledgement comments',async()=>{

@@ -3,8 +3,13 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { listBatches, payrollCloseCompanyIds } from '@/core/payroll';
-import { listBatchProcessedDates } from '@/core/payroll-view';
+import {
+  latestPayrollDashboardPeriod,
+  listBatches,
+  payrollDashboardCounts,
+  payrollDashboardCycleNames,
+} from '@/core/payroll';
+import { payrollDashboardBatchMetadata } from '@/core/payroll-view';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -24,13 +29,15 @@ import {
   REPROCESS_REQUIRED,
   applyFilters,
   asArray,
+  cycleFilterOptions,
+  dashboardCycleLabel,
   dashboardHref,
+  hasExplicitPeriod,
   monthCells,
   needsReprocess,
-  parseMonths,
-  parseYear,
   periodsForYear,
   reprocessEmploymentIds,
+  resolveDashboardPeriod,
   selectedPeriods,
   summarise,
   yearOptions,
@@ -70,6 +77,7 @@ import {
 
 const STATUS_STYLE: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
+  processing: 'bg-muted text-muted-foreground',
   processed: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   closed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
 };
@@ -88,7 +96,7 @@ const REPROCESS_PILL =
   'bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/40';
 
 /** Header cells never wrap: "Payroll Period", not "Payroll" over "Period" (the request's §5). */
-const TH = 'whitespace-nowrap px-3 py-2 font-medium';
+const TH = 'whitespace-nowrap px-3 py-2 font-medium first:pl-4 last:pr-4';
 
 export default async function PayrollPage({
   searchParams,
@@ -126,10 +134,20 @@ export default async function PayrollPage({
   // between 00:00 and 08:00 MYT on 1 January, and on a screen whose whole organising axis is the year
   // that means opening on the wrong one — with an empty timeline — for eight hours every New Year.
   const thisYear = Number(todayInKualaLumpur().slice(0, 4));
+  const companyFilter = asArray(sp.company);
+  // fd8156d4 — FIRST ENTRY OPENS ON THE LATEST CREATED PAYROLL PERIOD, not on today's month. Read only
+  // when the address names no period (a bare /payroll): every link this screen builds carries ?year and
+  // ?m, so a selection the reader made — including the Back round trip — always wins. One aggregate over
+  // the company scope (the ticked companies when the address names some), never a loop per company.
+  const scopedFilter = companyFilter.filter((id) => scopeIds.includes(id));
+  const latestPeriod = hasExplicitPeriod(sp)
+    ? null
+    : await latestPayrollDashboardPeriod(s, scopedFilter.length ? scopedFilter : scopeIds);
+  const period = resolveDashboardPeriod(sp, latestPeriod, thisYear);
   const filters: DashboardFilters = {
-    year: parseYear(sp.year, thisYear),
-    months: parseMonths(sp.m),
-    companyIds: asArray(sp.company),
+    year: period.year,
+    months: period.months,
+    companyIds: companyFilter,
     cycles: asArray(sp.cycle),
     statuses: asArray(sp.status),
   };
@@ -144,23 +162,28 @@ export default async function PayrollPage({
   // Encoded once here; re-validated BY SHAPE at the other end (lib/return-to.ts), never echoed raw.
   const fromQuery = encodeURIComponent(dashboardHref(filters));
 
-  const [yearBatches, allBatches, companies] = await Promise.all([
+  const [yearBatches, allTimeCounts, companies, cycleNames] = await Promise.all([
     // The GRID + TIMELINE read: exactly the twelve periods of the selected year, pushed into SQL through
     // listBatches' widened period-set argument. Bounded by construction, and it is the whole year rather
     // than only the ticked months on purpose — every month cell shows its own run count, so an untick
     // must not blind the timeline to what is in the months you are not looking at.
-    listBatches(s, scopeIds, periodsForYear(filters.year)),
+    //
+    // fd8156d4 — ordered in SQL as the grid shows it: newest period first, company A to Z, then run.
+    // Filtering and paging below keep that order.
+    listBatches(s, scopeIds, periodsForYear(filters.year), undefined, 'company'),
     // The UNPUBLISHED BANNER read, and NOTHING else. ef31d251 exists because eighteen runs were
     // processed and never closed, so no employee ever saw a payslip — "a skipped one cannot sit
     // unnoticed for months". That warning has to span ALL TIME: counted off the year's rows instead, a
     // run left unpublished last December would stop being warned about the moment the clock ticked over
-    // to January, which is precisely the failure it was written to prevent. If this read ever becomes
-    // expensive the fix is to make it a COUNT — not to scope it to the selected year.
-    listBatches(s, scopeIds),
+    // to January, which is precisely the failure it was written to prevent. The aggregate retains
+    // all-time coverage without loading historical run/money DTOs.
+    payrollDashboardCounts(s, scopeIds),
     // Company filter options. Sourced from the authorised company list rather than from the year's runs,
     // so the dropdown does not change shape as you step through years and a selected company cannot
     // vanish underneath you. Narrowed to scopeIds: a view filter must never widen the access fence.
     listCompanies(s),
+    // fd8156d4 — the configured Payroll Cycle names in scope, for the cycle dropdown. One grouped read.
+    payrollDashboardCycleNames(s, scopeIds),
   ]);
 
   // TWO passes, and the split is what makes the timeline honest. The counts on the month cells are
@@ -184,19 +207,16 @@ export default async function PayrollPage({
 
   // fc776376 — payroll runs accumulate every period, so the list pages like every other list.
   const { rows: batchPage, state: pgState } = paginateRows(rows, parsePageQuery(sp));
-  // Only the VISIBLE page's runs are dated: the event read is keyed on the batch ids actually rendered,
-  // so it costs one small indexed query no matter how many runs the year holds.
-  const processedOn = await listBatchProcessedDates(s, batchPage.map((b) => b.id));
-  // cdb1c6ca — WHERE CLOSE BATCH IS OFFERED: the companies on this page where the operator may close
-  // payroll (payroll scope + the granular payroll.close key). Resolved once per COMPANY on the server —
-  // never per row in the client — and only for the processed rows actually rendered. Visibility only;
-  // closeBatch re-asserts the permission on every close.
-  const closeCompanies = await payrollCloseCompanyIds(
+  // The visible runs need the HR-local processed date and, for processed rows, the companies
+  // offering Close Batch. Both reads share the Payroll carrier. The close action still authorizes
+  // each attempted close independently.
+  const { processedOn, closeCompanies } = await payrollDashboardBatchMetadata(
     s,
+    batchPage.map((b) => b.id),
     batchPage.filter((b) => b.status === 'processed').map((b) => b.companyId),
   );
 
-  const unpublishedCount = allBatches.filter((b) => payrollPublicationState(b) === 'unpublished').length;
+  const unpublishedCount = allTimeCounts.unpublishedCount;
 
   // Month names are CALENDAR DATA, not product copy — Intl already knows them in every locale this app
   // ships, so putting twelve more strings × six catalogs into the message files would be inventing a
@@ -234,7 +254,7 @@ export default async function PayrollPage({
     const staleIds = reprocessEmploymentIds(b);
     return (
       <tr key={b.id} className="hover:bg-muted/40">
-        <td className="whitespace-nowrap px-3 py-2.5">
+        <td className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
           {/* A DRAFT batch resumes into the wizard at Step 1 (Payroll Period & Company shown
               read-only for review — feedback 4f00d8f0), then Employee Selection. Processed/closed
               batches open directly as read-only, unchanged. */}
@@ -247,11 +267,13 @@ export default async function PayrollPage({
             {b.payPeriod}
           </Link>
         </td>
-        {/* Payroll Cycle: same pattern as the batch detail page — the runType label, plus the
-            free-text remarks (e.g. Advance Salary / Mid-Month) when present, so wizard cycles
-            stored under the generic 'off_cycle' bucket display distinctly. */}
+        {/* fd8156d4 — Payroll Cycle: the configured cycle's name ("Monthly", not "Regular"). Imported
+            history keeps "<cycle> - By Import"; a run opened under no cycle keeps its run-type word and
+            remarks exactly as before (dashboardCycleLabel). */}
         <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">
-          {b.historyImportAttemptId?payrollRunLabel(b,t(`runType.${b.runType}`)):<>{t(`runType.${b.runType}`)}{b.remarks ? ` — ${b.remarks}` : ''}</>}
+          {b.historyImportAttemptId
+            ? payrollRunLabel(b, t(`runType.${b.runType}`))
+            : dashboardCycleLabel(b, t(`runType.${b.runType}`))}
         </td>
         <td className="px-3 py-2.5 text-muted-foreground">{b.company}</td>
         <td
@@ -267,7 +289,7 @@ export default async function PayrollPage({
         <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
           {totals?.net != null ? formatMoney(totals.net, b.currency) : '—'}
         </td>
-        <td className="whitespace-nowrap px-3 py-2.5">
+        <td className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
           {/* 0b326d5f — a processed run whose inputs have moved reads "Reprocess Required"
               INSTEAD OF "Processed", which is the reporter's actual ask. Underneath it is
               still `status = 'processed'`; only what this cell says changes. A CLOSED run
@@ -331,7 +353,7 @@ export default async function PayrollPage({
         <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground">
           {showDate(processedOn.get(b.id))}
         </td>
-        <td className="whitespace-nowrap px-3 py-2.5 text-right">
+        <td className="whitespace-nowrap px-3 py-2.5 text-right first:pl-4 last:pr-4">
           <div className="flex items-center justify-end gap-1.5">
             <Link
               href={`/payroll/${b.id}?from=${fromQuery}`}
@@ -478,10 +500,15 @@ export default async function PayrollPage({
           runsLabel: t('runsInMonth', { n: c.runs }),
         }))}
         companies={scopedCompanies}
-        // The cycle options are the run-type enum itself, labelled from payroll.list.runType — the ONE
-        // namespace that actually holds those four keys (r134 shipped a screen reading them from a
-        // namespace that never had them, and every run page said MISSING_MESSAGE).
-        cycleOptions={payrollRunTypeEnum.enumValues.map((v) => ({ value: v, label: t(`runType.${v}`) }))}
+        // fd8156d4 — the cycle options are the configured Payroll Cycle NAMES, plus run-type fallbacks
+        // for runs with no cycle. Run-type words still come from payroll.list.runType — the ONE namespace
+        // that holds those four keys (r134 shipped a screen reading them from one that never had them).
+        cycleOptions={cycleFilterOptions(
+          cycleNames,
+          yearBatches,
+          filters.cycles,
+          Object.fromEntries(payrollRunTypeEnum.enumValues.map((v) => [v, t(`runType.${v}`)])),
+        )}
         // 0b326d5f — THE NEW STATE IS FILTERABLE, and this is the answer to "say which". A chip the
         // filter cannot reach is worse than no chip: the whole point of the badge is "show me the runs
         // that need attention", and this single-select is the only control on the screen that can do
@@ -519,7 +546,8 @@ export default async function PayrollPage({
 
       {unpublishedCount > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-          🙈 {t('notPublishedBanner', { n: unpublishedCount })}
+          <p className="font-medium">{t('allPeriods')}</p>
+          <p className="mt-1">{t('notPublishedBanner', { n: unpublishedCount })}</p>
         </div>
       )}
 
@@ -574,7 +602,7 @@ export default async function PayrollPage({
                   <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                     {/* `year` is passed as a STRING: ICU formats a number argument with grouping, and
                         "2,026" is not a year. */}
-                    {allBatches.length === 0 ? t('empty') : t('filteredEmpty', { year: String(filters.year) })}
+                    {allTimeCounts.totalCount === 0 ? t('empty') : t('filteredEmpty', { year: String(filters.year) })}
                   </td>
                 </tr>
               )}

@@ -74,3 +74,20 @@ export function attendancePolicyPlanInput(context:AttendancePolicyExecutionConte
    policyRevisionId:selected.id,periodMinutes:4320,intervals,references};
  }catch{return refuse('planIdentityMismatch');}
 }
+
+/** 2f803985 — Intersect and Approved Overtime pay against an approved plan. A day on which the
+ * employee filed no overtime request (or every one was rejected or cancelled) has no approved plan,
+ * so the known payable result is zero, not missing evidence that would hold Payroll. A pending or
+ * approved request (even one whose receipts are incomplete) never takes this branch. */
+export function attendancePolicyPlanNotRequested(context:AttendancePolicyExecutionContext|undefined,
+ approvals:PolicyApprovalInput|undefined,tenantId:string):Extract<PolicyPlanInput,{state:'known'}>|null{
+ if(context?.state!=='policy'||!approvals||approvals.authority!=='sourceOnly')return null;
+ const selected=context.selected;
+ if(approvals.policyRevisionId!==selected.id||approvals.mode!==selected.policy.overtime.approval
+  ||approvals.autoMethod!==selected.policy.overtime.autoMethod||!isDeepStrictEqual(approvals.activation,selected.activation)
+  ||selected.companyId!==context.companyId||!Number.isSafeInteger(selected.activation.epoch)||selected.activation.epoch<1
+  ||!tenantId||approvals.requests.length>500)return null;
+ if(approvals.requests.some(row=>row.cancelledAt===null&&row.requestedMinutes!==null&&row.status!=='rejected'))return null;
+ return {state:'known',authority:'approvedPlanOnly',sourceDate:context.date,companyId:context.companyId,
+  policyRevisionId:selected.id,periodMinutes:4320,intervals:[],references:[]};
+}

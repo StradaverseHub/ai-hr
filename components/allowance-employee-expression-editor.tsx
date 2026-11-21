@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
 import { Button, Field, inputCls } from '@/components/ui';
 import { searchAllowanceEmployeeValues } from '@/app/admin/attendance-allowance/actions';
-import { ALLOWANCE_EMPLOYEE_FIELDS_V4, type AllowanceEmployeeExpression, type AllowanceEmployeeGroup, type AllowanceEmployeeLeaf } from '@/lib/allowance-employee-expression';
+import { isAllowanceEmployeeOrgField, ALLOWANCE_EMPLOYEE_FIELDS_V4, type AllowanceEmployeeExpression, type AllowanceEmployeeGroup, type AllowanceEmployeeLeaf } from '@/lib/allowance-employee-expression';
 const criterion=():AllowanceEmployeeLeaf=>({id:crypto.randomUUID(),type:'criterion',field:'departmentId',operator:'in',values:[]});
 export const newAllowanceEmployeeGroup=():AllowanceEmployeeGroup=>({id:crypto.randomUUID(),type:'group',logic:'and',children:[criterion()]});
 type ReportLabels=(field:string,rows:{id:string;label:string}[])=>void;
@@ -14,7 +14,7 @@ export function AllowanceEmployeeExpressionEditor({value,companyId,onChange,onLa
 function EmployeeNode({node,companyId,depth,onChange,onLabels}:{node:AllowanceEmployeeExpression;companyId:string;depth:number;onChange:(value:AllowanceEmployeeExpression)=>void;onLabels?:ReportLabels}) {
   const t=useTranslations('allowanceV4'),v=useTranslations('allowanceV3'),old=useTranslations('allowanceV2');
   if(node.type==='criterion')return <div className="min-w-0 space-y-3 rounded-lg border border-border p-3">
-    <div className="grid gap-3 sm:grid-cols-2"><Field label={old('field')}><select className={inputCls} value={node.field} onChange={event=>onChange({...node,field:event.target.value as typeof node.field,values:[]})}>{ALLOWANCE_EMPLOYEE_FIELDS_V4.map(field=><option key={field} value={field}>{field==='branch'||field==='division'?t(field):old(`employeeFields.${field}`)}</option>)}</select></Field>
+    <div className="grid gap-3 sm:grid-cols-2"><Field label={old('field')}><select className={inputCls} value={node.field} onChange={event=>onChange({...node,field:event.target.value as typeof node.field,values:[]})}>{ALLOWANCE_EMPLOYEE_FIELDS_V4.map(field=><option key={field} value={field}>{isAllowanceEmployeeOrgField(field)?t(field):old(`employeeFields.${field}`)}</option>)}</select></Field>
     <Field label={old('operator')}><select className={inputCls} value={node.operator} onChange={event=>{const operator=event.target.value as typeof node.operator;onChange({...node,operator,values:operator==='is'||operator==='isNot'?node.values.slice(0,1):node.values});}}>{['is','isNot','in','notIn'].map(operator=><option key={operator} value={operator}>{t(`operators.${operator}`)}</option>)}</select></Field></div>
     <EmployeeValues key={`${companyId}:${node.field}`} companyId={companyId} node={node} onLabels={onLabels} onChange={values=>onChange({...node,values})}/>
   </div>;

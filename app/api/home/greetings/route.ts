@@ -1,3 +1,4 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import {getSession} from '@/lib/session';
 import {AuthRequiredError} from '@/lib/auth-errors';
 import {HomeAccessError} from '@/core/employee-home';
@@ -16,7 +17,7 @@ async function commandBody(request:Request):Promise<unknown>{
  for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
  try{return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{throw new HomeGreetingInputError();}
 }
-export async function POST(request:Request){
+export const POST = capacityAwareRoute(async function POST(request:Request){
  try{
   const session=await getSession(),command=await commandBody(request);
   return Response.json(await sendHomeGreeting(session,command),{headers});
@@ -24,4 +25,4 @@ export async function POST(request:Request){
   const code=error instanceof AuthRequiredError?'authentication':error instanceof HomeGreetingInputError?'invalid':error instanceof HomeAccessError?error.code:'unavailable';
   return Response.json({error:code},{status:code==='authentication'?401:code==='invalid'?400:code==='employmentUnavailable'?403:503,headers});
  }
-}
+});

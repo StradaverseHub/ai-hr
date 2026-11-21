@@ -7,14 +7,17 @@ import { scopedAdmin } from '@/lib/scope';
 import { BatchNotDraftError, PayrollPermissionDeniedError, batchEditImpact } from '@/core/payroll';
 import { listIndividualTxnsAcross, listUnattachedTxnSummary } from '@/core/payroll-view';
 import { buildTxnPanel, type TxnPanel } from './existing-context';
+import {previewIndividualTxnInput,PayComponentCompanyError} from '@/packs/payroll/service';
 import { deriveIndividualTxnAmount, TxnEffectiveDateInvalidError, TxnQuantityRequiredError } from '@/core/pay-components';
 import { PayRuleEvalError } from '@/core/pay-rule';
+import {PayFormulaError,PayFormulaAfterLeavingDateError} from '@/lib/pay-formula-model';
 import {
   createIndividualTxnsBulk,
   getIndividualTxn,
   updateIndividualTxn,
   deleteIndividualTxn,
   InvalidTxnDateError,
+  TxnAfterLeavingDateError,
   TxnNotFoundError,
   AmountNotPositiveError,
   CompanyMismatchError,
@@ -49,6 +52,16 @@ import {
  * enforced here rather than assumed.
  */
 
+/** ad6ed930 — the employee's last day (ISO) carried by either named after-leaving refusal, else null. */
+const leftOnOf = (e: unknown): string | null =>
+  e instanceof TxnAfterLeavingDateError || e instanceof PayFormulaAfterLeavingDateError ? e.leftOn : null;
+
+/** ICU values for the key `txnErrorKey` returns, when it takes any. The ISO date crosses raw; the screen formats it. */
+const txnErrorValues = (e: unknown): { errorValues?: Record<string, string> } => {
+  const leftOn = leftOnOf(e);
+  return leftOn ? { errorValues: { leftOn } } : {};
+};
+
 /** Map a typed individual-transaction error to a friendly key the client resolves against its catalog. */
 const txnErrorKey = (e: unknown): string =>
   // 4b909202 — the only action on this screen that asks for a payroll permission is the add-to-run
@@ -63,6 +76,10 @@ const txnErrorKey = (e: unknown): string =>
       ? 'addToRunNotEmployed'
       : e instanceof InvalidTxnDateError || e instanceof TxnEffectiveDateInvalidError
     ? 'invalidEffectiveDate'
+    : // ad6ed930 — a date after the employee's last day, from the save's own guard or from the formula
+      // runtime. Before the generic PayFormulaError branch below, which would blame the Pay Item's set-up.
+      leftOnOf(e) != null
+      ? 'txnAfterLeavingDate'
     : // 2da9937a — a pay item that works its amount out from a keyed quantity, saved without one. Two keys
       // rather than one interpolated sentence: the screen resolves an error key with no values, and the
       // operator needs to be told WHICH box, not that a box is missing.
@@ -72,7 +89,7 @@ const txnErrorKey = (e: unknown): string =>
         : 'quantityRequiredDays'
       : // A corrupted stored rule resolved to a non-finite figure. Fail closed and say so — writing the
         // typed amount instead would pay a number the configured item did not produce.
-        e instanceof PayRuleEvalError
+        e instanceof PayRuleEvalError || e instanceof PayFormulaError
         ? 'derivedAmountUnavailable'
         : e instanceof AmountNotPositiveError
           ? 'amountNotPositive'
@@ -86,7 +103,7 @@ const txnErrorKey = (e: unknown): string =>
               ? 'duplicateRow'
               : e instanceof ComponentRequiredError
                 ? 'componentRequired'
-                : e instanceof InvalidTxnComponentError
+                : e instanceof InvalidTxnComponentError || e instanceof PayComponentCompanyError
                   ? 'componentInvalid'
                   : // c11e81aa — the chosen Pay Cycle is unknown, archived, another company's, or
                     // disagrees with the run the row is already on. One key: what the operator has to do
@@ -178,7 +195,7 @@ function txnFailure(e: unknown, target?: { processed: boolean }): Extract<TxnAct
         : {}),
     };
   }
-  return { ok: false, error: txnErrorKey(e) };
+  return { ok: false, error: txnErrorKey(e), ...txnErrorValues(e) };
 }
 
 export type TxnActionResult =
@@ -255,7 +272,8 @@ export async function fetchBatchImpactAction(input: { batchId: string }): Promis
 /** Plain-data projection of `batchEditImpact` for the client component (no Date, no service types). */
 export type TxnBatchImpact = {
   batchId: string;
-  status: 'draft' | 'processed' | 'closed';
+  /** 'processing': the background payroll job owns the run; its figures are not final yet. */
+  status: 'draft' | 'processing' | 'processed' | 'closed';
   payPeriod: string;
   needsRecalc: boolean;
   recalcCount: number;
@@ -286,6 +304,8 @@ export type TxnFormInput = {
   amount: number;
   quantity: number | null;
   unit: string | null;
+  /** aac17dd0 — null (edit only) clears a stored method: an inline formula row moved from Amount back to Hours/Days. */
+  calculationMethod?: 'amount' | 'formula' | null;
   notes: string | null;
 };
 
@@ -383,9 +403,12 @@ async function amountForWrite(
     typed: number;
     /** 34062f81 — the row's Effective Date: `calendar_days` follows THIS date's month, not the pay month. */
     txnDate: string;
+    /** aac17dd0 — the operator chose Amount: the typed figure is the amount and no Pay Item formula runs. The
+     *  service re-validates it (formula kinds only, no quantity, positive) in priceIndividualTxnInputTx. */
+    calculationMethod?: 'amount' | 'formula' | null;
   },
 ): Promise<number> {
-  if (!p.componentId) return p.typed;
+  if (!p.componentId || p.calculationMethod === 'amount') return p.typed;
   // The month bounds the attendance and recurring-item reads the rule resolves against, so it has to be a
   // real month. It always is by the time we get here (a batch supplies its own; a period-keyed write is
   // rejected above without one) — this refuses rather than quietly falling back to the typed amount, which
@@ -420,7 +443,7 @@ export type TxnAmountPreview =
        *  pay-item screen shows, not the token. Null when nothing divided by zero. */
       zeroDivisor: string | null;
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string; errorValues?: Record<string, string> };
 
 /**
  * 2da9937a — show the operator the amount BEFORE they save it.
@@ -435,6 +458,9 @@ export async function previewTxnAmountAction(input: {
   payPeriod: string;
   quantity: number | null;
   unit: string | null;
+  calculationMethod?: 'amount' | 'formula';
+  cycleId?: string | null;
+  batchId?: string | null;
   /**
    * 34062f81 — the Effective Date on the form, so the preview prices `calendar_days` against the same
    * month the save will. Empty/absent while the operator has not picked one yet ⇒ the pay month (the
@@ -447,6 +473,12 @@ export async function previewTxnAmountAction(input: {
   if (!input.componentId || !input.employmentId) return { ok: true, derived: false };
   if (!isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
   try {
+    if(input.calculationMethod){
+      const result=await previewIndividualTxnInput(s,{componentId:input.componentId,employmentId:input.employmentId,companyId:input.companyId,
+        payPeriod:input.payPeriod,txnDate:input.txnDate??input.payPeriod+'-01',quantity:input.quantity,unit:input.unit,amount:0,
+        method:input.calculationMethod,cycleId:input.cycleId,batchId:input.batchId});
+      return {ok:true,derived:true,amount:result.amount.toFixed(2),code:'',inputUnit:null,zeroDivisor:null};
+    }
     const d = await deriveIndividualTxnAmount(s, {
       componentId: input.componentId,
       employmentId: input.employmentId,
@@ -469,7 +501,7 @@ export async function previewTxnAmountAction(input: {
         : null,
     };
   } catch (e) {
-    return { ok: false, error: txnErrorKey(e) };
+    return { ok: false, error: txnErrorKey(e), ...txnErrorValues(e) };
   }
 }
 
@@ -499,7 +531,7 @@ export async function previewTxnAmountAction(input: {
  * Read-only: no write, no domain event.
  */
 export type TxnAmountsPreview =
-  | { ok: false; error: string }
+  | { ok: false; error: string; errorValues?: Record<string, string> }
   | {
       ok: true;
       derived: false;
@@ -526,6 +558,7 @@ export async function previewTxnAmountsAction(input: {
   companyId: string;
   payPeriod: string;
   unit: string | null;
+  calculationMethod?: 'amount' | 'formula';
   /** Already deduplicated and normalised by the caller. Deduplicated and capped server-side regardless. */
   entries: { txnDate: string; quantity: string }[];
 }): Promise<TxnAmountsPreview> {
@@ -591,7 +624,7 @@ export async function previewTxnAmountsAction(input: {
         : null,
     };
   } catch (e) {
-    return { ok: false, error: txnErrorKey(e) };
+    return { ok: false, error: txnErrorKey(e), ...txnErrorValues(e) };
   }
 }
 
@@ -631,6 +664,7 @@ export async function createIndividualTxnDayGridAction(input: {
   kind: string;
   componentId: string | null;
   unit: string | null;
+  calculationMethod?: 'amount' | 'formula';
   /** c11e81aa — the chosen Pay Cycle for the WHOLE grid; see TxnFormInput.intendedCycleId. */
   intendedCycleId: string | null;
   lines: DayByDayLineInput[];
@@ -643,8 +677,11 @@ export async function createIndividualTxnDayGridAction(input: {
   const { s, scopeIds } = await scopedAdmin();
   if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
   if (!input.employmentId) return { ok: false, error: 'noEmployeesSelected' };
+  if (!input.componentId) return { ok: false, error: 'componentRequired' };
   if (!input.batchId && !isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
   if (input.lines.length === 0) return { ok: false, error: 'dayGridEmpty' };
+  // aac17dd0 — Day by Day stays quantity-only: a typed Amount is offered on the single Add/Edit form only.
+  if (input.calculationMethod === 'amount') return { ok: false, error: 'rowIncomplete' };
   const targetImpact = input.batchId ? await batchEditImpact(s, { batchId: input.batchId }) : null;
   // The month the rules resolve against: the RUN's when there is one (the service does the same), so the
   // form field and the run can never price against different months.
@@ -670,6 +707,7 @@ export async function createIndividualTxnDayGridAction(input: {
         amount,
         quantity: l.quantity,
         unit: input.unit,
+        calculationMethod: input.calculationMethod,
         notes: l.notes,
         componentId: input.componentId,
         // See the doc above: null IS 'manual'.
@@ -683,6 +721,8 @@ export async function createIndividualTxnDayGridAction(input: {
       rows,
       intendedCycleId: input.intendedCycleId,
       ...(input.confirmAddToRun ? { widenScopeIfNeeded: true } : {}),
+      // ad6ed930 — the window caps its dates at the last day; the service is the authority.
+      refuseAfterLeavingDate: true,
     });
     revalidatePath('/payroll/transactions/individual');
     return {
@@ -749,6 +789,7 @@ export async function createIndividualTxnAction(
       unit: input.unit,
       typed: input.amount,
       txnDate: input.txnDate,
+      calculationMethod: input.calculationMethod,
     });
     const { ids, widenedEmploymentIds } = await createIndividualTxnsBulk(s, {
       ...(input.batchId ? { batchId: input.batchId } : { companyId: input.companyId, payPeriod: input.payPeriod }),
@@ -760,12 +801,15 @@ export async function createIndividualTxnAction(
           amount,
           quantity: input.quantity,
           unit: input.unit,
+          calculationMethod: input.calculationMethod ?? undefined,
           notes: input.notes,
           componentId: input.componentId,
         },
       ],
       intendedCycleId: input.intendedCycleId,
       ...(input.confirmAddToRun ? { widenScopeIfNeeded: true } : {}),
+      // ad6ed930 — the window caps its dates at the last day; the service is the authority.
+      refuseAfterLeavingDate: true,
     });
     revalidatePath('/payroll/transactions/individual');
     return {
@@ -815,6 +859,7 @@ export async function updateIndividualTxnAction(
       // 34062f81 — the date the row WILL carry after this edit (the service keeps the stored one when the
       // form sends none), so moving a line to another month re-prices its calendar days.
       txnDate: input.txnDate ?? existing.txnDate,
+      calculationMethod: input.calculationMethod,
     });
     await updateIndividualTxn(s, {
       id: input.id,
@@ -823,9 +868,11 @@ export async function updateIndividualTxnAction(
       amount,
       quantity: input.quantity,
       unit: input.unit,
+      calculationMethod: input.calculationMethod,
       notes: input.notes,
       componentId: input.componentId,
       ...(input.intendedCycleId !== undefined ? { intendedCycleId: input.intendedCycleId } : {}),
+      refuseAfterLeavingDate: true,
     });
     revalidatePath('/payroll/transactions/individual');
     // `recalcOnEdit` is the SERVICE's own answer, read on the row that was about to be edited — not a

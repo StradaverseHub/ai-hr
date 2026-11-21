@@ -1,0 +1,131 @@
+{
+  "sourceBasis": "Frozen f6f7da9158e0082c6eb0a14a1b1520232de2c177 native SQL 056eb347fbd5aef43d86ff55b8968d1ab4144436c3ac5baa7e8d21efaaf37c99; source-derived intent, not runtime observations",
+  "functionsAdded": [
+    {
+      "signature": "app.automation_business_partner_can_manage()",
+      "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.automation_business_partner_workspace()",
+      "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.automation_business_partner_save(integer,jsonb,text)",
+      "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.automation_business_partner_people(text)",
+      "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.automation_business_partner_scope_options(text,text)",
+      "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.automation_business_partner_history_immutable()",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    }
+  ],
+  "tablesAdded": [
+    {
+      "table": "public.automation_business_partner_config",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "SELECT",
+          "INSERT",
+          "UPDATE"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.automation_business_partner_config_revision",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "SELECT",
+          "INSERT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    }
+  ],
+  "policiesAdded": [
+    {
+      "schema": "public",
+      "table": "automation_business_partner_config",
+      "name": "automation_business_partner_config_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "tenant_id=app.current_tenant_id() AND app.acting_as_owner()",
+      "check": "tenant_id=app.current_tenant_id() AND app.acting_as_owner()",
+      "source": "UNALLOCATED reviewed native owner DDL"
+    },
+    {
+      "schema": "public",
+      "table": "automation_business_partner_config_revision",
+      "name": "automation_business_partner_revision_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "tenant_id=app.current_tenant_id() AND app.acting_as_owner()",
+      "check": "tenant_id=app.current_tenant_id() AND app.acting_as_owner()",
+      "source": "UNALLOCATED reviewed native owner DDL"
+    }
+  ],
+  "existingFunctionsTouched": [
+    {
+      "signature": "app.lifecycle_canonical_pbp_scope(uuid,uuid,uuid)",
+      "preimageFile": "0953_lifecycle_service_info_intents.sql",
+      "preimageLine": 52,
+      "oldProsrcSha256": "88a63fcd4da4e790aed6c3920c134904030903171a29204757ac779e087c4722",
+      "newProsrcSha256": "de2616021d48a9d63df7ee9cb8c27fec063bdff677ec95b6101d1dcc418cb6d6"
+    },
+    {
+      "signature": "app.lifecycle_canonical_pbp_user(uuid,uuid)",
+      "preimageFile": "0953_lifecycle_service_info_intents.sql",
+      "preimageLine": 65,
+      "oldProsrcSha256": "0630edd8b6d65e4026068f5feaf1de738cc28b8181ddc599755de02b81c91af1",
+      "newProsrcSha256": "a1fc82e93a2c5dfd78504b1f278ef81bf64105f2643b5a5d05918a1dd89fbf63"
+    },
+    {
+      "signature": "app.contract_shared_tracker_subjects()",
+      "preimageFile": "6432_contract_shared_navigation_access.sql",
+      "preimageLine": 94,
+      "oldProsrcSha256": "ecb7c7755b4ae74b8aa87af9864fceb94a1a62de77d6c51933c512cd96447a3a",
+      "newProsrcSha256": "567ae38b402276f138de867dd4a179cdad7876adbbbfa5e27000e8fc4a012bd3"
+    },
+    {
+      "signature": "app.contract_admission_page(text,uuid,integer,integer)",
+      "preimageFile": "6404_contract_intake_paged_read.sql",
+      "preimageLine": 2,
+      "oldProsrcSha256": "d6ebd34d783b49c1ad2b1e56b5a742aff2e6b2b9263416d36ef25ad2167b5824",
+      "newProsrcSha256": "2aa9acad2acb003da30a7f870f61d5af4adb45030141598b2e2ab1037b779342"
+    },
+    {
+      "signature": "app.probation_routed_holders(uuid[])",
+      "preimageFile": "5764_probation_routed_holders.sql",
+      "preimageLine": 35,
+      "oldProsrcSha256": "969847bb69e9cbd779f87050d365e89225d7592c75475bf3f4927bf9382c767b",
+      "newProsrcSha256": "168c90c2c1393bffeb6130999bcb83ce5873abbca92b2ea5de126a281c9d4100"
+    }
+  ]
+}

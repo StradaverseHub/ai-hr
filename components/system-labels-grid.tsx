@@ -1,5 +1,7 @@
 'use client';
 
+import {SystemLabelExportButton} from './system-label-export-button';
+
 /**
  * SystemLabelsGrid — the Excel-style master-data editor for System Labels (feedback 62de487d).
  *
@@ -26,6 +28,7 @@ import { refreshEditableRows } from '@/lib/refresh-editable-rows';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from 'react';
 import { useFitToView } from '@/components/ui/fit-to-view';
 import { useTranslations } from 'next-intl';
+import { useRegisteredUnsavedChanges } from '@/components/use-registered-unsaved-changes';
 import { toast } from 'sonner';
 import {
   ArchiveRestore,
@@ -50,6 +53,8 @@ import {
 } from './client-pager';
 
 import { ORGANISATION_LABEL_KINDS, ORGANISATION_LABEL_COLUMNS, type OrganisationLabelKind } from '@/lib/system-label-definition';
+import {SystemLabelHeadChoice} from './system-label-head-choice';
+import type {LabelHeadSelectionDisplay} from '@/lib/system-label-head-choice';
 export type GridKind = OrganisationLabelKind;
 
 export type GridCompany = { id: string; name: string; archived?:boolean };
@@ -82,6 +87,8 @@ type RowState = GridRecord & {
   key: string; // stable client key (id for existing, draft-N for new)
   isNew: boolean;
   dirty: boolean;
+  // One display record for this row's CURRENT selection, never a browsed-choice cache or Save field.
+  headDisplay?: LabelHeadSelectionDisplay;
 };
 
 export type GridActions = {
@@ -217,10 +224,9 @@ export function SystemLabelsGrid({
    * drops a head step whose head is unset (core/leave.ts), so every such step was silently skipped. On
    * the live tenant that was 0 of 25 departments and 0 of 7 business units.
    *
-   * NOT filtered to active employments on purpose: a select whose current value is absent from its
-   * options renders BLANK, which on this column would state "no head" about a department that has one.
-   * The list therefore has to be a superset of whatever is stored. Absent ⇒ the column renders with the
-   * None option alone (the shape the DOM tests that do not exercise heads see).
+   * Only exact configured, authorized head labels are supplied initially. The row-owned chooser
+   * browses employees on demand; ended employments stay eligible for browsing under the same native
+   * population. A retained head missing from these labels stays explicitly unavailable, never None.
    */
   headByCompany?: Record<string, { id: string; label: string }[]>;
   isGroupAdmin: boolean;
@@ -334,6 +340,7 @@ export function SystemLabelsGrid({
   const dirtyExisting = rows.filter((r) => !r.isNew && r.dirty);
   const drafts = rows.filter((r) => r.isNew);
   const hasChanges = dirtyExisting.length > 0 || drafts.length > 0;
+  useRegisteredUnsavedChanges(hasChanges, t('unsavedChanges'));
   // 797e3523: how many filters diverge from their defaults — badges the Filter button so a collapsed
   // panel never silently hides rows.
   const activeFilterCount = (search.trim() ? 1 : 0) + (statusFilter !== 'active' ? 1 : 0) + (scopeFilter !== 'all' ? 1 : 0);
@@ -348,6 +355,19 @@ export function SystemLabelsGrid({
     const target = rows.find((r) => r.key === key);
     if (!target || !canWrite(target)) return;
     patchRows(rows.map((r) => (r.key === key ? { ...r, [field]: value, dirty: true } : r)));
+  }
+  function updateHeadSelection(key:string,value:string|null,display?:LabelHeadSelectionDisplay|null){
+    const target=rows.find(row=>row.key===key);if(!target||!canWrite(target))return;
+    patchRows(rows.map(row=>row.key!==key?row:{...row,headEmploymentId:value,dirty:true,
+      headDisplay:display?.companyId===row.companyId&&display.employmentId===value?display:undefined}));
+  }
+  function resolveHeadDisplay(k:GridKind,key:string,display:LabelHeadSelectionDisplay){
+    setRowsByKind(previous=>{
+      const target=previous[k].find(row=>row.key===key);
+      if(!target||target.companyId!==display.companyId||target.headEmploymentId!==display.employmentId
+        ||(target.headDisplay?.companyId===display.companyId&&target.headDisplay.employmentId===display.employmentId&&target.headDisplay.label===display.label))return previous;
+      return {...previous,[k]:previous[k].map(row=>row.key===key?{...row,headDisplay:display}:row)};
+    });
   }
   /**
    * Put a new draft in front of the reader (9da61c86).
@@ -385,7 +405,7 @@ export function SystemLabelsGrid({
   function duplicateRow(src: RowState) {
     if (!canWrite(src)) return;
     draftSeq.current += 1;
-    const copy = { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal && isGroupAdmin), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description };
+    const copy = { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal && isGroupAdmin), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, headDisplay:src.headDisplay?.companyId===src.companyId&&src.headDisplay.employmentId===src.headEmploymentId?src.headDisplay:undefined, description: src.description };
     const next = [copy, ...rows];
     patchRows(next);
     followDraft(next, copy.key);
@@ -473,7 +493,8 @@ export function SystemLabelsGrid({
           [k]: prev[k].map((r) => {
             if (r.isNew) {
               const newId = idByKey.get(r.key);
-              return newId ? { ...r, companyId:creates.find(create=>create.key===r.key)?.companyId??r.companyId, id: newId, key: newId, isNew: false, dirty: false } : r;
+              const savedCompany=creates.find(create=>create.key===r.key)?.companyId??r.companyId;
+              return newId ? { ...r, companyId:savedCompany,headDisplay:r.headDisplay?.companyId===savedCompany?r.headDisplay:undefined, id: newId, key: newId, isNew: false, dirty: false } : r;
             }
             return updatedKeys.has(r.key) ? { ...r, dirty: false } : r;
           }),
@@ -511,7 +532,7 @@ export function SystemLabelsGrid({
     const k = kind;
     if (r.isNew) {
       const owner=criteria.isGlobal?newRowCompany:criteria.companyIds.find(id=>writableIds.has(id)&&companies.some(company=>company.id===id&&!company.archived))??r.companyId;
-      setRowsByKind(previous=>({...previous,[k]:previous[k].map(row=>row.key===r.key?{...row,companyId:owner,headEmploymentId:owner===row.companyId?row.headEmploymentId:null,isGlobal:criteria.isGlobal,assignedCompanyIds:criteria.companyIds,dirty:true}:row)}));
+      setRowsByKind(previous=>({...previous,[k]:previous[k].map(row=>row.key===r.key?{...row,companyId:owner,headEmploymentId:owner===row.companyId?row.headEmploymentId:null,headDisplay:owner===row.companyId?row.headDisplay:undefined,isGlobal:criteria.isGlobal,assignedCompanyIds:criteria.companyIds,dirty:true}:row)}));
       setScopePopover(null);
       return;
     }
@@ -623,39 +644,11 @@ export function SystemLabelsGrid({
    * or presenting an internal identifier as a person's name. No wider employee read is needed. */
   function headLabel(r: RowState): string {
     if (!r.headEmploymentId) return to('headNone');
+    if(r.headDisplay?.companyId===r.companyId&&r.headDisplay.employmentId===r.headEmploymentId)return r.headDisplay.label??t('headUnavailable');
     return (headByCompany[r.companyId] ?? []).find((o) => o.id === r.headEmploymentId)?.label ?? t('headUnavailable');
-  }
-  /** r285 — the options a row's Head select offers. The row's CURRENT head is always among them, even
-   *  when it is missing from the company's option list: a `<select>` whose value matches no option
-   *  renders blank, and blank on this column means "no head". The one thing this cell may never do is
-   *  say a unit has no head when it has one. */
-  function headOptions(r: RowState): { id: string; label: string }[] {
-    const opts = headByCompany[r.companyId] ?? [];
-    if (!r.headEmploymentId || opts.some((o) => o.id === r.headEmploymentId)) return opts;
-    return [{ id: r.headEmploymentId, label: headLabel(r) }, ...opts];
   }
   const kindHasHead = kind === 'department' || kind === 'business_unit';
 
-  function exportCsv() {
-    const cols = TEXT_COLS[kind].map((c) => String(c.field));
-    const header = [...cols, 'scope', 'status', 'lastUpdatedBy', 'lastUpdatedAt'];
-    const esc = (v: unknown) => {
-      const s = v == null ? '' : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const lines = [header.join(',')];
-    for (const r of view) {
-      const cells = cols.map((c) => esc((r as unknown as Record<string, unknown>)[c]));
-      cells.push(esc(scopeLabel(r)), esc(r.archived ? t('statusArchived') : t('statusActive')), esc(r.lastUpdatedBy), esc(r.lastUpdatedAt));
-      lines.push(cells.join(','));
-    }
-    const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `system-labels-${kind}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
 
   const counts = useMemo(() => {
     const c = {} as Record<GridKind, number>;
@@ -671,14 +664,14 @@ export function SystemLabelsGrid({
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
       {/* Left rail: categories */}
-      <nav className="shrink-0 lg:w-52">
+      <nav className="min-w-0 shrink-0 lg:w-52" data-label-categories>
         <div className="rounded-xl border border-border bg-card p-2">
-          <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('categories')}</div>
+          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{t('categories')}</div>
           {/* c9986927 — the rail now carries up to thirteen entries (four kinds + Grades + eight relocated
               organisation categories), so it scrolls in place rather than pushing the page. */}
-          <ul className="mt-1 max-h-[60vh] space-y-0.5 overflow-y-auto">
+          <ul className="mt-1 flex max-w-full gap-1 overflow-x-auto lg:block lg:max-h-[60vh] lg:space-y-0.5 lg:overflow-x-hidden lg:overflow-y-auto">
             {KINDS.map((k) => (
-              <li key={k}>
+              <li key={k} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -690,7 +683,7 @@ export function SystemLabelsGrid({
                     setRowErrors({});
                     setError(null);
                   }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-lg lg:whitespace-normal px-3 py-2 text-sm transition-colors ${
                     !showGrades && !showGradeGroups && optionKey === null && kind === k
                       ? 'bg-primary/10 font-medium text-primary'
                       : 'text-foreground hover:bg-muted'
@@ -704,7 +697,7 @@ export function SystemLabelsGrid({
             {/* b1b81a08 — the fifth rail entry: Grades. Same button, same live count; selecting it swaps
                 the BODY for gradesSlot rather than re-pointing `kind` (job_grade is tenant-global). */}
             {gradesSlot !== undefined && (
-              <li>
+              <li className="shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -715,7 +708,7 @@ export function SystemLabelsGrid({
                     setRowErrors({});
                     setError(null);
                   }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-lg lg:whitespace-normal px-3 py-2 text-sm transition-colors ${
                     showGrades ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
                   }`}
                 >
@@ -729,7 +722,7 @@ export function SystemLabelsGrid({
                 label comes from the page for the reason the option slots' do — the editor keeps its own
                 `admin.benefitScheme` strings, so nothing is re-translated for the move. */}
             {gradeGroupsSlot !== undefined && (
-              <li>
+              <li className="shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -740,7 +733,7 @@ export function SystemLabelsGrid({
                     setRowErrors({});
                     setError(null);
                   }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-lg lg:whitespace-normal px-3 py-2 text-sm transition-colors ${
                     showGradeGroups ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
                   }`}
                 >
@@ -753,7 +746,7 @@ export function SystemLabelsGrid({
                 labels come from the page (they keep their existing admin.profileOptions.category.* strings,
                 so nothing is re-translated for the move). */}
             {optionSlots.map((slot) => (
-              <li key={slot.key}>
+              <li key={slot.key} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -764,7 +757,7 @@ export function SystemLabelsGrid({
                     setRowErrors({});
                     setError(null);
                   }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-lg lg:whitespace-normal px-3 py-2 text-sm transition-colors ${
                     optionKey === slot.key ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
                   }`}
                 >
@@ -812,19 +805,17 @@ export function SystemLabelsGrid({
             {showFilters ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={!newRowCompany || pending}>
+            <Button aria-busy={pending} type="button" variant="outline" size="sm" onClick={addRow} disabled={!newRowCompany || pending}>
               {t('addRow')}
             </Button>
             <Button type="button" variant="outline" size="sm" onClick={() => setCopyOpen((v) => !v)} disabled={selected.size === 0}>
               {t('copyToCompaniesSelected')}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={exportCsv}>
-              {t('exportCsv')}
-            </Button>
-            <Button type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
+            <SystemLabelExportButton kind={kind}/>
+            <Button aria-busy={pending} type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
               {t('saveAll')}
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={discard} disabled={!hasChanges || pending}>
+            <Button aria-busy={pending} type="button" variant="outline" size="sm" onClick={discard} disabled={!hasChanges || pending}>
               {t('discard')}
             </Button>
           </div>
@@ -997,20 +988,12 @@ export function SystemLabelsGrid({
                             {headLabel(r)}
                           </span>
                         ) : (
-                          <select
-                            name="headEmploymentId"
-                            aria-label={to('fieldHead')}
-                            value={r.headEmploymentId ?? ''}
-                            onChange={(e) => updateCell(r.key, 'headEmploymentId', e.target.value || null)}
+                          <SystemLabelHeadChoice companyId={r.companyId} value={r.headEmploymentId} label={to('fieldHead')}
+                            noneLabel={to('headNone')} unavailableLabel={t('headUnavailable')} selectedLabel={headLabel(r)}
+                            onChange={(value,display) => updateHeadSelection(r.key,value,display)}
+                            onResolvedSelection={(display)=>resolveHeadDisplay(kind,r.key,display)}
                             className={`${cellInput} w-full min-w-0 ${err?.field === 'headEmploymentId' ? 'border-destructive' : ''}`}
-                          >
-                            <option value="">{to('headNone')}</option>
-                            {headOptions(r).map((o) => (
-                              <option key={o.id} value={o.id}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         )}
                       </td>
                     )}

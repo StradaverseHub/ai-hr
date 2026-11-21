@@ -27,7 +27,7 @@ export async function loadCanonicalModuleJob(ctx:SessionContext,input:unknown):P
    const result=await read.moduleWork(module),expected=MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)![1];
    if(result.module!==module||result.capability!==expected||result.scope!=='current-caller')throw Error();
    return{presentation:presentCanonicalModuleData(module,result.data),specialist:executeCanonicalSpecialist({kind:'canonical_specialist_v1',module,playbook:'canonical_domain_v1'},result)};
-  });
+  },undefined,'presentation');
   view=Object.freeze({state:'ready',presentation:presentation.presentation,answerExplanations:specialistAnswerExplanations(presentation.specialist,presentation.presentation),specialist:presentation.specialist,specialistVersion:compactSpecialistWork(presentation.specialist,{mode:'baseline',version:0,configuration:{kind:'canonical_specialist_v1',module,playbook:'canonical_domain_v1'}}),checkedAt:Date.now(),viewId:randomUUID()});
  }catch{view=Object.freeze({state:'unavailable',module,checkedAt:Date.now(),viewId:randomUUID()});}
  owners.set(view,{principal:principal(captured),issuedAt:Date.now(),digest:assistantSourceDigest(view)});return view;
@@ -82,7 +82,7 @@ export async function loadGovernedSpecialistToolJob(ctx:SessionContext,tx:Tx,inp
   // card is withheld as unavailable, never shown as a success. The workspace owner has already proved
   // its principal under the Access interval it holds; a refusal here withholds only this card.
   let read:Awaited<ReturnType<typeof readGovernedSpecialistToolResultTx>>|null=null;
-  try{read=await tx.transaction(savepoint=>readGovernedSpecialistToolResultTx(savepoint,current,jobId,module));}catch{read=null;}
+  try{read=await tx.transaction(savepoint=>readGovernedSpecialistToolResultTx(savepoint,current,jobId,module,true));}catch{read=null;}
   try{if(!read||assistantSourceDigest(read.outcome)!==expectedDigest)throw Error();const presentation=presentGroundedToolOutcome('my_module_work',read.outcome);if(!presentation)throw Error();view=Object.freeze({state:'ready',presentation,checkedAt:Date.now(),viewId:randomUUID(),toolName:'my_module_work',answerExplanations:specialistAnswerExplanations(read.assessment,presentation),specialist:read.assessment,specialistVersion:read.outcome.specialistWork});}
   catch{view=Object.freeze({state:'unavailable',module:null,checkedAt:Date.now(),viewId:randomUUID()});}
  }

@@ -9,8 +9,9 @@ import {hireEmployee} from '../core/org';
 import {isModuleEnabled} from '../core/entitlements';
 import {setCompensation} from '../core/comp';
 import {createBatch,createAdditionalRun,generatePayslips,upsertPayComponent,setEmploymentPayComponent,setPayrollBatchComponent} from '../packs/payroll/service';
+import {createIndividualTxnsBulk} from '../core/payroll-individual-txn';
 import {readPcbExemptions} from '../core/pcb-exemptions';
-import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 import * as schema from '../db/schema';
 const year=Number(todayInKualaLumpur().slice(0,4));
 const period=`${year}-01`;
@@ -30,6 +31,23 @@ describe('r387 retained one-off noncash exemption assessment',()=>{
   const addBonus=async(batchId:string)=>setPayrollBatchComponent(ctx,{batchId,employmentId:employee.employmentId,componentId:bonus.id,amount:1000});
   return {ctx,employee,slip,addBonus};
  }
+ it('preserves the selected Individual Transaction benefit and applies PCB outside cash earnings',async()=>{
+  await setSetting(base.tenantId,'payroll.individual_txn_pay_enabled',true);
+  const {ctx,employee,slip}=await setup();
+  const benefit=await upsertPayComponent(ctx,{...benefitFlags,code:'SYNTH_TXN_BIK',label:'Travel benefit',name:'Travel benefit',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:'PCB_TAXABLE'});
+  const batch=await createBatch(ctx,{companyId:base.companyId,payPeriod:period});
+  const {ids}=await createIndividualTxnsBulk(ctx,{batchId:batch.batchId,employmentIds:[employee.employmentId],
+   rows:[{kind:'earning',txnDate:period+'-02',amount:125,componentId:benefit.id}]});
+  const [saved]=await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.id,ids[0]));
+  expect(saved).toMatchObject({componentId:benefit.id,kind:'earning',amount:'125.00'});
+  await generatePayslips(ctx,{batchId:batch.batchId});
+  const paid=await slip(batch.batchId);
+  expect(Number(paid.grossPay)).toBe(10000);
+  expect(paid.statutory).toMatchObject({
+   recordLines:expect.arrayContaining([expect.objectContaining({code:'SYNTH_TXN_BIK',amount:125,nonPayable:true})]),
+   pcbNonCash:{ownedEaEntries:expect.arrayContaining([expect.objectContaining({code:'SYNTH_TXN_BIK',source:'one_off',reportableAmount:125,subjectPCB:true})])},
+  });
+ });
  it('retains distinct earlier one-off BIK and VOLA rows in subsequent additional and restated regular working',async()=>{
   const {ctx,employee,slip,addBonus}=await setup();
   const bik=await upsertPayComponent(ctx,{...benefitFlags,code:'SYNTH_ONEOFF_BIK',label:'Saved One-off Car',name:'Saved One-off Car',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:'PCB_PERQUISITE'});

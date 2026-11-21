@@ -22,7 +22,7 @@ import {attendancePolicyDurationFormulaProjection} from '../packs/attendance/pol
 import {randomUUID,createHash} from 'node:crypto';
 import {attendancePolicyExecutionProposal,attendancePolicyDurationExecutionProposal} from '../packs/attendance/policy-execution-proposal';
 import {and,asc,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -30,6 +30,7 @@ import {assignDefaultShift,createShift,setRestDay} from '../core/roster';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {ATTENDANCE_POLICY_DAY_CLASSES,type AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {createPinnedHrDay} from './helpers/pinned-hr-day';
 import {lockAttendancePolicyImportTx,activateOvertimePattern,checkIn,checkOut,ensureStandardRule,canonicalOvertimeInputTx,canonicalOvertimePayrollInputTx,canonicalOvertimeToilInputTx,createOvertimeCalculationOwner,getOvertimePattern,stopOvertimePatternVersion,readOvertimeCalculationTx,readOvertimePatternCalculationTx,calculateOvertimePatternDay,
  checkInTx,checkOutTx,lockOvertimeSourceTx,reserveOvertimeSettlementTx,saveOvertimePatternDraft,scheduleAttendanceGroupPolicy,validateOvertimePatternActivation,requestAttendanceCorrection,decideAttendanceCorrection,cancelAttendanceApplication,canSubmitUnclockedAttendanceWork,setAttendancePolicy} from '../packs/attendance/service';
 import {adminCtx,entitledCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
@@ -37,15 +38,18 @@ import {createAttendancePolicyStorageFixtures} from './attendance-policy-storage
 
 
 let b:Base,ctx:SessionContext;
-const day=(offset:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+offset*86400000).toISOString().slice(0,10);
+// One HR day per case (read once from the HR date owner); see test/helpers/pinned-hr-day.ts.
+const hrDay=createPinnedHrDay(),day=hrDay.day;
 
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
+afterEach(()=>hrDay.release());
+beforeEach(async()=>{hrDay.pin();await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');ctx=adminCtx(b);});
 const {capturedClock,fixture,header,part}=createAttendancePolicyStorageFixtures({get b(){return b;},get ctx(){return ctx;},day});
 
 type Fixture=Awaited<ReturnType<typeof fixture>>;
 describe('immutable non-payable policy part storage',()=>{
 
+ // Explicit timeout: measured 20.3 s against the global 30 s in gate 42958137526.
  it('transfers an actual split policy parent into Payroll once and generates the canonical payslip',async()=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
   await setSetting(b.tenantId,'payroll.individual_txn_pay_enabled',false);ctx=await entitledCtx(b);
@@ -73,7 +77,7 @@ describe('immutable non-payable policy part storage',()=>{
   await expect(transferOvertimePatternToPayroll(ctx,transfer)).rejects.toThrow();
   await expect(deleteDraftBatch(ctx,{batchId:batch.batchId})).rejects.toThrow();
   expect(await owner.db.select().from(s.overtimeSourceSettlement).where(and(eq(s.overtimeSourceSettlement.sourceId,read.source.id),sql`released_at IS NULL`))).toHaveLength(1);
- });
+ },90_000);
  it('banks actual policy TOIL under its existing credit owner, excludes cash, and releases on canonical reversal',async()=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);
   const f=await fixture('auto','12','actual',false,undefined,0,true),p={employmentId:f.employmentId,date:f.sourceDate};
@@ -97,6 +101,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect((await owner.db.select().from(s.toilAccrual).where(eq(s.toilAccrual.id,accrual.id)))[0].status).toBe('reversed');
  });
 
+ // Explicit timeout: measured 15.0 s against the global 30 s in gate 42958137526.
  it('serializes independent app reservations across overlapping source parents and releases coverage through the canonical owner',async()=>{
   await setModule(b.tenantId,'payroll','active');ctx=await entitledCtx(b);
   const f=await fixture('auto','12','actual',false,undefined,0,true);
@@ -140,7 +145,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect(await transferOvertimePatternToPayroll(ctx,{employmentId:f.employmentId,date:next,expectedCalculationId:right.calculation.id,
    expectedSourceRevision:right.source.revision,batchId:replacement.batchId,reason:'Fictional source becomes available after canonical coverage release'}))
    .toMatchObject({status:'transferred'});
- });
+ },90_000);
 
  it.each(['identical','datedRates'] as const)('records and pays one capped parent across actual dated classes using $0 immutable definitions',async scope=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components',null);
@@ -312,6 +317,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect((await runToilExpiry(ctx,{today:credit.expiresOn})).processed).toBe(0);
  });
 
+ // Explicit timeout: measured 23.7 s ('nearest') against the global 30 s in gate 42958137526.
  it.each([{mode:'up' as const,physical:125,direction:'earliest' as const},
   {mode:'nearest' as const,physical:135,direction:'latest' as const}])('carries $mode rounded counts through actual Payroll and independent TOIL without lengthening captures',async({mode,physical,direction})=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');await setModule(b.tenantId,'typed_pay_components',null);
@@ -333,7 +339,8 @@ describe('immutable non-payable policy part storage',()=>{
   expect(coverage.allocations.reduce((n,row)=>n+row.minutes,0)).toBe(physical);
   expect(coverage.intervals.reduce((n,row)=>n+row.toEpochMillisecond-row.fromEpochMillisecond,0)).toBe(physical*60000-555);
   const counts=coverage.countAttribution;if(!counts)throw Error('Expected explicit rounded count/date binding');
-  expect(counts.parts.map(row=>row.minutes)).toEqual(direction==='earliest'?[60+extra,physical-60]:[60,physical-60+extra]);
+  // 2f803985: each date rounds its own portion — the shift date's whole 60 stays 60, the next date takes the remainder.
+  expect(counts.parts.map(row=>row.minutes)).toEqual([60,physical-60+extra]);
   expect(read.evidence.evidence.policyCapturedCoverage).toEqual(coverage);
   // Original refused snapshots with no rounding-attribution field remain refused and readable
   // as physical proposal parts; the new source owner may not backfill or promote that history.
@@ -380,7 +387,7 @@ describe('immutable non-payable policy part storage',()=>{
   expect(claim).toMatchObject({mode:'toil',coverageKind:'policyPhysical'});
   await reverseLeaveCredit(ctx,{accrualId:credit.id,reason:'Fictional rounded TOIL reversal'});
   expect((await owner.db.select().from(s.overtimeSourceSettlement).where(eq(s.overtimeSourceSettlement.id,claim.id)))[0].releasedAt).not.toBeNull();
- });
+ },90_000);
 
  it('refuses rounded TOIL when a dated next-month allocation already belongs to a later cutoff Payroll period',async()=>{
   await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'toil','active');ctx=await entitledCtx(b);

@@ -99,7 +99,7 @@ describe('b1b81a08 · the destination — a fifth rail entry with its own body',
     expect(ORGANISATION_LABEL_KINDS).toEqual(['department','position','cost_center','business_unit']);
   });
 
-  it('the grade body carries NO company / scope / sharing wiring (job_grade is tenant-global)', () => {
+  it('the grade body never exposes generic company-sharing mutations', () => {
     expect(existsSync(resolve(here, '../components/grade-labels-grid.tsx'))).toBe(true);
     for (const forbidden of [
       'companyId',
@@ -117,13 +117,13 @@ describe('b1b81a08 · the destination — a fifth rail entry with its own body',
   // other category"), but only as a fixed read-only label. On the company-scoped kinds Criteria is the
   // sharing-scope cell; for a tenant-global catalog its one possible value is Global. The assertion above
   // still forbids every piece of the scope WIRING, so this cannot drift into an editable scope by accident.
-  it('the grade body renders Criteria between Rank and Status as a fixed, non-editable Global label', () => {
+  it('the grade body renders saved Criteria between Rank and Status without a generic scope editor', () => {
     const at = (needle: string) => {
       const i = gradeGridSrc.indexOf(needle);
       return i < 0 ? Number.POSITIVE_INFINITY : i;
     };
     expect(gradeGridSrc).toContain("t('col.scope')");
-    expect(gradeGridSrc).toContain("t('scopeGlobal')");
+    expect(gradeGridSrc).toContain('<SystemLabelScope ids={data.find(row=>row.id===r.id)?.scopeCompanyIds}/>');
     // Column order: … Rank → Criteria → Status → Actions. `col.rank` first appears in its header cell.
     expect(at("t('col.rank')")).toBeLessThan(at("t('col.scope')"));
     expect(at("t('col.scope')")).toBeLessThan(at("t('col.status')"));

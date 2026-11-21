@@ -1,4 +1,5 @@
 'use server';
+import { AttendanceWorkflowSubmissionError } from '@/lib/attendance-workflow-submission';
 import { AttendanceLevelError, attendanceLevelProblemToken } from '@/lib/attendance-workflow-v3';
 
 import {attendancePolicyLocalWorkInstant} from '@/lib/attendance-policy-unclocked-work';
@@ -6,6 +7,7 @@ import { publicErrorMessage } from '@/lib/public-error';
 import type { AttendanceDayKindOverride } from '@/lib/attendance-day-adjustment';
 import { saveAttendanceDayEdit, amendExistingAttendanceApplication } from '@/packs/attendance/service';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { revalidatePath } from 'next/cache';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
@@ -19,6 +21,14 @@ import {
   ClockDataChangedError,
   AttendancePayrollClosedError,
 } from '@/packs/attendance/service';
+import { OvertimeBackdateNotAllowedError } from '@/lib/overtime-backdate';
+
+/** 87bd9656 — HR follows the same Overtime Backdate Control; its refusal is shown in HR's own language. */
+async function overtimeRequestErrorMessage(error:unknown){
+ if(error instanceof OvertimeBackdateNotAllowedError)
+  return (await getTranslations('scheduleOvertimeSetting'))('backdateRefused',{days:error.limitDays,date:error.earliestDate});
+ return publicErrorMessage(error);
+}
 
 /** Decide an existing request; its original requester and proposal stay intact. */
 export async function adminCorrectAttendanceDayAction(formData: FormData) {
@@ -83,6 +93,7 @@ export async function saveAttendanceClockDataAction(formData: FormData) {
     if(raw.length>40000) throw new Error('Invalid clock data');
     ({correctionId}=await requestAttendanceCorrection(s,{employmentId,date,reason,clockChanges:JSON.parse(raw)}));
   } catch(e) {
+    if (e instanceof AttendanceWorkflowSubmissionError) fail('myDayWorkflowUnavailable');
     if (e instanceof AttendanceLevelError) redirect(`${back}&workflowProblem=${encodeURIComponent(attendanceLevelProblemToken(e.problem))}`);
     fail(e instanceof ClockDataChangedError ? 'clockDataChanged' : e instanceof AttendancePayrollClosedError ? 'clockDataPayrollClosed' : 'correctionRejected');
   }
@@ -126,5 +137,5 @@ export async function submitUnclockedAttendanceWorkAction(formData:FormData){
   const result=await requestAttendanceCorrection(s,{employmentId,date,reason:String(formData.get('reason')??''),
    requestedOtMinutes:Number(formData.get('requestedOtMinutes')),unclockedWork:{completeWorkedDay:true,intervals,...(requestedIntervals?{requestedIntervals}:{})}});
   refreshAttendanceDay();return {ok:true as const,correctionId:result.correctionId};
- }catch(error){return {ok:false as const,message:publicErrorMessage(error)};}
+ }catch(error){return {ok:false as const,message:await overtimeRequestErrorMessage(error)};}
 }

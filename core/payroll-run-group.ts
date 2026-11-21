@@ -21,177 +21,24 @@
  * `totalEmployeesFailed`, and must never be rendered as a failure. The all-or-nothing constraint on
  * FAILURE is untouched.
  *
- * Sequential, not parallel: each `generatePayslips` is its own transaction, so companies are processed one
- * at a time and presented to the user as a single run. HAZARD DISCIPLINE (both covered by tests):
+ * Each company's run is now its own background processing job (core/payroll-processing-job.ts), admitted one
+ * company at a time and presented to the user as a single run whose result screen follows the jobs and then
+ * shows the same outcomes the synchronous loop reported (core/payroll-run-group-store.ts). HAZARD DISCIPLINE
+ * (both covered by tests):
  *   1. Per-company AUTHORIZATION — the submitted company set (and the "all" affordance) is re-intersected
  *      server-side with the admin's actual grants (`allowedCompanies`). A company the admin cannot access
  *      becomes a NOT_AUTHORIZED failure row, never a widened run and never a hard throw.
  *   2. CATCH PER COMPANY — one company failing (typically "already processed this month") must never abort
  *      the run; its throw is mapped to a reason code and the loop continues to the next company.
  */
-import { NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
 import { withTenant, type SessionContext } from '../db/client';
-import { randomUUID } from 'node:crypto';
-import { actorOf, appendEvent } from '../db/events';
-import { createAdditionalRun, createBatch, generatePayslips } from './payroll';
+import { createAdditionalRun, createBatch } from './payroll';
+import { requestPayrollProcessing } from './payroll-processing-job';
+import { appendRunGroupEventTx, recordRunGroup, type StoredCompanyOutcome } from './payroll-run-group-store';
 import { getActivePayrollCycle, listPayrollCycles } from './payroll-cycle';
 import { allowedCompanies, listEmployeesForPayrollRun } from './read';
-
-/** Machine-stable failure reasons the result page renders as friendly, localized text. */
-export type RunGroupReasonCode =
-  | 'PERIOD_ALREADY_PROCESSED'
-  | 'NO_PAYROLL_CONFIG'
-  | 'NOT_AUTHORIZED'
-  | 'INVALID_CYCLE'
-  // 7076f8af — the pre-processing BLOCKER, named. It was already reachable here (generatePayslips throws
-  // PreProcessBlockedError before it writes anything), but it landed in SYSTEM_VALIDATION_ERROR, which
-  // tells an operator nothing they can act on. It matters more now that a RESUMED run reports through
-  // this same result page: "somebody in scope has no current salary record" is the failure that path
-  // will actually produce, and it is one the operator can fix in a minute.
-  | 'TAX_SCHEME_DECLARATION_REQUIRED'
-  | 'PRE_PROCESS_BLOCKED'
-  | 'TAX_SELECTION_CONFIRMATION_REQUIRED'
-  | 'TAX_SELECTION_INVALID_SCHEME'
-  | 'TAX_SELECTION_CITIZENSHIP_UNKNOWN'
-  | 'TAX_SELECTION_NOT_RESIDENT'
-  | 'NON_CASH_CLASSIFICATION_CONFLICT'
-  | 'NON_CASH_UNSUPPORTED_KIND'
-  | 'NON_CASH_NORMAL_REMUNERATION_REQUIRED'
-  | 'NON_CASH_MONTH_BASELINE_UNAVAILABLE'
-  | 'NON_CASH_CONFIGURATION_INVALID'
-  | 'SYSTEM_VALIDATION_ERROR'
-  | 'EMPTY_SELECTION'
-  | 'INVALID_SELECTION'
-  | 'DRAFT_REQUIRES_REGULAR';
-
-/** The four fixed behavioural run types a cycle maps to (mirrors payrollRunTypeEnum / PayrollCycleRunType). */
-export type IntendedRunType = 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
-
-/** The outcome of processing ONE company within the run. */
-export type CompanyOutcome = {
-  companyId: string;
-  companyName: string;
-  status: 'succeeded' | 'failed';
-  /** The batch that was created (present on success; may be present on a post-create failure). */
-  batchId?: string;
-  /** Employees resolved in scope for this company (the count the run attempted to pay). */
-  employeesSelected: number;
-  /** Payslips actually generated (the engine's own count of paid employees). */
-  employeesSucceeded: number;
-  /**
-   * r226 — THE THIRD OUTCOME, AND IT IS NOT A FAILURE. On an ADDITIONAL run (Bonus / Off-cycle /
-   * Adjustment) the kernel does not process an employee it has nothing to pay in that cycle. Absent on a
-   * regular run and on every run that skipped nobody, so a payload written before this shipped decodes
-   * unchanged and reads as "nobody skipped".
-   *
-   * r227 MADE THIS A COUNT, AND IT WAS A LIST OF NAMED EMPLOYEES. This struct is JSON-encoded into the
-   * result page's query string (`encodeRunGroupResult` → `?r=`), so it must stay O(companies); as a list
-   * it was O(HEADCOUNT), and the runs this feature exists for are exactly the ones with a long list.
-   * Measured on the r226 shape: 40 skipped = 9,298 bytes, 80 = 18,018, 245 = 54,136 — against Node's
-   * 16,384-byte default header budget (deploy/aihr.service:29 starts `next start` with no
-   * `--max-http-header-size`), shared with the request line and the session cookies, behind a cloudflared
-   * tunnel with a similar cap. The result screen therefore failed to load at roughly seventy skipped
-   * employees — AFTER the payroll had already committed, on the runs it was built for.
-   *
-   * THE NAMES DID NOT GO ANYWHERE. They are read from the DURABLE record instead — the
-   * `payroll-batch.processed` domain event, which the kernel already writes with every skipped
-   * employment id and reason — by `listSkippedEmployees` (core/payroll-view.ts), keyed off `batchId`
-   * below. That is strictly better than the payload was: it also survives a refresh, which the one-shot
-   * `?r=` string never did.
-   */
-  employeesSkipped?: number;
-  /** Set on a failed company. */
-  reason?: RunGroupReasonCode;
-  /** Organization Module (361e3b15) — on an INVALID_CYCLE failure, the run TYPE that had no active cycle in
-   *  this company, so the result page can name the company AND the missing cycle type (not a bare "no cycle"). */
-  missingCycleRunType?: IntendedRunType;
-};
-
-/** The complete result of a multi-company run — the payload the Step-3 result page renders. */
-export type RunGroupResult = {
-  /** Absent on historical/processed results. Draft means no generation was requested. */
-  mode?: 'draft';
-  payPeriod: string;
-  startedAt: string;
-  endedAt: string;
-  overallStatus: 'succeeded' | 'partial' | 'failed';
-  totalCompanies: number;
-  companiesSucceeded: number;
-  companiesFailed: number;
-  totalEmployeesSelected: number;
-  totalEmployeesSucceeded: number;
-  /** r226 — skipped is its OWN outcome, counted apart from processed and never reported as a failure. */
-  totalEmployeesSkipped: number;
-  totalEmployeesFailed: number;
-  perCompany: CompanyOutcome[];
-};
-
-/** Map a thrown engine error to a stable reason code (pure — unit-tested directly). */
-export function reasonForError(message: string): RunGroupReasonCode {
-  if (message.startsWith('PCB tax scheme declaration: ')) return 'TAX_SCHEME_DECLARATION_REQUIRED';
-  if (message.includes('A payroll process already exists for this period')) return 'PERIOD_ALREADY_PROCESSED';
-  if (/No localization pack/i.test(message)) return 'NO_PAYROLL_CONFIG';
-  // PreProcessBlockedError's own message (core/payroll.ts) — matched on its stable phrasing rather than by
-  // instanceof, because this function is pure and takes only the message the caller already caught.
-  if (/^Payroll cannot be processed: \d+ employees? in scope /.test(message)) return 'PRE_PROCESS_BLOCKED';
-  return 'SYSTEM_VALIDATION_ERROR';
-}
-
-/** Typed calculation refusals retain actionable reasons without exposing engine text. */
-export function reasonForPayrollError(error: unknown): RunGroupReasonCode {
-  if (error instanceof Error && error.name === 'TaxSelectionError' && 'code' in error) {
-    const codes = {confirmation_required:'TAX_SELECTION_CONFIRMATION_REQUIRED',invalid_scheme:'TAX_SELECTION_INVALID_SCHEME',citizenship_unknown:'TAX_SELECTION_CITIZENSHIP_UNKNOWN',not_resident:'TAX_SELECTION_NOT_RESIDENT'} as const;
-    if (typeof error.code === 'string' && Object.hasOwn(codes, error.code)) return codes[error.code as keyof typeof codes];
-    return 'SYSTEM_VALIDATION_ERROR';
-  }
-  if (error instanceof NonCashBenefitConfigurationError) {
-    const codes = {classification_conflict:'NON_CASH_CLASSIFICATION_CONFLICT',unsupported_kind:'NON_CASH_UNSUPPORTED_KIND',normal_remuneration_required:'NON_CASH_NORMAL_REMUNERATION_REQUIRED',month_baseline_unavailable:'NON_CASH_MONTH_BASELINE_UNAVAILABLE'} as const;
-    return Object.hasOwn(codes, error.reason) ? codes[error.reason] : 'NON_CASH_CONFIGURATION_INVALID';
-  }
-  return reasonForError(error instanceof Error ? error.message : typeof error === 'string' ? error : '');
-}
-
-/** Derive the overall run status from the per-company outcomes (pure — unit-tested directly). */
-export function overallStatusOf(perCompany: readonly CompanyOutcome[]): RunGroupResult['overallStatus'] {
-  const failed = perCompany.filter((c) => c.status === 'failed').length;
-  if (failed === 0) return 'succeeded';
-  if (failed === perCompany.length) return 'failed';
-  return 'partial';
-}
-
-/** Aggregate the per-company outcomes into the run-group header counts (pure — unit-tested directly). */
-export function summarize(
-  payPeriod: string,
-  startedAt: string,
-  endedAt: string,
-  perCompany: CompanyOutcome[],
-): RunGroupResult {
-  const companiesSucceeded = perCompany.filter((c) => c.status === 'succeeded').length;
-  const totalEmployeesSelected = perCompany.reduce((n, c) => n + c.employeesSelected, 0);
-  const totalEmployeesSucceeded = perCompany.reduce((n, c) => n + c.employeesSucceeded, 0);
-  const totalEmployeesSkipped = perCompany.reduce((n, c) => n + (c.employeesSkipped ?? 0), 0);
-  return {
-    payPeriod,
-    startedAt,
-    endedAt,
-    overallStatus: overallStatusOf(perCompany),
-    totalCompanies: perCompany.length,
-    companiesSucceeded,
-    companiesFailed: perCompany.length - companiesSucceeded,
-    totalEmployeesSelected,
-    totalEmployeesSucceeded,
-    totalEmployeesSkipped,
-    // Every selected employee in a wholesale-failed company counts as failed, plus any per-company gap
-    // (comp-less hires the engine silently dropped) in a succeeded company.
-    //
-    // r226 — MINUS THE SKIPPED, and this subtraction is the whole reason the count exists. Without it
-    // every employee an additional run deliberately left out would land in this figure and render RED on
-    // the result page as "Failed to process" — the system reporting its own correct decision as forty
-    // failures. A run that skipped nobody subtracts 0 and is arithmetically unchanged.
-    totalEmployeesFailed: totalEmployeesSelected - totalEmployeesSucceeded - totalEmployeesSkipped,
-    perCompany,
-  };
-}
+import { reasonForPayrollError, summarize, type CompanyOutcome, type IntendedRunType, type RunGroupReasonCode, type RunGroupResult } from './payroll-run-group-result';
+export * from './payroll-run-group-result';
 
 /**
  * Organization Module — Automatic Payroll Cycle Assignment (361e3b15). PRE-FLIGHT for the wizard's Validation
@@ -238,21 +85,51 @@ export type RunMultiCompanyInput = {
 
 /**
  * Run payroll across the authorized subset of the requested companies. Composes createBatch/
- * createAdditionalRun + generatePayslips per company with per-company authz and per-company failure
- * handling, then appends ONE run-group DomainEvent for the whole run (substrate discipline: the per-company
- * primitives already append their own batch/period events; this adds the run-level audit record).
+ * createAdditionalRun + a background processing job per company (core/payroll-processing-job.ts; it runs the
+ * same generation) with per-company authz and per-company failure handling, and records the run group the
+ * result screen follows (core/payroll-run-group-store.ts). When the last company's job finishes, the group
+ * settles to the same outcomes and appends the ONE run-group DomainEvent for the whole run (substrate
+ * discipline: the per-company primitives already append their own batch/period events; this adds the
+ * run-level audit record).
  */
-export async function runMultiCompanyPayroll(
+export async function startMultiCompanyPayroll(
   ctx: SessionContext,
   input: RunMultiCompanyInput,
-): Promise<RunGroupResult> {
-  return executeRunGroup(ctx,input,'process');
+): Promise<{ groupId: string }> {
+  const run = await executeRunGroup(ctx, input, 'process');
+  return { groupId: await recordRunGroup(ctx, { kind: 'run', payPeriod: input.payPeriod, startedAt: run.startedAt, requested: run.requested, outcomes: run.perCompany }) };
 }
 /** Regular drafts compose the same creation owner, without any generation or reset capability. */
 export async function saveMultiCompanyPayrollDrafts(ctx:SessionContext,input:RunMultiCompanyInput):Promise<RunGroupResult> {
-  return executeRunGroup(ctx,input,'draft');
+  const run = await executeRunGroup(ctx,input,'draft');
+  const perCompany = run.perCompany as CompanyOutcome[];
+  const endedAt = new Date().toISOString();
+  const result = summarize(input.payPeriod, run.startedAt, endedAt, perCompany);
+  result.mode='draft';result.totalEmployeesFailed=perCompany.filter(company=>company.status==='failed').reduce((n,company)=>n+company.employeesSelected,0);
+  // Substrate: one run-group-level DomainEvent so the multi-company run itself is auditable. Batch/company
+  // level (no single employee subject) ⇒ subjectEmploymentId stays null (admin-only read, fail-closed).
+  await withTenant(ctx, (tx) => appendRunGroupEventTx(tx, ctx, { mode: 'draft', payPeriod: input.payPeriod, startedAt: run.startedAt, endedAt, requested: run.requested, result }));
+  return result;
 }
-async function executeRunGroup(ctx:SessionContext,input:RunMultiCompanyInput,mode:'draft'|'process'):Promise<RunGroupResult> {
+/**
+ * Payroll Process wizard — RESUME one existing draft and run it (7076f8af): the run's processing job, recorded as a
+ * one-company group so the shared result screen follows it and then reports the outcome exactly as before
+ * (succeeded with the run's own counts, or failed with the same reason row). No run-group event, as before.
+ */
+export async function startResumedPayrollRun(ctx: SessionContext, p: { batchId: string; companyId: string; companyName: string; payPeriod: string; employeesSelected: number }): Promise<{ groupId: string }> {
+  const startedAt = new Date().toISOString();
+  let outcome: StoredCompanyOutcome;
+  try {
+    const { jobId } = await requestPayrollProcessing(ctx, { batchId: p.batchId });
+    outcome = { status: 'processing', jobId, companyId: p.companyId, companyName: p.companyName, batchId: p.batchId, employeesSelected: p.employeesSelected,
+      failed: { employeesSelected: p.employeesSelected, batchId: p.batchId } };
+  } catch (e) {
+    // A refusal before the job (a run that is no longer a draft, lost authority) renders as a reason row, not a page.
+    outcome = { companyId: p.companyId, companyName: p.companyName, status: 'failed', batchId: p.batchId, employeesSelected: p.employeesSelected, employeesSucceeded: 0, reason: reasonForPayrollError(e) };
+  }
+  return { groupId: await recordRunGroup(ctx, { kind: 'resume', payPeriod: p.payPeriod, startedAt, requested: [p.companyId], outcomes: [outcome] }) };
+}
+async function executeRunGroup(ctx:SessionContext,input:RunMultiCompanyInput,mode:'draft'|'process'):Promise<{startedAt:string;requested:string[];perCompany:StoredCompanyOutcome[]}> {
   const startedAt = new Date().toISOString();
 
   // HAZARD 1 — authorize every submitted company id against the admin's ACTUAL grants. The client list is
@@ -268,7 +145,7 @@ async function executeRunGroup(ctx:SessionContext,input:RunMultiCompanyInput,mod
   const primaryCycle=primaryId&&input.payrollCycleId?await getActivePayrollCycle(ctx,input.payrollCycleId,primaryId):null;
   const intendedRunType=primaryCycle?.runType;
 
-  const perCompany: CompanyOutcome[] = [];
+  const perCompany: StoredCompanyOutcome[] = [];
   const explicitSelection=input.explicitSelection===true||input.employmentIds.length>0;
   const population=new Map<string,Awaited<ReturnType<typeof listEmployeesForPayrollRun>>>();
   const populationErrors=new Map<string,RunGroupReasonCode>();
@@ -391,23 +268,11 @@ async function executeRunGroup(ctx:SessionContext,input:RunMultiCompanyInput,mod
         perCompany.push({companyId,companyName,status:'succeeded',batchId:created.batchId,employeesSelected,employeesSucceeded:0});
         continue;
       }
-      // Full draft→processed generation (never the reprocessSubset path), so `payslips` is present;
-      // fall back to 0 to satisfy the union return type of generatePayslips.
-      const genResult = await generatePayslips(ctx, { batchId: created.batchId });
-      const payslips = 'payslips' in genResult && typeof genResult.payslips === 'number' ? genResult.payslips : 0;
-      // r226 — the kernel's own skip list. Same union-return guard as `payslips`: the subset-reprocess
-      // branch has no `skipped` key and this path never takes it. r227 carries only its LENGTH onto the
-      // outcome (see `employeesSkipped`) — the names ride the durable event, not the redirect.
-      const skipped = 'skipped' in genResult && Array.isArray(genResult.skipped) ? genResult.skipped : [];
-      perCompany.push({
-        companyId,
-        companyName,
-        status: 'succeeded',
-        batchId: created.batchId,
-        employeesSelected,
-        employeesSucceeded: payslips,
-        ...(skipped.length > 0 ? { employeesSkipped: skipped.length } : {}),
-      });
+      // Full draft→processed generation (never the reprocessSubset path) as the run's background processing
+      // job; the group settles this company to `succeeded` with the run's own payslip and skip counts (r226/r227:
+      // a COUNT only, the names ride the durable event), or to `failed` with the reason its error maps to.
+      const { jobId } = await requestPayrollProcessing(ctx, { batchId: created.batchId, after: perCompany.filter(c => c.status === 'processing').map(c => (c as { jobId: string }).jobId) });
+      perCompany.push({ status: 'processing', jobId, companyId, companyName, batchId: created.batchId, employeesSelected, failed: { employeesSelected: 0 } });
     } catch (e) {
       // HAZARD 2 — catch PER COMPANY. One company's failure never aborts the others in the run.
       perCompany.push({
@@ -421,69 +286,5 @@ async function executeRunGroup(ctx:SessionContext,input:RunMultiCompanyInput,mod
     }
   }
 
-  const endedAt = new Date().toISOString();
-  const result = summarize(input.payPeriod, startedAt, endedAt, perCompany);
-  if(mode==='draft'){result.mode='draft';result.totalEmployeesFailed=perCompany.filter(company=>company.status==='failed').reduce((n,company)=>n+company.employeesSelected,0);}
-
-  // Substrate: one run-group-level DomainEvent so the multi-company run itself is auditable. Batch/company
-  // level (no single employee subject) ⇒ subjectEmploymentId stays null (admin-only read, fail-closed).
-  await withTenant(ctx, (tx) =>
-    appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'payroll-run-group',
-      // Phase 1 has no persisted run-group row (see plan §"Run-group record"); the durable record is this
-      // event. domain_event.aggregate_id is UUID-typed, so mint a synthetic id for the virtual run-group and
-      // carry the human-addressable "<period>:<startedAt>" key in the payload as `runKey`.
-      aggregateId: randomUUID(),
-      eventType: mode==='draft'?'payroll-run-group.drafts-saved':'payroll-run-group.completed',
-      actor: actorOf(ctx),
-      payload: {
-        ...(mode==='draft'?{mode:'draft'}:{}),
-        runKey: `${input.payPeriod}:${startedAt}`,
-        payPeriod: input.payPeriod,
-        companyIds: requested,
-        startedAt,
-        endedAt,
-        overallStatus: result.overallStatus,
-        perCompany: perCompany.map((c) => ({
-          companyId: c.companyId,
-          batchId: c.batchId ?? null,
-          status: c.status,
-          reason: c.reason ?? null,
-          employeesSelected: c.employeesSelected,
-          employeesSucceeded: c.employeesSucceeded,
-          // r226 — the run-group event is the DURABLE record (the `?r=` payload dies with the redirect),
-          // so the skip has to be inspectable here too. A COUNT only: the per-employee ids and reasons
-          // are on each batch's own `payroll-batch.processed` event, written by the kernel, which is
-          // where the result screen reads them from (r227). Recording them twice would let two durable
-          // records of the same fact disagree.
-          employeesSkipped: c.employeesSkipped ?? 0,
-        })),
-      },
-    }),
-  );
-
-  return result;
-}
-
-/**
- * One-shot result transport (Phase 1, no persistence): encode the run outcome into a compact, URL-safe
- * string carried on the redirect to the result page — mirroring how createRunAction passes holiday-warning
- * codes through the query string. The durable audit record is the run-group DomainEvent above; this string
- * is only read for the single render right after the run (a refresh loses it, by design for Phase 1).
- * Pure (no DB) so both the encode and decode are unit-testable.
- */
-export function encodeRunGroupResult(result: RunGroupResult): string {
-  return encodeURIComponent(JSON.stringify(result));
-}
-
-export function decodeRunGroupResult(raw: string | undefined | null): RunGroupResult | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(decodeURIComponent(raw)) as RunGroupResult;
-    if (!parsed || !Array.isArray(parsed.perCompany) || typeof parsed.payPeriod !== 'string') return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  return { startedAt, requested, perCompany };
 }

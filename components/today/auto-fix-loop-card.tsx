@@ -39,7 +39,7 @@ export function AutoFixLoopCard({ actionId, icon, title, meta, copy }: { actionI
   ) : (
     <div className="space-y-2">
       <div role="group" aria-label={copy.actionsLabel} aria-busy={busy} className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" onClick={undo} disabled={busy} className={TARGET}>
+        <Button aria-busy={busy} type="button" variant="outline" onClick={undo} disabled={busy} className={TARGET}>
           {busy ? copy.undoing : copy.undo}{' '}<span className="sr-only">· {title}</span>
         </Button>
       </div>

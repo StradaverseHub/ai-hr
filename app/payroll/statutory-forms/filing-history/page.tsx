@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import {taxBasisNoticeReferences} from '@/packs/payroll/service';
 import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
 import Link from 'next/link';
@@ -181,7 +182,7 @@ export default async function ReportsPage({
                 <input type="hidden" name="companyId" value={companyId} />
                 <input type="hidden" name="reportId" value={reportId} />
                 <input type="hidden" name="periodKey" value={periodKey} />
-                <button className={btnPrimary}>{t('recordGeneration')}</button>
+                <ActionButton actionKind="generating" className={btnPrimary}>{t('recordGeneration')}</ActionButton>
               </form>
             </>
           }
@@ -233,9 +234,9 @@ export default async function ReportsPage({
                             placeholder={t('reverseReasonPlaceholder')}
                             className={`${inputCls} h-7 w-40 text-xs`}
                           />
-                          <button className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted">
+                          <ActionButton actionKind="saving" className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted">
                             {t('reverseFiling')}
-                          </button>
+                          </ActionButton>
                         </form>
                       </div>
                     ) : (
@@ -260,9 +261,9 @@ export default async function ReportsPage({
                           title={t('filedOnHint')}
                           className={`${inputCls} h-7 w-36 text-xs`}
                         />
-                        <button className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted">
+                        <ActionButton actionKind="saving" className="rounded-lg border border-border px-2 py-1 text-xs hover:bg-muted">
                           {t('markFiled')}
-                        </button>
+                        </ActionButton>
                       </form>
                     )}
                   </td>

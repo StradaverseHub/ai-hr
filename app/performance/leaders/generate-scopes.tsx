@@ -22,7 +22,7 @@ export function GenerateCalibrationScopes({ cycleId }: { cycleId: string }) {
   return (
     <div className="space-y-2 rounded-md border border-border p-3">
       <p className="text-sm text-muted-foreground">{t('generate.help')} <Link href="/performance/leaders" className="text-primary hover:underline">{t('generate.leadersLink')}</Link></p>
-      <Button type="button" variant="secondary" disabled={pending} onClick={run}>{pending ? t('generate.working') : t('generate.button')}</Button>
+      <Button aria-busy={pending} type="button" variant="secondary" disabled={pending} onClick={run}>{pending ? t('generate.working') : t('generate.button')}</Button>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {result && <p role="status" className="text-sm">{t('generate.result', result)}</p>}
     </div>

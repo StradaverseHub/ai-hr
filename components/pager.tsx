@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import {
@@ -55,6 +56,7 @@ export async function Pager({
   state,
   exportHref,
   truncatedHint,
+  maxPageSize,
   ...target
 }: PagerTarget & {
   state: PageState;
@@ -62,6 +64,8 @@ export async function Pager({
   exportHref?: string;
   /** Screen-specific guidance when this audience has no complete-set export. Already translated. */
   truncatedHint?: string;
+  /** Rich aggregate readers can cap available sizes; callers normalize URL input to the same ceiling. */
+  maxPageSize?: number;
 }) {
   if (!showPager(state)) return null;
   const t = await getTranslations('pagination');
@@ -76,14 +80,14 @@ export async function Pager({
         });
 
   const sizeOptions = [
-    ...PAGE_SIZE_OPTIONS.map((n) => ({
+    ...PAGE_SIZE_OPTIONS.filter(n=>maxPageSize===undefined||n<=maxPageSize).map((n) => ({
       value: String(n),
       label: String(n),
       // Changing the page size restarts at the first page — page 4 of 25-row pages is meaningless once
       // the page is 200 rows, and landing past the end would show an empty table.
       href: href({ size: n, page: 0 }),
     })),
-    { value: 'all', label: t('all'), href: href({ size: 'all', page: 0 }) },
+    ...(maxPageSize===undefined||maxPageSize>=ALL_ROW_CEILING?[{ value: 'all', label: t('all'), href: href({ size: 'all', page: 0 }) }]:[]),
   ];
 
   // The numbered strip (9da61c86). A window rather than the whole run — see pageNumbers.
@@ -98,7 +102,7 @@ export async function Pager({
         {state.truncated && (
           <p className="atelier-pager-note">
             {t('truncated', { shown: ALL_ROW_CEILING, total: state.total })}{' '}
-            {exportHref ? <Link href={exportHref}>{t('truncatedExport')}</Link> : (truncatedHint ?? t('truncatedHint'))}
+            {exportHref ? <ExportDownloadLink href={exportHref}>{t('truncatedExport')}</ExportDownloadLink> : (truncatedHint ?? t('truncatedHint'))}
           </p>
         )}
         <PageSizeSelect label={t('rowsPerPage')} value={String(state.size)} options={sizeOptions} />
@@ -128,9 +132,9 @@ export async function Pager({
         <p className="border-b border-border bg-muted/40 px-4 py-2 text-xs text-muted-foreground">
           {t('truncated', { shown: ALL_ROW_CEILING, total: state.total })}{' '}
           {exportHref ? (
-            <Link href={exportHref} className="text-primary hover:underline">
+            <ExportDownloadLink href={exportHref} className="text-primary hover:underline">
               {t('truncatedExport')}
-            </Link>
+            </ExportDownloadLink>
           ) : (
             truncatedHint ?? t('truncatedHint')
           )}

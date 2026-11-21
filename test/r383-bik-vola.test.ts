@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
+import { readEffectiveTaxBasesTx } from '../core/payroll-tax-basis-read';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -96,8 +97,10 @@ describe('r383 generated benefit provenance, month ownership and retained no-pay
  });
  it('bonus before regular projects monthly benefits but gives recurring ownership only to regular',async()=>{
   const e=await employee();const c=await benefit('bik');await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:c.id,amount:1000,effectiveFrom:'2026-01-01'});
-  const a=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:'2026-07',runType:'bonus'});await bonus(a.batchId,e.employmentId);await generatePayslips(ctx,{batchId:a.batchId});expect(meta(await slip(a.batchId,e.employmentId)).owned.bik).toBe(0);
-  const r=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-07'});await generatePayslips(ctx,{batchId:r.batchId});expect(meta(await slip(r.batchId,e.employmentId)).owned.bik).toBe(1000);
+  const a=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:'2026-07',runType:'bonus'});await bonus(a.batchId,e.employmentId);await generatePayslips(ctx,{batchId:a.batchId});const projected=await slip(a.batchId,e.employmentId);expect(meta(projected).owned.bik).toBe(0);
+  // An untouched native projection is not an imported/corrected ownership prefix.
+  expect(await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[projected.id],{includeImported:true,sameMonth:true}))).toEqual(new Map());
+  const r=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-07'});await generatePayslips(ctx,{batchId:r.batchId});expect(meta(await slip(r.batchId,e.employmentId)).owned.bik).toBe(1000);expect(await slip(a.batchId,e.employmentId)).toEqual(projected);
   const monthly=pack.payroll.statutory(12000,{category:1,children:0},3000,0,{month:7},{pcbNonCashNormal:{bik:1000,vola:0}});expect(Number(((await slip(a.batchId,e.employmentId)).statutory as any).pcb)+Number(((await slip(r.batchId,e.employmentId)).statutory as any).pcb)).toBeCloseTo(monthly.pcb,2);
  });
  it('no cash has priority over taxable noncash and preserves old result and pending transaction',async()=>{

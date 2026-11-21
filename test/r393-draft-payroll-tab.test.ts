@@ -118,8 +118,11 @@ describe('§1 Bank Transfer without bank details is named on the Payroll tab', (
     expect(bankTransferLacksBank({ bankName: 'Maybank', bankAccountNo: '1' })).toBe(false);
     expect(bankTransferLacksBank({ bankName: 'Maybank', bankAccountNo: null })).toBe(true);
     const org = read('core/org.ts');
-    const at = org.indexOf('export async function setEmploymentPaymentMethod(');
-    expect(at, 'setEmploymentPaymentMethod not found').toBeGreaterThanOrEqual(0);
+    expect(org, 'ordinary writer delegates without the Contract replay-only flag').toContain(
+      'export function setEmploymentPaymentMethod(ctx:SessionContext,p:Parameters<typeof setEmploymentPaymentMethodBody>[1],outerTx?:Tx){return setEmploymentPaymentMethodBody(ctx,p,outerTx);}',
+    );
+    const at = org.indexOf('async function setEmploymentPaymentMethodBody(');
+    expect(at, 'shared payment-method writer body not found').toBeGreaterThanOrEqual(0);
     const writer = org.slice(at, org.indexOf('\n}\n', at));
     expect(writer.length, 'the writer slice parsed empty').toBeGreaterThan(500);
     expect(writer).toContain("next === 'bank_transfer' && !(await paymentMethodBankReadinessTx(tx,ctx,before.personId)).ready");

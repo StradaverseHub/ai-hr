@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+import { ATTENDANCE_SUBMENU } from '@/lib/navigation/module-submenus';
 import Link from '@/components/intent-link';
 
 /**
@@ -10,16 +11,13 @@ import Link from '@/components/intent-link';
  */
 export async function AttendanceTabs({ active }: { active: 'overview' | 'daily' | 'individual' }) {
   const t = await getTranslations('attendance.tabs');
-  const tabs = [
-    { key: 'overview', href: '/attendance', label: t('overview') },
-    { key: 'daily', href: '/attendance/daily', label: t('daily') },
-    { key: 'individual', href: '/attendance/individual', label: t('individual') },
-  ] as const;
+  const tabs = ATTENDANCE_SUBMENU.map(tab=>({...tab,label:t(tab.labelKey)}));
   return (
     <div className="flex gap-1 overflow-x-auto border-b border-border">
       {tabs.map((tab) => (
         <Link
           key={tab.key}
+          data-navigation-destination={tab.id}
           href={tab.href}
           className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${
             active === tab.key

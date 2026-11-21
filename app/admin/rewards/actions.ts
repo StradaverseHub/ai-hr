@@ -10,6 +10,6 @@ const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
 /** 62e743ed: cancel a started review with a written reason. cancelRewardReview decides; this only relays. */
 export async function cancelRewardAction(f: FormData) {
   try { await cancelRewardReview(await getSession(), str(f, 'unitId'), Number(str(f, 'revision')), str(f, 'reason')); }
-  catch (error) { redirect(`/admin/rewards?error=${encodeURIComponent(publicErrorMessage(error))}`); }
-  revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect('/admin/rewards?cancelled=1');
+  catch (error) { redirect(`/rewards/reviews?error=${encodeURIComponent(publicErrorMessage(error))}`); }
+  revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect('/rewards/reviews?cancelled=1');
 }

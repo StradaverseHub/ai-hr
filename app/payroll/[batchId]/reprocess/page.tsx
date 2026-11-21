@@ -4,8 +4,8 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility } from '@/core/payroll';
-import { listPayslipLessEligibleWithSkip, listRecomputeDisclosure } from '@/core/payroll-view';
+import { batchSummary, payrollEmployeeSelectionPage, payrollReprocessResultIdentities, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility } from '@/core/payroll';
+import { payslipLessEligibleWithSkipPage, listRecomputeDisclosure } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, EmployeeCode, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -16,6 +16,7 @@ import { formatMoney } from '@/lib/money';
 // 9066bd6c — Back returns the Payroll Process list EXACTLY as it was left. The list hands each row link
 // its own filter query as `?from=…`; without this the Back here went to a bare `/payroll` and the year,
 // months, company, cycle and status selection was thrown away. Whitelisted by shape, never echoed raw.
+import {parsePageQuery} from '@/lib/pagination';
 import { payrollListReturnTo } from '@/lib/return-to';
 import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } from './reprocess-form';
 // b372e923 — one Payroll Result href per result row, joined to this run's payslips by employment. The
@@ -24,6 +25,7 @@ import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } fr
 // The href is spent on the EMPLOYEE NAME (rev.2, below) — the destination did not change, only what
 // the operator clicks to reach it.
 import { ReprocessOutcomePanel, reprocessStoppedMessageKey } from './outcomes';
+import { ReprocessJobPanel } from './reprocess-progress';
 
 /**
  * e440991b — REPROCESS SELECTED EMPLOYEES, a screen of its own.
@@ -88,7 +90,7 @@ export default async function ReprocessPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; job?: string; from?: string }>;
+  searchParams: Promise<{ error?: string; job?: string; from?: string;page?:string;size?:string;newPage?:string;newSize?:string;q?:string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
@@ -109,9 +111,9 @@ export default async function ReprocessPage({
   // time the operator read the job result. `undefined` when there is nothing to carry, so an unfiltered
   // visit posts no field at all and the address stays exactly as it was.
 
-  const data = await batchDetail(s, batchId);
+  const data = await batchSummary(s, batchId);
   if (!data) notFound();
-  const { batch, slips } = data;
+  const { batch, slipCount } = data;
 
   // The same module gate the run screen puts on the panel: selective reprocessing produces an in-place
   // recompute of one run, which only makes sense where several runs a month are allowed at all. Off ⇒
@@ -146,7 +148,7 @@ export default async function ReprocessPage({
     },
     { label: tl('colCompany'), value: listed?.company ?? '—' },
     { label: t('summaryPaymentDate'), value: paymentDate },
-    { label: tl('colEmployees'), value: String(slips.length) },
+    { label: tl('colEmployees'), value: String(slipCount) },
     { label: t('totalNet'), value: formatMoney(totals.net, currency) },
   ];
 
@@ -192,14 +194,15 @@ export default async function ReprocessPage({
     ? batch.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
     : [];
 
-  const candidates: ReprocessCandidate[] = slips.map((sl) => ({
+  const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'reprocess',page:parsePageQuery(sp),search:sp.q});
+  const candidates: ReprocessCandidate[] = selection.rows.map((sl) => ({
     employmentId: sl.employmentId,
     employeeCode: sl.employeeCode,
     name: sl.name,
     gross: sl.gross,
     net: sl.net,
     // version 1 = as first generated, so the number of prior recalculations is version - 1. Already on
-    // batchDetail's projection: no extra read, no join, and therefore no Department column here.
+    // the native page projection: no extra read and therefore no Department column here.
     reprocessedTimes: Math.max(0, (sl.version ?? 1) - 1),
   }));
 
@@ -211,7 +214,8 @@ export default async function ReprocessPage({
   // c3258a72 — `skip` is the run's own decision that there is nothing to pay them (no monthly basic and no
   // positive money on any door), narrowed exactly as the run page narrows its notice; the form puts those
   // rows in their own Skipped group instead of New / Pending.
-  const newCandidates: ReprocessAddCandidate[] = (await listPayslipLessEligibleWithSkip(s, { batchId })).map((r) => ({
+  const additions=await payslipLessEligibleWithSkipPage(s,{batchId,page:parsePageQuery({page:sp.newPage,size:sp.newSize}),search:sp.q});
+  const newCandidates: ReprocessAddCandidate[] = additions.rows.map((r) => ({
     employmentId: r.employmentId,
     employeeCode: r.employeeCode,
     name: r.name,
@@ -234,6 +238,7 @@ export default async function ReprocessPage({
   // id belonging to another batch is ignored rather than rendered under this run's heading.
   const job = sp.job && UUID_RE.test(sp.job) ? await getReprocessJob(s, sp.job) : null;
   const thisJob = job && job.batchId === batchId ? job : null;
+  const slips=thisJob?await payrollReprocessResultIdentities(s,batchId,thisJob.employmentIds):[];
   const jobResult = (thisJob?.result ?? null) as {
     reprocessed?: number;
     headcount?: number;
@@ -244,6 +249,12 @@ export default async function ReprocessPage({
   // Exact references in the recorded job result are the only job/history join. Earlier jobs
   // did not record them: keep their history available without guessing from timestamps.
   const outcomes = thisJob ? decodeReprocessEmployeeOutcomes(thisJob.result, thisJob.employmentIds) : null;
+  const held = (thisJob?.result as {heldEmploymentIds?:unknown}|null)?.heldEmploymentIds;
+  const finished = new Set(outcomes?.map(row=>row.employmentId));
+  const pendingIds = [...new Set([
+    ...(thisJob?.status==='failed' && outcomes !== null ? thisJob.employmentIds.filter(id=>!finished.has(id)) : []),
+    ...(Array.isArray(held) ? held.filter((id):id is string=>typeof id==='string' && UUID_RE.test(id)) : []),
+  ])];
   const jobRowIds = new Set(outcomes?.flatMap(outcome => outcome.historyId ? [outcome.historyId] : []) ?? []);
   const earlier = disclosure.filter(row => !jobRowIds.has(row.id));
 
@@ -276,7 +287,12 @@ export default async function ReprocessPage({
       {/* THE RESULT, when there is one. It is rendered ABOVE the selection because after a submit this
           is what the operator came back for; the selection stays below so a second correction does not
           need a second navigation. */}
+      {/* The recompute runs in the background: while it does, its progress; the results replace it when it ends. */}
+      {thisJob && (thisJob.status === 'queued' || thisJob.status === 'running') && (
+        <ReprocessJobPanel jobId={thisJob.id} initial={{ status: thisJob.status, employmentIds: thisJob.employmentIds, result: thisJob.result as { outcomes?: unknown[] } | null }} />
+      )}
       {thisJob?.status === 'failed' && <ErrorBanner message={t(reprocessStoppedMessageKey(thisJob.stopCode))} />}
+      {/* While the job runs, the employees it has already committed show here under its progress panel. */}
       {thisJob && outcomes !== null && (
         <ReprocessOutcomePanel outcomes={outcomes} history={disclosure} slips={slips} run={batch}
           currency={currency} batchId={batchId} from={listFrom} jobId={thisJob.id}
@@ -286,7 +302,7 @@ export default async function ReprocessPage({
       {thisJob?.status === 'completed' && outcomes === null && (
         <Card className="px-4 py-3 text-sm">
           <p>{t('reprocessResultTitle', { n: jobResult?.reprocessed ?? thisJob.employmentIds.length,
-            total: jobResult?.headcount ?? slips.length })}</p>
+            total: jobResult?.headcount ?? slipCount })}</p>
           <p className="mt-2 text-muted-foreground">{t('reprocessLegacyOutcomeUnavailable')}</p>
         </Card>
       )}
@@ -304,7 +320,7 @@ export default async function ReprocessPage({
                 ADDITION, whose first payslip collects the one-offs already waiting for that person
                 exactly as the original processing would have. Saying only the first half would now be
                 a false reassurance, so the second half is stated whenever the group is on screen. */}
-            {newCandidates.length > 0 && ` ${t('reprocessNewCollects')}`}
+            {additions.runTotal > 0 && ` ${t('reprocessNewCollects')}`}
           </p>
           {/* b372e923 — `from` rides the SUBMIT, not just the address bar. The action redirects, and a
               redirect builds a brand-new URL: without this the reprocess result lands on a URL carrying
@@ -316,8 +332,12 @@ export default async function ReprocessPage({
             employees={candidates}
             newCandidates={newCandidates}
             preselectedIds={preselectedIds}
+            pendingIds={pendingIds}
+            previousJobId={thisJob?.id}
+            jobRunning={thisJob?.status==='queued' || thisJob?.status==='running'}
             currency={currency}
             from={listFrom ?? null}
+            paging={{existing:selection.state,additions:additions.state,runTotal:selection.runTotal+additions.runTotal,existingTotal:selection.runTotal,search:sp.q??''}}
           />
         </div>
       </Card>
@@ -472,7 +492,11 @@ export default async function ReprocessPage({
 }
 
 function readStoppedEmployee(result:unknown,selected:readonly string[]){
- const value=result&&typeof result==='object'?(result as {stoppedEmployee?:unknown}).stoppedEmployee:null;
+ let value=result&&typeof result==='object'?(result as {stoppedEmployee?:unknown}).stoppedEmployee:null;
+ // Older background jobs encoded the stopped employee as a JSON string.
+ if(typeof value==='string'){
+  try{value=JSON.parse(value);}catch{return null;}
+ }
  if(!value||typeof value!=='object')return null;
  const row=value as {employmentId?:unknown;name?:unknown;employeeCode?:unknown};
  return typeof row.employmentId==='string'&&selected.includes(row.employmentId)&&typeof row.name==='string'&&(row.employeeCode===null||typeof row.employeeCode==='string')?{employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode}:null;

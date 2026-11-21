@@ -15,7 +15,7 @@
  * the whole design of 476f23ed, and this list is the fixed half of it.
  */
 
-/** The movement kinds HR can CREATE from the New Event form. Rehire is a future enhancement; a "custom
+/** The movement kinds HR can CREATE from the New Event form. A "custom
  *  event" is no longer one — since 476f23ed a tenant adds its own through Movement Settings, mapped onto
  *  one of the kinds below. */
 export const MOVEMENT_KINDS = [
@@ -41,6 +41,7 @@ export const MOVEMENT_KINDS = [
   'orgAssignmentChange',
   'reportingLineChange',
   'employmentTypeChange',
+  'contractRenewal',
   // 89ea527b — the two employment-date movements. Both follow the `confirmation` precedent: the movement's
   // EFFECTIVE DATE *is* the new value of the date it sets, so the history row's Effective Date column and the
   // stored column can never disagree. They are the ONLY writers of employment.hired_on / employment.join_date
@@ -48,8 +49,14 @@ export const MOVEMENT_KINDS = [
   'joinDateChange',
   'groupJoinDateCorrection',
   'historicalHire',
+  // Board 511aa74a — REHIRED. A resigned employee returns: a NEW employment for the SAME person (core/rehire.ts),
+  // recorded from New Event only (not the movement import). Its own command, never the generic dispatcher; not
+  // a comparison kind and not configurable, so no tenant type can carry it.
+  'rehire',
 ] as const;
 export type MovementKind = (typeof MOVEMENT_KINDS)[number];
+/** Fixed Contract posting effects cannot be manually created, reclassified or rolled back as general movements. */
+export const isContractPostingMovementKind=(kind:string):boolean=>kind==='contractRenewal';
 
 /**
  * 08913328 — the kinds that record a CHANGE to the employee's employment/pay data, and therefore render as
@@ -77,6 +84,7 @@ export const COMPARISON_KINDS = [
   'salaryAdjustment',
   'orgAssignmentChange',
   'employmentTypeChange',
+  'contractRenewal',
   'reportingLineChange',
   'confirmation',
 ] as const;
@@ -105,7 +113,7 @@ export const isComparisonKind = (k: string): k is ComparisonKind =>
  * move the event exists to record. Its family is itself, exactly as Confirmation's is.
  */
 export const INTERCHANGEABLE_COMPARISON_KINDS: readonly ComparisonKind[] = COMPARISON_KINDS.filter(
-  (k) => k !== 'confirmation' && k !== 'entityTransfer',
+  (k) => k !== 'confirmation' && k !== 'entityTransfer' && k !== 'contractRenewal',
 );
 
 /** Same resolved-behavior trigger for manual action and atomic Movement import entitlement parity. */

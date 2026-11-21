@@ -62,7 +62,7 @@ export async function erasePersonPii(ctx:SessionContext,p:ErasePersonPiiInput):P
 export async function erasePersonPiiTx(tx:Tx,ctx:SessionContext,p:ErasePersonPiiInput):Promise<ErasureReport>{
  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
     await boundNativeOutcomeTransactionTx(tx);
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // The canonical Access/privacy owner admits the original exact nullable effects first. Home's
     // wrapper adds only private greeting content and binds even an otherwise empty erasure to its audit.

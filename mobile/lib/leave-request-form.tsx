@@ -197,7 +197,7 @@ export function LeaveRequestForm({options,today,onSubmitted,notices={},cards=[]}
       {o.needsConsent&&checkbox(t('agreeRule'),!!draft.command.overrideConsent?.includes(o.consentToken),()=>putLeave({...draft,command:{...draft.command,overrideConsent:draft.command.overrideConsent?.includes(o.consentToken)?draft.command.overrideConsent.filter(c=>c!==o.consentToken):[...(draft.command.overrideConsent??[]),o.consentToken]}}))}
     </View>)}
     <Muted>{t('reviewBeforeSubmit')}</Muted>
-    <Button title={pending?t('requesting'):draft.phase==='uncertain'?t('retrySameClock'):t('submitRequest')} disabled={!!pending||!!missingConsent||!!blocked} onPress={()=>void submit()}/>
+    <Button busy={!!pending} title={pending?t('requesting'):draft.phase==='uncertain'?t('retrySameClock'):t('submitRequest')} disabled={!!pending||!!missingConsent||!!blocked} onPress={()=>void submit()}/>
     {draft.phase==='uncertain'?<Button title={t('checkReceipt')} onPress={()=>void recover()} kind="quiet"/>:<Button title={t('editRequest')} disabled={!!pending} kind="quiet" onPress={()=>putLeave({...draft,phase:'edit',command:{...draft.command,requestId:randomUUID(),overrideConsent:[]}})}/>}
   </View>);
   const bar=<View style={{flexDirection:'row',alignItems:'center',gap:12,paddingHorizontal:16,paddingTop:10,paddingBottom:10,borderTopWidth:1,borderColor:palette.border,backgroundColor:palette.bg}}>
@@ -205,7 +205,7 @@ export function LeaveRequestForm({options,today,onSubmitted,notices={},cards=[]}
       <Text accessibilityLiveRegion="polite" style={{color:palette.text,fontSize:16,fontWeight:'600',fontVariant:['tabular-nums']}}>{!draft.command.leaveTypeId?t('chooseLeaveType'):shownLive&&shownLive.days!=null?fmtDays(shownLive.days):shownLive?.failed?t('leaveBarNoCount'):t('leaveBarCounting')}</Text>
       {card&&!card.takenOnly&&<Muted>{t('leaveBarAvailable',{days:fmtDays(cardFigure(card))})}</Muted>}
     </View>
-    <Button title={pending?t('loading'):t('reviewRequest')} disabled={!!pending} onPress={()=>void review()}/>
+    <Button busy={!!pending} title={pending?t('loading'):t('reviewRequest')} disabled={!!pending} onPress={()=>void review()}/>
   </View>;
   const figureOf=(id:string)=>{const c=cards.find(x=>x.leaveTypeId===id);return c?fmtDays(cardFigure(c)):null;};
   if(picking)return frame(<View accessibilityRole="radiogroup" accessibilityLabel={t('leaveType')}>

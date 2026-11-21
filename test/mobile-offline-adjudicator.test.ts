@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** The deterministic offline-claim adjudicator on draft 0647 (owner decisions O1-O3, 2026-10-28), end to end through
  * the real claim service where the server-proven interval allows it: real signatures, SQL, RLS, payroll, geofence,
  * correction and canonical writer owners. Proven windows wider than a test can wait for are decided directly with the
@@ -28,7 +29,7 @@ import {installCustodyDraftForWorker} from './helpers/mobile-custody-draft';
 import {installOfflineDraftForWorker} from './helpers/mobile-offline-draft';
 let base:Base,restore:(()=>Promise<void>)|undefined,restoreCustody:(()=>Promise<void>)|undefined;
 beforeAll(async()=>{restoreCustody=await installCustodyDraftForWorker();restore=await installOfflineDraftForWorker();});
-beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','synthetic-offline-adjudicator-fixture-secret-2026');await resetDb();base=await seedBase();});
+beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','synthetic-offline-adjudicator-fixture-secret-2026');await resetDb();base=await seedAttendanceSubmissionBase();});
 afterAll(async()=>{try{await resetDb();await restore?.();await restoreCustody?.();}finally{vi.unstubAllEnvs();await closeAll();}});
 type Fixture=Awaited<ReturnType<typeof offlineServiceFixture>>;
 const sha=(value:string)=>createHash('sha256').update(value).digest('hex');
@@ -93,7 +94,7 @@ async function corrected(f:Fixture){
  const a=adminCtx(base),date=todayInKualaLumpur(new Date(whole(f)));
  await checkIn(a,{employmentId:f.e.employmentId,date,time:'00:00',manual:true});
  const {correctionId}=await requestAttendanceCorrection(a,{employmentId:f.e.employmentId,date,checkIn:'00:00',checkOut:'00:01',reason:'HR verified gate log'});
- await decideAttendanceCorrection(a,{correctionId,decision:'approved'});
+ await decideAttendanceCorrection(a,{ expectedStageIndex: 0,correctionId,decision:'approved'});
  expect(await owner.db.select({status:S.attendanceCorrection.status,date:S.attendanceCorrection.attendanceDate}).from(S.attendanceCorrection).where(eq(S.attendanceCorrection.id,correctionId))).toEqual([{status:'approved',date}]);
 }
 

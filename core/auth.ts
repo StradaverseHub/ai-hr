@@ -20,7 +20,8 @@ import { keycloakSelected } from '../lib/identity/config';
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
-import { client, withTenant, type SessionContext, type Tx } from '../db/client';
+import { client, withPoolWork, withTenant, type SessionContext, type Tx } from '../db/client';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { appInvitation, appUser, roleAssignment, accountEmailDelivery } from '../db/schema';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { InvalidInvitationError } from '../lib/auth-errors';
@@ -78,6 +79,9 @@ export const ROLES = new Set([
   'performance_comp_partner',
   // ADR-0142 — repeated in 0611's app_invitation_role_customer_set and app.consume_invitation guard A.
   'performance_partner',
+  // ADR-0049 §2 — repeated in 5851's app_invitation_role_customer_set and app.consume_invitation guard A (restated on
+  // 5000's Access-locked body by 5864).
+  'recruiting_partner',
 ]);
 const INVITE_TTL_DAYS = 7;
 
@@ -117,7 +121,7 @@ async function appendAuthEvent(args: {
   actorId: string | null;
   payload?: unknown;
 }): Promise<void> {
-  await client`
+  await withPoolWork('authentication', () => client`
     select app.append_auth_event(
       ${args.tenantId}::uuid,
       ${args.aggregateType},
@@ -127,7 +131,7 @@ async function appendAuthEvent(args: {
       ${args.actorId}::uuid,
       ${JSON.stringify(args.payload ?? null)}::jsonb
     )
-  `;
+  `);
 }
 
 // ─────────────────────────── Admin: invitations ───────────────────────────
@@ -151,6 +155,8 @@ export type InviteUserInput = {
  */
 async function createInvitationTx(tx:Tx,ctx:SessionContext,input:InviteUserInput,replacesDeliveryId?:string){
   assertGroupAdmin(ctx);
+  // Invitations are authority inputs: the row trigger only tries the exclusive Access lock.
+  await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const email=input.email.trim().toLowerCase(),emailLocale=emailLocaleSchema.parse(input.emailLocale??'en');
   if(!email||!email.includes('@'))throw new Error('A valid email is required to invite a user.');
   if(!ROLES.has(input.role))throw new Error(`Unknown role: ${input.role}`);
@@ -199,7 +205,7 @@ export async function retryAccountEmail(ctx:SessionContext,id:string,acknowledge
     if(reserved[0]){await attemptAccountEmail(reserved[0].id,reserved[0].lease_token,provider);return;}
   }
   const created=await withTenant(ctx,async tx=>{
-    assertGroupAdmin(ctx);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`account-email-retry:${id}`},0))`);
+    assertGroupAdmin(ctx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`account-email-retry:${id}`},0))`);
     const [delivery]=await tx.select().from(accountEmailDelivery).where(and(eq(accountEmailDelivery.id,id),eq(accountEmailDelivery.kind,'invitation'),sql`${accountEmailDelivery.status} in ('failed','sent')`));
     if(!delivery?.invitationId)throw Error('This account email cannot be retried.');
     const [replacement]=await tx.select({id:accountEmailDelivery.id}).from(accountEmailDelivery).where(eq(accountEmailDelivery.replacesDeliveryId,id));
@@ -254,6 +260,7 @@ export async function setAppUserArchived(
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
     assertGroupAdmin(ctx);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     if (ctx.userId && input.appUserId === ctx.userId) {
       throw new Error('You cannot archive your own login.');
     }
@@ -321,6 +328,7 @@ export async function revokeInvitation(
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
     assertGroupAdmin(ctx);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     const [row] = await tx
       .update(appInvitation)
       .set({ status: 'revoked' })
@@ -351,11 +359,12 @@ export async function acceptInvitation(input: {
   issuer?: string;
   verifiedEmail?: string;
 }): Promise<{ userId: string; tenantId: string }> {
-  const rows = input.issuer ? await client<{ app_user_id: string; tenant_id: string }[]>`
+  // Consumes a single-use token, so it is never retried; admission only bounds the wait.
+  const rows = await withPoolWork('authentication', () => input.issuer ? client<{ app_user_id: string; tenant_id: string }[]>`
     select app_user_id, tenant_id from app.consume_identity_invitation(${input.token},${input.issuer},${input.subject},${input.verifiedEmail ?? null})
-  ` : await client<{ app_user_id: string; tenant_id: string }[]>`
+  ` : client<{ app_user_id: string; tenant_id: string }[]>`
     select app_user_id, tenant_id from app.consume_invitation(${input.token}, ${input.subject})
-  `;
+  `);
   const resolved = rows[0];
   if (!resolved) throw new InvalidInvitationError();
   await appendAuthEvent({
@@ -385,7 +394,7 @@ export async function requestPasswordReset(
   const parsed=recoveryEmailSchema.safeParse(input.email.trim());
   if(!parsed.success)return;
   const email=parsed.data;
-  const [delivery]=await client<{id:string;lease_token:string}[]>`select * from app.account_email_request_recovery(${email})`;
+  const [delivery]=await withPoolWork('authentication',()=>client<{id:string;lease_token:string}[]>`select * from app.account_email_request_recovery(${email})`);
   if(delivery)await attemptAccountEmail(delivery.id,delivery.lease_token,provider);
   await appendAuthEvent({
     tenantId: null,

@@ -26,8 +26,9 @@ vi.mock('../core/read',()=>({listLeaveTypes:async()=>[]}));
 vi.mock('../core/leave',()=>({todayInKualaLumpur:()=> '2026-10-17'}));
 vi.mock('../core/ess-view',()=>({isReplacementLeaveType:()=>false}));
 vi.mock('../packs/leave/service',()=>({
-  leaveInquiryContext:async(_session:unknown,_scope:unknown,query:{emp?:string})=>({employees:people,selected:people.find(person=>person.employmentId===query.emp),companies:[{id:'company',name:'Inquiry Company'}]}),
-  leaveInquiryRecordsPage:async()=>({rows:[],total:0}),
+  leaveInquirySnapshot:async(_session:unknown,_scope:unknown,query:{emp?:string},read:(tx:unknown,scope:unknown)=>Promise<unknown>)=>read({}, {employees:people,selected:people.find(person=>person.employmentId===query.emp),companies:[{id:'company',name:'Inquiry Company'}]}),
+  readLeaveInquiryPickerTx:async(_tx:unknown,_session:unknown,_scope:unknown,input:{selectedId?:string})=>({contextId:'fixture',rows:people.map(({terminatedOn,...row})=>({...row,status:'active'})),selected:people.find(row=>row.employmentId===input.selectedId)??null,total:people.length,populationTotal:people.length,offset:0,limit:25,filters:{query:'',companyId:'',businessUnitId:'',departmentId:'',status:''},labelMode:'names',companyOptions:[{id:'company',name:'Inquiry Company'}],businessUnitOptions:[],departmentOptions:[{id:'department',name:'People'}],allDepartmentOptions:[{id:'department',name:'People'}]}),
+  leaveInquiryRecordsPageTx:async()=>({rows:[],total:0}),
   replacementRequestAvailability:async()=>({allowed:false}),
   listEntitlementRecalcAudit:historyReads,
 }));
@@ -97,7 +98,7 @@ for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th
         if(selection==='all'){
           expect(all).toHaveAttribute('aria-current','true');
           const t=createTranslator({locale,messages,namespace:'leave.inquiry'});
-          expect(screen.getByText(t('allEmployeesHeader',{count:people.length,companies:'Inquiry Company'}))).toBeVisible();
+          expect(screen.getByText(t('allEmployeesHeader',{count:people.length,companies:`${messages.people.list.company}: 1`}))).toBeVisible();
         }else{
           expect(all).not.toHaveAttribute('aria-current');
           expect(screen.getAllByText(people[0].employeeCode).length).toBeGreaterThan(0);

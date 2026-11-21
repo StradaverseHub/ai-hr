@@ -25,7 +25,7 @@ vi.mock('../core/ai-inventory',()=>({aiInventoryView:async()=>({scope:'registry'
 vi.mock('../core/ai-management',async()=>{
  const {AI_FEATURES}=await import('../lib/ai/features');const assistant=AI_FEATURES.find(feature=>feature.id==='hr_assistant');if(!assistant)throw Error('Missing actual Assistant feature definition');
  // Match the native status owner: enabled module/switch, but no configured provider means provider-required.
- return {AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>({provider:null,mayWriteUsers:true,features:[{...assistant,enabled:true,state:'provider',mayWrite:true}],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}),bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})};
+ return {AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementPageView: async(_ctx:unknown,section:string)=>{const full=await (async()=>({provider:null,mayWriteUsers:true,features:[{...assistant,enabled:true,state:'provider',mayWrite:true}],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}))();if(!full||typeof full!=='object'||!('users' in full)||!('moreUsers' in full)||!('legacyBudget' in full)||!('runs' in full)||!('runFilter' in full))throw new Error('AI management page fixture is missing');const {users,moreUsers,legacyBudget,runs:_runs,runFilter:_filter,...common}=full;return {...common,section,allowances:section==='allowances'?{users,moreUsers,legacyBudget}:null};},bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})};
 });
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
@@ -39,7 +39,7 @@ describe('approved AI vocabulary in six rendered locales',()=>{
   state.locale=locale;document.documentElement.setAttribute('data-ui-theme','classic');
   const renderSection=async(section:'overview'|'orchestrator')=>{
    const page=await AiManagementScreen({session:{tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never,section,searchParams:Promise.resolve({})});
-   return render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}><div className="flex min-h-screen max-sm:flex-col"><div className="h-screen shrink-0 max-sm:h-auto"><Sidebar isAdmin canAdministerAi canConfigureAiProvider canApprove canAccessTeam enabledModules={null} defaultCollapsed={false}/></div><main className="min-w-0 flex-1 p-4">{page}</main></div></NextIntlClientProvider>);
+   return render(<NextIntlClientProvider locale={locale} messages={withAiCentre(locale,copies[locale] as any)}><div className="flex min-h-screen max-sm:flex-col"><div className="h-screen shrink-0 max-sm:h-auto"><Sidebar isAdmin canAdministerAi canConfigureAiProvider canApprove canAccessTeam enabledModules={null} defaultCollapsed={false}/></div><main className="min-w-0 flex-1 p-4">{page}</main></div></NextIntlClientProvider>);
   };
   await renderSection('overview');expect(screen.getByText(copies[locale].aiManagement.mapAssistant)).toBeInTheDocument();
   const t=createTranslator({locale,messages:copies[locale] as any,namespace:'aiManagement'}),count=t('mapSpecialists',{available:MODULE_JOBS.length,total:MODULE_JOBS.length});

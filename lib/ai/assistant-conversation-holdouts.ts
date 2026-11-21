@@ -36,6 +36,7 @@ const conversationQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,st
  system_explorer:'How many schema tables are withheld here, and does inventory access grant record access?',
  assistant:'Can the Assistant change business facts without my human confirmation?',
  system_testing:'What test status was reported, and does a reported pass establish independent verification?',
+ recruitment:'How many recruitment applications are in progress, and does that mean anyone has been hired?',
  },
  ms:{
  employees:'Apakah status kerja yang direkodkan bagi pekerjaan semasa saya?',
@@ -58,6 +59,7 @@ const conversationQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,st
  system_explorer:'Berapakah jadual skema yang disembunyikan di sini, dan adakah akses inventori memberi akses rekod?',
  assistant:'Bolehkah Pembantu mengubah fakta perniagaan tanpa pengesahan manusia saya?',
  system_testing:'Apakah status ujian yang dilaporkan, dan adakah laporan lulus membuktikan pengesahan bebas?',
+ recruitment:'Berapa banyak permohonan pengambilan yang sedang diproses, dan adakah itu bermakna sesiapa telah diambil bekerja?',
  },
  zh:{
  employees:'我当前任职记录的工作状态是什么？',org:'系统为我记录了哪种汇报关系？',
@@ -76,6 +78,7 @@ const conversationQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,st
  system_explorer:'此处有多少数据库结构表被隐藏？目录访问权是否等于数据记录访问权？',
  assistant:'助手能否在未经我人工确认的情况下更改业务事实？',
  system_testing:'测试报告了什么状态？报告通过是否代表已经独立验证？',
+ recruitment:'有多少份招聘申请正在进行中？这是否表示已经有人被录用？',
  },
  ta:{
  employees:'எனது தற்போதைய பணிக்குப் பதிவு செய்யப்பட்ட வேலை நிலை என்ன?',
@@ -98,6 +101,7 @@ const conversationQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,st
  system_explorer:'இங்கு எத்தனை தரவுத்தள அமைப்பு அட்டவணைகள் மறைக்கப்பட்டுள்ளன? பட்டியல் அணுகல் பதிவு அணுகலை வழங்குமா?',
  assistant:'எனது மனித உறுதிப்படுத்தல் இல்லாமல் உதவியாளர் வணிக உண்மைகளை மாற்ற முடியுமா?',
  system_testing:'என்ன சோதனை நிலை அறிக்கையிடப்பட்டது? அறிக்கையிடப்பட்ட தேர்ச்சி சுயாதீனச் சரிபார்ப்பை நிரூபிக்குமா?',
+ recruitment:'எத்தனை ஆட்சேர்ப்பு விண்ணப்பங்கள் செயலில் உள்ளன? அதனால் யாராவது பணியமர்த்தப்பட்டுள்ளனர் என்று பொருளா?',
  },
  th:{
  employees:'การจ้างงานปัจจุบันของฉันมีสถานะการทำงานที่บันทึกไว้อย่างไร',org:'ระบบบันทึกความสัมพันธ์การรายงานของฉันเป็นประเภทใด',
@@ -119,6 +123,7 @@ const conversationQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,st
  system_explorer:'ที่นี่มีตารางโครงสร้างที่ถูกซ่อนกี่ตาราง และสิทธิ์ดูรายการให้สิทธิ์เข้าถึงระเบียนหรือไม่',
  assistant:'ผู้ช่วยเปลี่ยนข้อเท็จจริงทางธุรกิจโดยไม่มีการยืนยันจากฉันได้หรือไม่',
  system_testing:'มีการรายงานสถานะทดสอบอะไร และรายงานว่าผ่านพิสูจน์การตรวจสอบอิสระหรือไม่',
+ recruitment:'มีใบสมัครในการสรรหาที่กำลังดำเนินการอยู่กี่รายการ และหมายความว่ามีคนได้รับการจ้างแล้วหรือไม่',
  },
  vi:{
  employees:'Trạng thái làm việc nào được ghi nhận cho quan hệ việc làm hiện tại của tôi?',
@@ -141,12 +146,13 @@ const conversationQuestions:Record<PromptHoldoutLocale,Record<AgentModuleCode,st
  system_explorer:'Có bao nhiêu bảng cấu trúc bị ẩn ở đây, và quyền xem danh mục có cấp quyền xem bản ghi không?',
  assistant:'Trợ lý có thể thay đổi dữ kiện nghiệp vụ mà không có xác nhận trực tiếp của tôi không?',
  system_testing:'Trạng thái kiểm thử nào được báo cáo, và báo cáo đạt có chứng minh xác minh độc lập không?',
+ recruitment:'Có bao nhiêu hồ sơ tuyển dụng đang được xử lý, và điều đó có nghĩa là đã tuyển được ai chưa?',
  },
 };
 
 // Expected field and meaning are independently named, not inferred from the candidate output.
 const domain={
- employees:['active','workStatus','employment_active'],org:['administrative','reportingKind','reporting_recorded'],leave:['pending-with-available','pending','leave_pending_not_approved'],ess:['payment-gap','readyRecords','readiness_gaps'],approvals:['pending','status','own_request_pending'],knowledge_base:['published-index','category','published_index_not_policy_text'],payroll:['stored-released','net','released_pay_stored_only'],attendance:['late','workedMinutes','attendance_exception_recorded'],claims:['approved-unpaid','status','claim_approved_not_paid'],performance:['standard-unreleased','released','standard_review_unreleased'],rewards:['draft','status','reward_draft_not_awarded'],lifecycle:['remaining','progressDone','lifecycle_steps_remaining'],toil:['banked','activeCredit','credit_recorded_not_new_eligibility'],multi_cycle_payroll:['regular-index','runSequence','released_run_index_not_run_creation'],typed_pay_components:['stored-decimal','amount','component_amount_stored_only'],'country-my':['filing-gap','readyRecords','statutory_gap_not_rate_decision'],notifications:['unread','notificationCreated','notification_unread_not_delivery_proof'],system_explorer:['withheld','withheldTables','schema_inventory_not_record_access'],assistant:['catalogue',null,'human_confirmation_owns_effects'],system_testing:['reported-pass','status','human_test_pass_not_independent_verification'],
+ employees:['active','workStatus','employment_active'],org:['administrative','reportingKind','reporting_recorded'],leave:['pending-with-available','pending','leave_pending_not_approved'],ess:['payment-gap','readyRecords','readiness_gaps'],approvals:['pending','status','own_request_pending'],knowledge_base:['published-index','category','published_index_not_policy_text'],payroll:['stored-released','net','released_pay_stored_only'],attendance:['late','workedMinutes','attendance_exception_recorded'],claims:['approved-unpaid','status','claim_approved_not_paid'],performance:['standard-unreleased','released','standard_review_unreleased'],rewards:['draft','status','reward_draft_not_awarded'],lifecycle:['remaining','progressDone','lifecycle_steps_remaining'],toil:['banked','activeCredit','credit_recorded_not_new_eligibility'],multi_cycle_payroll:['regular-index','runSequence','released_run_index_not_run_creation'],typed_pay_components:['stored-decimal','amount','component_amount_stored_only'],'country-my':['filing-gap','readyRecords','statutory_gap_not_rate_decision'],notifications:['unread','notificationCreated','notification_unread_not_delivery_proof'],system_explorer:['withheld','withheldTables','schema_inventory_not_record_access'],assistant:['catalogue',null,'human_confirmation_owns_effects'],system_testing:['reported-pass','status','human_test_pass_not_independent_verification'],recruitment:['pipeline-active','activeApplications','recruitment_applications_in_progress']
 } as const satisfies Record<AgentModuleCode,readonly[string,string|null,string]>;
 export type AssistantConversationHoldout=ConversationCaseContract&Readonly<{locale:PromptHoldoutLocale;module:AgentModuleCode|null;question:string;category:'domain'|'clarify'|'human_review'|'privacy'|'unsupported'|'empty'|'propose';source:unknown}>;
 const cases:AssistantConversationHoldout[]=[];

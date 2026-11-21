@@ -40,6 +40,7 @@ export const FIXED_TXN_COLUMNS = [
   'start_date',
   'end_date',
   'remarks',
+  'previous_start_date',
 ] as const;
 export type FixedTxnColumn = (typeof FIXED_TXN_COLUMNS)[number];
 
@@ -53,12 +54,13 @@ export const FIXED_TXN_HEADERS = [
   'Start Date',
   'End Date',
   'Remarks',
+  'Previous Start Date',
 ] as const;
 
 /** The reporter's own worked example, from their ticket. */
 export const FIXED_TXN_SAMPLE_ROWS: readonly (readonly string[])[] = [
-  ['X000001', 'John Tan', 'HANDPHONE', 'Handphone Allowance', '100', 'regular', '2026-08-01', '', ''],
-  ['X000002', 'Mary Lim', 'TRANSPORT', 'Transport Allowance', '250', 'regular', '2026-08-01', '2026-12-31', 'Reviewed Dec'],
+  ['X000001', 'John Tan', 'HANDPHONE', 'Handphone Allowance', '100', '', '2026-08-01', '', '', ''],
+  ['X000002', 'Mary Lim', 'TRANSPORT', 'Transport Allowance', '250', '', '2026-08-01', '2026-12-31', 'Reviewed Dec', '2026-09-01'],
 ];
 
 // ─────────────────────────────── Individual Transaction ───────────────────────────────
@@ -130,7 +132,7 @@ export const TXN_IMPORT_SAMPLE_ROWS: Record<TxnImportKind, readonly (readonly st
 /**
  * 0-based positions stamped as TEXT (`z: '@'`) in the template.
  *
- * Employee ID and Pay Item Code only. Amount and Quantity must stay real numbers so Excel can sum a
+ * Employee ID, Pay Item Code and the Fixed Payroll Cycle code. Amount and Quantity stay numbers so Excel can sum a
  * column of them — forcing those to text is a defect HR would rightly report. Dates are left as typed:
  * `workbookToCsvText` reads a real date cell as a Date and ISO-formats it, and a text date typed as
  * `2026-08-01` survives verbatim, so both paths land on the same string.
@@ -140,7 +142,7 @@ export const TXN_IMPORT_SAMPLE_ROWS: Record<TxnImportKind, readonly (readonly st
  * destroys a leading zero IN THE FILE, before any reader sees it, so it cannot be recovered afterwards.
  */
 export const TXN_IMPORT_TEXT_COLUMN_INDEXES: Record<TxnImportKind, readonly number[]> = {
-  fixed: [0, 2],
+  fixed: [0, 2, FIXED_TXN_COLUMNS.indexOf('payroll_cycle')],
   individual: [0, 2],
 };
 
@@ -185,6 +187,8 @@ export type TxnImportRow = {
   /** What will actually be written. On a calculating pay item this is the DERIVED figure, not the typed
    *  one — the preview must show the number that will be stored, or it is not a preview. */
   amount: string;
+  inputType?: string;
+  inputValue?: number;
   ok: boolean;
   /** i18n key under `payroll.txnImport.reason.*`. Empty when `ok`. */
   reason: string;
@@ -298,6 +302,7 @@ export const TXN_IMPORT_REQUIRED_COLUMNS: Record<TxnImportKind, readonly string[
 export type IndividualImportMethod = 'monthly' | 'daily';
 export const INDIVIDUAL_IMPORT_HEADERS = {
  monthly: ['Employee ID','Employee Name (Optional)','Month with Year','Pay Cycle','Pay Item','Effective Date','Input Type','Quantity','Amount','Remark'],
- daily: ['Employee ID','Employee Name (Optional)','Month with Year','Pay Cycle','Pay Item','Effective Date','Quantity','Remarks'],
+ daily: ['Employee ID','Employee Name (Optional)','Month with Year','Pay Cycle','Pay Item','Effective Date','Input Type','Quantity','Remarks'],
 } as const;
+export const PREVIOUS_DAILY_IMPORT_HEADERS = INDIVIDUAL_IMPORT_HEADERS.daily.filter(header => header !== 'Input Type');
 export const INDIVIDUAL_IMPORT_SHEET = {monthly:'Monthly Transactions',daily:'Daily Transactions'} as const;

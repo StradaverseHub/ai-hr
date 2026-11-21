@@ -23,7 +23,7 @@ afterEach(() => { cleanup(); __resetUnsavedGuards(); vi.restoreAllMocks(); });
 describe('company workflow editor outcomes', () => {
   it('fixes company/type for creation and saves all four multi-valued criteria without losing values when searching', async () => {
     form(null);
-    expect(screen.getByLabelText('Company')).toBeDisabled();
+    expect(screen.getByRole('button',{name:'Company'})).toBeEnabled();
     expect(screen.getByLabelText('Application type')).toBeDisabled();
     expect(screen.getByLabelText('Application type')).toHaveValue('self_overtime');
     for (const [label, names] of [['Department', ['Finance', 'People']], ['Business Unit', ['Operations', 'Services']], ['Job Grade', ['Grade 1', 'Grade 2']], ['Division', ['North', 'South']]] as const) {
@@ -39,7 +39,7 @@ describe('company workflow editor outcomes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' }));
     await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
     expect(save.mock.calls[0][1]).toMatchObject({ companyId, applicationType: 'self_overtime', criteria: { departmentIds: ['d1', 'd2'], businessUnitIds: ['b1', 'b2'], gradeIds: ['g1', 'g2'], orgDivision: ['v1', 'v2'] } });
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage'));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage?notice=saved'));
   });
   it('reopens saved selections, preserves unavailable choices, and invalidates preview when a chip is removed', async () => {
     const value = initial(); value.criteria = { departmentIds: ['d1', 'missing'] }; form(value);
@@ -53,7 +53,7 @@ describe('company workflow editor outcomes', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' }));
     await waitFor(() => expect(save).toHaveBeenCalled());
     expect(save.mock.calls[0][1].criteria.departmentIds).toEqual(['d1']);
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage'));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage?notice=saved'));
   });
   it('keeps names with reordered stages, derives mode from alternatives, and offers only Attendance authorities', async () => {
     form();
@@ -70,7 +70,7 @@ describe('company workflow editor outcomes', () => {
     expect(payload.stages.map((stage: { name: string }) => stage.name)).toEqual(['Final review', 'Manager review']);
     expect(payload.stages[1].level).toMatchObject({ kind: 'hr_admin', alternates: [{ kind: 'direct_manager', employmentId: null }] });
     expect(payload).not.toHaveProperty('mode');
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage'));
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/admin/attendance/approval-workflow/saved-lineage?notice=saved'));
   });
   it('switching to sequential removes alternatives and cancel preserves edits unless confirmed', () => {
     const value = initial(); value.stages[1].level.alternates = [{ kind: 'direct_manager', employmentId: null }]; form(value);
@@ -95,6 +95,8 @@ describe('company workflow editor outcomes', () => {
     await waitFor(() => expect(screen.getByLabelText('Workflow name')).not.toBeDisabled());
     expect(screen.getByLabelText('Workflow name')).toHaveValue('Retain this');
     expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[0][3]).toBeTypeOf('string');
+    expect(save.mock.calls[1][3]).toBe(save.mock.calls[0][3]);
     expect(router.push).not.toHaveBeenCalled();
   });
   it.each([['en', en], ['ms', ms], ['ta', ta], ['th', th], ['vi', viLocale], ['zh', zh]] as const)('renders translated shared controls without missing messages (%s)', (_, messages) => {
@@ -146,4 +148,51 @@ describe('797ba70b: auto levels and complete assignment controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await waitFor(() => expect(save).toHaveBeenCalled());
     expect(save.mock.calls[0][1].criteria.employeeIds).toEqual(['e1', 'e2']);
   });
+});
+
+it('defaults new organisation-wide workflows to All Company and restores explicit saved scope',async()=>{
+ const catalogues={...options,canManageAllCompanies:true,companies:[...options.companies,{id:'00000000-0000-0000-0000-000000000002',name:'Company B'}]};
+ form(null,en,catalogues);
+ expect(screen.getByRole('checkbox',{name:'All Company'})).toBeChecked();
+ fireEvent.click(screen.getByRole('checkbox',{name:'All Company'}));
+ expect(screen.getByRole('checkbox',{name:'All Company'})).not.toBeChecked();
+ cleanup();form(initial(),en,catalogues);
+ expect(screen.getByRole('checkbox',{name:'All Company'})).not.toBeChecked();
+});
+it('explains the organisation-wide permission requirement for company-scoped administrators',()=>{
+ form(null);expect(screen.getByRole('checkbox',{name:'All Company'})).toBeDisabled();
+ expect(screen.getByText(en.attendanceWorkflow.allCompanyRestricted)).toBeVisible();
+});
+describe('4452ba3c: OR groups, default superior depth and copied workflows',()=>{
+ it('adds an OR group, saves the groups and starts a new level at the next superior depth',async()=>{
+  form(null);
+  expect(screen.queryByText('Group 2')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Add Approval Level'}));
+  const depths=screen.getAllByLabelText('Superior depth') as HTMLSelectElement[];
+  expect(depths.map(select=>select.value)).toEqual(['1','2']);
+  fireEvent.click(screen.getByRole('button',{name:'+ Add OR group'}));
+  expect(screen.getByText('Group 2')).toBeVisible();
+  const second=screen.getByRole('group',{name:'Group 2'});
+  fireEvent.click(within(second).getByRole('button',{name:'Department'}));
+  fireEvent.click(screen.getByRole('checkbox',{name:'Finance'}));
+  fireEvent.keyDown(screen.getByPlaceholderText(en.admin.leave.adjustmentsSearchPlaceholder),{key:'Escape'});
+  fireEvent.change(screen.getByLabelText('Workflow code'),{target:{value:'GROUPED'}});
+  fireEvent.change(screen.getByLabelText('Workflow name'),{target:{value:'Grouped review'}});
+  fireEvent.click(screen.getByRole('button',{name:'Save workflow'}));
+  await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][1].criteria).toEqual({groups:[{},{departmentIds:['d1']}]});
+  expect(save.mock.calls[0][1].stages.map((stage:{sources:unknown})=>stage.sources)).toEqual([[{kind:'direct_manager',depth:1}],[{kind:'direct_manager',depth:2}]]);
+  expect(screen.getByRole('button',{name:'Remove group 1'})).toBeInTheDocument();
+ });
+ it('shows the copy banner, keeps the copied priority and sends provenance on save',async()=>{
+  const copied={...initial(),code:'',name:'',description:'',priority:7};
+  render(<NextIntlClientProvider locale="en" messages={en}><WorkflowForm context={{companyId,applicationType:'self_overtime'}} initial={copied} lineageId={null} options={options} copiedFrom={{lineageId:'00000000-0000-0000-0000-0000000000aa',version:4,code:'WF-DESIGN-01'}}/></NextIntlClientProvider>);
+  expect(screen.getByText(/Copied from WF-DESIGN-01 \(version 4\)/)).toBeVisible();
+  expect(screen.getByLabelText('Workflow code')).toHaveValue('');
+  fireEvent.change(screen.getByLabelText('Workflow code'),{target:{value:'WF-COPY'}});
+  fireEvent.change(screen.getByLabelText('Workflow name'),{target:{value:'Copied review'}});
+  fireEvent.click(screen.getByRole('button',{name:'Save workflow'}));
+  await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0]).toEqual([null,expect.objectContaining({code:'WF-COPY',priority:7}),false,expect.any(String),{lineageId:'00000000-0000-0000-0000-0000000000aa',version:4}]);
+ });
 });

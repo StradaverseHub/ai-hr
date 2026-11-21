@@ -1,0 +1,133 @@
+{
+  "kind": "AI_REVIEWED_RECOVERY_NORMAL_COMPOSITION_SOURCE_ONLY_UNQUALIFIED",
+  "sourceRef": "codex/ai-management-reviewed-recovery-composition-20261109",
+  "mergeParents": [
+    "f97dc006abc6aa91196c2d70eaa0aae0b51149b6",
+    "85de9902a6d4ac1ae103fb4df8809a265a3d74a5"
+  ],
+  "commonParent": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+  "candidateCommit": "Recorded externally after freeze; no current self-hash",
+  "ownedConflictPaths": [
+    "docs/adr/2026-11-09-ai-management-section-projection.md",
+    "docs/qualification/ai-management-section-projection-source-20261109.json"
+  ],
+  "wholeRuntimeAndTestOwners": {
+    "test/ai-management-contract.test.ts": {
+      "parent": "f97dc006abc6aa91196c2d70eaa0aae0b51149b6",
+      "sha256": "26311cc5725a931b951cf8825f0355c8c752eaaeb3210153f1fbc9c127a7a808"
+    },
+    "test/ai-management-section-projection.test.ts": {
+      "parent": "f97dc006abc6aa91196c2d70eaa0aae0b51149b6",
+      "sha256": "5b1d12868bed27cf5791ece99a77321d54c96aa228f1dd7963c405aba07bafd5"
+    },
+    "components/ai-centre/how-it-works.tsx": {
+      "parent": "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+      "sha256": "e3e4e132419a5676d3be77c82883093b81d824ed2237ad03d508b4a232084265"
+    },
+    "test/ai-inventory-screen.dom.test.tsx": {
+      "parent": "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+      "sha256": "29aa1f69f155ccfab0ffc6faf5429b76ef4eef95845eaf15f20268ec67752a37"
+    },
+    "test/ai-management-naming.dom.test.tsx": {
+      "parent": "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+      "sha256": "5bc2dd80e532fdfadc3b950cfc58cdb71343cc65c03ec4feeb2017b030b17d99"
+    },
+    "test/ai-management-page.dom.test.tsx": {
+      "parent": "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+      "sha256": "d404fcd5e1628b718ce184bfea25aa23e05816ad3bf5335a230bf6b0dd1578a5"
+    },
+    "test/ai-probe-history-page.dom.test.tsx": {
+      "parent": "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+      "sha256": "8499c2ae79f630e0195e15d95e24225fdc93fb747f44c0fe8f0c76131bb2eb15"
+    },
+    "test/automatic-followup-features.dom.test.tsx": {
+      "parent": "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+      "sha256": "c442c9253dd293a278e7998fec67451d0732dc78a117c1752ff8ddb51467b6e2"
+    }
+  },
+  "wholeChildRecords": {
+    "docs/qualification/ai-management-hosted-fixture-recovery-source-20261109.json": {
+      "commit": "f97dc006abc6aa91196c2d70eaa0aae0b51149b6",
+      "gitBlob": "22c0e46a9bc863412f083c7497fa7bfd02e16a0e",
+      "sha256": "a64ae179f8a3c9379d1f014a8f5c302b9642ff9837fb053144320ae5026fff91",
+      "bytes": 9059
+    },
+    "docs/qualification/ai-centre-mobile-fixture-recovery-source-20261109.json": {
+      "commit": "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+      "gitBlob": "6dbf8da7a132adb6c78e35906a70515904d371f9",
+      "sha256": "6e2f36e1a595674eb37a462554e331275b9f6a2c73318a76d342b0810c18c071",
+      "bytes": 22608
+    }
+  },
+  "immutableWholeParentIndexReferences": {
+    "f97dc006abc6aa91196c2d70eaa0aae0b51149b6": {
+      "commit": "f97dc006abc6aa91196c2d70eaa0aae0b51149b6",
+      "gitBlob": "eab107c435aa1e8fb835cbe2abccf995742c89d9",
+      "sha256": "6b92cde0393d9cf6204d99eb655b5530fca5c4e60370d50602dbdf023a3f34b2",
+      "bytes": 25426
+    },
+    "85de9902a6d4ac1ae103fb4df8809a265a3d74a5": {
+      "commit": "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+      "gitBlob": "1c20244e132e1cb402065fc55f296fe0590f4ed0",
+      "sha256": "7b835b3b65372703bf722ecd0648cd84b4a041d5cc59ef59d0af93b07ef7d6a1",
+      "bytes": 24915
+    }
+  },
+  "adrComposition": {
+    "wholeCommonPrefix": {
+      "commit": "1b78bee247e47c8d9ae85209bb3b0e852aedb321",
+      "gitBlob": "d1dacc7d0ed4ee8ec487988c1df42046967d005d",
+      "sha256": "4e22bbd109cdd9530d519878194e5eaf59b47f038b1b21b0e5843e93b86ef127",
+      "bytes": 4290
+    },
+    "appendOrder": [
+      "f97dc006abc6aa91196c2d70eaa0aae0b51149b6",
+      "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+      "this source-only qualification notice"
+    ],
+    "wholeParentAppendSectionsPreserved": true
+  },
+  "historicalScope": "Original sourceProofs, inverse/preimage and recovery records remain at their original components. Their protected/current-source fields are not blindly rebound to this merged source. The new index currentSourceSha256 union describes actual merged bytes; immutable component records retain their source-time pending flags.",
+  "isolatedActualEvidence": [
+    {
+      "source": "f97dc006abc6aa91196c2d70eaa0aae0b51149b6",
+      "controller": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
+      "runId": "42511453856",
+      "scope": "two complete Node files22 cases",
+      "authSha256": "1df00e791916fabc5ec44e82d6054f062c138707a54aa609e235d89e25dabe74"
+    },
+    {
+      "source": "85de9902a6d4ac1ae103fb4df8809a265a3d74a5",
+      "controller": "00a27edbe7de417dd97b0a82bdab48b8e79214a7",
+      "runId": "42512334101",
+      "scope": "six complete DOM files68 cases, not live browser journey",
+      "authSha256": "8f0cf16ffd01d590863937b12069e1973f3c1bb8ff4170447bae2c652c8ea25b"
+    }
+  ],
+  "componentEvidenceTransferredToComposition": false,
+  "originalFailureRetained": "42509856754 at1b78:198cases190PASS8FAIL",
+  "finiteFutureLeafIntegrationInventory": {
+    "path": "/private/tmp/aihr-ai-reviewed-recovery-leaf-dependency-inventory-20261109.json",
+    "sha256": "8169eefa13f67f4a4a6e12a170f246e344ef03f712b89894837772f22af5f4d7",
+    "leaf": "lib/ai/management-sections.ts",
+    "isolatedRawCount": 3447,
+    "observedSeparateRoot": "a5194c1aa2f904e78c35728be7a95a2d477a0ff8",
+    "observedRootRawCount": 3474,
+    "leafAbsentFromBoth": true,
+    "noCiOrRestorationRowsEdited": true
+  },
+  "currentAdrSha256": "fa9658d5d8f9c9603317a7f01d78c4bc61dadf7e4018ba5c24ee07c73cc2065a",
+  "aggregateQualification": {
+    "state": "UNQUALIFIED",
+    "currentImportGraphComplete": false,
+    "globalSourceBindingQualified": false,
+    "coherentRelevantTestsExecuted": false,
+    "ninetyFreshCasesClaimed": false,
+    "normalFiveAdmitted": false,
+    "liveBrowserInteractionQualified": false,
+    "releaseEligible": false,
+    "productionHeld": true
+  },
+  "repositoryImportsTestsCompilerAppDbNativeExecutedLocally": false,
+  "networkOrUploadOrPostPerformed": false
+}

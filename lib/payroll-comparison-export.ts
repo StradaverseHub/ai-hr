@@ -30,7 +30,14 @@ function metadata(run:Run,t?:PayrollComparisonTranslate):(string|number|null)[][
   return [
     [c('report'),run.name],[c('payItem'),run.definition.payItemCode===ALL_RECORDED_PAY_ITEMS?label('allRecordedItems','All recorded pay items'):run.definition.payItemCode],[c('generatedBy'),run.generatedBy],[c('generatedAt'),run.generatedAt],
     [label('previousPeriod','Previous period'),run.filters.previousPeriod],[label('currentPeriod','Current period'),run.filters.currentPeriod],[c('runSelection'),run.filters.runType==='all'?label('allRuns','All runs'):runType(run.filters.runType)],
-    [c('companyIds'),run.companyIds.join(', ')],[label('department','Department'),run.filters.departmentId??label('allDepartments','All authorised departments')],
+    [c('companyIds'),run.companyIds.join(', ')],
+    // Ready-company comparison: rows and totals cover the included companies only; the others are listed with reasons.
+    ...(run.inclusion?[
+      [label('inclusion.comparedCompanies','Companies compared'),t?t('inclusion.comparing',{included:run.inclusion.includedCompanyIds.length,total:run.inclusion.withPayrollCount})
+        :`Comparing ${run.inclusion.includedCompanyIds.length} of ${run.inclusion.withPayrollCount} companies with payroll. Rows and totals cover these companies only.`],
+      ...run.inclusion.excluded.map(row=>[label('inclusion.notIncluded','Not included'),row.company+': '+row.reasons.map(reason=>t?t('inclusion.reasons.'+reason.code,{month:new Date(Date.UTC(Number(reason.period.slice(0,4)),Number(reason.period.slice(5,7))-1,15)) as unknown as string}):reason.code+' '+reason.period).join('; ')]),
+      ...(run.inclusion.neverRanCount?[[label('inclusion.neverRanShort','Never ran payroll'),run.inclusion.neverRanCount]]:[]),
+    ]:[]),[label('department','Department'),run.filters.departmentId??label('allDepartments','All authorised departments')],
     [label('minimum','Minimum absolute variance'),run.filters.minVariance],[label('onlyVariances','Only variances'),run.filters.onlyVariances?label('yes','Yes'):label('no','No')],[c('reasonFilter'),run.filters.reason?label(run.filters.reason==='incrementPromotion'?'incrementPromotion':run.filters.reason==='prorated'?'prorated':'reasons.'+run.filters.reason,run.filters.reason):label('allReasons','All')],
     [c('comparisonRows'),run.result.comparisonRows],[c('displayedRows'),run.result.displayedRows],
     [c('previousHeadcount'),summary?.previousHeadcount??null],[c('currentHeadcount'),summary?.currentHeadcount??null],

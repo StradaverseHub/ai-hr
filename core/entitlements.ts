@@ -412,7 +412,9 @@ function settingKilled(key: string): boolean {
  * `setting_definition` is readable by `ai_hr_app` under `setting_definition_read USING (true)` (0313),
  * and `tenant_setting.key` is a FK onto it, so the INNER join can never drop a legitimate row.
  */
-function snapshotQuery(tenantId: string) {
+/** Exported for the request preamble only (docs/adr/2026-11-10-home-request-read-scope.md decision 12), which answers
+ * `resolveEntitlementsTx`'s statement ahead in the same snapshot. */
+export function snapshotQuery(tenantId: string) {
   return sql`
     SELECT
       (SELECT coalesce(json_agg(json_build_object('code', tm.module_code, 'company', tm.company_id)), '[]'::json)

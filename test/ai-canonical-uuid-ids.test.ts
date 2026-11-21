@@ -53,7 +53,7 @@ describe("AI id validators accept PostgreSQL-canonical UUIDs, not only RFC 9562 
       await lockLeaveDependencyConfigurationTx(tx, tenant);
       await lockLeaveDependencyReadConfigurationTx(tx, tenant);
       await lockLeaveDependenciesTx(tx, tenant, [DEMO_USER, DEMO_USER.toUpperCase()]);
-      expect(execute).toHaveBeenCalledTimes(4);
+      expect(execute).toHaveBeenCalledTimes(3); // The one canonical subject shares a statement with its configuration lock.
     }
     for (const bad of REFUSED) {
       const { tx, execute } = fakeTx();

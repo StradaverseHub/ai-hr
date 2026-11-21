@@ -8,7 +8,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {ownAssistantClarification,assertOwnAssistantClarificationCurrentTx,canClarifyAssistantQuestion,ASSISTANT_CONVERSATION_LIMITS,AssistantClarificationError,type OwnAssistantClarification} from '../core/assistant-clarification';
 import * as clarificationOwner from '../core/assistant-clarification';
 import {askAssistant} from '../core/assistant';
@@ -145,7 +145,7 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   let ready!:()=>void,release!:()=>void,fail!:(e:unknown)=>void;
   const started=new Promise<void>((yes,no)=>{ready=yes;fail=no;}),finish=new Promise<void>(yes=>{release=yes;});
   const watchdog=setTimeout(()=>{fail(Error('owned clarification handshake timed out'));release();},10000);
-  const holder=withTenant(admin,async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);ready();await finish;});void holder.catch(fail);
+  const holder=withTenant(admin,async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);ready();await finish;});void holder.catch(fail);
   let pending:Promise<OwnAssistantClarification>|undefined,error:unknown;let result:OwnAssistantClarification|undefined;
   try{await started;const supplied={...ctx,roles:ctx.roles!.slice(),grants:ctx.grants!.map(g=>({...g}))};let scalar='My original human answer';
    pending=ownAssistantClarification(supplied,stored.binding.exchangeId,scalar);void pending.catch(e=>{error=e;});
@@ -163,7 +163,7 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   let ready!:()=>void,release!:()=>void,fail!:(error:unknown)=>void,held=false;
   const started=new Promise<void>((yes,no)=>{ready=yes;fail=no;}),finish=new Promise<void>(yes=>{release=yes;});
   const watchdog=setTimeout(()=>{fail(Error('owned bounded clarification handshake timed out'));release();},10000);
-  const holder=withTenant(admin,async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);held=true;ready();await finish;held=false;});
+  const holder=withTenant(admin,async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);held=true;ready();await finish;held=false;});
   void holder.catch(fail);let pending:ReturnType<typeof ownAssistantClarification>|undefined;
   let deadline:ReturnType<typeof setTimeout>|undefined;
   try{

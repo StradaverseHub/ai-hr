@@ -1,7 +1,7 @@
 import { readSessionHandle, sealSessionHandle } from './cookie';
 import { NextRequest, NextResponse } from 'next/server';
 import { getTranslations } from 'next-intl/server';
-import { client } from '../../db/client';
+import { client, withPoolWork } from '../../db/client';
 import { recordLoginBlocked, recordLoginSucceeded } from '../../core/auth';
 import { keycloakConfig, LOGIN_COOKIE, safeReturnTo, WEB_SESSION_COOKIE } from './config';
 import { oidc, oidcClient, verifyKeycloakAccessToken } from './oidc';
@@ -44,7 +44,7 @@ export async function completeKeycloakLogin(request: NextRequest) {
       idToken: tokens.id_token, accessExpiry: verified.expiresAt,
       email: typeof claims.email === 'string' ? claims.email : null, emailVerified: claims.email_verified === true });
     await deleteIdentitySession((await readSessionHandle(request.cookies.get(WEB_SESSION_COOKIE)?.value)) ?? undefined);
-    const [principal] = await client<{ app_user_id: string; tenant_id: string }[]>`select * from app.principal_by_identity(${verified.issuer},${verified.subject})`;
+    const [principal] = await withPoolWork('authentication', () => client<{ app_user_id: string; tenant_id: string }[]>`select * from app.principal_by_identity(${verified.issuer},${verified.subject})`, undefined, {idempotent:true});
     try {
       if (principal) await recordLoginSucceeded({ userId: principal.app_user_id, tenantId: principal.tenant_id });
       else await recordLoginBlocked({ subject: `${verified.issuer}#${verified.subject}` });

@@ -57,7 +57,7 @@ typography:
     fontSize: ".8125rem"
     fontWeight: 500
   table-label:
-    fontSize: ".78125rem"
+    fontSize: ".75rem"
     fontWeight: 500
     letterSpacing: "0"
 rounded:
@@ -235,7 +235,11 @@ Expanded-menu section titles are semantic, noninteractive headings. Their compac
 
 ### Tables and pagination
 
-Sentence-case headings, hairline divisions and 2.75rem cell height, with neutral row hover/focus. Pager and filter controls appear above rows within shared paged cards. Row actions use compact borderless text controls, with accent on hover.
+The owner-approved table direction (17 November 2026) draws on ElevenLabs conversation history and request logs: open white surfaces, restrained dividers, sentence-case 12px medium-weight labels, compact controls and clear primary/metadata roles. Atelier applies it through app/atelier.css to native tables and the shared table constants in components/ui.tsx. Table cards have a transparent outer boundary; section counts are small neutral badges. Primary actions inside table cards use foreground ink with an inverse label; focus retains the app accent. Dark mode uses the same semantic tokens.
+
+Body text is 13px with a 20px line height, ordinary cells have 12px vertical / 16px horizontal padding, and headings have 10px vertical padding. EmployeeName stacks the code above a semibold name only inside Atelier tables; cards and org charts keep their existing inline/wrapping contracts. Dates and financial values stay atomic, while descriptions and company names can wrap. The payroll History table leads with employee/company identity, period/cycle, gross/net and status, followed by every existing contribution and processing column; no financial data is hidden by default.
+
+Pager and filter controls remain above rows. Pagers keep visible row-count labels and separate quiet previous/next controls, with 44px touch minimums. A wide table owns its horizontal scroll boundary; its pager stays outside it. StackedTable switches geometry at its existing 48rem container breakpoint. Classic, Monolith, independent area themes and V9 retain their design contracts. Shared styles do not introduce new search, filter or column-picker behavior.
 
 ### Public Editorial entry and Noveri story
 

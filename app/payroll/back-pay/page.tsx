@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -330,7 +331,7 @@ export default async function BackPayPage({
           <div className="flex flex-wrap items-center gap-3">
             {(['csv', 'xlsx', 'pdf'] as const).map((f) => (
               <Button key={f} asChild variant="outline" size="sm">
-                <Link href={`/payroll/back-pay/export?run=${detail.run.id}&format=${f}`}>{t(`export.${f}`)}</Link>
+                <ExportDownloadLink href={`/payroll/back-pay/export?run=${detail.run.id}&format=${f}`}>{t(`export.${f}`)}</ExportDownloadLink>
               </Button>
             ))}
           </div>

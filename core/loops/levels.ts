@@ -31,13 +31,22 @@ export type LoopLevelRow=Readonly<{companyId:string;level:AutonomyLevel;limits:L
  conditionSetByUserId:string|null;conditionSetAt:Date|null}>;
 const limitsOf=(row:{maxActionsPerNight:number;undoDays:3|7;actCondition:LoopLimits['condition']}):LoopLimits=>
  Object.freeze({maxActionsPerNight:row.maxActionsPerNight,undoDays:row.undoDays,condition:row.actCondition});
-const toRow=(row:typeof terasLoopLevel.$inferSelect):LoopLevelRow=>Object.freeze({companyId:row.companyId,level:row.level,limits:limitsOf(row),version:row.version,
+const toRow=(row:typeof terasLoopLevel.$inferSelect):LoopLevelRow=>Object.freeze({companyId:row.companyId,level:Math.min(row.level,promotableTo(row.workerId)) as AutonomyLevel,limits:limitsOf(row),version:row.version,
  changedBy:row.changedBy,changedByUserId:row.changedByUserId,changedAt:row.changedAt,conditionSetByUserId:row.conditionSetByUserId,conditionSetAt:row.conditionSetAt});
 
 /** Every stored level of one loop in the tenant, by company. A company with no row is at Prepare. */
 export async function loopLevelsTx(tx:Tx,tenantId:string,workerId:LoopId):Promise<Map<string,LoopLevelRow>>{
  const rows=await tx.select().from(terasLoopLevel).where(and(eq(terasLoopLevel.tenantId,tenantId),eq(terasLoopLevel.workerId,workerId)));
  return new Map(rows.map(row=>[row.companyId,toRow(row)]));
+}
+/** loopLevelsTx for several loops in ONE statement (the Loops overview shows every loop's levels): each loop's map holds
+ * exactly the rows loopLevelsTx returns for it; a loop with no stored level has an empty map. */
+export async function loopLevelsByLoopTx(tx:Tx,tenantId:string,workerIds:readonly LoopId[]):Promise<Map<LoopId,Map<string,LoopLevelRow>>>{
+ const out=new Map(workerIds.map(id=>[id,new Map<string,LoopLevelRow>()]));
+ if(!workerIds.length)return out;
+ const rows=await tx.select().from(terasLoopLevel).where(and(eq(terasLoopLevel.tenantId,tenantId),inArray(terasLoopLevel.workerId,[...new Set(workerIds)])));
+ for(const row of rows)out.get(row.workerId)?.set(row.companyId,toRow(row));
+ return out;
 }
 export const levelIn=(levels:ReadonlyMap<string,LoopLevelRow>,companyId:string):AutonomyLevel=>levels.get(companyId)?.level??1;
 
@@ -117,9 +126,10 @@ export async function setLoopLevel(supplied:SessionContext,input:Readonly<{worke
   if(admin.ok!==true)throw new LoopLevelRefused('not_group_administrator');
   const where=and(eq(terasLoopLevel.tenantId,ctx.tenantId),eq(terasLoopLevel.workerId,workerId),eq(terasLoopLevel.companyId,companyId));
   const [before]=await tx.select().from(terasLoopLevel).where(where).limit(1).for('update');
-  const current:AutonomyLevel=before?.level??1;
+  const stored:AutonomyLevel=before?.level??1;
+  const current=Math.min(stored,promotableTo(workerId)) as AutonomyLevel;
   if(current!==expectedLevel)throw new LoopLevelRefused('changed');
-  if(toLevel===current)throw new LoopLevelRefused('unchanged');
+  if(toLevel===current&&stored===current)throw new LoopLevelRefused('unchanged');
   let limits:LoopLimits=before?limitsOf(before):DEFAULT_LIMITS,evidence:Record<string,unknown>={};
   if(toLevel>current){
    if(toLevel!==current+1)throw new LoopLevelRefused('not_next_level');
@@ -139,11 +149,11 @@ export async function setLoopLevel(supplied:SessionContext,input:Readonly<{worke
    ?await tx.update(terasLoopLevel).set(values).where(where).returning()
    :await tx.insert(terasLoopLevel).values({tenantId:ctx.tenantId,workerId,companyId,...values}).returning();
   if(!row)throw new LoopLevelRefused('not_group_administrator');
-  const kind=toLevel>current?'promoted' as const:'moved_down' as const;
-  await tx.insert(terasLoopLevelChange).values({tenantId:ctx.tenantId,workerId,companyId,fromLevel:current,toLevel,kind,changedBy:'administrator',
+  const kind=toLevel>stored?'promoted' as const:'moved_down' as const;
+  await tx.insert(terasLoopLevelChange).values({tenantId:ctx.tenantId,workerId,companyId,fromLevel:stored,toLevel,kind,changedBy:'administrator',
    changedByUserId:ctx.userId!,limits:{...limits},evidence,changedAt:now});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-loop',aggregateId:companyId,eventType:'teras-loop.level-changed',actor:actorOf(ctx),
-   payload:{workerId,companyId,from:current,to:toLevel,kind,limits:{...limits},version:row.version}});
+   payload:{workerId,companyId,from:stored,to:toLevel,kind,limits:{...limits},version:row.version}});
   return toRow(row);
  });
 }
@@ -158,6 +168,7 @@ export async function changeLoopLimits(supplied:SessionContext,input:Readonly<{w
  const parsed=LimitsInput.safeParse(input),limits=parseLimits(input.limits);
  if(!parsed.success||!isLoopId(parsed.data.workerId)||!limits)throw new LoopLevelRefused('invalid');
  const workerId:LoopId=parsed.data.workerId,companyId=parsed.data.companyId;
+ if(promotableTo(workerId)<=1)throw new LoopLevelRefused('capped');
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`teras-loop-level:${ctx.tenantId}:${workerId}:${companyId}`},0))`);
   const [admin]=await tx.execute(sql`select app.is_admin_for(c.id) as ok from public.company c where c.id=${companyId}::uuid and c.tenant_id=${ctx.tenantId}::uuid`) as unknown as {ok:boolean|null}[];

@@ -22,7 +22,7 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTra
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/control-tower/agents/inventory',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../lib/authz',()=>({isGroupAdmin:()=>state.group,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:()=>true,isModuleEnabled:()=>true}));
-vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>({provider:{provider:'openrouter',model:'fictional/model'},mayWriteUsers:true,features:[],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}),bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})}));
+vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementPageView: async(_ctx:unknown,section:string)=>{const full=await (async()=>({provider:{provider:'openrouter',model:'fictional/model'},mayWriteUsers:true,features:[],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}))();if(!full||typeof full!=='object'||!('users' in full)||!('moreUsers' in full)||!('legacyBudget' in full)||!('runs' in full)||!('runFilter' in full))throw new Error('AI management page fixture is missing');const {users,moreUsers,legacyBudget,runs:_runs,runFilter:_filter,...common}=full;return {...common,section,allowances:section==='allowances'?{users,moreUsers,legacyBudget}:null};},bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})}));
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
 vi.mock('../app/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAssistantPermissionAction:vi.fn(),setAgentActionPauseAction:vi.fn()}));
@@ -49,7 +49,7 @@ afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;});
 const session={tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never;
 const renderPage=async(locale:keyof typeof copies,section:'features'|'runs',searchParams={})=>{
  const page=await AiManagementScreen({session,section,searchParams:Promise.resolve(searchParams)});
- return render(<NextIntlClientProvider locale={locale} messages={copies[locale] as any}><main className="min-w-0 p-4">{page}</main></NextIntlClientProvider>);
+ return render(<NextIntlClientProvider locale={locale} messages={withAiCentre(locale,copies[locale] as any)}><main className="min-w-0 p-4">{page}</main></NextIntlClientProvider>);
 };
 
 describe('AI inventory in six rendered locales',()=>{

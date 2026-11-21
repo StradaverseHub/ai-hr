@@ -94,7 +94,7 @@ describe('per-sheet-role workbook contract (d9e33556)',()=>{
  },60_000);
 
  it('fails the download explicitly when the catalogue exceeds the supported Reference bound',async()=>{
-  await expect(build(50_000)).rejects.toThrow('movement_reference_catalog_too_large');
+  await expect(build(50_000)).rejects.toThrow('movement_template_too_large');
  },60_000);
 
  it('keeps the standard bound on Movements and other sheets; more than 200 entered rows is a data limit',async()=>{

@@ -189,10 +189,19 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
     // The later approved All employees request supersedes the old per-employee-only inquiry policy.
     // The /leave Requests subsection remains removed and is not reinstated by this separate surface.
     expect(recordsPage).toContain('await scopedAdmin()');
-    expect(recordsPage).toContain('await leaveInquiryContext(session, scopeIds, query)');
-    expect(recordsPage).toContain('leaveInquiryRecordsPage(session, inquiry, query)');
+    // e066cf54f reads the authorized context and its records in ONE admitted read-only snapshot
+    // (docs/adr/2026-11-07-leave-inquiry-presentation-read-frame.md); the records reader is still
+    // handed that freshly resolved scope, never a wider employee source. Same repair as 21ed4f8c0.
+    expect(recordsPage).toContain('await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)');
+    expect(recordsPage).toContain('inquiry:scope,result:await leaveInquiryRecordsPageTx(tx,session,scope,query),');
     expect(recordsPage).not.toContain('selectInquiryEmployee(');
     const owner = read('core/leave-inquiry.ts');
+    // The snapshot resolves the SAME authorized All/single context the page previously read separately.
+    const snapshotFrom = owner.indexOf('export async function leaveInquirySnapshot<T>(');
+    const snapshotTo = owner.indexOf('export async function leaveInquirySnapshotForContext<T>(', snapshotFrom);
+    expect(snapshotFrom, 'admitted inquiry snapshot owner exists').toBeGreaterThan(-1);
+    expect(snapshotTo, 'admitted inquiry snapshot owner has a closing boundary').toBeGreaterThan(snapshotFrom);
+    expect(owner.slice(snapshotFrom, snapshotTo)).toContain('read(tx, await leaveInquiryContextTx(tx,session,ids,captured,ctx,selectionOnly))');
     const from = owner.indexOf('export async function leaveInquiryRecordsPageTx(');
     const to = owner.indexOf('function checkWindow(', from);
     expect(from, 'canonical records reader starts').toBeGreaterThan(-1);

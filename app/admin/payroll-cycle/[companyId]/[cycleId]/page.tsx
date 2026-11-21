@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -74,9 +75,9 @@ export default async function PayrollCycleDetailPage({
               <input type="hidden" name="id" value={cycle.id} />
               <input type="hidden" name="q" value={q ?? ''} />
               <input type="hidden" name="active" value={active ? 'false' : 'true'} />
-              <button className="text-sm font-medium text-primary hover:underline">
+              <ActionButton actionKind="saving" className="text-sm font-medium text-primary hover:underline">
                 {active ? t('deactivate') : t('activate')}
-              </button>
+              </ActionButton>
             </form>
             <form action={deleteCycleAction}>
               <input type="hidden" name="companyId" value={company.id} />
@@ -110,7 +111,7 @@ export default async function PayrollCycleDetailPage({
                   </label>
                 ))}
               </div>
-              <button className={btnPrimary}>{t('copyConfirm')}</button>
+              <ActionButton actionKind="saving" className={btnPrimary}>{t('copyConfirm')}</ActionButton>
             </form>
           )}
         </div>

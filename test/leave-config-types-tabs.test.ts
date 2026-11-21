@@ -649,28 +649,40 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     expect(pageSrc).toContain('negativeBalanceNeedsLimit.length > 0 &&');
   });
 
-  it('F6 the identity form is still behind the Rename toggle, with Discard beside Save', () => {
-    // The old panel keeps a leave type's name and code read-only until an administrator asks for them
-    // (components/leave-type-panel.tsx `editingName`). The first draft of this screen rendered the form
-    // always-open and called that "presentation only": it is not — an always-editable name field beside a
-    // Save button is a different screen to work on, and the round's framing is that only the ARRANGEMENT
-    // changes. Pinned here so the toggle cannot be dropped a second time without saying so.
-    expect(tabsSrc).toContain('const [editingName, setEditingName] = useState(false);');
-    expect(tabsSrc).toContain('{editingName ? (');
-    expect(tabsSrc).toContain("onClick={() => setEditingName(true)}");
-    expect(tabsSrc).toContain("onClick={() => setEditingName(false)}");
-    expect(tabsSrc).toContain("{t('rename')}");
-    expect(tabsSrc).toContain("{t('discardChanges')}");
-    // The gate must sit on the IDENTITY form — the one that posts `identity=1` — not on some other block.
-    const open = tabsSrc.indexOf('{editingName ? (');
-    const closes = tabsSrc.indexOf('</form>', open);
-    const identityForm = tabsSrc.slice(open, closes);
-    expect(identityForm).toContain('name="identity" value="1"');
+  it('F6 the identity form is ALWAYS shown (73cbffa1), dirty-gated, with Discard inside and Archive/Delete outside', () => {
+    // r258 restored a Rename toggle and this case pinned it "so the toggle cannot be dropped a second time
+    // without saying so". 73cbffa1 is that explicit decision (owner-approved plan): the fields are always
+    // shown, and the toggle's safety moved to a Save / Discard pair that is disabled until something
+    // changes, an "Unsaved changes" marker and the existing "Save changes?" confirmation.
+    expect(tabsSrc).not.toContain('editingName');
+    expect(tabsSrc).not.toContain("t('rename')");
+    expect(tabsSrc).toContain('<LeaveTypeIdentityForm');
+    const start = tabsSrc.indexOf('function LeaveTypeIdentityForm(');
+    expect(start).toBeGreaterThan(-1);
+    const formOpen = tabsSrc.indexOf('<form', start);
+    const formClose = tabsSrc.indexOf('</form>', formOpen);
+    const identityForm = tabsSrc.slice(formOpen, formClose);
+    // THREE markers on ONE submit: identity, leaveUnit and visual — plus the id and the name.
+    expect(identityForm).toContain('<input type="hidden" name="identity" value="1" />');
+    expect(identityForm).toContain('<input type="hidden" name="leaveUnit" value="1" />');
+    expect(identityForm).toContain('<input type="hidden" name="visual" value="1" />');
+    expect(identityForm).toContain('name="id" value={id}');
     expect(identityForm).toContain('name="name" defaultValue={name}');
-    // Discard sits INSIDE the open form; Rename sits in the closed branch after it. Either one on the
-    // wrong side of that boundary is a control an administrator cannot reach.
-    expect(identityForm).toContain('onClick={() => setEditingName(false)}');
-    expect(tabsSrc.indexOf('onClick={() => setEditingName(true)}')).toBeGreaterThan(closes);
+    // The pickers live inside the form (they post `icon` / `color`).
+    expect(identityForm).toContain('<LeaveIconPicker');
+    expect(identityForm).toContain('<LeaveColourPicker');
+    // Dirty-gated Save + Discard, both inside the form, and the confirmation is still there.
+    expect(identityForm).toMatch(/<ConfirmSubmit[\s\S]*?disabled=\{!dirty\}[\s\S]*?title=\{t\('saveConfirmTitle'\)\}/);
+    expect(identityForm).toMatch(/disabled=\{!dirty\} onClick=\{discard\}/);
+    expect(identityForm).toContain("{t('discardChanges')}");
+    expect(identityForm).toContain("{t('unsavedChanges')}");
+    // Archive / Unarchive / Delete are SIBLING forms in the card header, never nested in the identity form.
+    expect(identityForm).not.toContain('archiveTypeAction');
+    expect(identityForm).not.toContain('deleteTypeAction');
+    const header = tabsSrc.slice(tabsSrc.indexOf("<CardTitle>{tTabs('tab.identity')}</CardTitle>"));
+    const headerEnd = header.indexOf('</CardHeader>');
+    expect(header.slice(0, headerEnd)).toContain('<form action={archiveTypeAction}>');
+    expect(header.slice(0, headerEnd)).toContain('<form action={deleteTypeAction}>');
   });
 
   it('the sibling navigation and the tour anchor came across with the screen', () => {

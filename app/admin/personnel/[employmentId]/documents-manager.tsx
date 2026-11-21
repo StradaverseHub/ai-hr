@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 // f018ce8d — client half of the Documents tab: the Add-Document dialog, the searchable/filterable grid, and
 // the per-row actions (View / Download / Edit details / Replace attachment / Delete). Data + audit columns
 // are pre-formatted server-side (documents-section.tsx); this component owns only presentation + the
@@ -147,7 +148,7 @@ export function DocumentsManager({
         </>
       )}
       <div className="flex justify-end">
-        <button className={btnPrimary}>{d ? t('save') : t('upload')}</button>
+        <ActionButton actionKind="uploading" className={btnPrimary}>{d ? t('save') : t('upload')}</ActionButton>
       </div>
     </form>
   );
@@ -163,7 +164,7 @@ export function DocumentsManager({
       </label>
       <p className="text-xs text-muted-foreground">{t('supportedTypes')}</p>
       <div className="flex justify-end">
-        <button className={btnPrimary}>{t('actionReplace')}</button>
+        <ActionButton actionKind="uploading" className={btnPrimary}>{t('actionReplace')}</ActionButton>
       </div>
     </form>
   );

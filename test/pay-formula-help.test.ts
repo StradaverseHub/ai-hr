@@ -4,7 +4,9 @@ import {analyzePayFormula,applyFormulaAmount,evaluatePayFormula,parsePayFormula,
 import {payFormulaFunction,PAY_FORMULA_FUNCTIONS,PAY_FORMULA_REGISTRY_VERSION} from '../lib/pay-formula-registry';
 import {PAY_FORMULA_TEMPLATE_KEYS,payFormulaTemplateSource,isPayFormulaTemplateKey} from '../lib/pay-formula-templates';
 import {diagnosePayFormula,formulaOffset,nearestFormulaName} from '../lib/pay-formula-diagnostics';
-import {explainPayFormula} from '../lib/pay-formula-explain';
+import {describePayFormula,explainPayFormula} from '../lib/pay-formula-explain';
+import {createTranslator} from 'next-intl';
+import en from '../messages/en.json';
 import {runPayFormulaSample} from '../lib/pay-formula-sample';
 import {countsTowardFixedAllowances,resolvePayComponentSet,type ResolvablePayComponent} from '../core/pay-rule';
 import {FIXTURES,resolveFixture} from './fixtures/pay-formula-regression';
@@ -99,6 +101,28 @@ describe('checks before saving',()=>{
   const program=parsePayFormula('Return 100 / {#Input}');expect(()=>evaluatePayFormula(program,{resolve:facts({Input:'0'})})).toThrow(/Division by zero/);
   expect(()=>parsePayFormula('Return 1 / 0')).not.toThrow();
  });
+ it('blocks comparing the company internal ID with a company code, in plain words',()=>{
+  const source='If {#EmployeeProfile}("companyId") = "ACME" Or {#EmployeeProfile}("companyId") = "ACMT" Then\n Return 1\nElse\n Return 0\nEnd If';
+  const found=diagnosePayFormula(source).filter(d=>d.code==='internal_id_compared');
+  expect(found).toEqual([
+   expect.objectContaining({severity:'error',line:1,column:38,length:6,name:'companyId',value:'ACME',suggestion:'companyCode'}),
+   expect.objectContaining({severity:'error',line:1,column:82,name:'companyId',value:'ACMT'}),
+  ]);
+  expect(found[0].message).toBe('companyId is the company\'s internal ID, so it never equals "ACME". Use companyCode for the company code, or companyName for the legal name.');
+  // Either side, <> and a named value holding the ID are all the same comparison.
+  expect(diagnosePayFormula('If "ACME" <> {#EmployeeProfile}("companyId") Then\n Return 1\nElse\n Return 0\nEnd If')).toEqual([expect.objectContaining({severity:'error',code:'internal_id_compared',value:'ACME'})]);
+  expect(diagnosePayFormula('Dim Company As String = {#Profile}("companyId")\nIf Company = "ACME" Then\n Return 1\nElse\n Return 0\nEnd If')).toEqual([expect.objectContaining({severity:'error',code:'internal_id_compared',line:2})]);
+ });
+ it('accepts the company code, the legal name and a real company ID; other internal IDs only warn',()=>{
+  expect(diagnosePayFormula('If {#EmployeeProfile}("companyCode") = "ACME" Then\n Return 1\nElse\n Return 0\nEnd If')).toEqual([]);
+  expect(diagnosePayFormula('If {#EmployeeProfile}("companyName") = "Example Operating Company" Then\n Return 1\nElse\n Return 0\nEnd If')).toEqual([]);
+  expect(diagnosePayFormula('If {#EmployeeProfile}("companyId") = "10000000-0000-4000-8000-000000000001" Then\n Return 1\nElse\n Return 0\nEnd If')).toEqual([]);
+  // A blank value is not a code (it is also the analysis surrogate of an unresolved MISSING placeholder).
+  expect(diagnosePayFormula('If {#EmployeeProfile}("companyId") = "" Then\n Return 1\nElse\n Return 0\nEnd If')).toEqual([]);
+  const department=diagnosePayFormula('If {#EmployeeProfile}("departmentId") = "HR" Then\n Return 1\nElse\n Return 0\nEnd If');
+  expect(department).toEqual([expect.objectContaining({severity:'warning',code:'internal_id_compared',name:'departmentId',value:'HR',suggestion:'departmentCode'})]);
+  expect(diagnosePayFormula('If {#EmployeeProfile}("businessUnitId") = "North" Then\n Return 1\nElse\n Return 0\nEnd If')).toEqual([expect.objectContaining({severity:'warning',name:'businessUnitId',suggestion:undefined})]);
+ });
  it('maps positions to editor offsets and suggests only close names',()=>{expect(formulaOffset('ab\ncd',2,2)).toBe(4);expect(nearestFormulaName('CalenderDays',['CalendarDays','Basic'])).toBe('CalendarDays');expect(nearestFormulaName('Zzz',['CalendarDays'])).toBeUndefined();});
 });
 
@@ -110,6 +134,12 @@ describe('plain-language explanation',()=>{
   expect(lines[0].values).toEqual({name:'Gross',expression:'Basic + FixedAllowances'});
   expect(lines[1].values.condition).toBe('Basic ≤ 4000');expect(lines[3].values.expression).toBe('Gross ÷ 26 ÷ 8 × 1.5 × Input');
   expect(explainPayFormula(parsePayFormula('Return 10 - (2 - 1)'),words)[0].values.expression).toBe('10 − (2 − 1)');
+ });
+ it('names the company field it compares in What this formula does',()=>{
+  const t=createTranslator({locale:'en',messages:en,namespace:'payFormula'}) as unknown as Parameters<typeof describePayFormula>[1];
+  const rows=describePayFormula(parsePayFormula('If {#EmployeeProfile}("companyCode") = "ACME" Then\n Return 1\nElseIf {#EmployeeProfile}("companyId") = "10000000-0000-4000-8000-000000000001" Then\n Return 2\nElse\n Return 0\nEnd If'),t);
+  expect(rows[0].text).toBe('If '+en.payFormula.functions.EmployeeProfile+' (Company code) = “ACME”:');
+  expect(rows[2].text).toBe('Otherwise, if '+en.payFormula.functions.EmployeeProfile+' (Company internal ID) = “10000000-0000-4000-8000-000000000001”:');
  });
 });
 

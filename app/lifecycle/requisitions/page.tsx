@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { Button, Card, ErrorBanner, PageHeader, tableWrapCls, tbodyCls, theadCls, thCls } from '@/components/ui';
@@ -26,7 +27,7 @@ export default async function RequisitionsList({ searchParams }: { searchParams:
         <select name="status" defaultValue={sp.status ?? ''} className={sel} aria-label={t('common.status')}><option value="">{t('common.status')}: {t('common.all')}</option>{STATUSES.map((x) => <option key={x} value={x}>{t(`status.${x}`)}</option>)}</select>
         <select name="approval" defaultValue={sp.approval ?? ''} className={sel} aria-label={t('requisitions.approval')}><option value="">{t('requisitions.approval')}: {t('common.all')}</option>{APPROVALS.map((x) => <option key={x} value={x}>{t(`approval.${x}`)}</option>)}</select>
         <Button type="submit" size="sm" variant="outline">{t('common.filter')}</Button>
-        {level >= LEVEL.manager && <a className="ml-auto text-primary underline-offset-2 hover:underline" href="/lifecycle/export/requisitions">{t('common.exportCsv')}</a>}
+        {level >= LEVEL.manager && <ExportDownloadLink className="ml-auto text-primary underline-offset-2 hover:underline" href="/lifecycle/export/requisitions">{t('common.exportCsv')}</ExportDownloadLink>}
       </form>
       <Card className={tableWrapCls}>
         <table className="w-full text-sm">

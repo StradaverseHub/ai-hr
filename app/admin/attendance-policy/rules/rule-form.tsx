@@ -1,7 +1,15 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { AttendanceSettingsActionForm, AttendanceSettingsSaveButton } from '@/components/attendance-settings-action-form';
-import { Card, ErrorBanner, Field, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { ScheduleRotationEditor, StepMark } from '@/components/schedule-rotation-editor';
+import { ScheduleOvertimeSettingFields, type ScheduleOvertimeSettingIslandProps } from '@/components/schedule-overtime-setting';
+import { ScheduleGroupTabs } from '@/components/schedule-group-tabs';
+import { ScheduleDraftShiftPicker } from '@/components/schedule-shift-picker';
+import { ScheduleClockFields, type ScheduleClockSettings } from '@/components/schedule-clock-fields';
+import { formatOtRate } from '@/lib/ot-rate';
+import { WageDeductionsCard } from '@/components/schedule-wage-deductions';
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { AttendanceRuleOtEditor, type OtEditorRow } from '@/components/attendance-rule-ot-editor';
 import type { AttendanceRuleView } from '@/core/attendance-rule';
 import { createAttendanceRuleAction, updateAttendanceRuleAction, saveScheduleGroupGeneralAction } from '../rule-actions';
@@ -26,6 +34,7 @@ export type RuleShiftChoice = {
   code: string | null;
   inThisGroup: boolean;
   otherGroupName: string | null;
+  startTime?:string|null; endTime?:string|null; fullMinutes?:number; halfMinutes?:number; halfEnd?:string|null;
 };
 
 /**
@@ -50,11 +59,20 @@ export async function RuleForm({
   saveScope = false,
   generalOnly = false,
   savedReceipt,
+  initialSection,
+  clockCompanies = {canUseAll:false,group:[],companies:[]},
+  canEditShared = true,
+  overtimeSetting,
 }: {
+  /** 2f803985 — Add Schedule's Overtime tab: the full Overtime Setting section, saved with the group. */
+  overtimeSetting?: ScheduleOvertimeSettingIslandProps;
   hideAllowedShifts?: boolean;
   saveScope?: boolean;
   generalOnly?: boolean;
   savedReceipt?: string;
+  initialSection?: string | null;
+  clockCompanies?: ScheduleClockSettings;
+  canEditShared?: boolean;
   rule: AttendanceRuleView | null;
   shifts: readonly RuleShiftChoice[];
   error?: string;
@@ -66,16 +84,150 @@ export async function RuleForm({
   const editing = !!rule;
   const isDefault = !!rule?.isDefault;
 
+  const ts=await getTranslations('admin.scheduleConfig');
+  const te=await getTranslations('scheduleGroupEditor');
+  const tr=await getTranslations('admin.rotation');
+  const tomorrow = new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86_400_000).toISOString().slice(0,10);
+  const monday=new Date(tomorrow+"T00:00:00Z");
+  monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+  const duty = canEditShared ? <Card data-schedule-create-rotation=""><SectionHeader title={tr('title')}/>
+    <p className="px-4 pt-3 text-sm text-muted-foreground">{te('dutyRosterPoolNote')}</p>
+    <ScheduleRotationEditor creating editing ruleId="" revision="" minimumDate={tomorrow}
+    initial={{effectiveFrom:tomorrow,anchorDate:monday.toISOString().slice(0,10),unit:'week',length:1,days:Array.from({length:7},()=>({kind:'rest',shiftId:null}))}}
+    shifts={shifts.map(shift=>({...shift,startTime:shift.startTime??null,endTime:shift.endTime??null,halfEnd:shift.halfEnd??null,
+      fullMinutes:shift.fullMinutes??0,halfMinutes:shift.halfMinutes??0,archived:false,available:true,selected:false}))}/>
+  </Card> : <Card className="p-4 text-sm text-muted-foreground">{te('createBeforeRotation')}</Card>;
+  const general = <>
+        <Card className="space-y-4 p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={tb('groupName')}>
+              <input
+                name="name"
+                required={editing}
+                defaultValue={rule?.name ?? ''}
+                readOnly={isDefault}
+                className={`${inputCls} ${isDefault ? 'opacity-70' : ''}`}
+              />
+            </Field>
+            <Field label={tb('groupLabel')}><input name="label" defaultValue={rule?.label??''} maxLength={80} className={inputCls}/></Field>
+            <Field label={t('status')}>
+              <select name="status" defaultValue={rule?.status ?? 'active'} className={inputCls}>
+                <option value="active">{t('statusActive')}</option>
+                <option value="inactive">{t('statusInactive')}</option>
+              </select>
+            </Field>
+          </div>
+          <Field label={t('description')}>
+            <input name="description" defaultValue={rule?.description ?? ''} className={inputCls} />
+          </Field>
+          {isDefault && <p className="text-xs text-muted-foreground">{t('standardNote')}</p>}
+        </Card>
+
+        {!hideAllowedShifts && <Card className="space-y-3 p-4">
+          {/* 2f803985 (round 2) — no Monday–Sunday dropdowns here: they duplicated the dated rotation below,
+              which is the one place Day Type and Shift are set (Step 1 Shift Allowed, then Steps 2 and 3). */}
+          <h2 className="font-semibold">{ts('sectionWorkingDay')}</h2>
+          <h3 className="flex items-center gap-2 font-semibold" data-schedule-step="1"><StepMark n={1}/>{te('shiftAllowed')}</h3>
+          <p className="text-sm text-muted-foreground">{te('shiftHelp')}</p>
+          {canEditShared&&<>
+            <input type="hidden" name="allowedShiftsEditor" value="1"/>
+            <ScheduleDraftShiftPicker base shifts={shifts.map(shift=>({...shift,available:true,archived:false}))}/>
+          </>}
+        </Card>}
+        {/* c03670cc — the Duty Roster sits directly under Shift Allowed and draws from the same pool. */}
+        {!editing && duty}
+  </>;
+  const grace = <div className="space-y-3">
+    <h3 className="font-semibold">{ts('graceTitle')}</h3>
+    <Field label={te('lateGrace')}><input type="number" min={0} name="lateGracePeriodMinutes" defaultValue={rule?.lateGracePeriodMinutes??0} className={inputCls}/></Field>
+    <Field label={te('earlyGrace')}><input type="number" min={0} name="earlyGracePeriodMinutes" defaultValue={rule?.earlyGracePeriodMinutes??0} className={inputCls}/></Field>
+  </div>;
+  const attendance = <>
+    <ScheduleClockFields settings={clockCompanies} editing grace={grace}/>
+
+        {/* Section 1 — Lateness */}
+        <Card className="space-y-3 p-4">
+          <h2 className="text-sm font-semibold text-foreground">{t('latenessSectionTitle')}</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label={t('afterMinutes')}>
+              <input type="number" min={0} name="lateAfterMinutes" defaultValue={rule?.lateAfterMinutes ?? 0} className={inputCls} />
+            </Field>
+            <Field label={t('deductMinutes')}>
+              <input type="number" min={0} name="lateDeductMinutes" defaultValue={rule?.lateDeductMinutes ?? 0} className={inputCls} />
+            </Field>
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 text-sm has-[:checked]:text-primary">
+            <input type="checkbox" name="includeGraceInLateness" defaultChecked={rule?.includeGraceInLateness ?? false} className="h-3.5 w-3.5 accent-primary" />
+            {t('includeGraceInLateness')}
+          </label>
+        </Card>
+
+        {/* Section 2 — Early Out */}
+        <Card className="space-y-3 p-4">
+          <h2 className="text-sm font-semibold text-foreground">{t('earlyOutSectionTitle')}</h2>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label={t('afterMinutes')}>
+              <input type="number" min={0} name="earlyAfterMinutes" defaultValue={rule?.earlyAfterMinutes ?? 0} className={inputCls} />
+            </Field>
+            <Field label={t('deductMinutes')}>
+              <input type="number" min={0} name="earlyDeductMinutes" defaultValue={rule?.earlyDeductMinutes ?? 0} className={inputCls} />
+            </Field>
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 text-sm has-[:checked]:text-primary">
+            <input type="checkbox" name="includeGraceInEarlyOut" defaultChecked={rule?.includeGraceInEarlyOut ?? false} className="h-3.5 w-3.5 accent-primary" />
+            {t('includeGraceInEarlyOut')}
+          </label>
+        </Card>
+        <WageDeductionsCard rule={rule} editing/>
+  </>;
+  // 2f803985 — the old overtime bands left Add Schedule: they live in Overtime Patterns › 1. General
+  // Settings of the group's own legacy pattern (created on insert by the 0551 trigger). This tab carries
+  // the Overtime Setting section instead, written in the same transaction as the new group.
+  const tos = await getTranslations('scheduleOvertimeSetting');
+  // The complete legacy edit form (updateAttendanceRuleAction replaces the band table from `otRows`) keeps
+  // its band editor, so it can never post an empty ladder over a saved one.
+  const overtime = generalOnly ? null : editing ? await renderScheduleOvertimeBands(rule) : overtimeSetting ? <Card className="space-y-3 p-4">
+    <h2 className="font-semibold">{tos('title')}</h2>
+    <ScheduleOvertimeSettingFields {...overtimeSetting}/>
+  </Card> : null;
+  return (
+    <div className="space-y-6">
+      <ErrorBanner message={error}/>
+      <AttendanceSettingsActionForm submitAction={editing ? generalOnly ? saveScheduleGroupGeneralAction : updateAttendanceRuleAction : createAttendanceRuleAction} preserveDrafts={saveScope||!editing} data-attendance-save-scope={saveScope ? '' : undefined} data-attendance-saved-receipt={savedReceipt} className="space-y-6">
+        {editing && <input type="hidden" name="ruleId" value={rule!.id}/>}
+        {!editing ? <ScheduleGroupTabs initial={initialSection} ariaLabel={ts('sectionsAria')} initialPool={[]}
+          tabs={[
+            {id:'general',label:ts('sectionGeneral'),body:general},
+            {id:'attendance',label:ts('sectionAttendance'),body:attendance},
+            {id:'overtime',label:ts('sectionOvertime'),body:overtime},
+          ]}/>
+          : <>{general}{!generalOnly&&<>{attendance}{overtime}</>}</>}
+        <div className="flex items-center gap-3">
+          <AttendanceSettingsSaveButton className={btnPrimary}>{t('save')}</AttendanceSettingsSaveButton>
+          {cancel && (
+            <Link href={cancel.href} className="text-sm text-muted-foreground hover:text-foreground">
+              {cancel.label}
+            </Link>
+          )}
+        </div>
+      </AttendanceSettingsActionForm>
+    </div>
+  );
+}
+
+
+export async function renderScheduleOvertimeBands(rule:AttendanceRuleView|null) {
+  const t=await getTranslations('admin.attendanceRule');
   const initialRows: OtEditorRow[] = (rule?.otRows ?? []).map((r) => ({
     fromH: Math.floor(r.fromMinutes / 60),
     fromM: r.fromMinutes % 60,
     toH: Math.floor(r.toMinutes / 60),
     toM: r.toMinutes % 60,
     ratePattern: r.ratePattern,
-    // ONE decimal place on both sides — the variable-rate <select> compares option values as strings, and
-    // the old toFixed(2) ("1.50") matched none of them, so a saved 1.5 band reopened showing the wrong rate.
-    rate: Number(r.rate).toFixed(1),
-    phRate: r.phRate == null ? '' : Number(r.phRate).toFixed(1),
+    // c03670cc — formatted from the stored decimal's own digits (1.50 → "1.5", 1.75 → "1.75", 2 → "2.0"),
+    // never through float arithmetic, so a saved rate always reopens exactly as it was typed.
+    rate: formatOtRate(r.rate),
+    phRate: r.phRate == null ? '' : formatOtRate(r.phRate),
     roundingMode: r.roundingMode,
     roundToMinutes: r.roundToMinutes,
   }));
@@ -107,6 +259,10 @@ export async function RuleForm({
     emptyHint: t('otEmptyHint'),
     colPhRate: t('otColPhRate'),
     phRateNone: t('otPhRateNone'),
+    rateInvalid: t('otRateInvalid'),
+    phRateInvalid: t('otPhRateInvalid'),
+    rateHint: t('otRateHint'),
+    otherRateNote: String(t.raw('otOtherRateNote')),
     // Passed as TEMPLATES with {placeholders} the island fills in — a formatter function would be a
     // closure crossing the server→client boundary, which is the RSC bug this repo has shipped before.
     //
@@ -118,166 +274,15 @@ export async function RuleForm({
     ladderOpenEndedWarning: String(t.raw('otLadderOpenEndedWarning')),
   };
 
-  return (
-    <div className="space-y-6">
-      <ErrorBanner message={error} />
-
-      <AttendanceSettingsActionForm submitAction={editing ? generalOnly ? saveScheduleGroupGeneralAction : updateAttendanceRuleAction : createAttendanceRuleAction} preserveDrafts={saveScope} data-attendance-save-scope={saveScope ? '' : undefined} data-attendance-saved-receipt={savedReceipt} className="space-y-6">
-        {editing && <input type="hidden" name="ruleId" value={rule!.id} />}
-
-        <Card className="space-y-4 p-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={tb('groupName')}>
-              <input
-                name="name"
-                required
-                defaultValue={rule?.name ?? ''}
-                readOnly={isDefault}
-                className={`${inputCls} ${isDefault ? 'opacity-70' : ''}`}
-              />
-            </Field>
-            <Field label={tb('groupLabel')}><input name="label" defaultValue={rule?.label??''} maxLength={80} className={inputCls}/></Field>
-            <Field label={t('status')}>
-              <select name="status" defaultValue={rule?.status ?? 'active'} className={inputCls}>
-                <option value="active">{t('statusActive')}</option>
-                <option value="inactive">{t('statusInactive')}</option>
-              </select>
-            </Field>
-          </div>
-          <Field label={t('description')}>
-            <input name="description" defaultValue={rule?.description ?? ''} className={inputCls} />
-          </Field>
-          {isDefault && <p className="text-xs text-muted-foreground">{t('standardNote')}</p>}
-        </Card>
-
-        {!generalOnly && <>
-        {/* Section 1 — Lateness */}
-        <Card className="space-y-3 p-4">
-          <h2 className="text-sm font-semibold text-foreground">{t('latenessSectionTitle')}</h2>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field label={t('gracePeriod')}>
-              <input type="number" min={0} name="lateGracePeriodMinutes" defaultValue={rule?.lateGracePeriodMinutes ?? 0} className={inputCls} />
-            </Field>
-            <Field label={t('afterMinutes')}>
-              <input type="number" min={0} name="lateAfterMinutes" defaultValue={rule?.lateAfterMinutes ?? 0} className={inputCls} />
-            </Field>
-            <Field label={t('deductMinutes')}>
-              <input type="number" min={0} name="lateDeductMinutes" defaultValue={rule?.lateDeductMinutes ?? 0} className={inputCls} />
-            </Field>
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 text-sm has-[:checked]:text-primary">
-            <input type="checkbox" name="includeGraceInLateness" defaultChecked={rule?.includeGraceInLateness ?? false} className="h-3.5 w-3.5 accent-primary" />
-            {t('includeGraceInLateness')}
-          </label>
-        </Card>
-
-        {/* Section 2 — Early Out */}
-        <Card className="space-y-3 p-4">
-          <h2 className="text-sm font-semibold text-foreground">{t('earlyOutSectionTitle')}</h2>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Field label={t('gracePeriod')}>
-              <input type="number" min={0} name="earlyGracePeriodMinutes" defaultValue={rule?.earlyGracePeriodMinutes ?? 0} className={inputCls} />
-            </Field>
-            <Field label={t('afterMinutes')}>
-              <input type="number" min={0} name="earlyAfterMinutes" defaultValue={rule?.earlyAfterMinutes ?? 0} className={inputCls} />
-            </Field>
-            <Field label={t('deductMinutes')}>
-              <input type="number" min={0} name="earlyDeductMinutes" defaultValue={rule?.earlyDeductMinutes ?? 0} className={inputCls} />
-            </Field>
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 text-sm has-[:checked]:text-primary">
-            <input type="checkbox" name="includeGraceInEarlyOut" defaultChecked={rule?.includeGraceInEarlyOut ?? false} className="h-3.5 w-3.5 accent-primary" />
-            {t('includeGraceInEarlyOut')}
-          </label>
-        </Card>
-
-        </>}
-        {/* 7c834696 stage 1 — the deduction switch. The two "after X → deduct Y" pairs above were stored
-            and read by nothing until this release, so every rule's effective deduction has always been
-            zero. Turning them on for everybody at once would take minutes off people whose employer never
-            knew the field was live — hence a per-rule switch that ships OFF, with the start date stamped
-            by the server (never typed) so it can only ever be today or later. */}
-        <Card className="space-y-3 p-4">
-          <h2 className="text-sm font-semibold text-foreground">{t('deductionsSectionTitle')}</h2>
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/10">
-            <input type="checkbox" name="applyDeductions" defaultChecked={rule?.applyDeductions ?? false} className="mt-0.5 h-3.5 w-3.5 accent-primary" />
-            <span>
-              <span className="font-medium text-foreground">{t('applyDeductionsLabel')}</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">{t('applyDeductionsHint')}</span>
-            </span>
-          </label>
-          <p className="text-xs text-muted-foreground">
-            {t('deductionsFromLabel')}:{' '}
-            <span className="font-medium tabular-nums text-foreground">
-              {rule?.deductionsEffectiveFrom ?? t('deductionsFromNone')}
-            </span>
-          </p>
-        </Card>
-
-        {/* ── 870b79e2 · Shifts allowed ────────────────────────────────────────────────────────────
-            THE LIST IS shift.rule_id READ BACKWARDS, not a new relation. The set of shifts pointing at
-            this rule IS the set of shifts this group allows, so the editor writes that one column for the
-            shifts that were ticked and clears it for the ones that were not. A shift belongs to exactly
-            one group — that cardinality is what keeps rule resolution single-valued — so the row says
-            which group a shift is leaving rather than pretending it could be in both.
-
-            ⚠️ THE HIDDEN MARKER IS LOAD-BEARING. Checkboxes are omitted by the browser when unchecked, so
-            "every box cleared" and "this form never carried the editor" both arrive as an EMPTY
-            getAll('allowedShiftIds'). Without the marker, clearing the last shift would silently do
-            nothing. The marker is read as a VALUE, never by presence — the trap 7c834696 hit on this very
-            form (see `bool` in ../rule-actions.ts). */}
-        {!hideAllowedShifts && <Card className="space-y-3 p-4">
-          <h2 className="text-sm font-semibold text-foreground">{t('shiftsAllowedTitle')}</h2>
-          <p className="text-xs text-muted-foreground">{t('shiftsAllowedHint')}</p>
-          <input type="hidden" name="allowedShiftsEditor" value="1" />
-          {shifts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t('shiftsAllowedEmpty')}</p>
-          ) : (
-            <ul className="divide-y divide-border rounded-lg border border-border">
-              {shifts.map((sh) => (
-                <li key={sh.id}>
-                  <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm has-[:checked]:bg-primary/10">
-                    <input
-                      type="checkbox"
-                      name="allowedShiftIds"
-                      value={sh.id}
-                      defaultChecked={sh.inThisGroup}
-                      className="h-3.5 w-3.5 accent-primary"
-                    />
-                    <span className="font-medium text-foreground">{sh.name}</span>
-                    {sh.code && <span className="font-mono text-xs text-muted-foreground">{sh.code}</span>}
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {sh.inThisGroup
-                        ? null
-                        : sh.otherGroupName
-                          ? t('shiftsAllowedInGroup', { group: sh.otherGroupName })
-                          : t('shiftsAllowedNoGroup')}
-                    </span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>}
-
-        {/* Section 3 — Overtime */}
-        <Card className="p-4">
-          <AttendanceRuleOtEditor ladderOnly={generalOnly} initialRows={initialRows} initialApplyEarlyOt={rule?.applyToEarlyOt ?? false} labels={otLabels} />
-        </Card>
-
-        <p className="rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-          {t('statutoryCapNote')}
-        </p>
-
-        <div className="flex items-center gap-3">
-          <AttendanceSettingsSaveButton className={btnPrimary}>{t('save')}</AttendanceSettingsSaveButton>
-          {cancel && (
-            <Link href={cancel.href} className="text-sm text-muted-foreground hover:text-foreground">
-              {cancel.label}
-            </Link>
-          )}
-        </div>
-      </AttendanceSettingsActionForm>
-    </div>
-  );
+  return <>
+    <Card className="space-y-3 p-4"><AttendanceRuleOtEditor initialRows={initialRows} initialApplyEarlyOt={rule?.applyToEarlyOt??false} labels={otLabels}/>
+      <p className="text-xs text-muted-foreground">{t('otRateHint')}</p>
+      {/* c03670cc — band rates are reporting only; payroll overtime pay does not read them. */}
+      <p className="border-l-2 border-border pl-3 text-sm" data-ot-rate-reporting-note="">{t('otRateReportingNote')}</p>
+    </Card>
+    <p className="rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+      {t('statutoryCapNote')}
+    </p>
+  </>;
 }
+

@@ -28,6 +28,12 @@ export type PayComponentSeed = {
   includedInHrdfBase: boolean;
   isNonPayable: boolean;
   prorates: boolean;
+  /** 2026-11-14 (owner decision) — EPF Bonus 2012, set on a NEW tenant's seeded row only (an existing row is
+   *  never re-ticked by a re-seed; migration 5660 ticks the existing seeded-shape BONUS rows once). Since the
+   *  statutory follow-ups of that date this tick is the ONLY thing that puts money on the EPF bonus stream,
+   *  so the seeded BONUS carries it: an ordinary bonus keeps the EPF Bonus 2012 rule (KWSP Third Schedule:
+   *  the employer rate is read from the wage before the bonus) and stays out of SOCSO/EIS/SKBBK. */
+  epfBonus2012?: boolean;
 };
 
 const earn = (
@@ -63,7 +69,7 @@ export const MY_DEFAULT_PAY_COMPONENTS: PayComponentSeed[] = [
   earn('ATTENDANCE', 'Attendance allowance', true, true, true, false, true),
   earn('COMMISSION', 'Commission', true, true, true, false, false),
   earn('OVERTIME', 'Overtime', false, true, true, false, false),
-  earn('BONUS', 'Bonus', true, false, true, false, false),
+  { ...earn('BONUS', 'Bonus', true, false, true, false, false), epfBonus2012: true },
   earn('CLAIM', 'Taxable claim allowance', true, true, true, false, false),
   earn('REIMBURSEMENT', 'Reimbursement (receipted)', false, false, false, false, false),
   {

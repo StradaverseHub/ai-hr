@@ -1,0 +1,387 @@
+{
+  "kind": "EMPLOYEE_UNICODE_MATCHED_WORK_PARITY_SOURCE_ONLY",
+  "directParent": "d07c6072d30f409cb0ec1faa9f93d71a22151887",
+  "selector": "test/employee-choice-unicode-scale.test.ts",
+  "testSource": {
+    "before": {
+      "blob": "f7896ac3c1381d446ccd6554c1961e330cdee65a",
+      "bytes": 71307,
+      "sha256": "b51ff91e90c6e1f38982dcb22c3dbf5f5d62a8051984192d65830fe933836cc8"
+    },
+    "current": {
+      "blob": "ead578e2b7ce917380de759a8996fbccec5dbca2",
+      "bytes": 72894,
+      "sha256": "68b053437dc21c57c897c8b41731bb3839e8d3bfb36c0090d85b9db7eb06ed27"
+    },
+    "preserved": "One native course. All registrations, SQL, clocks, original work-counter adjudication, sparse gates and cleanup remain whole. The known-shape refusal assertion retains the same meaning and three pair controls are added."
+  },
+  "sourceInverse": {
+    "restore": [
+      "test/employee-choice-unicode-scale.test.ts",
+      "docs/qualification/employee-unicode-matched-work-parity-source-20261109.json"
+    ],
+    "targetTree": "0fa34d280c5febf4413d59091064fd654ec73708"
+  },
+  "protectedGitBlobs": {
+    "core/employee-choice.ts": "a772876f19acb9ba1e590ad9089842b13e410808",
+    "test/performance/employee-choice-department-pair-probe.ts": "a207a051ea485dc47ed2814fcc72f2afa1edce1e",
+    "test/performance/personnel-native-fixture.ts": "933f1543bf2ea08aae446d805720272e597dacf0",
+    "db/migrations/2126_company_organisation_tagging.sql": "1ca32335380bb7aedecad6942643a8ad836b505f",
+    "db/client.ts": "0c4f28e00393a763608b506d608a3cf7df542c57",
+    ".github/workflows/alpha-focused-checks.yml": "e993882d7e92f28bd4f75f31556f5a971dfe47f6"
+  },
+  "retainedFailure": {
+    "source": "db88dffc4de594329a95002c34999a18ba3dcde0",
+    "controller": "5aa20706fb7219e28bd077307d7d892996640e1a",
+    "run": 42567992502,
+    "attempt": 1,
+    "artifact": {
+      "id": 13652351265,
+      "digest": "sha256:879fe111ca86bd8b713d258711df8f9e29aeede5c088de3394cf690a02768944",
+      "size_in_bytes": 29537
+    },
+    "failure": {
+      "line": 767,
+      "onlyGate": {
+        "matched": "fail",
+        "sparseBaselineStress": "pass",
+        "sparseProductPairs": "pass"
+      },
+      "caseMs": 82235.55595400001,
+      "sourceFailure": {
+        "work": null,
+        "gates": [
+          {
+            "kind": "AssertionError",
+            "code": null,
+            "messageSha256": "b4ad862a85e9abd4d1609bc271acee43d95a40b1b10826f99ae8b44eecd8fa42"
+          }
+        ],
+        "cleanup": []
+      }
+    },
+    "matched": {
+      "observedOrdinaryMs": {
+        "old": 105.46977399999741,
+        "candidate": 106.5778769999888
+      },
+      "instrumentedMs": {
+        "old-matched": 110.052,
+        "candidate-matched": 108.162
+      },
+      "rawSqlSeals": {
+        "legacy": "95900f68e826391eea261670dbeff344a7ef75e2ba921090ceef1ed949de172e",
+        "candidate": "409eb5a90dbf1cc91340a9494dd0eb8599b118de5e490de61463b7f629fc8dbb",
+        "parameterCount": 6
+      },
+      "activeBaseAccessSame": [
+        {
+          "Schema": "public",
+          "Relation Name": "assignment",
+          "Alias": "assignment",
+          "Node Type": "Seq Scan",
+          "Index Name": null,
+          "Actual Loops": 2,
+          "Actual Rows": 0,
+          "Rows Removed by Filter": 25000,
+          "Rows Removed by Index Recheck": null
+        },
+        {
+          "Schema": "public",
+          "Relation Name": "company",
+          "Alias": "company",
+          "Node Type": "Seq Scan",
+          "Index Name": null,
+          "Actual Loops": 1,
+          "Actual Rows": 1,
+          "Rows Removed by Filter": 1,
+          "Rows Removed by Index Recheck": null
+        },
+        {
+          "Schema": "public",
+          "Relation Name": "department",
+          "Alias": "department",
+          "Node Type": "Seq Scan",
+          "Index Name": null,
+          "Actual Loops": 1,
+          "Actual Rows": 2,
+          "Rows Removed by Filter": 2,
+          "Rows Removed by Index Recheck": null
+        },
+        {
+          "Schema": "public",
+          "Relation Name": "employment",
+          "Alias": "employment",
+          "Node Type": "Index Scan",
+          "Index Name": "employment_pkey",
+          "Actual Loops": 1,
+          "Actual Rows": 1,
+          "Rows Removed by Filter": 0,
+          "Rows Removed by Index Recheck": 0
+        },
+        {
+          "Schema": "public",
+          "Relation Name": "person",
+          "Alias": "person",
+          "Node Type": "Index Scan",
+          "Index Name": "person_pkey",
+          "Actual Loops": 1,
+          "Actual Rows": 1,
+          "Rows Removed by Filter": 0,
+          "Rows Removed by Index Recheck": 0
+        }
+      ],
+      "rootWorkSame": {
+        "Actual Rows": 1,
+        "Actual Loops": 1,
+        "Shared Hit Blocks": 4527,
+        "Shared Read Blocks": 0,
+        "Shared Dirtied Blocks": 0,
+        "Shared Written Blocks": 0,
+        "Temp Read Blocks": 0,
+        "Temp Written Blocks": 0
+      },
+      "activeProjectSetRowsAndLoops": [
+        [
+          1,
+          50000
+        ],
+        [
+          1,
+          50000
+        ]
+      ],
+      "plansIdentical": false,
+      "actualElapsedRegression": "inconclusive"
+    },
+    "sparseObservationsPassedInFailedCourse": true
+  },
+  "verification": {
+    "existingTwoDepartmentMatchedScope": "Distinct sealed SQL performs a positive existence lookup over the same native tenant/actor scope. Existing exact DTO, statement binding, candidate correlated witness, RR/RO and catalogue guards retain their behavior.",
+    "equivalentWork": "Require each arm’s known active native shape plus exact equality of its measured base-access, policy expansion, join removal, and root shared-block counters. One elapsed sample per arm remains inconclusive.",
+    "changedWork": "Require the original strict lower elapsed time on both timing channels, strictly fewer Assignment loops and root shared buffers, no extra supporting base access and unchanged measured policy/join filters.",
+    "refusal": "Unknown or incomplete work shape, spill, new work, or non-improvement outside the exact parity path refuses the matched gate. No added SQL, timing margin, changed case cap or changed sparse ABBA.",
+    "qualificationScope": "Observed physical work on one fixed broad fallback fixture. No general CPU/latency equivalence or release claim."
+  },
+  "runtimeQualificationPending": true,
+  "releaseEligible": false,
+  "initialSource": {
+    "source": "0f02518e60a4f38ea757ebebdaccda0d0517f660",
+    "parent": "08028380b4ff27c81fca5a4072f59e0ff73a4a9a",
+    "testSource": {
+      "before": {
+        "blob": "028f24358231b16a50d0bddc3724b5daf0108fb7",
+        "bytes": 62986,
+        "sha256": "30a93e49300d40513e59084af0cc29154e0b99867c7c6fed8779491bbc001676"
+      },
+      "current": {
+        "blob": "85e0b19371b7939c7d9c0798bf2d875df5b83642",
+        "bytes": 68573,
+        "sha256": "6cf5e1b12e781e4cdf027814b2fb2b0130b72d58a4f2548a8dd5f834c2b3a29e"
+      },
+      "preserved": {
+        "sourceCases": 1,
+        "unchangedRegistrations": 3,
+        "sqlTagsWhole": 27,
+        "clockCallsWhole": 40,
+        "priorAssertionsWhole": 87,
+        "replacedPriorTimingOnlyGate": 1,
+        "currentAssertions": 93
+      }
+    },
+    "recordBlob": "4e512ac04b680fa800937c0bb4fda4e1b614b162"
+  },
+  "knownMatchedPaths": {
+    "sourceRun": 42567992502,
+    "activeNodesPerArm": 19,
+    "normalizedShapeSha256": {
+      "old-matched": "d7725d1f6e9483cfe3c4127524d68a17a3051cf18f011e4ad46e031d677b7f74",
+      "candidate-matched": "160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96"
+    },
+    "method": "Pin the active node sequence, depth, native properties, qualifier expressions, and non-scan actual row/loop counters separately for the two observed plans. Normalize only the sealed fixture tenant/company values and the plan/parameter reference numbering. Required variable counter keys remain in the shape and observed work remains separately compared. Unknown active nodes, extra Result or Join work, missing counter fields, and altered projected qualifiers refuse."
+  },
+  "singlePairSource": {
+    "source": "d07c6072d30f409cb0ec1faa9f93d71a22151887",
+    "directParent": "0f02518e60a4f38ea757ebebdaccda0d0517f660",
+    "testSource": {
+      "before": {
+        "blob": "85e0b19371b7939c7d9c0798bf2d875df5b83642",
+        "bytes": 68573,
+        "sha256": "6cf5e1b12e781e4cdf027814b2fb2b0130b72d58a4f2548a8dd5f834c2b3a29e"
+      },
+      "current": {
+        "blob": "f7896ac3c1381d446ccd6554c1961e330cdee65a",
+        "bytes": 71307,
+        "sha256": "b51ff91e90c6e1f38982dcb22c3dbf5f5d62a8051984192d65830fe933836cc8"
+      },
+      "preserved": "The one native course, all registrations, SQL, clocks, original assertions, elapsed decisions, sparse gates and cleanup remain whole. Four additional native-plan mutations exercise the exact new path refusal."
+    },
+    "recordPreimage": {
+      "blob": "5c59b41f59baac4af4663f4eaeaab36c5eae3d5c",
+      "bytes": 8102,
+      "sha256": "6443f434d7bce199630f05f1405567341f87adc562607d5e3f42dd67990ec8b1"
+    },
+    "sourceInverse": {
+      "restore": [
+        "test/employee-choice-unicode-scale.test.ts",
+        "docs/qualification/employee-unicode-matched-work-parity-source-20261109.json"
+      ],
+      "targetTree": "f77529743b120a0f70832301bc1ce1928eb09710"
+    }
+  },
+  "correlatedMatchedPairs": {
+    "equivalent-work": {
+      "source": "db88dffc4de594329a95002c34999a18ba3dcde0",
+      "controller": "5aa20706fb7219e28bd077307d7d892996640e1a",
+      "run": 42567992502,
+      "attempt": 1,
+      "artifact": {
+        "id": 13652351265,
+        "digest": "sha256:879fe111ca86bd8b713d258711df8f9e29aeede5c088de3394cf690a02768944",
+        "size_in_bytes": 29537
+      },
+      "normalizedShapeSha256": {
+        "old-matched": "d7725d1f6e9483cfe3c4127524d68a17a3051cf18f011e4ad46e031d677b7f74",
+        "candidate-matched": "160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96"
+      },
+      "historicalOverallConclusion": "failure",
+      "independentAuthSha256": "c7c9fb9b3ae16167786e30fb2096b2fdcd44cb5c0cfd559ec6220a850d59ea12",
+      "requires": "Equal complete native work counters under the exact old/candidate family. Elapsed evidence remains inconclusive."
+    },
+    "improved": {
+      "source": "65ce54b300b6dffc083c51f7650efb9a9f48047e",
+      "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+      "run": 42565465670,
+      "attempt": 1,
+      "artifact": {
+        "id": 13651387358,
+        "digest": "sha256:de1491f054b0af29b77efa16000282f4aa19dd7b020de160c595976365dcc360",
+        "size_in_bytes": 29811
+      },
+      "normalizedShapeSha256": {
+        "old-matched": "89400a082d46fb1d76e97635b382f8c5bef20ea8ce88a5c6f15098420e7b73cb",
+        "candidate-matched": "ccdbf6250eff201c6570ededb10fd765a9bcdd4735affb3e4c7fa1dc1d49941f"
+      },
+      "historicalOverallConclusion": "failure",
+      "independentAuthSha256": "caed5550dbacb37e573bf599550b108ee70e7de39c7fe6f7c8c595f017df0cbb",
+      "historicalMatchedObservations": {
+        "ordinaryMs": {
+          "old": 1568.7435730000143,
+          "candidate": 161.555389000001
+        },
+        "plans": {
+          "old-matched": {
+            "executionMs": 1569.244,
+            "sharedTraffic": 924478,
+            "assignmentNodes": [
+              {
+                "node": "Index Scan",
+                "loops": 50001,
+                "sharedHits": 921650
+              }
+            ]
+          },
+          "candidate-matched": {
+            "executionMs": 165.088,
+            "sharedTraffic": 4610,
+            "assignmentNodes": [
+              {
+                "node": "Seq Scan",
+                "loops": 2,
+                "sharedHits": 4608
+              }
+            ]
+          }
+        }
+      },
+      "requires": "Exact old/candidate family plus both original strict elapsed improvements, fewer Assignment loops and root shared buffers, no additional supporting base work, and equal policy and join-removal counters."
+    },
+    "independentShapeReviewSha256": "0adc986f598067311a355c622c5810580112e4a5083648560fbc28dc7f3f0e3c",
+    "refusal": "A missing arm, unknown fingerprint, wrong arm direction, mixed pair, or mismatch between known family and measured-work outcome refuses. Prior failed hosted courses remain failed."
+  },
+  "physicalMatchedArmEligibility": {
+    "directParent": "9a52cf7eb8b878ad714a3343d34ae1e7e5060a93",
+    "parentTree": "5245cd53dc7ffe347007f4d9317f058de79d0668",
+    "preimages": [
+      {
+        "path": "test/employee-choice-unicode-scale.test.ts",
+        "blob": "ead578e2b7ce917380de759a8996fbccec5dbca2",
+        "bytes": 72894,
+        "sha256": "68b053437dc21c57c897c8b41731bb3839e8d3bfb36c0090d85b9db7eb06ed27"
+      },
+      {
+        "path": "docs/qualification/employee-unicode-matched-work-parity-source-20261109.json",
+        "blob": "d6422aa44818240ad942876b2a03dacf006e25c8",
+        "bytes": 12354,
+        "sha256": "cae4d84e4e68a48069b352602387c762d626c5096fa2c671ccd5a45e81be28cf"
+      }
+    ],
+    "currentTestSource": {
+      "bytes": 74880,
+      "sha256": "710694211ab3700a59d4379fdaf535876dde49b990526935e33b1a92f537102c"
+    },
+    "historicalRun": {
+      "source": "9a52cf7eb8b878ad714a3343d34ae1e7e5060a93",
+      "controller": "5aa20706fb7219e28bd077307d7d892996640e1a",
+      "run": 42571105752,
+      "attempt": 1,
+      "conclusion": "failure",
+      "terminalJobs": {
+        "success": 1,
+        "failure": 1,
+        "skipped": 5
+      },
+      "selectedJob": 129008595788
+    },
+    "historicalArtifact": {
+      "id": 13653067413,
+      "bytes": 29931,
+      "sha256": "2f3081463c27aed0fbca65b64f392d1b8ee62f2d4b82764a618b963739a5e2ce"
+    },
+    "independentNativeAuthSha256": "0f99ef048ddced148c20d3946f7061a0c3f00e7dda2ddda64c84227fee1f3166",
+    "sourcePlanSha256": "2da7e74d04f2046df784399e5ed58bc028b0ee1ad54159476d52d2e98eff2a55",
+    "historicalMatchedRefusal": {
+      "outcome": "refused",
+      "oldPair": "improved",
+      "candidatePair": "equivalent-work",
+      "elapsed": "single-pair-inconclusive"
+    },
+    "historicalMatchedWork": {
+      "ordinaryMs": {
+        "old": 977.818340999991,
+        "candidate": 116.14555099999416
+      },
+      "nativeExecutionMs": {
+        "old-matched": 978.274,
+        "candidate-matched": 123.274
+      },
+      "assignmentLoops": {
+        "old-matched": 50001,
+        "candidate-matched": 2
+      },
+      "rootSharedHits": {
+        "old-matched": 811135,
+        "candidate-matched": 4609
+      },
+      "normalizedShapeSha256": {
+        "old-matched": "89400a082d46fb1d76e97635b382f8c5bef20ea8ce88a5c6f15098420e7b73cb",
+        "candidate-matched": "160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96"
+      }
+    },
+    "historicalOtherGates": {
+      "sparseBaselineStress": "pass",
+      "sparseProductPairs": "pass",
+      "catalogueUnchanged": true,
+      "settled": true
+    },
+    "observedDifferenceFromEarlierCandidate": "The one active Employment lookup uses employment_pkey and checks tenant in its filter. The other retained plan uses company_org_employment_tenant_uq and checks tenant in the index condition. Both are Assignment-first and keep the same observed supporting-work contract.",
+    "currentEligibility": {
+      "equivalentWork": "Old Assignment-first with the candidate primary-key shape, requiring full work equality. Single-pair elapsed comparison remains inconclusive.",
+      "improved": "Old Employment-first with either proved candidate Assignment-first shape, requiring the unchanged strict work and both elapsed improvements.",
+      "refused": "Unknown or wrong-direction shape, old Assignment-first with the candidate tenant-key shape, and eligible shapes without their required measured-work outcome."
+    },
+    "newShapePins": 0,
+    "nativeObservation": "UNRUN",
+    "releaseEligible": false
+  }
+}

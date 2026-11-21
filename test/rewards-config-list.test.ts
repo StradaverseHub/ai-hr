@@ -86,8 +86,8 @@ describe('Rewards configuration list (7a8102a7) and review cancellation (62e743e
     const before=await row();
     const [other]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'BR',name:'Branch'}).returning();
     await establishRewardMembership(admin,{tenantId:b.tenantId,companyId:b.companyId,businessUnitId:other.id,departmentId:b.deptA,year});
-    await expect(createRewardUnit(admin,{cycleId:before.cycleId,year,companyId:b.companyId,businessUnitId:other.id,snapshotDate:today})).rejects.toThrow(/independently approved/);
-    await expect(createRewardUnit(admin,{name:'  ',year,companyId:b.companyId,businessUnitId:other.id,snapshotDate:today})).rejects.toThrow(/independently approved/);
+    await expect(createRewardUnit(admin,{cycleId:before.cycleId,year,companyId:b.companyId,businessUnitId:other.id,snapshotDate:today})).rejects.toThrow(/approved \(active\) Shared Rewards Configuration/);
+    await expect(createRewardUnit(admin,{name:'  ',year,companyId:b.companyId,businessUnitId:other.id,snapshotDate:today})).rejects.toThrow(/approved \(active\) Shared Rewards Configuration/);
     expect(await listRewardUnits(admin,[b.companyId])).toHaveLength(1);
     expect(await row()).toEqual(before);
   });

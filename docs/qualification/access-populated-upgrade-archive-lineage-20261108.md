@@ -1,0 +1,7 @@
+# Preserve the historical Access populated-upgrade fixture
+
+The original test exercises immutable3103 over its exact739-entry preappend component. Root's reconciled staging lineage preserves actual707 prefix entries and reallocates36 still-unapplied architecture entries, so reading the first739 entries of the CURRENT journal would select different SQL and fail before testing the intended component.
+
+Use the already reviewed original739 source archive, unchanged, and append the original independently frozen3103 metadata in the temporary fixture journal. Keep the exact739 structured-entry hash, ordered739 SQL byte-list hash,3103 byte hash, ordinary Drizzle engine, native rollback/ledger/complete data-policy-grant-function parity, authorization, real held-writer checks and300s deadline. No expected native result, original SQL or actual installation ledger changes. The test title explicitly distinguishes historical component proof from the required actual706/707 native-owner installed-prefix rehearsal. Neither is substituted for the other.
+
+Source-only child of4c8372706f2985f17dcf1517aeeb2b45fb465b83. No local tests/compiler/app/database/runtime checks. After independent review run the one affected native test on standard hosted Actions; retain valid original component evidence under its original source. This test adaptation does not authorize any release or deployment. Production remains held.

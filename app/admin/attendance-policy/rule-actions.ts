@@ -13,11 +13,17 @@ import {
   updateAttendanceRule,
   updateAttendanceRuleSection,
   type AttendanceRuleInput,
-  type OtRowInput,
 } from '@/core/attendance-rule';
 import { getTranslations } from 'next-intl/server';
 import { SCHEDULE, scheduleGroupEditPath, scheduleGroupNewPath } from './schedule-panel';
 import { failScheduleGroup, okScheduleGroup } from '../_redirects';
+import { withTenant } from '@/db/client';
+import { lockAccessConfigurationWriteTx } from '@/core/access-configuration-lock';
+import { getScheduleRotation, lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy, saveScheduleGroupOvertimeSetting, saveScheduleRotation } from '@/packs/attendance/service';
+import { readScheduleOvertimeSettingFields } from '../attendance/schedule/overtime-setting-fields';
+import { readScheduleClockPolicyFields } from '../attendance/schedule/clock-policy-fields';
+import { parseOtRows } from '../attendance/schedule/overtime-fields';
+import type { RotationCycle } from '@/core/week-pattern';
 
 /**
  * 88e94371 · Server actions for the "Lateness, Early Out & Overtime Settings" rule library. Writes are
@@ -70,33 +76,6 @@ const bool = (fd: FormData, key: string): boolean => {
   return v != null && v !== '';
 };
 
-/** Parse the OT-rows hidden JSON field into typed rows. Invalid / empty ⇒ []. */
-function parseOtRows(raw: string): OtRowInput[] {
-  if (!raw) return [];
-  try {
-    const arr: unknown = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
-      .map((x) => ({
-        fromMinutes: Math.trunc(Number(x.fromMinutes ?? 0)) || 0,
-        toMinutes: Math.trunc(Number(x.toMinutes ?? 0)) || 0,
-        ratePattern: x.ratePattern === 'variable' ? 'variable' : 'flat',
-        // 7c834696 contested — an ABSENT rate stays absent. `Number(x.rate ?? 0) || 0` used to turn "the
-        // admin has not typed a rate" into a stored 0.00, which is a real and different setting ("record
-        // the hours, pay nothing"). Now the band that was never filled in is refused on save with a message
-        // naming the row, instead of being paid at a number nobody chose.
-        rate: x.rate == null || x.rate === '' ? null : Number(x.rate) || 0,
-        phRate: x.phRate == null || x.phRate === '' ? null : Number(x.phRate) || 0,
-        // 0439 — three modes. Anything else (including the pre-0439 booleans, if a stale tab posts one)
-        // normalises to 'none' in core/attendance-rule.ts, which cannot change what a band pays.
-        roundingMode: x.roundingMode === 'down' || x.roundingMode === 'up' ? x.roundingMode : 'none',
-        roundToMinutes: x.roundToMinutes == null || x.roundToMinutes === '' ? null : Math.trunc(Number(x.roundToMinutes)) || null,
-      }));
-  } catch {
-    return [];
-  }
-}
 
 function ruleFields(fd: FormData): AttendanceRuleInput {
   return {
@@ -140,34 +119,63 @@ function allowedShiftIds(fd: FormData): string[] | null {
 
 export async function createAttendanceRuleAction(fd: FormData) {
   const s = await getSession();
-  // ⚠️ TWO SEPARATE try BLOCKS, NOT ONE NESTED PAIR. `redirect()` works by THROWING, so a redirect written
-  // inside a try whose catch also redirects would be swallowed by that catch and turned into an error
-  // banner reading NEXT_REDIRECT. Same shape as copyAttendanceRuleAction below, and for the same reason.
   let created: { id: string };
+  let section: 'general' | 'attendance' | 'overtime' = 'general';
   try {
-    created = await createAttendanceRule(s, ruleFields(fd));
+    section='attendance';
+    const clock = readScheduleClockPolicyFields(fd);
+    // 2f803985 — the seven Monday–Sunday dropdowns are gone: "Set up the first dated rotation with this
+    // group" (ticked by default) is the only place Day Type and Shift are set. Unticked, the group declares
+    // no week and each employee follows their own assigned shift's week, as "Use the assigned shift" does.
+    section='overtime';
+    const overtime = readScheduleOvertimeSettingFields(fd);
+    section='general';
+    const shiftIds = allowedShiftIds(fd);
+    created = await withTenant(s, async tx => {
+      await lockAccessConfigurationWriteTx(tx,s.tenantId);
+      if (clock) await lockAttendanceClockPolicyConfigurationTx(tx, s);
+      const result = await createAttendanceRule(s, ruleFields(fd), tx);
+      if (shiftIds?.length) await setRuleShifts(s, {ruleId: result.id, shiftIds, expectedShiftIds:[]}, tx);
+      if (fd.get('createRotation')==='1') {
+        // c03670cc — the Duty Roster lives in General, directly under Shift Allowed.
+        section='general';
+        const raw=String(fd.get('cycle')??'');
+        if(raw.length>100_000)throw new Error('The rotation is too large.');
+        const cycle=JSON.parse(raw) as RotationCycle;
+        const postedUnit=fd.get('rotationUnitDraft'), postedLength=fd.get('rotationLengthDraft');
+        if((postedUnit!=null&&postedUnit!==cycle.unit)||(postedLength!=null&&Number(postedLength)!==cycle.length)){
+          throw new Error('Generate the rotation again before saving the changed unit or length.');
+        }
+        const {revision}=await getScheduleRotation(s,result.id,tx);
+        await saveScheduleRotation(s,{ruleId:result.id,expectedRevision:revision,allowedShiftIds:shiftIds??[],cycle},tx);
+      }
+      if (clock) {
+        section = 'attendance';
+        const reason = (await getTranslations('scheduleGroupEditor'))('systemReason');
+        await saveScheduleGroupClockPolicy(s, {ruleId: result.id, scope: clock.scope, policy: clock.policy,
+          expected: clock.expected, reason}, tx);
+      }
+      if (overtime) {
+        // Same transaction as the group: the Overtime Setting is saved with it or not at all.
+        section = 'overtime';
+        const reason = (await getTranslations('scheduleOvertimeSetting'))('systemReason');
+        await saveScheduleGroupOvertimeSetting(s, {ruleId: result.id, scope: overtime.scope, effectiveFrom: overtime.effectiveFrom,
+          setting: overtime.setting, expectedToken: overtime.token, reason}, tx);
+      }
+      return result;
+    });
   } catch (e) {
-    // 665de026 — back to Add Schedule, the page that raised it. It is the one refusal here that has no
-    // record to return to: the group was never created.
-    redirect(`${scheduleGroupNewPath()}?error=${encodeURIComponent(publicErrorMessage(e))}`);
-  }
-  // 870b79e2 — the group's shifts are written AFTER the rule exists, because shift.rule_id needs an id to
-  // point at. A failure here surfaces on the new rule's OWN edit form: the rule was created, so sending
-  // the operator back to a blank New form would invite them to create it a second time.
-  const shiftIds = allowedShiftIds(fd);
-  if (shiftIds) {
-    try {
-      await setRuleShifts(s, { ruleId: created.id, shiftIds });
-    } catch (e) {
-      failScheduleGroup(e, created.id, 'general');
-    }
+    const query = new URLSearchParams({error: publicErrorMessage(e)});
+    if(section!=='general')query.set('section',section);
+    redirect(`${scheduleGroupNewPath()}?${query}${section!=='general'?`#section-${section}`:''}`);
   }
   revalidatePath(LIST);
   const t = await getTranslations('admin.scheduleConfig');
   okScheduleGroup(created.id, t('createdToast'), 'general');
 }
 
-/** General on the sectioned Schedule Group page owns identity/deduction switch/ladder only.
+/** General on the sectioned Schedule Group page owns identity/ladder only. Wage Deductions is written by
+ * the Attendance section (c03670cc), so this action no longer reads `applyDeductions`.
  * Full legacy RuleForm actions above/below keep their existing complete-form semantics. */
 export async function saveScheduleGroupGeneralAction(fd: FormData) {
   const s = await getSession();
@@ -175,8 +183,8 @@ export async function saveScheduleGroupGeneralAction(fd: FormData) {
   try {
     await updateAttendanceRuleSection(s, {ruleId,section:'general',
       name:String(fd.get('name')??'').trim(),label:String(fd.get('label')??'').trim()||null,description:String(fd.get('description')??'').trim()||null,
-      status:fd.get('status')==='inactive'?'inactive':'active',applyDeductions:bool(fd,'applyDeductions'),
-      otRows:parseOtRows(String(fd.get('otRows')??'')),
+      status:fd.get('status')==='inactive'?'inactive':'active',
+      ...(fd.has('otRows') ? {otRows: parseOtRows(String(fd.get('otRows')))} : {}),
     });
   } catch(e) {failScheduleGroup(e,ruleId,'general');}
   const t=await getTranslations('admin.scheduleConfig');

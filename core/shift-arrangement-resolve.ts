@@ -1,8 +1,10 @@
+import {rosterUuidSet} from './roster-write-batches';
 /**
  * 18504ca6 — WHICH SHIFT WAS IN FORCE ON THAT DATE.
  *
- * This module is a deliberate LEAF: its only value import is db/schema (the `Tx` import is type-only and so
- * erased at runtime). core/attendance.ts depends on it, and core/roster.ts depends on core/attendance.ts —
+ * This module is a deliberate LEAF: its application imports are db/schema and the pure UUID SQL
+ * predicate (neither imports a domain owner); the `Tx` import is type-only and so
+ * erased at runtime. core/attendance.ts depends on it, and core/roster.ts depends on core/attendance.ts —
  * the writer and the card's history read live next door in core/shift-arrangement.ts, which DOES import from
  * core/roster.ts. Keeping the two apart is what stops that import from closing an attendance ↔ roster cycle.
  *
@@ -22,7 +24,7 @@
  * valid_from when a change is saved; resolving off valid_from alone means a stale or missing valid_to can
  * never open a gap that silently drops an employee onto the flat company policy.
  */
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { Tx } from '../db/client';
 import { employmentShiftArrangement } from '../db/schema';
 
@@ -40,6 +42,25 @@ const PERIOD_COLS = {
   shiftId: employmentShiftArrangement.shiftId,
   validFrom: employmentShiftArrangement.validFrom,
 } as const;
+/** liveArrangementsTx's columns, predicate, order and grouping, shared with the Before payroll statement
+ * (core/attendance.ts attendanceRangeChecklistBundleSql), which reads the same rows as one JSON section. */
+export const ARRANGEMENT_PERIOD_FIELDS = PERIOD_COLS;
+export function liveArrangementsWhere(employmentIds: readonly string[]) {
+  return and(
+    rosterUuidSet(employmentShiftArrangement.employmentId,employmentIds),
+    isNull(employmentShiftArrangement.supersededAt),
+  );
+}
+export const LIVE_ARRANGEMENT_ORDER = [asc(employmentShiftArrangement.employmentId), asc(employmentShiftArrangement.validFrom)];
+export function groupArrangementPeriods(rows: readonly ArrangementPeriod[]): Map<string, ArrangementPeriod[]> {
+  const byEmp = new Map<string, ArrangementPeriod[]>();
+  for (const r of rows) {
+    const list = byEmp.get(r.employmentId);
+    if (list) list.push(r);
+    else byEmp.set(r.employmentId, [r]);
+  }
+  return byEmp;
+}
 
 /**
  * Every LIVE period of the given employments, ascending by (employment, valid_from). ONE query for the whole
@@ -49,24 +70,13 @@ export async function liveArrangementsTx(
   tx: Tx,
   employmentIds: string[],
 ): Promise<Map<string, ArrangementPeriod[]>> {
-  const byEmp = new Map<string, ArrangementPeriod[]>();
-  if (employmentIds.length === 0) return byEmp;
+  if (employmentIds.length === 0) return new Map<string, ArrangementPeriod[]>();
   const rows = await tx
     .select(PERIOD_COLS)
     .from(employmentShiftArrangement)
-    .where(
-      and(
-        inArray(employmentShiftArrangement.employmentId, employmentIds),
-        isNull(employmentShiftArrangement.supersededAt),
-      ),
-    )
-    .orderBy(asc(employmentShiftArrangement.employmentId), asc(employmentShiftArrangement.validFrom));
-  for (const r of rows) {
-    const list = byEmp.get(r.employmentId);
-    if (list) list.push(r);
-    else byEmp.set(r.employmentId, [r]);
-  }
-  return byEmp;
+    .where(liveArrangementsWhere(employmentIds))
+    .orderBy(...LIVE_ARRANGEMENT_ORDER);
+  return groupArrangementPeriods(rows);
 }
 
 /** The live periods of ONE employment, ascending by valid_from. */

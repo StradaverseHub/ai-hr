@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { adminCtx, createAppUser, eventTypesFor, owner, seedBase, type Base } from './harness';
+import { adminCtx, createAppUser, eventTypesFor, owner, seedBase, setModule, type Base } from './harness';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -16,6 +16,8 @@ import {
 let base: Base;
 beforeAll(async () => {
   base = await seedBase();
+  // These requests predate Lifecycle cutover; current managed submissions have their own service suite.
+  await setModule(base.tenantId,'lifecycle','disabled');
 });
 
 const hire = (ctx: SessionContext, name: string) =>

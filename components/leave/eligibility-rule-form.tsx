@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 
@@ -12,6 +13,7 @@ import { EntitlementSaveModeCaption, useEntitlementSaveMode } from '@/components
 import type { CriteriaOption, CriteriaField, CriteriaSection } from '@/core/org-criteria-form';
 import {
   applyGradeGroupSelection,
+  gradeGroupsForCompanies,
   memberGradeIds,
   partiallyCoveredGradeGroups,
   wholeGradeGroupIds,
@@ -70,7 +72,7 @@ export function EligibilityRuleForm({
   countAction,
   templates,
   criteriaSections,
-  gradeGroups,
+  gradeGroups: allGradeGroups,
   archivedMemberGrades = [],
   initial,
   today,
@@ -110,6 +112,8 @@ export function EligibilityRuleForm({
 }) {
   const t = useTranslations('admin.entitlementTemplates');
   const [criteria, setCriteria] = useState<Record<string, string[] | string>>(initial?.criteria ?? {});
+  const companyIds = Array.isArray(criteria.companyIds) ? criteria.companyIds : [];
+  const gradeGroups = gradeGroupsForCompanies(allGradeGroups, companyIds);
   const [validFrom, setValidFrom] = useState(initial?.validFrom ?? today);
   const [count, setCount] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
@@ -381,7 +385,7 @@ export function EligibilityRuleForm({
         <div className="space-y-2 rounded-md border border-border p-3">
           <ChipMultiSelect
             /* Remounted when the GRADE picker changes, so the ticks re-derive — see the nonce note above. */
-            key={`gradeGroupIds-${groupNonce}`}
+            key={`gradeGroupIds-${groupNonce}-${JSON.stringify(companyIds)}`}
             name="gradeGroupIds"
             label={t('ruleGradeGroup')}
             options={gradeGroups.map((g) => ({ value: g.id, label: g.name }))}
@@ -450,7 +454,7 @@ export function EligibilityRuleForm({
       ))}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" variant="outline" onClick={check} disabled={pending}>
+        <Button aria-busy={pending} type="button" variant="outline" onClick={check} disabled={pending}>
           {t('ruleCheckAudience')}
         </Button>
         {count != null ? (
@@ -459,9 +463,9 @@ export function EligibilityRuleForm({
           <span className="text-xs text-muted-foreground">{t('ruleCheckHint')}</span>
         )}
         {unrestricted ? <span className="text-sm font-medium">{t('ruleEveryoneWarning')}</span> : null}
-        <button type="submit" className={btnPrimary}>
+        <ActionButton type="submit" className={btnPrimary}>
           {save.label}
-        </button>
+        </ActionButton>
       </div>
 
       {/* r224 — THE NOTE THIS EDITOR HAS NEVER HAD. The table form next door has said which of the two

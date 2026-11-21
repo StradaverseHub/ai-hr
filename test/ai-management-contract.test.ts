@@ -33,6 +33,12 @@ const governedCallers:Record<string,{features:readonly string[];seams:readonly R
   /return\{sourceFingerprint:before\.sourceDigest,reasonRefs:before\.candidate\.reasons\}/,
   /task\.operation!=='draft'/,/generateDraft\(task\.configuration,task\.args\)/,/task\?\.dispose\(\)/,
  ]},
+ // Recruitment slice 24: locked until the owner records the recruitment_match_summary_v1 provider-data approval.
+ 'packs/recruitment/match-summary.ts':{features:['report_insight'],seams:[
+  /resolveActiveAiConfig\(tx, s, 'report_insight'\)/,
+  /preparePrivateAiTask\(configuration, RECRUITMENT_MATCH_CONTRACT, async \(tx\) => \(await matchSourceTx\(tx, s, applicationId\)\)\.source\)/,
+  /task\.operation !== 'draft'/,/generateDraft\(task\.configuration, task\.args\)/,/task\?\.dispose\(\)/,
+ ]},
  'core/assistant-import.ts':{features:['hr_assistant'],seams:[/const FEATURE\s*=\s*'hr_assistant'/,/resolveActiveAiConfig\(tx,\s*ctx,\s*FEATURE\)/,/withAiAdmissionCheck\(cfg,FEATURE/]},
  'lib/ai/provider-protocol.ts':{features:['provider_evaluation'],seams:[/if \(configuration\.provider !== 'openrouter' \|\| !configuration\.governance\) return unavailable\(\);/,/import \{preparePrivateAiTask,withAiRunObserver\} from '\.\.\/\.\.\/core\/ai-governance';/,/const cfg=withAiRunObserver\(configuration,\{/,/return preparePrivateAiTask\(cfg,id,async\(\)=>source\)/,/preparedCall\('synthetic_protocol_echo_v1',\{marker\}\)/,/preparedCall\('synthetic_protocol_tools_v1',\{marker,stage:'first',callId:null\}\)/,/preparedCall\('synthetic_protocol_tools_v1',\{marker,stage:'final',callId:call.id\}\)/],issuedBy:'core/ai-provider-readiness.ts',issuerImport:"from '../lib/ai/provider-protocol'"},
  'core/assistant-conversation-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
@@ -134,9 +140,34 @@ const performanceOwners:Record<string,Record<string,string>>={
     "getAssessmentWrittenRemarks": "generatePerformanceNativeOutline"
   }
 };
+// The public owner narrows execution through its explicit child switch before its private
+// implementation reaches the provider. Keep both the public entry and concrete dispatch checked.
+const controlledPerformanceOwners:Record<string,{implementation:string;keys:readonly string[]}>= {
+ askAssessmentAdmin:{implementation:'askAssessmentAdminActivity',keys:['read:operation_performance_admin']},
+ suggestAssessmentCareerPlan:{implementation:'suggestAssessmentCareerPlanActivity',keys:['read:operation_career_plan']},
+ getAssessmentCompetencyInsight:{implementation:'getAssessmentCompetencyInsightActivity',keys:['read:operation_competency_insight']},
+ suggestAssessmentDevelopmentGoals:{implementation:'suggestAssessmentDevelopmentGoalsActivity',keys:['read:operation_development_goals']},
+ askPerformanceGuide:{implementation:'askPerformanceGuideActivity',keys:['read:operation_performance_guide']},
+ getAssessmentPerformanceInsight:{implementation:'getAssessmentPerformanceInsightActivity',keys:['read:operation_performance_insight']},
+ rewriteAssessmentField:{implementation:'rewriteAssessmentFieldActivity',keys:['read:operation_performance_rewrite']},
+ draftOnehrNarrative:{implementation:'draftOnehrNarrativeActivity',keys:['read:operation_performance_narrative']},
+ sendCalibrationMessage:{implementation:'sendCalibrationMessageActivity',keys:['read:operation_performance_calibration']},
+ sendFeedbackMessage:{implementation:'sendFeedbackMessageActivity',keys:['read:operation_performance_feedback']},
+ readAssessmentFileTexts:{implementation:'readAssessmentFileTextsActivity',keys:['read:operation_performance_evidence_vision']},
+ getAssessmentIdpFit:{implementation:'getAssessmentIdpFitActivity',keys:['read:operation_idp_fit']},
+ getAssessmentPotentialInsight:{implementation:'getAssessmentPotentialInsightActivity',keys:['read:operation_potential_insight']},
+ getAssessmentTalentInsight:{implementation:'getAssessmentTalentInsightActivity',keys:['read:operation_talent_insight']},
+ proposeSettingSuggestion:{implementation:'proposeSettingSuggestionActivity',keys:['read:operation_performance_setting_suggestion']},
+ generateRewardAdvisor:{implementation:'generateRewardAdvisorActivity',keys:['read:operation_rewards_advice']},
+ suggestMatchSummary:{implementation:'suggestMatchSummaryActivity',keys:['read:operation_recruitment_match_summary']},
+ getAssessmentRecordInsight:{implementation:'getAssessmentRecordInsightActivity',keys:['read:operation_record_present','read:operation_record_cycle','read:operation_record_trend']},
+ getAssessmentWrittenRemarks:{implementation:'getAssessmentWrittenRemarksActivity',keys:['read:operation_written_performance','read:operation_written_potential']},
+ generateArchitectureAdvice:{implementation:'generateArchitectureAdviceActivity',keys:['read:operation_architecture_advice','read:operation_architecture_position','read:operation_architecture_description','read:operation_architecture_outlier']},
+};
 const protectedOwners:Record<string,Record<string,string>>={
  'packs/job-architecture/owner.ts':{generateArchitectureAdvice:'generateDraft'},
  'packs/rewards/advisor.ts':{generateRewardAdvisor:'generateDraft'},
+ 'packs/recruitment/match-summary.ts':{suggestMatchSummary:'generateDraft'},
 };
 const analysisCalls=['generatePrivateAiAnalysis','generatePrivateAiTaskAnalysis'];
 const workloadCalls=['generateDraft','readImage','converse',...analysisCalls,...performanceSeam.calls];
@@ -225,6 +256,7 @@ function assertWorkloadOwner(file:string,src:string){
  return {kind:'pack',count:calls.length};
 }
 describe('complete AI management inventory and boundary',()=>{
+ // Explicit timeout: measured 22.2 s against the global 30 s in gate 42958137526.
  it('registers every production AI workload caller and keeps providers behind the shared gateway',()=>{
   const coreFound:string[]=[],packFound:Record<string,number>={};let packCalls=0;
   for(const file of [...walk('core'),...walk('packs'),...walk('app'),...walk('lib'),...walk('scripts')]){
@@ -242,14 +274,25 @@ describe('complete AI management inventory and boundary',()=>{
    const collect=(node:ts.Node)=>{if(ts.isFunctionDeclaration(node)&&node.name)declarations.set(node.name.text,node);ts.forEachChild(node,collect);};collect(tree);
    for(const [owner,call] of Object.entries(owners)){
     const declaration=declarations.get(owner);expect(declaration,`${file} retains native owner ${owner}`).toBeDefined();
-    expect(declaration?.body?.getText(tree),`${file}#${owner} invokes ${call}`).toMatch(new RegExp(`\\b${call}\\s*\\(`));
+    const controlled=controlledPerformanceOwners[owner];
+    if(controlled){
+     expect(declaration?.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.ExportKeyword),owner+' stays public').toBe(true);
+     const body=declaration!.body!,callbacks:ts.CallExpression[]=[];
+     const findBoundary=(node:ts.Node)=>{if(ts.isCallExpression(node)&&ts.isIdentifier(node.expression)&&node.expression.text==='withAiCentreFunction')callbacks.push(node);ts.forEachChild(node,findBoundary);};findBoundary(body);
+     expect(callbacks.some(call=>{const callback=call.arguments[2];return callback&&ts.isArrowFunction(callback)&&ts.isCallExpression(callback.body)&&ts.isIdentifier(callback.body.expression)&&callback.body.expression.text===controlled.implementation;}),owner+' delegates through its actual control callback').toBe(true);
+     for(const key of controlled.keys)expect(body.getText(tree),owner+' names its registered child').toContain("'"+key+"'");
+     const implementation=declarations.get(controlled.implementation);
+     expect(implementation,owner+' retains its private implementation').toBeDefined();
+     expect(implementation?.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.ExportKeyword)??false).toBe(false);
+     expect(implementation?.body?.getText(tree),`${file}#${owner} dispatches through its controlled implementation`).toMatch(new RegExp(`\\b${call}\\s*\\(`));
+    }else expect(declaration?.body?.getText(tree),`${file}#${owner} invokes ${call}`).toMatch(new RegExp(`\\b${call}\\s*\\(`));
    }
   }
   // Since the provider snapshot owner (ADR-0131, 64651f101) the tenant row and platform fallback are one
   // snapshot, so the active resolver issues exactly one governed configuration and nothing ungoverned.
   const config=read('core/ai-config.ts');expect(config.match(/governedAiConfig\(/g)?.length).toBe(1);
   expect(config).toMatch(/const snapshot\s*=\s*await resolveAiProviderSnapshotTx\(tx,\s*ctx\);\s*return snapshot\s*\?\s*governedAiConfig\(ctx,\s*snapshot,\s*feature\)\s*:\s*null;/);
- });
+ },90_000);
  it('sees calls after TypeScript generics and preserves canonical aliased and namespace wrapper ownership',()=>{
   const generic='const run=<T>(fn:()=>T):T=>fn();';
   const admin=workloadSource('packs/performance/onehr/admin-agent-service.ts',read('packs/performance/onehr/admin-agent-service.ts'));
@@ -302,7 +345,24 @@ describe('complete AI management inventory and boundary',()=>{
   // The live definition of a function is its LAST redefinition in journal (apply) order; 0568, 0621 and 0648 replaced ai_admit.
   const journal:string[]=JSON.parse(read('db/migrations/meta/_journal.json')).entries.map((e:{tag:string})=>`db/migrations/${e.tag}.sql`);
   const live=(marker:string)=>{const files=journal.filter(f=>read(f).includes(marker));expect(files.length,marker).toBeGreaterThan(0);return read(files.at(-1)!);};
-  const guard=live('FUNCTION app.ai_control_policy_guard()'),admit=live('FUNCTION app.ai_admit('),context=live('FUNCTION app._ai_control_context(');
+  const guard=live('FUNCTION app.ai_control_policy_guard()'),admit=live('FUNCTION app.ai_admit('),wrapper=live('FUNCTION app._ai_control_context(');
+  const installedWrapper=read('db/migrations/3200_ai_centre_controls.sql');
+  expect(installedWrapper).toContain('ALTER FUNCTION app._ai_control_context(text,boolean) RENAME TO _ai_control_context_before_centre;');
+  const installedAt=installedWrapper.indexOf('CREATE FUNCTION app._ai_control_context(');
+  const finalAt=wrapper.indexOf('CREATE OR REPLACE FUNCTION app._ai_control_context(');
+  expect(installedAt).toBeGreaterThanOrEqual(0);expect(finalAt).toBeGreaterThanOrEqual(0);
+  const installedEnd=installedWrapper.indexOf('END $$;',installedAt),finalEnd=wrapper.indexOf('END $$;',finalAt);
+  expect(installedEnd).toBeGreaterThan(installedAt);expect(finalEnd).toBeGreaterThan(finalAt);
+  expect(wrapper.slice(finalAt+'CREATE OR REPLACE '.length,finalEnd+'END $$;'.length))
+    .toBe(installedWrapper.slice(installedAt+'CREATE '.length,installedEnd+'END $$;'.length));
+  expect(wrapper).toContain('p.oid IS NULL OR md5(p.prosrc) IS DISTINCT FROM expected.body_hash');
+  expect(wrapper).toContain('p.proowner<>control_owner');
+  expect(wrapper).toContain("has_function_privilege('ai_hr_app',p.oid,'EXECUTE') IS DISTINCT FROM expected.app_execute");
+  expect(wrapper).toContain('a.grantor<>p.proowner OR a.is_grantable');
+  expect(wrapper).toContain("p.oid IS DISTINCT FROM before_row.oid OR (to_jsonb(p)-'prosrc'-'proconfig') IS DISTINCT FROM before_row.attributes");
+  expect(wrapper).toContain('FROM app._ai_control_context_before_centre(wanted_feature,forced_pause) c');
+  expect(wrapper).toContain('c.feature_paused OR EXISTS(SELECT 1 FROM public.teras_mandate_control t WHERE t.tenant_id=app.current_tenant_id() AND t.stopped)');
+  const context=read('db/migrations/0812_ai_feature_switch_owner.sql');
   expect(journal.filter(f=>read(f).includes('FUNCTION app.ai_admit(')).length).toBeGreaterThanOrEqual(2);
   // 0648 replaced ai_admit again; the live admission owns no feature list of its own and resolves the
   // feature through the live control context (0621), which refuses every unlisted feature.

@@ -15,7 +15,8 @@ type T = ReturnType<typeof useTranslations<'rewards'>>;
 type DutySeat = 'bu' | 'bg' | 'gr' | 'ctro' | 'ec' | 'payroll';
 const RETURN_SEATS = ['bg', 'gr', 'ctro', 'ec'] as const;
 
-export const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR', maximumFractionDigits: 0 }).format(cents / 100);
+// 70d5e7c5: amounts read MYR (the currency code), whole ringgit on the board.
+export const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR', currencyDisplay: 'code', maximumFractionDigits: 0 }).format(cents / 100);
 export const boardDueDate = (locale: string, iso: string) => new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
 const dayMonth = (locale: string, iso: string) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' }).format(new Date(`${iso}T00:00:00Z`));
 const percent = (locale: string, bp: number) => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 }).format(bp / 10000);

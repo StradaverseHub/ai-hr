@@ -21,7 +21,7 @@ function BatchPreview({ changes, labels, onSaved }: { changes: RewardAccessChang
     const line = (c: RewardAccessChange) => `${c.after ? labels.name(c.after.userId) : ''} · ${c.after ? r(`roles.${c.after.role}`) : ''} · ${labels.scope(c.unitId)}`;
     return <div className="mt-5 space-y-3"><Field label={c('requestReason')}><textarea className={inputCls} value={reason} minLength={10} maxLength={2000} onChange={e=>setReason(e.target.value)}/></Field>
   {changes.length > MAX && <p role="alert" className="text-sm text-destructive">{b('tooMany')}</p>}
-  <div className="flex justify-end"><Button type="button" disabled={busy || reason.trim().length<10 || !changes.length || changes.length > MAX} onClick={() => start(async () => {
+  <div className="flex justify-end"><Button aria-busy={busy} type="button" disabled={busy || reason.trim().length<10 || !changes.length || changes.length > MAX} onClick={() => start(async () => {
         setError(''); setPreview(null);
         try {
             const result = await previewRewardAccessBatchAction({ changes,reason });
@@ -36,7 +36,7 @@ function BatchPreview({ changes, labels, onSaved }: { changes: RewardAccessChang
    {current.changes.length > 0 && <ul className="list-disc space-y-1 pl-5 text-sm">{current.changes.map(c => <li key={`${c.unitId}:${c.after?.userId}:${c.after?.role}`}>{line(c)}</li>)}</ul>}
    {current.alreadyPresent.length > 0 && <div><p className="text-xs font-medium text-muted-foreground">{b('presentTitle')}</p><ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">{current.alreadyPresent.map(c => <li key={`${c.unitId}:${c.after?.userId}:${c.after?.role}`}>{line(c)}</li>)}</ul></div>}
    <p className="text-xs text-muted-foreground">{b('allOrNone')} {t('history')}</p>
-   <Button type="button" disabled={busy || !current.changes.length} onClick={() => start(async () => {
+   <Button aria-busy={busy} type="button" disabled={busy || !current.changes.length} onClick={() => start(async () => {
         setError('');
         try {
             const result = await saveRewardAccessBatchAction({ changes: current.submitted,reason }, current.digest);
@@ -94,7 +94,7 @@ export function CopyAccess({ value, labels, onSaved, onCancel }: { value: Value;
   <div className="flex flex-wrap items-end gap-3">
    <Field label={b('from')}><select className={inputCls} value={from} onChange={e => { setFrom(e.target.value); reset(); }}><option value="">{b('chooseCycle')}</option>{cycles.map(x => <option key={x.cycleId} value={x.cycleId}>{x.cycle}</option>)}</select></Field>
    <Field label={b('to')}><select className={inputCls} value={to} onChange={e => { setTo(e.target.value); reset(); }}><option value="">{b('chooseCycle')}</option>{cycles.filter(x => x.cycleId !== from).map(x => <option key={x.cycleId} value={x.cycleId}>{x.cycle}</option>)}</select></Field>
-   <Button type="button" disabled={busy || !from || !to || from === to} onClick={() => start(async () => {
+   <Button aria-busy={busy} type="button" disabled={busy || !from || !to || from === to} onClick={() => start(async () => {
         reset();
         try {
             const result = await previewRewardAccessCopyAction({ fromCycleId: from, toCycleId: to, companyIds: [...new Set(value.reviews.map(x => x.companyId))] });

@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * r434 — an approved correction OWNS the day: no later clocking, from any path, recomputes it.
  *
@@ -51,7 +52,7 @@ async function correctedDay(name: string) {
   const { correctionId } = await requestAttendanceCorrection(a, {
     employmentId, date: DATE, checkIn: '09:00', checkOut: '18:00', reason: 'gate log shows 09:00 to 18:00',
   });
-  await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+  await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved' });
   return { a, employmentId };
 }
 
@@ -63,7 +64,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
 });
 
 describe('r434 — an approved correction owns the day', () => {

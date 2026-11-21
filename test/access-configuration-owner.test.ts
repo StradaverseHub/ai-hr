@@ -4,7 +4,9 @@ import type {SessionContext,Tx} from '../db/client';
 import type {AccessCapability,AccessSnapshot,CompanyScopeEvidence} from '../lib/access-permission-model';
 const observed=vi.hoisted(()=>({calls:[] as string[]}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,run:(tx:unknown)=>Promise<unknown>)=>{
-  observed.calls.push('transaction');return run({execute:async()=>{observed.calls.push('lock');}});
+  // The bounded Access lock (core/access-configuration-lock.ts) tries first and reads the one-row result; an
+  // uncontended try acquires in that single statement.
+  observed.calls.push('transaction');return run({execute:async()=>{observed.calls.push('lock');return [{acquired:true}];}});
 }}));
 import {previewAccessConfiguration,saveAccessConfiguration,type AccessConfigurationOwner,type CurrentAccessConfiguration} from '../core/access-configuration';
 

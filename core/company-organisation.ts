@@ -3,6 +3,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {refreshOrganisationAdmission} from '../lib/internal-auth/organisation-admission';
 import {isCalendarDate} from '../lib/calendar-date';
+import {contractPostingHistorySourceTx,assertContractPostingHistoryWriteTx} from './contract-posting-history-source';
 export type OrganisationTagTrigger='hire'|'correction'|'transfer'|'restructure'|'import'|'retag'|'assignment'|'movement';
 export type CompanyOrganisationTags={companyId:string;businessUnitId:string|null;parentCompanyId:string|null;businessGroupId:string|null;mappingVersionId:string|null;status:'legacy'|'ready'|'pending';reason:string|null};
 export type CompanyOrganisationChange={companyId:string;businessUnitId:string|null;parentCompanyId:string|null};
@@ -10,14 +11,32 @@ export type CompanyOrganisationRunInput={kind:'mapping'|'restructure'|'retag';co
 export type CompanyOrganisationRun={id:string;kind:CompanyOrganisationRunInput['kind'];effectiveOn:string;state:'prepared'|'approved'|'staging'|'published'|'stale'|'rejected';digest:string;requestedBy:string;checkedBy:string|null;counts:{total:number;changed:number;unchanged:number;skipped:number;failed:number;staged:number};companyIds:string[];structure?:{companyId:string;company:string;before:CompanyOrganisationTags;after:CompanyOrganisationTags;beforeDisplay:Record<string,string|null>;afterDisplay:Record<string,string|null>}[];failure:string|null;canApprove:boolean;canProcess:boolean};
 function day(value:string){if(!isCalendarDate(value))throw Error('Choose a valid organisation effective date.');return value;}
 export async function deriveCompanyOrganisationTx(tx:Tx,_ctx:SessionContext,p:{companyId:string;asOf:string}):Promise<CompanyOrganisationTags>{
+ const source=contractPostingHistorySourceTx(tx);
+ if(source){
+  await assertContractPostingHistoryWriteTx(tx,source.employmentId);
+  const[row]=await tx.execute<{tags:CompanyOrganisationTags}>(sql`select app.contract_posting_company_org_tags(${source.jobId}::uuid,${source.employmentId}::uuid,${p.companyId}::uuid,${day(p.asOf)}::date) as tags`);
+  if(!row?.tags)throw Error('Company organisation is unavailable.');return row.tags;
+ }
  const [row]=await tx.execute<{tags:CompanyOrganisationTags}>(sql`select app.company_organisation_tags(${p.companyId}::uuid,${day(p.asOf)}::date) tags`);if(!row?.tags)throw Error('Company organisation is unavailable.');return row.tags;
 }
 export async function employmentOrganisationTagsTx(tx:Tx,_ctx:SessionContext,p:{employmentId:string;asOf:string}):Promise<CompanyOrganisationTags>{
+ const source=contractPostingHistorySourceTx(tx);
+ if(source){
+  await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+  const[row]=await tx.execute<{tags:CompanyOrganisationTags}>(sql`select app.contract_posting_employment_org_tags(${source.jobId}::uuid,${p.employmentId}::uuid,${day(p.asOf)}::date) as tags`);
+  if(!row?.tags)throw Error('Employee organisation is unavailable.');return row.tags;
+ }
  const [row]=await tx.execute<{tags:CompanyOrganisationTags}>(sql`select app.employment_organisation_tags(${p.employmentId}::uuid,${day(p.asOf)}::date) tags`);if(!row?.tags)throw Error('Employee organisation is unavailable.');return row.tags;
 }
 /** Invoke inside the existing native writer transaction after its authoritative company/assignment effect.
  * Legacy mode records nothing; reviewed mode records one idempotent classification, no active interval. */
 export async function recordEmploymentOrganisationTagsTx(tx:Tx,_ctx:SessionContext,p:{employmentId:string;companyId:string;asOf:string;trigger:OrganisationTagTrigger}):Promise<CompanyOrganisationTags>{
+ const source=contractPostingHistorySourceTx(tx);
+ if(source){
+  await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+  const[row]=await tx.execute<{tags:CompanyOrganisationTags}>(sql`select app.contract_posting_record_org_tags(${source.jobId}::uuid,${p.employmentId}::uuid,${p.companyId}::uuid,${day(p.asOf)}::date,${p.trigger}) as tags`);
+  if(!row?.tags)throw Error('Employee organisation is unavailable.');return row.tags;
+ }
  const [row]=await tx.execute<{tags:CompanyOrganisationTags}>(sql`select app.record_employment_organisation_tags(${p.employmentId}::uuid,${p.companyId}::uuid,${day(p.asOf)}::date,${p.trigger}) tags`);if(!row?.tags)throw Error('Employee organisation is unavailable.');return row.tags;
 }
 export async function prepareCompanyOrganisationRun(ctx:SessionContext,input:CompanyOrganisationRunInput){await refreshOrganisationAdmission(ctx);return withTenant(ctx,async tx=>{

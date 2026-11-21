@@ -7,6 +7,9 @@ TimeoutStartSec=5min
 User=aihr
 WorkingDirectory=/opt/ai-hr
 EnvironmentFile=/etc/ai-hr/entra-worker.env
+# Connection budget (db/capacity.ts): counted in AIHR_DB_BACKGROUND_CONNECTIONS, not the web pool.
+Environment=AIHR_DB_PROCESS_ROLE=worker
+Environment=AIHR_DB_POOL_MAX=2
 ExecStart=/usr/bin/node --import tsx scripts/entra/worker.ts
 NoNewPrivileges=true
 PrivateTmp=true

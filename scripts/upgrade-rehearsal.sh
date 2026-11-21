@@ -202,6 +202,10 @@ MIG_OUT=$( cd "$ROOT" && DATABASE_URL="postgres://$SUPER@$PGHOST:$PGPORT/$SCRATC
   pnpm exec drizzle-kit migrate 2>&1 )
 if [ $? -eq 0 ]; then ok "migrations applied over populated data"; else fail "MIGRATION FAILED on populated data"; echo "$MIG_OUT" | tail -20; fi
 
+say "4b/6 running the online post-migration steps"
+ONLINE_OUT=$( cd "$ROOT" && node --env-file="$ENVFILE" --import tsx scripts/post-migrate-online.ts 2>&1 )
+if [ $? -eq 0 ]; then ok "online post-migration steps"; echo "$ONLINE_OUT" | tail -6; else fail "online post-migration steps"; echo "$ONLINE_OUT" | tail -20; fi
+
 say "5/6  running the release's backfills"
 BF_OUT=$( cd "$ROOT" && node --env-file="$ENVFILE" --import tsx scripts/seed-catalogs.ts 2>&1 )
 if [ $? -eq 0 ]; then ok "seed-catalogs"; else fail "seed-catalogs"; echo "$BF_OUT" | tail -10; fi

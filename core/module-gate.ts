@@ -1,3 +1,5 @@
+import {aiCentreActivity} from '../lib/ai/centre-activity';
+import {assertAiCentreRunningTx} from './ai-centre-control';
 /**
  * THE SERVICE-DEEP MODULE GATE — one import line per service file, every entry point in it gated.
  *
@@ -175,13 +177,27 @@ export function withModuleTenant(code: string) {
   // it (test/module-gate.test.ts), and it is the exact class of breakage this change must not introduce:
   // a gate is allowed to refuse, never to change how a refusal ARRIVES. An async function body always
   // returns a rejected promise.
-  return async function withGatedTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return async function withGatedTenant<T>(
+    ctx: SessionContext,
+    fn: (tx: Tx) => Promise<T>,
+    options?: Parameters<typeof withTenant>[2],
+  ): Promise<T> {
     assertModuleGate(ctx, code);
     return withTenant(ctx, async tx => {
+      if(code==='performance'&&aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);
       if (code === 'payroll') await lockPayrollHistoryReadTx(tx,ctx.tenantId);
       return fn(tx);
-    });
+    }, options);
   };
+}
+
+/** The Payroll gate for an own read-only view that needs no payroll-history barrier: ONE REPEATABLE READ READ ONLY
+ * snapshot, taken at its first statement, so no statement of it can see half of a history correction and the barrier
+ * could only delay it (core/payroll-self-metadata.ts). Inside a request's shared snapshot it joins that snapshot. Only
+ * the Before payroll checklist's TP1 and TP3 reads use it; calculations, reports and writers keep withPayrollTenant. */
+export async function withPayrollSnapshotTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  assertModuleGate(ctx, 'payroll');
+  return withTenant(ctx, fn, { readOnlySnapshot: true });
 }
 
 /** The four optional PACKS (packs/catalog.ts: `packBacked: true`, `isCore: false`). */
@@ -193,10 +209,12 @@ export const withPerformanceTenant = withModuleTenant('performance');
 export const withLifecycleTenant = withModuleTenant('lifecycle');
 
 export const withRewardsTenant = withModuleTenant('rewards');
+/** ADR-0080 D10 — the Recruitment pack (packs/recruitment); every service entry point runs through it. */
+export const withRecruitmentTenant = withModuleTenant('recruitment');
 
 /** Admission for additive Lifecycle modules whose native owners check each target company.
  * This does not grant company scope and leaves the legacy onb/off gate unchanged. */
-export async function withScopedLifecycleTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>):Promise<T>{
+export async function withScopedLifecycleTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>,options?:Parameters<typeof withTenant>[2]):Promise<T>{
  if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')&&!(ctx.entitlements?.scopedModules.lifecycle??[]).some(companyId=>isModuleEnabled(ctx,'lifecycle',companyId)))assertModuleEnabled(ctx,'lifecycle');
- return withTenant(ctx,fn);
+ return withTenant(ctx,fn,options);
 }

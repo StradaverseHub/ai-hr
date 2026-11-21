@@ -1,11 +1,14 @@
+import {restoreHistoricalAttendanceSubmission} from './helpers/attendance-submission-fixture';
+import {verifyWorkflowOnlyAttendanceHeader} from './helpers/attendance-task-header-prototype';
 import {restorePreOrgRootReportingLines} from './helpers/pre-org-root-reporting-fixture';
+import {legacyPendingAttendanceTaskMetadata} from './helpers/attendance-task-original';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { hireEmployee, setReportingLine, editDelegation } from '../core/org';
-import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment, listAttendanceCorrections } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection, pendingAttendanceTaskMetadata, decideAttendanceCorrection, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment, listAttendanceCorrections } from '../core/attendance';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, reassignAttendanceWorkflowStageToHr, decideAttendanceWorkflowStageTx, previewAttendanceWorkflow, snapshotAttendanceWorkflowTx } from '../core/attendance-workflow';
 import { attendanceApplicationDetail } from '../core/attendance-application-history';
 import { createBatch, generatePayslips, closeBatch, unlockClosedBatch } from '../packs/payroll/service';
@@ -83,6 +86,9 @@ describe('797ba70b: explicit hierarchy routing and frozen accountable actors', (
     expect(detail?.workflow?.stages.map(s => s.approvers[0])).toEqual([f.first, f.second, f.third].map((e, i) => expect.objectContaining({ employmentId: e.employmentId, personId: e.personId, userId: f.actors[i].userId, hierarchyDepth: i + 1 })));
     await expect(decideAttendanceCorrection(f.actors[2], { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow();
     await approveFirstTwo(f, id);
+    expect((await pendingAttendanceTaskMetadata(f.actors[2],[b.companyId])).map(row=>row.id)).toEqual([id]);
+    expect(await pendingAttendanceTaskMetadata(f.actors[0],[b.companyId])).toEqual([]);
+    expect(await pendingAttendanceTaskMetadata(f.actors[2],[b.companyId])).toEqual(await legacyPendingAttendanceTaskMetadata(f.actors[2],[b.companyId]));
     expect(await readDay(f.d.employmentId)).toEqual(before);
     expect((await listAttendanceCorrections(f.actors[2], { status: 'pending' })).map(r => r.id)).toContain(id);
     expect(await decideAttendanceCorrection(f.actors[2], { correctionId: id, decision: 'approved', expectedStageIndex: 2 })).toMatchObject({ status: 'approved' });
@@ -128,7 +134,7 @@ describe('797ba70b: explicit hierarchy routing and frozen accountable actors', (
   });
   it('refuses missing/inactive/unlinked/cyclic/self and ambiguous-login paths, retaining only explicit HR alternatives', async () => {
     const f = await fixture();
-    const assertUnresolved = () => expect(saveAttendanceWorkflow(f.a, input())).rejects.toMatchObject({ code: 'unresolved' });
+    const assertUnresolved = async () => expect((await previewAttendanceWorkflow(f.a,input())).rows.some(row=>!!row.problem)).toBe(true);
     await owner.db.update(schema.employment).set({ terminatedOn: addDays(todayInKualaLumpur(), -1) }).where(eq(schema.employment.id, f.second.employmentId));
     await assertUnresolved();
     await owner.db.update(schema.employment).set({ terminatedOn: null }).where(eq(schema.employment.id, f.second.employmentId));
@@ -296,7 +302,9 @@ describe('797ba70b: savepoint proof and canonical same-day plan dependencies', (
   });
   it('lands an already-approved future OT plan through the canonical clock-correction owner, preserving its original approval', async () => {
     const f = await fixture(), future=addDays(todayInKualaLumpur(),8);
-    const planId=await submit(f.self,f.d.employmentId,true,future);
+    // This is an existing pre-enablement plan; new plans must have their own configured route.
+    const historical=await restoreHistoricalAttendanceSubmission(b,{employmentId:f.d.employmentId,attendanceDate:future,requestedOtMinutes:60,requestKind:'self_overtime',reason:'Hierarchy verification'});
+    const planId=historical.id;
     await decideAttendanceCorrection(f.a,{correctionId:planId,decision:'approved'});
     const original=await readCorrection(planId); expect(original.status).toBe('approved'); expect(original.appliedAt).toBeNull();
     vi.useFakeTimers({toFake:['Date']}); vi.setSystemTime(new Date(`${addDays(future,1)}T12:00:00+08:00`));
@@ -378,8 +386,13 @@ describe('797ba70b: Personnel-owned assignment criteria and request-bound delega
     const cover=await setReportingLine(f.a,{subordinateEmploymentId:f.second.employmentId,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:'2020-01-01',reason:'Temporary level two cover',scopes:[{module:'attendance',taskType:'attendance.correction'}],orgScope:{companyId:b.companyId,departmentId:b.deptB,businessUnitId:null}});
     await enable(f.a); const id=await submit(f.self,f.d.employmentId); await decideAttendanceCorrection(f.actors[0],{correctionId:id,decision:'approved',expectedStageIndex:0});
     await expect(decideAttendanceCorrection(delegate,{correctionId:id,decision:'approved',expectedStageIndex:1})).rejects.toThrow();
+    expect(await pendingAttendanceTaskMetadata(delegate,[b.companyId])).toEqual([]);
     await editDelegation(f.a,{reportingLineId:cover.reportingLineId,managerEmploymentId:stand.employmentId,validFrom:'2020-01-01',validTo:null,reason:'Correct scoped cover',scopes:[{module:'attendance',taskType:'attendance.correction'}],orgScope:{companyId:b.companyId,departmentId:b.deptA,businessUnitId:null}});
     expect((await listAttendanceCorrections(delegate,{status:'pending'})).map(r=>r.id)).toContain(id);
+    const delegatedTasks=await pendingAttendanceTaskMetadata(delegate,[b.companyId]);
+    expect(delegatedTasks.map(row=>row.id)).toContain(id);
+    expect(delegatedTasks).toEqual(await legacyPendingAttendanceTaskMetadata(delegate,[b.companyId]));
+    await verifyWorkflowOnlyAttendanceHeader(delegate,id,f.d.employmentId);
     await decideAttendanceCorrection(delegate,{correctionId:id,decision:'approved',expectedStageIndex:1});
     const decision=(await readDecisions()).find(d=>d.stageIndex===1)!;
     expect(decision).toMatchObject({assignedEmploymentId:f.second.employmentId,actualUserId:delegate.userId,actualPersonId:stand.personId,actualEmploymentId:null,actingMode:'delegate'});

@@ -1,4 +1,8 @@
 'use client';
+import {EMPLOYMENT_INFORMATION_ROW,EMPLOYMENT_INFORMATION_HEADER} from '@/lib/employment-information-layout';
+import {formatDmy} from '@/lib/date-display';
+import { MOVEMENT_EMPLOYMENT_PERIODS, type MovementEmploymentPeriods, type MovementEmploymentPeriodField } from '@/lib/movement-employment-periods';
+import { ActionButton } from '@/components/ui/action-button';
 import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
 // Movement tab redesign (78853b97), comparison redesign (08913328) — client half of "New Event".
@@ -26,11 +30,14 @@ import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
 import { createMovementEventAction, editMovementEventAction,saveMovementPageAction } from './actions';
 
+import { HistoryMovementPayFields } from './history-movement-pay-fields';
+import { HistoryMovementDateFields } from './history-movement-date-fields';
 import type {MovementPageContext} from '@/lib/personnel-movement-navigation';
 import {MOVEMENT_FORM_IDS, movementFormFields} from '@/lib/movement-form-contract';
 import {isComparisonKind} from '@/core/movement-kinds';
 import {MOVEMENT_PENDING_INPUT_FIELDS,type MovementPendingFormValues} from '@/lib/movement-pending-input';
 import {MOVEMENT_DOCUMENT_MIME_TYPES,defaultMovementFieldRule,type MovementFieldRule,type MovementRuleField} from '@/lib/movement-field-rules';
+import {RehireEventForm,type RehireFormProps} from './rehire-form';
 const movementField=(name:keyof typeof MOVEMENT_FORM_IDS)=>MOVEMENT_FORM_IDS[name];
 export type MovementOption = { id: string; name: string };
 /** b7b22514 — a Direct Superior candidate, carrying the company that decides whether an Entity Transfer
@@ -45,7 +52,14 @@ export type MovementOrgScope = {
 };
 
 /** The employee's current record, as the server read it — ids for pickers, text for the flat columns. */
-export type MovementCurrentValues = {
+export type MovementCurrentValues = MovementEmploymentPeriods & {
+  groupJoinDate?:string|null;
+  joinDate?:string|null;
+  contractStartDate?:string|null;
+  extendedConfirmationDate?:string|null;
+  tenderResignationDate?:string|null;
+  resignationDate?:string|null;
+  lastWorkingDate?:string|null;
   companyName: string | null;
   /** b7b22514 — the raw id, because Entity Transfer makes Company an editable field and a select needs a
    *  value, not a label. Every other kind still renders `companyName` read-only. */
@@ -61,6 +75,7 @@ export type MovementCurrentValues = {
   currency: string | null;
   payMode: string | null;
   paymentTerm: string | null;
+  paymentMethod?:string|null;
   orgDivision: string | null;
   employmentCategory: string | null;
   orgRegion: string | null;
@@ -69,6 +84,10 @@ export type MovementCurrentValues = {
   orgSection: string | null;
   orgLine: string | null;
   orgBase: string | null;
+  /** 2260a06b — the Employee Type end dates (optional: older callers may not supply them). */
+  confirmationDate?: string | null;
+  contractEndDate?: string | null;
+  internshipEndDate?: string | null;
 };
 
 // Literal styling tokens (documents-manager precedent — never import a server module into this bundle).
@@ -147,11 +166,31 @@ export type MovementEditTarget = {
   pendingUnavailable?: boolean;
 };
 
+/**
+ * Personnel postings (ADR 2026-11-15 decision 4, screen 8) — the pending posting this New Event form is prefilled from.
+ * Absent = the New Event form, unchanged. Present: the event type is the posting's, only the posting's fields are
+ * offered (dates and remarks), and the submit either applies the event and approves the posting (approver group) or
+ * keeps the corrections on the posting for approval (everyone else who can record events). The server decides both.
+ */
+export type MovementPostingTarget = {
+  id: string;
+  label: string;
+  revision: number;
+  kind: string;
+  effectiveDate: string;
+  endDate: string | null;
+  remarks: string | null;
+  canApprove: boolean;
+  /** Pre-translated by the server page (personnelPostings namespace); the island adds no translation namespace. */
+  labels: { banner: string; hint: string; leaveHint: string; submit: string };
+};
+
 export function MovementNewEvent({
   employmentId,
   today,
   isBlacklisted,
   current,
+  closedPayrollPeriods = [],
   departments,
   positions,
   businessUnits,
@@ -167,11 +206,17 @@ export function MovementNewEvent({
   cancelHref,
   pageContext,
   edit,
+  posting,
+  postingAction,
+  rehire,
+  historyOnly = false,
+  historyPayAllowed = false,
 }: {
   employmentId: string;
   today: string;
   isBlacklisted: boolean;
   current: MovementCurrentValues;
+  closedPayrollPeriods?: string[];
   departments: MovementOption[];
   positions: MovementOption[];
   businessUnits: MovementOption[];
@@ -198,6 +243,7 @@ export function MovementNewEvent({
     code: string;
     label: string | null;
     behaviourKind: string;
+    historyOnly?: boolean;
     description?: string | null;
     /** 1d58019a Step 2 — a Termination type's ticked reasons; null/absent = every active reason. */
     reasonCodes?: string[] | null;
@@ -219,26 +265,41 @@ export function MovementNewEvent({
   cancelHref: string;
   pageContext?:MovementPageContext;
   edit?: MovementEditTarget;
+  posting?: MovementPostingTarget;
+  postingAction?: (previous: string | null, data: FormData) => Promise<string | null>;
+  /** Board 511aa74a — present only when this employee may be rehired (Resigned, nothing current). The
+   *  Rehired type then renders its own form (a new employment, core/rehire.ts), never the movement writer. */
+  rehire?: Omit<RehireFormProps, 'kindCode'>;
+  historyOnly?: boolean;
+  historyPayAllowed?: boolean;
 }) {
   const t = useTranslations('people.detail.movement');
   const tPay = useTranslations('people.detail');
-  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>key.startsWith('people.detail.')&&tPay.has(key.slice(14))?tPay(key.slice(14)):fallback);
+  const tRoot = useTranslations();
+  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>tRoot.has(key)?tRoot(key):fallback);
   // 476f23ed — the catalogue, with the built-in list as the fallback for a render that was given none.
   const catalog: NonNullable<typeof types> =
     types?.length ? types : KINDS.map((k) => ({ code: k, label: null, behaviourKind: k }));
   const byCode = new Map(catalog.map((c) => [c.code, c]));
   /** What a code DOES. Every branch below asks this, never the code itself. */
   const behaviourOf = (k: string): string => byCode.get(k)?.behaviourKind ?? k;
-  const [kind, setKind] = useState<string>(edit?.kind ?? catalog[0]?.code ?? 'transfer');
+  const forwardTypes = catalog.filter(option => !option.historyOnly);
+  const [kind, setKind] = useState<string>(posting?.kind ?? edit?.kind ??
+    (historyOnly ? catalog[0]?.code : forwardTypes[0]?.code) ?? 'transfer');
   const behaviour = behaviourOf(kind);
-  const [correctionDate, setCorrectionDate] = useState(edit?.effectiveDate ?? today);
+  const [correctionDate, setCorrectionDate] = useState(posting?.effectiveDate ?? edit?.effectiveDate ?? today);
   const proposedMonth = (/^\d{4}-\d{2}-\d{2}$/.test(correctionDate) ? correctionDate : edit?.effectiveDate ?? today).slice(0,7);
-  const correctionClosedPeriods = edit ? [...new Set([
-    ...(edit.payrollClosedPeriods ?? []),
-    ...(edit.availableClosedPayrollPeriods ?? []).filter(period => period >= proposedMonth),
-  ])].sort() : [];
+  const correctionClosedPeriods = [...new Set([
+    ...(edit?.payrollClosedPeriods ?? []),
+    ...(edit?.availableClosedPayrollPeriods ?? closedPayrollPeriods).filter(period => period >= proposedMonth),
+  ])].sort();
   const saved = edit?.pendingInput;
+  const [lifecycleTargets,setLifecycleTargets]=useState<Record<string,string>>({});
   const after = {...current,...saved};
+  // 2260a06b — the end-date row follows the Employee Type picked in this form (Contract → Contract End Date,
+  // Intern → Internship End Date, Full-Time / Part-Time → neither), so the select is tracked here.
+  const [afterType, setAfterType] = useState<string>(after.employmentType ?? '');
+  const typeChanges = afterType !== (current.employmentType ?? '');
   const initialFields=useRef<Map<string,string>|null>(null);
   const touched=useRef(new Set<string>());
   const [pageError,pageAction,pagePending]=useActionState(async(previous:string|null,data:FormData)=>{
@@ -248,6 +309,8 @@ export function MovementNewEvent({
     }
     return saveMovementPageAction(previous,data);
   },null);
+  const [postingError,postingFormAction,postingPending]=useActionState(async(previous:string|null,data:FormData)=>
+    posting&&postingAction?postingAction(previous,data):previous,null);
   const submitPendingCorrection=async(data:FormData)=>{
     for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
       if(Object.prototype.hasOwnProperty.call(saved,key)||touched.current.has(key))continue;
@@ -282,6 +345,7 @@ export function MovementNewEvent({
       case 'employmentTypeChange': return t('eventType.employmentTypeChange');
       case 'joinDateChange': return t('eventType.joinDateChange');
       case 'groupJoinDateCorrection': return t('eventType.groupJoinDateCorrection');
+      case 'rehire': return t('eventType.rehire');
       default: return k.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase());
     }
   };
@@ -343,6 +407,12 @@ export function MovementNewEvent({
   const paymentTermLabel = (v: string | null): string | null =>
     v == null ? null : PAYMENT_TERM_OPTIONS.includes(v as 'monthly') ? tPay(`paymentTerm_${v}` as 'paymentTerm_monthly') : v;
 
+  const periodUnitLabel = (field: MovementEmploymentPeriodField, value: string | null | undefined): string | null => {
+    if (!value) return null;
+    const choice = personnelFormChoices(movementField(field)).find(option => option.value === value);
+    return choice ? tRoot(choice.labelKey) : value;
+  };
+
   const nameOf = (options: MovementOption[], id: string | null): string | null =>
     id ? (options.find((o) => o.id === id)?.name ?? null) : null;
   const dash = (v: string | null | undefined) => (v == null || v === '' ? '—' : v);
@@ -360,18 +430,28 @@ export function MovementNewEvent({
       ? { field, included: true, editable: true, mustChange: true, document: typeRules?.find((r) => r.field === field)?.document ?? 'none' }
       : typeRules?.find((r) => r.field === field) ?? defaultMovementFieldRule(field);
   const [ruleError, setRuleError] = useState<string | null>(null);
+  // Board 154511c4 — "Record history": HR enters what the employee had BEFORE the effective date; the record on
+  // the date stays as it is (core/movement-history-command.ts). New comparison movements only.
+  const [historyMode, setHistoryMode] = useState(historyOnly);
+  const changeHistoryMode = (enabled: boolean) => {
+    setHistoryMode(enabled);
+    if (!enabled && byCode.get(kind)?.historyOnly) setKind(forwardTypes[0]?.code ?? 'transfer');
+  };
+  const [historyCompany, setHistoryCompany] = useState('');
+  const historyScope = orgByCompany?.[historyCompany || current.companyId] ?? { departments, positions, businessUnits, locations };
+  const historyOrganisation = useDerivedOrganisation({ companyId: historyCompany || current.companyId, asOf: correctionDate });
 
   /** One comparison row: the field label, the read-only current value, and the editable new value. */
   const row = (field: MovementRuleField, key: string, label: string, currentDisplay: string | null, control: React.ReactNode) => {
     const rule = ruleFor(field);
     if (!rule.included) return null;
-    const readOnly = !rule.editable;
+    const readOnly = !rule.editable||!isComparison;
     return (
       <div
         key={key}
         data-field={field}
         data-must-change={rule.mustChange ? 'true' : undefined}
-        className="grid grid-cols-1 gap-1 border-b border-border px-4 py-2.5 last:border-b-0 sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4"
+        className={EMPLOYMENT_INFORMATION_ROW}
       >
         <div className="text-xs font-medium text-muted-foreground">
           {label}
@@ -447,7 +527,36 @@ export function MovementNewEvent({
   );
 
   // The requested field order, top to bottom (feedback 08913328).
+  /** Board 154511c4 — one Before choice of "Record history" (blank = not recorded). */
+  const historySelect = (field: 'companyId' | 'departmentId' | 'positionId' | 'businessUnitId' | 'locationId' | 'employmentType', options: MovementOption[]) => (
+    <label key={field} className="block space-y-1 text-sm">
+      <span className="text-xs font-medium text-muted-foreground">{label(movementField(field))}</span>
+      <select key={field === 'companyId' || field === 'employmentType' ? field : historyCompany}
+        name={`history.${field}`} defaultValue={field === 'companyId' ? historyCompany : ''} className={inputCls}
+        onChange={field === 'companyId' ? (event) => setHistoryCompany(event.target.value) : undefined}>
+        <option value="">{t('form.historyUnchanged')}</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+  const dateContext=(field:string,title:string,before:string|null|undefined,afterValue=before)=>
+    <div key={field} data-employment-information={field} className={EMPLOYMENT_INFORMATION_ROW}>
+      <div className="text-xs font-medium text-muted-foreground">{title}</div>
+      <div className="text-sm">{before===undefined?t('detail.notRecorded'):before?formatDmy(before):'—'}</div>
+      <div className="text-sm">{afterValue===undefined?t('detail.notRecorded'):afterValue?formatDmy(afterValue):'—'}</div>
+    </div>;
   const comparisonRows: React.ReactNode[] = [
+    dateContext('groupJoinDate',tRoot('people.detail.employmentInfo.groupJoinDate'),current.groupJoinDate,behaviour==='groupJoinDateCorrection'?correctionDate:current.groupJoinDate),
+    dateContext('joinDate',tRoot('people.detail.employmentInfo.joinDate'),current.joinDate,['joinDateChange','entityTransfer'].includes(behaviour)?correctionDate:current.joinDate),
+    dateContext('contractStartDate',label('employment.employment_dates_and_service.contractstartdate'),current.contractStartDate,afterType==='contract'&&current.employmentType!=='contract'?correctionDate:current.contractStartDate),
+    dateContext('extendedConfirmationDate',tRoot('people.import.movement.currentFields.extendedConfirmationDate'),current.extendedConfirmationDate,behaviour==='probationExtension'?lifecycleTargets.endDate??edit?.endDate??null:current.extendedConfirmationDate),
+    dateContext('tenderResignationDate',label('employment.employment_dates_and_service.tenderresignationdate'),current.tenderResignationDate,behaviour==='resignation'?lifecycleTargets.tenderResignationDate??saved?.tenderResignationDate??edit?.effectiveDate??null:current.tenderResignationDate),
+    dateContext('resignationDate',label('employment.employment_dates_and_service.resignationdate'),current.resignationDate,behaviour==='resignation'?lifecycleTargets.resignationEffectiveDate??saved?.resignationEffectiveDate??null:current.resignationDate),
+    dateContext('lastWorkingDate',label('employment.employment_dates_and_service.lastworkingdate'),current.lastWorkingDate,['resignation','termination'].includes(behaviour)?lifecycleTargets.endDate??lifecycleTargets.lastWorkingDate??edit?.endDate??correctionDate:current.lastWorkingDate),
     /**
      * b7b22514 — THE ONE PLACE COMPANY IS EDITABLE, and only on this one event type. Everywhere else it
      * stays the read-only note it has always been: moving an employee between legal entities re-homes
@@ -499,13 +608,40 @@ export function MovementNewEvent({
       select('locationId', after.locationId, scoped.locations, t('form.none'))),
     row('employmentType', 'employmentType', label(movementField('employmentType')),
       employmentTypes.find((o) => o.value === current.employmentType)?.label ?? null,
-      <select {...personnelWorkflowControl(movementField('employmentType'), 'movement', 'edit')} defaultValue={after.employmentType ?? ''} className={inputCls}>
+      <select {...personnelWorkflowControl(movementField('employmentType'), 'movement', 'edit')} defaultValue={after.employmentType ?? ''} onChange={(e) => setAfterType(e.target.value)} className={inputCls}>
         {employmentTypes.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>
         ))}
       </select>),
+    afterType === 'contract' ? row('contractEndDate', 'contractEndDate', label(movementField('contractEndDate')), current.contractEndDate ? formatDmy(current.contractEndDate) : null,
+      <>
+        <DateField key={`contractEndDate-${typeChanges}`} {...personnelWorkflowControl(movementField('contractEndDate'), 'movement', 'edit')} label={label(movementField('contractEndDate'))}
+          defaultValue={typeChanges ? (saved?.contractEndDate ?? '') : (after.contractEndDate ?? '')} className={inputCls} />
+        {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredContract')}</p>}
+      </>) : null,
+    afterType === 'intern' ? row('internshipEndDate', 'internshipEndDate', label(movementField('internshipEndDate')), current.internshipEndDate ? formatDmy(current.internshipEndDate) : null,
+      <>
+        <DateField key={`internshipEndDate-${typeChanges}`} {...personnelWorkflowControl(movementField('internshipEndDate'), 'movement', 'edit')} label={label(movementField('internshipEndDate'))}
+          defaultValue={typeChanges ? (saved?.internshipEndDate ?? '') : (after.internshipEndDate ?? '')} className={inputCls} />
+        {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredIntern')}</p>}
+      </>) : null,
+    row('confirmationDate', 'confirmationDate', label(movementField('confirmationDate')), current.confirmationDate ? formatDmy(current.confirmationDate) : null,
+      behaviour === 'confirmation'
+        ? <span className="text-sm text-muted-foreground">{formatDmy(correctionDate)}</span>
+        : <DateField {...personnelWorkflowControl(movementField('confirmationDate'), 'movement')}
+            aria-label={label(movementField('confirmationDate'))} defaultValue={after.confirmationDate ?? ''} className={inputCls} />),
+    ...MOVEMENT_EMPLOYMENT_PERIODS.flatMap(period => [
+      row(period.value, period.value, label(movementField(period.value)), current[period.value] ?? null,
+        <input {...personnelWorkflowInput(movementField(period.value), 'movement')} className={inputCls}
+          aria-label={label(movementField(period.value))} defaultValue={after[period.value] ?? ''} />),
+      row(period.unit, period.unit, label(movementField(period.unit)),
+        periodUnitLabel(period.unit, current[period.unit]),
+        <select {...personnelWorkflowControl(movementField(period.unit), 'movement')} className={inputCls}
+          aria-label={label(movementField(period.unit))}
+          defaultValue={after[period.unit] ?? ''}><option value="">{tRoot('people.detail.employmentInfo.unit')}</option>{personnelFormChoices(movementField(period.unit)).map(option=><option key={option.value} value={option.value}>{tRoot(option.labelKey)}</option>)}</select>),
+    ]),
     row('managerEmploymentId', 'manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),
       select('managerEmploymentId', after.managerEmploymentId, scopedManagers, t('form.none'))),
     row('basicSalary', 'basicSalary', label(movementField('basicSalary')), current.basicSalary,
@@ -514,6 +650,11 @@ export function MovementNewEvent({
         defaultValue={after.basicSalary ?? ''}
         className={inputCls}
       />),
+    row('paymentMethod','paymentMethod',label(movementField('paymentMethod')),current.paymentMethod?tRoot(`people.detail.paymentMethod_${current.paymentMethod}`):null,
+      <select {...personnelWorkflowControl(movementField('paymentMethod'),'movement','edit')} defaultValue={after.paymentMethod??''} className={inputCls}>
+        <option value="">{t('form.none')}</option>
+        {personnelFormChoices(movementField('paymentMethod')).map(choice=><option key={choice.value} value={choice.value}>{tRoot(choice.labelKey)}</option>)}
+      </select>),
     row('currency', 'currency', label(movementField('currency')), current.currency,
       <CurrencySelect name={personnelWorkflowControl(movementField('currency'), 'movement', 'edit').name} value={after.currency} />),
     // Labels via the KNOWN option lists only — a stored value outside them falls back to itself rather
@@ -536,7 +677,7 @@ export function MovementNewEvent({
       </select>),
   ];
 
-  const kindOptions: readonly string[] = edit ? edit.allowedKinds : catalog.map((c) => c.code);
+  const kindOptions: readonly string[] = posting ? [posting.kind] : edit ? edit.allowedKinds : (historyMode ? catalog : forwardTypes).map((c) => c.code);
   const savedScope=isEntityTransfer?saved?.companyId??current.companyId:current.companyId;
   const savedOrg=orgByCompany?.[savedScope]??{departments,positions,businessUnits,locations};
   const referenceChoices={companyId:companies??[{id:current.companyId,name:current.companyName??''}],
@@ -552,21 +693,59 @@ export function MovementNewEvent({
     <a href={cancelHref} className={btnGhost}>{t('form.cancel')}</a>
   </div>;
 
+  if (behaviour === 'rehire' && !edit && !historyMode && !posting) {
+    return (
+      <div>
+        <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {label(movementField('kind'))}
+            <select {...personnelWorkflowControl(movementField('kind'), 'movement', 'edit')} form="movement-rehire-type" value={kind} onChange={(e) => setKind(e.target.value)} className={inputCls}>
+              {kindOptions.map((k) => (
+                <option key={k} value={k}>
+                  {kindLabel(k)}
+                </option>
+              ))}
+            </select>
+            {byCode.get(kind)?.description && (
+              <span data-testid="movement-type-description" className="text-xs text-muted-foreground">
+                {byCode.get(kind)!.description}
+              </span>
+            )}
+          </label>
+        </div>
+        <button type="button" className={`${btnGhost} mx-4 mb-3`} onClick={() => changeHistoryMode(true)}>
+          {t('form.recordHistory')}
+        </button>
+        {rehire ? (
+          <RehireEventForm {...rehire} kindCode={kind} />
+        ) : (
+          <p role="alert" className="px-4 pb-4 text-sm text-destructive">{t('rehire.unavailable')}</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     // 03877e — the page form is NOT given `action`: React resets a form after every `action` submission,
     // so a refused save used to come back with the date and every other entry wiped (production: HR saw
     // today's date beside an error about the 2024 date they had typed). onSubmit below hands the data to
     // pageAction itself, which keeps what the user entered on screen next to the explanation.
-    <form aria-busy={pagePending} action={pageContext ? undefined : saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
+    <form aria-busy={pagePending||postingPending} action={posting && postingAction ? postingFormAction : pageContext ? undefined : saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
       ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
       onSubmit={event=>{
-        if(pagePending){event.preventDefault();return;}
+        if(pagePending||postingPending){event.preventDefault();return;}
+        // Every path that ends without preventDefault must go through here: with no `action` on a page form,
+        // returning early would let the browser post the form natively instead.
         const submitPage=()=>{
-          if(!pageContext)return;
+          if(!pageContext||(posting&&postingAction))return;
           event.preventDefault();
           const pageData=new FormData(event.currentTarget,(event.nativeEvent as SubmitEvent).submitter);
           startTransition(()=>pageAction(pageData));
         };
+        // A posting carries only dates and remarks: the comparison grid and its Field Controls are not offered.
+        if (posting) {submitPage();return;}
+        // A history entry changes nothing from its date onward, so Required to Change does not apply to it.
+        if (historyMode) {submitPage();return;}
         // 1d58019a Step 2 — Required to Change, checked before the round trip (the server checks it too).
         if (!typeRules) {submitPage();return;}
         const data = new FormData(event.currentTarget);
@@ -588,14 +767,26 @@ export function MovementNewEvent({
         }
       }}
       onChangeCapture={event=>{
-        if (!saved) return;
         const target: EventTarget = event.target;
+        if(target instanceof HTMLInputElement&&['tenderResignationDate','resignationEffectiveDate','resignationDate','endDate','lastWorkingDate'].includes(target.name))setLifecycleTargets(previous=>({...previous,[target.name]:target.value}));
+        if (!saved) return;
         if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
           if (target.name) touched.current.add(target.name);
         }
       }}>
       {pageContext&&<><input type="hidden" name="movementPage" value={edit?'edit':'new'}/><input type="hidden" name="showCorrected" value={pageContext.showCorrected??''}/><input type="hidden" name="from" value={pageContext.from??''}/></>}
       {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive"><DatabaseErrorText message={pageError}/></p>}
+      {postingError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive"><DatabaseErrorText message={postingError}/></p>}
+      {posting&&<>
+        <input type="hidden" name="postingId" value={posting.id}/>
+        <input type="hidden" name="postingRevision" value={posting.revision}/>
+        <input type="hidden" name="postingIntent" value={posting.canApprove?'approve':'edit'}/>
+        <div data-testid="movement-posting-banner" className="space-y-1 border-b border-border bg-muted/40 px-4 py-3 text-sm">
+          <p className="font-medium">{posting.labels.banner}</p>
+          <p>{posting.labels.hint}</p>
+          <p className="text-xs text-muted-foreground">{posting.labels.leaveHint}</p>
+        </div>
+      </>}
       <input type="hidden" name="employmentId" value={employmentId} />
       <DerivedOrganisationFields state={derivedOrganisation}/>
       {edit && <input type="hidden" name="movementId" value={edit.movementId} />}
@@ -616,16 +807,10 @@ export function MovementNewEvent({
           {t('form.payrollWarning')}
         </p>
       )}
-      {/* 646355e5 — a closed run no longer blocks the correction. HR confirms that closed payroll stays as
-          issued; the service refuses without this box (MovementClosedPayrollAcknowledgementError). */}
       {!!correctionClosedPeriods.length && (
         <div className="border-b border-border bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
           <p className="font-medium">{t('form.closedPayrollTitle', { periods: correctionClosedPeriods.join(', ') })}</p>
           <p className="mt-1">{t('form.closedPayrollBody')}</p>
-          <label className="mt-2 flex items-start gap-2">
-            <input type="checkbox" name="acknowledgeClosedPayroll" value="1" required className="mt-1" />
-            <span>{t('form.closedPayrollAcknowledge')}</span>
-          </label>
         </div>
       )}
 
@@ -647,18 +832,18 @@ export function MovementNewEvent({
           )}
         </label>
 
-        {showEffectiveDate && (
+        {(showEffectiveDate || historyMode) && (
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {label(movementField('effectiveDate'))}
             <DateField
               {...personnelWorkflowControl(movementField('effectiveDate'), 'movement', 'record')}
 
-              defaultValue={edit?.effectiveDate ?? today}
+              defaultValue={posting?.effectiveDate ?? edit?.effectiveDate ?? today}
               onChange={event => setCorrectionDate(event.target.value)}
               className={inputCls}
               label={label(movementField('effectiveDate'))}
             />
-            {DATE_VALUE_KINDS.includes(behaviour) && (
+            {!historyMode && DATE_VALUE_KINDS.includes(behaviour) && (
               <span className="text-xs text-muted-foreground">
                 {behaviour === 'joinDateChange'
                   ? t('form.joinDateChangeHint')
@@ -672,7 +857,18 @@ export function MovementNewEvent({
           </label>
         )}
 
-        {showEndDate && (
+        {!edit && !saved && !posting && (
+          <label className="flex items-start gap-2 text-sm sm:col-span-2">
+            <input name="recordHistory" type="checkbox" value="1" className="mt-1" checked={historyMode}
+              disabled={historyOnly} onChange={(event) => changeHistoryMode(event.target.checked)} />
+            {historyOnly && <input type="hidden" name="historicalPageMode" value="1" />}
+            <span>{t('form.recordHistory')}
+              {historyMode && <span className="mt-1 block text-xs text-muted-foreground">{t('form.recordHistoryHint')}</span>}
+            </span>
+          </label>
+        )}
+
+        {!historyMode && showEndDate && (
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {/* ae9350f2 — for a Termination this slot IS the Last Working Day, and it is mandatory. Same
                 column, same meaning as on a Resignation; only the label differs so it reads as what it is. */}
@@ -680,14 +876,14 @@ export function MovementNewEvent({
             <DateField
               {...personnelWorkflowControl((isTermination||isResignation) ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'), 'movement', 'edit', {movementEndDate:behaviour==='probationExtension'||isTermination})}
 
-              defaultValue={edit?.endDate ?? ''}
+              defaultValue={posting?.endDate ?? edit?.endDate ?? ''}
               className={inputCls}
               label={label((isTermination||isResignation) ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'))}
             />
           </label>
         )}
 
-        {isResignation && <>
+        {!historyMode && isResignation && <>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {label(movementField('tenderResignationDate'))}
             <DateField {...personnelWorkflowControl(movementField('tenderResignationDate'),'movement','record')} defaultValue={saved?.tenderResignationDate ?? edit?.effectiveDate ?? ''} className={inputCls} label={label(movementField('tenderResignationDate'))} />
@@ -699,7 +895,7 @@ export function MovementNewEvent({
           <p className="text-xs text-muted-foreground sm:col-span-2">{t('form.resignationLifecycleHint')}</p>
         </>}
 
-        {isTermination && (
+        {!historyMode && isTermination && (
           <>
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               {label(movementField('terminationReasonCode'))}
@@ -751,7 +947,7 @@ export function MovementNewEvent({
           </>
         )}
 
-        {showBlacklist && (
+        {!historyMode && showBlacklist && (
           // The folded-in Blacklist box: Set / Clear map to the same audited service the old card used.
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {label(movementField('blacklisted'))}
@@ -763,7 +959,7 @@ export function MovementNewEvent({
 
         <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
           {label(movementField('remarks'))}
-          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit', { historicalHireRemarks: behaviour === 'historicalHire' })} maxLength={200} defaultValue={edit?.remarks ?? ''} className={inputCls} />
+          <input {...personnelWorkflowInput(movementField('remarks'), 'movement', 'edit', { historicalHireRemarks: !historyMode && behaviour === 'historicalHire' })} maxLength={200} defaultValue={posting?.remarks ?? edit?.remarks ?? ''} className={inputCls} />
         </label>
 
         {edit && (
@@ -780,12 +976,39 @@ export function MovementNewEvent({
         )}
       </div>
 
-      {isComparison && (
-        <div className="border-t border-border">
-          <div className="hidden bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+      {historyMode && (
+        <div className="space-y-3 border-t border-border px-4 py-3">
+          <h3 className="text-sm font-medium">{tRoot('people.detail.employmentInfo.assignmentGroup')}</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {historySelect('companyId', companies?.length ? companies : [{ id: current.companyId, name: current.companyName ?? '' }])}
+            {historySelect('departmentId', historyScope.departments)}
+            {historySelect('positionId', historyScope.positions)}
+            {historyOrganisation.data?.status === 'legacy' && !historyOrganisation.data.managed
+              ? historySelect('businessUnitId', historyScope.businessUnits) : null}
+            {historySelect('locationId', historyScope.locations)}
+          </div>
+          <h3 className="text-sm font-medium">{tRoot('people.detail.employmentInfo.title')}</h3>
+          {historySelect('employmentType', personnelFormChoices(movementField('employmentType')).map(choice => ({
+            id: choice.value, name: tRoot(choice.labelKey),
+          })))}
+          <HistoryMovementDateFields behaviour={behaviour} />
+          {historyPayAllowed && <HistoryMovementPayFields />}
+        </div>
+      )}
+
+      {!historyMode&&!isComparison&&!posting&&<section className="border-t border-border" aria-label={t('detail.eventInformation')}>
+        <div className={EMPLOYMENT_INFORMATION_HEADER}><div>{t('detail.field')}</div><div>{t('detail.beforeChanges')}</div><div>{t('detail.afterChanges')}</div></div>
+        {comparisonRows}
+      </section>}
+
+      {isComparison && (posting ? null : (
+        // Personnel postings carry only dates and remarks, so a posting offers no comparison grid.
+        // Board 154511c4 — hidden (not unmounted) while recording history: the server ignores these After values then.
+        <fieldset className="border-t border-border" hidden={historyMode} disabled={historyMode}>
+          <div className={EMPLOYMENT_INFORMATION_HEADER}>
             <div className="font-medium">{t('detail.field')}</div>
-            <div className="font-medium">{t('form.currentInformation')}</div>
-            <div className="font-medium">{t('form.afterInformation')}</div>
+            <div className="font-medium">{t('detail.beforeChanges')}</div>
+            <div className="font-medium">{t('detail.afterChanges')}</div>
           </div>
           {comparisonRows}
           <p className="px-4 py-3 text-xs text-muted-foreground">
@@ -794,14 +1017,18 @@ export function MovementNewEvent({
                 affected. Both are things HR would otherwise have to find out by trying it. */}
             {isEntityTransfer ? t('form.entityTransferHint') : t('form.comparisonHint')}
           </p>
-        </div>
-      )}
+        </fieldset>
+      ))}
 
       <div className="flex items-center justify-end gap-2 border-t border-border p-4">
         <a href={cancelHref} className={btnGhost}>
           {t('form.cancel')}
         </a>
-        {behaviour === 'termination' && !edit ? (
+        {posting ? (
+          <ActionButton actionKind="saving" className={btnPrimary}>
+            {posting.labels.submit}
+          </ActionButton>
+        ) : behaviour === 'termination' && !edit && !historyMode ? (
           <ConfirmSubmit
             title={t('form.terminateConfirmTitle')}
             description={t('form.terminateConfirmDescription')}
@@ -811,7 +1038,7 @@ export function MovementNewEvent({
             {t('form.save')}
           </ConfirmSubmit>
         ) : (
-          <button className={btnPrimary}>{edit ? t('form.saveCorrection') : t('form.save')}</button>
+          <ActionButton actionKind="saving" className={btnPrimary}>{edit ? t('form.saveCorrection') : t('form.save')}</ActionButton>
         )}
       </div>
     </form>

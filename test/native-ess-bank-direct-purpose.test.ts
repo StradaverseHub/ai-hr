@@ -51,7 +51,7 @@ async function retainedIntent(fields:unknown,xid?:string){await owner.db.execute
 
 
 async function currentAdversarialIntent(tx:Tx,fields:unknown){
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);
  const [row]=await tx.execute<{xid:string}>(sql`select pg_current_xact_id()::text as xid`);await retainedIntent(fields,row.xid);
  const [native]=await tx.execute<{allowed:boolean}>(sql`select app.profile_direct_person(${self.personId}::uuid) as allowed`);
  expect(native.allowed).toBe(true); // Isolate the added bank-purpose condition from native own admission.

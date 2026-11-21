@@ -2,7 +2,8 @@
 //
 // Single source of truth for the OPTIONAL, DISPLAY-ONLY per-leave-type visual config: a colour theme (fixed
 // 7-token palette) + an icon (curated Lucide registry). Shared by:
-//   - core/admin.ts updateLeaveType — validation allow-lists (LEAVE_COLOR_TOKENS / LEAVE_ICON_KEYS)
+//   - core/admin.ts updateLeaveType — validation allow-lists (LEAVE_COLOR_TOKENS / LEAVE_ICON_KEYS), imported
+//     from the dependency-free lib/leave-visual-keys.ts so server graphs never load Lucide
 //   - components/leave-type-panel.tsx — the admin "Leave Type Visual Configuration" sub-form
 //   - app/me/page.tsx — the employee self-service Leave tab renders leaveVisual({...}).Icon + chipClass
 //
@@ -29,6 +30,12 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
+import { type LeaveColorToken, type LeaveIconKey, isLeaveIconKey, isLeaveColorToken } from './leave-visual-keys';
+
+// The allow-lists themselves live in the dependency-free ./leave-visual-keys (server validation imports them
+// from there, never through Lucide). Re-exported so UI consumers keep one import.
+export { LEAVE_COLOR_TOKENS, LEAVE_ICON_KEYS, isLeaveColorToken, isLeaveIconKey } from './leave-visual-keys';
+export type { LeaveColorToken, LeaveIconKey } from './leave-visual-keys';
 
 // ── Colour palette ────────────────────────────────────────────────────────────────────────────────────
 // The fixed 7 tokens the admin can pick from (feedback: Blue/Green/Orange/Purple/Red/Teal/Grey). Each maps
@@ -70,16 +77,7 @@ export const LEAVE_COLORS = {
     bg: 'bg-slate-100 dark:bg-slate-500/30',
     text: 'text-slate-800 dark:text-slate-50',
   },
-} as const satisfies Record<string, { chip: string; bg: string; text: string }>;
-
-export type LeaveColorToken = keyof typeof LEAVE_COLORS;
-
-/** The closed 7-token allow-list — exported for service validation + admin swatch rendering. */
-export const LEAVE_COLOR_TOKENS = Object.keys(LEAVE_COLORS) as LeaveColorToken[];
-
-export function isLeaveColorToken(v: string): v is LeaveColorToken {
-  return Object.prototype.hasOwnProperty.call(LEAVE_COLORS, v);
-}
+} as const satisfies Record<LeaveColorToken, { chip: string; bg: string; text: string }>;
 
 // ── Icon registry ─────────────────────────────────────────────────────────────────────────────────────
 // A curated allow-list of leave-related icons (validated on write + small bundle). Each entry carries
@@ -103,16 +101,7 @@ export const LEAVE_ICONS = {
   briefcase: { Icon: Briefcase, keywords: ['replacement', 'work', 'business', 'duty', 'toil', 'in-lieu'] },
   users: { Icon: Users, keywords: ['compassionate', 'family', 'team', 'group', 'community'] },
   calendardays: { Icon: CalendarDays, keywords: ['custom', 'general', 'other', 'default', 'calendar', 'day'] },
-} as const satisfies Record<string, { Icon: LucideIcon; keywords: string[] }>;
-
-export type LeaveIconKey = keyof typeof LEAVE_ICONS;
-
-/** The closed icon-key allow-list — exported for service validation. */
-export const LEAVE_ICON_KEYS = Object.keys(LEAVE_ICONS) as LeaveIconKey[];
-
-export function isLeaveIconKey(v: string): v is LeaveIconKey {
-  return Object.prototype.hasOwnProperty.call(LEAVE_ICONS, v);
-}
+} as const satisfies Record<LeaveIconKey, { Icon: LucideIcon; keywords: string[] }>;
 
 // ── Code-keyed defaults ───────────────────────────────────────────────────────────────────────────────
 // When a leave type has NO stored icon, fall back to a sensible default keyed on the seed leave-type CODE,

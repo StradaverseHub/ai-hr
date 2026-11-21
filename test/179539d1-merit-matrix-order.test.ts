@@ -13,14 +13,15 @@ describe('179539d1 merit matrix reference row order', () => {
     expect(rows.map(([talent, values]) => values)).toEqual(['SSTAR', 'STAR', 'SCORE', 'IMPRO', 'PIP'].map(t => policy.meritMatrix[t as keyof typeof policy.meritMatrix]));
   });
 
-  it('the Budget tab reference table renders its rows through meritMatrixRows, not the stored key order', () => {
-    const page = readFileSync('app/rewards/[unitId]/page.tsx', 'utf8');
+  it('the Review tab Reference section renders its rows through meritMatrixRows, not the stored key order', () => {
+    // 37f82412: the merit matrix moved from the page into the collapsed Reference section.
+    const page = readFileSync('app/rewards/[unitId]/desk/review-details.tsx', 'utf8');
     const start = page.indexOf("t('meritMatrix')");
     expect(start).toBeGreaterThanOrEqual(0);
     const section = page.slice(start, start + 1500);
     expect(section.length).toBeGreaterThan(500);
-    expect(section).toContain('meritMatrixRows(unit.policy.meritMatrix)');
-    expect(section).not.toContain('Object.entries(unit.policy.meritMatrix)');
+    expect(section).toContain('meritMatrixRows(policy.meritMatrix)');
+    expect(section).not.toContain('Object.entries(policy.meritMatrix)');
     expect(section).toMatch(/'below', 'within', 'above'/);
   });
 });

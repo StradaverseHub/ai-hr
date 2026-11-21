@@ -1,4 +1,5 @@
 "use client";
+import { ActionButton } from '@/components/ui/action-button';
 import {useContext,useState} from 'react';
 import {useFormStatus} from 'react-dom';
 import {AssistantChatSubmitContext} from './chat-submit-context';
@@ -17,6 +18,6 @@ export function ConversationClarification({exchangeId,replyLabel,continueLabel,c
 function Fields({replyLabel,continueLabel,pending,choices}:{replyLabel:string;continueLabel:string;pending?:boolean;choices?:readonly {label:string;prompt:string}[]}){
  const [value,setValue]=useState('');
  const form=useFormStatus(),busy=pending??form.pending;
- return <>{choices&&choices.length>0&&<div className="flex flex-wrap gap-2">{choices.map(choice=><button key={choice.prompt} type="button" disabled={busy} onClick={()=>setValue(choice.prompt)} className="min-h-11 rounded-full border px-3 py-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{choice.label}</button>)}</div>}<label className="block text-sm">{replyLabel}<textarea name="clarificationAnswer" value={value} onChange={event=>setValue(event.target.value)} required readOnly={busy} maxLength={500} rows={2} className="mt-1 min-h-11 w-full rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"/></label>
- <button type="submit" disabled={busy} aria-busy={busy} className="min-h-11 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{continueLabel}</button></>;
+ return <>{choices&&choices.length>0&&<div className="flex flex-wrap gap-2">{choices.map(choice=><ActionButton aria-busy={busy} key={choice.prompt} type="button" disabled={busy} onClick={()=>setValue(choice.prompt)} className="min-h-11 rounded-full border px-3 py-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{choice.label}</ActionButton>)}</div>}<label className="block text-sm">{replyLabel}<textarea name="clarificationAnswer" value={value} onChange={event=>setValue(event.target.value)} required readOnly={busy} maxLength={500} rows={2} className="mt-1 min-h-11 w-full rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"/></label>
+ <ActionButton type="submit" disabled={busy} aria-busy={busy} className="min-h-11 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{continueLabel}</ActionButton></>;
 }

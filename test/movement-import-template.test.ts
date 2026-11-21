@@ -66,6 +66,10 @@ describe('single-sheet Movement template (ac6645ec)',()=>{
   expect(errors.E1).toEqual(['unknown_system_field:Job Grade?']);expect(errors.E2).toEqual(['duplicate_system_field:departmentId']);expect(errors.E3).toEqual(['system_field_required']);
   expect(errors.E4).toEqual(['internal_reference_not_allowed']);expect(errors.E5).toEqual([]);expect(parsed.records.find(r=>r.employeeCode==='E5')!.cells.kind).toBe('increment');expect(errors.E6).toEqual(['company_required','unknown_or_inactive_event_type']);
  });
+ it('transports a Record history workbook row independently of the ordinary action for its type',()=>{
+  const parsed=movementRowsToRecords([{row:2,values:['EXT','E1','','2026-04-01','Blacklist','employmentType','part_time','full_time','Record history']}],types,[resolve]);
+  expect(parsed.records[0]).toMatchObject({requestedHistory:true,cells:{kind:'blacklist',employmentType:'full_time'},before:{employmentType:'part_time'},errors:[]});
+ });
  it('refuses an event type whose label is shared by two types and is no code',()=>{
   const shared=[{code:'raise_a',label:'Pay Rise',behaviour:'increment'},{code:'raise_b',label:'Pay Rise',behaviour:'increment'}];
   expect(movementRowsToRecords([{row:2,values:['EXT','E1','','2026-11-01','Pay Rise','incrementAmount','','5']}],shared,[resolve]).records[0].errors).toEqual(['ambiguous_reference:event_type']);

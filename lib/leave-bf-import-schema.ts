@@ -1,3 +1,4 @@
+import type { ImportActor } from './import-reference';
 /**
  * db55d08a (r369) — Client-safe contract for LEAVE B/F DATA IMPORT (the migration of BROUGHT-FORWARD
  * opening figures).
@@ -314,6 +315,8 @@ export type LeaveBfImportResult = {
 export type LeaveBfRunRow = {
   id: string;
   actorName: string | null;
+  /** Board 8d02748a: readable "Imported by" (name and Employee ID). */
+  actor?: ImportActor;
   fileName: string;
   mode: LeaveBfImportMode;
   totalRows: number;

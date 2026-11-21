@@ -41,7 +41,7 @@ import { listPayrollCycles } from '../core/payroll-cycle';
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { listProcessedPayslipsAcross } from '../core/payroll-view';
-import { dashboardStats, listLeaveTypes, myEmployment } from '../core/read';
+import { listLeaveTypes, myEmployment } from '../core/read';
 import { pendingApprovalsCount } from '../core/approvals-inbox';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -207,9 +207,6 @@ describe('r292 — a tenant that declined EVERY optional module still runs the c
     await declineEverySellableModule(b.tenantId);
     const ctx = await entitledCtx(b);
 
-    // The dashboard tile reads `payroll_batch` and attendance rows out of core/read.ts — the shared
-    // kernel read module, which is exactly why core/read.ts is NOT bound to a module.
-    await expect(dashboardStats(ctx, [b.companyId])).resolves.toBeDefined();
     // Leave is core and can never be switched off.
     await expect(listLeaveTypes(ctx, { locale: 'en' })).resolves.toBeDefined();
     // Personnel/ESS spine.
@@ -217,7 +214,7 @@ describe('r292 — a tenant that declined EVERY optional module still runs the c
     // The inbox fans out into claims and attendance. With both queues declared OFF it must answer a
     // number, not throw — that is the core-screen regression this change could cause.
     await expect(
-      pendingApprovalsCount(ctx, [b.companyId], { attendance: false, claims: false, performance: false, rewards: false }),
+      pendingApprovalsCount(ctx, [b.companyId], { attendance: false, claims: false, performance: false, rewards: false, probation: false }),
     ).resolves.toBeTypeOf('number');
     // …and the flag is LOAD-BEARING, not decoration: the two queues it switches off are the two the
     // service refuses for this tenant. Asserted on the queues DIRECTLY rather than by re-running the
@@ -529,7 +526,9 @@ describe('r294 — the audit is pinned in source, on both sides', () => {
     const bridge = fs.readFileSync(path.join(ROOT, 'core/payroll-attendance-allowance.ts'), 'utf8');
     expect(bridge).toContain("assertModuleEnabled(ctx,'payroll')");
     expect(bridge).toContain('export function listAttendanceAllowancePayCodes');
-    const catalogBody = bridge.slice(bridge.indexOf('export function listAttendanceAllowancePayCodes'));
+    const catalogStart=bridge.indexOf('export function listAttendanceAllowancePayCodes');
+    const nextExport=bridge.indexOf('\nexport ',catalogStart+1);
+    const catalogBody=bridge.slice(catalogStart,nextExport===-1?bridge.length:nextExport);
     expect(catalogBody).toContain('return withTenant(ctx');
     expect(catalogBody).not.toContain('assertModuleEnabled');
     expect(MODULE_CATALOG.find(m => m.code === 'attendance')?.isCore).toBe(false);

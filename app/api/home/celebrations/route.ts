@@ -1,12 +1,11 @@
+import {capacityAwareRoute} from '@/lib/database-degraded';
 import {getSession} from '@/lib/session';
-import {AuthRequiredError} from '@/lib/auth-errors';
-import {HomeAccessError} from '@/core/employee-home';
-import {readHomeCelebrationPage} from '@/core/employee-home-sharing';
-import {homeSharingPageInput,validateHomeCelebrationResponse} from '@/lib/employee-home-sharing';
+import {sharingError,sharingHeaders as headers,celebrationsResponse} from '../sharing-responses';
+import {homeSharingPageInput} from '@/lib/employee-home-sharing';
+import {capHomeCardRead} from '../read-cap';
 
-const headers={'Cache-Control':'private, no-store','Vary':'Cookie, Authorization','X-Content-Type-Options':'nosniff'};
 /** Read-only: viewing or paging never sends a greeting or opts anybody in. */
-export async function GET(request:Request){
+export const GET = capacityAwareRoute(async function GET(request:Request){
  try{
   const session=await getSession(),query=new URL(request.url).searchParams;
   if([...query.keys()].some(key=>!['employmentId','after'].includes(key))
@@ -15,10 +14,9 @@ export async function GET(request:Request){
   const after=query.get('after')??undefined;
   try{homeSharingPageInput(after,20,'celebration');}
   catch{return Response.json({error:'invalid'},{status:400,headers});}
-  const employmentId=query.get('employmentId')!,page=await readHomeCelebrationPage(session,employmentId,{after});
-  return Response.json(validateHomeCelebrationResponse({version:1,employmentId,page},employmentId),{headers});
+  return Response.json(await capHomeCardRead(request.signal,()=>celebrationsResponse(session,query.get('employmentId')!,{after})),{headers});
  }catch(error){
-  const code=error instanceof AuthRequiredError?'authentication':error instanceof HomeAccessError?error.code:'unavailable';
-  return Response.json({error:code},{status:code==='authentication'?401:code==='employmentUnavailable'?403:code==='chooseEmployment'?400:503,headers});
+  const {code,status}=sharingError(error);
+  return Response.json({error:code},{status,headers});
  }
-}
+});

@@ -1,5 +1,6 @@
 /** Personnel owns these values and writers; lifecycle stores reviewed proposals and source snapshots. */
 import 'server-only';
+import {v9PersonnelProfileKeys,v9PersonnelStatutoryKeys,v9PersonnelWritableKeys} from '../lib/lifecycle-v9-personnel-keys';
 import { and, eq, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { person, employment } from '../db/schema';
@@ -8,15 +9,16 @@ import { bankStatutorySubjectTx, readBankStatutoryStateTx, applyBankStatutoryPat
 import { updatePersonProfilePartial, type PersonProfileFields } from './org';
 import { setPersonComplianceFields } from './profile';
 import { GENDERS, MARITAL_STATUSES } from '../lib/person-vocabulary';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { V9Error } from '../lib/lifecycle-v9-model';
 import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import { lockProfileValueWritesTx } from './access-configuration-lock';
 
-const profileKeys: Record<string, keyof PersonProfileFields | 'phone'> = { mobile: 'phone', homePhone: 'homePhone', personalEmail: 'personalEmail', race: 'race', religion: 'religion', nationality: 'nationality', emName: 'emergencyContactName', emRel: 'emergencyContactRelationship', emPhone: 'emergencyContactPhone' };
-const statutoryKeys: Record<string, string> = { bankName: 'bank_name', bankAcc: 'bank_account_no', epfNo: 'epf_number', taxNo: 'tax_number' };
-export const v9PersonnelWritableKeys = [...Object.keys(profileKeys), ...Object.keys(statutoryKeys), 'gender', 'marital'];
+const profileKeys: Record<string, keyof PersonProfileFields | 'phone'> = v9PersonnelProfileKeys;
+const statutoryKeys: Record<string, string> = v9PersonnelStatutoryKeys;
+export { v9PersonnelWritableKeys } from '../lib/lifecycle-v9-personnel-keys';
 export async function lockV9PersonnelWritesTx(tx: Tx, ctx: SessionContext): Promise<void> {
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
   await lockProfileValueWritesTx(tx, ctx.tenantId);
 }
@@ -28,9 +30,20 @@ async function subjectTx(tx: Tx, ctx: SessionContext, employmentId: string) {
 }
 export async function readV9PersonnelTx(tx: Tx, ctx: SessionContext, employmentId: string): Promise<Record<string, string>> {
   const subject = await subjectTx(tx, ctx, employmentId);
-  const [row] = await tx.select({ p: person, emName: primaryEmergencyContactSql('full_name'), emRel: primaryEmergencyContactSql('relationship'), emPhone: primaryEmergencyContactSql('mobile_phone') }).from(person).where(and(eq(person.id, subject.personId), eq(person.tenantId, ctx.tenantId)));
+  const day = todayInKualaLumpur();
+  const supervisorUserId = sql<string | null>`(select case when count(distinct u.id)=1 then min(u.id::text) else null end
+    from reporting_line r join employment manager on manager.id=r.manager_employment_id and manager.tenant_id=r.tenant_id
+    join app_user u on u.person_id=manager.person_id and u.tenant_id=manager.tenant_id and u.archived_at is null and not app.login_blocked(u.id)
+    where r.tenant_id=${ctx.tenantId}::uuid and r.subordinate_employment_id=${subject.id}::uuid and r.line_type='administrative'
+      and r.superseded_at is null and r.valid_from<=${day}::date and (r.valid_to is null or r.valid_to>${day}::date))`;
+  const [row] = await tx.select({ p: person, supervisorUserId, emName: primaryEmergencyContactSql('full_name'), emRel: primaryEmergencyContactSql('relationship'), emPhone: primaryEmergencyContactSql('mobile_phone') }).from(person).where(and(eq(person.id, subject.personId), eq(person.tenantId, ctx.tenantId)));
   if (!row) throw new V9Error('Personnel record not available.');
-  const p = row.p, values: Record<string, string> = { name: p.fullName, email: p.primaryEmail, mobile: p.phone ?? '', homePhone: p.homePhone ?? '', personalEmail: p.personalEmail ?? '', address: p.address ?? '', race: p.race ?? '', religion: p.religion ?? '', nationality: p.nationality ?? '', gender: title(p.gender), marital: title(p.maritalStatus), emName: row.emName ?? '', emRel: row.emRel ?? '', emPhone: row.emPhone ?? '' };
+  const p = row.p;
+  const address = p.address || [
+    p.permanentAddressLine1, p.permanentAddressLine2, p.permanentAddressLine3,
+    p.permanentPostcode, p.permanentCity, p.permanentState, p.permanentCountry,
+  ].filter(Boolean).join(', ');
+  const values: Record<string, string> = { name: p.fullName, email: p.primaryEmail, supervisorUserId: row.supervisorUserId ?? '', mobile: p.phone ?? '', homePhone: p.homePhone ?? '', personalEmail: p.personalEmail ?? '', address, race: p.race ?? '', religion: p.religion ?? '', nationality: p.nationality ?? '', gender: title(p.gender), marital: title(p.maritalStatus), emName: row.emName ?? '', emRel: row.emRel ?? '', emPhone: row.emPhone ?? '' };
   const statutory = await bankStatutorySubjectTx(tx, subject.id);
   if (statutory) {
     const state = await readBankStatutoryStateTx(tx, ctx, statutory);

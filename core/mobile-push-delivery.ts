@@ -71,6 +71,7 @@ async function claim(tx: Tx, tenantId: string, c: Candidate, skipped: boolean): 
     JOIN app_user u ON u.id=r.user_id AND u.tenant_id=r.tenant_id
     WHERE n.id=${c.notification_id}::uuid AND n.tenant_id=${tenantId}::uuid AND n.read_at IS NULL
      AND r.revoked_at IS NULL AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+     AND (n.kind<>'teras-loop.employee-digest' OR app.ai_centre_event_allowed(n.source_event_id))
     ON CONFLICT (notification_id,registration_id) DO NOTHING
     RETURNING id
   `) as unknown as { id: string }[];

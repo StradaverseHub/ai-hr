@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {assessmentHelp} from './help';
 import { adjudicateCalibrationQuery,literalCalibrationQuery,type CalibrationQuery } from './calibration-query-model';
 import { calibrationDistribution } from './calibration-curve-model';
@@ -52,7 +53,11 @@ export async function getCalibrationConversation(ctx:SessionContext,id:string,ax
  await authorized(ctx,id,axis);
  return withPerformanceTenant(ctx,async tx=>{const [row]=await tx.select().from(calibrationConversation).where(and(eq(calibrationConversation.sessionId,id),eq(calibrationConversation.actorUserId,ctx.userId!),eq(calibrationConversation.axis,axis)));return {revision:row?.revision??null,messages:row?reviewConversationMessages.parse(row.messages):[]};});
 }
-export async function sendCalibrationMessage(ctx:SessionContext,id:string,axis:'performance'|'potential'|'both',expected:number|null,requestId:string,text:string){
+export async function sendCalibrationMessage(...args:Parameters<typeof sendCalibrationMessageActivity>):Promise<Awaited<ReturnType<typeof sendCalibrationMessageActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_performance_calibration',()=>sendCalibrationMessageActivity(...args));
+}
+async function sendCalibrationMessageActivity(ctx:SessionContext,id:string,axis:'performance'|'potential'|'both',expected:number|null,requestId:string,text:string){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(requestId);const words=z.string().trim().min(1).max(2500).parse(text);let view=await authorized(ctx,id,axis);
  const existing=await getCalibrationConversation(ctx,id,axis);if(existing.messages.some(m=>m.id===requestId))return {...existing,draftUpdated:true};

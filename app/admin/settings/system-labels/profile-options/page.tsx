@@ -1,5 +1,7 @@
 import { SystemLabelImportTools } from '@/components/system-label-import-tools';
 import { getTranslations } from 'next-intl/server';
+import { peopleSettingsBack } from '@/app/admin/settings/people/back';
+import { PeopleSettingsNavigation } from '@/components/people-settings-navigation';
 import { requireAdmin } from '@/lib/authz';
 import { listAllProfileOptions, PERSON_PROFILE_CATEGORIES } from '@/core/profile-options';
 import { Button, Card, ErrorBanner, PageHeader } from '@/components/ui';
@@ -29,25 +31,25 @@ export default async function ProfileOptionsPage({ searchParams }: { searchParam
 
   return (
     <div className="w-full min-w-0 space-y-6">
-      <PageHeader title={t('title')} description={t('subtitle')} />
+      <PageHeader title={t('title')} description={t('subtitle')} back={await peopleSettingsBack()} />
+      <PeopleSettingsNavigation />
       <SystemLabelsTabs active="profile-options" />
       <SystemLabelImportTools />
       <ErrorBanner message={error} />
 
-      {totalCount === 0 ? (
+      {totalCount === 0 && (
         <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
           <p className="text-sm text-muted-foreground">{t('emptyAll')}</p>
           <form action={seedProfileOptionsAction}>
             <Button type="submit">{t('seedDefaults')}</Button>
           </form>
         </Card>
-      ) : (
+      )}
         <ProfileOptionsGrid
           categories={[...PERSON_PROFILE_CATEGORIES]}
           data={all}
           actions={{ save: saveProfileOptionsAction, remove: removeProfileOptionAction }}
         />
-      )}
     </div>
   );
 }

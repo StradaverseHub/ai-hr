@@ -174,40 +174,61 @@ type RosterDay = { isRestDay: boolean; hasShift: boolean };
  * everywhere, which is what all nine companies get until somebody ticks the box.
  */
 export async function deductAbsentDaysByEmployment(tx: Tx, employmentIds: string[]): Promise<Set<string>> {
-  const on = new Set<string>();
   const ids = [...new Set(employmentIds)].filter(Boolean);
-  if (ids.length === 0) return on;
+  if (ids.length === 0) return new Set<string>();
 
   const emps = await tx
-    .select({ employmentId: employment.id, companyId: employment.companyId, policyId: employment.payrollPolicyId })
+    .select(DEDUCT_EMPLOYMENT_FIELDS)
     .from(employment)
     .where(inArray(employment.id, ids));
-  if (emps.length === 0) return on;
+  if (emps.length === 0) return new Set<string>();
 
   // The company DEFAULT policy, for employments carrying no direct assignment (the fallback the kernel's
   // resolver applies). One query for every company in the set.
   const needDefault = [...new Set(emps.filter((e) => e.policyId == null).map((e) => e.companyId))];
-  const defaultByCompany = new Map<string, string | null>();
-  if (needDefault.length > 0) {
-    const cfgs = await tx
-      .select({ companyId: companyPayrollConfig.companyId, def: companyPayrollConfig.defaultPayrollPolicyId })
+  const cfgs = needDefault.length > 0
+    ? await tx
+      .select(DEDUCT_COMPANY_DEFAULT_FIELDS)
       .from(companyPayrollConfig)
-      .where(inArray(companyPayrollConfig.companyId, needDefault));
-    for (const c of cfgs) defaultByCompany.set(c.companyId, c.def ?? null);
-  }
+      .where(inArray(companyPayrollConfig.companyId, needDefault))
+    : [];
+  const policyIds = deductPolicyIds(emps, cfgs);
+  if (policyIds.length === 0) return new Set<string>();
 
+  const pols = await tx
+    .select(DEDUCT_POLICY_FIELDS)
+    .from(payrollPolicy)
+    .where(inArray(payrollPolicy.id, policyIds));
+  return deductAbsentDaysFrom(emps, cfgs, pols);
+}
+
+/** deductAbsentDaysByEmployment's three selects, shared with the Before payroll statement (core/attendance.ts
+ * attendanceRangeChecklistBundleSql), and its resolution over their rows. */
+export const DEDUCT_EMPLOYMENT_FIELDS = { employmentId: employment.id, companyId: employment.companyId, policyId: employment.payrollPolicyId };
+export const DEDUCT_COMPANY_DEFAULT_FIELDS = { companyId: companyPayrollConfig.companyId, def: companyPayrollConfig.defaultPayrollPolicyId };
+export const DEDUCT_POLICY_FIELDS = { id: payrollPolicy.id, status: payrollPolicy.status, config: payrollPolicy.config };
+type DeductEmployment = { employmentId: string; companyId: string; policyId: string | null };
+type DeductCompanyDefault = { companyId: string; def: string | null };
+type DeductPolicy = { id: string; status: string; config: unknown };
+function resolvedDeductPolicies(emps: readonly DeductEmployment[], cfgs: readonly DeductCompanyDefault[]) {
+  const defaultByCompany = new Map<string, string | null>();
+  for (const c of cfgs) defaultByCompany.set(c.companyId, c.def ?? null);
   const resolved = new Map<string, string>(); // employmentId → policyId
   for (const e of emps) {
     const pid = e.policyId ?? defaultByCompany.get(e.companyId) ?? null;
     if (pid) resolved.set(e.employmentId, pid);
   }
-  const policyIds = [...new Set(resolved.values())];
-  if (policyIds.length === 0) return on;
-
-  const pols = await tx
-    .select({ id: payrollPolicy.id, status: payrollPolicy.status, config: payrollPolicy.config })
-    .from(payrollPolicy)
-    .where(inArray(payrollPolicy.id, policyIds));
+  return resolved;
+}
+function deductPolicyIds(emps: readonly DeductEmployment[], cfgs: readonly DeductCompanyDefault[]) {
+  return [...new Set(resolvedDeductPolicies(emps, cfgs).values())];
+}
+/** The employments switched on, from the employment, company-default and policy rows (the policy rows may be any
+ * superset of the policies those rows name: only the resolved ones are consulted). */
+export function deductAbsentDaysFrom(emps: readonly DeductEmployment[], cfgs: readonly DeductCompanyDefault[], pols: readonly DeductPolicy[]): Set<string> {
+  const on = new Set<string>();
+  if (emps.length === 0) return on;
+  const resolved = resolvedDeductPolicies(emps, cfgs);
   const flagByPolicy = new Map(
     pols.map((p) => [
       p.id,

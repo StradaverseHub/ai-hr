@@ -1,7 +1,7 @@
 /** Shared abuse budgets contain hashes/counters only, never credentials or HR payloads. */
 import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
-import { client } from '../db/client';
+import { client, withPoolWork } from '../db/client';
 
 export class RequestBudgetExceeded extends Error {
   constructor(public readonly retryAfter: number) { super('Request budget exceeded'); }
@@ -17,7 +17,8 @@ export function trustedRequestSource(request: Request): string | null {
 
 export async function takeRequestBudget(scope: readonly string[], capacity: number, windowSeconds: number) {
   const key = createHash('sha256').update(JSON.stringify(scope)).digest('hex');
-  const rows = await client.unsafe('select app.consume_request_budget($1,$2,$3) retry_after', [key, capacity, windowSeconds]);
+  // A write (it consumes the budget), so it is never retried; admission bounds its wait.
+  const rows = await withPoolWork('authentication', () => client.unsafe('select app.consume_request_budget($1,$2,$3) retry_after', [key, capacity, windowSeconds]));
   const wait = Number(rows[0]?.retry_after);
   if (!Number.isFinite(wait) || wait < 0) throw new Error('Request budget unavailable');
   if (wait > 0) throw new RequestBudgetExceeded(Math.max(1, Math.ceil(wait)));

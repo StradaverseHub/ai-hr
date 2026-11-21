@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {isLeaveCreditDayFactsUnavailable,type LeaveCreditDayFactsUnavailable,type LeaveCreditDayFactsResult} from '@/lib/leave-credit-day-facts-result';
 import {leaveCreditClaimReviewBlocks,type LeaveCreditClaimReview,type LeaveCreditClaimReviewAction} from '@/lib/leave-credit-claim-review';
 import {LeaveCreditClaimReviewNotice} from './leave-credit-claim-review';
@@ -153,7 +154,7 @@ const minutesHM = formatMinutesToHM;
 function CreditSubmit({blocked, explanation, label}: {blocked:boolean;explanation:string;label?:string}) {
   const {pending} = useFormStatus();
   const t = useTranslations('replacementRequest');
-  return <span tabIndex={blocked || pending ? 0 : undefined} title={blocked || pending ? explanation : undefined} className="inline-flex flex-col gap-1"><button className={btnPrimary} disabled={blocked || pending} data-testid="leave-credit-submit">{label ?? t('submit')}</button>{(blocked || pending) && <span className="text-xs text-muted-foreground">{explanation}</span>}</span>;
+  return <span tabIndex={blocked || pending ? 0 : undefined} title={blocked || pending ? explanation : undefined} className="inline-flex flex-col gap-1"><ActionButton aria-busy={pending} className={btnPrimary} disabled={blocked || pending} data-testid="leave-credit-submit">{label ?? t('submit')}</ActionButton>{(blocked || pending) && <span className="text-xs text-muted-foreground">{explanation}</span>}</span>;
 }
 
 /**

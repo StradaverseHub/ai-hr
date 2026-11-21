@@ -1,6 +1,6 @@
 /** Fixed canonical SMTP record projection; operator drafts never leave this reader. */
 import { z } from 'zod';
-import { managedEmailSenderProfiles, type ManagedEmailSenderProfile } from '../managed-email-policy';
+import { legacyManagedEmailSenderProfiles, validManagedEmailSenderName } from '../managed-email-policy';
 import { EmailSettingsError } from '../identity/email-model';
 import { readRecord, type AuthSql } from './record-store';
 import {storedEmailRelay,type StoredEmailRelay} from '../identity/email-relay';
@@ -26,18 +26,38 @@ export async function readActiveRelayTx(tx: AuthSql, lock = false): Promise<Acti
 const lifecycleBinding = z.object({ connectionId:z.string().min(1).max(120),version:z.string().min(1).max(120),relay,
  revision:z.string().regex(/^[A-Za-z0-9_-]{43}$/),appliedAt:z.number().int().positive(),appliedBy:z.string().min(1).max(500) }).strict();
 const record = (value:unknown):value is Record<string,unknown> => !!value && typeof value==='object' && !Array.isArray(value);
-/** The frozen sender version is separate from editable saved connections and the installation default. */
-export async function readLifecycleRelayTx(tx:AuthSql,tenantId:string,profile:ManagedEmailSenderProfile):Promise<ActiveInternalRelay|null> {
- if(!managedEmailSenderProfiles.includes(profile)||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(tenantId))throw new EmailSettingsError('invalid');
- const stored=await readRecord<unknown>(tx,INTERNAL_EMAIL_STATE_KEY);if(stored===null)return null;
+const senderName = z.object({ name:z.string().min(1).max(160), setAt:z.number().int().positive(), setBy:z.string().min(1).max(500) }).strict();
+export type LifecycleRelay = ActiveInternalRelay & { senderName: string | null };
+const tenantPattern = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+/** Pure resolution over the stored record; exported for the binding and fail-closed tests. */
+export function resolveLifecycleSender(stored: unknown, tenantId: string): LifecycleRelay | null {
+ if(!tenantPattern.test(tenantId))throw new EmailSettingsError('invalid');
  const parsed=projection.safeParse(stored);if(!parsed.success||!record(stored))throw new EmailSettingsError('invalid');
- const senders=stored.lifecycleSenders;
- if(senders!==undefined&&!record(senders))throw new EmailSettingsError('invalid');
+ const senders=stored.lifecycleSenders,names=stored.lifecycleSenderNames;
+ if(senders!==undefined&&!record(senders)||names!==undefined&&!record(names))throw new EmailSettingsError('invalid');
  const scoped=record(senders)&&Object.hasOwn(senders,tenantId)?senders[tenantId]:undefined;
  if(scoped!==undefined&&!record(scoped))throw new EmailSettingsError('invalid');
- if(record(scoped)&&Object.hasOwn(scoped,profile)) {
-  const binding=lifecycleBinding.safeParse(scoped[profile]);if(!binding.success)throw new EmailSettingsError('invalid');
-  return {revision:binding.data.revision,relay:binding.data.relay};
- }
- return parsed.data.active===null?null:{revision:parsed.data.revision,relay:parsed.data.active};
+ const binding=(profile:string)=>{
+  if(!record(scoped)||!Object.hasOwn(scoped,profile))return null;
+  const value=lifecycleBinding.safeParse(scoped[profile]);if(!value.success)throw new EmailSettingsError('invalid');return value.data;
+ };
+ const current=binding('noreply');
+ // Fail closed: an earlier per-name binding to a different connection holds mail for review, never sends from another address.
+ for(const profile of legacyManagedEmailSenderProfiles){const legacy=binding(profile);if(legacy&&(!current||legacy.connectionId!==current.connectionId||legacy.version!==current.version))return null;}
+ const active=current?{revision:current.revision,relay:current.relay}:parsed.data.active===null?null:{revision:parsed.data.revision,relay:parsed.data.active};
+ if(!active)return null;
+ const named=record(names)&&Object.hasOwn(names,tenantId)?senderName.safeParse(names[tenantId]):null;
+ if(named&&!named.success)throw new EmailSettingsError('invalid');
+ const name=validManagedEmailSenderName(named?.data.name)??validManagedEmailSenderName(active.relay.config.fromName);
+ return {...active,senderName:name};
+}
+/** The frozen sender version is separate from editable saved connections and the installation default.
+ * The display name is the tenant's own setting; without one, the connection's own name is used. */
+export async function readLifecycleRelayTx(tx:AuthSql,tenantId:string):Promise<LifecycleRelay|null> {
+ const stored=await readRecord<unknown>(tx,INTERNAL_EMAIL_STATE_KEY);if(stored===null)return null;
+ return resolveLifecycleSender(stored,tenantId);
+}
+/** Secret-free projection for the template editor: the display name only. */
+export async function readLifecycleSenderNameTx(tx:AuthSql,tenantId:string):Promise<string|null> {
+ return (await readLifecycleRelayTx(tx,tenantId))?.senderName??null;
 }

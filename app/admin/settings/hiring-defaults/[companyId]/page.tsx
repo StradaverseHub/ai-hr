@@ -1,4 +1,6 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
+import { PeopleSettingsNavigation } from '@/components/people-settings-navigation';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { scopedAdmin } from '@/lib/scope';
@@ -64,6 +66,7 @@ export default async function HiringDefaultsCompanyPage({
         description={company.companyLabel ?? undefined}
         back={{ href: PAGE, label: t('title') }}
       />
+      <PeopleSettingsNavigation />
       <ErrorBanner message={error} />
 
       <Card className="overflow-hidden">
@@ -93,7 +96,7 @@ export default async function HiringDefaultsCompanyPage({
           <p className="text-xs text-muted-foreground">{t('probationMonthsHint')}</p>
           <p className="text-xs text-muted-foreground">{t('reviewReminderDaysHint')}</p>
           <div className="flex items-center gap-3">
-            <button className={btnPrimary}>{t('save')}</button>
+            <ActionButton actionKind="saving" className={btnPrimary}>{t('save')}</ActionButton>
             <Link href={PAGE} className="text-sm font-medium text-muted-foreground hover:text-foreground">
               {t('cancel')}
             </Link>

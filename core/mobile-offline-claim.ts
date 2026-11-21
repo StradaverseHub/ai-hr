@@ -17,7 +17,7 @@ import {offlineClockReportedBounds,type OfflineClockReportedBounds} from '../lib
 import {readIssuedOfflineContextTx} from './mobile-offline-context';
 import {ownIntegrityEnrollmentCompanyTx} from './mobile-integrity-key';
 import {withAttendanceTenant} from './module-gate';
-import {attendanceClockCaptureEffectiveAt,clockAttendanceDateTx,lockAttendanceLeaveDependenciesTx,openClockSessionDateTx} from '../packs/attendance/service';
+import {attendanceClockCaptureEffectiveAt,clockAttendanceDateTx,lockAttendanceClockDependenciesTx,openClockSessionDateTx} from '../packs/attendance/service';
 type KeyRow=typeof mobileIntegrityKey.$inferSelect;
 type ClaimRow=typeof mobileOfflineClaim.$inferSelect;
 export type OfflineClaimFacts={claim:OfflineClockSignedClaim['claim'];context:OfflineClockContextData;key:Readonly<KeyRow>;
@@ -119,7 +119,7 @@ export function createOfflineClaimService(settings:unknown,ports:OfflineClaimPor
     await prepared.assertFresh(tx,facts);
     // Attendance→leave dependency ownership precedes the subject lock here exactly as the canonical clock writer
     // orders them (planClockTx takes both again; advisory xact locks are re-entrant within this transaction).
-    await lockAttendanceLeaveDependenciesTx(tx,ctx,[facts.claim.scope.employmentId]);
+    await lockAttendanceClockDependenciesTx(tx,ctx,[facts.claim.scope.employmentId]);
     // Owner decision 2026-10-28: a request ID an attendance capture already holds (tenant/employment/request,
     // its unique key) is refused before policy. The subject lock follows key/stream, as in the canonical
     // clock writers, which take it before their own request lookup; it is held to commit.

@@ -1,0 +1,69 @@
+{
+  "kind": "UNINSTALLED_NOTIFICATION_RECIPE_CODEC_ONLY_NOT_NATIVE_AUTHORITY",
+  "base": "db0caaf6d8c9d7eef8bbbeb65fe42e53cc9a9444",
+  "sourceRef": "codex/notification-recipe-seal-codec-20261108",
+  "qualification": "NOT_RUN; root and independent review before hosted checks",
+  "selectors": {
+    "pure": {
+      "file": "test/notification-recipe-seal-codec.test.ts",
+      "cases": 5
+    },
+    "native": {
+      "file": "test/notification-recipe-seal-native-codec.test.ts",
+      "cases": 3,
+      "classification": "ordinary DB; read-only built-in-only vectors"
+    }
+  },
+  "formatVersion": 1,
+  "apiVersions": [
+    2,
+    3
+  ],
+  "completeRecipeCount": 66,
+  "limits": {
+    "maximumRows": 10000,
+    "encodedBytes": 1048576,
+    "nativeJsonBytes": 16777216,
+    "caseMs": 30000,
+    "hookMs": 30000,
+    "sqlMs": 20000,
+    "lockMs": 300,
+    "connectionStartupSeconds": 2,
+    "maximumConnections": 1
+  },
+  "literal": {
+    "bytes": 72,
+    "sha256": "b26d5009d5527dfd780532f47f1809935e6f8660167ea3755882f7467204ed4a"
+  },
+  "sourceSha256": {
+    "lib/notification-worker/recipe-seal.ts": "656c9303fbe347fc37aa4f10ea30d40e8ebaab32cd5484b22c6a20d708bccde4",
+    "test/fixtures/notification-worker/recipe-seal-codec.sql": "19289bf6a88a71dd3f725f5a78a79f26ccd1b3e4fedf3c86b328c46b3390b961",
+    "test/notification-recipe-seal-codec.test.ts": "f65afd535c3e5b0a2b08c9f4049a3114c359ee72097fc306459919f3fcf80b3c",
+    "test/notification-recipe-seal-native-codec.test.ts": "546bcdd4eb3ce3e82631bd89ce6abbd13e6c67382e95e434540dc5bfce28ec91",
+    "docs/qualification/notification-recipe-seal-codec-20261108.md": "b5efd52f859613e31b68842a842cf6e5f93efdcaaa01b52b2220b6a4112f65cd"
+  },
+  "unchangedSha256": {
+    "core/notification-registry.ts": "4088823e7c4d694826ad1a4102b728e5a4234ddab6a55c3a3ffd54fda4ea0d11",
+    "core/notifications.ts": "1d12b96bc502a0094973b3a1294a0a8182b2119a90d5a14c1301d38305150d4a",
+    "lib/notification-worker/projection.ts": "10d14a1d2ab2fe859060f80352e2736147660cde2e2d2f13a938f53068ac4935",
+    "test/fixtures/notification-worker/lifecycle.sql": "ba87f475a0962dc1652db47976a1947becffb39de9d6294608438baa7f3918f1",
+    "test/fixtures/notification-worker/projection.sql": "6973be154cec863908cc6439cf4edbe9de8b571a1ee1484d25f25fe1ed3ca9f9",
+    "test/fixtures/notification-worker/assessment.sql": "cf029fdae7af2eeeae723a200d21943f3cbc8a4c873ad03d3f9a3f63f14e43ff",
+    "test/fixtures/notification-worker/process.sql": "6d112effc849efc8395505ba28c5b52a30aee62bd32372d8389b6829a4cb0442",
+    "test/fixtures/notification-worker/exact-source.sql": "722509efb633ec5e5d09b8f5de0e82816952aacf2b46ec68e08d57fdd534b816",
+    "test/fixtures/notification-worker/query-shape.sql": "11808452a8c5448391b946f60c24e55d595e97fea575ba0fdecf37e55828d34b",
+    "test/fixtures/notification-worker/diagnostic-ownership.ts": "6ad059743db90ad0e4991d7b825471870069802650ae2dda6d564b0085c4c640",
+    "test/fixtures/notification-worker/database.ts": "a564ca2ff3e4840c44105801001a20fa5d2585e83b8a29477849fb83cc390ae2",
+    "db/migrations/meta/_journal.json": "6156a0e467e2d75549d0f583330b157ff9bfe43b14f096d39cc9663ac95909af",
+    "vitest.config.ts": "a2d0d96b3a1f18c322ea76a208de4a0b217b13258cff01f48e3a1f754dba318d",
+    "test/notification-recipe-authority.test.ts": "eaaca7a08446beef8719e01ec6aa99737c4402380232dd529ca58814c0e675dd"
+  },
+  "nativeProfileChanged": false,
+  "nativeRecipeSealActivated": false,
+  "directLoginAuthorityGapClosed": false,
+  "catalogueOpaqueMetadataApproved": false,
+  "applicationChanged": false,
+  "canonicalRegistryChanged": false,
+  "releaseAuthorized": false,
+  "productionHeld": true
+}

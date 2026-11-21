@@ -1,3 +1,4 @@
+import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 /**
  * The Individual Transaction workspace's DAY-BY-DAY grid, PROVED BY RENDERING (4e403268).
  *
@@ -157,7 +158,7 @@ function renderWorkspace(
         employees={[EMPLOYEE]}
         batches={opts.batches ?? [BATCH]}
         companies={[COMPANY]}
-        payItems={opts.payItems ?? [OT]}
+        payItems={opts.payItems ?? [OT, {id:'manual',code:'ALLOW',name:'Manual allowance',kind:'allowance',derives:false,inputUnit:null,variesByDay:true}]}
         payrollCycles={[]}
         processHref="/payroll"
         requireComponent={false}
@@ -177,6 +178,30 @@ async function openAddForm(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+it('searches configured Pay Items by code or description and saves the selected non-payable identity', async () => {
+  const user=userEvent.setup();
+  const benefit:TxnPayItem={id:'travel-benefit',code:'TRAVEL-BIK',name:'Travel benefit',description:'Company car',
+    kind:'non_payable',nonPayable:true,derives:false,inputUnit:null,variesByDay:false};
+  const otherCompany={...benefit,id:'other-benefit',code:'OTHER',appliedCompanyIds:['c2']};
+  renderWorkspace(EMPTY_PANEL,{payItems:[OT,benefit,otherCompany]});
+  await openAddForm(user);
+  await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+  expect(screen.queryByRole('option',{name:/^Overtime$/})).toBeNull();
+  expect(screen.queryByRole('option',{name:/^OTHER/})).toBeNull();
+  const search=screen.getByPlaceholderText('Search by code or description');
+  await user.type(search,'TRAVEL-BIK');
+  expect(screen.getByRole('option',{name:/TRAVEL-BIK.*Non-Payable/})).toBeVisible();
+  expect(screen.queryByRole('option',{name:/^OT1_5/})).toBeNull();
+  await user.clear(search);
+  expect(screen.getByRole('option',{name:/^OT1_5/})).toBeVisible();
+  await user.type(search,'company car');
+  await user.click(screen.getByRole('option',{name:/TRAVEL-BIK/}));
+  await user.type(screen.getByLabelText('Effective date'),'2026-08-15');
+  await user.type(screen.getByLabelText('Amount'),'125');
+  await user.click(screen.getByRole('button',{name:'Save'}));
+  expect(createMock).toHaveBeenCalledWith(expect.objectContaining({componentId:'travel-benefit',kind:'earning',amount:125}));
 });
 
 describe('39c7 · exact field labels and separate Effective Date guidance', () => {
@@ -223,6 +248,8 @@ describe('39c7 · exact field labels and separate Effective Date guidance', () =
     expect(date).toHaveValue('2026-07-31');
     expect(date).not.toHaveAttribute('min');
     expect(date).not.toHaveAttribute('max');
+    await user.click(screen.getByRole('button',{name:'Payroll item',expanded:false}));
+    await user.click(screen.getByRole('option',{name:/^ALLOW —/}));
     await user.type(screen.getByLabelText('Amount'), '120');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
@@ -233,7 +260,8 @@ describe('39c7 · exact field labels and separate Effective Date guidance', () =
     const user = userEvent.setup();
     renderWorkspace();
     await openAddForm(user);
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OT1_5 —/ }));
     await user.click(screen.getByRole('radio', { name: 'Day by day' }));
     await user.click(screen.getByRole('button', { name: 'Add date' }));
     const dates = screen.getAllByLabelText('Effective date');
@@ -287,18 +315,19 @@ describe('4e403268 · the Input Method selector', () => {
     expect(screen.getByRole('button', { name: 'Add date' })).toBeInTheDocument();
     // ONE pay item control for the whole grid. That is the friction the request names: today five days
     // means opening the form five times and re-picking the pay item each time.
-    expect(screen.getAllByRole('combobox', { name: 'Payroll item' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', {name:'Payroll item',expanded:false})).toHaveLength(1);
   });
 
   it('switches back, carrying the month and the pay item — not making the operator re-pick', async () => {
     const user = userEvent.setup();
     renderWorkspace();
     await openAddForm(user);
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OT1_5 —/ }));
     await user.click(screen.getByRole('radio', { name: 'Day by day' }));
-    expect(screen.getByRole('combobox', { name: 'Payroll item' })).toHaveValue('c:ot15');
+    expect(screen.getByRole('button', {name:'Payroll item',expanded:false})).toHaveTextContent('OT1_5 — Overtime 1.5');
     await user.click(screen.getByRole('radio', { name: 'One total for the month' }));
-    expect(screen.getByRole('combobox', { name: 'Payroll item' })).toHaveValue('c:ot15');
+    expect(screen.getByRole('button', {name:'Payroll item',expanded:false})).toHaveTextContent('OT1_5 — Overtime 1.5');
     expect(screen.getByLabelText('Effective date')).toBeInTheDocument();
   });
 });
@@ -336,7 +365,8 @@ describe('4e403268 · the dated grid', () => {
     const user = userEvent.setup();
     renderWorkspace();
     await openAddForm(user);
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OT1_5 —/ }));
     await user.click(screen.getByRole('radio', { name: 'Day by day' }));
     await user.click(screen.getByRole('button', { name: 'Add date' }));
 
@@ -371,7 +401,8 @@ describe('4e403268 · the dated grid', () => {
     const user = userEvent.setup();
     renderWorkspace();
     await openAddForm(user);
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OT1_5 —/ }));
     await user.click(screen.getByRole('radio', { name: 'Day by day' }));
     await user.click(screen.getByRole('button', { name: 'Add date' }));
     await user.click(screen.getByRole('button', { name: 'Add date' }));
@@ -396,7 +427,8 @@ describe('4e403268 · the dated grid', () => {
     const user = userEvent.setup();
     renderWorkspace();
     await openAddForm(user);
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OT1_5 —/ }));
     await user.click(screen.getByRole('radio', { name: 'Day by day' }));
     await user.click(screen.getByRole('button', { name: 'Add date' }));
 
@@ -426,7 +458,8 @@ describe('4e403268 · the dated grid', () => {
     const user = userEvent.setup();
     renderWorkspace();
     await openAddForm(user);
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OT1_5 —/ }));
     await user.click(screen.getByRole('radio', { name: 'Day by day' }));
     await user.type(screen.getByLabelText('Hours'), '2');
     await screen.findByLabelText('Calculated amount');
@@ -441,7 +474,8 @@ describe('4e403268 · the dated grid', () => {
     const user = userEvent.setup();
     renderWorkspace();
     await openAddForm(user);
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OT1_5 —/ }));
     await user.click(screen.getByRole('radio', { name: 'Day by day' }));
     expect(screen.getByText(/rounded to the cent on its own/)).toBeInTheDocument();
   });
@@ -831,6 +865,8 @@ describe('c11e81aa · Add and Edit open in a prompt', () => {
     const user = userEvent.setup();
     renderWorkspace();
     await openAddForm(user);
+    await user.click(screen.getByRole('button',{name:'Payroll item',expanded:false}));
+    await user.click(screen.getByRole('option',{name:/^ALLOW —/}));
     await user.type(screen.getByLabelText('Amount'), '120');
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -885,6 +921,8 @@ describe('c11e81aa · Pay cycle is a control, and the target run stays DERIVED',
     expect(screen.getByLabelText('Pay cycle')).toHaveValue('b-jul');
 
     await user.type(screen.getByLabelText('Effective date'), '2026-07-10');
+    await user.click(screen.getByRole('button',{name:'Payroll item',expanded:false}));
+    await user.click(screen.getByRole('option',{name:/^ALLOW —/}));
     await user.type(screen.getByLabelText('Amount'), '250');
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -899,12 +937,14 @@ describe('c11e81aa · Day by day is not offered for a fixed-amount pay item', ()
     renderWorkspace(EMPTY_PANEL, { payItems: [OT, HANDPHONE] });
     await openAddForm(user);
 
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:hp');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^HANDPHONE —/ }));
     expect(screen.getByRole('radio', { name: 'Day by day' })).toBeDisabled();
     expect(screen.getByText(/cannot be split across dates/)).toBeInTheDocument();
 
     // …and an item whose rule reads hours is unaffected: a day is worth its own hours.
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OT1_5 —/ }));
     expect(screen.getByRole('radio', { name: 'Day by day' })).toBeEnabled();
     expect(screen.queryByText(/cannot be split across dates/)).toBeNull();
   });
@@ -913,11 +953,48 @@ describe('c11e81aa · Day by day is not offered for a fixed-amount pay item', ()
     const user = userEvent.setup();
     renderWorkspace(EMPTY_PANEL, { payItems: [OT, HANDPHONE] });
     await openAddForm(user);
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OT1_5 —/ }));
     await user.click(screen.getByRole('radio', { name: 'Day by day' }));
 
-    const picker = screen.getByRole('combobox', { name: 'Payroll item' });
-    expect(within(picker).getByRole('option', { name: /HANDPHONE/ })).toBeDisabled();
-    expect(within(picker).getByRole('option', { name: /OT1_5/ })).toBeEnabled();
+    await user.click(screen.getByRole('button',{name:'Payroll item',expanded:false}));
+    const picker=screen.getByRole('listbox');
+    expect(within(picker).getByRole('option',{name:/HANDPHONE/})).toHaveAttribute('aria-disabled','true');
+    expect(within(picker).getByRole('option',{name:/OT1_5/})).not.toHaveAttribute('aria-disabled');
   });
+});
+
+describe('approved formula transaction input methods',()=>{
+ const formulaItem:TxnPayItem={id:'formula-entry',code:'FORMULA_ENTRY',name:'Fictional formula entry',kind:'allowance',derives:false,inputUnit:null,variesByDay:false,formulaBuilder:true};
+ it('shows calculated quantity input, hides quantity for Amount, and ignores an obsolete calculation response',async()=>{
+  const user=userEvent.setup();const rendered=renderWorkspace(EMPTY_PANEL,{payItems:[formulaItem]});await openAddForm(user);
+  await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^FORMULA_ENTRY —/ }));
+  expect(screen.getByRole('combobox',{name:'Input type'})).toHaveValue('qty');expect(screen.getByLabelText('Quantity')).toBeVisible();expect(screen.getByLabelText('Calculated amount')).toHaveAttribute('readonly');
+  await captureAiReviewScreenshots(aiReviewDomHtml(rendered.container),'en','feedback-payroll-formula-quantity','Actual transaction workspace with fictional owner/action fixtures. Component preview only; no installed application acceptance.','atelier');
+  let finish!:(value:unknown)=>void;previewOneMock.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+  await user.type(screen.getByLabelText('Quantity'),'2');await waitFor(()=>expect(previewOneMock).toHaveBeenCalled());
+  await user.selectOptions(screen.getByRole('combobox',{name:'Input type'}),'amount');expect(screen.queryByLabelText('Quantity')).toBeNull();
+  await user.type(screen.getByLabelText('Amount'),'123.45');finish({ok:true,derived:true,amount:'999.00',code:'FORMULA_ENTRY',inputUnit:null,zeroDivisor:null});
+  await waitFor(()=>expect(screen.getByLabelText('Amount')).toHaveValue(123.45));
+  await captureAiReviewScreenshots(aiReviewDomHtml(rendered.container),'en','feedback-payroll-formula-amount','Actual transaction workspace with fictional owner/action fixtures. Component preview only; no installed application acceptance.','atelier');
+  await user.selectOptions(screen.getByRole('combobox',{name:'Input type'}),'hours');expect(screen.getByLabelText('Quantity')).toHaveValue(null);expect(screen.getByLabelText('Calculated amount')).toHaveAttribute('readonly');
+ },120000);
+ it.each(['amount','formula','legacy'] as const)('reopens %s entries with the saved input interpretation',async method=>{
+  const user=userEvent.setup();renderWorkspace({...EMPTY_PANEL,rows:[panelRow({id:'method-row',componentId:'formula-entry',componentCode:'FORMULA_ENTRY',amount:'125.00'})]},{payItems:[formulaItem]});
+  detailMock.mockResolvedValue({id:'method-row',employmentId:'e1',companyId:'c1',payPeriod:'2026-08',batchId:'b1',kind:'earning',componentId:'formula-entry',txnDate:'2026-08-10',amount:method==='legacy'?'2.00':'125.00',quantity:method==='formula'?'5.00':null,unit:method==='formula'?'days':'amount',calculationMethod:method==='legacy'?null:method,notes:'Fictional entry',editable:true,recalcOnEdit:false});
+  await user.click(await screen.findByRole('button',{name:/Irwin Law/}));await user.click(screen.getAllByRole('button',{name:'Edit'})[0]);
+  await screen.findByRole('heading',{name:'Edit transaction'});
+  expect(screen.getByRole('combobox',{name:'Input type'})).toHaveValue(method==='amount'?'amount':method==='formula'?'days':'qty');
+  if(method==='amount'){expect(screen.queryByLabelText('Quantity')).toBeNull();expect(screen.getByLabelText('Amount')).toHaveValue(125);expect(previewOneMock).not.toHaveBeenCalled();}
+  else{expect(screen.getByLabelText('Quantity')).toHaveValue(method==='formula'?5:2);expect(screen.getByLabelText('Calculated amount')).toHaveAttribute('readonly');}
+ });
+ it('submits an explicit final Amount override with no quantity',async()=>{
+  const user=userEvent.setup();renderWorkspace(EMPTY_PANEL,{payItems:[formulaItem]});await openAddForm(user);
+  await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^FORMULA_ENTRY —/ }));await user.selectOptions(screen.getByRole('combobox',{name:'Input type'}),'amount');
+  await user.type(screen.getByLabelText('Effective date'),'2026-08-10');await user.type(screen.getByLabelText('Amount'),'125');
+  await user.click(screen.getByRole('button',{name:'Save'}));await waitFor(()=>expect(createMock).toHaveBeenCalled());
+  expect(createMock.mock.calls[0][0]).toMatchObject({componentId:'formula-entry',unit:'amount',quantity:null,amount:125,calculationMethod:'amount'});expect(previewOneMock).not.toHaveBeenCalled();
+ });
 });

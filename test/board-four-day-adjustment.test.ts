@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,7 +25,7 @@ vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 const {adminCorrectAttendanceDayAction}=await import('../app/attendance/individual/[date]/actions');
 const DATE=()=>todayInKualaLumpur(new Date(Date.now()-86400000));
 const nextDay=(date:string)=>new Date(Date.parse(date+'T00:00:00Z')+86400000).toISOString().slice(0,10);
-beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();CALLER=adminCtx(b);});
+beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedAttendanceSubmissionBase();CALLER=adminCtx(b);});
 async function hire(name='Date worker'){
   const e=await hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:`${randomUUID()}@day.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
   const [row]=await owner.db.select({code:s.employment.employeeCode}).from(s.employment).where(eq(s.employment.id,e.employmentId));return {...e,code:row.code!};
@@ -126,7 +127,7 @@ describe('per-configured-row overtime decisions',()=>{
     await expect(save([{key:keys[1],minutes:1.5}])).rejects.toThrow('whole');
     await expect(save([{key:keys[1],minutes:1440}])).rejects.toThrow('exceeds');
     expect((await day(e.employmentId)).otMinutes).toBe(150);
-    await updateAttendanceRuleSection(a,{ruleId:rule.id,section:'general',name:'Date overtime bands',description:null,status:'active',applyDeductions:false,
+    await updateAttendanceRuleSection(a,{ruleId:rule.id,section:'general',name:'Date overtime bands',description:null,status:'active',
       otRows:[{fromMinutes:0,toMinutes:60,ratePattern:'variable',rate:1.5}]});
     editor=(await attendanceDayEditor(a,e.employmentId,DATE()))!;expect(editor.rows.find(row=>row.key===keys[1])?.orphan).toBe(true);
     await expect(saveSchedule(e.employmentId,sh.id,'workday')).rejects.toThrow('Return that row to Auto');
@@ -209,7 +210,7 @@ describe('existing irregularity application identity and stages',()=>{
     const {correctionId}=await requestAttendanceCorrection(self,{employmentId:e.employmentId,date:DATE(),checkIn:'08:00',checkOut:'19:00',reason:'Employee original request',remark:'Employee original remark'});
     const before=(await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,correctionId)))[0];
     const editor=(await attendanceDayEditor(adminCtx(b),e.employmentId,DATE()))!;
-    const result=await amendExistingAttendanceApplication(adminCtx(b),{employmentId:e.employmentId,date:DATE(),correctionId,baseline:editor.baseline,reason:'Administrator checked the gate log',checkIn:'08:00',checkOut:'18:00'});expect(result.status).toBe('approved');
+    const result=await amendExistingAttendanceApplication(adminCtx(b),{expectedStageIndex:0,employmentId:e.employmentId,date:DATE(),correctionId,baseline:editor.baseline,reason:'Administrator checked the gate log',checkIn:'08:00',checkOut:'18:00'});expect(result.status).toBe('approved');
     const after=(await owner.db.select().from(s.attendanceCorrection).where(eq(s.attendanceCorrection.id,correctionId)))[0];
     expect(after.proposedCheckOut).toBe(before.proposedCheckOut);expect(after.reason).toBe(before.reason);expect(after.remark).toBe(before.remark);const requested=(await owner.db.select().from(s.domainEvent).where(and(eq(s.domainEvent.aggregateId,correctionId),eq(s.domainEvent.eventType,'attendance-correction.requested'))))[0];expect(requested.actorId).toBe(userId);
     expect(after.adminAmendment).toMatchObject({checkOut:'18:00',actorId:b.adminUserId});expect((await day(e.employmentId)).checkOutAt).toBe('18:00:00');

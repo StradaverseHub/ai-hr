@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {createHash} from 'node:crypto';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
@@ -19,7 +20,7 @@ import { personnelFamilyValues, personnelFamilyCatalogErrors } from '../lib/pers
 import { personnelImportProposedValues, PERSONNEL_PROFILE_IMPORT_FIELDS, PERSONNEL_COMPLIANCE_IMPORT_FIELDS, personnelScalarIssue } from '../lib/personnel-import-contract';
 import { isCalendarDate } from '../lib/calendar-date';
 import { setPersonComplianceFields } from './workforce-commands';
-import {applyBankStatutoryPatchTx,bankStatutoryDiff,bankStatutoryRefusal,buildBankStatutoryPatch,readBankStatutoryStateTx,readTaxResidencyTx} from './bank-statutory-import';
+import {applyBankStatutoryPatchTx,bankStatutoryDiff,bankStatutoryRefusal,buildBankStatutoryPatch,readBankStatutoryStateTx,readTaxResidenciesTx} from './bank-statutory-import';
 import {bankStatutoryStateFrom,MERGED_STATUTORY_COLUMNS,type BankStatutoryItemState,type BankStatutoryState} from '../lib/bank-statutory-import';
 import {BANK_STATUTORY_LEGACY_COLUMNS} from '../lib/import-sections';
 import {lockImportAttemptTx,lockImportAttemptHeaderTx,recordImportEventTx,recordImportItemTx} from './import-history';
@@ -91,6 +92,9 @@ import { addDependentTx, syncChildReliefFromFamily, assertDependentsValid, type 
 import { requirePackFor, type CountryPack } from '../localization/registry';
 import { normalizeEmployeeCode } from '../lib/employee-code';
 import { IMPORT_RUN_ERROR_CAP, type ImportRecord, type ImportRunError } from './import';
+import type { ImportIssue } from '../lib/import-schema';
+import { excelRowOf, isHiddenImportColumn, sanitizeImportSourceRows } from '../lib/import-problem-common';
+import type { SectionRowResultWithIssues } from '../lib/section-import-problems';
 import {
   isImportSection,
   classifyForeignColumns,
@@ -113,6 +117,8 @@ export type {
 const PERSONNEL_BANK_FIELDS=PERSONNEL_FIELDS.filter(field=>field.import.writer==='bank');
 const PERSONNEL_BANK_COLUMNS=PERSONNEL_BANK_FIELDS.map(field=>field.import.column!);
 const norm = (s: string | undefined) => (s ?? '').trim();
+/** Board d3ba1e9f — the reason code of a personnelScalarIssue verdict (what kind of value the column wanted). */
+const sectionScalarIssueCode=(issue:string)=>issue==='date'?'invalid_date':issue==='year and month'?'invalid_month':issue==='non-negative whole number'?'invalid_number':issue==='email'?'invalid_email':'invalid_choice';
 const lc = (s: string | undefined) => norm(s).toLowerCase();
 const enumCell = (s: string | undefined) => lc(s).replace(/[\s-]+/g, '_');
 const DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -213,8 +219,12 @@ async function analyze(
   suppliedTx?:Tx,
   /** Commit re-analysis of ONE row: only that row's employee needs the (per-employee) residency read. */
   focusRowNum?:number,
+  /** Board d3ba1e9f — the file's Excel rows (index = data row - 1), when the browser read them from a workbook. */
+  excelRows?:readonly number[],
 ): Promise<{ preview: SectionImportPreview; resolved: ResolvedSectionRow[] }> {
   const def = IMPORT_SECTION_DEFS[section];
+  const rows = excelRows && excelRows.length === records.length ? excelRows : undefined;
+  const excelRow = (rowNum: number) => excelRowOf(rows, rowNum);
   const present = records.length ? Object.keys(records[0]).map((c) => c.trim()) : [];
   const presentSet = new Set(present);
 
@@ -262,7 +272,7 @@ async function analyze(
     section,
     records.map(record=>norm(record.ic_number).replace(/\D/g,'')),
     suppliedTx,
-    {present:presentSet,residencyCodes:new Set(records.filter(record=>['tax_residency','is_resident','tax_circumstance','tax_category','epf_citizenship'].some(column=>norm(record[column]))).map(record=>normalizeEmployeeCode(record[SECTION_KEY_COLUMN]))),focusCode:focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
+    {present:presentSet,emails:records.map(record=>norm(record.email).toLowerCase()),residencyCodes:new Set(records.filter(record=>['tax_residency','is_resident','tax_circumstance','tax_category','epf_citizenship'].some(column=>norm(record[column]))).map(record=>normalizeEmployeeCode(record[SECTION_KEY_COLUMN]))),focusCode:focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
   );
 
   const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneral(ctx));
@@ -285,6 +295,10 @@ async function analyze(
     const {record:rec,errors}=normalizePersonnelCatalogRecord(rawRecord,section==='family'?'family':'employee',catalog);
     const warnings: string[] = [];
     const changes: string[] = [];
+    // Board d3ba1e9f — the column, reason code and (non-sensitive) value of each problem this row raises.
+    const sheet = section==='family'?'family':'employee';
+    const columnOf=new Map<string,ImportIssue>();
+    const fail:SectionFail=(column,message,code)=>{errors.push(message);if(!columnOf.has(message)){const value=isHiddenImportColumn(column,sheet)?'':norm(rawRecord[column]);columnOf.set(message,{message,column,...(code?{code}:{}),...(value?{value}:{})});}};
     const codeRaw = norm(rec[SECTION_KEY_COLUMN]);
     const codeNorm = normalizeEmployeeCode(codeRaw);
     const subject = codeNorm ? byCode.get(codeNorm) : undefined;
@@ -297,26 +311,28 @@ async function analyze(
       return v === '' ? undefined : v;
     };
 
-    if (!codeRaw) errors.push('Missing employee_code — it is the link to the employee being updated');
+    if (!codeRaw) fail(SECTION_KEY_COLUMN, 'Missing employee_code — it is the link to the employee being updated', 'required');
     else if (!subject) {
       // UPDATE-ONLY, SAID OUT LOUD. A section file carries no full name, no work email, no department,
       // no join date and no salary — the five things a new employee record cannot exist without — so
       // there is nothing here to create a person FROM. Rather than leave that as an implementation
       // detail the reader has to infer from "not found", the refusal states the rule and names the
       // template that DOES add people. The screen says the same thing before a file is uploaded.
-      errors.push(
+      fail(SECTION_KEY_COLUMN,
         `No employee has Employee ID "${codeRaw}". A section file can only UPDATE people who are already in the system — it cannot add anyone. To add this person, choose "Everything — new employees" at the top of this page and use the full employee template, then run this file again.`,
+        'employee_not_found',
       );
     }
     // Two rows for one employee would apply in file order and leave whichever won invisible. Refused.
     if (codeNorm && section !== 'family') {
-      if (seenCodes.has(codeNorm)) errors.push('Duplicate employee_code in this file');
+      if (seenCodes.has(codeNorm)) fail(SECTION_KEY_COLUMN, 'Duplicate employee_code in this file', 'duplicate_in_file');
       seenCodes.add(codeNorm);
     }
 
     const row: ResolvedSectionRow = {
       result: {
         rowNum: idx + 1,
+        ...{ excelRow: excelRow(idx + 1) },
         proposed:personnelImportProposedValues(rec,section==='family'?'family':'employee'),
         employeeCode: codeRaw,
         employeeName: subject?.fullName ?? '',
@@ -343,9 +359,11 @@ async function analyze(
           rowNum: idx + 1,
           errors,
           changes,
+          fail,
+          excelRow,
         });
       else if (section === 'bank_statutory') buildBankStatutory(cell, subject, row, { errors, changes });
-      else buildFamily(rec, cell, subject, row, { catalog, errors, warnings, changes });
+      else buildFamily(rec, cell, subject, row, { catalog, errors, warnings, changes, fail });
     }
 
     if(subject && (section==='profile'||section==='bank_statutory')) {
@@ -377,19 +395,26 @@ async function analyze(
       }
     }
     row.result.ok = errors.length === 0 && row.result.verdict === 'update';
+    (row.result as SectionRowResultWithIssues).issues = errors.map((message) => columnOf.get(message) ?? { message });
     resolved.push(row);
   });
+  /** A problem found after the row loop, kept on both the plain list and the issue list. */
+  const lateIssue=(row:ResolvedSectionRow,column:string,message:string,code?:string)=>{row.result.ok=false;row.result.errors.push(message);((row.result as SectionRowResultWithIssues).issues??=[]).push({message,column,...(code?{code}:{})});};
 
-  for(const row of resolved)if(row.result.ok && row.operations?.cardId && resolved.some(other=>other!==row && other.operations?.cardId?.toLowerCase()===row.operations!.cardId!.toLowerCase())) {row.result.ok=false;row.result.errors.push('Duplicate card_id in this file.');}
+  for(const row of resolved)if(row.result.ok && row.operations?.cardId && resolved.some(other=>other!==row && other.operations?.cardId?.toLowerCase()===row.operations!.cardId!.toLowerCase())) lateIssue(row,'card_id','Duplicate card_id in this file.','duplicate_in_file');
 
-  for(const row of resolved)if(row.result.ok && row.subject && row.operations?.cardId) {
+  // A commit re-analysis of ONE row (focusRowNum) runs the per-row database checks for that row only: they decide
+  // only their own row's verdict, and repeating them for every row of the file inside every row's locked
+  // transaction made each write cost the whole file.
+  const checked=(row:ResolvedSectionRow)=>focusRowNum===undefined||row.result.rowNum===focusRowNum;
+  for(const row of resolved)if(checked(row) && row.result.ok && row.subject && row.operations?.cardId) {
     try {await (suppliedTx?assertCardIdFree(suppliedTx,row.subject!.employmentId,row.operations!.cardId!):withTenant(ctx,tx=>assertCardIdFree(tx,row.subject!.employmentId,row.operations!.cardId!)));}
-    catch {row.result.ok=false;row.result.errors.push('card_id already identifies another employee; choose an unused card ID.');}
+    catch {lateIssue(row,'card_id','card_id already identifies another employee; choose an unused card ID.','duplicate_in_system');}
   }
 
-  for(const row of resolved)if(row.result.ok && row.dependent) {
+  for(const row of resolved)if(checked(row) && row.result.ok && row.dependent) {
     try { await assertDependentsValid(ctx,[row.dependent],suppliedTx); }
-    catch(error) { row.result.ok=false;row.result.errors.push(error instanceof Error?error.message:'Invalid Family values'); }
+    catch(error) { const message=error instanceof Error?error.message:'Invalid Family values';row.result.ok=false;row.result.errors.push(message);((row.result as SectionRowResultWithIssues).issues??=[]).push({message}); }
   }
 
   const preview: SectionImportPreview = {
@@ -406,7 +431,7 @@ async function analyze(
 }
 
 /** Read every employee this file names, plus the catalogs and the IC ownership map, in one pass. */
-async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[],suppliedTx?:Tx,scope:{present?:Set<string>;focusCode?:string;residencyCodes?:Set<string>}={}) {
+async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: ImportSection, submittedNrics: string[],suppliedTx?:Tx,scope:{present?:Set<string>;focusCode?:string;residencyCodes?:Set<string>;emails?:string[]}={}) {
   if(section==='bank_statutory'){const read=(tx:Tx)=>loadBankImportSubjects(tx,ctx,codes,scope);return suppliedTx?read(suppliedTx):withTenant(ctx,read);}
   const read=async (tx:Tx) => {
     // The tenant's employments, keyed by Employee ID and by work email. Both keys are needed: the
@@ -418,7 +443,7 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
         companyId: employment.companyId,
         employeeCode: employment.employeeCode,
         hiredOn: employment.hiredOn,
-        cardId:employment.cardId,attendancePhotoSetting:employment.attendancePhotoSetting,paymentMethod:employment.paymentMethod,
+        cardId:employment.cardId,attendancePhotoSetting:employment.attendancePhotoSetting,paymentMethod:employmentPaymentMethodOnSql(sql`${employment.id}`),
         fullName: person.fullName,
         primaryEmail: person.primaryEmail,
         phone: person.phone,
@@ -535,14 +560,20 @@ async function loadSubjects(ctx: SessionContext, codes: Set<string>, section: Im
     const emailOwners = new Map<string, string>();
     if (section === 'profile') {
       if(wanted[0])for(const key of await occupiedNricsTx(tx,{personId:wanted[0].personId,keys:submittedNrics}))icOwners.set(key,new Set(['occupied']));
-      const allStat = await tx
+      // Both maps are only ever looked up with a value this file supplies, so only owners of those values are read
+      // (any non-ASCII value is read too and normalised here, as before). The whole tenant was read once per row.
+      const icKeys=[...new Set(submittedNrics.filter(Boolean))];
+      const allStat = icKeys.length ? await tx
         .select({ personId: employeeStatutoryMy.personId, icNumber: employeeStatutoryMy.icNumber })
-        .from(employeeStatutoryMy);
+        .from(employeeStatutoryMy)
+        .where(sql`(regexp_replace(${employeeStatutoryMy.icNumber},'[^0-9]','','g') in (select jsonb_array_elements_text(${JSON.stringify(icKeys)}::jsonb)) or ${employeeStatutoryMy.icNumber} ~ '[^\\x01-\\x7f]')`) : [];
       for (const s of allStat) if (s.icNumber) {
         const key=s.icNumber.replace(/\D/g,'');const owners=icOwners.get(key)??new Set<string>();
         owners.add(s.personId);icOwners.set(key,owners);
       }
-      const allPeople = await tx.select({ id: person.id, primaryEmail: person.primaryEmail }).from(person);
+      const emailKeys=[...new Set((scope.emails??[]).filter(Boolean))];
+      const allPeople = emailKeys.length ? await tx.select({ id: person.id, primaryEmail: person.primaryEmail }).from(person)
+        .where(sql`(lower(trim(${person.primaryEmail})) in (select jsonb_array_elements_text(${JSON.stringify(emailKeys)}::jsonb)) or ${person.primaryEmail} ~ '[^\\x01-\\x7f]')`) : [];
       for (const p of allPeople) if (p.primaryEmail) emailOwners.set(p.primaryEmail.trim().toLowerCase(), p.id);
     }
 
@@ -557,12 +588,23 @@ async function loadBankImportSubjects(tx:Tx,ctx:SessionContext,codes:Set<string>
  const byCode=new Map<string,Subject>(),columns=getTableColumns(employeeStatutoryMy),wanted=[...codes];
  for(let offset=0;offset<wanted.length;offset+=1000){
   const rows=await tx.execute<Row>(sql`select * from app.bank_import_subjects(${JSON.stringify(wanted.slice(offset,offset+1000))}::jsonb)`);
+  const loaded:{subject:Subject;statutory:Record<string,unknown>|null;paymentMethod:string|null;needsResidency:boolean}[]=[];
   for(const row of rows){
    const statutory=row.statutory?Object.fromEntries(Object.entries(columns).map(([key,column])=>[key,row.statutory![column.name]])):null;
    const subject:Subject={employmentId:row.employment_id,personId:row.person_id,companyId:row.company_id,employeeCode:normalizeEmployeeCode(row.employee_code),fullName:row.full_name,primaryEmail:row.primary_email,phone:row.phone,hiredOn:String(row.hired_on),country:row.country,pack:requirePackFor(row.country),personRow:{},statutory,familyMembers:[],operations:{cardId:row.card_id,attendancePhotoSetting:row.attendance_photo_setting,paymentMethod:row.payment_method}};
-   const needsResidency=scope.residencyCodes?.has(subject.employeeCode)&&(!scope.focusCode||scope.focusCode===subject.employeeCode);
-   const taxResidency=needsResidency?await readTaxResidencyTx(tx,ctx,{employmentId:subject.employmentId,personId:subject.personId,pack:subject.pack,country:subject.country},statutory as {taxCircumstance?:string|null}|null):'';
-   subject.bankState=bankStatutoryStateFrom(statutory,{taxResidency,paymentMethod:row.payment_method});
+   const needsResidency=scope.residencyCodes?.has(subject.employeeCode)===true&&(!scope.focusCode||scope.focusCode===subject.employeeCode);
+   loaded.push({subject,statutory,paymentMethod:row.payment_method,needsResidency});
+  }
+  // Tax residency for every subject of this slice that names a residency column, read set-wise: one bounded
+  // read per pack instead of one per row (each per-row read rebuilt the tenant's visible-employment set).
+  const residencyNeeded=loaded.filter(item=>item.needsResidency);
+  const residencies=new Map<Subject,string>();
+  if(residencyNeeded.length){
+   const answers=await readTaxResidenciesTx(tx,ctx,residencyNeeded.map(({subject,statutory})=>({subject:{employmentId:subject.employmentId,personId:subject.personId,pack:subject.pack,country:subject.country},row:statutory as {taxCircumstance?:string|null}|null})));
+   residencyNeeded.forEach((item,index)=>residencies.set(item.subject,answers[index]));
+  }
+  for(const{subject,statutory,paymentMethod}of loaded){
+   subject.bankState=bankStatutoryStateFrom(statutory,{taxResidency:residencies.get(subject)??'',paymentMethod});
    byCode.set(subject.employeeCode,subject);
   }
  }
@@ -571,7 +613,10 @@ async function loadBankImportSubjects(tx:Tx,ctx:SessionContext,codes:Set<string>
  return{byCode,catalog,icOwners:new Map<string,Set<string>>(),emailOwners:new Map<string,string>()};
 }
 
-type BuildCtx = { errors: string[]; changes: string[] };
+/** `fail` (board d3ba1e9f): push a problem WITH the column it is about and a stable reason code, so the Error Log
+ *  can name the field and the correction without parsing the sentence. The sentence pushed is unchanged. */
+type BuildCtx = { errors: string[]; changes: string[]; fail?: SectionFail };
+type SectionFail = (column: string, message: string, code?: string) => void;
 
 /** Blank ⇒ nothing. Non-blank ⇒ checked against the catalog, and a refusal contributes NOTHING (it
  *  must never fall through to the raw text, which would put a value in the record the catalog forbids). */
@@ -580,6 +625,7 @@ function catalogValue(
   column: string,
   catalog: Map<string, Set<string>>,
   errors: string[],
+  fail?: SectionFail,
 ): string | undefined {
   if (raw === undefined) return undefined;
   const category = PROFILE_CATALOG_CATEGORY[column];
@@ -587,7 +633,8 @@ function catalogValue(
   const active = catalog.get(category);
   if (!active) return raw; // never configured ⇒ free text, as on the screens
   if (active.has(raw)) return raw;
-  errors.push(`"${raw}" is not an active ${category} option — column ${column}`);
+  const message = `"${raw}" is not an active ${category} option — column ${column}`;
+  if (fail) fail(column, message, 'unknown_reference'); else errors.push(message);
   return undefined;
 }
 
@@ -607,9 +654,13 @@ function buildProfile(
     seenIcs: Map<string, {rowNum:number;personId:string}>;
     seenEmails: Map<string, number>;
     rowNum: number;
+    /** Board d3ba1e9f — data row -> the row as Excel numbers it, for sentences that name another row. */
+    excelRow?: (rowNum: number) => number;
   },
 ) {
   const { errors, changes, catalog } = x;
+  const fail: SectionFail = x.fail ?? ((_column, message) => errors.push(message));
+  const excel = x.excelRow ?? ((rowNum: number) => rowNum + 1);
   const patch: PersonProfileFields = {};
 
   // The core trio. `updatePerson` REWRITES all three from its arguments — omitting the phone number
@@ -630,17 +681,17 @@ function buildProfile(
     const alreadyInFile = x.seenEmails.get(key);
     const owner = x.emailOwners.get(key);
     if (!EMAIL_RE.test(email)) {
-      errors.push(`Invalid email "${email}"`);
+      fail('email', `Invalid email "${email}"`, 'invalid_email');
       email = undefined;
     } else if (alreadyInFile !== undefined && !x.allowDuplicatedEmail) {
-      errors.push(`Duplicate email in this file — row ${alreadyInFile} already assigns "${email}"`);
+      fail('email', `Duplicate email in this file — row ${excel(alreadyInFile)} already assigns "${email}"`, 'duplicate_in_file');
       email = undefined;
     } else if (owner && owner !== subject.personId && !x.allowDuplicatedEmail) {
-      errors.push(`Another employee already has the work email "${email}" — duplicate emails are not allowed under the current People General Settings`);
+      fail('email', `Another employee already has the work email "${email}" — duplicate emails are not allowed under the current People General Settings`, 'duplicate_in_system');
       email = undefined;
     } else {
       // 5e0b2154 — allowed to share, but said so: HR should see that the address is not unique.
-      if (alreadyInFile !== undefined) x.warnings.push(`Row ${alreadyInFile} also uses the email "${email}"`);
+      if (alreadyInFile !== undefined) x.warnings.push(`Row ${excel(alreadyInFile)} also uses the email "${email}"`);
       else if (owner && owner !== subject.personId) x.warnings.push(`Another employee also uses the email "${email}"`);
       x.seenEmails.set(key, x.rowNum);
     }
@@ -651,18 +702,18 @@ function buildProfile(
   if (phone !== undefined && phone !== (subject.phone ?? '')) changes.push('phone');
 
   for (const [column, field] of Object.entries(PROFILE_PERSON_COLUMNS)) {
-    const v = catalogValue(cell(column), column, catalog, errors);
+    const v = catalogValue(cell(column), column, catalog, errors, fail);
     if (v === undefined) continue;
     (patch as Record<string, string | null>)[field] = v;
     if (v !== (subject.personRow[field] ?? '')) changes.push(column);
   }
 
-  if(patch.personalEmail && !EMAIL_RE.test(patch.personalEmail))errors.push('Invalid personal_email');
+  if(patch.personalEmail && !EMAIL_RE.test(patch.personalEmail))fail('personal_email','Invalid personal_email','invalid_email');
   const compliance:NonNullable<ResolvedSectionRow['compliance']>={};
   for(const field of PERSONNEL_COMPLIANCE_IMPORT_FIELDS) {
     const column=field.import.column!;const value=cell(column);if(value===undefined)continue;
     const issue=personnelScalarIssue(field,value);
-    if(issue)errors.push(`${column}: invalid ${issue} value`);
+    if(issue)fail(column,`${column}: invalid ${issue} value`,sectionScalarIssueCode(issue));
     else { (compliance as Record<string,string>)[field.ownerField]=value; if(value!==(subject.personRow[field.ownerField]??''))changes.push(column); }
   }
   if(Object.keys(compliance).length)row.compliance=compliance;
@@ -682,16 +733,16 @@ function buildProfile(
   const icRaw = cell('ic_number');
   if (icRaw !== undefined) {
     if (!subject.pack.statutory.validateIC(icRaw)) {
-      errors.push(`Invalid IC "${icRaw}"`);
+      fail('ic_number', `Invalid IC "${icRaw}"`, 'invalid_identity');
     } else {
       const icNorm = subject.pack.statutory.normalizeIC(icRaw);
       const owner = x.icOwners.get(icNorm);
       const alreadyInFile = x.seenIcs.get(icNorm);
       const unchanged = icNorm === String(subject.statutory?.icNumber ?? '').replace(/\D/g, '');
       if (!x.allowDuplicatedNric && !unchanged && alreadyInFile !== undefined && alreadyInFile.personId !== subject.personId) {
-        errors.push(NRIC_FILE_DUPLICATE_MESSAGE);
+        fail('ic_number', NRIC_FILE_DUPLICATE_MESSAGE, 'duplicate_in_file');
       } else if (!x.allowDuplicatedNric && !unchanged && owner && [...owner].some(id => id !== subject.personId)) {
-        errors.push(NRIC_DUPLICATE_MESSAGE);
+        fail('ic_number', NRIC_DUPLICATE_MESSAGE, 'duplicate_in_system');
       } else {
         x.seenIcs.set(icNorm, {rowNum:x.rowNum,personId:subject.personId});
         row.ic = { icNumber: icNorm };
@@ -712,12 +763,12 @@ function buildProfile(
   const pNumber = cell('passport_number');
   const pIssue = cell('passport_issue_date');
   const pExpiry = cell('passport_expiry_date');
-  const pCountry = catalogValue(cell('passport_issuing_country'), 'passport_issuing_country', catalog, errors);
+  const pCountry = catalogValue(cell('passport_issuing_country'), 'passport_issuing_country', catalog, errors, fail);
   for (const [v, label] of [
     [pIssue, 'passport_issue_date'],
     [pExpiry, 'passport_expiry_date'],
   ] as const) {
-    if (v !== undefined && !isCalendarDate(v)) errors.push(`${label} must be YYYY-MM-DD (got "${v}")`);
+    if (v !== undefined && !isCalendarDate(v)) fail(label, `${label} must be YYYY-MM-DD (got "${v}")`, 'invalid_date');
   }
   if (pNumber !== undefined || pIssue !== undefined || pExpiry !== undefined || pCountry !== undefined || pCode!==undefined || pRemark!==undefined) {
     const stored = subject.statutory;
@@ -730,7 +781,7 @@ function buildProfile(
       passportIssuingCountryCode: pCode ?? (stored?.passportIssuingCountryCode as string | null) ?? null,
     };
     if (!subject.pack.statutory.validatePassport({personId:subject.personId,...merged},row.personPatch?.fields?.nationality??subject.personRow.nationality)) {
-      errors.push('passport_number is required for non-Malaysian employees; check supplied passport dates and country code');
+      fail('passport_number', 'passport_number is required for non-Malaysian employees; check supplied passport dates and country code');
     } else {
       row.passport = merged;
       row.passportSupplied=(Object.entries({passportNumber:pNumber,passportIssueDate:pIssue,passportExpiryDate:pExpiry,passportIssuingCountry:pCountry,passportIssuingCountryCode:pCode,passportRemark:pRemark}).filter(([,value])=>value!==undefined).map(([key])=>key)) as (keyof PassportPatch)[];
@@ -804,23 +855,25 @@ function buildFamily(
   x: BuildCtx & { catalog: Map<string, Set<string>>; warnings: string[] },
 ) {
   const { errors, warnings, changes, catalog } = x;
+  const fail: SectionFail = x.fail ?? ((_column, message) => errors.push(message));
   const fullName = cell('full_name');
   const relationship = cell('relationship');
-  if (fullName === undefined) errors.push('Missing full_name');
-  if (relationship === undefined) errors.push('Missing relationship');
+  if (fullName === undefined) fail('full_name', 'Missing full_name', 'required');
+  if (relationship === undefined) fail('relationship', 'Missing relationship', 'required');
   else {
     const custom = catalog.get('dependentRelationship') ?? new Set<string>();
     if (!(DEPENDENT_RELATIONSHIPS as readonly string[]).includes(relationship) && !custom.has(relationship)) {
-      errors.push(
+      fail('relationship',
         `Unknown relationship "${relationship}" (use ${DEPENDENT_RELATIONSHIPS.join(' / ')}, or an active option from your Family relationship list)`,
+        'unknown_reference',
       );
     }
   }
   const dob = cell('date_of_birth');
-  if (dob !== undefined && !isCalendarDate(dob)) errors.push(`date_of_birth must be YYYY-MM-DD (got "${dob}")`);
+  if (dob !== undefined && !isCalendarDate(dob)) fail('date_of_birth', `date_of_birth must be YYYY-MM-DD (got "${dob}")`, 'invalid_date');
   const gender = cell('gender') === undefined ? undefined : enumCell(rec.gender);
   if (gender !== undefined && !(DEPENDENT_GENDERS as readonly string[]).includes(gender)) {
-    errors.push(`Unknown gender "${rec.gender}" (use ${DEPENDENT_GENDERS.join(' / ')})`);
+    fail('gender', `Unknown gender "${rec.gender}" (use ${DEPENDENT_GENDERS.join(' / ')})`, 'invalid_choice');
   }
   // Blank means NO: somebody is an insurance beneficiary only when a person says so.
   let isBeneficiary = false;
@@ -829,7 +882,7 @@ function buildFamily(
     const v = ben.toLowerCase();
     if (TRUTHY.has(v)) isBeneficiary = true;
     else if (FALSY.has(v)) isBeneficiary = false;
-    else errors.push(`Invalid is_beneficiary "${ben}" (use yes/no)`);
+    else fail('is_beneficiary', `Invalid is_beneficiary "${ben}" (use yes/no)`, 'yes_no');
   }
   const extra=personnelFamilyValues(rec);errors.push(...extra.errors,...personnelFamilyCatalogErrors(rec,catalog));
   if (errors.length > 0 || fullName === undefined || relationship === undefined) return;
@@ -902,12 +955,105 @@ export function writeFailureMessage(step: WriteStep, e: unknown): string {
 /** Dry run — validate and produce the per-row verdict. Writes nothing. */
 export async function validateSectionImport(
   ctx: SessionContext,
-  p: { section: string; records: ImportRecord[] },
+  p: { section: string; records: ImportRecord[];
+    /** Board d3ba1e9f — the workbook's Excel rows (labels only; a list of the wrong length is ignored). */
+    excelRows?: unknown },
 ): Promise<SectionImportPreview> {
   if(!isImportSection(p.section))throw new Error('Unknown import section. Employment updates use dated Movement import.');
-  if(isPersonnelRegisterKind(p.section))return validateRegisterSection(ctx,p.section,p.records);
-  const { preview } = await analyze(ctx, p.section, p.records);
+  const excelRows=sanitizeImportSourceRows({employee:p.excelRows},{employee:p.records.length}).employee;
+  if(isPersonnelRegisterKind(p.section)){
+    const preview=await validateRegisterSection(ctx,p.section,p.records);
+    for(const row of preview.rows as SectionRowResultWithIssues[])row.excelRow=excelRowOf(excelRows,row.rowNum);
+    return preview;
+  }
+  const { preview } = await analyze(ctx, p.section, p.records, undefined, undefined, excelRows);
   return preview;
+}
+
+/** One row of a commit as the dry run saw it: the subject and a hash of everything the row will write (no values). */
+export type SectionRowNomination={rowNum:number;employeeCode:string;subject:{employmentId:string;personId:string;companyId:string;employeeCode:string;country:string};binding:string};
+function nominate(row:ResolvedSectionRow):SectionRowNomination {
+ const s=row.subject!;
+ return {rowNum:row.result.rowNum,employeeCode:row.result.employeeCode,subject:{employmentId:s.employmentId,personId:s.personId,companyId:s.companyId,employeeCode:s.employeeCode,country:s.country},binding:sectionBinding(row)};
+}
+/**
+ * Apply ONE nominated row inside the caller's transaction: the writer locks, a fresh re-analysis of that row against
+ * locked current records, the binding check, then every owner writer. Both the synchronous commit (one transaction per
+ * row) and the background section job (one step per row) run exactly this. `state.step` names the writer reached, for
+ * the column-only failure message; `appliedPeople` holds the persons earlier rows of the same commit wrote.
+ */
+export async function applySectionRowTx(tx:Tx,ctx:SessionContext,p:{section:ImportSection;records:ImportRecord[];history?:{attemptId:string}},nominated:SectionRowNomination,
+ state:{appliedPeople:ReadonlySet<string>;step:{current:WriteStep}}):Promise<{wrote:boolean;personId:string;dependent:boolean}>{
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ // Writer locks first, then the attempt row: the same order as a revert, so the two cannot deadlock.
+ if(p.history)await lockImportAttemptHeaderTx(tx,ctx,p.history.attemptId,'bank_statutory');
+ const current=await analyze(ctx,p.section,p.records,tx,nominated.rowNum);
+ const fresh=current.resolved[nominated.rowNum-1];
+ if(current.preview.fileErrors.length||!fresh?.subject||fresh.subject.employmentId!==nominated.subject.employmentId||fresh.subject.personId!==nominated.subject.personId||fresh.subject.companyId!==nominated.subject.companyId||fresh.subject.employeeCode!==nominated.subject.employeeCode||fresh.subject.pack!==requirePackFor(nominated.subject.country))throw new Error('Section import inputs changed; preview the original file again.');
+ if(fresh.result.errors.length)throw new Error('Section import inputs changed; preview the original file again.');
+ // A later row naming a Person that an EARLIER row of this same commit already wrote re-analyses as
+ // 'skip' only because of that write. The preview counted it as an update and the native owner applies
+ // it exactly as previewed (each row its own write); an independent no-op still stays a skip.
+ const afterOwnEarlierRow=fresh.result.verdict==='skip'&&state.appliedPeople.has(fresh.subject.personId);
+ if(fresh.result.verdict==='skip'&&!afterOwnEarlierRow)return {wrote:false,personId:fresh.subject.personId,dependent:false};
+ if(!(fresh.result.ok||afterOwnEarlierRow)||sectionBinding(fresh)!==nominated.binding)throw new Error('Section import inputs changed; preview the original file again.');
+ const row=fresh,s=fresh.subject;
+ await assertWorkforceEmploymentTx(tx,ctx,s.employmentId,'maintain');
+ await assertWorkforcePersonTx(tx,ctx,s.personId,'maintain');
+ state.step.current='person';
+ // Lock shared records before carrying forward absent cells. Preview snapshots never supply
+ // values for blank columns at apply time; a concurrent unrelated edit must survive.
+ const [freshPerson]=await tx.select().from(person).where(eq(person.id,s.personId)).for('update');
+ if(!freshPerson)throw new Error('Personnel record is no longer available.');
+ const [freshStat]=await tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,s.personId)).for('update');
+ const historySubject={employmentId:s.employmentId,personId:s.personId,pack:s.pack,country:s.country};
+ const historyBefore=p.history?(await readBankStatutoryStateTx(tx,ctx,historySubject)).state:null;
+ if (row.personPatch) {
+   await updatePerson(ctx, {
+     personId: s.personId,
+     fullName: row.personPatch.fullName ?? freshPerson.fullName,
+     primaryEmail: row.personPatch.primaryEmail ?? freshPerson.primaryEmail,
+     phone: row.personPatch.phone ?? freshPerson.phone,
+     via: 'section-import',
+     ...row.personPatch.fields,
+   }, tx);
+ }
+ if(row.compliance)await setPersonComplianceFields(ctx,{employmentId:s.employmentId,...row.compliance}, tx);
+ state.step.current='ic';
+ if (row.ic) await s.pack.statutory.setIc(ctx, { personId: s.personId, icNumber:row.ic.icNumber??freshStat?.icNumber??'',oldIcNumber:row.ic.oldIcNumber??freshStat?.oldIcNumber??null }, tx);
+ state.step.current='passport';
+ if (row.passport) {
+   const passport={...row.passport};
+   for(const key of Object.keys(passport) as (keyof PassportPatch)[])if(!row.passportSupplied?.includes(key))passport[key]=freshStat?.[key]??null;
+   await s.pack.statutory.setPassport(ctx,{personId:s.personId,...passport},tx);
+ }
+ state.step.current='bank';
+ if(row.bank) {
+   const latest=freshStat;if(!latest)throw new Error('Statutory setup is unavailable.');
+   const bank={...row.bank};
+   for(const field of PERSONNEL_BANK_FIELDS) {const key=field.import.writerField! as keyof PersonnelBankValues;if(!row.bankSupplied?.includes(key))(bank as unknown as Record<string,unknown>)[key]=(latest as unknown as Record<string,unknown>)[key]??(field.type==='boolean'?false:null);}
+   await s.pack.statutory.setBank(ctx,{personId:s.personId,...bank},tx);
+ }
+ state.step.current='registrations';
+ if(row.registrations) {
+   const setter=s.pack.statutory.setRegistrationNumbers;if(!setter)throw new Error('Registration-number updates are unavailable for this country pack.');
+   await setter(ctx,{personId:s.personId,...row.registrations},tx);
+ }
+ state.step.current='statutory';
+ if(row.statutoryPatch) {
+   if(!freshStat)throw new Error('Statutory setup is unavailable.');
+   await applyBankStatutoryPatchTx(tx,ctx,historySubject,row.statutoryPatch);
+ }
+ state.step.current='operations';
+ if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,s.employmentId,row.operations);
+ state.step.current='dependent';
+ if (row.dependent) await addDependentTx(tx,ctx,s.personId,row.dependent);
+ if(p.history && historyBefore) {
+   const diff=bankStatutoryDiff(historyBefore,(await readBankStatutoryStateTx(tx,ctx,historySubject)).state);
+   if(diff.changed.length)await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId:s.companyId,employmentId:s.employmentId,itemKey:`row-${row.result.rowNum}`,label:historyLabel(row.result),ordinal:row.result.rowNum,status:'applied',
+     before:{employeeCode:s.employeeCode,fields:diff.before} satisfies BankStatutoryItemState,after:{employeeCode:s.employeeCode,fields:diff.after} satisfies BankStatutoryItemState});
+ }
+ return {wrote:true,personId:s.personId,dependent:Boolean(row.dependent)};
 }
 
 /**
@@ -929,7 +1075,7 @@ export async function commitSectionImport(
   if(!isImportSection(p.section))throw new Error('Unknown import section. Employment updates use dated Movement import.');
   if(isPersonnelRegisterKind(p.section)) {
     const result=await commitRegisterSection(ctx,p.section,p.records);
-    if(result.updated>0)result.runId=await recordSectionRun(ctx,{companyId:null,fileName:p.fileName??'',totalRows:p.records.length,updated:result.updated,rejected:[],failed:[]});
+    if(result.updated>0)result.runId=await recordSectionRun(ctx,{section:p.section,companyId:null,fileName:p.fileName??'',totalRows:p.records.length,updated:result.updated,rejected:[],failed:[]});
     return result;
   }
   const { preview, resolved } = await analyze(ctx, p.section, p.records);
@@ -951,87 +1097,15 @@ export async function commitSectionImport(
   for (const row of resolved) {
     if (!row.result.ok || !row.subject) continue;
     const s = row.subject;
-    const nominatedRow=row;
-    let step: WriteStep = 'person';
+    const progress:{current:WriteStep}={current:'person'};
     try {
-      const wrote=await withTenant(ctx,async tx=>{
-      await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-      // Writer locks first, then the attempt row: the same order as a revert, so the two cannot deadlock.
-      if(p.history)await lockImportAttemptHeaderTx(tx,ctx,p.history.attemptId,'bank_statutory');
-      const current=await analyze(ctx,p.section as ImportSection,p.records,tx,nominatedRow.result.rowNum);
-      const fresh=current.resolved[nominatedRow.result.rowNum-1];
-      if(current.preview.fileErrors.length||!fresh?.subject||fresh.subject.employmentId!==nominatedRow.subject!.employmentId||fresh.subject.personId!==nominatedRow.subject!.personId||fresh.subject.companyId!==nominatedRow.subject!.companyId||fresh.subject.employeeCode!==nominatedRow.subject!.employeeCode||fresh.subject.pack!==nominatedRow.subject!.pack)throw new Error('Section import inputs changed; preview the original file again.');
-      if(fresh.result.errors.length)throw new Error('Section import inputs changed; preview the original file again.');
-      // A later row naming a Person that an EARLIER row of this same commit already wrote re-analyses as
-      // 'skip' only because of that write. The preview counted it as an update and the native owner applies
-      // it exactly as previewed (each row its own write); an independent no-op still stays a skip.
-      const afterOwnEarlierRow=fresh.result.verdict==='skip'&&appliedPeople.has(fresh.subject.personId);
-      if(fresh.result.verdict==='skip'&&!afterOwnEarlierRow)return false;
-      const binding=(value:ResolvedSectionRow)=>JSON.stringify({...value,result:undefined,subject:undefined});
-      if(!(fresh.result.ok||afterOwnEarlierRow)||binding(fresh)!==binding(nominatedRow))throw new Error('Section import inputs changed; preview the original file again.');
-      const row=fresh,s=fresh.subject;
-      await assertWorkforceEmploymentTx(tx,ctx,s.employmentId,'maintain');
-      await assertWorkforcePersonTx(tx,ctx,s.personId,'maintain');
-      step = 'person';
-      // Lock shared records before carrying forward absent cells. Preview snapshots never supply
-      // values for blank columns at apply time; a concurrent unrelated edit must survive.
-      const [freshPerson]=await tx.select().from(person).where(eq(person.id,s.personId)).for('update');
-      if(!freshPerson)throw new Error('Personnel record is no longer available.');
-      const [freshStat]=await tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,s.personId)).for('update');
-      const historySubject={employmentId:s.employmentId,personId:s.personId,pack:s.pack,country:s.country};
-      const historyBefore=p.history?(await readBankStatutoryStateTx(tx,ctx,historySubject)).state:null;
-      if (row.personPatch) {
-        await updatePerson(ctx, {
-          personId: s.personId,
-          fullName: row.personPatch.fullName ?? freshPerson.fullName,
-          primaryEmail: row.personPatch.primaryEmail ?? freshPerson.primaryEmail,
-          phone: row.personPatch.phone ?? freshPerson.phone,
-          via: 'section-import',
-          ...row.personPatch.fields,
-        }, tx);
-      }
-      if(row.compliance)await setPersonComplianceFields(ctx,{employmentId:s.employmentId,...row.compliance}, tx);
-      step = 'ic';
-      if (row.ic) await s.pack.statutory.setIc(ctx, { personId: s.personId, icNumber:row.ic.icNumber??freshStat?.icNumber??'',oldIcNumber:row.ic.oldIcNumber??freshStat?.oldIcNumber??null }, tx);
-      step = 'passport';
-      if (row.passport) {
-        const passport={...row.passport};
-        for(const key of Object.keys(passport) as (keyof PassportPatch)[])if(!row.passportSupplied?.includes(key))passport[key]=freshStat?.[key]??null;
-        await s.pack.statutory.setPassport(ctx,{personId:s.personId,...passport},tx);
-      }
-      step = 'bank';
-      if(row.bank) {
-        const latest=freshStat;if(!latest)throw new Error('Statutory setup is unavailable.');
-        const bank={...row.bank};
-        for(const field of PERSONNEL_BANK_FIELDS) {const key=field.import.writerField! as keyof PersonnelBankValues;if(!row.bankSupplied?.includes(key))(bank as unknown as Record<string,unknown>)[key]=(latest as unknown as Record<string,unknown>)[key]??(field.type==='boolean'?false:null);}
-        await s.pack.statutory.setBank(ctx,{personId:s.personId,...bank},tx);
-      }
-      step='registrations';
-      if(row.registrations) {
-        const setter=s.pack.statutory.setRegistrationNumbers;if(!setter)throw new Error('Registration-number updates are unavailable for this country pack.');
-        await setter(ctx,{personId:s.personId,...row.registrations},tx);
-      }
-      step = 'statutory';
-      if(row.statutoryPatch) {
-        if(!freshStat)throw new Error('Statutory setup is unavailable.');
-        await applyBankStatutoryPatchTx(tx,ctx,historySubject,row.statutoryPatch);
-      }
-      step='operations';
-      if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,s.employmentId,row.operations);
-      step = 'dependent';
-      if (row.dependent) await addDependentTx(tx,ctx,s.personId,row.dependent);
-      if(p.history && historyBefore) {
-        const diff=bankStatutoryDiff(historyBefore,(await readBankStatutoryStateTx(tx,ctx,historySubject)).state);
-        if(diff.changed.length)await recordImportItemTx(tx,ctx,{attemptId:p.history.attemptId,companyId:s.companyId,employmentId:s.employmentId,itemKey:`row-${row.result.rowNum}`,label:historyLabel(row.result),ordinal:row.result.rowNum,status:'applied',
-          before:{employeeCode:s.employeeCode,fields:diff.before} satisfies BankStatutoryItemState,after:{employeeCode:s.employeeCode,fields:diff.after} satisfies BankStatutoryItemState});
-      }
-      return true;
-      });
-      if(!wrote)continue;
+      const out=await withTenant(ctx,tx=>applySectionRowTx(tx,ctx,{section:p.section as ImportSection,records:p.records,history:p.history},nominate(row),{appliedPeople,step:progress}));
+      if(!out.wrote)continue;
       appliedPeople.add(s.personId);
       updated++;
       if(row.dependent) {try {await syncChildReliefFromFamily(ctx,s.personId);}catch{warnings.push(`Row ${row.result.rowNum} was saved; review the child-relief refresh on Personnel.`);}}
     } catch (e) {
+      const step=progress.current;
       // NEVER THE DRIVER'S OWN WORDS. A failed write throws a Drizzle error whose message carries the
       // whole statement AND its bound parameters — an NRIC, a bank account, a tax reference. That text
       // was being rendered to the admin and PERSISTED into `employee_import_run.errors`, in a product
@@ -1068,6 +1142,7 @@ export async function commitSectionImport(
   }
 
   const runId = await recordSectionRun(ctx, {
+    section: p.section,
     companyId: resolved.find((r) => r.subject)?.subject?.companyId ?? null,
     fileName: p.fileName ?? '',
     totalRows: resolved.length,
@@ -1105,20 +1180,32 @@ export async function analyzeBankImportBatch(ctx:SessionContext,records:ImportRe
  const {preview,resolved}=await analyze(ctx,'bank_statutory',records);
  return{fileErrors:preview.fileErrors,rows:resolved.map(row=>({preview:row.result,companyId:row.subject?.companyId??null,employmentId:row.subject?.employmentId??null,binding:sectionBinding(row)}))};
 }
+/** The background section job's validation (core/section-import-worker.ts): the same dry run the synchronous commit
+ * starts with, reduced to what the job keeps — one nomination per row to write (a hash of its payload, never values),
+ * the dry-run refusals for the history row, and the company the history row names. */
+export async function planSectionImport(ctx:SessionContext,section:ImportSection,records:ImportRecord[]){
+ const {preview,resolved}=await analyze(ctx,section,records);
+ return{fileErrors:preview.fileErrors,total:resolved.length,nominations:resolved.filter(row=>row.result.ok&&row.subject).map(nominate),
+  rejected:resolved.filter(row=>!row.result.ok).map(row=>({rowNum:row.result.rowNum,excelRow:(row.result as SectionRowResultWithIssues).excelRow,employeeCode:row.result.employeeCode,employeeName:row.result.employeeName,errors:row.result.errors,
+   ...((row.result as SectionRowResultWithIssues).issues?.length?{issues:(row.result as SectionRowResultWithIssues).issues}:{})})),
+  companyId:resolved.find(row=>row.subject)?.subject?.companyId??null};
+}
+/** Only a deterministic row rejection may be counted as bad import data. */
+export class BankImportRowRejectedError extends Error {}
 /** Caller commits the HR mutation, history item and queue checkpoint in ONE transaction. */
 export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{record:ImportRecord;binding:string;employmentId:string;companyId:string;attemptId:string;ordinal:number}){
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ await tx.execute(sql`select app.access_configuration_write_lock()`);
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  await lockImportAttemptHeaderTx(tx,ctx,input.attemptId,'bank_statutory');
  const current=await analyze(ctx,'bank_statutory',[input.record],tx);
  const row=current.resolved[0],subject=row?.subject;
- if(current.preview.fileErrors.length||!subject||subject.employmentId!==input.employmentId||subject.companyId!==input.companyId||row.result.errors.length)throw new Error('Personnel changed or access was removed. Validate this row again.');
+ if(current.preview.fileErrors.length||!subject||subject.employmentId!==input.employmentId||subject.companyId!==input.companyId||row.result.errors.length)throw new BankImportRowRejectedError('Personnel changed or access was removed. Validate this row again.');
  if(row.result.verdict==='skip')return false;
- if(!row.result.ok||sectionBinding(row)!==input.binding)throw new Error('Personnel changed after validation. Validate this row again.');
+ if(!row.result.ok||sectionBinding(row)!==input.binding)throw new BankImportRowRejectedError('Personnel changed after validation. Validate this row again.');
  await assertWorkforceEmploymentTx(tx,ctx,subject.employmentId,'maintain');
  await assertWorkforcePersonTx(tx,ctx,subject.personId,'maintain');
  const [stored]=await tx.select().from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,subject.personId)).for('update');
- if(!stored)throw new Error('Statutory setup is unavailable.');
+ if(!stored)throw new BankImportRowRejectedError('Statutory setup is unavailable.');
  const historySubject={employmentId:subject.employmentId,personId:subject.personId,pack:subject.pack,country:subject.country};
  const before=(await readBankStatutoryStateTx(tx,ctx,historySubject)).state;
  if(row.bank){
@@ -1126,7 +1213,7 @@ export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{recor
   for(const field of PERSONNEL_BANK_FIELDS){const key=field.import.writerField! as keyof PersonnelBankValues;if(!row.bankSupplied?.includes(key))(bank as unknown as Record<string,unknown>)[key]=(stored as unknown as Record<string,unknown>)[key]??(field.type==='boolean'?false:null);}
   await subject.pack.statutory.setBank(ctx,{personId:subject.personId,...bank},tx);
  }
- if(row.registrations){const setter=subject.pack.statutory.setRegistrationNumbers;if(!setter)throw new Error('Registration updates are unavailable.');await setter(ctx,{personId:subject.personId,...row.registrations},tx);}
+ if(row.registrations){const setter=subject.pack.statutory.setRegistrationNumbers;if(!setter)throw new BankImportRowRejectedError('Registration updates are unavailable.');await setter(ctx,{personId:subject.personId,...row.registrations},tx);}
  if(row.statutoryPatch)await applyBankStatutoryPatchTx(tx,ctx,historySubject,row.statutoryPatch);
  if(row.operations)await applyPersonnelOperationalValuesTx(tx,ctx,subject.employmentId,row.operations);
  const diff=bankStatutoryDiff(before,(await readBankStatutoryStateTx(tx,ctx,historySubject)).state);
@@ -1142,14 +1229,16 @@ export async function applyBankImportRowTx(tx:Tx,ctx:SessionContext,input:{recor
  * A section run is stored in the SAME table as a wide one — an admin asking "what has been loaded into
  * this system, and what did not go in?" is asking one question, and two histories would be two answers.
  */
-async function recordSectionRun(
+export async function recordSectionRun(
   ctx: SessionContext,
   p: {
+    /** ccd3a65c — the section key, stored so Import History can list the run by its type. */
+    section: ImportSection;
     companyId: string | null;
     fileName: string;
     totalRows: number;
     updated: number;
-    rejected: SectionRowResult[];
+    rejected: (Pick<SectionRowResult,'rowNum'|'employeeCode'|'employeeName'|'errors'>&{issues?:ImportIssue[];excelRow?:number})[];
     failed: SectionImportResult['failed'];
   },
 ): Promise<string | null> {
@@ -1158,8 +1247,10 @@ async function recordSectionRun(
   const errors: ImportRunError[] = [
     ...p.rejected
       .filter((r) => r.errors.length > 0)
-      .map((r) => ({ rowNum: r.rowNum, fullName: r.employeeName || r.employeeCode, email: '', errors: r.errors })),
-    ...p.failed.map((f) => ({ rowNum: f.rowNum, fullName: f.employeeCode, email: '', errors: [f.message] })),
+      // Board d3ba1e9f — also the Employee ID, each problem's column and where it was found, for the Error Log.
+      .map((r) => ({ rowNum: r.rowNum, ...(r.excelRow ? { excelRow: r.excelRow } : {}), fullName: r.employeeName || r.employeeCode, email: '', errors: r.errors,
+        ...(r.employeeCode ? { employeeCode: r.employeeCode } : {}), ...(r.issues?.length ? { issues: r.issues } : {}), stage: 'check' as const, outcome: 'refused' as const })),
+    ...p.failed.map((f) => ({ rowNum: f.rowNum, fullName: f.employeeCode, email: '', errors: [f.message], ...(f.employeeCode ? { employeeCode: f.employeeCode } : {}), stage: 'save' as const })),
   ].sort((a, b) => a.rowNum - b.rowNum);
   try {
     return await withTenant(ctx, async (tx) => {
@@ -1185,6 +1276,7 @@ async function recordSectionRun(
           failedRows: errors.length,
           errors: errors.slice(0, IMPORT_RUN_ERROR_CAP),
           errorsTruncated: errors.length > IMPORT_RUN_ERROR_CAP,
+          importSection: p.section,
         })
         .returning({ id: employeeImportRun.id });
       return rowOut?.id ?? null;

@@ -1,3 +1,4 @@
+import type { ImportActor } from './import-reference';
 /**
  * 3f15ffdb — Client-safe contract for LEAVE HISTORY DATA IMPORT (the migration of past leave RECORDS).
  *
@@ -247,6 +248,8 @@ export type LeaveHistoryImportResult = {
 export type LeaveHistoryRunRow = {
   id: string;
   actorName: string | null;
+  /** Board 8d02748a: readable "Imported by" (name and Employee ID). */
+  actor?: ImportActor;
   fileName: string;
   totalRows: number;
   importedRows: number;

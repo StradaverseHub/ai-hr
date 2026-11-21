@@ -17,8 +17,9 @@
  * ## Identity and ownership (CLAUDE.md §1)
  * A case holds the new hire's details itself: the person has no employment until HR creates it, so
  * `lc_case.person_id` / `employment_id` are optional links, never a copy of truth the other way. The
- * resignation workflow (`core/offboarding.ts`, ADR-0042) remains the ONLY owner of termination; an
- * offboarding CASE here is the checklist that follows it and does not end employment.
+ * canonical resignation/movement writer (`core/offboarding.ts`, ADR-0042) owns termination. Managed
+ * resignations open clearance without terminating employment; completed clearance proposes the reviewed
+ * Personnel posting that calls that same writer. A case never writes employment termination directly.
  *
  * ## Authorization
  * The handover's Agent / Manager roles are NOT line managers: `lc_staff` names them per company. Admins
@@ -46,6 +47,12 @@ export const lifecyclePack: ModulePack = {
     navLinks: LIFECYCLE_NAV_LINKS,
     navNodes: [{ group: 'manage', labelKey: 'onboardingV31', icon: Laptop, defaultHref: '/lifecycle/onboarding', children: [{ href: '/lifecycle/onboarding', labelKey: 'newJoiners', icon: Laptop, exactHref: true, ownedSubpaths: ['/lifecycle/onboarding/cases', '/lifecycle/onboarding/legacy'] }, { href: '/lifecycle/onboarding/checklists', labelKey: 'onboardingChecklists', icon: Laptop }] }],
     satelliteTables: [
+        { table: 'resignation_journey', note: 'Company-scoped resignation decisions, letters and immutable released snapshots' },
+        { table: 'resignation_journey_file', note: 'Case-bound supporting and per-person workflow files' },
+        { table: 'resignation_communication_test', note: 'Immutable actor-only case message test request receipts' },
+        { table: 'app.resignation_runtime_verifier', note: 'Owner-only verifier for Lifecycle resignation service custody' },
+        { table: 'app.resignation_runtime_state', note: 'Transaction-bound resignation read and command admission' },
+        { table: 'app.resignation_notification_receipt', note: 'Resignation notice deduplication; notification remains the bell owner' },
         { table: 'lc_v9_config', note: 'V9 published document, email, checklist and workflow definitions' },
         { table: 'lc_v9_config_revision', note: 'Immutable V9 configuration revisions' },
         { table: 'lc_v9_case', note: 'Company-scoped V9 case and document executions' },

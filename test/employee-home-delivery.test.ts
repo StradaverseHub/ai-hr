@@ -1,8 +1,63 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {deliverHomeCard,HOME_CARD_READ_TIMEOUT_MS} from '../lib/employee-home-delivery';
+import {applicationDatabaseBudget} from '../db/capacity';
+import {
+  createHomeCardRefreshGate,deliverHomeCard,HOME_CARD_READ_HARD_CAP_MS,HOME_CARD_REFRESH_DEDUPE_MS,HOME_CARD_STREAM_STALL_MS,HomeCardReadTimeoutError,
+} from '../lib/employee-home-delivery';
 
-afterEach(()=>vi.useRealTimers());
+afterEach(()=>{vi.useRealTimers();vi.restoreAllMocks();});
 describe('independent employee Home read delivery',()=>{
+  it('names the stall window and hard cap once, below the database admission queue wait',()=>{
+    expect(HOME_CARD_STREAM_STALL_MS).toBe(8000);
+    expect(HOME_CARD_READ_HARD_CAP_MS).toBe(20000);
+    expect(HOME_CARD_STREAM_STALL_MS).toBeLessThan(HOME_CARD_READ_HARD_CAP_MS);
+    const queueWaitMs=applicationDatabaseBudget({}).waitMs;
+    expect(queueWaitMs).toBe(30000);
+    expect(HOME_CARD_READ_HARD_CAP_MS).toBeLessThan(queueWaitMs);
+    expect(()=>deliverHomeCard(async()=>1,{timeoutMs:HOME_CARD_READ_HARD_CAP_MS+1})).toThrow(RangeError);
+  });
+  it('keeps a slow read loading past the former 2.8 s deadline and delivers it without a timeout',async()=>{
+    vi.useFakeTimers();
+    let release:((value:string)=>void)|undefined,seen:AbortSignal|undefined;
+    let settled=false;
+    const result=deliverHomeCard(signal=>{seen=signal;return new Promise<string>(resolve=>{release=resolve;});});
+    void result.then(()=>{settled=true;});
+    await vi.advanceTimersByTimeAsync(2800);
+    await vi.advanceTimersByTimeAsync(HOME_CARD_READ_HARD_CAP_MS-2800-1);
+    expect(settled).toBe(false);expect(seen?.aborted).toBe(false);
+    release!('Arrived just inside the cap');
+    expect(await result).toEqual({state:'ready',value:'Arrived just inside the cap'});
+    expect(seen?.aborted).toBe(false);
+  });
+  it('reports a limit raised by the stream, or any failure seen at the cap, as a timeout rather than a refusal',async()=>{
+    expect(await deliverHomeCard(async()=>{throw new HomeCardReadTimeoutError();})).toEqual({state:'failed',reason:'timeout'});
+    // The server's own cap answer can reach a browser whose timer was delayed: it is still the cap.
+    const clock=vi.spyOn(performance,'now').mockReturnValue(1000);
+    const read=(rejects:((reason:unknown)=>void)[])=>()=>new Promise<string>((_,reject)=>{rejects.push(reject);});
+    const lateRejects:((reason:unknown)=>void)[]=[],earlyRejects:((reason:unknown)=>void)[]=[];
+    const late=deliverHomeCard(read(lateRejects),{timeoutMs:100}),early=deliverHomeCard(read(earlyRejects),{timeoutMs:100});
+    while(!lateRejects.length||!earlyRejects.length)await Promise.resolve();
+    clock.mockReturnValue(1099);earlyRejects[0](new Error('Fictional refusal before the cap'));
+    expect(await early).toEqual({state:'failed',reason:'unavailable'});
+    clock.mockReturnValue(1150);lateRejects[0](new Error('Fictional server refusal after its cap'));
+    expect(await late).toEqual({state:'failed',reason:'timeout'});
+  });
+  it('skips an automatic refresh while a read is in flight, refreshes an idle card at once and merges one activation',()=>{
+    let now=1000;const gate=createHomeCardRefreshGate(()=>now);
+    gate.start();
+    expect(gate.allow()).toBe(false);
+    now+=HOME_CARD_READ_HARD_CAP_MS*2;expect(gate.allow()).toBe(false);
+    gate.settle();
+    expect(gate.allow()).toBe(true);
+    // The paired focus and visibility events of one activation refresh once.
+    expect(gate.allow()).toBe(false);
+    now+=HOME_CARD_REFRESH_DEDUPE_MS-1;expect(gate.allow()).toBe(false);
+    // Idle again just past the de-duplication window: no longer gated by the read cap.
+    now+=1;expect(gate.allow()).toBe(true);
+    expect(HOME_CARD_REFRESH_DEDUPE_MS).toBeLessThanOrEqual(1000);
+    // Overlapping reads (a cancelled one settling after its replacement started) keep the card busy.
+    gate.start();gate.start();gate.settle();now+=5000;expect(gate.allow()).toBe(false);
+    gate.settle();expect(gate.allow()).toBe(true);
+  });
   it('delivers a ready sibling while another reader is delayed, then times out only the delayed one',async()=>{
     vi.useFakeTimers();
     let delayedSignal:AbortSignal|undefined;
@@ -11,7 +66,7 @@ describe('independent employee Home read delivery',()=>{
     const fast=deliverHomeCard(async()=>({count:2}));
     expect(await fast).toEqual({state:'ready',value:{count:2}});
     expect(delayedSignal?.aborted).toBe(false);
-    await vi.advanceTimersByTimeAsync(HOME_CARD_READ_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(HOME_CARD_READ_HARD_CAP_MS);
     expect(await slow).toEqual({state:'failed',reason:'timeout'});
     expect(delayedSignal?.aborted).toBe(true);
     expect(delayed).toHaveBeenCalledOnce();

@@ -13,7 +13,7 @@ const catalogues = { en, ms, zh, ta, th, vi: viMessages };
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: language.current, messages: catalogues[language.current], namespace: namespace as never, onError: error => { throw error; } }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: scope }));
-vi.mock('../core/employee-master-reports', () => ({ listEmployeeMasterReports: list }));
+vi.mock('../core/employee-master-reports', () => ({ readEmployeeMasterReportHub: list }));
 vi.mock('../core/custom-reports', () => ({ listCustomReports: async () => [] }));
 vi.mock('../core/report-registry', () => ({ REPORT_CATEGORIES: ['master'], datasetsForCategory: () => [] }));
 vi.mock('../app/reports/employee-master/MasterReportList', () => ({ MasterReportList: ({ reports }: { reports: { id: string; name: string }[] }) => <div>{reports.map(report => <div key={report.id} data-testid="visible-master-report">{report.name}</div>)}</div> }));
@@ -29,7 +29,7 @@ describe.each(['en','ms','zh','ta','th','vi'] as const)('Employee Master visible
  it.each([true,false])('acknowledges a visible saved report outside the first five without changing recent order (canEdit=%s)', async canEdit => {
   language.current = locale;
   const visible = Array.from({ length: 7 }, (_, index) => ({ id: '00000000-0000-4000-8000-'+String(index+1).padStart(12,'0'), name: 'Visible fictional report '+index, canEdit }));
-  list.mockResolvedValue(visible); const saved = visible[6];
+  const saved = visible[6]; list.mockResolvedValue({reports:visible.slice(0,5),total:visible.length,savedReport:saved});
   render(await Page({ searchParams: Promise.resolve({ cat: 'master', saved: saved.id, savedName: 'Forged query title must be ignored' }) }));
   const t = createTranslator({ locale, messages: catalogues[locale], namespace: 'employeeMasterReports', onError: error => { throw error; } });
   const status = screen.getByRole('status'); expect(status).toHaveTextContent(t('savedReport', { name: saved.name }));
@@ -39,12 +39,12 @@ describe.each(['en','ms','zh','ta','th','vi'] as const)('Employee Master visible
   if (canEdit) expect(edit).toHaveAttribute('href', '/reports/employee-master/'+saved.id); else expect(edit).not.toBeInTheDocument();
   expect(within(status).getByRole('link', { name: t('viewAll') })).toHaveAttribute('href', '/reports/employee-master');
   expect(screen.getAllByTestId('visible-master-report').map(row => row.textContent)).toEqual(visible.slice(0,5).map(report => report.name));
-  expect(list).toHaveBeenCalledTimes(1); expect(list).toHaveBeenCalledWith(principal, companies, { all: true });
+  expect(list).toHaveBeenCalledTimes(1); expect(list).toHaveBeenCalledWith(principal, companies, saved.id);
  });
  it.each([0,1,7])('shows the authorised total %i while keeping only the five recent rows on the card', async count => {
   language.current = locale;
   const visible = Array.from({ length: count }, (_, index) => ({ id: 'report-'+index, name: 'Visible fictional report '+index }));
-  list.mockImplementation(async (_actor, _scope, options?: { all?: boolean }) => options?.all ? visible : visible.slice(0, 5));
+  list.mockResolvedValue({reports:visible.slice(0,5),total:count,savedReport:undefined});
   render(await Page({ searchParams: Promise.resolve({ cat: 'master' }) }));
   const t = createTranslator({ locale, messages: catalogues[locale], namespace: 'employeeMasterReports', onError: error => { throw error; } });
   const link = screen.getByRole('link', { name: t('viewAllCountLabel', { count }) });
@@ -52,11 +52,11 @@ describe.each(['en','ms','zh','ta','th','vi'] as const)('Employee Master visible
   expect(link).toHaveTextContent(t('viewAllCount', { count }));
   expect(screen.queryAllByTestId('visible-master-report')).toHaveLength(Math.min(5, count));
   if (count > 5) expect(screen.queryByText(visible[5].name)).not.toBeInTheDocument();
-  expect(list).toHaveBeenCalledTimes(1); expect(list).toHaveBeenCalledWith(principal, companies, { all: true });
+  expect(list).toHaveBeenCalledTimes(1); expect(list).toHaveBeenCalledWith(principal, companies, undefined);
  });
 });
 it.each([undefined,'unknown-private-report','foreign-report'])('does not acknowledge an unverified saved id (%s) or reflect a supplied name', async saved => {
- language.current = 'en'; list.mockResolvedValue([]);
+ language.current = 'en'; list.mockResolvedValue({reports:[],total:0,savedReport:undefined});
  render(await Page({ searchParams: Promise.resolve({ cat: 'master', saved, savedName: 'Untrusted confidential report title' }) }));
  expect(screen.queryByRole('status')).not.toBeInTheDocument(); expect(screen.queryByText(/Untrusted confidential report title/)).not.toBeInTheDocument();
 });

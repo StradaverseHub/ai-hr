@@ -1,3 +1,5 @@
+import { ActionButton } from '@/components/ui/action-button';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import {taxBasisNoticeReferences} from '@/packs/payroll/service';
 import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
 import { notFound, redirect } from 'next/navigation';
@@ -435,15 +437,15 @@ export default async function StatutoryFormPage({
                   Form E row's own arrival, which is where they belong. */}
               {!eaLang && (
                 <>
-                  <a href={exportHref('pdf')} className={outBtn}>
+                  <ExportDownloadLink href={exportHref('pdf')} className={outBtn}>
                     {t('downloadPdf')}
-                  </a>
-                  <a href={exportHref('xlsx')} className={outBtn}>
+                  </ExportDownloadLink>
+                  <ExportDownloadLink href={exportHref('xlsx')} className={outBtn}>
                     {t('downloadExcel')}
-                  </a>
-                  <a href={exportHref('csv')} className={outBtn}>
+                  </ExportDownloadLink>
+                  <ExportDownloadLink href={exportHref('csv')} className={outBtn}>
                     {t('downloadCsv')}
-                  </a>
+                  </ExportDownloadLink>
                 </>
               )}
               <PrintButton />
@@ -453,7 +455,7 @@ export default async function StatutoryFormPage({
                 <input type="hidden" name="periodKey" value={periodKey} />
                 <input type="hidden" name="year" value={year} />
                 <input type="hidden" name="month" value={month} />
-                <button className={btnPrimary}>{t('recordGeneration')}</button>
+                <ActionButton actionKind="generating" className={btnPrimary}>{t('recordGeneration')}</ActionButton>
               </form>
             </>
           }

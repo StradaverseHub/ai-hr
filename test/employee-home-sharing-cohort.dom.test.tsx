@@ -1,0 +1,301 @@
+import * as React from 'react';
+import {readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {NextIntlClientProvider} from 'next-intl';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {HomeInitialSharing,useHomeInitialSharing} from '../components/employee-home/sharing-cohort';
+import {HomeTodayCard} from '../components/employee-home/today-card';
+import {HomeCalendarCard} from '../components/employee-home/calendar-card';
+import {homeCalendarGrid} from '../lib/employee-home-calendar';
+import type {HomeSharingCard} from '../lib/employee-home-sharing-cohort';
+import {HomeTeamCard} from '../components/employee-home/team-card';
+import {HomeCelebrationsCard} from '../components/employee-home/celebrations-card';
+import {HomeNoticesCard} from '../components/employee-home/notices-card';
+import {HomeTimeOffCard} from '../components/employee-home/time-off-card';
+import {HomeGreetingCard} from '../components/employee-home/greeting-card';
+import {HomeSummaryOverview} from '../components/employee-home/summary-overview';
+import {HomeTasksCard} from '../components/employee-home/tasks-card';
+import en from '../messages/en.json';
+import ms from '../messages/ms.json';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {addDaysIso} from '../lib/roster-month';
+import {HOME_CARD_STREAM_STALL_MS} from '../lib/employee-home-delivery';
+
+const fetcher=vi.fn();
+const date=todayInKualaLumpur();
+const own='own';
+const team=(employmentId=own)=>({version:1,employmentId,page:{scope:'off',date,totalPeople:0,items:[],nextCursor:null}});
+const celebrations=(employmentId=own)=>({version:1,employmentId,page:{scope:'off',from:date,to:addDaysIso(date,7),total:0,items:[],nextCursor:null}});
+const labels=en.employeeHome;
+function view({both=true,locale='en',employmentId=own}:{both?:boolean;locale?:'en'|'ms';employmentId?:string}={}){
+ return <NextIntlClientProvider locale={locale} messages={locale==='en'?en:ms} timeZone="Asia/Kuala_Lumpur">
+  <HomeInitialSharing employmentId={employmentId}>
+   <HomeTeamCard employmentId={employmentId}/>
+   {both&&<HomeCelebrationsCard employmentId={employmentId}/>}
+  </HomeInitialSharing>
+ </NextIntlClientProvider>;
+}
+function responseStream(){
+ let output!:ReadableStreamDefaultController<Uint8Array>;
+ const body=new ReadableStream<Uint8Array>({start(controller){output=controller;}});
+ return {
+  response:new Response(body,{headers:{'Content-Type':'application/x-ndjson'}}),
+  push:(frame:unknown)=>output.enqueue(new TextEncoder().encode(JSON.stringify(frame)+'\n')),
+  close:()=>output.close(),
+ };
+}
+beforeEach(()=>{fetcher.mockReset();vi.stubGlobal('fetch',fetcher);});
+afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals();});
+
+it('streams the healthy card and retries only the failed card outside the cohort',async()=>{
+ const stream=responseStream();
+ fetcher.mockResolvedValueOnce(stream.response);
+ render(<React.StrictMode>{view()}</React.StrictMode>);
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+ expect(fetcher.mock.calls[0][0]).toBe('/api/home/sharing-initial?employmentId=own');
+ stream.push({version:1,card:'team',status:200,value:team()});
+ expect(await screen.findByText(labels.team.off)).toBeVisible();
+ expect(screen.getByRole('region',{name:labels.celebrations.title})).toHaveAttribute('aria-busy','true');
+ stream.push({version:1,card:'celebrations',status:503});
+ stream.close();
+ const section=screen.getByRole('region',{name:labels.celebrations.title});
+ await within(section).findByRole('alert');
+ fetcher.mockResolvedValueOnce(Response.json(celebrations()));
+ fireEvent.click(within(section).getByRole('button',{name:'Retry: '+labels.celebrations.title}));
+ expect(await screen.findByText(labels.celebrations.off)).toBeVisible();
+ expect(fetcher.mock.calls.map(([url])=>url)).toEqual([
+  '/api/home/sharing-initial?employmentId=own','/api/home/celebrations?employmentId=own',
+ ]);
+});
+
+it('keeps streamed cards loading while frames arrive, then shows the timeout alert only after the stream stalls',async()=>{
+ vi.useFakeTimers();
+ const advance=(ms:number)=>act(async()=>{await vi.advanceTimersByTimeAsync(ms);});
+ const stream=responseStream();
+ fetcher.mockResolvedValueOnce(stream.response);
+ render(<main>{view()}</main>);
+ await advance(0);
+ expect(fetcher).toHaveBeenCalledOnce();
+ const transport=fetcher.mock.calls[0][1].signal as AbortSignal;
+ const celebrationsRegion=screen.getByRole('region',{name:labels.celebrations.title});
+ // A frame just inside the window: well past the former 2.8 s deadline, and still no alert anywhere.
+ await advance(HOME_CARD_STREAM_STALL_MS-1);
+ expect(screen.queryByRole('alert')).toBeNull();
+ stream.push({version:1,card:'team',status:200,value:team()});
+ await advance(0);await advance(0);
+ expect(screen.getByText(labels.team.off)).toBeVisible();
+ // That frame restarted the window for the card still waiting.
+ await advance(HOME_CARD_STREAM_STALL_MS-1);
+ expect(celebrationsRegion).toHaveAttribute('aria-busy','true');
+ expect(screen.queryByRole('alert')).toBeNull();expect(transport.aborted).toBe(false);
+ await advance(1);
+ expect(within(celebrationsRegion).getByRole('alert')).toHaveTextContent(labels.celebrations.timeout);
+ expect(transport.aborted).toBe(true);
+ expect(screen.getByText(labels.team.off)).toBeVisible();
+ await advance(HOME_CARD_STREAM_STALL_MS*4);
+ expect(fetcher).toHaveBeenCalledOnce();
+
+ // The performance harness still recognises this as a genuine card failure: its own selector, marker
+ // mapping and catalog lookup name the card and the timeout message key.
+ const harness=readFileSync(join(process.cwd(),'scripts/performance/system-load-owner.mjs'),'utf8');
+ const selector=/const failureNodes=await page\.locator\('([^']+)'\)\.evaluateAll/.exec(harness)?.[1];
+ expect(selector).toContain('[role="alert"]');
+ const nodes=[...document.querySelectorAll(selector!)].map(node=>{
+  const card=node.closest('[data-home-card],[data-dashboard-card]');
+  return {card:card?.getAttribute('data-home-card')??card?.getAttribute('data-dashboard-card')??null,
+   marker:node.hasAttribute('data-today-unavailable')?'today-unavailable':node.hasAttribute('data-read-unavailable')?'read-unavailable':'alert',
+   section:node.closest('[data-today-section]')?.getAttribute('data-today-section')??null,text:node.textContent??''};
+ });
+ const {homeCardFailureFacts,homeFailureMessageCatalog}=await import('../scripts/performance/worker-comparison-failure.mjs');
+ expect(homeCardFailureFacts(nodes,homeFailureMessageCatalog([en]))).toEqual([
+  {card:'celebrations',marker:'alert',section:null,message:'employeeHome.celebrations.timeout'},
+ ]);
+});
+
+it('shows a refused streamed card at once with its failed message, not as a stall',async()=>{
+ const stream=responseStream();
+ fetcher.mockResolvedValueOnce(stream.response);
+ render(view());
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+ stream.push({version:1,card:'team',status:403});
+ const region=screen.getByRole('region',{name:labels.team.title});
+ await waitFor(()=>expect(within(region).getByRole('alert')).toHaveTextContent(labels.team.failed));
+ expect(within(region).getByRole('alert')).not.toHaveTextContent(labels.team.timeout);
+ stream.push({version:1,card:'celebrations',status:200,value:celebrations()});stream.close();
+ expect(await screen.findByText(labels.celebrations.off)).toBeVisible();
+});
+
+it('uses the existing standalone endpoint when only Team renders',async()=>{
+ fetcher.mockResolvedValueOnce(Response.json(team()));
+ render(view({both:false}));
+ expect(await screen.findByText(labels.team.off)).toBeVisible();
+ expect(fetcher).toHaveBeenCalledOnce();
+ expect(fetcher.mock.calls[0][0]).toBe('/api/home/team?employmentId=own');
+});
+
+it('cancels an old locale/subject generation and ignores its stale result',async()=>{
+ const old=responseStream(),next=responseStream();
+ fetcher.mockResolvedValueOnce(old.response).mockResolvedValueOnce(next.response);
+ const mounted=render(view());
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(1));
+ const oldSignal=fetcher.mock.calls[0][1].signal as AbortSignal;
+ mounted.rerender(view({locale:'ms',employmentId:'next'}));
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(2));
+ expect(oldSignal.aborted).toBe(true);
+ old.push({version:1,card:'team',status:200,value:team()});
+ old.close();
+ expect(fetcher.mock.calls[1][0]).toBe('/api/home/sharing-initial?employmentId=next');
+ next.push({version:1,card:'team',status:200,value:team('next')});
+ next.push({version:1,card:'celebrations',status:200,value:celebrations('next')});
+ next.close();
+ expect(await screen.findByText(ms.employeeHome.team.off)).toBeVisible();
+ expect(screen.queryByText(labels.team.off)).toBeNull();
+});
+
+it('leaves the transport running when only one subscriber unmounts',async()=>{
+ const stream=responseStream();
+ fetcher.mockResolvedValueOnce(stream.response);
+ const mounted=render(view());
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+ const signal=fetcher.mock.calls[0][1].signal as AbortSignal;
+ mounted.rerender(view({both:false}));
+ expect(signal.aborted).toBe(false);
+ stream.push({version:1,card:'team',status:200,value:team()});
+ stream.close();
+ expect(await screen.findByText(labels.team.off)).toBeVisible();
+ expect(fetcher).toHaveBeenCalledOnce();
+});
+
+it('keeps Team paging and return to first page on the standalone route',async()=>{
+ const stream=responseStream(),peer='62063128-fdc5-4a0e-87d7-1892257dbb10';
+ fetcher.mockResolvedValueOnce(stream.response);
+ render(view());
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+ stream.push({version:1,card:'celebrations',status:200,value:celebrations()});
+ stream.push({version:1,card:'team',status:200,value:{...team(),page:{scope:'department',date,totalPeople:2,
+  items:[{employmentId:peer,name:'Fictional peer',presence:null}],nextCursor:peer}}});
+ stream.close();
+ fetcher.mockResolvedValueOnce(Response.json(team()));
+ fireEvent.click(await screen.findByRole('button',{name:labels.team.next}));
+ await screen.findByText(labels.team.off);
+ const paged=new URL(fetcher.mock.calls[1][0],'http://local');
+ expect(paged.pathname).toBe('/api/home/team');
+ expect(paged.searchParams.get('after')).toBe(peer);
+ fetcher.mockResolvedValueOnce(Response.json(team()));
+ fireEvent.click(screen.getByRole('button',{name:labels.team.firstPage}));
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(3));
+ expect(fetcher.mock.calls[2][0]).toBe('/api/home/team?employmentId=own');
+});
+
+
+it('delivers seven Home reads in one stream while a failed card retries alone',async()=>{
+ const stream=responseStream();
+ const notices={version:1,employmentId:own,total:0,unread:0,acknowledgementRequired:0,items:[]};
+ const timeOff={version:1,employmentId:own,asOf:date,canApply:false,balances:[],nextApproved:null};
+ const serverNow=new Date().toISOString();
+ const greeting={version:1,employmentId:own,serverNow,displayDate:date,timeZone:'Asia/Kuala_Lumpur',
+  message:'Fictional greeting',templateKey:'greetingMorning',photoHref:null};
+ const summary={version:1,employmentId:own,serverNow,items:[],calm:'Fictional calm update',quickActions:[]};
+ const tasks={version:1,employmentId:own,grain:'account',asOf:date,total:0,overdue:0,effortMinutes:0,
+  unestimated:0,page:1,pages:1,pageSize:12,items:[]};
+ fetcher.mockResolvedValueOnce(stream.response);
+ render(<NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">
+  <HomeInitialSharing employmentId={own}>
+   <HomeTeamCard employmentId={own}/>
+   <HomeCelebrationsCard employmentId={own}/>
+   <HomeNoticesCard employmentId={own}/>
+   <HomeTimeOffCard employmentId={own}/>
+   <HomeGreetingCard employmentId={own}><HomeSummaryOverview employmentId={own}/></HomeGreetingCard>
+   <HomeTasksCard employmentId={own}/>
+  </HomeInitialSharing>
+ </NextIntlClientProvider>);
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+ const initial=new URL(fetcher.mock.calls[0][0],'http://local');
+ expect(initial.pathname).toBe('/api/home/sharing-initial');
+ expect(initial.searchParams.getAll('card').sort()).toEqual(['celebrations','greeting','notices','summary','tasks','team','timeOff']);
+ stream.push({version:1,card:'timeOff',status:200,value:timeOff});
+ stream.push({version:1,card:'greeting',status:200,value:greeting});
+ stream.push({version:1,card:'summary',status:200,value:summary});
+ stream.push({version:1,card:'tasks',status:503});
+ expect(await screen.findByText(labels.timeOff.empty)).toBeVisible();
+ const noticeCard=screen.getByRole('region',{name:en.notices.myTitle});
+ expect(noticeCard).toHaveAttribute('aria-busy','true');
+ stream.push({version:1,card:'team',status:200,value:team()});
+ stream.push({version:1,card:'celebrations',status:200,value:celebrations()});
+ stream.push({version:1,card:'notices',status:503});
+ stream.close();
+ await within(noticeCard).findByRole('alert');
+ const taskCard=screen.getByRole('region',{name:labels.tasks.title});
+ await within(taskCard).findByRole('alert');
+ expect(await screen.findByText(labels.team.off)).toBeVisible();
+ expect(await screen.findByText(labels.celebrations.off)).toBeVisible();
+ expect(await screen.findByText(greeting.message)).toBeVisible();
+ expect(await screen.findByText(summary.calm)).toBeVisible();
+ fetcher.mockResolvedValueOnce(Response.json(notices));
+ fireEvent.click(within(noticeCard).getByRole('button',{name:labels.notices.retry+': '+en.notices.myTitle}));
+ expect(await within(noticeCard).findByText(en.notices.myEmpty)).toBeVisible();
+ fetcher.mockResolvedValueOnce(Response.json(tasks));
+ fireEvent.click(within(taskCard).getByRole('button',{name:labels.tasks.retry+': '+labels.tasks.title}));
+ expect(await within(taskCard).findByText(labels.tasks.empty)).toBeVisible();
+ expect(fetcher.mock.calls.map(([url])=>new URL(url,'http://local').pathname)).toEqual([
+  '/api/home/sharing-initial','/api/home/notices','/api/home/tasks',
+ ]);
+ expect(new URL(fetcher.mock.calls[2][0],'http://local').searchParams.get('page')).toBe('1');
+});
+
+it('delivers all nine initial native cards through one fresh streamed request',async()=>{
+ const stream=responseStream(),month=date.slice(0,7),days=homeCalendarGrid(month,1),serverNow=new Date().toISOString();
+ const values={team:team(),celebrations:celebrations(),notices:{version:1,employmentId:own,total:0,unread:0,acknowledgementRequired:0,items:[]},
+  timeOff:{version:1,employmentId:own,asOf:date,canApply:false,balances:[],nextApproved:null},
+  greeting:{version:1,employmentId:own,serverNow,displayDate:date,timeZone:'Asia/Kuala_Lumpur',message:'Fictional all-card greeting',templateKey:'greetingMorning',photoHref:null},
+  summary:{version:1,employmentId:own,serverNow,items:[],calm:'Fictional all-card update',quickActions:[]},
+  tasks:{version:1,employmentId:own,grain:'account',asOf:date,total:0,overdue:0,effortMinutes:0,unestimated:0,page:1,pages:1,pageSize:12,items:[]},
+  today:{version:1,employmentId:own,serverNow,businessDate:date,attendanceEnabled:false,payrollEnabled:false,clock:null,dayKind:null,leavePresence:null,workLocations:{total:0,names:[]},payday:null},
+  calendar:{version:1,employmentId:own,month,today:date,weekStartsOn:1,payrollEnabled:false,
+   team:{scope:'off',from:days[0],to:days[days.length-1],days:days.map(date=>({date,available:false,totalPeople:null,items:[],nextCursor:null}))},
+   days:days.map(date=>({date,canRequestLeave:false,entries:[]}))},
+ };
+ fetcher.mockResolvedValueOnce(stream.response);
+ render(<NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">
+  <HomeInitialSharing employmentId={own} month={month}>
+   <HomeTeamCard employmentId={own}/><HomeCelebrationsCard employmentId={own}/><HomeNoticesCard employmentId={own}/><HomeTimeOffCard employmentId={own}/>
+   <HomeGreetingCard employmentId={own}><HomeSummaryOverview employmentId={own}/></HomeGreetingCard><HomeTasksCard employmentId={own}/>
+   <HomeTodayCard employmentId={own} employmentLabel="Fictional own employment" timeZone="Asia/Kuala_Lumpur"/>
+   <HomeCalendarCard employmentId={own} initialMonth={month}/>
+  </HomeInitialSharing>
+ </NextIntlClientProvider>);
+ await waitFor(()=>expect(fetcher).toHaveBeenCalledOnce());
+ const request=new URL(fetcher.mock.calls[0][0],'http://local');
+ expect(request.searchParams.get('month')).toBe(month);
+ expect(request.searchParams.getAll('card').sort()).toEqual(Object.keys(values).sort());
+ for(const [card,value] of Object.entries(values))stream.push({version:1,card,status:200,value});stream.close();
+ await waitFor(()=>expect(document.querySelectorAll('main [aria-busy="true"], [data-home-card][aria-busy="true"]').length).toBe(0));
+ expect(screen.queryAllByRole('alert')).toHaveLength(0);expect(await screen.findByText(values.greeting.message)).toBeVisible();
+ expect(screen.getByRole('region',{name:labels.today.title})).toHaveAttribute('aria-busy','false');
+ expect(screen.getByRole('region',{name:labels.calendar.title})).toHaveAttribute('aria-busy','false');
+ expect(fetcher).toHaveBeenCalledOnce();
+});
+
+function SubscriptionProbe({card,fallback}:{card:HomeSharingCard;fallback:()=>Promise<unknown>}){
+ const subscribe=useHomeInitialSharing(),[state,setState]=React.useState('loading');
+ React.useEffect(()=>{
+  const controller=new AbortController();let live=true;
+  void subscribe!(card,controller.signal,fallback).then(()=>{if(live)setState('ready');},()=>{if(live)setState('failed');});
+  return()=>{live=false;controller.abort();};
+ },[subscribe,card,fallback]);
+ return <output data-testid={card}>{state}</output>;
+}
+
+it.each([400,401,403,503])('uses old-server individual reads only for the new-card protocol refusal (%s)',async status=>{
+ fetcher.mockResolvedValueOnce(Response.json({error:'fixture'},{status}));
+ const today=vi.fn(async()=>({source:'native today'})),calendar=vi.fn(async()=>({source:'native calendar'}));
+ render(<NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">
+  <HomeInitialSharing employmentId={own} month={date.slice(0,7)}>
+   <SubscriptionProbe card="today" fallback={today}/><SubscriptionProbe card="calendar" fallback={calendar}/>
+  </HomeInitialSharing>
+ </NextIntlClientProvider>);
+ await waitFor(()=>expect(screen.getByTestId('today')).toHaveTextContent(status===400?'ready':'failed'));
+ expect(screen.getByTestId('calendar')).toHaveTextContent(status===400?'ready':'failed');
+ expect(fetcher).toHaveBeenCalledOnce();expect(today).toHaveBeenCalledTimes(status===400?1:0);expect(calendar).toHaveBeenCalledTimes(status===400?1:0);
+});

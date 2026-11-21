@@ -329,7 +329,11 @@ describe('§3 the Active Bank Information card retains the form contract through
       for (const defaults of CASES) {
         const props = { action, employmentId: 'emp-1', personId: 'per-1', defaults };
         const before = html(<BeforeBankInfoCard {...props} />, msgs as Msgs, loc);
-        const after = html(<BankInfoCard {...props} />, msgs as Msgs, loc);
+        const withResidency = html(<BankInfoCard {...props} />, msgs as Msgs, loc);
+        const template=document.createElement('template');template.innerHTML=withResidency;
+        expect(template.content.querySelector('[name="bankPayeeResidency"]')).not.toBeNull();
+        template.content.querySelector('[data-bank-payee-residency]')!.remove();
+        const after=template.innerHTML;
         expect(before.length, 'the before-markup rendered something').toBeGreaterThan(1000);
         expect(personnelMarkupContract(after), `${loc} ${JSON.stringify(defaults)}`).toBe(personnelMarkupContract(before));
       }

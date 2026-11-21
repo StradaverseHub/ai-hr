@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../ai-centre-control';
 /** ADR-0170 step 4 — the explainers and the setup co-pilot as harness capabilities; AI Centre issue 13b adds the
  * governed pay averages, offered only to callers with payroll access.
  *
@@ -22,13 +23,16 @@ import {explainOwnPayDifference} from './pay-difference';
 import {explainOwnClaimLimit} from './claim-limit';
 import {LoopViewRefused,loopPausedCompanies,loopsOverview} from '../loops/views';
 import {loopCompanyLevels} from '../loops/autonomy-views';
-import {maxLevel} from '../loops/autonomy';
+import {promotableTo} from '../loops/autonomy';
 import {levelKey} from '../loops/autonomy-types';
 import {askMyPayrollReadiness} from '../pre-salary/ask';
 import {payrollAuditStatus,payrollCycleStatus,payrollLoopSettings,salaryPayrollChecks} from './payroll-loops';
 import {askPolicyHandbook} from '../handbook/ask';
 import {askAiQuality} from '../learning/ask';
 import {payrollLearningStatus} from './payroll-learning';
+import {sharedLeaveGroupsStatus} from './shared-leave-groups';
+import {attendanceOnBehalfPeople} from './attendance-on-behalf';
+import {attendanceOnBehalfPurposesHeld} from '../../packs/attendance/service';
 
 export type TerasCapabilityScope=Readonly<{companyId:string;locale?:string}>;
 export type TerasCapability=Readonly<{name:string;module:string|null;admin:boolean;
@@ -40,7 +44,11 @@ export type TerasCapability=Readonly<{name:string;module:string|null;admin:boole
  worker:'explainers'|null;
  /** Release merge (spec v22): served as this topic of product_guidance (core/product-context/tools.ts GUIDANCE_TOPICS),
   * never bound as a tool of its own, so the offer stays within the provider's tool ceiling. Same runner, same gating. */
- topic?:'password_policy'|'correction_controls'|'organisation_tagging';
+ topic?:'password_policy'|'correction_controls'|'organisation_tagging'|'reward_reviews'|'offboarding_requisitions'|'document_signing'|'payroll_history_records';
+ /** 96a54ed2: an extra offer condition read from the caller's own facts, after the role, module and access gates. `once`
+  * shares one load between capabilities in the same offer, so a family of capabilities costs one read per call. The
+  * runner still re-checks its own authority. */
+ offer?(ctx:SessionContext,once:<T>(key:string,load:()=>Promise<T>)=>Promise<T>):Promise<boolean>;
  run(ctx:SessionContext,input:Record<string,unknown>,scope:TerasCapabilityScope):Promise<ExplainerOutcome>}>;
 const text=(value:unknown)=>typeof value==='string'?value:undefined;
 
@@ -77,7 +85,7 @@ async function loopsStatus(ctx:SessionContext):Promise<ExplainerOutcome>{
  try{
   const overview=await loopsOverview(ctx),paused=await loopPausedCompanies(ctx),levels=await loopCompanyLevels(ctx);
   return{ok:true,canSwitch:overview.canSwitch,
-   loops:overview.rows.map(row=>({loop:row.id,ceiling:levelKey(maxLevel(row.id)),levels:levels[row.id].map(item=>({company:item.companyName,level:levelKey(item.level)})),
+   loops:overview.rows.map(row=>({loop:row.id,ceiling:levelKey(promotableTo(row.id)),levels:levels[row.id].map(item=>({company:item.companyName,level:levelKey(item.level)})),
     on:row.on,stopped:row.stopped,running:row.running,
     lastRun:row.lastRun?{at:row.lastRun.at.toISOString(),status:row.lastRun.status,capped:row.lastRun.capped}:null,
     openNow:row.openNow,waitingNow:row.waitingNow,pausedIn:paused[row.id].map(company=>({company}))})),
@@ -112,6 +120,29 @@ export async function organisationTaggingGuidance(ctx:SessionContext):Promise<Ex
   humanBoundary:'The native owner verifies current HR doer authority over the full affected scope and independent HR or eligible Group Rewards checker authority. A different login and Person must approve the exact frozen preview; the original HR doer separately continues staging and publication. A changed source requires a new preview. Guidance cannot choose mappings, read a run, approve, publish, resume, export or re-tag employees. Deployment never executes a re-tag.',
   provenance:provenance('core/explainers/capabilities.ts#organisationTaggingGuidance','Not applicable: literal public page guidance, not a mapping or workflow read.',page,'Public navigation and human decision boundaries only. No Company identities, run handles, employees, mappings, counts, decisions, account state or source fingerprints are read or changed.')};
 }
+export async function rewardReviewsGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
+ if(!isAdmin(ctx)||!isModuleEnabled(ctx,'rewards',scope.companyId))return refuse('not_permitted','This guidance requires an administrator with the module enabled.');
+ const page='/rewards/reviews';
+ return {ok:true,page,purpose:'Find the native Rewards review workspace.',navigation:'Open Rewards, then Reviews.',humanBoundary:'Guidance reads no review, participant, recommendation, salary or budget. The native review owner checks each assigned role and company scope; configuration access alone does not grant access to a review. A human separately chooses and confirms any review action.',provenance:provenance('core/explainers/capabilities.ts#rewardReviewsGuidance','Not applicable: literal public navigation only.',page,'No employee, review, money, configuration or effect is read or changed.')};
+}
+/** Public navigation only; the native page separately checks every business permission. */
+export async function offboardingRequisitionGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
+ if(!isAdmin(ctx)||!isModuleEnabled(ctx,'lifecycle',scope.companyId))return refuse('not_permitted','This guidance requires an administrator with the module enabled.');
+ const page='/lifecycle/requisitions/offboarding';
+ return {ok:true,page,purpose:"Find the item-scoped Return and Revoke work for offboarding.",navigation:"Open the Offboarding requisitions page, then select a request offered by its native list.",humanBoundary:"The native owner checks current company and Full case-view or assigned fulfilment-team access. A fulfilment team sees only its own items, not the private case. A human records item progress and the required reason on that request; it does not sign a document, clear the whole case or terminate employment.",provenance:provenance('core/explainers/capabilities.ts#offboardingRequisitionGuidance','Not applicable: literal public page guidance only.',page,'No case, document, employee, answer, recipient, payroll amount, record identity or effect is read or changed.')};
+}
+/** Public navigation only; the native page separately checks every business permission. */
+export async function documentSigningGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
+ if(!isAdmin(ctx)||!isModuleEnabled(ctx,'lifecycle',scope.companyId))return refuse('not_permitted','This guidance requires an administrator with the module enabled.');
+ const page='/me/document-signing';
+ return {ok:true,page,purpose:"Find routed Onboarding and Offboarding documents awaiting your own review, approval, signature or acknowledgement.",navigation:"Open My document reviews and signatures, then select a document listed for your own assigned participation.",humanBoundary:"The native owner verifies the current account, real Person binding and frozen document route. Participation does not grant Full case view or unrelated Personnel answers. Only the assigned person confirms the offered review, approval, signature, acknowledgement or send-back on the native document; guidance never signs or supplies an answer.",provenance:provenance('core/explainers/capabilities.ts#documentSigningGuidance','Not applicable: literal public page guidance only.',page,'No case, document, employee, answer, recipient, payroll amount, record identity or effect is read or changed.')};
+}
+/** Public navigation only; the native page separately checks every business permission. */
+export async function payrollHistoryRecordsGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
+ if(!isAdmin(ctx)||!isModuleEnabled(ctx,'payroll',scope.companyId))return refuse('not_permitted','This guidance requires an administrator with the module enabled.');
+ const page='/payroll/history-import/records';
+ return {ok:true,page,purpose:"Find imported payroll history records, their retained item breakdown, corrections and audit history.",navigation:"Open Payroll history import, then Imported records; select the company, month and saved record to review.",humanBoundary:"The native owner requires current Payroll administration, original-company scope and the appropriate history import or revert permission. A human supplies a reason, reviews the exact revision and impact preview, then explicitly confirms the background job. Replace replaces the reviewed aggregate; Update listed updates listed totals and preserves unlisted items. Stale previews refuse; corrections do not automatically reprocess payroll, release payslips or pay anyone.",provenance:provenance('core/explainers/capabilities.ts#payrollHistoryRecordsGuidance','Not applicable: literal public page guidance only.',page,'No case, document, employee, answer, recipient, payroll amount, record identity or effect is read or changed.')};
+}
 export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'explain_payslip_statutory',module:'payroll',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnPayslipStatutory(ctx,{period:text(input.period),item:text(input.item)})},
  {name:'explain_leave_entitlement',module:'leave',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnLeaveEntitlement(ctx,{leave_type:text(input.leave_type),as_of:text(input.as_of)})},
@@ -120,6 +151,10 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'password_policy_guidance',module:null,admin:true,worker:null,topic:'password_policy',run:ctx=>passwordPolicyGuidance(ctx)},
  {name:'correction_controls_guidance',module:'payroll',admin:true,worker:null,topic:'correction_controls',run:(ctx,_input,scope)=>correctionControlsGuidance(ctx,scope)},
  {name:'organisation_tagging_guidance',module:null,admin:true,worker:null,topic:'organisation_tagging',run:ctx=>organisationTaggingGuidance(ctx)},
+ {name:'reward_reviews_guidance',module:'rewards',admin:true,worker:null,topic:'reward_reviews',run:(ctx,_input,scope)=>rewardReviewsGuidance(ctx,scope)},
+ {name:'offboarding_requisitions_guidance',module:'lifecycle',admin:true,worker:null,topic:'offboarding_requisitions',run:(ctx,_input,scope)=>offboardingRequisitionGuidance(ctx,scope)},
+ {name:'document_signing_guidance',module:'lifecycle',admin:true,worker:null,topic:'document_signing',run:(ctx,_input,scope)=>documentSigningGuidance(ctx,scope)},
+ {name:'payroll_history_records_guidance',module:'payroll',admin:true,worker:null,topic:'payroll_history_records',run:(ctx,_input,scope)=>payrollHistoryRecordsGuidance(ctx,scope)},
  {name:'pay_aggregates',module:'payroll',admin:false,access:'payroll',worker:null,run:(ctx,input)=>payAggregates(ctx,input)},
  {name:'workforce_metrics',module:null,admin:false,access:'team',worker:null,run:(ctx,input)=>workforceAggregates(ctx,input)},
  // AI v2 W5: "Why?" on the pay difference and the claim limits, under the explainers worker switch like the three above.
@@ -141,6 +176,18 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  // Payroll history learning (P2): "Learned this cycle", payroll administrators only (core/payroll-learning/status.ts), counts under the
  // small-group rule; the owner reads only the companies whose payroll the caller administers.
  {name:'payroll_learning_status',module:'payroll',admin:true,worker:null,run:(ctx,input)=>payrollLearningStatus(ctx,input)},
+ // 50d9b809: the Shared Leave Groups page's groups, administrators only (the page's requireAdmin), configuration only
+ // (core/explainers/shared-leave-groups.ts); served as the operations_status topic shared_leave_groups, no new tool.
+ {name:'shared_leave_groups',module:'leave',admin:true,worker:null,run:ctx=>sharedLeaveGroupsStatus(ctx)},
+ // 96a54ed2 (owner decision, 12 November 2026): the Request On Behalf and Approve On Behalf pages' first lists, offered to
+ // managers and administrators (team access); the runner refuses anyone without the on-behalf permission key before
+ // reading (core/explainers/attendance-on-behalf.ts). Served as operations_status topics of the same names, no new tool.
+ // Offered only while the caller holds that key somewhere (one read for both), so a manager or administrator without it is
+ // offered neither topic.
+ {name:'attendance_on_behalf_subjects',module:'attendance',admin:false,access:'team',worker:null,run:ctx=>attendanceOnBehalfPeople(ctx,'request'),
+  offer:async(ctx,once)=>(await once('attendance_on_behalf',()=>attendanceOnBehalfPurposesHeld(ctx))).has('request')},
+ {name:'attendance_on_behalf_approvers',module:'attendance',admin:false,access:'team',worker:null,run:ctx=>attendanceOnBehalfPeople(ctx,'approve'),
+  offer:async(ctx,once)=>(await once('attendance_on_behalf',()=>attendanceOnBehalfPurposesHeld(ctx))).has('approve')},
 ]);
 /** Capabilities this caller may be offered. A capability that belongs to a worker is offered only while that worker's
  * run gate is open (registered, switched on, tenant not stopped), read once per call in the caller's tenant. */
@@ -149,5 +196,15 @@ export async function terasCapabilitiesFor(ctx:SessionContext):Promise<readonly 
  const workers=[...new Set(candidates.flatMap(row=>row.worker?[row.worker]:[]))];
  const open=new Set<string>();
  for(const worker of workers)if((await workerRunGate(ctx,worker)).run)open.add(worker);
- return Object.freeze(candidates.filter(row=>row.worker===null||open.has(row.worker)));
+ const loads=new Map<string,Promise<unknown>>();
+ const once=<T,>(key:string,load:()=>Promise<T>)=>{if(!loads.has(key))loads.set(key,load());return loads.get(key) as Promise<T>;};
+ const offered:TerasCapability[]=[];
+ for(const row of candidates)if((row.worker===null||open.has(row.worker))&&(!row.offer||await row.offer(ctx,once)))offered.push(row);
+ return Object.freeze(offered.map(row=>Object.freeze({...row,
+  async run(caller:SessionContext,input:Record<string,unknown>,scope:TerasCapabilityScope){
+   [caller,input,scope]=structuredClone([caller,input,scope] as const);
+   try{return await withAiCentreFunction(caller,'read:'+row.name,()=>row.run(caller,input,scope));}
+   catch(error){if(error instanceof Error&&error.name==='AiAllowanceError')return refuse('not_permitted','This AI function is switched off.');throw error;}
+  }
+ })));
 }

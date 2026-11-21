@@ -239,11 +239,12 @@ describe('explicit Home greeting transaction and private content',()=>{
     subjectEmploymentId:target.employmentId,scope:'contact',requestRef:'fictional-racing-home586',reason:'Fictional concurrent erasure'});
    const competingResult=competing.then(value=>({status:'fulfilled' as const,value}),reason=>({status:'rejected' as const,reason}));
    // Each command's FIRST statement that needs the barrier the paused privacy insert holds. Send meets it
-   // inside home_greeting_send_begin. Erasure (core/pdpa.ts erasePersonPiiTx) now takes the shared Access
-   // workforce barrier itself, before admission; the privacy trigger holds that same lock through
-   // access_profile_policy_write_lock, so the erasure waits on `access_workforce_write_lock()` rather than
-   // inside home_greeting_erasure_begin, which takes it again re-entrantly once admitted.
-   const barrier=operation==='send'?'%home_greeting_send_begin%':'%access_workforce_write_lock%';
+   // inside home_greeting_send_begin. Erasure (core/pdpa.ts erasePersonPiiTx) takes the tenant Access lock
+   // itself, before admission. d9dfbaf15 made that lock reader/writer: the privacy trigger holds it SHARED
+   // through access_profile_policy_write_lock -> access_workforce_write_lock, and erasure, an editor, takes it
+   // EXCLUSIVE through `access_configuration_write_lock()`, so that is the statement it waits on, rather than
+   // inside home_greeting_erasure_begin, which takes the lock again re-entrantly once admitted.
+   const barrier=operation==='send'?'%home_greeting_send_begin%':'%access_configuration_write_lock%';
    await until('competing canonical command waiting on its real advisory barrier',async()=>{
     const [row]=await owner.db.execute<{waiting:boolean}>(sql`SELECT EXISTS(SELECT 1 FROM pg_stat_activity a JOIN pg_locks l ON l.pid=a.pid
      WHERE a.datname=current_database() AND a.pid<>${privacyPid} AND l.locktype='advisory' AND NOT l.granted

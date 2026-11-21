@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ExportDownloadLink } from './export-download-link';
 import type { ReactNode } from 'react';
 import { btnGhost, btnPrimary } from '@/components/ui';
 import { StatutoryPdfFrame } from './statutory-pdf-frame';
@@ -110,14 +111,14 @@ export function StatutoryPdfViewer({
         <div className="flex flex-wrap items-end gap-3">
           {controls}
           {primary && (
-            <a href={primary.href} className={`${btnPrimary} ${MONO_PILL}`}>
+            <ExportDownloadLink href={primary.href} className={`${btnPrimary} ${MONO_PILL}`}>
               {primary.label}
-            </a>
+            </ExportDownloadLink>
           )}
           {rest.map((d) => (
-            <a key={d.href} href={d.href} className={`${btnGhost} ${MONO_TXT}`}>
+            <ExportDownloadLink key={d.href} href={d.href} className={`${btnGhost} ${MONO_TXT}`}>
               {d.label}
-            </a>
+            </ExportDownloadLink>
           ))}
           <Link href={back.href} className={`${btnGhost} ${MONO_TXT}`}>
             {back.label}

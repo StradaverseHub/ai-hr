@@ -1,28 +1,41 @@
-import { organisationFilterChoices } from '@/lib/organisation-choice-label';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { BulkJobAuthorityLost } from '@/core/bulk-job-worker';
+import { BulkJobError, BULK_JOB_ALREADY_RUNNING } from '@/core/bulk-job';
+import { enqueueTransactionExport } from '@/core/payroll-transaction-export';
+import { isCalendarDate } from '@/lib/calendar-date';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
-import { listCompanies, listEmployees } from '@/core/read';
+import { listPayrollCyclesForCompanies, listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
+import { listCompanies } from '@/core/read';
+import {readEmployeeChoices} from '@/core/employee-choice';
 import { listPayComponents } from '@/core/pay-components';
 import {
   INDIVIDUAL_TXN_STATUS_FILTERS,
-  listFixedTransactionsAcross,
+  listFixedTransactionsPage,
+  latestProcessedPayslipPeriod,
   listIndividualTxnCreators,
-  listIndividualTxnsAcross,
+  listIndividualTxnsPage,
+  parseIndividualInquirySort,
   listPayslipSourceTxns,
+  listPayslipRunsFor,
+  payslipForReview,
   listProcessedPayslipsAcross,
   listUnattachedTxnSummary,
+  type FixedTransactionFilter,
   type PayslipSourceTxnRow,
 } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
-import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
+import { CollapsibleEmployeePanel, EmployeeScopePanel } from '@/components/collapsible-employee-panel';
 import { payrollProcessBack } from '../back';
 import { packFor } from '@/localization/registry';
 import { IndividualTxnTable } from './individual-table';
+import {Pager} from '@/components/pager';
+import {pageState,parsePageQuery} from '@/lib/pagination';
 import { OutstandingTable } from './outstanding-table';
 import { HistoryTable } from './history-table';
 import { HistoryGrid } from './history-grid';
@@ -31,6 +44,8 @@ import { cleanMonths, pivotHistoryGrid, type PayItemSubjectMap } from './history
 // renders for the Individual Payslip's link, and the derivation takes no SessionContext, so this tab can
 // neither grow a second display of one calculation nor recompute from today's configuration.
 import { StatutoryDetailView } from '../statutory-detail/statutory-detail-view';
+import { StatutoryPeriodFields } from './statutory-period-fields';
+import { resolveStatutoryPeriod } from './statutory-period';
 import { explainStatutory } from '@/core/statutory-explain';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -120,7 +135,7 @@ const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 // INDIVIDUAL_TXN_STATUS_FILTERS there: an unknown value DROPS the filter (fails open, showing everything)
 // rather than erroring, so a missing entry here is silent.
 const TXN_STATUSES = INDIVIDUAL_TXN_STATUS_FILTERS;
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */
 function intParam(v: string | undefined, min: number, max: number): number | undefined {
@@ -134,6 +149,7 @@ export default async function TransactionViewPage({
 }: {
   searchParams: Promise<{
     tab?: string;
+    page?:string;size?:string;txnSort?:string;txnDir?:string;
     companyId?: string;
     employmentId?: string;
     componentId?: string;
@@ -146,6 +162,7 @@ export default async function TransactionViewPage({
      *  what the tick boxes mean. */
     months?: string | string[];
     cycle?: string;
+    payrollCycleId?: string;
     /** 6b4ca488 (Statutory Explanation tab only) — which of the runs matching the four filters to
      *  explain. Absent ⇒ the most recent match, the same default Individual Payslip takes. */
     payslipId?: string;
@@ -174,8 +191,8 @@ export default async function TransactionViewPage({
   // saved links keep working; only the no-tab default moves.
   const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'history';
 
-  const [employees, companies, components, creators, gridComponents] = await Promise.all([
-    listEmployees(s, scopeIds),
+  const [employeeChoices, companies, components, creators, gridComponents] = await Promise.all([
+    readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'labels',selectedId:sp.employmentId}),
     listCompanies(s),
     tab === 'fixed' ? listPayComponents(s) : Promise.resolve([]),
     tab === 'individual' ? listIndividualTxnCreators(s, { companyIds: scopeIds }) : Promise.resolve([]),
@@ -190,10 +207,8 @@ export default async function TransactionViewPage({
     // is why the repair would have been silently inert on the tab the reporter actually opened.
     tab === 'grid' || tab === 'history' ? listPayComponents(s, { includeArchived: true }) : Promise.resolve([]),
   ]);
-  // Department options for the Individual History filter — distinct current-assignment departments in scope.
-  const departmentOptions = (() => {
-    return organisationFilterChoices(employees.map(e=>({id:e.departmentId,name:e.departmentLabel??e.department,code:e.departmentCode})));
-  })();
+  // Full-scope department options and selected identity are independent of the rail's current page.
+  const departmentOptions=employeeChoices.allDepartmentOptions;
   // Narrow the company dropdown to the authorised scope — the filter can only narrow, never widen.
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
 
@@ -201,14 +216,39 @@ export default async function TransactionViewPage({
   // treated as "no selection", so URL tampering cannot cross the company fence.
   const companyId = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : undefined;
   const companyIds = companyId ? [companyId] : scopeIds;
-  const employmentId =
-    sp.employmentId && employees.some((e) => e.employmentId === sp.employmentId) ? sp.employmentId : undefined;
+  const employmentId=employeeChoices.selected?.employmentId;
   const componentId =
     sp.componentId && components.some((c) => c.id === sp.componentId) ? sp.componentId : undefined;
   const status = sp.status === 'active' || sp.status === 'ended' ? sp.status : undefined;
   const year = intParam(sp.year, 2000, 2100);
   const month = intParam(sp.month, 1, 12);
-  const cycle = CYCLES.includes(sp.cycle as (typeof CYCLES)[number]) ? sp.cycle : undefined;
+  const cycles = tab === 'history' || tab === 'grid' || tab === 'statutory'
+    ? await listPayrollCyclesForCompanies(s, companyIds)
+    : [];
+  const payrollCycleId = cycles.find((cycle) => cycle.id === sp.payrollCycleId)?.id;
+  const legacyCycle = CYCLES.includes(sp.cycle as (typeof CYCLES)[number]) ? sp.cycle : undefined;
+  const cycle = payrollCycleId ? undefined : legacyCycle;
+  const cycleFilter = { cycle, payrollCycleId };
+  const cycleParams: Record<string, string> = payrollCycleId ? { payrollCycleId } : cycle ? { cycle } : {};
+  const companyNames = new Map(scopedCompanies.map((company) => [company.id, company.name]));
+  const cycleNameCounts = new Map<string, number>();
+  for (const option of cycles) {
+    const name = option.name.toLocaleLowerCase();
+    cycleNameCounts.set(name, (cycleNameCounts.get(name) ?? 0) + 1);
+  }
+  const cycleChoices = cycles.map((option) => ({
+    id: option.id,
+    label: (cycleNameCounts.get(option.name.toLocaleLowerCase()) ?? 0) > 1
+      ? [option.name, companyNames.get(option.companyId)].filter(Boolean).join(' · ')
+      : option.name,
+  }));
+  const needsDefaultHistoryPeriod = tab === 'history' && year == null && month == null;
+  const historyPeriod = needsDefaultHistoryPeriod
+    ? await latestProcessedPayslipPeriod(s, { companyIds, employmentId, ...cycleFilter })
+    : null;
+  const historyYear = historyPeriod ? Number(historyPeriod.slice(0, 4)) : year;
+  const historyMonth = historyPeriod ? Number(historyPeriod.slice(5, 7)) : month;
+
 
   // 080de5cf (Grid tab) — the grid is twelve columns of ONE calendar year, so unlike the other tabs its
   // year is never "all": an absent/tampered ?year= falls back to this year rather than to an unbounded
@@ -222,45 +262,76 @@ export default async function TransactionViewPage({
     sp.departmentId && departmentOptions.some((d) => d.id === sp.departmentId) ? sp.departmentId : undefined;
   const txnStatus = TXN_STATUSES.includes(sp.txnStatus as (typeof TXN_STATUSES)[number]) ? sp.txnStatus : undefined;
   const createdBy = sp.createdBy && creators.some((c) => c.id === sp.createdBy) ? sp.createdBy : undefined;
-  const createdFrom = sp.createdFrom && ISO_DATE.test(sp.createdFrom) ? sp.createdFrom : undefined;
-  const createdTo = sp.createdTo && ISO_DATE.test(sp.createdTo) ? sp.createdTo : undefined;
+  const createdFrom = sp.createdFrom && isCalendarDate(sp.createdFrom) ? sp.createdFrom : undefined;
+  const createdTo = sp.createdTo && isCalendarDate(sp.createdTo) ? sp.createdTo : undefined;
+
+  const today = todayInKualaLumpur();
+  const fixedFilters: FixedTransactionFilter = { companyIds, employmentId, componentId, status };
+  const individualFilters = {
+    companyIds, year, month, employmentId, kind, departmentId, batchStatus: txnStatus,
+    createdBy, createdFrom, createdTo,
+  };
+  const transactionQuery = tab === 'fixed'
+    ? { kind: 'fixed' as const, filters: fixedFilters, asOf: today }
+    : { kind: 'individual' as const, filters: individualFilters };
+  const workbookTab = tab === 'fixed' ? 'fixed' : 'individual';
+  const workbooksHref = `/payroll/transaction-view/workbooks?tab=${workbookTab}`;
+  async function startWorkbookExport() {
+    'use server';
+    const { s: actor, scopeIds: allowed } = await scopedAdmin();
+    if (!transactionQuery.filters.companyIds.length ||
+        transactionQuery.filters.companyIds.some((id) => !allowed.includes(id))) {
+      redirect(`${workbooksHref}&unavailable=1`);
+    }
+    let jobId: string;
+    try {
+      const { row } = await enqueueTransactionExport(actor, transactionQuery);
+      jobId = row.id;
+    } catch (error) {
+      if (error instanceof BulkJobAuthorityLost) redirect(`${workbooksHref}&unavailable=1`);
+      if (error instanceof BulkJobError && error.message === BULK_JOB_ALREADY_RUNNING) {
+        redirect(workbooksHref);
+      }
+      throw error;
+    }
+    redirect(`${workbooksHref}&job=${jobId}`);
+  }
+
+  const workbookControls = companyIds.length > 0 ? (
+    <>
+      <Button asChild variant="ghost" size="sm">
+        <Link href={workbooksHref}>{t('view.workbooks.title')}</Link>
+      </Button>
+      <form action={startWorkbookExport}>
+        <Button type="submit" variant="outline" size="sm">{t('view.workbooks.export')}</Button>
+      </form>
+    </>
+  ) : null;
 
   // Only the active tab's query runs — the others stay empty (single round-trip per view).
-  const [fixedRows, individualRows, historyRows, statutoryMatches, gridPayslips, outstandingRows] = await Promise.all([
+  const inquiryQuery=parsePageQuery(sp),inquirySort=parseIndividualInquirySort(sp.txnSort,sp.txnDir);
+  const inquiryParams={...sp,tab,months:Array.isArray(sp.months)?sp.months.join(','):sp.months};
+  const [fixedPage, individualPage, historyRows, statutoryRuns, gridPayslips, outstandingRows] = await Promise.all([
     tab === 'fixed'
-      ? listFixedTransactionsAcross(s, { companyIds, employmentId, componentId, status })
-      : Promise.resolve([]),
+      ? listFixedTransactionsPage(s, fixedFilters, inquiryQuery, today)
+      : Promise.resolve({rows:[],total:0}),
     tab === 'individual'
-      ? listIndividualTxnsAcross(s, {
-          companyIds,
-          year,
-          month,
-          employmentId,
-          kind,
-          departmentId,
-          batchStatus: txnStatus,
-          createdBy,
-          createdFrom,
-          createdTo,
-        })
-      : Promise.resolve([]),
+      ? listIndividualTxnsPage(s, individualFilters, inquiryQuery, inquirySort)
+      : Promise.resolve({rows:[],total:0}),
     // 862ed0ad — bounded, because History is now the landing tab. One row more than we mean to show, so
     // truncation can be STATED rather than silently applied. See HISTORY_ROW_CAP.
-    tab === 'history'
-      ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle, limit: HISTORY_ROW_CAP + 1 })
+    tab === 'history' && (!needsDefaultHistoryPeriod || historyPeriod)
+      ? listProcessedPayslipsAcross(s, { companyIds, year: historyYear, month: historyMonth, employmentId, ...cycleFilter, limit: HISTORY_ROW_CAP + 1 })
       : Promise.resolve([]),
-    // 6b4ca488 — the Statutory Explanation tab's source. ONE employee's runs inside the chosen window,
-    // capped like History's read: the tab explains a SINGLE payslip, and everything past the first
-    // handful only ever feeds the "which of these runs?" chips. Reads nothing until an employee is
-    // chosen, which is what makes the tab's cost independent of the payroll history's size.
+    // The selector reads only the run index. The chosen payslip and its workbook share an exact ID.
     tab === 'statutory' && employmentId
-      ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle, limit: 25 })
+      ? listPayslipRunsFor(s, { companyIds, employmentId })
       : Promise.resolve([]),
     // 080de5cf — the Grid pivot's source. NO row cap and none needed: one employee × one calendar year is
     // twelve months of runs. It reads nothing until an employee is chosen, which is also what makes the
     // absence of a cap safe — an unscoped variant of this query would be the whole payroll history.
     tab === 'grid' && employmentId
-      ? listProcessedPayslipsAcross(s, { companyIds, year: gridYear, employmentId, cycle })
+      ? listProcessedPayslipsAcross(s, { companyIds, year: gridYear, employmentId, ...cycleFilter })
       : Promise.resolve([]),
     // d0d2c9d1 — money entered but never paid, grouped and totalled. Same scope-guarded filters as the
     // other tabs; deliberately NO default run-state filter (see the read's doc comment).
@@ -268,6 +339,7 @@ export default async function TransactionViewPage({
       ? listUnattachedTxnSummary(s, { companyIds, year, month, employmentId })
       : Promise.resolve([]),
   ]);
+  const fixedRows=fixedPage.rows,individualRows=individualPage.rows;
 
   // Feedback efece4ce — which companies are actually registered for the HRD Corp levy. The breakdown used
   // to drop its HRDF line whenever the amount was 0, so a company that legitimately pays nothing (no HRDF
@@ -280,28 +352,21 @@ export default async function TransactionViewPage({
           .map((r) => r.companyId)
       : [];
 
-  // ── 6b4ca488: WHICH payslip the Statutory Explanation tab explains, and its working ──
-  //
-  // The chosen run, or the most recent match — the SAME rule Individual Payslip applies, so arriving from
-  // either door lands on the same slip. A tampered `?payslipId` simply does not match: `statutoryMatches`
-  // is already fenced on the caller's companies and on the chosen employee, so the id is checked against
-  // that set rather than being looked up separately (a second read is a second fence to get wrong).
-  const statutoryRow = sp.payslipId
-    ? (statutoryMatches.find((r) => r.id === sp.payslipId) ?? statutoryMatches[0])
-    : statutoryMatches[0];
-  // NO SessionContext, by construction. `explainStatutory` reads this payslip's OWN `statutory` blob and
-  // nothing else — it cannot reach today's EPF table, today's PERKESO schedule or the employee's current
-  // statutory flags, which is what stops this tab from ever disagreeing with the payslip it explains.
+  const statutoryPeriod = resolveStatutoryPeriod(statutoryRuns, cycleChoices, {
+    year, month, payrollCycleId, payslipId: sp.payslipId, cycle,
+  });
+  const selectedRun = statutoryPeriod.selected;
+  const statutoryRow = selectedRun
+    ? await payslipForReview(s, { companyIds, payslipId: selectedRun.payslipId })
+    : null;
   const statutoryExplanation = statutoryRow ? explainStatutory(statutoryRow.statutory, statutoryRow.runType) : null;
-  // The already scope-guarded filters, for the run chips. Rebuilt from the GUARDED values rather than
-  // from `sp`, so a tampered param cannot ride back out on a link the screen rendered.
   const statutoryLinkParams: Record<string, string> = {
     tab: 'statutory',
     ...(companyId ? { companyId } : {}),
     ...(employmentId ? { employmentId } : {}),
-    ...(year != null ? { year: String(year) } : {}),
-    ...(month != null ? { month: String(month) } : {}),
-    ...(cycle ? { cycle } : {}),
+    ...(statutoryPeriod.year != null ? { year: String(statutoryPeriod.year) } : {}),
+    ...(statutoryPeriod.month ? { month: statutoryPeriod.month } : {}),
+    ...(statutoryPeriod.payrollCycleId ? { payrollCycleId: statutoryPeriod.payrollCycleId } : {}),
   };
 
   // 862ed0ad — the CAP + 1 row, if it came back, is the proof there is more; it is dropped from the render
@@ -399,28 +464,9 @@ export default async function TransactionViewPage({
     bonus: t('individual.cycle.bonus'),
     adjustment: t('individual.cycle.adjustment'),
   };
-  // The searchable employee panel every keying screen already uses (r168a) — the reporter asked for "the
-  // same searchable employee selector as the Fixed and Individual Transaction modules", and this is it.
-  //
-  // 98e69987 rev 2 restored this rail after r179 replaced it with a top-row search box: the reporter saw
-  // both live and asked for the list back. It is fed from the SAME scope-fenced read the search box was,
-  // `listEmployees(s, scopeIds)` run once at the top of this render, so the access-fenced set is unchanged
-  // either way; the id it navigates to is re-guarded above (`employmentId`) before any read uses it, so
-  // the list is never what grants access.
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.departmentLabel ?? e.department,
-    departmentCode: e.departmentCode,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnitLabel ?? e.businessUnit,
-    businessUnitCode: e.businessUnitCode,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+  // The shared rail pages minimal authorized choices. It never grants record access;
+  // the independent selected-ID proof above and each native Payroll owner remain authoritative.
+
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const cookieStore = await cookies();
   const gridPanelDefaultOpen = cookieStore.get(GRID_PANEL_COOKIE)?.value !== '0';
@@ -450,7 +496,7 @@ export default async function TransactionViewPage({
     tab: 'grid',
     year: String(gridYear),
     months: gridMonths.join(','),
-    ...(cycle ? { cycle } : {}),
+    ...cycleParams,
     ...(companyId ? { companyId } : {}),
   };
   const gridExportParams: Record<string, string> = {
@@ -458,11 +504,11 @@ export default async function TransactionViewPage({
     ...(employmentId ? { employmentId } : {}),
     year: String(gridYear),
     months: gridMonths.join(','),
-    ...(cycle ? { cycle } : {}),
+    ...cycleParams,
   };
   // The chosen person, for whichever tab is showing — the id it is looked up by is the SCOPE-GUARDED one,
   // so this can only ever resolve to somebody the caller is allowed to see.
-  const selectedEmployee = employees.find((e) => e.employmentId === employmentId);
+  const selectedEmployee=employeeChoices.selected?{...employeeChoices.selected,department:employeeChoices.selected.departmentCode??employeeChoices.selected.department}:null;
 
   /**
    * bd14b7e2 — what each of the four inquiry tabs carries across an employee switch: its OWN already
@@ -488,6 +534,7 @@ export default async function TransactionViewPage({
       : tab === 'individual'
         ? {
             tab: 'individual',
+            txnSort:inquirySort.key,txnDir:inquirySort.direction,
             ...periodPreserve,
             ...(kind ? { kind } : {}),
             ...(departmentId ? { departmentId } : {}),
@@ -497,12 +544,12 @@ export default async function TransactionViewPage({
             ...(createdTo ? { createdTo } : {}),
           }
         : tab === 'history'
-          ? { tab: 'history', ...periodPreserve, ...(cycle ? { cycle } : {}) }
+          ? { tab: 'history', ...periodPreserve, ...cycleParams }
           : tab === 'statutory'
             ? // 6b4ca488 — the same period filters History carries, MINUS `payslipId`: that names a run
               // belonging to the person being navigated away from, and carrying it would ask the next
               // employee's list for someone else's payslip (the rule Individual Payslip's panel follows).
-              { tab: 'statutory', ...periodPreserve, ...(cycle ? { cycle } : {}) }
+              { tab: 'statutory', ...periodPreserve, ...cycleParams }
             : // outstanding. `grid` also lands here and never reads it — the Transaction Detail tab has its
             // own `gridPanelPreserve` above, because its `months` ride as one comma-joined value.
             { tab: 'outstanding', ...periodPreserve };
@@ -513,18 +560,31 @@ export default async function TransactionViewPage({
   const historyExportParams: Record<string, string> = {
     ...(companyId ? { companyId } : {}),
     ...(employmentId ? { employmentId } : {}),
-    ...(year != null ? { year: String(year) } : {}),
-    ...(month != null ? { month: String(month) } : {}),
-    ...(cycle ? { cycle } : {}),
+    ...(historyYear != null ? { year: String(historyYear) } : {}),
+    ...(historyMonth != null ? { month: String(historyMonth) } : {}),
+    ...cycleParams,
   };
   const historyExportChoices: { scope: 'current' | 'all'; label: string; hint: string }[] = [
     { scope: 'current', label: t('view.history.exportCurrent'), hint: t('view.history.exportCurrentHint') },
     { scope: 'all', label: t('view.history.exportAll'), hint: t('view.history.exportAllHint') },
   ];
 
-  const today = todayInKualaLumpur();
+
   const nowYear = new Date().getFullYear();
-  const years = Array.from({ length: 11 }, (_, i) => nowYear + 1 - i);
+  const latestYearChoice = Math.max(nowYear + 1, year ?? 0, historyYear ?? 0);
+  const years = tab === 'history' || tab === 'grid'
+    ? Array.from({ length: latestYearChoice - 1999 }, (_, i) => latestYearChoice - i)
+    : Array.from({ length: 11 }, (_, i) => nowYear + 1 - i);
+  const shownYear = tab === 'history' ? historyYear : year;
+  const shownMonth = tab === 'history' ? historyMonth : month;
+  const cycleSelect = (
+    <Field label={t('view.filters.cycle')}>
+      <select name="payrollCycleId" defaultValue={payrollCycleId ?? ''} className={inputCls}>
+        <option value="">{t('view.filters.all')}</option>
+        {cycleChoices.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+      </select>
+    </Field>
+  );
 
   const companySelect = (
     <Field label={t('view.filters.company')}>
@@ -544,7 +604,7 @@ export default async function TransactionViewPage({
   const yearMonthSelects = (
     <>
       <Field label={t('view.filters.year')}>
-        <select name="year" defaultValue={year != null ? String(year) : ''} className={inputCls}>
+        <select name="year" defaultValue={shownYear != null ? String(shownYear) : ''} className={inputCls}>
           <option value="">{t('view.filters.all')}</option>
           {years.map((y) => (
             <option key={y} value={y}>
@@ -554,7 +614,7 @@ export default async function TransactionViewPage({
         </select>
       </Field>
       <Field label={t('view.filters.month')}>
-        <select name="month" defaultValue={month != null ? String(month).padStart(2, '0') : ''} className={inputCls}>
+        <select name="month" defaultValue={shownMonth != null ? String(shownMonth).padStart(2, '0') : ''} className={inputCls}>
           <option value="">{t('view.filters.all')}</option>
           {MONTHS.map((m) => (
             <option key={m} value={m}>
@@ -651,7 +711,7 @@ export default async function TransactionViewPage({
               <p className="mt-1 text-xs text-muted-foreground">{t('view.panel.hint')}</p>
               <div className="mt-3">
                 <EmployeeScopePanel
-                  employees={panelEmployees}
+                  remote={{initial:employeeChoices}}
                   selectedId={employmentId ?? null}
                   basePath="/payroll/transaction-view"
                   preserve={tabPanelPreserve}
@@ -705,7 +765,20 @@ export default async function TransactionViewPage({
                   </Field>
                 </>
               )}
-              {tab !== 'fixed' && yearMonthSelects}
+              {tab !== 'fixed' && tab !== 'statutory' && yearMonthSelects}
+              {tab === 'statutory' && (
+                <StatutoryPeriodFields
+                  key={`${companyId}:${employmentId}:${statutoryPeriod.year}:${statutoryPeriod.month}:${statutoryPeriod.payrollCycleId}`}
+                  year={statutoryPeriod.year} month={statutoryPeriod.month}
+                  payrollCycleId={statutoryPeriod.payrollCycleId}
+                  years={statutoryPeriod.years} months={statutoryPeriod.months}
+                  availableCycles={statutoryPeriod.availableCycles}
+                  labels={{
+                    year: t('view.filters.year'), month: t('view.filters.month'), cycle: t('view.filters.cycle'),
+                    empty: tStat('notRecordedShort'), months: monthLabels,
+                  }}
+                />
+              )}
               {tab === 'individual' && (
                 <>
                   <Field label={t('view.filters.payItem')}>
@@ -756,21 +829,7 @@ export default async function TransactionViewPage({
                   </Field>
                 </>
               )}
-              {/* 6b4ca488 — the cycle filter serves the Statutory tab too: a bonus run and the regular
-                  run that month are two different workings, and without this the tab could not be
-                  pointed at either one. */}
-              {(tab === 'history' || tab === 'statutory') && (
-                <Field label={t('view.filters.cycle')}>
-                  <select name="cycle" defaultValue={cycle ?? ''} className={inputCls}>
-                    <option value="">{t('view.filters.all')}</option>
-                    {CYCLES.map((c) => (
-                      <option key={c} value={c}>
-                        {t(`individual.cycle.${c}`)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              )}
+              {tab === 'history' && cycleSelect}
               <Button type="submit" variant="secondary">
                 {t('view.filters.apply')}
               </Button>
@@ -780,7 +839,11 @@ export default async function TransactionViewPage({
           {/* ── 1. Fixed Transaction View ── */}
           {tab === 'fixed' && (
             <Card className="overflow-hidden">
-              <SectionHeader title={t('view.tabs.fixed')} count={fixedRows.length} />
+              <div className="flex items-center justify-between gap-3 pr-4">
+                <SectionHeader title={t('view.tabs.fixed')} count={fixedPage.total} />
+                <div className="flex flex-wrap items-center gap-2">{workbookControls}</div>
+              </div>
+              <Pager basePath="/payroll/transaction-view" params={inquiryParams} state={pageState(inquiryQuery,fixedPage.total,fixedRows.length)}/>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -846,9 +909,11 @@ export default async function TransactionViewPage({
           {tab === 'individual' && (
             <Card className="overflow-hidden">
               <div className="flex items-center justify-between gap-3 pr-4">
-                <SectionHeader title={t('view.tabs.individual')} count={individualRows.length} />
+                <SectionHeader title={t('view.tabs.individual')} count={individualPage.total} />
+                <div className="flex flex-wrap items-center gap-2">
+                  {workbookControls}
                 {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
-                <a
+                <ExportDownloadLink
                   href={`/payroll/transaction-view/export?${new URLSearchParams({
                     ...(companyId ? { companyId } : {}),
                     ...(employmentId ? { employmentId } : {}),
@@ -864,11 +929,12 @@ export default async function TransactionViewPage({
                   className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
                 >
                   {t('view.exportCsv')}
-                </a>
+                </ExportDownloadLink>
+                </div>
               </div>
               {/* Sortable + searchable grid (feedback 7b2d4228): GET filters above narrow the set; this client table
                   adds column sorting over the fetched rows. */}
-              <IndividualTxnTable rows={individualRows} />
+              <IndividualTxnTable rows={individualRows} serverSort={inquirySort} pager={<Pager basePath="/payroll/transaction-view" params={inquiryParams} state={pageState(inquiryQuery,individualPage.total,individualRows.length)}/>}/>
             </Card>
           )}
 
@@ -886,10 +952,10 @@ export default async function TransactionViewPage({
                   because "in the same place the Individual tab already keeps its download" is what the
                   reporter approved. The control is a <details> disclosure rather than a client dropdown so the
                   whole page stays a server component: two plain anchors, no state, no server action. */}
-              <div className="flex items-center justify-between gap-3 pr-4">
-                <SectionHeader title={t('view.tabs.history')} count={shownHistoryRows.length} />
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                <SectionHeader title={t('view.tabs.history')} count={shownHistoryRows.length} className="border-0 p-0" />
                 <details className="relative shrink-0">
-                  <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
+                  <summary data-table-primary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
                     {t('view.history.export')}
                     <span aria-hidden="true" className="text-[10px]">
                       ▼
@@ -898,7 +964,7 @@ export default async function TransactionViewPage({
                   {/* Opens down and to the LEFT (end-0), so a wide panel never pushes the page sideways. */}
                   <div className="absolute end-0 top-full z-20 mt-1 w-80 rounded-md border border-border bg-background p-1 shadow-lg">
                     {historyExportChoices.map((choice) => (
-                      <a
+                      <ExportDownloadLink
                         key={choice.scope}
                         href={`/payroll/transaction-view/history-export?${new URLSearchParams(
                           // "All processed payroll" carries NO filters — the link says what the file is, so a
@@ -909,13 +975,13 @@ export default async function TransactionViewPage({
                       >
                         <span className="block text-sm font-medium text-foreground">{choice.label}</span>
                         <span className="block text-xs text-muted-foreground">{choice.hint}</span>
-                      </a>
+                      </ExportDownloadLink>
                     ))}
                   </div>
                 </details>
               </div>
               {historyTruncated && (
-                <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
+                <p className="px-4 py-3 text-xs leading-5 text-muted-foreground">
                   {t('view.history.capped', { cap: HISTORY_ROW_CAP })}
                 </p>
               )}
@@ -955,6 +1021,23 @@ export default async function TransactionViewPage({
               not recorded" by the component rather than being filled in from gross. */}
           {tab === 'statutory' && (
             <div className="space-y-4">
+              {statutoryPeriod.unmatchedRuns.length > 0 && (
+                <Card className="p-4">
+                  <SectionHeader title={tStat('historicalRuns')} count={statutoryPeriod.unmatchedRuns.length} />
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {statutoryPeriod.unmatchedRuns.map((run) => (
+                      <Link
+                        key={run.payslipId}
+                        href={`/payroll/statutory-detail?payslipId=${run.payslipId}`}
+                        className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
+                      >
+                        {companyNames.get(run.companyId)} · {run.payPeriod} · {payrollRunLabel(run, t(`individual.cycle.${run.runType}`))}
+                        {run.runSeq > 1 && !run.historyImportAttemptId ? ` #${run.runSeq}` : ''}
+                      </Link>
+                    ))}
+                  </div>
+                </Card>
+              )}
               {!selectedEmployee ? (
                 // An explanation is one person's, so "All employees" is not a view here — it is a prompt.
                 // Said in words rather than shown as an empty page, exactly as the Grid tab does.
@@ -962,32 +1045,34 @@ export default async function TransactionViewPage({
                   <p className="py-8 text-center text-sm text-muted-foreground">{tStat('noEmployee')}</p>
                 </Card>
               ) : !statutoryRow || !statutoryExplanation ? (
-                <Card className="p-4">
-                  <p className="py-8 text-center text-sm text-muted-foreground">{tStat('noPayslip')}</p>
-                </Card>
+                statutoryPeriod.unmatchedRuns.length ? null : (
+                  <Card className="p-4">
+                    <p className="py-8 text-center text-sm text-muted-foreground">{tStat('noPayslip')}</p>
+                  </Card>
+                )
               ) : (
                 <>
                   {/* More than one run matches the filters (a bonus run beside the regular one, a
                       re-issue, or the two halves of a mid-month entity transfer): offer them rather than
                       silently explaining the newest. The SAME disambiguation Individual Payslip carries,
                       and gated the same way — it is not a history list. */}
-                  {statutoryMatches.length > 1 && (
+                  {statutoryPeriod.matchingRuns.length > 1 && (
                     <Card className="p-4">
                       <SectionHeader
                         title={tStat('otherRuns')}
-                        count={statutoryMatches.length}
+                        count={statutoryPeriod.matchingRuns.length}
                         subtitle={tStat('otherRunsHint')}
                       />
                       <div className="flex flex-wrap gap-2 pt-2">
-                        {statutoryMatches.map((m) => (
+                        {statutoryPeriod.matchingRuns.map((m) => (
                           <Link
-                            key={m.id}
+                            key={m.payslipId}
                             href={`/payroll/transaction-view?${new URLSearchParams({
                               ...statutoryLinkParams,
-                              payslipId: m.id,
+                              payslipId: m.payslipId,
                             }).toString()}`}
                             className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
-                              m.id === statutoryRow.id
+                              m.payslipId === statutoryRow.id
                                 ? 'border-primary font-medium text-primary'
                                 : 'border-border hover:bg-muted'
                             }`}
@@ -1000,12 +1085,12 @@ export default async function TransactionViewPage({
                     </Card>
                   )}
                   <div className="flex justify-end">
-                    <a
+                    <ExportDownloadLink
                       href={`/payroll/statutory-detail/export?payslipId=${encodeURIComponent(statutoryRow.id)}`}
                       className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
                     >
                       {tStat('exportExcel')}
-                    </a>
+                    </ExportDownloadLink>
                   </div>
                   <StatutoryDetailView
                     ctx={{
@@ -1087,7 +1172,7 @@ export default async function TransactionViewPage({
               <p className="mt-1 text-xs text-muted-foreground">{t('view.grid.pickEmployeeHint')}</p>
               <div className="mt-3">
                 <EmployeeScopePanel
-                  employees={panelEmployees}
+                  remote={{initial:employeeChoices}}
                   selectedId={employmentId ?? null}
                   basePath="/payroll/transaction-view"
                   preserve={gridPanelPreserve}
@@ -1136,16 +1221,7 @@ export default async function TransactionViewPage({
                     ))}
                   </div>
                 </fieldset>
-                <Field label={t('view.filters.cycle')}>
-                  <select name="cycle" defaultValue={cycle ?? ''} className={inputCls}>
-                    <option value="">{t('view.filters.all')}</option>
-                    {CYCLES.map((c) => (
-                      <option key={c} value={c}>
-                        {t(`individual.cycle.${c}`)}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                {cycleSelect}
                 <Button type="submit" variant="secondary">
                   {t('view.filters.apply')}
                 </Button>

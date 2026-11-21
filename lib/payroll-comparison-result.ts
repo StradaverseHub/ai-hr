@@ -10,7 +10,8 @@ import {
 export type ComparisonRun = {
   id: string; companyId: string; period: string;
   runType: 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
-  status: 'draft' | 'processed' | 'closed'; stale: boolean;
+  /** 'processing': the background job is still writing its payslips; compared like a draft (no partial money). */
+  status: 'draft' | 'processing' | 'processed' | 'closed'; stale: boolean;
 };
 export type ComparisonSource = {
   id: string; version: number; runId: string; employmentId: string;
@@ -57,6 +58,7 @@ export type ComparisonResult = {
     unexplained: number; totals: ComparisonTotal[] } | null;
   page: number; pageSize: number;
   unavailablePayItems?: string[];
+  availablePayItems?: string[];
 };
 const key = (employmentId: string, companyId: string, currency: string | null) =>
   JSON.stringify([employmentId, companyId, currency]);
@@ -78,12 +80,39 @@ export function payrollComparisonAvailability(
       for (const run of periodRuns) {
         const base = { period, companyId, runId: run.id };
         if (run.stale) issues.push({ ...base, code: 'stalePayroll' });
-        else if (run.status === 'draft') issues.push({ ...base, code: 'draftPayroll' });
+        else if (run.status === 'draft' || run.status === 'processing') issues.push({ ...base, code: 'draftPayroll' });
         else if (period === previousPeriod && run.status !== 'closed') issues.push({ ...base, code: 'previousNotClosed' });
       }
     }
   }
   return { runs: selected, issues };
+}
+
+export type PayrollComparisonExclusionReason = { code: 'missingPayroll' | 'draftPayroll' | 'previousNotClosed' | 'stalePayroll'; period: string };
+export type PayrollComparisonInclusion = {
+  /** Companies the rows and totals cover: both months present, previous closed, nothing stale or draft. */
+  includedCompanyIds: string[];
+  /** Every other company with payroll, with each distinct reason (one per code and month), in scope order. */
+  excluded: { companyId: string; company: string; reasons: PayrollComparisonExclusionReason[] }[];
+  /** Companies in scope with any payroll run; the comparison's denominator. */
+  withPayrollCount: number;
+  /** Companies in scope that have never run payroll: left out, not reported as missing. */
+  neverRanCount: number;
+};
+/** Ready companies and the reasons the others are left out, from the same availability rule as the comparison. */
+export function payrollComparisonInclusion(
+  withPayroll: readonly string[], issues: readonly ComparisonIssue[], neverRanCount: number, names: ReadonlyMap<string, string>,
+): PayrollComparisonInclusion {
+  const excluded: PayrollComparisonInclusion['excluded'] = [];
+  for (const companyId of withPayroll) {
+    const reasons: PayrollComparisonExclusionReason[] = [];
+    for (const issue of issues) {
+      if (issue.companyId !== companyId || issue.code === 'itemNotRecorded') continue;
+      if (!reasons.some(reason => reason.code === issue.code && reason.period === issue.period)) reasons.push({ code: issue.code, period: issue.period });
+    }
+    if (reasons.length) excluded.push({ companyId, company: names.get(companyId) ?? companyId, reasons });
+  }
+  return { includedCompanyIds: withPayroll.filter(id => !excluded.some(row => row.companyId === id)), excluded, withPayrollCount: withPayroll.length, neverRanCount };
 }
 
 export function comparePayrollResults(input: {

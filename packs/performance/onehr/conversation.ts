@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {issuePerformanceMessageSpendTaskTx,type PerformanceMessageSpendTask} from '../../../core/ai-spend-task';
 import {assertPerformanceProviderSourceTx} from './provider-source-authority';
 import {assessmentHelp} from './help';
@@ -111,7 +112,11 @@ export async function getReviewConversation(ctx:SessionContext,reviewId:string,s
  });
 }
 /** Provider proposals stay private. Only an explicit human command may confirm through the canonical writer. */
-export async function sendReviewMessage(ctx:SessionContext,reviewId:string,stage:ConversationStage,expected:number|null,requestId:string,text:string,intent:'guide'|'draft'|'starter'='guide'){
+export async function sendReviewMessage(...args:Parameters<typeof sendReviewMessageActivity>):Promise<Awaited<ReturnType<typeof sendReviewMessageActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_performance_conversation',()=>sendReviewMessageActivity(...args));
+}
+async function sendReviewMessageActivity(ctx:SessionContext,reviewId:string,stage:ConversationStage,expected:number|null,requestId:string,text:string,intent:'guide'|'draft'|'starter'='guide'){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(requestId);const words=z.string().trim().min(1).max(2500).parse(text);z.enum(['guide','draft','starter']).parse(intent);
  const view=await authorized(ctx,reviewId,stage);

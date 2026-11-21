@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,7 +32,7 @@ beforeEach(() => {
   navigation.listeners.clear();
   window.localStorage.clear();
 });
-afterEach(cleanup);
+afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 
 // Apply each requested URL as a later navigation commit. A permanently empty useSearchParams mock
 // cannot expose an input losing focus when paging unmounts its row before clamping back again.
@@ -48,21 +48,26 @@ async function settleNavigation() {
   }
 }
 
+const companyId='00000000-0000-0000-0000-000000000001';
+const headId='00000001-0000-0000-0000-000000005001';
+const head={employmentId:headId,companyId,employeeCode:'HEAD05001',name:'Newly chosen ended head'};
+const headLabel='Newly chosen ended head (HEAD05001)';
 function savedRow(number: number): GridRecord {
   return {
-    id: `saved-${number}`, companyId: 'company-a', code: '', name: `SAVED_${number}`, title: '',
+    id: `saved-${number}`, companyId, code: '', name: `SAVED_${number}`, title: '',
     jobFamily: '', label: '', businessUnitId: null, headEmploymentId: null, description: '',
-    isGlobal: false, archived: false, inUse: false, assignedCompanyIds: ['company-a'],
+    isGlobal: false, archived: false, inUse: false, assignedCompanyIds: [companyId],
     createdAt: null, lastUpdatedAt: null, lastUpdatedBy: null,
   };
 }
-function mount(count: number) {
+function mount(count: number,retainedHead=false) {
   const save = vi.fn(async () => ({ ok: false as const, rowErrors: [], message: 'Fixture save refusal' }));
   const result = render(<NextIntlClientProvider locale="en" messages={messages} onError={error => { throw error; }}>
     <SystemLabelsGrid
-      data={{ department: Array.from({ length: count }, (_, i) => savedRow(i + 1)), position: [], cost_center: [], business_unit: [] }}
-      companies={[{ id: 'company-a', name: 'Company A' }]}
-      writableCompanyIds={['company-a']} isGroupAdmin
+      data={{ department: Array.from({ length: count }, (_, i) => ({...savedRow(i + 1),headEmploymentId:retainedHead&&i===0?headId:null})), position: [], cost_center: [], business_unit: [] }}
+      companies={[{ id: companyId, name: 'Company A' }]}
+      headByCompany={retainedHead?{[companyId]:[{id:headId,label:'Original retained head label'}]}:{}}
+      writableCompanyIds={[companyId]} isGroupAdmin
       actions={{ save, setCriteria: vi.fn(async () => ({ ok: true as const })),
         assign: vi.fn(async () => ({ ok: true as const })), unassign: vi.fn(async () => ({ ok: true as const })),
         copyToCompanies: vi.fn(async () => ({ ok: true as const })) }}
@@ -75,6 +80,38 @@ const code = (row: HTMLElement) => row.querySelector<HTMLInputElement>('input[da
 const add = () => screen.getByRole('button', { name: messages.admin.systemLabels.addRow });
 
 describe('System Labels draft focus after real query-state navigation', () => {
+  it('retains a new selected head label in its Grid row and duplicate through page and category remounts, without adding display metadata to Save',async()=>{
+    const fetch=vi.fn(async(_url:unknown,init:RequestInit)=>{const p=JSON.parse(String(init.body));return {ok:true,json:async()=>({companyId,query:p.query.trim(),offset:p.offset,limit:25,total:1,rows:[head],selected:p.selectedId===headId?head:null})};});vi.stubGlobal('fetch',fetch);
+    const user=userEvent.setup(),{container,save}=mount(30);
+    const first=rows(container)[0];await user.click(within(first).getByText(messages.employeePanel.searchLabel,{selector:'summary'}));
+    await within(first).findByRole('option',{name:headLabel});await user.selectOptions(within(first).getByRole('combobox',{name:messages.admin.organization.fieldHead}),headId);
+    await user.click(within(first).getByRole('button',{name:messages.admin.systemLabels.duplicateRow}));await settleNavigation();
+    const assertHead=(key:string)=>{const row=container.querySelector<HTMLElement>('[data-row-key="'+key+'"]')!;const select=within(row).getByRole('combobox',{name:messages.admin.organization.fieldHead});expect(select).toHaveValue(headId);expect(within(select).getByRole('option',{name:headLabel})).toBeInTheDocument();expect(within(select).queryByRole('option',{name:messages.admin.systemLabels.headUnavailable})).toBeNull();};
+    assertHead('draft-1');assertHead('saved-1');
+    await user.click(within(container.querySelector('[data-ui-pager]')! as HTMLElement).getByRole('button',{name:messages.pagination.next}));await settleNavigation();
+    expect(container.querySelector('[data-row-key="saved-1"]')).toBeNull();expect(container.querySelector('[data-row-key="draft-1"]')).toBeNull();
+    await user.click(within(container.querySelector('[data-ui-pager]')! as HTMLElement).getByRole('button',{name:messages.pagination.previous}));await settleNavigation();assertHead('draft-1');assertHead('saved-1');
+    await user.click(screen.getByRole('button',{name:new RegExp('^'+messages.admin.systemLabels.category.business_unit)}));await settleNavigation();
+    expect(container.querySelector('[data-row-key="saved-1"]')).toBeNull();
+    await user.click(screen.getByRole('button',{name:new RegExp('^'+messages.admin.systemLabels.category.department)}));await settleNavigation();assertHead('draft-1');assertHead('saved-1');
+    const calls=fetch.mock.calls.length;await user.click(screen.getByRole('button',{name:messages.admin.systemLabels.saveAll}));
+    expect(save).toHaveBeenCalledWith('department',expect.objectContaining({creates:[expect.objectContaining({key:'draft-1',headEmploymentId:headId})],updates:[expect.objectContaining({id:'saved-1',headEmploymentId:headId})]}));
+    expect(JSON.stringify(save.mock.calls)).not.toContain('headDisplay');expect(JSON.stringify(save.mock.calls)).not.toContain(headLabel);expect(fetch).toHaveBeenCalledTimes(calls);
+  });
+
+  it.each(['missing','forbidden'] as const)('remembers a fresh %s selected-head refusal across Grid remounts without dirtying the label or clearing its ID',async refusal=>{
+    let denied=false;vi.stubGlobal('fetch',vi.fn(async(_url:unknown,init:RequestInit)=>{const p=JSON.parse(String(init.body));return denied&&refusal==='forbidden'?{ok:false,status:403}:{ok:true,json:async()=>({companyId,query:p.query.trim(),offset:p.offset,limit:25,total:denied?0:1,rows:denied?[]:[head],selected:denied?null:head})};}));
+    const user=userEvent.setup(),{container,save}=mount(2,true);
+    const first=rows(container)[0];await user.click(within(first).getByText(messages.employeePanel.searchLabel,{selector:'summary'}));await within(first).findByRole('option',{name:headLabel});
+    expect(screen.getByRole('button',{name:messages.admin.systemLabels.saveAll})).toBeDisabled();
+    await user.click(within(first).getByText(messages.employeePanel.searchLabel,{selector:'summary'}));await waitFor(()=>expect(first.querySelector('details')).not.toHaveAttribute('open'));
+    denied=true;await user.click(within(first).getByText(messages.employeePanel.searchLabel,{selector:'summary'}));
+    await within(first).findByRole('option',{name:messages.admin.systemLabels.headUnavailable});
+    await user.click(screen.getByRole('button',{name:new RegExp('^'+messages.admin.systemLabels.category.business_unit)}));await settleNavigation();
+    await user.click(screen.getByRole('button',{name:new RegExp('^'+messages.admin.systemLabels.category.department)}));await settleNavigation();
+    const select=within(rows(container)[0]).getByRole('combobox',{name:messages.admin.organization.fieldHead});expect(select).toHaveValue(headId);expect(within(select).getByRole('option',{name:messages.admin.systemLabels.headUnavailable})).toBeInTheDocument();
+    expect(within(select).queryByRole('option',{name:headLabel})).toBeNull();expect(screen.getByRole('button',{name:messages.admin.systemLabels.saveAll})).toBeDisabled();expect(save).not.toHaveBeenCalled();
+  });
   it('keeps each prepended Code focused on the first page without navigating away or losing earlier unsaved rows', async () => {
     const user = userEvent.setup(), { container } = mount(2);
     await user.clear(code(rows(container)[0]));

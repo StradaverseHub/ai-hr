@@ -29,7 +29,6 @@ describe('People → Personnel: audit entity links point at the admin management
 
 describe('People → Personnel: everyday inbound links resolve to /personnel (never /people, never /admin)', () => {
   const everyday: { file: string; label: string }[] = [
-    { file: 'app/page.tsx', label: 'dashboard headcount tile + onboarding view-all' },
     { file: 'components/org-chart.tsx', label: 'org chart node link' },
     { file: 'app/approvals/page.tsx', label: 'leave approval requester links' },
     // NB: app/payroll/transactions/fixed/page.tsx used to belong here (it listed employees with a

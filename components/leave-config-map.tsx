@@ -86,6 +86,13 @@ export type LeaveConfigScreenId =
   | 'leaveTypes'
   | 'entitlementTables'
   /**
+   * 50d9b809 — `sharedGroups` (`/admin/leave-config/shared-groups`), the Shared Leave Groups page: the
+   * group catalogue that was a pop-up on the Entitlements screen, given a Leave Settings card and a page of
+   * its own. A SIBLING row directly after Entitlements and not a third tab of it, for the Balance Health
+   * reason below: it spans several leave types at once, which neither Entitlements tab does.
+   */
+  | 'sharedGroups'
+  /**
    * r279 (3fbf7a02) — `balanceHealth` (`/admin/leave-config/balance-health`), a SIBLING of the two
    * Entitlements tabs and not a third one of them.
    *
@@ -220,6 +227,10 @@ export type LeaveConfigScreenId =
  */
 export type LeaveConfigGroupId =
   | 'entitlements'
+  // 50d9b809 — a one-screen row directly after Entitlements, like `balanceHealth` below it: the tab row
+  // renders nothing for it, and the group exists so the page reads its heading and description through
+  // the same helper every other Leave Config page does.
+  | 'sharedGroups'
   // r279 (3fbf7a02) — a one-screen row, like `generate`, `approval` and `companyRules` below it: the
   // tab row renders nothing for it, and the group exists so the page reads its heading and description
   // through the same helper every other Leave Config page does.
@@ -249,6 +260,7 @@ export type LeaveConfigGroupId =
 /** The `nav.*` key of the submenu row each group IS — the heading of every page in the group. */
 export type LeaveConfigRowNavKey =
   | 'leaveEntitlements'
+  | 'leaveSharedGroups'
   | 'leaveBalanceHealth'
   | 'leaveAdjustments'
   | 'leaveDataImport'
@@ -281,6 +293,10 @@ export const LEAVE_CONFIG_MAP: Group[] = [
       // the old address is a redirect stub that lands there with `?capture=` kept.
     ],
   },
+  // 50d9b809 — ONE SCREEN, ITS OWN ROW, DIRECTLY AFTER ENTITLEMENTS, which is the screen its editor came
+  // off (as a pop-up). A group of one draws no tab row; the entry gives the page its row's heading and
+  // description through `leaveConfigPageHeader` and keeps the row↔group agreement 1:1, as below.
+  { id: 'sharedGroups', navKey: 'leaveSharedGroups', items: [{ id: 'sharedGroups', href: '/admin/leave-config/shared-groups' }] },
   // r279 (3fbf7a02) — ONE SCREEN, ITS OWN ROW, SECOND. The tab row renders nothing for a group of one
   // (see `LeaveConfigMap` below), so this entry buys exactly two things and they are the two the module
   // is built on: the page's heading is its ROW's `nav` label through `leaveConfigPageHeader`, and the
@@ -461,6 +477,8 @@ export async function leaveConfigRowTitle(groupId: LeaveConfigGroupId): Promise<
  */
 const ROW_DESCRIPTION_KEY: Record<LeaveConfigGroupId, [namespace: string, key: string]> = {
   entitlements: ['admin.leaveConfigTypes', 'rowDescription'],
+  // 50d9b809 — its own namespace, the house shape (`admin.leaveConfig<Row>.pageDescription`).
+  sharedGroups: ['admin.leaveConfigSharedGroups', 'pageDescription'],
   balanceHealth: ['admin.leaveConfigBalanceHealth', 'pageDescription'],
   adjustments: ['admin.leaveConfigAdjustments', 'pageDescription'],
   // 3f15ffdb (r362) — its own namespace, the house shape (`admin.leaveConfig<Row>.pageDescription`).

@@ -158,6 +158,19 @@ fi
 set -a; . ./.env.production; set +a
 : "${MIGRATION_DATABASE_URL:?set in .env.production}"
 
+# aihr-worker-ci-runtime/v1: source-bound CI cutover window, without changing private configuration.
+# An explicit private setting is never silently overridden. Ordinary deploys retain their existing policy.
+if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
+  if [ "${AIHR_IMPORT_WORKER_WAIT_SECONDS+x}" = x ] && [ "$AIHR_IMPORT_WORKER_WAIT_SECONDS" != 600 ]; then
+    echo 'CI worker cutover requires AIHR_IMPORT_WORKER_WAIT_SECONDS unset or exactly 600; explicit private wait differs (configuration unchanged).' >&2
+    exit 1
+  fi
+  readonly AIHR_SELECTED_IMPORT_WORKER_WAIT=600
+else
+  readonly AIHR_SELECTED_IMPORT_WORKER_WAIT="${AIHR_IMPORT_WORKER_WAIT_SECONDS:-45}"
+fi
+
+
 # DEMO MODE IS AN OPT-IN (r290). `--customer` forces it off; otherwise the deployment has to SAY it is
 # the gated demo by setting ALLOW_DEMO_SESSION=true — the same variable lib/session.ts reads to enable
 # the "act as" switcher, so a deployment that has it on authenticates nobody and cannot be a real one.
@@ -280,6 +293,11 @@ echo "▸ Checking the sweep login can downgrade to ai_hr_app…"
 dstate phase notification-role
 node --env-file=.env.production --import tsx scripts/check-notification-role.ts
 
+# Same placement argument again: every process's connection budget against the server's real limit
+# (db/capacity.ts), refused here while nothing has been built, migrated or restarted.
+echo "▸ Checking the database connection budget…"
+node --env-file=.env.production --import tsx scripts/check-db-connection-budget.ts
+
 echo "▸ Building production server…"
 dstate phase build
 # Heap headroom for `next build`'s TypeScript pass. Node's default old-space cap (~2 GB on this box) was
@@ -401,6 +419,18 @@ fi
 echo "▸ Applying database migrations (as ai_hr_owner)…"
 dstate phase migrate
 pnpm db:migrate
+
+# Online follow-up to the transactional migrations: concurrent index builds, plus the batched
+# notification receipt backfill. The batch transaction cannot do these without holding locks on hot
+# tables until it commits. Idempotent and resumable; a failure stops here with the old build serving.
+echo "▸ Running online post-migration steps…"
+dstate phase migrate-online
+node --env-file=.env.production --import tsx scripts/post-migrate-online.ts
+
+# Dedicated owner prerequisite. A refusal must stop before either CI activation or an ordinary restart.
+echo "▸ Provisioning the resignation runtime verifier…"
+dstate phase resignation-runtime-verifier
+node --env-file=.env.production --import tsx scripts/provision-resignation-runtime.ts
 
 # ADR-0077 C11 — UNCONDITIONAL, and deliberately above the demo-seed `if` below: that branch is skipped
 # on every normal update, so seeding the catalogs inside it would leave an updated deployment with an
@@ -536,6 +566,30 @@ fi
 if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
   dstate phase ci-build-health
   node --import tsx .github/ci/staging-build-install.mjs confirm-runtime "$AIHR_SELECTED_DEPLOY_REF" "$AIHR_SELECTED_CI_BUILD_INSTALL" "$AIHR_SELECTED_TESTING_BUILD_RECORD"
+fi
+
+# Background imports (employee import and every kind on the shared bulk-job kernel) run only in the protected
+# import worker, aihr-bank-import.service, which this script never installs or restarts (deploy/systemd/BANK-IMPORT.md).
+# Its heartbeat must cover every kind the migrated schema knows, or new imports stay queued. During the documented
+# drain → web install → worker activate sequence the worker is legitimately stopped here, so by default this reports;
+# AIHR_IMPORT_WORKER_REQUIRED=1 (worker already activated for this release) makes a missing worker fail the deploy.
+# Deliberately no new dstate phase: a finished deploy still records phase=restart (test/r291-detached-deploy.test.ts).
+if node --env-file=.env.production --import tsx scripts/check-import-worker.ts --wait "$AIHR_SELECTED_IMPORT_WORKER_WAIT"; then
+  echo "✅ Import worker is serving this release."
+else
+  import_worker_status=$?
+  if systemctl cat aihr-bank-import.service >/dev/null 2>&1; then
+    echo "    aihr-bank-import.service: $(systemctl is-active aihr-bank-import.service 2>/dev/null || true)" >&2
+  else
+    echo "    aihr-bank-import.service is not installed on this host." >&2
+  fi
+  if [ "${AIHR_IMPORT_WORKER_REQUIRED:-0}" = "1" ]; then
+    echo "✗ Import worker check failed (status $import_worker_status). New background imports would stay queued." >&2
+    exit 1
+  fi
+  echo "⚠️  Import worker is not serving this release yet: background imports will wait in 'queued' until it does."
+  echo "    Activate the matching worker (deploy/systemd/BANK-IMPORT.md), then re-check with:"
+  echo "    node --env-file=.env.production --import tsx scripts/check-import-worker.ts"
 fi
 
 # The other place this script legitimately ends, and the LAST line on purpose. See the trap at the top:

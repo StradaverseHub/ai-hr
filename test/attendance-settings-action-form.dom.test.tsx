@@ -50,18 +50,22 @@ describe('Attendance settings action error boundary', () => {
   });
 
   it('keeps native required validation and includes the accepted submitter in FormData', async () => {
-    const action = vi.fn(async (_data: FormData) => {});
+    const action = vi.fn(async (_data: FormData) => {}), invalid = vi.fn();
     render(<AttendanceSettingsActionForm submitAction={action}>
-      <input aria-label="Name" name="name" required/>
+      <input aria-label="Name" name="name" required onInvalid={invalid}/>
       <AttendanceSettingsSaveButton name="intent" value="save">Save</AttendanceSettingsSaveButton>
     </AttendanceSettingsActionForm>);
     const button = screen.getByRole('button', {name:'Save'});
     const form = button.closest('form')!;
     expect(form.hasAttribute('action')).toBe(false);
-    fireEvent.click(button);
+    // A rejected native-validation click finishes its event turn before the user edits and retries.
+    // Keep synchronous repeated activation covered by the shared ActionButton tests.
+    await act(async () => { fireEvent.click(button); });
+    expect(invalid).toHaveBeenCalledTimes(1);
     expect(action).not.toHaveBeenCalled();
+    expect(button).toBeEnabled();
     fireEvent.change(screen.getByRole('textbox', {name:'Name'}), {target:{value:'Edited'}});
-    fireEvent.click(button);
+    await act(async () => { fireEvent.click(button); });
     await waitFor(() => expect(action).toHaveBeenCalledTimes(1));
     expect(action.mock.calls[0][0].get('name')).toBe('Edited');
     expect(action.mock.calls[0][0].get('intent')).toBe('save');

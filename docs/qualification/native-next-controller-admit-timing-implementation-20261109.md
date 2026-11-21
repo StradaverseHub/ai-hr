@@ -1,0 +1,176 @@
+# Controller admission timing implementation — unexecuted source
+
+Historical-fixture repair child ofdb93cee9427302d4d05642f77c12ac07a16d133b in branch codex/next-host-history-controller-rewind-20261109; full implementation base525e39cd1c6eac8d3c1547f764754a436bf41e12. Fresh fetched main/alpha82859db9a598d5a83e6da9a60d3643b6969c04c3 are separate observations(2026-11-08T16:31Z), not this qualification base or root aggregate. Production/staging holds unchanged.
+
+## Actual problem and scope
+
+All13jobs of42495272064 completed; genuine new same-run canonical build passed, native failed. First owned systemctl start timed out90.043668s BEFORE READY/browser; worker1activating/start-post. FProfile0.969075s/fullread15.344141s do NOT identify the internal C bottleneck. Actualv1environment24allowed/OTHER0,2managerreads/effectiveprojection clean, ownedcleanupTRUE. Existing C journal had no operation events. Original471/2faf/525 failures/build identities remain unchanged.
+
+This adds observations around real admission operations. No READY/ACK, guard change, cross-operation cache, timeout increase, authentication shortcut or Next/500/release claim. Root explicitly leased SOURCE implementation; ROOT+independent FULL final source review is required before upload/behavior. Compiler reviewer had NOT FULL-reviewed a140; no independent a140 CLEAN verdict is transferred. Exact b3fb/a140 design copies beside this brief are historical design provenance, not runtime evidence.
+
+## Owners and invariants
+
+C(controller.py) owns new AdmissionPhaseObserver.from_stderr(),20lexical spans and original main/worker/admit logic. Profile/Store/publish/check-only/unit-root-boundary bodies remain WHOLE. Every original require guard in admit and LinuxHost.worker retains exact arguments and source order. Existing next_bindings evaluation is made explicit immediately before original N.worker; resource/typed/runtime order stays. Observer is constructed only for installed-root admit CLI after original root/path guards; imported controllers defaultNone. No new production CLI/profile/env field, callback authority, loader or kernel.
+
+Stages:0profile,1initial-state,2ready-fastproof,3readiness-loop,4first-loop-profile,5first-worker-before,6resources,7typed,8Nworker-composite,9listener-final,10first-health,11repeat-readiness-aggregate,12final-lock-state,13concurrent-ready-fastproof,14prepublish-proof,15prepublish-save,16publish-composite,17postpublish-proof,18save-ready,19profile-close. Single-use stages are not heartbeats. Later loops/proofs are honest composites. Original health attempts/deadline/sleep counts stay. Lexical parents1/12 INCLUDE their nested fastpath2/13 duration: inclusive observations, not exclusive/additive costs. N/P/K/stockExec/envguard620/allmanagerprojection are WHOLE.
+
+## Closed bounded telemetry
+
+Prefix AIHR_ADMIT_PHASE_V1 and exact v/q/p/e/t/d ASCII JSON; actual monotonic_us/elapsed differences, no clamp, errors, native values, paths, URLs or IDs. At most40packets,128bytes each; exact largest97bytes including prefix+LF, conservative5120total. Factory refuses non-None Python socket default timeout before wrapper construction, duplicates/closes ONLY stderr and changes no persistent flags. One socket.send API invocation with MSG_DONTWAIT|MSG_NOSIGNAL per frame; no APP retry/sendall/signal handler/timer/fallback. CPython internal EINTR retry is acknowledged: no one-syscall or hard per-call duration claim. Ordinary short/error/invalidclock disables telemetry; asynchronous BaseException during emission latches and propagates. An already-active original body/profileclose exception stays primary if a diagnostic send/close is also interrupted. No signal handler is installed; original controller controlflow is preserved.
+
+F(test_next_native.py) adds ONE pure schema/clock/stack/controlflow parser and optional fullNext authority wrapper after unchanged original literal/helper paths, using SAME journal read. Strict sealed C/F source hashes, actual UID0/resolvedPythonexe/exact unit/invocation/C-admit argv; duplicate JSON fields, contiguous sequence, unique stages, matching exits/elapsed, source-derived parents and finite caps. Cached P argv is NEVER C authority. Empty/truncated/exact64records/malformed/foreign/invalidclock evidence is unavailable with no stage claim. Valid interrupted prefix retains only actual unfinished spans as observations. No admission decision depends on telemetry.
+
+Source-backed correction: shortsend missing only LF can leave complete JSON flushed at EOF. Official systemdv255 journald-stream.c299–311 marks non-newline termination with trusted _LINE_BREAK. SAME F/H query now requests _TRANSPORT/_LINE_BREAK; new candidates require stdout and absent _LINE_BREAK. Original receivers WHOLE. Partial prefix may merge later original stderr terminal: original exact-literal CAPTURE is not guaranteed under that fault; no recovery write or raw reflection. Original exception/control semantics remain.
+
+New phase report <=8192compact/<=16384pretty. Original F13timing4090byte schema independent/WHOLE. P15messages/1024terminal/18432helperbytes/1s,64journal/131072raw/2sdiagnostic and90start/90request/300browser/480global/30cleanup/510root/600outer unchanged. Ppayload7693+newconservative5120=12813;55source-ownedrecords leaves9inside64. Arbitrary output/ratelimiting can still make observation unavailable; no durability guarantee.
+
+## Mandatory actual HOST same-PID handoff capability
+
+Existing HOST unit/twohooks/resources and20swork/27saggregate/35souter/3sstop/7scleanup remain. Only ExecStartPre selector becomes hook-pre. It uses SAME Cfactory, emits pair during actual root source/custody prep, closes duplicate, then ONEfixed os.execve to same probe.py hook-pre-handoff under existing fixedENV. SamePID/no fork, new hook/unit/pool, sleep, retry or cacheexpirywait. Handoff mode uses SAME Cfactory around WHOLE original hook() proof and emits second pair. Original posthook hook runs WHOLE proof without emitter. Original sixhook/resource/fourth-overlay/foreign-invocation/resistant-family/ownership checks remain mandatory.
+
+H(test_next_host_view_native.py) performs ONE500ms journal read BETWEEN existing resource_topology before/after live invocation/source/declaration custody checks; no added properties query. Already-loaded fixed preparation F provides unchanged actual transport and shared pure decoder. H authenticates exact distinct before/after root probe argv, UID/exe/unit/invocation, private native_PID sameness within/acrosspairs, clock order and ALL5sourcehashes/native declaration. Exactly4packetspaired2+2. No PID/rawargv/valuehash export. Component samples do NOT mean C.main Profile/admit ran.
+
+Cachedold OR asynchronouslynew metadata, missing/duplicate/foreign/malformed/possibletruncated records => unavailable/no proof. Original finite negative course still finishes; FINALcapabilityrequire makes unavailable FAIL the case and HOLDS any full build. Existing transport's unsettled-child flag also forces ownedRuntimeCleanedFALSE/newcaseFAIL. Mandatory original runtime_diagnostic_read settlement body WHOLE, including existing minimum-wait behavior;500ms is its passed deadline, not a new absolute syscall guarantee. No cleanup retry/cap extension.
+
+Shared CI lease: ONLY HOST list gains C in singleton-protocol;20pins vs19 and5copiednativefiles vs4. NativeNext41path/11helper sets unchanged, bytes rebind current source. Other descriptors including JIT untouched. Corresponding required[] source assertion gains C; actual registered TAPcases remain45(19+15dynamic+11static), no invented46 or count waiver. HOST TS requires observedhandoff/samePID/distinctargv/settlement plus all original proofs/cleanup.
+
+If handoff unavailable, STOP before expensive fullNext. Return actual facts and review a NEW finite trusted diagnostic mechanism; no cached-helper acceptance/hiddenfallback. Successful tiny component still does not qualify actual fullNext C-admit provenance, whose early prefix must authenticate independently.
+
+## Controls, source history and next gates
+
+New34purePython cases call actual Cfactory/stage/main/LinuxHost.worker/Controller.admit; actual Fparser/wrapper; actual Hhandoff parser/dispatcher/transport. Socketpair/pipe/flags/close/partial/EAGAIN/surfacedEINTR/clock/exception/profileclose/refusal/rollback/repeat-loop/cache/PID/schema/framing/truncation/privacy. Thinwrapper checks34 and no skips/errors. NO repository behavior ran locally: only Git/source/hash/vendorAST/external artifact JSON analysis.
+
+Affected311underlying =263Python+45TAP+3directVM,10NODBfiles/14wrappers; exact census lists ordered source names. Original205 rerun due current receiver/history/registry dependencies;16profile evidence invalidated by C, no transfer. Add25state+34new+31prepackage. Five prepackage references to old Crootguardline1106 now actualAST1257; names/assertionstructure retained. Bootstrap27 one historical-owner fixture fully replays new C/registry current→whole525 before historical unchanged249e/8bad comparisons; current C is explicitly changed. Other original37/21/22/25/state/profile bodies whole.
+
+Census nuance: unittest prefix is test, not test_. Existing test65_unicode_whitespace_punctuation_and_escaped_names_are_all_or_nothing is genuine25th plain-name case. Actual424942 rawlog SHA c488a82f49275a54442e3e4ce4c6db0fb6a5f4f9a1d0a5a72541a79d92f4aa8f logsRan27/25/25/37/21/22; authenticated source525/controller828/attempt1 artifact10wrappersPASS. These source-specific old results are preserved, never current new-source PASS. Native-bootstrap controls don't read/execute changed C/F; PostgreSQLscope6 uses unchanged class/globals, outside affected closure absent new finding.
+
+NEW inverse stores ELEVEN WHOLE actualGit525 preimages including C/F/H/nativeTS/registry/models/THREE WHOLE parentinverse maps. Current→c0458/current→5383 8/current→249e5 are recomposed source-history data only; all historical originalBase64/SHA preserved and equal actualGitbase. Every currentbyte is replayed before older originals are compared. Historical119sidecar remains WHOLE/historical; new sidecar owns actual current hashes.
+
+Next: ROOT+independent FULL frozen code/inverse/pins → exact publish → all14wrappers/311actualcases terminal/authenticated → SAMEsource soleHOST20pins/fivefiles/handoffcapability+oldproofs/cleanup → root-reviewed NEWsame-run canonicalbuild/fullNext only if capability observed and deployswitches freshlyfalse. All13planned jobs terminal before repair. NEVER reuse/relabel525build. No deployments/providers/realHR/500workload; protectedissuer/fouractor/alljourneys/steady500/release remain OPEN.
+
+## Reviewed terminal-frontier repair from96461
+
+ROOT and independent FULL20-path reviews of96461 completed with ONE P2: an early profile-close exit followed by unused stage1 could be accepted and marked complete. Current F parser adds exactly one runtime guard before each subsequent frame: stage19 must not already have exited (return OR raised). Valid early-close prefixes still decode; successful admission is not required for a completed close observation. New34th control checks both close outcomes, then appends unused stage1 with valid sequence/timestamps/durations and asserts pure rejection plus full-wrapper unavailable. Existing source-history control additionally validates the new whole96461 repair inverse. No C/H/native wrapper/registry/kernel/guard/budget behavior changes in this repair.
+
+Parent review /private/tmp/aihr-next-controller-admit-timing-96461-independent-source-review-20261109.md SHAe1db8b24456615b8612fb575a033b8ab51235b3ea8bc39590e3ec30bcf802a64 is source review, not execution. Current repair still needs ROOT+peer affected review before upload/run. NEWterminal inverse preserves SIX whole actualGit96461 preimages (F/testfile/four whole history maps); existing11whole525/8c045/8 5383/5 249e rewinds remain exact. Whole parent128-pin source map archived byte-exact as native-next-controller-admit-timing-96461-source-historical-20261109.json SHA f7e0e466df8eb10269f6185854127a2e60a449c261bce3509c7d1fe745fc43e7. New current source map is separate authority, never a parent PASS transfer.
+
+## Actual db93 model failure and C-only historical-fixture repair
+
+42503803308 completed all7planned jobs withFAILURE, source db93/controller82859/attempt1. Actual14outer wrappers13PASS/1FAIL; sole failed HOSTVIEW21 child has20PASS/1FAIL. Source-bound311course310PASS/1FAIL, including actual34timing controlsPASS. The25state cases have source-defined names and passed wrapper exit/stdout checks; child successful stderr/count/names was discarded, so no raw25-case events are claimed. ActualZIP13626473478 SHA9ae241d6381682ad523da643258dfabfb40aa5ae234746df8870279dfaaf73f6; fullreceiptSHA b5ef905a1c23ea4ec0833cdfbdb9b47e2b1c7467832b31ee671c13821d7992cd. Failed original remainsFAILURE, not rewritten asPASS. HOST has NOT been dispatched and remainsheld.
+
+The single HostViewModels.test_both_complete_predecessor_fixtures_reconstruct_without_dropping_old_guards incorrectly sent currentC4bb895072548eb7c3e279e534097476bad5315a11de97bc66c860db45567b64d directly into the old CPU-constructor inverse expecting9bcd22c302401cf20ff35eff99bb1762ccd75fed6d0e5780c4edc3369a45fbd4. Existing receipt/phase maps omit C. Current fixture now prepends ONLY C's existing timing-inverse current→whole525 rewind, validates fixedbase525/currenthash/strictdescendingrange/frontier/exactafter/wholeBase64(originalbytes)/originalhash, then keeps every old CPU/cleanup-layer assertion. No hash blind-repin, older originalSHA/Base64 rewrite or guard drop. Other20HOSTVIEWcase bodies are whole; only stdlibbase64 import and this one case change. The failure-diagnostic CPU-inverse consumer selects onlyF, notC; all actualC-chain consumers inspected. External source/data replay proves reconstructedC equals actualGit525 and exactly the oldCPUcurrent hash, then reconstructs actualGit6115 C. No repository model was run locally.
+
+C/F/H/nativeTS/registry/N/P/K/driver/workflows and ALL34timing-control bodies are BYTEWHOLEdb93. Five history manifests are recomposed as source data; all originalBase64/SHA bytes remain fixed. NEWnext_host_history_controller_inverse.json preserves SIX WHOLE actualGitdb93 preimages (HOSTVIEWmodel/five whole parentmaps), plus exact parent130pinmap archived as native-next-controller-admit-timing-db93-source-historical-20261109.json SHAbed947e85085a74057a78edd7fa80403db8615cee44bd5f606ab9f83894378d7. Prior6whole964/11whole525/8c045/8 5383/5 249e rewinds remain exactactualGit. These are source preservation facts, not model/nativePASS receipts.
+
+Recovery selection is exactly7affected selectors/11wrappers/239underlying: HOSTVIEW21 plus sharedchanged-history readers env37/failure22/plain25/manager25/bootstrap27/timing34 =191Python; file-granularity repeats45TAP+3VM inside affected manager/bootstrap files. Official focused route selects files; no inventedcase-filter/loader or weakenedwrapper is added. Retain WHOLE-dependency profile16/state25/prepackage31 wrappers fromdb93 =72source-boundcases, with explicit25state discarded-stderr limitation. Other13oldPASS outer records remain preserved with their exactsourceidentity; history-input consumers are invalidated and rerun on the newsource rather than relabeled. Machine census has complete names plus recoverySelection. No whole311fresh gate is proposed.
+
+Current source repair needs ROOT+peer affected review before upload/239controls. Only after actual allaffectedPASS +validretained72join may samefrozen-source20pin/fivefile/4packetHOST be considered. Held db93HOSTrequest /private/tmp/aihr-startup-db93-host-dispatch-prepared-20261109.json SHA04c49c89800ac96554740189d17b576bc1e92f97c35ff99675d75a3befb89f4f is historicalprepared-only; any newrequest must name newimmutable source. No canonicalbuild/fullNext/provider/deployment/500workload; actualnativehandoff remainsUNKNOWN.
+
+## Fresh child source repair from ffe8 — not runtime evidence
+
+Accepted contract: SHA2560962a668000ac6e143c0857a3038967a36a748ef3a7ff80c003bfc9e79f4fd62. P owns one fresh C child with closed derived argv/environment, inherited native streams, exact0..255 relay and validated terminal-signal relay. Exceptional handle settlement is terminate/bounded wait/kill/bounded reap within one2s attempt; uncertain settlement fails and retains systemd as the hard family owner. No timeout or protected C/F/N/template/browser/resource/READY/CAS owner changed.
+
+HOST copies/binds P as its sixth helper and21st source pin. One fixed post parent/child argv course uses the real C observer factory and exact same P child owner. Source bytes are held and hashed before import. The child publishes a fixed root-owned invocation-only ready record after observer close, then awaits one fixed root-owned permit. The ready record is an explicit narrow addition to the original single-permit contract, accepted by root to establish close-before-single-journal-read; it selects no program and adds no timer/read/cap. First invocation is released after the sole read while both senders live; the second is stopped while the parent/child and original app family remain live. Work frontiers are absolute7/11/13/17/20s, then unchanged7s cleanup. Actual native fit remains UNKNOWN and failure blocks fullNext.
+
+The old same-PID packet/code10 failure remains historical with unknown cause. Its parser/models remain disjoint; the new strict fresh-child kind requires distinct privately authenticated PIDs, exact argv/native metadata and complete final newline. No raw PID/argv/exception/journal rows are exported. All original mount/foreign-invocation/placeholder/resistant-app negatives remain.
+
+Old exact P.main/37-model expectations use a genuine current-to-ffe8 rewind. The current launcher has six stdlib-handle model methods; four fresh-origin methods supplement the preserved old decoder/refusal models. Source AST census is285Python/333underlying and213Python/261underlying affected, not executed totals. Wrapper expectations become43 and50 with unchanged caps. Five active inverses preserve every original target/base, including genuine rows for formerly unchanged P. Immutable Git parent provenance is separate from runtime inverse; no PASS transfers.
+
+The seven affected selectors remain test/runtime-native-controller-admit-timing.test.ts, test/runtime-next-bootstrap-session.test.ts, test/runtime-next-environment-observation.test.ts, test/runtime-next-failure-diagnostic.test.ts, test/runtime-next-host-view.test.ts, test/runtime-next-manager-environment.test.ts and test/runtime-next-plain-key-names.test.ts. Only unchanged16profile/25state/31prepackage evidence may be retained under the authenticated policy. Review frozen source first; separately authorize/authenticate pure controls, then one native HOST course, then fullNext/browser. Production HELD. No local repository behavior, imports, tests, compiler/build, network or dispatch occurred.
+
+## DAE source review repair — no hosted attempt
+
+The dae090b042680a17d7a282be47ac057bd98d7c18 freeze is preserved as an unpublished SOURCEFAIL. Independent review SHA2563d502c42df33f0bf6eac569f34cf022f77b73d2fa338f55b00aac86ee967bb0b found four defects; this new direct child repairs all four in one source batch. The sole timing unittest entry now follows every class, so all50 authored methods are before direct-file discovery. The native resource-topology argument is named post_family and remains distinct from the unchanged local tier inode map; the actual HOST result still must establish the genuine forwarding integration.
+
+A private pure decision distinguishes empty/old/new invocation IDs but grants no native proof. Owned restart capture starts from a positively stopped previous generation, checks declaration custody/source on every observation, and assigns only a valid new service invocation. The request leaves a capture tail; UNIT and slice have separate bounded capture shares even on failure. Existing active slice invocation must remain unchanged. No old ID is adopted while queued activation is still exposing it, and original request/capture/cleanup failures remain failures.
+
+Before calling the byte-whole1s initial environment observer, the caller requires the original first7s phase and >1.05s remaining, including a fixed50ms admission reserve. Immediate post-call accounting refuses any consumed reserve/frontier. This narrows admission without changing the observer, any native cap or the20/27/30/35/90s bounds. Ordinary models expand an existing new method for the actual identity decision and slot boundaries; method counts stay50/43 and285Python/333underlying (213/261 affected). The census now explicitly records unittest entry position and before/after definition counts; these are source facts, not test results.
+
+All five active inverses retain their SAME whole original targets/preimages and initial construction bases. Existing non-runtime ffe8 Git rows remain intact with additional immutable DAE-parent references, without a source-hash cycle. No local repository imports, tests, native execution, compiler/build, network, push or dispatch occurred. Different-peer and root FULL review must accept the new freeze before any hosted pure course. Old native refusal10 cause remains UNKNOWN; fullNext and production stay held.
+
+
+## Authenticated61620 pure-control failure and bounded test repair
+
+Run42518834654 attempt1/source61620c3874ee5f326a72e06f1ab8d48e3b8845f4,
+controller00a27edbe7de417dd97b0a82bdab48b8e79214a7, finished every planned
+job. Actual213 Python yielded208 passes,3 failures and2 errors;45TAP and3VM
+passed. Eleven outer wrappers yielded8 passes and3 failures. The failure and
+its original authenticated artifact13632293488 remain unchanged. No HOST ran.
+
+This new direct61620 source-only child changes two pure test owners. The
+constructor-refusal mock now accepts the actual exit code and raises
+ExitObserved(code), retaining exact exit1/spawn-once/fixed stderr facts; the
+signal model imports its os namespace. No production launcher behavior changes.
+The manager historical clock literal is checked on its validated whole5383
+preimage. Current H is checked with strict Python AST equivalence for the
+single STARTED anchor, total+27, cleanup-7, first phase+7, remaining minimum and
+closed phase advance after the previous live-frontier check. Seven finite
+mutation refusals are authored inside the existing method. They are source
+models, not native clock or cap-fit evidence.
+
+The two historical SHA failures shared a missing TS-wrapper source layer:
+current wrapper6072e68bb82bf5270a4afe8d0849ab8507846765c553ebd9ad2a8cd060237757
+requires43 methods. Whole actual c045/ffe8 wrapper
+e57287d83cee40072b199f02c8bfce14ed82c2db445cbe3ffe2439a3dc585509 requires37.
+One new active receipt inverse row reconstructs that exact whole c045 wrapper
+BEFORE the old key-name/terminal/phase layers. The original expected hash and
+both environment/host historical assertion bodies stay whole. All48 existing
+active inverse targets and original preimages stay unchanged;49 actual current
+rows reconstruct their genuine whole Git targets. Older inactive history stays
+whole. Dependency-ordered source-data composition retains real patch ranges
+and avoids unnecessary large replacement hunks; it does not recapture PASS.
+
+All P/H/C/F/N/template/kernel/runtime owners,46 old plus4 new timing methods,
+43 environment and25 manager method identities, case caps and direct-file
+ordering remain. The133 current-source map is derived again from actual
+source/data;21 HOST and41 full pin path sets remain unchanged. No new runtime
+helper or dependency is introduced. Counts remain285Python/333underlying and
+affected213Python/261underlying; these source counts do not imply execution.
+
+The repaired candidate must receive root and different-peer full source/data
+review before the existing failed/affected pure hosted selectors may run.
+Native HOST is held until purePASS and the independent normal-manifest
+generation guard repair qualify. The native20-second fit and the cause of the
+older failure10 remain unknown. No local repository import, module/test/native
+execution, SQL, compiler/build, network or dispatch was used. Production HELD.
+
+
+## Closed third receipt-preimage family after actual3d2a failure
+
+Run42521165894 attempt1/source3d2a66cec5dd8fbcbc226ef0a2a72f926804bb1d,
+controller00a27edbe7de417dd97b0a82bdab48b8e79214a7 finished all planned jobs:
+11 outer cases10PASS/1FAIL;213 Python212PASS/1ERROR. The sole plain-model
+KeyError at line283 assumed two historical source families. All former61620
+fixture/history failures passed on3d2a; their earlier real failure remains.
+Authenticationee84835121a49feaaf8965c8d83d823f37eb54d9975ff6586516634c720c076b
+and the source-specific artifact remain on that original identity. No HOST ran.
+
+This new source child changes only the one existing plain receipt test method.
+Both original preimage families keep their exact Base64 and SHA assertions. A
+third branch accepts only test/runtime-next-environment-observation.test.ts,
+whose already-existing six-field provenance must equal whole actualc045 commit,
+Git blobd6506ee5d302d1ef81eea040f9295376e9e60670,838 bytes and
+e57287d83cee40072b199f02c8bfce14ed82c2db445cbe3ffe2439a3dc585509.
+Strict Base64, exact length and hash checks preserve this whole original source.
+Every other family explicitly fails. The current hash, every exact slice and
+whole restored bytes/hash checks remain and now also enforce descending ranges.
+The SAME local data adjudicator handles positive rows and eleven finite refusal
+inputs: unknown row, six binding fields, wrong original SHA, invalid Base64,
+short payload and same-length changed payload. These authored controls are not
+executed or passing events.
+
+A comprehensive source-name scan found exactly seven active-inverse consumer
+owners. Their complete generic and layered courses were reviewed; only this
+plain method had a two-family assumption. All five active49 inverse JSON files
+remain BYTE-WHOLE, including the genuine new wrapper row and every old target.
+No recipe, historical expected hash, native owner, clock, command, cap, pool or
+wrapper changes. All284 other method bodies and all50 timing methods stay
+whole; all285 names remain before direct-file entry. The current133 map updates
+only actual source/metadata bytes;21 HOST and41 full pins stay whole.
+
+Root and a different peer must fully review the frozen source before a root-
+authorized failed/affected hosted course. The unchanged six other inverse
+consumers and49 inverse files are preserved facts, not relabelled runtime PASS.
+No local import, test/module/native/SQL/compiler/build/network/upload/dispatch
+was performed. HOST still needs actual purePASS plus the independently qualified
+normal manifest gate. Production HELD; old failure10 cause remains UNKNOWN.

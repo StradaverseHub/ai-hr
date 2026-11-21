@@ -5,13 +5,32 @@ import { PERSONNEL_FIELDS, PERSONNEL_IMPORT_COMPATIBILITY } from './personnel-fi
 
 export type ImportRecord = Record<string, string>;
 
+/** Item 1859cce0 — one problem with one row, emitted where it is found (never parsed back out of the text).
+ *  `column` is the template column key when the owner names one; the screen captions it through
+ *  personnelColumnLabel. `code` is a stable reason for translated wording; `message` the English detail. */
+export type ImportIssue = { column?: string; code?: string; message: string;
+  /** Board d3ba1e9f — the entered cell, recorded only for columns that are not sensitive (identity, bank, statutory and
+   *  pay columns never carry it; see isHiddenImportColumn in lib/import-problem-common.ts). Absent on older rows. */
+  value?: string };
+/** Where a problem was found: the file check before anything is written, or while saving. */
+export type ImportIssueStage = 'check' | 'save';
+/** What happened to the row: refused by the check, refused while saving (it stopped the file), not saved
+ *  because another row stopped the file, or saved. */
+export type ImportRowOutcome = 'refused' | 'stopped' | 'cancelled' | 'saved';
+
 export type RowResult = {
   proposed?:{column:string;value:string}[];
   rowNum: number; // 1-based data row (header excluded)
+  /** Board d3ba1e9f — the row exactly as Excel numbers it (header and blank rows counted). Absent on older rows. */
+  excelRow?: number;
+  /** Board d3ba1e9f — the Employee ID cell as typed (absent when blank: the system issues one). */
+  employeeCode?: string;
   fullName: string;
   email: string;
   ok: boolean;
   errors: string[];
+  /** Item 1859cce0 — the same problems as `errors`, one entry each, with the column when known. */
+  issues?: ImportIssue[];
   warnings: string[];
   /** Resolved company for THIS row (d8471481) — the `company` cell when supplied, otherwise the
    *  screen's target company. Shown in the preview so a multi-company file is auditable before
@@ -46,7 +65,7 @@ export type ImportResult = {
   warnings?:string[];
   companyId: string;
   imported: number;
-  failed: { rowNum: number; email: string; message: string }[];
+  failed: ImportFailedRow[];
   skipped: number;
   /** Item 2983802f — family members created alongside the employees, from the Family sheet. */
   dependentsImported: number;
@@ -78,6 +97,31 @@ export type ImportRunError = {
   fullName: string;
   email: string;
   errors: string[];
+  /** Item 1859cce0 — optional detail (older rows lack it; readers guard the shape). */
+  employeeCode?: string;
+  companyId?: string;
+  issues?: ImportIssue[];
+  stage?: ImportIssueStage;
+  outcome?: ImportRowOutcome;
+  /** Board d3ba1e9f — the Excel row (see RowResult.excelRow). Absent on older runs. */
+  excelRow?: number;
+};
+
+/** A row that was not saved by the write, with the reason (item 1859cce0 adds the detail fields). */
+export type ImportFailedRow = {
+  rowNum: number;
+  email: string;
+  message: string;
+  fullName?: string;
+  employeeCode?: string;
+  companyId?: string;
+  column?: string;
+  /** 'stopped': this row was refused while saving; 'cancelled': it had no problem but another row stopped the file. */
+  outcome?: 'stopped' | 'cancelled';
+  /** For a cancelled row: the rows that stopped the file. */
+  stoppedBy?: number[];
+  /** Board d3ba1e9f — the Excel row (see RowResult.excelRow). */
+  excelRow?: number;
 };
 
 /** cf43c909 — one past import, for the Import History list. `outcome` is DERIVED from the counts
@@ -169,12 +213,16 @@ export const DEPENDENT_IMPORT_COLUMNS = {
 export type DependentRowResult = {
   /** 1-based data row of the FAMILY sheet (header excluded). */
   rowNum: number;
+  /** Board d3ba1e9f — the Excel row of the Family sheet. */
+  excelRow?: number;
   /** The Employee ID this family member is linked to, as typed. */
   employeeCode: string;
   fullName: string;
   relationship: string;
   ok: boolean;
   errors: string[];
+  /** Board d3ba1e9f — the same problems as `errors`, with the column when known. */
+  issues?: ImportIssue[];
 };
 
 /** The family sheet's half of a preview. Absent columns are reported like the employee sheet's. */

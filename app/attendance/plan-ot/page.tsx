@@ -18,6 +18,8 @@ import {
   thCls,
 } from '@/components/ui';
 import { Pager } from '@/components/pager';
+import { AttendanceWorkflowProgress } from '@/components/attendance-workflow-progress';
+import { attendanceStageLevelNumber } from '@/lib/attendance-workflow';
 import { pageHref, pageState, parsePageQuery } from '@/lib/pagination';
 import { OtPlanCalendar, type OtCalendarCell, type OtCalendarPlanStatus } from '@/components/ot-plan-calendar';
 import { addMonths, isMonthParam, monthRange } from '@/lib/roster-month';
@@ -105,6 +107,7 @@ export default async function SelfOvertimePage({
 }) {
   const t = await getTranslations('me');
   const attendanceLabels = await getTranslations('attendance');
+  const historyT = await getTranslations('attendanceHistory');
   const locale = await getLocale();
   const sp = await searchParams;
   const s = await getSession();
@@ -477,7 +480,22 @@ export default async function SelfOvertimePage({
                           {/* ⚠️ ONLY WHILE IT IS STILL TRUE — see the header. */}
                           <td className="px-3 py-2 text-muted-foreground">{p.status === 'pending'
                             ? p.assignedApproverNames == null ? approver : p.assignedApproverNames.join(' / ') || t('otWorkflowGoesTo')
-                            : '—'}</td>
+                            : '—'}
+                            {/* 237c31e6 — where it waits in the route ("Level n of N"), and the whole approval progress
+                                (every level, its status and approver name · Employee ID) one click away. The panel is the
+                                same component every other screen shows, from the same frozen request. */}
+                            {p.status === 'pending' && p.workflow && p.workflow.stages[p.workflow.currentStage] && (
+                              <span className="block text-[11px]" data-approval-level-of>
+                                {historyT('levelOfTotal', { level: attendanceStageLevelNumber(p.workflow.stages[p.workflow.currentStage], p.workflow.currentStage), total: attendanceStageLevelNumber(p.workflow.stages.at(-1), p.workflow.stages.length - 1) })}
+                              </span>
+                            )}
+                            {p.workflow && (
+                              <details className="mt-1 text-xs" data-approval-progress-details>
+                                <summary className="min-h-11 cursor-pointer py-2 text-primary">{historyT('viewApprovalProgress')}</summary>
+                                <div className="max-w-md text-foreground"><AttendanceWorkflowProgress workflow={p.workflow} status={p.status} /></div>
+                              </details>
+                            )}
+                          </td>
                           <td className="px-3 py-2 tabular-nums text-muted-foreground">
                             {todayInKualaLumpur(p.createdAt)}
                           </td>

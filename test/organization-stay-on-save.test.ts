@@ -629,7 +629,6 @@ describe('§5 the panel posts what the actions read, and says it in six language
     archiveCompany: noop,
     deleteCompany: noop,
     setParent: noop,
-    setStatutory: noop,
     setBankProfile: noop,
     removeBankProfile: noop,
     setStatutoryAuthority: noop,

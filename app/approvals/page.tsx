@@ -1,8 +1,17 @@
+import {todayInKualaLumpur} from '@/lib/hr-date';
+import {resignationInbox} from '@/packs/lifecycle/service';
+import {ResignationCaseCard} from '@/components/resignation/case-card';
+import {contractSharedWorkPage} from '@/packs/contracts/service';
+import {ContractWorkSection} from '@/app/lifecycle/contracts/work-section';
+import { Pager } from '@/components/pager';
+import { parsePageQuery, pageState } from '@/lib/pagination';
 import {AttendanceUnclockedEvidence} from '@/components/attendance-unclocked-evidence';
 import {LeaveCreditClaimReviewNotice} from '@/components/leave/leave-credit-claim-review';
 import {leaveCreditClaimReviewBlocks} from '@/lib/leave-credit-claim-review';
 import { hasPendingAttendanceParticipantAssignment } from '@/packs/attendance/service';
 import { pendingRewardReviews } from '@/packs/rewards/service';
+import { probationTaskList } from '@/packs/probation/service';
+import { probationTaskLabel } from '@/lib/probation-task-labels';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
 import { Fragment } from 'react';
 import Link from 'next/link';
@@ -18,7 +27,7 @@ import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreak
 // cross-module substrate awaiting an approvals contract, ADR-0080 open decision 6) — this widens no
 // allowlist and copies no new pattern.
 import { AttendanceWorkflowProgress } from '@/components/attendance-workflow-progress';
-import { dayTypesForPairs, listAttendanceCorrections, type PlanOtDayType } from '@/core/attendance';
+import { dayTypesForPairs, listAttendanceCorrections, type PlanOtDayType } from '@/packs/attendance/service';
 // r261 stage three — the tenant's answer to "who approves a profile change?" (ess.profile_change_approver),
 // read the quiet page way and resolved by the one shared interpretation.
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -29,7 +38,7 @@ import {
   formatProposedValue,
   requestableField,
 } from '@/lib/profile-requestable-fields';
-import { listPendingClaims } from '@/core/claims';
+import { listPendingClaims, listPendingClaimsPage } from '@/packs/claims/service';
 import { listResignationRequests } from '@/core/offboarding';
 import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review';
 // 5ff7daff — the approver's queue for employee replacement-leave claims, reached through the leave-pack
@@ -128,7 +137,7 @@ function DecideButtons({
     return <span className="text-xs text-muted-foreground">{labels.yourRequest}</span>;
   }
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div data-approval-surface className="flex items-center justify-end gap-2">
       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
@@ -136,7 +145,7 @@ function DecideButtons({
         <input type="hidden" name="decision" value="approved" />
         <NavFields nav={nav} />
         {remarksLabel && <label className="block text-xs">{remarksLabel}<textarea name="remarks" maxLength={1000} className="block min-h-20 w-full rounded border border-border bg-background p-2" /></label>}
-        <Button type="submit" size="sm">
+        <Button type="submit" size="sm" data-action-approval>
           {labels.approve}
         </Button>
       </form>
@@ -171,12 +180,14 @@ function DecideButtons({
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; sort?: string; category?: string;task?:string|string[];requestId?:string|string[];leaveFilter?:string|string[] }>;
+  searchParams: Promise<{ error?: string; sort?: string; category?: string; leaveFilter?:string|string[]; claimsPage?:string;claimsSize?:string;resignationPage?:string;resignationSize?:string;contractPage?:string;contractSize?:string;task?:string|string[];requestId?:string|string[] }>;
+
 }) {
   const { s, scopeIds } = await scopedSession();
   const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');
   const attendanceOn=isModuleEnabledOrFalse(s,'attendance'),claimsOn=isModuleEnabledOrFalse(s,'claims');
-  const {error,sort:sortParam,category:categoryParam,task,requestId,leaveFilter}=await searchParams;
+  const {error,sort:sortParam,category:categoryParam,claimsPage,claimsSize,resignationPage,resignationSize,contractPage,contractSize,task,requestId,leaveFilter}=await searchParams;
+
   let focus:AssignedApprovalFocus|null;
   try{focus=parseAssignedApprovalFocus(task,requestId);}catch{notFound();}
   if(focus&&!await isCurrentAssignedApproval(s,focus,{attendance:attendanceOn,claims:claimsOn}))notFound();
@@ -189,22 +200,32 @@ export default async function ApprovalsPage({
   // performance queue (that work opens on /performance), and its Rewards card already comes from the
   // very queue the Rewards provider projects — reading them again would admit a viewer to an inbox
   // with nothing on it, or count one Rewards unit twice.
-  const [rewardReviews,assignedAttendance,assignedTasks]=await Promise.all([
+  // Probation Approve steps: the same bounded owner the task list's Probation source reads (migration 5751).
+  const contractQuery=parsePageQuery({page:contractPage,size:['200','all'].includes(contractSize??'')?'100':contractSize});
+  const resignationQuery=parsePageQuery({page:resignationPage,size:['200','all'].includes(resignationSize??'')?'100':resignationSize});
+  const probationOn=isModuleEnabledOrFalse(s,'lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length;
+  const [rewardReviews,probationApprovals,assignedAttendance,assignedTasks,resignationWork,contractWork]=await Promise.all([
     !focus&&isModuleEnabledOrFalse(s,'rewards')?pendingRewardReviews(s,scopeIds):Promise.resolve([]),
+    !focus&&probationOn?probationTaskList(s,{category:'approval',companyIds:scopeIds}):Promise.resolve({count:0,capped:false,items:[]}),
     focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?hasPendingAttendanceParticipantAssignment(s):Promise.resolve(false),
-    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false},{noticeAcknowledgements:false}):Promise.resolve([]),
+    !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false}):Promise.resolve([]),
+    !focus&&probationOn?resignationInbox(s,{kind:'approvals',companyIds:scopeIds,limit:resignationQuery.limit,offset:resignationQuery.offset}):Promise.resolve({items:[],total:0,cases:[],actionableTotal:0,fyiTotal:0}),
+    !focus&&probationOn?contractSharedWorkPage(s,{category:'approvals',companyIds:scopeIds,limit:contractQuery.limit,offset:contractQuery.offset}):Promise.resolve({items:[],total:0}),
   ]);
-  if(!focus&&!admin&&!manager&&!rewardReviews.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
-  const attendanceOnly=!admin&&!manager&&!rewardReviews.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
+  if(!focus&&!admin&&!manager&&!resignationWork.total&&!contractWork.total&&!rewardReviews.length&&!probationApprovals.items.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
+  const attendanceOnly=!admin&&!manager&&!resignationWork.total&&!contractWork.total&&!rewardReviews.length&&!probationApprovals.items.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
   if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes');
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).
   const sort = parseApprovalSort(sortParam);
   // Category panel (2dec6406): the selected approval area. Unknown values AND admin-only categories for a
   // non-admin viewer coerce to 'all' (the full inbox — today's page, unchanged).
-  const parsedCategory = parseApprovalCategory(focus?assignedApprovalCategory(focus.kind):categoryParam, { admin });
+  const parsedCategory = parseApprovalCategory(focus?assignedApprovalCategory(focus.kind):categoryParam, { admin, resignationAccess:resignationWork.total>0 });
   const category = attendanceOnly && !['all','attendance','overtime'].includes(parsedCategory) ? 'all' : parsedCategory;
   const t = await getTranslations('approvals');
+  const tResignation=await getTranslations('resignationJourney');
+  // L5: the Probation category names each step the same way /tasks does (lib/probation-task-labels.ts).
+  const tProbation = await getTranslations('probation');
   const tCreditReview=await getTranslations('replacementRequest.formulaReview');
   const tClock = await getTranslations('attendance.clockData');
   const tHistory = await getTranslations('attendanceHistory');
@@ -243,7 +264,7 @@ export default async function ApprovalsPage({
   // b833a077 (r362) — `travel` stood between `corrections` and `profileChanges` in this destructuring and
   // `listTravelRequests` in the Promise.all below. My Travel was removed completely: no form can create a
   // travel request any more, so there is no queue to decide. The travel_request rows are kept for audit.
-  const [leave, leaveCancellations, replacementRequests, loadedCorrections, claims, resignations] = await Promise.all([
+  const [leave, leaveCancellations, replacementRequests, loadedCorrections, claimResult, resignations] = await Promise.all([
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
     // incomplete before, actively misleading once calendar pills deep-link straight to this section.
@@ -259,9 +280,15 @@ export default async function ApprovalsPage({
     // used rather than the throwing one for the reason its header gives — a resolver outage must degrade
     // one queue, not the whole inbox.
     attendanceOn&&include('attendance') ? listAttendanceCorrections(s, { companyIds: queueScope, status: 'pending',requestId:focusedId('attendance') }) : Promise.resolve([]),
-    claimsOn && !attendanceOnly&&include('claim') ? listPendingClaims(s,{requestId:focusedId('claim')}) : Promise.resolve([]),
+    // Claims: the same row set as listPendingClaims (no company-switcher filter), paged.
+    claimsOn && !attendanceOnly&&include('claim')
+      ? focus
+        ? listPendingClaims(s,{requestId:focusedId('claim')}).then(rows=>({rows,page:pageState(parsePageQuery(),rows.length,rows.length)}))
+        : listPendingClaimsPage(s,{page:claimsPage,size:claimsSize,sort})
+      : Promise.resolve({rows:[],page:pageState(parsePageQuery(),0,0)}),
     admin&&include('resignation') ? listResignationRequests(s, { status: 'pending',requestId:focusedId('resignation') }) : Promise.resolve([]),
   ]);
+  const claims=claimResult.rows;
   const corrections = attendanceOnly&&!focus ? loadedCorrections.filter(row => (row.workflow?.routingVersion === 3 || row.workflow?.routingVersion === 4) && row.canDecide && row.personId !== s.personId) : loadedCorrections;
   // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
   // impossible to miss while saying no is still cheap. Resolved through scheduleFor (the same resolver the
@@ -350,11 +377,13 @@ export default async function ApprovalsPage({
     replacementLeave: replacementRequests.length,
     attendance: corrections.filter((c) => !isOvertimeCorrection(c)).length,
     overtime: corrections.filter(isOvertimeCorrection).length,
-    claim: claims.length,
-    resignations: resignations.length,
+    claim: claimResult.page.total,
+    resignations: resignations.length+resignationWork.actionableTotal,
     managerReviews: managerReviews.length,
     hrReviews: hrReviews.length,
     rewards: rewardReviews.length,
+    probation: probationApprovals.items.length,
+    contracts: contractWork.total,
   };
   // The All badge / unfiltered header total — now INCLUDING the two review queues, so header, All badge
   // and the All Pending card are one number.
@@ -388,7 +417,7 @@ export default async function ApprovalsPage({
   };
   const sortedCancellations = sortApprovalRows(pendingCancellations, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
   const sortedReplacement = sortApprovalRows(replacementRequests, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt.toISOString() });
-  const sortedClaims = sortApprovalRows(claims, sort, { id: (r) => r.id, name: (r) => r.claimantName, createdAt: (r) => r.createdAt });
+  const sortedClaims = claims;
   const sortedCorrections = sortApprovalRows(corrections, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
 
   const sortedResignations = sortApprovalRows(resignations, sort, { id: (r) => r.id, name: (r) => r.employee, createdAt: (r) => r.createdAt });
@@ -406,12 +435,14 @@ export default async function ApprovalsPage({
     (visible('leave') ? pendingLeave.length : 0) +
     (visible('leaveCancellation') ? pendingCancellations.length : 0) +
     (visible('replacementLeave') ? replacementRequests.length : 0) +
-    (visible('claims') ? claims.length : 0) +
+    (visible('claims') ? claimResult.page.total : 0) +
     (visible('corrections') ? visibleCorrections.length : 0) +
-    (visible('resignations') ? resignations.length : 0) +
+    (visible('resignations') ? pendingCounts.resignations : 0) +
     (visible('managerReviews') ? managerReviews.length : 0) +
     (visible('hrReviews') ? hrReviews.length : 0) +
-    (visible('rewards') ? rewardReviews.length : 0);
+    (visible('rewards') ? rewardReviews.length : 0) +
+    (visible('probation') ? probationApprovals.items.length : 0) +
+    (visible('contracts') ? contractWork.total : 0);
 
   // Return params every decide form posts back, so the redirect keeps the selected category + sort.
   const nav: NavParams = { category: category === 'all' ? '' : category, sort: sortParam ?? '' };
@@ -458,24 +489,30 @@ export default async function ApprovalsPage({
     { key: 'cancelled', label: t('summaryCancelled'), value: bucket(decided.cancelled) },
   ];
 
+  const claimSelectionScope = !focus && claimsOn && visible('claims') ? [...scopeIds].sort().join(',') : undefined;
   return (
-    <BulkSelectionProvider rows={bulkRows} sort={sortParam ?? ''} category={nav.category}>
-    <div className={`mx-auto flex max-w-7xl flex-col gap-6 lg:flex-row lg:items-start${bulkRows.length > 0 ? ' pb-24' : ''}`}>
+    <BulkSelectionProvider rows={bulkRows} sort={sortParam ?? ''} category={nav.category}
+      key={JSON.stringify([s.userId, scopeIds, nav.category, focus?.id])}
+      claimSelectionScope={claimSelectionScope}
+      claimsOutsidePage={claimSelectionScope !== undefined && claimResult.page.total > claims.length}>
+    <div className={`flex w-full min-w-0 flex-col gap-6 lg:flex-row lg:items-start${bulkRows.length > 0 ? ' pb-24' : ''}`}>
       {/* 2dec6406: internal approval-task panel — INSIDE the page, between the main sidebar and the content.
           Sticky + independently scrollable on lg; below lg the same markup stacks above the content. */}
       {!focus&&<aside className="w-full shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:w-60 lg:overflow-y-auto">
-        <CategoryPanel category={category} sort={sortParam} counts={pendingCounts} allCount={allPending} admin={admin} attendanceOnly={attendanceOnly} />
+        <CategoryPanel category={category} sort={sortParam} counts={pendingCounts} allCount={allPending} admin={admin} attendanceOnly={attendanceOnly} resignationAccess={resignationWork.total>0} resignationFyiCount={resignationWork.fyiTotal} />
       </aside>}
     <div className="min-w-0 flex-1 space-y-6">
       {/* 8cb7b089: on arrival at /approvals#approvals-leave(-cancellation) — the calendar pill deep-links —
           scroll to, focus, and briefly highlight the target section. Renders nothing itself. */}
       <AttentionOnArrival />
       {visible('rewards') && rewardReviews.length > 0 && <Card><SectionHeader title={t('rewards')} count={rewardReviews.length} /><ul className="divide-y divide-border">{rewardReviews.map(r => <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><span>{r.cycle} · {r.name}</span><Link href={`/rewards/${r.id}?view=approvals`} className="font-medium text-primary hover:underline">{t('reviewRewards')}</Link></li>)}</ul></Card>}
+      {visible('contracts')&&<ContractWorkSection items={contractWork.items} total={contractWork.total} pager={<Pager maxPageSize={100} state={pageState(contractQuery,contractWork.total,contractWork.items.length)} basePath="/approvals" params={{category,sort:sortParam}} paramNames={{page:"contractPage",size:"contractSize"}}/>}/>}
+      {visible('probation') && probationApprovals.items.length > 0 && <Card aria-label={t('probation')}><SectionHeader title={t('probation')} count={probationApprovals.items.length} /><ul className="divide-y divide-border">{probationApprovals.items.map(item => <li key={item.partId} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><span><span className="font-medium">{item.employeeName}</span> · {tProbation(probationTaskLabel(item.kind, item.partType).title, probationTaskLabel(item.kind, item.partType).values)}{item.dueOn && <span className="text-muted-foreground"> · {t('probationDue', { date: item.dueOn })}</span>}</span><Link href={item.href} className="font-medium text-primary hover:underline">{tProbation(probationTaskLabel(item.kind, item.partType).action, probationTaskLabel(item.kind, item.partType).values)}</Link></li>)}</ul>{probationApprovals.capped && <p className="border-t border-border p-4 text-sm text-muted-foreground">{t('probationCapped', { shown: probationApprovals.items.length })} <Link href="/lifecycle/probation?mine=1" className="font-medium text-primary hover:underline">{t('probationSeeAll')}</Link></p>}</Card>}
 
       <div data-tour="approvals-intro">
         <PageHeader
           title={t('title')}
-          description={focus?t('focusedDescription'):total === 0 ? t('emptyDescription') : t('pendingDescription', { total })}
+          description={focus?t('focusedDescription'):total === 0 ? resignationWork.fyiTotal>0?tResignation('fyiDescription'):t('emptyDescription') : t('pendingDescription', { total })}
           // Header actions row (09cda965): Sort dropdown sits top-right. The bulk-approval item (fb99474b)
           // drops its global "Select all" toggle INTO this same flex row, to the LEFT of the sort control.
           actions={
@@ -603,7 +640,7 @@ export default async function ApprovalsPage({
                     </LeaveTypeCell>
                   </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                    {r.startDate} → {r.endDate}
+                    <time dateTime={r.startDate} className="whitespace-nowrap">{r.startDate}</time>{' → '}<time dateTime={r.endDate} className="whitespace-nowrap">{r.endDate}</time>
                     {/* R17 600be8ac ask #1: surface the applicant's own words so the approver's summary shows
                         WHY the leave was requested, not just the dates. Prefer the mandatory remark, else reason. */}
                     {(r.employeeRemark || r.reason) && (
@@ -970,7 +1007,8 @@ export default async function ApprovalsPage({
 
       {visible('claims') && (
       <Card className="overflow-hidden">
-        <SectionHeader title={t('claims')} count={claims.length} />
+        <SectionHeader title={t('claims')} count={claimResult.page.total} />
+        {!focus&&<Pager basePath="/approvals" params={{category:categoryParam,sort:sortParam}} paramNames={{page:'claimsPage',size:'claimsSize'}} state={claimResult.page} />}
         {claims.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingClaims')}</p>
         ) : (
@@ -1119,7 +1157,8 @@ export default async function ApprovalsPage({
       )}
 
 
-      {admin && visible('resignations') && (
+      {visible('resignations')&&resignationWork.total>0&&<section aria-label={t('resignations')} className="space-y-4"><div className="flex flex-wrap gap-3 text-sm text-muted-foreground"><span>{tResignation('decisionCount',{count:resignationWork.actionableTotal})}</span><span>{tResignation('fyiCount',{count:resignationWork.fyiTotal})}</span></div>{resignationWork.cases.map(value=><ResignationCaseCard key={value.id} initial={value} today={todayInKualaLumpur()} fyi={!resignationWork.items.some(item=>item.caseId===value.id&&item.kind!=='fyi'&&item.actionable)}/>)}<Pager maxPageSize={100} state={pageState(resignationQuery,resignationWork.total,resignationWork.items.length)} basePath="/approvals" params={{category,sort:sortParam,claimsPage,claimsSize}} paramNames={{page:"resignationPage",size:"resignationSize"}}/></section>}
+      {admin && visible('resignations') && (resignations.length>0||!resignationWork.items.length) && (
         <Card className="overflow-hidden">
           <SectionHeader title={t('resignations')} count={resignations.length} />
           {resignations.length === 0 ? (

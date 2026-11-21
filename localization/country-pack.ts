@@ -221,9 +221,20 @@ export type ConfigSectionDescriptor = {
  * one month's file cannot name it differently.
  */
 export class BankPaymentFileError extends Error { constructor(message:string,public readonly status:404|409|422=422){super(message);this.name='BankPaymentFileError';} }
-export type BankPaymentRequest = {companyId:string;bankProfileId:string;formatId:string;periodKey:string;paymentDate:string;runSeq?:number;testFile:boolean;reference:string};
+export type BankPaymentRequest = {companyId:string;bankProfileId:string;formatId:string;periodKey:string;paymentDate:string;runSeq?:number;testFile:boolean;reference:string;closedPayrollOnly?:true};
 export type BankPaymentPreview = {digest:string;recordCount:number;totalCents:number;companyName:string;paymentDate:string;periodKey:string};
+export const BANK_PAYMENT_CATEGORIES = ['salary', 'kwsp', 'socso', 'lhdn', 'zakat'] as const;
+export type BankPaymentCategory = (typeof BANK_PAYMENT_CATEGORIES)[number];
+export type BankPaymentOptions = {
+  accounts: { id: string; bankName: string; label: string; accountNumber: string; formatId: string }[];
+  configuredAccountId: string | null;
+  usesStatutoryAccount: boolean;
+  accountIssue: 'missing' | 'incompatible' | 'multiple-primary' | 'statutory-account' | null;
+  periods: { periodKey: string; runs: { runSeq: number; cycleName: string | null; runType: string }[] }[];
+};
 export type BankPaymentFiles = {
+ /** Operator-only selection data. Account numbers stay inside the authorised download dialog. */
+ submissionOptions:(ctx:SessionContext,p:{companyId:string;category:BankPaymentCategory})=>Promise<BankPaymentOptions>;
  preview:(ctx:SessionContext,p:BankPaymentRequest)=>Promise<BankPaymentPreview>;
  download:(ctx:SessionContext,p:BankPaymentRequest & {expectedDigest:string;requestKey:string})=>Promise<{content:string;filename:string}>;
  /** AI v2 P2-2a — one payroll run's salary bank file as the Salary payroll loop checks it: the pack picks the company's
@@ -381,6 +392,9 @@ export interface CountryPack {
   eaReporting?: readonly {code: string; section: string; destination: string; label: string; order: number; active: boolean; aliases?: readonly string[]}[];
   /** ISO alpha-2 country code (uppercase) — the registry key, matching `company.country`. */
   country: string;
+  /** Finite native document merge read port; private SQL dispatch follows this same country registry. */
+  documentMerge?: {keys:readonly string[]};
+
 
   /**
    * Rung 5b (D4) — the pack's client-safe vocabulary slice (see `CountryPackClient`). The SAME
@@ -409,6 +423,8 @@ export interface CountryPack {
     /** Optional trusted human full-row reviewed source; never a generic model executor. */
     reviewed?:{readEditable:MyStatutoryModule['readReviewedStatutoryEditableMYTx'];choices:MyStatutoryModule['reviewedStatutoryChoiceMetadataMYTx'];labels:MyStatutoryModule['readReviewedStatutoryLabelsMYTx'];lockSubject:MyStatutoryModule['lockReviewedStatutoryProfileMYTx'];prepare:MyStatutoryModule['prepareReviewedStatutoryProfileMYTx'];confirm:MyStatutoryModule['confirmReviewedStatutoryProfileMYTx'];readReference:MyStatutoryModule['readReviewedStatutoryProfileReferenceMYTx']};
     get: MyStatutoryModule['getStatutoryProfileMY'];
+    /** Set-wise `get` for a caller-held scoped snapshot (the Personnel export): one read for many people. */
+    getManyTx?: MyStatutoryModule['getStatutoryProfilesMYTx'];
     /** Exact country-owned row revision for masked ESS concurrency checks; never a value digest. */
     getEditSnapshot?: MyStatutoryModule['getStatutoryEditSnapshotMY'];
     setTp3: MyStatutoryModule['setTp3ProfileMY'];
@@ -428,6 +444,8 @@ export interface CountryPack {
     validatePassport:MyStatutoryModule['validatePassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];
     getTaxSelection?: MyTaxSelectionModule['getTaxSelectionMY'];
+    /** Set-wise borrowed read-only `getTaxSelection` for a caller-held scoped snapshot (the Personnel export). */
+    getTaxSelections?: MyTaxSelectionModule['getTaxSelectionsMY'];
     saveTaxSelection?: MyTaxSelectionModule['saveTaxSelectionMY'];
     initializeHiredTaxSelectionTx?: MyTaxSelectionModule['initializeHiredTaxSelectionMYTx'];
     initializeTransferredTaxSelectionTx?: MyTaxSelectionModule['initializeTransferredTaxSelectionMYTx'];
@@ -476,6 +494,8 @@ export interface CountryPack {
 
   /** Company-level statutory registration (employer numbers, HRDF band, …). */
   companyStatutory: {
+    /** Creation-only defaults, written atomically with the new company. Never a lazy backfill. */
+    initialize?: (ctx: SessionContext, tx: Tx, companyId: string) => Promise<void>;
     set: MyCompanyStatutoryModule['setCompanyStatutoryMY'];
     get: MyCompanyStatutoryModule['getCompanyStatutoryMY'];
     /** Every company's statutory registration row (the group Organization admin panel). */
@@ -551,6 +571,9 @@ export interface CountryPack {
       status: HrdfStatus,
       cfg?: { mandatoryRate: number; optionalRate: number },
     ) => number;
+    /** Feedback c2ea9567 — the rate `hrdfLevy` applies for this band (0 when not registered), stamped on
+     *  the payslip beside the HRDF wages so the explanation never derives it as levy ÷ base. */
+    hrdfRate: (status: HrdfStatus, cfg?: { mandatoryRate: number; optionalRate: number }) => number;
     /** Effective per-employee HRDF subjectivity (tri-state flag resolved against the employer band). */
     hrdfSubject: (subjectToHrdf: boolean | null | undefined, status: HrdfStatus) => boolean;
     /**
@@ -833,3 +856,5 @@ export interface CountryPack {
     p: { employmentId: string; year: string; selectedDate: string; companyId?: string },
   ) => Promise<Pcb2iiForm | null>;
 }
+
+export type {TaxBasisItemSetting} from './my/tax-basis-replay';

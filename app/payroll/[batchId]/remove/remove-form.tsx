@@ -6,6 +6,9 @@ import { useTranslations } from 'next-intl';
 import { EmployeeCode } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { formatMoney } from '@/lib/money';
+import {ClientPager} from '@/components/client-pager';
+import type {PageState} from '@/lib/pagination';
+import {PayrollSelectionSearch} from '../../selection-search';
 import { removeEmployeePayrollAction } from '../../actions';
 
 /** One tickable row: an employee who HAS a payslip on this run. Plain serialisable data — the server
@@ -43,7 +46,9 @@ export function RemoveForm({
   employees,
   currency,
   from,
+  paging,
 }: {
+  paging?:{state:PageState;runTotal:number;search:string};
   batchId: string;
   employees: RemoveCandidate[];
   currency: string | null;
@@ -53,51 +58,36 @@ export function RemoveForm({
 }) {
   const t = useTranslations('payroll.batch');
   const [q, setQ] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [selected, setSelected] = useState<Map<string,RemoveCandidate>>(() => new Map());
   const [reason, setReason] = useState('');
 
-  const total = employees.length;
+  const total = paging?.runTotal ?? employees.length;
   // Search on employee ID **or** name, which is what the reporter asked for. Deliberately no Employee
   // Status filter: every row on this list has a result on this run, so the control would have exactly
   // one value and filter nothing.
   const needle = q.trim().toLowerCase();
   const visible = useMemo(
     () =>
-      needle === ''
+      paging || needle === ''
         ? employees
         : employees.filter(
             (e) =>
               (e.employeeCode ?? '').toLowerCase().includes(needle) || e.name.toLowerCase().includes(needle),
           ),
-    [employees, needle],
+    [employees, needle,paging],
   );
-  const picked = employees.filter((e) => selected.has(e.employmentId));
+  const currentById=new Map(employees.map(e=>[e.employmentId,e]));
+  const picked=[...selected.values()].map(e=>currentById.get(e.employmentId)??e);
   const wholeRun = total > 0 && picked.length === total;
   const laterPeriods = [...new Set(picked.flatMap((e) => e.laterPeriods))].sort();
-  /**
-   * THE TICKED PEOPLE THE SEARCH IS CURRENTLY HIDING — and the reason the hidden inputs below exist.
-   *
-   * The table body renders `visible`, so a row that stops matching the search box is UNMOUNTED and its
-   * `<input type="checkbox" name="employmentIds">` leaves the DOM with it. Every other thing on this
-   * screen — the count, the review list, the button label, the confirmation body, the whole-run refusal
-   * — is computed from `selected` over the UNFILTERED `employees`, so without this the operator would be
-   * told "Remove 3 employee payroll", shown three names in the review, and have ONE employment id
-   * posted. On a destructive payroll action, the set that is confirmed and the set that is submitted
-   * must be the same set.
-   *
-   * HIDDEN INPUTS RATHER THAN CLEARING THE SELECTION ON SEARCH, because the review panel below already
-   * NAMES every ticked person with their net figure regardless of the search — so the full selection is
-   * on screen and honoured — whereas dropping ticks when the operator types would silently throw away
-   * work they can see listed.
-   */
-  const visibleIds = useMemo(() => new Set(visible.map((e) => e.employmentId)), [visible]);
-  const pickedOffscreen = picked.filter((e) => !visibleIds.has(e.employmentId));
+  // The review and submission both use this retained selection, including rows on other pages.
+  // Checkboxes are controls only; one hidden input per picked row is the complete submitted set.
 
   const toggle = (id: string) =>
     setSelected((prev) => {
-      const next = new Set(prev);
+      const next = new Map(prev);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else {const row=currentById.get(id);if(row)next.set(id,row);}
       return next;
     });
 
@@ -130,41 +120,37 @@ export function RemoveForm({
       {from && <input type="hidden" name="from" value={from} />}
 
       <div className="flex flex-wrap items-center gap-3">
-        <input
-          type="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t('removeSearchPlaceholder')}
-          className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring dark:bg-input/30"
-        />
+        {paging?<PayrollSelectionSearch query={paging.search} placeholder={t('removeSearchPlaceholder')}/>:<input
+          type="search" value={q} onChange={(e)=>setQ(e.target.value)} placeholder={t('removeSearchPlaceholder')}
+          className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-1.5 text-sm"/>}
         <span className="text-sm font-medium">{t('removeSummary', { n: selected.size, total })}</span>
         {/* SELECT ALL REPLACES THE SELECTION WITH WHAT IS ON SCREEN, and under a search that is narrower
             than the word "all" — deliberately. It is the safe direction for a destructive action (it can
             only ever shrink the set), and unlike the search filter it does not diverge from what the
             operator is told: the count, the review list, the button label and the confirmation all move
-            with it, and every id it leaves selected is still submitted (see `pickedOffscreen`). */}
+            with it, and every id it leaves selected is still submitted (the complete hidden selection below). */}
         <button
           type="button"
-          onClick={() => setSelected(new Set(visible.map((e) => e.employmentId)))}
+          onClick={() => setSelected(new Map(visible.map((e) => [e.employmentId,e])))}
           className="text-sm font-medium text-primary hover:underline"
         >
           {t('removeSelectAll')}
         </button>
         <button
           type="button"
-          onClick={() => setSelected(new Set())}
+          onClick={() => setSelected(new Map())}
           className="text-sm font-medium text-primary hover:underline"
         >
           {t('removeClear')}
         </button>
       </div>
 
-      {/* See `pickedOffscreen`: the checkbox of a ticked row the search has filtered away is no longer in
-          the DOM, so it carries its id here instead. Disjoint from the mounted checkboxes by construction
-          (these are exactly the picked ids NOT in `visible`), so nothing is posted twice. */}
-      {pickedOffscreen.map((e) => (
+      {/* The complete reviewed selection is submitted exactly once. */}
+      {picked.map((e) => (
         <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
       ))}
+
+      {paging&&<ClientPager state={paging.state} note={t('selectionPagingNote')} rememberAs="payroll-remove"/>}
 
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-[46rem] text-sm">
@@ -186,7 +172,6 @@ export function RemoveForm({
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        name="employmentIds"
                         value={e.employmentId}
                         checked={on}
                         onChange={() => toggle(e.employmentId)}

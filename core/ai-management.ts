@@ -7,14 +7,16 @@ import { isAdmin, isGroupAdmin } from '../lib/authz-model';
 import { AI_FEATURES, isAiFeature, type AiFeatureId } from '../lib/ai/features';
 import { resolveEntitlementsTx, isModuleEnabled, getSetting } from './entitlements';
 import { SETTING_CATALOG } from '../packs/catalog';
-import { getAiConfigView, resolveActiveAiConfig } from './ai-config';
+import { readAiConfigPresentationTx } from './ai-config';
+import { readAiProviderPresentationTx } from './ai-provider-snapshot';
 import { grantAssistant, revokeAssistant } from './assistant-grant';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { setTenantSetting } from './tenant-settings';
-import { assertAiPrincipalTx } from './ai-principal';
+import { assertAiPresentationPrincipalTx, assertAiPrincipalTx } from './ai-principal';
 import { isZeroCapped } from './ai-zero-cap';
-import {aiSpendStatusTx} from './ai-spend-management';
+import {aiSpendPresentationStatusTx} from './ai-spend-management';
 import { agentSwitchStatesTx, type AgentFeature } from './agent-principal';
+import {AI_MANAGEMENT_SECTIONS,type AiManagementSection} from '../lib/ai/management-sections';
 
 export class AiControlError extends Error {}
 const assertAdmin = (ctx: SessionContext) => { if (!isAdmin(ctx)) throw new AiControlError('Only HR administrators may manage AI.'); };
@@ -91,19 +93,43 @@ const strictest = (rows:readonly PolicyLimits[]):PolicyLimits => {
   const least = (values:(number|null|undefined)[]) => { const set = values.filter((v):v is number=>v!=null); return set.length ? Math.min(...set) : null; };
   return {enabled:rows.every(r=>r.enabled),dailyRequests:least(rows.map(r=>r.dailyRequests)),monthlyTokens:least(rows.map(r=>r.monthlyTokens)),maxConcurrent:least(rows.map(r=>r.maxConcurrent))};
 };
+/** The full legacy API retains users, recent runs and budgets for its existing consumers. */
 export async function aiManagementView(ctx: SessionContext, search = '', runFilter: AiRunFilter = {}) {
+  return readAiManagement(ctx, search, runFilter, 'full');
+}
+
+type FullManagementView=Awaited<ReturnType<typeof aiManagementView>>;
+type SharedManagementView=Omit<FullManagementView,'users'|'moreUsers'|'legacyBudget'|'runs'|'runFilter'>;
+export type AiManagementPageView=SharedManagementView&(
+ | {section:'allowances';allowances:Pick<FullManagementView,'users'|'moreUsers'|'legacyBudget'>}
+ | {section:Exclude<AiManagementSection,'allowances'>;allowances:null}
+);
+
+/** Page-purpose projection. A missing detail is omitted data, never a zero/empty full read.
+ * All common authority, provider usability, attention, switch and spend reads stay identical.
+ * The Runs page owns its separate dated/paged history; no page consumes legacy recent runs. */
+export async function aiManagementPageView(ctx:SessionContext,section:AiManagementSection,search='',runFilter:AiRunFilter={}):Promise<AiManagementPageView>{
+  if(!AI_MANAGEMENT_SECTIONS.some(value=>value===section))throw new AiControlError('Unknown AI management section.');
+  const full=await readAiManagement(ctx,search,{...runFilter},section==='allowances'?'allowances':'status');
+  const {users,moreUsers,legacyBudget,runs:_runs,runFilter:_runFilter,...common}=full;
+  if(section==='allowances')return {...common,section,allowances:{users,moreUsers,legacyBudget}};
+  return {...common,section,allowances:null};
+}
+export type AiManagementAllowanceUser=FullManagementView['users'][number];
+
+/** One existing query/derivation owner. The purpose only excludes unused page detail reads. */
+async function readAiManagement(ctx:SessionContext,search:string,runFilter:AiRunFilter,purpose:'full'|'allowances'|'status') {
   ctx=captureControlContext(ctx);assertAdmin(ctx);
-  // Tenant key/routing configuration needs fresh group-wide authority (getAiConfigView). A company
-  // administrator still manages its own scope here and sees only the provider/model its resolved
-  // configuration would use, never the tenant configuration view.
-  const provider = isGroupAdmin(ctx) ? await getAiConfigView(ctx) : null;
   return withTenant(ctx, async tx => {
-    await currentControlAdminTx(tx,ctx,false);
+    await assertAiPresentationPrincipalTx(tx,ctx);
+    // A scoped administrator sees usable provider/model metadata for the tenant, with group-wide
+    // key/routing metadata reserved for the group administrator under this same snapshot.
+    const provider = isGroupAdmin(ctx) ? await readAiConfigPresentationTx(tx,ctx) : null;
     const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
     const policies = await tx.select().from(aiControlPolicy).orderBy(asc(aiControlPolicy.scopeKey));
     const activeProvider = provider?.providers.find(p => p.isActive);
-    let resolved: Pick<NonNullable<Awaited<ReturnType<typeof resolveActiveAiConfig>>>,'provider'|'model'> | null = null;
-    try { const cfg = await resolveActiveAiConfig(tx,ctx); resolved = cfg ? {provider:cfg.provider,model:cfg.model} : null; } catch { /* Render an unavailable state; never expose key/decryption errors. */ }
+    let resolved: Awaited<ReturnType<typeof readAiProviderPresentationTx>> = null;
+    try { resolved = await readAiProviderPresentationTx(tx,ctx); } catch { /* Render unavailable without exposing key/decryption errors. */ }
     const usable = resolved !== null;
     const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;
     // Only provider/model metadata crosses to the view, after checking that its key can be resolved.
@@ -164,7 +190,7 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
     const toUser = (r:UserUsageRow) => {const {source,policy,group}=effectiveUserPolicy(r.id);return {id:r.id,label:r.label,source,group,...allowanceUse(Number(r.daily_requests),Number(r.monthly_tokens),Number(r.held_tokens),policy)};};
     const pattern = `%${search.trim().slice(0,100).replace(/[\\%_]/g, '\\$&')}%`;
     // Heaviest users first, computed over every matching login rather than an alphabetical first page.
-    const userRows = isGroupAdmin(ctx) ? Array.from(await tx.execute<UserUsageRow & {assistant_granted:boolean}>(sql`
+    const userRows = purpose!=='status' && isGroupAdmin(ctx) ? Array.from(await tx.execute<UserUsageRow & {assistant_granted:boolean}>(sql`
       select u.id,coalesce(p.full_name,u.workos_user_id) as label,
       exists(select 1 from assistant_grant g where g.tenant_id=${ctx.tenantId}::uuid and g.app_user_id=u.id and g.revoked_at is null) as assistant_granted,
       coalesce(a.daily_requests,0) as daily_requests,coalesce(a.monthly_tokens,0) as monthly_tokens,coalesce(a.held_tokens,0) as held_tokens,0 as blocked_today,null as last_reason
@@ -206,11 +232,11 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
         and (a.valid_to is null or a.valid_to>=(now() at time zone 'Asia/Kuala_Lumpur')::date) order by 1) as companies
       from app_user u where u.tenant_id=${ctx.tenantId}::uuid and u.id in (${sql.join(shownIds.map(id=>sql`${id}::uuid`),sql`,`)})`)).map(r=>[r.id,{roles:r.roles??[],departments:r.departments??[],companies:r.companies??[]}]));
     const users = userRows.slice(0,50).map(r=>({...toUser(r),assistantGranted:r.assistant_granted===true}));
-    const runs = isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt,reportedCredits:aiModelRun.openrouterAccountCostCredits,roundTripMs:aiModelRun.observedRoundTripMs,observationStatus:aiModelRun.providerObservationStatus})
+    const runs = purpose==='full' && isGroupAdmin(ctx) ? await tx.select({id:aiModelRun.id,actor:sql<string|null>`coalesce(${person.fullName},${appUser.workosUserId})`,feature:aiModelRun.featureId,operation:aiModelRun.operation,provider:aiModelRun.provider,model:aiModelRun.model,state:aiModelRun.state,reason:aiModelRun.reason,actual:aiModelRun.actualTokens,reserved:aiModelRun.reservedTokens,startedAt:aiModelRun.startedAt,finishedAt:aiModelRun.finishedAt,reportedCredits:aiModelRun.openrouterAccountCostCredits,roundTripMs:aiModelRun.observedRoundTripMs,observationStatus:aiModelRun.providerObservationStatus})
       .from(aiModelRun).leftJoin(appUser,eq(aiModelRun.userId,appUser.id)).leftJoin(person,eq(appUser.personId,person.id))
       .where(and(runFilter.state?eq(aiModelRun.state,runFilter.state):undefined,runFilter.feature?eq(aiModelRun.featureId,runFilter.feature):undefined))
       .orderBy(desc(aiModelRun.startedAt),desc(aiModelRun.id)).limit(50) : [];
-    const legacyBudgets = isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= ${todayInKualaLumpur()}::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];
+    const legacyBudgets = purpose!=='status' && isGroupAdmin(ctx) ? await tx.select({monthly:assistantBudget.monthlyTokenCeiling,daily:assistantBudget.perUserDailyQuestions,effectiveFrom:assistantBudget.effectiveFrom}).from(assistantBudget).where(and(eq(assistantBudget.tenantId,ctx.tenantId),sql`${assistantBudget.archivedAt} is null`,sql`${assistantBudget.effectiveFrom} <= ${todayInKualaLumpur()}::date`)).orderBy(desc(assistantBudget.effectiveFrom),desc(assistantBudget.id)).limit(1) : [];
     // Company administrators see only their own companies' aggregates here: no login identities.
     const attention = {
       companies: companies.filter(pressing),
@@ -218,8 +244,8 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
       blocked: activity.filter(r=>Number(r.blocked_today)>0).map(r=>({id:r.id,label:r.label,count:Number(r.blocked_today),reason:r.last_reason}))
         .sort((a,b)=>b.count-a.count||a.label.localeCompare(b.label)),
     };
-    return {spend:await aiSpendStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
-  });
+    return {spend:await aiSpendPresentationStatusTx(tx,ctx),features,agentSwitches,policies,userDefault,companies,companyUsage,usage:Array.from(usage),users,moreUsers:userRows.length>50,attention,groups:isGroupAdmin(ctx)?groups:[],runs,runFilter,provider:selectedProvider,mayWriteUsers:isGroupAdmin(ctx),legacyBudget:legacyBudgets[0]??null};
+  }, {readOnlySnapshot:true});
 }
 
 export async function setAiFeature(ctx: SessionContext, feature: AiFeatureId, enabled: boolean) {
@@ -363,7 +389,7 @@ export async function applyBulkAssistantAccess(ctx: SessionContext, scopeValue: 
   if (typeof enabled !== 'boolean' || !Number.isSafeInteger(confirmedChanging) || confirmedChanging < 0) throw new AiControlError('Review the change again.');
   const scope = bulkScope(scopeValue);
   return withTenant(ctx, async tx => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     await assertAiPrincipalTx(tx, ctx);
     const [group] = await tx.execute<{ allowed: boolean }>(sql`select app.is_group_admin() as allowed`);
     if (group?.allowed !== true) throw new AiControlError('Only a group administrator may change shared AI permissions.');

@@ -14,7 +14,7 @@ import {readSpreadsheetArchive,decodeSpreadsheetXml,SpreadsheetArchiveError,type
 import {movementWorkbookScalarChoices,movementWorkbookChoiceLabel,type MovementWorkbookType} from './movement-workbook-layout';
 import {signMovementTemplate,verifyMovementTemplate} from './movement-workbook-metadata.server';
 import {MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
-import {MOVEMENT_ACTIONS,MOVEMENT_COLUMNS,MOVEMENT_SHEET,movementActionLabel,movementColumnCaptions,movementColumnsFor,movementHeaderIssue,movementHeaderVersion,movementRowsToRecords,movementSystemFields,movementTypeDisplay,type MovementSheetRow} from './movement-import-rows';
+import {MOVEMENT_ACTIONS,MOVEMENT_COLUMNS,MOVEMENT_SHEET,movementActionLabel,movementColumnCaptions,movementColumnsFor,movementHeaderIssue,movementHeaderVersion,movementRowsToRecords,movementHistorySystemFields,movementSystemFields,movementTypeDisplay,type MovementSheetRow} from './movement-import-rows';
 import type {MovementFormField} from './movement-form-contract';
 import type {PersonnelLabelResolver} from './personnel-import-contract';
 import {personnelImportLabelResolvers} from './personnel-import-labels.server';
@@ -40,11 +40,88 @@ function business(value:unknown){const s=value==null?'':String(value);if(s.lengt
  * 1d58019a Step 2 — each type also carries its controls (offered termination reasons with their names, and
  * Field Controls), so a changed reason catalogue or rule is a changed catalogue too. */
 export function movementWorkbookCatalogue(catalog:Pick<MovementImportCatalog,'types'>){return createHash('sha256').update(JSON.stringify({version:2,types:catalog.types})).digest('hex');}
+/** When each tenant termination reason row was created (ISO), keyed by code. Read with the types it describes. */
+export type MovementReasonCreatedAt=Record<string,string>;
+/**
+ * Whether a workbook signed to `signed` at `downloadedAt` still describes the current catalogue. Exact match, or
+ * the current catalogue with only tenant-created reasons added after the download removed hashes to the signed
+ * value: that proves the only change since the download is new reasons (an old row cannot mean something else).
+ * A renamed, removed, reordered, reactivated or re-scoped reason, an overridden built-in reason, a changed
+ * type or a changed Field Control still differs and still needs a new download.
+ */
+export function movementWorkbookCatalogueCurrent(signed:string,downloadedAt:string,types:MovementWorkbookType[],reasonCreatedAt?:MovementReasonCreatedAt){
+ if(signed===movementWorkbookCatalogue({types}))return true;
+ const since=Date.parse(downloadedAt);if(!reasonCreatedAt||!Number.isFinite(since))return false;
+ const added=(code:string,builtIn:boolean)=>{if(builtIn)return false;const at=Date.parse(reasonCreatedAt[code]??'');return Number.isFinite(at)&&at>since;};
+ let removed=false;
+ const before=types.map(t=>{if(!t.reasons)return t;const kept=t.reasons.filter(r=>!added(r.code,r.builtIn));if(kept.length===t.reasons.length)return t;removed=true;return{...t,reasons:kept};});
+ return removed&&signed===movementWorkbookCatalogue({types:before});
+}
 const col=(n:number)=>{let s='';for(n++;n;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s;};
 const ALLOWED_SHEETS=Object.keys(MOVEMENT_WORKBOOK_SHEET_ROWS);
 export type MovementTemplateCompany={code:string;name:string;catalog:MovementImportCatalog;companyId:string};
 export type MovementTemplateInput={tenantId:string;types:MovementWorkbookType[];companies:MovementTemplateCompany[];resolve:PersonnelLabelResolver};
 const optionCode=(option:MovementImportOption)=>option.codes?.[0]??(UUID.test(option.value)?'':option.value);
+const REFERENCE_FIELDS:MovementFormField[]=['businessUnitId','departmentId','positionId','gradeId','locationId','managerEmploymentId','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase'];
+/** One company's documented values for one field: [value to enter, meaning], in catalogue order. */
+function companyReferenceValues(company:MovementTemplateCompany,field:MovementFormField):[string,string][]{
+ const options=(company.catalog.fields[field]??[]).filter(option=>field!=='managerEmploymentId'||!option.isTestRecord&&option.eligible&&option.companyId===company.companyId);
+ const values:[string,string][]=[];
+ for(const option of options){const code=optionCode(option);if(code.trim())values.push([code,option.label||code]);}
+ return values;
+}
+/**
+ * The Reference sheet rows: event types × System Fields, Company IDs, then the allowed values. The sheet is
+ * documentation only — the upload never reads it (each entered value is resolved against the company's catalogue
+ * when the file is checked) and the signature binds the movement-type catalogue, not this layout.
+ *
+ * A value (the same code with the same meaning) that every company in the template offers for a field — a global
+ * position, department or business unit, a tenant-wide grade or profile option — is listed ONCE under the
+ * "All companies" company cell; only the values a company has and another lacks (company-scoped labels, a
+ * company's locations, its managers) are listed under that company's Company ID. Shared is decided from the
+ * catalogue data per value, so a tenant mixing global and company-scoped labels still lists each company's full
+ * allowed set: the shared rows plus its own rows. With a single company nothing is regrouped.
+ */
+export function movementReferenceSheet(p:{types:MovementWorkbookType[];companies:MovementTemplateCompany[];resolve:PersonnelLabelResolver;captions:string[]}){
+ const words=(key:string,fallback:string)=>p.resolve('people.import.movement.sheet.'+key,fallback);
+ const reference:string[][]=[[words('referenceTypes','Event types and the System Fields each may change')],[words('colEventType','Event Type'),words('colCode','Code'),words('colFields','System Fields')]];
+ const fieldLabels=new Map<string,string>();
+ for(const field of movementHistorySystemFields(p.resolve))fieldLabels.set(field.key,field.label);
+ for(const type of p.types){const fields=movementSystemFields(type,p.resolve);for(const f of fields)if(!fieldLabels.has(f.key))fieldLabels.set(f.key,f.label);reference.push([movementTypeDisplay(p.types,type,p.resolve),type.code,fields.map(f=>f.label).join(' · ')||words('noFields','No field change (leave System Fields blank)')].map(business));}
+ reference.push([],[words('referenceCompanies','Company ID to enter for each company')],[p.captions[0],words('colCompany','Company')]);
+ for(const company of p.companies)reference.push([company.code,company.name].map(business));
+ reference.push([],[words('referenceValues','Allowed values for each company')],[p.captions[0],p.captions[5],words('colValue','Value to enter in After'),words('colLabel','Meaning')]);
+ const fields=REFERENCE_FIELDS.filter(field=>fieldLabels.has(field));
+ const pairKey=([code,label]:[string,string])=>JSON.stringify([code,label]);
+ // Intersect company by company (at most two key sets held at once), then list from the first company's order.
+ const shared=new Map<MovementFormField,Set<string>>();
+ if(p.companies.length>1)for(const field of fields){
+  let common:Set<string>|undefined;
+  for(const company of p.companies){
+   const keys=new Set(companyReferenceValues(company,field).map(pairKey));
+   common=common?new Set([...common].filter(key=>keys.has(key))):keys;
+   if(!common.size)break;
+  }
+  shared.set(field,common!);
+ }
+ const allCompanies=business(words('allCompanies','All companies'));
+ for(const field of fields){
+  const keys=shared.get(field);if(!keys?.size)continue;
+  const listed=new Set<string>();
+  for(const pair of companyReferenceValues(p.companies[0],field)){const key=pairKey(pair);if(keys.has(key)&&!listed.has(key)){listed.add(key);reference.push([allCompanies,fieldLabels.get(field)!,...pair].map(business));}}
+ }
+ for(const company of p.companies)for(const field of fields){
+  const keys=shared.get(field);
+  for(const pair of companyReferenceValues(company,field))if(!keys?.has(pairKey(pair)))reference.push([company.code,fieldLabels.get(field)!,...pair].map(business));
+ }
+ if(fieldLabels.has('companyId'))for(const company of p.companies)reference.push(['',fieldLabels.get('companyId')!,company.code,company.name].map(business));
+ for(const [field,label]of fieldLabels){
+  if(REFERENCE_FIELDS.includes(field as MovementFormField)||field==='companyId'||field==='incrementAmount')continue;
+  // 1d58019a Step 2 — termination reasons are the tenant's catalogue (the reasons its Termination types offer).
+  for(const choice of movementWorkbookScalarChoices(field as MovementFormField,p.types))reference.push(['',label,choice.value,movementWorkbookChoiceLabel(choice,p.resolve)].map(business));
+ }
+ return {reference,fieldLabels};
+}
 /** Builds the single-sheet template. Every cell is business text; no internal id leaves the server. */
 export async function buildMovementWorkbook(p:MovementTemplateInput){
  const XLSX=await import('xlsx'),{default:JSZip}=await import('jszip');
@@ -64,6 +141,7 @@ export async function buildMovementWorkbook(p:MovementTemplateInput){
   [words('guideLimits','At most 200 rows and 50 employees per file, and 20 movements per employee. Each employee’s movements are saved together or not at all; other employees still go through.')],
   [words('guideNoRow','A movement with no field change (for example a Confirmation with no salary change) is one row with System Fields, Before and After left blank.')],
   [words('guideAction','Action: leave it blank or choose Create to record a new movement. Choose Update to correct an existing movement or Delete to roll it back. Update and Delete need the Movement Event ID and a Reason.')],
+  [words('guideHistory','Use Record history to enter historical placement, employment dates or authorised payroll evidence for any event type. Enter the earlier value in Before and the value that applies on the effective date in After. This action records only the period before that date.')],
   [words('guideMovementId','Movement Event ID: copy it from the Movement Event ID column of the employee’s Employment History download (Download Excel on the Movement tab). It must belong to the employee in that row.')],
   [words('guideUpdate','Update: enter one row for each field to correct, with the new value in After. Blank cells keep the recorded value, including a blank Effective Date or Event Type; nothing is cleared. Delete: one row with System Fields, Before and After left blank.')],
   [words('guideReason','Reason: why the movement is being corrected or rolled back. It is required for Update and Delete and is kept in the audit history. Where payroll for the period is already closed, you confirm that on screen before saving.')],
@@ -75,32 +153,14 @@ export async function buildMovementWorkbook(p:MovementTemplateInput){
  for(let r=1;r<=rows;r++)for(let c=0;c<MOVEMENT_COLUMNS.length;c++){const address=col(c)+(r+1),cell=sheet[address]??={t:'s',v:''};cell.z='@';}
  sheet['!cols']=MOVEMENT_COLUMNS.map(column=>({wch:column==='employeeName'||column==='systemField'?26:column==='before'||column==='after'||column==='reason'?30:column==='movementId'?38:18}));
  XLSX.utils.book_append_sheet(wb,sheet,MOVEMENT_SHEET);
- // Reference: event types × System Fields, Company IDs, then each company's allowed values.
- const reference:string[][]=[[words('referenceTypes','Event types and the System Fields each may change')],[words('colEventType','Event Type'),words('colCode','Code'),words('colFields','System Fields')]];
- const fieldLabels=new Map<string,string>();
- for(const type of p.types){const fields=movementSystemFields(type,p.resolve);for(const f of fields)if(!fieldLabels.has(f.key))fieldLabels.set(f.key,f.label);reference.push([movementTypeDisplay(p.types,type,p.resolve),type.code,fields.map(f=>f.label).join(' · ')||words('noFields','No field change (leave System Fields blank)')].map(business));}
- reference.push([],[words('referenceCompanies','Company ID to enter for each company')],[captions[0],words('colCompany','Company')]);
- for(const company of p.companies)reference.push([company.code,company.name].map(business));
- reference.push([],[words('referenceValues','Allowed values for each company')],[captions[0],captions[5],words('colValue','Value to enter in After'),words('colLabel','Meaning')]);
- const referenceFields:MovementFormField[]=['businessUnitId','departmentId','positionId','gradeId','locationId','managerEmploymentId','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase'];
- for(const company of p.companies)for(const field of referenceFields){
-  if(!fieldLabels.has(field))continue;
-  const options=(company.catalog.fields[field]??[]).filter(option=>field!=='managerEmploymentId'||!option.isTestRecord&&option.eligible&&option.companyId===company.companyId);
-  for(const option of options){const code=optionCode(option);if(code.trim())reference.push([company.code,fieldLabels.get(field)!,code,option.label||code].map(business));}
- }
- if(fieldLabels.has('companyId'))for(const company of p.companies)reference.push(['',fieldLabels.get('companyId')!,company.code,company.name].map(business));
- for(const [field,label]of fieldLabels){
-  if(referenceFields.includes(field as MovementFormField)||field==='companyId'||field==='incrementAmount')continue;
-  // 1d58019a Step 2 — termination reasons are the tenant's catalogue (the reasons its Termination types offer).
-  for(const choice of movementWorkbookScalarChoices(field as MovementFormField,p.types))reference.push(['',label,choice.value,movementWorkbookChoiceLabel(choice,p.resolve)].map(business));
- }
- if(reference.length>MOVEMENT_WORKBOOK_SHEET_ROWS.Reference)throw new Error('movement_reference_catalog_too_large');
+ const {reference,fieldLabels}=movementReferenceSheet({types:p.types,companies:p.companies,resolve:p.resolve,captions});
+ if(reference.length>MOVEMENT_WORKBOOK_SHEET_ROWS.Reference)throw new Error('movement_template_too_large');
  const referenceSheet=XLSX.utils.aoa_to_sheet(reference);referenceSheet['!cols']=[{wch:24},{wch:28},{wch:28},{wch:40}];
  for(const [address,cell]of Object.entries(referenceSheet))if(!address.startsWith('!'))(cell as import('xlsx').CellObject).z='@';
  XLSX.utils.book_append_sheet(wb,referenceSheet,'Reference');
  const lists:string[][]=[[captions[0],captions[4],captions[5],captions[8]]];
  const columns=[p.companies.map(c=>c.code),p.types.map(type=>movementTypeDisplay(p.types,type,p.resolve)),[...fieldLabels.values()],MOVEMENT_ACTIONS.map(action=>movementActionLabel(action,p.resolve))].map(values=>[...new Set(values.filter(v=>v.trim()))]);
- if(Math.max(...columns.map(values=>values.length))+1>MOVEMENT_WORKBOOK_SHEET_ROWS.Lists)throw new Error('movement_reference_catalog_too_large');
+ if(Math.max(...columns.map(values=>values.length))+1>MOVEMENT_WORKBOOK_SHEET_ROWS.Lists)throw new Error('movement_template_too_large');
  columns.forEach((values,c)=>values.forEach((value,r)=>{lists[r+1]??=[];lists[r+1][c]=business(value);}));
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(lists),'Lists');
  wb.Workbook??={};wb.Workbook.Names=columns.map((values,c)=>({Name:'AIHR_Movement_List_'+c,Ref:`'Lists'!$${col(c)}$2:$${col(c)}$${Math.max(2,values.length+1)}`}));
@@ -119,7 +179,7 @@ export async function buildMovementWorkbook(p:MovementTemplateInput){
  // The download must pass its own upload check unchanged: a blank template reads as zero entered rows.
  // A catalogue beyond the shared bounds fails here explicitly rather than producing a refused file.
  try{if((await readMovementWorkbookRows(bytes,{tenantId:p.tenantId,types:p.types})).length)throw new Error('workbook_layout_invalid');}
- catch(error){const code=error instanceof Error?error.message:'';if(code==='workbook_too_large'||code==='file_too_large')throw new Error('movement_reference_catalog_too_large');throw error;}
+ catch(error){const code=error instanceof Error?error.message:'';if(code==='workbook_too_large'||code==='file_too_large')throw new Error('movement_template_too_large');throw error;}
  return bytes;
 }
 
@@ -183,7 +243,7 @@ function inspect(bytes:Buffer){
 }
 const DATE_COLUMNS=new Set([3,6,7]);
 /** Reads the Movements sheet rows of a signed template. Throws a finite workbook_* code on refusal. */
-export async function readMovementWorkbookRows(bytes:Buffer,p:{tenantId:string;types:MovementWorkbookType[]}):Promise<MovementSheetRow[]>{
+export async function readMovementWorkbookRows(bytes:Buffer,p:{tenantId:string;types:MovementWorkbookType[];reasonCreatedAt?:MovementReasonCreatedAt}):Promise<MovementSheetRow[]>{
  if(!bytes.length)throw new Error('empty_file');
  inspect(bytes);const XLSX=await import('xlsx');let wb:import('xlsx').WorkBook;
  try{wb=XLSX.read(bytes,{type:'buffer',cellFormula:true,cellDates:false,cellNF:true,sheetRows:SHEETJS_ROWS});}catch{throw new Error('workbook_damaged');}
@@ -198,7 +258,7 @@ export async function readMovementWorkbookRows(bytes:Buffer,p:{tenantId:string;t
  const raw=XLSX.utils.sheet_to_json<unknown[]>(metaSheet,{header:1,raw:true,blankrows:false});if(raw.length>100||raw.some(r=>r.length!==1||typeof r[0]!=='string'))throw new Error('workbook_metadata_invalid');
  let parsed:unknown;try{parsed=JSON.parse(raw.map(r=>r[0]).join(''));}catch{throw new Error('workbook_metadata_invalid');}
  const metadata=verifyMovementTemplate(parsed,p.tenantId);
- if(metadata.catalogue!==movementWorkbookCatalogue({types:p.types}))throw new Error('workbook_catalogue_changed');
+ if(!movementWorkbookCatalogueCurrent(metadata.catalogue,metadata.downloadedAt,p.types,p.reasonCreatedAt))throw new Error('workbook_catalogue_changed');
  for(const name of wb.SheetNames){const sheet=wb.Sheets[name];if(Object.values(sheet).some(c=>c&&typeof c==='object'&&'f'in c&&c.f))throw new Error('formula_input');if(!ALLOWED_SHEETS.includes(name)&&Object.values(sheet).some(c=>c&&typeof c==='object'&&'v'in c&&String(c.v??'').trim()))throw new Error('workbook_unexpected_sheet');}
  const sheet=wb.Sheets[MOVEMENT_SHEET],range=XLSX.utils.decode_range(sheet['!ref']??'A1');
  // 646355e5 slice C — a version 3 template has the first eight columns; its rows read as Create.
@@ -225,7 +285,7 @@ export function readMovementCsvRows(text:string,resolvers:PersonnelLabelResolver
 }
 export const MOVEMENT_FILE_CODES=['file_too_large','empty_file','invalid_file','workbook_damaged','workbook_too_large','workbook_old_layout','workbook_columns_changed','workbook_metadata_invalid','workbook_catalogue_changed','workbook_structure_invalid','workbook_password_not_supported','workbook_unexpected_sheet','workbook_key_unavailable','formula_input','malformed_csv'] as const;
 /** Reads an uploaded file (signed .xlsx template or the same columns as UTF-8 .csv) into movement records. */
-export async function readMovementSource(name:string,content:Buffer,p:{tenantId:string;types:MovementWorkbookType[];resolve:PersonnelLabelResolver}):Promise<{records:MovementImportRecord[];fileErrors:string[]}>{
+export async function readMovementSource(name:string,content:Buffer,p:{tenantId:string;types:MovementWorkbookType[];reasonCreatedAt?:MovementReasonCreatedAt;resolve:PersonnelLabelResolver}):Promise<{records:MovementImportRecord[];fileErrors:string[]}>{
  const resolvers=[p.resolve,...personnelImportLabelResolvers];
  const lower=name.toLowerCase();let rows:MovementSheetRow[];
  try{

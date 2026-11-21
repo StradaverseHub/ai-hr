@@ -5,7 +5,7 @@ export function latestPersonnelHistory<T extends {id:string;effectiveDate:string
  return [...rows].sort((a,b)=>b.effectiveDate.localeCompare(a.effectiveDate)||(b.recordedAt??'').localeCompare(a.recordedAt??'')||(b.sortSequence??0)-(a.sortSequence??0)||a.id.localeCompare(b.id));
 }
 type Event={id:string;eventType:string;sequence:number;payload:unknown};
-type Row={id:string;kind:string;sequence:number;groupId:string|null;reversed:unknown;scheduled:boolean;appliedAt:unknown};
+type Row={id:string;kind:string;sequence:number;groupId:string|null;reversed:unknown;scheduled:boolean;appliedAt:unknown;effectiveDate?:string};
 export type InformationHistoryCorrection={eventId:string;fields:InformationField[];values:Partial<Record<InformationField,string|null>>;needsReview:boolean};
 const object=(value:unknown):Record<string,unknown>=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
 const groupOf=(event:Event)=>object(object(event.payload).movement).groupId;
@@ -15,30 +15,53 @@ function sets(event:Event,field:InformationField){
  if(field==='companyId'&&['employment.company.transferred','employment.company.transfer.reverted'].includes(event.eventType))return before.companyId!==after.companyId;
  if(field==='gradeId'&&event.eventType==='employment.grade.changed')return p.before!==p.after;
  if(field==='employmentType'&&event.eventType==='employment.assignment.changed')return before.employmentType!==after.employmentType;
- return (field==='hiredOn'||field==='joinDate')&&event.eventType==='employment.info.updated'&&Array.isArray(p.fields)&&p.fields.includes(field);
+ return (field==='hiredOn'||field==='joinDate'||field==='contractEndDate'||field==='internshipEndDate')&&event.eventType==='employment.info.updated'&&Array.isArray(p.fields)&&p.fields.includes(field);
 }
 /** Corrections amend a fact's existing display lineage, not the immutable ledger or payroll as-of facts.
  * A later explicit writer bounds each field separately. Untagged/unresolvable writers are reviewable,
  * never silently assigned to a different movement. Both manual and imported correction events use this.
  */
 export function personnelInformationCorrections(events:readonly Event[],rows:readonly Row[]):Map<string,InformationHistoryCorrection[]>{
- const result=new Map<string,InformationHistoryCorrection[]>(),ordered=[...events].sort((a,b)=>a.sequence-b.sequence);
+ const result=new Map<string,InformationHistoryCorrection[]>();
+ if(!events.some(event=>event.eventType==='employment.information.corrected'))return result;
+ const ordered=[...events].sort((a,b)=>a.sequence-b.sequence);
+ const lastSequenceByGroup=new Map<string,number>();
+ for(const event of ordered){
+  const group=groupOf(event);
+  if(typeof group==='string'&&group)lastSequenceByGroup.set(group,event.sequence);
+ }
  const owner=(event:Event)=>rows.find(row=>row.id===event.id||row.groupId&&row.groupId===groupOf(event));
- const span=(row:Row)=>Math.max(row.sequence,...ordered.filter(event=>row.groupId&&groupOf(event)===row.groupId).map(event=>event.sequence));
+ const span=(row:Row)=>Math.max(row.sequence,(row.groupId?lastSequenceByGroup.get(row.groupId):undefined)??row.sequence);
  for(const correction of ordered.filter(event=>event.eventType==='employment.information.corrected')){
   const p=object(correction.payload),after=object(p.after),fields=Array.isArray(p.fields)?p.fields:[];
+  // Board 4604dccc — a dated correction (Effective Date before the day it was made) decorates only the rows inside
+  // its own period: from its Effective Date until the field's next recorded change.
+  const dated=(p.dated===true||typeof p.originalEffectiveOn==='string')&&typeof p.effectiveOn==='string'?{from:p.effectiveOn,until:object(p.until)}:null;
   for(const field of INFORMATION_FIELDS){
    if(!fields.includes(field)||!(typeof after[field]==='string'||after[field]===null))continue;
    const writers=ordered.filter(event=>sets(event,field));
-   const source=writers.filter(event=>event.sequence<correction.sequence).at(-1);
+   // An original-hire correction writes secondary native legs before its audit event.
+   // Those legs are implementation evidence, not new movement owners.
+   const original=p.source==='original-hire';
+   const source=original
+    ? ordered.find(event=>event.eventType==='employment.hired'&&(typeof p.hiredEventId!=='string'||event.id===p.hiredEventId))
+    : writers.filter(event=>event.sequence<correction.sequence).at(-1);
    const sourceRow=source?owner(source):rows.find(row=>row.kind==='hired');
    if(!sourceRow||sourceRow.reversed||(sourceRow.scheduled&&!sourceRow.appliedAt)){
     const marker=rows.find(row=>row.kind==='hired')??rows[0];
     if(marker){const list=result.get(marker.id)??[];list.push({eventId:correction.id,fields:[field],values:{},needsReview:true});result.set(marker.id,list);}continue;
    }
-   const from=source?source.sequence:0,next=writers.find(event=>event.sequence>from&&event.sequence!==source?.sequence),until=next?.sequence??Infinity;
+   const from=source?source.sequence:0,next=writers.find(event=>event.sequence>from&&event.sequence!==source?.sequence),until=original?Infinity:next?.sequence??Infinity;
+   const laterDates=original?writers.flatMap(writer=>{
+    const decision=owner(writer);
+    return decision&&decision.kind!=='hired'&&!decision.reversed&&decision.effectiveDate&&typeof p.effectiveOn==='string'&&decision.effectiveDate>p.effectiveOn?[decision.effectiveDate]:[];
+   }):[];
+   const explicitUntil=dated?.until[field];
+   const dateUntil=[...(typeof explicitUntil==='string'?[explicitUntil]:[]),...laterDates].sort()[0];
    for(const row of rows){
     if(row.reversed||(row.scheduled&&!row.appliedAt)||span(row)<from||span(row)>=until)continue;
+    // The Hired row's old date must itself be corrected, even when the new date is later.
+    if(row.effectiveDate&&((dated&&(row.kind!=='hired'||!original)&&row.effectiveDate<dated.from)||(dateUntil&&row.effectiveDate>=dateUntil)))continue;
     const list=result.get(row.id)??[];
     let item=list.find(item=>item.eventId===correction.id&&!item.needsReview);
     if(!item){item={eventId:correction.id,fields:[],values:{},needsReview:false};list.push(item);}

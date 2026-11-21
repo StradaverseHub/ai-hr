@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 /**
  * 0db97f14 — Bank & Statutory import: the MERGED statutory writer, the file-level history wrapper and the
  * revert handler (ADR-0155 kind `bank_statutory`).
@@ -23,7 +24,8 @@ import {mapEpfUiMode,retainLegacyTotalTopup} from '../lib/epf-mode-map';
 import {applyPersonnelOperationalValuesTx} from './personnel-import-operations';
 import {setEmploymentPaymentMethod} from './org';
 import {isPaymentMethod} from '../lib/payment-methods';
-import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {lockLeaveDependenciesWaitTx} from './leave-dependency-lock';
+import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {
  BANK_COLUMNS,BANK_STATUTORY_STATE_COLUMNS,MERGED_STATUTORY_COLUMNS,OTHERS_COLUMNS,REGISTRATION_COLUMNS,STATUTORY_ROW_COLUMNS,
  bankStatutoryColumnLabel,bankStatutoryStateFrom,childReliefTableFrom,isTaxColumn,parseBankStatutoryCell,
@@ -55,20 +57,49 @@ export function bankStatutoryRefusal(error:unknown):string|null{
  return null;
 }
 
+type TaxSelectionRead=Awaited<ReturnType<NonNullable<CountryPack['statutory']['getTaxSelection']>>>;
+const residencyOf=(selection:TaxSelectionRead)=>selection.transitionState==='resolved'&&selection.scheme&&selection.scheme!=='none'?String(selection.scheme):'';
 /** Income tax residency exactly as the tab shows it: the resolved employer-scoped scheme, else "". */
 export async function readTaxResidencyTx(tx:Tx,ctx:SessionContext,subject:BankStatutorySubject,row:{taxCircumstance?:string|null}|null){
  if(!row)return'';
  if(row.taxCircumstance==='none')return'none';
  if(!subject.pack.statutory.getTaxSelection)return'';
  try{
-  const selection=await subject.pack.statutory.getTaxSelection(ctx,subject.employmentId,undefined,{tx,readOnly:true});
-  return selection.transitionState==='resolved'&&selection.scheme&&selection.scheme!=='none'?String(selection.scheme):'';
+  return residencyOf(await subject.pack.statutory.getTaxSelection(ctx,subject.employmentId,undefined,{tx,readOnly:true}));
  }catch{return'';}
+}
+/**
+ * Set-wise `readTaxResidencyTx` for a batch of subjects (the Bank & Statutory validation tick), answer i for
+ * item i. Each answer is the one the single read gives: no statutory row is "", circumstance None is "none",
+ * a pack without tax selections is "", and otherwise the pack's BORROWED read-only selection in the caller's
+ * transaction and session, with any refusal read as "". The pack's set-wise borrowed read
+ * (`getTaxSelections`, the Personnel export's) runs once per pack for the whole batch, so the statement count
+ * does not grow with the rows. It runs the same employment, authority, company, profile and selection reads
+ * as the single read under the same row security, so nothing becomes visible that the single read would not
+ * show. A pack without the set-wise read keeps the single read per subject.
+ */
+export async function readTaxResidenciesTx(tx:Tx,ctx:SessionContext,items:readonly {subject:BankStatutorySubject;row:{taxCircumstance?:string|null}|null}[]):Promise<string[]>{
+ const answers=items.map(()=>''),byPack=new Map<CountryPack,number[]>();
+ items.forEach(({subject,row},index)=>{
+  if(!row)return;
+  if(row.taxCircumstance==='none'){answers[index]='none';return;}
+  if(!subject.pack.statutory.getTaxSelection)return;
+  const group=byPack.get(subject.pack);if(group)group.push(index);else byPack.set(subject.pack,[index]);
+ });
+ for(const[pack,indexes]of byPack){
+  const getMany=pack.statutory.getTaxSelections;
+  if(!getMany){for(const index of indexes)answers[index]=await readTaxResidencyTx(tx,ctx,items[index].subject,items[index].row);continue;}
+  let read:(employmentId:string)=>Promise<TaxSelectionRead>;
+  // A failed set-wise read leaves every answer "", as each single read's own failure would.
+  try{read=await getMany(ctx,indexes.map(index=>items[index].subject.employmentId),{tx,readOnly:true});}catch{continue;}
+  for(const index of indexes){try{answers[index]=residencyOf(await read(items[index].subject.employmentId));}catch{answers[index]='';}}
+ }
+ return answers;
 }
 /** The employee's Bank & Statutory values as the tab presents them, read inside the caller's transaction. */
 export async function readBankStatutoryStateTx(tx:Tx,ctx:SessionContext,subject:BankStatutorySubject,options:{lock?:boolean}={}):Promise<{state:BankStatutoryState;row:Awaited<ReturnType<CountryPack['statutory']['get']>>}>{
  const row=await subject.pack.statutory.get(ctx,subject.personId,tx,{forUpdate:options.lock});
- const[e]=await tx.select({paymentMethod:employment.paymentMethod}).from(employment).where(eq(employment.id,subject.employmentId));
+ const[e]=await tx.select({paymentMethod:employmentPaymentMethodOnSql(sql`${employment.id}`)}).from(employment).where(eq(employment.id,subject.employmentId));
  return{row,state:bankStatutoryStateFrom(row as unknown as Record<string,unknown>|null,{taxResidency:await readTaxResidencyTx(tx,ctx,subject,row),paymentMethod:e?.paymentMethod??null})};
 }
 export async function bankStatutorySubjectTx(tx:Tx,employmentId:string):Promise<BankStatutorySubject|null>{
@@ -207,8 +238,10 @@ export function bankStatutoryDiff(before:BankStatutoryState,after:BankStatutoryS
 // ─── Revert ───────────────────────────────────────────────────────────────────────────────────────────────
 const itemState=(value:unknown)=>(value??{fields:{}}) as BankStatutoryItemState;
 const shown=(v:string)=>v===''?'(blank)':v;
-/** Same writer locks as the import's row transactions, always before the attempt row lock. */
-async function lockBankStatutoryWritersTx(tx:Tx,ctx:SessionContext){await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);}
+/** Same writer locks as the import's row transactions, always before the attempt row lock. Shared
+ * (reader/writer wave 4): each restored employee's statutory setter then takes its own subject and
+ * payroll inputs locks, so a revert overlaps other writers and still waits for an in-flight run. */
+async function lockBankStatutoryWritersTx(tx:Tx,ctx:SessionContext){await lockAccessConfigurationTx(tx,ctx.tenantId);await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[]);}
 /**
  * Eligible only while every field the import changed still holds exactly the value it set. Restores the
  * recorded "before" values through the merged writer, newest import row first. Nothing the import did not

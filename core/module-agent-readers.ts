@@ -1,8 +1,10 @@
+import {trackAiCentreFunctions} from '../lib/ai/centre-activity';
+import {sql} from 'drizzle-orm';
 /** Closed canonical module projections. Receives the Assistant owner's actual transaction/lifetime.
  * No provider, posted employee/company selector, generic query, cache or effect entry point exists.
  */
 import type { SessionContext, Tx } from '../db/client';
-import { AiGatewayError } from '../lib/ai/types';
+import { AiAllowanceError,AiGatewayError } from '../lib/ai/types';
 import { MODULE_AGENT_CAPABILITIES, isAgentModuleCode, type AgentModuleCode } from '../lib/ai/module-agents';
 import {MODULE_AGENT_ACTIONS,parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
 import {moduleHumanActionHandoffs} from '../lib/ai/module-human-handoffs';
@@ -10,7 +12,7 @@ import {isAdmin} from '../lib/authz-model';
 import {assistantAgentStatusTx} from './ai-management';
 import { assertAiPrincipalTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
-import { assertAiActionUnpausedTx } from './ai-governance';
+import { aiPresentationFunctionsEnabledTx, assertAiActionUnpausedTx, assertAiPresentationActionUnpausedTx } from './ai-governance';
 import { assertModuleEnabled, resolveEntitlementsTx, isModuleEnabled } from './entitlements';
 import * as reads from './read';
 import { readinessSnapshot } from './record-readiness';
@@ -25,19 +27,25 @@ import { listRewardUnits } from '../packs/rewards/service';
 import { ownClaimStatuses } from '../packs/claims/service';
 import { listSchemaTables } from './schema-explorer';
 import {ownTestingWorkStatusesTx} from './system-testing-workspace';
+import { recruitmentPipelineCounts } from '../packs/recruitment/service';
 
 const unavailable = (): never => { throw new AiGatewayError('Assistant data access could not be confirmed.'); };
 const storedAmount = (value: unknown): string | number | null => typeof value === 'number' && Number.isFinite(value) ? value :
   typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value) && value.length <= 40 ? value : null;
 const storedLabel = (value: unknown): string | null => typeof value === 'string' && value.length <= 250 ? value : null;
 const bounded = <T>(rows: T[]) => ({ rows: rows.slice(0, 25), truncated: rows.length > 25 });
-export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: () => boolean) {
+export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: () => boolean,presentation=false) {
   const moduleWork = async (module: AgentModuleCode) => {
     if (!active() || !isAgentModuleCode(module)) return unavailable();
     await assertAiPrincipalTx(tx, ctx);
     const fresh = { ...ctx, entitlements: await resolveEntitlementsTx(tx, ctx.tenantId) };
     await assertMayUseAssistant(fresh, tx);
-    await assertAiActionUnpausedTx(tx, fresh, 'hr_assistant');
+    await (presentation?assertAiPresentationActionUnpausedTx:assertAiActionUnpausedTx)(tx, fresh, 'hr_assistant');
+    const functions=['read:my_module_work','module:'+module];
+    const allowed=presentation?await aiPresentationFunctionsEnabledTx(tx,functions):
+      (await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed('read:my_module_work') and app.ai_centre_read_allowed(${'module:'+module}) as allowed`))[0]?.allowed;
+    if(allowed!==true)throw new AiAllowanceError('paused');
+    trackAiCentreFunctions(ctx.tenantId,functions);
     assertModuleEnabled(fresh, module);
     const capability = MODULE_AGENT_CAPABILITIES.find(entry => entry[0] === module)![1];
     // All Assistant/orchestrator paths share this closed module boundary. A declaration is not
@@ -120,6 +128,8 @@ export function createModuleAgentReaders(ctx: SessionContext, tx: Tx, active: ()
         data = { tables: bounded(result.tables.map(row => ({ table: row.table, module: row.moduleCode }))), withheldTables: result.withheldTables }; break;
       }
       case 'system_testing': data = await ownTestingWorkStatusesTx(tx,fresh,25); break;
+      // Counts only, per administered company; the owner returns no candidate or application record.
+      case 'recruitment': data = await recruitmentPipelineCounts(fresh, tx); break;
       case 'assistant': data = { capabilities: MODULE_AGENT_CAPABILITIES.filter(([code]) => isModuleEnabled(fresh, code)&&(code!=='system_explorer'||isAdmin(fresh)))
         .map(([code, binding]) => ({ module: code, capability: binding, authority: 'rechecked-at-canonical-source' })), effects: 'human-confirmation-only',
         ...(isAdmin(fresh)?{adminAgentStatus:await assistantAgentStatusTx(tx,fresh)}:{}) }; break;

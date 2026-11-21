@@ -11,7 +11,7 @@ function definitions(module: CaseFormModule): CaseFieldDefinition[] {
   return module === 'onb' ? [
     base('name','Full name','personnel',{ system: true }), base('empNo','Employee no.','personnel'), base('joinInput','Join date','personnel',{ system: true, type: 'date' }),
     base('position','Job title','personnel',{ system: true }), base('dept','Department','personnel',{ system: true }), base('company','Company','personnel',{ system: true }), base('group','Business Group','personnel',{ system: true }),
-    base('supervisor','Supervisor','personnel'), base('ta','GBS TA name','personnel'),
+    base('supervisor','Supervisor','personnel'), base('ta','TA','case'),
     base('hireType','New hire or replacement','case',{ type: 'dropdown', options: ['New hire','Replacement'], values: ['new_hire','replacement'], required: true }),
     base('replacing','Employee being replaced','case',{ required: true, when: { field: 'hireType', value: 'replacement' } }),
     base('email','New hire email','case'), base('floor','Floor / building','case'),
@@ -22,7 +22,6 @@ function definitions(module: CaseFormModule): CaseFieldDefinition[] {
     base('notice','Notice date','case',{ type: 'date', required: true }),
     base('revokeMode','Revoke access','case',{ system: true, type: 'dropdown', options: ['End of last working day','On a specific date'], values: ['lastday','date'], required: true }),
     base('revokeDate','Revoke access on','case',{ system: true, type: 'date', required: true, fixedWhen: { field: 'revokeMode', value: 'date' } }),
-    base('pbp','People Business Partner','case'),
   ];
 }
 export function defaultV9CaseFields(module: CaseFormModule): CaseField[] {
@@ -30,7 +29,7 @@ export function defaultV9CaseFields(module: CaseFormModule): CaseField[] {
 }
 export function resolveV9CaseFields(module: CaseFormModule, configured?: CaseField[], includeRemoved = false): CaseFieldDefinition[] {
   const original = definitions(module), values = configured ?? defaultV9CaseFields(module);
-  return values.filter(value => includeRemoved || !value.removed).map(value => {
+  return values.filter(value => value.key !== 'pbp' && (includeRemoved || !value.removed)).map(value => {
     const standard = original.find(field => field.key === value.key);
     const field: CaseFieldDefinition = { ...structuredClone(value), source: standard?.source ?? 'case', system: standard?.system ?? false, custom: !standard };
     if (standard?.type === 'date') field.type = 'date';
@@ -64,8 +63,8 @@ export function validateV9CaseValue(field: CaseFieldDefinition, value: string) {
   if (value.length > 10000 || field.type === 'date' && value && !isCalendarDate(value) || field.type === 'dropdown' && value && !(field.values ?? field.options).includes(value)) throw Error(`Enter a valid value for ${field.label || 'this field'}.`);
 }
 
-export function offCaseFormValues(c: { facts: { employeeNo: string; lastDay: string; supervisorUserId: string | null; caseType: string; noticeDate: string; pbpUserId: string | null }; revokeDate: string; revokeMode?: 'lastday' | 'date'; caseValues?: Record<string,string> }): Record<string,string> {
-  return { ...c.caseValues, empNo: c.facts.employeeNo, lastDay: c.facts.lastDay, supervisor: c.facts.supervisorUserId ?? '', type: c.facts.caseType, notice: c.facts.noticeDate, revokeMode: c.revokeMode ?? (c.revokeDate === c.facts.lastDay ? 'lastday' : 'date'), revokeDate: c.revokeDate, pbp: c.facts.pbpUserId ?? '' };
+export function offCaseFormValues(c: { facts: { employeeNo: string; lastDay: string; supervisorUserId: string | null; caseType: string; noticeDate: string }; revokeDate: string; revokeMode?: 'lastday' | 'date'; caseValues?: Record<string,string> }): Record<string,string> {
+  return { ...c.caseValues, empNo: c.facts.employeeNo, lastDay: c.facts.lastDay, supervisor: c.facts.supervisorUserId ?? '', type: c.facts.caseType, notice: c.facts.noticeDate, revokeMode: c.revokeMode ?? (c.revokeDate === c.facts.lastDay ? 'lastday' : 'date'), revokeDate: c.revokeDate };
 }
 
 /** Operational inputs remain available at submission even when absent from Case details. */

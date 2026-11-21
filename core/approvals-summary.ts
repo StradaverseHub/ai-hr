@@ -194,6 +194,10 @@ export async function decidedStatusCounts(
       case 'managerReviews':
       case 'hrReviews':
       case 'rewards':
+      // Probation approvals are decided on the case view; this page keeps no decided history for them.
+      case 'probation':
+      // Contract decisions and document reviews retain their outcomes on their native subjects.
+      case 'contracts':
         return NONE;
       case 'all': {
         const admin = isAdmin(ctx);

@@ -1,25 +1,7 @@
 import { getRequestConfig } from 'next-intl/server';
 import { cookies } from 'next/headers';
 import { defaultLocale, isLocale, LOCALE_COOKIE, type Locale } from './config';
-import en from '../messages/en.json';
-import aiCentreEn from '../messages/ai-centre/en.json';
-
-type Dict = Record<string, unknown>;
-
-/** Deep-merge a (partial) locale catalog over the English base so any missing or blank key falls
- *  back to English rather than rendering the raw key. Catalogs are nested string maps, never arrays. */
-function withFallback(base: Dict, over: Dict): Dict {
-  const out: Dict = { ...base };
-  for (const [k, v] of Object.entries(over ?? {})) {
-    const b = out[k];
-    if (v && typeof v === 'object' && !Array.isArray(v) && b && typeof b === 'object' && !Array.isArray(b)) {
-      out[k] = withFallback(b as Dict, v as Dict);
-    } else if (v != null && v !== '') {
-      out[k] = v;
-    }
-  }
-  return out;
-}
+import {messagesForLocale} from './catalogs';
 
 /**
  * 587ee719 — `requested` IS THE EXPLICIT OVERRIDE, AND IGNORING IT SILENTLY BROKE A FEATURE.
@@ -43,13 +25,5 @@ export default getRequestConfig(async ({ locale: requested }) => {
       ? cookieLocale
       : defaultLocale;
 
-  // The AI centre's own catalogue (messages/ai-centre/<locale>.json) is merged over the main one. It is a
-  // separate file because messages/<locale>.json sits inside the approved provider-data source digest.
-  const base = withFallback(en as Dict, aiCentreEn as Dict);
-  if (locale === 'en') return { locale, messages: base as typeof en };
-  const [localeMessages, aiCentreLocale] = await Promise.all([
-    import(`../messages/${locale}.json`).then(m => m.default as Dict),
-    import(`../messages/ai-centre/${locale}.json`).then(m => m.default as Dict),
-  ]);
-  return { locale, messages: withFallback(base, withFallback(localeMessages, aiCentreLocale)) as typeof en };
+  return { locale, messages: await messagesForLocale(locale) };
 });

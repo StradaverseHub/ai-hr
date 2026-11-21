@@ -16,6 +16,7 @@ export const v9OwnWork: Service['v9OwnWork'] = async (...args) => (await load())
 export const v9OwnDocument: Service['v9OwnDocument'] = async (...args) => (await load()).v9OwnDocument(...args);
 export const v9CaseDetail: Service['v9CaseDetail'] = async (...args) => (await load()).v9CaseDetail(...args);
 export const v9Sweep: Service['v9Sweep'] = async (...args) => (await load()).v9Sweep(...args);
+export const v9BackfillReturnPresets: Service['v9BackfillReturnPresets'] = async (...args) => (await load()).v9BackfillReturnPresets(...args);
 export const v9OwnTask: Service['v9OwnTask'] = async (...args) => (await load()).v9OwnTask(...args);
 export const v9UploadFile: Service['v9UploadFile'] = async (...args) => (await load()).v9UploadFile(...args);
 export const v9DownloadFile: Service['v9DownloadFile'] = async (...args) => (await load()).v9DownloadFile(...args);
@@ -41,3 +42,19 @@ export const v9OwnItem: Service['v9OwnItem'] = async (...args) => (await load())
 export const v9PreviewWorkflow: Service['v9PreviewWorkflow'] = async (...args) => (await load()).v9PreviewWorkflow(...args);
 
 export const v9CreateOffboardingTx: Service['v9CreateOffboardingTx'] = async (...args) => (await load()).v9CreateOffboardingTx(...args);
+export const v9LockSharedContractOffboardingTx: Service['v9LockSharedContractOffboardingTx'] = async (...args) => (await load()).v9LockSharedContractOffboardingTx(...args);
+
+export const v9PreviewWorkflowRemoval: Service['v9PreviewWorkflowRemoval'] = async (...args) => (await load()).v9PreviewWorkflowRemoval(...args);
+export const v9RemoveWorkflow: Service['v9RemoveWorkflow'] = async (...args) => (await load()).v9RemoveWorkflow(...args);
+export const v9RestoreWorkflow: Service['v9RestoreWorkflow'] = async (...args) => (await load()).v9RestoreWorkflow(...args);
+
+export const v9PlanWorkflow: Service['v9PlanWorkflow'] = async (...args) => (await load()).v9PlanWorkflow(...args);
+export const v9EmailHoldInbox: Service['v9EmailHoldInbox'] = async (...args) => (await load()).v9EmailHoldInbox(...args);
+
+/** Configuration shares the same lazy server boundary as the case services. */
+type ConfigurationService = typeof import('./configuration');
+async function loadConfiguration(): Promise<ConfigurationService> {
+  const loaded = await import('./configuration');
+  return (loaded as { default?: ConfigurationService }).default ?? loaded;
+}
+export const v9Configuration: ConfigurationService['v9Configuration'] = async (...args) => (await loadConfiguration()).v9Configuration(...args);

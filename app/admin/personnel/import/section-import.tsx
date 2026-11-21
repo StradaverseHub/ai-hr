@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import {BankImportProgress} from './bank-import-progress';
 import { personnelTemplateReferenceLists } from '@/lib/personnel-template-reference';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
@@ -8,14 +9,16 @@ import {isPersonnelRegisterKind,buildPersonnelRegisterCsv} from '@/lib/personnel
 import type {PersonnelImportSheet} from '@/lib/personnel-import-contract';
 import { PersonnelImportValues } from '@/components/personnel-import-values';
 
-import { useRef, useState, useTransition } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
-import { toCsv } from '@/lib/csv';
+import {csvDataExcelRows,lineRowOf} from '@/lib/import-problem-common';
+import {sectionPreviewProblemLines,sectionResultProblemLines,type SectionRowResultWithIssues} from '@/lib/section-import-problems';
+import {ImportProblems,useImportProblemTranslate} from './import-error-log';
 import { personnelColumnLabel as descriptorColumnLabel, personnelColumnGuidance, personnelImportField, personnelImportFields } from '@/lib/personnel-import-contract';
 import {
   buildPersonnelInstructionRows,
@@ -34,6 +37,8 @@ import {
 } from '@/lib/import-sections';
 import type { ImportReference } from './employee-import';
 import { commitSectionAction, validateSectionAction,registerRecordsAction } from './section-actions';
+import {SectionImportJobPanel,SECTION_IMPORT_JOBS_ENDPOINT} from './section-import-progress';
+import {SECTION_IMPORT_ALREADY_RUNNING,sectionImportActive,type SectionImportJobProgress} from '@/lib/section-import-job';
 import { bankStatutoryChoices } from '@/lib/bank-statutory-import';
 
 /**
@@ -73,12 +78,35 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
   const [reading, setReading] = useState(false);
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Board d3ba1e9f — the picked file's Excel rows (blank rows are dropped from the text, not from Excel), sent with
+  // the check only while the text is still that file's text.
+  const excelRows = useRef<{text:string;rows:number[]}|null>(null);
+  const tl = useTranslations('importErrorLogEmployee');
+  const problemT = useImportProblemTranslate();
   // A preview belongs to exact input; a slower read/validation cannot restore superseded input.
   const inputRevision = useRef(0);
   const fileReadRevision = useRef(0);
   const commitPending = useRef(false);
   // Keep the submitted file fixed until the real write reports its outcome; never discard success.
   const [committing, setCommitting] = useState(false);
+  // The background import of this section, rejoined after navigation; the file stays fixed while it runs.
+  const [importJob, setImportJob] = useState<SectionImportJobProgress | null>(null);
+  useEffect(()=>{
+    if(section==='bank_statutory')return;
+    let alive=true;
+    fetch(SECTION_IMPORT_JOBS_ENDPOINT,{cache:'no-store'}).then(r=>r.ok?r.json():null).then(p=>{
+      if(!alive||!p?.jobs)return;
+      const active=(p.jobs as SectionImportJobProgress[]).find(job=>job.section===section&&sectionImportActive(job.state));
+      if(active){commitPending.current=true;setCommitting(true);onCommitPendingChange?.(true);setImportJob(active);}
+    }).catch(()=>undefined);
+    return()=>{alive=false;};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[section]);
+  const jobFinished=useCallback((r:SectionImportResult)=>{
+    setImportJob(null);setResult(r);
+    commitPending.current=false;setCommitting(false);onCommitPendingChange?.(false);
+    router.refresh();
+  },[onCommitPendingChange,router]);
 
   // Literal `t()` calls in a map, not a computed key: test/i18n-coverage.test.ts check C only resolves
   // literal keys, and a label that silently falls back to the key is exactly the class of bug it exists
@@ -107,7 +135,8 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
     startTransition(async () => {
       setError(null);
       try {
-        const p = await validateSectionAction(section, text);
+        const rows = excelRows.current?.text === text ? excelRows.current.rows : undefined;
+        const p = await validateSectionAction(section, text, rows);
         if (revision !== inputRevision.current) return;
         setPreview(p);
         setResult(null);
@@ -127,8 +156,11 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
     setReading(true);
     try {
       // No extra sheets: a section file is ONE sheet by definition — that is what makes it a section.
-      const { name, text } = await readImportFile(file,{allowedSheets:['Reference','Instructions','__PersonnelLists']});
+      const { name, text, format } = await readImportFile(file,{allowedSheets:['Reference','Instructions','__PersonnelLists']});
+      let rows:number[]=[];
+      try{rows=format==='csv'?csvDataExcelRows(text):(await (await import('@/lib/spreadsheet')).workbookDataRowNumbers(await file.arrayBuffer())).first;}catch{rows=[];}
       if (revision !== inputRevision.current) return;
+      excelRows.current={text,rows};
       setCsv(text);
       setFileName(name);
       setSourceFile(file);
@@ -234,27 +266,12 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
     }
   };
 
-  /** The rows that need correcting, with the reason — the same escape hatch the wide importer offers.
-   *  `toCsv` applies its formula-injection guard: this echoes user-supplied values into an Excel file. */
-  const downloadErrors = () => {
-    const rows = (preview?.rows ?? []).filter((r) => r.errors.length > 0);
-    const csvOut = toCsv([
-      [t('colRow'), t('colEmployeeCode'), t('colEmployee'), t('colResult')],
-      ...rows.map((r) => [r.rowNum, r.employeeCode, r.employeeName, r.errors.map(nricMessage).join('; ')]),
-    ]);
-    const url = URL.createObjectURL(new Blob([csvOut], { type: 'text/csv;charset=utf-8;' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'section-import-errors.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const commit = () => {
     if (commitPending.current || pending || reading || !preview) return;
     commitPending.current = true;
     setCommitting(true);
     onCommitPendingChange?.(true);
+    let handedOff=false;
     startTransition(async () => {
       setError(null);
       try {
@@ -271,15 +288,19 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
           router.refresh();
           return;
         }
+        // The write runs in the background; its panel hands the same result to the result card when it ends.
         const r = await commitSectionAction(section, csv, `${label} · ${fileName ?? t('historyPasted')}`);
-        setResult(r);
-        router.refresh();
+        if ('error' in r) { setError(r.error === SECTION_IMPORT_ALREADY_RUNNING ? t('sectionJob.otherRunning') : r.error); return; }
+        handedOff = true;
+        setImportJob(r.job);
       } catch (e) {
         setError((e as Error).message);
       } finally {
-        commitPending.current = false;
-        setCommitting(false);
-        onCommitPendingChange?.(false);
+        if (!handedOff) {
+          commitPending.current = false;
+          setCommitting(false);
+          onCommitPendingChange?.(false);
+        }
       }
     });
   };
@@ -288,7 +309,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
 
   return (
     <div className="space-y-6">
-      {isPersonnelRegisterKind(section) && <Card className="space-y-3 p-5"><p className="text-sm">{t('registerInstructions')}</p><p className="text-xs text-muted-foreground">{t('registerLimit')}</p><div className="flex flex-wrap items-end gap-2"><Field label={t('registerExistingEmployeeId')}><input className={inputCls} value={existingEmployeeCode} onChange={event=>setExistingEmployeeCode(event.target.value)} maxLength={30}/></Field><Button type="button" variant="secondary" disabled={pending||!existingEmployeeCode.trim()} onClick={downloadExistingRegister}>{t('registerDownloadExisting')}</Button></div></Card>}
+      {isPersonnelRegisterKind(section) && <Card className="space-y-3 p-5"><p className="text-sm">{t('registerInstructions')}</p><p className="text-xs text-muted-foreground">{t('registerLimit')}</p><div className="flex flex-wrap items-end gap-2"><Field label={t('registerExistingEmployeeId')}><input className={inputCls} value={existingEmployeeCode} onChange={event=>setExistingEmployeeCode(event.target.value)} maxLength={30}/></Field><Button aria-busy={pending} type="button" variant="secondary" disabled={pending||!existingEmployeeCode.trim()} onClick={downloadExistingRegister}>{t('registerDownloadExisting')}</Button></div></Card>}
       <Card className="space-y-4 p-5">
         <fieldset disabled={committing} className="min-w-0 space-y-4">
         <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -297,13 +318,13 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
 
         <StepHeading num={1} label={t('sectionStep1')} />
         <div className="flex flex-wrap items-center gap-2">
-          <button
+          <ActionButton guardNavigation={false} actionKind="generating"
             type="button"
-            onClick={() => void downloadTemplate()}
+            onClick={() => downloadTemplate()}
             className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
           >
             {t('sectionDownloadTemplate', { section: label })}
-          </button>
+          </ActionButton>
           <button type="button" onClick={downloadCsvTemplate} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-muted">CSV</button>
         </div>
 
@@ -395,7 +416,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
 
         <StepHeading num={4} label={t('sectionStep4')} />
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => runValidate(csv)} disabled={pending || reading || !csv.trim()}>
+          <Button aria-busy={pending} onClick={() => runValidate(csv)} disabled={pending || reading || !csv.trim()}>
             {pending && !result ? t('validating') : t('validate')}
           </Button>
           <span className="ml-auto text-xs text-muted-foreground">{t('step4Hint')}</span>
@@ -423,26 +444,13 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
             </h2>
           </div>
           {result.fileErrors.length > 0 && (
-            <div className="border-b border-border bg-red-50/60 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-              <div className="mb-1 font-semibold">{t('fileRejected')}</div>
-              <ul className="list-disc space-y-0.5 pl-5 text-xs">
-                {result.fileErrors.map((e) => (
-                  <li key={e}>{e}</li>
-                ))}
-              </ul>
+            <div className="border-b border-border bg-red-50/60 px-4 py-3 text-sm font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
+              {t('fileRejected')}
             </div>
           )}
           {!!result.warnings?.length && <p role="status" className="px-4 py-3 text-sm text-amber-700 dark:text-amber-300">{result.warnings.join(' ')}</p>}
-          {result.failed.length > 0 && (
-            <ul className="divide-y divide-border text-sm">
-              {result.failed.map((f) => (
-                <li key={f.rowNum} className="px-4 py-2">
-                  <span className="text-muted-foreground">{t('row', { num: f.rowNum })}</span> · {f.employeeCode} —{' '}
-                  <span className="text-red-600 dark:text-red-400">{nricMessage(f.message)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* Board d3ba1e9f — the rows that were not saved, from the same lines as the Error Log download. */}
+          <ImportProblems lines={sectionResultProblemLines(result,preview,problemT)} fileName={fileName} title={tl('problemsTitle')}/>
           <div className="flex items-center gap-3 px-4 py-3 text-sm">
             <Link href="/admin/personnel" className="text-primary hover:underline">
               {t('viewPeople')}
@@ -467,7 +475,9 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
         </Card>
       )}
 
-      {preview && !result && <SectionPreview preview={preview} onImport={commit} onDownloadErrors={downloadErrors} busy={pending} />}
+      {importJob && !result && <SectionImportJobPanel job={importJob} onFinished={jobFinished} />}
+
+      {preview && !result && !importJob && <SectionPreview preview={preview} onImport={commit} fileName={fileName} busy={pending} />}
     </div>
   );
 }
@@ -487,20 +497,22 @@ function StepHeading({ num, label }: { num: number; label: string }) {
 function SectionPreview({
   preview,
   onImport,
-  onDownloadErrors,
+  fileName,
   busy,
 }: {
   preview: SectionImportPreview;
   onImport: () => void;
-  onDownloadErrors: () => void;
+  fileName: string | null;
   busy: boolean;
 }) {
   const t = useTranslations('people.import');
-  const nricMessage = useNricPolicyMessage();
+  const tl = useTranslations('importErrorLogEmployee');
+  const refused = useTranslations('importProblems')('result.refused');
+  const problemT = useImportProblemTranslate();
+  const lines = sectionPreviewProblemLines(preview, problemT);
   const labels = useTranslations();
   const sheet = isPersonnelRegisterKind(preview.section) ? preview.section : preview.section === 'family' ? 'family' : 'employee';
   const fieldLabel = (column: string) => descriptorColumnLabel(column, sheet, (key, fallback) => labels.has(key) ? labels(key) : fallback);
-  const withErrors = preview.rows.filter((r) => r.errors.length > 0).length;
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -527,15 +539,6 @@ function SectionPreview({
             </>
           )}
         </h2>
-        {withErrors > 0 && (
-          <button
-            type="button"
-            onClick={onDownloadErrors}
-            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
-          >
-            {t('downloadErrors')}
-          </button>
-        )}
       </div>
 
       {/* ROWS THAT MATCH NOBODY, ANSWERED ONCE AND IN FULL. The per-row cell says "Not found"; this
@@ -551,15 +554,13 @@ function SectionPreview({
           while this is showing, and the server refuses independently: the disabled button is the
           courtesy, not the guard. */}
       {preview.fileErrors.length > 0 && (
-        <div className="border-b border-border bg-red-50/60 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
-          <div className="mb-1 font-semibold">{t('fileRejected')}</div>
-          <ul className="list-disc space-y-0.5 pl-5 text-xs">
-            {preview.fileErrors.map((e) => (
-              <li key={e}>{e}</li>
-            ))}
-          </ul>
+        <div className="border-b border-border bg-red-50/60 px-4 py-3 text-sm font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-400">
+          {t('fileRejected')}
         </div>
       )}
+
+      {/* Board d3ba1e9f — every problem with its Excel row, field, value and fix; the Error Log carries these lines. */}
+      <ImportProblems lines={lines} fileName={fileName} title={tl('problemsTitle')} />
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -576,7 +577,7 @@ function SectionPreview({
           <tbody className="divide-y divide-border">
             {preview.rows.map((r) => (
               <tr key={r.rowNum} className={r.errors.length > 0 ? 'bg-red-50/40 dark:bg-red-500/5' : ''}>
-                <td className="px-4 py-2 tabular-nums text-muted-foreground">{r.rowNum}</td>
+                <td className="px-4 py-2 tabular-nums text-muted-foreground">{lineRowOf(r as SectionRowResultWithIssues)}</td>
                 <td className="px-4 py-2 font-mono text-xs">{r.employeeCode || '—'}</td>
                 <td className="px-4 py-2 font-medium">{r.employeeName || <span className="text-muted-foreground">—</span>}</td>
                 <td className="px-4 py-2">
@@ -600,7 +601,7 @@ function SectionPreview({
                 </td>
                 <td className="px-4 py-2 text-xs">
                   {r.errors.length > 0 ? (
-                    <span className="text-red-600 dark:text-red-400">{r.errors.map(nricMessage).join('; ')}</span>
+                    <span className="text-red-600 dark:text-red-400">{refused}</span>
                   ) : r.warnings.length > 0 ? (
                     <span className="text-amber-600 dark:text-amber-400">{r.warnings.join('; ')}</span>
                   ) : (

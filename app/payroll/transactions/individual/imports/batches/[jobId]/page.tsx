@@ -6,6 +6,7 @@ import {readIndividualImport, readIndividualImportJob} from '@/packs/payroll/ser
 import {PageHeader, pageWideCls} from '@/components/ui';
 import {IndividualImportRows} from '../../[attemptId]/result-rows';
 import {ImportBatchControls} from './batch-controls';
+import {formatImportActor, formatImportBatch} from '@/lib/import-reference';
 
 const log = '/payroll/transactions/individual/imports';
 
@@ -16,6 +17,7 @@ export default async function ImportBatchPage({params}: {params: Promise<{jobId:
   if (!job) notFound();
   const t = await getTranslations('payroll.individualImport');
   const f = await getFormatter();
+  const labels = await getTranslations('importLog');
   const item = job.attempt_id ? await readIndividualImport(s, job.attempt_id, scopeIds) : null;
   const running = ['pending', 'validating', 'confirmed', 'importing'].includes(job.state);
   const total = item?.preview.total ?? 0;
@@ -29,9 +31,9 @@ export default async function ImportBatchPage({params}: {params: Promise<{jobId:
   return <div className={pageWideCls}>
     <PageHeader title={job.source_name} back={{href: log, label: t('log')}}/>
     <section className="space-y-3 rounded-xl border border-border p-5">
-      <p className="font-mono text-xs">{job.id}</p>
+      <p className="font-medium">{formatImportBatch(labels, job.id)}</p>
       <p role="status">{status}{running || finished ? ` · ${progress}%` : ''}</p>
-      <p>{t('user')}: {job.created_by}</p>
+      <p>{t('user')}: {formatImportActor(labels, job.created_by_actor)}</p>
       <p>{t('time')}: {timestamp(job.created_at)}</p>
       {job.started_at && <p>{t('startedAt')}: {timestamp(job.started_at)}</p>}
       {job.finished_at && <p>{t('finishedAt')}: {timestamp(job.finished_at)}</p>}

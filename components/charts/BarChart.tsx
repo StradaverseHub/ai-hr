@@ -34,11 +34,13 @@ const FONT = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans
 
 export function BarChart({ id, categories, series, grouped = false, height = 220, ariaLabel, marker, valueLabels, max: fixedMax }: BarChartProps) {
   const W = 640;
-  const H = height;
-  const padL = 40;
-  const padR = 12;
-  const padT = 12;
-  const padB = 48;
+  const legendCount = grouped ? series.length : 0;
+  const legendHeight = legendCount > 0 ? legendCount * 26 + 12 : 0;
+  const H = Math.max(height, 260) + legendHeight;
+  const padL = 56;
+  const padR = 56;
+  const padT = 28;
+  const padB = 96 + legendHeight;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
 
@@ -54,13 +56,13 @@ export function BarChart({ id, categories, series, grouped = false, height = 220
   const ticks = 4;
 
   return (
-    <svg
+    <div className="overflow-x-auto"><svg
       id={id}
       viewBox={`0 0 ${W} ${H}`}
       width="100%"
       role="img"
       aria-label={ariaLabel}
-      style={{ fontFamily: FONT, color: 'var(--muted-foreground)' }}
+      style={{ minWidth: 480, fontFamily: FONT, color: 'var(--muted-foreground)' }}
     >
       {/* gridlines + y-axis ticks */}
       {Array.from({ length: ticks + 1 }, (_, i) => {
@@ -69,7 +71,7 @@ export function BarChart({ id, categories, series, grouped = false, height = 220
         return (
           <g key={i}>
             <line x1={padL} y1={yy} x2={W - padR} y2={yy} stroke="var(--border)" strokeWidth={1} />
-            <text x={padL - 6} y={yy + 3} textAnchor="end" fontSize={9} fill="var(--muted-foreground)">
+            <text x={padL - 6} y={yy + 3} textAnchor="end" fontSize={16} fill="var(--muted-foreground)">
               {Math.round(v)}
             </text>
           </g>
@@ -103,7 +105,7 @@ export function BarChart({ id, categories, series, grouped = false, height = 220
               );
             })}
             {!grouped && valueLabels?.[ci] && (
-              <text x={x0 + barW / 2} y={y(seriesList[0]?.values[ci] ?? 0) - 4} textAnchor="middle" fontSize={9} fill="var(--foreground)">
+              <text x={x0 + barW / 2} y={y(seriesList[0]?.values[ci] ?? 0) - 4} textAnchor="middle" fontSize={16} fill="var(--foreground)">
                 {valueLabels[ci]}
               </text>
             )}
@@ -111,7 +113,7 @@ export function BarChart({ id, categories, series, grouped = false, height = 220
               x={x0 + (slot - barGap * 2) / 2}
               y={H - padB + 14}
               textAnchor="middle"
-              fontSize={9}
+              fontSize={16}
               fill="var(--muted-foreground)"
               transform={categories.length > 6 ? `rotate(35 ${x0 + slot / 2} ${H - padB + 14})` : undefined}
             >
@@ -125,7 +127,7 @@ export function BarChart({ id, categories, series, grouped = false, height = 220
       {marker && marker.index >= 0 && marker.index < n && (
         <g data-chart-marker>
           <line x1={padL + marker.index * slot} y1={padT} x2={padL + marker.index * slot} y2={padT + plotH} stroke="var(--primary)" strokeWidth={1} strokeDasharray="4 4" />
-          <text x={padL + marker.index * slot + 4} y={padT + 8} fontSize={9} fill="var(--foreground)">{marker.label}</text>
+          <text x={padL + marker.index * slot + 4} y={padT + 8} fontSize={16} fill="var(--foreground)">{marker.label}</text>
         </g>
       )}
 
@@ -133,15 +135,15 @@ export function BarChart({ id, categories, series, grouped = false, height = 220
       {grouped && (
         <g>
           {seriesList.map((s, si) => (
-            <g key={s.label} transform={`translate(${padL + si * 130}, ${H - 12})`}>
+            <g key={s.label} transform={`translate(${padL}, ${H - 12 - (legendCount - 1 - si) * 26})`}>
               <rect x={0} y={-8} width={10} height={10} rx={2} fill={colorAt(si)} />
-              <text x={14} y={0} fontSize={9} fill="var(--muted-foreground)">
+              <text x={14} y={0} fontSize={16} fill="var(--muted-foreground)">
                 {s.label}
               </text>
             </g>
           ))}
         </g>
       )}
-    </svg>
+    </svg></div>
   );
 }

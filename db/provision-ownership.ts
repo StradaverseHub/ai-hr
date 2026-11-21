@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { Tx } from './client';
-import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '../core/access-configuration-lock';
 
 /** Injected owner bootstrap only: no app principal, session mutation or role elevation. The caller
  * owns the entire transaction; any busy phase requires its rollback. New uncommitted tenants remain
@@ -8,7 +8,7 @@ import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
 export async function lockOwnerTenantCatalogsTx(tx: Tx, tenantId: string): Promise<void> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId))
     throw new Error('Tenant catalogs are busy or unavailable.');
-  await lockAccessConfigurationTx(tx, tenantId);
+  await lockAccessConfigurationWriteTx(tx, tenantId);
   const [ownership] = await tx.execute<{ acquired: boolean }>(sql`select case when
     current_setting('transaction_isolation')='read committed'
     and current_setting('transaction_read_only')='off'

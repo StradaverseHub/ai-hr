@@ -1,0 +1,1205 @@
+{
+  "kind": "ANALYTICS_CHANGE_JOB_ENVELOPE_SOURCE_ONLY_NOT_RUNTIME_QUALIFICATION",
+  "schemaVersion": 1,
+  "base": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+  "branch": "codex/analytics-change-job-envelope-20261109",
+  "currentCommit": "Frozen externally; no self-hash cycle",
+  "repositoryBehaviorImportTestBuildSqlNativeOrNetworkUsed": false,
+  "freshRemoteRefsVerified": false,
+  "runtimeStatus": "UNQUALIFIED; root and different-peer full source review required before hosted controls",
+  "approvedProductScope": [
+    "changeJobTransactionsPageTx",
+    "private ChangeJobPageEnvelope transport type and changeJobPageRow mapper"
+  ],
+  "currentSources": [
+    {
+      "path": "core/analytics.ts",
+      "bytes": 81339,
+      "sha256": "9ead5dfa7bb1b8adc657a5e7d9993b29170eb8d546875dacef6ffc92c3769aa8",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "core/analytics.ts",
+        "gitBlob": "5c950acfad158738f7e38c131e44e004a1308b6f",
+        "bytes": 80255,
+        "sha256": "50ebbd6e8d5f750db55a6430f98d0f0b19dee26d07969dfb4eff9e12f0631769"
+      }
+    },
+    {
+      "path": "test/analytics-bounded-reports.test.ts",
+      "bytes": 27037,
+      "sha256": "0187abf271c1318ad9c49a56d7b66ba47b1925eecff5c20c3c05d2a746b4d062",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "test/analytics-bounded-reports.test.ts",
+        "gitBlob": "ca2803671a11b794adcc049867602d9dbf12a8be",
+        "bytes": 17405,
+        "sha256": "6bf6428670aba82d8533670a76917fca306a0df2348b2f442dc47992f2389f5f"
+      }
+    },
+    {
+      "path": "test/analytics-dashboard-composition.test.ts",
+      "bytes": 17797,
+      "sha256": "a418c7c83865d99344204c928434f2c2cab1ff599eb812ed126b4be6fdb978f7",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "test/analytics-dashboard-composition.test.ts",
+        "gitBlob": "ed22a9d8ecabcf1c345c1ed0da564f0360e4d914",
+        "bytes": 15332,
+        "sha256": "4378612704093b31b836f6bee70f4860faabf1a3cb9c622a4cb6367edb74a965"
+      }
+    },
+    {
+      "path": "test/analytics-native-scale.test.ts",
+      "bytes": 33180,
+      "sha256": "3ec089935fd75c17873045538af0f0d719cfc9c3a52af84cd076995b8b476f47",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "test/analytics-native-scale.test.ts",
+        "gitBlob": "b4d7709ea1e6e5c77f88d6fca68468768a9e5c4e",
+        "bytes": 24338,
+        "sha256": "9b1518a189347be1a9eb44f3fd636ba134b47b3c297ec28b212aefe2a9b26686"
+      }
+    },
+    {
+      "path": "test/module-read-jit-diagnostic.test.ts",
+      "bytes": 21680,
+      "sha256": "344bbc0fe3eaa79f09e71d668c76d699a76f045852376ec66b225e2b92e2a224",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "test/module-read-jit-diagnostic.test.ts",
+        "gitBlob": "0579a4cabff63cac71fc6a65da9f5a2fca270742",
+        "bytes": 21680,
+        "sha256": "325315af7145f9930462861152e6633bb2293844d1e3168dfc850b99b6693eab"
+      }
+    },
+    {
+      "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+      "bytes": 13334,
+      "sha256": "8f4f0c22acae929c4af50a05fe440db9e2e5aec39eb441e939f25f96e15f7abb",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "docs/adr/2026-11-09-analytics-employment-aggregates.md",
+        "gitBlob": "668067927da8dfab2b3750c08acc760309eb3c5d",
+        "bytes": 8096,
+        "sha256": "652b8c724af96d942cbfd8dc550e6977181473cb650fff6b56c2544ce3b9e3ca"
+      }
+    }
+  ],
+  "activeNonruntimeWholeParentInverses": [
+    {
+      "path": "core/analytics.ts",
+      "currentSha256": "9ead5dfa7bb1b8adc657a5e7d9993b29170eb8d546875dacef6ffc92c3769aa8",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "core/analytics.ts",
+        "gitBlob": "5c950acfad158738f7e38c131e44e004a1308b6f",
+        "bytes": 80255,
+        "sha256": "50ebbd6e8d5f750db55a6430f98d0f0b19dee26d07969dfb4eff9e12f0631769"
+      },
+      "inverseHunks": [
+        {
+          "currentStartLine": 749,
+          "currentCount": 13,
+          "current": [
+            "type ChangeJobPageEnvelope = {total:number} & (\n",
+            "  | ({assignmentId:string} & ChangeJobRow)\n",
+            "  | {assignmentId:null;name:null;company:null;fromDepartment:null;toDepartment:null;fromPosition:null;toPosition:null;effectiveOn:null}\n",
+            ");\n",
+            "\n",
+            "/** The LEFT JOIN's absent assignment is transport only; never a business row.\n",
+            " * Raw execute bypasses select-field decoding, so retain the column's date decoder. */\n",
+            "function changeJobPageRow(row:ChangeJobPageEnvelope):ChangeJobRow|null {\n",
+            "  if(row.assignmentId===null)return null;\n",
+            "  return {name:row.name,company:row.company,fromDepartment:row.fromDepartment,toDepartment:row.toDepartment,\n",
+            "    fromPosition:row.fromPosition,toPosition:row.toPosition,effectiveOn:assignment.validFrom.mapFromDriverValue(row.effectiveOn)};\n",
+            "}\n",
+            "\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 763,
+          "currentCount": 17,
+          "current": [
+            "    const source=changeJobTransactionsRowsTx(tx,scope,input);\n",
+            "    // Exactly one evaluation of the unchanged relation feeds both the exact\n",
+            "    // population count and the bounded page, including an empty/past-end page.\n",
+            "    const envelope=await tx.execute<ChangeJobPageEnvelope>(sql`\n",
+            "      with analytics_changeJobTransactions_page as materialized (${source.getSQL()})\n",
+            "      select population.total, selected.assignment_id as \"assignmentId\", selected.name, selected.company,\n",
+            "        selected.\"fromDepartment\", selected.\"toDepartment\", selected.\"fromPosition\", selected.\"toPosition\", selected.\"effectiveOn\"\n",
+            "      from (select count(*)::int as total from analytics_changeJobTransactions_page) population\n",
+            "      left join (\n",
+            "        select * from analytics_changeJobTransactions_page\n",
+            "        order by \"effectiveOn\" desc, name, employment_id, assignment_id\n",
+            "        limit ${page.limit} offset ${page.offset}\n",
+            "      ) selected on true\n",
+            "      order by selected.\"effectiveOn\" desc, selected.name, selected.employment_id, selected.assignment_id\n",
+            "    `);\n",
+            "    const rows=envelope.map(changeJobPageRow).filter((row):row is ChangeJobRow=>row!==null);\n",
+            "    return {rows,state:pageState(page,Number(envelope[0].total),rows.length)};\n"
+          ],
+          "parent": [
+            "    const source=changeJobTransactionsRowsTx(tx,scope,input).as('analytics_changeJobTransactions_page');\n",
+            "    const rows=await tx.select({\n",
+            "      name:source.name,\n",
+            "      company:source.company,\n",
+            "      fromDepartment:source.fromDepartment,\n",
+            "      toDepartment:source.toDepartment,\n",
+            "      fromPosition:source.fromPosition,\n",
+            "      toPosition:source.toPosition,\n",
+            "      effectiveOn:source.effectiveOn,\n",
+            "      total:sql<number>`count(*) over()::int`,\n",
+            "    }).from(source).orderBy(desc(source.effectiveOn),source.name,source.employmentId,source.assignmentId).limit(page.limit).offset(page.offset);\n",
+            "    // An empty page still reports the full population (including an out-of-range page).\n",
+            "    const total=rows.length?Number(rows[0].total):Number((await tx.select({total:count()}).from(source))[0]?.total??0);\n",
+            "    return {rows:rows.map(({total,...row})=>row),state:pageState(page,total,rows.length)};\n"
+          ]
+        }
+      ],
+      "wholeRestorationVerified": true
+    },
+    {
+      "path": "test/analytics-bounded-reports.test.ts",
+      "currentSha256": "0187abf271c1318ad9c49a56d7b66ba47b1925eecff5c20c3c05d2a746b4d062",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "test/analytics-bounded-reports.test.ts",
+        "gitBlob": "ca2803671a11b794adcc049867602d9dbf12a8be",
+        "bytes": 17405,
+        "sha256": "6bf6428670aba82d8533670a76917fca306a0df2348b2f442dc47992f2389f5f"
+      },
+      "inverseHunks": [
+        {
+          "currentStartLine": 6,
+          "currentCount": 1,
+          "current": [
+            "import {assignment,company,department,employment,leaveLedger,leaveType,person,position,roleAssignment} from '../db/schema';\n"
+          ],
+          "parent": [
+            "import {assignment,company,department,employment,leaveLedger,leaveType,person,roleAssignment} from '../db/schema';\n"
+          ]
+        },
+        {
+          "currentStartLine": 14,
+          "currentCount": 1,
+          "current": [
+            "import {observeNativeRead} from './helpers/native-read-observer';\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 214,
+          "currentCount": 97,
+          "current": [
+            "\n",
+            "\n",
+            "it('uses one materialized exact-count envelope for empty, tied first/last and past-end change-job pages',async()=>{\n",
+            " const b=await seedBase(),ctx=adminCtx(b),query={from:'2021-01-01',to:'2021-12-31'};\n",
+            " const emptyProbe=observeNativeRead();\n",
+            " try{\n",
+            "  const empty=await changeJobTransactionsPage(ctx,[],{...query,page:first});\n",
+            "  expect(empty.rows).toEqual([]);expect(empty.state).toMatchObject({total:0,from:0,to:0,hasNext:false});\n",
+            " }finally{emptyProbe.restore();}\n",
+            " const emptyStatements=emptyProbe.queries.filter(row=>row.sql.includes('analytics_changeJobTransactions_page'));\n",
+            " expect(emptyStatements).toHaveLength(1);expect(emptyStatements[0].rows).toBe(1);\n",
+            " expect(emptyStatements[0].sql.match(/ as materialized /gi)).toHaveLength(1);\n",
+            " expect(emptyStatements[0].sql.match(/inner join \"assignment\" \"prior_assignment\"/g)).toHaveLength(1);\n",
+            " const {ids}=await seedRows(b,28,{name:i=>i===27?'Fictional earlier change':'Fictional tied change'});\n",
+            " const positions=await owner.db.insert(position).values(ids.map((_,i)=>({tenantId:b.tenantId,companyId:b.companyId,title:'Fictional position '+String(i).padStart(2,'0')}))).returning({id:position.id,title:position.title});\n",
+            " const expected:{employmentId:string;assignmentId:string;name:string;effectiveOn:string;toPosition:string}[]=[];\n",
+            " for(const [i,id]of ids.entries()){\n",
+            "  const effectiveOn=i===26?'2021-01-01':'2021-12-31';\n",
+            "  await owner.db.update(assignment).set({validTo:effectiveOn}).where(eq(assignment.employmentId,id));\n",
+            "  const successorId=randomUUID();\n",
+            "  await owner.db.insert(assignment).values({id:successorId,tenantId:b.tenantId,employmentId:id,companyId:b.companyId,departmentId:b.deptB,positionId:positions[i].id,employmentType:'full_time',validFrom:effectiveOn});\n",
+            "  expected.push({employmentId:id,assignmentId:successorId,name:i===27?'Fictional earlier change':'Fictional tied change',effectiveOn,toPosition:positions[i].title});\n",
+            " }\n",
+            " expected.sort((a,b)=>b.effectiveOn.localeCompare(a.effectiveOn)||a.name.localeCompare(b.name)||a.employmentId.localeCompare(b.employmentId)||a.assignmentId.localeCompare(b.assignmentId));\n",
+            " const expectedRows=expected.map(({name,effectiveOn,toPosition})=>({name,company:'Acme Sdn Bhd',fromDepartment:'Finance',toDepartment:'Operations',fromPosition:null,toPosition,effectiveOn}));\n",
+            " const probe=observeNativeRead();\n",
+            " try{\n",
+            "  const page1=await changeJobTransactionsPage(ctx,[b.companyId],{...query,page:first});\n",
+            "  const page2=await changeJobTransactionsPage(ctx,[b.companyId],{...query,page:parsePageQuery({page:'1'})});\n",
+            "  const beyond=await changeJobTransactionsPage(ctx,[b.companyId],{...query,page:parsePageQuery({page:'2'})});\n",
+            "  expect(page1.rows).toEqual(expectedRows.slice(0,25));expect(page1.state).toMatchObject({total:28,from:1,to:25,hasNext:true});\n",
+            "  expect(page2.rows).toEqual(expectedRows.slice(25));expect(page2.state).toMatchObject({total:28,from:26,to:28,hasNext:false,hasPrev:true});\n",
+            "  expect(beyond.rows).toEqual([]);expect(beyond.state).toMatchObject({total:28,from:0,to:0,hasNext:false,hasPrev:true});\n",
+            "  expect([...page1.rows,...page2.rows].every(row=>typeof row.effectiveOn==='string')).toBe(true);\n",
+            "  expect(JSON.parse(JSON.stringify([...page1.rows,...page2.rows]))).toEqual(expectedRows);\n",
+            " }finally{probe.restore();}\n",
+            " const statements=probe.queries.filter(row=>row.sql.includes('analytics_changeJobTransactions_page'));\n",
+            " expect(statements).toHaveLength(3);expect(statements.map(row=>row.rows)).toEqual([25,3,1]);\n",
+            " expect(probe.state).toEqual({active:0,maxActive:1});\n",
+            " await expect(changeJobTransactionsPage(ctx,[],{...query,page:{...first,offset:1}})).rejects.toThrow('Invalid analytics page');\n",
+            "});\n",
+            "\n",
+            "it('retains exact predecessor multiplicity, corrections, both-side filters and genesis/termination exclusions',async()=>{\n",
+            " const b=await seedBase(),ctx=adminCtx(b),{ids,people}=await seedRows(b,3),effectiveOn='2021-05-01';\n",
+            " const [zeroId,successorId]=[randomUUID(),randomUUID()].sort();\n",
+            " const [target]=await owner.db.insert(position).values({tenantId:b.tenantId,companyId:b.companyId,title:'Fictional changed position'}).returning({id:position.id});\n",
+            " await owner.db.update(assignment).set({validTo:effectiveOn}).where(eq(assignment.employmentId,ids[0]));\n",
+            " await owner.db.insert(assignment).values([\n",
+            "  {id:zeroId,tenantId:b.tenantId,employmentId:ids[0],companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',validFrom:effectiveOn,validTo:effectiveOn},\n",
+            "  {tenantId:b.tenantId,employmentId:ids[0],companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',validFrom:'2018-01-01',validTo:effectiveOn,supersededAt:new Date()},\n",
+            "  {tenantId:b.tenantId,employmentId:ids[0],companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',validFrom:'2017-01-01',validTo:'2018-01-01'},\n",
+            "  {id:successorId,tenantId:b.tenantId,employmentId:ids[0],companyId:b.companyId,departmentId:b.deptB,positionId:target.id,employmentType:'full_time',validFrom:effectiveOn},\n",
+            " ]);\n",
+            " await terminateEmployment(ctx,{employmentId:ids[1],terminationDate:effectiveOn,terminationType:'voluntary'});\n",
+            " const request={from:effectiveOn,to:effectiveOn,page:first};\n",
+            " const full=await changeJobTransactions(ctx,[],request),actual=await changeJobTransactionsPage(ctx,[],request);\n",
+            " // [D,D) is empty under the real no-overlap exclusion. It is both a\n",
+            " // successor and an exact-boundary predecessor, legitimately yielding 2x2.\n",
+            " expect(actual.rows.slice().sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))).toEqual(full.slice().sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b))));expect(actual.state.total).toBe(4);\n",
+            " expect(actual.rows.map(row=>row.fromDepartment).sort()).toEqual(['Finance','Finance','Operations','Operations']);\n",
+            " expect(actual.rows.map(row=>row.toPosition)).toEqual([null,null,'Fictional changed position','Fictional changed position']);\n",
+            " expect(actual.rows.every(row=>row.name==='Fictional report 00000'&&row.fromPosition===null&&row.effectiveOn===effectiveOn)).toBe(true);\n",
+            " expect((await changeJobTransactionsPage(ctx,[],{...request,filter:{departmentId:b.deptA}})).state.total).toBe(2);\n",
+            " expect((await changeJobTransactionsPage(ctx,[],{...request,filter:{departmentId:b.deptB}})).state.total).toBe(4);\n",
+            " for(const q of ['%', 'Fictional report 0000_', 'example.invalid'])expect((await changeJobTransactionsPage(ctx,[],{...request,filter:{q}})).state.total).toBe(4);\n",
+            " expect((await changeJobTransactionsPage(ctx,[],{...request,filter:{q:'Definitely absent'}})).rows).toEqual([]);\n",
+            " expect((await changeJobTransactionsPage(ctx,[],{...request,from:'2021-05-02'})).state.total).toBe(0);\n",
+            " // Correct the canonical predecessor. Its other, still-canonical matching\n",
+            " // predecessor remains; neither arbitrary-nearest nor DISTINCT is permitted.\n",
+            " await owner.db.update(assignment).set({supersededAt:new Date()}).where(sql`${assignment.employmentId}=${ids[0]} and ${assignment.validFrom}='2020-01-01'`);\n",
+            " const corrected=await changeJobTransactionsPage(ctx,[],request);\n",
+            " expect(corrected.state.total).toBe(2);expect(corrected.rows.map(row=>row.fromDepartment)).toEqual(['Operations','Operations']);\n",
+            " expect((await changeJobTransactionsPage(ctx,[],{...request,filter:{departmentId:b.deptA}})).rows).toEqual([]);\n",
+            " const foreign=await seedBase();expect((await changeJobTransactionsPage(ctx,[foreign.companyId],request)).state.total).toBe(0);\n",
+            " const foreignEmployee=await hireEmployee(adminCtx(foreign),{person:{fullName:'Fictional foreign change',primaryEmail:'foreign-change@example.invalid'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});\n",
+            " await transferEmployee(adminCtx(foreign),{employmentId:foreignEmployee.employmentId,effectiveDate:effectiveOn,departmentId:foreign.deptB});\n",
+            " expect((await changeJobTransactionsPage(ctx,[],request)).state.total).toBe(2);\n",
+            " const userId=await createAppUser(b.tenantId,people[2],'employee'),employee:SessionContext={tenantId:b.tenantId,userId,personId:people[2],roles:['employee']};\n",
+            " expect((await changeJobTransactionsPage(employee,[],request)).rows).toEqual([]);\n",
+            " await owner.db.delete(roleAssignment).where(eq(roleAssignment.appUserId,b.adminUserId));\n",
+            " const refused=observeNativeRead();\n",
+            " try{await expect(changeJobTransactionsPage(ctx,[],request)).rejects.toThrow('calling authority');}finally{refused.restore();}\n",
+            " expect(refused.queries.some(row=>row.sql.includes('analytics_changeJobTransactions_page'))).toBe(false);\n",
+            "});\n",
+            "\n",
+            "\n",
+            "it('counts the complete change-job relation beyond All and preserves complete export rows',async()=>{\n",
+            " const b=await seedBase(),ctx=adminCtx(b),{ids}=await seedRows(b,2052);\n",
+            " await owner.db.update(assignment).set({validTo:'2021-01-01'}).where(inArray(assignment.employmentId,ids));\n",
+            " for(let offset=0;offset<ids.length;offset+=500)await owner.db.insert(assignment).values(ids.slice(offset,offset+500).map(employmentId=>({tenantId:b.tenantId,employmentId,companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time'as const,validFrom:'2021-01-01'})));\n",
+            " const request={from:'2021-01-01',to:'2021-01-01'};\n",
+            " const all=await changeJobTransactionsPage(ctx,[],{...request,page:parsePageQuery({size:'all'})});\n",
+            " expect(all.rows).toHaveLength(2000);expect(all.state).toMatchObject({total:2052,truncated:true,from:1,to:2000});\n",
+            " const last=await changeJobTransactionsPage(ctx,[],{...request,page:parsePageQuery({page:'82'})});\n",
+            " expect(last.rows.map(row=>row.name)).toEqual(['Fictional report 02050','Fictional report 02051']);expect(last.state.total).toBe(2052);\n",
+            " const full=await changeJobTransactions(ctx,[],request);expect(full).toHaveLength(2052);expect(all.rows).toEqual(full.slice(0,2000));\n",
+            "},120000);\n"
+          ],
+          "parent": []
+        }
+      ],
+      "wholeRestorationVerified": true
+    },
+    {
+      "path": "test/analytics-dashboard-composition.test.ts",
+      "currentSha256": "a418c7c83865d99344204c928434f2c2cab1ff599eb812ed126b4be6fdb978f7",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "test/analytics-dashboard-composition.test.ts",
+        "gitBlob": "ed22a9d8ecabcf1c345c1ed0da564f0360e4d914",
+        "bytes": 15332,
+        "sha256": "4378612704093b31b836f6bee70f4860faabf1a3cb9c622a4cb6367edb74a965"
+      },
+      "inverseHunks": [
+        {
+          "currentStartLine": 184,
+          "currentCount": 34,
+          "current": [
+            "\n",
+            "\n",
+            "it('preserves all thirteen DTOs behind held Access for empty, nonempty and past-end change-job envelopes',async()=>{\n",
+            " const f=await fixture();\n",
+            " const [before]=await owner.client`select count(*)::int as count from domain_event where tenant_id=${f.b.tenantId}::uuid`;\n",
+            " for(const kind of ['empty','nonempty','past-end']as const){\n",
+            "  const p=input();if(kind==='empty')p.filters.q='Definitely absent';\n",
+            "  if(kind==='past-end')p.pages.changeJobs=parsePageQuery({page:'99'});\n",
+            "  const expected=await standaloneDashboard(f.ctx,[f.b.companyId],p),probe=observe();\n",
+            "  try{await owner.client.begin(async writer=>{\n",
+            "   await writer`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+f.b.tenantId},0))`;\n",
+            "   const actual=await analyticsDashboard(f.ctx,[f.b.companyId],p);\n",
+            "   expect(actual).toEqual(expected);expect(Object.keys(actual)).toHaveLength(13);\n",
+            "   expect(actual.changeJobs.rows).toHaveLength(kind==='nonempty'?1:0);\n",
+            "   expect(actual.changeJobs.state.total).toBe(kind==='empty'?0:1);\n",
+            "  });}finally{probe.restore();}\n",
+            "  expect(probe.properties).toHaveLength(1);expect(probe.properties[0]).toMatchObject({role:'ai_hr_app',isolation:'repeatable read',readOnly:true});\n",
+            "  const statements=probe.queries.filter(query=>query.sql.includes('analytics_changeJobTransactions_page'));\n",
+            "  expect(statements).toHaveLength(1);expect(statements[0].rows).toBe(1);expect(probe.state).toEqual({active:0,maxActive:1});\n",
+            " }\n",
+            " const [after]=await owner.client`select count(*)::int as count from domain_event where tenant_id=${f.b.tenantId}::uuid`;\n",
+            " expect(after).toEqual(before);\n",
+            "});\n",
+            "\n",
+            "it('settles change-job envelope failure before later reports and releases its native presentation owner',async()=>{\n",
+            " const f=await fixture(),failure=Error('Controlled change-job envelope failure');\n",
+            " const probe=observe({fail:{matches:query=>query.sql.includes('analytics_changeJobTransactions_page'),error:failure}});\n",
+            " try{await expect(analyticsDashboard(f.ctx,[f.b.companyId],input())).rejects.toBe(failure);}finally{probe.restore();}\n",
+            " expect(probe.queries.filter(query=>query.sql.includes('analytics_changeJobTransactions_page'))).toHaveLength(1);\n",
+            " expect(probe.queries.some(query=>query.sql.includes('\"date_of_birth\"'))).toBe(false);\n",
+            " expect(probe.state).toEqual({active:0,maxActive:1});expect(probe.properties).toHaveLength(1);\n",
+            " const expected=await standaloneDashboard(f.ctx,[f.b.companyId],input());\n",
+            " expect(await analyticsDashboard(f.ctx,[f.b.companyId],input())).toEqual(expected);\n",
+            "});\n"
+          ],
+          "parent": []
+        }
+      ],
+      "wholeRestorationVerified": true
+    },
+    {
+      "path": "test/analytics-native-scale.test.ts",
+      "currentSha256": "3ec089935fd75c17873045538af0f0d719cfc9c3a52af84cd076995b8b476f47",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "test/analytics-native-scale.test.ts",
+        "gitBlob": "b4d7709ea1e6e5c77f88d6fca68468768a9e5c4e",
+        "bytes": 24338,
+        "sha256": "9b1518a189347be1a9eb44f3fd636ba134b47b3c297ec28b212aefe2a9b26686"
+      },
+      "inverseHunks": [
+        {
+          "currentStartLine": 6,
+          "currentCount": 1,
+          "current": [
+            "import {PgDialect} from 'drizzle-orm/pg-core';\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 15,
+          "currentCount": 1,
+          "current": [
+            "import {closeAll,migrateTestDb,owner} from './harness';\n"
+          ],
+          "parent": [
+            "import {closeAll,migrateTestDb} from './harness';\n"
+          ]
+        },
+        {
+          "currentStartLine": 56,
+          "currentCount": 1,
+          "current": [
+            " const dialect=new PgDialect();\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 69,
+          "currentCount": 9,
+          "current": [
+            "  // One fixed product CTE now uses public execute. Capture that actual SQL\n",
+            "  // object only, not arbitrary control/identity/cursor statements.\n",
+            "  if(key==='execute')return (statement:SQL)=>{\n",
+            "   const text=dialect.sqlToQuery(statement).sql;\n",
+            "   if(/^\\s*with analytics_changeJobTransactions_page as materialized \\(/.test(text)){\n",
+            "    expect(captured.length).toBeLessThan(128);captured.push({statement,text,digest:createHash('sha256').update(text).digest('hex')});\n",
+            "   }\n",
+            "   return target.execute(statement);\n",
+            "  };\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 110,
+          "currentCount": 1,
+          "current": [
+            " const {b,ctx,expectedFirst,expectedLast}=await seedPersonnelNativeFixture(50000,report,()=>{},save);\n"
+          ],
+          "parent": [
+            " const {b,ctx,expectedLast}=await seedPersonnelNativeFixture(50000,report,()=>{},save);\n"
+          ]
+        },
+        {
+          "currentStartLine": 178,
+          "currentCount": 2,
+          "current": [
+            " // The empty change-job page now returns its one count envelope instead\n",
+            " // of an empty page SELECT followed by a separate count SELECT.\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 181,
+          "currentCount": 1,
+          "current": [
+            " expect(telemetry.totals.statements).toBe(121);\n"
+          ],
+          "parent": [
+            " expect(telemetry.totals.statements).toBe(122);\n"
+          ]
+        },
+        {
+          "currentStartLine": 183,
+          "currentCount": 2,
+          "current": [
+            " const changeJobSummary=telemetry.summaries.filter(row=>row.classification==='change-jobs-page');\n",
+            " expect(changeJobSummary).toHaveLength(1);expect(changeJobSummary[0]).toMatchObject({count:1,returnedRows:1,failed:0});\n"
+          ],
+          "parent": []
+        },
+        {
+          "currentStartLine": 273,
+          "currentCount": 76,
+          "current": [
+            " // Only after every original 50k timing, arm, plan and assertion has settled,\n",
+            " // diagnose the actual envelope in two explicitly separate fixture populations.\n",
+            " const envelopeExperiment:Record<string,unknown>={kind:'CHANGE_JOB_ENVELOPE_NATIVE_PLANS_ONLY',complete:false,\n",
+            "  includesSqlParametersResultsOrErrors:false,newPools:0,limits:{courses:2,plans:2,planNodesEach:256,unchangedCaseMs:300000},\n",
+            "  populationPhases:['original-50000-empty','same-50000-two-owned-histories'],courses:[],ownedFixtureRestored:false,\n",
+            "  limitations:'Warm separate diagnosis after original courses; not whole-dashboard speed or JIT ON/OFF evidence'};\n",
+            " report.changeJobEnvelopeExperiment=envelopeExperiment;save();\n",
+            " const envelopeCourse=async(kind:'empty'|'populated')=>{\n",
+            "  const receipt:Record<string,unknown>={population:kind==='empty'?'original-50000-empty':'same-50000-two-owned-histories',\n",
+            "   started:true,callbackComplete:false,transactionSettled:false,complete:false};\n",
+            "  (envelopeExperiment.courses as unknown[]).push(receipt);save();let transactions=0;\n",
+            "  const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(supplied:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>actualWithTenant(supplied,async tx=>{\n",
+            "   transactions++;expect(transactions).toBe(1);expect(options).toEqual({readOnlySnapshot:true});\n",
+            "   const current:CapturedSelect[]=[],value=await read(captureSelects(tx,current));\n",
+            "   const facts=value as Awaited<ReturnType<typeof analyticsDashboard>>;\n",
+            "   expect(facts.hc.total).toBe(40000);expect(facts.masterCount).toBe(40000);expect(Object.keys(facts)).toHaveLength(13);\n",
+            "   if(kind==='empty')expect(facts).toEqual(dashboard);\n",
+            "   else{\n",
+            "    expect(facts.changeJobs.state.total).toBe(2);expect(facts.changeJobs.rows).toEqual([1,2].map(n=>({\n",
+            "     name:'Fictional retained Personnel '+String(n).padStart(9,'0'),company:'Acme Sdn Bhd',fromDepartment:'Finance',toDepartment:'Operations',fromPosition:null,toPosition:null,effectiveOn:'2021-05-01',\n",
+            "    })));\n",
+            "   }\n",
+            "   const [identity]=await tx.execute<{pid:number;role:string;login:string;isolation:string;readOnly:boolean;jit:string;rls:string}>(sql`select pg_backend_pid()as pid,current_user as role,session_user as login,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')='on'as \"readOnly\",current_setting('jit')as jit,current_setting('row_security')as rls`);\n",
+            "   expect(identity).toMatchObject({role:'ai_hr_app',login:'ai_hr_app',isolation:'repeatable read',readOnly:true,jit:'off',rls:'on'});receipt.identity=identity;\n",
+            "   const statements=current.filter(query=>/^\\s*with analytics_changeJobTransactions_page as materialized \\(/.test(query.text));expect(statements).toHaveLength(1);\n",
+            "   const query=statements[0];receipt.productEnvelopeStatements=statements.length;receipt.businessTotal=facts.changeJobs.state.total;\n",
+            "   receipt.businessRows=facts.changeJobs.rows.length;receipt.expectedTransportRows=kind==='empty'?1:2;\n",
+            "   const rows=await tx.execute<Record<string,unknown>>(query.statement);expect(rows).toHaveLength(kind==='empty'?1:2);\n",
+            "   expect(rows.every(row=>Number(row.total)===(kind==='empty'?0:2))).toBe(true);\n",
+            "   if(kind==='empty')expect(rows[0]).toMatchObject({assignmentId:null,name:null,company:null,fromDepartment:null,toDepartment:null,fromPosition:null,toPosition:null,effectiveOn:null});\n",
+            "   else expect(rows.every(row=>typeof row.assignmentId==='string'&&row.assignmentId.length===36)).toBe(true);\n",
+            "   receipt.actualTransportRows=rows.length;save();\n",
+            "   const planRows=await tx.execute<Record<string,unknown>>(sql`explain(analyze,buffers,timing on,settings,format json) ${query.statement}`);\n",
+            "   const raw=planRows[0]?.['QUERY PLAN'];let producers=0,consumers=0;\n",
+            "   const inspect=(node:Record<string,unknown>)=>{\n",
+            "    if(node['Subplan Name']==='CTE analytics_changejobtransactions_page')producers++;\n",
+            "    if(node['CTE Name']==='analytics_changejobtransactions_page')consumers++;\n",
+            "    for(const child of (node.Plans??[])as Record<string,unknown>[])inspect(child);\n",
+            "   };\n",
+            "   const sanitized=aggregateNativePlan(raw);inspect((raw as Record<string,unknown>[])[0].Plan as Record<string,unknown>);\n",
+            "   expect(producers).toBe(1);expect(consumers).toBe(2);\n",
+            "   receipt.plan={digest:query.digest,...sanitized,materializedProducerNodes:producers,consumerNodes:consumers,complete:true};\n",
+            "   const [after]=await tx.execute<typeof identity>(sql`select pg_backend_pid()as pid,current_user as role,session_user as login,current_setting('transaction_isolation')as isolation,current_setting('transaction_read_only')='on'as \"readOnly\",current_setting('jit')as jit,current_setting('row_security')as rls`);\n",
+            "   expect(after).toEqual(identity);receipt.sameNativeIdentityAtCompletion=true;receipt.callbackComplete=true;save();return value;\n",
+            "  },options));\n",
+            "  try{\n",
+            "   await timed('changeJobEnvelope'+(kind==='empty'?'Empty':'Populated')+'NativePlanMs',()=>analyticsDashboard(ctx,[b.companyId],{from:'2020-01-01',to:'2026-01-01',year:2020,filters:{},pages:{hires:page,terms:page,changeJobs:page,carryForward:page}}));\n",
+            "   expect(receipt.callbackComplete).toBe(true);receipt.transactionSettled=true;receipt.complete=true;\n",
+            "  }finally{spy.mockRestore();receipt.transactions=transactions;save();}\n",
+            " };\n",
+            " await envelopeCourse('empty');\n",
+            " const subjects=await owner.client`select a.id,a.employment_id from assignment a where a.tenant_id=${b.tenantId}::uuid and a.employment_id in(${expectedFirst[0]}::uuid,${expectedFirst[1]}::uuid) and a.valid_from='2020-01-01' and a.valid_to is null and a.superseded_at is null order by a.employment_id`;\n",
+            " expect(subjects).toHaveLength(2);let insertedIds:string[]=[];\n",
+            " try{\n",
+            "  insertedIds=await owner.client.begin(async writer=>{\n",
+            "   const closed=await writer`update assignment set valid_to='2021-05-01' where tenant_id=${b.tenantId}::uuid and id in(${subjects[0].id}::uuid,${subjects[1].id}::uuid) and valid_to is null returning id`;\n",
+            "   expect(closed).toHaveLength(2);\n",
+            "   const inserted=await writer`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)\n",
+            "    values(${b.tenantId}::uuid,${expectedFirst[0]}::uuid,${b.companyId}::uuid,${b.deptB}::uuid,'full_time','2021-05-01'),\n",
+            "     (${b.tenantId}::uuid,${expectedFirst[1]}::uuid,${b.companyId}::uuid,${b.deptB}::uuid,'full_time','2021-05-01') returning id`;\n",
+            "   expect(inserted).toHaveLength(2);return inserted.map(row=>String(row.id));\n",
+            "  });\n",
+            "  const [population]=await owner.client`select count(*)::int as employees,(select count(*)::int from assignment where tenant_id=${b.tenantId}::uuid)as assignments from employment where tenant_id=${b.tenantId}::uuid`;\n",
+            "  expect(population).toEqual({employees:50000,assignments:50002});envelopeExperiment.populatedFixtureFacts=population;save();\n",
+            "  await envelopeCourse('populated');\n",
+            " }finally{\n",
+            "  if(insertedIds.length){\n",
+            "   await owner.client.begin(async writer=>{\n",
+            "    const removed=await writer`delete from assignment where tenant_id=${b.tenantId}::uuid and id in(${insertedIds[0]}::uuid,${insertedIds[1]}::uuid) returning id`;expect(removed).toHaveLength(2);\n",
+            "    const reopened=await writer`update assignment set valid_to=null where tenant_id=${b.tenantId}::uuid and id in(${subjects[0].id}::uuid,${subjects[1].id}::uuid) and valid_to='2021-05-01' returning id`;expect(reopened).toHaveLength(2);\n",
+            "   });\n",
+            "  }\n",
+            "  const [restored]=await owner.client`select (select count(*)::int from employment where tenant_id=${b.tenantId}::uuid)as employees,(select count(*)::int from assignment where tenant_id=${b.tenantId}::uuid)as assignments,(select count(*)::int from assignment where tenant_id=${b.tenantId}::uuid and valid_to is not null)as closed`;\n",
+            "  expect(restored).toEqual({employees:50000,assignments:50000,closed:0});envelopeExperiment.restoredFixtureFacts=restored;envelopeExperiment.ownedFixtureRestored=true;save();\n",
+            " }\n",
+            " expect(envelopeExperiment.courses).toHaveLength(2);envelopeExperiment.complete=true;save();\n"
+          ],
+          "parent": []
+        }
+      ],
+      "wholeRestorationVerified": true
+    },
+    {
+      "path": "test/module-read-jit-diagnostic.test.ts",
+      "currentSha256": "344bbc0fe3eaa79f09e71d668c76d699a76f045852376ec66b225e2b92e2a224",
+      "wholeParent": {
+        "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+        "path": "test/module-read-jit-diagnostic.test.ts",
+        "gitBlob": "0579a4cabff63cac71fc6a65da9f5a2fca270742",
+        "bytes": 21680,
+        "sha256": "325315af7145f9930462861152e6633bb2293844d1e3168dfc850b99b6693eab"
+      },
+      "inverseHunks": [
+        {
+          "currentStartLine": 215,
+          "currentCount": 1,
+          "current": [
+            "  assertDashboard(result.value);expect(result.receipt).toMatchObject({complete:true,requestedJit:mode,effectiveJitAfterProductPolicy:'off',effectiveJitAtCompletion:'off',policyCommandCount:1,census:{statements:121,rows:90089,unknownRows:0,failed:0},defaultsRestoredSamePid:true,transactionCalls:1});\n"
+          ],
+          "parent": [
+            "  assertDashboard(result.value);expect(result.receipt).toMatchObject({complete:true,requestedJit:mode,effectiveJitAfterProductPolicy:'off',effectiveJitAtCompletion:'off',policyCommandCount:1,census:{statements:122,rows:90089,unknownRows:0,failed:0},defaultsRestoredSamePid:true,transactionCalls:1});\n"
+          ]
+        }
+      ],
+      "wholeRestorationVerified": true
+    }
+  ],
+  "wholeOriginalAnalyticsFunctions": [
+    {
+      "name": "analyticsDateRange",
+      "sha256": "014d85980aabc5a4ac1f8810146fb3f114109729d8e1f84da9920e0aad98d88c",
+      "bytes": 418
+    },
+    {
+      "name": "parseReportYear",
+      "sha256": "3a9386efc7d3e81aa52e87423453dd635fed6f1fa8623b1d124d6ca489849aa6",
+      "bytes": 348
+    },
+    {
+      "name": "parseAnalyticsFilters",
+      "sha256": "5dcbc39c5a4f4a5bf35254bf2bb9d9a1f86ff8ccfe3a54c6fc3c2677356e1a81",
+      "bytes": 841
+    },
+    {
+      "name": "analyticsWhere",
+      "sha256": "2f1bb8a13dddf904a6a5577137676d8e50454eec54b241a7d9c45037dc803adf",
+      "bytes": 2013
+    },
+    {
+      "name": "headcountSourceRowsTx",
+      "sha256": "bb89a157dd01eefd00942acd9cfc3affb62abf096b4103ce197118a481aabb8c",
+      "bytes": 556
+    },
+    {
+      "name": "headcountSummaryTx",
+      "sha256": "f5950945e78fe88b54db2804c701a9c016329686e14d632c51a87b562d4b34bc",
+      "bytes": 1810
+    },
+    {
+      "name": "headcountSummary",
+      "sha256": "3163a864591966f794fea38435b36a35f47991b22f972619577cccae7f50dbc9",
+      "bytes": 187
+    },
+    {
+      "name": "workforceHeadcountSourceTx",
+      "sha256": "73c59fd9b6da0e70a0a39523ca75cafa6634ed28fc02773252707861e7126b68",
+      "bytes": 1023
+    },
+    {
+      "name": "masterDataRowsTx",
+      "sha256": "bf131742ed9732b2a32b7d08ddfcd004e32944e767702abf1b24e6b5e1284ba2",
+      "bytes": 1812
+    },
+    {
+      "name": "masterDataCount",
+      "sha256": "b5d0e48da317df7f57c4eaed7555f29e47f4cf500572485e0df462f0adddcc73",
+      "bytes": 292
+    },
+    {
+      "name": "masterDataCountTx",
+      "sha256": "71c73fa16fd7c421d902de4a15554ee189b1e7fa4f1cdcde497c6044b7577ed0",
+      "bytes": 285
+    },
+    {
+      "name": "masterDataExport",
+      "sha256": "b09460b3a185465a7249a11988ddb32db598c2b6c38110fc0f46ab6977008318",
+      "bytes": 1003
+    },
+    {
+      "name": "withAnalyticsPresentation",
+      "sha256": "850db0eee8ab5a55e728fc93ace74353ea48cf7de87eb2b9ac7b6c100bd09ab4",
+      "bytes": 345
+    },
+    {
+      "name": "analyticsManagerSelection",
+      "sha256": "4d0d777276ab49e238cae470b95962a209707b4eed474b190358937cc4af58c2",
+      "bytes": 644
+    },
+    {
+      "name": "validatedReportPage",
+      "sha256": "9d479294d2a9a6713afa396178206b5764bc264a05b21d49d0f5029beb779b2f",
+      "bytes": 454
+    },
+    {
+      "name": "newHiresRowsTx",
+      "sha256": "f7d456850849c232023115be46f01601f20ddd3fdcb22a820a5e9cf8f677839b",
+      "bytes": 1282
+    },
+    {
+      "name": "newHires",
+      "sha256": "d26edfe258fe726ac8498d6b92cf2cc8e72b3b6bf75a50bad6b85f437bdd0a99",
+      "bytes": 299
+    },
+    {
+      "name": "newHiresPage",
+      "sha256": "25b249447935de74b21fe0a491100eef6cff337c736920bf833266201bd081a6",
+      "bytes": 368
+    },
+    {
+      "name": "newHiresPageTx",
+      "sha256": "092d558e4690635296480bb171d8cc4987187ece24c2be3fc455a5415abb3586",
+      "bytes": 894
+    },
+    {
+      "name": "terminationsRowsTx",
+      "sha256": "ff4ebed95f13e60e7a692ffa642e58b42658455ba29ddd5717f7ce116278abeb",
+      "bytes": 2080
+    },
+    {
+      "name": "terminations",
+      "sha256": "6d628550528d83035936394bd09ec19df6b5cf23be76de5b5b2dbc4af5feb7af",
+      "bytes": 319
+    },
+    {
+      "name": "terminationsPage",
+      "sha256": "1a80c9c29a730860ee6be7dc94e1c0f18ac1349b17386cda9a01cfa882490f60",
+      "bytes": 383
+    },
+    {
+      "name": "terminationsPageTx",
+      "sha256": "e22a67b63ccc872ac2cb9ddafef109c3991fbe8db7cd475e5b090eda61921b10",
+      "bytes": 992
+    },
+    {
+      "name": "turnoverRate",
+      "sha256": "8484951b32ba955c182b8ffaa0105e9a2e3fb6480b2e525a477d617e116bedb0",
+      "bytes": 1032
+    },
+    {
+      "name": "changeJobTransactionsRowsTx",
+      "sha256": "81f1c9c0604abf78e5cc1a2c1868f9f250df21f75a1119ac463d2b3b351eb510",
+      "bytes": 2385
+    },
+    {
+      "name": "changeJobTransactions",
+      "sha256": "584f47231d68c4027c0e74b4c2ad4173c925afda080b35c977dbedfda86496ec",
+      "bytes": 349
+    },
+    {
+      "name": "changeJobTransactionsPage",
+      "sha256": "f2fd6411fad9e177dbe6d936a1256bd77b85f3f00c2e354ca2166e2e15d6cc16",
+      "bytes": 399
+    },
+    {
+      "name": "tally",
+      "sha256": "e1d9b992c88cf27466655eeaea7c0d700a501cd434c15c6d23fef4d87d2071ed",
+      "bytes": 337
+    },
+    {
+      "name": "dimensionRowsTx",
+      "sha256": "9188f6696f4433bbedc2b59a9fe7d9baebba98df8363737248499b1ca9af95fc",
+      "bytes": 1033
+    },
+    {
+      "name": "ageBand",
+      "sha256": "02d3280c4d6f17b20f4198cf9d154e393581297f0ff7a48bff34df36ce0e09da",
+      "bytes": 444
+    },
+    {
+      "name": "workforceDemographics",
+      "sha256": "219d80d41dd4db3931af143c8d150ce293b7cad8ecb8d1c41a2fa89479290dc4",
+      "bytes": 249
+    },
+    {
+      "name": "workforceDemographicsTx",
+      "sha256": "91c3b4ac90ab5a48d7558ca074419b3af2871cc161ab7aa69469cb85b7008859",
+      "bytes": 1165
+    },
+    {
+      "name": "demographicsByNationality",
+      "sha256": "5746ceefdbedd3f94b8a844e1cd7cd1c22815e9d5bfe448f76d1c512399781fd",
+      "bytes": 411
+    },
+    {
+      "name": "demographicsByNationalityTx",
+      "sha256": "551fff9f92ae37a123aced4832fe832be7925e0a6b465f00fff338b5dcbe0d70",
+      "bytes": 1418
+    },
+    {
+      "name": "leaveUtilisation",
+      "sha256": "8b3f4c8c8f06a158aa951efb8d31405e569164bfacc33c5151b894982939778b",
+      "bytes": 231
+    },
+    {
+      "name": "leaveUtilisationTx",
+      "sha256": "ec35262bd124bf119941cdc2490c2b7445a05b4646c291add497e8be006f9461",
+      "bytes": 1226
+    },
+    {
+      "name": "carryForwardPopulationTx",
+      "sha256": "14cf502795049488e12a9bb98effacd9d843329d6b8141aa5de267df695f3d51",
+      "bytes": 1285
+    },
+    {
+      "name": "carryForwardReport",
+      "sha256": "9a70d171a374d4cdd73cb310c4e5f77c2025189f633757071750e1bb71e9adc3",
+      "bytes": 195
+    },
+    {
+      "name": "carryForwardReportPage",
+      "sha256": "05afe1dbc1ab63a27a5032a83567f19a4586c6bc3093580c484105a95067c859",
+      "bytes": 416
+    },
+    {
+      "name": "carryForwardReportPageTx",
+      "sha256": "5b4c9d9d1e1ab5ae179175ce562d67ffd26cd2ad0011f348b69a47742bd7fac4",
+      "bytes": 1557
+    },
+    {
+      "name": "carryForwardRowsTx",
+      "sha256": "602f8c2a0660f458126aa6810945832bb2d3e60361e25056a6210fe042ede477",
+      "bytes": 10948
+    },
+    {
+      "name": "leaveBalancesSummary",
+      "sha256": "4add61b2f887a21bc317355236bc24d70c7917677cc2ae0d3252512f4172c390",
+      "bytes": 235
+    },
+    {
+      "name": "leaveBalancesSummaryTx",
+      "sha256": "87d126d6521f40726b4f921a900653282ebaff57402c50bf6a1fa58ff0f2331e",
+      "bytes": 808
+    },
+    {
+      "name": "sickLeaveTrend",
+      "sha256": "6f2a01fd21ecccab4f747c60b2ad3be330d0aa15738e4d5bb909b806bc9387b5",
+      "bytes": 305
+    },
+    {
+      "name": "sickLeaveTrendTx",
+      "sha256": "2fabed86345cc0ed9baf9856e270e520936f90bbb0e6ff8a4b9ad6476d41bb20",
+      "bytes": 1432
+    },
+    {
+      "name": "movementByMonth",
+      "sha256": "fc0144c310c8bcbd73e3ff4daa0b52eae545882ad3cd0a3e74767d07aece2755",
+      "bytes": 287
+    },
+    {
+      "name": "movementByMonthTx",
+      "sha256": "63e886ae866166acad74521f399387a5f0d4809a75bfdcd538a52aca83f00d07",
+      "bytes": 1677
+    },
+    {
+      "name": "turnoverRateFiltered",
+      "sha256": "3718f054eb94df9eec34624aea632339d334d11714d49c03e500e115a23812a3",
+      "bytes": 397
+    },
+    {
+      "name": "turnoverRateFilteredTx",
+      "sha256": "d0b5f71788a36722c901a316db0247539eecc23ead088e14d1bcf5130eefe271",
+      "bytes": 1030
+    },
+    {
+      "name": "dashboardTurnoverAggregateTx",
+      "sha256": "56cf2e38780897163f297e5c01f66f25fc6a8d3cdaae23fc89b82e881f275efa",
+      "bytes": 985
+    },
+    {
+      "name": "dashboardMovementAggregateTx",
+      "sha256": "8f683a7157592bb017ba78824203e5aa4b39f0de22ee12ba53f15e1ef0b49257",
+      "bytes": 1309
+    },
+    {
+      "name": "analyticsDashboard",
+      "sha256": "0fb88b834eaf0d3c53bc32a8ce0774c70b01fcde9fe0ae4582ac72153d1b5651",
+      "bytes": 1983
+    }
+  ],
+  "caseCensus": [
+    {
+      "path": "test/analytics-bounded-reports.test.ts",
+      "beforeBytes": 17405,
+      "afterBytes": 27037,
+      "beforeSha256": "6bf6428670aba82d8533670a76917fca306a0df2348b2f442dc47992f2389f5f",
+      "afterSha256": "0187abf271c1318ad9c49a56d7b66ba47b1925eecff5c20c3c05d2a746b4d062",
+      "oldDirectCases": 8,
+      "currentDirectCases": 11,
+      "oldCallbacks": [
+        {
+          "name": "keeps event-date departments, inclusive termination ends and canonical predecessor corrections",
+          "whole": true,
+          "beforeSha256": "dd6cb309589d0cf619d43d6211850a70bd8de98122dc6be768afc26c6c06bd40",
+          "afterSha256": "dd6cb309589d0cf619d43d6211850a70bd8de98122dc6be768afc26c6c06bd40",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "preserves SQL wildcard/name/email matching and returns string dates with export-compatible DTOs",
+          "whole": true,
+          "beforeSha256": "d1cc82165f6bcf2116011d048aa64af06348ceb745b3def99f3114af66531ff0",
+          "afterSha256": "d1cc82165f6bcf2116011d048aa64af06348ceb745b3def99f3114af66531ff0",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "counts and pages the full population beyond the shared All ceiling while exports remain complete",
+          "whole": true,
+          "beforeSha256": "8537703c57725dab0a2055f7288e91d39967ea436617bb2dfa9799790c202094",
+          "afterSha256": "8537703c57725dab0a2055f7288e91d39967ea436617bb2dfa9799790c202094",
+          "timeoutBefore": 120000,
+          "timeoutAfter": 120000
+        },
+        {
+          "name": "keeps native tenant/company RLS, selected identities outside page and current calling authority",
+          "whole": true,
+          "beforeSha256": "0b156011872e42fb617b0d2705068ba9d5ba8b70be68c865364d71b0484f4983",
+          "afterSha256": "0b156011872e42fb617b0d2705068ba9d5ba8b70be68c865364d71b0484f4983",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "groups the unchanged headcount source, coalescing null with literal em dash but retaining empty labels and future open assignments",
+          "whole": true,
+          "beforeSha256": "d300723cac0d53b876a6dd3b02069da49f4e5537484cda5b4bfbdd8ac2fe2c41",
+          "afterSha256": "d300723cac0d53b876a6dd3b02069da49f4e5537484cda5b4bfbdd8ac2fe2c41",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "uses one real RR/READ ONLY app transaction and completes behind an Access writer without audit writes",
+          "whole": true,
+          "beforeSha256": "fdbdb5ed1b5e3cbb5d46b78b287fa62014a63e792f676f53504629646ac77299",
+          "afterSha256": "fdbdb5ed1b5e3cbb5d46b78b287fa62014a63e792f676f53504629646ac77299",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "retains calendar/anniversary year population, leavers, leap hires and exact locale order before carry calculations",
+          "whole": true,
+          "beforeSha256": "12277752c32f748c07a5ef4c4ccd6f86017d123400f4ae99b6b1ab2c03318305",
+          "afterSha256": "12277752c32f748c07a5ef4c4ccd6f86017d123400f4ae99b6b1ab2c03318305",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "keeps per-employee entitlement eligibility and calculates only selected carry rows",
+          "whole": true,
+          "beforeSha256": "9d0688fd340bdeee7570dbb1100e2bdb5d57f55e6a29f402acb2ba06a7601af1",
+          "afterSha256": "9d0688fd340bdeee7570dbb1100e2bdb5d57f55e6a29f402acb2ba06a7601af1",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        }
+      ],
+      "newCases": [
+        {
+          "name": "uses one materialized exact-count envelope for empty, tied first/last and past-end change-job pages",
+          "line": 216,
+          "timeout": null,
+          "bodySha256": "9195588fb91f5c6d57e2d82447b7f3dc8e8d55a0a739f93f1544ecd22f834274"
+        },
+        {
+          "name": "retains exact predecessor multiplicity, corrections, both-side filters and genesis/termination exclusions",
+          "line": 256,
+          "timeout": null,
+          "bodySha256": "c1be761d60d35de0310c8e3d04b21d3740ded40185e50d15484459070d4361bd"
+        },
+        {
+          "name": "counts the complete change-job relation beyond All and preserves complete export rows",
+          "line": 300,
+          "timeout": 120000,
+          "bodySha256": "faffecae0f8a7f550a9187a8eeadd535316e88707dee9c1234ad8c47aa64ac35"
+        }
+      ],
+      "assertions": {
+        "original": 70,
+        "current": 112,
+        "allOriginalPreserved": true
+      }
+    },
+    {
+      "path": "test/analytics-dashboard-composition.test.ts",
+      "beforeBytes": 15332,
+      "afterBytes": 17797,
+      "beforeSha256": "4378612704093b31b836f6bee70f4860faabf1a3cb9c622a4cb6367edb74a965",
+      "afterSha256": "a418c7c83865d99344204c928434f2c2cab1ff599eb812ed126b4be6fdb978f7",
+      "oldDirectCases": 7,
+      "currentDirectCases": 9,
+      "oldCallbacks": [
+        {
+          "name": "matches all thirteen public report owners and independent facts with one real RR/RO transaction",
+          "whole": true,
+          "beforeSha256": "5b5e71bde4cab0b80c22450b2e18ed7ed5d3754763fadd77522cf28a924fe512",
+          "afterSha256": "5b5e71bde4cab0b80c22450b2e18ed7ed5d3754763fadd77522cf28a924fe512",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "preserves each report’s original filter semantics and exact past-end page counts",
+          "whole": true,
+          "beforeSha256": "1589537b691df3d963f845d4da6edb81d63927da7373263cddea6f1195efef95",
+          "afterSha256": "1589537b691df3d963f845d4da6edb81d63927da7373263cddea6f1195efef95",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "keeps one admitted snapshot across a committed mutation between report bodies",
+          "whole": true,
+          "beforeSha256": "a4193b39f222ba604c72a2db6196b070340e8783315be39dc40795b8c5e165d7",
+          "afterSha256": "a4193b39f222ba604c72a2db6196b070340e8783315be39dc40795b8c5e165d7",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "captures scope, filters and each independent page before asynchronous transaction admission",
+          "whole": true,
+          "beforeSha256": "62bf277d6b45afb3d8531175e77f332d53553535184ef775f967866b9ba313c6",
+          "afterSha256": "62bf277d6b45afb3d8531175e77f332d53553535184ef775f967866b9ba313c6",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "retains native RLS, nonadmin nationality omission, foreign fences and fresh principal refusal",
+          "whole": true,
+          "beforeSha256": "f2a24b68a144da5df94ff23fa193d5c5bdaa1350cfd213a265bcc8d7f8a02801",
+          "afterSha256": "f2a24b68a144da5df94ff23fa193d5c5bdaa1350cfd213a265bcc8d7f8a02801",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "completes behind an open Access writer without audit writes and PostgreSQL enforces read-only mode",
+          "whole": true,
+          "beforeSha256": "2f5e0ae79014415e334895c9cf0bd460cb374cd885ce1a17fa09e328dc9f6ffb",
+          "afterSha256": "2f5e0ae79014415e334895c9cf0bd460cb374cd885ce1a17fa09e328dc9f6ffb",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        },
+        {
+          "name": "settles the original report failure before starting another borrowed reader",
+          "whole": true,
+          "beforeSha256": "85b30b9055431b011ce86ac706de3fdf07b308e705e8375de7ec134fff075862",
+          "afterSha256": "85b30b9055431b011ce86ac706de3fdf07b308e705e8375de7ec134fff075862",
+          "timeoutBefore": null,
+          "timeoutAfter": null
+        }
+      ],
+      "newCases": [
+        {
+          "name": "preserves all thirteen DTOs behind held Access for empty, nonempty and past-end change-job envelopes",
+          "line": 186,
+          "timeout": null,
+          "bodySha256": "46c47d847068a60fe03ed423853aacdd6152d65b22219a3f2cee6e10f6d56b5d"
+        },
+        {
+          "name": "settles change-job envelope failure before later reports and releases its native presentation owner",
+          "line": 208,
+          "timeout": null,
+          "bodySha256": "2a290471ac81ebc66707e5c6f1cc0a503bd93b7a3032c8d259227964fd7f8a7e"
+        }
+      ],
+      "assertions": {
+        "original": 63,
+        "current": 79,
+        "allOriginalPreserved": true
+      }
+    },
+    {
+      "path": "test/analytics-native-scale.test.ts",
+      "beforeBytes": 24338,
+      "afterBytes": 33180,
+      "beforeSha256": "9b1518a189347be1a9eb44f3fd636ba134b47b3c297ec28b212aefe2a9b26686",
+      "afterSha256": "3ec089935fd75c17873045538af0f0d719cfc9c3a52af84cd076995b8b476f47",
+      "oldDirectCases": 1,
+      "currentDirectCases": 1,
+      "oldCallbacks": [
+        {
+          "name": "measures actual native 50k Analytics reads and complete-export baselines on the same runner",
+          "whole": false,
+          "beforeSha256": "69638791ff6d35daf26adf58ba90cbc2cd840fd4a1f9ead4d814d7bb5334f6c9",
+          "afterSha256": "11d2b89da929688bc44b1de8be1457125e8b18ea9ce5aab725edcd067cc039e5",
+          "timeoutBefore": 300000,
+          "timeoutAfter": 300000
+        }
+      ],
+      "newCases": [],
+      "assertions": {
+        "original": 103,
+        "current": 132,
+        "allOriginalPreserved": true
+      }
+    },
+    {
+      "path": "test/module-read-jit-diagnostic.test.ts",
+      "beforeBytes": 21680,
+      "afterBytes": 21680,
+      "beforeSha256": "325315af7145f9930462861152e6633bb2293844d1e3168dfc850b99b6693eab",
+      "afterSha256": "344bbc0fe3eaa79f09e71d668c76d699a76f045852376ec66b225e2b92e2a224",
+      "oldDirectCases": 3,
+      "currentDirectCases": 3,
+      "oldCallbacks": [
+        {
+          "name": "prepares one fictional50000 fixture and proves native policy admission, rollback, cancellation, isolated carriers and default restoration",
+          "whole": true,
+          "beforeSha256": "f40a5bbdb2c13eca4b606e498c854cb65276136e7e9647ab10224d1e94769a4a",
+          "afterSha256": "f40a5bbdb2c13eca4b606e498c854cb65276136e7e9647ab10224d1e94769a4a",
+          "timeoutBefore": 300000,
+          "timeoutAfter": 300000
+        },
+        {
+          "name": "enforces effectiveOFF Attendance under each requested parent mode and explains exact native counterfactual count/window shapes",
+          "whole": true,
+          "beforeSha256": "92eafa32cae6ef80c1be25b3a51617f214a88c42a1657b5a19385fdc453d9059",
+          "afterSha256": "92eafa32cae6ef80c1be25b3a51617f214a88c42a1657b5a19385fdc453d9059",
+          "timeoutBefore": 300000,
+          "timeoutAfter": 300000
+        },
+        {
+          "name": "enforces effectiveOFF thirteen-report Analytics under each parent mode and preserves all native counterfactual shapes and DTO parity",
+          "whole": false,
+          "beforeSha256": "7292f54fdacc8064bdf478527e947f44d293afa342a4c68c9b11bf3987a7a0bd",
+          "afterSha256": "e831a3f2d69a690c86688d58a8e38683ee654885efef71bd9601f1bdecb4ab7d",
+          "timeoutBefore": 300000,
+          "timeoutAfter": 300000
+        }
+      ],
+      "newCases": [],
+      "assertions": {
+        "original": 75,
+        "current": 75,
+        "allOriginalPreserved": true
+      }
+    }
+  ],
+  "explicitAssertionExceptions": [
+    {
+      "path": "test/analytics-native-scale.test.ts",
+      "before": "expect(telemetry.totals.statements).toBe(122);",
+      "after": "expect(telemetry.totals.statements).toBe(121);"
+    },
+    {
+      "path": "test/module-read-jit-diagnostic.test.ts",
+      "before": "expect(result.receipt).toMatchObject({complete:true,requestedJit:mode,effectiveJitAfterProductPolicy:'off',effectiveJitAtCompletion:'off',policyCommandCount:1,census:{statements:122,rows:90089,unknownRows:0,failed:0},defaultsRestoredSamePid:true,transactionCalls:1});",
+      "after": "expect(result.receipt).toMatchObject({complete:true,requestedJit:mode,effectiveJitAfterProductPolicy:'off',effectiveJitAtCompletion:'off',policyCommandCount:1,census:{statements:121,rows:90089,unknownRows:0,failed:0},defaultsRestoredSamePid:true,transactionCalls:1});"
+    }
+  ],
+  "prospectiveEmpty50kCensus": {
+    "statements": 121,
+    "returnedRows": 90089,
+    "meaning": "Future native assertions only; one empty-page SELECT+count becomes one sentinel envelope; no old receipt transferred"
+  },
+  "nativeScaleNewDiagnostic": {
+    "existingOwner": "test/analytics-native-scale.test.ts",
+    "originalAggregatePlansRetained": 7,
+    "newFixedEnvelopePlans": 2,
+    "newCourses": 2,
+    "perPlanNodes": 256,
+    "sameExistingCaseMs": 300000,
+    "newPools": 0,
+    "population": "same50000; two owned existing-subject histories; originals restored in finally",
+    "claims": "Warm target statement plans only; performance unknown"
+  },
+  "jitOwner": {
+    "file": "test/module-read-jit-diagnostic.test.ts",
+    "cases": 3,
+    "plans": 20,
+    "change": "only prospective Analytics census122to121"
+  },
+  "historicalRecordsWhole": [
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "docs/qualification/architecture-reviewed-recovery-source-index-20261109.json",
+      "gitBlob": "73e3273498097c6f9634df40b3b78886d91e94d0",
+      "bytes": 45386,
+      "sha256": "5b93579e3b23e74da1b50d5df4de9b0b4ea2b081ce72a9b6da9570e608f28ee8"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "docs/qualification/shared-database-prerequisite-source-index-20261109.json",
+      "gitBlob": "e69f53fb00f76cebf0537751290924014ccd53ea",
+      "bytes": 8687644,
+      "sha256": "bf8a3da62f7e1bcc11629af72a691f8b549a992919c492383ed16d10c11a720f"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "docs/qualification/measured-jit-runtime-source-closure-20261108.json",
+      "gitBlob": "d5f2691444b419fdade5582e17309fb466eb66bf",
+      "bytes": 8400,
+      "sha256": "03e594027792f96918359b75d13666cbdabfe528fb9235b42364ef31f962e2ee"
+    }
+  ],
+  "historicalRuntimeEvidenceTransferred": false,
+  "nullDepartmentLimit": {
+    "actualDepartmentNotNull": true,
+    "labelNameNotNull": true,
+    "sameTenantCriteriaPreserved": true,
+    "nativeBusinessRowNullNotFabricated": true,
+    "nullablePublicProjectionRetained": true,
+    "legitimateCases": [
+      "nullable Position",
+      "empty-page LEFT sentinel null payload"
+    ]
+  },
+  "invariants": [
+    "whole changeJobTransactionsRowsTx exact relation",
+    "52 other Analytics function declarations whole",
+    "all original callbacks, assertions and caps retained except two explicit census assertions",
+    "all startup branches untouched",
+    "no SQL/import/test/compiler/build/native/network/push/dispatch locally"
+  ],
+  "wholeSupportingOwners": [
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "db/schema.ts",
+      "gitBlob": "c80eb3180eebc7bf9fb9a30367e4b00746b22592",
+      "bytes": 820303,
+      "sha256": "8333f7a44c82fc43411dd4735314a555c4a69e0f805f0dc6b29e62c997ea9112"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "db/migrations/0000_luxuriant_anita_blake.sql",
+      "gitBlob": "e5c3167f05a73029df549c8f05135edcf48fb9f6",
+      "bytes": 16085,
+      "sha256": "dbdefe63e22e7cfb3b95532b86bd1cf3a37c7c6b079ef9e57f0d68a7fa6b6fac"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "db/migrations/0001_rls_grants_constraints.sql",
+      "gitBlob": "57971441c1decc342c0a286ca2ca22a3c3b1bf29",
+      "bytes": 8922,
+      "sha256": "d095267b25cfb696b808b05ff33baf64b19ab2b948fb45e86ee45fa21748ef87"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "db/migrations/0016_company_scoped_authz.sql",
+      "gitBlob": "cd3ef63501a3904b02d9a84078e952496210c907",
+      "bytes": 9443,
+      "sha256": "f4d106269f9246649f59ef7ad1cacde5114224421af183fdb1b203ca42d44bf6"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "db/migrations/0550_system_label_company_criteria.sql",
+      "gitBlob": "243321d78103e232b478b803d488251dde6d2ae2",
+      "bytes": 32423,
+      "sha256": "b1f4e2acc5f6a472c1a7901612f192072ce08c76f6159f3c3437a94ecde9fe19"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "test/helpers/native-read-observer.ts",
+      "gitBlob": "fdf10e2b00b0ad0f65d34c17787c0a115961fd26",
+      "bytes": 5384,
+      "sha256": "401bd549ee1ff0ad4ae7241743860682dd8a081ee71e9ee401056b0dc95787d5"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "test/performance/module-read-jit-probe.ts",
+      "gitBlob": "d5426e22b8e4dd9f034fb469eab23a9f4d29d919",
+      "bytes": 25507,
+      "sha256": "49efc0fd9630b782a550b046f151edbbe54f919d32c6c7cb36ebadd48c98be9b"
+    },
+    {
+      "commit": "0bbef1ea9d11ad2ce00d94e21d9a70cd859f7c2d",
+      "path": "test/performance/personnel-native-fixture.ts",
+      "gitBlob": "57046e76314873112959932ea562b52aca77b40b",
+      "bytes": 5736,
+      "sha256": "3b72cd22e8e97c730192454bca58b87795e362654b6a26250a2fe3cf752bc4fa"
+    }
+  ]
+}

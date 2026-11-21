@@ -1,0 +1,82 @@
+{
+  "kind": "UNINSTALLED_PAGE_ASSIGNMENT_HYDRATION_PROTOTYPE_NOT_RELEASE",
+  "base": "4c7a5fef03e185b1d0024e0dc994272c0c12bf88",
+  "sourceRef": "codex/employee-native-bounded-project-hydration-20261108",
+  "qualification": "NOT_RUN; frozen source review required",
+  "selectors": {
+    "pure": [
+      "test/employee-choice-auto-explain-parser.test.ts"
+    ],
+    "native": [
+      "test/employee-choice-native-purpose-plan.test.ts"
+    ]
+  },
+  "nativeExecutions": 6,
+  "wholePortsPerVariant": 18,
+  "requiredActualPhases": 44,
+  "requiredActualNativePairs": 27,
+  "parentActualPhasesRetained": 42,
+  "parentActualPairsRetained": 25,
+  "independentAssignmentPageSizes": [
+    1,
+    25,
+    2000
+  ],
+  "additionalParserModels": 5,
+  "targetMs": 1000,
+  "bounds": {
+    "rawPartBytes": 8388608,
+    "rawAggregateBytes": 134217728,
+    "gzipAggregateBytes": 33554432,
+    "indexBytes": 2097152,
+    "parts": 128,
+    "recordPhaseMemberBytes": 67108864,
+    "focusedZipBytes": 67108864,
+    "markerWaitMs": 20000,
+    "caseMs": 300000,
+    "workMs": 840000,
+    "totalMs": 900000,
+    "cleanupReserveMs": 60000,
+    "statementMs": 20000,
+    "lockMs": 300
+  },
+  "sourceSha256": {
+    "test/employee-choice-native-purpose-plan.test.ts": "ce41af8991c2cdcc4f5896b6b6dfd3ee225794170ccf3be6890e9bb4024931ef",
+    "test/fixtures/employee-choice-native-purpose.sql": "707dc24a30cef93b58503ba95e5f3b04b7e57d398fb973ac3e1853d406e10dd0",
+    "test/performance/employee-choice-native-purpose-owner.ts": "5c79122ef3e7a5f90267f5242fd9ad1ccbc64a7c3137ed3df126aa72433a07ec",
+    "test/performance/employee-choice-auto-explain-parser.ts": "d2465c782990fe4a03896d0b4378526d0b49e9e9302a98b3bc76dfd625f502d4",
+    "test/employee-choice-auto-explain-parser.test.ts": "876e9f405974d6942dd3eeb50254b7ab747313918b5f6362909edeebaa286398",
+    "docs/qualification/employee-choice-page-assignment-hydration-20261108.md": "dbb6ee9cf46aa38fb26d629e24833808271dab0a28b2736ed3842913923e4d35"
+  },
+  "unchangedSourceSha256": {
+    ".github/workflows/alpha-focused-checks.yml": "cc3c8e9bac07370bd70f1333bff6f697c2943120771cb8f8ca07caf87543e827",
+    "core/employee-choice.ts": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
+    "docs/qualification/employee-choice-capture-signal-status-20261108.md": "70d9ccf87b6e868d411d96e88100634187e245ed3133d7b23b45608d25522e2e",
+    "docs/qualification/employee-choice-lossless-native-capture-20261108.md": "2a3578d672cecfae1f72ac702d7e5243a0bcca8c973cae254f764e64eb96cabe",
+    "test/employee-choice-benchmark-ownership.test.ts": "1d43122e5dd17ca4661b29ac6ba29ea679d2ac1da248991448f68286922cd1e7",
+    "test/employee-choice-native-log-capture.test.ts": "96c77eca156f580ffbd7113f8a706b7a7fddc9963843887aced807e3febdb65c",
+    "test/performance/employee-choice-assignment-authority.ts": "0fbd4efb24d79dbf55660219df0aab009ea00774b4dd1588996d4de98caaeb7d",
+    "test/performance/employee-choice-auto-explain.ts": "215614296084876164a57c3097e9b724a755eb37f59d3d99187a35f17bc44331",
+    "test/performance/employee-choice-benchmark-evidence.ts": "53f5a71f0324d8b5c5ffac70aa1638b2bfc04197e5dba6cd5bd4ba62d8bb904d",
+    "test/performance/employee-choice-benchmark-lifetime.ts": "ff248b59e427d03bd1ae8e9eed555f16198e3b211271515a9ec36811824e0a39",
+    "test/performance/employee-choice-native-current-baseline.ts": "fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816",
+    "test/performance/employee-choice-native-log-collector.ts": "765f4504a122b5b4a3c6d98609450eb7c7cc7cb0a039acbf7e3d83d134a8e639",
+    "test/performance/employee-choice-native-log-parts.ts": "9e4f031ce19b8f851d5b284f1709dbdb8e351a325e2c04173fd89e352a84e1a9",
+    "test/performance/employee-choice-native-log-stream.ts": "5c5a215f509cd33e0aa4410eca27c626c96ffadeaa8fe79e297b101e1a8c53db",
+    "test/performance/employee-choice-native-purpose-reader.ts": "08e50db545dc32af18bddee7eae36a902ceacfbabc2c14a841b8a5b2b82cfd22",
+    "test/performance/employee-choice-native-purpose-session.ts": "a372db1140e4b87837416dd612dc03d548fc78ce222b28892554e5529d5fefaf",
+    "test/performance/employee-choice-plan-work.ts": "4a6eb56b6e96e5311b233ce5259f5cdc2edc149c1e5bde33d92d980662670560",
+    "test/performance/personnel-native-fixture.ts": "3b72cd22e8e97c730192454bca58b87795e362654b6a26250a2fe3cf752bc4fa"
+  },
+  "retainedParentNative": {
+    "run": 42424586841,
+    "artifact": 13595382364,
+    "zipSha256": "0b5e84d9e579c200f45550c19c3256e95d87bcea06f0105597cb9c0579e3dcf8",
+    "correctnessAndCleanupPassed": true,
+    "allUnderTarget": false
+  },
+  "appliedMigrationsOrApplicationChanged": false,
+  "localApplicationChecksExecuted": false,
+  "releaseAuthorized": false,
+  "production": "HELD"
+}

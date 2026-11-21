@@ -21,7 +21,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { proposalRates, type ProposalRates } from './agent-proposal';
 import { classifyClosures } from './recurrence-mining';
-import { resolveActiveAiConfig } from './ai-config';
+import { readAiProviderPresentationTx } from './ai-provider-snapshot';
 import { agentSwitchStatesTx } from './agent-principal';
 
 /** ADR-0074 §"the reframe": the target the whole design serves. */
@@ -292,7 +292,7 @@ export async function agreementView(ctx: SessionContext): Promise<AgreementView>
 
   // A provider enables human-triggered drafts only. Scheduled model spending is not admitted; only
   // attributed fixed-template reminders can currently produce scheduled proposals.
-  const aiConfigured = await withTenant(ctx, (tx) => resolveActiveAiConfig(tx, ctx)).then((c) => c != null);
+  const aiConfigured = await withTenant(ctx, tx => readAiProviderPresentationTx(tx, ctx), {readOnlySnapshot:true}).then(c => c != null);
   const switches = await withTenant(ctx, tx => agentSwitchStatesTx(tx, ctx));
   const anyAgentOn = switches.some(s => s.feature === 'readiness_reminders' && s.state === 'attributed');
 

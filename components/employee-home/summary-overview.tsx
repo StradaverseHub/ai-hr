@@ -5,33 +5,42 @@ import Link from 'next/link';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
 import {useNavIndex} from '@/components/nav-index-context';
-import {deliverHomeCard,type HomeCardDelivery} from '@/lib/employee-home-delivery';
+import {createHomeCardRefreshGate,deliverHomeCard,type HomeCardDelivery} from '@/lib/employee-home-delivery';
 import {homeQuickActionHref,homeSummaryHref,validateEmployeeHomeSummary,type EmployeeHomeSummary} from '@/lib/employee-home-summary';
+import {useHomeInitialSharing} from './sharing-cohort';
 
 /** An independently delivered subsection: a greeting failure cannot prevent these reads, and a
  * summary failure cannot replace the greeting/search or assert a calm day. No write on mount. */
 export function HomeSummaryOverview({employmentId}:{employmentId:string}){
  const t=useTranslations('employeeHome.summary'),actions=useTranslations('employeeHome.quickActions'),locale=useLocale();
+ const subscribe=useHomeInitialSharing();
  const {entries}=useNavIndex(),titleId=React.useId(),quickId=React.useId();
  const [attempt,setAttempt]=React.useState(0),[refresh,setRefresh]=React.useState(0);
  const key=JSON.stringify([employmentId,locale,attempt,refresh]);
+ const [gate]=React.useState(createHomeCardRefreshGate);
  const [view,setView]=React.useState<{key:string;result:HomeCardDelivery<EmployeeHomeSummary>|{state:'loading'}}>({key,result:{state:'loading'}});
  const result=view.key===key?view.result:{state:'loading' as const};
  React.useEffect(()=>{
-  const update=()=>{if(document.visibilityState==='visible')setRefresh(value=>value+1);};
+  // An automatic refresh never cancels a summary read still in flight (createHomeCardRefreshGate).
+  const update=()=>{if(document.visibilityState==='visible'&&gate.allow())setRefresh(value=>value+1);};
   window.addEventListener('focus',update);document.addEventListener('visibilitychange',update);
   const timer=window.setInterval(update,60000);
   return ()=>{window.removeEventListener('focus',update);document.removeEventListener('visibilitychange',update);window.clearInterval(timer);};
- },[]);
+ },[gate]);
  React.useEffect(()=>{
   const controller=new AbortController();let current=true;
+  gate.start();
   void deliverHomeCard(async signal=>{
-   const response=await fetch('/api/home/summary?'+new URLSearchParams({employmentId}),{signal,cache:'no-store',credentials:'same-origin'});
-   if(!response.ok)throw Error('Home summary unavailable');
-   return validateEmployeeHomeSummary(await response.json(),employmentId);
-  },{signal:controller.signal}).then(result=>{if(current&&result.state!=='cancelled')setView({key,result});});
+   async function standalone():Promise<unknown>{
+    const response=await fetch('/api/home/summary?'+new URLSearchParams({employmentId}),{signal,cache:'no-store',credentials:'same-origin'});
+    if(!response.ok)throw Error('Home summary unavailable');
+    return response.json();
+   }
+   const value=subscribe&&attempt===0&&refresh===0?await subscribe('summary',signal,standalone):await standalone();
+   return validateEmployeeHomeSummary(value,employmentId);
+  },{signal:controller.signal}).then(result=>{gate.settle();if(current&&result.state!=='cancelled')setView({key,result});});
   return ()=>{current=false;controller.abort();};
- },[key,employmentId]);
+ },[key,employmentId,subscribe,attempt,refresh,gate]);
  const routes=new Set(entries.map(row=>row.href.split('?')[0]));
  // The rail is the owner of visible navigation. Notices/calendar/payslip/profile are own-profile children;
  // they additionally require the server's current subject/module/field/publication capability.

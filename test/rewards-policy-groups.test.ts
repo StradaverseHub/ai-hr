@@ -66,7 +66,7 @@ describe('shared reward configuration versions',()=>{
   const v1=await createGroup();await saveRewardPolicyGroup(admin,{groupId:v1.groupId,expectedRevision:1,name:v1.name,policy,targets:targets()});
   const before=await owner.db.select({id:schema.rewardCycle.id}).from(schema.rewardCycle).orderBy(schema.rewardCycle.id);
   await expect(unit(b.companyId,buA,v1.versionId)).rejects.toMatchObject({code:'changed'});
-  await expect(createRewardUnit(admin,{name:'No checked plan',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today})).rejects.toThrow(/independently approved/);
+  await expect(createRewardUnit(admin,{name:'No checked plan',year,companyId:b.companyId,businessUnitId:buA,snapshotDate:today})).rejects.toThrow(/approved \(active\) Shared Rewards Configuration/);
   expect(await owner.db.select({id:schema.rewardCycle.id}).from(schema.rewardCycle).orderBy(schema.rewardCycle.id)).toEqual(before);
  });
  it('does not multiply global units into unselected companies and refuses incompatible or overlapping pairs',async()=>{

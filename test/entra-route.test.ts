@@ -2,7 +2,7 @@ import {afterEach,describe,it,expect,vi} from 'vitest';
 import {NextRequest} from 'next/server';
 const mocks=vi.hoisted(()=>({start:vi.fn(),native:vi.fn(),exchange:vi.fn(),rate:vi.fn(),audit:vi.fn(),options:vi.fn()}));
 vi.mock('../lib/entra/login-options-server',()=>({microsoftLoginEnabled:mocks.options}));
-vi.mock('../db/client',()=>({client:{unsafe:mocks.audit}}));
+vi.mock('../db/client',()=>({client:{unsafe:mocks.audit},withPoolWork:(_lane:string,work:()=>unknown)=>work(),withSystemWork:(work:()=>unknown)=>work()}));
 vi.mock('../lib/internal-auth/config',()=>({internalConfig:()=>({origin:'https://hr.test'}),internalSelected:()=>true,internalReady:()=>true,INTERNAL_SESSION_COOKIE:'__Host-aihr_internal'}));
 vi.mock('../lib/internal-auth/service',()=>({takeRate:mocks.rate}));
 vi.mock('../lib/entra/login',()=>({ENTRA_FLOW_COOKIE:'__Host-aihr_entra',startEntraLogin:mocks.start,nativeLaunch:mocks.native,exchangeNative:mocks.exchange,completeEntraLogin:vi.fn()}));

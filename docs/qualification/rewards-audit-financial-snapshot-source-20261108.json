@@ -1,0 +1,42 @@
+{
+  "kind": "UNINSTALLED_REWARDS_NATIVE_FINANCIAL_FIXTURE_RECOVERY",
+  "base": "1788a1c68057ebabab5566bb3bac55c02b9ed4df",
+  "sourceRef": "codex/rewards-audit-financial-snapshot-recovery-20261108",
+  "qualification": "NOT_RUN root+independent review before affected sole native recovery",
+  "selectors": [
+    "test/rewards-audited-read-prototype.test.ts"
+  ],
+  "nativeCases": 16,
+  "caseMs": 30000,
+  "statementMs": 20000,
+  "lockMs": 300,
+  "originalRun": 42418807377,
+  "originalPassed": 6,
+  "originalFailed": 10,
+  "originalPending": 0,
+  "retainedPassedNames": [
+    "durable-before-return read and canonical projection records durable empty/filter reads without widening library IDs, and leaves legacy audit sequencing intact",
+    "durable-before-return read and canonical projection requires native RR/RW, exact backend/transaction admission and complete receipt COMMIT; rollback discloses no service result or durable effect",
+    "durable-before-return read and canonical projection honors CTRO-only library disclosure, unlinked legacy grants, company-only denial and fresh revocation with retained contexts",
+    "durable-before-return read and canonical projection refuses stale actual-role, archived, forged, foreign-tenant and freshly disabled native module contexts without receipts",
+    "durable-before-return read and canonical projection refuses unarmed tenants explicitly while retaining their original audited reader behavior",
+    "durable-before-return read and canonical projection discovers later receipt commits behind already projected work and preserves observation time versus append order"
+  ],
+  "originalFailure": "42703 column state does not exist in test money() reward_unit query",
+  "completeActualNativeUnitRowsNowCompared": true,
+  "applicationOrNativeSqlChanged": false,
+  "assertionsRemovedOrWeakened": false,
+  "retainedOwnershipRun": 42415491165,
+  "retainedOwnershipPassed": 3,
+  "retainedLegacyRun": 42415491484,
+  "retainedLegacyAssertions": 323,
+  "sourceSha256": {
+    "test/rewards-audited-read-prototype.test.ts": "15b5d38328121dc79f03b04a12415ceb7a0385bddfe32b5d8009da5dfbe5adcb",
+    "test/prototypes/rewards-audited-read.sql": "cad7076c1263888257084dbf5b2eef77ebb6e360dbf08ae38e2029a00a58b654",
+    "test/prototypes/rewards-audited-read-owner.ts": "7a935b0eee7932838713d08183eaf39f96594695271fb2fc94c3f3542aae7ff5",
+    "test/prototypes/rewards-audit-projection-race.ts": "2e292a3178188e184b11bb55f79a5dbdd4c44a54c82b624618aeac28bf949674",
+    "docs/qualification/rewards-audit-financial-snapshot-recovery-20261108.md": "fff044859e045b2fc79cef7dbdb5fd613697446ff2492e0c09adf1f4ec7fe641"
+  },
+  "releaseAuthorized": false,
+  "production": "HELD"
+}

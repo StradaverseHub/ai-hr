@@ -10,7 +10,7 @@
  * Auditor: an administrator of a company lets a named login of the same tenant read that company's Audit loop and audit
  * pack, read-only, until revoked. An administrator never grants themselves; a grant is revoked once and never rewritten
  * (migration 0965). Both changes are audited. */
-import {and,eq,isNull,sql,type SQL} from 'drizzle-orm';
+import {and,eq,inArray,isNull,sql,type SQL} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
@@ -29,12 +29,23 @@ export const loosensAuditControl=(before:Pick<AuditControlSettings,'bankChangeDa
 const clone=(supplied:SessionContext):SessionContext=>({...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))});
 const ok=async(tx:Tx,query:SQL)=>((await tx.execute(query)) as unknown as {ok:boolean|null}[])[0]?.ok===true;
 
+const settingsOf=(row:typeof payrollAuditControlSetting.$inferSelect|undefined):AuditControlSettings=>
+ Object.freeze(row?{bankChangeDays:row.bankChangeDays,adjustmentThreshold:Number(row.adjustmentThreshold),preparerClosedMode:row.preparerClosedMode,version:row.version}
+  :{...AUDIT_CONTROL_DEFAULTS,version:null});
+
 /** The company's settings, or the defaults. */
 export async function controlSettingsTx(tx:Tx,tenantId:string,companyId:string):Promise<AuditControlSettings>{
  const [row]=await tx.select().from(payrollAuditControlSetting)
   .where(and(eq(payrollAuditControlSetting.tenantId,tenantId),eq(payrollAuditControlSetting.companyId,companyId))).limit(1);
- return Object.freeze(row?{bankChangeDays:row.bankChangeDays,adjustmentThreshold:Number(row.adjustmentThreshold),preparerClosedMode:row.preparerClosedMode,version:row.version}
-  :{...AUDIT_CONTROL_DEFAULTS,version:null});
+ return settingsOf(row);
+}
+
+/** controlSettingsTx for many companies in one statement: each company's settings, or the defaults. */
+export async function controlSettingsByCompanyTx(tx:Tx,tenantId:string,companyIds:readonly string[]):Promise<Map<string,AuditControlSettings>>{
+ const rows=companyIds.length?await tx.select().from(payrollAuditControlSetting)
+  .where(and(eq(payrollAuditControlSetting.tenantId,tenantId),inArray(payrollAuditControlSetting.companyId,[...companyIds]))):[];
+ const byCompany=new Map(rows.map(row=>[row.companyId,row] as const));
+ return new Map(companyIds.map(companyId=>[companyId,settingsOf(byCompany.get(companyId))]));
 }
 
 export async function setControlSettings(supplied:SessionContext,input:Readonly<{companyId:unknown;bankChangeDays:unknown;adjustmentThreshold:unknown;preparerClosedMode?:unknown}>){

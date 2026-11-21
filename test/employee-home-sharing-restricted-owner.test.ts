@@ -40,6 +40,10 @@ it('honors a hidden peer opt-out under a NOSUPERUSER/NOBYPASSRLS owner and refus
   for(const table of tables)await tx.execute(sql.raw(`ALTER TABLE public.${table} OWNER TO ${role}`));
   await tx.execute(sql.raw(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${role}`));
   await tx.execute(sql.raw(`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app TO ${role}`));
+  // 5012_import_release_visibility runs the staged-row predicate (app.import_marker_visible) inside definer readers
+  // such as app._home_peer_cohort as their owner, so an owner other than the migration owner must also read
+  // app.import_attempt_release. This restricted owner is assigned after migration, so it is given that SELECT here.
+  await tx.execute(sql.raw(`GRANT SELECT ON app.import_attempt_release TO ${role}`));
   const names=['proven_company_date_points','leave_calendar_presence','own_home_dashboard_role','_home_peer_policy','_home_peer_cohort','home_team_page','home_celebration_page','_home_celebration_occurrences','_home_team_leave_window','_home_team_page','home_team_leave_page','home_team_calendar'];
   const functions=await tx.execute(sql`SELECT p.oid::regprocedure::text AS signature FROM pg_proc p
    JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='app'

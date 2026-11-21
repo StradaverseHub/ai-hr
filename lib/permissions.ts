@@ -56,14 +56,18 @@ export const MATRIX_ROLES: readonly Role[] = [
   // reaches; /performance and its cycle children admit it for OneHR-native cycles inside the page
   // (requireOnehrAdminAccess + notFound for a generic cycle), and no requireAdmin/scopedAdmin screen.
   'performance_partner',
+  // ADR-0049 §2 (5850/5851) — Recruiting Partner. Reaches the scopedSession screens every role reaches; the
+  // /recruitment screens admit it inside the page (canAdministerRecruitment, then app.can_admin_recruitment_for
+  // per company in the service and RLS), and no requireAdmin/scopedAdmin screen.
+  'recruiting_partner',
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */
-export type Guard = 'requireSecurityCenter' | 'requireGroupAdministration' | 'assistantSession' | 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
+export type Guard = 'rewardReviewPlans' | 'requireSecurityCenter' | 'requireGroupAdministration' | 'assistantSession' | 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
 
 /** Role eligibility. The effective-capability gate is rendered as conditional, never a role grant. */
 export function rolesForGuard(guard: Guard): ReadonlySet<Role> {
-  if(guard==='requireSecurityCenter'||guard==='assistantSession'||guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
+  if(guard==='rewardReviewPlans'||guard==='requireSecurityCenter'||guard==='assistantSession'||guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
   if (guard === 'requireTeamAccess') return new Set<Role>(['manager', 'hr_admin', 'super_admin']);
   // requireAdmin & scopedAdmin both gate on isAdmin → hr_admin + super_admin only.
   if (guard === 'requireGroupAdministration' || guard === 'requireAdmin' || guard === 'scopedAdmin' || guard === 'onboardingMaster') {
@@ -113,6 +117,9 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/hr','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close','/assistant/statutory','/assistant/payroll-runs','/assistant/bank','/assistant/compensation','/assistant/cost-allocation','/assistant/day-schedule','/assistant/document-details','/assistant/emergency-contacts','/assistant/employee-code','/assistant/employee-draft-discard','/assistant/employee-drafts','/assistant/family','/assistant/fixed-item-archive','/assistant/offboarding-case-cancel','/assistant/offboarding-step','/assistant/offboarding-step-undo','/assistant/org-departments','/assistant/org-employee-id','/assistant/org-people-general','/assistant/org-positions','/assistant/passport','/assistant/payment-method','/assistant/payroll-reopen','/assistant/payroll-reset','/assistant/performance/checkins','/assistant/performance/checkins/complete','/assistant/performance/checkins/schedule','/assistant/performance/goals','/assistant/profile-request-rejection','/assistant/qualifications','/assistant/rewards/calendar','/assistant/rewards/cancel','/assistant/rewards/return','/assistant/schedule-group','/assistant/tp3-opening','/assistant/workforce-profile'],hasScopeNote:true},
   {screenKey:'jobDescriptions',href:'/admin/job-descriptions',labelKey:'nav.jobDescriptions',guard:'requireAdmin',routes:['/admin/job-descriptions','/admin/job-descriptions/new','/admin/job-descriptions/configuration','/admin/job-descriptions/[id]','/admin/job-descriptions/[id]/print']},
   {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:['/admin/rewards/access','/admin/rewards/access/view-as','/admin/rewards/uploaded']},
+  // 82748f92: People › Settings, the card page for the six People setup screens. Its own column (navigation only):
+  // each section keeps its own column below/above, and the page shows only the cards the viewer may open.
+  {screenKey:'peopleSettings',href:'/admin/settings/people',labelKey:'nav.peopleSettings',guard:'requireAdmin',routes:['/admin/settings/people']},
   {screenKey:'peopleGeneral',href:'/admin/settings/people-general',labelKey:'nav.peopleGeneral',guard:'requireAdmin',routes:['/admin/settings/people-general']},
   {screenKey:'myTp3',href:'/me/tp3',labelKey:'nav.myTp3',guard:'scopedSession',routes:['/me/tp3'],hasScopeNote:true},
   {screenKey:'myEa',href:'/me/ea',labelKey:'nav.myEa',guard:'scopedSession',routes:['/me/ea'],hasScopeNote:true},
@@ -145,8 +152,12 @@ export const SCREENS: readonly ScreenEntry[] = [
   // D-P1-32 PT-X2: the Performance & Talent employee/leader tab routes. Each page adds its tab's gate (404 when hidden).
   {screenKey:'performanceTabs',href:'/performance/my',labelKey:'nav.performanceTalent',guard:'scopedSession',routes:['/performance/my','/performance/my/kpis','/performance/team','/performance/team/kpis','/performance/team/[reviewId]','/performance/assessments','/performance/feedback','/performance/competency','/performance/competency/team','/performance/plan','/performance/plan/profile','/performance/plan/team']},
   {screenKey:'attendanceConfigurationDestinations',href:'/admin/attendance/settings/company-policy',labelKey:'attendanceSettingsHub.companyPolicy.title',guard:'scopedAdmin',routes:['/admin/attendance/settings/company-policy','/admin/attendance/settings/work-schedule-overtime','/admin/attendance/settings/registered-devices']},
-  {screenKey:'attendanceApprovalWorkflow',href:'/admin/attendance/approval-workflow',labelKey:'nav.attendanceApprovalWorkflow',guard:'scopedAdmin',routes:['/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new','/admin/attendance/approval-workflow/[lineageId]','/admin/attendance/approval-workflow/[lineageId]/edit']},
+  {screenKey:'attendanceApprovalWorkflow',href:'/admin/attendance/approval-workflow',labelKey:'nav.attendanceApprovalWorkflow',guard:'scopedAdmin',routes:['/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new','/admin/attendance/approval-workflow/[lineageId]','/admin/attendance/approval-workflow/[lineageId]/edit','/admin/attendance/approval-workflow/[lineageId]/previews']},
   {screenKey:'attendanceApplicationHistory',href:'/attendance/application-history',labelKey:'nav.applicationHistory',guard:'scopedAdmin',routes:['/attendance/application-history','/attendance/application-history/[id]']},
+  // 96a54ed2 — on-behalf filing and deciding. scopedSession pages; the service enforces the permission key
+  // (attendance.request_on_behalf / attendance.approve_on_behalf) and HR company scope or the own reporting line.
+  {screenKey:'attendanceRequestOnBehalf',href:'/attendance/on-behalf/request',labelKey:'nav.attendanceRequestOnBehalf',guard:'scopedSession',routes:['/attendance/on-behalf/request'],hasScopeNote:true},
+  {screenKey:'attendanceApproveOnBehalf',href:'/attendance/on-behalf/approve',labelKey:'nav.attendanceApproveOnBehalf',guard:'scopedSession',routes:['/attendance/on-behalf/approve','/attendance/on-behalf/approve/[employmentId]'],hasScopeNote:true},
   {screenKey:'attendanceVisibleApplications',href:'/attendance/application-history/visible',labelKey:'attendanceHistory.visibleTitle',guard:'scopedSession',routes:['/attendance/application-history/visible'],hasScopeNote:true},
   {screenKey:'workflowEmail',href:'/admin/settings/notifications',labelKey:'nav.workflowEmail',guard:'scopedAdmin',routes:['/admin/settings/notifications'],hasScopeNote:true},
   {screenKey:'myEmailNotifications',href:'/me/notifications',labelKey:'workflowEmail.preferencesTitle',guard:'scopedSession',routes:['/me/notifications']},
@@ -161,12 +172,50 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'emailTemplates',href:'/admin/settings/email-templates',labelKey:'nav.emailTemplates',guard:'scopedAdmin',routes:['/admin/settings/email-templates'],hasScopeNote:true},
   { screenKey: 'identityEmail', href: '/admin/settings/email', labelKey: 'nav.identityEmail', guard: 'scopedSession', routes: ['/admin/settings/email'], hasScopeNote: true },
   {screenKey:'rewards',href:'/rewards',labelKey:'nav.rewards',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
-    '/rewards','/rewards/[unitId]','/rewards/[unitId]/data-check','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
-    '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/promotions','/rewards/rules',
+    '/rewards','/rewards/reviews','/rewards/[unitId]','/rewards/[unitId]/setup','/rewards/[unitId]/data-check','/rewards/[unitId]/people/[entryId]','/rewards/[unitId]/advisor',
+    '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/promotions','/rewards/rules','/rewards/offcycle/new','/rewards/offcycle/settings',
   ]},
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
-  { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },
+  // Role eligibility is conditional: the native plan owner derives current setup and company authority.
+  { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'rewardReviewPlans', conditionalAccess:true, hasScopeNote:true, routes: ['/admin/rewards','/admin/rewards/review-plans','/admin/rewards/earlier-plans'] },
+  { screenKey: 'rewardsHistoryUpload', href: '/rewards/history-upload', labelKey: 'nav.rewardsHistoryUpload', guard: 'scopedSession', conditionalAccess:true, hasScopeNote:true, routes: ['/rewards/history-upload'] },
   { screenKey: 'rewardsPolicy', href: '/admin/rewards/[unitId]', labelKey: 'rewards.configuration', guard: 'scopedSession', routes: ['/admin/rewards/[unitId]'] },
+  // ADR-0080 D10 / ADR-0049 — Recruitment. Every page calls requireModule('recruitment') + scopedSession and then admits
+  // recruitment administrators (canAdminRecruitment: HR administrators and the company-scoped Recruiting Partner) for
+  // the companies app.can_admin_recruitment_for answers true, and — slice 2 — job-team members and interviewers for
+  // their own jobs and interviews (app.can_*_recruitment_job, 5852), and approvers for their own pending steps.
+  // Overview, Settings, Requisitions and Talent pool stay administrator-only inside the page; Reports (slice 6) admits
+  // administrators and a job's recruiter, assistant or hiring manager for their own jobs, its Team view administrators only. The service and row
+  // security refuse independently. A capability gate inside the page, not a role grant at the boundary — hence
+  // conditionalAccess.
+  // Recruitment slice 7 — employee referrals. Every signed-in person reaches the address; the pages show the referral portal
+  // and My referrals only to a person with an active employment in a company with Recruitment (app.recruitment_referral_*,
+  // 5857), and only their own referrals. Referring grants no other Recruitment access.
+  {screenKey:'myReferrals',href:'/me/referrals',labelKey:'nav.myReferrals',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,
+    routes:['/me/referrals','/me/referrals/jobs/[jobId]','/me/referrals/mine']},
+  {screenKey:'recruitment',href:'/recruitment',labelKey:'nav.recruitment',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
+    '/recruitment','/recruitment/positions','/recruitment/positions/new','/recruitment/positions/[id]','/recruitment/candidates','/recruitment/settings',
+    '/recruitment/applications/[id]','/recruitment/interviews','/recruitment/interviews/[id]/feedback','/recruitment/scorecards/[id]',
+    '/recruitment/requisitions','/recruitment/requisitions/new','/recruitment/requisitions/[id]','/recruitment/talent-pool','/recruitment/approvals',
+    '/recruitment/reports',
+    // Slice 10 — an agency contract's page (recruitment administrators only, inside the page and by row security) and an
+    // agency submission's review (administrators only).
+    '/recruitment/settings/agencies/contracts/[id]','/recruitment/agency-submissions/[id]',
+    // Slice 11 — the hiring manager's To screen list (their own open screening requests; row security returns nothing else).
+    '/recruitment/screening',
+    // Slice 16 — candidate import and the To assign list (administrators and the company's recruiters and assistants;
+    // the service and row security decide).
+    '/recruitment/candidates/import','/recruitment/to-assign',
+    // Slice 17 — a job's "Suggested to archive" list (the job's recruiters, assistants and the company's recruitment administrators;
+    // the service asks app.can_operate_recruitment_job and row security decides).
+    '/recruitment/suggested-archive',
+    // Slice 23 — referral rewards and agency fees (recruitment administrators decide; the receiving company's payroll
+    // administrators send approved rewards through ?view=payroll). Slice 25 — the agency portal inbox (the job's operators).
+    // The services and row security decide.
+    '/recruitment/rewards','/recruitment/agency-portal',
+  ]},
+  // 70d5e7c5: Configuration › Review Set-up. Group Rewards edits; CTRO and EC view; the review seat decides.
+  { screenKey: 'rewardsReviewSetup', href: '/admin/rewards/review-setup', labelKey: 'nav.rewardsReviewSetup', guard: 'scopedSession', conditionalAccess: true, routes: ['/admin/rewards/review-setup', '/admin/rewards/review-setup/[unitId]'] },
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──
   { screenKey: 'dashboard', href: '/', labelKey: 'nav.dashboard', guard: 'scopedSession', routes: ['/'] },
   {
@@ -513,7 +562,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   // page floor: an import is listed for Workforce view on at least one of its companies, each item only for
   // its own company, the original file only with view on every company, and Revert only with Workforce
   // maintain on every company. The guard MATCHES the pages' own requireAdmin().
-  {screenKey:'importHistory',href:'/admin/personnel/import/history',labelKey:'admin.users.screen.importHistory',guard:'requireAdmin',routes:['/admin/personnel/import/history','/admin/personnel/import/history/[attemptId]'],hasScopeNote:true},
+  {screenKey:'importHistory',href:'/admin/personnel/import/history',labelKey:'admin.users.screen.importHistory',guard:'requireAdmin',routes:['/admin/personnel/import/history','/admin/personnel/import/history/[attemptId]','/admin/personnel/import/history/runs/[runId]'],hasScopeNote:true},
   {
     // 05d2709a — Possible duplicate employee records. Its OWN column, deliberately NOT a fifth route on
     // personnelAdmin above: managing an employee and reviewing a cross-company list of people who may be
@@ -812,6 +861,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       // REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH ways — a guarded
       // page.tsx absent from REGISTERED_ROUTES, and a registered route with no page on disk.
       '/admin/leave-config/special-setting',
+      // 50d9b809 — SHARED LEAVE GROUPS' own address, a Leave Settings card. The group editor was a pop-up
+      // on the Entitlements screen (`/admin/leave-config/types`, a route on this key behind the same
+      // `requireAdmin` guard), so it is a ROUTE on this screen key rather than a new one: the people who
+      // could manage groups in the pop-up are exactly the people who can open this page, and no new
+      // permission is created. REGISTERING IT IS NOT PAPERWORK: test/function-access.test.ts fails BOTH
+      // ways — a guarded page.tsx absent from REGISTERED_ROUTES, and a registered route with no page.
+      '/admin/leave-config/shared-groups',
       // f1b994e3 — `/admin/leave/audit` STOOD HERE and is DELIBERATELY GONE. The Leave Config Audit tab
       // is retired into the one central Audit Trail (/admin/audit, screenKey `auditTrail` below, also
       // requireAdmin — so nobody who could open the leave page loses access). The route survives as an
@@ -1242,6 +1298,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/history-import',
       '/payroll/history-import/logs',
       '/payroll/history-import/logs/[attemptId]',
+      '/payroll/history-import/records',
+      '/payroll/history-import/records/[recordId]',
       // 169e3c24: the pre-release Individual Payslip viewer. Registered on the SAME scopedAdmin key as
       // the rest of the hub, because it is the admin's review of a payslip before it is released — it
       // reads through `payslipForReview`, never the ESS gate, so it must be admin-scoped exactly like
@@ -1439,6 +1497,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
       // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.
       '/payroll/transaction-view',
+      '/payroll/transaction-view/workbooks',
       '/payroll/transactions',
       // 7076f8af: the two functions that came OFF the run screen. `adjustments` renders the draft run's
       // consolidation bridges + input grid (its primary home is the run flow's Review step, which is not a
@@ -1454,6 +1513,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       // test/function-access.test.ts fails the build for a guarded page.tsx with no column, which is how
       // a new screen is stopped from being invisible on the access grid.)
       '/payroll/transactions/fixed/[id]',
+      '/payroll/transactions/fixed/imports',
+      '/payroll/transactions/fixed/imports/[id]',
       '/payroll/transactions/individual',
       '/payroll/transactions/individual/imports',
       '/payroll/transactions/individual/imports/[attemptId]',

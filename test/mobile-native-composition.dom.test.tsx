@@ -24,7 +24,11 @@ function fixture() {
     '../../lib/mobile-api/v2/tasks': v2tasks,
     './api': { useApiV2: (path: string, schema: unknown, params: unknown) => { calls.push(path); v2params.push(params); v2schemas.push(schema); return { ...tasks, reload() {} }; }, useApi: (path: string) => { calls.push(path); return { loading: false, error: null, reload() {}, data: path === 'tasks' ? { total: 1, items: [{ id: 'one', kind: 'leave', subject: 'Scoped colleague' }] } : { cards: Array.from({ length: 6 }, (_, i) => ({ leaveTypeId: i, leaveType: `Leave ${i}`, isCurrentCycle: true, canApplyFor: i })) } }; } },
     './home-cards': { ClockSummary: () => <p>Clock summary</p>, LeaveSummary: () => <p>Leave summary</p>, PayslipRow: () => <p>Payslip row</p> },
-    './inbox': { HomeNeeds: () => <p>Needs you rows</p> },
+    './inbox': {
+      HomeNeeds: () => <p>Needs you rows</p>,
+      useHomeSummary: () => { calls.push('v2/home/summary'); return { loading: false, error: null, data: null }; },
+      HomeLoopActions: () => <p>Employee loop actions</p>,
+    },
     './team-panel': { TeamPanel: ({ compact }: { compact?: boolean }) => <p>{compact ? 'Team compact' : 'Team'}</p> },
     './design': { DesignText: Text, TenantSurface: View, useTenantDesign: () => ({ design, palette: design.composition.themes.light }) },
     './session': { useSession: () => ({ employmentId: 'current', signOut() {} }) }, './i18n': { t: (key: string) => key },
@@ -37,7 +41,8 @@ function fixture() {
 afterEach(cleanup);
 it('renders custom composition and internal navigation without loading unrelated HR data', () => {
   const f = fixture(); render(<f.ComposedPage design={f.design} />);
-  expect(screen.getByText('A place for our people.')).toBeTruthy(); expect(f.calls).toEqual([]);
+  expect(screen.getByText('A place for our people.')).toBeTruthy();
+  expect(screen.getByText('Employee loop actions')).toBeTruthy(); expect(f.calls).toEqual(['v2/home/summary']);
   fireEvent.click(screen.getByRole('button', { name: 'Explore benefits' }));
   expect(f.push).toHaveBeenCalledWith({ pathname: '/custom', params: { id: 'benefits' } });
 });

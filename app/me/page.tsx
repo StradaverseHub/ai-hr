@@ -1,3 +1,5 @@
+import {resignationEmployeeView} from '@/packs/lifecycle/service';
+import {EmployeeResignation} from '@/components/resignation/employee';
 import {profileVisibilityFingerprint} from '@/lib/profile-policy-fingerprint';
 import {profileHiddenTabs,isProfileVisibilityPolicyValue,profileSectionPolicyKey} from '@/lib/profile-edit-policy-value';
 import {ownPhotoSubmissionAllowed} from '@/core/person-photo';
@@ -91,13 +93,14 @@ export default async function MePage({
   const taxReliefEmploymentIds = payrollOn ? await myTaxReliefEmploymentIds(s) : [];
   const noTaxRelief: TaxReliefResult = { year: Number(todayInKualaLumpur().slice(0, 4)), rows: [], ytd: 0 };
 
-  const [payslips, taxRelief, profileRequests, resignation, myLoans] = await Promise.all([
+  const [payslips, taxRelief, profileRequests, resignation, myLoans, resignationJourney] = await Promise.all([
     payrollOn ? myPayslips(s, employments.map((e) => e.employmentId)) : [],
     payrollOn ? myTaxRelief(s, taxReliefEmploymentIds) : noTaxRelief,
     myProfileChangeRequests(s,50,presentation),
     tabVisible('Documents')?myResignation(s, employmentId):null,
 
     payrollOn ? listLoansForEmployment(s, employmentId) : [],
+    tabVisible('Documents')&&(isModuleEnabledOrFalse(s,'lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length)?resignationEmployeeView(s,employmentId):null,
   ]);
 
   const taxReliefByCompany = taxRelief.rows.reduce<Record<string, typeof taxRelief.rows>>((acc, r) => {
@@ -434,7 +437,7 @@ export default async function MePage({
       <MeReviewCard s={s} employmentId={employmentId} />
 
       {/* Resignation (ADR-0042, #29) — employee-initiated, HR-approved. */}
-      <Card className={`p-5 ${MONO_FLUSH} monolith:p-0`}>
+      {resignationJourney&&(!resignation||resignationJourney.cases.length>0||resignation.status==='rejected'||resignation.status==='withdrawn') ? <EmployeeResignation employmentId={employmentId} initial={resignationJourney}/> : <Card className={`p-5 ${MONO_FLUSH} monolith:p-0`}>
         <SectionHeader title={t('resignationTitle')} className={MONO_ME_SECTION_HEAD} />
         <p className="px-1 pt-2 text-xs text-muted-foreground">{t('resignationDescription')}</p>
         {resignation?.status === 'pending' ? (
@@ -484,7 +487,7 @@ export default async function MePage({
             </Button>
           </form>
         )}
-      </Card>
+      </Card>}
     </>
   );
 
@@ -498,7 +501,7 @@ export default async function MePage({
     <PageHeader title={t('title')} description={facts.header.company}/>
       <ErrorBanner message={error}/>
     <Card className="p-4 sm:p-6"><div className="flex flex-wrap items-start gap-4"><Avatar name={facts.header.name} src={facts.header.photo?`/personnel/photo/${workspace.personId}`:null} className="size-20"/><div className="min-w-0 flex-1"><p className="text-xs text-muted-foreground">{facts.header.employeeCode}</p><h2 className="mt-1 text-xl font-semibold">{facts.header.name}</h2><p className="mt-1 text-sm text-muted-foreground">{facts.header.company}</p><p className="mt-1 text-sm text-muted-foreground">{facts.header.department??'—'} · {facts.header.position??'—'}</p><div className="mt-3 flex flex-wrap items-center gap-3">{facts.header.status&&<Badge>{allLabels(`people.employeeStatus.${facts.header.status}`)}</Badge>}<span className="text-sm">{tp('directSuperiorTitle')}: {facts.header.superior??'—'}</span><span className="text-sm">{tp('employmentInfo.groupService')}: {canSee('employment','hiredOn')?fmtServiceYmd(emp.hiredOn):null}</span></div></div>{own.length>1&&<form method="get"><Field label={te('chooseEmployment')}><select name="employmentId" defaultValue={employmentId} className={inputCls}>{own.map(row=><option key={row.employmentId} value={row.employmentId}>{canSee('employment','employeeCode')?row.employeeCode:''} · {canSee('assignment','companyName')?row.company:''}</option>)}</select></Field><Button type="submit" variant="outline" size="sm" className="mt-2">{te('chooseEmployment')}</Button></form>}</div></Card>
-    {ownPhotoSubmissionAllowed(presentation)&&<Card className="p-4"><form action={saveOwnPhotoAction} className="flex flex-wrap items-end gap-3"><input type="hidden" name="employmentId" value={employmentId}/><Field label={te('ownPhoto')}><input type="file" name="photo" accept="image/png,image/jpeg" required className={inputCls}/></Field><Button type="submit" variant="outline">{te('submitPhoto')}</Button><p className="text-xs text-muted-foreground">{te('photoFormats')}</p></form></Card>}
+    {ownPhotoSubmissionAllowed(presentation)&&<Card className="p-4"><form action={saveOwnPhotoAction} className="flex flex-wrap items-end gap-3"><input type="hidden" name="employmentId" value={employmentId}/><Field label={te('ownPhoto')}><input type="file" name="photo" accept="image/png,image/jpeg" required className={inputCls}/></Field><Button type="submit" variant="outline">{te('submitPhoto')}</Button><p className="basis-full text-xs text-muted-foreground">{te('photoFormats')}</p></form></Card>}
     {visible.has('profile.personal_details.photo')&&profileRequests.filter(request=>request.status==='pending'&&request.proposed&&typeof request.proposed==='object'&&'kind' in request.proposed&&request.proposed.kind==='photo').map(request=><Card key={request.id} className="space-y-3 p-4"><h3 className="font-medium">{te('pendingPhoto')}</h3><p className="text-sm text-muted-foreground">{te('photoApprovalHelp')}</p><img src={`/me/photo-proposal/${request.id}`} alt={te('proposedPhoto')} className="size-24 rounded-md object-cover"/></Card>)}
     {!workspace.statutoryAvailable&&<Card className="p-4 text-sm text-muted-foreground">{te('countryUnavailable')}</Card>}
     <ProfileEditor key={employmentId+':'+profileVisibilityFingerprint(visibilityPolicy)+(profileSeed?':'+spProfileSeed:'')} workspace={workspace} seed={profileSeed??undefined} facts={facts} defaultTab={activeTab} history={tabVisible('Others')?history:[]} hiddenTabs={[...hiddenTabs]} extraPanels={{payroll:tabVisible('Payroll')?payrollPanel:null,documents:sectionVisible('Documents','Employee documents')?documentsPanel:null,attendance:tabVisible('Attendance')&&facts.modules.attendance?attendancePanel:null,leave:tabVisible('Leave')&&facts.modules.leave?leavePanel:null,others:tabVisible('Others')?<Card className="p-4"><Link href="/me/performance" className="text-primary underline">{t('myPerformanceLink')}</Link></Card>:null}}/>

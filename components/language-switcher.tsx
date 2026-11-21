@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { ActionButton } from '@/components/ui/action-button';
+import { useState, useTransition } from 'react';
 import { useLocale } from 'next-intl';
-import { Check, Languages } from 'lucide-react';
+import { Check, Languages, LoaderCircle } from 'lucide-react';
 import { setLocale } from '@/app/i18n-actions';
 import { locales, localeNames, isLocale, type Locale } from '@/i18n/config';
 import { cn } from '@/lib/utils';
@@ -10,6 +11,8 @@ import { cn } from '@/lib/utils';
 /** Top-bar UI-language picker. Sets the NEXT_LOCALE cookie via a server action; no URL routing. */
 export function LanguageSwitcher() {
   const [open, setOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const submit = (formData: FormData) => startTransition(async () => { await setLocale(formData); });
   const active = useLocale();
   const activeLocale: Locale = isLocale(active) ? active : 'en';
 
@@ -18,19 +21,21 @@ export function LanguageSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        disabled={pending}
+        aria-busy={pending}
         aria-expanded={open}
         aria-label="Change language"
         title={localeNames[activeLocale]}
         className="inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
-        <Languages className="size-5" />
+        {pending ? <LoaderCircle className="size-5 motion-safe:animate-spin" /> : <Languages className="size-5" />}
       </button>
       {open && <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />}
       {/* The form stays mounted and is hidden via `hidden` (not unmounted) so a locale click still
           completes its native submit — unmounting in the click handler would cancel it (React
           flushes discrete events synchronously, removing the form before the browser submits). */}
       <form
-        action={setLocale}
+        action={submit}
         className={cn(
           'absolute right-0 z-50 mt-1 max-h-[calc(100dvh-6rem)] w-48 origin-top-right overflow-y-auto overscroll-contain rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg',
           !open && 'hidden',
@@ -40,20 +45,21 @@ export function LanguageSwitcher() {
           Language
         </div>
         {locales.map((loc) => (
-          <button
+          <ActionButton
             key={loc}
             type="submit"
             name="locale"
             value={loc}
+            disabled={pending || loc === activeLocale}
             onClick={() => setOpen(false)}
             className={cn(
-              'flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted',
+              'flex min-h-11 w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted disabled:opacity-60',
               loc === activeLocale && 'font-medium text-foreground',
             )}
           >
             <span className="truncate">{localeNames[loc]}</span>
             {loc === activeLocale && <Check className="size-4 shrink-0 text-primary" />}
-          </button>
+          </ActionButton>
         ))}
       </form>
     </div>

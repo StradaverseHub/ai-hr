@@ -2,12 +2,13 @@ This guide covers leave setup and its attendance/payroll dependencies. Work with
 
 ## Configure leave
 
-1. Open [Leave entitlements](/admin/leave-config/types). Review leave types, eligibility and entitlement tables.
-2. Review [Company rules](/admin/leave-config/company-rules) and [Approval workflow](/admin/leave-config/approval-chains). Check who approves, which cases route to HR, and the applicable rules for each company.
-3. Maintain [Holidays](/admin/holidays) and the employee's work schedule. Non-working days and holidays affect deductions; a date range is not necessarily the number of days deducted.
-4. Use [Generate entitlements](/admin/leave-config/generate) and [Earned accrual](/admin/leave-config/earned-accrual) for the relevant cycle. Review previews and results before repeating an operation.
-5. Use the separate history and brought-forward import screens under Leave Data Import. Imported usage and opening entitlement represent different facts.
-6. Review [Employee balances](/leave/employee-balances) and [Balance health](/admin/leave-config/balance-health). Investigate unexpected figures through their ledger entries.
+1. Open [Leave Settings](/admin/leave-config/settings), then [Leave entitlements](/admin/leave-config/types). Review leave types, eligibility and entitlement tables.
+2. Use [Shared Leave Groups](/admin/leave-config/shared-groups), also under Leave Settings, when several leave types draw on one pooled allowance — for example a yearly limit shared by compassionate and marriage leave. A group combines leave types, not employees, and a leave type belongs to at most one group. Create, edit and delete groups on that page.
+3. Review [Company rules](/admin/leave-config/company-rules) and [Approval workflow](/admin/leave-config/approval-chains). Check who approves, which cases route to HR, and the applicable rules for each company.
+4. Maintain [Holidays](/admin/holidays) and the employee's work schedule. Non-working days and holidays affect deductions; a date range is not necessarily the number of days deducted.
+5. Use [Generate entitlements](/admin/leave-config/generate) and [Earned accrual](/admin/leave-config/earned-accrual) for the relevant cycle. Review previews and results before repeating an operation.
+6. Use the separate history and brought-forward import screens under Leave Data Import. Imported usage and opening entitlement represent different facts.
+7. Review [Employee balances](/leave/employee-balances) and [Balance health](/admin/leave-config/balance-health). Investigate unexpected figures through their ledger entries.
 
 ## Requests, corrections and leave credit
 

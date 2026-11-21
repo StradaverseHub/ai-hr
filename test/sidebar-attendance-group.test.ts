@@ -42,7 +42,7 @@ import { describe, expect, it } from 'vitest';
 import { nodeBlock as nodeBlockOf } from './helpers/sidebar-source';
 import { navigationPlacement } from '../lib/navigation-workspaces';
 
-const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
+const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../lib/navigation/shell-inventory.ts'), 'utf8');
 const PACK = fs.readFileSync(path.resolve(__dirname, '../packs/attendance/index.ts'), 'utf8');
 /** The rail's combined nav sources: hardcoded groups + the registry-mounted attendance node. */
 const SRC = SIDEBAR + PACK;
@@ -274,10 +274,15 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
       // …and the OLD address keeps no row anywhere, while still resolving as a guarded redirect stub.
       expect(node.indexOf(`'${was}'`), `${was} is NOT a child of the node — the route did not move back`).toBe(-1);
       expect(countQuoted(SRC, was), `${was} must have no menu row left anywhere in the rail`).toBe(0);
-      const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${was}`, 'page.tsx'), 'utf8');
-      expect(stub, `${was} must still resolve, guard first, as a redirect to ${now}`).toContain('requireAdmin()');
+      // 6781b901f — the stub is a guarded wire redirect (a route handler), not a page; its behaviour is
+      // exercised in test/locations-compatibility-route.test.ts. Pin the same guard-then-forward order here.
+      expect(fs.existsSync(path.resolve(__dirname, '..', `app${was}`, 'page.tsx')), `${was} is not a page any more`).toBe(false);
+      const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${was}`, 'route.ts'), 'utf8');
+      const guard = stub.indexOf('await requireAdmin(session);');
       // r423 — the old address meant clocking locations, so it forwards to the clocking list.
-      expect(stub, `${was} must forward to the register's address`).toContain('forward(await searchParams, CLOCKING_LIST)');
+      const fwd = stub.indexOf('locationsRedirectTarget(new URL(request.url).searchParams, CLOCKING_LIST)');
+      expect(guard, `${was} must still resolve, guard first, as a redirect to ${now}`).toBeGreaterThan(-1);
+      expect(fwd, `${was} must forward to the register's address`).toBeGreaterThan(guard);
     }
   });
 

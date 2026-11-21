@@ -8,6 +8,8 @@ export const MODULE_READ_CAPABILITIES = [
   ['typed_pay_components', 'own_stored_pay_components'], ['country-my', 'own_malaysian_record_readiness'],
   ['notifications', 'own_notification_delivery_status'], ['system_explorer', 'authorized_schema_inventory'],
   ['assistant', 'current_assistant_capabilities'], ['system_testing', 'own_testing_assignment_status'],
+  // Counts only (owner decision 2026-11-10): no candidate, application or job record ever reaches a model.
+  ['recruitment', 'authorized_recruitment_pipeline_counts'],
 ] as const;
 export type ModuleReadCode = typeof MODULE_READ_CAPABILITIES[number][0];
 export type ModuleReadCapability = typeof MODULE_READ_CAPABILITIES[number][1];

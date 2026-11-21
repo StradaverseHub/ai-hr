@@ -13,6 +13,7 @@ import {newContractCase,DEFAULT_CONTRACT_SETTINGS} from '../lib/contract-managem
 import type {ContractCaseView,ContractSource} from '../packs/contracts/service';
 import {ContractIntake} from '../app/lifecycle/contracts/intake/intake';
 import {ContractSignature} from '../app/lifecycle/contracts/signature';
+import {ContractNavigation} from '../app/lifecycle/contracts/shared';
 import {ContractCases} from '../app/lifecycle/contracts/cases';
 import {ContractCaseDetail} from '../app/lifecycle/contracts/[caseId]/detail';
 import {ContractSettingsEditor} from '../app/lifecycle/contracts/settings/settings';
@@ -31,6 +32,17 @@ const companies=[{id:companyId,name:source.company,configure:false,gbs:false,pbp
 const wrap=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>);
 beforeEach(()=>{mocks.command.mockReset();mocks.retirement.mockReset();mocks.refresh.mockReset();mocks.command.mockResolvedValue({ok:true,result:{}});});
 describe('Contract Management scoped interactions',()=>{
+ it('submits bounded intake filters to the server and retains search/company in page links without running business commands',()=>{
+  wrap(<ContractIntake page={{companies:[{...companies[0],canIntake:true}],rows:[{companyId,id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}],total:151,limit:50,offset:50}} search="Fictional" companyId={companyId}/>);
+  const filter=screen.getByLabelText(messages.contractShared.c49c266baaaa7).closest('form')!;
+  expect(filter).toHaveAttribute('method','get');expect(filter).toHaveAttribute('action','/lifecycle/contracts/intake');expect(screen.getByLabelText(messages.contractShared.c49c266baaaa7)).toHaveValue('Fictional');
+  const next=new URL(screen.getByRole('link',{name:messages.contractShared.c1ff57a29d7c9}).getAttribute('href')!,'https://fixture.test');expect(next.searchParams.get('companyId')).toBe(companyId);expect(next.searchParams.get('search')).toBe('Fictional');expect(next.searchParams.get('offset')).toBe('100');
+  expect(screen.getByRole('link',{name:messages.contractShared.ca57b08a480b8})).toBeInTheDocument();expect(mocks.command).not.toHaveBeenCalled();
+ });
+ it('opens the shared Contract staff templates for configurers while retaining the native approver route',()=>{
+  const rendered=wrap(<ContractNavigation configure templates/>);expect(screen.getByRole('link',{name:'Templates'})).toHaveAttribute('href','/automation/templates?module=contract_staff');
+  rendered.rerender(<NextIntlClientProvider locale="en" messages={messages}><ContractNavigation templates/></NextIntlClientProvider>);expect(screen.getByRole('link',{name:'Templates'})).toHaveAttribute('href','/lifecycle/contracts/templates');
+ });
  it('filters the real assigned list and keeps expiry unsigned distinct from an end decision',async()=>{
   const r=record();r.term.endOn='2026-10-31';wrap(<ContractCases today="2026-11-03" companies={companies} rows={[{record:r,source,sourceConflict:null,lastSyncedAt:'2026-11-03 06:00:00.123456+08'}]}/>);
   expect(screen.getByText(/Latest source sync/)).toHaveTextContent('03/11/2026');expect(screen.getByRole('link',{name:source.name})).toBeInTheDocument();expect(screen.getByRole('cell',{name:'Expired – unsigned'})).toBeInTheDocument();expect(screen.queryByRole('link',{name:'Settings'})).not.toBeInTheDocument();
@@ -115,7 +127,7 @@ describe('Contract Management scoped interactions',()=>{
   const v=view();v.employee=false;v.gbs=true;v.record.state='in_approval';v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'a'.repeat(64),issuedAt:null,releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);v.record.approvals=[{id:caseId,name:'Reviewed Rewards step',stage:0,holderIds:[documentId],quorum:'any',when:'always',state:'approved',actions:[{actorId:documentId,action:'approve',comment:'Reviewed.',at:'2026-11-03T06:00:00Z'}]}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(messages.contractManagement.reviewedDocumentLocked)).toBeInTheDocument();expect(screen.getByRole('button',{name:messages.contractManagement.generateDocument})).toBeDisabled();
  });
  it.each([{patch:{allowanceCents:null},message:'sourceIncomplete'},{patch:{salaryCents:null,sourceIssue:'unsupported_pay_basis'},message:'sourcePayBasisUnsupported'},{patch:{sourceIssue:'unsupported_currency'},message:'sourceCurrencyUnsupported'}] as const)('blocks incomplete or unsupported intake: $message',async({patch,message})=>{
-  mocks.command.mockResolvedValue({ok:true,result:{...source,...patch}});wrap(<ContractIntake companies={[{...companies[0],canIntake:true}]} employees={[{companyId,rows:[{id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}]}]}/>);await userEvent.selectOptions(screen.getByLabelText(messages.contractManagement.employee),employeeId);await userEvent.click(screen.getByRole('button',{name:messages.contractManagement.previewSource}));await waitFor(()=>expect(screen.getByText(messages.contractManagement[message])).toBeInTheDocument());expect(screen.getByRole('button',{name:messages.contractManagement.openCase})).toBeDisabled();expect(mocks.command).toHaveBeenCalledTimes(1);if(message==='sourceCurrencyUnsupported')expect(screen.queryByText(/RM\s*5,000\.00/)).not.toBeInTheDocument();
+  mocks.command.mockResolvedValue({ok:true,result:{...source,...patch}});wrap(<ContractIntake page={{companies:[{...companies[0],canIntake:true}],rows:[{companyId,id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}],total:1,limit:50,offset:0}} search="" companyId={companyId}/>);await userEvent.selectOptions(screen.getByLabelText(messages.contractManagement.employee),employeeId);await userEvent.click(screen.getByRole('button',{name:messages.contractManagement.previewSource}));await waitFor(()=>expect(screen.getByText(messages.contractManagement[message])).toBeInTheDocument());expect(screen.getByRole('button',{name:messages.contractManagement.openCase})).toBeDisabled();expect(mocks.command).toHaveBeenCalledTimes(1);if(message==='sourceCurrencyUnsupported')expect(screen.queryByText(/RM\s*5,000\.00/)).not.toBeInTheDocument();
  });
  it('routes a missing employee login to People Ops without offering Personnel reconciliation',()=>{
   const v=view(),m=messages.contractManagement;
@@ -140,7 +152,7 @@ describe('Contract Management scoped interactions',()=>{
  it('holds all intake kinds when the source has unverified retirement evidence',async()=>{
   const m=messages.contractManagement,pending={...source,retirementHealthPending:true};
   mocks.command.mockResolvedValue({ok:true,result:pending});
-  wrap(<ContractIntake companies={[{...companies[0],canIntake:true}]} employees={[{companyId,rows:[{id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}]}]}/>);
+  wrap(<ContractIntake page={{companies:[{...companies[0],canIntake:true}],rows:[{companyId,id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}],total:1,limit:50,offset:0}} search="" companyId={companyId}/>);
   await userEvent.selectOptions(screen.getByLabelText(m.employee),employeeId);
   await userEvent.click(screen.getByRole('button',{name:m.previewSource}));
   await waitFor(()=>expect(screen.getByText(m.retirementEvidencePending)).toBeInTheDocument());
@@ -153,7 +165,7 @@ describe('Contract Management scoped interactions',()=>{
   const m=messages.contractManagement,verified={...source,retirementHealthPending:false,retirementProofRequired:true};
   mocks.command.mockResolvedValueOnce({ok:true,result:verified}).mockResolvedValueOnce({ok:true,result:{id:caseId}});
   mocks.retirement.mockResolvedValue({ok:true,choices:{source:verified,retirements:[],documents:[{id:documentId,title:'Approved retirement terms',fileName:'approval.pdf'}],canCapture:false,canVerify:true},evidence:[{id:caseId,approvalDocumentId:documentId,healthDocumentId:companyId,verifiedBy:employeeId,sourceRevision:source.sourceRevision,approvalEventId:companyId,healthEventId:documentId}]});
-  wrap(<ContractIntake companies={[{...companies[0],canIntake:true}]} employees={[{companyId,rows:[{id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}]}]}/>);
+  wrap(<ContractIntake page={{companies:[{...companies[0],canIntake:true}],rows:[{companyId,id:employeeId,name:source.name,employeeId:source.employeeId,startOn:source.startOn,endOn:source.endOn}],total:1,limit:50,offset:0}} search="" companyId={companyId}/>);
   await userEvent.selectOptions(screen.getByLabelText(m.employee),employeeId);
   await userEvent.click(screen.getByRole('button',{name:m.previewSource}));
   await userEvent.click(await screen.findByRole('button',{name:m.readEvidence}));

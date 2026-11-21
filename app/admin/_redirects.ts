@@ -57,6 +57,16 @@ export const COMPANY_RULES = '/admin/leave-config/company-rules';
  * path would show a refusal about a form they can no longer see. The redirect moves WITH the card.
  */
 export const SPECIAL_SETTING = '/admin/leave-config/special-setting';
+/**
+ * 50d9b809 — SHARED LEAVE GROUPS, the Leave Settings card the group editor moved onto.
+ *
+ * A NEW CONSTANT RATHER THAN A REUSE OF `ENTITLEMENTS`, for the reason every constant above gives: the
+ * three shared-group writes used to return to the Entitlements screen because that is where their pop-up
+ * was drawn, and it is not on that screen any more. Returning there would show the admin a page with no
+ * group editor on it, and on the error path a refusal ("Marriage Leave already belongs to…") about a form
+ * they can no longer see. The redirect moves WITH the editor.
+ */
+export const SHARED_GROUPS = '/admin/leave-config/shared-groups';
 /** 491c499f — the Leave Adjustments screen. Its saves return here with a toast carrying the two counts.
  *  a6fe37fc ROUND 5 (cutover) — REPOINTED at the new module in the commit that emptied the old page. */
 export const ADJUSTMENTS = '/admin/leave-config/adjustments';

@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import {CentreNavigationLink} from './centre-navigation-link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { MessageSquareText, Plus, Search, Trash2 } from 'lucide-react';
@@ -203,7 +204,7 @@ function ChatsPanel({ onNavigate }: { onNavigate?: () => void }) {
       {s.legacy}
     </div>
     <div className="shrink-0 border-t border-border pt-2">
-      <Link href={s.toolsHref} onClick={onNavigate} className="flex min-h-11 items-center px-2 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('moreTools')}</Link>
+      <CentreNavigationLink intent={false} href={s.toolsHref} onClick={onNavigate} className="flex min-h-11 items-center px-2 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('moreTools')}</CentreNavigationLink>
       <AskChatsFooter onNavigate={onNavigate}/>
     </div>
   </div>;
@@ -215,7 +216,7 @@ export function AskChatsFooter({ className, onNavigate }: { className?: string; 
   const s = useAskChats();
   return <p data-ask-chats-footer className={cn('px-2 pb-1 text-xs leading-relaxed text-muted-foreground', className)}>
     <span>{s.keepDays === null ? t('keptUnknown') : t('keptFor', { days: s.keepDays })}</span>{' '}
-    <Link href={s.privacyHref} onClick={onNavigate} className="inline-flex min-h-11 items-center font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('privacyLink')}</Link>
+    <CentreNavigationLink intent={false} href={s.privacyHref} onClick={onNavigate} className="inline-flex min-h-11 items-center font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('privacyLink')}</CentreNavigationLink>
   </p>;
 }
 

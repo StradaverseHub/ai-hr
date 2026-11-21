@@ -28,7 +28,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employeeQualification, profileOption } from '../db/schema';
 import { isCalendarDate } from '../lib/calendar-date';
-import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockProfileSubjectTx,lockProfileValueSharedTx} from './access-configuration-lock';
 import {assertWorkforceEmploymentTx} from './workforce-access';
 
 /**
@@ -245,7 +245,8 @@ export async function addQualification(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    await lockProfileSubjectTx(tx,ctx.tenantId,p.employmentId);
     const validated=await validateQualificationInputTx(tx,p);
     const qualification=validated.qualification!;
     const fromYm=validated.fromYm??null, toYm=validated.toYm??null, graduationDate=validated.graduationDate??null;
@@ -326,7 +327,9 @@ export async function updateQualification(
   outerTx?:Tx,
 ): Promise<{ id: string }> {
   const run=async(tx:Tx)=>{
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    const nominated = await loadQualification(tx, p.id);
+    if (nominated) await lockProfileSubjectTx(tx,ctx.tenantId,nominated.employmentId);
     const existing = await loadQualification(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new QualificationValidationError('Qualification record not found.');
@@ -372,7 +375,9 @@ export async function archiveQualification(
   outerTx?: Tx,
 ): Promise<{ id: string }> {
   const run = async (tx: Tx) => {
-    await lockProfileValueWritesTx(tx,ctx.tenantId);
+    await lockProfileValueSharedTx(tx,ctx.tenantId);
+    const nominated = await loadQualification(tx, p.id);
+    if (nominated) await lockProfileSubjectTx(tx,ctx.tenantId,nominated.employmentId);
     const existing = await loadQualification(tx, p.id);
     if (!existing || existing.archivedAt != null) {
       throw new QualificationValidationError('Qualification record not found.');

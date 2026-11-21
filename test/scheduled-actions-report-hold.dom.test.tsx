@@ -53,6 +53,17 @@ describe('Scheduled Actions respects the report email release hold',()=>{
   expect(card.querySelectorAll('button,input,select,form')).toHaveLength(0);
   expect(state.runs).toHaveBeenCalledWith(admin,10);
  });
+ it.each(['en','ms','zh','ta','th','vi'])('shows unfinished notification evidence without claiming success or installation in %s',async locale=>{
+  state.locale=locale;const messages=catalog(locale),job=JOBS.find(row=>row.key==='notifications.project')!;
+  state.runs.mockResolvedValue([{...historicalRun,id:'unfinished-notification-run',jobKey:job.key,outcome:'running',durationMs:null,
+   result:{identityVerified:0,capabilityVersion:1,scopeLoaded:0,processedEvents:4,createdNotifications:2}}]);
+  render(await Page());const card=screen.getByText(messages.scheduledActions.jobs[job.i18nKey].name).closest('details')!,view=within(card);
+  expect(view.getAllByText(messages.scheduledActions.outcome.running)).toHaveLength(2);
+  expect(view.queryByText(messages.scheduledActions.outcome.success)).toBeNull();
+  expect(view.getByText(messages.scheduledActions.notificationEvidenceUnverified)).toBeTruthy();
+  expect(card.textContent).toContain(messages.scheduledActions.counters.processedEvents);
+  for(const internal of ['identityVerified','capabilityVersion','scopeLoaded',job.schedule])expect(card.textContent).not.toContain(internal);
+ });
  it('removes held availability on exact opt-in without advertising a static schedule',async()=>{
   vi.stubEnv('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED','true');const messages=catalog('en');render(await Page());
   const card=reportCard(messages);

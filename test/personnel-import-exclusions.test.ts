@@ -34,6 +34,7 @@ describe('registry-owned import exclusions',()=>{
   it('explains protected classification, Movement dates and grouped allocations through the same page/workbook translations',()=>{
     const expected = new Map([
       ['employment.data_classification.istestrecord', 'testRecord'],
+      ['bank_statutory.bank_information.bankpayeeresidency','bankPayeeResidency'],
       ['employment.employment_dates_and_service.tenderresignationdate', 'resignationDates'],
       ['employment.employment_dates_and_service.resignationdate', 'resignationDates'],
       ['employment.employment_dates_and_service.lastworkingdate', 'resignationDates'],

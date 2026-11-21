@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -133,10 +134,10 @@ export default async function LeaveCreditHistoryPage({
     <div className="w-full min-w-0 space-y-4">
       {header(
         rows.length > 0 ? (
-          <a href={exportHref} className={`${btnGhost} min-h-11`} data-testid="lch-export" aria-label={t('export')}>
+          <ExportDownloadLink href={exportHref} className={`${btnGhost} min-h-11`} data-testid="lch-export" aria-label={t('export')}>
             <Download className="size-4" aria-hidden />
             <span className="hidden sm:inline">{t('export')}</span>
-          </a>
+          </ExportDownloadLink>
         ) : undefined,
       )}
 

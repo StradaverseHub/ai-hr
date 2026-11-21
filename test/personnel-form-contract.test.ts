@@ -8,6 +8,12 @@ const birth='profile.personal_details.dateofbirth';
 const initial='employment.employment_dates_and_service.confirmationdate';
 const final='employment.employment_dates_and_service.finalconfirmationdate';
 describe('Personnel shared form contract',()=>{
+  it('keeps controlled original-hire inputs unnamed and derives the changed-only carry from their workflow owner',()=>{
+    const id='employment.employment_dates_and_service.hiredon';
+    expect(personnelWorkflowInput(id,'hireInformation','draft')).toMatchObject({type:'date','data-personnel-field':id,required:false});
+    expect(personnelWorkflowInput(id,'hireInformation','draft')).not.toHaveProperty('name');
+    expect(personnelWorkflowCarry(id,'hireInformation')).toMatchObject({name:'hireInformation_hiredOn',type:'hidden',required:false});
+  });
   it('binds dated calendar workflow fields without adding generic report/import or self-service writers',()=>{
     const prefix='attendance.dated_holiday_calendar.';
     for(const suffix of ['calendar','startdate','enddate']){
@@ -83,7 +89,7 @@ describe('Personnel shared form contract',()=>{
     expect(personnelFormName('employment.approval_delegations.delegateemploymentid')).toBe('delegateEmploymentId');
     expect(personnelFormName('attendance.work_location_and_shift_arrangement.locationid')).toBe('locationId');
     for(const id of ['employment.direct_superior_and_history.superioremploymentid','employment.approval_delegations.delegateemploymentid','attendance.work_location_and_shift_arrangement.locationid'])expect(PERSONNEL_FIELDS.find(field=>field.id===id)?.report.enabled).toBe(false);
-    expect(PERSONNEL_FIELDS.find(field=>field.id==='employment.draft_only_employment_fields.internshipenddate')).toMatchObject({ownerField:'provisionalEndOn',form:{draftPath:'employment.provisionalEndOn'}});
+    expect(PERSONNEL_FIELDS.find(field=>field.id==='employment.draft_only_employment_fields.internshipenddate')).toMatchObject({owner:'employment',ownerField:'internshipEndDate',form:{name:'internshipEndDate',draftPath:'employment.provisionalEndOn'}});
   });
   it('declares every relief grid count with a canonical composed label and exact owner cell',()=>{
     const cells=PERSONNEL_FIELDS.filter(field=>field.childReliefCell);

@@ -6,9 +6,12 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Badge, Button, Card, EmployeeName, Field, inputCls } from '@/components/ui';
+import { Combobox } from '@/components/ui/combobox';
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { formatMoney } from '@/lib/money';
+import { formatDate } from '@/lib/utils';
 import { isTransactionEffectiveDate } from '@/lib/transaction-effective-date';
+import { payFormulaInputIsKeyedQuantity } from '@/lib/pay-formula-input';
 import {
   createIndividualTxnAction,
   createIndividualTxnDayGridAction,
@@ -83,7 +86,7 @@ const UNITS = ['amount', 'qty', 'hours', 'days', 'units'] as const;
 
 /** Map a Payroll Item Master kind onto one of the ledger kinds. 'allowance' ⇒ earning, 'deduction' ⇒
  *  deduction (the two payable one-off classes). */
-const COMPONENT_KIND_TO_TXN: Record<string, TxnKind> = { allowance: 'earning', deduction: 'deduction' };
+const COMPONENT_KIND_TO_TXN: Record<string, TxnKind> = { allowance: 'earning', non_payable: 'earning', deduction: 'deduction' };
 
 /** The quantity a calculating pay item needs from the operator, or null when it needs none. Mirrors
  *  core/pay-rule.ts payRuleInputUnit — the SERVER resolves it from the stored rule and hands it down, so
@@ -98,7 +101,12 @@ type ItemOption = {
   label: string;
   kind: TxnKind;
   fromMaster: boolean;
+  nonPayable?: boolean;
+  searchDescription?: string;
   derives: boolean;
+  formulaBuilder?: boolean;
+  /** aac17dd0 — see TxnPayItem.amountEntryAllowed. */
+  amountEntryAllowed?: boolean;
   inputUnit: ItemInputUnit;
   /** c11e81aa — may this item be keyed DAY BY DAY? False for a fixed-amount item, whose figure is one
    *  figure for the month. See core/pay-rule.ts payRuleAllowsDayByDay for the rule and its reasoning. */
@@ -107,6 +115,9 @@ type ItemOption = {
   readsCalendarDays: boolean;
 };
 const componentIdOf = (value: string): string | null => (value.startsWith('c:') ? value.slice(2) : null);
+/** aac17dd0 — may the single form take a typed Amount on this item? A Formula Builder item always could. */
+const allowsAmountEntry = (o: Pick<ItemOption, 'formulaBuilder' | 'amountEntryAllowed'> | null | undefined): boolean =>
+  o?.formulaBuilder === true || o?.amountEntryAllowed === true;
 
 export type TxnEmployee = {
   employmentId: string;
@@ -123,6 +134,13 @@ export type TxnEmployee = {
   companyId: string;
   /** Derived from termination, matching the View page convention — the employment-status filter. */
   status: 'active' | 'ended';
+  /**
+   * ad6ed930 — the employee's last day as payroll reads it (earliest of termination, resignation and last working
+   * date), or null. The Effective Date picker is capped there; the save refuses a later date on the server.
+   */
+  leftOn?: string | null;
+  /** ad6ed930 — the last day is already behind us (before today, tenant time): a New transaction starts on it. */
+  hasLeft?: boolean;
 };
 
 export type TxnBatch = {
@@ -153,13 +171,20 @@ export type TxnBatch = {
 };
 
 export type TxnPayItem = {
+  appliedCompanyIds?: string[] | null;
   id: string;
   code: string;
   name: string;
+  description?: string | null;
+  nonPayable?: boolean;
   kind: string;
   /** 2da9937a — this item works its own amount out from its rule, so the Amount box is not the
    *  operator's to fill. Resolved on the server (payRuleDerivesAmount) from the stored rule. */
   derives: boolean;
+  formulaBuilder?: boolean;
+  /** aac17dd0 — the single Add/Edit form may offer a typed Amount on this item: its rule is a formula
+   *  ("Calculated by Formula" or a Pay Formula Builder Formula ID). Resolved on the server. */
+  amountEntryAllowed?: boolean;
   /** Which quantity that rule needs keyed (payRuleInputUnit). null ⇒ none. */
   inputUnit: ItemInputUnit;
   /** c11e81aa — may a one-off on this item be recorded day by day, or is its figure one figure for the
@@ -292,7 +317,6 @@ export function TxnWorkspace({
   payItems,
   payrollCycles,
   processHref,
-  requireComponent,
   currentPeriod,
   panelDefaultOpen,
   panelCookieKey,
@@ -319,43 +343,36 @@ export function TxnWorkspace({
   const effectiveDateHintId = useId();
   const dailyMonthHintId = useId();
 
-  // ── Item picker options (Payroll Item Master + the generic kinds) ──
-  const genericKinds = useMemo<readonly TxnKind[]>(
-    () => (requireComponent ? KINDS.filter((k) => k !== 'earning' && k !== 'deduction') : [...KINDS]),
-    [requireComponent],
-  );
+  const [selectedId, setSelectedId] = useState('');
+  const itemCompanyId = employees.find(employee => employee.employmentId === selectedId)?.companyId;
   const itemOptions = useMemo<ItemOption[]>(() => {
-    // A generic kind names no pay item, so there is no rule to calculate from — its amount is always typed.
-    const generic: ItemOption[] = genericKinds.map((k) => ({
-      value: `k:${k}`,
-      label: t(`kindLabel.${k}`),
-      kind: k,
-      fromMaster: false,
-      derives: false,
-      inputUnit: null,
-      // c11e81aa — a generic kind names no pay item, so no configuration says its figure is one figure
-      // for the month. Overtime, Unpaid and Leave are the per-day cases this screen exists for.
-      variesByDay: true,
-      readsCalendarDays: false,
-    }));
     const master: ItemOption[] = payItems
-      .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null)
+      .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null && (c.appliedCompanyIds == null || !!itemCompanyId && c.appliedCompanyIds.includes(itemCompanyId)))
       .map((c) => ({
         value: `c:${c.id}`,
         label: `${c.code} — ${c.name}`,
         kind: COMPONENT_KIND_TO_TXN[c.kind],
         fromMaster: true,
+        nonPayable: c.nonPayable || c.kind === 'non_payable',
+        searchDescription: c.description ?? undefined,
         derives: c.derives,
+        formulaBuilder: c.formulaBuilder===true,
+        amountEntryAllowed: c.amountEntryAllowed===true,
         inputUnit: c.inputUnit,
         variesByDay: c.variesByDay,
         readsCalendarDays: c.readsCalendarDays === true,
       }));
-    return [...generic, ...master];
-  }, [payItems, t, genericKinds]);
-  const itemByValue = useMemo(() => new Map(itemOptions.map((o) => [o.value, o])), [itemOptions]);
-  const masterEarnings = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'earning'), [itemOptions]);
-  const masterDeductions = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'deduction'), [itemOptions]);
-  const defaultItemValue = requireComponent ? (masterEarnings[0]?.value ?? itemOptions[0]?.value ?? 'k:overtime') : 'k:earning';
+    return master;
+  }, [payItems, itemCompanyId]);
+  const itemByValue = useMemo(() => {
+    // Existing componentless ledger rows can still be edited with their original kind.
+    const legacy = KINDS.map((kind): ItemOption => ({
+      value: `k:${kind}`, label: t(`kindLabel.${kind}`), kind, fromMaster: false,
+      derives: false, inputUnit: null, variesByDay: true, readsCalendarDays: false,
+    }));
+    return new Map([...itemOptions, ...legacy].map(option => [option.value, option]));
+  }, [itemOptions, t]);
+  const defaultItemValue = '';
 
   // ── Left panel: filters + selection ──
   // A single-company admin has their one company chosen for them (an initialiser, not an effect —
@@ -382,7 +399,7 @@ export function TxnWorkspace({
    */
   const [periodFilter, setPeriodFilter] = useState('');
   const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState('');
+
   /** 009c8a37 — the More-filters fold. Closed on arrival, remembered while the screen is open, and
    *  deliberately not persisted; same reasoning as the shared panel's copy. */
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -487,6 +504,20 @@ export function TxnWorkspace({
 
   const byId = useMemo(() => new Map(employees.map((e) => [e.employmentId, e])), [employees]);
   const selected = selectedId ? (byId.get(selectedId) ?? null) : null;
+  // ad6ed930 — the selected employee's last day, when they have one.
+  const leftOn = selected?.leftOn ?? null;
+  const leaver = !!selected?.hasLeft && leftOn != null;
+  /**
+   * Resolve a refusal key to the operator's sentence. The after-the-last-day refusal names the date: the server's
+   * own (errorValues.leftOn) when it sent one, else the selected employee's, which is the same fact read for the list.
+   */
+  const tErr = (key: string, values?: Record<string, string>): string => {
+    if (key === 'txnAfterLeavingDate') {
+      const date = values?.leftOn ?? leftOn;
+      if (date) return t('txnAfterLeavingDate', { date: formatDate(date) });
+    }
+    return t(key as never, values as never);
+  };
   const currencyOf = useMemo(() => new Map(companies.map((c) => [c.id, c.currency])), [companies]);
   const currency = selected ? (currencyOf.get(selected.companyId) ?? null) : null;
   const rm = useCallback((v: string | number) => formatMoney(v, currency), [currency]);
@@ -853,11 +884,16 @@ export function TxnWorkspace({
 
   // ── 2da9937a — the amount the PAY ITEM works out, when it is not the operator's to type ──
   const pickedItem = form ? (itemByValue.get(form.item) ?? null) : daily ? (itemByValue.get(daily.item) ?? null) : null;
-  const derives = pickedItem?.derives === true;
+  const formulaBuilder = pickedItem?.formulaBuilder===true;
+  // aac17dd0 — an inline "Calculated by Formula" item also offers Amount on the single form (never Day by Day).
+  const inlineFormula = pickedItem?.amountEntryAllowed===true && !formulaBuilder;
+  /** The operator chose Amount on a formula item: the typed figure is paid and the formula is not used. */
+  const amountMode = form != null && allowsAmountEntry(pickedItem) && form.unit==='amount';
+  const derives = !amountMode && (pickedItem?.derives === true || formulaBuilder);
   /** The quantity this item's rule needs keyed, or null when it needs none (qty_rate carries its own). */
   const requiredUnit: ItemInputUnit = derives ? pickedItem!.inputUnit : null;
   /** True once the operator has supplied that quantity — the point at which a figure can be asked for. */
-  const quantityReady = requiredUnit == null || (form?.unit === requiredUnit && Number(form?.quantity) > 0);
+  const quantityReady = formulaBuilder ? Number(form?.quantity)>0 : requiredUnit == null || (form?.unit === requiredUnit && Number(form?.quantity) > 0);
   /**
    * c11e81aa — may THIS item be keyed day by day? The answer comes off the pay item (payRuleAllowsDayByDay,
    * resolved on the server), never off the shape of the form: a fixed-amount item and an item with no rule
@@ -896,6 +932,7 @@ export function TxnWorkspace({
           // 34062f81 — the Effective Date is part of the question (`calendar_days` is its month's length),
           // so changing it re-asks and a reply for the previous date can never paint over this one.
           dayEntryDate(form?.txnDate ?? ''),
+          ...(formulaBuilder?[resolvedCycleId,resolvedBatchId]:[]),
         ].join('|')
       : '';
   const [derivedState, setDerivedState] = useState<{
@@ -907,7 +944,7 @@ export function TxnWorkspace({
   useEffect(() => {
     if (!derivedKey) return;
     let live = true;
-    const [componentId, employmentId, companyId, payPeriod, quantity, unit, txnDate] = derivedKey.split('|');
+    const [componentId, employmentId, companyId, payPeriod, quantity, unit, txnDate,cycleId,batchId] = derivedKey.split('|');
     previewTxnAmountAction({
       componentId: componentId!,
       employmentId: employmentId!,
@@ -916,6 +953,7 @@ export function TxnWorkspace({
       quantity: quantity === '' ? null : Number(quantity),
       unit: unit === '' ? null : unit!,
       txnDate: txnDate ? txnDate : null,
+      ...(formulaBuilder?{calculationMethod:'formula' as const,cycleId:cycleId||null,batchId:batchId||null}:{}),
     })
       .then((r) => {
         if (!live) return;
@@ -931,7 +969,7 @@ export function TxnWorkspace({
     return () => {
       live = false;
     };
-  }, [derivedKey]);
+  }, [derivedKey,formulaBuilder]);
   const derivedCurrent = derivedState.key === derivedKey && derivedKey !== '' ? derivedState : null;
   const derivedAmount = derives ? (derivedCurrent?.amount ?? null) : null;
   const derivedError = derives ? (derivedCurrent?.error ?? null) : null;
@@ -1082,7 +1120,13 @@ export function TxnWorkspace({
   /** 2da9937a — an item that calculates from hours (or days) OWNS the Input Type: the quantity has to land
    *  in the input its rule reads or the figure is meaningless, so it is set rather than offered. Items that
    *  do not calculate keep the operator's own choice (or none), exactly as before. */
-  const unitFor = (itemValue: string, current: string): string => itemByValue.get(itemValue)?.inputUnit ?? current;
+  const unitFor = (itemValue: string, current: string): string => {
+    const o = itemByValue.get(itemValue);
+    if (o?.formulaBuilder) return 'qty';
+    // aac17dd0 — an inline formula item opens on its own quantity (or None); Amount is the operator's explicit choice.
+    if (o?.amountEntryAllowed) return o.inputUnit ?? '';
+    return o?.inputUnit ?? current;
+  };
 
   const blankForm = (period: string): FormState => ({
     mode: 'create',
@@ -1122,11 +1166,19 @@ export function TxnWorkspace({
       item: value,
       unit: unitFor(value, form?.unit ?? ''),
       amount: '',
+      quantity: '',
       ...(staleAutoNote ? { notes: '' } : {}),
     });
   };
 
-  const startCreate = () => openForm(blankForm(periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod));
+  // ad6ed930 — for someone who has left, a new entry starts in their leaving month on their last day (the latest date
+  // the save accepts). The operator can still pick an earlier date or a later payroll month for a late claim.
+  const startCreate = () =>
+    openForm(
+      leaver
+        ? { ...blankForm(leftOn!.slice(0, 7)), txnDate: leftOn! }
+        : blankForm(periodFilter && isPeriod(periodFilter) ? periodFilter : currentPeriod),
+    );
 
   // ── 4e403268 — the mode switch ──
   /**
@@ -1189,7 +1241,9 @@ export function TxnWorkspace({
         return;
       }
       const item = detail.componentId ? `c:${detail.componentId}` : `k:${detail.kind}`;
-      const resolvedItem = itemByValue.has(item) ? item : `k:${detail.kind}`;
+      const resolvedItem = detail.componentId
+        ? (itemByValue.has(item) ? item : '')
+        : mode === 'edit' ? item : '';
       openForm({
         mode: mode === 'edit' ? 'edit' : 'create',
         id: mode === 'edit' ? detail.id : null,
@@ -1208,16 +1262,18 @@ export function TxnWorkspace({
         // The run this row is already ON, for an edit. Null on a Duplicate: a copy is a NEW row and is
         // free to name any cycle, whatever run the row it was copied from happens to sit on.
         attachedBatchId: mode === 'edit' ? detail.batchId : null,
-        // A component that is archived (or hidden by requireComponent) is no longer an offered option;
-        // fall back to the generic kind rather than a select stuck on a value that does not exist.
         item: resolvedItem,
         txnDate: detail.txnDate,
         amount: Number(detail.amount).toString(),
-        quantity: detail.quantity != null ? Number(detail.quantity).toString() : '',
+        // lib/pay-formula-input.ts: a method-NULL row's amount is its raw input unless a Pay Item rule priced it from
+        // the keyed quantity (then the quantity is the input, exactly as payroll and re-pricing read it).
+        quantity: itemByValue.get(resolvedItem)?.formulaBuilder&&detail.calculationMethod==null&&!payFormulaInputIsKeyedQuantity(detail)?Number(detail.amount).toString():detail.quantity != null ? Number(detail.quantity).toString() : '',
         // 2da9937a — a row keyed BEFORE its pay item started calculating carries no unit (or the wrong
         // one). The Input Type select is disabled on a calculating item, so leaving the stored value would
         // strand the operator on a form they cannot make valid: the item's required input wins.
-        unit: unitFor(resolvedItem, detail.unit ?? ''),
+        unit: itemByValue.get(resolvedItem)?.formulaBuilder?(detail.calculationMethod==='amount'?'amount':detail.unit&&detail.unit!=='amount'?detail.unit:'qty')
+          // aac17dd0 — a typed Amount saved on an inline formula item reopens as Amount, not the formula's quantity.
+          :itemByValue.get(resolvedItem)?.amountEntryAllowed&&detail.calculationMethod==='amount'?'amount':unitFor(resolvedItem, detail.unit ?? ''),
         notes: detail.notes ?? '',
       });
     });
@@ -1226,7 +1282,8 @@ export function TxnWorkspace({
   /** The item as it will be persisted: the picked option's kind + componentId, and (for a named master
    *  item) its label defaulted into the remarks so the specific pay item is readable in the ledger. */
   const resolveItem = (f: FormState) => {
-    const opt = itemByValue.get(f.item) ?? itemOptions[0];
+    const opt = itemByValue.get(f.item);
+    if (!opt) return null;
     return {
       kind: opt.kind,
       componentId: opt.fromMaster ? componentIdOf(opt.value) : null,
@@ -1238,16 +1295,23 @@ export function TxnWorkspace({
   const formInvalid = (f: FormState): string | null => {
     if (!isPeriod(f.payPeriod)) return 'periodInvalid';
     const opt = itemByValue.get(f.item);
-    if (!opt) return 'rowIncomplete';
+    if (!opt) return 'componentRequired';
     if (!f.txnDate) return 'rowIncomplete';
     if (!isTransactionEffectiveDate(f.txnDate)) return 'invalidEffectiveDate';
+    // ad6ed930 — after the last day. An edit that keeps a row's own stored date is left to the server, as it is
+    // there: only MOVING a date past the last day is refused.
+    if (leftOn && f.txnDate > leftOn && (f.mode === 'create' || panel.rows.find((r) => r.id === f.id)?.txnDate !== f.txnDate)) {
+      return 'txnAfterLeavingDate';
+    }
     if (f.quantity.trim() !== '' && !Number.isFinite(Number(f.quantity))) return 'rowIncomplete';
     // 2da9937a — THE MAGNITUDE RULE IS NARROWED, NOT DELETED. On an item that works its own amount out the
     // operator has no Amount box to be wrong about, so "amount must be greater than zero" would be a
     // refusal about a field they cannot reach; what they can be missing is the QUANTITY the rule reads.
     // The check itself survives — it just moves onto the derived figure, which is what actually gets
     // stored, and which the service asserts again authoritatively.
-    if (opt.derives) {
+    // aac17dd0 — Amount chosen on a formula item: the typed amount is the figure, checked below like any other.
+    if (!(allowsAmountEntry(opt) && f.unit==='amount') && (opt.derives || opt.formulaBuilder)) {
+      if(opt.formulaBuilder && !(Number(f.quantity)>0))return 'rowIncomplete';
       if (opt.inputUnit && (f.unit !== opt.inputUnit || !(Number(f.quantity) > 0))) {
         return opt.inputUnit === 'hours' ? 'quantityRequiredHours' : 'quantityRequiredDays';
       }
@@ -1279,8 +1343,9 @@ export function TxnWorkspace({
   );
   const dailyInvalid = (d: DailyState): string | null => {
     if (!isPeriod(d.payPeriod)) return 'periodInvalid';
-    if (!itemByValue.get(d.item)) return 'rowIncomplete';
+    if (!itemByValue.get(d.item)?.fromMaster) return 'componentRequired';
     if (d.lines.length === 0) return 'dayGridEmpty';
+    if (leftOn && d.lines.some((l) => l.txnDate > leftOn)) return 'txnAfterLeavingDate';
     if (dailyDerivedCurrent?.error) return dailyDerivedCurrent.error;
     if (dailyDuplicateKeys.length > 0) return 'duplicateRow';
     for (const l of d.lines) {
@@ -1299,6 +1364,7 @@ export function TxnWorkspace({
   const identicalExisting = useMemo(() => {
     if (!form || form.mode !== 'create') return false;
     const r = resolveItem(form);
+    if (!r) return false;
     // The figure that will be POSTED, which on a calculating item is the derived one — comparing the empty
     // Amount box against the ledger would report every such copy as identical.
     const amt = effectiveAmount;
@@ -1319,7 +1385,8 @@ export function TxnWorkspace({
   const runSave = async (f: FormState, confirmed?: TxnScopeConfirm | null): Promise<TxnActionResult> => {
     if (!selected) return { ok: false, error: 'noEmployeesSelected' };
     const r = resolveItem(f);
-    const quantity = f.quantity.trim() === '' ? null : Number(f.quantity);
+    if (!r || (f.mode === 'create' && !r.componentId)) return { ok: false, error: 'componentRequired' };
+    const quantity = f.unit==='amount'||f.quantity.trim() === '' ? null : Number(f.quantity);
     const unit = f.unit === '' ? null : f.unit;
     const common = {
       kind: r.kind,
@@ -1331,6 +1398,11 @@ export function TxnWorkspace({
       amount: effectiveAmount,
       quantity,
       unit,
+      ...(pickedItem?.formulaBuilder?{calculationMethod:f.unit==='amount'?'amount' as const:'formula' as const}
+        // aac17dd0 — an inline formula item: Amount is stamped 'amount' (never re-run by a formula); Hours or Days
+        // keeps the legacy derived path, and an edit sends null so a row saved as Amount returns to it.
+        :pickedItem?.amountEntryAllowed?(f.unit==='amount'?{calculationMethod:'amount' as const}:f.mode==='edit'?{calculationMethod:null}:{})
+        :{}),
       notes: r.notes || null,
     };
     return f.mode === 'edit' && f.id
@@ -1376,7 +1448,8 @@ export function TxnWorkspace({
    */
   const runDailySave = async (d: DailyState, confirmed?: TxnScopeConfirm | null): Promise<TxnActionResult & { count?: number }> => {
     if (!selected) return { ok: false, error: 'noEmployeesSelected' };
-    const opt = itemByValue.get(d.item) ?? itemOptions[0];
+    const opt = itemByValue.get(d.item);
+    if (!opt?.fromMaster) return { ok: false, error: 'componentRequired' };
     const componentId = opt.fromMaster ? componentIdOf(opt.value) : null;
     return createIndividualTxnDayGridAction({
       employmentId: selected.employmentId,
@@ -1404,7 +1477,7 @@ export function TxnWorkspace({
     if (!daily) return;
     const bad = dailyInvalid(daily);
     if (bad) {
-      setFormError(t(bad as never));
+      setFormError(tErr(bad));
       return;
     }
     const d = daily;
@@ -1412,7 +1485,7 @@ export function TxnWorkspace({
       const res = await runDailySave(d, confirmed);
       if (!res.ok) {
         if (askScopeConfirm(res, () => submitDaily(res.confirmAddToRun))) return;
-        setFormError(t(res.error as never, res.errorValues as never));
+        setFormError(tErr(res.error, res.errorValues));
         return;
       }
       clearFormError();
@@ -1431,7 +1504,7 @@ export function TxnWorkspace({
     if (!form) return;
     const bad = formInvalid(form);
     if (bad) {
-      setFormError(t(bad as never));
+      setFormError(tErr(bad));
       return;
     }
     const f = form;
@@ -1439,7 +1512,7 @@ export function TxnWorkspace({
       const res = await runSave(f, confirmed);
       if (!res.ok) {
         if (askScopeConfirm(res, () => submitForm(addAnother, res.confirmAddToRun))) return;
-        setFormError(t(res.error as never, res.errorValues as never));
+        setFormError(tErr(res.error, res.errorValues));
         return;
       }
       clearFormError();
@@ -1447,7 +1520,7 @@ export function TxnWorkspace({
       refreshPanel();
       if (res.recalcBatchId) setRecalcBatchId(res.recalcBatchId);
       toast.success(savedMessage(t(f.mode === 'edit' ? 'updated' : 'created'), res, confirmed));
-      if (addAnother && f.mode === 'create') openForm(blankForm(f.payPeriod));
+      if (addAnother && f.mode === 'create') openForm(leaver ? { ...blankForm(f.payPeriod), txnDate: leftOn! } : blankForm(f.payPeriod));
       else closeForm();
     });
   };
@@ -1513,7 +1586,7 @@ export function TxnWorkspace({
         toast.success(t('deleted'));
         if (form?.id === id) closeForm();
       } else {
-        toast.error(t(res.error as never, res.errorValues as never));
+        toast.error(tErr(res.error, res.errorValues));
       }
     });
   };
@@ -1571,7 +1644,7 @@ export function TxnWorkspace({
       const badDaily = dailyInvalid(daily);
       if (badDaily) {
         cancelGate();
-        setFormError(t(badDaily as never));
+        setFormError(tErr(badDaily));
         return;
       }
       const d = daily;
@@ -1587,7 +1660,7 @@ export function TxnWorkspace({
           // the switch the operator asked for; Cancel leaves them on the entry with nothing written.
           cancelGate();
           if (askScopeConfirm(res, () => saveThenSwitch(res.confirmAddToRun))) return;
-          setFormError(t(res.error as never, res.errorValues as never));
+          setFormError(tErr(res.error, res.errorValues));
         }
       });
       return;
@@ -1596,7 +1669,7 @@ export function TxnWorkspace({
     const bad = formInvalid(form);
     if (bad) {
       cancelGate();
-      setFormError(t(bad as never));
+      setFormError(tErr(bad));
       return;
     }
     const f = form;
@@ -1611,7 +1684,7 @@ export function TxnWorkspace({
       } else {
         cancelGate();
         if (askScopeConfirm(res, () => saveThenSwitch(res.confirmAddToRun))) return;
-        setFormError(t(res.error as never, res.errorValues as never));
+        setFormError(tErr(res.error, res.errorValues));
       }
     });
   };
@@ -1924,6 +1997,13 @@ export function TxnWorkspace({
                 closeLabel={t('close')}
               >
               <div className="space-y-3">
+                {/* ad6ed930 — who the entry is for, and that they have left, before anything is keyed. */}
+                {leaver && selected && (
+                  <p className="text-xs text-muted-foreground" data-testid="txn-leaver-identity">
+                    {selected.name}
+                    {selected.employeeCode ? ` (${selected.employeeCode})` : ''} · {selected.company} · {t('leaverLeftOn', { date: formatDate(leftOn!) })}
+                  </p>
+                )}
                 {form.sourceId && <p className="text-xs text-muted-foreground">{t('duplicateHint')}</p>}
 
                 {/* 4e403268 — the request's Input Method selector. Offered on a NEW entry only: an existing
@@ -1945,15 +2025,20 @@ export function TxnWorkspace({
                 )}
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label={t('monthLabel')}>
-                    <input
-                      type="month"
-                      value={form.payPeriod}
-                      disabled={form.mode === 'edit'}
-                      onChange={(e) => patchForm({ payPeriod: e.target.value })}
-                      className={inputCls}
-                    />
-                  </Field>
+                  <div className="space-y-1.5">
+                    <Field label={t('monthLabel')}>
+                      <input
+                        type="month"
+                        value={form.payPeriod}
+                        disabled={form.mode === 'edit'}
+                        onChange={(e) => patchForm({ payPeriod: e.target.value })}
+                        className={inputCls}
+                      />
+                    </Field>
+                    {leaver && form.mode === 'create' && (
+                      <p className="text-xs text-muted-foreground">{t('leaverMonthHint')}</p>
+                    )}
+                  </div>
                   {/* c11e81aa — THE PAY CYCLE FIELD NAMES A CONFIGURED CYCLE, and it opens EMPTY.
                       The empty option is not decoration: it is the answer every row on production
                       carries, and without it the control could never read "the operator chose nothing"
@@ -2016,33 +2101,26 @@ export function TxnWorkspace({
                     </Field>
                   )}
                   <Field label={t('colItem')}>
-                    <select value={form.item} onChange={(e) => changeItem(e.target.value)} className={inputCls}>
-                      <optgroup label={t('itemGroupGeneral')}>
-                        {genericKinds.map((k) => (
-                          <option key={k} value={`k:${k}`}>
-                            {t(`kindLabel.${k}`)}
-                          </option>
-                        ))}
-                      </optgroup>
-                      {masterEarnings.length > 0 && (
-                        <optgroup label={t('itemGroupEarnings')}>
-                          {masterEarnings.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {masterDeductions.length > 0 && (
-                        <optgroup label={t('itemGroupDeductions')}>
-                          {masterDeductions.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
+                    <Combobox
+                      controlled
+                      ariaLabel={t('colItem')}
+                      value={form.item}
+                      onValueChange={changeItem}
+                      placeholder={t('choosePayItem')}
+                      searchPlaceholder={t('searchPayItems')}
+                      noResultsLabel={t('noPayItemsFound')}
+                      legacySuffix=""
+                      options={[
+                      ...(form.mode === 'edit' && form.item.startsWith('k:')
+                        ? [{value:form.item,label:itemByValue.get(form.item)!.label}] : []),
+                        ...itemOptions.map(option => ({
+                          value: option.value,
+                          label: option.label,
+                          keywords: option.searchDescription,
+                          description: option.nonPayable ? t('nonPayableItemOption') : undefined,
+                        })),
+                      ]}
+                    />
                   </Field>
                   <div className="space-y-1.5">
                     <Field label={t('colEffectiveDate')}>
@@ -2050,30 +2128,48 @@ export function TxnWorkspace({
                         type="date"
                         aria-describedby={effectiveDateHintId}
                         value={form.txnDate}
+                        // ad6ed930 — capped at the last day; the save refuses a later date regardless.
+                        max={leftOn ?? undefined}
                         onChange={(e) => patchForm({ txnDate: e.target.value })}
                         className={inputCls}
                       />
                     </Field>
-                    <p id={effectiveDateHintId} className="text-xs text-muted-foreground">{t('effectiveDateHint')}</p>
+                    <p id={effectiveDateHintId} className="text-xs text-muted-foreground">
+                      {leftOn ? t('leaverDateHint', { date: formatDate(leftOn) }) : t('effectiveDateHint')}
+                    </p>
                   </div>
                   {/* 2da9937a — a calculating item OWNS the Input Type: the quantity has to land in the
-                      input its rule reads, so the select is fixed to it rather than left to be got wrong. */}
+                      input its rule reads, so the select is fixed to it rather than left to be got wrong.
+                      aac17dd0 — except a formula item, which offers its own quantity (or None) and Amount. */}
                   <Field label={t('inputType')}>
                     <select
                       value={form.unit}
-                      disabled={requiredUnit != null}
-                      onChange={(e) => patchForm({ unit: e.target.value })}
+                      disabled={!formulaBuilder && !inlineFormula && requiredUnit != null}
+                      onChange={(e) => patchForm({ unit: e.target.value, amount: '', quantity: '' })}
                       className={inputCls}
                     >
-                      <option value="">{t('inputTypeNone')}</option>
-                      {UNITS.map((u) => (
-                        <option key={u} value={u}>
-                          {t(`unitLabel.${u}`)}
-                        </option>
-                      ))}
+                      {inlineFormula ? (
+                        <>
+                          {pickedItem!.inputUnit ? (
+                            <option value={pickedItem!.inputUnit}>{t(`unitLabel.${pickedItem!.inputUnit}`)}</option>
+                          ) : (
+                            <option value="">{t('inputTypeNone')}</option>
+                          )}
+                          <option value="amount">{t('unitLabel.amount')}</option>
+                        </>
+                      ) : (
+                        <>
+                          {!formulaBuilder&&<option value="">{t('inputTypeNone')}</option>}
+                          {UNITS.map((u) => (
+                            <option key={u} value={u}>
+                              {t(`unitLabel.${u}`)}
+                            </option>
+                          ))}
+                        </>
+                      )}
                     </select>
                   </Field>
-                  <Field label={requiredUnit ? t(`quantityLabel.${requiredUnit}` as never) : t('quantity')}>
+                  {form.unit!=='amount'&&<Field label={requiredUnit ? t(`quantityLabel.${requiredUnit}` as never) : t('quantity')}>
                     <input
                       type="number"
                       step="0.01"
@@ -2082,7 +2178,7 @@ export function TxnWorkspace({
                       onChange={(e) => patchForm({ quantity: e.target.value })}
                       className={`${inputCls} text-right`}
                     />
-                  </Field>
+                  </Field>}
                   {/* THE AMOUNT BOX. On an item that works its own amount out it is READ-ONLY and shows the
                       server's figure — the operator is being shown what will be paid, not asked for it. */}
                   <Field label={derives ? t('derivedAmountLabel') : t('colAmount')}>
@@ -2113,7 +2209,7 @@ export function TxnWorkspace({
                 {/* Two different statements, and which one is true depends on the item picked: a plain
                     amount item is paid as typed; a calculating item is paid what its own rule produces. */}
                 <p className="text-xs text-muted-foreground">
-                  {derives ? t(requiredUnit ? `derivedAmountHint.${requiredUnit}` : 'derivedAmountHint.none') : t('amountIsFinalHint')}
+                  {derives ? t(requiredUnit ? `derivedAmountHint.${requiredUnit}` : 'derivedAmountHint.none') : amountMode ? t('amountManualFormulaHint') : t('amountIsFinalHint')}
                 </p>
                 {/* The figure is a real 0 because a live divisor was zero for this employee this month —
                     the explanation, in the same words the pay-item screen uses, rather than an unexplained
@@ -2123,8 +2219,17 @@ export function TxnWorkspace({
                     {derivedZeroDivisor}
                   </p>
                 )}
-                {derivedError && <p className="text-xs text-destructive">{t(derivedError as never)}</p>}
-                {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
+                {/* ad6ed930 — what can still be paid to someone who has left, and where a late entry lands. */}
+                {leaver && (
+                  <p
+                    className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
+                    data-testid="txn-leaver-info"
+                  >
+                    {t('leaverInfo', { date: formatDate(leftOn!) })}
+                  </p>
+                )}
+                {derivedError && <p className="text-xs text-destructive">{tErr(derivedError)}</p>}
+
                 {/* c11e81aa — THE BANNER NOW ALSO FIRES WHEN THE NAMED CYCLE HAS NO RUN YET, AND NAMES IT.
                     It used to fire only when the month had no run at all and promise "the regular run";
                     with the cycle chosen up front, a month with a regular run but no Bonus run is exactly
@@ -2166,15 +2271,15 @@ export function TxnWorkspace({
                 {formErrorBlock}
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button type="button" size="sm" onClick={() => submitForm(false)} disabled={isPending}>
+                  <Button aria-busy={isPending} type="button" size="sm" onClick={() => submitForm(false)} disabled={isPending}>
                     {isPending ? t('saving') : t('save')}
                   </Button>
                   {form.mode === 'create' && (
-                    <Button type="button" size="sm" variant="secondary" onClick={() => submitForm(true)} disabled={isPending}>
+                    <Button aria-busy={isPending} type="button" size="sm" variant="secondary" onClick={() => submitForm(true)} disabled={isPending}>
                       {t('saveAndAnother')}
                     </Button>
                   )}
-                  <Button type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
+                  <Button aria-busy={isPending} type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
                     {t('cancel')}
                   </Button>
                 </div>
@@ -2265,33 +2370,24 @@ export function TxnWorkspace({
                       exists to keep them out of. Greyed rather than removed: the item is real and the
                       list should not appear to lose entries when the mode changes. */}
                   <Field label={t('colItem')}>
-                    <select value={daily.item} onChange={(e) => changeDailyItem(e.target.value)} className={inputCls}>
-                      <optgroup label={t('itemGroupGeneral')}>
-                        {genericKinds.map((k) => (
-                          <option key={k} value={`k:${k}`}>
-                            {t(`kindLabel.${k}`)}
-                          </option>
-                        ))}
-                      </optgroup>
-                      {masterEarnings.length > 0 && (
-                        <optgroup label={t('itemGroupEarnings')}>
-                          {masterEarnings.map((o) => (
-                            <option key={o.value} value={o.value} disabled={!o.variesByDay}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {masterDeductions.length > 0 && (
-                        <optgroup label={t('itemGroupDeductions')}>
-                          {masterDeductions.map((o) => (
-                            <option key={o.value} value={o.value} disabled={!o.variesByDay}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
+                    <Combobox
+                      controlled
+                      ariaLabel={t('colItem')}
+                      value={daily.item}
+                      onValueChange={changeDailyItem}
+                      placeholder={t('choosePayItem')}
+                      searchPlaceholder={t('searchPayItems')}
+                      noResultsLabel={t('noPayItemsFound')}
+                      legacySuffix=""
+                      options={[
+                        ...itemOptions.map(option => ({
+                          value: option.value,
+                          label: option.label,
+                          keywords: option.searchDescription,
+                          description: option.nonPayable ? t('nonPayableItemOption') : undefined, disabled: !option.variesByDay,
+                        })),
+                      ]}
+                    />
                   </Field>
                 </div>
 
@@ -2327,6 +2423,7 @@ export function TxnWorkspace({
                                 type="date"
                                 aria-label={t('colEffectiveDate')}
                                 value={l.txnDate}
+                                max={leftOn ?? undefined}
                                 onChange={(e) => patchDailyLine(l.key, { txnDate: e.target.value })}
                                 className={inputCls}
                               />
@@ -2419,7 +2516,7 @@ export function TxnWorkspace({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button type="button" size="sm" variant="secondary" onClick={addDailyLine} disabled={isPending}>
+                  <Button aria-busy={isPending} type="button" size="sm" variant="secondary" onClick={addDailyLine} disabled={isPending}>
                     {t('dayGridAddDate')}
                   </Button>
                 </div>
@@ -2446,7 +2543,7 @@ export function TxnWorkspace({
                   </p>
                 )}
                 {dailyDerivedCurrent?.error && (
-                  <p className="text-xs text-destructive">{t(dailyDerivedCurrent.error as never)}</p>
+                  <p className="text-xs text-destructive">{tErr(dailyDerivedCurrent.error)}</p>
                 )}
                 {/* An item with NO rule at all — ABSENT and UNPAID LEAVE on this tenant today. The grid
                     still records the days; the amount is simply the operator's to key until a formula is
@@ -2455,7 +2552,7 @@ export function TxnWorkspace({
                 {pickedItem?.fromMaster && !derives && (
                   <p className="text-xs text-muted-foreground">{t('dayGridNoRuleHint')}</p>
                 )}
-                {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
+
                 {showWaitingNotice && isPeriod(daily.payPeriod) && (
                   <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
                     {resolvedCycle
@@ -2483,10 +2580,10 @@ export function TxnWorkspace({
                 <div className="flex flex-wrap items-center gap-2">
                   {/* ONE save for every line. Not "save each row" — the service writes the whole set in one
                       transaction, so a failure on line nine cannot leave lines one to eight behind. */}
-                  <Button type="button" size="sm" onClick={() => submitDaily()} disabled={isPending}>
+                  <Button aria-busy={isPending} type="button" size="sm" onClick={() => submitDaily()} disabled={isPending}>
                     {isPending ? t('saving') : t('dayGridSave')}
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
+                  <Button aria-busy={isPending} type="button" size="sm" variant="outline" onClick={requestCloseForm} disabled={isPending}>
                     {t('cancel')}
                   </Button>
                 </div>
@@ -2786,7 +2883,7 @@ export function TxnWorkspace({
                           <td colSpan={8} className="px-3 py-2.5 text-xs">
                             <div className="flex flex-wrap items-center gap-3">
                               <span className="text-red-700 dark:text-red-400">{t('deleteTxnBody')}</span>
-                              <Button type="button" size="sm" variant="destructive" onClick={() => doDelete(r.id)} disabled={isPending}>
+                              <Button aria-busy={isPending} type="button" size="sm" variant="destructive" onClick={() => doDelete(r.id)} disabled={isPending}>
                                 {t('delete')}
                               </Button>
                               <Button type="button" size="sm" variant="outline" onClick={() => setConfirmDeleteId(null)}>
@@ -2915,7 +3012,7 @@ export function TxnWorkspace({
               {/* 4e403268 — Save is offered when EITHER machine would actually save. Offering it for an
                   invalid grid would put the operator one click from a refusal they cannot see the cause
                   of, because the failing row is behind a modal. */}
-              <Button
+              <Button aria-busy={isPending}
                 type="button"
                 size="sm"
                 disabled={
@@ -2970,10 +3067,10 @@ export function TxnWorkspace({
               })}
             </p>
             <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={cancelScopeConfirm} disabled={isPending}>
+              <Button aria-busy={isPending} type="button" size="sm" variant="outline" onClick={cancelScopeConfirm} disabled={isPending}>
                 {t('cancel')}
               </Button>
-              <Button type="button" size="sm" onClick={scopeConfirm.retry} disabled={isPending}>
+              <Button aria-busy={isPending} type="button" size="sm" onClick={scopeConfirm.retry} disabled={isPending}>
                 {isPending ? t('scopeConfirmBusy') : t('scopeConfirmContinue')}
               </Button>
             </div>

@@ -1,3 +1,5 @@
+import { ActionButton } from '@/components/ui/action-button';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
@@ -50,10 +52,10 @@ export default async function KbDocumentPage({
   const actions = !editing && (
     <>
       {tourId && !doc.archivedAt && <GuideTourButton tourId={tourId} />}
-      <a href={`/knowledge-base/${doc.id}/download`} className={btnGhost}>
+      <ExportDownloadLink href={`/knowledge-base/${doc.id}/download`} className={btnGhost}>
         <Download className="size-4" />
         {t('download')}
-      </a>
+      </ExportDownloadLink>
       {doc.kind === 'article' && manage && !doc.archivedAt && (
         <Link href={`/knowledge-base/${doc.id}?edit=1`} className={btnGhost}>
           <Pencil className="size-4" />
@@ -64,18 +66,18 @@ export default async function KbDocumentPage({
         (doc.archivedAt ? (
           <form action={restoreDocumentAction}>
             <input type="hidden" name="id" value={doc.id} />
-            <button type="submit" className={btnGhost}>
+            <ActionButton type="submit" className={btnGhost}>
               <RotateCcw className="size-4" />
               {t('restore')}
-            </button>
+            </ActionButton>
           </form>
         ) : (
           <form action={archiveDocumentAction}>
             <input type="hidden" name="id" value={doc.id} />
-            <button type="submit" className={btnGhost}>
+            <ActionButton type="submit" className={btnGhost}>
               <Archive className="size-4" />
               {t('archive')}
-            </button>
+            </ActionButton>
           </form>
         ))}
     </>
@@ -142,10 +144,10 @@ export default async function KbDocumentPage({
           ) : (
             <p className="text-sm text-muted-foreground">{t('cannotPreview')}</p>
           )}
-          <a href={`/knowledge-base/${doc.id}/download`} className={btnPrimary}>
+          <ExportDownloadLink href={`/knowledge-base/${doc.id}/download`} className={btnPrimary}>
             <Download className="size-4" />
             {t('download')}
-          </a>
+          </ExportDownloadLink>
         </Card>
       )}
     </div>

@@ -1,0 +1,64 @@
+;; AI HR PgBouncer, transaction pooling for the web application's ai_hr_app role.
+;; Rendered by deploy/pgbouncer/render-config.mjs into /etc/aihr-pgbouncer/pgbouncer.ini.
+;; Do not edit the rendered file by hand: change the inputs and re-render. README.md explains every value.
+;; No secret lives here. Credentials are in userlist.txt, which deploy/pgbouncer/refresh-userlist.sh writes.
+
+[databases]
+;; No user= here. A forced server user would run every client as that one role and defeat RLS.
+;; PgBouncer keeps a separate server pool per (database, user), so each login keeps its own identity.
+@@DATABASE_NAME@@ = host=@@DATABASE_HOST@@ port=@@DATABASE_PORT@@ dbname=@@DATABASE_NAME@@
+
+[pgbouncer]
+;; Application leg. Loopback only: this listens on the application VM, so the leg is local.
+;; A non-loopback listener needs client_tls_* (see README.md, "TLS").
+listen_addr = @@LISTEN_ADDRESS@@
+listen_port = @@LISTEN_PORT@@
+unix_socket_dir = /run/aihr-pgbouncer
+unix_socket_mode = 0700
+
+;; Authentication. hba restricts WHO may use the pooler: only ai_hr_app over loopback, plus the
+;; pgbouncer OS account on the socket for the admin console. userlist.txt holds SCRAM verifiers.
+auth_type = hba
+auth_hba_file = /etc/aihr-pgbouncer/pgbouncer_hba.conf
+auth_file = /etc/aihr-pgbouncer/userlist.txt
+
+;; The admin console needs no password: peer authentication on the private socket.
+admin_users = aihr-pgbouncer
+stats_users = aihr-pgbouncer
+
+;; Transaction pooling. Session features do not survive this mode; see the audit in README.md.
+pool_mode = transaction
+;; Unused in transaction mode. Left empty so no reset statement can run between transactions.
+server_reset_query =
+server_reset_query_always = 0
+;; PgBouncer 1.21+ tracks protocol-level named prepared statements. 0 turns the tracking off.
+max_prepared_statements = @@MAX_PREPARED_STATEMENTS@@
+
+;; Sizing, from the database's CPU cores and the connection budget. See README.md, "Sizing".
+default_pool_size = @@DEFAULT_POOL_SIZE@@
+min_pool_size = @@MIN_POOL_SIZE@@
+reserve_pool_size = @@RESERVE_POOL_SIZE@@
+reserve_pool_timeout = 3
+max_db_connections = @@MAX_DB_CONNECTIONS@@
+max_client_conn = @@MAX_CLIENT_CONN@@
+
+;; Connection lifetimes.
+server_idle_timeout = @@SERVER_IDLE_TIMEOUT@@
+server_lifetime = 3600
+server_connect_timeout = 5
+server_login_retry = 5
+
+;; A waiting client is told to come back after this; the application shows its degraded state.
+query_wait_timeout = @@QUERY_WAIT_TIMEOUT@@
+client_login_timeout = 60
+
+;; Server leg (PgBouncer to PostgreSQL), TLS with hostname verification against the database CA.
+server_tls_sslmode = @@SERVER_TLS_SSLMODE@@
+server_tls_ca_file = @@SERVER_TLS_CA_FILE@@
+server_tls_protocols = secure
+
+log_connections = 0
+log_disconnections = 0
+log_pooler_errors = 1
+stats_period = 60
+syslog = 0

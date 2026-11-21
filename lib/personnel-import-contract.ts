@@ -159,6 +159,7 @@ export function personnelColumnGuidance(column:string,sheet:PersonnelImportSheet
 }
 
 export function personnelFieldChoices(field:PersonnelFieldDescriptor) {
+  if(field.allowedValuesOwner==='bank.payeeResidency')return [{value:'resident',labelKey:'maybankPayment.resident'},{value:'non_resident',labelKey:'maybankPayment.nonResident'}];
   if(field.allowedValuesOwner==='attendance.photoSetting')return ATTENDANCE_PHOTO_SETTINGS.map(value=>({value,labelKey:ATTENDANCE_PHOTO_LABEL_KEYS[value]}));
   if(field.allowedValuesOwner==='employment.paymentMethod')return PAYMENT_METHODS.map(value=>({value,labelKey:`people.detail.paymentMethod_${value}`}));
   if(field.import.register && field.type==='boolean')return [{value:'true',labelKey:'people.import.registerYes'},{value:'false',labelKey:'people.import.registerNo'}];

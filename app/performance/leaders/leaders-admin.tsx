@@ -286,8 +286,8 @@ function SeatPanel({ data, seat, seatType, companyId, calibrationGroupId, onDone
       <p className="text-sm"><span className="text-muted-foreground">{t('now')}: </span>{seat ? employeeLabel(seat.holderEmployeeCode, seat.holderName ?? '') : t('vacant')}</p>
       <div className="flex flex-wrap items-end gap-3">
         <div className="w-full space-y-1 sm:w-80"><span className="text-sm font-medium">{t('changeTo')}</span><PersonPicker options={options} onChange={setNext} /></div>
-        <Button type="button" size="sm" disabled={!next || pending} onClick={save}>{t('save')}</Button>
-        {seat && <Button type="button" size="sm" variant="outline" disabled={pending} onClick={end}>{t('endSeat')}</Button>}
+        <Button aria-busy={pending} type="button" size="sm" disabled={!next || pending} onClick={save}>{t('save')}</Button>
+        {seat && <Button aria-busy={pending} type="button" size="sm" variant="outline" disabled={pending} onClick={end}>{t('endSeat')}</Button>}
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>{t('cancel')}</Button>
       </div>
       <Alert text={error} />
@@ -412,7 +412,7 @@ function GroupChiefs({ data }: { data: LeadersData }) {
       {data.canWriteHod && (
         <div className="flex flex-wrap items-end gap-3 border-t border-border pt-3">
           <Field label={t('groupName')} className="w-full sm:w-80"><input value={name} onChange={(e) => setName(e.target.value)} maxLength={200} className={inputCls} /></Field>
-          <Button type="button" size="sm" disabled={!name.trim() || pending} onClick={create}>{t('createGroup')}</Button>
+          <Button aria-busy={pending} type="button" size="sm" disabled={!name.trim() || pending} onClick={create}>{t('createGroup')}</Button>
         </div>
       )}
       <Alert text={error} />
@@ -444,20 +444,20 @@ function GroupMembers({ data, groupId, groupName, onDone }: { data: LeadersData;
     <div className="space-y-3">
       <div className="flex flex-wrap items-end gap-3">
         <Field label={t('groupName')} className="w-full sm:w-80"><input value={rename} onChange={(e) => setRename(e.target.value)} maxLength={200} className={inputCls} /></Field>
-        <Button type="button" size="sm" variant="outline" disabled={!rename.trim() || rename.trim() === groupName || pending} onClick={() => act(() => renameCalibrationGroupAction(groupId, rename))}>{t('rename')}</Button>
+        <Button aria-busy={pending} type="button" size="sm" variant="outline" disabled={!rename.trim() || rename.trim() === groupName || pending} onClick={() => act(() => renameCalibrationGroupAction(groupId, rename))}>{t('rename')}</Button>
       </div>
       {members === null && !error && <p role="status" className="text-sm text-muted-foreground">{t('loading')}</p>}
       {members && (members.length === 0 ? <p className="text-sm text-muted-foreground">{t('noMembers')}</p> : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {members.map((m) => <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
             <span className="[overflow-wrap:anywhere]">{employeeLabel(m.employeeCode, m.name ?? '')}</span>
-            <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => act(() => endCalibrationGroupMemberAction(m.id))}>{t('removeMember')}</Button>
+            <Button aria-busy={pending} type="button" size="sm" variant="ghost" disabled={pending} onClick={() => act(() => endCalibrationGroupMemberAction(m.id))}>{t('removeMember')}</Button>
           </li>)}
         </ul>
       ))}
       <div className="flex flex-wrap items-end gap-3">
         <div className="w-full space-y-1 sm:w-80"><span className="text-sm font-medium">{t('addMember')}</span><PersonPicker options={options.filter((o) => !members?.some((m) => m.employmentId === o.value))} onChange={setNext} /></div>
-        <Button type="button" size="sm" disabled={!next || pending} onClick={() => act(() => addCalibrationGroupMembersAction(groupId, [next]))}>{t('add')}</Button>
+        <Button aria-busy={pending} type="button" size="sm" disabled={!next || pending} onClick={() => act(() => addCalibrationGroupMembersAction(groupId, [next]))}>{t('add')}</Button>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>{t('cancel')}</Button>
       </div>
       <Alert text={error} />

@@ -1,4 +1,7 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
+import { peopleSettingsBack } from '@/app/admin/settings/people/back';
+import { PeopleSettingsNavigation } from '@/components/people-settings-navigation';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { canConfigurePeopleGeneral, getPeopleGeneral } from '@/core/people-general';
@@ -14,7 +17,8 @@ export default async function PeopleGeneralPage({ searchParams }: {
   const t = await getTranslations('peopleGeneral');
   const { error } = await searchParams;
   return <div className="mx-auto max-w-3xl space-y-6">
-    <PageHeader title={t('title')} description={t('description')} />
+    <PageHeader title={t('title')} description={t('description')} back={await peopleSettingsBack()} />
+    <PeopleSettingsNavigation />
     <ErrorBanner message={error} />
     <Card className="p-5 sm:p-6">
       <h2 className="mb-6 text-base font-semibold">{t('identityValidation')}</h2>
@@ -53,7 +57,7 @@ export default async function PeopleGeneralPage({ searchParams }: {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
           <p className="text-xs text-muted-foreground">{t('saveHint')}</p>
           <div className="flex gap-2"><button type="reset" className={btnGhost}>{t('cancel')}</button>
-            <button type="submit" className={btnPrimary}>{t('save')}</button></div>
+            <ActionButton type="submit" className={btnPrimary}>{t('save')}</ActionButton></div>
         </div>
       </form>
     </Card>

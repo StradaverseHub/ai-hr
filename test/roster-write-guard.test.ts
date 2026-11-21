@@ -44,7 +44,26 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { randomUUID } from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
 import {rosterAssignment} from '../db/schema';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { runBulkJobTick } from '../core/bulk-job-worker';
+import { rosterBulkJobHandler } from '../core/roster-bulk-worker';
+import { readRosterBulkJob } from '../core/roster-bulk-job';
+import { ROSTER_BRUSH_INLINE_CELLS } from '../lib/roster-bulk-job';
+
+/** Background roster jobs this tenant has admitted (a refused write must never reach one). */
+async function queuedJobs(): Promise<number> {
+  const [row] = await owner.client<{ n: number }[]>`select count(*)::int n from bulk_job where tenant_id=${b.tenantId}::uuid`;
+  return row.n;
+}
+/** A large grid brush, Generate and Copy queue a background roster job; this runs the protected worker. */
+async function runRosterJob(id: string): Promise<string> {
+  for (let i = 0; i < 2000; i++) {
+    const [row] = await owner.client<{ state: string; notified: boolean }[]>`select state,notified_at is not null as notified from bulk_job where id=${id}::uuid`;
+    if (['completed', 'failed', 'cancelled'].includes(row.state) && row.notified) return row.state;
+    if (!(await runBulkJobTick(owner.client, { handlers: [rosterBulkJobHandler] }))) await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error('roster job did not finish');
+}
 import { hireEmployee } from '../core/org';
 import {
   assertRosterAdmin,
@@ -58,6 +77,7 @@ import {
 /** The session every action resolves. Swapped per test between an administrator and a supervisor. */
 let SESSION: SessionContext;
 vi.mock('@/lib/session', () => ({ getSession: async () => SESSION }));
+vi.mock('next/headers',()=>({cookies:async()=>({get:()=>undefined})}));
 vi.mock('next/cache', () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 
 /** next/navigation's redirect() signals by THROWING; a stub that merely records would let the action
@@ -103,10 +123,10 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  admin = adminCtx(b);
+  admin = {...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
   // A REAL non-admin session: the same tenant and the same logged-in user, holding a role that is not
   // hr_admin / super_admin. This is exactly what a supervisor's session context looks like.
-  supervisor = { ...admin, roles: ['manager'] };
+  supervisor = { ...adminCtx(b), roles: ['manager'] };
   // The DEFAULT session for this file is the supervisor — the caller the blocker is about. The last
   // describe overrides it with the administrator in its own beforeEach, which runs after this one.
   SESSION = supervisor;
@@ -200,6 +220,11 @@ describe('the five roster writes refuse a supervisor IN THE SERVER (23390097)', 
     expect(seen).not.toMatch(RAW_SQL);
     expect(seen).not.toMatch(ANY_UUID);
     expect(await stored()).toHaveLength(0);
+    // A brush above the inline threshold is refused by the same guard before any background job is admitted.
+    const many = Array.from({ length: 31 }, (_, i) => `2099-03-${String(i + 1).padStart(2, '0')}`);
+    expect(3 * many.length).toBeGreaterThan(ROSTER_BRUSH_INLINE_CELLS);
+    expect((await bulkAssignAction({ employmentIds: [employmentId, randomUUID(), randomUUID()], shiftDates: many, brush: shiftId })).ok).toBe(false);
+    expect(await queuedJobs(), 'refused before enqueue').toBe(0);
   });
 
   it('rowAssignAction — the row Edit panel is refused too', async () => {
@@ -231,6 +256,7 @@ describe('the five roster writes refuse a supervisor IN THE SERVER (23390097)', 
     expect(seen).not.toMatch(RAW_SQL);
     expect(seen).not.toMatch(ANY_UUID);
     expect(await stored()).toHaveLength(0);
+    expect(await queuedJobs(), 'refused before enqueue').toBe(0);
   });
 
   it('copyRosterAction — same', async () => {
@@ -247,6 +273,7 @@ describe('the five roster writes refuse a supervisor IN THE SERVER (23390097)', 
     expect(seen).not.toMatch(RAW_SQL);
     expect(seen).not.toMatch(ANY_UUID);
     expect(await stored(), 'the one seeded row, and nothing copied').toHaveLength(1);
+    expect(await queuedJobs(), 'refused before enqueue').toBe(0);
   });
 });
 
@@ -257,18 +284,46 @@ describe('the guard must not refuse everything — an administrator still roster
 
   it('assignCellAction, bulkAssignAction and rowAssignAction all still write', async () => {
     expect(await assignCellAction({ employmentId, shiftDate: FUTURE, brush: shiftId })).toEqual({ ok: true });
+    // A small brush is written inline, exactly as before: no background job and no notice.
     expect(await bulkAssignAction({ employmentIds: [employmentId], shiftDates: [FUTURE_2], brush: 'rest' })).toEqual({ ok: true });
+    expect(await queuedJobs()).toBe(0);
     expect(await rowAssignAction({ employmentId, shiftDates: ['2099-01-07', '2099-01-08'], brush: shiftId })).toEqual({ ok: true });
     expect(await stored()).toHaveLength(4);
   });
 
+  it('a brush above the inline threshold runs as a job and writes what the inline brush would', async () => {
+    const hire = async (fullName: string, employeeCode: string) => (await hireEmployee(admin, { person: { fullName, primaryEmail: `sa_${randomUUID().slice(0, 8)}@t.local` },
+      companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: '2020-01-01', employeeCode })).employmentId;
+    const other = await hire('Siti Aminah', 'A0002'), third = await hire('Lim Wei', 'A0003');
+    const dates = Array.from({ length: 31 }, (_, i) => `2099-03-${String(i + 1).padStart(2, '0')}`);
+    expect(3 * dates.length).toBeGreaterThan(ROSTER_BRUSH_INLINE_CELLS);
+    const bulk = await bulkAssignAction({ employmentIds: [employmentId, other, third], shiftDates: dates, brush: shiftId });
+    expect(bulk).toEqual({ ok: true, jobId: expect.any(String) });
+    expect(await stored(), 'nothing is written in the request').toHaveLength(0);
+    expect(await runRosterJob((bulk as { jobId: string }).jobId)).toBe('completed');
+    const rows = await rosterForRange(admin, { employmentIds: [employmentId, other, third], from: '2099-03-01', to: '2099-03-31' });
+    expect(rows).toHaveLength(93);
+    expect(rows.every((row) => row.shiftId === shiftId && !row.isRestDay)).toBe(true);
+  });
+
   it('generateRosterAction still redirects with its summary', async () => {
+    // The click passes the write guard and target admission, then only enqueues: the redirect is the progress page.
     await expect(
       generateRosterAction(formOf({ companyId: b.companyId, shiftId, from: FUTURE, to: FUTURE_MONTH_END, employmentIds: [employmentId] })),
     ).rejects.toThrow('NEXT_REDIRECT');
-    expect(LAST_REDIRECT).toContain('generated=');
-    expect(LAST_REDIRECT).not.toContain('error=');
-    expect((await stored()).length).toBeGreaterThan(0);
+    const queued = new URL(LAST_REDIRECT, 'http://x');
+    const jobId = queued.searchParams.get('rosterJob')!;
+    expect(LAST_REDIRECT).toBe(`/roster?companyId=${b.companyId}&month=2099-01&rosterJob=${jobId}`);
+    expect(await queuedJobs()).toBe(1);
+    expect(await stored(), 'nothing is written in the request').toHaveLength(0);
+    // When the job ends, the page opens exactly the summary address the synchronous action redirected to.
+    expect(await runRosterJob(jobId)).toBe('completed');
+    const rows = await stored();
+    const working = rows.filter((row) => row.shiftId === shiftId).length, rest = rows.filter((row) => row.isRestDay).length;
+    expect(working).toBeGreaterThan(0);
+    expect(rest).toBeGreaterThan(0);
+    expect(working + rest).toBe(27); // 2099-01-05 .. 2099-01-31, every date
+    expect((await readRosterBulkJob(admin, jobId)).href).toBe(`/roster?companyId=${b.companyId}&month=2099-01&generated=1.${working}.${rest}`);
   });
 
   /**

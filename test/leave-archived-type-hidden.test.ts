@@ -257,7 +257,12 @@ describe('ec991c2a — which surface asks for which answer, pinned across both f
 
   it('the retained HR inquiry includes archived types without restoring the retired Personnel balance copy', () => {
     expect(read('../app/leave/employee-balances/rows.ts')).toContain('includeArchived: true');
-    expect(read('../app/leave/employee-balances/inquiry-data.ts')).toContain('await employeeBalanceRows(ctx, employmentId, query.asOf,');
+    // e066cf54f (docs/adr/2026-11-07-leave-inquiry-presentation-read-frame.md) hydrates through a private
+    // copy of the SAME session so the admitted snapshot cannot be mutated by its caller; it is still
+    // the canonical employeeBalanceRows owner, per employment, at the inquiry's as-at date.
+    const inquiryData = read('../app/leave/employee-balances/inquiry-data.ts');
+    expect(inquiryData).toContain('const hydrationContext=structuredClone(ctx);');
+    expect(inquiryData).toContain('await employeeBalanceRows(hydrationContext, employmentId, query.asOf,');
     const personnel = read('../app/admin/personnel/[employmentId]/page.tsx');
     expect(personnel).not.toMatch(/\bleaveBalances\(/);
     expect(personnel).not.toContain('<EntitlementBreakdown');
@@ -266,11 +271,10 @@ describe('ec991c2a — which surface asks for which answer, pinned across both f
   it('the employee-facing call sites are EXPLICIT, so the default can never silently change meaning', () => {
     // The item is explicit that an inherited default is how this defect comes back. Both self-service
     // balance reads state the answer they want rather than relying on `leaveBalances`' default.
+    // The old dashboard's own leave card was the second such caller; it was retired with the dashboard (12 Nov 2026).
     expect(read('../app/leave/page.tsx')).toContain('includeArchived: false');
-    expect(read('../app/page.tsx')).toContain('includeArchived: false');
-    // …and neither of them opts out of the archived gate.
+    // …and it does not opt out of the archived gate.
     expect(read('../app/leave/page.tsx')).not.toContain('includeArchived: true');
-    expect(read('../app/page.tsx')).not.toContain('includeArchived: true');
   });
 
   it('the shared-pool summer is the ONE self-service caller that opts out, and says why', () => {

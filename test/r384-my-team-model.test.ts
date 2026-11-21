@@ -495,3 +495,29 @@ describe('My Team canonical balance and independent reader integration',()=>{
   }finally{spy.mockRestore();}
  });
 });
+
+it.each(['hr_admin','super_admin'] as const)('ANDs every company, department and subject predicate with the actual %s department role',async role=>{
+ const userId=await createAppUser(b.tenantId,null,role),actor:SessionContext={...adminCtx(b),userId,roles:[role],grants:[{role,companyId:null}]};
+ const departmentSubject=await hireEmployee(adminCtx(b),{person:{fullName:'My Team separate department',primaryEmail:randomUUID()+'@my-team-scope.invalid'},companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'My Team separate authorized company'}).returning();
+ const [otherDepartment]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:otherCompany.id,name:'Separate company department'}).returning();
+ const companySubject=await hireEmployee(adminCtx(b),{person:{fullName:'My Team separate company',primaryEmail:randomUUID()+'@my-team-scope.invalid'},companyId:otherCompany.id,departmentId:otherDepartment.id,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const input={...query,scope:'department' as const,companyIds:[b.companyId]};
+ async function compare(extra:Partial<typeof input>&{departmentId?:string;employmentId?:string},expected:string[]){
+  const requested={...input,...extra},scope=await resolveMyTeamScope(actor,requested),view=await readMyTeam(actor,requested);
+  expect(scope.employees.map(row=>row.employmentId).sort()).toEqual(expected.slice().sort());
+  expect(view.scope.employmentIds.slice().sort()).toEqual(expected.slice().sort());expect(view.gridEmploymentIds.slice().sort()).toEqual(expected.slice().sort());
+  expect(scope.companies.map(row=>row.id)).toEqual([b.companyId]);
+ }
+ await compare({},[manager.employmentId,subject.employmentId,downline.employmentId,outsider.employmentId,departmentSubject.employmentId]);
+ await compare({departmentId:b.deptA},[manager.employmentId,subject.employmentId,downline.employmentId,outsider.employmentId]);
+ await compare({departmentId:b.deptB},[departmentSubject.employmentId]);
+ await compare({employmentId:subject.employmentId},[subject.employmentId]);
+ await compare({departmentId:b.deptB,employmentId:subject.employmentId},[]);
+ await compare({employmentId:companySubject.employmentId},[]);
+ const foreign=await seedBase(),foreignSubject=await hireEmployee(adminCtx(foreign),{person:{fullName:'My Team foreign tenant subject',primaryEmail:randomUUID()+'@my-team-scope.invalid'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ await compare({employmentId:foreignSubject.employmentId},[]);
+ const employeeUser=await createAppUser(b.tenantId,null,'employee'),noAccess={...actor,userId:employeeUser,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ await expect(resolveMyTeamScope(noAccess,input)).rejects.toThrow('MY_TEAM_NOT_AUTHORIZED');
+ await expect(readMyTeam(noAccess,input)).rejects.toThrow('MY_TEAM_NOT_AUTHORIZED');
+},60000);

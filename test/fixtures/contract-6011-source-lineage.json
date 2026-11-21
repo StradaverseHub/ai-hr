@@ -1,0 +1,43 @@
+{
+  "status": "SOURCE REGISTRATION CANDIDATE ONLY; no SQL/runtime/compiler/test execution, publication, merge or release",
+  "acceptedBase": "12098e9c56c95bf2d9441ad74e81ae04f2d2980a",
+  "proposalSource": "ab5c1c7fcfe63184d4a3e24249d51fee91f42d4a",
+  "reviewedSqlSha256": "ba157898e5a35bfa08931aba91362ac43d985ef6e4c2293cd2cf9f49eeefabc2",
+  "provisionalRegistration": {
+    "idx": 5831,
+    "version": "7",
+    "when": 1794988006431,
+    "tag": "6431_contract_posting_org_snapshot_owner",
+    "breakpoints": true
+  },
+  "watermarkAlignment": "HELD for final post-Board installed watermark alignment; no other pending timestamps changed",
+  "independentSourceReview": "V11 exact bytes passed independent review; native evidence NOT_RUN",
+  "sourceGuardFixture": "test/fixtures/contract-posting-date-owner-source.json",
+  "sqlDependency": "after existing protected Contract source/replay owners6001–6009 and6010; before preserved6012",
+  "preserved6012": {
+    "entry": {
+      "idx": 5832,
+      "version": "7",
+      "when": 1794988006432,
+      "tag": "6432_contract_shared_navigation_access",
+      "breakpoints": true
+    },
+    "sqlSha256": "8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146"
+  },
+  "baselineNativeFunctionTouchesAdded": [
+    "app.record_employment_organisation_tags(uuid,uuid,date,text)",
+    "app.company_org_assignment_record()"
+  ],
+  "preservedAddedFunction": "app.preserve_payroll_metadata_owner(uuid,boolean,boolean)",
+  "literalIntentCountsAdded": {
+    "functions": 16,
+    "baselineFunctionsTouched": 2,
+    "tables": 3,
+    "policies": 4
+  },
+  "preparationBase": "177d14f07577ee4e85552d5e55e1e7929e4d23d4",
+  "integrationTarget": "d39ed197a39693b2c46e110daf8f2496651fac8c",
+  "currentTarget6012Sha256": "8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146",
+  "historicalPreparation6012Sha256": "6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461",
+  "unionInstruction": "Preserve current target6012 source/helpers/entry/hash; append only6011 literals and keyed ACL delta. Historical177d preservation evidence is not relabeled onto d39."
+}

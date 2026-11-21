@@ -21,6 +21,9 @@
  *     refused application row.
  * Expected values are written out from the fixtures, never re-derived from the services' own helpers. */
 import {randomUUID} from 'node:crypto';
+import {AsyncResource} from 'node:async_hooks';
+import {setAiCentreReadControl} from '../core/ai-centre-inventory';
+import {setMandateStopSwitch} from '../core/mandates/mandates';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import * as schema from '../db/schema';
@@ -92,6 +95,29 @@ beforeEach(async()=>{
 });
 
 describe('reading a policy\'s values',()=>{
+ it('switches off only AI value extraction while manual policy decisions and edits remain available during stop-all',async()=>{
+  const created=await createPolicy(g1,{area:'claims',title:'Claims: controlled extraction',body:TEXT,effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  await readPolicyValues(g1,{versionId:created.versionId},scripted([MILEAGE,WITHIN]));
+  const existing=await valuesOf(created.versionId);expect(existing).toHaveLength(2);
+  await setAiCentreReadControl(g1,'read:operation_policy_values',false);let calls=0;
+  await expect(readPolicyValues(g1,{versionId:created.versionId},{async propose(){calls++;return JSON.stringify({values:[WITHIN]});}})).rejects.toMatchObject({reason:'paused'});
+  expect(calls).toBe(0);expect(await valuesOf(created.versionId)).toEqual(existing);
+  await setMandateStopSwitch(g2,true);
+  expect(await decidePolicyValue(g1,{valueId:existing[0].id,decision:'confirmed'})).toMatchObject({decision:'confirmed'});
+  const manual=await createPolicy(g1,{area:'other',title:'Manual policy during AI stop',body:'Existing manual rules remain available for human review.',effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  await saveDraft(g1,{versionId:manual.versionId,body:'A person edited this manual policy while AI was stopped.',effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  const [row]=await owner.db.execute<{body:string}>(sql`select body from public.teras_policy_version where id=${manual.versionId}::uuid`);
+  expect(row.body).toBe('A person edited this manual policy while AI was stopped.');
+ });
+ it('refuses policy proposals from an earlier activity after stop/resume and preserves the draft without model values',async()=>{
+  const created=await createPolicy(g1,{area:'claims',title:'Claims: late model result',body:TEXT,effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
+  const humanStop=AsyncResource.bind(async()=>{await setMandateStopSwitch(g2,true);await setMandateStopSwitch(g2,false);});let calls=0;
+  await expect(readPolicyValues(g1,{versionId:created.versionId},{async propose(){calls++;await humanStop();return JSON.stringify({values:[MILEAGE,WITHIN]});}})).rejects.toMatchObject({reason:'paused'});
+  expect(calls).toBe(1);expect(await valuesOf(created.versionId)).toEqual([]);
+  const [row]=await owner.db.execute<{status:string;body:string}>(sql`select status,body from public.teras_policy_version where id=${created.versionId}::uuid`);
+  expect(row).toEqual({status:'draft',body:TEXT});
+ });
+
  it('proposes values only for settings the owners hold, each with its words, and decides nothing',async()=>{
   const created=await createPolicy(g1,{area:'claims',title:'Claims: mileage',body:TEXT,effectiveFrom:todayInKualaLumpur(),companyIds:allCompanies()});
   expect(await readPolicyValues(g1,{versionId:created.versionId},scripted([MILEAGE,WITHIN,PRE_TRAVEL]))).toEqual({accepted:2,rejected:1,unparseable:false});

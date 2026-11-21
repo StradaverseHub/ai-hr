@@ -52,7 +52,7 @@ export function SeniorMembership({ value }: { value: Value }) {
         <span className="font-medium">{row.name} · {row.employeeCode} · JG {row.grade}</span><span className="ml-2">{t(row.member ? 'seniorPlanMember' : 'standardPlanMember')} → {t(row.nextMember ? 'seniorPlanMember' : 'standardPlanMember')}</span>
       </li>)}</ul>}
       {preview.convertingLegacy && <p className="text-sm text-muted-foreground">{t('seniorLegacyHelp')}</p>}
-      <Button type="button" disabled={busy || !value.canEdit} onClick={() => start(async () => {
+      <Button aria-busy={busy} type="button" disabled={busy || !value.canEdit} onClick={() => start(async () => {
         setError(''); const result = await saveSeniorMembershipAction(value.unitId, value.revision, selection, preview.digest);
         if (result.ok) { setPreview(null); setSaved(true); router.refresh(); } else { setPreview(null); setError(result.error); }
       })}>{t('confirmSeniorMembership')}</Button>

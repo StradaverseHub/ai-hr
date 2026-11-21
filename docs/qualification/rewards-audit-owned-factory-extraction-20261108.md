@@ -1,0 +1,7 @@
+# Owned Rewards fixture factory extraction
+
+Exact99df child; original native owner source comes unchanged from qualified315. This test-only component extracts its existing constructor/guard/query/return/cleanup body into `createRewardsAuditFixtureOwner(dependencies)`. The original export is an exact legacy binding to the original `harness.owner`, no-op `migrateTestDb` and `closeAll`. Static inverse reconstructs the entire original owner helper byte-for-byte; the adjacent source manifest pins both old and new source bytes.
+
+The injection interface is required and closed: a real postgres owner client, migration hook and final close hook. It does not change native roles, permission guards, canonical source/ABI checks, SQL, return fields, dedicated reader/projector connection behavior or cleanup semantics. It does not make an injected caller trusted, bounded or installed by itself. The new policy-proof owner must provide a genuinely owned max1/startup2s/statement20s/lock300ms controller, aggregate drain/restore/cleanup admission and unknown-commit/refusal ownership controls before that new selector can run.
+
+No application/native SQL, registry/workflow/journal/approval changes or local checks. Root plus independent review must precede hosted verification. Original315 native16, pure3 and legacy323 remain historical evidence. The extracted legacy execution path needs affected16 native requalification; unchanged323 need no automatic repeat. New injected policy/lifetime controls are a separate not-yet-complete proof. Production held; releaseAuthorized=false.

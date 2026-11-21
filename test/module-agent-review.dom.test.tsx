@@ -5,7 +5,7 @@ import type {ReactNode} from 'react';
 import {cleanup,render as rtlRender,screen} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
-const state=vi.hoisted(()=>({locale:'en'}));const copies:Record<string,typeof en>={en,ms,zh,ta,th,vi:viCopy};
+const state=vi.hoisted(()=>({locale:'en'}));const copies:Record<string,Pick<typeof en,'assistant'>>={en,ms,zh,ta,th,vi:viCopy};
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,args?:Record<string,string|number>)=>{
  let value:unknown=copies[state.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];
  if(typeof value!=='string')throw Error('Missing fixture translation');return value.replace(/\{(\w+)\}/g,(_whole,name:string)=>String(args?.[name]??'{'+name+'}'));
@@ -28,7 +28,7 @@ describe('human evaluation scope, consent and authenticated progress',()=>{
   result.container.querySelector('details')!.open=true;
   const trial=result.container.querySelector<HTMLSelectElement>('select[name="fixtureId"]')!;
   expect([...trial.options].map(option=>option.value)).toEqual(PROMPT_HOLDOUTS.filter(row=>row.locale===locale).map(row=>row.id));
-  expect(trial.options).toHaveLength(24);
+  expect(trial.options).toHaveLength(25);
   const scope=copies[locale].assistant.workspace.agentReview;
   expect(result.container.textContent).toContain(scope.consent.replace('{requests}',String(PROMPT_HOLDOUT_REQUEST_LIMIT)));
   expect(result.container.textContent).toContain(scope.progress.replace('{completed}','6').replace('{total}','144').replace('{failures}','1').replace('{state}',scope.state_incomplete));

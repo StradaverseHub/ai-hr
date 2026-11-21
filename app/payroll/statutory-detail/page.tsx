@@ -16,6 +16,7 @@
  * payslip's own `statutory` blob through `explainStatutory`, which takes no SessionContext and therefore
  * cannot reach today's EPF table, today's PERKESO schedule or the employee's current statutory flags.
  */
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -86,12 +87,12 @@ export default async function StatutoryDetailPage({
               through the same fence this page did, so a hand-edited download link can no more cross the
               company boundary than a hand-edited page link can. */}
           <div className="flex justify-end">
-            <a
+            <ExportDownloadLink
               href={`/payroll/statutory-detail/export?payslipId=${encodeURIComponent(row.id)}`}
               className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
             >
               {t('exportExcel')}
-            </a>
+            </ExportDownloadLink>
           </div>
           <StatutoryDetailView
             ctx={{

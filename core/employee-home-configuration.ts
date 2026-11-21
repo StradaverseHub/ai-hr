@@ -1,14 +1,15 @@
 /** Company/role Home presentation policy. Immutable versions never own attendance, money, leave,
  * approvals or identity facts; module readers remain responsible for every fact used in a sentence. */
-import {and,asc,desc,eq,isNull,lt,sql} from 'drizzle-orm';
+import {and,asc,desc,eq,isNull,lt,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,employeeHomeConfigurationRevision} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
 import {DASHBOARD_LAYOUT_ROLES,type DashboardLayoutRole} from '../lib/dashboard-layout';
 import {validateEmployeeHomeConfiguration,type EmployeeHomeConfiguration} from '../lib/employee-home';
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
-import {readEmployeeHomeIdentity,HomeAccessError} from './employee-home';
-import {myOwnEmploymentSubjects} from './read';
+import {readEmployeeHomeIdentityContextTx,HomeAccessError} from './employee-home';
+import {isOwnProfileEditEmploymentTx} from './read';
+import {isPrincipalSnapshotCurrentTx} from './read-only-snapshot';
 
 export class HomeConfigurationAccessError extends Error{
  constructor(){super('This employee Home configuration is outside your company scope.');this.name='HomeConfigurationAccessError';}
@@ -29,10 +30,14 @@ async function assertAdminCompany(tx:Tx,ctx:SessionContext,companyId:string){
   .from(company).where(and(eq(company.id,companyId),eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt))).limit(1);
  if(!row?.allowed)throw new HomeConfigurationAccessError();
 }
-async function currentTx(tx:Tx,ctx:SessionContext,companyId:string,audienceRole:DashboardLayoutRole):Promise<EmployeeHomeConfigurationView>{
- const [row]=await tx.select({id:employeeHomeConfigurationRevision.id,ordinal:employeeHomeConfigurationRevision.ordinal,configuration:employeeHomeConfigurationRevision.configuration})
+/** The select currentTx sends (a request preamble answers it ahead for its own company and role, decision 12). */
+export function homeConfigurationRevisionQuery(tx:Tx,ctx:SessionContext,companyId:string|SQL,audienceRole:string|SQL){
+ return tx.select({id:employeeHomeConfigurationRevision.id,ordinal:employeeHomeConfigurationRevision.ordinal,configuration:employeeHomeConfigurationRevision.configuration})
   .from(employeeHomeConfigurationRevision).where(and(eq(employeeHomeConfigurationRevision.tenantId,ctx.tenantId),eq(employeeHomeConfigurationRevision.companyId,companyId),eq(employeeHomeConfigurationRevision.audienceRole,audienceRole)))
   .orderBy(desc(employeeHomeConfigurationRevision.ordinal)).limit(1);
+}
+async function currentTx(tx:Tx,ctx:SessionContext,companyId:string,audienceRole:DashboardLayoutRole):Promise<EmployeeHomeConfigurationView>{
+ const [row]=await homeConfigurationRevisionQuery(tx,ctx,companyId,audienceRole);
  return {version:1,companyId,audienceRole,revisionId:row?.id??null,ordinal:row?.ordinal??0,
   configuration:row?validateEmployeeHomeConfiguration(row.configuration):defaultEmployeeHomeConfiguration()};
 }
@@ -47,17 +52,30 @@ export function readEmployeeHomeConfigurationEditor(ctx:SessionContext,p:{compan
 }
 /** A caller cannot choose a different company or role. Both come from current own active employment
  * and the same deterministic dashboard-role resolver used by the shell. No salary projection is read. */
-export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,requestedEmploymentId?:string){
- const identity=await readEmployeeHomeIdentity(ctx,requestedEmploymentId);
- if(identity.employmentState!=='selected')throw new HomeAccessError(identity.employmentState==='choose'?'chooseEmployment':'employmentUnavailable');
- const own=await myOwnEmploymentSubjects(ctx,{profileEdit:true}),subject=own.find(row=>row.employmentId===identity.selectedEmploymentId);
- if(!subject?.companyProof.companyId)throw new HomeAccessError('employmentUnavailable');
+export async function readOwnEmployeeHomeConfiguration(ctx:SessionContext,requestedEmploymentId?:string,signal?:AbortSignal){
  return withTenant(ctx,async tx=>{
-  const [proof]=await tx.execute(sql`SELECT app.principal_snapshot_current() AS allowed`) as unknown as {allowed:boolean}[];
-  if(!proof?.allowed)throw new HomeConfigurationAccessError();
-  const view=await currentTx(tx,ctx,subject.companyProof.companyId!,identity.role);
-  return {...view,employmentId:subject.employmentId};
- });
+  const {identity,companyId,hiredOn}=await readEmployeeHomeIdentityContextTx(tx,ctx,requestedEmploymentId);
+  if(identity.employmentState!=='selected')throw new HomeAccessError(identity.employmentState==='choose'?'chooseEmployment':'employmentUnavailable');
+  const employmentId=identity.selectedEmploymentId;
+  if(!companyId||!employmentId||!hiredOn||!await isOwnProfileEditEmploymentTx(tx,ctx,employmentId))
+   throw new HomeAccessError('employmentUnavailable');
+  if(!await isPrincipalSnapshotCurrentTx(tx))throw new HomeConfigurationAccessError();
+  signal?.throwIfAborted();
+  const view=await currentTx(tx,ctx,companyId,identity.role);
+  return {...view,employmentId,hiredOn};
+ },{readOnlySnapshot:true,readSignal:signal});
+}
+
+/** A single response can reuse the native proof for the exact session and subject that requested it. */
+export class OwnHomeConfigurationRead {
+ private pending?: ReturnType<typeof readOwnEmployeeHomeConfiguration>;
+ constructor(private readonly session:SessionContext,private readonly employmentId:string,readonly signal?:AbortSignal){}
+
+ read(session:SessionContext,employmentId?:string){
+  if(session!==this.session||employmentId!==this.employmentId)throw new HomeAccessError('employmentUnavailable');
+  this.signal?.throwIfAborted();
+  return this.pending??=readOwnEmployeeHomeConfiguration(session,employmentId,this.signal);
+ }
 }
 export async function saveEmployeeHomeConfiguration(ctx:SessionContext,p:{companyId:string;audienceRole:string;expectedOrdinal:number;configuration:unknown;reason:string}){
  const audienceRole=role(p.audienceRole),configuration=validateEmployeeHomeConfiguration(p.configuration);

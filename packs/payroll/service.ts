@@ -50,6 +50,7 @@ export * from '../../core/payroll-self-metadata';
 export * from '../../core/payroll-readiness';
 export * from '../../core/payroll-history-import';
 export * from '../../core/payroll-history-revisions';
+export {requestPayrollHistoryConfirm,requestPayrollHistoryRevert,payrollHistoryJobStatus} from '../../core/payroll-history-job';
 export * from '../../core/payroll-permissions-admin';
 export * from '../../core/pay-components';
 export * from '../../core/pay-rule';
@@ -90,10 +91,22 @@ export * from '../../core/pay-formula';
 export * from '../../core/pay-formula-runtime';
 export * from '../../core/payroll-formula-inputs';
 export * from '../../core/payroll-tax-basis';
+export {requestTaxBasisGroupPreview,requestTaxBasisGroupConfirmation,readTaxBasisGroupProgress} from '../../core/payroll-tax-basis-group';
 
 export * from '../../core/payroll-employment-eligibility';
 export {draftPayFormula} from '../../core/pay-formula-ai';
+export {startPayFormulaDraftJob,readPayFormulaDraftJob,discardPayFormulaDraftJob} from '../../core/pay-formula-ai-job';
 
 export {tryLockPayrollHistoryReadTx} from '../../core/payroll-history-lock';
 
 export {payFormulaPermittedDraftFieldsTx} from '../../core/pay-formula-personnel';
+
+export {previewIndividualTxnInput,priceIndividualTxnInputTx} from './individual-calculation';
+export { payComponentCompanyChoices, PayComponentCompanyError } from '../../core/pay-component-company';
+
+export {payrollHistoryMaintenanceRecords,payrollHistoryMaintenanceRecord} from '../../core/payroll-history-maintenance-read';
+export {previewPayrollHistoryMaintenance} from '../../core/payroll-history-maintenance';
+export type {PayrollHistoryUploadMaintenance,PayrollHistoryMaintenanceRecord,PayrollHistoryMaintenanceDetail,PayrollHistoryMaintenancePage,PayrollHistoryMaintenanceQuery,PayrollHistoryMaintenanceRequest,PayrollHistoryMaintenancePreview} from '../../lib/payroll-history-maintenance';
+
+/** Correction-aware read contract for country report producers; callers retain their tenant transaction. */
+export {readEffectiveTaxBasesTx,type TaxBasisCorrectionRef} from '../../core/payroll-tax-basis-read';

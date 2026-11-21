@@ -40,6 +40,9 @@ import { importRunOutcome, IMPORT_COLUMNS } from '../lib/import-schema';
 import { setEmploymentInfo } from '../core/org';
 import { setBankProfileMY, setIcProfileMY, setPassportProfileMY } from '../localization/my/statutory';
 import { parseCsvRecords } from '../lib/csv';
+import { createTranslator } from 'next-intl';
+import en from '../messages/en.json';
+import { sectionRunErrorLog } from '../core/import-error-log-registry';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -525,6 +528,30 @@ describe('2983802f §6 · two employees can never be given one identity', () => 
     expect(result.updated).toBe(1);
     expect((await personOf('SEC0061')).primaryEmail).toBe('shared@acme.test');
     expect((await personOf('SEC0062')).primaryEmail).toBe('sec62@acme.test');
+  });
+
+  it('d3ba1e9f: each problem names its column and reason, rows read as Excel numbers them, and the run log keeps them', async () => {
+    await seedEmployee(68, 'SEC0068');
+    await seedEmployee(69, 'SEC0069');
+    const records = recs('employee_code,email', ['SEC0068,dup@acme.test', 'SEC0069,dup@acme.test', 'NOSUCH01,x@acme.test']);
+    // The workbook had blank rows: the three records sit on Excel rows 3, 7 and 9.
+    const preview = await validateSectionImport(a, { section: 'profile', records, excelRows: [3, 7, 9] });
+    const rows = preview.rows as (typeof preview.rows[number] & { excelRow?: number; issues?: { column?: string; code?: string; message: string }[] })[];
+    expect(rows.map((r) => r.excelRow)).toEqual([3, 7, 9]);
+    expect(rows[1].errors.join(' ')).toContain('row 3 already assigns');
+    expect(rows[1].issues).toEqual([{ column: 'email', code: 'duplicate_in_file', value: 'dup@acme.test', message: rows[1].errors[0] }]);
+    expect(rows[2].issues?.[0]).toMatchObject({ column: 'employee_code', code: 'employee_not_found', value: 'NOSUCH01' });
+    // A list of the wrong length is ignored: data row + 1.
+    const plain = await validateSectionImport(a, { section: 'profile', records, excelRows: [3] });
+    expect((plain.rows as { excelRow?: number }[]).map((r) => r.excelRow)).toEqual([2, 3, 4]);
+
+    const result = await commitSectionImport(a, { section: 'profile', records });
+    expect(result.runId).toBeTruthy();
+    const root = createTranslator({ locale: 'en', messages: en }), shared = createTranslator({ locale: 'en', messages: en, namespace: 'importProblems' });
+    const log = await sectionRunErrorLog(a, result.runId!, { problems: (key, values) => root(key as never, values as never), shared: (key) => shared(key as never) });
+    expect(log!.lines.map((l) => [l.row, l.reference, l.result])).toEqual([[3, 'SEC0069', 'refused'], [4, 'NOSUCH01', 'refused']]);
+    expect(log!.lines[1].correction).toBe(en.importErrorLogEmployee.correction.employeeNotFound);
+    expect(log!.truncated).toBe(false);
   });
 
   it('5e0b2154: with Allow Duplicated Work Email or Personal Email ON, shared emails are accepted and pointed out', async () => {

@@ -1,0 +1,4 @@
+[
+  "test/notification-worker-lifecycle.test.ts",
+  "test/notification-worker-task-shape-fixture.test.ts"
+]

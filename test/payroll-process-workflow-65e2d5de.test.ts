@@ -203,17 +203,13 @@ describe('65e2d5de · C — Recalculation History arrives closed, the fresh resu
 });
 
 describe('65e2d5de · D — the reprocess search cannot shrink the submitted set', () => {
-  it('the ticked-but-hidden ids ride hidden inputs, over BOTH groups', () => {
-    // The failure this prevents is silent: the review names three people, one id is posted, and the screen
-    // agrees with itself throughout. Proved by FormData in the dom test; pinned at the source here because
-    // the contract spans the review block and the form, and either half alone passes whatever the other does.
-    expect(REPROCESS_FORM).toMatch(/const pickedOffscreen = picked\.filter\(\(e\) => !visibleIds\.has\(e\.employmentId\)\)/);
+  it('carries hidden selections across both groups and posts only ready ids after tax review', () => {
     expect(REPROCESS_FORM).toMatch(
-      /pickedOffscreen\.map\(\(e\) => \(\s*<input key=\{e\.employmentId\} type="hidden" name="employmentIds" value=\{e\.employmentId\} \/>/,
+      /\(review \? ready : picked\)\.map\(row\s*=>\s*<input key=\{row\.employmentId\} type="hidden" name="employmentIds" value=\{row\.employmentId\} \/>/,
     );
-    // visibleIds spans the additions as well as the people already paid, or an ADD hidden by the search
-    // would be dropped while the review still promises it.
-    expect(REPROCESS_FORM).toMatch(/new Set\(\[\.\.\.visibleEmployees, \.\.\.visibleAdditions\]\.map\(\(e\) => e\.employmentId\)\)/);
+    expect(REPROCESS_FORM).toMatch(/held\.map\(row\s*=>\s*<input[^>]+name="heldEmploymentIds"/);
+    expect(REPROCESS_FORM).toContain('{picked.map((e) => (');
+    expect(REPROCESS_FORM).not.toMatch(/type="checkbox"\s+name="employmentIds"/);
   });
 
   it('both tables render the FILTERED rows, and Select all takes only what is on screen', () => {
@@ -224,7 +220,7 @@ describe('65e2d5de · D — the reprocess search cannot shrink the submitted set
     expect(REPROCESS_FORM).toContain('{visiblePending.map((c) => additionRow(c))}');
     expect(REPROCESS_FORM).toContain('{visibleSkipped.map((c) => additionRow(c))}');
     expect(REPROCESS_FORM).toContain('{visibleEmployees.map((e) => {');
-    expect(REPROCESS_FORM).toContain('setSelected(new Set(visibleEmployees.map((e) => e.employmentId)))');
+    expect(REPROCESS_FORM).toContain('setSelected(new Map(visibleEmployees.map((e) => [e.employmentId,e])))');
   });
 
   it('the match is the SHARED employee-search rule, not a fourth hand-rolled copy of it', () => {

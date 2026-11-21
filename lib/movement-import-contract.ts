@@ -14,8 +14,15 @@ export const MOVEMENT_IMPORT_HEADERS=['Employee ID',...MOVEMENT_IMPORT_FIELDS.ma
 /** 646355e5 slice C — `action` (blank = create) and `movementId`/`reason` come from the version 4 columns; an
  * Update or Delete names ONE existing movement, resolved only within the row's tenant, company and employee. */
 export type MovementImportAction='create'|'update'|'delete';
-export type MovementImportRecord={row:number;employeeCode:string;cells:Partial<Record<MovementFormField,string>>;ignoredOrganisation?:{parentCompany?:string;businessUnit?:string};errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number};companyCode?:string;companyId?:string;employeeName?:string;before?:Record<string,string>;sourceRows?:number[];action?:MovementImportAction;movementId?:string;reason?:string};
-export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};sourceRows?:number[];companyCode?:string;baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[];action?:MovementImportAction;movementId?:string;closedPayrollPeriods?:string[]};
+export type MovementImportRecord={row:number;employeeCode:string;
+ /** Board 4604dccc r3 — set by the check (always) and the commit (the user's closed-payroll box), never by a file:
+  *  a Group Join Date Correction / Join Date Change row may then move across closed payroll, which stays as paid. */
+ acknowledgeClosedPayroll?:boolean;cells:Partial<Record<MovementFormField,string>>;ignoredOrganisation?:{parentCompany?:string;businessUnit?:string};errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number};companyCode?:string;companyId?:string;employeeName?:string;before?:Record<string,string>;sourceRows?:number[];action?:MovementImportAction;movementId?:string;reason?:string;
+ /** Board 154511c4 — classified as history for this employee (see core/movement-history.ts classifyHistoryRows). */
+ history?:boolean;requestedHistory?:boolean};
+export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};sourceRows?:number[];companyCode?:string;baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[];action?:MovementImportAction;movementId?:string;closedPayrollPeriods?:string[];
+ /** Board 154511c4 — recorded as history: the period [from, to] is rewritten with the Before values. */
+ history?:{from:string;to:string}};
 /** `key` identifies one employee of one company in a multi-company file (selection and fingerprints). */
 export type MovementImportEmployee={employeeCode:string;employmentId:string|null;name:string|null;rows:MovementImportRow[];fingerprint:string|null;key?:string;companyId?:string|null;companyName?:string|null};
 export type MovementImportPreview={inputHash:string;selection:number[];fileErrors:string[];employees:MovementImportEmployee[];excluded:number;valid:number};
@@ -96,9 +103,10 @@ export function movementImportCellIssues(record:MovementImportRecord,behaviour:s
   // An Update keeps every value it leaves blank (646355e5 slice C), so nothing is required of it here.
   if(!value&&record.action!=='update'&&movementImportRequired(field,behaviour))issues.push(`required:${field}`);
   if(!value)continue;
-  if(['effectiveDate','endDate','resignationDate','tenderResignationDate','resignationEffectiveDate'].includes(field)){if(!movementImportDate(value))issues.push(`invalid_date:${field}`);}
+  const descriptor=personnelFormField(MOVEMENT_FORM_IDS[field]);
+  if(descriptor.type==='date'){if(!movementImportDate(value))issues.push(`invalid_date:${field}`);}
   else if(!['kind','companyId','businessUnitId','departmentId','positionId','gradeId','locationId','managerEmploymentId'].includes(field)){
-   const issue=personnelScalarIssue(personnelFormField(MOVEMENT_FORM_IDS[field]),value);if(issue)issues.push(`invalid_${issue}:${field}`);
+   const issue=personnelScalarIssue(descriptor,value);if(issue)issues.push(`invalid_${issue}:${field}`);
   }
  }
  return issues;

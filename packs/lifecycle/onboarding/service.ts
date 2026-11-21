@@ -1,3 +1,4 @@
+import type { PersonnelManagerRecipient } from '../../../lib/personnel-manager-recipient';
 import {JOINER_SECTION_PRESETS,joinerPageSections,joinerRecordAccess} from '../../../lib/onboarding-page-access';
 import {projectJoinerPage} from '../../../lib/onboarding-page-projection';
 import { defaultV9CaseFields } from '../../../lib/lifecycle-v9-case-form';
@@ -8,10 +9,12 @@ import { organisationChoiceLabels } from '../../../lib/organisation-choice-label
 import { onboardingConfigSchema, onboardingTaskSchema, onboardingCommandSchema, onboardingNoteSchema } from '../../../lib/onboarding-validation';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { withLifecycleTenant as withTenant } from '../../../core/module-gate';
+import { decodeJsonRow, jsonRowSql } from '../../../db/json-row';
+import { jsonRowsSql } from '../../../db/json-fields';
 import { type SessionContext, type Tx } from '../../../db/client';
-import { appendEvent, actorOf } from '../../../db/events';
+import { appendEvent, appendEvents, actorOf } from '../../../db/events';
 import { lcOnboardingCaseRevision as revisions, lcOnboardingPrivateRevision as privateRevisions, lcOnboardingCase as cases, lcOnboardingConfig as configs, lcOnboardingPrivate as secrets, lcOnboardingNote as notes, lcOnboardingSeen as seen, employeeDraft, department, company, position, businessUnit, jobGrade, costCenter, employment, person, assignment, employmentTypeEnum } from '../../../db/schema';
 import { isModuleEnabled } from '../../../core/entitlements';
 import { todayInKualaLumpur } from '../../../lib/hr-date';
@@ -20,6 +23,8 @@ import type {AssignedPersonalTaskMetadata} from '../../../lib/assigned-work';
 import { visibleLabelIdsCondition } from '../../../core/system-labels';
 import type { EmployeeDraftData } from '../../../lib/employee-draft-schema';
 import * as M from '../../../lib/onboarding-model';
+import { recentOnboardingJoinerCountTx,recentOnboardingJoinerCandidates } from './navigation-count';
+import { onboardingTaskQueueBundleSql, readOnboardingTaskQueueInputsTx } from './task-queue-read';
 export type { Config as OnboardingConfig, Case as OnboardingCase, Note as OnboardingNote, Facts as OnboardingFacts, Actor as OnboardingActor } from '../../../lib/onboarding-model';
 export { effectiveFacts as onboardingFacts, matchChecklist as onboardingChecklist, matches as onboardingMatches, progress as onboardingProgress, currentReq as onboardingRequisition, requisitionStatus as onboardingRequisitionStatus, stepOpen as onboardingStepOpen, activeItem as onboardingActiveItem, inGroup as onboardingGroupMember } from '../../../lib/onboarding-model';
 const uid = (ctx: SessionContext) => ctx.userId ?? M.fail('Sign in to continue.', 'forbidden');
@@ -30,25 +35,30 @@ const jsonSize = (v: unknown) => {
 };
 type Row = typeof cases.$inferSelect;
 const rows = <T>(v: unknown) => v as T[];
+type V9ConfigRow = { data: M.Config; revision: number; projection: V9ChecklistProjection | null };
 async function configTx(tx: Tx, ctx: SessionContext): Promise<{
     config: M.Config;
     revision: number;
 }> {
     const [extension] = await tx.execute<{ available: boolean }>(sql`select to_regprocedure('app.onboarding_v9_checklists()') is not null as available`);
     if (extension?.available) {
-        const [row] = await tx.execute<{ data: M.Config; revision: number; projection: V9ChecklistProjection | null }>(sql`select data,revision,app.onboarding_v9_checklists() as projection from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
-        if (row?.projection) return { config: { ...row.data, checklists: onboardingV9Checklists(row.projection), v9ChecklistRevision: row.projection.revision, v9CaseFields: row.projection.caseFields ?? defaultV9CaseFields('onb') }, revision: row.revision };
-        return { config: row?.data ?? M.defaultConfig(''), revision: row?.revision ?? 0 };
+        const [row] = await tx.execute<V9ConfigRow>(sql`select data,revision,app.onboarding_v9_checklists() as projection from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+        return configFromV9Row(row);
     }
     const [row] = await tx.select().from(configs).where(eq(configs.tenantId, ctx.tenantId));
     return { config: row?.data ?? M.defaultConfig(''), revision: row?.revision ?? 0 };
 }
+function configFromV9Row(row: V9ConfigRow | undefined): { config: M.Config; revision: number } {
+    if (row?.projection) return { config: { ...row.data, checklists: onboardingV9Checklists(row.projection), v9ChecklistRevision: row.projection.revision, v9CaseFields: row.projection.caseFields ?? defaultV9CaseFields('onb') }, revision: row.revision };
+    return { config: row?.data ?? M.defaultConfig(''), revision: row?.revision ?? 0 };
+}
+type ActorRow = { master: boolean; hr: boolean; name: string };
+const actorSql = (companyId?: string) => sql `select app.is_group_admin() as master, app.is_admin_for(${companyId ?? null}::uuid) as hr, coalesce(p.full_name,'User '||left(u.id::text,8)) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and not app.login_blocked(u.id)`;
 async function actorTx(tx: Tx, ctx: SessionContext, config: M.Config, companyId?: string): Promise<M.Actor> {
-    const [row] = rows<{
-        master: boolean;
-        hr: boolean;
-        name: string;
-    }>(await tx.execute(sql `select app.is_group_admin() as master, app.is_admin_for(${companyId ?? null}::uuid) as hr, coalesce(p.full_name,'User '||left(u.id::text,8)) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and not app.login_blocked(u.id)`));
+    const [row] = rows<ActorRow>(await tx.execute(actorSql(companyId)));
+    return actorFromRow(row, ctx, config);
+}
+function actorFromRow(row: ActorRow | undefined, ctx: SessionContext, config: M.Config): M.Actor {
     if (!row)
         M.fail('Your login is not available.', 'forbidden');
     const sections=joinerPageSections(config,uid(ctx)),module=config.access.onboarding.includes(uid(ctx));
@@ -61,10 +71,16 @@ async function directoryTx(tx: Tx) {
         name: string;
     }>(await tx.execute(sql `select * from app.onboarding_directory()`));
 }
+function baseEnvironment(): M.Environment {
+    return {
+        ...clock(), id: randomUUID, nextNumber: () => M.fail('A requisition number was not reserved.'),
+        leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: [],
+    };
+}
 async function environmentTx(tx: Tx, ctx: SessionContext, config: M.Config, all: M.Case[]): Promise<M.Environment> {
-    const { now, today } = clock(), dates = new Set([today]);
+    const env = baseEnvironment(), dates = new Set([env.today]);
     for (let n = 2; n <= 31; n++)
-        dates.add(M.dayDate(today, n));
+        dates.add(M.dayDate(env.today, n));
     for (const c of all) {
         for (const t of c.tasks)
             dates.add(t.dueOn);
@@ -76,11 +92,11 @@ async function environmentTx(tx: Tx, ctx: SessionContext, config: M.Config, all:
                     dates.add(M.dayDate(f.joinDate, t.due));
     }
     const unavailable = await onboardingUnavailableTx(tx, [...dates]);
-    const leave: Record<string, string[]> = {};
     for (const x of unavailable)
-        (leave[x.user_id] ??= []).push(x.on_date);
+        (env.leave[x.user_id] ??= []).push(x.on_date);
     const directory = await directoryTx(tx);
-    const env: M.Environment = { now, today, userNames: Object.fromEntries(directory.map(u => [u.id, u.name])), id: randomUUID, nextNumber: () => M.fail('A requisition number was not reserved.'), leave, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: directory.map(u => u.id) };
+    env.userNames = Object.fromEntries(directory.map(u => [u.id, u.name]));
+    env.users = directory.map(u => u.id);
     const loads = await onboardingAssignmentLoadsTx(tx);
     for (const load of loads) {
         env.taskLoads[load.user_id] = Number(load.task_load);
@@ -147,9 +163,17 @@ export async function onboardingUnavailableTx(tx: Tx, dates: readonly string[]) 
         result.push(...rows<{ user_id: string; on_date: string }>(await tx.execute(sql`select user_id,on_date::text from app.onboarding_unavailable(array[${sql.join(dateList.slice(offset, offset + 300).map(date => sql`${date}::date`), sql`, `)}])`)));
     return result;
 }
+async function onboardingContextTx(tx: Tx, ctx: SessionContext) {
+    const { config, revision } = await configTx(tx, ctx);
+    return { config, revision, actor: await actorTx(tx, ctx, config) };
+}
+/** The joiner register needs the same live actor/config, without the settings and assignment environment. */
+export function onboardingRegisterContext(ctx: SessionContext) {
+    return withTenant(ctx, tx => onboardingContextTx(tx, ctx));
+}
 export async function onboardingContext(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
-        const { config, revision } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
+        const { config, revision, actor } = await onboardingContextTx(tx, ctx);
         const all = (await tx.select({ data: cases.data }).from(cases).orderBy(asc(cases.id))).map(r => r.data);
         const environment = await environmentTx(tx, ctx, config, all);
         const current = all.filter(c => c.state !== 'cancelled');
@@ -175,32 +199,61 @@ export async function onboardingSetupTx(ctx: SessionContext, tx: Tx) {
         for (const d of drafts)
             await onboardingSyncDraftTx(ctx, tx, d.id, 'save');
 }
+const onboardingChoiceLabels = <T extends { id: string; name: string }>(options: T[]) =>
+    organisationChoiceLabels(options).map(row => ({ id: row.id, name: row.displayLabel }));
+
+async function requireOnboardingOptionsActor(tx: Tx, ctx: SessionContext) {
+    const { actor } = await onboardingContextTx(tx, ctx);
+    if (!actor.page && !actor.records && !actor.master)
+        M.fail('Onboarding access is required.', 'forbidden');
+}
+
+async function onboardingRegisterLabelsTx(tx: Tx, ids: string[]) {
+    const [units, titles] = await Promise.all([
+        tx.select({ id: businessUnit.id, name: businessUnit.name, code: businessUnit.code, label: businessUnit.label }).from(businessUnit).where(visibleLabelIdsCondition(businessUnit, 'business_unit', ids)).orderBy(asc(businessUnit.name)),
+        tx.select({ id: position.id, name: position.title, code: position.title, label: position.label, description: position.description }).from(position).where(visibleLabelIdsCondition(position, 'position', ids)).orderBy(asc(position.title)),
+    ]);
+    return { businessGroup: onboardingChoiceLabels(units), title: onboardingChoiceLabels(titles) };
+}
+
+/** Only the two authorized label catalogues consumed by the joiner register. */
+export function onboardingRegisterOptions(ctx: SessionContext) {
+    return withTenant(ctx, async tx => {
+        await requireOnboardingOptionsActor(tx, ctx);
+        const companies = await tx.select({ id: company.id }).from(company).orderBy(asc(company.legalName));
+        return onboardingRegisterLabelsTx(tx, companies.map(c => c.id));
+    });
+}
+
 export async function onboardingOptions(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
-        const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
-        if (!actor.page && !actor.records && !actor.master)
-            M.fail('Onboarding access is required.', 'forbidden');
+        await requireOnboardingOptionsActor(tx, ctx);
         const companies = await tx.select({ id: company.id, name: company.legalName }).from(company).orderBy(asc(company.legalName));
         const ids = companies.map(c => c.id);
-        const [departments, units, titles, grades] = await Promise.all([
+        const [departments, registerLabels, grades] = await Promise.all([
             tx.select({ id: department.id, name: department.name, code: department.name, label: department.label, description: department.description }).from(department).where(visibleLabelIdsCondition(department, 'department', ids)).orderBy(asc(department.name)),
-            tx.select({ id: businessUnit.id, name: businessUnit.name, code: businessUnit.code, label: businessUnit.label }).from(businessUnit).where(visibleLabelIdsCondition(businessUnit, 'business_unit', ids)).orderBy(asc(businessUnit.name)),
-            tx.select({ id: position.id, name: position.title, code: position.title, label: position.label, description: position.description }).from(position).where(visibleLabelIdsCondition(position, 'position', ids)).orderBy(asc(position.title)),
+            onboardingRegisterLabelsTx(tx, ids),
             tx.select({ id: jobGrade.id, name: jobGrade.name, label: jobGrade.name, code: jobGrade.code }).from(jobGrade).orderBy(asc(jobGrade.name)),
         ]);
         const supervisors = rows<{
             id: string;
             name: string;
         }>(await tx.execute(sql `select * from app.onboarding_supervisors()`));
-        const choices = <T extends { id: string; name: string }>(rows: T[]) => organisationChoiceLabels(rows).map(row => ({ id: row.id, name: row.displayLabel }));
-        return { supervisor: supervisors, company: companies, department: choices(departments), businessGroup: choices(units), title: choices(titles), grade: choices(grades), employmentType: employmentTypeEnum.enumValues.map(id => ({ id, name: id.replaceAll('_', ' ') })) };
+        return { supervisor: supervisors, company: companies, department: onboardingChoiceLabels(departments), ...registerLabels, grade: onboardingChoiceLabels(grades), employmentType: employmentTypeEnum.enumValues.map(id => ({ id, name: id.replaceAll('_', ' ') })) };
     });
 }
+function requireOnboardingListActor(actor: M.Actor) {
+    if (!actor.page && !actor.records) M.fail('Onboarding access is required.', 'forbidden');
+}
+
+function projectOnboardingListCase(data: M.Case, config: M.Config, actor: M.Actor) {
+    return projectJoinerPage(data, config, actor.page ? actor : { ...actor, sections: { ...JOINER_SECTION_PRESETS.approver, history: 'equip' }, hr: false });
+}
+
 export async function onboardingList(ctx: SessionContext, companyIds?: string[]) {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
-        if (!actor.page&&!actor.records)
-            M.fail('Onboarding access is required.', 'forbidden');
+        requireOnboardingListActor(actor);
         const list = await tx.select().from(cases).where(companyIds ? inArray(cases.companyId, companyIds) : undefined).orderBy(asc(cases.createdAt), asc(cases.id));
         const reads = await tx.select({ caseId: seen.caseId }).from(seen).where(eq(seen.userId, uid(ctx))), opened = new Set(reads.map(x => x.caseId));
         const open = list.filter(row => ['pending','submitted'].includes(row.data.state));
@@ -229,7 +282,49 @@ async function currentPersonnelTx(tx: Tx, c: M.Case) {
     const [projection] = await tx.execute<{value:CurrentPersonnel|null}>(sql`select app.onboarding_current_personnel(${c.id}::uuid,${todayInKualaLumpur()}::date) as value`);
     return applyCurrentPersonnel(c,projection?.value ?? null);
 }
-async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
+/** Standalone register display only. Apply the canonical row privacy projection before deciding
+ * visibility, and preserve latest sync across all authorized history even when that row is hidden. */
+export function onboardingRegisterRows(ctx: SessionContext, display: Pick<M.Config, 'recentActiveDays'> & { today: string }) {
+    return withTenant(ctx, async tx => {
+        const { config, actor } = await onboardingContextTx(tx, ctx);
+        requireOnboardingListActor(actor);
+        // Preserve all-history sync metadata without transporting retired case bodies. Unknown
+        // historical sync shapes retain the canonical full reader and JavaScript comparison.
+        const [metadata]=await tx.select({
+            latestSync:sql<string|null>`max((${cases.data}->>'syncedAt') collate "C")`,
+            safe:sql<boolean>`coalesce(bool_and(coalesce(jsonb_typeof(${cases.data}->'syncedAt') in ('string','null')
+                and coalesce((${cases.data}->>'syncedAt') !~ '[^ -~]',true),true)),true)`,
+        }).from(cases);
+        const candidates=metadata.safe?recentOnboardingJoinerCandidates(display,display.today):undefined;
+        const rows = await tx.select({ id: cases.id, data: cases.data }).from(cases).where(candidates?or(
+            candidates,
+            // Current Personnel may change any open linked case's join date. Always refresh
+            // those cases before the canonical privacy and visibility decision.
+            and(sql`${cases.data}->>'state' in ('pending','submitted')`,or(isNotNull(cases.employmentId),isNotNull(cases.sourceDraftId))),
+        ):undefined).orderBy(asc(cases.createdAt), asc(cases.id));
+        const open = rows.filter(row => ['pending','submitted'].includes(row.data.state));
+        if (open.length) {
+            const projections = await tx.execute<{id:string;value:CurrentPersonnel|null}>(sql`select id,app.onboarding_current_personnel(id,${todayInKualaLumpur()}::date) as value from lc_onboarding_case where id in (${sql.join(open.map(row => sql`${row.id}::uuid`),sql`,`)})`);
+            const byId = new Map(projections.map(row => [row.id,row.value]));
+            for (const row of open) applyCurrentPersonnel(row.data,byId.get(row.id) ?? null);
+        }
+        let latestSync = metadata.safe ? metadata.latestSync ?? '' : '';
+        const recent: { id: string; case: M.Case }[] = [];
+        for (const row of rows) {
+            const projected = projectOnboardingListCase(row.data, config, actor);
+            if (projected.syncedAt > latestSync) latestSync = projected.syncedAt;
+            if (M.visibleRecentJoiner(display, projected, display.today)) recent.push({ id: row.id, case: projected });
+        }
+        const ids = '{' + recent.map(row => row.id).join(',') + '}';
+        const reads = recent.length ? await tx.select({ caseId: seen.caseId }).from(seen).where(and(
+            eq(seen.userId, uid(ctx)), sql`${seen.caseId} = any(${ids}::uuid[])`,
+        )) : [];
+        const opened = new Set(reads.map(row => row.caseId));
+        return { today: display.today, latestSync, rows: recent.map(row => ({ case: row.case, isNew: !opened.has(row.id) })) };
+    },{readOnlySnapshot:true});
+}
+
+async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false, reconcileCompany = true) {
     const q = tx.select().from(cases).where(eq(cases.id, id)).limit(1), [row] = lock ? await q.for('update') : await q;
     if (!row)
         M.fail('Onboarding case not found.', 'not_found');
@@ -255,6 +350,7 @@ async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
         const nextCompany = c.source.company;
         const nextActor = await actorTx(tx, ctx, config, nextCompany);
         if (!nextActor.hr) M.fail('Company HR access is required for the updated Personnel company.', 'forbidden');
+        if (!reconcileCompany) M.fail('Open the case to refresh its Personnel company before previewing.', 'conflict');
         M.log(c, actor, { ...clock(), id:randomUUID, nextNumber:()=>'', leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:[] }, 'personnel.companyUpdated');
         await storeTx(tx,ctx,{...row,companyId:nextCompany},c,true);
         await auditTx(tx,ctx,c,'personnel_company_updated');
@@ -272,6 +368,11 @@ function canReadRequisition(config: M.Config, r: M.Requisition | null, actor: M.
 export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'case' | 'requisition' | 'task' = 'case', generation?: string) {
     return withTenant(ctx, async (tx) => {
         const { row, config, actor, c, personnelLabels } = await loadTx(tx, ctx, id);
+        if (actor.hr && (actor.module || actor.caseActions) && mode === 'case') {
+            const [manager] = await tx.execute<{ recipient: PersonnelManagerRecipient }>(sql`select app.lifecycle_personnel_manager(${id}::uuid) as recipient`);
+            c.source.supervisor = manager.recipient.employmentId ?? '';
+            personnelLabels.supervisor = manager.recipient.name ?? '';
+        }
         if (mode === 'case' && !actor.page)
             M.fail('Onboarding access is required.', 'forbidden');
         if (mode !== 'case' && !actor.module && !(mode==='requisition'&&actor.records) && !await participantTx(tx, id))
@@ -317,7 +418,7 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
                 labels.costCentre = cost.name;
         }
         if(mode==='case')visible=projectJoinerPage(visible,config,actor);
-        if(!actor.hr){const privateLabels:Record<string,keyof M.Facts>={supervisor:'supervisor',company:'company',group:'businessGroup',dept:'department',position:'title'};for(const field of config.v9CaseFields??[])if(field.hrOnly&&privateLabels[field.key])delete labels[privateLabels[field.key]];}
+        if(!actor.hr){const privateLabels:Record<string,keyof M.Facts>={supervisor:'supervisor',company:'company',group:'businessGroup',dept:'department',position:'title',ta:'gbsTa'};for(const field of config.v9CaseFields??[])if(field.hrOnly&&privateLabels[field.key])delete labels[privateLabels[field.key]];}
         if(!actor.module&&(mode==='requisition'||actor.sections?.case==='hidden'))for(const key of Object.keys(labels))if(!['company','businessGroup','title'].includes(key))delete labels[key as keyof M.Facts];
         return { canOpenRequisition: canReadRequisition(config, M.currentReq(c), actor), labels, case: visible, revision: row.revision, config, actor, directory: await directoryTx(tx), notes: thread.map(n => n.data).filter(n => actor.sections?.notes!=='hidden'&&(mode!=='case'||actor.module||actor.sections?.checklist==='all'||n.context==='case'||n.context==='requisition'&&actor.sections?.equip!=='hidden'||visible.tasks.some(task=>task.id===n.context))).filter(n => actor.module || actor.page&&actor.sections?.notes==='view' || n.by === actor.id || n.mentions.includes(actor.id) || c.tasks.some(t => t.id === n.context && t.assignee === actor.id) || n.context === 'requisition' && canReadRequisition(config, M.currentReq(c), actor)), availability: actor.module ? (await environmentTx(tx, ctx, config, [c])).leave : {} as M.Environment['leave'], today: todayInKualaLumpur() };
     });
@@ -417,13 +518,23 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 return { revision: row.revision };
             M.fail('This case changed. Reload it before trying again.', 'conflict');
         }
-        const all = await tx.select({ data: cases.data }).from(cases).orderBy(asc(cases.id));
-        const env = await environmentTx(tx, ctx, config, all.map(x => x.data));
+        // Pending Save only validates and records the case patch. Submitted saves and
+        // submission still need the full allocation environment for reconciliation.
+        const env = command.type === 'save' && c.state === 'pending'
+            ? baseEnvironment()
+            : await environmentTx(tx, ctx, config, (await tx.select({ data: cases.data }).from(cases).orderBy(asc(cases.id))).map(x => x.data));
         if ((command.type === 'submit' || command.type === 'saveSubmit') && c.state === 'pending') {
             const [seq] = rows<{
                 n: number;
             }>(await tx.execute(sql `select app.lc_next_number('IT-REQ') as n`));
             env.nextNumber = () => 'IT-REQ-' + String(seq!.n).padStart(4, '0');
+        }
+        if ((command.type === 'save' || command.type === 'saveSubmit') && command.patch.local?.taUserId) {
+            if (!actor.module && !actor.caseActions) M.fail('Case actions are not allowed for this group.', 'forbidden');
+            const taId = command.patch.local.taUserId;
+            const [ta] = await tx.execute<{ id: string }>(sql`select id from app_user where tenant_id=${ctx.tenantId}::uuid and id=${taId}::uuid and archived_at is null and not app.login_blocked(id)`);
+            if (!ta) M.fail('Choose a current active user for the TA.');
+            if (!env.users.includes(taId)) env.users.push(taId);
         }
         const r = M.currentReq(c);
         switch (command.type) {
@@ -575,19 +686,17 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
 }
 /** Called by Personnel while its original transaction is still open; optional module stays optional. */
 /**
- * d839ff30 — THE ONE LOCK ORDER FOR ONBOARDING: the tenant's audit-chain lock, THEN the onboarding lock.
+ * d839ff30 — THE ONE LOCK ORDER FOR ONBOARDING: the onboarding lock, then the audit chain at commit.
  *
- * Every domain_event insert takes the tenant's audit-chain advisory lock in its BEFORE INSERT trigger
- * (db/migrations/0534_persisted_audit_chain.sql) and holds it to commit. A Personnel save appends its event
- * and only then reaches onboardingSyncDraftTx (audit-chain, then onboarding), while the Personnel backfill
- * took the onboarding lock and then appended onboarding-case events (onboarding, then audit-chain). Run
- * together, that is a deadlock and Postgres rolls one of them back (40P01). Taking the audit-chain lock
- * first wherever the onboarding lock is taken puts every path in the same order, whatever it did before.
- * The audit-chain key must stay byte-identical to the trigger's; test/onboarding-v31-db.test.ts forces the
- * interleaving and fails if the two ever drift apart.
+ * Until the audit chain was sealed at commit, every domain_event insert took the tenant's audit-chain advisory lock in its BEFORE
+ * INSERT trigger and held it to commit, so a Personnel save (event, then onboarding) and the Personnel
+ * backfill (onboarding, then event) deadlocked (40P01) until every path took the audit-chain lock first.
+ * Now the chain is sealed at commit instead: an insert takes no lock, and the seal takes the audit-chain key
+ * last and waits on nothing else. Taking that key here would make this path a long key holder that every
+ * seal waits on, and a key holder waiting on a sealing transaction's row lock is a deadlock, so the
+ * onboarding lock alone orders these writers. test/onboarding-v31-db.test.ts forces the interleaving.
  */
 async function lockOnboardingTx(tx: Tx, tenantId: string) {
-    await tx.execute(sql `select pg_advisory_xact_lock(hashtext('audit-chain:' || ${tenantId}::uuid::text))`);
     await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${tenantId + ':onboarding'},0))`);
 }
 /** Read-only activation dependency metadata under the SAME owner lock. The first Personnel review
@@ -780,6 +889,20 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
                     M.fail('This group is used by V9 checklists, recipients or open offboarding work. Reassign that work and update those settings before deleting it.');
             }
         }
+        // 259c6162 — a group a routing row points to needs a replacement first; checked before the loop rewrites row.group.
+        for (const g of deleted) {
+            if (replacements[g.id]) continue;
+            const using = next.routings.filter(r => r.rows.some(row => row.group === g.id)).map(r => r.name);
+            if (using.length)
+                M.fail(`This group is used by routing rules: ${using.join(', ')}. Choose a replacement group before deleting it.`);
+        }
+        // 259c6162 — a routing rule still used by approval steps cannot be deleted without moving those steps.
+        for (const r of old.routings) {
+            if (next.routings.some(n => n.id === r.id)) continue;
+            const steps = next.workflows.flatMap(w => w.steps.filter(s => s.type === 'routing' && s.target === r.id).map(s => w.name + ' · ' + s.label));
+            if (steps.length)
+                M.fail(`This routing rule is used by approval steps: ${steps.join(', ')}. Choose a replacement routing rule before deleting it.`);
+        }
         for (const g of deleted) {
             const replacement = replacements[g.id] ?? '';
             if (replacement && !next.groups.some(n => n.id === replacement))
@@ -869,6 +992,9 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
             M.fail('Settings changed. Reload before saving.', 'conflict');
         await tx.execute(sql `insert into lc_onboarding_config_history(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${current + 1},${JSON.stringify(next)}::jsonb,${actor.id}::uuid)`);
         await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'onboarding-config', aggregateId: ctx.tenantId, eventType: 'onboarding.config.updated', actor: actorOf(ctx), payload: { revision: current + 1 } });
+        const routingEvents = M.routingAuditChanges(old, next);
+        if (routingEvents.length)
+            await appendEvents(tx, routingEvents.map(e => ({ tenantId: ctx.tenantId, aggregateType: 'onboarding-config', aggregateId: ctx.tenantId, eventType: e.eventType, actor: actorOf(ctx), payload: { ...e.payload, revision: current + 1 } })));
         return { revision: current + 1 };
     };
     return outerTx ? save(outerTx) : withTenant(ctx, save);
@@ -957,6 +1083,8 @@ export type OnboardingTask = {
     tagged: boolean;
     team: boolean;
     taskId?: string;
+    documentTemplate?: string | null;
+    documentAction?: string;
     itemIds?: string[];
     stepId?: string;
     noteId?: string;
@@ -969,9 +1097,17 @@ export type OnboardingTask = {
 export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTask[]> {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config), today = todayInKualaLumpur();
-        const list = await tx.select().from(cases).orderBy(asc(cases.id)), out: OnboardingTask[] = [];
-        const allNotes = await tx.select().from(notes).orderBy(asc(notes.createdAt), asc(notes.id));
-        const names = await directoryTx(tx);
+        const { list, notesByCase } = await readOnboardingTaskQueueInputsTx(tx, ctx.tenantId, actor);
+        return interpretOnboardingTasks(config, actor, list, notesByCase, today, () => directoryTx(tx));
+    });
+}
+/** onboardingTasks' interpreter over its read inputs. `directory` is read only when a claimed team item needs a name. */
+async function interpretOnboardingTasks(config: M.Config, actor: M.Actor, list: readonly { revision: number; data: M.Case }[], notesByCase: ReadonlyMap<string, M.Note[]>,
+    today: string, directory: () => Promise<Awaited<ReturnType<typeof directoryTx>>>): Promise<OnboardingTask[]> {
+        const out: OnboardingTask[] = [];
+        // An empty candidate list needs no directory; actual claimant names remain lazy below.
+        if (!list.length) return out;
+        let names:Awaited<ReturnType<typeof directoryTx>>|undefined;
         for (const row of list) {
             const c = row.data, f = M.effectiveFacts(c), r = M.currentReq(c);
             if (c.state === 'cancelled')
@@ -989,7 +1125,7 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
                     continue;
                 const locked = !!(t.opensOn && t.opensOn > today || t.gate && !r?.handedAt), lockReason = t.gate && !r?.handedAt ? 'After Day 1 handover' : t.opensOn && t.opensOn > today ? 'Opens ' + t.opensOn.split('-').reverse().join('/') : undefined;
                 if (t.assignee === actor.id)
-                    add({ kind: t.by === 'joiner' && t.gate ? 'acknowledgement' : 'checklist', title: t.name, taskId: t.id, due: t.dueOn, status: t.status, assigned: true, locked, lockReason });
+                    add({ kind: t.by === 'joiner' && t.gate ? 'acknowledgement' : 'checklist', title: t.name, taskId: t.id, documentTemplate:t.documentTemplate, documentAction:t.documentAction, due: t.dueOn, status: t.status, assigned: true, locked, lockReason });
                 if (t.by !== 'group' && !t.assignee && t.failure && actor.module)
                     add({ kind: 'owner', title: 'Link the Personnel account: ' + t.name, taskId: t.id, due: t.dueOn, team: true });
                 if (t.by === 'group' && !t.assignee && actor.module && (t.failure || t.dueOn <= M.dayDate(today, 8)))
@@ -1009,21 +1145,20 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
                             add({ kind: 'manualApproval', title: 'Choose an approver: ' + s.label, itemIds: [i.id], stepId: s.id, team: true });
                         }
                     if (M.activeItem(i) && i.state !== 'ready' && i.state !== 'handed' && M.inGroup(config, i.team, actor.id))
-                        add({ kind: 'team', title: i.name, itemIds: [i.id], due: M.equipmentDate(c, i), status: i.state === 'progress' ? 'progress' : 'todo', team: true, assigned: i.claim === actor.id, locked: !!i.claim && i.claim !== actor.id, claimedBy: i.claim ? names.find(u => u.id === i.claim)?.name ?? 'A teammate' : null });
+                        add({ kind: 'team', title: i.name, itemIds: [i.id], due: M.equipmentDate(c, i), status: i.state === 'progress' ? 'progress' : 'todo', team: true, assigned: i.claim === actor.id, locked: !!i.claim && i.claim !== actor.id, claimedBy: i.claim ? (names ??= await directory()).find(u => u.id === i.claim)?.name ?? 'A teammate' : null });
                 }
                 if (M.inGroup(config, config.techGroup, actor.id) && !r.items.some(i => !i.removed && i.approval === 'pending') && r.items.filter(M.activeItem).every(i => i.state === 'ready'))
                     add({ kind: 'handover', title: 'Record Day 1 handover', team: true, overdue: !!f.joinDate && f.joinDate <= today });
                 if (r.hrNote && r.noteAcks[actor.id] !== r.noteVersion && (r.items.some(i => M.inGroup(config, i.team, actor.id)) || config.exceptions.groups.some(g => M.inGroup(config, g, actor.id))))
                     add({ kind: 'hrNote', title: 'Read People GBS note', team: true });
             }
-            for (const n of allNotes.filter(n => n.caseId === c.id).map(n => n.data))
+            for (const n of notesByCase.get(c.id) ?? [])
                 if (!n.deleted && (!c.submittedAt || n.at >= c.submittedAt) && n.mentions.includes(actor.id) && !n.resolved.includes(actor.id)) {
                     const within = !!f.joinDate && f.joinDate <= M.dayDate(today, config.exceptions.remindDays + 1);
                     add({ kind: 'mention', title: n.name + ' mentioned you', noteId: n.id, context: n.context, tagged: true, assigned: true, overdue: within });
                 }
         }
         return out.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.due || '9999').localeCompare(b.due || '9999') || a.id.localeCompare(b.id));
-    });
 }
 /** Reuse the canonical case/workflow interpreter. Home receives only actual unlocked assignments,
  * with the case's recorded update timestamp; a case join date is never invented as a task deadline. */
@@ -1037,13 +1172,56 @@ export async function onboardingAssignedTaskMetadata(ctx:SessionContext):Promise
                 .where(and(eq(cases.tenantId,ctx.tenantId),inArray(cases.id,ids.slice(start,start+1000)))).orderBy(cases.id);
             for(const row of rows)updated.set(row.id,row.updatedAt);
         }
+        return onboardingAssignedMetadata(assigned,updated);
+    });
+}
+function onboardingAssignedMetadata(assigned:readonly OnboardingTask[],updated:ReadonlyMap<string,Date>):AssignedPersonalTaskMetadata[]{
         return assigned.flatMap(item=>{
             const sourceUpdatedAt=updated.get(item.caseId);if(!sourceUpdatedAt)return [];
             const dueDate=(item.kind==='checklist'||item.kind==='acknowledgement')&&M.validDate(item.due)?item.due:undefined;
             return [{id:item.id,kind:'onboarding' as const,subjectName:item.title+' · '+item.joiner,sourceUpdatedAt,
                 linkPath:'/tasks#'+encodeURIComponent('onboarding-'+item.id),...(dueDate?{dueDate}:{})}];
         });
+}
+
+/** onboardingAssignedTaskMetadata in the one-statement Home task read (core/account-task-bundle.ts): the owner's
+ * configuration and actor reads, the case queue under the wider of its two predicates (each row marked with the narrower
+ * one), the candidate notes of those cases, each case's recorded update time (the owner's second read, by the case's JSON
+ * id) and, when a requisition item carries a claim, the claimant directory. onboardingAssignedTasksFromBundle runs the
+ * owner's interpreter on them. Without the v9 projection function the owner runs itself. */
+export function onboardingAssignedTasksBundleSql(ctx: SessionContext) {
+    const queue = onboardingTaskQueueBundleSql(ctx.tenantId, ctx.userId ?? null);
+    return sql`jsonb_build_object('available',to_regprocedure('app.onboarding_v9_checklists()') is not null,
+     'config',(select jsonb_build_object('data',config_row.data,'revision',config_row.revision,'projection',config_row.projection)
+       from (select data,revision,app.onboarding_v9_checklists() as projection from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid) config_row),
+     'actor',(select to_jsonb(actor_row) from (${actorSql()}) actor_row),
+     'cases',${queue.cases},'notes',${queue.notes},
+     'directory',case when ${queue.claimed} then (select coalesce(jsonb_agg(to_jsonb(directory_row)),'[]'::jsonb) from app.onboarding_directory() directory_row) end)`;
+}
+const canonicalCaseId = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/;
+class OnboardingBundleUnanswered extends Error {}
+export async function onboardingAssignedTasksFromBundle(value: unknown, ctx: SessionContext): Promise<AssignedPersonalTaskMetadata[] | null> {
+    const section = value as { available: boolean; config: V9ConfigRow | null; actor: ActorRow | null;
+        cases: { revision: number; data: M.Case; narrow: boolean; updatedAt: string | null }[]; notes: { caseId: string; data: M.Note }[]; directory: Awaited<ReturnType<typeof directoryTx>> | null };
+    if (!section.available) return null;
+    const { config } = configFromV9Row(section.config ?? undefined), actor = actorFromRow(section.actor ?? undefined, ctx, config), today = todayInKualaLumpur();
+    const list = section.cases.filter(row => actor.module || row.narrow).map(row => ({ revision: row.revision, data: row.data }));
+    const notesByCase = new Map<string, M.Note[]>();
+    for (const row of section.notes) { const matching = notesByCase.get(row.caseId); if (matching) matching.push(row.data); else notesByCase.set(row.caseId, [row.data]); }
+    const tasks = await interpretOnboardingTasks(config, actor, list, notesByCase, today, async () => {
+        if (!section.directory) throw new OnboardingBundleUnanswered('The claimant directory was not read.');
+        return section.directory;
     });
+    const assigned = tasks.filter(item => item.assigned && !item.locked), updated = new Map<string, Date>();
+    for (const item of assigned) {
+        // The owner reads these by a cast of each JSON id; only plain lowercase UUID text keys its map the same way.
+        if (typeof item.caseId !== 'string' || !canonicalCaseId.test(item.caseId)) throw new OnboardingBundleUnanswered('A case id the statement cannot match.');
+    }
+    for (const row of section.cases) {
+        const id = (row.data as { id?: unknown } | null)?.id;
+        if (typeof id === 'string' && row.updatedAt !== null) updated.set(id, cases.updatedAt.mapFromDriverValue(row.updatedAt) as Date);
+    }
+    return onboardingAssignedMetadata(assigned, updated);
 }
 
 export type OnboardingNotice = {
@@ -1055,17 +1233,26 @@ export type OnboardingNotice = {
     createdAt: Date;
     readAt: Date | null;
 };
-export async function onboardingNotices(ctx: SessionContext, read = false): Promise<OnboardingNotice[]> {
-    return withTenant(ctx, async (tx) => {
-        const result = rows<{
-            id: string;
-            kind: string;
-            created_at: Date;
-            read_at: Date | null;
-        }>(await tx.execute(sql `select id,kind,created_at,read_at from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and kind<>'digest' and (read_at is not null)=${read} order by created_at desc,id desc limit 50`));
-        const titles: Record<string, string> = { sync: 'New joiner synced', due: 'Onboarding task due soon', overdue: 'Onboarding work is overdue', owner: 'An onboarding task needs an owner', assignment_failed: 'A task could not be assigned', mention: 'You were mentioned in onboarding', digest: 'Your daily onboarding digest' };
-        return result.map(n => ({ id: 'onb:' + n.id, title: titles[n.kind] ?? 'Onboarding update', body: 'Open My tasks to review the work you can access.', severity: n.kind === 'overdue' || n.kind === 'assignment_failed' ? 'warning' : 'info', linkPath: '/tasks', createdAt: n.created_at, readAt: n.read_at }));
-    });
+async function onboardingNoticesTx(tx: Tx, read: boolean): Promise<OnboardingNotice[]> {
+    const result = rows<{
+        id: string;
+        kind: string;
+        created_at: Date;
+        read_at: Date | null;
+    }>(await tx.execute(sql `select id,kind,created_at,read_at from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and kind<>'digest' and (read_at is not null)=${read} order by created_at desc,id desc limit 50`));
+    const titles: Record<string, string> = { sync: 'New joiner synced', due: 'Onboarding task due soon', overdue: 'Onboarding work is overdue', owner: 'An onboarding task needs an owner', assignment_failed: 'A task could not be assigned', mention: 'You were mentioned in onboarding', digest: 'Your daily onboarding digest' };
+    return result.map(n => ({ id: 'onb:' + n.id, title: titles[n.kind] ?? 'Onboarding update', body: 'Open My tasks to review the work you can access.', severity: n.kind === 'overdue' || n.kind === 'assignment_failed' ? 'warning' : 'info', linkPath: '/tasks', createdAt: n.created_at, readAt: n.read_at }));
+}
+export function onboardingNotices(ctx: SessionContext, read = false): Promise<OnboardingNotice[]> {
+    return withTenant(ctx, tx => onboardingNoticesTx(tx, read));
+}
+
+export function onboardingNoticeSummary(ctx: SessionContext) {
+    return withTenant(ctx, async tx => ({
+        unread: await onboardingNoticesTx(tx, false),
+        read: await onboardingNoticesTx(tx, true),
+        unreadCount: await onboardingUnreadNoticeCountTx(tx),
+    }));
 }
 export async function onboardingReadNotice(ctx: SessionContext, id?: string) {
     return withTenant(ctx, async (tx) => {
@@ -1227,12 +1414,11 @@ export async function refreshOnboardingPersonnel(ctx: SessionContext, runTenant:
 export async function onboardingNavigation(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
         const { config, revision } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
-        const list = actor.module ? await tx.select({data:cases.data}).from(cases).orderBy(asc(cases.id)) : [];
-        const today=todayInKualaLumpur();
+        const joiners = actor.module ? await recentOnboardingJoinerCountTx(tx, config, todayInKualaLumpur()) : 0;
         const [scope]=await tx.execute<{hr:boolean}>(sql`select app.is_admin() as hr`);
         // Read the same existing authorities as v9Workspace. Menu placement grants nothing.
         const [v9]=await tx.execute<{onboarding:boolean;offboarding:boolean;administration:boolean;records:boolean}>(sql`select app.onboarding_v9_page_reader() as onboarding, app.lc_v9_off_access() as offboarding, (app.is_group_admin() or (app.is_admin() and (app.onboarding_page_access() or app.lc_v9_off_access()))) as administration, app.onboarding_v9_record_reader() as records`);
-        return { module:actor.module, v9:actor.master||!!config.v9ChecklistRevision&&(!!actor.page||!!actor.records||!!scope?.hr&&config.access.offboarding.includes(actor.id)), v9Navigation:{onboarding:!!v9?.onboarding,offboarding:!!v9?.offboarding,administration:!!v9?.administration,records:!!v9?.records}, master:actor.master, requisitions:actor.records || actor.module || actor.hr || requisitionGroupAccess(config,actor.id), joiners:list.filter(row=>M.visibleRecentJoiner(config,row.data,today)).length, checklists:actor.module&&revision?config.checklists.length:0 };
+        return { module:actor.module, v9:actor.master||!!config.v9ChecklistRevision&&(!!actor.page||!!actor.records||!!scope?.hr&&config.access.offboarding.includes(actor.id)), v9Navigation:{onboarding:!!v9?.onboarding,offboarding:!!v9?.offboarding,administration:!!v9?.administration,records:!!v9?.records}, master:actor.master, requisitions:actor.records || actor.module || actor.hr || requisitionGroupAccess(config,actor.id), joiners, checklists:actor.module&&revision?config.checklists.length:0 };
     });
 }
 async function assignRoleTasksTx(tx: Tx, c: M.Case): Promise<boolean> {
@@ -1265,11 +1451,29 @@ async function refreshRoleLinksTx(tx: Tx, ctx: SessionContext, row: Row, c: M.Ca
 export async function onboardingMyAcknowledgements(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
         const list = await tx.select().from(cases).orderBy(asc(cases.createdAt), asc(cases.id));
+        return myAcknowledgementsFrom(ctx, list);
+    });
+}
+function myAcknowledgementsFrom(ctx: SessionContext, list: readonly Row[]) {
         return list.filter(row => !!ctx.personId && row.data.personId === ctx.personId && row.data.state === 'submitted').map(row => {
             const c = row.data, r = M.currentReq(c), f = M.effectiveFacts(c);
             return { id: c.id, revision: row.revision, name: f.fullName, employeeId: f.employeeId, joinDate: f.joinDate, number: c.number, available: !!r?.handedAt, submittedAt: c.acknowledgement?.at ?? null };
         });
-    });
+}
+/** onboardingMyAcknowledgements in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the
+ * owner's rows in its order, narrowed in SQL by the exact twin of its own filter (a JSON string person equal to the
+ * caller's, a JSON string state 'submitted': jsonb equality with a JSON string is JavaScript's strict equality with that
+ * string), then the owner's own projection. null without a person (the owner then answers empty). The Lifecycle gate
+ * stays the caller's. */
+export function onboardingMyAcknowledgementsBundleSql(ctx: SessionContext) {
+    if (!ctx.personId) return null;
+    return jsonRowsSql({ row: jsonRowSql(cases, 'lc_onboarding_case'), from: sql`${cases}`,
+        where: sql`${cases.data}->'personId' = to_jsonb(${ctx.personId}::text) and ${cases.data}->'state' = '"submitted"'::jsonb`,
+        order: sql`${cases.createdAt} asc, ${cases.id} asc` });
+}
+export function onboardingMyAcknowledgementsFromBundle(ctx: SessionContext, value: unknown) {
+    if (!Array.isArray(value)) throw new Error('The bundled onboarding cases are unavailable.');
+    return myAcknowledgementsFrom(ctx, value.map(row => decodeJsonRow(cases, row as Record<string, unknown>)));
 }
 export async function onboardingMyAcknowledgement(ctx: SessionContext, caseId?: string) {
     const views = await onboardingMyAcknowledgements(ctx);
@@ -1290,10 +1494,11 @@ export async function onboardingRequisitions(ctx: SessionContext) {
         })));
     });
 }
-export async function onboardingUnreadNoticeCount(ctx: SessionContext): Promise<number> {
-    return withTenant(ctx, async (tx) => Number(rows<{
-        count: string;
-    }>(await tx.execute(sql `select count(*)::text as count from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and read_at is null and kind<>'digest'`))[0]?.count ?? 0));
+async function onboardingUnreadNoticeCountTx(tx: Tx): Promise<number> {
+    return Number(rows<{ count: string }>(await tx.execute(sql `select count(*)::text as count from lc_onboarding_notice where tenant_id=app.current_tenant_id() and user_id=app.current_user_id() and read_at is null and kind<>'digest'`))[0]?.count ?? 0);
+}
+export function onboardingUnreadNoticeCount(ctx: SessionContext): Promise<number> {
+    return withTenant(ctx, onboardingUnreadNoticeCountTx);
 }
 
 /** Explicit V9 initialisation enables its initiating administrator, through the existing access owner. */
@@ -1344,13 +1549,14 @@ export async function onboardingV9DefinitionsChangedTx(ctx: SessionContext, tx: 
 }
 
 /** Private V9 document state follows the native case and its revision/history. */
-export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string) {
+export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string, lock = true) {
     let result: Awaited<ReturnType<typeof loadTx>>;
-    if (ctx.userId) result = await loadTx(tx, ctx, id, true);
+    if (ctx.userId) result = await loadTx(tx, ctx, id, lock, lock);
     else {
         const [permission] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
         if (!permission?.ok) M.fail('The storage owner is required for scheduled onboarding documents.', 'forbidden');
-        const [row] = await tx.select().from(cases).where(and(eq(cases.id, id), eq(cases.tenantId, ctx.tenantId))).for('update');
+        const query = tx.select().from(cases).where(and(eq(cases.id, id), eq(cases.tenantId, ctx.tenantId)));
+        const [row] = lock ? await query.for('update') : await query;
         if (!row) M.fail('Onboarding case not found.', 'not_found');
         const { config } = await configTx(tx, ctx), c = structuredClone(row.data);
         const [privateRow] = await tx.select().from(secrets).where(eq(secrets.caseId, id));
@@ -1364,6 +1570,35 @@ export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string
     const supervisor = M.effectiveFacts(result.c).supervisor;
     const roles = await tx.execute<{ kind: string; user_id: string }>(sql`select * from app.onboarding_task_actors(${result.c.personId}::uuid,${/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(supervisor) ? supervisor : null}::uuid)`);
     return { ...result, documentState: privateRow?.state ?? null, employeeUserId: subjects.length === 1 ? subjects[0].id : null, supervisorUserId: roles.find(role => role.kind === 'manager')?.user_id ?? null };
+}
+/** Read just the email-eligible profile fields of an already-authorised case's linked draft. */
+export async function onboardingV9DraftEmailFieldsTx(
+    ctx: SessionContext,
+    tx: Tx,
+    native: Awaited<ReturnType<typeof onboardingV9ReadTx>>,
+): Promise<Record<string, string>> {
+    if (native.c.employmentId || !native.row.sourceDraftId) return {};
+    const [draft] = await tx.select({ data: employeeDraft.data }).from(employeeDraft).where(and(
+        eq(employeeDraft.id, native.row.sourceDraftId),
+        eq(employeeDraft.tenantId, ctx.tenantId),
+        eq(employeeDraft.companyId, native.row.companyId),
+    ));
+    const p = (draft?.data as EmployeeDraftData | undefined)?.profile;
+    if (!p) return {};
+    const title = (value?: string) => value ? value[0].toUpperCase() + value.slice(1) : '';
+    return {
+        email: p.primaryEmail ?? '',
+        nationality: p.nationality ?? '',
+        gender: title(p.gender),
+        marital: title(p.maritalStatus),
+        mobile: p.phone ?? '',
+        homePhone: p.homePhone ?? '',
+        personalEmail: p.personalEmail ?? '',
+        address: [
+            p.permanentAddressLine1, p.permanentAddressLine2, p.permanentAddressLine3,
+            p.permanentPostcode, p.permanentCity, p.permanentState, p.permanentCountry,
+        ].filter(Boolean).join(', '),
+    };
 }
 export async function onboardingV9StoreTx(ctx: SessionContext, tx: Tx, id: string, expected: number, state: NativeDocumentState, completed: string[], action: string) {
     const { row, c, actor } = await onboardingV9ReadTx(ctx, tx, id);
@@ -1388,21 +1623,28 @@ export async function onboardingV9StoreTx(ctx: SessionContext, tx: Tx, id: strin
 export async function onboardingFulfilmentGroupTx(ctx: SessionContext, tx: Tx): Promise<string> {
     return (await configTx(tx, ctx)).config.techGroup;
 }
-export type OnboardingHolding = { caseId: string; requestId: string; requestNumber: string; itemId: string; catalogueId: string; name: string; kind: 'system' | 'device'; group: string };
-async function holdingAuthorityTx(ctx: SessionContext, tx: Tx, companyId: string) {
+/** d1e26f81 — claim, handedAt and card are read-only provenance for offboarding's "Provided by" and card pair. */
+export type OnboardingHolding = { caseId: string; requestId: string; requestNumber: string; itemId: string; catalogueId: string; name: string; kind: 'system' | 'device'; group: string; claim: string | null; handedAt: string | null; card: boolean };
+async function holdingAuthorityTx(ctx: SessionContext, tx: Tx, companyId: string, storageOwnerRead = false) {
+    if (storageOwnerRead && !ctx.userId) {
+        // d1e26f81 — the release back-fill reads provenance as the storage owner, as readSettlementTx allows.
+        // Reads only: recording a recovery always needs a signed-in Company HR user or the assigned team member.
+        const [owner] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
+        if (owner?.ok) return;
+    }
     const [permission] = await tx.execute<{ ok: boolean }>(sql`select app.current_user_id() is not null and not app.login_blocked(app.current_user_id()) and app.is_admin_for(${companyId}::uuid) as ok`);
     if (!permission?.ok || !ctx.userId) M.fail('Company HR access is required to review issued onboarding items.', 'forbidden');
 }
 /** Catalogue identity/presentation stays with the Native owner; exits select existing IDs. */
-export async function onboardingReturnCatalogueTx(ctx:SessionContext,tx:Tx,companyId:string):Promise<{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]> {
-    await holdingAuthorityTx(ctx,tx,companyId);
-    return (await configTx(tx,ctx)).config.catalogue.map(item=>({id:item.id,name:item.name,kind:item.type,group:item.team,active:item.active}));
+export async function onboardingReturnCatalogueTx(ctx:SessionContext,tx:Tx,companyId:string):Promise<{id:string;name:string;kind:'system'|'device';group:string;active:boolean;card:boolean;companies:string[]}[]> {
+    await holdingAuthorityTx(ctx,tx,companyId,true);
+    return (await configTx(tx,ctx)).config.catalogue.map(item=>({id:item.id,name:item.name,kind:item.type,group:item.team,active:item.active,card:item.card,companies:[...(item.rules.company??[])]}));
 }
 /** Issuance stays on the original handed requisition; names are never used to link a person or item. */
 export async function onboardingHoldingsTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string): Promise<OnboardingHolding[]> {
-    await holdingAuthorityTx(ctx, tx, companyId);
+    await holdingAuthorityTx(ctx, tx, companyId, true);
     const source = await tx.select().from(cases).where(and(eq(cases.tenantId, ctx.tenantId), eq(cases.companyId, companyId), eq(cases.employmentId, employmentId))).orderBy(asc(cases.id));
-    return source.flatMap(row => row.data.requisitions.flatMap(request => request.items.filter(item => !item.recovery && (item.state === 'handed' && !!request.handedAt || item.revokeNeeded)).map(item => ({ caseId: row.id, requestId: request.id, requestNumber: request.number, itemId: item.id, catalogueId:item.catalogueId, name: item.name, kind: item.type, group: item.team }))));
+    return source.flatMap(row => row.data.requisitions.flatMap(request => request.items.filter(item => !item.recovery && (item.state === 'handed' && !!request.handedAt || item.revokeNeeded)).map(item => ({ caseId: row.id, requestId: request.id, requestNumber: request.number, itemId: item.id, catalogueId:item.catalogueId, name: item.name, kind: item.type, group: item.team, claim: item.claim ?? null, handedAt: request.handedAt ?? null, card: !!item.card }))));
 }
 /** Records a confirmed recovery on the issuing owner, in the same transaction as offboarding. */
 export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string, source: Pick<OnboardingHolding, 'caseId' | 'requestId' | 'itemId'>, offboardingCaseId: string, reason: string, assigned?:{revision:number;itemId:string}) {
@@ -1427,7 +1669,9 @@ export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, em
         M.fail('Another case has already recorded this item recovery.', 'conflict');
     }
     const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config, companyId), now = new Date().toISOString();
-    if(assigned&&(item.team!==assignedGroup||!M.inGroup(config,item.team,actor.id)))M.fail('The issuing providing team changed. Review the recovery assignment.','conflict');
+    // d1e26f81 — return rows take their team from settings (and a card's collect row is Facility's), so the
+    // assigned member must belong to the return row's own team; lc_v9_assigned_item already bound the assignee.
+    if(assigned&&(!assignedGroup||!M.inGroup(config,assignedGroup,actor.id)))M.fail('The return team changed. Review the recovery assignment.','conflict');
     item.recovery = { offboardingCaseId, outcome: item.type === 'system' ? 'revoked' : 'returned', at: now, by: actor.id, reason: reason.trim() };
     item.revokeNeeded = false;
     M.log(c, actor, { now, id: randomUUID } as M.Environment, 'holding.' + item.recovery.outcome, `${item.name} · confirmed by ${assigned?'the assigned providing team':'HR'} on offboarding case ${offboardingCaseId}${reason.trim() ? ' · ' + reason.trim() : ''}`);

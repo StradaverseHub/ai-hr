@@ -8,7 +8,7 @@
  *   - only an admin or the subject's *active administrative* manager may decide.
  * Every decision is still evented with the real actor.
  */
-import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { employment, reportingLine } from '../db/schema';
 import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
@@ -17,9 +17,13 @@ import {AssignedWorkPrincipalUnavailableError} from '../lib/assigned-work';
  * before asking the canonical current-decision guard; broader HR visibility is not an own identity.
  */
 export async function assertAssignedWorkPrincipalTx(tx:Tx,ctx:SessionContext){
- const [proof]=await tx.execute(sql`SELECT (app.principal_snapshot_current()
-  AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`) as unknown as {ok:boolean}[];
+ const [proof]=await tx.execute(assignedWorkPrincipalSql(ctx)) as unknown as {ok:boolean}[];
  if(!ctx.userId||!proof?.ok)throw new AssignedWorkPrincipalUnavailableError();
+}
+/** The statement assertAssignedWorkPrincipalTx sends (a request preamble answers it ahead, decision 12). */
+export function assignedWorkPrincipalSql(ctx:SessionContext){
+ return sql`SELECT (app.principal_snapshot_current()
+  AND (${ctx.personId??null}::uuid IS NULL OR app.is_self_person(${ctx.personId??null}::uuid))) AS ok`;
 }
 
 /** Only this gate's explicit authority refusals may be omitted from an actionable read. Database,
@@ -118,6 +122,97 @@ export async function assertCanDecide(
     if (ok) return;
   }
   throw new Error(`Only an admin or the administrative manager can decide this ${label}`);
+}
+
+/** SQL twins of the two guards above, for the one-statement Home task read (core/account-task-bundle.ts). Each is
+ * the same rule in the same order, evaluated in the caller's own session, so every table read keeps the caller's
+ * row-level security exactly as the TypeScript guard's statements do. A comparison the guard makes in JavaScript
+ * (the subject's person against ctx.personId) compares text here; one the guard sends to SQL stays a SQL comparison.
+ * The role facts come from ctx, as in the guards. test/performance/home-manager-card-reads.test.ts proves both
+ * equal per fixture person. */
+function decisionRoles(ctx:SessionContext){
+ const roles=ctx.roles??[],superAdmin=roles.includes('super_admin');
+ return {superAdmin,admin:superAdmin||roles.includes('hr_admin'),person:ctx.personId??null};
+}
+/** The caller's own employments visible under the caller's row-level security: the one set every "is this employment
+ * the caller's person" test below reads (assertCanDecide's subject lookup, the administrative manager's person). A
+ * statement reads it once (core/account-task-bundle.ts passes it to every section as `own`); without `own` each test
+ * reads the employment row itself, as before. Membership in this set is exactly that row test: the same rows, the same
+ * policy, the same person comparison. */
+export function callerOwnEmploymentIdsSql(ctx:SessionContext):SQL{
+ const person=ctx.personId??null;
+ return person!=null?sql`array(select caller_own.id from public.employment caller_own where caller_own.person_id::text=${person}::text)`:sql`array[]::uuid[]`;
+}
+/** Whether `employment` is one of the caller's own (see callerOwnEmploymentIdsSql), never null. */
+export function isCallerOwnEmploymentSql(ctx:SessionContext,employment:SQL,own?:SQL):SQL{
+ const person=ctx.personId??null;
+ if(person==null)return sql`false`;
+ return own?sql`coalesce(${employment}=any(${own}),false)`
+  :sql`exists(select 1 from public.employment caller_person where caller_person.id=${employment} and caller_person.person_id::text=${person}::text)`;
+}
+/** assertCanDecide's self ban: the RLS-visible subject row belongs to ctx.personId (never for a super_admin). */
+export function decideSelfSql(ctx:SessionContext,subject:SQL,own?:SQL):SQL{
+ const {superAdmin,person}=decisionRoles(ctx);
+ if(person==null||superAdmin)return sql`false`;
+ return own?isCallerOwnEmploymentSql(ctx,subject,own)
+  :sql`exists(select 1 from public.employment decide_self where decide_self.id=${subject} and decide_self.person_id::text=${person}::text)`;
+}
+const currentAdministrativeManagerSql=(subject:SQL,person:string,own?:SQL)=>own?sql`exists(select 1 from public.reporting_line decide_line
+ where decide_line.subordinate_employment_id=${subject} and decide_line.line_type='administrative'
+  and decide_line.valid_from<=current_date and (decide_line.valid_to is null or decide_line.valid_to>current_date)
+  and decide_line.superseded_at is null and decide_line.manager_employment_id=any(${own}))`:sql`exists(select 1 from public.reporting_line decide_line
+ join public.employment decide_manager on decide_manager.id=decide_line.manager_employment_id
+ where decide_line.subordinate_employment_id=${subject} and decide_line.line_type='administrative'
+  and decide_line.valid_from<=current_date and (decide_line.valid_to is null or decide_line.valid_to>current_date)
+  and decide_line.superseded_at is null and decide_manager.person_id=${person}::uuid)`;
+/** assertCanDecide as a boolean: true where the guard returns, false where it throws one of its two refusals. `self`: the
+ * subject's decideSelfSql, when the caller has already read it once for this subject; `own`: callerOwnEmploymentIdsSql. */
+export function canDecideSql(ctx:SessionContext,subject:SQL,scope?:{module:string|SQL;taskType:string|SQL},self?:SQL,own?:SQL):SQL{
+ const {admin,person}=decisionRoles(ctx),selfSql=self??decideSelfSql(ctx,subject,own);
+ if(admin)return sql`(not ${selfSql})`;
+ if(!person)return sql`false`;
+ return sql`(not ${selfSql} and (${currentAdministrativeManagerSql(subject,person,own)}
+  or coalesce(app.can_decide_via_delegation(${subject},${scope?.module??null}::text,${scope?.taskType??null}::text),false)))`;
+}
+/** decisionEmploymentAuthorityTx's `allowed` membership for one subject. The delegated set is one InitPlan per statement. */
+export function decisionEmploymentAuthoritySql(ctx:SessionContext,subject:SQL,scope?:{module:string;taskType:string},own?:SQL):SQL{
+ const {admin,person}=decisionRoles(ctx),self=decideSelfSql(ctx,subject,own);
+ if(admin)return sql`(not ${self})`;
+ if(!person)return sql`false`;
+ return sql`(not ${self} and (${currentAdministrativeManagerSql(subject,person,own)}
+  or ${subject}=any(cast((select app.delegated_subject_ids(${scope?.module??null}::text,${scope?.taskType??null}::text)) as uuid[]))))`;
+}
+
+/** Current authority for a bounded batch of read-only task subjects. */
+export async function decisionEmploymentAuthorityTx(
+ tx:Tx,ctx:SessionContext,employmentIds:readonly string[],scope?:{module:string;taskType:string},
+):Promise<{allowed:Set<string>;self:Set<string>}>{
+ const allowed=new Set<string>(),self=new Set<string>(),ids=[...new Set(employmentIds)];
+ const roles=ctx.roles??[],superAdmin=roles.includes('super_admin'),admin=superAdmin||roles.includes('hr_admin');
+ for(let offset=0;offset<ids.length;offset+=1000){
+  const chunk=ids.slice(offset,offset+1000);
+  const subjects=await tx.select({id:employment.id,personId:employment.personId}).from(employment).where(inArray(employment.id,chunk));
+  if(ctx.personId!=null&&!superAdmin)for(const subject of subjects)if(subject.personId===ctx.personId)self.add(subject.id);
+  const candidates=chunk.filter(id=>!self.has(id));if(!candidates.length)continue;
+  if(admin){candidates.forEach(id=>allowed.add(id));continue;}
+  if(!ctx.personId)continue;
+  // Identical current administrative-manager predicates to the scalar command guard.
+  const managers=await tx.selectDistinct({id:reportingLine.subordinateEmploymentId}).from(reportingLine)
+   .innerJoin(employment,eq(employment.id,reportingLine.managerEmploymentId)).where(and(
+    inArray(reportingLine.subordinateEmploymentId,candidates),eq(reportingLine.lineType,'administrative'),
+    lte(reportingLine.validFrom,sql`current_date`),or(isNull(reportingLine.validTo),sql`${reportingLine.validTo}>current_date`),
+    isNull(reportingLine.supersededAt),eq(employment.personId,ctx.personId),
+   ));
+  managers.forEach(row=>allowed.add(row.id));
+  const delegated=candidates.filter(id=>!allowed.has(id));if(!delegated.length)continue;
+  // The native set used by Claim RLS evaluates the same current direct-manager,
+  // one-hop and module/organisation predicates as the scalar command owner.
+  const rows=await tx.execute<{id:string}>(sql`select subject.id
+   from unnest(app.delegated_subject_ids(${scope?.module??null},${scope?.taskType??null})) as subject(id)
+   where subject.id=any(array[${sql.join(delegated.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[])`);
+  for(const row of rows)allowed.add(row.id);
+ }
+ return {allowed,self};
 }
 
 /**

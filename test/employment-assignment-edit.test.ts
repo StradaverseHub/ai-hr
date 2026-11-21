@@ -20,7 +20,7 @@ import {
   seedBase,
   type Base,
 } from './harness';
-import { hireEmployee, setEmploymentAssignment, setEmploymentGrade } from '../core/org';
+import { hireEmployee, setEmploymentAssignment, setEmploymentGrade, terminateEmployment } from '../core/org';
 import { createPosition, createJobGrade } from '../core/admin';
 import { assignmentHistory } from '../core/read';
 import * as schema from '../db/schema';
@@ -172,6 +172,30 @@ describe('setEmploymentAssignment — effective-dated org edit', () => {
         departmentId: b.deptB,
       }),
     ).rejects.toThrow(/before the current assignment/i);
+  });
+
+  it('names both dates when a change predates the current assignment', async () => {
+    const hire = await hireOne(); // hired 2026-01-01
+    await expect(
+      setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2025-12-01', departmentId: b.deptB }),
+    ).rejects.toThrow('The date 01-Dec-2025 is before the current assignment record, which starts on 01-Jan-2026.');
+  });
+
+  // Board 2026-11-14 (production DB-V-079831): an Information-Only Correction started a new record on 12 Nov for 260
+  // employees; a resignation dated 28 Jul then tried to end that record before it began, and HR saw a database reference.
+  it('refuses a termination dated before the current assignment, in plain words, writing nothing', async () => {
+    const hire = await hireOne();
+    await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-11-12', departmentId: b.deptB });
+    const before = await assignmentRows(hire.employmentId);
+    await expect(
+      terminateEmployment(adminCtx(b), { employmentId: hire.employmentId, terminationDate: '2026-07-28', terminationReason: 'Resigned' }),
+    ).rejects.toThrow('The date 28-Jul-2026 is before the current assignment record, which starts on 12-Nov-2026.');
+    expect(await assignmentRows(hire.employmentId)).toEqual(before);
+    const [emp] = await owner.db.select({ terminatedOn: schema.employment.terminatedOn }).from(schema.employment).where(eq(schema.employment.id, hire.employmentId));
+    expect(emp.terminatedOn).toBeNull();
+    // On or after the record's start still terminates.
+    await terminateEmployment(adminCtx(b), { employmentId: hire.employmentId, terminationDate: '2026-11-12', terminationReason: 'Resigned' });
+    expect((await openRow(hire.employmentId))).toBeUndefined();
   });
 
   it('Job Grade edits through its own audited writer (employment.gradeId)', async () => {

@@ -1,3 +1,4 @@
+import {withAiCentreFunction,assertAiCentreRunningTx} from './ai-centre-control';
 import {createUngovernedProbe} from '../lib/ai/governance';
 /**
  * AI provider configuration service (ADR-0023). Per-tenant BYOK: an admin configures a provider with
@@ -34,14 +35,16 @@ import {
   type ValidateResult,
 } from '../lib/ai';
 import { encryptSecret, keyLast4 } from '../lib/ai/crypto';
-import { currentAiProviderAdminTx } from './ai-provider-authority';
-import { activateOpenRouterCandidateTx, providerCandidatesTx, removeOpenRouterCandidateTx, saveOpenRouterCandidateTx } from './ai-provider-readiness';
+import { currentAiProviderAdminTx, currentAiProviderPresentationAdminTx } from './ai-provider-authority';
+import { activateOpenRouterCandidateTx, AiProviderReadinessError, providerCandidatesPresentationTx, providerCandidatesTx, removeOpenRouterCandidateTx, saveOpenRouterCandidateTx } from './ai-provider-readiness';
 import { readOpenRouterOptions, type OpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { readGatewayOptions } from '../lib/ai/providers/gateway-options';
 import { OpenRouterModel } from '../lib/ai/providers/openrouter-transport';
 
+/** `reason` is a closed code for operator copy; the message is never shown (it is not a disclosure boundary). */
+export type AiConfigRefusal = 'not_admin' | 'secret_unavailable' | 'evaluate_first' | 'key_required' | 'receipt_required' | 'activation_unavailable' | 'invalid';
 export class AiConfigError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly reason: AiConfigRefusal = 'invalid') {
     super(message);
     this.name = 'AiConfigError';
   }
@@ -51,14 +54,14 @@ const isAdminCtx = (ctx: SessionContext) =>
   (ctx.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
 
 function assertAdmin(ctx: SessionContext) {
-  if (!isAdminCtx(ctx)) throw new AiConfigError('Only an admin can manage AI configuration.');
+  if (!isAdminCtx(ctx)) throw new AiConfigError('Only an admin can manage AI configuration.', 'not_admin');
 }
 
 /** Tenant-wide key/routing configuration requires fresh group-wide authority, not a stale page
  * role or one company's HR grant. Existing RLS and withheld ciphertext grants still apply. */
 async function assertConfigurationAdminTx(tx: Tx, ctx: SessionContext) {
   assertAdmin(ctx);
-  if(!(await currentAiProviderAdminTx(tx,ctx)))throw new AiConfigError('Only a current group-wide administrator can manage AI configuration.');
+  if(!(await currentAiProviderAdminTx(tx,ctx)))throw new AiConfigError('Only a current group-wide administrator can manage AI configuration.', 'not_admin');
 }
 
 function routingOptions(value:unknown):OpenRouterOptions {
@@ -99,50 +102,56 @@ export type AiConfigView = {
 /** Admin-only. The settings-page model: one entry per provider, NEVER including the ciphertext. */
 export function getAiConfigView(ctx: SessionContext): Promise<AiConfigView> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  return withTenant(ctx, async (tx) => {
-    await assertConfigurationAdminTx(tx,ctx);
-    // Explicit column list — the ciphertext is not even granted to the app role, but be unambiguous.
-    const rows = await tx
-      .select({
-        provider: aiProviderConfig.provider,
-        model: aiProviderConfig.model,
-        keyLast4: aiProviderConfig.keyLast4,
-        isActive: aiProviderConfig.isActive,
-        providerOptions: aiProviderConfig.providerOptions,
-      })
-      .from(aiProviderConfig);
-    const byProvider = new Map(rows.map((r) => [r.provider, r]));
-    const candidate = (await providerCandidatesTx(tx, ctx))[0];
-    const providers: AiProviderView[] = PROVIDERS.map((p) => {
-      const meta = PROVIDER_META[p];
-      const row = byProvider.get(p), draft = p === 'openrouter' ? candidate : undefined;
-      return {
-        provider: p,
-        label: meta.label,
-        models: meta.models,
-        defaultModel: meta.defaultModel,
-        configured: Boolean(draft || row),
-        model: draft?.model ?? row?.model ?? meta.defaultModel,
-        keyLast4: draft?.keyLast4 ?? row?.keyLast4 ?? null,
-        isActive: row?.isActive ?? false,
-        providerOptions: draft?.providerOptions ?? (p==='openrouter'&&row?routingOptions(row.providerOptions):null),
-        gatewayBaseUrl: p==='ai_gateway'&&row ? (()=>{ try { return readGatewayOptions(row.providerOptions).baseUrl; } catch { return null; } })() : null,
-        candidateSaved: Boolean(draft),
-        candidateId: draft?.id ?? null,
-        candidateVersion: draft?.version ?? null,
-        activeModel: row?.isActive ? row.model : null,
-        envKeyPresent: meta.envKeyVars.some((v) => Boolean(process.env[v]?.trim())),
-      };
-    });
-    const env = envFallbackConfig();
-    const anyActive = providers.some((p) => p.isActive);
+  return withTenant(ctx, tx => readAiConfigPresentationTx(tx, ctx), { readOnlySnapshot: true });
+}
+
+/** Shares the management page's current read-only snapshot when nested. */
+export async function readAiConfigPresentationTx(tx: Tx, ctx: SessionContext): Promise<AiConfigView> {
+  assertAdmin(ctx);
+  if (!(await currentAiProviderPresentationAdminTx(tx, ctx))) {
+    throw new AiConfigError('Only a current group-wide administrator can manage AI configuration.', 'not_admin');
+  }
+  // Explicit column list — the ciphertext is not even granted to the app role, but be unambiguous.
+  const rows = await tx
+    .select({
+      provider: aiProviderConfig.provider,
+      model: aiProviderConfig.model,
+      keyLast4: aiProviderConfig.keyLast4,
+      isActive: aiProviderConfig.isActive,
+      providerOptions: aiProviderConfig.providerOptions,
+    })
+    .from(aiProviderConfig);
+  const byProvider = new Map(rows.map((r) => [r.provider, r]));
+  const candidate = (await providerCandidatesPresentationTx(tx, ctx))[0];
+  const providers: AiProviderView[] = PROVIDERS.map((p) => {
+    const meta = PROVIDER_META[p];
+    const row = byProvider.get(p), draft = p === 'openrouter' ? candidate : undefined;
     return {
-      storable: isSecretStorable(),
-      providers,
-      envFallback: env ? { provider: env.provider, model: env.model } : null,
-      usingEnvFallback: !anyActive && Boolean(env),
+      provider: p,
+      label: meta.label,
+      models: meta.models,
+      defaultModel: meta.defaultModel,
+      configured: Boolean(draft || row),
+      model: draft?.model ?? row?.model ?? meta.defaultModel,
+      keyLast4: draft?.keyLast4 ?? row?.keyLast4 ?? null,
+      isActive: row?.isActive ?? false,
+      providerOptions: draft?.providerOptions ?? (p==='openrouter'&&row?routingOptions(row.providerOptions):null),
+      gatewayBaseUrl: p==='ai_gateway'&&row ? (()=>{ try { return readGatewayOptions(row.providerOptions).baseUrl; } catch { return null; } })() : null,
+      candidateSaved: Boolean(draft),
+      candidateId: draft?.id ?? null,
+      candidateVersion: draft?.version ?? null,
+      activeModel: row?.isActive ? row.model : null,
+      envKeyPresent: meta.envKeyVars.some((v) => Boolean(process.env[v]?.trim())),
     };
   });
+  const env = envFallbackConfig();
+  const anyActive = providers.some((p) => p.isActive);
+  return {
+    storable: isSecretStorable(),
+    providers,
+    envFallback: env ? { provider: env.provider, model: env.model } : null,
+    usingEnvFallback: !anyActive && Boolean(env),
+  };
 }
 
 /**
@@ -204,7 +213,7 @@ export async function saveAiProviderConfig(
       .limit(1);
 
     if (p.provider === 'openrouter') {
-      if (p.makeActive) throw new AiConfigError('Save the OpenRouter candidate first, evaluate it, then choose Use this provider.');
+      if (p.makeActive) throw new AiConfigError('Save the OpenRouter candidate first, evaluate it, then choose Use this provider.', 'evaluate_first');
       const candidate = (await providerCandidatesTx(tx, ctx))[0];
       const providerOptions = routingOptions(p.providerOptions === undefined ? candidate?.providerOptions ?? existing?.providerOptions : p.providerOptions);
       const rowId = await saveOpenRouterCandidateTx(tx, ctx, { model, apiKey, providerOptions });
@@ -223,11 +232,11 @@ export async function saveAiProviderConfig(
     let cipherFields: { apiKeyCiphertext: string; keyLast4: string } | null = null;
     if (apiKey) {
       if (!isSecretStorable()) {
-        throw new AiConfigError('Key storage is disabled — set AI_CONFIG_SECRET on the server to store keys.');
+        throw new AiConfigError('Key storage is disabled — set AI_CONFIG_SECRET on the server to store keys.', 'secret_unavailable');
       }
       cipherFields = { apiKeyCiphertext: encryptSecret(apiKey, ctx.tenantId), keyLast4: keyLast4(apiKey) };
     } else if (!existing) {
-      throw new AiConfigError('An API key is required to configure a new provider.');
+      throw new AiConfigError('An API key is required to configure a new provider.', 'key_required');
     }
 
     let rowId: string;
@@ -277,7 +286,8 @@ export async function setActiveProvider(ctx: SessionContext, p: { provider: stri
     if (p.provider === 'openrouter') {
       let promoted: { rowId: string; evaluationId: string };
       try { promoted = await activateOpenRouterCandidateTx(tx, ctx, p.evaluationReceipt); }
-      catch { throw new AiConfigError('A current evaluated OpenRouter candidate and account-policy review are required.'); }
+      catch (error) { throw new AiConfigError('A current evaluated OpenRouter candidate and account-policy review are required.',
+        error instanceof AiProviderReadinessError && error.code === 'receipt_required' ? 'receipt_required' : 'activation_unavailable'); }
       await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'ai-provider-config', aggregateId: promoted.rowId,
         eventType: 'ai-provider-config.activated', actor: actorOf(ctx), payload: { provider: p.provider, evaluationId: promoted.evaluationId,
           protocolSuiteVersion: 1, accountReviewVersion: 1 } });
@@ -354,7 +364,11 @@ export async function removeAiProviderConfig(ctx: SessionContext, p: { provider:
  * Metadata does not establish generation, tool behaviour or account privacy. Returns a GENERIC
  * reason — never raw provider text. No domain event (a read-shaped probe).
  */
-export async function testConnection(
+export async function testConnection(...args:Parameters<typeof testConnectionActivity>):Promise<ValidateResult>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:provider_connection_test',()=>testConnectionActivity(...args));
+}
+async function testConnectionActivity(
   ctx: SessionContext,
   p: { provider: string; model: string; apiKey?: string; providerOptions?: unknown },
 ): Promise<ValidateResult> {
@@ -400,11 +414,12 @@ export async function testConnection(
     if(request.operation!=='probe')throw new AiConfigError('Connection check unavailable.');
     const id=await withTenant(ctx,async tx=>{
       await assertConfigurationAdminTx(tx,ctx);
+      await assertAiCentreRunningTx(tx,ctx);
       const [row]=await tx.execute<{id:string}>(sql`select app.ai_probe_start(${cfg.provider},${cfg.model}) as id`);
       if(!row?.id)throw new AiConfigError('Connection check could not be recorded.');return row.id;
     });
     let succeeded=false;
-    try{const result=await call(()=>{},()=>{});succeeded=!!result&&typeof result==='object'&&'ok' in result&&result.ok===true;return result;}
+    try{const result=await call(()=>{},()=>{});await withTenant(ctx,tx=>assertAiCentreRunningTx(tx,ctx));succeeded=!!result&&typeof result==='object'&&'ok' in result&&result.ok===true;return result;}
     finally{await withTenant(ctx,tx=>tx.execute(sql`select app.ai_settle(${id}::uuid,${succeeded},null::bigint)`));}
   }));
 }

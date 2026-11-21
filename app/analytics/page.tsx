@@ -1,28 +1,19 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import {ProtectedAnalysis} from '@/components/assistant/protected-analysis';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listCompanies, listDepartments, listEmployees } from '@/core/read';
+import { listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters } from '@/core/admin';
 import {
   analyticsDateRange,
-  carryForwardReport,
-  changeJobTransactions,
-  demographicsByNationality,
-  headcountSummary,
-  leaveBalancesSummary,
-  leaveUtilisation,
-  masterDataExport,
-  movementByMonth,
-  newHires,
+  analyticsDashboard,
+  analyticsManagerSelection,
   parseAnalyticsFilters,
   parseReportYear,
-  sickLeaveTrend,
-  terminations,
-  turnoverRateFiltered,
-  workforceDemographics,
-  type ReportFilter,
 } from '@/core/analytics';
+import { Pager } from '@/components/pager';
+import { parsePageQuery } from '@/lib/pagination';
 import { Card, PageHeader, SectionHeader } from '@/components/ui';
 import { BarChart } from '@/components/charts/BarChart';
 import { PieChart } from '@/components/charts/PieChart';
@@ -31,6 +22,7 @@ import { ChartCard } from '@/components/charts/ChartCard';
 import { FilterBar } from './FilterBar';
 import { YearSelect } from './YearSelect';
 import { bucketLabel, localizeDimension } from './labels';
+import {UNKNOWN_BUCKET} from '@/core/analytics';
 // 9cbf5e0d — one Employee Status vocabulary, shared with the Personnel badges.
 import type { EmploymentStatus } from '@/core/employment-status';
 
@@ -47,32 +39,22 @@ export default async function AnalyticsPage({
   const { from, to } = analyticsDateRange(get);
   // Single filter source of truth — the same parse the export route uses (no screen/export drift).
   const filters = parseAnalyticsFilters(get);
-  const filter: ReportFilter = { departmentId: filters.departmentId, q: filters.q };
   const reportYear = parseReportYear(get);
 
-  const [departments, companies, costCentres, employees] = await Promise.all([
+  const [departments, companies, costCentres, managerSelection] = await Promise.all([
     listDepartments(s, { companyIds: scopeIds }),
     listCompanies(s),
     listCostCenters(s, { companyIds: scopeIds }),
-    listEmployees(s, scopeIds),
+    analyticsManagerSelection(s, scopeIds, filters.managerEmploymentId),
   ]);
 
-  const [hc, hires, terms, turnover, changeJobs, demographics, nationality, leaveUtil, leaveBalances, sickTrend, movement, carryForward] =
-    await Promise.all([
-      headcountSummary(s, scopeIds, { asOf: to }),
-      newHires(s, scopeIds, { from, to, filter }),
-      terminations(s, scopeIds, { from, to, filter }),
-      turnoverRateFiltered(s, scopeIds, { from, to, filters }),
-      changeJobTransactions(s, scopeIds, { from, to, filter }),
-      workforceDemographics(s, scopeIds, { asOf: to, filters }),
-      demographicsByNationality(s, scopeIds, { asOf: to, filters }),
-      leaveUtilisation(s, scopeIds, filters),
-      leaveBalancesSummary(s, scopeIds, filters),
-      sickLeaveTrend(s, scopeIds, { from, to, filters }),
-      movementByMonth(s, scopeIds, { from, to, filters }),
-      carryForwardReport(s, scopeIds, { year: reportYear, filter, companyId: filters.companyId }),
-    ]);
-  const masterCount = (await masterDataExport(s, scopeIds, { includeComp: false, filter })).length;
+  const {hc,hires,terms,turnover,changeJobs,demographics,nationality,leaveUtil,leaveBalances,sickTrend,movement,carryForward,masterCount} =
+    await analyticsDashboard(s,scopeIds,{from,to,year:reportYear,filters,pages:{
+      hires:parsePageQuery({page:sp.hirePage,size:sp.hireSize}),
+      terms:parsePageQuery({page:sp.termPage,size:sp.termSize}),
+      changeJobs:parsePageQuery({page:sp.changePage,size:sp.changeSize}),
+      carryForward:parsePageQuery({page:sp.carryPage,size:sp.carrySize}),
+    }});
 
   // Carry the period + scoping filters onto every export link.
   const filterQs =
@@ -91,17 +73,17 @@ export default async function AnalyticsPage({
     `/analytics/export?report=carry-forward&format=${format}${carryForwardQs}`;
 
   const ExportLink = ({ href, label }: { href: string; label: string }) => (
-    <a
+    <ExportDownloadLink
       href={href}
       className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
     >
       ↓ {label}
-    </a>
+    </ExportDownloadLink>
   );
 
   // CSV / XLSX / PDF button group for a report (+ optional extra query, e.g. &comp=1).
   const FormatGroup = ({ report, extra = '' }: { report: string; extra?: string }) => (
-    <div className="inline-flex items-center gap-1.5">
+    <div className="inline-flex flex-wrap items-center gap-1.5">
       <ExportLink href={exportHref(report, 'csv', extra)} label={t('exportCsv')} />
       <ExportLink href={exportHref(report, 'xlsx', extra)} label={t('exportXlsx')} />
       <ExportLink href={exportHref(report, 'pdf', extra)} label={t('exportPdf')} />
@@ -111,13 +93,17 @@ export default async function AnalyticsPage({
   const tiles: [string, string | number][] = [
     ['activeHeadcount', hc.total],
     ['turnoverRate', `${turnover.turnoverPct}%`],
-    ['newHires', hires.length],
-    ['terminations', terms.length],
+    ['newHires', hires.state.total],
+    ['terminations', terms.state.total],
   ];
 
   // Localize the dimension buckets (enum codes + Unknown/Unassigned sentinels) into chart categories.
   const genderData = demographics.byGender.map((r) => ({ label: bucketLabel(r.name, t, 'gender'), value: r.count }));
   const maritalData = demographics.byMarital.map((r) => ({ label: bucketLabel(r.name, t, 'marital'), value: r.count }));
+  const coverageNote = (rows: readonly {name:string;count:number}[]) => {
+    const unknown=rows.find(row=>row.name===UNKNOWN_BUCKET)?.count??0;
+    return unknown>0?`${t('bucketUnknown')}: ${unknown} / ${rows.reduce((sum,row)=>sum+row.count,0)}`:undefined;
+  };
   const ageData = localizeDimension(demographics.byAgeBand, t, 'plain'); // age bands + Unknown
   const nationalityData = nationality ? localizeDimension(nationality, t, 'nationality') : null;
   const deptData = localizeDimension(demographics.byDepartment, t, 'plain');
@@ -156,11 +142,12 @@ export default async function AnalyticsPage({
             workState: filters.workState,
             managerEmploymentId: filters.managerEmploymentId,
           }}
+          managerSelection={managerSelection}
+          preservedParams={sp}
           options={{
             companies: companies.map((c) => ({ value: c.id, label: c.name })),
             departments: organisationChoiceLabels(departments).map((d) => ({ value: d.id, label: d.displayLabel })),
             costCentres: organisationChoiceLabels(costCentres).map((c) => ({ value: c.id, label: c.displayLabel })),
-            managers: employees.map((e) => ({ value: e.employmentId, label: e.name })),
             locations: locationOptions,
           }}
         />
@@ -169,19 +156,19 @@ export default async function AnalyticsPage({
       {/* Headline metrics */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {tiles.map(([key, v]) => (
-          <div key={key} className="rounded-[1.25rem] border border-border bg-card p-4 shadow-[var(--shadow-card)]">
+          <div key={key} data-analytics-metric={key} className="rounded-[1.25rem] border border-border bg-card p-4 shadow-[var(--shadow-card)]">
             <div className="text-xs text-muted-foreground">{t(key)}</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums">{v}</div>
+            <div data-analytics-value className="mt-1 text-2xl font-semibold tabular-nums">{v}</div>
           </div>
         ))}
       </div>
 
       {/* ── Workforce demographics ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartCard title={t('chartGender')} svgId="chart-gender" filenameBase={`gender_${to}`} exportLabel={t('exportChart')}>
+        <ChartCard title={t('chartGender')} footnote={coverageNote(demographics.byGender)} svgId="chart-gender" filenameBase={`gender_${to}`} exportLabel={t('exportChart')}>
           <PieChart id="chart-gender" data={genderData} ariaLabel={t('chartGender')} />
         </ChartCard>
-        <ChartCard title={t('chartMarital')} svgId="chart-marital" filenameBase={`marital_${to}`} exportLabel={t('exportChart')}>
+        <ChartCard title={t('chartMarital')} footnote={coverageNote(demographics.byMarital)} svgId="chart-marital" filenameBase={`marital_${to}`} exportLabel={t('exportChart')}>
           <PieChart id="chart-marital" data={maritalData} ariaLabel={t('chartMarital')} />
         </ChartCard>
         <ChartCard title={t('chartAgeBand')} svgId="chart-age" filenameBase={`age-band_${to}`} exportLabel={t('exportChart')}>
@@ -253,8 +240,8 @@ export default async function AnalyticsPage({
       {/* Carry-forward & forfeiture (Leave Module — carry-forward + expiry + auto forfeit) */}
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 pr-4">
-          <SectionHeader title={t('carryForwardTitle')} count={carryForward.length} />
-          <div className="flex items-center gap-3">
+          <SectionHeader title={t('carryForwardTitle')} count={carryForward.state.total} />
+          <div className="flex flex-wrap items-center gap-3 pb-3 pl-4">
             <form method="get" className="flex items-center gap-1.5">
               {/* Preserve every other query param (department/company/q/from/to) — only `year` changes. */}
               {filters.departmentId && <input type="hidden" name="departmentId" value={filters.departmentId} />}
@@ -269,7 +256,7 @@ export default async function AnalyticsPage({
                 years={Array.from({ length: 6 }, (_, i) => reportYear - 4 + i)}
               />
             </form>
-            <div className="inline-flex items-center gap-1.5">
+            <div className="inline-flex flex-wrap items-center gap-1.5">
               <ExportLink href={carryForwardExportHref('csv')} label={t('exportCsv')} />
               <ExportLink href={carryForwardExportHref('xlsx')} label={t('exportXlsx')} />
               <ExportLink href={carryForwardExportHref('pdf')} label={t('exportPdf')} />
@@ -277,6 +264,7 @@ export default async function AnalyticsPage({
           </div>
         </div>
         <p className="px-4 pb-2 text-xs text-muted-foreground">{t('carryForwardDesc')}</p>
+        <Pager state={carryForward.state} basePath="/analytics" params={sp} paramNames={{page:"carryPage",size:"carrySize"}} exportHref={carryForwardExportHref("csv")} />
         <Table
           head={[
             t('colName'),
@@ -287,7 +275,7 @@ export default async function AnalyticsPage({
             t('carryForwardForfeitedExpiry'),
             t('colReason'),
           ]}
-          rows={carryForward.map((r) => [
+          rows={carryForward.rows.map((r) => [
             r.employeeName,
             r.department ?? '—',
             r.carried,
@@ -357,26 +345,28 @@ export default async function AnalyticsPage({
 
       {/* New hires */}
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between gap-3 pr-4">
-          <SectionHeader title={t('newHiresTitle')} count={hires.length} />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 sm:pl-0 sm:pb-0">
+          <SectionHeader title={t('newHiresTitle')} count={hires.state.total} className="px-0 sm:px-4" />
           <FormatGroup report="new-hires" />
         </div>
+        <Pager state={hires.state} basePath="/analytics" params={sp} paramNames={{page:"hirePage",size:"hireSize"}} exportHref={exportHref("new-hires","csv")} />
         <Table
           head={[t('colName'), t('colCompany'), t('colDepartment'), t('colHiredOn')]}
-          rows={hires.map((r) => [r.name, r.company, r.department ?? '—', r.hiredOn])}
+          rows={hires.rows.map((r) => [r.name, r.company, r.department ?? '—', r.hiredOn])}
           empty={t('noData')}
         />
       </Card>
 
       {/* Terminations */}
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between gap-3 pr-4">
-          <SectionHeader title={t('terminationsTitle')} count={terms.length} />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 sm:pl-0 sm:pb-0">
+          <SectionHeader title={t('terminationsTitle')} count={terms.state.total} className="px-0 sm:px-4" />
           <FormatGroup report="terminations" />
         </div>
+        <Pager state={terms.state} basePath="/analytics" params={sp} paramNames={{page:"termPage",size:"termSize"}} exportHref={exportHref("terminations","csv")} />
         <Table
           head={[t('colName'), t('colDepartment'), t('colTerminatedOn'), t('colType'), t('colReason')]}
-          rows={terms.map((r) => [
+          rows={terms.rows.map((r) => [
             r.name,
             r.department ?? '—',
             r.terminatedOn ?? '—',
@@ -389,10 +379,11 @@ export default async function AnalyticsPage({
 
       {/* Change job transactions (ADR-0047) */}
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between gap-3 pr-4">
-          <SectionHeader title={t('changeJobsTitle')} count={changeJobs.length} />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 sm:pl-0 sm:pb-0">
+          <SectionHeader title={t('changeJobsTitle')} count={changeJobs.state.total} className="px-0 sm:px-4" />
           <FormatGroup report="change-jobs" />
         </div>
+        <Pager state={changeJobs.state} basePath="/analytics" params={sp} paramNames={{page:"changePage",size:"changeSize"}} exportHref={exportHref("change-jobs","csv")} />
         <Table
           head={[
             t('colName'),
@@ -402,7 +393,7 @@ export default async function AnalyticsPage({
             t('colToPosition'),
             t('colEffectiveOn'),
           ]}
-          rows={changeJobs.map((r) => [
+          rows={changeJobs.rows.map((r) => [
             r.name,
             r.fromDepartment ?? '—',
             r.toDepartment ?? '—',
@@ -420,15 +411,15 @@ export default async function AnalyticsPage({
         <div className="space-y-3 p-4">
           <p className="text-sm text-muted-foreground">{t('masterDataDesc')}</p>
           <div className="space-y-2">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
               <span className="w-44 shrink-0 text-xs font-medium text-muted-foreground">{t('exportWithoutComp')}</span>
               <FormatGroup report="master-data" />
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
               <span className="w-44 shrink-0 text-xs font-medium text-muted-foreground">{t('exportWithComp')}</span>
               <FormatGroup report="master-data" extra="&comp=1" />
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
               <span className="w-44 shrink-0 text-xs font-medium text-muted-foreground">{t('exportAll')}</span>
               <FormatGroup report="master-data" extra="&all=1&comp=1" />
             </div>

@@ -49,6 +49,8 @@ export type ReviewCustodySpec<H,B extends ReviewActorBinding,R extends ReviewRow
  peekRow?(tx:Tx,id:string):Promise<{review:unknown;pendingExpired:boolean}>;
  readRow(tx:Tx,id:string):Promise<unknown>;completeRow(tx:Tx,id:string,expected:string,native:N):Promise<unknown>;
  discardRow(tx:Tx,id:string):Promise<unknown>;indexRows(tx:Tx):Promise<unknown>;
+ /** Server-owned opt-in only for an installed metadata index qualified for native READ ONLY. */
+ readOnlyIndex?:boolean;
  unavailable():never;
 };
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -98,7 +100,7 @@ export function createReviewCustody<H,B extends ReviewActorBinding,R extends Rev
    const held=await snapshot(tx,fresh,id,source),stored=held.row;bound(stored,fresh,id,source);return settleReviewCustodyTx(stored,{kind:'reopen'},{completed:row=>completed(tx,fresh,row,source),retired,pending:async()=>{const body=held.body??unseal(stored);return pending(stored,body,held.current??(spec.reopenNative?await spec.reopenNative(tx,fresh,body,source):await spec.prepareNative(tx,fresh,body.content,source)));},unavailable:fail});
   }));}catch{return fail();}},
   async discard(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=spec.retirement.safeParse(input);if(!parsed.success)return fail();try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);return{kind:'retired' as const,receipt:spec.retired.parse(await spec.discardRow(tx,parsed.data.actionId))};});}catch{return fail();}},
-  async list(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);return spec.index.parse({kind:spec.indexKind,reviews:await spec.indexRows(tx)});});}catch{return fail();}},
+  async list(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{if(spec.readOnlyIndex===true)await tx.execute(sql`set transaction read only`);await assertAiPrincipalTx(tx,ctx);return spec.index.parse({kind:spec.indexKind,reviews:await spec.indexRows(tx)});});}catch{return fail();}},
   async readCompletedOutcomeTx(tx:Tx,supplied:SessionContext,input:unknown){const ctx=capture(supplied),id=spec.normalizeActionId?.(z.guid().parse(input))??z.guid().parse(input);await boundNativeOutcomeTransactionTx(tx);const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${spec.action},${id}::uuid) as completed`);if(terminal?.completed!==true)return fail();return withInterval(tx,ctx,{actionId:id},async(fresh,source)=>{const stored=await read(tx,id);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored,source);return{completion,eventId:z.guid().parse(spec.event(stored))};});},
  });
 }

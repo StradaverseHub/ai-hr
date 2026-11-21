@@ -22,6 +22,12 @@ describe('review and shared configuration form contract',()=>{
   const form=fields(p);form.set('year','2001');form.set('seniorMembershipMode','legacy-grades');form.set('lumpUnitCents','999999');
   expect(rewardPolicyFromForm(form,p)).toEqual(p);
  });
+ it('keeps a shared configuration\'s stored pools and lump-sum settings when the form has no limits block (board fc804e8c)',()=>{
+  const p={...completePolicy(Number(todayInKualaLumpur().slice(0,4))),standardPools:[600,150,120] as [number,number,number],hPools:[450,90,80] as [number,number,number],lumpStepCents:10000,lumpShareBp:8000,lumpCapCents:300000};
+  const form=fields(p);for(const key of ['standard.0','standard.1','standard.2','h.0','h.1','h.2','lumpStep','lumpShare','lumpCap'])form.delete(key);
+  const parsed=rewardPolicyFromForm(form,p,{context:'shared'});
+  expect([parsed.standardPools,parsed.hPools,parsed.lumpStepCents,parsed.lumpShareBp,parsed.lumpCapCents]).toEqual([[600,150,120],[450,90,80],10000,8000,300000]);
+ });
  it('reports malformed or duplicate matrix input as a finite input refusal',()=>{
   const p=completePolicy(Number(todayInKualaLumpur().slice(0,4))),form=fields(p);
   form.set('ranges','20, 100');expect(()=>rewardPolicyFromForm(form,p)).toThrow(RewardPolicyInputError);

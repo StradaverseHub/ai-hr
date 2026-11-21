@@ -110,3 +110,29 @@ it('an ungrouped employee cannot enter a Duty Off inherited group or select an a
  await owner.db.update(schema.shift).set({archivedAt:new Date()}).where(eq(schema.shift.id,plain.id));
  await expect(assignShift(ctx,{employmentId:e.employmentId,shiftDate:day(1),shiftId:plain.id})).rejects.toThrow('archived shift');
 });
+// 2f803985 — the Duty Roster switch was folded into Working Day / Schedule Pattern: the first saved pattern
+// version turns the group's Duty Roster Control on in the same transaction, audited, and never turns it off.
+it('a saved Working Week turns Duty Roster Control on once, audited, and a refused save changes nothing',async()=>{
+ const ctx=adminCtx(b),g=await createAttendanceRule(ctx,groupInput()),sh=await createShift(ctx,{...shiftInput(),ruleId:g.id}),e=await hire(sh.id);
+ expect((await getAttendanceRule(ctx,g.id))?.dutyRosterControl,'new groups start Off').toBe(false);
+ await expect(assignShift(ctx,{employmentId:e.employmentId,shiftDate:day(2),shiftId:sh.id})).rejects.toThrow('Duty Roster Control is Off');
+ const monday=new Date(Date.parse(day(1)+'T00:00:00Z'));monday.setUTCDate(monday.getUTCDate()-((monday.getUTCDay()+6)%7));
+ const week={effectiveFrom:day(1),anchorDate:monday.toISOString().slice(0,10),unit:'week' as const,length:1,
+  days:Array.from({length:7},(_,i)=>i<5?{kind:'full' as const,shiftId:sh.id}:{kind:'rest' as const,shiftId:null})};
+ // A refused save (shift outside Shift Allowed) leaves the control and history untouched.
+ await expect(saveScheduleRotation(ctx,{ruleId:g.id,expectedRevision:(await getScheduleRotation(ctx,g.id)).revision,allowedShiftIds:[],cycle:week})).rejects.toThrow();
+ expect((await getAttendanceRule(ctx,g.id))?.dutyRosterControl).toBe(false);
+ await saveScheduleRotation(ctx,{ruleId:g.id,expectedRevision:(await getScheduleRotation(ctx,g.id)).revision,allowedShiftIds:[sh.id],cycle:week});
+ expect((await getAttendanceRule(ctx,g.id))?.dutyRosterControl).toBe(true);
+ const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,g.id),eq(schema.domainEvent.eventType,'attendance-rule.duty-roster-control.changed')));
+ expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({before:false,enabled:true,reason:'schedule-pattern-saved'});
+ // Explicit roster rows are allowed again and still win over the pattern.
+ await assignShift(ctx,{employmentId:e.employmentId,shiftDate:day(2),shiftId:sh.id});
+ // A later version does not record a second change, and an administrator's explicit Off is kept until the next save.
+ await saveScheduleGroupControl(ctx,{ruleId:g.id,kind:'duty',enabled:false});
+ expect((await getAttendanceRule(ctx,g.id))?.dutyRosterControl).toBe(false);
+ const later={...week,effectiveFrom:day(9),anchorDate:week.anchorDate};
+ await saveScheduleRotation(ctx,{ruleId:g.id,expectedRevision:(await getScheduleRotation(ctx,g.id)).revision,allowedShiftIds:[sh.id],cycle:later});
+ expect((await getAttendanceRule(ctx,g.id))?.dutyRosterControl).toBe(true);
+ expect((await getScheduleRotation(ctx,g.id)).versions.map(v=>[v.unit,v.length])).toEqual([['week',1],['week',1]]);
+});

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readEntraSession, revokeEntraSession } from '../entra/sessions';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -15,4 +16,9 @@ export async function endInternalSession(returnTo?: string): Promise<never> {
   store.set(INTERNAL_SESSION_COOKIE, '', { ...internalCookieOptions, maxAge: 0 });
   try { await revokeSession(raw); await revokeEntraSession(raw); } catch { console.error('Internal logout could not revoke server storage; browser cookie cleared.'); }
   redirect(returnTo ? safeReturnTo(returnTo) : '/login?signedOut=1');
+}
+
+/** Browser-only coordination identity, distinct from the stored token digest. */
+export function webSessionChannel(token: string | undefined): string | undefined {
+  return token && createHash('sha256').update('aihr-idle-channel:').update(token).digest('hex');
 }

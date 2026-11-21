@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {attendancePolicyClockEvidence,attendancePolicyClockSecondEvidence,attendancePolicyClockMillisecondEvidence,type PolicyClock} from '../lib/attendance-policy-clocks';
+import {attendanceClockPolicyEvidence,attendancePolicyClockEvidence,attendancePolicyClockSecondEvidence,attendancePolicyClockMillisecondEvidence,type PolicyClock} from '../lib/attendance-policy-clocks';
 import {fullFlexiIntervals} from '../lib/full-flexi-time';
 import type {AttendanceGroupPolicy} from '../lib/attendance-group-policy';
 const policy=(pairing:AttendanceGroupPolicy['clock']['pairing']='auto'):AttendanceGroupPolicy['clock']=>({pairing,minimumIntervalMinutes:0,lateGraceMinutes:0,earlyGraceMinutes:0,skipLatenessIfIncomplete:false});
@@ -106,5 +106,47 @@ describe('captured millisecond precision before minute projection',()=>{
   const actual=attendancePolicyClockMillisecondEvidence([ms('a',32400001,'in'),ms('b',32400001,'in'),ms('c',36000000,'out')],policy(),1440);
   expect(actual.flags.map(flag=>flag.kind)).toEqual(['duplicate','unmatched']);expect(actual.minuteIntervals).toEqual([]);
   for(const value of [-1,0.5,NaN,Infinity,86400001])expect(()=>attendancePolicyClockMillisecondEvidence([ms('a',value,'in')],policy(),1440)).toThrow();
+ });
+});
+
+
+describe('independent dated clock policy evidence',()=>{
+ const punch=(id:string,atMilliseconds:number,direction:'in'|'out')=>({id,atMilliseconds,direction});
+ it('compares with the last accepted event at exact precision and leaves the original input intact',()=>{
+   const start=8*60*60_000;
+   const clocks=[punch('in',start,'in'),punch('ignored',start+119_999,'out'),punch('out',start+120_000,'out')];
+   const original=structuredClone(clocks);
+   expect(attendanceClockPolicyEvidence(clocks,{pairing:'auto',minimumIntervalMinutes:2},1440)).toMatchObject({
+     complete:true,requiresReview:false,exclusions:[{punchId:'ignored',reason:'minimumInterval',afterPunchId:'in'}],
+     intervals:[{inMillisecond:start,outMillisecond:start+120_000}],
+   });
+   expect(clocks).toEqual(original);
+   expect(attendanceClockPolicyEvidence(clocks.slice(0,2),{pairing:'auto',minimumIntervalMinutes:2},1440)).toMatchObject({
+     complete:false,requiresReview:true,checkOutMillisecond:null,
+   });
+ });
+ it('handles precise overnight instants and a saved interval larger than the calculation window',()=>{
+   const midnight=24*60*60_000;
+   const clocks=[punch('in',midnight-30_000,'in'),punch('out',midnight+30_000,'out')];
+   expect(attendanceClockPolicyEvidence(clocks,{pairing:'auto',minimumIntervalMinutes:1},2880).minuteIntervals)
+     .toEqual([{inAbs:1439,outAbs:1440}]);
+   expect(attendanceClockPolicyEvidence(clocks,{pairing:'auto',minimumIntervalMinutes:4320},2880).exclusions)
+     .toEqual([{punchId:'out',reason:'minimumInterval',afterPunchId:'in'}]);
+ });
+ it('uses valid outer boundaries in First In Last Out and reports different exclusion reasons',()=>{
+   const clocks=[punch('in',0,'in'),punch('near',1_000,'out'),punch('middle1',120_000,'in'),
+     punch('middle2',240_000,'in'),punch('out',360_000,'out')];
+   expect(attendanceClockPolicyEvidence(clocks,{pairing:'firstInLastOut',minimumIntervalMinutes:2},1440)).toMatchObject({
+     complete:true,requiresReview:false,minuteIntervals:[{inAbs:0,outAbs:6}],exclusions:[
+       {punchId:'near',reason:'minimumInterval',afterPunchId:'in'},
+       {punchId:'middle1',reason:'intermediatePunch'},{punchId:'middle2',reason:'intermediatePunch'},
+     ],
+   });
+   for(const invalid of [[punch('stray',0,'out'),...clocks.slice(2)],[...clocks,punch('dangling',480_000,'in')]]){
+     expect(attendanceClockPolicyEvidence(invalid,{pairing:'firstInLastOut',minimumIntervalMinutes:0},1440)).toMatchObject({
+       complete:false,requiresReview:true,minuteIntervals:[],
+     });
+   }
+   expect(attendanceClockPolicyEvidence(clocks,{pairing:'auto',minimumIntervalMinutes:0},1440).exclusions).toEqual([]);
  });
 });

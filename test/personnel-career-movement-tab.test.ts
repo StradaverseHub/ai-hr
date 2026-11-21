@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { isCorrectedMovementRow, partitionMovementRows } from '../lib/movement-visibility';
 import type { MovementHistoryRow, MovementReversal, MovementStatus } from '../core/movement';
 import { COMPARISON_KINDS,isComparisonKind } from '../core/movement-kinds';
+import {movementScreenAccess} from '../lib/movement-screen-access';
 import { movementFormFields } from '../lib/movement-form-contract';
 
 const PAGE = fs.readFileSync(
@@ -86,7 +87,11 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
 
   it('exposes the New Event entry point (hidden once terminated) and the key columns', () => {
     expect(PAGE.includes("t('movement.newEvent')")).toBe(true);
-    expect(PAGE.includes('const {canCreateMovement, canCorrectMovement} = movementScreenAccess(')).toBe(true);
+    expect(PAGE).toMatch(/const \{\s*canCreateMovement,\s*canCorrectMovement\s*\}\s*=\s*movementScreenAccess\(/);
+    const maintainer = {admin:true,canMaintainWorkforce:true};
+    expect(movementScreenAccess({...maintainer,terminatedOn:null}).canCreateMovement).toBe(true);
+    expect(movementScreenAccess({...maintainer,terminatedOn:'2026-01-01'})).toEqual({canCreateMovement:false,canCorrectMovement:true});
+    expect(movementScreenAccess({...maintainer,canMaintainWorkforce:false,terminatedOn:null}).canCreateMovement).toBe(false);
     for (const col of ['eventType', 'effectiveDate', 'endDate', 'remarks', 'action']) {
       expect(PAGE.includes(`t('movement.columns.${col}')`), `missing column ${col}`).toBe(true);
     }
@@ -133,8 +138,8 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     }
     // Company is displayed but NOT editable here — moving legal entity is its own gated flow.
     expect(NEW_EVENT.includes("t('form.companyReadOnly')")).toBe(true);
-    expect(NEW_EVENT.includes("t('form.currentInformation')")).toBe(true);
-    expect(NEW_EVENT.includes("t('form.afterInformation')")).toBe(true);
+    expect(NEW_EVENT.includes("t('detail.beforeChanges')")).toBe(true);
+    expect(NEW_EVENT.includes("t('detail.afterChanges')")).toBe(true);
     // The grid is only for the change kinds; lifecycle kinds keep their dedicated inputs.
     //
     // 476f23ed moved the decision from the selected CODE to the BEHAVIOUR that code carries: the event-type
@@ -172,7 +177,7 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
 
   it('wires the real correction controls with independent correction authority and server action', () => {
     expect(PAGE).toContain('<MovementHistoryActions context={movementContext} employmentId={employmentId} row={m}');
-    expect(PAGE).toContain('canCorrect={canCorrectMovement} reverseAction={reverseMovementEventAction}');
+    expect(PAGE).toContain('canCorrect={canCorrectMovement} canDelete={canDeleteMovement} reverseAction={reverseMovementEventAction}');
     expect(PAGE).toContain("delete:t('movement.delete')");
     expect(PAGE).toContain("deleteTitle:t('movement.deleteTitle')");
     expect(PAGE).toContain('m.payrollLocked');
@@ -186,9 +191,9 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     expect(PAGE.includes("t('movement.reversedBadge')")).toBe(true);
     expect(PAGE.includes("t('movement.correctedBadge')")).toBe(true);
     // The projection is read whole and never narrowed at the source.
-    expect(PAGE.includes('await movementHistory(s, employmentId)')).toBe(true);
+    expect(PAGE.includes('await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards || directMovementHistory })')).toBe(true);
     // The Edit lookup resolves against the FULL history, so a hidden row is still reachable by id.
-    expect(PAGE.includes('movements.find((m) => m.id === spEditMovement')).toBe(true);
+    expect(PAGE).toMatch(/movements\.find\(\((\w+)\)\s*=>\s*\1\.id\s*===\s*spEditMovement\s*&&\s*\1\.canEdit\)/);
     // …and the pending banner on the Employment tab reads the full history too.
     expect(PAGE.includes("movements\n    .filter((m) => m.status === 'pending')")).toBe(true);
   });

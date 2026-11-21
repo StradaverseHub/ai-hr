@@ -12,7 +12,7 @@ import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
  * Every state-changing method appends a DomainEvent inline in the same withTenant transaction (substrate
  * discipline). RLS confines reads to the tenant and writes to a payroll admin for the row's company.
  */
-import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employmentPayComponent, payrollBatch, payrollCycle, payrollIndividualTxn } from '../db/schema';
@@ -202,34 +202,27 @@ export type PayrollCycleRow = {
   updatedAt: Date | null;
 };
 
-/** List cycles for one or more companies, ordered by sortOrder then name. `activeOnly` hides archived. */
+/** List cycles for one company, ordered by sortOrder then name. */
 export function listPayrollCycles(
   ctx: SessionContext,
   companyId: string,
   opts: { activeOnly?: boolean } = {},
 ) {
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
+  return listPayrollCyclesForCompanies(ctx, [companyId], opts);
+}
+
+/** The caller supplies company IDs from its authorized scope. An empty scope returns no rows. */
+export async function listPayrollCyclesForCompanies(
+  ctx: SessionContext,
+  companyIds: string[],
+  { activeOnly }: { activeOnly?: boolean } = {},
+): Promise<PayrollCycleRow[]> {
+  if (!companyIds.length) return [];
+  return withTenant(ctx, (tx) => tx
       .select()
       .from(payrollCycle)
-      .where(eq(payrollCycle.companyId, companyId))
-      .orderBy(asc(payrollCycle.sortOrder), asc(payrollCycle.name));
-    const filtered = opts.activeOnly ? rows.filter((r) => r.archivedAt == null) : rows;
-    return filtered.map(
-      (r): PayrollCycleRow => ({
-        id: r.id,
-        companyId: r.companyId,
-        name: r.name,
-        code: r.code,
-        runType: r.runType as PayrollCycleRunType,
-        remarks: r.remarks,
-        description: r.description,
-        sortOrder: r.sortOrder,
-        archivedAt: r.archivedAt,
-        updatedAt: r.updatedAt,
-      }),
-    );
-  });
+      .where(and(inArray(payrollCycle.companyId, companyIds), activeOnly ? isNull(payrollCycle.archivedAt) : undefined))
+      .orderBy(asc(payrollCycle.sortOrder), asc(payrollCycle.name), asc(payrollCycle.id)));
 }
 
 /** Minimal same-Tx active ADDITIONAL catalogue, after actual reviewed native company authority.
@@ -444,7 +437,7 @@ export type CopyCycleResult = { companyId: string; outcome: CopyCycleOutcome; id
  * Copy an existing cycle's DEFINITION (name, runType, remarks, description, sortOrder) into one or more
  * OTHER companies in a single transaction — the ticket's "create once, assign to many companies" workflow.
  * Each target is handled independently and its outcome recorded (never throws mid-loop — mirrors the
- * per-company continue discipline of runMultiCompanyPayroll):
+ * per-company continue discipline of startMultiCompanyPayroll):
  *   - `skipped_duplicate`         — a LIVE cycle with the same (case-insensitive) name already exists there;
  *   - `skipped_regular_conflict`  — the source is a regular cycle and the target already has an active one;
  *   - `created`                   — a clone row was inserted (and a `payroll-cycle.created` event appended).

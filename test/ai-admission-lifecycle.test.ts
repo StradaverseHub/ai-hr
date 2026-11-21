@@ -33,3 +33,26 @@ it('composes source checks/hooks and exposes only the actual own pending run ins
 it('rolls back failed claim and admission together before any provider call',async()=>{const base=await config(),spy=vi.spyOn(openrouterAdapter,'generate');const cfg=withAiAdmissionLifecycle(base,'pay_rule_draft',{async admitted(){throw Error('fictional durable claim refusal');}});try{await expect(generateDraft(cfg,{system:'Synthetic',prompt:'Synthetic'})).rejects.toThrow();expect(spy).not.toHaveBeenCalled();}finally{spy.mockRestore();}expect(await owner.db.select().from(aiModelRun).where(eq(aiModelRun.tenantId,b.tenantId))).toHaveLength(0);});
 it('keeps reservation pending when durable settled callback fails, without automatic resend',async()=>{const base=await config(),spy=vi.spyOn(openrouterAdapter,'generate').mockResolvedValue('Synthetic response');const cfg=withAiAdmissionLifecycle(base,'pay_rule_draft',{async settled(){throw Error('fictional durable settlement refusal');}});try{await expect(generateDraft(cfg,{system:'Synthetic',prompt:'Synthetic'})).rejects.toThrow('reservation remains held');expect(spy).toHaveBeenCalledTimes(1);}finally{spy.mockRestore();}const rows=await owner.db.select().from(aiModelRun).where(eq(aiModelRun.tenantId,b.tenantId));expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({state:'pending',actualTokens:null,finishedAt:null,providerObservationStatus:null});});
 it('refuses copied configs and wrong-feature hooks rather than allowing client callback provenance',async()=>{const cfg=await config();expect(()=>withAiAdmissionLifecycle({...cfg},'pay_rule_draft',{})).toThrow();expect(()=>withAiAdmissionLifecycle(cfg,'hr_assistant',{})).toThrow();});
+
+it('discards a provider result after stop and resume while still settling its actual run',async()=>{
+ const {setMandateStopSwitch}=await import('../core/mandates/mandates');
+ const cfg=await config(),spy=vi.spyOn(openrouterAdapter,'generate').mockImplementation(async()=>{
+  await setMandateStopSwitch(ctx(),true);
+  await setMandateStopSwitch(ctx(),false);
+  return 'Synthetic stale response';
+ });
+ try{await expect(generateDraft(cfg,{system:'Synthetic',prompt:'Synthetic'})).rejects.toMatchObject({reason:'paused'});}
+ finally{spy.mockRestore();}
+ const rows=await owner.db.select().from(aiModelRun).where(eq(aiModelRun.tenantId,b.tenantId));
+ expect(rows).toHaveLength(1);expect(rows[0].state).toBe('failed');
+});
+it('does not return a provider result when that feature was disabled during the call',async()=>{
+ const {setAiFeature}=await import('../core/ai-management');
+ const cfg=await config(),spy=vi.spyOn(openrouterAdapter,'generate').mockImplementation(async()=>{
+  await setAiFeature(ctx(),'pay_rule_draft',false);
+  return 'Synthetic disabled response';
+ });
+ try{await expect(generateDraft(cfg,{system:'Synthetic',prompt:'Synthetic'})).rejects.toMatchObject({reason:'paused'});}
+ finally{spy.mockRestore();}
+ expect((await owner.db.select().from(aiModelRun).where(eq(aiModelRun.tenantId,b.tenantId)))[0].state).toBe('failed');
+});

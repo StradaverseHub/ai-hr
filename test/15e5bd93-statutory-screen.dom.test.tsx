@@ -150,8 +150,6 @@ const IDENTITY = {
   epfEmployerNo: 'E123',
   socsoEmployerCode: 'S123',
   lhdnEmployerNo: 'L123',
-  myinvoisTin: 'C12345678900',
-  ssmRegistrationNo: '202301001234',
   hrdfStatus: 'mandatory' as const,
 };
 
@@ -358,8 +356,6 @@ describe('§1 one screen: identity on top, every body a card, every field alread
       [...card!.querySelectorAll('dt')].map((d) => (d.textContent ?? '').trim()),
       'the reporter’s own list, in their order',
     ).toEqual([
-      org.ssmRegistrationNo,
-      org.myinvoisTin,
       org.epfEmployerNo,
       org.socsoEmployerCode,
       org.lhdnENumber,
@@ -368,7 +364,7 @@ describe('§1 one screen: identity on top, every body a card, every field alread
     expect(
       [...card!.querySelectorAll('dd')].map((d) => (d.textContent ?? '').trim()),
       'and what is on file for each',
-    ).toEqual(['202301001234', 'C12345678900', 'E123', 'S123', 'L123', org.hrdfMandatory]);
+    ).toEqual(['E123', 'S123', 'L123', org.hrdfMandatory]);
     /**
      * ⚠️ READ-ONLY HERE AND EDITABLE PER BODY — the decision this flow has made since r353. These four
      * live on `company_statutory_my` and are edited inside each body's card through MY_FILING_FIELD

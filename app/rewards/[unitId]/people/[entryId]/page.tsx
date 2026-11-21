@@ -1,3 +1,4 @@
+import { formatMoney } from '@/lib/money';
 import { RewardSubmit } from '../../../submit-button';
 import Link from 'next/link';
 import { RoleComparison } from './role-comparison';
@@ -9,6 +10,7 @@ import { getRewardUnit } from '@/packs/rewards/service';
 import { belowConfidentialityFloor,isSeniorPlanMember, performances, talents } from '@/packs/rewards/model';
 import { Button, Card, Field, PageHeader, inputCls } from '@/components/ui';
 import { entryAction } from '../../../actions';
+import { deskRow } from '../../desk/desk-model';
 import { payWindowReasons } from '@/packs/rewards/engine';
 import { PayWindowTag } from '../../pay-window';
 
@@ -16,12 +18,12 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
   await requireModule('rewards'); const { s } = await scopedSession(); const { unitId, entryId } = await params;
   const onehrText = await getTranslations('onehr');
   const t = await getTranslations('rewards'); const v = await getRewardUnit(s, unitId); const e = v.rows.find(r => r.id === entryId);
-  if (!e) notFound();
+  if (!e || (v.unit.kind === 'annual' && !v.fullView)) notFound();
   const canEdit = v.approvalStageEdit || (v.unit.status === 'draft' && v.canEdit);
   const senior=isSeniorPlanMember(v.unit.policy,e.facts,e.source.grade);
   const gr = v.roles.includes('gr'), r = e.recommendation, f = e.facts;
   const payWindowLocked = !!e.payChange && payWindowReasons.includes(e.incrementReason);
-  const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(cents / 100);
+  const rm = (cents: number) => formatMoney(cents === 0 ? 0 : cents / 100, 'MYR');
   const numeric = (name: string, label: string, value: number | null, scale = 100) => <Field label={label}><input type="number" min="0" step="0.01" name={name} defaultValue={value == null ? '' : value / scale} placeholder={t('automatic')} className={inputCls} /></Field>;
   return <div className="mx-auto max-w-5xl space-y-5">
     <Link href={`/rewards/${unitId}`} className="text-sm text-primary hover:underline">← {t('review')}</Link>
@@ -34,7 +36,7 @@ export default async function RewardPersonPage({ params }: { params: Promise<{ u
       <fieldset disabled={!canEdit} className="space-y-4"><legend className="mb-3 text-base font-semibold">{t('recommendation')}</legend>
         {senior&&<Link href={`/rewards/${unitId}#unit-governance`} className="text-primary underline">{t('governance.seniorTitle')}</Link>}<fieldset disabled={senior} className="space-y-4"><p className="max-w-3xl text-sm text-muted-foreground">{t('overrideHelp')}</p>
         <div className="grid gap-4 sm:grid-cols-3">{/* 8ad87ae8: a pay change in the exclusion window fixes the increase at 0%. */}<fieldset disabled={payWindowLocked} className="contents">{numeric('merit', `${t('merit')} (%)`, r.meritBp)}{numeric('promotion', `${t('promotion')} (%)`, r.promotionBp)}{numeric('special', `${t('special')} (%)`, r.specialBp)}</fieldset>
-          <Field label={t('promotionGrade')}><input name="promotionGrade" defaultValue={r.promotionGrade ?? ''} maxLength={30} className={inputCls} /></Field>
+          <Field label={t('promotionGrade')}><select name="promotionGrade" defaultValue={r.promotionGrade ?? ''} className={inputCls}><option value="">{t('desk.cell.noPromotion')}</option>{[...new Set([...(r.promotionGrade ? [r.promotionGrade] : []), ...deskRow(v,e,v.flags).promotionGrades])].map(grade => <option key={grade} value={grade}>{t('desk.cell.toGrade', { grade })}</option>)}</select></Field>
           {v.unit.kind === 'annual' && numeric('multiplier', t('bonusMultiplier'), r.multiplierBp, 10000)}
           {(e.lumpEligible || e.plan === 'ec') && numeric('lump', t('lumpSum'), r.lumpCents)}
           {v.unit.kind === 'annual' && e.plan === 'ec' && numeric('bonus', t('bonus'), r.bonusCents)}

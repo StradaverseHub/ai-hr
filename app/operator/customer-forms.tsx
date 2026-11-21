@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { btnPrimary, inputCls } from '@/components/ui';
@@ -29,7 +30,7 @@ export function CustomerCreateForm({countries,modules,defaults,coreNames,interna
       </label>)}</div><p className="mt-3 text-xs text-muted-foreground">{w('coreIncluded',{modules:coreNames})}</p>
     </fieldset>
     <Result state={state} success={w('creationQueued')}/>
-    <button disabled={pending} type="submit" className={btnPrimary}>{pending?w('saving'):t('create')}</button>
+    <ActionButton aria-busy={pending} disabled={pending} type="submit" className={btnPrimary}>{pending?w('saving'):t('create')}</ActionButton>
   </form>;
 }
 export function CustomerNameForm({tenantId,name}:{tenantId:string;name:string}) {
@@ -38,7 +39,7 @@ export function CustomerNameForm({tenantId,name}:{tenantId:string;name:string}) 
   return <form action={action} className="space-y-3"><input type="hidden" name="tenantId" value={tenantId}/>
     <label className="block space-y-1 text-sm font-medium">{t('customerName')}<input name="customerName" required maxLength={200} defaultValue={name} className={inputCls}/></label>
     <p className="text-xs text-muted-foreground">{w('nameHelp')}</p>
-    <Result state={state} success={w('saved')}/><button type="submit" className={btnPrimary} disabled={pending}>{pending?w('saving'):w('saveName')}</button>
+    <Result state={state} success={w('saved')}/><ActionButton aria-busy={pending} type="submit" className={btnPrimary} disabled={pending}>{pending?w('saving'):w('saveName')}</ActionButton>
   </form>;
 }
 export function CustomerModuleForm({tenantId,modules,grants,blockers,busy}:{tenantId:string;modules:ModuleOption[];grants:CustomerModule[];blockers:Record<string,DeactivationBlocker[]>;busy:boolean}) {
@@ -70,7 +71,7 @@ export function CustomerModuleForm({tenantId,modules,grants,blockers,busy}:{tena
       {!enabled&&module.billable&&!blocked&&<label className="block space-y-1 text-sm font-medium">{w('purchaseReference')}<input name="purchaseReference" required minLength={3} maxLength={500} className={inputCls}/><span className="block text-xs font-normal text-muted-foreground">{w('purchaseHelp')}</span></label>}
       {enabled&&<p className="text-sm">{w('disableHelp')}</p>}
       {held.map(b=><label key={b.kind} className="block space-y-2 text-sm"><span className="block font-medium">{b.detail}</span><span className="block text-muted-foreground">{w('dispositionHelp')}</span><textarea name={`disposition:${b.kind}`} required minLength={3} maxLength={1000} rows={3} className={`${inputCls} min-h-24 py-2`}/></label>)}
-      <button type="submit" className={btnPrimary} disabled={busy||pending||blocked}>{pending?w('saving'):enabled?w('disable'):w('enable')}</button>
+      <ActionButton aria-busy={pending} type="submit" className={btnPrimary} disabled={busy||pending||blocked}>{pending?w('saving'):enabled?w('disable'):w('enable')}</ActionButton>
     </div>}
     <Result state={state} success={w('changeQueued')}/>
   </form>;
@@ -80,6 +81,6 @@ export function CustomerFeedbackMenuForm({tenantId,enabled}:{tenantId:string;ena
   const [state,action,pending]=useActionState(setCustomerFeedbackMenuAction,emptyOperatorState);
   return <form action={action} className="space-y-3"><input type="hidden" name="tenantId" value={tenantId}/><input type="hidden" name="enabled" value={String(!enabled)}/>
     <p className="text-sm text-muted-foreground">{w(enabled?'feedbackMenuOnHelp':'feedbackMenuOffHelp')}</p>
-    <Result state={state} success={w('feedbackMenuSaved')}/><button type="submit" className={btnPrimary} disabled={pending}>{pending?w('saving'):w(enabled?'feedbackMenuHide':'feedbackMenuShow')}</button>
+    <Result state={state} success={w('feedbackMenuSaved')}/><ActionButton aria-busy={pending} type="submit" className={btnPrimary} disabled={pending}>{pending?w('saving'):w(enabled?'feedbackMenuHide':'feedbackMenuShow')}</ActionButton>
   </form>;
 }

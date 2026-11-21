@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useActionState, useState } from 'react';
 import { useLocale } from 'next-intl';
 import { inputCls, btnPrimary } from '@/components/ui';
@@ -14,7 +15,7 @@ export function RememberedMfaForm({ policy, revision }: RememberedMfaPolicyState
     <input type="hidden" name="revision" value={state.revision ?? revision}/>
     <label className="block space-y-2"><span className="text-sm font-medium">{copy.days}</span><input name="rememberDays" type="number" inputMode="numeric" required min={0} max={90} step={1} value={rememberDays} onChange={event => setRememberDays(event.target.value)} className={`${inputCls} min-h-11 w-32`} aria-describedby="remembered-mfa-help"/></label>
     <p id="remembered-mfa-help" className="text-sm text-muted-foreground">{copy.help}</p><p className="text-sm text-muted-foreground">{copy.effect}</p>
-    <div className="flex flex-wrap items-center gap-4"><button type="submit" disabled={pending} className={`${btnPrimary} min-h-11`}>{pending ? copy.saving : copy.save}</button>
+    <div className="flex flex-wrap items-center gap-4"><ActionButton aria-busy={pending} type="submit" disabled={pending} className={`${btnPrimary} min-h-11`}>{pending ? copy.saving : copy.save}</ActionButton>
       {state.status !== 'idle' && <p role={state.status === 'saved' ? 'status' : 'alert'} className="text-sm">{copy[state.status]}</p>}
     </div>
   </form>;

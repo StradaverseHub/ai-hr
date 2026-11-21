@@ -21,6 +21,7 @@ import type {SessionContext} from '../db/client';
  * decides what the refusal will allow.
  */
 import { randomUUID } from 'node:crypto';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -227,6 +228,20 @@ describe('870b79e2 — all four writers refuse a shift the group does not allow'
 });
 
 describe('870b79e2 — setRuleShifts is the editor that decides what the refusal allows', () => {
+  it('refuses stale pool edits and protects future roster assignments before exclusion', async () => {
+    const a=adminCtx(b);
+    const group=await createAttendanceRule(a,ruleInput('Pool guard'));
+    const sh=await createShift(a,workdayShift('Included shift',{ruleId:group.id}));
+    const emp=await makeEmp();
+    await setGroup(emp,group.id);
+    const date=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+    await assignShift(a,{employmentId:emp,shiftDate:date,shiftId:sh.id});
+    await expect(setRuleShifts(a,{ruleId:group.id,shiftIds:[],expectedShiftIds:[]})).rejects.toThrow(/changed/);
+    await expect(setRuleShifts(a,{ruleId:group.id,shiftIds:[],expectedShiftIds:[sh.id]})).rejects.toThrow(/roster/);
+    expect((await rosterRows(emp)).map(row=>row.shiftId)).toEqual([sh.id]);
+    expect((await owner.db.select().from(schema.attendanceRuleShift)).map(row=>row.shiftId)).toContain(sh.id);
+  });
+
   it('ticking adds membership and unticking removes only that group without changing defaults', async () => {
     const a = adminCtx(b);
     await ensureStandardRule(a);

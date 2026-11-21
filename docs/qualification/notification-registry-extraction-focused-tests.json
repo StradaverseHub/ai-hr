@@ -1,0 +1,15 @@
+[
+ "test/notifications.test.ts",
+ "test/notification-email.test.ts",
+ "test/notification-processing-ledger.test.ts",
+ "test/notification-cursor-concurrency.test.ts",
+ "test/notification-sweep-login-downgrade.test.ts",
+ "test/notification-recipient-read-scope.test.ts",
+ "test/notification-projection-backlog.test.ts",
+ "test/employee-home-notice-scope.test.ts",
+ "test/rewards-access-controls.test.ts",
+ "test/performance-reminder-owner.test.ts",
+ "test/performance-reminder-work.test.ts",
+ "test/performance-reminder-words.test.ts",
+ "test/r292-notification-channel-truth.test.ts"
+]

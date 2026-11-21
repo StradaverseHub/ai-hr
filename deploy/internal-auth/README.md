@@ -71,6 +71,46 @@ slow/oversized bodies, parallel users behind a shared NAT, noisy and quiet tenan
 behavior, and database-store outage. Use synthetic users and a bounded staging load budget. Retain
 before/after configuration and results privately. Do not stress employee accounts or production.
 
+### Public careers page (Recruitment)
+
+The careers page (`/careers/<address>`, Recruitment slice 8) is the one Recruitment surface anonymous visitors use.
+Its pages are readable on every installation, but **online applications are refused (HTTP 503, "online applications
+are not available right now") until this web server step is done**, because without a verified source address every
+visitor would look the same; HR sees the same explanation in Settings › Careers page. Local `next dev` alone uses a
+development-only bucket; a production build cannot.
+
+1. Include `abuse-http.conf` once under `http {}`. For the careers page it defines `aihr_careers_source` (every careers
+   request: 5 a second per source, burst 20), `aihr_careers_post` (application form POSTs only: 1 a minute per source,
+   burst 5, keyed through a `$request_method` map so other methods are not counted) and `aihr_careers_connections` (a
+   careers-only connection zone, so careers traffic never uses up the sign-in and mobile connection allowance).
+2. Add a `location ^~ /careers/ { ... }` that repeats the installation's existing application `proxy_pass` and its
+   canonical host/protocol/TLS headers, and include `abuse-careers-location.conf` inside it. The snippet OVERWRITES
+   `X-Aihr-Request-Source` with `$remote_addr` (a client-sent value never reaches the application), limits requests and
+   connections per source (POSTs more strictly), caps the body at 11 MB and bounds body and upstream time.
+3. If a tunnel or another proxy sits in front of nginx (for example `cloudflared` reaching the loopback edge in
+   `deploy/keycloak/edge.conf.template`), `$remote_addr` is that proxy for every visitor. Restore the real client address
+   first, for that verified upstream only (for `cloudflared` on the same host: `set_real_ip_from 127.0.0.1;` and
+   `real_ip_header CF-Connecting-IP;` in the same server), then add the careers location there too. The Keycloak edge
+   template is deliberately left unchanged: it carries no auth or mobile source snippets either, and real-IP
+   restoration depends on the installation's tunnel. Check with forged `X-Aihr-Request-Source` and `X-Forwarded-For`
+   headers that the application sees only the restored address.
+4. Only when ALL THREE location snippets are in place — `abuse-auth-location.conf` (sign-in), `abuse-mobile-location.conf`
+   (mobile API) and `abuse-careers-location.conf` (careers) — and a request to each of the three locations with a forged
+   `X-Aihr-Request-Source` and `X-Forwarded-For` reaches the application with only the real client address, set
+   `AIHR_TRUST_REQUEST_SOURCE=1` and restart the accepted server build. **This one switch also changes sign-in and the
+   mobile API**: from then on they budget per source and refuse (503) any request whose source header is missing, so a
+   location left without its snippet locks people out of sign-in or the app.
+5. Install the scheduled prune as for `aihr-auth-prune`, with the same root-owned owner maintenance service file:
+   copy `aihr-recruitment-careers-prune.service` and `.timer` root-owned into `/etc/systemd/system/`, daemon-reload, start
+   the service once, check it printed a count, and enable the timer. It runs `select app.recruitment_careers_prune()`
+   hourly, deleting submission records (keyed client hashes only) older than two days even when nobody submits.
+
+The application itself also bounds this traffic: per server process at most 8 careers page reads and 4 submissions
+in progress, a source that has used its hourly submissions refused (429) before its form body is read (beyond that a short "busy" page, or 429 for a submission), 60 page reads a minute per source, 5
+submissions an hour per source and 300 stored applications a Kuala Lumpur day per company, on a separate four-connection
+database pool whose statements time out after 5 seconds (3 seconds for a lock wait), so anonymous traffic never uses
+the connections HR work needs.
+
 
 ## Reviewed Company organisation account admission
 

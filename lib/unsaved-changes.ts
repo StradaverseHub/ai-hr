@@ -58,9 +58,11 @@ export function registerUnsavedGuard(guard: UnsavedGuard): () => void {
   };
 }
 
-/** The first registered guard that currently holds unsaved edits, or null when everything is clean. */
-export function firstDirtyGuard(): UnsavedGuard | null {
+/** The first registered guard that currently holds unsaved edits, or null when everything is clean.
+ * `exclude` lets a page-level guard that also consults the registry skip itself (82748f92). */
+export function firstDirtyGuard(exclude?: UnsavedGuard): UnsavedGuard | null {
   for (const guard of guards) {
+    if (guard === exclude) continue;
     try {
       if (guard.isDirty()) return guard;
     } catch {

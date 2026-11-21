@@ -8,17 +8,26 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import type {MyTeamQuery} from '../lib/my-team-types';
 import {assertModuleEnabled} from './entitlements';
 
+/** Canonical grid search; preserves source order and the joined name/code semantics. */
+export function filterMyTeamSearch<T extends {name:string;employeeCode:string|null}>(rows:readonly T[],search?:string):T[]{
+ const needle=search?.trim().toLowerCase()??'';
+ return rows.filter(row=>!needle||`${row.name} ${row.employeeCode??''}`.toLowerCase().includes(needle));
+}
 export class MyTeamAuthorizationError extends Error {constructor(){super('MY_TEAM_NOT_AUTHORIZED');this.name='MyTeamAuthorizationError';}}
 export function assertMyTeamAccess(ctx:SessionContext){
   if(!ctx.userId||!hasTeamAccess(ctx))throw new MyTeamAuthorizationError();
   assertModuleEnabled(ctx,'leave');
 }
-export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeamQuery){
+/** The team identity owner uses the stored login link, never a caller's person claim. */
+export async function resolveMyTeamPrincipalTx(tx:Tx,ctx:SessionContext){
   assertMyTeamAccess(ctx);
-  const today=todayInKualaLumpur();
   const [principal]=await tx.select({personId:appUser.personId}).from(appUser)
     .where(and(eq(appUser.id,ctx.userId!),eq(appUser.tenantId,ctx.tenantId),isNull(appUser.archivedAt))).limit(1);
   if(!principal)throw new MyTeamAuthorizationError();
+  return principal;
+}
+export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeamQuery){
+  const today=todayInKualaLumpur(),principal=await resolveMyTeamPrincipalTx(tx,ctx);
   const [capability]=await tx.execute(sql`SELECT EXISTS(SELECT 1 FROM role_assignment r WHERE r.app_user_id=app.current_user_id() AND r.tenant_id=app.current_tenant_id()
       AND r.role::text IN ('manager','hr_admin','super_admin') AND app.has_role(r.role::text)) AS allowed,
     EXISTS(SELECT 1 FROM role_assignment r WHERE r.app_user_id=app.current_user_id() AND r.tenant_id=app.current_tenant_id()
@@ -41,7 +50,7 @@ export async function resolveMyTeamScopeTx(tx:Tx,ctx:SessionContext,query:MyTeam
     AND r.valid_from<=${today}::date AND (r.valid_to IS NULL OR r.valid_to>${today}::date)
     AND m.hired_on<=${today}::date AND (m.terminated_on IS NULL OR m.terminated_on>${today}::date)
     AND m.person_id<>${employment.personId})`;
-  const mode=query.scope==='department' ? sql`app.my_team_has_role_for('hr_admin',${employment.companyId}) OR app.my_team_has_role_for('super_admin',${employment.companyId})` :
+  const mode=query.scope==='department' ? or(sql`app.my_team_has_role_for('hr_admin',${employment.companyId})`,sql`app.my_team_has_role_for('super_admin',${employment.companyId})`) :
     query.scope==='direct' ? direct : sql`${employment.id} IN (SELECT app.my_team_report_ids())`;
   const employees=await tx.select({employmentId:employment.id,personId:employment.personId,employeeCode:employment.employeeCode,
     name:person.fullName,companyId:employment.companyId,departmentId:assignment.departmentId,occupation:position.title,

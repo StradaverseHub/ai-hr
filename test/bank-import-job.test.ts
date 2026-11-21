@@ -83,6 +83,31 @@ describe('durable Bank & Statutory jobs',()=>{
   expect((await getBankImportJob(ctx,id)).job.processed).toBe(0);
   await processBankImportJob(ctx,id);expect((await getBankImportJob(ctx,id)).job).toMatchObject({saved:1,processed:1,state:'completed'});
  });
+ it('stops on a database fault without consuming a valid row or inventing a data failure',async()=>{
+  const e=await employee(),id=await admit(content(['BANK001,TINFRA']));
+  await ready(id);await bankImportCommand(ctx,id,'confirm');await processBankImportJob(ctx,id);
+  const initial=(await getBankImportJob(ctx,id)).job;
+  await owner.client`create function public.architecture_import_fault() returns trigger language plpgsql as $$begin raise exception using errcode='XX000',message='synthetic storage fault';end$$`;
+  await owner.client`create trigger architecture_import_fault before update on employee_statutory_my for each row execute function public.architecture_import_fault()`;
+  try{
+   expect(await runBankImportTick(owner.client)).toBe(true);
+   const [job]=await owner.client`select state,processed,saved,failed,error from bank_import_job where id=${id}::uuid`;
+   expect(job).toMatchObject({state:'failed',processed:0,saved:0,failed:0});
+   expect(job.error).not.toContain('synthetic storage fault');
+   const [row]=await owner.client`select state,error from bank_import_row where job_id=${id}::uuid`;
+   expect(row).toMatchObject({state:'valid',error:null});
+   expect(await owner.db.select().from(schema.importAttemptItem).where(eq(schema.importAttemptItem.attemptId,initial.attemptId!))).toHaveLength(0);
+   expect((await owner.db.select().from(schema.employeeStatutoryMy).where(eq(schema.employeeStatutoryMy.personId,e.personId)))[0].taxNumber).not.toBe('TINFRA');
+  }finally{
+   await owner.client`drop trigger architecture_import_fault on employee_statutory_my`;
+   await owner.client`drop function public.architecture_import_fault()`;
+  }
+  // The current public recovery is a new validated upload. It commits exactly one HR/audit item.
+  const retry=await admit(content(['BANK001,TINFRA']));await ready(retry);await bankImportCommand(ctx,retry,'confirm');
+  await processBankImportJob(ctx,retry);await processBankImportJob(ctx,retry);
+  const done=(await getBankImportJob(ctx,retry)).job;expect(done).toMatchObject({state:'completed',processed:1,saved:1,failed:0});
+  expect(await owner.db.select().from(schema.importAttemptItem).where(eq(schema.importAttemptItem.attemptId,done.attemptId!))).toHaveLength(1);
+ });
  it('detects duplicate employee IDs across separate batches and paginates previews',async()=>{
   await employee();const id=await admit(content([...Array.from({length:BANK_IMPORT_VALIDATION_ROWS+1},(_,i)=>`${i===0?'BANK001':'UNKNOWN'+i},T${i}`),'BANK001,TNEW']));
   const job=await ready(id);expect(job).toMatchObject({total:BANK_IMPORT_VALIDATION_ROWS+2,validated:BANK_IMPORT_VALIDATION_ROWS+2,valid:1,invalid:BANK_IMPORT_VALIDATION_ROWS+1});

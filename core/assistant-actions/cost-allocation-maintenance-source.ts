@@ -12,7 +12,7 @@ const fail=costAllocationMaintenanceUnavailable,hash=(v:unknown)=>createHash('sh
 export const CostAllocationNomination=z.object({employmentId:z.guid(),effectiveDate:z.iso.date(),effectiveCompanyId:z.guid()}).strict();
 export type CostAllocationNomination=z.infer<typeof CostAllocationNomination>;
 export type CostAllocationSubject=CostAllocationNomination&{subjectId:string;companyId:string;subjectPersonId:string;employeeName:string;employeeCode:string|null;companyName:string;effectiveCompanyName:string};
-export async function costAllocationActorTx(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await tx.execute(sql`select app.access_workforce_write_lock()`);return fresh;}
+export async function costAllocationActorTx(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');await tx.execute(sql`select app.access_configuration_write_lock()`);return fresh;}
 async function subject(tx:Tx,ctx:SessionContext,pick:CostAllocationNomination):Promise<CostAllocationSubject>{
  const native=await reviewedCostAllocationSubjectTx(tx,ctx,pick.employmentId,pick.effectiveDate);
  if(native.companyId!==pick.effectiveCompanyId||native.employment.personId===ctx.personId)return fail();

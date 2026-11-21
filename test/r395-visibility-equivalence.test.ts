@@ -52,6 +52,7 @@ import {
   ACCOUNT_FEEDBACK, LIVE_SWAPPABLE_POLICIES, ALL_EMP, ALL_PERSON, CONTEXTS, MUTATIONS, POLICIES, Rollback, TABLES, TENANT_OF_PERSON, b, ctxByName, fill, inCtx,
   nameOf, pg, q, setBasedVsPerRow, setupOrg, sorted, visibleNames, type Row,
 } from './r395-org';
+import { supplyR395PayrollPeriods } from './r395-payroll-period-fill';
 
 const REPORT: Record<string, unknown> = {};
 
@@ -61,6 +62,8 @@ let currentProfilePolicies:Row[]=[];
 
 beforeAll(async () => {
   await setupOrg();
+  // 5055's deferred trigger still requires every non-staged payroll run to have a pay period.
+  await supplyR395PayrollPeriods();
   currentFeedbackPolicies=await assertTestingFeedbackPolicyGraph();
   currentProfilePolicies=await assertCurrentProfilePolicyGraph();
   const [d] = await q(`select pg_get_functiondef('app.visible_employment_ids()'::regprocedure) as def`);

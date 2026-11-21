@@ -14,7 +14,7 @@
  *  · duplicate detection on the reporter's five-part key;
  *  · YYYYMM conversion, and rejection rather than coercion of anything else;
  *  · Company Code resolution against company_label, including the ambiguous-label hard error;
- *  · employee_code resolution within the company, and rejection when the employment didn't cover the month;
+ *  · scoped Employee ID resolution, with recorded dates used as optional payslip evidence;
  *  · the GROSS / NETPAY cross-check;
  *  · the EA Part-B split warning surviving the fold;
  *
@@ -27,6 +27,7 @@ import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
+import { createMovementEvent } from '../core/movement';
 import { createBatch } from '../core/payroll';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -38,6 +39,7 @@ import {
 } from '../core/payroll-history-import';
 import { PAYROLL_HISTORY_HEADERS } from '../lib/payroll-history-import-schema';
 import { payrollRunLabel } from '../core/payslip-cycle-label';
+import { withRunPayPeriod } from '../core/payroll-period-lock';
 import { parseCsvRecords } from '../lib/csv';
 import {
   adminCtx,
@@ -368,7 +370,7 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(ambiguous.months[0].ok).toBe(false);
   });
 
-  it('resolves the employee by employee_code, and refuses a month the employment did not cover', async () => {
+  it('resolves Employee ID independently of employment dates and refuses unknown IDs', async () => {
     const a = adminCtx(b);
     await hire(a, 'A1001', '2024-01-01');
     // Joined AFTER the imported month — the employment did not cover 2024-01.
@@ -383,10 +385,10 @@ describe('import payroll history — the long (seven-column) contract', () => {
       ),
     });
     const bad = dry.issues.filter((i) => i.type === 'Invalid Employee No');
-    expect(bad.some((i) => i.employeeNo === 'A1002' && /was not employed during 2024-01/.test(i.description))).toBe(true);
+    expect(bad.some((i) => i.employeeNo === 'A1002')).toBe(false);
     expect(bad.some((i) => i.employeeNo === 'A9999' && /does not exist in Employee Master/.test(i.description))).toBe(true);
     expect(dry.months.find((m) => m.employeeNo === 'A1001')!.ok).toBe(true);
-    expect(dry.months.find((m) => m.employeeNo === 'A1002')!.ok).toBe(false);
+    expect(dry.months.find((m) => m.employeeNo === 'A1002')!.ok).toBe(true);
 
     // A historical payment after leaving keeps its employee identity and normal data validation.
     const [emp] = await owner.db
@@ -395,11 +397,11 @@ describe('import payroll history — the long (seven-column) contract', () => {
       .where(eq(schema.employment.employeeCode, 'A1001'));
     await owner.db
       .update(schema.employment)
-      .set({ terminatedOn: '2023-12-31' })
+      .set({ terminatedOn: '2024-01-31' })
       .where(eq(schema.employment.id, emp.id));
     const after = await validatePayrollHistoryImport(a, {
       companyId: b.companyId,
-      records: file(...completeMonth('A1001', '202401')),
+      records: file(...completeMonth('A1001', '202402')),
     });
     expect(after.months[0].ok).toBe(true);
     expect(after.issues.some(i=>i.type==='Invalid Employee No')).toBe(false);
@@ -582,10 +584,11 @@ describe('import payroll history — the long (seven-column) contract', () => {
     expect(totals.gross).toBeCloseTo(10600, 2);
     expect(totals.net).toBeCloseTo(9064.7, 2);
 
+    const { payPeriodId } = withRunPayPeriod(batch, () => Error('Expected the released history run to carry its pay period'));
     const [period] = await owner.db
       .select()
       .from(schema.payPeriod)
-      .where(eq(schema.payPeriod.id, batch.payPeriodId));
+      .where(eq(schema.payPeriod.id, payPeriodId));
     expect(period.status).toBe('closed');
   });
 
@@ -650,3 +653,56 @@ async function empPersonId(employmentId: string): Promise<string> {
     .where(eq(schema.employment.id, employmentId));
   return e.personId;
 }
+
+describe('import payroll history — workbook company and recorded coverage', () => {
+  async function transferred(effectiveDate='2024-07-01') {
+    const a = adminCtx(b);
+    const [beta] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Beta Fictional Sdn Bhd', companyLabel: 'BETA', country: 'MY' }).returning({ id: schema.company.id });
+    await owner.db.insert(schema.labelCompanyAssignment).values({ tenantId: b.tenantId, labelKind: 'department', labelId: b.deptA, companyId: beta.id });
+    await seedPayrollCycleCatalog(a, beta.id);
+    const { employmentId } = await hire(a, 'X4604');
+    await createMovementEvent(a, { employmentId, kind: 'entityTransfer', effectiveDate, companyId: beta.id, remarks: 'Fictional transfer' });
+    const [emp] = await owner.db.select({ companyId: schema.employment.companyId }).from(schema.employment).where(eq(schema.employment.id, employmentId));
+    expect(emp.companyId).toBe(beta.id);
+    return { a, beta: beta.id, employmentId };
+  }
+  it('finds the employee under the earlier company for its months, and under the current company after the transfer', async () => {
+    const { a, beta } = await transferred();
+    const acmeMonths = await validatePayrollHistoryImport(a, { companyId: b.companyId, records: file(...completeMonth('X4604', '202403'), ...completeMonth('X4604', '202406')) });
+    expect(acmeMonths.months.map((m) => [m.period, m.ok])).toEqual([['2024-03', true], ['2024-06', true]]);
+    const betaMonth = await validatePayrollHistoryImport(a, { companyId: beta, records: file(...completeMonth('X4604', '202408', { company: 'BETA' })) });
+    expect(betaMonth.months.map((m) => [m.period, m.ok])).toEqual([['2024-08', true]]);
+    const committed = await commitPayrollHistoryImport(a, { companyId: b.companyId, records: file(...completeMonth('X4604', '202403')) });
+    expect(committed.importedMonths).toBe(1);
+  });
+  it.each(['ACME-first','BETA-first'])('imports a split month in either company order: %s',async order=>{
+    const {a,beta,employmentId}=await transferred('2024-07-16');
+    const uploads=[{companyId:b.companyId,records:file(...completeMonth('X4604','202407'))},{companyId:beta,records:file(...completeMonth('X4604','202407',{company:'BETA'}))}];
+    if(order==='BETA-first')uploads.reverse();
+    for(const upload of uploads){const result=await commitPayrollHistoryImport(a,upload);expect(result.importedMonths).toBe(1);expect(result.failed).toBe(0);}
+    const rows=await owner.db.select({companyId:schema.payrollBatch.companyId,basic:schema.payslip.basicSalary,net:schema.payslip.netPay,statutory:schema.payslip.statutory}).from(schema.payslip).innerJoin(schema.payrollBatch,eq(schema.payrollBatch.id,schema.payslip.batchId)).where(eq(schema.payslip.employmentId,employmentId));
+    expect(rows).toHaveLength(2);
+    expect(rows.find(row=>row.companyId===b.companyId)).toMatchObject({basic:'5000.00',net:'4532.35',statutory:{segment:{companyId:b.companyId,from:'2024-07-01',to:'2024-07-15'}}});
+    expect(rows.find(row=>row.companyId===beta)).toMatchObject({basic:'5000.00',net:'4532.35',statutory:{segment:{companyId:beta,from:'2024-07-16',to:'2024-07-31'}}});
+  });
+  it('saves under the workbook company across a gap without fabricating a calendar segment', async () => {
+    const {a, employmentId} = await transferred();
+    const [first] = await owner.db.select().from(schema.assignment)
+      .where(and(eq(schema.assignment.employmentId, employmentId), eq(schema.assignment.validFrom, '2024-01-01')));
+    await owner.db.update(schema.assignment).set({validTo:'2024-06-01'}).where(eq(schema.assignment.id, first.id));
+    const result = await commitPayrollHistoryImport(a, {companyId:b.companyId, records:file(...completeMonth('X4604','202406'))});
+    expect(result.importedMonths).toBe(1);
+    const [saved] = await owner.db.select({companyId:schema.payrollBatch.companyId, statutory:schema.payslip.statutory})
+      .from(schema.payslip).innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id,schema.payslip.batchId))
+      .where(eq(schema.payslip.employmentId,employmentId));
+    expect(saved).toMatchObject({companyId:b.companyId, statutory:{pcb:150, epfEmployee:583, socsoEmployee:24.75, eisEmployee:9.9}});
+    expect(saved.statutory).not.toHaveProperty('segment');
+  });
+  it('permits either authorized workbook company even when the dated employer differs', async () => {
+    const {a, beta} = await transferred();
+    for (const [companyId, companyCode, period] of [[b.companyId,'ACME','202408'],[beta,'BETA','202402']]) {
+      const result = await validatePayrollHistoryImport(a, {companyId, records:file(...completeMonth('X4604', period, {company:companyCode}))});
+      expect(result.months[0].ok).toBe(true);
+    }
+  });
+});

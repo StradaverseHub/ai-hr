@@ -125,8 +125,8 @@ export function OfflineClaimPanel({ row, groupAdmin, name, onClose }: { row: Off
       headerExtra={<Badge variant={BADGE[result?.ok ? result.status : row.status]}>{t(`review.status.${result?.ok ? result.status : row.status}`)}</Badge>}
       footer={open ? (
         <div className="flex flex-wrap justify-end gap-2">
-          <Button type="submit" form={`offline-claim-${row.id}`} variant="outline" disabled={pending} onClick={submit('rejected')}>{t('review.reject')}</Button>
-          {mayAccept && <Button type="submit" form={`offline-claim-${row.id}`} disabled={pending || at === null} onClick={submit('accepted')}>{t('review.accept')}</Button>}
+          <Button aria-busy={pending} type="submit" form={`offline-claim-${row.id}`} variant="outline" disabled={pending} onClick={submit('rejected')}>{t('review.reject')}</Button>
+          {mayAccept && <Button aria-busy={pending} type="submit" form={`offline-claim-${row.id}`} disabled={pending || at === null} onClick={submit('accepted')}>{t('review.accept')}</Button>}
         </div>
       ) : undefined}
     >

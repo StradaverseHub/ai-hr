@@ -40,7 +40,7 @@ describe('r233 — the move out of the Payroll menu', () => {
   });
 
   it('issue 17: the section became AI Centre › Operations, still admin-gated, with only payroll queues needing payroll', () => {
-    const side = read('components/sidebar.tsx');
+    const side = read('lib/navigation/shell-inventory.ts');
     // One sidebar item: no Control Tower module in Ops, and the shared AI Centre row owns every /control-tower page.
     expect(navigationPlacement('/control-tower')).toEqual({area:'shared'});
     expect(NAVIGATION_MODULES.map(module=>module.id as string)).not.toContain('controlTower');

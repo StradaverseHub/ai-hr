@@ -64,13 +64,39 @@ export type AttendanceDeriveRow = {
  * Sum(flat, ot00, ot10, ot15, ot20, ot30) === the day's otMinutes. Normal-within-schedule hours are NOT in
  * here — they are the Actual Working Hours column, which already carries the day's whole worked total.
  */
-export type OtByRate = { flat: number|null; ot00: number|null; ot10: number|null; ot15: number|null; ot20: number|null; ot30: number|null };
+export type OtByRate = { flat: number|null; ot00: number|null; ot10: number|null; ot15: number|null; ot20: number|null; ot30: number|null;
+  /** c03670cc — present only when the caller asked for it (otByRate's `separateOtherRate`) AND the day's
+   *  trace recorded Variable minutes at a typed rate outside the usual columns. Those minutes are stored in
+   *  the Flat column (core/attendance.ts otSplitColumns), so they are moved OUT of `flat` here, never
+   *  added on top: the columns still sum to the day's overtime. */
+  other?: { minutes: number; rates: number[] } };
 
 /** The row shape otByRate reads. */
 type OtByRateInput = Pick<
   AttendanceDeriveRow,
   'formulaOvertime' | 'workedMinutes' | 'otMinutes' | 'dayType' | 'otFlatMinutes' | 'ot00Minutes' | 'ot10Minutes' | 'ot15Minutes' | 'ot20Minutes' | 'ot30Minutes'
->;
+> & { calcTrace?: unknown };
+
+/**
+ * c03670cc — the "other rate" minutes recorded by the day's trace: Variable bands typed at a rate that is
+ * none of 0 / 1.0 / 1.5 / 2.0 / 3.0 (for example 1.75). Read defensively from stored jsonb: anything that
+ * is not a version-1 trace with a whole-minute `split.other` returns null and the day reads as before.
+ */
+export function otherRateFromTrace(calcTrace: unknown): { minutes: number; flat: number; total: number; rates: number[] } | null {
+  if (!calcTrace || typeof calcTrace !== 'object') return null;
+  const trace = calcTrace as { v?: unknown; overtime?: { split?: Record<string, unknown>; rows?: unknown } | null };
+  const split = trace.v === 1 ? trace.overtime?.split : undefined;
+  if (!split || typeof split !== 'object') return null;
+  const whole = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+  if (!whole(split.other) || (split.other as number) <= 0) return null;
+  const keys = ['flat', 'ot00', 'ot10', 'ot15', 'ot20', 'ot30', 'other'];
+  if (keys.some((key) => split[key] !== undefined && !whole(split[key]))) return null;
+  const total = keys.reduce((sum, key) => sum + ((split[key] as number | undefined) ?? 0), 0);
+  const rows = Array.isArray(trace.overtime?.rows) ? (trace.overtime!.rows as { bucket?: unknown; rate?: unknown; effectiveMinutes?: unknown }[]) : [];
+  const rates = [...new Set(rows.filter((row) => row?.bucket === 'other' && typeof row.rate === 'number' && Number.isFinite(row.rate)
+    && (typeof row.effectiveMinutes !== 'number' || row.effectiveMinutes > 0)).map((row) => row.rate as number))].sort((a, b) => a - b);
+  return { minutes: split.other as number, flat: (split.flat as number | undefined) ?? 0, total, rates };
+}
 
 /**
  * Split a day's OVERTIME into the rate columns the request asks for.
@@ -96,7 +122,7 @@ type OtByRateInput = Pick<
  * Either way the columns sum back to the day's otMinutes, never to workedMinutes. A no-attendance day has
  * nothing to split → all zero (the caller renders those as "—").
  */
-export function otByRate(row: OtByRateInput): OtByRate {
+export function otByRate(row: OtByRateInput, opts: { separateOtherRate?: boolean } = {}): OtByRate {
   if(row.formulaOvertime)return {flat:null,ot00:null,ot10:null,ot15:null,ot20:null,ot30:null};
   const worked = row.workedMinutes ?? 0;
   const ot = Math.max(0, Math.min(row.otMinutes ?? 0, worked)); // OT can never exceed worked
@@ -113,7 +139,7 @@ export function otByRate(row: OtByRateInput): OtByRate {
   if (values.every((v) => v != null)) {
     const sum = values.reduce((a: number, v) => a + (v as number), 0);
     if (sum === ot) {
-      return {
+      const out: OtByRate = {
         flat: stored.flat!,
         ot00: stored.ot00!,
         ot10: stored.ot10!,
@@ -121,6 +147,14 @@ export function otByRate(row: OtByRateInput): OtByRate {
         ot20: stored.ot20!,
         ot30: stored.ot30!,
       };
+      // c03670cc — split the typed-rate minutes back out of Flat only when the trace and the stored
+      // columns describe the SAME figures (written together); otherwise the day reads exactly as before.
+      const other = opts.separateOtherRate ? otherRateFromTrace(row.calcTrace) : null;
+      if (other && other.total === ot && other.flat + other.minutes === stored.flat) {
+        out.flat = other.flat;
+        out.other = { minutes: other.minutes, rates: other.rates };
+      }
+      return out;
     }
   }
 

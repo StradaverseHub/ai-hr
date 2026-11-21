@@ -207,6 +207,21 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       const batch = await createBatch(admin, { companyId: b.companyId, payPeriod: today.slice(0, 7) });
       expect(await postRewardUnit(admin, id, v.unit.revision, batch.batchId)).toEqual({ alreadyPosted: false });
       expect((await getRewardUnit(admin, id)).unit.status).toBe('posted');
+      const stored=await owner.db.execute<{entry_id:string;talent:string;performance:string;increment_cents:string;total_increase_bp:string;bonus_cents:string}>(sql`
+        select entry_id,talent,performance,increment_cents,total_increase_bp,bonus_cents from reward_person_history where unit_id=${id}::uuid order by entry_id`);
+      expect(stored).toHaveLength(v.rows.length);
+      for(const row of v.rows){const history=stored.find(item=>item.entry_id===row.id)!;expect(history).toMatchObject({talent:'SCORE',performance:'ME',increment_cents:'22500',total_increase_bp:'450',bonus_cents:String(row.bonusCents)});}
+      expect(await postRewardUnit(admin,id,v.unit.revision,batch.batchId)).toEqual({alreadyPosted:true});
+      expect(await owner.db.execute(sql`select entry_id,talent,performance,increment_cents,total_increase_bp,bonus_cents from reward_person_history where unit_id=${id}::uuid order by entry_id`)).toEqual(stored);
+    });
+    it('rolls back payroll and salary effects if immutable reward history conflicts',async()=>{
+      const id=await unit('H1-HISTORY-CONFLICT',[{salary:5000}]);await submit(id);await approveTo(id,['bg','gr','ctro','ec']);
+      const view=await getRewardUnit(admin,id),row=view.rows[0];
+      await owner.db.execute(sql`insert into reward_person_history(tenant_id,company_id,employment_id,year,kind,source,unit_id,entry_id,talent,performance,merit_bp,promotion_bp,special_bp,increment_cents,total_increase_bp,promoted,bonus_cents,bonus_months_bp,lump_cents,created_by)
+        values(${b.tenantId}::uuid,${b.companyId}::uuid,${row.source.employmentId}::uuid,${year},'annual','review',${id}::uuid,${row.id}::uuid,'SCORE','ME',0,0,0,0,0,false,0,0,0,${admin.userId}::uuid)`);
+      const batch=await createBatch(admin,{companyId:b.companyId,payPeriod:today.slice(0,7)}),before=await enactedState();
+      await expect(postRewardUnit(admin,id,view.unit.revision,batch.batchId)).rejects.toThrow();
+      expect(await enactedState()).toEqual(before);expect((await getRewardUnit(admin,id)).unit.status).toBe('approved');
     });
     it('the page flag and the guard agree for every seat (one predicate)', async () => {
       const id = await unit('H1C', [{ salary: 5000 }]);
@@ -314,6 +329,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
 
   // ── G: bulk ────────────────────────────────────────────────────────────────────────────────────────
   describe('Send all ready', () => {
+    // Explicit timeout: measured 22.6 s against the global 30 s in main gate 42949200222.
     it('sends ready units, skips a blocked one, refuses one that changed, one decision per success', async () => {
       // Each BU CEO has their own real People placement; BG remains a group reviewer across units.
       const buActors = new Map<string, SessionContext>(),companies:string[]=[];
@@ -356,7 +372,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       expect((await decisions(blocked)).length).toBe(before[blocked]);
       expect((await decisions(changed)).length).toBe(before[changed]);
       expect((await getRewardUnit(admin, changed)).unit.status).toBe('bg');
-    });
+    }, 90_000);
     it('ignores units the viewer did not see and units not waiting on the viewer', async () => {
       const id = await unit('UNSEEN', [{ salary: 5000 }]);
       await submit(id);
@@ -380,7 +396,9 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       expect((await getRewardUnit(actors.bu!, id)).due).toBe(today);
       await saveRewardCalendar(admin, id, 1, { ...cal, due: { ...cal.due, bg: shift(-1) } });
       expect(await row()).toMatchObject({ due: shift(-1), daysUntilDue: -1 });
-      const t = createTranslator({ locale: 'en', messages: en, namespace: 'rewards.board' });
+      // This real translator reads only the board owner; keep its original path
+      // without instantiating namespace/key types for every unrelated HR message.
+      const t = createTranslator({ locale: 'en', messages: { rewards: { board: en.rewards.board } }, namespace: 'rewards.board' });
       const say = (d: number) => { const w = rewardDueWording(d); return t(w.key, { days: w.days }); };
       expect([say(0), say(-1), say(-3), say(1), say(4)]).toEqual(['today', '1 day overdue', '3 days overdue', 'tomorrow', 'in 4 days']);
     });

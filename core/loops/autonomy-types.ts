@@ -35,11 +35,15 @@ export type LevelChangedBy='administrator'|'automatic';
 export type LoopActionState='applying'|'applied'|'not_applied';
 /** Why an action was not applied: a condition did not hold, the owner refused it, the run was interrupted, or (Phase 2
  * hardening) the loop was switched off, the tenant stopped, the company paused or the loop moved below Level 2 between the
- * attempt's record and its apply (loop_stopped). */
+ * attempt's record and its apply (loop_stopped). The request-only acts of 13 November 2026 add two: the record the
+ * request was about changed before it was sent (condition_record_changed: a passport renewed, a probation end date moved
+ * or a review opened meanwhile), and the probation review has no manager to go to (condition_no_manager). */
 export type LoopActionReason='condition_site_exit'|'condition_leave'|'condition_day_changed'|'condition_sponsor_self'|'condition_other_clocking'
- |'condition_inactive'|'would_create_overtime'|'approval_routed'|'owner_refused'|'payroll_closed'|'approval_pending'|'interrupted'|'loop_stopped';
+ |'condition_inactive'|'would_create_overtime'|'approval_routed'|'owner_refused'|'payroll_closed'|'approval_pending'|'interrupted'|'loop_stopped'
+ |'condition_record_changed'|'condition_no_manager';
 export const LOOP_ACTION_REASONS:readonly LoopActionReason[]=Object.freeze(['condition_site_exit','condition_leave','condition_day_changed','condition_sponsor_self',
- 'condition_other_clocking','condition_inactive','would_create_overtime','approval_routed','owner_refused','payroll_closed','approval_pending','interrupted','loop_stopped']);
+ 'condition_other_clocking','condition_inactive','would_create_overtime','approval_routed','owner_refused','payroll_closed','approval_pending','interrupted','loop_stopped',
+ 'condition_record_changed','condition_no_manager']);
 export type UndoneBy='employee'|'hr';
 /** One check the action evaluated, as a run's checks are recorded. */
 export type LoopActionCheck=Readonly<{check:string;ruleVersion:string|null;result:'pass'|'fail'}>;

@@ -68,3 +68,14 @@ describe('bundled guide catalog', () => {
     expect(refresh).toBeLessThan(deploy.indexOf('dstate phase restart'));
   });
 });
+
+
+it('loads the actual bundled guides for the three new board pages with native human boundaries',()=>{
+ const guides=loadGuides();
+ for(const [slug,page] of [['admin-lifecycle','/lifecycle/requisitions/offboarding'],['employee-lifecycle','/me/document-signing'],['admin-payroll-statutory','/payroll/history-import/records']] as const){
+  const guide=guides.find(guide=>guide.meta.slug===slug);expect(guide,slug).toBeDefined();expect(guide!.body).toContain(']('+page+')');
+ }
+ expect(guides.find(guide=>guide.meta.slug==='admin-lifecycle')!.body).toContain('only its own Return or Revoke items');
+ expect(guides.find(guide=>guide.meta.slug==='employee-lifecycle')!.body).toContain('Chat guidance cannot sign');
+ expect(guides.find(guide=>guide.meta.slug==='admin-payroll-statutory')!.body).toContain('does not automatically reprocess payroll');
+});

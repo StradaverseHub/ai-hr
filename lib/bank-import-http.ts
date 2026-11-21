@@ -1,4 +1,6 @@
 import {BankImportJobError} from '../core/bank-import-job';
+import {EmployeeImportJobError} from '../core/employee-import-job';
+import {SectionImportJobError} from '../core/section-import-job';
 export function assertBankImportOrigin(request:Request){
  const origin=request.headers.get('origin'),host=request.headers.get('x-forwarded-host')??request.headers.get('host');
  try{if(origin&&host&&new URL(origin).host===host)return;}catch{}
@@ -12,7 +14,7 @@ export async function bankImportBody(request:Request,max:number){
  finally{reader.releaseLock();}
 }
 export function bankImportHttpError(error:unknown){
- if(error instanceof BankImportJobError)return Response.json({error:error.message},{status:error.status,headers:{'Cache-Control':'private, no-store'}});
+ if(error instanceof BankImportJobError||error instanceof EmployeeImportJobError||error instanceof SectionImportJobError)return Response.json({error:error.message},{status:error.status,headers:{'Cache-Control':'private, no-store'}});
  // Never surface raw SQL or cell values. The client can retry its same job/part safely.
  return Response.json({error:'The import request could not be completed. Reopen its progress before retrying.'},{status:500,headers:{'Cache-Control':'private, no-store'}});
 }

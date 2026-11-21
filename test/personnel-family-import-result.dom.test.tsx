@@ -18,7 +18,11 @@ const familyCsv='employee_code,full_name,relationship,date_of_birth\nPR15-EMPLOY
 const familyPreview:SectionImportPreview={section:'family',total:2,updateCount:2,skipCount:0,createCount:0,missingColumns:[],fileErrors:[],rows:['2016-02-03','2018-04-05'].map((date,row)=>({rowNum:row+1,employeeCode:'PR15-EMPLOYEE',employeeName:'Fictional Employee',verdict:'update',ok:true,errors:[],warnings:[],changes:['family_member'],proposed:[{column:'full_name',value:'Fictional same child'},{column:'date_of_birth',value:date}]}))};
 async function apply(locale:Locale,preview:SectionImportPreview,text=familyCsv){
  mocks.read.mockResolvedValue({name:'records.csv',text,dependentsText:'',extraTexts:{}});mocks.validate.mockResolvedValue(preview);
- const result:SectionImportResult={section:preview.section,updated:preview.updateCount,skipped:0,failed:[],fileErrors:[],runId:null};mocks.commit.mockResolvedValue(result);
+ const result:SectionImportResult={section:preview.section,updated:preview.updateCount,skipped:0,failed:[],fileErrors:[],runId:null};
+ // The file runs as a background job; its progress panel hands the finished result to the same result card.
+ const job={id:'00000000-0000-4000-8000-000000000002',kind:'section_import',section:preview.section,sourceName:'records.csv',state:'running',stepsTotal:preview.updateCount,stepsDone:0,result:null,updatedAt:new Date().toISOString(),createdAt:new Date().toISOString(),worker:'running'};
+ mocks.commit.mockResolvedValue({job,existing:false});
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>new Response(JSON.stringify(/\/jobs$/.test(String(url))?{jobs:[]}:{job:{...job,state:'completed',stepsDone:preview.updateCount,result}}),{status:200})));
  const t=createTranslator({locale,messages:{people:{import:catalogs[locale].people.import}},namespace:'people.import'});
  render(<NextIntlClientProvider locale={locale} messages={catalogs[locale]}><SectionImport section={preview.section} reference={reference}/></NextIntlClientProvider>);
  const file=document.querySelector('input[type="file"]');expect(file).not.toBeNull();fireEvent.change(file!,{target:{files:[new File([text],'records.csv',{type:'text/csv'})]}});

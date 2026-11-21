@@ -124,6 +124,13 @@ export type RotationCycle = {
   days: RotationDay[];
 };
 export const MAX_ROTATION_DAYS = 366;
+/** 2f803985 — the three ways a Schedule Group's cycle repeats, read from (never stored beside) unit/length:
+ * Working Week = week × 1, Weekly Pattern = week × N, Daily Pattern = day × N. Shared by server and client. */
+export const ROTATION_METHODS = ['workingWeek', 'weeklyPattern', 'dailyPattern'] as const;
+export type RotationMethod = (typeof ROTATION_METHODS)[number];
+export function rotationMethodOf(cycle: Pick<RotationCycle, 'unit' | 'length'>): RotationMethod {
+  return cycle.unit === 'day' ? 'dailyPattern' : cycle.length === 1 ? 'workingWeek' : 'weeklyPattern';
+}
 export const validRotationDate = (date: string): boolean => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date.startsWith('0000-')) return false;
   const epoch = Date.parse(`${date}T00:00:00Z`);

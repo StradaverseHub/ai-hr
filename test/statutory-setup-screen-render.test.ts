@@ -1,3 +1,4 @@
+import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 /**
  * Item 15e5bd93 REVISION 4 (r372) — THE STATUTORY PAYMENT SETUP SCREEN, RENDERED FOR REAL, IN ALL SIX
  * LOCALES.
@@ -76,8 +77,6 @@ const richProps = {
     epfEmployerNo: 'E123',
     socsoEmployerCode: 'S123',
     lhdnEmployerNo: 'L123',
-    myinvoisTin: 'C12345678900',
-    ssmRegistrationNo: '202301001234',
     hrdfStatus: 'mandatory' as const,
   },
   statutoryAuthorities: [
@@ -334,15 +333,13 @@ describe('15e5bd93 rev 4 render check — the setup SCREEN in all six locales, r
    * An EXACT ordered list of captions, because a substring check would pass on a card that rendered two of
    * the six, and the position is asserted because "stays at the top" is half the request.
    */
-  it('puts the six identity facts at the top, in the reporter’s order, with no input among them', () => {
+  it('puts the four statutory facts at the top, in the reporter’s order, with no input among them', () => {
     const en = messagesFor('en').admin.organization as Record<string, string>;
     const html = render('en', richProps);
     const card = identity(html);
     expect(card, 'the identity card is on the screen').toBeTruthy();
     expect(dtsIn(card)).toEqual(
       [
-        en.ssmRegistrationNo,
-        en.myinvoisTin,
         en.epfEmployerNo,
         en.socsoEmployerCode,
         en.lhdnENumber,
@@ -350,7 +347,7 @@ describe('15e5bd93 rev 4 render check — the setup SCREEN in all six locales, r
       ].map(inMarkup),
     );
     expect(ddsIn(card)).toEqual(
-      ['202301001234', 'C12345678900', 'E123', 'S123', 'L123', en.hrdfMandatory].map(inMarkup),
+      ['E123', 'S123', 'L123', en.hrdfMandatory].map(inMarkup),
     );
     /**
      * ⚠️ READ-ONLY HERE, EDITABLE PER BODY. The four filing identifiers live on `company_statutory_my` and
@@ -583,7 +580,7 @@ describe('15e5bd93 rev 4 — the source decisions the measurements traced back t
      * relationship every `Field` gives an input — one rule for the whole screen.
      */
     const card = identity(render('en', richProps));
-    expect((card.match(/<div class="flex min-w-0 flex-col">/g) ?? []).length, 'one column per fact').toBe(6);
+    expect((card.match(/<div class="flex min-w-0 flex-col">/g) ?? []).length, 'one column per fact').toBe(4);
     expect(card, 'and no row pushes its value to the far end').not.toContain('justify-between');
   });
 
@@ -616,3 +613,11 @@ describe('15e5bd93 rev 4 — the source decisions the measurements traced back t
     expect(src, 'and no half-width span').not.toMatch(/col-span-2(?![0-9])/);
   });
 });
+
+it('captures Statutory setup with only the remaining filing settings', async () => {
+  const html = render('en', richProps);
+  expect(identity(html)).toContain('E123');
+  expect(identity(html)).not.toContain('MyInvois TIN');
+  await captureAiReviewScreenshots(html, 'en', 'feedback-company-statutory-settings',
+    'Actual statutory setup and filing cards for a fictional company');
+}, 120_000);

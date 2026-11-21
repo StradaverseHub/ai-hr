@@ -211,6 +211,24 @@ describe('updateLeaveType — placement choice', () => {
     expect(row?.p).toBeNull();
   });
 
+  const visibilityCollisions: {
+    placement: 'hidden' | 'primary' | null;
+    postedVisibility: boolean;
+    expected: { p: 'primary' | null; v: boolean | null };
+  }[] = [
+    { placement: 'hidden', postedVisibility: true, expected: { p: null, v: false } },
+    { placement: 'primary', postedVisibility: false, expected: { p: 'primary', v: true } },
+    { placement: null, postedVisibility: true, expected: { p: null, v: null } },
+  ];
+  it.each(visibilityCollisions)('placement $placement wins over an explicitly conflicting visibility flag', async ({ placement, postedVisibility, expected }) => {
+    const id = await leaveType(uniqCode(), { essPlacement: 'secondary', visibleToEmployee: true });
+    await updateLeaveType(adminCtx(b), { id, name: 'X', visibleToEmployee: postedVisibility, essPlacement: placement });
+    expect(await readRow(id)).toEqual(expected);
+    expect(await latestEventPayload(b.tenantId, id, 'leave-type.updated')).toMatchObject({
+      after: { essPlacement: expected.p, visibleToEmployee: expected.v },
+    });
+  });
+
   it("'primary'/'secondary' store the column AND un-hide (flag true)", async () => {
     const id = await leaveType(uniqCode(), { visibleToEmployee: false });
     await updateLeaveType(adminCtx(b), { id, name: 'X', essPlacement: 'secondary' });

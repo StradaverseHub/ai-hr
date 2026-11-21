@@ -4,7 +4,7 @@
  * MyInvois TIN / SSM). Upsert keyed by company; admin-managed (RLS).
  */
 import { eq, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../../db/client';
+import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
 import { companyStatutoryMy } from '../../db/schema';
 import type { HrdfStatus } from './statutory-tables';
@@ -48,6 +48,19 @@ const STATUTORY_TEXT_FIELDS = [
   'myinvoisTin',
   'ssmRegistrationNo',
 ] as const;
+
+/** New-company policy only. Existing companies and later partial edits keep their saved rate. */
+export async function initializeCompanyStatutoryMY(ctx: SessionContext, tx: Tx, companyId: string): Promise<void> {
+  const [row] = await tx.insert(companyStatutoryMy)
+    .values({ tenantId: ctx.tenantId, companyId, hrdfStatus: 'mandatory' })
+    .onConflictDoNothing({ target: companyStatutoryMy.companyId })
+    .returning({ id: companyStatutoryMy.id });
+  if (row) await appendEvent(tx, {
+    tenantId: ctx.tenantId, aggregateType: 'company-statutory-my', aggregateId: row.id,
+    eventType: 'company.statutory.my.created', actor: actorOf(ctx),
+    payload: { companyId, after: { hrdfStatus: 'mandatory' }, reason: 'new-company-default' },
+  });
+}
 
 export async function setCompanyStatutoryMY(ctx: SessionContext, p: CompanyStatutoryInput) {
   // Only the fields the caller actually NAMED are written — see the type comment above. `''` is a real

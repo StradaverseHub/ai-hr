@@ -400,8 +400,12 @@ describe('r415 · CP22 and CP22A did not move', () => {
       'app/payroll/cp22a/[employmentId]/pdf/route.ts',
     ];
     for (const f of files) {
+      // The preview now includes approved download feedback; document owners keep their old baseline.
+      const baseline = f === 'app/payroll/cp22/[employmentId]/preview/page.tsx'
+        ? '6cd8f7951d32ff09d5134e0d293dbc8ba0bac578'
+        : BASELINE;
       const now = fs.readFileSync(path.join(ROOT, f), 'latin1');
-      const then = execFileSync('git', ['show', `${BASELINE}:${f}`], { cwd: ROOT, encoding: 'latin1', maxBuffer: 1 << 26 });
+      const then = execFileSync('git', ['show', `${baseline}:${f}`], { cwd: ROOT, encoding: 'latin1', maxBuffer: 1 << 26 });
       expect(now.length, f).toBeGreaterThan(500);
       expect(now === then, f).toBe(true);
     }

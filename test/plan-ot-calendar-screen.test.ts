@@ -160,13 +160,10 @@ describe('B · the refusals the approved plan owes the reporter', () => {
     expect(LIST).toContain('isCalendar ? otPlanCalendarMonth(s, me.employmentId, month) : Promise.resolve([])');
   });
 
-  it('the warnings still only warn — nothing on either screen disables Submit', () => {
-    for (const [name, src] of [
-      ['apply', code(APPLY)],
-      ['fields', code(FIELDS)],
-    ] as const) {
-      expect(/\bdisabled\b/.test(src), `${name}: a genuine month-end must still be submittable`).toBe(false);
-    }
+  it('keeps month-end and long-plan warnings nonblocking when an approval route is available', () => {
+    // The approved routing change is the only guard on Submit. Warnings must not become a second guard.
+    expect(code(APPLY).match(/\bdisabled\b(?:=\{[^}]*\})?/g)).toEqual(['disabled={!route.available}']);
+    expect(code(FIELDS)).not.toMatch(/\bdisabled\b/);
   });
 });
 
@@ -269,8 +266,12 @@ describe('E · the two right-hand panels, and what happened to their keys', () =
     expect(MESSAGES.en.me.otStaysOnCalendarHelp).toContain('You stay on this calendar afterwards.');
   });
   it('does not name a reporting-line superior as the configured workflow approver', () => {
-    expect(APPLY).toContain('listAttendanceWorkflowSettings(s, [me.companyId])');
-    expect(APPLY).toContain("workflowEnabled ? t('otWorkflowGoesTo')");
+    expect(APPLY).toContain("ownAttendanceSubmissionRoute(s, me.employmentId, 'self_overtime')");
+    // 237c31e6: "Goes to" is the approval progress panel — every level and approver from the configured route, or the
+    // native submission refusal — rendered by the shared component rather than the first approver's name.
+    expect(APPLY).toContain('AttendanceSubmissionRouteProgress({ route })');
+    expect(APPLY).not.toContain('route.firstApprovers');
+    expect(read('components/attendance-route-progress.tsx')).toContain('submissionRefusals.');
     expect(LIST).toContain('p.assignedApproverNames');
     expect(MESSAGES.en.me.overtimeRequestHelp).not.toContain('goes to your superior');
     for (const messages of Object.values(MESSAGES)) {
@@ -297,11 +298,14 @@ describe('F · the contract between the form and the server action', () => {
   it('Remarks and Attachment are offered, and the action posts both', () => {
     expect(APPLY).toContain('name="remark"');
     expect(APPLY).toContain('name="attachment"');
-    // React supplies the function action's POST/multipart encoding. Explicit attributes warn and
-    // are overridden; retaining the function action and file field preserves the upload contract.
-    const form = APPLY.match(/<form\b[^>]*action=\{myRequestOvertime\}[^>]*>/)?.[0];
+    // The retained live form sends FormData to the same server action, including its file,
+    // without a navigation or reset on routing refusal. Native fallback must never put input in a URL.
+    const form = APPLY.match(/<AttendanceSubmissionForm\b[^>]*action=\{myRequestOvertime\}[^>]*>/)?.[0];
     expect(form).toBeDefined();
-    expect(form).not.toMatch(/\b(?:encType|method)=/);
+    const wrapper=read('components/attendance-submission-form.tsx');
+    expect(wrapper).toContain('new FormData(event.currentTarget)');
+    expect(wrapper).toContain('<form action={action as');
+    expect(wrapper).toContain('await action(data)');
     const fn = ACTIONS.slice(ACTIONS.indexOf('export async function myRequestOvertime'));
     const body = fn.slice(0, fn.indexOf('\n}\n') + 3);
     expect(body).toContain("formData.get('remark')");

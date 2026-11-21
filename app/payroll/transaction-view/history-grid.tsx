@@ -1,5 +1,6 @@
 'use client';
 
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { Fragment, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { SUBJECT_COLUMNS, filterGridRows, type GridRowGroup, type HistoryGridRow } from './history-pivot';
@@ -177,12 +178,12 @@ export function HistoryGrid({
             {t('view.grid.showSubject')}
           </label>
         </div>
-        <a
+        <ExportDownloadLink
           href={exportHref}
           className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
         >
           {t('view.grid.export')}
-        </a>
+        </ExportDownloadLink>
       </div>
 
       <p className="text-xs text-muted-foreground">
@@ -269,7 +270,7 @@ export function HistoryGrid({
                       <td className={`${COL.name.th} ${COL.name.left} sticky z-10 truncate bg-card px-3 py-2`}>
                         {/* A synthetic row's caption is a dynamic key under this same namespace; an item row
                             carries the name the payslip stored. */}
-                        {r.labelKey ? (r.labelKey === 'overtime' && r.kind === 'synthetic' ? t('view.grid.row.totalOvertime') : r.name || t(`view.grid.row.${historyGridLabelKey(r)}`)) : r.name}
+                        {r.labelKey ? r.name || t(`view.grid.row.${historyGridLabelKey(r)}`) : r.name}
                         {r.labelKey === 'overtime' && r.kind === 'synthetic' && <span className="block whitespace-normal text-xs font-normal text-muted-foreground">{t('view.grid.overtimeIncludedInGross')}</span>}
                       </td>
                       <td

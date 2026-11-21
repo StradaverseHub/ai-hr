@@ -14,8 +14,9 @@ beforeEach(()=>{vi.resetAllMocks();state.session.mockResolvedValue(ctx);state.re
 describe('Home Notice metadata transport',()=>{
  it('returns only the bounded metadata contract even if its owner later acquires private detail fields',async()=>{
   state.read.mockResolvedValueOnce({...value,body:'private body',items:[{...value.items[0],body:'private text',attachmentIds:['private file'],contentVersion:88}]});
-  const response=await GET(new Request('http://localhost/api/home/notices?employmentId=own'));
-  expect(response.status).toBe(200);expect(await response.json()).toEqual(value);expect(state.read).toHaveBeenCalledWith(ctx,'own');
+  const request=new Request('http://localhost/api/home/notices?employmentId=own');
+  const response=await GET(request);
+  expect(response.status).toBe(200);expect(await response.json()).toEqual(value);expect(state.read).toHaveBeenCalledWith(ctx,'own',request.signal);
   expect(response.headers.get('cache-control')).toBe('private, no-store');expect(response.headers.get('vary')).toBe('Cookie, Authorization');
  });
  it('refuses authority, paging and ambiguous subjects before the owner runs',async()=>{

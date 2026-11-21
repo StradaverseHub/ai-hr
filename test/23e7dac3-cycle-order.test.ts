@@ -132,9 +132,12 @@ describe('23e7dac3 · a month with NOTHING filed accepts the bonus first, and th
     // green if BOTH orders became wrong together. These are the RM5,000 + RM3,000 + RM500 May month:
     // one EPF Third Schedule lookup on RM8,000 (11% / 12%), ONE SOCSO/EIS charge on RM5,500 (the bonus
     // is outside the s.2(24) wage), and the month's MTD as a single computation.
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): employer was 960 (the 12% row for
+    // RM8,000). Normal EPF wages RM5,000 are at or below RM5,000 and the RM3,000 bonus takes the month
+    // above it, so KWSP's Part A bonus note sets the employer at 8,000 × 13% = 1,040. Employee row unchanged.
     expect(conventional).toEqual({
       epfEmployee: 880,
-      epfEmployer: 960,
+      epfEmployer: 1040,
       socsoEmployee: 27.25,
       socsoEmployer: 95.35,
       // SKBBK (Lindung 24 Jam) is an OPTIONAL per-employee election and this employee does not have it,
@@ -181,8 +184,10 @@ describe('23e7dac3 · a month with NOTHING filed accepts the bonus first, and th
     // ── THE WORKSHEET'S OWN TRACE (ADR-0085 §7). Every per-run figure in the worked example an
     // accountant is asked to read is pinned here as a literal, so the document and the kernel cannot
     // drift apart without this failing. RM5,000 basic + RM500 overtime + a RM3,000 bonus, May, no priors.
-    expect(bonusLast).toEqual({ epfEmployee: 330, epfEmployer: 310, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 90 });
-    expect(bonusFirst).toEqual({ epfEmployee: 330, epfEmployer: 310, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 50 });
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): the bonus run's employer increment
+    // was 960 − 650 = 310; the month is now 1,040 (13% × 8,000, Part A bonus note), so 1,040 − 650 = 390.
+    expect(bonusLast).toEqual({ epfEmployee: 330, epfEmployer: 390, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 90 });
+    expect(bonusFirst).toEqual({ epfEmployee: 330, epfEmployer: 390, socsoEmployee: 0, socsoEmployer: 0, socsoSkbbk: 0, eisEmployee: 0, eisEmployer: 0, pcb: 50 });
     expect(monthlyLast).toEqual({ epfEmployee: 550, epfEmployer: 650, socsoEmployee: 27.25, socsoEmployer: 95.35, socsoSkbbk: 0, eisEmployee: 10.9, eisEmployer: 10.9, pcb: 50 });
   });
 
@@ -306,8 +311,12 @@ describe('23e7dac3 · the ONE case the order still changes, stated rather than h
    * with its DIRECTION and its BOUND so the worksheet's claim is checkable: the clamp can only ever
    * REMOVE a negative increment, so an out-of-order month is never under-remitted, only over — and the
    * excess is an employer cost that lands in the employee's own EPF account.
+   *
+   * 2026-11-16, item 7f5cc653: for a BONUS-stream crossing (this shape) KWSP's Part A bonus note keeps the
+   * employer at 13% of the month, so the step and the clamp no longer occur and the two orders agree. The
+   * step remains for a month that crosses RM5,000 on normal wages alone.
    */
-  it('a bonus that carries the month across the RM5,000 EPF step still clamps, and only upwards', async () => {
+  it('a bonus that carries the month across RM5,000 keeps 13% (7f5cc653), so neither order clamps', async () => {
     // RM4,990 basic, with RM40 of bonus-bucket money inside the salary run and a RM30 bonus run beside
     // it: the month is RM5,060, which is over the RM5,000 step, but the salary alone is under it.
     await setCompensation(a, { employmentId, basicSalary: 4990, monthlyAllowance: 0, effectiveFrom: '2025-01-01' });
@@ -321,18 +330,17 @@ describe('23e7dac3 · the ONE case the order still changes, stated rather than h
     await monthlyRun(0, 40);
     const reversed = await monthTotal();
 
-    // Conventional: the salary run already carries the month over the step, so no increment is negative
-    // and the month equals the single Third Schedule lookup for RM5,060.
-    expect(conventional.epfEmployer).toBe(612);
-    // Reversed: the RM30 bonus run crosses the step FIRST, its negative increment is clamped away, and
-    // the month ends ABOVE the table figure — never below it.
-    expect(reversed.epfEmployer).toBe(650);
-    expect(reversed.epfEmployer).toBeGreaterThan(conventional.epfEmployer);
-    // The bound is the size of the step, not an open-ended drift.
-    expect(round2(reversed.epfEmployer - conventional.epfEmployer)).toBe(38);
-    // Every other leg is untouched by the step and agrees exactly.
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16). This pinned conventional 612
+    // (the 12% row for RM5,060) against reversed 650 (a clamped negative increment), 38 apart. KWSP's Part A
+    // bonus note removes the step for this shape: the normal wage (RM4,990) is at or below RM5,000 and the
+    // bonus money (RM40 + RM30, on the bonus stream) takes the month above it, so the employer pays 13% of
+    // the month's wages: 5,060 × 13% = 657.80 → 658. The figure only rises as the bonus grows, so no
+    // increment is negative, nothing is clamped, and both orders end on the same month.
+    expect(conventional.epfEmployer).toBe(658); // was 612
+    expect(reversed.epfEmployer).toBe(658); // was 650
+    expect(round2(reversed.epfEmployer - conventional.epfEmployer)).toBe(0); // was 38
+    // Every leg agrees exactly.
     for (const k of ITEMS) {
-      if (k === 'epfEmployer') continue;
       expect([k, reversed[k]]).toEqual([k, conventional[k]]);
     }
   });

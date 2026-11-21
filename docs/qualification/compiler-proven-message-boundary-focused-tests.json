@@ -1,0 +1,5 @@
+[
+  "test/rewards-approvals-board.test.ts",
+  "test/i18n-catalogs.test.ts",
+  "test/i18n-coverage.test.ts"
+]

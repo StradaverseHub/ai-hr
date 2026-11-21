@@ -38,6 +38,8 @@ describe('Home links to the actual assigned request beyond legacy queue ceilings
   expect((await listAttendanceCorrections(manager.ctx,{status:'pending'})).some(row=>row.id===id)).toBe(false);
   const focus={kind:'attendance' as const,id};
   expect(await isCurrentAssignedApproval(manager.ctx,focus,modules)).toBe(true);
+  expect(await isCurrentAssignedApproval(manager.ctx,{...focus,id:randomUUID()},modules)).toBe(false);
+  expect(await isCurrentAssignedApproval(manager.ctx,{...focus,id:'invalid'},modules)).toBe(false);
   expect(await isCurrentAssignedApproval(subject.ctx,focus,modules)).toBe(false);
   expect(await isCurrentAssignedApproval(other.ctx,focus,modules)).toBe(false);
   expect(await isCurrentAssignedApproval(manager.ctx,focus,{...modules,attendance:false})).toBe(false);

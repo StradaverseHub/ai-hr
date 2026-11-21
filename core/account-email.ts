@@ -3,21 +3,21 @@ import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {emailDisplayClock} from '../lib/email-display-clock';
-import {client,withTenant,type SessionContext} from '../db/client';
+import {client,withSystemWork,withTenant,type SessionContext} from '../db/client';
 import type {IdentityEmailActor} from '../lib/identity/email-model';
 import {AccountEmailDeliveryError,type AccountEmailProvider,type AccountEmailDeliveryView,type AccountEmailError,type AccountEmailReadiness} from '../lib/account-email-model';
 
 /** No business transaction spans the provider call. A lost result remains held, never auto-retried. */
 export async function attemptAccountEmail(id:string,leaseToken:string,provider:AccountEmailProvider,invitationToken?:string,onResult?:(status:'sent'|'failed'|'skipped'|'uncertain')=>void):Promise<void>{
  const hash=invitationToken?createHash('sha256').update(invitationToken).digest('hex'):null;
- const finish=async(status:'sent'|'failed'|'skipped',error:AccountEmailError|null)=>{const [result]=await client`select app.account_email_finish(${id}::uuid,${leaseToken}::uuid,${status},${error}) as finished`;onResult?.(result?.finished?status:'uncertain');};
+ const finish=async(status:'sent'|'failed'|'skipped',error:AccountEmailError|null)=>{const [result]=await withSystemWork(()=>client`select app.account_email_finish(${id}::uuid,${leaseToken}::uuid,${status},${error}) as finished`);onResult?.(result?.finished?status:'uncertain');};
  try{
-  const [target]=await client<{kind:'invitation'|'recovery';email:string}[]>`select * from app.account_email_target(${id}::uuid,${leaseToken}::uuid,${hash})`;
+  const [target]=await withSystemWork(()=>client<{kind:'invitation'|'recovery';email:string}[]>`select * from app.account_email_target(${id}::uuid,${leaseToken}::uuid,${hash})`);
   if(!target){await finish('skipped','notEligible');return;}
   let readiness:AccountEmailReadiness;
   try{readiness=await provider.emailReadiness?.()??null;}catch{readiness='providerUnavailable';}
   if(readiness){await finish('failed',readiness);return;}
-  const [start]=await client<{started:boolean}[]>`select app.account_email_start(${id}::uuid,${leaseToken}::uuid,${hash}) as started`;
+  const [start]=await withSystemWork(()=>client<{started:boolean}[]>`select app.account_email_start(${id}::uuid,${leaseToken}::uuid,${hash}) as started`);
   if(!start?.started){onResult?.('uncertain');return;}
   try{
    if(target.kind==='invitation'){

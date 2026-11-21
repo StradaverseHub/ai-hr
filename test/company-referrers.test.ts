@@ -213,11 +213,17 @@ describe('§1 the declared referrer set is the live schema', () => {
   it('declares EXACTLY the columns the database points at company.id', async () => {
     const fks = await liveFks();
     const live = [...new Set(fks.filter((f) => f.references === 'company' && f.refColumn === 'id').map((f) => `${f.table}.${f.column}`))].sort();
-    const declared = COMPANY_REFERRERS.map((r) => `${r.table}.${r.column}`).sort();
+    const declared = COMPANY_REFERRERS.filter(r=>r.referenceKind!=='uuid-array').map((r) => `${r.table}.${r.column}`).sort();
     // Missing => a delete that fails at the last moment with a raw 23503 (the reported fault).
     // Extra   => a cascade aimed at a table that no longer references a company.
     expect(declared, 'core/company-refs.ts must declare every FK to company.id, and no others').toEqual(live);
     expect(live.length, 'non-vacuity: the schema has dozens of them').toBeGreaterThan(40);
+  });
+
+  it('declares exactly the separately guarded company UUID-array reference',async()=>{
+    expect(COMPANY_REFERRERS.filter(r=>r.referenceKind==='uuid-array').map(({table,column,disposition,existsFunction})=>({table,column,disposition,existsFunction}))).toEqual([{table:'pay_component',column:'applied_company_ids',disposition:'other',existsFunction:'app.pay_component_company_in_use'}]);
+    const [shape]=await owner.db.execute<{type:string}>(sql`select udt_name as type from information_schema.columns where table_schema='public' and table_name='pay_component' and column_name='applied_company_ids'`);
+    expect(shape.type).toBe('_uuid');
   });
 
   it('every foreign-key constraint to company is accounted for, composite (tenant_id, company_id) keys included', async () => {
@@ -953,16 +959,20 @@ describe('§4 only an administrator for the company can delete it', () => {
 
   it('the function is SECURITY DEFINER with a pinned search_path, and only the app role may execute it', async () => {
     const fns = [...new Set(COMPANY_REFERRERS.flatMap((r) => (r.deleteFunction ? [r.deleteFunction] : [])))];
-    expect(fns).toEqual(['app.delete_unused_usage_snapshots']);
+    // 5851 added the Recruitment setup remover (stages, processes and archive reasons, which the app role
+    // cannot DELETE); it is held to exactly the same definer/search_path/execute contract.
+    expect(fns).toEqual(['app.delete_unused_usage_snapshots', 'app.recruitment_delete_company_setup']);
     const rows = (await owner.db.execute(sql`
-      select p.prosecdef, p.proconfig,
+      select p.proname, p.prosecdef, p.proconfig,
              has_function_privilege('ai_hr_app', p.oid, 'EXECUTE') as app_exec,
              exists (select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a where a.grantee = 0) as public_exec
         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-       where n.nspname = 'app' and p.proname = 'delete_unused_usage_snapshots'
-    `)) as unknown as { prosecdef: boolean; proconfig: string[]; app_exec: boolean; public_exec: boolean }[];
+       where n.nspname = 'app' and p.proname in ('delete_unused_usage_snapshots', 'recruitment_delete_company_setup')
+       order by p.proname
+    `)) as unknown as { proname: string; prosecdef: boolean; proconfig: string[]; app_exec: boolean; public_exec: boolean }[];
     expect(rows).toEqual([
-      { prosecdef: true, proconfig: ['search_path=pg_catalog, public, pg_temp'], app_exec: true, public_exec: false },
+      { proname: 'delete_unused_usage_snapshots', prosecdef: true, proconfig: ['search_path=pg_catalog, public, pg_temp'], app_exec: true, public_exec: false },
+      { proname: 'recruitment_delete_company_setup', prosecdef: true, proconfig: ['search_path=pg_catalog, public, app, pg_temp'], app_exec: true, public_exec: false },
     ]);
   });
 });

@@ -1,6 +1,6 @@
 /** Refresh outside workflow transactions; never hold an Auth lock while opening a tenant transaction. */
 import {sql} from 'drizzle-orm';
-import {client,withTenant,type SessionContext} from '../../db/client';
+import {client,withPoolWork,withTenant,type SessionContext} from '../../db/client';
 import {authTransaction} from './store';
 import {internalConfig,internalIssuer} from './config';
 import {AuthRecordExpiredError,decryptRecord,digest} from './crypto';
@@ -26,7 +26,7 @@ async function refresh(ctx:SessionContext,userId:string,runId:string|null){
    }catch(error){if(!(error instanceof InternalAuthError&&error.code==='invalidLogin')&&!(error instanceof AuthRecordExpiredError))throw error;}
    const issuedAt=Date.now();return signOrganisationAdmission({...b,credentialDigest:digest(row.sealed),available,activeUntil,issuedAt,expiresAt:issuedAt+60_000},internalConfig().key);
   });
-  if(proof)await client.unsafe('select app.organisation_admission_submit($1,$2)',[proof.payload,proof.signature]);
+  if(proof)await withPoolWork('authentication',()=>client.unsafe('select app.organisation_admission_submit($1,$2)',[proof.payload,proof.signature]));
  }
 }
 export async function refreshOrganisationAdmission(ctx:SessionContext,runId?:string){

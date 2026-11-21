@@ -23,7 +23,9 @@ export const INTENT_DWELL_MS = 80;
  * two links the user is about to click (Next's documented hover-prefetch pattern, applied with `true`).
  * Freshness is bounded by `experimental.staleTimes.static` in next.config.ts (30 s).
  */
-export function IntentLink({ prefetch, onPointerEnter, onPointerLeave, onFocus, onTouchStart, ...rest }: ComponentProps<typeof Link>) {
+type IntentLinkProps = ComponentProps<typeof Link> & { prefetchOnIntentOnly?: boolean };
+
+export function IntentLink({ prefetch, prefetchOnIntentOnly, onPointerEnter, onPointerLeave, onFocus, onTouchStart, ...rest }: IntentLinkProps) {
   const [intent, setIntent] = useState(false);
   const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clear = () => { if (dwell.current) { clearTimeout(dwell.current); dwell.current = null; } };
@@ -32,7 +34,7 @@ export function IntentLink({ prefetch, onPointerEnter, onPointerLeave, onFocus, 
     <Link
       {...rest}
       // An explicit `prefetch={false}` from the caller wins: that link asked never to prefetch.
-      prefetch={prefetch === false ? false : intent ? true : prefetch ?? null}
+      prefetch={prefetch === false ? false : intent ? true : prefetch ?? (prefetchOnIntentOnly ? false : null)}
       onPointerEnter={(e) => { if (!intent && !dwell.current) dwell.current = setTimeout(() => { dwell.current = null; setIntent(true); }, INTENT_DWELL_MS); onPointerEnter?.(e); }}
       onPointerLeave={(e) => { clear(); onPointerLeave?.(e); }}
       onFocus={(e) => { clear(); setIntent(true); onFocus?.(e); }}

@@ -20,7 +20,8 @@
  * day it was archived, and a value retired since must still be written out rather than left as its raw id.
  */
 import { readFileSync } from 'node:fs';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import { releasedLabelRows } from '../core/system-label-visibility';
 import type { Tx } from '../db/client';
 import {
   businessUnit,
@@ -64,7 +65,8 @@ export function englishCriteriaLabels(messagesJsonPath: string): OrgCriteriaLabe
   };
 }
 
-/** Every catalogue a rule can name, for one tenant, read inside the caller's transaction. */
+/** Every catalogue a rule can name, for one tenant, read inside the caller's transaction. The reset tool runs it on the
+ * storage-owner connection (no row security), so codes still staged by a System Labels import are filtered explicitly. */
 export async function loadCriteriaCatalogues(tx: Tx, tenantId: string): Promise<OrgCriteriaCatalogues> {
   const [companies, departments, grades, positions, costCenters, businessUnits, options] =
     await Promise.all([
@@ -72,17 +74,17 @@ export async function loadCriteriaCatalogues(tx: Tx, tenantId: string): Promise<
         .select({ id: company.id, name: sql<string>`coalesce(${company.companyLabel}, ${company.legalName})` })
         .from(company)
         .where(eq(company.tenantId, tenantId)),
-      tx.select({ id: department.id, name: department.name }).from(department).where(eq(department.tenantId, tenantId)),
-      tx.select({ id: jobGrade.id, name: jobGrade.name }).from(jobGrade).where(eq(jobGrade.tenantId, tenantId)),
-      tx.select({ id: position.id, title: position.title }).from(position).where(eq(position.tenantId, tenantId)),
+      tx.select({ id: department.id, name: department.name }).from(department).where(and(eq(department.tenantId, tenantId), releasedLabelRows(department))),
+      tx.select({ id: jobGrade.id, name: jobGrade.name }).from(jobGrade).where(and(eq(jobGrade.tenantId, tenantId), releasedLabelRows(jobGrade))),
+      tx.select({ id: position.id, title: position.title }).from(position).where(and(eq(position.tenantId, tenantId), releasedLabelRows(position))),
       tx
         .select({ id: costCenter.id, code: costCenter.code, name: costCenter.name })
         .from(costCenter)
-        .where(eq(costCenter.tenantId, tenantId)),
+        .where(and(eq(costCenter.tenantId, tenantId), releasedLabelRows(costCenter))),
       tx
         .select({ id: businessUnit.id, code: businessUnit.code, name: businessUnit.name })
         .from(businessUnit)
-        .where(eq(businessUnit.tenantId, tenantId)),
+        .where(and(eq(businessUnit.tenantId, tenantId), releasedLabelRows(businessUnit))),
       // ADR-0086 (0fe1ca2e, r331) — a `location` read sat here for the Work Site criteria axis, which is
       // retired. ⚠️ Removed from the DESTRUCTURE ABOVE in the same edit: every entry is an array, so a
       // position mismatch type-checks and hands one catalogue another's rows.
@@ -96,7 +98,7 @@ export async function loadCriteriaCatalogues(tx: Tx, tenantId: string): Promise<
           sortOrder: profileOption.sortOrder,
         })
         .from(profileOption)
-        .where(eq(profileOption.tenantId, tenantId)),
+        .where(and(eq(profileOption.tenantId, tenantId), releasedLabelRows(profileOption))),
     ]);
   const profileOptions: Partial<Record<ProfileOptionCategory, ProfileOptionRow[]>> = {};
   for (const o of options) {

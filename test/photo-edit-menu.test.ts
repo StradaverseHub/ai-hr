@@ -73,7 +73,7 @@ describe('Photo edit menu: controls live behind the Edit trigger', () => {
     expect(page).toMatch(/photoExists \? \(\s*<ConfirmSubmit/);
     expect(page.includes("description={t('photoReplaceConfirm')}")).toBe(true);
     // The no-photo branch keeps a direct submit (no confirm) for the first upload.
-    expect(page).toMatch(/\) : \(\s*<button[^>]*>\{t\('photoUpload'\)\}<\/button>/);
+    expect(page).toMatch(/\) : \(\s*<ActionButton[^>]*>\{t\('photoUpload'\)\}<\/ActionButton>/);
   });
 
   it('remove still confirms and photo storage limits are untouched', () => {

@@ -52,6 +52,23 @@ describe('r399 · IntentLink waits for a resting pointer', () => {
     expect(screen.getByText('Touch me').getAttribute('data-prefetch')).toBe('true');
   });
 
+  it('the persistent rail warms only the link the user targets', () => {
+    render(<>
+      <IntentLink href="/org" prefetchOnIntentOnly>Hover</IntentLink>
+      <IntentLink href="/me" prefetchOnIntentOnly>Focus</IntentLink>
+      <IntentLink href="/leave" prefetchOnIntentOnly>Untouched</IntentLink>
+    </>);
+    const hover = screen.getByText('Hover');
+    const focus = screen.getByText('Focus');
+    expect(hover.getAttribute('data-prefetch')).toBe('false');
+    fireEvent.pointerEnter(hover);
+    act(() => { vi.advanceTimersByTime(INTENT_DWELL_MS); });
+    expect(hover.getAttribute('data-prefetch')).toBe('true');
+    fireEvent.focus(focus);
+    expect(focus.getAttribute('data-prefetch')).toBe('true');
+    expect(screen.getByText('Untouched').getAttribute('data-prefetch')).toBe('false');
+  });
+
   it("a caller's prefetch={false} still wins", () => {
     render(<IntentLink href="/c" prefetch={false}>Never</IntentLink>);
     fireEvent.focus(screen.getByText('Never'));

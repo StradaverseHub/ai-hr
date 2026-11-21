@@ -64,6 +64,8 @@ export type EmployeeRowProps = {
    * visible photo. A row must never be given a src speculatively — see the note on `Avatar`.
    */
   photoPersonId?: string | null;
+  /** Board 511aa74a — "Rehired as {code}", already translated, when a later period rehired from this one. */
+  rehiredAs?: string | null;
 };
 
 export function EmployeeRow({
@@ -76,6 +78,7 @@ export function EmployeeRow({
   columns,
   text,
   photoPersonId,
+  rehiredAs,
 }: EmployeeRowProps) {
   const href = employeeRowHref(employmentId);
   return (
@@ -97,7 +100,10 @@ export function EmployeeRow({
           ) : (
             <>
               {key === 'code' ? (
-                <EmployeeCode code={employeeCode} />
+                <>
+                  <EmployeeCode code={employeeCode} />
+                  {rehiredAs && <span data-testid="rehired-as" className="block whitespace-nowrap text-xs text-muted-foreground">{rehiredAs}</span>}
+                </>
               ) : key === 'status' ? (
                 <StatusBadge status={status} label={statusLabel} />
               ) : (

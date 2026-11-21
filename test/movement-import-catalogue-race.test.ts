@@ -23,7 +23,7 @@ describe('canonical catalogue mutation versus import final admission',()=>{
   // Two state reads occur in the rollback rehearsal. The third is the real replay, AFTER its fresh CAS.
   const stateSpy=vi.spyOn(movementOwner,'movementCurrentStateTx').mockImplementation(async(...args)=>{const state=await originalState(...args);if(++stateCalls===3){paused=true;await released;}return state;});
   const originalTenant=tenantClient.withTenant,tag='b20-catalogue-'+randomUUID();
-  const taggedTenant:typeof originalTenant=async<T>(context:tenantClient.SessionContext,fn:(tx:tenantClient.Tx)=>Promise<T>,options?:{readOnlySnapshot:true})=>{
+  const taggedTenant:typeof originalTenant=async<T>(context:tenantClient.SessionContext,fn:(tx:tenantClient.Tx)=>Promise<T>,options?: Parameters<typeof tenantClient.withTenant>[2])=>{
    const tagged=tagNext;tagNext=false;
    return originalTenant(context,async tx=>{if(tagged)await tx.execute(sql`select set_config('application_name',${tag},true)`);return fn(tx);},options);
   };

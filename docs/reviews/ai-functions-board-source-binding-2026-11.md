@@ -1,0 +1,1605 @@
+# AI Functions and approved board release provider binding
+
+The repository owner approved carrying forward 28 existing provider approvals on 10 November 2026 MYT. The approval covers review commit `d8b5566b40826c4ead708f1135d5fae883eb8a71` and provider source fingerprint `324b0005225b557a93812f5fa920b1edddeaa49cfae505352d09795628ac763c` across 1,476 files. The serving comparison source was `b698f5d35b0cca12e2c1268f3bea08d0aa1d070e` with fingerprint `020279efedc544846db0bcc91e6fba27b8c49725169178fa8307c1bc8b6b394c`.
+
+The reviewed changes remove Attendance Formula authoring and its two public guidance topics, preserve historical payroll evidence, and update native attendance routing, payroll presentation and employee loop follow-up. Employee notifications and digests use the existing delivery channels. The provider diff removes the retired authoring contract and keeps existing outbound data fields, serializers and transport for the continuing contracts.
+
+The registry changes only the source fingerprint on the 28 continuing approvals. Their original review metadata stays in place. The historical Attendance Formula approval remains bound to its prior source, its workload is unavailable, and both pending records retain their status. Agent evaluations and promotions remain bound to their original source.
+
+The owner approved this exact provider binding. Staging installation and acceptance use the separate release procedure.
+
+## Joint Schedule Group follow-up
+
+On 10 November 2026 MYT the repository owner approved the repaired joint review commit `c406671e5f61d8fb915a91e74502d3ca818cff29` and its exact fingerprint `d6d5ec5e83b43e042e3ca0729815f5ca1b240e69293a99217df6095888fa03c1` across 1,479 provider source files. The serving comparison source is `5c990a639607b404a6d8fc7f78ca4752d2461476` with fingerprint `ffd2e1fec9fd42740bdd1cda8b4859237c78327bdca9471b17c9406b44eb58ce`. This binding supersedes the earlier approval for the different candidate above.
+
+The approved Schedule Group work adds a native, dated clock policy and native attendance and payroll replay. Its new save action remains a native confirmation action. The clock policy, raw punches, and audit reasons remain in the application. The provider inventory removes the retired authoring purpose and public guidance topics. Existing outbound fields, approved purposes and transports remain the same.
+
+Reversing the 28 substitutions yields the serving registry byte for byte. Both pending records and the retired Attendance Formula contract keep their prior bindings and review metadata. Existing evaluations and promotions retain their original source identities.
+
+## Online clock compatibility repair
+
+On 10 November 2026 MYT the repository owner approved compatibility review commit `39d25732db1ad349473521dc32a776e52840e891` and exact fingerprint `2213fbcc07038de42a8f6a10e554affddf99dc665c1c97269295928d63543027`. The repair restores the previous online punch response and removes the extra receipt timestamp from that response. The shared overtime parser test now exercises empty and explicit zero rates. No provider transport or payload gains data.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This exact binding supersedes the earlier joint candidate above.
+
+## Four approved board items: Shared Leave Groups, HRD Corp levy, Security Center Users and Schedule Group
+
+On 10 November 2026 MYT the repository owner approved combined review commit `c040577e199c81f3f0e4a9f2955d6909c8a6a0c0` and exact fingerprint `af80e1f36af9182034c599c908a094566af5c935ca581848bc2cc61ab0911e4a`. The candidate integrates board items 50d9b809, c2ea9567, 07c98c36 and c03670cc on claude/fb-board-four-integration-20261110.
+
+Outbound data changes are limited to three. A new read-only `shared_leave_groups` topic of the existing operations_status tool gives HR and group administrators each shared leave group's name, member leave type names, shared days per year, maximum days per application and employee placement; it returns no ids, employees, balances or requests, is refused to non-administrators before reading, runs under tenant row-level security and has its own AI Centre control (`read:shared_leave_groups`, migration 4800). The attendance-day explainer may label overtime minutes at a typed non-standard rate as "OT other rate" where it previously said Flat OT; the rate itself is not sent. HRD Corp wage base and levy values change under the corrected HRDF rule, in fields that already go out. An independent review found no other new outbound field from the HRDF breakdown stamp, the Security Center account controls or the group-wide clock policy.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This exact binding supersedes the online clock compatibility repair binding above.
+
+## Four approved board items: gate repair re-binding
+
+On 10 November 2026 MYT the repository owner approved re-binding to repair commit `60030e151703e3698508b2302a7010c18e2b9db1` and exact fingerprint `b6e04e75dd91e46898fc6d8c509cf331e00bbae6e65ee9cf565d66859680312c`. The only covered-source change since the binding above is that the HRD Corp levy working stamped on payslips omits pay items that paid RM0, so it prints no +RM0.00 rows. That working is not read by any AI path. No provider transport or payload gains data, and the outbound changes recorded above are unchanged.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This exact binding supersedes the four-item binding above.
+
+## Architecture optimisation release binding
+
+On 11 November 2026 MYT the repository owner approved carrying the existing approvals forward to this release's AI code version, in their words: "i fully approve carrying the existing approvals forward to this release's AI code version". The release is the architecture optimisation candidate on `claude/architecture-release-20261110` (head `ceb7fa849bcbb52fb1051883a95f2950a23042b0` before this record), with exact fingerprint `c4745ba3dfa34e710b67857fbb6069a539f8c674609c4d171289ecf8aca6f579` over 1,522 files.
+
+No provider contract, outbound field or transport is added or widened. The covered-source changes since `b6e04e75…` come from the architecture candidate (bounded database admission, request-scoped shared read snapshots, Home and Claims read consolidation, online migration tooling, restored roster and Claims behaviour, and the deduplicated server source maps in `package.json`'s build script); none of them adds data to any provider payload.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority; a later change to the covered source needs a new owner decision.
+
+## Board staging window 1 (rebased on 8d5254eb)
+
+On 11 November 2026 MYT the repository owner approved staging window 1 review commit `56454e12b2a46567b1319970606d1d3ee7aadfc5` and exact fingerprint `a146ce7f78b132b784519acd00be3aa4aedc03fdb3237f574ab6ec1c15ddbaa6` in the Claude board session ("Yes, I approve"). The window integrates board items 81e64843 (delete, retire and restore On/Off Boarding workflows), f3edc521 (Automatic sign-out under Password Policy) and eaa7697c (Personnel list search). No provider transform, outbound field, approved purpose or transport changes; the only changed file under lib/ai is the agent capability inventory, which registers the board actions as native handoff, internal or backlog entries.
+
+The same 28 approvals carry forward from `b6e04e75dd91e46898fc6d8c509cf331e00bbae6e65ee9cf565d66859680312c` (the four-item board release 8d5254eb) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
+
+## Board staging window 2 (rebased on 8d5254eb)
+
+On 11 November 2026 MYT the repository owner approved staging window 2 review commit `76c7f32a251b6c9eaf959b2b4ac9027893325521` and exact fingerprint `68679de0d5212e8341257bdc7f8f37674b9b14aced7da4c643a9f3b5c104084f` in the Claude board session ("Yes, I approve"). The window integrates board item b31981c0 (simplified Overtime Patterns editor). No provider transform, outbound field, approved purpose or transport changes; the only changed file under lib/ai is the agent capability inventory, which registers the board actions as native handoff, internal or backlog entries.
+
+The same 28 approvals carry forward from `a146ce7f78b132b784519acd00be3aa4aedc03fdb3237f574ab6ec1c15ddbaa6` (board staging window 1) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
+
+## Combined optimisation release binding
+
+On 11 November 2026 MYT the repository owner's approval to carry the existing approvals forward to this release's AI code version ("i fully approve carrying the existing approvals forward to this release's AI code version") is applied to the combined optimisation release on `claude/combined-release-fixes-20261111` (head `e109a581fff2db63ed48c941798d1805122182e6` before this record), with exact fingerprint `b0fd4f12ad94f19d862bb3478e8b01a54d69a4142fa3b7fb59de2ee5ab3bc20c` over 1,558 files. The release merges main through `9cf69292a`, including board staging window 1 above.
+
+No provider contract, outbound field or transport is added or widened. Of the 229 covered files changed since `c4745ba3…`, the only changes under `lib/ai` or the AI governance path are the board window 1 capability inventory entries recorded above and lock-mode changes in `core/ai-governance.ts` (the provider-call pause checks hold the tenant Access lock shared instead of exclusive). The rest are the bulk background jobs, the reader/writer Access lock, the commit-sealed audit chain, Home and Personnel read consolidation and their security fixes; none of them adds data to any provider payload.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority; a later change to the covered source needs a new owner decision.
+
+## Combined optimisation release candidate 2 binding
+
+The same owner approval ("i fully approve carrying the existing approvals forward to this release's AI code version") is applied to release candidate 2 on `claude/combined-release-rc2-20261111`, which merges the gate repairs and main through `6a21b7382` (board staging window 2 above), with exact fingerprint `2977f22beabd9029861706b724fa086f0ed462bfe40fb231bd738663453f8f35` over 1,558 files.
+
+No provider contract, outbound field or transport is added or widened. Of the 11 covered files changed since `b0fd4f12…`, the only AI-path change is the capability inventory: board window 2's Overtime Patterns entries, and six release entry points classified as presentation reads (`internal:session_and_presentation`) or, for the roster prepare route that generates and copies rosters, `backlog:confirm`. The others move the leave colour and icon allow-lists into a dependency-free module, make a same-period payroll close retry instead of queueing, drop two redirect-only pages from the setup assistant's linkable destinations, and add translations. None of them adds data to any provider payload.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
+
+## Combined optimisation release candidate 3 binding
+
+The same owner approval ("i fully approve carrying the existing approvals forward to this release's AI code version") is applied to the release after its second gate's repairs, on `claude/combined-release-rc2-20261111`, with exact fingerprint `5e63130395cffe5cb95023a4e1ce67884ff1234d8fc0279dadaae9485628fea4` over 1,558 files.
+
+No provider contract, outbound field or transport is added or widened. The five covered files changed since `2977f22b…` are: `core/claims.ts`, where the Approvals claim queue resolves approval subjects once per employment and pages in SQL with the same results, proven by an equivalence test against the previous queue; `db/admission.ts`, `db/client.ts` and `db/read-retry.ts`, where a draining admission queue is served instead of refused at a fixed deadline and a refused permit, which started no work, is requested again; and a comment in `lib/internal-auth/store.ts`. None of them adds data to any provider payload.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
+
+## Board staging window 3 (rebased on 8d5254eb)
+
+On 11 November 2026 MYT the repository owner approved staging window 3 review commit `00de11161fb623c3dece33d516e55ad1f267c49e` and exact fingerprint `56043471ab48e71069e2f62b97da6ef18d012b9f95dd877094b8a9af81aa33d2` in the Claude board session ("Yes, I approve"). The window integrates board item ccd3a65c (Import Employees correction fields and history, migration 4900). No provider transform, outbound field, approved purpose or transport changes; the only changed file under lib/ai is the agent capability inventory, which registers the board actions as native handoff, internal or backlog entries.
+
+The same 28 approvals carry forward from `68679de0d5212e8341257bdc7f8f37674b9b14aced7da4c643a9f3b5c104084f` (board staging window 2) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
+
+## Board staging window 3 repair
+
+On 11 November 2026 MYT the repository owner approved staging window 3 repair review commit `fbaa5d1ef8a525d01ee6113e8307f98c464a7349` and exact fingerprint `87c8f100d3c6afb8ba0ee7527ce60af1ced8edb3e123f4c89897a99ed80bd0dd` in the Claude board session ("Yes, I approve"). The window integrates board item ccd3a65c (Import Employees correction fields and history, migration 4900) with repair fbaa5d1e (Import Log run-page loading screen, permission registration and reviewed worker-compatibility pins). No provider transform, outbound field, approved purpose or transport changes; the only changed file under lib/ai is the agent capability inventory, which registers the board actions as native handoff, internal or backlog entries.
+
+The same 28 approvals carry forward from `56043471ab48e71069e2f62b97da6ef18d012b9f95dd877094b8a9af81aa33d2` (board staging window 3 review 00de1116) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
+
+## Board staging window 3 on combined release f7ee5177
+
+On 11 November 2026 MYT the repository owner approved staging window 3 on combined release f7ee5177 review commit `2d49115c5cf7e3f2372fc1acdadce099ff685418` and exact fingerprint `bb53ae0db356ff44b17fff59144b84f41468fce79ec8a0010a94327da17aa5f8` in the Claude board session ("Yes, I approve"). The window integrates board item ccd3a65c (Import Employees correction fields and history, migration renumbered to 5100) merged onto combined release candidate f7ee5177, with the section and register import jobs recording their section. No provider transform, outbound field, approved purpose or transport changes; the only changed file under lib/ai is the agent capability inventory, which registers the board actions as native handoff, internal or backlog entries.
+
+The same 28 approvals carry forward from `5e63130395cffe5cb95023a4e1ce67884ff1234d8fc0279dadaae9485628fea4` (combined release candidate f7ee5177) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
+
+## Board staging window 4 on combined release f7ee5177
+
+On 11 November 2026 MYT the repository owner approved staging window 4 on combined release f7ee5177 review commit `97232663ebdcf7ad6821cd72183add6e6ea6217d` and exact fingerprint `ae34a88e47bbd4ebf3c20b1cb1c1d03b9e521dd54f059ef18fd00ff789132f32` in the Claude board session ("Yes, I approve"). The window integrates board item 4452ba3c (Attendance approval workflow OR groups, stored previews and skipped ended chains, migration renumbered to 5101 with the 3210 shared submission lock). No provider transform, outbound field, approved purpose or transport changes; the only changed file under lib/ai is the agent capability inventory, which registers the board actions as native handoff, internal or backlog entries.
+
+The same 28 approvals carry forward from `bb53ae0db356ff44b17fff59144b84f41468fce79ec8a0010a94327da17aa5f8` (board staging window 3 on combined release e28ed58f) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
+
+## Irwin board items combined staging release on window 4
+
+On 12 November 2026 MYT the repository owner approved re-binding the provider approvals for the combined staging release of Irwin Law's eight approved board items, review commit `24066d7bd632b376c2737df9e5d6832f538db7aa` and exact fingerprint `5870fe6a094e898474f6552da69fe94d92d779e9faf41b6ae21b571e4c119e6d`, in the Claude board session ("yes approve"). The release merges onto board staging window 4 (`claude/staging-board-20261110d-w4`): 73cbffa1 (Leave type identity layout and icon/colour pickers), 792053e5 (payroll reprocess reprices formula-priced individual transactions, migration 5110), 1859cce0 (Import Employees error report and upload errors), 2f803985 (Schedule Group working pattern and relocated overtime bands), 2260a06b (contract and internship end dates, migration 5111), aa045103 (Personnel search suggestions and multi-select column filters), 82748f92 (People Configuration Settings page) and 8d02748a (readable import log references, migration 5112). No provider transform, outbound field, approved purpose or transport changes; the only changed files under lib/ai are the two regenerated source manifests.
+
+The same 28 approvals carry forward from `ae34a88e47bbd4ebf3c20b1cb1c1d03b9e521dd54f059ef18fd00ff789132f32` (board staging window 4 on combined release f7ee5177) to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status.
+
+## Irwin board items combined release: gate repairs
+
+On 12 November 2026 MYT the repository owner pre-approved re-binding for staging releases ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). Full gate 43101582280 on `d1761f92a9e7cf9bae184ed6e8d970947310d3a3` failed seven test files. The repairs on `claude/irwin-combined-gate-fixes-20261112` change covered sources only in `core/import.ts` (each imported row now uses its own released savepoint), `core/improvement/definition-of-done-gaps.ts` (People Settings card hub listed) and `content/guides/admin-people-org.md` (guide link). No provider transform, outbound field, approved purpose or transport changes.
+
+The same 28 approvals carry forward from `5870fe6a094e898474f6552da69fe94d92d779e9faf41b6ae21b571e4c119e6d` to the exact fingerprint `8f1b9ba06b4c38abc1920f996f73120d2c27961d84e468bdabd400959251cca7`. The review commit is the commit that records this section on that branch.
+
+## Combined optimisation release rc3 binding
+
+On 12 November 2026 MYT the repository owner approved re-binding for this release without a further prompt ("Ai rebinding and approval can proceed without me. I have fully approved this."). The approval is applied to release candidate rc3 on `claude/combined-release-rc3-20261112` (head `62cf77b84676c4692405c16a21aeed21d337432e` before this record), with exact fingerprint `3baa446f7cfdbae12c6db4c7aebe9074409b8b96182164d6c0bb042e4dfe0a04` over 1,558 files.
+
+No provider contract, outbound field or transport is added or widened. The covered-source changes since `5e631303…` change lock modes and read shapes only: the Assistant choice pickers, the AI Centre control check and the AI principal read take the shared Access lock instead of the exclusive one; the AI Centre, payroll-audit, loop and Personnel readers read set-wise; and every tenant transaction runs with JIT off. None of them adds data to any provider payload.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records, and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
+
+## Irwin board items combined release: rebase onto rc3
+
+On 12 November 2026 MYT the repository owner's pre-approval for this release ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision") is applied to `claude/irwin-board-combined-20261112`, which merges `origin/alpha` at `05c4aa0348700a08de6723e88a67f2cbd43689d4` (release candidate rc3, now on staging) into the gate-repaired Irwin release at `b05eb83d390856455d81f036a9358e6f929675d1`. The merged covered source has the exact fingerprint `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa` over 1,563 files; the agent source manifest is `9a323c538e0291fc354cd2acbace37927b1e63ed765a756687072cef35710276` over 487 files.
+
+No provider transform, outbound field, approved purpose or transport changes. Apart from the two regenerated manifests and these re-bound approvals, no file under `lib/ai`, `core/teras-wiring`, `core/assistant.ts` or `core/ai-governance.ts` differs from the Irwin release, and only the agent capability inventory differs from rc3. Against rc3 the covered changes are the Irwin release's eight board items already recorded above (the only `lib/ai` change is the agent capability inventory's board entries); against the Irwin release they are rc3's lock-mode and set-wise read changes recorded in the rc3 binding (including `core/ai-centre-control.ts` and `core/ai-principal.ts`). The merge itself adds only comments naming the renumbered migrations (5123 and 5127) in `core/import-history.ts`, `core/import-actor-label.ts` and `db/schema.ts`. None of them adds data to any provider payload.
+
+The same 28 approvals carry forward from `3baa446f7cfdbae12c6db4c7aebe9074409b8b96182164d6c0bb042e4dfe0a04` (rc3; this branch's previous binding was `8f1b9ba06b4c38abc1920f996f73120d2c27961d84e468bdabd400959251cca7`) to `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa`. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. The review commit is the merge commit that records this section on that branch. This binding covers this release only and grants no production authority.
+
+## AI-native exceptions and Today release binding (12 November 2026)
+
+On 12 November 2026 MYT the repository owner approved re-binding the provider approvals for the payroll anomaly and net-swing source changed by the exceptions detectors branch (session handoff `ainative-handoff-20261111` §5 item 1). The owner then widened that approval the same day, relayed by the release coordinator: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision". The approval is applied to the release candidate on `claude/ainative-release-20261112`, based on alpha `f7ee5177feb1ca37a11847bf9fe349c3deab0b0d`, which merges:
+
+- `claude/ainative-exc-detectors-20261111` at `7b3170c7c7a753080978ddd56499e4ceee40fe2e`;
+- `claude/ainative-exc-page-20261111` at `ea17cbdd1da4641fe0ece5871403a3aec5ece367` (it contains the detectors branch);
+- `claude/ainative-today-employee-20261111` at `c35038453b712d3ff1374d713f3d72f4f959dd4f`.
+
+The exact fingerprint is `2b50c1986a7aaa8e21d3c68e4a333c0972ea67674a28e304151e4d296d65a434` over 1,559 files. The previous fingerprint was `5e631303…`, over 1,558 files.
+
+Twelve covered files changed, all from the detectors branch. The exceptions page and Today branches change no covered source.
+
+- `core/payroll-anomaly.ts` and `core/payroll-anomaly-detectors.ts`: anomaly detection and batch resolution of open exceptions.
+- `core/loops/net-swing.ts`, `core/loops/salary-payroll.ts` and the new `core/loops/swing-rows.ts`: the net-swing explanation rows. The new file is the one added to the closure.
+- `core/pay-difference.ts`: pay difference.
+- `messages/{en,ms,ta,th,vi,zh}.json`: translations.
+
+They are in the closure through the payroll hypothesis and anomaly narration roots (`core/payroll-hypothesis.ts` imports `core/payroll-anomaly.ts`). No provider contract, outbound field, approved purpose or transport is added or widened.
+
+The same 28 approvals carry forward to the new fingerprint. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this release only and grants no production authority.
+
+### Re-binding after rc3 (12 November 2026)
+
+This binding follows the rc3 binding above. It is applied under the same 12 November 2026 owner approval, quoted above. The candidate merged alpha `05c4aa0348700a08de6723e88a67f2cbd43689d4`, which is rc3 as installed on staging. Re-binding on top of rc3's fingerprint `3baa446f…` (1,558 files) gives the exact fingerprint `80f49217133642f005e14d21bf76644de7a06f64a7d721b78bb43db45d2235fe` over 1,559 files. The earlier `2b50c198…` binding is superseded.
+
+The covered files that differ from that alpha are the same twelve detectors-branch files listed above. In `core/payroll-anomaly.ts`, rc3's SQL paging of the cross-run exceptions queue merged cleanly with the detectors branch's batch resolve. Neither change adds data to any provider payload. The same 28 approvals carry forward to the new fingerprint. Both pending records and the retired Attendance Formula contract keep their original values. This binding grants no production authority.
+
+### Re-binding after the first full gate's repair (12 November 2026)
+
+Full gate 43120033983, attempt 1 at `7353338ba`, failed in one no-database unit. `test/agent-capability-inventory.test.ts` found that the exceptions page's new bulk "Mark as expected" action (`app/control-tower/exceptions/actions.ts` `markGroupExpectedAction`) was not classified.
+
+It is now classified `backlog:approve`, the same ceiling as the single-exception resolve `resolveAnomalyAction`. It stays a human action on that screen, and the agent cannot prepare it. `lib/ai/agent-capability-inventory.ts` is the only covered file changed since `80f49217…`. No provider contract, outbound field, approved purpose or transport changes.
+
+Under the same 12 November 2026 owner approval, the same 28 approvals carry forward to the exact fingerprint `def82461e55bc63977b0bbe0be16bec688bb025777019c8c9349777cdbf2ae1c` over 1,559 files. Both pending records and the retired Attendance Formula contract keep their original values. This binding grants no production authority.
+
+### Re-binding after Irwin 69de131e (12 November 2026)
+
+Staging moved before this candidate was installed. The candidate merged alpha `69de131ecec4d132cf456d695f68337edff032e7`, the Irwin board release, which is now installed on staging. Its binding `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa` (1,563 files) reproduces from alpha's own tree. Under the owner's standing 12 November 2026 approval, quoted above, the same 28 approvals carry forward from that binding to the exact fingerprint `06f8b5ca8c882d880f24173e1e300e8936e338f354cf9617e836a7c262f61d05` over 1,564 files. This supersedes `def82461…`.
+
+Thirteen covered files differ from that alpha, and they are this candidate's own changes:
+
+- the twelve detectors-branch files listed above;
+- `lib/ai/agent-capability-inventory.ts`, whose `backlog:approve` classification of `markGroupExpectedAction` the coordinator confirmed.
+
+Irwin's changes to `core/payroll.ts` (re-pricing formula-priced one-off rows during payslip generation), `core/payroll-history-revisions.ts`, `core/payroll-individual-txn.ts`, the inventory and the message catalogues merged without conflict. They do not touch the anomaly verdicts, the findings or the Exceptions queue. No provider contract, outbound field, approved purpose or transport is added or widened. Both pending records and the retired Attendance Formula contract keep their original values. This binding grants no production authority.
+## Information-correction read lock
+
+On 12 November 2026 MYT the repository owner's pre-approval for staging releases ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision") is applied to `claude/ic-read-lock-20261112`, branched from `origin/alpha` at `69de131ecec4d132cf456d695f68337edff032e7` (the release on staging). The covered source changes from `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa` to the exact fingerprint `b68662143d3204ee71e6fbdb96b8fb7937c12901f9e07997a678e1d408fbc1be` over 1,563 files; the agent source manifest changes from `9a323c538e0291fc354cd2acbace37927b1e63ed765a756687072cef35710276` to `dfc7b45d47e64f6122f4a536d3bbc5c754b2fbe5b9ca044faba92d3347760d44` over 487 files.
+
+The covered changes are lock modes only. `core/workforce-lock-mode.ts` (`joinWorkforceBarrierTx`, the Workforce 'maintain' barrier) now takes the shared Access lock inside a display read (`withAccessDisplayRead`) when its transaction holds none, as `joinAccessConfigurationTx` already does for 'view'; outside a display read it is unchanged. `core/cost-allocation-import.ts` wraps the per-company reference read in `withAccessDisplayRead`. The uncovered `core/information-correction.ts` opens the correction form and its review as such reads, without row locks, while the save keeps its exclusive lock and row locks. The authority checks and their results are unchanged. No provider transform, outbound field, approved purpose or transport changes; apart from the two regenerated manifests and these re-bound approvals, no file under `lib/ai`, `core/teras-wiring`, `core/assistant.ts` or `core/ai-governance.ts` changes. None of these changes adds data to any provider payload.
+
+The same 28 approvals carried forward from `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa` to `b68662143d3204ee71e6fbdb96b8fb7937c12901f9e07997a678e1d408fbc1be` on the fix branch. Rebased onto staging alpha `2a486e58273726729fe4b1a5b3892ad7109b372e` (ai-hr-c2, fingerprint `06f8b5ca8c882d880f24173e1e300e8936e338f354cf9617e836a7c262f61d05`), they carry forward to the exact fingerprint `58325103e2f43020e77d3db1d094ac0799e97f7f5dc1455a55a157b569209f55`, which also covers the Personnel search dropdown fix (no AI source). Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. The review commit is the commit that records this section on that branch. This binding covers this release only and grants no production authority.
+
+## Remaining read-path Access locks
+
+On 12 November 2026 MYT the repository owner's pre-approval for staging releases ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision") is applied to `claude/read-locks-20261112`, branched from `origin/alpha` at `2a2495919c3cf1c4ec66996f246deb7778806329` (the release on staging). The covered source changes from `58325103e2f43020e77d3db1d094ac0799e97f7f5dc1455a55a157b569209f55` to the exact fingerprint `ec60aebe9a35d56623c1e146cbdacbbd5faa66b6784a970af04d2655ce509de9` over 1,564 files; the agent source manifest changes from `930a9919b56339480887afc6a58e75305380dcf96658a984a719f649ad5cb3d2` to `4f50611837023ec1d130b23a3505a6b75b8ad4de6d0190b2354a924e17f0ca5d` over 487 files.
+
+The covered changes are lock modes only (SCALE rule 1). Pure reads that took the tenant's exclusive Access lock now take it shared, with the same authority checks and the same results:
+
+- `core/cost-allocation-import.ts`: the allocation template (`costAllocationWorkbookReferences`) and the import reviews (`previewCostAllocationImport`, `previewCostAllocationUpload`) run inside `withAccessDisplayRead` and join the shared workforce barrier. A review neither bumps the label criteria nor locks rows; the confirm and the employee-import commit keep their exclusive writer locks, repeat the review and refuse a different token.
+- `core/employment-cost-allocations.ts`: `prepareCostAllocationsTx` gains a `review` option that runs the same 'maintain' checks and returns the same values and digest without the label-criteria and row locks. Every save still takes them.
+- `core/import.ts`: the employee import dry run (`validateEmployeeImport`) reads its allocation sheet as such a review. The commit is unchanged.
+- `core/assistant-actions/document-metadata-source.ts` and `document-metadata-review-store.ts`: the Assistant document choices read takes the shared Access lock before the same agent-action guard and administrator check. The prepare, confirm and reconcile commands keep the exclusive lock.
+- `core/org.ts` and `core/assistant-actions/module-action-server.ts`: the Org chooser search joins the workforce barrier in the mode it holds instead of always taking the exclusive barrier. The Org section's availability, its choices and a review's labels run inside `withAccessDisplayRead`. The reviewed reporting-line commands are unchanged.
+
+The uncovered `core/information-correction-import.ts` resolves an upload's employees and Direct Superiors in one statement each and reads the rows' organisation warnings in one transaction (SCALE rule 2). The uncovered `core/movement-import.ts` gains a comment on why the movement check stays exclusive. No provider transform, outbound field, approved purpose or transport changes. Apart from the two regenerated manifests and these re-bound approvals, no file under `lib/ai`, `core/teras-wiring`, `core/assistant.ts` or `core/ai-governance.ts` changes. None of these changes adds data to any provider payload.
+
+The same 28 approvals carry forward from `58325103e2f43020e77d3db1d094ac0799e97f7f5dc1455a55a157b569209f55` to `ec60aebe9a35d56623c1e146cbdacbbd5faa66b6784a970af04d2655ce509de9`. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. The review commit is the commit that records this section on that branch. This binding covers this release only and grants no production authority.
+
+### Re-binding for the native Today endpoints (12 November 2026)
+
+Branch `claude/mobile-today-server-20261112`, cut from staging alpha `2a2495919c3cf1c4ec66996f246deb7778806329` (fingerprint `58325103e2f43020e77d3db1d094ac0799e97f7f5dc1455a55a157b569209f55`, 1,564 files). It adds the native app's Today endpoints (GET `/api/mobile/v2/today`, POST `/api/mobile/v2/today/clock-out` and `/api/mobile/v2/today/undo`). Full gate 43160199776 at `a6d96dadd` failed in one no-database unit: `test/agent-capability-inventory.test.ts` found both POST routes unclassified.
+
+They are now classified `internal:other_client_same_service` in `lib/ai/agent-capability-inventory.ts`, as every other mobile POST is. They are another bearer-token client of owners already classified: `confirmMissedClockOut` (core/loops/clock-out-confirm.ts) and `undoLoopAction` (core/loops/undo.ts), whose web entry points stay `internal:assistant_surface`. The person confirms or undoes their own day. The agent cannot prepare either action. No provider transform, outbound field, approved purpose or transport changes. No model is called by these routes.
+
+On the candidate before alpha moved, under the owner's standing 12 November 2026 approval ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision"), the same 28 approvals carry forward from `58325103…` to the exact fingerprint `bb2b8fd020012cc24ef69b377455707247c856a0fdc6984ea1eb6d3a5e440b0b` over 1,564 files. The agent source manifest becomes `8704f035f58586e158fbdd51e17ce687ba69f4bc6f532def9804a7126e0bdd65` over 487 files. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. The review commit is the commit that records this section. This binding covers this staging release only and grants no production authority.
+
+Staging then moved to alpha `69e30634e` (remaining read-path Access locks, above), whose binding is `ec60aebe9a35d56623c1e146cbdacbbd5faa66b6784a970af04d2655ce509de9`. The candidate merged that alpha. The only covered file this candidate changes on top of it is `lib/ai/agent-capability-inventory.ts` (the two classifications above). Under the same approval, the same 28 approvals carry forward from `ec60aebe…` to the exact merged fingerprint `0d98715d0edf03d9945b00980eb26af4e57f8bf5f2764b7b3cc5cc9fc05c9839` over 1,564 files. The agent source manifest becomes `747fa7f3aa04bbcf5f71faa840d9f1af7b8fb2b0577c222a11c729bc8adba4f1` over 487 files. This supersedes `bb2b8fd0…`. No provider transform, outbound field, approved purpose or transport changes. Both pending records and the retired Attendance Formula contract keep their original values. This binding covers this staging release only and grants no production authority.
+
+### Re-binding for the combined board candidate (12 November 2026)
+
+Branch `claude/board-combined-20261112`, cut from staging alpha `f84f4c567` (binding `0d98715d0edf03d9945b00980eb26af4e57f8bf5f2764b7b3cc5cc9fc05c9839`, 1,564 files). It merges five board lanes: Rewards direct configuration (60f1fdcd), Rewards reviewer dashboard (4de410ed, 356ae8c1, 81a7b286), Rewards review desk and Review Set-up (37f82412, 70d5e7c5), On/Off Boarding routing and return assignment (259c6162, d1e26f81) and On/Off Boarding email (5a8c382c, 4a60b3ec, 6bdda222).
+
+Fifty covered files change, seven of them new (`lib/email-body/doc.ts`, `lib/email-body/render.ts`, `lib/lifecycle-bulk-assignment.ts`, `lib/lifecycle-v9-recipients.ts`, `lib/lifecycle-v9-return-presets.ts`, `packs/rewards/config-change-model.ts`, `packs/rewards/config-change.ts`). They are Rewards and On/Off Boarding business services, email rendering and delivery, message catalogues and navigation that sit in the transitive import closure. The only covered AI file that changes is `lib/ai/agent-capability-inventory.ts`, which classifies the lanes' new server actions under existing classes (`backlog:approve`, `internal:session_and_presentation`, `handoff:access_and_authentication`). No provider transform, outbound field, approved purpose or transport changes, and no model is called by the new code.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `0d98715d…` to the exact fingerprint `864059a44d4e636f6bfa4e0ddeecf901bf12fdff65da2ece211c175caa6260dd` over 1,571 files. The agent source manifest becomes `2b0e9795a9c4dfbaac2831f9f7ddd155aa789617f62c453bbbf0721bff1d5008` over 487 files. Both pending records and the retired Attendance Formula contract keep their original values. Alpha has since moved past `f84f4c567` (binding `178bb617…`); admitting this candidate onto that alpha needs a fresh re-bind. This binding covers this staging candidate only and grants no production authority.
+
+The candidate's inventory check (Actions run 43221493369) then found two classification drifts, fixed in `lib/ai/agent-capability-inventory.ts`: the Rewards desk cell edit `saveRewardCell` takes `backlog:approve` in place of the removed `saveInlineRewardIncrease`, and the read-only workflow dry run `planV9Workflow` is renamed `previewV9WorkflowPlan` and keeps `backlog:automatic`. No provider transform, outbound field, approved purpose or transport changes. Under the same approval, the same 28 approvals carry forward from `864059a4…` to the exact fingerprint `c9019d0abb4273edbf19614efe94e1bc1a4b7a6a99caa3325d6f9ccdf08041ef` over 1,571 files, superseding it. The agent source manifest becomes `a07f7db323e85757b68ef30e0cc3c09d90d0d5c398a1d0dc559d43cf843773bb` over 487 files. Staging candidate only; no production authority.
+
+### Re-binding for the Rewards off-cycle lane base (12 November 2026)
+
+Branch `claude/board-rewards-offcycle-20261112`, cut from the combined board candidate `claude/board-combined-20261112` at `78d560a68` (binding `c9019d0abb4273edbf19614efe94e1bc1a4b7a6a99caa3325d6f9ccdf08041ef`, 1,571 files). It merges Rewards Limit Controls (fc804e8c, `36eb5b459`) and makes the unit review policy form and the AI advisor settings form show the pools, lump-sum settings and advisor thresholds read-only once the reward year has a Limit Controls version (the server keeps the stored values on save).
+
+The covered files that change are Rewards business services and models (`packs/rewards/access-policy.ts`, `advisor.ts`, `advisor-model.ts`, `engine.ts`, `index.ts`, `service.ts`, and the new `limit-controls.ts` and `limit-controls-model.ts`), notifications (`core/notification-registry.ts`, `core/notifications.ts`), `lib/product-context/destinations.ts` and the message catalogues, all in the transitive import closure. The advisor change keeps its existing outbound fields: the thresholds it already used now come from Limit Controls when the year has a version, and its settings save keeps the stored thresholds. The only covered AI file that changes is `lib/ai/agent-capability-inventory.ts`, which classifies the Limit Controls server actions under existing classes (`internal:session_and_presentation`, `backlog:approve`). No provider transform, outbound field, approved purpose or transport changes, and no model computes money.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `c9019d0a…` to the exact fingerprint `881a239951f451cce3eefab314ccbccab504e90e63dbeda5c458d2fb73225df1` over 1,573 files. The agent source manifest becomes `f44d1d73361a47397369dab19a991f66611c6468f81540ded4438647780bcf58` over 487 files. Both pending records and the retired Attendance Formula contract keep their original values. This binding covers this lane candidate only and grants no production authority.
+
+### Re-binding for Rewards off-cycle and mid-year recommendations (12 November 2026)
+
+Same branch, board item b945f0cc on top of the binding above (`881a2399…`). The covered files that change are Rewards business services and models (`packs/rewards/offcycle.ts`, `service.ts`, `limit-controls.ts`, `config-change-model.ts`, `dashboard-model.ts`) and the message catalogues; the only covered AI file is `lib/ai/agent-capability-inventory.ts`, which classifies the new server actions under existing classes (`saveDashboardKindAction` and `previewOffcycleYearAction` as `internal:session_and_presentation`, `saveOffcycleYearAction` as `backlog:approve`). Off-cycle balances are computed by the database; no model is called by the new code and no provider transform, outbound field, approved purpose or transport changes.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `881a2399…` to the exact fingerprint `13b9b507983ce47f054db855d9827e194e5b098c127fc93ab7d4b1c8c70fa91b` over 1,573 files. The agent source manifest becomes `6034e82b0fe51ff30a0995229f34d8fceb38faf4e07881b242d0c4c89ec4cf58` over 487 files. Both pending records and the retired Attendance Formula contract keep their original values. This binding covers this lane candidate only and grants no production authority.
+
+### Re-binding for the Rewards configuration owner paths (12 November 2026)
+
+Branch `claude/board-rewards-governance-owner-fns-20261112`, board item 60f1fdcd on top of the binding above (`13b9b507…`). The covered files that change are Rewards business services (`packs/rewards/libraries.ts`, `pat-inputs.ts`, `plan-configuration.ts`, `service.ts`, `uploaded-awards.ts`, `access-policy.ts`, `access-policy-model.ts`, `config-change.ts`, `setup-data.ts`, the new `setup-config-query-port.ts`) and the message catalogues. No covered AI file, provider transform, outbound field, approved purpose or transport changes; no model is called by the new code.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `13b9b507…` to the exact fingerprint `64473331b6055377e650892ab4b739fccab978f9c8f93235bc6bffb4aecad1a5` over 1,574 files. The agent source manifest becomes `4c71d626866c6096bcdf95b2b70ecd91f0639fb3fbc996b4fb8f329925dcd8f8` over 487 files. Both pending records and the retired Attendance Formula contract keep their original values. This binding covers this lane candidate only and grants no production authority.
+
+## Retiring the old dashboard
+
+On 12 November 2026 MYT the repository owner decided to retire the old dashboard (`/?workspace=dashboard`, the team workbench at `/?workspace=team`, and the old personal Home under a partner's Today). The owner's standing approval for this batch and its follow-ons ("I approve fully on the rebinding and the AI approval, dont have to wait for my decision") is applied to `claude/retire-old-dashboard-20261112`, branched from `origin/alpha` at `69e30634e58f54ccd5a92e266fbc5476a154a25a`. The covered source changes from `ec60aebe9a35d56623c1e146cbdacbbd5faa66b6784a970af04d2655ce509de9` to the exact fingerprint `30fbcf5c437931b5f757381580f021a1a4ea38480978e34d2a8e7a389d4dddfd` over 1,564 files; the agent source manifest changes from `4f50611837023ec1d130b23a3505a6b75b8ad4de6d0190b2354a924e17f0ca5d` to `ebd05624251e6a6fa0f3a696dbb6ed6b24fd4692a001dbf94ec182e976d5a079` over 487 files.
+
+The covered changes are removals only:
+
+- `core/read.ts`: `groupBreakdown`, the per-company headcount read that only the old administrator dashboard called, is deleted. No other read changes.
+- `lib/ai/agent-capability-inventory.ts`: the entry for the deleted `app/dashboard-layout-actions.ts` (the old customizer's save and reset of a saved layout, both `internal:session_and_presentation`) is removed. No other classification changes.
+- `messages/*.json` (all six locales): the `dashboard` keys only the old dashboard, its customizer and Atelier Home used, `employeeHome.teamWorkbench` and `employeeHome.homeOptions`, and the Dashboard Management Templates and Preview keys are removed; the Dashboard Management title, description and audience hint now describe My Home. The uncovered `messages/ai-centre/*.json` gain one key, `today.workspaceTitle` ("Your workspace").
+
+No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. Apart from the two regenerated manifests and these re-bound approvals, no file under `lib/ai`, `core/teras-wiring`, `core/assistant.ts` or `core/ai-governance.ts` changes. The same 28 approvals carry forward from `ec60aebe9a35d56623c1e146cbdacbbd5faa66b6784a970af04d2655ce509de9` to `30fbcf5c437931b5f757381580f021a1a4ea38480978e34d2a8e7a389d4dddfd`. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. The review commit is the commit that records this section on that branch. This binding covers this change only and grants no production authority.
+
+### Re-binding after porting the dashboard's team cards to Today (12 November 2026)
+
+The repository owner then chose which of the old dashboard's cards move onto Today. Under the same standing approval, quoted above, the covered source changes from `30fbcf5c437931b5f757381580f021a1a4ea38480978e34d2a8e7a389d4dddfd` (1,564 files) to the exact fingerprint `b56e92274d0e9816c9e5b5665549a392caefeabc0f73079a4f5a8a1aa69208bd` over 1,565 files; the agent source manifest changes from `ebd05624251e6a6fa0f3a696dbb6ed6b24fd4692a001dbf94ec182e976d5a079` to `c9e3f85fc7462fc34e906f7c90393c6b16640fe416f3fae579633db64b7b6e0f` over 487 files. This supersedes `30fbcf5c…` on this branch.
+
+The covered changes:
+
+- `packs/attendance/team-today.ts` (new, re-exported by `packs/attendance/service.ts`): `teamAttendanceToday`, Manager Today's count of the viewer's own reports (`app.my_team_report_ids()`) recorded present, late, half-day or absent on one day. It is one bounded, row-secured `GROUP BY` statement and returns four counts.
+- `core/read.ts`: `dashboardStats`, `recentHires` and `recentActivity`, which only the retired dashboard called, are deleted. No other read changes.
+
+No message catalogue covered by the manifest changes in this step; the new Manager Today copy is in the uncovered `messages/ai-centre/*.json`. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. Apart from the two regenerated manifests and these re-bound approvals, no file under `lib/ai`, `core/teras-wiring`, `core/assistant.ts` or `core/ai-governance.ts` changes. The same 28 approvals carry forward from `30fbcf5c437931b5f757381580f021a1a4ea38480978e34d2a8e7a389d4dddfd` to `b56e92274d0e9816c9e5b5665549a392caefeabc0f73079a4f5a8a1aa69208bd`. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this change only and grants no production authority.
+
+### Re-binding after merging alpha f84f4c567 (12 November 2026)
+
+`claude/retire-old-dashboard-20261112` (at `610b09b2415590246e18362bb79800d981b0a241`) merged `origin/alpha` at `f84f4c567`, the native Today endpoints (batch 106), whose binding is `0d98715d0edf03d9945b00980eb26af4e57f8bf5f2764b7b3cc5cc9fc05c9839` (1,565 files). The generated manifests and approvals were taken from alpha's side and regenerated, never hand-merged. Under the owner's standing 12 November 2026 approval, quoted above, the same 28 approvals carry forward from `0d98715d…` to the exact fingerprint `27da0876ce87608ab18f7d4ed9e70a4a940064a1052274ae52e32bb1778f3549` over 1,565 files; the agent source manifest is `fa50c9e9ec7206d01e13a494382510dee985f85b224eb0c60c1509dcad66bbcc` over 487 files. This supersedes `b56e9227…` on this branch.
+
+The covered files that differ from that alpha are this branch's own, described in the two sections above: `core/read.ts` (the retired dashboard's reads deleted), `packs/attendance/team-today.ts` and its re-export in `packs/attendance/service.ts`, `lib/ai/agent-capability-inventory.ts` (the deleted layout actions' entry) and the six `messages/*.json` catalogues. The merge's only code conflict was `components/today/employee/reads.ts`, where alpha moved Employee Today's own-fact readers into `core/employee-today-reads.ts` (not covered); the Notice Board reader now sits there beside them. No provider transform, outbound field, approved purpose or transport changes. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding grants no production authority.
+
+### Re-binding after merging alpha 0cbe5fecb (12 November 2026)
+
+`claude/retire-old-dashboard-20261112` (at `245b11f232a7b43f700259a546f2f586dae0b224`) merged `origin/alpha` at `0cbe5fecbc94b4c1a10b16f48cd1cbb4aa8abf2b`, the production-fix batch now on staging (migrations 5129 and 5130), whose binding is `178bb6175901f5035e33ab854fdcfa6f4488cfa3aa5d0a2cc89fca873b00271a` and whose agent source manifest is `e58dbc6932ee461bc2be15031c8832443eefa9ebbf39f2393fc1e5f2aaad9a47`. The generated manifests and approvals were taken from alpha's side and regenerated, never hand-merged. Under the owner's standing 12 November 2026 approval, quoted above, the same 28 approvals carry forward from `178bb617…` to the exact fingerprint `b9aa43aa86b0e079613c4507c65d769c44d7a4d9a9ec08dcf0db929a1938e5ee` over 1,570 files; the agent source manifest is `3781bbd889ec584ad66d79b071e49e57d1607e0f9d28b0165abb5dfb6cfc6541` over 490 files. This supersedes `27da0876…` on this branch.
+
+The covered files that differ from that alpha are this branch's own, unchanged since the sections above: `core/read.ts`, `packs/attendance/team-today.ts` and `packs/attendance/service.ts`, `lib/ai/agent-capability-inventory.ts` and the six `messages/*.json` catalogues. Alpha's own changes to the inventory (the formula-builder draft actions) and to the message catalogues merged without conflict and touch no key or entry this branch removed. No provider transform, outbound field, approved purpose or transport changes. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding grants no production authority.
+
+## Dashboard retirement loose ends
+
+On 12 November 2026 MYT, under the owner's standing approval for this batch and its follow-ons (quoted above), `claude/dashboard-loose-ends-20261112`, branched from `4a50cb962fa9f4834a8bff6c6c5373da25259a39` (alpha = main, binding `b9aa43aa86b0e079613c4507c65d769c44d7a4d9a9ec08dcf0db929a1938e5ee`), removes the code and copy the dashboard retirement left unused. The only covered files that change are the six `messages/*.json` catalogues:
+
+- the `dashboard` namespace keeps only `viewAll` (its last readers are the Tasks page and payroll readiness); the old leave balance card's keys and the never-read `onboardingThisWeek`, `startedLast7Days` and `block_*` keys are removed;
+- `nav.dashboardCardConfig` now reads "My Home settings" (and its translations), the page's own heading.
+
+The uncovered `messages/ai-centre/*.json` lose the earlier Today's unused `today.*` keys and `aiCentre.recommendation.show`. No covered code changes. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. The same 28 approvals carry forward from `b9aa43aa86b0e079613c4507c65d769c44d7a4d9a9ec08dcf0db929a1938e5ee` to the exact fingerprint `a9c050a51b556af8933a6601790c6fd364d4595b30d16aa666edc561759158c9` over 1,570 files; the agent source manifest changes from `3781bbd889ec584ad66d79b071e49e57d1607e0f9d28b0165abb5dfb6cfc6541` to `18705eacb2b1003daef183eb622a2fd8b3a07d08f266be3dffe0ff8b2092cf01` over 490 files. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding grants no production authority.
+### Irwin board batch A — Personnel search layer and EPF statutory working (12 November 2026)
+
+Branch `claude/irwin-batch-a-20261112`, cut from staging alpha `0cbe5fecbc94b4c1a10b16f48cd1cbb4aa8abf2b` (binding `178bb6175901f5035e33ab854fdcfa6f4488cfa3aa5d0a2cc89fca873b00271a`), merges `claude/irwin-personnel-search-layer-20261112` (board item aa045103, no covered source) and `claude/irwin-epf-trace-20261112` (board item 69d6ed3c). The covered files that change are `core/payroll.ts`, `core/statutory-explain.ts`, the new `core/statutory-trace.ts` and `core/statutory-trace-explain.ts`, `localization/my/payroll.ts` and the six `messages/*.json` catalogues. They stamp a deterministic statutory trace on each processed payslip, correct the earlier-run EPF additional wage in multi-run months, and render that trace in the Statutory Explanation view and its export. The trace is not copied into any AI explainer or provider payload (the explainer copies explicit fields only). No provider transform, outbound field, approved purpose or transport changes, and no file under `lib/ai` changes apart from the two regenerated manifests and these re-bound approvals.
+
+Under the owner's standing 12 November 2026 approval ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision"), the same 28 approvals carry forward from `178bb617…` to the exact fingerprint `4fb5aec1a3c316b120e53fe9576cb9f5b1524071bc94f107608ec724c120cde2` over 1,571 files. The agent source manifest changes from `e58dbc6932ee461bc2be15031c8832443eefa9ebbf39f2393fc1e5f2aaad9a47` to `eb6a5bc289abdfd5ac69ef10f6224e770c755bf7f6971c21ad2c7a6581001875` over 490 files. Both pending records and the retired Attendance Formula contract keep their original values. The review commit is the commit that records this section. This binding covers this staging release only and grants no production authority.
+
+Staging then moved to alpha `4a50cb962fa9f4834a8bff6c6c5373da25259a39` (dashboard retirement, binding `b9aa43aa86b0e079613c4507c65d769c44d7a4d9a9ec08dcf0db929a1938e5ee`). Batch A merged that alpha; its own covered changes are unchanged from the section above. Under the same standing approval, the same 28 approvals carry forward from `b9aa43aa…` to the exact merged fingerprint `d67141e6fdee4f7c56a73cc79b1dfc290492c91a84e2bc171f74e5ef6bc98a9e`; the agent source manifest, generated after the re-bind, becomes `d8ced59cac03a0ff98e436685c357f69b4bc8818af153844506cae4de71a5b54`. This supersedes `4fb5aec1…` for batch A. No provider transform, outbound field, approved purpose or transport changes. This binding covers this staging release only and grants no production authority.
+
+### Irwin board batch B (rebuilt on batch A) — 12 November 2026
+
+Branch `claude/irwin-batch-b2-20261112`, cut from batch A `f4d5eca8a4d2d53121db30238f07587a1b2d0e58` (staging alpha `4a50cb962` plus batch A, binding `d67141e6fdee4f7c56a73cc79b1dfc290492c91a84e2bc171f74e5ef6bc98a9e`), merges `claude/irwin-schedule-overtime-20261112` (2f803985) and `claude/irwin-attendance-workflow-20261112` (daa76ed4, 96a54ed2, including the security-review fixes in 5144). Its covered changes are those described in the earlier batch B section, plus the 5144 lane fixes (on-behalf role scoping per company, Approve On Behalf paging). No provider transform, outbound field, approved purpose or transport changes, and no file under `lib/ai` changes apart from the two regenerated manifests and these re-bound approvals. No model computes any overtime or pay amount.
+
+Under the owner's standing 12 November 2026 approval ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision"), the same 28 approvals carry forward from `d67141e6fdee4f7c56a73cc79b1dfc290492c91a84e2bc171f74e5ef6bc98a9e` to the exact fingerprint `655e14a8358bf08d04e3a8d34786777d7271e47ecc3f05aea401e3664cc90e71`; the agent source manifest, generated after the re-bind, becomes `ff44a5fc94622d543a2fb7ef3dcf44293df2d3a3b8aa6555282bcd3cf2fc1aa5`. This supersedes the earlier batch B bindings. Both pending records and the retired Attendance Formula contract keep their original values. This binding covers this staging release only and grants no production authority.
+
+Gate repair (12 November 2026). The full gate on `674b87e68` failed integration-conformance checks only. Two covered files change in the repair: `lib/ai/agent-capability-inventory.ts` classifies the new Schedule Group `saveScheduleGroupOvertimeSettingAction` as `backlog:confirm`, exactly like its four sibling Schedule Group saves (no agent capability is registered or widened), and `lib/product-context/destinations.ts` drops the dynamic `/attendance/on-behalf/approve/[employmentId]` row from the generated linkable-page index so it again equals what `classifyPage` derives from static pages. No provider transform, outbound field, approved purpose or transport changes. Under the same standing 12 November 2026 approval quoted above, the same 28 approvals carry forward from `655e14a8358bf08d04e3a8d34786777d7271e47ecc3f05aea401e3664cc90e71` to the exact fingerprint `9a7be035c617f62d5972fe18455d07cd253baee9b3ef6dbe566774fe1f359278` over 1,576 files; the agent source manifest, generated after the re-bind, becomes `12fac56f246ba27b2ce9e6ed1950722eabbf968b824b91987a32f153dcb1e430` over 490 files. Both pending records and the retired Attendance Formula contract keep their original values. This binding covers this staging release only and grants no production authority.
+Staging then moved to alpha `987fe3d105176e6ba2451713b2e2b9f3f9f01650` (dashboard loose ends, binding `a9c050a51b556af8933a6601790c6fd364d4595b30d16aa666edc561759158c9`). Batch A merged it; its own covered changes are unchanged. Under the same standing approval, the same 28 approvals carry forward from `a9c050a5…` to the exact merged fingerprint `f7326c19c4b66a04b87aa0a5a7468fbc98c89992db6ee2d2020f42e8dbc30820`; the agent source manifest, generated after the re-bind, becomes `bea8866843a62aefaf3058c3d918596ae6f3e0a3fc1087c7284d96041712e440`. No provider transform, outbound field, approved purpose or transport changes. This binding covers this staging release only and grants no production authority.
+
+Batch B then merged batch A at `3a11d916e46d2950a5e55e94382f558d2fc2c373` (batch A on staging alpha `987fe3d10`, binding `f7326c19…`) so that it descends from batch A's staging release. Its own covered changes are unchanged from the batch B sections above. Under the same standing approval, the same 28 approvals carry forward from `9a7be035c617f62d5972fe18455d07cd253baee9b3ef6dbe566774fe1f359278` to the exact merged fingerprint `075c1f80b0a1560bc4f14fefba0e40f4fdaaf4f3cc6be46da78e48f68d1c563e`; the agent source manifest, generated after the re-bind, becomes `c3588431b611b1b34d566f89d8e4664f93919f2f1a37d9a6cf2d6dbd9b4c2820`. No provider transform, outbound field, approved purpose or transport changes. This binding covers this staging release only and grants no production authority.
+
+#### Outbound data change: Request On Behalf and Approve On Behalf reads (12 November 2026)
+
+On 12 November 2026 MYT the release coordinator asked the repository owner: "Do you approve [the new outbound AI data for the two On Behalf pages: names as locally-restored placeholders (minimum), company/department/position (minimum), request status/kind (full); employment ids, codes and free text never; no submit/decide capability]?" The owner answered "Approve, ship B after". The owner's "Close it properly" decision the same day replaced the definition-of-done gap entries for `/attendance/on-behalf/request` and `/attendance/on-behalf/approve` with semantic reads, so those entries and the +2 ceilings are removed.
+
+Outbound data changes are limited to two new read-only topics of the existing `operations_status` tool, under the existing conversation harness contract `teras_harness_turn_v1` (harness spec v30; no new provider tool, transport or contract):
+- `attendance_on_behalf_subjects` (entity `attendance_on_behalf_subject`, page `/attendance/on-behalf/request`): the first page (25) of employees the caller may file an attendance request for, in the page's order.
+- `attendance_on_behalf_approvers` (entity `attendance_on_behalf_approver`, page `/attendance/on-behalf/approve`): the first page (25) of designated approvers the caller may decide for, in the page's order.
+
+Each row carries only `name` (type name, `minimum`: always an opaque placeholder restored locally), `company`, `department` and `position` (labels, `minimum`; the entity's audience is the elevated managers-and-administrators offer, so these labels leave as written, as workforce metrics' department names do), plus `more` (`full`) and the standard provenance block. Employment ids, employee codes and free text are never read into the result. Request status and kind, which the approval also allowed, are not sent: the requests themselves sit on the per-approver page, which would need an employment handle. Both reads are offered to managers and administrators (team access) with the Attendance module on; the runner (`core/explainers/attendance-on-behalf.ts`) refuses a caller without the on-behalf permission key (`attendance.request_on_behalf` / `attendance.approve_on_behalf`) not_permitted before reading, then runs the page's own owner `searchAttendanceOnBehalfSubjects` as the caller under tenant row-level security: one bounded set-based statement, limited to companies where the caller holds the key and, within them, companies the caller administers as HR or people beneath them in their own reporting line. Each has its own AI Centre control (`read:attendance_on_behalf_subjects`, `read:attendance_on_behalf_approvers`, migration `5145_ai_attendance_on_behalf_reads`, sha256 `45f46d793d836371aebc7d7e20bcea000edef1a6e517367f8deffd59dd2ec9ff`). No semantic or agent action is added: filing and deciding on behalf stay human-only actions on the pages, and `myRequestCorrection` / `decideCorrectionAction` keep their existing inventory classification.
+
+The covered files that change are `core/explainers/capabilities.ts`, `core/harness/spec.ts`, `core/semantic-model/generate.ts`, `core/semantic-model/topic-tools.ts`, `core/semantic-model/types.ts` and the new `core/explainers/attendance-on-behalf.ts` and `core/semantic-model/entities-attendance-on-behalf.ts`. Under that owner approval, the same 28 approvals carry forward from `075c1f80b0a1560bc4f14fefba0e40f4fdaaf4f3cc6be46da78e48f68d1c563e` to the exact fingerprint `f9ca291ec2de76d89ed35827b9f88472ee84074545247f6efa808d9c31572ac4` over 1,578 files; the agent source manifest, generated after the re-bind, becomes `52da89d48f1aab77f4c55d55b733a235f29e7596793a28084bccf6020905772d` over 491 files. Both pending records and the retired Attendance Formula contract keep their original values. This binding covers this staging release only and grants no production authority.
+
+Gate repair (13 November 2026 MYT). Full gate 43259497347 showed that a manager holding the on-behalf keys was offered `operations_status` with the full declaration: its description and topic list named the administrators' topics (loops, payroll cycle, AI quality, shared leave groups and the rest), although calling them was refused. The offer is now per caller. `core/harness/tools.ts` binds `operations_status` with `topicToolSpecFor` (`core/semantic-model/topic-tools.ts`): a caller permitted every topic gets the full declaration exactly as before; a caller permitted only some gets a description and topic enum listing only those topics, under a neutral one-sentence purpose that names no other area. The two on-behalf capabilities are also offered only while the caller actually holds the matching key (`core/explainers/capabilities.ts` offer hook, one read-only transaction for both keys through `core/attendance-on-behalf.ts` `attendanceOnBehalfPurposesHeld`), so a manager without a key, and every employee, is offered nothing new. This only narrows what the provider sees. The outbound fields and disclosure classes are unchanged from the approved change above, and there is no new contract, transport or purpose. Under that same owner approval, the same 28 approvals carry forward from `f9ca291ec2de76d89ed35827b9f88472ee84074545247f6efa808d9c31572ac4` to the exact fingerprint `c3bf54ae474ee31fa5f4f2fa82c12ef5cbebfbb4e917433511da340cc51fa9c1` over 1,578 files; the agent source manifest, generated after the re-bind, becomes `d9536d0fcd900df1c0276308760f4406b47fa257ba83e7dd7482ec24c3dc443c` over 491 files. This binding covers this staging release only and grants no production authority.
+
+## Sweep net-swing thresholds (13 November 2026)
+
+Branch `claude/sweep-threshold-20261113`, cut from alpha `3a11d916e` (binding `f7326c19c4b66a04b87aa0a5a7468fbc98c89992db6ee2d2020f42e8dbc30820` over 1,572 files, agent source manifest `bea8866843a62aefaf3058c3d918596ae6f3e0a3fc1087c7284d96041712e440` over 490 files), makes the scheduled payroll anomaly sweep judge each company by its own Salary payroll loop net-swing threshold instead of the 15% fallback (owner follow-on, 12 November 2026). The only covered file that changes is `core/payroll-anomaly.ts`: its private `swingSettingTx` also asks the new draft reader `app.sweep_swing_thresholds` (migration 9760), which answers only a session with no login and no agent principal, with the company's threshold and nothing else. The sweep applies no exclusions (the reader does not disclose them). A login keeps its row-secured read; a payroll partner still gets the disclosed 15% default.
+
+The deterministic evaluator is not an AI provider path: nothing is added to any provider payload, and no provider transform, outbound field, approved purpose or transport changes. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `f7326c19…` to the exact fingerprint `3f6e290c14537e4c2168b25393987c32476831367797415dcc9a3e66a7a58a87` over 1,572 files; the agent source manifest, generated after the re-bind, becomes `fd5ab05aa66f5b48701e5a7870af9df6ead384d6c3f76c002823373b83fef35b` over 490 files. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding grants no production authority.
+
+### Manager Today team minimum (13 November 2026)
+
+Branch `claude/team-minimum-20261113`, cut from alpha `3a11d916e` (binding `f7326c19c4b66a04b87aa0a5a7468fbc98c89992db6ee2d2020f42e8dbc30820` over 1,572 files), implements the owner's 12 November 2026 decision (HANDOFF §5 item 4): a nullable per-company "minimum people present" leave setting and a `team_coverage` change in the approver recommendation. The covered files that change are:
+
+- `core/recommenders/leave-decision.ts`: when the applicant's company sets a minimum, `team_coverage` checks each day of the request against the applicant's team (their line manager and that manager's reports) and fails, never blocking, on a day below it; the recommendation carries `teamCoverage` (the minimum and each short day with how many would be present) and its outcome record keeps the minimum and the short days. With no minimum set the check, its owner, its reads and its outcome are unchanged. The verdict stays code and still never recommends rejecting.
+- `core/leave-team-minimum.ts` (new, re-exported by `packs/leave/service.ts`): the setting's writer (administrator of the company; authorization, change and audit event in one transaction), the Company rules reader and `leaveTeamPresence`, one set-based count over the request's days.
+- `db/schema.ts`: the `company.leave_team_minimum_present` column and its CHECK (draft migration 9770).
+- `lib/ai/agent-capability-inventory.ts`: the new `setLeaveTeamMinimumAction` entry (`backlog:confirm`, like its Company rules neighbours).
+- the six `messages/*.json` catalogues: the Company rules card's copy (`admin.leaveConfigCompanyRules.teamMinimum`).
+
+The recommendation's own wording is in the uncovered `messages/ai-centre/*.json`. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload; the recommendation is not sent to a model. Apart from the two regenerated manifests and these re-bound approvals, no other file under `lib/ai` changes. Under the owner's pre-approval for this task (re-binding the provider approvals after changing `core/recommenders/leave-decision.ts`), the same 28 approvals carry forward from `f7326c19…` to the exact fingerprint `ccdcfd8e4d4af7241d7a0ffeb58a873488fe0154d63b25c2ff981a79c4eed85e` over 1,573 files; the agent source manifest, generated after the re-bind, changes from `bea8866843a62aefaf3058c3d918596ae6f3e0a3fc1087c7284d96041712e440` to `3ff8ebaeff41d785c9a2902050e42f31c6a81149f821c33dc6af1212d6fb7c99` over 490 files. Both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this change only and grants no production authority.
+
+### Re-binding for the morning summary mandate (13 November 2026)
+
+Branch `claude/mandates-digest-20261113`, cut from alpha `3a11d916e` (binding `f7326c19c4b66a04b87aa0a5a7468fbc98c89992db6ee2d2020f42e8dbc30820`, agent source manifest `bea8866843a62aefaf3058c3d918596ae6f3e0a3fc1087c7284d96041712e440`), wires `grantMandate` so delegated jobs and the daily digest work (owner decision, 11 November 2026). The one covered file that changes is `core/mandates/mandates.ts`: `grantMandate` takes an optional `GrantMandateOptions` that only refuses or narrows. `requireAdministrator` confirms an HR administrator role in the database (`app.principal_snapshot_current()` and `app.is_admin()`) inside the grant's own transaction, and `validForCeiling` sets the validity to the tenant's ceiling read in that transaction. No job type, never-delegable category, refusal reason or run rule changes. The new product path (`core/digest/own-digest.ts`), the sweep runner (`core/digest/run.ts`), Admin Today's panel and the copy (in the uncovered `messages/ai-centre/*.json`) are not covered.
+
+The owner pre-approved re-binding the AI provider approvals for this follow-on. The same 28 approvals carry forward from `f7326c19…` to the exact fingerprint `3e1f617fdb11e7f3e926d1b11f2a17e7e0a9daec97b3ecfe2034f159cb943243` over 1,572 files. The agent source manifest, generated after the re-bind, changes to `0f06552e3a228b5db15cf97a216a439746c84846c4467b3381ae440626ba4ff9` over 490 files. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this change only and grants no production authority.
+
+Later on 13 November 2026, the full gate on `c73b1f84f` asked for the two new Admin Today entry points to be classified (`test/agent-capability-inventory.test.ts`). `lib/ai/agent-capability-inventory.ts` (covered) now lists `app/today-morning-actions.ts` › `startMorningSummaryAction` and `stopMorningSummaryAction` as `handoff:ai_governance`. Starting or stopping the morning summary grants or revokes the person's own mandate to an AI worker. That stays a human-only choice, like every other AI Centre control, so the assistant can never start or stop a mandate on someone's behalf. Under the same pre-approval, the same 28 approvals carry forward from `3e1f617f…` to the exact fingerprint `c4708f605e9b3eed66695749906c3f8536dc7a05545a4890a595a56004a17348` over 1,572 files. The agent source manifest, generated after the re-bind, changes from `0f06552e…` to `75e009fbb449e4732e8621166c108aa5db8406ce536eb8fdbcc5c5859ba38e99` over 490 files. No provider transform, outbound field, approved purpose or transport changes. This binding grants no production authority.
+
+### Probation and passport loop request acts (13 November 2026)
+
+Branch `claude/probation-passport-acts-20261113`, cut from alpha `3a11d916e46d2950a5e55e94382f558d2fc2c373` (binding `f7326c19c4b66a04b87aa0a5a7468fbc98c89992db6ee2d2020f42e8dbc30820`), lets the probation and passport loops act on their own as request-only steps (owner decisions of 11 and 13 November 2026). Covered files changed: `core/loops/autonomy.ts` and `core/loops/autonomy-types.ts` (the two loops reclassified as request-only, Level 2 at most; two new not-applied reasons), `core/employment-review.ts` (the opener exported for the loop, a narrow `cancelLoopOpenedReviewTx` for the loop's undo, and the one-review gate ignoring cancelled reviews), `core/notification-registry.ts` (the passport renewal wording of the existing request and withdrawal notices), `core/agent-registry/workers.ts` and `lib/ai/agent-capability-inventory.ts` (what each loop does at Level 2), `core/explainers/capabilities.ts` (the loops' ceiling reported as the level they may be promoted to) and `core/semantic-model/entities-loops.ts` (the `ceiling` field's description brought in line). The AI Centre catalogues touched are the uncovered `messages/ai-centre/*.json`.
+
+Under the owner's pre-approval for this follow-on (re-bind without asking where no transform, field or purpose changes), the same 28 approvals carry forward from `f7326c19…` to the exact fingerprint `1c2104e6650b6a26098f35d4fae41d52238a01fe4da8e1e06c96bc829be67839` (1,572 files); the agent source manifest, generated after the re-bind, becomes `1032f6888fa2e3ed2e95c5eccc292f426489dbb12f5f80e727fbe3181bcd8b2e` (490 files). No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload; the semantic-model change is description text of an existing field. This binding covers this staging candidate only and grants no production authority.
+
+### Re-binding for the combined ainative follow-ons (13 November 2026)
+
+The owner asked for the four ainative follow-ons to be released together as one ticket. `claude/ainative-followons-20261113` starts from `claude/sweep-threshold-20261113` at `a7f36e6e7` (the sweep thresholds, migration 5160, plus the operator-release checksum fix) and merges, each with a merge commit, `claude/team-minimum-20261113` at `e2135090f` (migration 5161), `claude/mandates-digest-20261113` at `92dde73c9` (no migration) and `claude/probation-passport-acts-20261113` at `0262cba16` (migration 5162). Each branch's covered changes are exactly those described in its own section above; the only covered edits made at integration are comments, which now name the allocated migrations instead of their drafts (`core/payroll-anomaly.ts` 5160; `db/schema.ts`, `core/leave-team-minimum.ts`, `packs/leave/service.ts` 5161; `core/loops/autonomy.ts` 5162). The generated manifests and approvals were not hand-merged: they were reset to alpha `3a11d916e`'s and regenerated, and each branch's approvals were checked to differ from alpha's only in the digest. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from alpha's `f7326c19c4b66a04b87aa0a5a7468fbc98c89992db6ee2d2020f42e8dbc30820` (1,572 files) to the exact combined fingerprint `ba9997706e7799f0b3c70f26206df411ba7306895b66a9d0716b303486e3162b` over 1,573 files; the agent source manifest, generated after the re-bind, becomes `b9c60282c6926669215935db6f46cb5e9a00d50871d559638f4a2e3a27bbef78` over 490 files. This supersedes the four branches' individual bindings (`3f6e290c…`, `ccdcfd8e…`, `c4708f60…`, `1c2104e6…`). No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this staging release only and grants no production authority.
+
+### Re-binding after merging alpha d27c4a320 into the combined ainative follow-ons (13 November 2026)
+
+`claude/ainative-followons-20261113` (at `732ee5fde`) merged `origin/alpha` at `d27c4a320` (Irwin board batch B, now on staging; migrations 5140–5145 and 5150), whose binding is `c3bf54ae474ee31fa5f4f2fa82c12ef5cbebfbb4e917433511da340cc51fa9c1` and whose agent source manifest is `d9536d0fcd900df1c0276308760f4406b47fa257ba83e7dd7482ec24c3dc443c` (491 files). The generated manifests and approvals were taken from alpha's side and regenerated, never hand-merged; the re-bound approvals differ from alpha's only in the digest. The follow-ons' own covered changes are unchanged from the sections above. The files both sides changed (`core/explainers/capabilities.ts`, `core/notification-registry.ts`, `db/schema.ts`, `lib/ai/agent-capability-inventory.ts`, the six `messages/*.json` catalogues) merged without conflict and touch different entries: alpha's on-behalf topics and attendance escalation notice, the follow-ons' loop ceilings, passport renewal request and team minimum. The follow-ons' migrations 5160–5162 stay above alpha's 5150. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `c3bf54ae…` to the exact merged fingerprint `a9cd60d8a080b09e9feaea6387675d8bc196da150538931f068a7f7219126284` over 1,579 files; the agent source manifest, generated after the re-bind, becomes `a490c105461a60963bf8a14225a3612d50ef5e5e7be78c8c6f0c820d9025b447` over 491 files. This supersedes `ba999770…` for the combined branch. No provider transform, outbound field, approved purpose or transport changes beyond alpha's own reviewed on-behalf topics, and nothing is added to any provider payload. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this staging release only and grants no production authority.
+
+### Re-binding after merging production-fix ticket 173 into the combined ainative follow-ons (13 November 2026)
+
+`claude/ainative-followons-20261113` (at `efd67002c`) merged the exact release candidate `65e23a1e713324a67dc88d0b7cc4c232f02e7142` (`claude/missing-zero-rc-20261113`, production-fix ticket 173: in the Formula Builder a Pay Item the employee has no row of in the run counts as 0; it already contains alpha `d27c4a320`), whose binding is `289f84142dfea08e1e3fa6914eeb55dc8109304cd128dd844bc853d747ea8f7f` and whose agent source manifest is `e2a440fe39595b8ddff8934a97abf40ac7b76f8cb57a2aa3015a32e1e9462190` (491 files). The generated manifests and approvals were taken from the candidate's side and regenerated, never hand-merged; the re-bound approvals differ from the candidate's only in the digest. The only other files both sides changed are the six `messages/*.json` catalogues, which merged without conflict on different keys. The follow-ons' covered changes are unchanged from the sections above, and none of them reads the pay formula runtime: the anomaly evaluator, the net-swing owner and the loops read processed payslip figures only. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `289f8414…` to the exact merged fingerprint `5974db2c494b91cf8d18ed93555270e2f93c4d365709685c339f35f43ebc2eab` over 1,579 files; the agent source manifest, generated after the re-bind, becomes `10540040369a85f44bb3b4ea2fc2dc39ff45dd66c8616924f0a25e3e04d92a32` over 491 files. This supersedes `a9cd60d8…` for the combined branch. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this staging release only and grants no production authority.
+
+### Re-binding for board 154511c4, movement history recorded backwards (13 November 2026)
+
+Branch `claude/movement-history-rc-20261113` merges `fc9a2b906` (board 154511c4: history movements recognised from ordinary Create rows, named writer refusals in the Movement import, Correct information warnings and the company-from-join-date correction, the payroll-history-import company check) onto the staging candidate `728203446` (binding `3581d57f281f2d1810d32d5ba500cda10a10128a4ec740d7c7c10f2778b85bbb`). Covered files changed: `core/movement.ts`, `core/movement-import.ts`, `core/information-correction.ts`, `core/org.ts`, `core/payroll-history-revisions.ts`, the new `core/movement-history.ts`, the `lib/` contracts they use, and the six `messages/*.json` catalogues. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload.
+
+The owner confirmed the re-bind in this session on 13 November 2026 (answer to the release question: "Yes, re-bind"). The same 28 approvals carry forward from `3581d57f…` to the exact fingerprint `d93c60864e5d6114546d6d45f606ea38122f918c6d58b6a92e5d67ef788c21cf` over 1,580 files; the agent source manifest, regenerated after the re-bind, is `225d5b964f8e121eb3e6cb634c4f23680750931663be62d47b5d4e7937051e31`. Staging only; no production authority.
+
+Later the same day the owner asked for the rest of the board item in the same release: the added-reason workbook tolerance (`044b29e87`), alignment of the dated records with the Group Join Date in Correct information, and New Event's Record history (`core/movement-history-command.ts`). None changes a provider transform, outbound field, approved purpose or transport. Under the same confirmed re-bind, the 28 approvals carry forward from `d93c6086…` to the exact fingerprint `cf78cf1ed070cf3e08c26f87ad8619358496a4a3796b32a285d5587b9e5208ee`; the agent source manifest, regenerated after the re-bind, is `18b97b5a9571a4dfd347830a0195fd811261b80f596f500a723fd4e5feface3b`. Staging only; no production authority.
+### Re-binding for the import Error Log candidate, boards c074c6b8 and d3ba1e9f (13 November 2026)
+
+`claude/import-errors-rc-20261113` starts from the shared foundation `04602d3ac` (cut from alpha `728203446`, binding `3581d57f281f2d1810d32d5ba500cda10a10128a4ec740d7c7c10f2778b85bbb`) and merges, each with a merge commit, `claude/import-errors-labels-c074c6b8-20261113` at `2233eac5f` (System Labels import), `claude/import-errors-employee-d3ba1e9f-a-20261113` at `80fed6c4b` (Everything, Profile, Family, Qualifications, Emergency Contacts and Import History) and `claude/import-errors-employee-d3ba1e9f-b-20261113` at `bb9564dea` (Bank and Statutory, Cost Center Allocations, Information-Only Correction). The covered files changed are reached only as dependencies of the import paths: `core/import.ts`, `core/import-sections.ts`, `core/bank-import-worker.ts`, `core/product-context/capability-catalogue.ts` (the new Error Log routes registered), `lib/import-schema.ts` (optional column, code, value and Excel row on an import issue), `lib/employee-import-report.ts`, `lib/import-problem-lines.ts`, `lib/import-problem-common.ts`, `lib/section-import-problems.ts`, `lib/public-error.ts` (two additive helpers), `lib/spreadsheet.ts` (an additive row-number reader), `lib/system-label-assignment.ts` and `lib/system-label-definition.ts` (a detail code and column on existing errors), and the six `messages/*.json` catalogues (new Error Log wording). The personnel import assistant sends column headers only; no import row, issue or value reaches any provider. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `3581d57f…` to the exact fingerprint `aba59bec49df4f5d49e837a6f9db0b408669668834cafb0bead1d00e9f97acc9` over 1,582 files; the agent source manifest, generated after the re-bind, becomes `72b9b73652a4249166568a772e52e40bf1992b5eedba88fc84c42dcaf818870d` over 491 files. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this staging release only and grants no production authority.
+
+### Re-binding after merging alpha 611f7b51d and candidate 1ba04ce55 into the import Error Log candidate (13 November 2026)
+
+`claude/import-errors-rc-20261113` (at `76aad6aec`, binding `aba59bec49df4f5d49e837a6f9db0b408669668834cafb0bead1d00e9f97acc9`) merged `1ba04ce55` (`claude/worker-env-rebind-rc-20261113`, the worker env rebind helper on alpha `611f7b51d`, which carries board 154511c4), whose binding is `cf78cf1ed070cf3e08c26f87ad8619358496a4a3796b32a285d5587b9e5208ee` and whose agent source manifest is `18b97b5a9571a4dfd347830a0195fd811261b80f596f500a723fd4e5feface3b`. The generated manifests and approvals were taken from that side and regenerated, never hand-merged; the re-bound approvals differ from it only in the digest. The six `messages/*.json` catalogues merged without conflict on different keys; the import Error Log's covered changes are unchanged from the section above. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `cf78cf1e…` to the exact merged fingerprint `5842725afdfe2c61f8874eca7df774f21ed406b06b2d8ffc7577b031c51b43e2` over 1,583 files; the agent source manifest, generated after the re-bind, becomes `1d1ef749efae28f10397c431724ee26f8dab5a06f810ae2808c8863177197d6a` over 491 files. This supersedes `aba59bec…` for this candidate. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. This binding covers this staging release only and grants no production authority.
+
+
+## Board release integration (12 November 2026)
+
+Branch `claude/board-release-20261112` is the final integration of the 12 November board lanes: the off-cycle lane at `f4bcb5de7` (combined board candidate, Rewards Limit Controls and Off-cycle), merged with the Rewards Role permissions grid (db14e49c, `460308486`), the Limit Controls row switched on (migration 5560), and `origin/alpha` at `987fe3d10` (binding `a9c050a51b556af8933a6601790c6fd364d4595b30d16aa666edc561759158c9` over 1,570 files, agent source manifest `18705eacb2b1003daef183eb622a2fd8b3a07d08f266be3dffe0ff8b2092cf01`). The generated manifests and approvals were taken from alpha's side and regenerated, never hand-merged.
+
+Fifty-six covered files differ from that alpha, nine of them new (`lib/email-body/doc.ts`, `lib/email-body/render.ts`, `lib/lifecycle-bulk-assignment.ts`, `lib/lifecycle-v9-recipients.ts`, `lib/lifecycle-v9-return-presets.ts`, `packs/rewards/config-change-model.ts`, `packs/rewards/config-change.ts`, `packs/rewards/limit-controls-model.ts`, `packs/rewards/limit-controls.ts`). They are the lanes' Rewards and On/Off Boarding business services and models, email rendering and delivery, notifications, permissions, product-context destinations and the six `messages/*.json` catalogues, all described in the lane sections above and all in the transitive import closure. The Role permissions grid adds `packs/rewards/role-permission-grid.ts` (outside the closure) and changes `packs/rewards/access-policy.ts`, `access-policy-model.ts`, `libraries.ts`, `model.ts`, `pat-inputs.ts`, `plan-configuration.ts`, `service.ts` and `setup-data.ts`; switching the Limit Controls row on changes only the `REWARD_LIMIT_CONTROLS_ROW_ENABLED` constant in `access-policy-model.ts`. The only covered AI file that changes is `lib/ai/agent-capability-inventory.ts`, which classifies the lanes' server actions under existing classes (the grid's preview, save and decide actions as `handoff:access_and_authentication`). No provider transform, outbound field, approved purpose or transport changes, nothing is added to any provider payload, and no model computes money.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `a9c050a5…` to the exact fingerprint `adb303b582ad8fb798f250c1c4b9eba1049feb0b05a772f41a9974938f914522` over 1,579 files. The agent source manifest becomes `da22a96c0b21a3a97584de9c10680e85bd3d5f4551381ce194719c242bfd610a` over 490 files. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. This binding covers this staging candidate only and grants no production authority.
+
+The candidate's focused checks then needed one covered change: `packs/rewards/service.ts`, where the review projection's pay-position ratios for Senior plan members now follow the Role permissions level for Senior plan amounts (`load().seniorAmounts`) as well as the role, as the rest of the projection already does. It only hides more figures from a narrowed reader; no provider transform, outbound field, approved purpose or transport changes. Under the same approval, the same 28 approvals carry forward from `adb303b5…` to the exact fingerprint `41389bffb684af5e7ed45b608614ea45405296448f12e9b6ebc7dd20266a4bb2` over 1,579 files, superseding it. The agent source manifest becomes `5eda41d4de59258c86fd2229ec8baee1d37743693e3d68e4bce996db8a7ac800` over 490 files. Staging candidate only; no production authority.
+
+### Re-binding after admitting the Rewards configuration owner paths and merging alpha 3a11d916e (13 November 2026)
+
+`claude/board-release-20261112` (at `bc35359ec`, binding `41389bff…`) then merged `claude/board-rewards-governance-owner-fns-20261112` at `c174bd5da` (board item 60f1fdcd, migration 5580, section above), composed it with the Role permissions grid (migration 5600), and merged `origin/alpha` at `3a11d916e` (batch A, binding `f7326c19c4b66a04b87aa0a5a7468fbc98c89992db6ee2d2020f42e8dbc30820`). The generated manifests and approvals were taken from this side and regenerated, never hand-merged.
+
+The covered files that change are the Rewards business services from the 60f1fdcd lane (`packs/rewards/libraries.ts`, `pat-inputs.ts`, `plan-configuration.ts`, `service.ts`, `uploaded-awards.ts`, `access-policy.ts`, `access-policy-model.ts`, `config-change.ts`, `setup-data.ts` and the new `setup-config-query-port.ts`), with the composition: the configuration pages and the Rewards menu read `app.reward_config_page_allowed`, and the grid catalogue gives Group Rewards, CTRO and HR Admin Full on Salary Structures, Bonus Matrices and PAT Inputs; alpha's batch A files (`core/payroll.ts`, `core/statutory-explain.ts`, `core/statutory-trace.ts`, `core/statutory-trace-explain.ts`, `localization/my/payroll.ts`, as bound by alpha); and the six `messages/*.json` catalogues (key union of both sides). No covered AI file, provider transform, outbound field, approved purpose or transport changes, nothing is added to any provider payload, and no model computes money.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `41389bff…` to the exact fingerprint `ac8255ab5eaa1bd85d4decb2d16a47311d1b9e4eee3f9fb3beb3f516e7491811` over 1,582 files, superseding it. The agent source manifest, generated after the re-bind, becomes `ae2d89bbcb6323d2cb131018e1ce697ff171d942d37d5d1991579d33fec66d02` over 490 files. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. Staging candidate only; this binding grants no production authority.
+
+### Re-binding after merging alpha 65e23a1e7 (13 November 2026)
+
+`claude/board-release-20261112` (at `2227a2747`, binding `ac8255ab…`, agent source manifest `ae2d89bb…` over 490 files) then merged `origin/alpha` at `65e23a1e713324a67dc88d0b7cc4c232f02e7142`: Irwin board batch B (`d27c4a320`, sections above, including the owner-approved outbound On Behalf reads and the per-caller `operations_status` offer) and the missing-Pay-Item release candidate (`567e0c058`). Alpha's own commits record its bindings as `f7326c19…` → `7cbb42af…` → `289f84142dfea08e1e3fa6914eeb55dc8109304cd128dd844bc853d747ea8f7f`, with agent source manifest `e2a440fe39595b8ddff8934a97abf40ac7b76f8cb57a2aa3015a32e1e9462190` over 491 files. The approvals differed between the two sides only in that digest. The generated manifests and approvals were taken from this side and regenerated with `node scripts/ai-provider-data-source-manifest.mjs` and `node scripts/ai-agent-source-manifest.mjs`, never hand-merged.
+
+The covered files that change from this side are alpha's: the attendance on-behalf, overtime-setting, workflow-escalation and final-decision services (`core/attendance-on-behalf.ts`, `core/attendance-on-behalf-permission.ts`, `core/attendance-overtime-setting.ts`, `lib/schedule-overtime-setting.ts`, `core/attendance.ts`, `core/attendance-workflow.ts`, `lib/attendance-workflow*.ts`, `lib/approval-history.ts`, `packs/attendance/*`), the On Behalf AI reads (`core/explainers/attendance-on-behalf.ts`, `core/explainers/capabilities.ts`, `core/harness/spec.ts`, `core/harness/tools.ts`, `core/semantic-model/*`), the Formula Builder missing-Pay-Item rule (`core/pay-formula.ts`, `core/pay-formula-runtime.ts`, `lib/pay-formula-*.ts`), notifications, permissions, `lib/ai/agent-capability-inventory.ts`, `lib/product-context/destinations.ts`, `db/schema.ts` and the six `messages/*.json` catalogues (both sides' keys kept). From alpha's side, the covered files that differ are this branch's Rewards and On/Off Boarding files described in the sections above. No provider transform, outbound field, approved purpose or transport changes beyond those already approved on each side.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `ac8255ab…` (this side) and `289f8414…` (alpha) to the exact merged fingerprint `e5be114839dcad1f420974fa471c9921dbf9599eaeb72004509d80775b4a3f2c` over 1,588 files, superseding both. The agent source manifest, generated after the re-bind, becomes `672bc04449e601ffabf7a23feaaf6e473724aebcd0a9a63e588f1d9bba22a57c` over 491 files. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. Staging candidate only; this binding grants no production authority.
+
+### Re-binding after merging alpha de15677b0 (13 November 2026)
+
+`claude/board-release-20261112` (at `db8b9b887`, binding `e5be1148…`, agent source manifest `672bc044…` over 491 files) then merged `origin/alpha` at `de15677b0c02e97e2d85afe99e65312011de498d`: the combined ainative follow-ons (sweep net-swing thresholds, Manager Today team minimum, the morning summary mandate and the probation and passport loop request acts, migrations 5160–5162; sections above), whose binding is `5974db2c494b91cf8d18ed93555270e2f93c4d365709685c339f35f43ebc2eab` and agent source manifest `10540040369a85f44bb3b4ea2fc2dc39ff45dd66c8616924f0a25e3e04d92a32` over 491 files. The approvals differed between the two sides only in that digest. The generated manifests and approvals were taken from this side and regenerated with the repository scripts, never hand-merged.
+
+The covered files that change from this side are alpha's follow-on files: `core/agent-registry/workers.ts`, `core/employment-review.ts`, `core/explainers/capabilities.ts`, `core/leave-team-minimum.ts` (new), `core/loops/autonomy-types.ts`, `core/loops/autonomy.ts`, `core/mandates/mandates.ts`, `core/notification-registry.ts`, `core/payroll-anomaly.ts`, `core/recommenders/leave-decision.ts`, `core/semantic-model/entities-loops.ts`, `db/schema.ts`, `lib/ai/agent-capability-inventory.ts`, `packs/leave/service.ts` and the six `messages/*.json` catalogues (both sides' keys kept). No provider transform, outbound field, approved purpose or transport changes beyond those already approved on each side.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `e5be1148…` (this side) and `5974db2c…` (alpha) to the exact merged fingerprint `b700a6fefb5fa3cee859c26636a4ff9c677651d392f8ab5e52c1a022a972ddcc` over 1,589 files, superseding both. The agent source manifest, generated after the re-bind, becomes `9bb8ddc153be273977c95cfe7ab8b85b81855acc7fd1e30e0d9e2fc694892442` over 491 files. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. Staging candidate only; this binding grants no production authority.
+
+Focused-check repair (13 November 2026). `test/setup-copilot-destinations.test.ts` showed that the generated linkable-page index in `lib/product-context/destinations.ts` (covered) lacked the board release's two Off-cycle pages, `/rewards/offcycle/new` and `/rewards/offcycle/settings` (audience everyone, module rewards), so it no longer equalled what `classifyPage` derives from the static pages. The two rows are added; the pages keep their own server guards and the index grants nothing. No provider transform, outbound field, approved purpose or transport changes. Under the same standing approval, the same 28 approvals carry forward from `b700a6fe…` to the exact fingerprint `57e5dee843ee67d83b9b754a821eb08edb3bf9343bb9e1a52656c838cb92759b` over 1,589 files; the agent source manifest, generated after the re-bind, becomes `339d84e14953c43f860399b80a78e1ef34feeef4f15cbfb4ec3128aa9c3bfd7f` over 491 files. Staging candidate only; this binding grants no production authority.
+
+Second focused-check repair (13 November 2026). Listing the two Off-cycle pages as linkable made `test/definition-of-done-registry.test.ts` require semantic entries, guide links and corpus turns for them. The coordinator decided instead that `/rewards/offcycle/new` and `/rewards/offcycle/settings` are seat- and scope-based Rewards workflows, like `/rewards/promotions`, `/rewards/rules` and `/rewards/analytics`: both are now in `NATIVE_SCOPE_ONLY_PAGES` in `lib/product-context/destinations.ts` (covered; b945f0cc, seat-scoped off-cycle flows stay in native navigation), and the two rows added to the generated `LINKABLE_PAGES` are removed again, so it equals what `classifyPage` derives (null for native-only pages). The gaps allowlist and the AI corpus are unchanged, and the Assistant offers neither page as a link. No provider transform, outbound field, approved purpose or transport changes. Under the same standing approval, the same 28 approvals carry forward from `57e5dee8…` to the exact fingerprint `508d32513dfb07df71222a02d278a1a62f371b949c80f37b11c9bf0cae57b1e5` over 1,589 files; the agent source manifest, generated after the re-bind, becomes `a8edee18575faf7d893a9b6f1f9f9f7942ef53ae47e0cd71f066b2b55a6605c5` over 491 files. Staging candidate only; this binding grants no production authority.
+
+### Re-binding for the Reviewing Team Rewards review year picker (board 81a7b286, 13 November 2026)
+
+Branch `claude/board-81a7-year-picker`, cut from `claude/board-release-20261112` at `2227a2747` (binding `ac8255ab…`), adds a Review year picker to the Reviewing Team Rewards dashboard. The covered files that change are `packs/rewards/dashboard-model.ts` (the saved presentation choice keeps a bounded whole `year`; the offered years are the viewer's released review years plus the latest year while it is being prepared; an unavailable year falls back to the latest), `packs/rewards/service.ts` (the dashboard projection scopes its bars, company pills and context line to that year and returns the offered years; Waiting on you is unchanged) and the six `messages/*.json` catalogues (one key, `rewardDashboard.reviewYear`). No covered AI file, provider transform, outbound field, approved purpose or transport changes, nothing is added to any provider payload, and no model computes money.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `ac8255ab…` to the exact fingerprint `2122e58d572ed95bcb5afb883c082c032e4f1b2fe3638058f093e307c88d4fe4` over 1,582 files, superseding it on this branch. The agent source manifest, generated after the re-bind, becomes `559ab4dde971dad113d61df5073e3fd3f31ef010567c6e7767e67164e73b89f0` over 490 files. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. Staging candidate only; this binding grants no production authority.
+
+### Re-binding after merging the review year picker into the release (13 November 2026)
+
+`claude/board-release-20261112` (at `036303cf7`, binding `508d3251…`, agent source manifest `a8edee18…` over 491 files) then merged `claude/board-81a7-year-picker` at `39ebc0f33` (section above). The generated manifests and approvals were taken from this side and regenerated with `node scripts/ai-provider-data-source-manifest.mjs` and `node scripts/ai-agent-source-manifest.mjs`, never hand-merged. Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `508d3251…` (this side) and `2122e58d…` (the year-picker branch) to the exact merged fingerprint `b747598247a320103c3b57818126afd1b7d00a6d52c7822ede5d13a8292fe5ec` over 1,589 files, superseding both. The agent source manifest, generated after the re-bind, becomes `321fbc93b421e733270a0c2fb1fde560682af422ade05f0065abde15ad4b8e57` over 491 files. No transform, field or purpose changes; no production authority.
+
+### Re-binding after merging alpha 1ba04ce55 (13 November 2026)
+
+`claude/board-release-20261112` (at `adb2ca9b8`, binding `b7475982…`, agent source manifest `321fbc93…` over 491 files) then merged `origin/alpha` at `1ba04ce55` (releases 7282034468, 611f7b51d and 1ba04ce55, binding `cf78cf1e…`; sections above). The generated manifests and approvals were taken from this side and regenerated with `node scripts/ai-provider-data-source-manifest.mjs` and `node scripts/ai-agent-source-manifest.mjs`, never hand-merged. Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `b7475982…` (this side) and `cf78cf1e…` (alpha) to the exact merged fingerprint `b4bf41c56d531bf7a8b00d6a335e8cd483e6c4dc0d1755c6595f9362003ba4bb`, superseding both. The agent source manifest, generated after the re-bind, becomes `bf2615cddd27e600550f0392e4b5f6e7aa6fb6adc9238250d016b483fffefd27` over 491 files. No transform, field or purpose changes; no production authority.
+
+### Re-binding for the ready-made workflow recipients (board 4a60b3ec, 13 November 2026)
+
+`claude/board-release-20261112` (at `a03b4f8ed`, binding `b4bf41c5…`, agent source manifest `bf2615cd…` over 491 files) applies the reporter's binding answer on the ready-made workflows for board item 4a60b3ec. GBS People Ops is a normal recipient again (offered in To and CC on both step types and in an email template's Default CC, resolved from the GBS People Ops group in Settings, held as missing when that group has no active members or none is chosen); only PBP and Whoever started it stay removed and flagged "Replace recipient" where saved. The HR Ops substitution in the ready-made workflows is undone: "Escalate pending tasks 2 days before" (onboarding) and "Escalate pending tasks 2 days before the last working day" (offboarding) start with an empty To flagged for setup (`recipientSetup`), the latter keeping its GBS People Ops CC. A flagged step may stay live only while unchanged; it is held when it runs, and any change needs a To recipient. Existing saved workflows are not converted, and migration 5460 is unchanged.
+
+The covered files that change are `lib/lifecycle-v9-recipients.ts`, `lib/lifecycle-v9-model.ts`, `lib/lifecycle-v9-validation.ts`, `lib/lifecycle-v9-defaults.ts`, `lib/lifecycle-v9-defaults.json` and the six `messages/*.json` catalogues (one key, `lifecycle.workflowRecipients.setupNeeded`). No covered AI file, provider transform, outbound field, approved purpose or transport changes, nothing is added to any provider payload, and no model computes money.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `b4bf41c5…` to the exact fingerprint `9f3ac9f98dab426423a0e87cce940ba2a5940aa43a80d5b6866256103856eb17` over 1,590 files, superseding it. The agent source manifest, generated after the re-bind, becomes `585efcf88b9c6b40139b27fe0529474ec53e37386794fab13bc854783c8bc674` over 491 files. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. Staging candidate only; this binding grants no production authority.
+
+### Re-binding for the full-gate repairs (13 November 2026)
+
+`claude/board-release-20261112` (at `0e36a3fcb`, binding `9f3ac9f9…`, agent source manifest `585efcf8…` over 491 files) repairs the failures of full gate 43447570857 on that commit. The one covered file that changes is `core/company-refs.ts`: it declares `lc_v9_email_hold.company_id` (the held workflow email projection added by migration 5460) as an `employees` company referrer, so deleting a company that still has held workflow emails refuses in words instead of failing on the foreign key. Migration 5640 adds the ADR-0174 composite `(company_id, tenant_id)` key to the same table. No covered AI file, provider transform, outbound field, approved purpose or transport changes, nothing is added to any provider payload, and no model computes money.
+
+Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `9f3ac9f9…` to the exact fingerprint `5f1dbff5ca02c2606b080c87778e76f5736fadf2cc903b1d280df4aeb5bf89c4` over 1,590 files, superseding it. The agent source manifest, generated after the re-bind, becomes `364b7bffa3505aa81795af8df301c8b893941efa6412dbc0adca30435345b7a6` over 491 files. Historical review metadata, both pending records and the retired Attendance Formula contract keep their original values and status. Staging candidate only; this binding grants no production authority.
+
+### Re-binding after merging alpha 5e4363885 (14 November 2026)
+
+`claude/board-release-20261112` (at `66f8bd96c`, binding `5f1dbff5…`) then merged `origin/alpha` at `5e4363885` (the import Error Log candidate, boards c074c6b8 and d3ba1e9f, binding `5842725a…`; sections above). The generated manifests and approvals were taken from this side and regenerated with `node scripts/ai-provider-data-source-manifest.mjs` and `node scripts/ai-agent-source-manifest.mjs`, never hand-merged. Under the owner's standing 12 November 2026 approval, the same 28 approvals carry forward from `5f1dbff5…` (this side) and `5842725a…` (alpha) to the exact merged fingerprint `01b4a794aa0dacf0feea40e9eb20874c7a1814b72046a0e7abc28e87da52f636`, superseding both. The agent source manifest, generated after the re-bind, becomes `a0b264ab7ecd7ce5aae82b8147b6a20e29935ea1e960152692bca2f008d20ace` over 491 files. No transform, field or purpose changes; no production authority.
+
+Branch `claude/statutory-exemption-epf-stream-20261113` (`433d51db4`, `b860b73d3`, `f2f0c1282`, `b4993cf8d`, gate repair `45a551feb`; merged with main after staging release `032a87704`) changes how the payroll engine routes a PCB-exempt slice and the EPF stream (owner decisions of 13 November 2026: a PCB exemption is income-tax only; the PCB remuneration type no longer selects the EPF stream, only EPF Bonus 2012 does), groups repeated payslip deduction lines, and revises the Pay Item PCB help text in every locale. None changes a provider transform, outbound field, approved purpose or transport. The owner confirmed the re-bind in this session on 13 November 2026 (answer to the release question: "Yes, re-bind"). The 28 approvals carry forward from `01b4a794…` to the exact fingerprint `6f9c2f838bc52c21a06afaf3a341a56731eb54968d9e5c63a55b89533b17203d` over 1,593 files; the agent source manifest, regenerated after the re-bind, is `60f09539be8fd5a238fda3c0f892d4e1bc4a79f10449955fecf14a28f0595e5c`. Staging only; no production authority.
+
+### Re-binding for the Movement import Error Log, board d3ba1e9f stage f (13 November 2026)
+
+Branch `claude/movement-error-log-20261113`, cut from alpha `5e4363885` (binding `5842725afdfe2c61f8874eca7df774f21ed406b06b2d8ffc7577b031c51b43e2`, agent source manifest `1d1ef749efae28f10397c431724ee26f8dab5a06f810ae2808c8863177197d6a`), adds the standard Excel Error Log to the Movement import (check and result screens, and Import History). The only covered files changed are the six `messages/*.json` catalogues (a new `importErrorLogMovement` namespace of correction sentences); they are in the closure through the personnel import label runtime, which matches column headings. The new and changed Movement files (`lib/movement-import-problems.ts`, `core/movement-error-log.ts`, `core/movement-import-history.ts`, the registry and the screen) are outside the covered closure. The personnel import assistant sends column headers only; no import row, issue, correction or value reaches any provider. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `5842725a…` to the exact fingerprint `2422fba9795fc358ca72e7218a954788c3ac1403effcd99105dc411bd037e2c7` over 1,583 files; the agent source manifest, generated after the re-bind, becomes `e48e3003b8ab0f15567c3065c320578f14b62745ba19fb8bfdcb574f09940d14` over 491 files. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. This binding covers this staging candidate only and grants no production authority.
+
+### Re-binding after the translation review of the import Error Log candidate (13 November 2026)
+
+`claude/translation-review-20261113`, cut from alpha `5e4363885` (binding `5842725afdfe2c61f8874eca7df774f21ed406b06b2d8ffc7577b031c51b43e2`), corrects translated wording of the import Error Log in `messages/ms.json`, `zh.json`, `ta.json`, `th.json` and `vi.json` (namespaces `importErrorLogEmployee`, `importErrorLogDataBankCostInfo` and `labelsImportWizard.problem`/`fix`). Only translation text changes; English, keys and ICU arguments are unchanged, and no other covered file is edited. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `5842725a…` to the exact fingerprint `f1715a8d1146108dcc2918da0b3734f115e804778cc84f8afb0b286f783c8afb` over 1,583 files; the agent source manifest, generated after the re-bind, becomes `747aaa3fabdb7f793c44794c36bed3f8ab77f86a2b929c7cb8f0748cd9d6eb08` over 491 files. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. This binding covers this staging release only and grants no production authority.
+
+### Re-binding for the combined Movement Error Log and translation review candidate (14 November 2026)
+
+`claude/import-errors-rc2-20261114` starts from `claude/movement-error-log-20261113` at `06d0942ed` (binding `2422fba9…`) and merges `claude/translation-review-20261113` at `39a3a91c5` (binding `f1715a8d…`); both were cut from alpha `5e4363885` (binding `5842725afdfe2c61f8874eca7df774f21ed406b06b2d8ffc7577b031c51b43e2`). The generated manifests and approvals were reset to alpha's and regenerated, never hand-merged; the re-bound approvals differ from alpha's only in the digest. Covered changes are exactly those described in the two sections above (the six `messages/*.json` catalogues: new Movement correction wording and the reviewed translations). Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `5842725a…` to the exact combined fingerprint `6b6753d04279258095e0af006bbe3b2e8ad13a72b801415aa3b45a679f1eeb83` over 1,583 files; the agent source manifest, generated after the re-bind, becomes `5abfbde55d15458ad4231e181848896115df6cd10b649e8e059e11f794f9c3ed` over 491 files. This supersedes the two branches' individual bindings. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. This binding covers this staging release only and grants no production authority.
+
+### Re-binding after merging alpha 032a87704 into the Movement Error Log and translation candidate (14 November 2026)
+
+`claude/import-errors-rc2-20261114` (at `f39a02e94`, binding `6b6753d0…`) merged `origin/alpha` at `032a87704` (binding `01b4a794aa0dacf0feea40e9eb20874c7a1814b72046a0e7abc28e87da52f636`). The six `messages/*.json` catalogues were merged key by key against the common base `5e4363885`; no key was changed on both sides. The generated manifests and approvals were taken from alpha's side and regenerated, never hand-merged; the re-bound approvals differ from alpha's only in the digest. The candidate's own covered changes are unchanged from the section above. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `01b4a794…` to the exact merged fingerprint `9f58d3cbcd3657bb8a29b8c8e0460598b73f3bed4838b5fe965af1600954756e` over 1,593 files; the agent source manifest, generated after the re-bind, becomes `2491306a2ec6230a06ad253b866e0d36b7a5d10bad6931bde23e047b18daf504` over 491 files. This supersedes `6b6753d0…` for this candidate. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. This binding covers this staging release only and grants no production authority.
+
+### Re-binding after merging the statutory candidate a1948f0fd into the Movement Error Log and translation candidate (14 November 2026)
+
+`claude/import-errors-rc2-20261114` (at `c1c1ad49d`, binding `9f58d3cb…`) merged `a1948f0fd` (the statutory exemption release candidate on staging `032a87704`, queue batch 121), whose binding is `6f9c2f838bc52c21a06afaf3a341a56731eb54968d9e5c63a55b89533b17203d`. Only the generated AI files and this log conflicted; the generated manifests and approvals were taken from that side and regenerated, never hand-merged; the re-bound approvals differ from it only in the digest. The candidate's own covered changes are unchanged from the sections above. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `6f9c2f83…` to the exact merged fingerprint `5b844b1add082a925e99a5b2d4b8edf30abd609866754b68ba3e12279d555c03` over 1,593 files; the agent source manifest, generated after the re-bind, becomes `a26346f6e46a3af83a74e972c1a097a1a6cd3277e4c5c3302acbbfe141a26172` over 491 files. This supersedes `9f58d3cb…` for this candidate. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. This binding covers this staging release only and grants no production authority.
+
+### Re-binding for the import worker's dead-connection detection (14 November 2026)
+
+`claude/worker-dead-connection-20261114`, cut from main `9b4f22c09` (binding `5b844b1a…`), changes `db/client.ts` and adds `db/worker-connection.ts` (both in the covered closure through the database client) at `0a4bbc64f`. A worker-role process (`AIHR_DB_PROCESS_ROLE=worker`) now opens its connections with TCP keepalive, `tcp_user_timeout` and `client_connection_check_interval` startup parameters, so a half-open import-worker session and its advisory locks end within minutes; web connections are unchanged. Connection settings only: no query, row, field or value read for, or sent to, any provider changes. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `5b844b1a…` to the exact fingerprint `48272f12e5ad70707ef7934824548254dcb2fc07e0042bbf7bc15010f8b0ce5c` over 1,594 files; the agent source manifest, generated after the re-bind, becomes `853554c2407209a7419bbbd58a3f6683fe228c491df73f877885dd02cbdae5ca` over 491 files. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. This binding covers this staging candidate only and grants no production authority.
+
+Branch `claude/board-trio-rc-20261114` combines three approved board items on main `ac480ba66`: ad6ed930 (leaver transaction date limit, named after-leaving-date refusal, departure-month formula pricing; `906e637da`), 69891da6 (deterministic gate checks; `82b579182`) and bf2e6be9 (exempt one-offs paid on additional runs, only EPF Bonus 2012 selects the EPF bonus stream, seeded BONUS ticked EPF Bonus 2012 plus migration 5660; `a565b489c`). None changes a provider transform, outbound field, approved purpose or transport. Re-bind under the owner's re-bind approval in this session (13 November 2026, "Yes, re-bind") and the standing staging re-bind approval of 12 November 2026. The 28 approvals carry forward from `48272f12…` to the exact fingerprint `1bba577d6488ded76215f39cbab18011bed066defbafb80508aa00511b191d7b` over 1594 files; the agent source manifest, regenerated after the re-bind, is `409418a386ef18cedbf1ef27b37ab69d922f1c76ad17dc5f69e3f616dad75bb9`. Staging only; no production authority.
+
+### Re-binding for the set-wise Bank & Statutory residency read (14 November 2026)
+
+`claude/bank-residency-batch-20261114`, cut from main `634b31cf9` (binding `1bba577d…`), changes `core/import-sections.ts` and `core/bank-statutory-import.ts` (both in the covered closure through the import modules) at `8cad841af`. The Bank & Statutory validation now reads income tax residency for each slice of up to 1,000 subjects in one set-wise borrowed read through the country pack's existing `getTaxSelections`, instead of one read per row; the answers, transaction, session and row security are the same. Database reads only: the residency values stay in the validation preview and nothing new is read for, or sent to, any provider; the personnel import assistant still sends column headers only. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `1bba577d…` to the exact fingerprint `c575e841d1806d46fbba5898ab22a4b7c89994a733fa4418daabdcb67ead21cd` over 1,594 files; the agent source manifest, generated after the re-bind, becomes `e8bfaae9c602ba0a298c595639383656fa35d4127c350f88f10e3db77add7c10` over 491 files. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. This binding covers this staging candidate only and grants no production authority.
+
+### Re-binding for the Bank import worker's bounded-memory decoder (14 November 2026)
+
+`claude/bank-import-memory-20261114`, cut from main `634b31cf9` (binding `1bba577d…`), changes `core/bank-import-worker.ts` (the queued tick hashes the stored parts in order and stages rows through the new decoder), adds `lib/bank-import-stream-source.server.ts` (streaming CSV decode and windowed SheetJS read of the Bank & Statutory upload, staged as compact batches; same records, errors and refusals as `decodeBankImportSource`, which is unchanged) and exports `toIsoDate` from `lib/spreadsheet.ts`; all three are in the covered closure. The decoder runs only in the import worker; no row, value, field or heading is read for, or sent to, any provider. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `1bba577d…` to the exact fingerprint `d986d6bbd2f8cfd808eed09dda5715fc6bb4c0708ad82569001ef4779c48786e` over 1,594 files; the agent source manifest, generated after the re-bind, becomes `1b34d9381a13fff8e2f3d47fac1d54cdc650171c4cdef587da28adb04f46830d` over 491 files. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload. This binding covers this staging candidate only and grants no production authority.
+
+### Re-binding for the combined Bank hardening candidate (14 November 2026)
+
+`claude/bank-hardening-rc-20261114` starts from main/alpha `634b31cf9` (binding `1bba577d6488ded76215f39cbab18011bed066defbafb80508aa00511b191d7b`) and merges, each with a merge commit, `claude/cron-pool-doc-20261114` at `8c9b7fe93` (docs only), `claude/release-resume-rebased-20261114` at `6f4f6af75` (release controller; no covered source), `claude/bank-residency-batch-20261114` at `e9fa585ed` (binding `c575e841…`) and `claude/bank-import-memory-20261114` at `e93222dea` (binding `d986d6bb…`). Each branch's covered changes are exactly those described in its own section above; the two Bank branches touch different covered files (`core/import-sections.ts` and `core/bank-statutory-import.ts`; `core/bank-import-worker.ts`, `lib/spreadsheet.ts` and the new `lib/bank-import-stream-source.server.ts`). The generated manifests and approvals were reset to main's and regenerated, never hand-merged; the re-bound approvals differ from main's only in the digest. Under the owner's standing pre-approval to re-bind provider approvals for staging releases, the same 28 approvals carry forward from `1bba577d…` to the exact combined fingerprint `ec6a3963590ad940067181717643414194776f5b90c8572c9af77faef391f818` over 1,594 files; the agent source manifest, generated after the re-bind, becomes `741c0fa696acd03a5859f357b78d8a0342c3d3960bd801dad26f0c25c31917d1` over 491 files. This supersedes the two Bank branches' individual bindings. No provider transform, outbound field, approved purpose or transport changes, and nothing is added to any provider payload (the changes are database reads and file decoding inside the import worker). This binding covers this staging release only and grants no production authority.
+
+### Re-binding for the 14 November production fixes (14 November 2026)
+
+Branch `claude/prod-fixes-labels-info-transfer-20261114`, cut from main `9b4f22c09` (fixes at `11b897d24`) and merged with the board trio candidate `634b31cf9` (binding `1bba577d…`), fixes three production reports: the System Labels Positions export (500-row per-list cap), the Information-Only Correction row count (formatted blank cells), and a termination dated before the current assignment (plain refusal instead of the database range error). The only covered file changed is `core/org.ts`, which gains date checks and refusal messages in `transferEmployee` and `terminateEmploymentTx`: no query, row, field or value read for, or sent to, any provider changes. Under the owner's standing pre-approval of 12 November 2026 ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision") and the owner's instruction in this session to release these fixes ("Yes go ahead"), the 28 approvals carry forward from `1bba577d…` to the exact fingerprint `5cc993a14c325f4bad72448469bf13ac785c803f44592ec429a5ee2255041202` over 1594 files; the agent source manifest, regenerated after the re-bind, is `14e98a37ac10da9c80946ff5b7cb90669a118a1121cb93a2131f22520365a047` over 491 files. No provider transform, outbound field, approved purpose or transport changes. Staging only; no production authority.
+
+### Re-binding after merging the Bank hardening candidate 8b8c33093 into the production fixes (14 November 2026)
+
+`claude/prod-fixes-labels-info-transfer-20261114` (at `cd7cd15d5`, binding `5cc993a1…`) merged `8b8c33093` (the Bank hardening release candidate on staging, binding `ec6a3963590ad940067181717643414194776f5b90c8572c9af77faef391f818`). Only the generated AI files and this log conflicted; the generated manifests and approvals were taken from that side and regenerated, never hand-merged. The covered change on this side remains `core/org.ts` refusals only. Under the same standing staging pre-approval (12 November 2026) the 28 approvals carry forward from `ec6a3963…` to the exact fingerprint `0b872c45190a204c15b1ca2e9f308f36fdd7fbd33adbd68e7fa025003d537f1b` over 1594 files; the agent source manifest, regenerated after the re-bind, is `90c686b6ec905db23560c3d9ab1cbdf6df7ad0516b56bee6bac10ebc14099c4b` over 491 files. No provider transform, outbound field, approved purpose or transport changes. Staging only; no production authority.
+
+### Re-binding for board 4604dccc, dated information corrections (15 November 2026)
+
+`claude/board-4604dccc-effective-date-20261115`, cut from main/alpha `1299e6724` (binding `0b872c45…`), at `a078502f6`, adds a user-chosen Effective Date to the Information-Only Correction (screen and Excel import), places correction records as dated boundaries in movement ordering, lets the Organisation hire correction pass through them, and binds payroll history imports to the company of the payroll month (migration 5680). The covered files changed are `core/hire-correction.ts`, `core/movement-history.ts`, `core/movement.ts`, `core/payroll-history-import.ts`, `lib/information-correction.ts`, `lib/personnel-history.ts` and the six `messages/*.json` catalogs: employment-record writes, review fields and screen strings only. No query, row, field or value read for, or sent to, any provider changes, and nothing under `lib/ai` changes except the generated files. Under the owner's standing pre-approval of 12 November 2026 ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision") and the owner's instruction in this session (15 November 2026) to deploy this item to staging when green, the 28 approvals carry forward from `0b872c45…` to the exact fingerprint `a097a7ff8806444b5f3ce1eddb270de6b7cff5991a522327a24e1fd83ded6262` over 1594 files; the agent source manifest, regenerated after the re-bind, is `46b8eaa5c1e31006c7a3fd759389089528baa0f189f7c3c59e7b13216f25e480` over 491 files. No provider transform, outbound field, approved purpose or transport changes. Staging only; no production authority.
+
+### Re-binding for the cross-company Direct Superior fix (15 November 2026)
+
+`claude/info-correction-cross-company-superior-20261115`, cut from main/alpha `1c55f9453` (binding `a097a7ff…`), at `51d5934c0`, lets the Information-Only Correction (screen and Excel import) accept a Direct Superior employed by another company the user can view, after a production KKSB import refused 118 rows whose superiors are CHCE employees. The covered files changed are `messages/*.json` (one reworded import-problem message in each of the six catalogs); the import and correction owners change only which visible employment an Employee ID resolves to. No query, row, field or value read for, or sent to, any provider changes. Under the owner's standing pre-approval of 12 November 2026 ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision") and the owner's instruction in this session (15 November 2026, "i approve, directly fix it"), the 28 approvals carry forward from `a097a7ff…` to the exact fingerprint `83cc60b670cf52ffb3ff41c2dd0edb4fa759596380360a445f39847705ed5cda` over 1594 files; the agent source manifest, regenerated after the re-bind, is `899373fc475950165c2ba28bded80294758e8b0f7cb8eaaa955e9759db9deea7` over 491 files. No provider transform, outbound field, approved purpose or transport changes. Staging only; no production authority.
+
+### Re-binding for board 4604dccc revision 2, earlier Group Join Date corrections (15 November 2026)
+
+`claude/fb-4604dccc-dates-r2`, cut from main/alpha `e55138825` (binding `83cc60b6…`), at `285434e08`, lets the
+Information-Only Correction calendar follow the entered Group Join Date, aligns the dated records on a Group Join Date
+Correction and its Roll Back, orders a Group Join Date Correction first in the Movement import, and names the Group Join
+Date in movement refusals. The changed files (core/movement.ts, core/movement-import.ts, core/movement-history.ts,
+core/hire-correction.ts, core/information-correction.ts, lib/movement-import-issues.ts) are in the provider-data scope
+only through the import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals
+were carried forward to `5260028f…` and the agent manifest regenerated (`1226e711…`), under the owner's
+standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for boards 4604dccc revision 3 and 511aa74a, combined (16 November 2026)
+
+`claude/board-4604dccc-511aa74a-combined`, cut from main/alpha `94d2f5bbe` (binding `5260028f…`), merges
+`claude/fb-4604dccc-r3` (payroll history no longer blocks Information-Only Correction, Movement corrections or join-date
+movements; migration 5690) and `claude/fb-511aa74a-rehired` (the Rehired movement; migration 5695). The changed files
+are in the provider-data scope only through the import graph. No provider transform, outbound field, purpose or
+transport changed. The 28 approvals were carried forward to `c62cade8…` and the agent manifest regenerated
+(`d3afe9c7…`), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for the earlier Group Join Date over closed payroll fix (16 November 2026)
+
+`claude/gjd-earlier-closed-salary`, cut from main/alpha `8244cfa81` (binding `c62cade8…`), keeps a salary record a
+closed payroll was paid under when the Group Join Date moves (staging DB-V-06E997; owner, 16 November 2026: "Completed
+payroll stays unchanged and no historical recalculation will run"). Changed covered files: `core/movement-history.ts`,
+`core/information-correction.ts`, `lib/information-correction.ts` and the six `messages/*.json` catalogues, in the
+provider-data scope only through the import graph. No provider transform, outbound field, purpose or transport changed.
+The 28 approvals were carried forward to `1aad1797…` and the agent manifest regenerated (`306e3222…`), under the owner's
+standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for the Transaction View retained-document cap (16 November 2026)
+
+`claude/txn-view-retained-cap-20261116`, cut from main/alpha `9d32dfab1` (binding `1aad1797…`), caps the retained
+information-correction documents that Transaction View's History landing read loads, at the same row limit as its
+live payslips, instead of refusing above 5,000 (production 15–16 November 2026: "This page could not be displayed").
+Changed covered files: `core/information-correction-history.ts` and `core/payroll-view.ts`, in the provider-data scope
+only through the import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals
+were carried forward to `ad0ee451…` and the agent manifest regenerated (`644d2c37…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for board fd8156d4, Payroll Process listing, cycle names and run search (16 November 2026)
+
+`claude/fb-fd8156d4-payroll-process`, merged with main/alpha `22ba7e3a5` (binding `ad0ee451…`), opens Payroll Process
+on the latest created period, sorts runs by period then company, shows configured Payroll Cycle names and adds an
+employee search to a run's View page (owner approved the plan on the board, 16 November 2026). Changed covered files:
+`core/payroll.ts` and the six `messages/*.json` catalogues, in the provider-data scope only through the import graph.
+No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward to
+`c1baf4ee…` and the agent manifest regenerated (`bf8328ea…`), under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
+
+### Re-binding for board 4604dccc revision 4, the latest saved correction controls (16 November 2026)
+
+`claude/fb-4604dccc-r4-latest-correction`, merged with `ee02bba4d` (board fd8156d4 on main 22ba7e3a5, binding
+`c1baf4ee…`), makes the latest saved Information-Only Correction control each field from its Effective Date, in the
+TypeScript readers and, through migration 5696, the SQL company and report readers (owner approved the plan on the board,
+16 November 2026). Changed covered files include `core/information-correction-history.ts`,
+`core/information-correction.ts`, `core/movement-history.ts`, `core/movement.ts`, `core/hire-correction.ts`,
+`lib/information-correction.ts` and the six `messages/*.json` catalogues, in the provider-data scope only through the
+import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward
+to `d18c9c64…` and the agent manifest regenerated, under the owner's standing pre-approval for staging re-binds
+(12 November 2026). Staging only.
+
+### Re-binding for the combined batch: 4604dccc revision 4 plus the Payroll Reconciliation fixes (16 November 2026)
+
+The owner approved combining board 4604dccc revision 4 and the Payroll Reconciliation fixes
+(`claude/payroll-comparison-employee-scope-20261116`: one employee's comparison reads only that employee; the refused
+page links back to Reconciliation) into one gate and one staging install (16 November 2026). Added covered files:
+`core/payroll-view.ts` and `core/report-payroll-comparison.ts`, in the provider-data scope only through the import graph.
+No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward from
+`d18c9c64…` to `da60fba1…` and the agent manifest regenerated, under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
+### Re-binding for the Information-Only Correction Effective-Date-only message (16 November 2026)
+
+`claude/info-correction-review-messages`, cut from main/alpha `ee02bba4d` (binding `c1baf4ee…`), adds a screen message
+when only the Effective Date differs (staging feedback, EMP-0004). Changed covered files: the six `messages/*.json`
+catalogues, in the provider-data scope only through the import graph. No provider transform, outbound field, purpose or
+transport changed. The 28 approvals were carried forward to `3656aa94…` and the agent manifest regenerated (`90c997db…`),
+under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding after merging main 5160eb4e4 into the combined 4604dccc revision 4 + Reconciliation batch (16 November 2026)
+
+Main advanced to `5160eb4e4` (the Effective-Date-only message, on staging). Merging it into the owner-approved combined
+batch changed no covered source beyond both sides' own reviewed changes. No provider transform, outbound field, purpose
+or transport changed. The 28 approvals were carried forward from `da60fba1…` to `c88b5a04…` and the agent manifest
+regenerated, under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for board 237c31e6, Attendance approval progress (16 November 2026)
+
+`claude/fb-237c31e6-approval-progress-20261116`, cut from main/alpha `03b06f0de` (binding `c88b5a04…`), shows every
+approval level with its status and approver Employee ID on the Attendance request screens. Changed covered files
+include `core/attendance-workflow.ts`, `core/attendance.ts`, `core/attendance-application-history.ts`,
+`core/attendance-application-review.ts`, `core/mobile-attendance.ts`, `lib/attendance-progress.ts` and the six
+`messages/*.json` catalogues, in the provider-data scope only through the import graph. No provider transform, outbound
+field, purpose or transport changed. The 28 approvals were carried forward to `b9a6f0af…` and the agent manifest
+regenerated (`61d2d520…`), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for board 87bd9656: Schedule Group Overtime Setting None rounding and Overtime Backdate Control (16 November 2026)
+
+`claude/fb-87bd9656-ot-backdate-20261116`, cut from main/alpha `03b06f0de` (binding `c88b5a04…`), adds None to Overtime
+Rounding Method and the optional `overtime.backdateLimitDays` policy key, enforced in the one attendance submission
+owner. Changed covered files: `core/attendance.ts`, `core/attendance-group-policy.ts`, `lib/attendance-group-policy.ts`,
+`lib/schedule-overtime-setting.ts` and the six `messages/*.json` catalogues; added covered file:
+`lib/overtime-backdate.ts` (a pure date rule and refusal type). All are in the provider-data scope only through the
+import graph. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried forward
+from `c88b5a04…` to `1b3f89b3…` and the agent manifest regenerated (`0efc1d52…`), under the owner's standing pre-approval
+for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for the combined Irwin release: 237c31e6, aac17dd0, 87bd9656 and 7f5cc653 (16 November 2026)
+
+The owner approved releasing boards 237c31e6 (Attendance approval progress), aac17dd0 (typed Amount on Calculated by
+Formula Pay Items), 87bd9656 (Overtime Setting None rounding and Backdate Control) and 7f5cc653 (EPF Part A bonus
+note) as one gate and one staging install (16 November 2026), on `claude/release-combined-irwin-20261116` from
+main/alpha `03b06f0de`. Added covered files beyond the notes above: `core/payroll-individual-txn.ts`,
+`packs/payroll/individual-calculation.ts`, `localization/my/payroll.ts` and `core/statutory-trace-explain.ts`, in the
+provider-data scope only through the import graph. No provider transform, outbound field, purpose or transport changed.
+The per-branch bindings above were superseded: the 28 approvals were carried forward from `b9a6f0af…` to `f446073c…`
+(1,595 files) and the agent manifest regenerated (`02c0c88c…`), under the owner's standing pre-approval for staging
+re-binds (12 November 2026). Staging only.
+
+### Re-binding for the Probation Confirmation reshape onto shared HR automation (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70`, merged with main/alpha `9d32dfab1` (binding `1aad1797…`), at its final merge, adds
+the shared HR Automation builders and runner, Personnel postings, document signing review routing and the Probation
+settings, queue, routing and outcome changes (ADR `docs/adr/2026-11-15-probation-shared-automation.md`, migrations
+5740–5759). The changed files reach the provider-data scope only through the import graph (message catalogues,
+company referrers, the approvals and Today task sources); no file under lib/ai, core/ai*, core/assistant*,
+core/teras* or core/loops changed. No provider transform, outbound field, purpose or transport changed. The 28 approvals
+were carried forward to `2811064b…` and the agent manifest regenerated (`e11a6cf7…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation handoff gaps and saved-form import (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` at binding `2811064b…` merges lane J (`claude/probation-lane-import-20261116`,
+importing saved v22.9.26 HTML evaluation forms in Probation intake; migration 5762) and lane I
+(`claude/probation-lane-gaps-20261116`, the default outcome path creating a Personnel posting, letter queues by step
+kind, PBP low-result and Other tasks, workflow history, routed recipients and tracker steps; migrations 5760–5761).
+Changed covered files are `core/probation*.ts`, `lib/probation-intake-html.ts` and the six `messages/*.json` catalogues,
+in the provider-data scope only through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras*
+or core/loops changed. No provider transform, outbound field, purpose or transport changed. The 28 approvals were
+carried forward to `a6ebe974…` and the agent manifest regenerated (`db714b6f…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation access model, routed holders and prototype UI, merged with main (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` merges lane K (`claude/probation-lane-access-20261116`: Probation access
+roles, scoped dated members and the Direct Superiors rule, migration 5763; the case's PBP and Head of Department from the
+shared routings, migration 5764), lane L (`claude/probation-lane-ui-20261116`: the case view, Configuration sub-menu,
+readable times, task labels and letter signers, migration 5765) and main/alpha `5160eb4e4` (binding `3656aa94…`).
+Changed covered files are Probation core, navigation and the six `messages/*.json` catalogues, in the provider-data scope
+only through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras* or core/loops changed apart
+from these manifests. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried
+forward to `235863e0…` and the agent manifest regenerated (`0c3dfb15…`), under the owner's standing pre-approval for
+staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation screens matched to the prototype, merged with main (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` merges lanes M1–M3 (`claude/probation-lane-m1-tracker-20261116`,
+`claude/probation-lane-m2-case-20261116`, `claude/probation-lane-m3-config-20261116`: the tracker, Personnel postings,
+case page and part forms, Probation configuration and HR Automation screens restyled to the approved prototype; one
+optional "show closed cases" filter on the tracker read; no migration) and main/alpha `03b06f0de` (binding `c88b5a04…`).
+Changed covered files are Probation core, pages and the six `messages/*.json` catalogues, in the provider-data scope only
+through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/teras* or core/loops changed apart from
+these manifests. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried
+forward to `06b5c60f…` and the agent manifest regenerated (`21404a12…`), under the owner's standing pre-approval for
+staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation release-gate inventory repairs (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` at binding `06b5c60f…` repairs what release gate 43850661612 (attempt 1,
+failed) found: `lib/ai/agent-capability-inventory.ts` classifies the 25 new Probation and HR Automation server actions and
+routes (backlog or handoff only; no action is registered for the agent and no tier is raised), `core/personnel-posting.ts`
+reaches leave through `packs/leave/service`, `core/company-refs.ts` declares four new company referrers, and migration
+5766 adds their read-only in-use check. No provider transform, outbound field, purpose or transport changed. The 28
+approvals were carried forward to `e4fcddfb…` and the agent manifest regenerated (`943a1bee…`), under the owner's
+standing pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding the combined Irwin release onto the Probation Confirmation staging release (16 November 2026)
+
+The combined Irwin release (237c31e6, aac17dd0, 87bd9656, 7f5cc653) was rebuilt as
+`claude/release-combined-irwin-20261116-r2` on top of the Probation Confirmation release `267574da5` (installed on
+staging, binding `e4fcddfb…`), because staging moved past the original base `03b06f0de`. Merging changed no covered
+source beyond both sides' own reviewed changes. No provider transform, outbound field, purpose or transport changed. The
+28 approvals were carried forward from `e4fcddfb…` to `800269d5…` (1,624 files) and the agent manifest regenerated
+(`97bd0705…`, 493 files), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+
+### Architecture and performance remediation: staging-only approval (16 November 2026)
+
+The repository owner explicitly answered "Approve staging-only rebinding" in the architecture/performance
+remediation chat on 16 November 2026. The release coordinator carries forward the same 28 continuing approvals
+for this performance batch, based on main/alpha `59f06b08db014e01cd553a827c62ccf864d33f78`.
+The approval question identified the initial `b8d54c6b…` fingerprint. During qualification the preview retained
+its native administrator predicate explicitly (previously enforced by the label-epoch write's RLS policy), so
+the repaired batch's final provider fingerprint is
+`ecd371dec4b42af57c5d415fafe480d5b2b681a02320b49523edcadf4ed92c58` over 1,623 files.
+The owner subsequently answered "Approve final staging rebinding" for this exact fingerprint and the seven
+legacy module-list wrappers, after qualification identified their separate principal-lock interval.
+The standing 12 November staging rebinding approval recorded above also applies. The agent manifest is
+`b812933fc0c4ce8b7cddf6522d21f58de1721b66eb2e501408c6b559fb828ee7` over 494 files.
+
+The intermediate `1123ea58…` source was superseded when tracing the actual module list wrappers showed
+that the principal proof also needed enforced read-only carriers. This completes the same locking repair.
+
+Covered application changes are `core/assistant-actions/module-action-review-store.ts` (read-only carriers for
+the seven qualified legacy metadata lists), `core/import-history.ts` (distinct preview lock), `core/cost-allocation-import.ts`
+(shared Access plus preserved native administrator admission; unchanged exclusive compensation and complete
+stale-review checks), and `core/payroll.ts` (same effective-history header and exact SQL joined count).
+Migration 5767 changes only the assistant metadata index's Access advisory lock to shared, preserving its
+principal, current-person binding, history windows, ordering, packet and command owners.
+No provider transform, outbound field, approved purpose, transport, tool registration or action tier changes.
+Only the 28 active fingerprint literals change. Original review metadata, pending and historical approvals,
+and existing evaluation/promotion identities remain unchanged. This authorizes no production deployment.
+Hosted verification, production watermark admission and staging release/acceptance are separate requirements.
+
+
+### Performance and Irwin integration — prepared, release held (16 November 2026)
+
+Owner direction: merge Irwin f0443eaf27d3584f55b6a2e7d48558bd553d4149, move the unapplied assistant metadata
+migration to 5771 (idx 5171 / when 1793330005471), let Claude release first, and stop before release pending
+owner approval. The two prior source bindings above remain historical approvals for their separate trees.
+The integration retains Irwin's literal approval registry unchanged; it does not carry any record forward
+to the newly generated merged fingerprint. Provider egress therefore remains closed for this unapproved
+merged source. Generated manifests describe the actual merged bytes; they do not grant approval.
+No staging installation, main/alpha advancement or production package publication is authorized by this merge.
+
+Proposed merged provider fingerprint (not approved):
+`a39b180ee690c1f05e3a1ebe0c7236d616347baf80fd83f7e7d8d46e394d3cbc` over1624 files.
+The current derived agent fingerprint is `3de54444b147cff0a8472c256656e66146a88c5b5a862dc79a190af6f9dc961f`
+over494 files, with Irwin's prior approval literals retained. Any future approved rebinding must regenerate
+that derived agent manifest again. The owner's latest instruction is to stop before release and await approval.
+
+
+### Owner-approved merged performance source (17 November 2026)
+
+The owner explicitly instructed: "Approve the merged-source AI rebinding for 893daeda6. Run the full release gate, then deploy to staging after Claude’s release is complete and all checks pass. Verify the locking and query improvements."
+The release coordinator carries forward the same 28 active approvals from `800269d5…` to
+`a39b180ee690c1f05e3a1ebe0c7236d616347baf80fd83f7e7d8d46e394d3cbc` (1,624 covered files),
+for application source `893daeda66793265d606a6cf7f49591129ce176d`. Original review metadata, historical
+and pending approvals and evaluated/promoted agent identities are preserved. Provider payloads, purposes
+and transports are unchanged by this rebinding. The derived agent manifest is regenerated after updating
+the literal registry. This supersedes the preceding release hold for this exact source and authorizes
+conditional staging installation only; it grants no production deployment or package publication authority.
+
+### Re-binding for breadcrumb task ancestry (16 November 2026)
+
+The breadcrumb repair branch is based on main/alpha `59f06b08d`. The only changed covered source is
+`packs/payroll/index.ts`: navigation ownership metadata now associates payroll settings, loans and history imports
+with their existing task rows. No service, provider transform, outbound field, purpose, transport or permission
+changes. Under the owner's standing staging re-bind pre-approval of 12 November 2026, the existing approved
+records carry forward to `3ac2fd19076f1bd8c7bc3565fb1cc2a583d2f3fc0b42d4c216f9a258a47cfe3c` over 1,623 files.
+Their statuses, reviewers, purposes and original approval evidence remain unchanged. The provider manifest and
+agent manifest were regenerated; the agent fingerprint is `4d753fc768766c58d9dbd245b7dd332023c79cbc8b23bb73853c73e1991ec084`
+over 493 files. This binding grants no production authority.
+
+### Re-binding Irwin f0443eaf2 with breadcrumb task ancestry (16 November 2026)
+
+The owner explicitly requested exact Irwin commit `f0443eaf27d3584f55b6a2e7d48558bd553d4149` be merged before
+the breadcrumb gate. Its reviewed payroll/attendance changes and migration 5770 are preserved unchanged. The breadcrumb
+side changes covered source only in `packs/payroll/index.ts` (navigation ownership metadata). Generated conflicts were
+resolved from Irwin's approval records and both histories, then regenerated over the actual combined source. Under the
+standing staging re-bind pre-approval of 12 November 2026, the same 29 already-approved records carry forward to
+`f4b83a1fa86cf3a53f111b8be69e10f29e0e629f9fa4f50c8ea0209987034494` over 1,624 files. Statuses, purposes, reviewers and original approval evidence
+remain unchanged. The agent manifest is `1da03e300d47181a3a1a803e3f35d4b2159be8989b56f77fa01ed8ce81b68e52` over 493 files.
+No provider transform, outbound field, purpose or transport was added by the breadcrumb repair. This binding grants
+no production authority. The owner separately requires approval before this candidate is released.
+
+
+### Current staging baseline integration approved (17 November 2026)
+
+After Claude's Irwin release and the breadcrumb release both completed, staging and aligned main/alpha
+identified `bcba1f3e8faaf75c760599750ec9b4dc1d5a0f73`, build `Ch5zYMucPS30OBYzbIX5L`.
+The coordinator preserved that accepted baseline through normal merge `e141d379e`. This changes the
+covered-source identity beyond the prior exact `893daeda6` approval. The owner explicitly answered
+"Approve current-baseline staging rebinding" for the new provider fingerprint
+`0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b` (1,624 files).
+The same 28 active approvals carry forward; original review metadata, historical and pending records
+and evaluated/promoted agent identities are unchanged. Provider payloads, purposes and transports do
+not change. The derived agent manifest is regenerated after the literal update. The existing direction
+to run the full gate and deploy only to staging after all checks pass remains in effect. No production
+installation or package publication is authorized.
+## Resignation shared Configuration source binding — 17 November 2026
+
+The resignation coordinator reviewed the deterministic implementation against current upstream
+`bcba1f3e8faaf75c760599750ec9b4dc1d5a0f73`, including the reviewed scoped handoff repair
+`570c92601` and the post-gate convention corrections. Independent reviews confirmed the added
+closure is Lifecycle state/letter/posting composition and private SMTP delivery, not a new model
+payload. Framework-only configuration imports in the Lifecycle and Contracts facades are deferred until called; their original guards and authorization remain unchanged. The capability inventory leaves resignation decisions, signatures, uploads that resume
+the journey, and mixed employment postings on the human handoff surface. The native posting
+destination is excluded from coarse Assistant navigation. No executable AI tool, provider
+contract, prompt, disclosure schema or transport was added or broadened.
+
+Under the owner's recorded standing authority for same-purpose technical staging rebindings
+(above), the coordinator carried the 29 already-approved upstream records from `f4b83a1fa86cf3a53f111b8be69e10f29e0e629f9fa4f50c8ea0209987034494` to
+`20ae90946fae14a242be006f6396bfac4a92017562c8c3412191c57110a89eb1` (1640 source files).
+Original human reviewers, evidence references, approval timestamps and statuses are preserved;
+pending contracts remain pending. The agent manifest is regenerated after this binding.
+This preparation grants no new data disclosure or release authority. The owner's explicit
+release hold still applies: no main/alpha integration or installation.
+
+### Final shared Configuration navigation binding — 17 November 2026
+
+The approved single Configuration area replaces the older HR Automation working label, removes duplicate
+builder menu aliases and moves the existing gated Onboarding & offboarding settings entry. Existing URLs,
+engines, catalogue identities and native permissions remain unchanged; Contract template approvers without
+configuration authority retain their compatible review route. Independent source review found no new
+provider payload, purpose, tool, disclosure or execution authority. Under the same recorded standing
+staging rebind authority, the 29 previously approved records carry their existing metadata and statuses to
+`a5a4a2b7f3b74bc6c9e2f41d16b9320138db533719a7ccbde302cf096991d91d` (1640 source files).
+Pending records remain pending. The agent manifest is regenerated last. Release remains held pending
+explicit owner approval; this source binding does not authorize main/alpha integration or installation.
+
+### Released baseline and final Resignation staging preparation — 17 November 2026
+
+The coordinator integrated released `9bdfb45969c4bff81a9b9830b52403a95e82bdc6` into the owned
+Resignation branch, preserving both histories and applied migration 5771. The four unapplied Resignation
+drafts are allocated as 5783–5786 without changing their SQL bytes. The native-gated shared menu fixes
+a legacy duplicate settings advertisement; the exact owner-selected top-level name is HR Automation.
+No provider payload, purpose, disclosure schema, model tool or transport is added by these navigation
+changes or by preserving the already-approved released performance changes. Under the recorded
+same-purpose staging rebind authority, all 29 previously approved records bind to
+`381c78103e5b80817998a70ac111bfb8b34a332a49cee4592f13dc042884acd8` (1640 source files).
+The literal records match the released baseline after normalizing only digest strings: original human
+metadata and pending records are preserved. The derived agent manifest is regenerated last.
+
+The owner's direct COORDINATOR request now authorizes staging after complete verification and guarded
+queue admission; the earlier release hold is superseded for staging only. No production installation
+or package publication is authorized. This binding itself is not a release witness or an installation.
+
+### Resignation strict document release correction — 17 November 2026
+
+The actual production walkthrough identified double-braced document defaults that the native
+single-braced document merger could not resolve. Independent source review of da66ff4da,
+6d80a1a83 and 7957dffd0 found no material issue in the corrected defaults and strict server
+release validation before signature persistence or workflow effects. Email syntax, required-field
+guards, frozen released values and native authorization remain unchanged. No AI payload,
+purpose, transport, tool or disclosure authority is added. Under the owner's recorded explicit
+same-purpose technical rebinding approval, the 29 already-approved records bind to
+`e5837992670b1e294b6d41bae623ec1d912e717a45e9b57250bb57b5e1972939`
+(1640 source files). Only sourceDigest changes; human metadata and pending statuses are preserved.
+The agent manifest is regenerated last. Hosted regression and actual PDF download verification
+remain required; this source binding is neither a test pass nor release authorization.
+
+### Handoff completeness corrections: development checkpoint — 17 November 2026
+
+The renewed handoff and engineering review correct deterministic Lifecycle ownership, native letter teams,
+current-Person privacy, local document fields, workflow conditions, configured case classification, and
+case communication previews and actor-only test intent. Native SQL retains exact principal, tenant/company,
+transaction and argument admission; the existing private sender owns transport. The new presentation read
+is internal, and message editing/testing remain human handoffs. There is no new model tool, provider
+payload, disclosure purpose or transport. Read and React reviews retain their findings and source closures;
+hosted and actual rendered verification remain outstanding. This checkpoint does not claim the later
+linked-case date synchronization or final accepted Movement integration is complete.
+
+Under the recorded owner approval for same-purpose technical bindings, only the 29 already-approved
+records' sourceDigest changes from
+`e5837992670b1e294b6d41bae623ec1d912e717a45e9b57250bb57b5e1972939` to
+`19b66c2622f1bc2aca20958057e73cfaaa29871181601a49103520f4cc987098` (1644 source files).
+Human reviewer identities, dates, evidence and pending statuses are unchanged. The derived agent manifest
+is regenerated last. This is development source preparation, not a release witness or installation.
+
+### Handoff correction recovery source binding — 17 November 2026
+
+The correction batch now includes named same-transaction synchronization of admitted last-working-day
+changes through the canonical Offboarding store and date calculator. Native purpose proofs preserve
+identity, company, reverse-link, CAS, history and immutable fields, with no new financial read grant.
+Private communication metadata is filtered before exposure, and narrow compiler/SQL parsing fixes
+preserve the reviewed authorization. These are deterministic human operations; no provider payload,
+disclosure purpose, model tool or transport is broadened. Original failed development evidence is retained.
+
+Under the existing explicit owner approval for same-purpose technical binding, the same 29 approved
+records carry only sourceDigest from
+`19b66c2622f1bc2aca20958057e73cfaaa29871181601a49103520f4cc987098` to
+`edd791f7f899755cc18f273331127108b0fa7c0fb9e73de53990de1c847c0aab` (1644 source files).
+Human metadata and pending statuses remain unchanged. The agent manifest is regenerated last.
+Hosted recovery, the actual 56-state renderer, accepted Movement integration and the release gate
+remain required. This source record grants no release witness, production or package publication.
+
+### Failed-area recovery admission binding — 17 November 2026
+
+The completed development recovery exposed a required-upload SQL alias collision and a managed
+clearance hook reading a row-secured journey without its narrow custody proof. The repairs preserve
+required uploads, verified native reverse links, tenant/company and actor admission; clearance now
+rolls back if its expected proposal cannot be created. No permission, provider payload, model tool,
+disclosure purpose or email transport is broadened. Fixture corrections use real Person mappings
+and reachable synthetic recipient identities while retaining reserved-field and native receipt attacks.
+
+Under the recorded explicit owner approval for same-purpose technical bindings, only the same 29
+approved records' sourceDigest changes from
+`edd791f7f899755cc18f273331127108b0fa7c0fb9e73de53990de1c847c0aab` to
+`1003ab45531e061b5217c8227b2f09e311bdce603428a26e9f8b2f315c697fc1` (1644 source files).
+Human metadata and pending statuses remain unchanged; the agent manifest is regenerated last.
+Original failures remain recorded. Hosted failed/affected recovery, rendered UI/PDF verification,
+accepted Movement integration and authenticated final release evidence remain required. This is
+source preparation and grants no release or production/package publication authority.
+
+### Literal UI development checkpoint — 17 November 2026
+
+This checkpoint adds labelled per-case inline editing through the existing Contract field atom and pure
+converters, atomic Review edits and an authoritative final-sign action label. Native signing remains the
+adjudicator. Offboarding waiting names use a separate human presentation loader; the shared posting
+DTO and model tool payloads remain unchanged. Frozen-currency formatting performs no financial
+calculation. Native waiting eligibility is still an open source-review item and is not a release claim.
+
+Under the recorded explicit owner approval for same-purpose technical binding, only the same 29
+approved sourceDigest values change from
+`1003ab45531e061b5217c8227b2f09e311bdce603428a26e9f8b2f315c697fc1` to
+`e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73` (1644 source files).
+Human metadata and pending records are unchanged. The agent manifest is regenerated last. This is
+a frozen development checkpoint for independent affected UI checks; native eligibility, compiler,
+actual57-state UI/PDF verification, accepted upstream integration and authenticated release checks
+remain outstanding. No provider disclosure purpose, model tool or transport authority is broadened.
+
+### Native waiting eligibility source closure — 17 November 2026
+
+The human-only waiting-member reader now derives current Workforce eligibility set-wise from canonical
+role, scope, capability, override and effective-group sources. Tests pin the effective Access owner
+bodies/attributes and compare real admitted principals; this reader grants no authority and native
+approval remains the adjudicator. Unpublished employment sources yield no candidate names even if
+the current reader owns a temporary import context. Private model-facing posting DTOs stay unchanged.
+
+This repair changes only unapplied native SQL and test sources. The provider source digest remains
+`e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73`; approved record metadata,
+pending records, purposes and transport remain untouched. The derived agent manifest is checked or
+regenerated last. Source review closure is not hosted PASS, actual UI/PDF verification or release
+authority. Exact accepted upstream integration and migration reallocation remain required after
+Recruitment’s accepted ledger.
+
+### Tenant publication recovery checkpoint — 17 November 2026
+
+The completed native owner-body check caught a later canonical5071 publication rule: waiting
+eligibility must read the tenant-effective capability catalogue. The derived human-only reader now
+reuses that inlined owner once per tenant, with actual-principal before/after publication regression
+coverage and current effective owner pins. No grant, provider payload, model tool or transport changes.
+Renderer admission test fixtures now describe the expanded12-actor/57-capture/six-mobile contract;
+validator, production-build, role, private-letter and actual-PDF guards stay unchanged. Test-compiler
+adapter corrections retain runtime message membership and actual localized accessible-name checks.
+
+These changes affect unapplied native SQL and tests only. The provider digest remains
+`e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73`; no approved record or
+pending status is changed. The agent manifest is checked/regenerated last. Original985 failed
+evidence and its unaffected passing scopes remain bound to that source. This checkpoint still
+requires hosted recovery, actual UI/PDF completion, accepted upstream integration and the final
+authenticated release process. It grants no staging admission or production/package authority.
+
+### Rendered routing-context correction — 17 November 2026
+
+The first current built screens exposed stale one-person wording for Offboarding team letter steps
+and an unused HR-signature fallback selector beside an explicit routing. Off-Letter-only context
+copy now describes the initial assignee rule and nonlocking eligible membership; the edited
+version’s routing hides its unused fallback control without mutating the legacy value. Other
+modules keep their existing labels and behavior. No engine, proposal, permission or provider
+payload change. A browser-only geometry collector separately corrects native top-layer clipping
+measurement, retaining thresholds and five real-browser qualification cases distinct from app captures.
+
+Under the existing explicit same-purpose binding approval, only the same29 approved sourceDigest
+values change from `e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73` to
+`f82fab1a3377ebe48b0cc958e0e5ee174d6697e83ae18a563a74de547ffa1d9f` (1644 source files).
+Human metadata and pending statuses stay unchanged; the derived agent manifest is regenerated last.
+Current4a21 whole compiler and production build passed, but only six actual views were captured
+before the corrected measurement failure. No PDF or complete visual PASS is claimed. Hosted
+affected checks, all57 actual states, final visual review, accepted upstream integration, migration
+reallocation and authenticated release verification remain required.
+
+### Shared routing help clarification — 17 November 2026
+
+Actual rendered Routing rules help still described every signing step as yielding one person.
+Offboarding letters retain an initial assignee while every frozen eligible member can act.
+The six locale values now explain this exception and preserve other modules’ single-holder
+and To/CC recipient semantics. No signing engine, authority, provider payload or transport changed.
+
+Under the existing explicit same-purpose binding approval, only the same 29 approved
+sourceDigest values change from `f82fab1a3377ebe48b0cc958e0e5ee174d6697e83ae18a563a74de547ffa1d9f`
+to `cc818adf0cb26e2702f6707fe9c267f09e37130edd4dd65070dba969e57389aa` (1644 files).
+Human metadata and pending statuses remain unchanged; the derived agent manifest is regenerated last.
+Controller-only locator corrections preserve exact selected values, saved routing read-back,
+approver names/counts, privacy checks and all 57 required captures. Prior source-specific compiler
+and selected-test evidence is retained; the actual renderer still requires completion. No complete
+visual, PDF, staging or release PASS is claimed.
+
+
+### Comprehensive Movement staging source binding (17 November 2026)
+
+The repository owner explicitly approved **“I approve all the AI binding and migration ordering”**
+in the four-session release coordination chat on 17 November 2026 MYT, then directed
+**“Movement should be the first one to release.”** This authorizes the scoped source-binding
+carry-forward and safe migration ordering for these coordinated staging releases. It does not waive
+verification, authorize new outbound behavior, publish packages or install production.
+
+Reviewed pre-binding Movement source `eb841ac8f8da0e988e984e10046380d8cb5962cb` integrates the
+current main/alpha baseline `9bdfb45969c4bff81a9b9830b52403a95e82bdc6`. Its native changes cover
+complete Movement information, dated payment routing, original-hire correction and compensating
+replay, salary recording choices, bounded open-payroll invalidation and company-period history import.
+Migration 5779 reconciles incompatible allocations through their existing owner without weakening
+the allocation/company constraint or changing issued payroll figures. The existing Agent action DTO
+continues to expose the same payment-method field through the dated native reader. Provider policies,
+serializers, approved outbound fields, purposes and transports are unchanged.
+
+The same 28 active approvals carry forward from
+`0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b` to the exact provider
+fingerprint `5f0f352a8020b336f5d7a7eb02e9a211c732fc0568cc4d6bcc3a8d08c222d83b` over 1635 files.
+Reversing only those 28 digest substitutions reproduces the previous approval registry byte-for-byte.
+Both pending records, the retired Attendance Formula binding, historical reviewer/evidence metadata,
+and existing evaluation/promotion identities are retained. The derived agent manifest is regenerated
+after those substitutions: `2dde4317cde38383935b881c16479f7224edcbd588c09a5d444325b801e44883` over 494 files.
+
+This is source-binding evidence only. Original failed gate 43938744762 remains failed; its missing
+unit/browser coverage, the allocation-owner repair, whole types, canonical build, migration rehearsal,
+rendered acceptance and authenticated staging admission still require their actual verification.
+
+
+### Comprehensive Movement verification-repair binding (17 November 2026)
+
+Under the same explicit repository-owner approval above for all coordinated AI binding and migration
+ordering, the release coordinator carries forward the existing 28 active approvals over pre-binding
+repair source `bac5169fc6b03fd7398051791bf2c365e3ff0668`. The changes bind controlled Personnel presentation, record-only
+salary amendment history, shared-lock display reads and the planner-visible projection of the existing
+dated payment-method owner. The native Agent DTO, provider purposes, outbound fields, serializers,
+policies and transports remain unchanged. No additional approval, promotion or outbound action is granted.
+
+The exact provider digest is `d4b66dced0bf4db26f3276e6b48e5c7fbf744e7d0d68038ae3653ae8727bf740` over 1635 files. Reversing
+only the 28 matching previous-digest substitutions reproduces the prior registry byte-for-byte. Pending
+and retired records and all historical approval/evaluation metadata remain unchanged. The regenerated
+agent digest is `4f5309ff8e2af1132dd31565c44306ea5936aca0b1ca468522099c78d70cd956` over 494 files.
+
+Original full gate43943737895 and unchanged-source scale reproduction43951241825 retain their failed
+identities. Development runs43952343985,43952356442,43953766240 and43953835964 retain their own source
+and check coverage. This binding supplies no passing gate or staging acceptance; all final verification,
+authenticated admission and rendered staging checks remain required.
+
+
+The final control-type repair at `dd432052b5e939c7c908d33179394d5ce6a7bb68` retains explicit required names for ordinary
+workflow controls while controlled draft inputs stay unnamed. Under the same owner approval, only the
+28 active source digests carry forward to `fefbfc37e8bb11ba89f8bdff321d9793864cb618569aafd8199bebd4a6ed917a` (1635 files), with
+agent digest `87d6c5b769b9a1b70aac583fdefc0af6a2db912aad06fdaa97688defa3f90c2c` (494 files). Reverse digest substitution remains
+byte-identical. This changes presentation typing, not provider behavior, approved fields or permission.
+
+
+### Movement import guidance and visibility inventory binding (17 November 2026)
+
+Completed full gate43959096902 on `35086d6c5f19e290968449fb043dc534eed9d347` retains its failed identity: two no-database checks found missing new-field inventory rows and localized import guidance; build, whole compiler, migrations, all database chunks and all three browser engines passed. The repair supplies the written ESS disposition and six-language guidance for the existing audited Hired-information and dated payment-method owners. It changes no provider purposes, outbound fields, serializers, transport, permissions or migration SQL.
+
+Under the same explicit owner approval for coordinated AI binding above, only the 28 active matching source digests carry forward to `19e53ef85cfd48ce9812d47aa98173e6085760b949373faadc6ca343b34bf7c6` (1635 files). Reversing those substitutions reproduces the previous approval registry byte-for-byte; pending, retired and historical metadata are unchanged. The regenerated agent digest is `2aedf5532dae0f0dacd640da518a10263aa91d43b7221f901336bd483daaff22` (494 files). This binding grants no gate result or staging acceptance.
+
+The affected-check run43966198442 on `18284f32d1f32fa8d89786de49f68d07c6a60789` passed48/49 checks; the remaining exact inventory assertion exposed missing source-evidence references on the two new descriptors. Adding those references under the same owner-approved binding carries only the 28 active matching digest literals to `6985d77b4bb489f7cc63babd8f38bb8a9e1b3311fb1359d8fa0669ffba9d4d1b` (1635 files), with reverse byte identity preserved. The resulting agent digest is `b8f9d13b18fbae1edfb9bc6ec82be338dddc14841b73138c1185517bbf1d8a36` (494 files). This is provenance metadata, without a new provider behavior, outbound field, access grant or migration. Original failed checks retain their identities.
+### Re-binding the Recruitment group 2 staging candidate (17 November 2026)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` (Recruitment slices 1–25, migrations 5850–5877) merged the staging
+baseline `9bdfb45968` (main/alpha/staging). Under the owner's standing staging re-bind pre-approval of 12 November 2026
+("I approve fully on the rebinding and the AI approval, dont have to wait for my decision"), the same 28 already-approved
+records carry forward from `0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b` to
+`ec4ca199a676cc1cb5fe0a5f2bb79efc7ad396522e8fee1c01caf7eabb36c85c` over 1,683 files, then, after classifying
+Recruitment's 144 entry points in `lib/ai/agent-capability-inventory.ts` (none registered with the agent; access grants, candidate
+erasure and the AI match summary are handoffs), to `5daef1d248124ec70149a4d112991d080ea8b6b2cd1fac67f1dbe306227c9e6b`, and, after the referral-reward payroll
+write moved to the payroll pack facade (no behaviour change), to `ad8739ca279c4b84ae841c7c055e598c1039d66e3eaaa0df54f67f78fdb6d3bf`, and, after the gate 43944232997 repairs (migration 5861 restores its custom setting itself;
+the linkable-page list; test pins), to `9baacc220681feecc17c6282df5c09970702454caaa6b7a8881798180aa6ea80`. Statuses, purposes, reviewers and
+original approval evidence are unchanged; no existing contract gains a provider transform, outbound field, purpose or transport.
+
+The 59 additional covered files come from Recruitment slice 24's new contract `recruitment_match_summary_v1` (outbound field
+`authored_candidate_profile`). That contract is a NEW purpose: it has no approval record and stays pending, so the gateway refuses
+it; this re-binding does not approve it (owner decision D-069/D-071: legal review first). The agent manifest is
+`200ce12a3991d4f0c221f6d782e5bc76110725f94285c547fd7dbeac2b7eaca7` over 496 files, regenerated after the literal update.
+This binding grants no production authority.
+
+### Re-binding Recruitment after the Movement staging release (17 November 2026)
+
+The Recruitment branch merged `origin/main` `2a4132204` (Movement accepted on staging at `65ab4e868`). Under the owner's
+standing staging re-bind pre-approval of 12 November 2026, only the same 28 already-approved digest literals carry forward from
+Movement's `6985d77b4bb489f7cc63babd8f38bb8a9e1b3311fb1359d8fa0669ffba9d4d1b` to
+`a092a7cb98254676eee275f1687618f858d06d778e0a836d28844a60281acc39` over 1,694 files; reversing them reproduces main's
+registry byte-for-byte. No contract gains a provider transform, outbound field, purpose or transport.
+`recruitment_match_summary_v1` stays pending and unapproved (D-069/D-071). Agent manifest
+`103074e0809a534418f710f018221416559b000e9c962d6523e991ace764d182` over 496 files. No gate result, staging acceptance or
+production authority is granted by this binding.
+
+
+### Resignation accepted-baseline composition — 17 November 2026
+
+The Resignation coordinator composed the frozen resignation source `9d8a9a760` with
+accepted Movement and Recruitment source `fc092e1adbe5f8f1cbfe730a17d1317f08625a7c`
+through the separately recorded migration reservation `154be7f299`. Navigation, scoped
+task totals, company-history guards and independent mail delivery retain both native owners.
+The fixed deployment verifier step runs after migrations and before activation; it does
+not rotate keys, grant app access or add a provider path. The Review evidence controller
+now bounds its transport observations without weakening native receipt assertions.
+
+Under the recorded owner approval for these coordinated same-purpose staging bindings,
+only the same 29 approved sourceDigest literals carry forward to
+`b87b678e58667959a981ff67c85b7a37134b6959a87881cd68ebee7bc9349c22` over 1714 covered files.
+A static comparison of all 31 records confirms identical contract IDs, statuses, reviewers,
+evidence references and original review timestamps across both parents. Pending records
+stay pending, including the unapproved Recruitment matching purpose. No provider transform,
+outbound field, purpose or transport is authorized by this technical rebinding.
+The derived agent manifest is regenerated last: 496 files,
+`dd44723fe7ca47e5edad35b50947b984753e055199ea16977ed15f0b74d53c5e`.
+
+The owner authorized staging after successful verification and coordinator admission.
+The newer queue direction puts the staging-investigation hotfix first, Resignation after
+its accepted handback, Audit last and Contract on hold. This composition has no staging
+lease or installation result. Source-specific earlier compiler, selected-check and partial
+rendered/PDF evidence remain historical evidence; composed-candidate checks and complete
+rendered acceptance are still required. No production deployment or package publication
+is authorized.
+
+### Movement correction-history hotfix binding (17 November 2026)
+
+The repository owner explicitly approved carrying forward the 28 existing AI source approvals
+to `e7f9a66a837dd19dfa996048309c8df1e04b4a428243be9f0a5db99582a1d648` in the staging investigation chat on 17 November 2026
+("Approve source rebinding"). The release coordinator carries forward only the same 28 active
+digest literals from `a092a7cb98254676eee275f1687618f858d06d778e0a836d28844a60281acc39` over 1694 covered files.
+Pre-binding repair source is `357ce78c8089056793fb06067e0e5615016658d3`. The covered changes attach original-hire
+corrections to their recorded hire, preserve later deliberate field boundaries and read company
+history from the canonical dated assignments. No provider contract, purpose, outbound field,
+serializer or transport changes. Reversing the 28 substitutions reproduces the prior approval
+registry byte-for-byte; pending, retired, reviewer and historical evidence metadata are retained.
+The derived agent manifest is regenerated after binding. This grants no passing verification,
+staging acceptance or production authority.
+
+### Approved-board combined development binding — 17 November 2026
+
+The repository owner explicitly authorized this five-item candidate and necessary verification
+repairs in the current board-work chat: "Approve staging-only rebinding and verification repairs".
+The source is pre-binding `a6f6b446e38bfbf013977dd5eb445e91ec6edff4`. Its changes remain native
+lifecycle, Rewards and payroll behavior; new entry points are unregistered backlog or internal
+presentation. Human case-authorized address previews do not add a provider payload or purpose.
+No provider transform, outbound field, purpose or transport is added by this carry-forward.
+
+Only the same 28 active approval digest literals move from
+`a092a7cb98254676eee275f1687618f858d06d778e0a836d28844a60281acc39` to
+`a74c1244a428f20b2ad47a2f0ac9fa99894153078ede89567550b39c249335e9`
+(1,708 covered files). Reversing those substitutions reproduces the prior committed registry
+byte-for-byte. Reviewers, evidence, original dates and all pending/retired records remain unchanged.
+The regenerated agent manifest is `d891d9a840db52288399432d5e88e9e78dabfa5b2ade3f848f717a7f776bb9b6`
+(496 files). This is staging-only source approval: no gate result, installation, staging
+acceptance or production authority is asserted. Later source repairs require another exact
+fingerprint record under the same expressly authorized verification-repair scope.
+
+### Approved-board verification repairs — 17 November 2026
+
+Under the current-chat authorization “Approve staging-only rebinding and verification repairs”,
+the repaired candidate before binding is `6f792c60ee874834565e9608b282658b9cca9602`. It repairs fixture validity,
+recipient fanout assertions, Rewards upload syntax, native history numeric capacity and the
+released-plan repricing notification/RLS behavior. No new provider purpose, outbound field or
+production permission is added. Exactly the same 28 active source approvals move from
+`a74c1244a428f20b2ad47a2f0ac9fa99894153078ede89567550b39c249335e9` to `785dac445b64de992e997f1ce1dfaa73f35679842cc1ea968cc987052a345acb` over 1,708 files. Reversing the substitutions reproduces the previous
+registry byte for byte; pending and retired records and original review metadata stay unchanged.
+Agent manifest: `eacc4681aaed73c89ffeb78162e7ce1263e3699e8f42d60672cd9fcd9488ca55` (496 files).
+This records source binding only; verification and staging acceptance remain separate.
+
+### Approved-board final verification repair binding — 17 November 2026
+
+The owner’s current-chat authorization “Approve staging-only rebinding and verification repairs”
+covers this repaired source `e0843fd010cf6e16d1f4fa6924b0b8b3b81aafca`, including the accepted Movement baseline, native
+SMTP group delivery, consistent live history values, compiler repairs and rendered state/mobile fixes.
+No provider purpose, outbound field or production permission is added. The same 28 active approvals
+move from `785dac445b64de992e997f1ce1dfaa73f35679842cc1ea968cc987052a345acb` to `cfcab95ecec7fcfdc42604be3c2072d3c45a6c00e18b5cced3863535dcc0da2b` (1708 files). Reversing them reproduces the prior registry byte for byte;
+normalizing to current main’s active fingerprint also exactly reproduces its registry. Both pending
+records, the retired Attendance approval and every original reviewer/date/evidence field stay unchanged.
+Agent manifest: `cafbe0f78f9b32c19130fe97609f3fefa4ee9209b3931d5815cd381af97d01e7` (496 files).
+Source binding supplies no test, installation, staging acceptance or production claim.
+
+### Approved-board final verification repair binding — 17 November 2026
+
+The owner’s current-chat authorization “Approve staging-only rebinding and verification repairs”
+covers this repaired source `0be8bbeefb0a9cc89206c4e40851248454ae7fa0`, including the accepted Movement baseline, native
+SMTP group delivery, consistent live history values, compiler repairs and rendered state/mobile fixes.
+No provider purpose, outbound field or production permission is added. The same 28 active approvals
+move from `cfcab95ecec7fcfdc42604be3c2072d3c45a6c00e18b5cced3863535dcc0da2b` to `686fe871e430f551251b46329ccf2a5c7b8d0254f7c376a7c6f4055013abc6d1` (1708 files). Reversing them reproduces the prior registry byte for byte;
+normalizing to current main’s active fingerprint also exactly reproduces its registry. Both pending
+records, the retired Attendance approval and every original reviewer/date/evidence field stay unchanged.
+Agent manifest: `738d0c0e11a75af9ea5370af9599674572f20e90d9a9ccfe25df92d7074c72f5` (496 files).
+Source binding supplies no test, installation, staging acceptance or production claim.
+
+### Approved-board final verification repair binding — 17 November 2026
+
+The owner’s current-chat authorization “Approve staging-only rebinding and verification repairs”
+covers this repaired source `72831ec6684290d7dae70cd08ece6940615e9373`, including the accepted Movement baseline, native
+SMTP group delivery, consistent live history values, compiler repairs and rendered state/mobile fixes.
+No provider purpose, outbound field or production permission is added. The same 28 active approvals
+move from `686fe871e430f551251b46329ccf2a5c7b8d0254f7c376a7c6f4055013abc6d1` to `e08bbae6177d6ff513325021214d1ab98adc7d399ecf32ef217f7572162fce4b` (1708 files). Reversing them reproduces the prior registry byte for byte;
+normalizing to current main’s active fingerprint also exactly reproduces its registry. Both pending
+records, the retired Attendance approval and every original reviewer/date/evidence field stay unchanged.
+Agent manifest: `ec83ff9c6c4b9b75e7ec787d295b38248126f7ef16688d6ec924ea1918e65fbf` (496 files).
+Source binding supplies no test, installation, staging acceptance or production claim.
+
+### Staging verification repairs — 17 November 2026
+
+The owner’s explicit authorization “Approve staging-only rebinding and verification repairs” covers source `97468b917372073f33941becd2c006c9d38a27c8` and these Repairs: the Rewards native writer privilege fence, tenant-bound history retention, conditional native access metadata and route integration. The same 28 active approvals move from `e08bbae6177d6ff513325021214d1ab98adc7d399ecf32ef217f7572162fce4b` to `5e530422497a5e6fc08c7ab3fdc8a273dc80824d7de95a8d50cbda527b815cb1` (1708 source files). Reversing this substitution reproduces the prior registry exactly; normalizing to current main’s fingerprint reproduces its registry exactly. Reviewer, date, evidence and scope fields, both pending approvals and the retired Attendance record remain unchanged. No provider purpose, outbound field or production permission is added. Agent source: `9dc3404eff3b65cec49bf0b669b5b06e70b57922c89d71284eb68c90a012fcd4` (496 files). This records source binding only.
+
+### Staging private-table ownership binding — 18 November 2026
+
+The owner’s explicit authorization “Approve staging-only rebinding and verification repairs” covers source `b1a2c1ef472ff1be7fa2dbc4fa2acf552a362032` and the Rewards private history read-window table ownership, tenant-bound history retention, conditional native access metadata and route integration. The same 28 active approvals move from `5e530422497a5e6fc08c7ab3fdc8a273dc80824d7de95a8d50cbda527b815cb1` to `f42ac08a93a79641f915d20db0add2824ef595440eb108369fb3188ef41fa3fe` (1708 source files). Reversing this substitution reproduces the prior registry exactly; normalizing to current main’s fingerprint reproduces its registry exactly. Reviewer, date, evidence and scope fields, both pending approvals and the retired Attendance record remain unchanged. No provider purpose, outbound field or production permission is added. Agent source: `5f13cd71ac4be120b14eec282291b62ad22fcc6a94cfca3fd8b84d7667b1be0e` (496 files). This records source binding only.
+
+
+### Historical hire-date organisation scope staging repair (18 November 2026)
+
+The owner explicitly approved the exact 28-record rebinding to `1960993ebff63ab7870df2d065f99a4e44157401443e5c547ecbc4ac9d3e7b6a` in the STAGING chat on 18 November 2026, replying "Approve this exact rebinding" after automatic approval review requested exact-source authorization. This is the controlling approval for this repair.
+
+The release coordinator carries forward the same 28 active provider source approvals under the repository owner's recorded standing staging pre-approval of 12 November 2026 ("I approve fully on the rebinding and the AI approval, dont have to wait for my decision"), and the owner's explicit request in the STAGING chat on 18 November to merge PR 246 and deploy this fix to staging. The pre-binding source is `9932afcee13bd90cd23243adacc84b25f33cff5b`.
+
+The covered change resolves the company at the corrected historical Group Join Date through the existing organisation owner before recording tags, instead of passing today's employer. It preserves transaction boundaries and historical-company permission checks. No provider contract, purpose, outbound field, serializer or transport changes. The fingerprint changes from `e7f9a66a837dd19dfa996048309c8df1e04b4a428243be9f0a5db99582a1d648` to `1960993ebff63ab7870df2d065f99a4e44157401443e5c547ecbc4ac9d3e7b6a`; reversing exactly 28 digest substitutions reproduces the prior approval registry byte-for-byte, preserving pending/retired statuses, reviewers and approval evidence. Both generated source manifests are refreshed.
+
+Original release run 44230047543 retains its admission failures: planning/build refused the stale provider manifest before application test execution. Its successful compiler, migrations and controller observations retain their original identities. This binding supplies no gate PASS, staging acceptance, or production authority.
+
+### Board F8 plus historical hire-date scope integration (18 November 2026)
+
+The owner directly authorized all AI binding and migration ordering in COORDINATOR on 17 November 2026 ("I approve all the AI binding and migration ordering"), and on 18 November authorized the STAGING session's fix to be merged and deployed to staging. The same day's unattended staging release instruction retains that authority. The separate exact-source approval for the hire fix at `1960993ebff63ab7870df2d065f99a4e44157401443e5c547ecbc4ac9d3e7b6a` is retained above. No new approval status, reviewer, historical review date or evidence is invented by this integration.
+
+The integration preserves Board F8 `f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e` and the approved hire fix `0cb2d9bb30f24aa4a354dbd91adc90b4cefa9122`. Against F8, the sole application change is `core/org.ts`: an existing authorised dated organisation resolver supplies the employer at the corrected Group Join Date before the existing organisation-tag writer runs. The current-company read is replaced within the same transaction; native employment, tenant and company/date guards remain authoritative. No provider purpose, contract, outbound field, transport or access grant changes. No migration is added beyond F8.
+
+Exactly 28 existing approved records carry forward from F8's `f42ac08a93a79641f915d20db0add2824ef595440eb108369fb3188ef41fa3fe` to `5f801c74f85675df2f7d6e2b4c34e7de98bb704e3d88a7f4f33e9caa011ec63b` (1708 files). Reversing those 28 substitutions reproduces F8's approval registry byte-for-byte, including both pending records, the unchanged historical Attendance approval, all original reviewer/evidence/date fields and record order. The module-agent manifest is `9c5e4416a84d81e13a560c99e09cc91b4be6e7188d758f17029030c21ddaba72` (496 files). This records source provenance, not test success, acceptance, publication or production authority.
+
+The initial automatic rejection concerned the pre-integration binding at `1960993e`; the owner's subsequent exact approval resolved it before commit `0cb2d9bb3`. No automatic rejection was issued for this combined fingerprint. The extra exact-fingerprint prompt was an inference from that earlier rejection, not a separate requirement in the source policy. The direct standing authorization and exact registry/delta proof are retained with the private combined review packet. Any actual new automatic review refusal remains binding and must not be bypassed.
+
+### Own Leave and Payroll paging staging carry-forward (17 November 2026)
+
+The repository owner directly approved in the COORDINATOR chat: "I approve all the AI binding and migration ordering".
+The direct human instruction was independently read before applying this binding. It also follows the standing
+12 November staging-only carry-forward decision recorded above, explicitly applied to this performance work.
+The owner separately instructed that Movement must be the first of the four coordinated releases. This batch
+therefore prepares outside the staging lease and must merge the actual accepted Movement baseline after its verified
+release and lease handback; generation, this approval record and development checks do not authorize bypassing that order.
+
+Reviewed application source `6350cacc0cbf36f5c700ffd2131f7dc43a83458c` changes Own Leave's shared read/privacy intervals,
+Payroll's native candidate-page projections and the six message catalogues. Current allocated migration is
+`5787_own_leave_shared_access`, idx5187 / when1793330005487; the never-applied provisional5880 is retired.
+SQL SHA256 `843ded0c0542c47360989ef70f54dd6eed10c1d9aa5abe7cfa3b191e6e5d1f0c` is unchanged by renumbering.
+The provider fingerprint remains `d02f341541d15afcca36200fc5d891b4a9a2b981cf2a4ace09bae2a112ebdb50` over1,624files.
+The same28 active approval literals carry forward from `0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b`;
+reviewers, original evidence/timestamps, purposes, pending records and the retired Attendance Formula contract are unchanged.
+No provider transform, outbound field, purpose, transport, tool registration or action tier is added or widened.
+After the literal update the derived agent manifest is `81ea5ce1721023e6189b7c258c436ec31e31df8881f75ab99493544fca217bdc`
+over494files. Any subsequent accepted-baseline integration requires regeneration, source review and another exact binding
+record under the same scoped owner decision; no evaluated/promoted agent identity is renewed by source binding.
+
+The full release gate, authenticated evidence, restricted-owner migration rehearsal, fresh ordered installation ledgers,
+arrival/rendered acceptance and guarded lease remain required. This authorizes no production installation or package publication.
+
+### Resignation composition with accepted staging hotfix — 17 November 2026
+
+The hotfix owner handed back accepted staging source
+`12098e9c56c95bf2d9441ad74e81ae04f2d2980a`, build `gC3FFxt6m-WhRuTTJNCm9`,
+with a closed lease. Fresh main/alpha fetches agree at that source. A normal merge
+retains its Personnel correction/history repairs alongside Resignation; there is no
+migration delta in the accepted hotfix. The canonical employment writer and existing
+provider payloads, transforms, purposes and transports are unchanged.
+
+Under the recorded same-purpose staging rebinding approval, the same **28 active**
+approval digests carry to
+`062f69ffc55c585eea1246779ebd8d50bd3bed7076d3d7c67ec2ed41a5b3b74a`
+over 1714 covered files. The initial `3a12835c5` branch checkpoint incorrectly carried
+one retired record with these active bindings. Independent coordinator review identified
+that error. The corrected registry restores the entire historical
+`authored_attendance_formula_v1` record to its accepted `12098` identity, including
+fingerprint `ffd2e1fec9fd42740bdd1cda8b4859237c78327bdca9471b17c9406b44eb58ce`,
+original 8 November review timestamp and Board-six evidence. Its historical status stays
+approved; it gains no current-source admission or reactivation. Both pending records
+remain byte-identical. Reversing only the 28 active digest substitutions reproduces the
+accepted registry **byte-for-byte**. A regression pins the historical record and requires
+its current-source disclosure admission to fail.
+
+The agent manifest is regenerated last: 496 files,
+`7bb7e6078c22b01680efa0e140d215f93194df169293432930555f88bba3e862`.
+The provider digest is unchanged by this historical-record correction. All prior failed
+and successful runs retain their original source identities; none is relabelled.
+
+The owner's newer release order puts the approved Board items first. Resignation must
+integrate their actual accepted source and ordered ledger, reconcile its seven unapplied
+migration positions above that watermark, and complete its remaining rendered and final
+release checks. This preparation claims no lease or installation. Audit remains last;
+Contract remains held. No production deployment or package publication is authorized.
+
+### Resignation approver repair guidance source binding — 17 November 2026
+
+The coordinator applies the owner's direct instruction in the release coordination chat,
+“I approve all the AI binding and migration ordering,” to isolated frozen Resignation source
+`9d567849d67113a1f6523bd3b19085b926115637`. The Resignation owner requested this exact technical
+carry-forward. Board remains the first release; this binding grants no staging arrival or acceptance.
+
+The reviewed covered-source repair since `4165f574b` changes only the known Offboarding posting
+approver diagnostic into fixed repair guidance. It requires both the exact native SQL state 22023
+and the sanctioned diagnostic on the same nested error, then maps only the fixed domain error into
+Resignation's safe error contract. The message asks People Ops to choose a populated approver group
+in Offboarding Personnel postings settings and retry. No permission, financial calculation, SQL,
+provider purpose, outbound payload, transport or execution authority changes in this repair.
+Native rollback, retry, privacy and rendered behavior checks remain independently required.
+
+Only the 28 continuing approved sourceDigest literals move from
+`062f69ffc55c585eea1246779ebd8d50bd3bed7076d3d7c67ec2ed41a5b3b74a` to
+`551e2a070a015a594f7f48af8f12bce7acc0fdb309163b4419b808b85c121c2b` over 1,714 files.
+Reversing these 28 substitutions reproduces the frozen approval registry byte for byte. Both
+pending records and the entire retired Attendance Formula historical row retain their original
+status, digest, reviewer, evidence and date. Existing agent evaluations/promotions retain their
+original source identities; no new provider purpose is approved.
+
+The module-agent manifest was regenerated last and binds 496 files to
+`eda2ab508f301dcc659e239cb120f648f36f06217f5d2d7a00e129426bc67edf`.
+Both static manifest checks and registry reversal pass; no application test, compiler, provider
+call, full gate, shared-ref advancement, lease, deployment or acceptance is implied by this
+isolated checkpoint. Later Board integration and forward allocation of the seven unapplied
+Resignation migrations must use the actual accepted staging source and complete ordered ledger.
+Further covered-source repairs require a fresh exact-source binding review.
+
+### Resignation finite visual repair binding — 17 November 2026
+
+Under the owner's direct release-coordination instruction, “I approve all the AI binding and
+migration ordering,” the coordinator carries forward the existing approvals for exact source
+`5731c9e06605e0b24a949a29c0e3ce789078dc1b`, at the Resignation owner's request. This is the finite
+visual repair of the independently reviewed `f290eee378e07d7d0c16dbd0d180c677acd5f508` candidate.
+
+The eleven-file repair stacks Current and Proposed fields on phones while keeping one set of
+controls and stable command/state identities, improves preview table spacing, and presents truthful
+translated declined, expired and withdrawn retention-offer notices. Existing backend capabilities
+still govern disclosure and actions. No service, SQL, permission, financial rule, provider payload,
+purpose, serializer or transport is changed. The only provider-closure files changed by this repair
+are the six existing locale JSON files. Actual rendered and affected behavior checks remain required.
+
+Only 28 continuing approved sourceDigest literals move from
+`551e2a070a015a594f7f48af8f12bce7acc0fdb309163b4419b808b85c121c2b` to
+`4155d5d8c9e18efbf9c81185a2f79caa6762142e1ebc3b519b17bf9767596858` across 1,714 files.
+Reversing those substitutions reproduces the frozen registry byte for byte, including both pending
+records, the entire retired Attendance Formula historical row, original review metadata and dates.
+Existing evaluations and promotions retain their original source identities; no new purpose is approved.
+
+The module-agent manifest is regenerated last: 496 files,
+`f23fe78faf395407c24482a6d32fd9447c6e713427494721ed44e6fca95db8c7`.
+Static manifest and reversal checks pass. This isolated checkpoint establishes no compiler, native,
+rendered or release-gate pass, shared-ref advancement, lease, staging deployment/acceptance, package
+publication or production authority. Board stays first. Final Resignation integration and seven
+forward migration positions must follow the actual accepted Board source and ordered staging ledger;
+any subsequent covered-source change requires a fresh exact-source review.
+### Contract focused-development binding proposal — 17 November 2026 (a87b3ab3)
+
+This isolated review packet proposes a source-specific carry-forward for frozen Contract source
+`a87b3ab3baa03cc557b6e296cef0ac476dd9cc00`, compared with accepted source
+`12098e9c56c95bf2d9441ad74e81ae04f2d2980a`. Direct approval to apply this exact packet remains
+pending in the Contract chat. Earlier binding approvals do not establish approval of this source.
+
+Only the 28 continuing, previously approved sourceDigest literals move from
+`e7f9a66a837dd19dfa996048309c8df1e04b4a428243be9f0a5db99582a1d648` to
+`1118bbd6ebd930d3f1e207a81d5dd3894c2d9c7ec5f21b21e82f5792492dcf66` over 1,755 covered files.
+Reversing the 28 substitutions reproduces the frozen and accepted approval registries byte for byte.
+The two pending rows and retired Attendance Formula row, their statuses, source identities,
+reviewers, evidence references and review dates are preserved. No new purpose is approved.
+
+Against the accepted source, provider protocol, policies, review validation, transports and
+Assistant tool implementations are unchanged. Capability inventory additions remain backlog or
+human handoff classifications. The native employee-detail contractNumber addition is excluded by
+the unchanged explicit ten-field employee_profile tool projection. The incremental native changes
+since the earlier 15936930 review concern Contract posting organisation/history owner checks,
+read-only navigation, a reconciliation phase identifier and dated Movement history corrections;
+they introduce no new provider serializer or transport. These observations do not establish that
+native behavior, permissions, migration or rendered checks pass.
+
+The proposed regenerated module-agent fingerprint is
+`c204be31d1c2520432f791be965f8516f6b4ff6b3c77a069acc875f2a237b875` over 496 files, replacing
+pre-binding `0edaf29821229cb0e74cbb366a95f94d063d0fb06baf760dccee4eb23a9c2cf3`.
+Static manifest checks and registry reversal checks pass in the isolated preparation checkout.
+This packet grants no provider-use, evaluation/promotion, gate, merge, staging lease, deployment,
+acceptance or production authority. Contract remains on release hold. Its 125 unapplied migration
+identities remain provisional; later accepted Board/Resignation integration requires fresh source
+review and forward migration allocation from the actual ordered staging ledger.
+
+### Direct Contract owner approval — 17 November 2026 (69b160cc3d01)
+
+The Contract owner directly approved this exact current-source binding in the Contract chat,
+answering both source-specific requests for packet
+`69b160cc3d01993ccb21d7b5a6e53ca101e111fccdd2299d5e9a8030aa26da34`
+with “Approve this exact source binding” and “Approve this exact current-source binding”.
+This supersedes the pending application status of the proposal above, for source
+`a87b3ab3baa03cc557b6e296cef0ac476dd9cc00` only. The reviewed three-file packet is applied
+without changing its approval-registry or module-manifest content. The 28 fingerprint-only
+substitutions retain all other registry bytes. The proposal's earlier chronology is retained.
+No provider call, new AI use, passing gate, merge or release is authorized by this approval.
+
+
+### Combined seven-session staging source binding (18 November 2026)
+
+The owner requested one combined staging release containing the hire-date organisation-scope
+fix (merged PR246), payroll-history warning acknowledgement (PRODUCTION/PR247), Resignation,
+Contract Management and shared HR Automation, the selected Own Leave/Payroll paging Audit,
+approved shared-table layouts (PR243), and employee-specific payroll failure details (PR242).
+The previously recorded owner approval of all coordinated AI binding and migration ordering
+covers the release coordinator's scoped carry-forward here. No new provider approval, evaluation,
+promotion, production installation or package publication is granted.
+
+The reviewed integrated source checkpoint is `532b5684fd462014f0621e0118a64364737086bb`.
+The exact provider fingerprint is `2f57be40fe74b8a48e85f57950b8b9223b9b284161c7c24cd6f196e50ef8e1e4` over 1789 files;
+the derived module-agent fingerprint is `d7a2c23d3048350d9fca26fabbad78197627f8c02788da575c3691b6f3e26646` over 496 files.
+Only the same 28 active sourceDigest values carry forward from
+`5f801c74f85675df2f7d6e2b4c34e7de98bb704e3d88a7f4f33e9caa011ec63b`.
+Reversing those substitutions reproduces the previous registry byte-for-byte. Both pending
+records, the retired Attendance Formula record, human reviewer/evidence dates/statuses,
+and historical evaluation identities remain unchanged. Active provider policies, protocol,
+contract definitions and transport implementations have no diff from the integrated main base.
+
+Native services retain tenant/company scope and human decision/signature/pay/Personnel owners.
+Sensitive resignation actions remain human handoffs. Contract adds authorized nested Org assignment
+IDs/types/dates and immutable mapping receipts to native audit/history/export; that concrete data
+delta was reviewed with source-bound privacy checks and is not a new provider transport or field
+permission. Current employer and dated historical assignment remain distinct. Native recipient
+proofs, protected posting jobs, real account/Person signers, no automatic Payroll attestation,
+retired PBP reconciliation and current source/version checks survive the integration. The explicit
+forward migration allocation preserves 139 original SQL bodies and adds two guarded compatibility
+bodies; native SQL guards and this binding still require genuine restricted-owner/populated tests.
+
+This is source-binding custody only. Member focused/compiler/rendered passes retain their original
+source identities. No aggregate PASS or staging acceptance is claimed. Board's recovery lease is
+foreign; final exact-source hosted verification, original source/build/ledger/service evidence,
+worker readiness and changed rendered/denied journeys remain mandatory before handback.
+
+
+The first combined development qualification `44263612590` remains failed at source `8afdc969b94c92c963bec02d13dee8144d4397a6` (213 passed assertions / 3 failed, plus one obsolete browser-fixture type property). Worker package qualification `44263659870` passed at that source; it is not relabeled onto a later commit. The bounded repair removes the obsolete fixture property, corrects a zero-based pagination test oracle, and appends `6441_contract_resignation_email_modules` without changing the previous 141 SQL bodies. It restores the previously separate native email module constraints as a closed three-module union; native queue/lease/subject/target guards and grants remain unchanged. These changes are outside both covered source sets: the provider fingerprint remains `2f57be40fe74b8a48e85f57950b8b9223b9b284161c7c24cd6f196e50ef8e1e4` and module-agent fingerprint remains `d7a2c23d3048350d9fca26fabbad78197627f8c02788da575c3691b6f3e26646`. No approval row changes or new provider permission are needed. Original failures and successful slices retain their identities; failed/invalidated checks and new native regressions require their own hosted results.
+
+
+## Combined native Business Partner and provider-presentation binding — 18 November 2026
+
+Under the recorded owner approval of all AI binding and migration ordering, the release coordinator
+carried forward exactly the same 28 existing active approvals from `2f57be40fe74b8a48e85f57950b8b9223b9b284161c7c24cd6f196e50ef8e1e4`
+to `b321c31a27f4b9932703efb09c41c6d1194f9523d9987ff4de8000b697fabd98` (1,791 covered source files). The module-agent source
+fingerprint is `3c66e596e30973345089f0afd6e037b66d7a49edee2c7da21250e1df168f96e2` (497 files).
+Reversing only those 28 digest replacements reproduces the prior registry byte-for-byte. Pending
+and retired records, contract purposes, provider data fields, reviewer names and dates are unchanged.
+
+Source includes the reviewed shared native Contract/Probation Business Partner owner, service and
+authorized management panel (frozen member f6f7da9158), plus selected provider presentation SELECT
+policy 6500 (22a8e7e0). The latter changes settings metadata visibility only, without new credentials,
+provider calls, activation authority or write grants. BP routing remains separate from document
+signers and retired On/Off recipients; raw configuration is guarded by the prior native tenant-wide
+group-admin and Lifecycle entitlement. No provider protocol, policy, transport or outbound purpose
+is changed by this binding. This is source custody, not a check PASS or release authorization.
+
+Exact 924+142 rehearsal evidence at a609 remains tied to that source. The current pending tail144
+requires its own restricted-owner populated rehearsal, affected permissions/scale/whole-type checks
+and production renderer qualification. Both original56a build failures remain failed; inventory
+diagnostic44278414933 is not semantic compiler or release evidence. No production installation or
+provider activation is implied.
+
+## Typed Leave Type update construction binding — 18 November 2026
+
+Under the same recorded owner approval of all AI binding and migration ordering, the release
+coordinator carried forward the same 28 active approvals from
+`b321c31a27f4b9932703efb09c41c6d1194f9523d9987ff4de8000b697fabd98` to
+`a4ded532cb02a3df0bf36772b34c199a7eac326133892de9e54326f9d0443dca` (1,791 covered files). The module-agent fingerprint is
+`80ab20e1fa279cea5feb54c673a306d7fd877b77366500e6ff4fbc320cffac29` (497 files). Reversing only these 28 source-digest replacements
+restores the preceding registry byte-for-byte; pending/retired records, purposes, provider data,
+reviewers and dates remain unchanged. No provider activation or request is added.
+
+The source-only repair f840dfa8de replaces one inferred Leave Type update union with individually
+typed, ordered patches against the same native setter. All 28 original patch expressions and
+the surrounding guards, transaction, query and audit remain unchanged. The complete diagnostic
+44301542100 motivates this measurement; it does not establish production-build or release readiness.
+The original 8 GiB production limits and required behavior/rendered/release checks remain in force.
+
+## Forward company-scope repair binding — 18 November 2026
+
+Under the existing owner authorization for the same 28 source-binding carries and migration order,
+the repaired source carries those approvals from
+`a4ded532cb02a3df0bf36772b34c199a7eac326133892de9e54326f9d0443dca` to
+`32c3d0d79da9a5b740e23ef0765045d63ce1756aacd238d672108d22d785cd2e` (1,791 covered files).
+The module-agent fingerprint is `434c996ddc47678a6ae41d9f7b8d2043ef00e79431dac2a457855dcfedd5949b`
+(497 files). Reversing only the 28 literal digest replacements restores the entire prior approval
+registry byte-for-byte. Approval statuses, purposes, provider data fields, reviewers, dates and
+pending/retired records stay unchanged. Provider policies and registered actions are unchanged.
+
+This binds the source-reviewed integration repairs, closed native action classifications and private
+projection-parser rename. The registered SQL snapshot is `e17b0e022c373af9b713940cb11cfff16fce8c2f`: all
+previous migration bytes and the 924-row baseline remain unchanged, with one guarded company-scope/index/
+retention addition making 145 pending entries. Native decisions stay with their existing permission owners.
+This carry is source custody, not a runtime PASS, staging acceptance, provider activation or production
+authority. Fresh affected checks, the justified final qualification and complete rendered journeys remain
+required. The original failed runs and successful source-specific evidence retain their original identities.
+
+
+## Approved board implementation source binding — 18 November 2026
+
+The coordinator applies the owner's standing authorization recorded above (17 November: “I approve all the AI binding and migration ordering”) to the twelve approved board implementations, pre-binding source `c75201b499246cc9474c65ce49d87bd4e3753ed2`. This records source provenance only; it supplies no passing check, installation, staging acceptance or production authority.
+
+The provider closure is `c15fe0d60349c734b08523a141555078e1277284be0c0f0f00f838bc42583970` across 1732 source files. Exactly the same 28 active approval digest literals move from `5f801c74f85675df2f7d6e2b4c34e7de98bb704e3d88a7f4f33e9caa011ec63b`. Reversing those substitutions reproduces the freshly verified main registry byte-for-byte, including record order, pending/retired statuses, reviewers, dates, evidence and scope. The agent manifest is `c00fa16767cabd224729d12aa82042aefc28003279ad37c1688afa36b02ba3cf` (496 files); evaluations and promotions retain their original bindings.
+
+The disclosure review found four new closed formula metadata keys (`departmentBusinessCode`, `positionBusinessCode`, `businessUnitCode`, `jobGradeCode`) under the existing authored formula contract. Their key/type metadata is available to the existing formula authoring path; actual employee values, catalogue codes and registration text are not added to provider payloads. No new AI purpose, provider transport or registered agent effect is introduced. Imported payroll tax basis, settings, source identifiers, raw document answers and completion proposals stay inside existing authorized native services. Native Probation completion adds no AI call or serializer. Existing employee profile summaries remain their explicit prior field projections.
+
+The approved rich email implementation separately expands the **non-AI SMTP** representation to rich HTML and inline attachments. That transport change is not an AI disclosure claim. Payroll calculations, signing decisions, permissions and Personnel writes remain deterministic native owners; no live send, payroll reprocessing or data repair was performed by this source binding.
+
+Automatic approval review requested exact-source permission for this binding. The repository owner then replied “Approve this exact rebinding” in this Board chat on 18 November 2026, explicitly approving `c15fe0d60349c734b08523a141555078e1277284be0c0f0f00f838bc42583970`. That exact approval resolves the refusal and controls this candidate binding.
+
+
+### Board twelve-item verification repair source (18 November 2026)
+
+The reviewed pre-binding source is `900448c008437024043bf451969f92796dbe5a1e`. Its provider closure is 1,732 files, fingerprint `8c05723421c60173373b1e8902e4d4760ed551080f9d310d7fb11ff7d0aa57a6`. Exactly 28 active digest literals renew from `c15fe0d60349c734b08523a141555078e1277284be0c0f0f00f838bc42583970`; reversing those substitutions reproduces the previous registry byte-for-byte, preserving pending/retired records and every original reviewer, date, evidence and status. The generated agent closure is 496 files, fingerprint `ed08a48d1168ad9c9dee5e2760efb4c5dad9dac24e27cf3cbeb79a56c8f8bbbd`.
+
+Compared with the exact c15 binding, covered repairs type the canonical payroll tax-basis input, lazily load the established lifecycle entrypoints, lock completion only after an actual signature, and preserve the two existing case-owned signatory aliases. They add no provider purpose, disclosure field, serializer or provider transport. The earlier formula review still governs the four key/type metadata names; actual employee values and catalogue codes remain outside those authoring payloads. Native SMTP rich HTML and inline attachments remain a separate authorized email change, not an AI provider disclosure claim.
+
+The owner's exact approval of repaired fingerprint `b4fef7ba4299107dd74c336314379d4e2a30a7e18cbcb8a653288ba0da66285b` is retained with that withdrawn proposal only. It was not committed or reused after the necessary signatory ownership repair changed covered source. The owner's standing coordinator authorization for all AI binding is historical authority; any additional exact-fingerprint requirement from automatic review must be resolved before this proposal is committed.
+
+Focused native behavior receipts and their original failures remain attached to their actual source identities. R5 run44325951518 passed all 80 general lifecycle cases but failed one scope fixture and four test-fixture compiler errors; those test-only repairs are under R6 run44330148163. This binding supplies no test PASS, stored evaluation renewal, release, installation, staging acceptance or production authority. Payroll history maintenance is a separate later candidate and is excluded.
+
+The repository owner answered the exact final-fingerprint question in the Board chat on 18 November 2026: **"Approve this final fingerprint"**, explicitly authorizing `8c05723421c60173373b1e8902e4d4760ed551080f9d310d7fb11ff7d0aa57a6`. This resolves automatic approval review's refusal of this exact commit. The earlier b4 approval remains separate historical evidence.
+
+
+### Payroll history maintenance source binding proposal (19 November 2026 MYT)
+
+The reviewed pre-binding source is `9175b59c25182ca433449a6f34d344be352184b4`, available in PR253. Its exact transitive provider transform closure contains 1,741 files, fingerprint `b96ba7264189a0feef2b240106ed52cba56e563db9caf82732e1569402e28abd`. The same 28 active approval digest literals renew from the exact first12 binding `8c05723421c60173373b1e8902e4d4760ed551080f9d310d7fb11ff7d0aa57a6`. Reversing exactly those substitutions reproduces the prior registry byte-for-byte, preserving every reviewer, review date, evidence, status, contract identifier and pending/retired record. The refreshed agent manifest covers 496 files, fingerprint `d30b5383b217ea0096a37fae04c27f2ce1a65634904ffe6dd15cb064b99bdc07`.
+
+Independent source review found no added provider purpose, payload field, serializer, transport, tool or agent execution handler. Maintenance contribution chains, native origin/custody links and tax predecessor IDs remain in deterministic native services. Anomaly source payslip IDs serve only native deduplication and the boolean completeness proof; the explicit DetectorContext projection excludes them. Existing Assistant payroll summary/change serializers retain their closed aggregate/component-line allowlists. Native SQL source-ID parameters preserve the existing issued-display fields. The three UI capability inventory changes classify human review/handoff; they register no model-executable financial effect. This proposal changes no stored evaluation or promotion.
+
+The owner's standing coordinator authorization for AI binding is retained as historical authority. The prior exact approval8c remains specific to the first12 source and is not treated as exact authorization for this new fingerprint. Any exact-fingerprint requirement from automatic review must be resolved before committing this proposal; this paragraph records no new human approval.
+
+R7 run44343542342 passed the whole compiler and 207/210 behavioral cases at its actual source3e691013a. The three diagnosed failures have reviewed SQL/fixture repairs; the bounded R8 run44348932617 is checking those failed/affected areas and the compiler at9175b59c. Final source/provider admission and production build remain separate required checks. The proposal supplies no runtime PASS, release, installation, staging acceptance, live payroll change or production authority.
+
+The repository owner answered the exact maintenance-fingerprint question in the Board chat on 19 November 2026 MYT: **"Approve this maintenance fingerprint"**, explicitly authorizing `b96ba7264189a0feef2b240106ed52cba56e563db9caf82732e1569402e28abd`. This resolves automatic approval review's refusal of this exact binding commit. It grants source binding only; the pending runtime/compiler/build checks retain their actual states.
+
+
+## Integrated approved board release — 19 November 2026
+
+The owner explicitly approved carrying the same 28 AI-provider approvals to source fingerprint `24b3d0d966b7ee5f1deea4f8857480573b41aed90da17cf69260bd73aee0c315` (1,824 covered files). The reviewed application source is `20c3e63ca647c59e053e650b97a96578a4ea1a06`. Every existing reviewer, review date, evidence reference and status remains unchanged; reversing only the 28 source-digest substitutions reproduces either approved parent registry byte for byte. Pending and retired entries are unchanged.
+
+Independent composition review found no new AI payload fields, purposes, serializers, transports, executable tools or financial-effect authority. The repair handles a native email recovery hold before consuming its sealed prerequisite. Rich email remains an intentional non-AI SMTP disclosure to its authorized recipients. The previously reviewed formula authoring metadata boundaries remain unchanged.
+
+This source binding does not renew stored evaluations, promote an agent release or claim staging installation. Original failed verification evidence remains failed; targeted recovery and the final authenticated release checks retain their actual producing source identities.
+
+
+## Repaired combined board release — exact owner approval, 19 November 2026 MYT
+
+The owner explicitly instructed: “Approve carrying the same 28 AI approvals to fingerprint b4110e6a80e560ce2488726988354d9b796c655a74f209fa6403e61668d00f6e and proceed with staging once the remaining checks pass.” This authorizes the exact source binding and conditional staging release; it supplies no passing verification or production authority.
+
+The reviewed pre-binding aggregate is `96f99184dc5e94c829b5b44e29300c800d5529c3`. Its provider closure contains 1,827 files and the exact approved fingerprint. Exactly 28 active approval digest literals move from `24b3d0d966b7ee5f1deea4f8857480573b41aed90da17cf69260bd73aee0c315` to the approved `b4110e6a…` fingerprint. Reversing those substitutions reproduces the entire prior registry byte for byte, preserving every reviewer, review date, evidence, status and pending/retired record. Independent source reviews found no new provider payload fields, purposes, transports or model-executable financial authority.
+
+The agent manifest becomes `d526020eeb7770cc332fed5a7ba91bb5ff1a1c55a15e13940bbb00f5b55540f9` across 497 files. Stored evaluations and promotions retain their original bindings. Original failed checks remain failed at their actual source identities; final release, worker qualification and staging arrival checks must pass separately.
+
+
+## Board gate repairs — binding proposal, 19 November 2026 MYT
+
+The reviewed aggregate application source has provider fingerprint `dd68c84e701b1470eeb1b3cca8673ff1a6f47420265568cfaf2541fae7729612` across 1,827 files. The proposal carries exactly the same 28 active approvals from `b4110e6a80e560ce2488726988354d9b796c655a74f209fa6403e61668d00f6e`; reversing those substitutions must restore the entire previous registry byte for byte. Every reviewer, date, evidence reference, status, pending record and retired record remains unchanged. **The proposal is pending exact owner approval; the registry has not been rebound.**
+
+The disclosure change adds three static public navigation purposes through the existing `product_guidance` composition: Offboarding requisitions, native document signing, and payroll history records. The returned fields remain `ok`, `page`, `purpose`, `navigation`, `humanBoundary` and `provenance`. The new owners repeat administrator and module checks, read no private case, employment, pay, document-answer or recipient records, and expose no financial or native signing action. The native AI Centre catalogue registration preserves global stop and per-function disable controls. These three new public purposes are explicitly part of this proposal; they are not described as an unchanged disclosure purpose.
+
+The payroll repair reuses canonical authorized source rows inside the same transaction, retaining deterministic hashes, correction validation, ordering, monetary calculations and existing time, row and byte limits. It changes no provider serializer or transport. The signer fixture, append-only catalogue migration, native success publisher and strictly qualified legacy worker-header proof supply no additional provider data.
+
+The module closure contains 497 files. Its pre-binding digest is `fc58a5519c1f9e216e116f58c638ab8f21f10bf214850423340ceebb1e0a09b2`; the independently reconstructed expected digest after the proposed registry binding is `f330092ddc66ae58098fd426b9da5182bd795e9ce7141e455469766a6ed10502`, because that closure includes the approval registry. Regenerate it after binding. Stored evaluations and promotions are not renewed.
+
+Targeted payroll qualification 44469430334 passed 43 assertions at its own producing source; lifecycle fixture qualification 44468256478 passed 80 and native publisher qualification 44468859536 passed 56. Guidance catalogue and worker compatibility qualification are still pending. Original full gate 44458355850 remains failed with its original artifacts. The necessary financial-owner, deployment and migration changes require the existing impact policy's full validation before staging. This proposal supplies no passing gate, installation, human acceptance or production authority.
+
+
+### Exact owner approval and applied binding — 19 November 2026 MYT
+
+The repository owner instructed in this Board chat: “Approve carrying the same 28 AI approvals to fingerprint dd68c84e701b1470eeb1b3cca8673ff1a6f47420265568cfaf2541fae7729612. Run the final gate and archive checks, then deploy to staging once they pass.” This exact decision resolves the proposal above and authorizes its 28 source-digest substitutions and conditional staging release. The three static public guidance purposes are included in that decision; every original reviewer, date, evidence reference and status is retained. No pending or retired approval is changed.
+
+The final generated module digest is `f330092ddc66ae58098fd426b9da5182bd795e9ce7141e455469766a6ed10502` across 497 files. Subsequent targeted guidance qualification 44471113241 passed all 348 assertions across 25 files, and worker development qualification 44472106134 passed 214 native controls, at their own producing sources. Full gate, actual archive qualification, staging arrival and changed authenticated journeys remain separate requirements. No original failure is relabelled, stored evaluation renewed, agent release promoted or production deployment authorized.
+
+## Six follow-on board items, 19 November 2026 MYT
+
+The repository owner chose “Approve this exact fingerprint for staging” when asked to carry the same 28 provider approvals to `220aa349a2e71fb050fd38a0d84812d36136e518b00fd2454e3716e87fad8b28`. The reviewed source is `62d7d695de94d0ad1518fbbe88402c729d78c86d` and the provider source manifest covers 1,830 files.
+
+Source review found no changes to provider serializers, transports, request fields or live tool registrations. The report authoring provider continues to receive metadata only. Historical salary and payment evidence uses a separate table restricted by Workforce and Payroll access. The fixed-transaction queue action is listed as an unregistered action requiring approval. The 28 approved digest literals move from `dd68c84e701b1470eeb1b3cca8673ff1a6f47420265568cfaf2541fae7729612` to the owner-approved digest. Reversing this replacement reproduces the prior registry byte for byte, including pending and retired entries.
+
+This approval covers staging source binding. Existing evaluation and promotion records retain their source identity. Release verification, the worker package, predecessor arrival and staging deployment remain separate requirements.
+
+### Six-item release repairs, 19 November 2026 MYT
+
+The repository owner chose “Approve this exact fingerprint for staging” for `2dcbe0929d2e71097ddbcfd7838367209e64911b28e987c4440ec5ba78ed88eb`, produced by reviewed source `7fbc87f41afab8e18e906a4d9829318d69934d23`. The registry carries forward the same 28 approved records from `220aa349a2e71fb050fd38a0d84812d36136e518b00fd2454e3716e87fad8b28` by changing only those records' digests. The inherited fixture corrections and populated-upgrade checks preserve the existing migration bytes. The two creator-scoped payroll history pages require native navigation, and the Days/Hours resolver is imported through the existing payroll service. Provider payloads and model-executable actions stay within the existing review scope.
+
+## Movement correction dates and email/workflow saves, 20 November 2026 MYT
+
+The repository owner approved carrying forward the same 28 existing provider approvals to fingerprint `0bc0ec1b3ebd8203b8850c1632d0326953ba3c49a32e257f47d38be63af8ffca` for staging. The reviewed combined source is `dd18b9e7b709f99124ee7593198b7d18f73f34bb` and covers 1,831 files.
+
+The Movement repair adds an audited date amendment and uses it in Personnel history. Email settings preserve saved connection records when deactivating a relay or following a stale link. Workflow pause targets the last saved definition and retains draft edits. The covered source adds no AI provider fields, purposes or transports.
+
+Exactly 28 digest literals move from `2dcbe0929d2e71097ddbcfd7838367209e64911b28e987c4440ec5ba78ed88eb` to the approved fingerprint. Reversing those substitutions restores the previous registry byte for byte. Existing evaluation and promotion records retain their source identities. The combined candidate proceeds through hosted release verification and staging acceptance.
+
+### Exact approval for the email deactivation handoff, 20 November 2026 MYT
+
+The repository owner approved carrying the same 28 provider approvals to `4aa035f20352aba45c62dc711522c890c571fc3f2330341aedfebc399f30b4bf`. The source delta from `4e5ec01bde370ddd922115a22d27376ad03b0335` classifies the Deactivate Email server action as a human handoff under Access and Authentication, matching the other email settings actions. It adds no model-executable action, provider field, purpose or transport.
+
+The provider closure contains 1,831 files. Exactly 28 literals change from `0bc0ec1b3ebd8203b8850c1632d0326953ba3c49a32e257f47d38be63af8ffca` to the approved digest. Reversing those substitutions reproduces the prior registry byte for byte. Pending and retired records, review metadata and previous evaluations remain as recorded. Staging remains ordered after the existing production release and requires passing release verification.
+
+### Payroll History workbook employee matching, 20 November 2026 MYT
+
+The repository owner explicitly approved carrying the same 28 active provider approvals to fingerprint `b7443d0c379f60b7a95397a58ed200d115c73eb7666a34609fb7768a1088d6d6` for staging. The reviewed application source is `43c37531ab51776e264f74a21c07ae57c54af3ac`. The provider closure contains 1,831 files. The two changed files in that closure update Payroll History employee matching and workbook confirmation. They add no provider fields, purposes, transports or model-executable actions.
+
+Exactly 28 digest literals change from `4aa035f20352aba45c62dc711522c890c571fc3f2330341aedfebc399f30b4bf` to the approved digest. Reversing those substitutions reproduces the prior registry byte for byte, including pending and retired records. The separate module-agent manifest is regenerated after the registry update. Existing evaluations and promotions retain their recorded source identities.
+
+The original release run 44685513441 stopped during build and plan manifest validation. Its independently successful checks retain their original evidence identities. That run contains no release plan, application or browser results, or build packet.
+
+### Combined Payroll and Direct Superior staging follow-up, 20 November 2026 MYT
+
+The repository owner explicitly approved carrying forward the same 28 existing provider approvals to fingerprint `5a3f56621225400761307d739fd8d99391c106c6c885ee51350fd881dc8a3f46` for staging. The reviewed source is `1144d63b6e59cd983397392c78a81710e6772e3b`, covering 1,832 files. It combines Payroll reprocessing and TP3 handling, the Direct Superior workflow, Payroll layout improvements, and payroll read authorization. The reprocessing review is a native session and presentation action. The changes preserve the existing provider fields, purposes, transports and model-executable actions.
+
+Exactly 28 approved source digests move from `b7443d0c379f60b7a95397a58ed200d115c73eb7666a34609fb7768a1088d6d6`. Reversing those substitutions restores the prior registry byte for byte, preserving pending and retired records and all review metadata. The regenerated module-agent fingerprint is `f75d0ca49f5419ac5112933213f143010c5d358bfa88563274e7118eed45c713` across 497 files. Existing evaluation and promotion records retain their source identities. Deployment follows Payroll History staging handback and passing verification on the combined candidate.
+
+### Combined staging approval including Remove Income Tax, 20 November 2026 MYT
+
+The repository owner approved carrying forward the same 28 existing provider approvals to staging fingerprint `65440170ff7c02918cd7ac458d4b95a3afc8456e2d0a6e66b1cfc8e861e4e441`. The reviewed source is `a89a454cd843ea551b5110dcef10446feec49299` and covers 1,832 files. This includes the Direct Superior and Contract replay repairs plus PR #264's native reprocessing path for open payroll with changed tax inputs. The work preserves all provider fields, purposes, transports, and model-executable actions.
+
+Exactly 28 approved digests move from `5a3f56621225400761307d739fd8d99391c106c6c885ee51350fd881dc8a3f46`. Reversing those substitutions restores the former registry byte for byte. Pending and retired records, review metadata, and recorded evaluations retain their existing identities. The derived module-agent fingerprint is `ae496d3955f8208e0ba59a024f7b6d629c458dfd8b5a01c00ef4633e4feecf8d` across 497 files. Staging still requires a passing combined gate against the verified Payroll History handback.
+
+### Combined staging approval including BOARD OPEN, 20 November 2026 MYT
+
+The repository owner approved carrying forward the same 28 existing provider approvals to staging fingerprint `f5db9c3caab0bffe3368c66d40f96d695ec3f09516160178cb1ddd859e01a5b8`. The reviewed source is `bd65acc891a371caad90b403a93582ed0f5dedad`, covering 1,833 files. PR #266 adds a human-operated grouped tax preview and confirmation, payroll and workbook presentation changes, and a session warning. The changes preserve the existing provider fields, purposes, transports, and model-executable actions.
+
+Exactly 28 active digests move from `65440170ff7c02918cd7ac458d4b95a3afc8456e2d0a6e66b1cfc8e861e4e441`. Reversing the replacements restores the prior registry byte for byte. Pending and retired records, approval metadata, and evaluation identities are preserved. The derived module-agent fingerprint is `e183e42f7af8572d91fa9ae0d2b4181dc8795054c09b992a97656e7f1c69ee5f` across 497 files. The passing checks from any prior commit retain their own source identities.

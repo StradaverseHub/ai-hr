@@ -16,7 +16,7 @@ import { MOBILE_DESTINATIONS } from '../../lib/mobile-composition';
 import { useApi, useApiV2 } from './api';
 import { TasksPageV2 } from '../../lib/mobile-api/v2/tasks';
 import { ClockSummary, LeaveSummary, PayslipRow } from './home-cards';
-import { HomeNeeds } from './inbox';
+import { HomeLoopActions, HomeNeeds, useHomeSummary } from './inbox';
 import { TeamPanel } from './team-panel';
 import { DesignText as Text, TenantSurface, useTenantDesign } from './design';
 import { useSession } from './session';
@@ -86,10 +86,16 @@ function Widget({ block, refreshToken, design, home }: { block: MobileBlock; ref
     case 'space': return <View style={{ height: block.size }} />;
   }
 }
+function StandaloneHomeActions({ refreshToken }: { refreshToken: number }) {
+  const { signOut } = useSession();
+  const summary = useHomeSummary(signOut, refreshToken);
+  return <HomeLoopActions summary={summary} />;
+}
 export function ComposedPage({ design, id = 'home' }: { design: MobileDesignV2; id?: string }) {
   const { palette } = useTenantDesign(), [tick, setTick] = useState(0);
   const c = design.composition, page = c.pages.find(p => p.id === id), gap = c.layout.gap;
-  return <Screen onRefresh={() => setTick(n => n + 1)}>{page ? <>{page.title ? <Title>{page.title}</Title> : null}<View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -gap / 2 }}>{page.blocks.map(block => {
+  const needsStandaloneActions = page?.id === 'home' && !page.blocks.some(block => block.kind === 'tasks');
+  return <Screen onRefresh={() => setTick(n => n + 1)}>{page ? <>{page.title ? <Title>{page.title}</Title> : null}{needsStandaloneActions && <StandaloneHomeActions refreshToken={tick} />}<View style={{ flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -gap / 2 }}>{page.blocks.map(block => {
     const surface = block.surface === 'inherit' ? c.layout.surface === 'flat' ? 'plain' : 'card' : block.surface;
     return <View key={block.id} style={{ width: block.width === 'half' ? '50%' : '100%', paddingHorizontal: gap / 2, marginBottom: gap }}><TenantSurface band={surface === 'band'} align={block.align}><View style={{ gap: 12, minWidth: 0, padding: surface === 'plain' ? 0 : 16, borderRadius: c.layout.radius, backgroundColor: surface === 'band' ? palette.button : surface === 'card' ? palette.card : 'transparent', borderWidth: surface === 'card' && c.layout.surface === 'outline' ? 1 : 0, borderColor: palette.border, ...(surface === 'card' && c.layout.surface === 'raised' ? { shadowColor: '#000', shadowOpacity: .08, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 } : {}) }}>{block.title && !['welcome', 'text', 'action'].includes(block.kind) ? <Text style={{ color: surface === 'band' ? palette.onButton : palette.text, fontSize: 21, fontWeight: '600' }}>{block.title}</Text> : null}<Widget block={block} design={design} refreshToken={tick} home={page.id === 'home'} /></View></TenantSurface></View>;
   })}</View></> : <><Title>{t('tabHome')}</Title><Button title={t('tabHome')} onPress={() => router.replace('/')} /></>}</Screen>;

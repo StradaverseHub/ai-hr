@@ -2,14 +2,13 @@ import { getTranslations } from 'next-intl/server';
 
 import type { SessionContext } from '@/db/client';
 import { viewerEmployment } from '@/lib/viewer';
-import { noticesForEmployment, popupNoticeFor, unreadNoticeCount } from '@/core/notice';
+import { noticesForEmployment, popupNoticeFor } from '@/core/notice';
 import { dismissNoticePopupAction } from '@/app/notices/actions';
-import { NoticeBoardCard } from './notice-board-card';
 import { NoticePopup } from './notice-popup';
 
 /**
- * 6e122302 — the two places a notice appears WITHOUT being asked for: the dashboard card and the
- * after-login popup.
+ * 6e122302 — the place a notice appears WITHOUT being asked for: the after-login popup. (The old dashboard's
+ * Notice Board card was retired with that dashboard on 12 Nov 2026; Employee Today draws its own Notice Board.)
  *
  * ── WHY THEY LIVE IN ONE SMALL FILE INSTEAD OF INSIDE app/page.tsx AND app/layout.tsx ──────────────────
  * i18n coverage. `test/i18n-coverage.test.ts` check C only verifies files that open exactly ONE
@@ -18,36 +17,14 @@ import { NoticePopup } from './notice-popup';
  * two surfaces unverified — which is exactly how r127 shipped twelve labels that rendered as
  * MISSING_MESSAGE behind a green suite, a green build and a 200 response.
  *
- * This file opens ONE namespace, so every key below is checked. The hosts just mount the slots.
+ * This file opens ONE namespace, so every key below is checked. The host just mounts the slot.
  *
- * Both slots resolve the viewer's employment themselves (through `viewerEmployment`, the memoised seam
+ * The slot resolves the viewer's employment themselves (through `viewerEmployment`, the memoised seam
  * lib/viewer.ts added for the topbar identity — same row, one query per request instead of two) and
  * render NOTHING when there is none — a principal with
  * no employment (an admin login not attached to a person) has no notices, which is correct rather than an
  * error, and neither surface should be a special case in its host.
  */
-
-/** The dashboard's Notice Board card. Returns null when the viewer has no employment. */
-export async function NoticeBoardCardSlot({ s, monolith = false }: { s: SessionContext; monolith?: boolean }) {
-  const t = await getTranslations('notices');
-  const me = await viewerEmployment(s);
-  if (!me) return null;
-  const rows = await noticesForEmployment(s, me.employmentId);
-  const unread = unreadNoticeCount(rows);
-  return (
-    <NoticeBoardCard
-      // Five is a card, not a listing — "View all notices" is one click away and is where the rest live.
-      items={rows.slice(0, 5).map((n) => ({ id: n.id, title: n.title, unread: n.firstViewedAt == null }))}
-      unread={unread}
-      title={t('cardTitle')}
-      emptyLabel={t('cardEmpty')}
-      viewAllLabel={t('cardViewAll')}
-      newCountLabel={t('cardNewCount', { count: unread })}
-      // r401 — the Monolith dashboard draws this card as a numbered section; Classic passes nothing.
-      monolith={monolith ? { unreadWord: t('cardUnreadWord') } : undefined}
-    />
-  );
-}
 
 /**
  * The after-login popup. At most ONE notice, chosen by `popupNoticeFor`; returns null when nothing is due.

@@ -29,7 +29,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, type Base } from './harness';
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, decideAttendanceCorrection, setAttendancePolicy } from '../core/attendance';
@@ -147,7 +148,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
   const a = adminCtx(b);
   const e = await hireEmployee(a, {
     person: { fullName: 'Apply OT Worker', primaryEmail: uniq() },
@@ -240,7 +241,7 @@ describe('2 · the refusals the employee reads are the ones that are TRUE of wha
   it('a duplicate approved plan is still refused, with the date in the sentence', async () => {
     await redirectOf(() => myRequestOvertime(form({ date: FUTURE, otHours: '2', reason: 'First plan' })));
     const first = await planFor(FUTURE);
-    await decideAttendanceCorrection(adminCtx(b),{correctionId:first.id,decision:'approved'});
+    await decideAttendanceCorrection(adminCtx(b),{correctionId:first.id,decision:'approved',expectedStageIndex:0});
     expect(await planFor(FUTURE)).toMatchObject({status:'approved',approvedOtMinutes:120,appliedAt:null});
     const url = await redirectOf(() => myRequestOvertime(form({ date: FUTURE, otHours: '1', reason: 'Second plan' })));
     // ── ec30b2e9 (r364) · THIS ASSERTION IS UPDATED, NOT LOOSENED ──────────────────────────────────────
@@ -269,7 +270,7 @@ describe('2 · the refusals the employee reads are the ones that are TRUE of wha
     const first = await planFor(PAST);
     await checkIn(adminCtx(b),{employmentId,date:PAST,time:'09:00'});
     await checkOut(adminCtx(b),{employmentId,date:PAST,time:'21:00'});
-    await decideAttendanceCorrection(adminCtx(b),{correctionId:first.id,decision:'approved'});
+    await decideAttendanceCorrection(adminCtx(b),{correctionId:first.id,decision:'approved',expectedStageIndex:0});
     expect(await planFor(PAST)).toMatchObject({status:'approved',approvedOtMinutes:180});
     // The premise in its own right: this fixture is in the COUNTED window, not the unapplied one.
     expect((await planFor(PAST)).appliedAt, 'counted means applied_at is stamped').not.toBeNull();

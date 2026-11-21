@@ -1,3 +1,5 @@
+import { InquiryScopeSummary } from '@/components/leave/inquiry-scope-summary';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -9,15 +11,14 @@ import { Button, Card, EmployeeName, PageHeader, inputCls } from '@/components/u
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
-  type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { LeaveInquiryNav } from '@/components/leave/leave-inquiry-nav';
 import { InquiryNote } from '@/components/leave/inquiry-note';
 import styles from '@/components/leave/inquiry-table.module.css';
-import { sortInquiryEmployees } from '@/lib/leave-inquiry';
+import {leaveInquiryPickerInput} from '@/lib/leave-inquiry-picker';
 import { parseInquiryQuery, InquiryQueryError } from '@/lib/leave-inquiry-query';
-import { leaveInquiryContext, type LeaveInquiryContext } from '@/packs/leave/service';
+import { leaveInquirySnapshot,readLeaveInquiryPickerTx,type LeaveInquiryPickerPage, type LeaveInquiryContext } from '@/packs/leave/service';
 // 4a1abc4a: HR's copy of the employee's own balance grid must print the figures identically to it.
 import { dayPluralCategory, formatDays } from '@/lib/day-format';
 // 31e39d74: HR's grid captions a 0.00 exactly as the employee's own grid does — one mapping, one wording.
@@ -117,47 +118,35 @@ export default async function EmployeeBalancesPage({
   const t = await getTranslations('leave');
   const tInq = await getTranslations('leave.inquiry');
   const tMe = await getTranslations('me');
+  const tPeople = await getTranslations('people.list');
   const tf = await getTranslations(LEAVE_FIGURE_NS); // 7da0a4e7 — one name per figure; see lib/leave-figure-labels.ts
   const locale = await getLocale();
   const sp = await searchParams;
 
   let query: ReturnType<typeof parseInquiryQuery>;
   let inquiry: LeaveInquiryContext;
+  let picker:LeaveInquiryPickerPage;
+  let result:Awaited<ReturnType<typeof inquiryBalancePage>>;
   try {
     query = parseInquiryQuery(sp, 'balances');
-    inquiry = await leaveInquiryContext(session, scopeIds, query);
+    const frame=await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)=>({
+      picker:await readLeaveInquiryPickerTx(tx,session,scope.companyIds,leaveInquiryPickerInput(sp,scope.selected?.employmentId),locale),
+      inquiry:scope,result:await inquiryBalancePage(session,scope,query,locale,query.pq,tx),
+    }));
+    inquiry=frame.inquiry;result=frame.result;picker=frame.picker;
   } catch (error) {
     if (!(error instanceof InquiryQueryError)) throw error;
     return <Card><p role="alert" className="p-6">{tInq('invalidQuery')}</p><Link href="/leave/employee-balances" className="p-6 text-primary">{tInq('resetInquiry')}</Link></Card>;
   }
-  const employees = sortInquiryEmployees(inquiry.employees, locale);
   const selected = inquiry.selected;
-  /**
-   * The panel is fed from the SAME authorized inquiry employee metadata this page already read — a `.map`, never
-   * a second, wider source of employees. `selected` above is re-guarded against this very list, so the list is
-   * what is DISPLAYED and never what grants access.
-   */
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.department,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnit,
-    businessUnitId: e.businessUnitId,
-    // DERIVED ON THE SERVER: the browser gets this wrong by a day across MYT midnight.
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+  const employeeCount=picker.populationTotal;
   /** Read on the SERVER, so the first paint is already right rather than opening and folding (r320). */
   const panelCookies = await cookies();
   const panelDefaultOpen = !selected || (panelCookies.get(`${PANEL_COOKIE}-selected`)?.value === selected.employmentId && panelCookies.get(PANEL_COOKIE)?.value === '1');
 
   const { asOf, q, typeIds, departmentIds, sort, dir, pq } = query;
   const today = todayInKualaLumpur();
-  const [result, leaveTypes, replacementRequest, recalcAudit] = await Promise.all([
-    inquiryBalancePage(session, inquiry, query, locale),
+  const [leaveTypes, replacementRequest, recalcAudit] = await Promise.all([
     listLeaveTypes(session, { locale }),
     selected ? replacementRequestAvailability(session, selected.employmentId, today) : Promise.resolve({ allowed: false } as const),
     selected ? listEntitlementRecalcAudit(session, selected.employmentId) : Promise.resolve([]),
@@ -382,7 +371,7 @@ export default async function EmployeeBalancesPage({
       removeAriaLabel: t('filters.removeFilter', { label: t('filters.leaveType') }),
     },
   ];
-  filterFields.push({ kind: 'multi', name: 'department', label: t('filters.department'), ariaLabel: t('filters.department'), options: [...new Map(employees.filter(e => e.departmentId).map(e => [e.departmentId!, { value: e.departmentId!, label: e.department ?? '—' }])).values()], removeAriaLabel: t('filters.removeFilter', { label: t('filters.department') }) });
+  filterFields.push({ kind: 'multi', name: 'department', label: t('filters.department'), ariaLabel: t('filters.department'), options: picker.allDepartmentOptions.map(option=>({value:option.id,label:option.name})), removeAriaLabel: t('filters.removeFilter', { label: t('filters.department') }) });
   const filterValues = { type: typeIds, department: departmentIds };
   const filterLabels = {
     filter: t('filters.filter'),
@@ -460,7 +449,7 @@ export default async function EmployeeBalancesPage({
               />
               <span className="text-xs font-normal text-muted-foreground">{selected.company}</span>
             </div>
-          ) : <span className="text-sm font-semibold">{tInq('allEmployeesHeader', { count: employees.length, companies: inquiry.companies.map(c => c.name).join(', ') })}</span>
+          ) : <InquiryScopeSummary heading={tInq('allEmployeesHeader', { count: employeeCount, companies: `${tPeople('company')}: ${inquiry.companies.length}` })} companies={inquiry.companies} />
         }
         panel={
           <Card className="p-4">
@@ -468,7 +457,7 @@ export default async function EmployeeBalancesPage({
             <p className="mt-1 text-xs text-muted-foreground">{tInq('panelHint')}</p>
             <div className="mt-3">
               <EmployeeScopePanel
-                employees={panelEmployees}
+                remote={{initial:picker,endpoint:'/api/leave/inquiry/employees'}}
                 selectedId={selected?.employmentId ?? null}
                 basePath="/leave/employee-balances"
                 selectParam="emp"
@@ -535,13 +524,13 @@ export default async function EmployeeBalancesPage({
             {(
               <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs">
                 <span className="text-muted-foreground">{t('filters.export')}:</span>
-                <a href={exportHref('csv')} download className="font-medium text-primary hover:underline">
+                <ExportDownloadLink href={exportHref('csv')} download className="font-medium text-primary hover:underline">
                   {t('filters.exportCsv')}
-                </a>
+                </ExportDownloadLink>
                 <span className="text-muted-foreground">·</span>
-                <a href={exportHref('xlsx')} download className="font-medium text-primary hover:underline">
+                <ExportDownloadLink href={exportHref('xlsx')} download className="font-medium text-primary hover:underline">
                   {t('filters.exportExcel')}
-                </a>
+                </ExportDownloadLink>
               </div>
             )}
           </div>
@@ -563,7 +552,7 @@ export default async function EmployeeBalancesPage({
           )}
 
           {/* 23e87eef: All is an explicit authorized view; empty scope remains distinct. */}
-          {employees.length === 0 ? (
+          {employeeCount === 0 ? (
             <Card>
               <p className="px-4 py-10 text-center text-sm text-muted-foreground" data-testid="pick-employee">
                 {tInq('noEmployees')}

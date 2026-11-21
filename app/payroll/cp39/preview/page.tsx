@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { notFound, redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { listCompanies } from '@/core/read';
@@ -562,7 +563,7 @@ export default async function Cp39PreviewPage({ searchParams }: { searchParams: 
                 <Field label={t('pcbPaymentPaidOn')}>
                   <input type="date" name="paidOn" defaultValue={rec?.paidOn ?? ''} className={inputCls} />
                 </Field>
-                <button className={btnGhost}>{t('pcbPaymentSave')}</button>
+                <ActionButton actionKind="saving" className={btnGhost}>{t('pcbPaymentSave')}</ActionButton>
               </form>
             );
           })}

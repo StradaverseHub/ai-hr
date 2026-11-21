@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useState } from 'react';
+import { isValidOtRate } from '@/lib/ot-rate';
 
 // 88e94371 — the Overtime section editor for a "Lateness, Early Out & Overtime Settings" rule. A dynamic
 // table of OT time-bands (+ Add Row) plus the "Apply to Early Overtime" checkbox. Rows serialize into one
@@ -51,20 +52,21 @@ export type OtEditorLabels = {
   phRateNone: string;
   ladderGapWarning: string;
   ladderOpenEndedWarning: string;
+  /** c03670cc — typed rates. Optional so older callers keep compiling; English fallbacks below. */
+  rateInvalid?: string;
+  phRateInvalid?: string;
+  rateHint?: string;
+  /** Template with {rate}: shown beside a Variable band whose rate has its own "other rate" column. */
+  otherRateNote?: string;
 };
 
-// 7c834696 — '0' is now offered: that portion of overtime is RECORDED but not paid (request §7).
-//
-// ADJACENT DEFECT FIXED HERE: these option values are compared by STRING, and the form loaded a saved rate
-// as `Number(rate).toFixed(2)` — so a band saved at 1.5 came back as "1.50", matched no option, and the
-// select silently displayed the FIRST rate instead. Re-saving the rule then wrote that wrong rate. Both
-// sides are now one decimal place, and a stored rate outside this list is offered as its own option rather
-// than being quietly rewritten.
-const VARIABLE_RATES = ['0.0', '1.0', '1.5', '2.0', '3.0'];
-const ratesFor = (current: string): string[] =>
-  current !== '' && !VARIABLE_RATES.some((v) => Number(v) === Number(current))
-    ? [current, ...VARIABLE_RATES]
-    : VARIABLE_RATES;
+// c03670cc — Variable bands take a TYPED OT Rate and PH Rate (0 to 99.99, at most two decimals) instead
+// of a fixed list. The value is kept as the text that was typed and posted as text, so the server
+// validates exactly what the admin saw; a third decimal is refused, never rounded. Rates outside the
+// usual columns (0, 1.0, 1.5, 2.0, 3.0) are reported in their own "other rate" column (core/attendance-calc).
+const STANDARD_RATES = ['0', '1', '1.5', '2', '3'];
+const isStandardRate = (text: string) => STANDARD_RATES.some((v) => Number(v) === Number(text));
+const RATE_PATTERN = '\\d{1,2}(\\.\\d{1,2})?';
 /**
  * The SAME ladder rule the server enforces (core/attendance-rule.ts validateOtLadder), evaluated live so a
  * broken table announces itself the moment the rule is opened instead of ambushing the admin on Save.
@@ -94,15 +96,6 @@ const ladderProblems = (rows: OtEditorRow[], labels: OtEditorLabels): Map<number
   }
   return out;
 };
-
-/** The option string that represents a stored value, so string comparison in the select cannot miss.
- *
- *  '' short-circuits, and that guard is load-bearing rather than defensive: `Number('')` is 0, so without
- *  it an EMPTY rate would match the '0.0' option and a band nobody had filled in would display — and then
- *  save — as "record the hours, pay nothing". Empty became reachable in this release (addRow no longer
- *  seeds 1.5), so the guard arrives with it. */
-const rateValue = (current: string): string =>
-  current === '' ? '' : (VARIABLE_RATES.find((v) => Number(v) === Number(current)) ?? current);
 
 /** The `From` a new row must start at: one minute past the last row's `To` (0 for the first row). */
 const nextFromMinutes = (rows: OtEditorRow[]): number => {
@@ -158,8 +151,9 @@ export function AttendanceRuleOtEditor({
       ratePattern: r.ratePattern,
       // null, NOT 0 — the server must be able to tell "not filled in" from the deliberate 0× ("record the
       // hours but do not pay them"). It refuses the first and stores the second.
-      rate: r.rate === '' || !Number.isFinite(Number(r.rate)) ? null : Number(r.rate),
-      phRate: r.phRate === '' ? null : Number(r.phRate) || 0,
+      // c03670cc — the TYPED text, trimmed. '' ⇒ null (rate: refused on save; PH rate: the default).
+      rate: r.rate.trim() === '' ? null : r.rate.trim(),
+      phRate: r.phRate.trim() === '' ? null : r.phRate.trim(),
       ...(!ladderOnly ? {roundingMode:r.roundingMode,roundToMinutes:r.roundingMode==='none'?null:r.roundToMinutes} : {}),
     })),
   );
@@ -244,15 +238,18 @@ export function AttendanceRuleOtEditor({
                         candidate for HTML constraint validation, so an empty rate blocks the submit in the
                         browser, and core/attendance-rule.ts refuses it again on the server. */}
                     {r.ratePattern === 'variable' ? (
-                      <select required value={rateValue(r.rate)} onChange={(e) => update(i, { rate: e.target.value })} className={selCls} aria-label={labels.colRate}>
-                        {r.rate === '' && <option value="">{labels.rateUnset}</option>}
-                        {ratesFor(r.rate).map((v) => (
-                          <option key={v} value={v}>{`${v}×`}</option>
-                        ))}
-                      </select>
+                      <input type="text" inputMode="decimal" required pattern={RATE_PATTERN} maxLength={5} value={r.rate}
+                        onChange={(e) => update(i, { rate: e.target.value })} placeholder={labels.rateUnset}
+                        aria-invalid={r.rate.trim() !== '' && !isValidOtRate(r.rate)}
+                        title={labels.rateHint ?? labels.rateInvalid}
+                        className={`${numCls} w-20 aria-[invalid=true]:border-destructive`} aria-label={labels.colRate} />
                     ) : (
                       <div className="flex items-center gap-1">
-                        <input type="number" required min={0} step="0.01" value={r.rate} onChange={(e) => update(i, { rate: e.target.value })} className={`${numCls} w-20`} aria-label={labels.colRate} />
+                        <input type="text" inputMode="decimal" required pattern={RATE_PATTERN} maxLength={5} value={r.rate}
+                          onChange={(e) => update(i, { rate: e.target.value })}
+                          aria-invalid={r.rate.trim() !== '' && !isValidOtRate(r.rate)}
+                          title={labels.rateHint ?? labels.rateInvalid}
+                          className={`${numCls} w-20 aria-[invalid=true]:border-destructive`} aria-label={labels.colRate} />
                         {/* The label the request asked for. "Flat" names the PATTERN (one rate for the whole
                             band, whatever the day); the number is still a multiplier the engine reads, so it
                             is labelled as one rather than hidden. */}
@@ -261,16 +258,15 @@ export function AttendanceRuleOtEditor({
                     )}
                   </td>
                   <td className="py-1.5 pr-2">
-                    {/* Blank = this band has no separate holiday multiplier and falls back to its ordinary
-                        rate, which is what every existing band does today. A FLAT band has no rate to pick,
+                    {/* Blank = this band has no separate holiday multiplier and the public holiday default
+                        applies, which is what every existing band does today. A FLAT band has no rate to pick,
                         so it has no holiday rate to pick either. */}
                     {r.ratePattern === 'variable' ? (
-                      <select value={rateValue(r.phRate)} onChange={(e) => update(i, { phRate: e.target.value })} className={selCls} aria-label={labels.colPhRate}>
-                        <option value="">{labels.phRateNone}</option>
-                        {ratesFor(r.phRate).map((v) => (
-                          <option key={v} value={v}>{`${v}×`}</option>
-                        ))}
-                      </select>
+                      <input type="text" inputMode="decimal" pattern={RATE_PATTERN} maxLength={5} value={r.phRate}
+                        onChange={(e) => update(i, { phRate: e.target.value })} placeholder={labels.phRateNone}
+                        aria-invalid={r.phRate.trim() !== '' && !isValidOtRate(r.phRate)}
+                        title={labels.rateHint ?? labels.phRateInvalid}
+                        className={`${numCls} w-20 aria-[invalid=true]:border-destructive`} aria-label={labels.colPhRate} />
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
@@ -325,6 +321,27 @@ export function AttendanceRuleOtEditor({
                   <tr className="border-b border-border/60 bg-amber-50/60 dark:bg-amber-500/10">
                     <td colSpan={ladderOnly?6:8} className="px-1 pb-1.5 text-xs text-amber-800 dark:text-amber-200">
                       {problems.get(i)}
+                    </td>
+                  </tr>
+                )}
+                {(r.rate.trim() !== '' && !isValidOtRate(r.rate)) && (
+                  <tr className="border-b border-border/60">
+                    <td colSpan={ladderOnly?6:8} role="alert" className="px-1 pb-1.5 text-xs text-destructive">
+                      {labels.rateInvalid ?? 'OT Rate must be a number from 0 to 99.99 with up to two decimal places.'}
+                    </td>
+                  </tr>
+                )}
+                {(r.ratePattern === 'variable' && r.phRate.trim() !== '' && !isValidOtRate(r.phRate)) && (
+                  <tr className="border-b border-border/60">
+                    <td colSpan={ladderOnly?6:8} role="alert" className="px-1 pb-1.5 text-xs text-destructive">
+                      {labels.phRateInvalid ?? 'PH Rate must be blank or a number from 0 to 99.99 with up to two decimal places.'}
+                    </td>
+                  </tr>
+                )}
+                {(r.ratePattern === 'variable' && isValidOtRate(r.rate) && !isStandardRate(r.rate.trim()) && labels.otherRateNote) && (
+                  <tr className="border-b border-border/60">
+                    <td colSpan={ladderOnly?6:8} className="px-1 pb-1.5 text-xs text-muted-foreground" data-ot-other-rate-note="">
+                      {labels.otherRateNote.split('{rate}').join(r.rate.trim())}
                     </td>
                   </tr>
                 )}

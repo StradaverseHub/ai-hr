@@ -24,7 +24,7 @@ export async function saveSessionPolicyAction(_previous: SessionPolicyResult, fo
   try {
     const saved = await saveSessionPolicy(ctx, form.get('idleTimeoutMinutes'), Number(form.get('revision')));
     forgetIdleTimeout(ctx.tenantId);
-    revalidatePath('/admin/settings/login');
+    revalidatePath('/admin/security-center/password-policy');
     return { status: 'saved', revision: saved.revision };
   } catch (error) {
     const code = error instanceof Error ? error.message : '';

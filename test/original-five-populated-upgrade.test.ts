@@ -96,8 +96,9 @@ it('preserves existing EPF elections and pending profile custody through the ord
   expect(before.requests.map(row=>row.id).sort()).toEqual([assignedId,blockedUnassignedId,malformedId,legacyId].sort());
   expect(before.requests.find(row=>row.id===assignedId)).toMatchObject({status:'pending',proposed,route_history:history,route_approver_user_id:enabled.hrUser});
   const [originalMode]=await storage.client`select count(*)::integer as count from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='epf_mode' and e.enumlabel='manual_percentage'`;expect(originalMode.count).toBe(0);
+  const expectedRetained={...before,statutory:before.statutory.map(row=>({...row,bank_payee_residency:null})),banks:before.banks.map(row=>({...row,legacy:{...row.legacy as Record<string,unknown>,maybank_payment_settings:null}}))};
   const approvedUpgrade=await migrateApprovedUpgrade(storage);
-  expect(retainedUpgradeSnapshot(await unchangedRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));
+  expect(retainedUpgradeSnapshot(await unchangedRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(expectedRetained));
   const elections=await storage.client`select id,epf_mode::text as mode,epf_employee_rate::text as employee_rate,epf_employer_rate::text as employer_rate from employee_statutory_my where tenant_id in (${enabled.tenant},${legacy.tenant}) order by id`;
   expect(elections).toEqual(expect.arrayContaining([{id:enabled.statutory,mode:'auto',employee_rate:null,employer_rate:null},{id:legacy.statutory,mode:'voluntary_excess',employee_rate:'0.1450',employer_rate:'0.1600'}]));expect(elections).toHaveLength(2);
   const [addedMode]=await storage.client`select count(*)::integer as count from pg_enum e join pg_type t on t.oid=e.enumtypid where t.typname='epf_mode' and e.enumlabel='manual_percentage'`;expect(addedMode.count).toBe(1);
@@ -113,7 +114,7 @@ it('preserves existing EPF elections and pending profile custody through the ord
   const ledger=await storage.client`select * from drizzle.__drizzle_migrations order by id`;expect(ledger).toHaveLength(journal.entries.length);
   const terminal=await unchangedRows();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});expect(await unchangedRows()).toEqual(terminal);
-  expect(retainedUpgradeSnapshot(await unchangedRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(before!));expect(await storage.client`select * from drizzle.__drizzle_migrations order by id`).toEqual(ledger);
+  expect(retainedUpgradeSnapshot(await unchangedRows(),approvedUpgrade)).toEqual(retainedUpgradeSnapshot(expectedRetained));expect(await storage.client`select * from drizzle.__drizzle_migrations order by id`).toEqual(ledger);
   expect(await storage.client`select request_id from app.profile_legacy_unassigned_request order by request_id`).toEqual(markers);
   expect(await storage.client`select id,file_contact_name,file_contact_phone,file_state_code,require_payee_id_check from company_bank_profile order by id`).toEqual(bankDefaults);
   await custody(enabled,enabled.hrUser,[assignedId],[blockedUnassignedId,malformedId]);await custody(legacy,legacy.hrUser,[legacyId]);

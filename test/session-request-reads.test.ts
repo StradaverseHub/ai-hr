@@ -40,7 +40,9 @@ vi.mock('../db/client',()=>{
   if(db.failSnapshot>0){db.failSnapshot--;throw new Error('Fictional snapshot failure');}
   return fn({unsafe:async(q:string)=>/set_config/.test(q)?[]:[{modules:[{code:'payroll',company:null}],settings:{},tenant_status:'active'}]});
  }});
- return {client};
+ // This unit owns request memoization. Physical admission/cancellation is exercised by
+ // database-admission-integration against PostgreSQL; keep this fake SQL boundary explicit.
+ return {client,withPoolWork:async<T>(_tenant:string,work:()=>PromiseLike<T>)=>await work()};
 });
 
 import {getBrowserCommandSession,getSession} from '../lib/session';

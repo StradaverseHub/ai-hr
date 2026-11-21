@@ -1,3 +1,4 @@
+import {aiCentreReadAllowed} from '../ai-centre-control';
 /** AI v2 Phase 1, slice 3 (issue 16b) — which imports this caller may prepare in chat, and which one they mean.
  *
  * A kind is offered only while the capability catalogue (core/product-context/capability-catalogue.ts) lists its import
@@ -58,7 +59,8 @@ export async function chatImportKindsFor(ctx:SessionContext):Promise<readonly Ch
  let entries:ReadonlyMap<string,string|undefined>;
  try{entries=new Map((await capabilityCatalogueFor(ctx,{prepare:false})).filter(entry=>entry.kind==='import').map((entry):[string,string|undefined]=>[entry.id,entry.page]));}
  catch{return Object.freeze([]);}
- return Object.freeze(CHAT_IMPORT_KINDS.filter(kind=>entries.has('import:'+kind)).map(kind=>{const page=entries.get('import:'+kind),info=chatImportKindInfo(kind);
+ const allowed=new Set((await Promise.all(CHAT_IMPORT_KINDS.map(async kind=>await aiCentreReadAllowed(ctx,'read:import_'+kind)?kind:null))).filter(kind=>kind!==null));
+ return Object.freeze(CHAT_IMPORT_KINDS.filter(kind=>entries.has('import:'+kind)&&allowed.has(kind)).map(kind=>{const page=entries.get('import:'+kind),info=chatImportKindInfo(kind);
   return page?Object.freeze({...info,linkablePage:page}):info;}));
 }
 

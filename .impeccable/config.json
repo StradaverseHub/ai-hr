@@ -1,0 +1,35 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "app/lifecycle/v9/workspace.css"
+        ],
+        "createdAt": "2026-11-17T10:11:13.172Z",
+        "reason": "Sanctioned by supplied Contract prototype: sectbox2 uses a 3px section rail for When, Only if and Then; this is a workflow section, not a side tab or card."
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "app/lifecycle/v9/workspace.css"
+        ],
+        "createdAt": "2026-11-17T10:11:13.190Z",
+        "reason": "False positive: 4px brand bar belongs to the unrounded semantic letterhead header; rounding belongs to its separate logo child. Supplied prototype explicitly uses the 4px letterhead brand bar."
+      },
+      {
+        "rule": "design-system-font",
+        "value": "segoe script",
+        "files": [
+          "app/lifecycle/v9/workspace.css"
+        ],
+        "createdAt": "2026-11-17T10:11:13.208Z",
+        "reason": "Typed signature presentation only; intentionally cursive handwriting inside the canonical document signature, not application typography."
+      }
+    ]
+  }
+}

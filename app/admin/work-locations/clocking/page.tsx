@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -429,7 +430,7 @@ async function CompanyView({
                               <form action={restoreClockingLocationAction}>
                                 <input type="hidden" name="clockingLocationId" value={cl.id} />
                                 {!isOrphan && <input type="hidden" name="returnCompany" value={companyId} />}
-                                <button className="text-primary hover:underline">{t('activate')}</button>
+                                <ActionButton actionKind="saving" className="text-primary hover:underline">{t('activate')}</ActionButton>
                               </form>
                             ) : (
                               <form action={archiveClockingLocationAction}>

@@ -8,7 +8,7 @@ const mocks=vi.hoisted(()=>({refresh:vi.fn(),revert:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh})}));
 vi.mock('../components/ui',()=>({Button:({children,...props}:ButtonHTMLAttributes<HTMLButtonElement>)=><button {...props}>{children}</button>}));
 vi.mock('../app/payroll/transactions/import-excel/individual-actions',()=>({revertIndividualImportAction:mocks.revert}));
-function surface(){return render(<NextIntlClientProvider locale="en" messages={messages}><IndividualImportRevert id="00000000-0000-4000-8000-000000000001" file="monthly.xlsx" count={2}/></NextIntlClientProvider>);}
+function surface(){return render(<NextIntlClientProvider locale="en" messages={messages}><IndividualImportRevert id="00000000-0000-4000-8000-000000000001" batch="Batch 00000000" file="monthly.xlsx" count={2}/></NextIntlClientProvider>);}
 beforeEach(()=>{cleanup();vi.clearAllMocks();});
 describe('import batch reversal confirmation',()=>{
  it('requires explicit batch confirmation and identifies its file and row count',()=>{

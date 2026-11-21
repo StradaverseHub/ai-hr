@@ -30,6 +30,23 @@ describe('authorized immutable payroll formula evidence UI',()=>{
   const rendered=mount(<FormulaTraceView evaluation={detail}/>,locale),words=catalogues[locale].payFormula;
   expect(screen.getByRole('heading',{name:words.traceSavedResult})).toBeVisible();expect(screen.getByRole('heading',{name:words.traceExplanations})).toBeVisible();expect(screen.getByRole('heading',{name:words.traceReads})).toBeVisible();expect(screen.getByText(detail.companyName!)).toBeVisible();expect(screen.getByText(detail.employeeCode+' · '+detail.employeeName)).toBeVisible();expect(screen.getByText(detail.amount)).toBeVisible();expect(screen.getByText(detail.contentHash)).toBeVisible();expect(screen.getByText('1234.567890123456')).toBeVisible();expect(screen.getByText('2020-02-29')).toBeVisible();expect(screen.getByText(words.false)).toBeVisible();expect(screen.getByText(words.functions.Basic)).toBeVisible();expect(rendered.container.querySelector('script')).toBeNull();expect(screen.getByText('<script>never execute explanation</script>')).toBeVisible();
  });
+ it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s states each Pay Item counted as 0 after the formula explanations',locale=>{
+  mount(<FormulaTraceView evaluation={{...detail,missingItems:[{source:'PayItemInput',code:'A0128'},{source:'Accumulation',code:'A0100',group:'OT_GROSS'}]}}/>,locale);
+  const t=createTranslator({locale,messages:catalogues[locale],namespace:'payFormula'}) as unknown as (key:string,values?:Record<string,string>)=>string;
+  const items=screen.getAllByRole('listitem').map(li=>li.textContent);
+  expect(items).toEqual([...detail.explanations,t('missingItemZero',{variable:t('functions.PayItemInput'),code:'A0128'}),t('missingMemberZero',{variable:t('functions.Accumulation'),group:'OT_GROSS',code:'A0100'})]);
+  if(locale==='en')expect(items[2]).toBe('Pay Item input (A0128): not in this run, counted as 0');
+ });
+ it('replaces the empty-explanations note when a Pay Item was counted as 0',()=>{
+  mount(<FormulaTraceView evaluation={{...detail,explanations:[],missingItems:[{source:'PayItem',code:'A0128'}]}}/>);
+  expect(screen.getByText('Calculated Pay Items (A0128): not in this run, counted as 0')).toBeVisible();expect(screen.queryByText(en.payFormula.traceNoExplanations)).not.toBeInTheDocument();
+ });
+ it('projects the retained zero-counted Pay Items from the service payload',async()=>{
+  state.read.mockResolvedValue({...serviceDetail,payload:{...serviceDetail.payload,missingItems:[{source:'PayItemInput',code:'A0128'}]}});
+  const page=await FormulaEvaluationPage({params:Promise.resolve({id:'evaluation-1'})});
+  const trace=React.Children.toArray(page.props.children).find(child=>React.isValidElement(child)&&child.type===FormulaTraceView) as React.ReactElement<{evaluation:FormulaTraceViewData}>;
+  expect(trace.props.evaluation).toEqual({...detail,missingItems:[{source:'PayItemInput',code:'A0128'}]});
+ });
  it.each([{employeeCode:'FICT-001',employeeName:null,label:'FICT-001'},{employeeCode:null,employeeName:'Fictional payroll employee',label:'Fictional payroll employee'},{employeeCode:null,employeeName:null,label:en.payFormula.traceEmployeeProtected}])('renders independently authorized employee labels: $label',({employeeCode,employeeName,label})=>{
   const rendered=mount(<FormulaTraceView evaluation={{...detail,employeeCode,employeeName}}/>);expect(screen.getByText(label)).toBeVisible();expect(screen.getByText(detail.companyName!)).toBeVisible();expect(screen.getByText(detail.amount)).toBeVisible();
   if(!employeeCode)expect(rendered.container).not.toHaveTextContent('FICT-001');if(!employeeName)expect(rendered.container).not.toHaveTextContent('Fictional payroll employee');

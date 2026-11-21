@@ -25,6 +25,7 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, reprocessSelectedEmployees, setPayrollDeductionInput } from '../core/payroll';
 import {
   listPayslipLessEligibleWithSkip,
+  payslipLessEligibleWithSkipPage,
   narrowToNothingPayable,
   nothingPayableSkipKind,
   type PendingBatchMoney,
@@ -32,6 +33,8 @@ import {
 } from '../core/payroll-view';
 import { seedPayComponentCatalog, setEmploymentPayComponent } from '../core/pay-components';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
+
+import { parsePageQuery } from '../lib/pagination';
 
 const PERIOD = '2026-05';
 const REMARK = 'Paid by quarterly director fees — no monthly basic';
@@ -146,6 +149,12 @@ describe('c3258a72 · listPayslipLessEligibleWithSkip on a processed run', () =>
     const rows = await listPayslipLessEligibleWithSkip(a, { batchId });
     const row = rows.find((r) => r.employmentId === employmentId);
     expect(row, 'the employee is payslip-less on the run, so the list must name them').toBeTruthy();
+    const paged=await payslipLessEligibleWithSkipPage(a,{batchId,page:parsePageQuery({size:'all'})});
+    expect(paged.runTotal).toBe(rows.length);
+    expect(paged.rows).toEqual(rows);
+    const searched=await payslipLessEligibleWithSkipPage(a,{batchId,page:parsePageQuery(),search:row!.name});
+    expect(searched.rows).toEqual(rows.filter(r=>r.name.toLowerCase().includes(row!.name.toLowerCase())||(r.employeeCode??'').toLowerCase().includes(row!.name.toLowerCase())));
+    expect(searched.runTotal).toBe(rows.length);
     return row!;
   };
 
@@ -158,6 +167,7 @@ describe('c3258a72 · listPayslipLessEligibleWithSkip on a processed run', () =>
     const late = await hire('Late Lina', 3500);
 
     const rows = await listPayslipLessEligibleWithSkip(a, { batchId });
+    expect((await payslipLessEligibleWithSkipPage(a,{batchId,page:parsePageQuery()})).rows).toEqual(rows);
     const byId = new Map(rows.map((r) => [r.employmentId, r]));
     expect(byId.get(director.employmentId)!.skip).toBe('NOTHING_PAYABLE_THIS_PERIOD');
     expect(byId.get(director.employmentId)!.blockers).toEqual([]);

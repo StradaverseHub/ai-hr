@@ -14,7 +14,7 @@
  * `updateShiftAction` / `createShiftAction`, plus the direct-service contract both actions rely on.
  */
 import { randomUUID } from 'node:crypto';
-import { scheduleGroupSectionHref } from '../app/admin/attendance/schedule/sections';
+import { resolveSection, scheduleGroupSectionHref } from '../app/admin/attendance/schedule/sections';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -215,33 +215,41 @@ describe('D1/D2/D4 — the SERVICE contract every caller (the form, a script, a 
 
 /**
  * aec53564 — THE LINK ITSELF, unchanged by r429: the Shift form's READ-ONLY Schedule Group line
- * (app/admin/attendance/shift-form.tsx) still links to the group's "Working Days" section with this exact
- * helper, so the shape pinned here is still what the product produces.
+ * (app/admin/attendance/shift-form.tsx) links to the group's page with this exact helper. c03670cc retired
+ * the separate Duty Roster (workingDay) tab, so the link now opens General, where the working week and the
+ * Duty Roster sit; an old `?section=workingDay` bookmark still resolves to General (resolveSection).
  */
 describe('aec53564 · the Schedule Group link is built by the helper, not by hand', () => {
   const RULE = '0f9c1d2e-3a4b-4c5d-8e6f-7a8b9c0d1e2f';
 
   it('rides the section as a query parameter AND as the fragment', () => {
-    const href = scheduleGroupSectionHref(RULE, 'workingDay');
-    expect(href, 'the query parameter').toContain('?section=workingDay');
-    expect(href, 'and the fragment, because a fragment is never sent to the server').toContain('#section-workingDay');
+    const href = scheduleGroupSectionHref(RULE, 'general');
+    expect(href, 'the query parameter').toContain('?section=general');
+    expect(href, 'and the fragment, because a fragment is never sent to the server').toContain('#section-general');
   });
 
   it('never concatenates the section in front of the query key (r287 → r301)', () => {
-    const href = scheduleGroupSectionHref(RULE, 'workingDay');
+    const href = scheduleGroupSectionHref(RULE, 'general');
     expect(href.match(/\?/g) ?? [], 'exactly one "?" in the URL').toHaveLength(1);
     expect(href, 'the path ends at the rule id, not at a query fragment').not.toMatch(/\/[^/?#]*\?[^/?#]*\//);
   });
 
   it('points at the VIEW page, not the editor', () => {
-    const href = scheduleGroupSectionHref(RULE, 'workingDay');
+    const href = scheduleGroupSectionHref(RULE, 'general');
     expect(href.startsWith(`/admin/attendance/schedule/${RULE}?`), href).toBe(true);
     expect(href, 'a link beside a control you cannot change must not open an editor').not.toContain('/edit');
   });
 
   it('is the literal URL this round’s read-only preview renders', () => {
-    expect(scheduleGroupSectionHref('grp-0000-0000-0000-000000000001', 'workingDay')).toBe(
-      '/admin/attendance/schedule/grp-0000-0000-0000-000000000001?section=workingDay#section-workingDay',
+    expect(scheduleGroupSectionHref('grp-0000-0000-0000-000000000001', 'general')).toBe(
+      '/admin/attendance/schedule/grp-0000-0000-0000-000000000001?section=general#section-general',
     );
+  });
+
+  it('c03670cc — an old Duty Roster (workingDay) link resolves to General, junk still resolves to nothing', () => {
+    expect(resolveSection('workingDay')).toBe('general');
+    expect(resolveSection('general')).toBe('general');
+    expect(resolveSection('nonsense')).toBeNull();
+    expect(resolveSection(undefined)).toBeNull();
   });
 });

@@ -14,7 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { type SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { decideLeave, requestLeave } from '../core/leave';
+import { decideLeave, editLeaveRequest, requestLeave } from '../core/leave';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -99,6 +99,20 @@ describe('ADR-0038 2B-1 — multi-level leave approval', () => {
       .where(eq(schema.leaveLedger.sourceRequestId, leaveRequestId));
     expect(debit).toHaveLength(1);
     expect(Number(debit[0].days)).toBe(-1);
+  });
+
+  it('rebuilds an existing approval chain when the employee edits a pending request', async () => {
+    const { leaveRequestId } = await request('2026-07-01');
+    await decideLeave(mgrCtx, { leaveRequestId, decision: 'approved' });
+    expect((await stepsFor(leaveRequestId))[0]?.status).toBe('approved');
+    const userId = await createAppUser(b.tenantId, subject.personId, 'employee');
+    await editLeaveRequest({ tenantId: b.tenantId, userId, personId: subject.personId, roles: ['employee'] }, {
+      leaveRequestId, leaveTypeId: b.annualLeaveTypeId, startDate: '2026-07-06', endDate: '2026-07-06', today: '2026-06-30',
+    });
+    expect(await stepsFor(leaveRequestId)).toEqual([
+      { kind: 'direct_manager', status: 'pending' },
+      { kind: 'hr_admin', status: 'pending' },
+    ]);
   });
 
   it('a manager cannot clear the HR step', async () => {

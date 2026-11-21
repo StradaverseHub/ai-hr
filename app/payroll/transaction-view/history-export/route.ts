@@ -25,6 +25,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
+import { listPayrollCyclesForCompanies } from '@/core/payroll-cycle';
 import { listProcessedPayslipsAcross } from '@/core/payroll-view';
 import { packFor } from '@/localization/registry';
 import { toXlsxReport } from '@/lib/report-export';
@@ -66,6 +67,15 @@ export async function GET(req: Request) {
   const selectedEmployee = rawEmployment ? employees.find((e) => e.employmentId === rawEmployment) : undefined;
   const rawCycle = sp.get('cycle');
   const cycle = rawCycle && (CYCLES as readonly string[]).includes(rawCycle) ? rawCycle : undefined;
+  if (scope === 'current' && ((rawCompany && !companyId) || (rawEmployment && !selectedEmployee))) {
+    return new Response(null, { status: 404 });
+  }
+  const companyIds = companyId ? [companyId] : scopeIds;
+  const rawPayrollCycleId = scope === 'current' ? sp.get('payrollCycleId') : null;
+  const configuredCycle = rawPayrollCycleId
+    ? (await listPayrollCyclesForCompanies(s, companyIds)).find((row) => row.id === rawPayrollCycleId)
+    : undefined;
+  if (rawPayrollCycleId && !configuredCycle) return new Response(null, { status: 404 });
 
   // `scope=all` = "every processed payslip you are allowed to see, ignoring the filters above". It drops
   // the filters and NOTHING ELSE: the company fence is still `scopeIds`, resolved from the session.
@@ -73,7 +83,7 @@ export async function GET(req: Request) {
     scope === 'all'
       ? { companyIds: scopeIds, companyId: undefined, employmentId: undefined, year: undefined, month: undefined, cycle: undefined }
       : {
-          companyIds: companyId ? [companyId] : scopeIds,
+          companyIds,
           companyId,
           employmentId: selectedEmployee?.employmentId,
           year: intParam(sp.get('year'), 2000, 2100),
@@ -89,6 +99,7 @@ export async function GET(req: Request) {
     month: filters.month,
     employmentId: filters.employmentId,
     cycle: filters.cycle,
+    payrollCycleId: configuredCycle?.id,
   });
 
   const hrdfRegisteredCompanyIds = ((await packFor('MY')?.companyStatutory.list(s)) ?? [])
@@ -144,7 +155,7 @@ export async function GET(req: Request) {
     }`,
     `${t('view.filters.year')}: ${filters.year ?? all}`,
     `${t('view.filters.month')}: ${filters.month != null ? String(filters.month).padStart(2, '0') : all}`,
-    `${t('view.filters.cycle')}: ${filters.cycle ? cycleLabels[filters.cycle] : all}`,
+    `${t('view.filters.cycle')}: ${configuredCycle?.name ?? (filters.cycle ? cycleLabels[filters.cycle] : all)}`,
   ].join('  ·  ');
 
   const filename = [

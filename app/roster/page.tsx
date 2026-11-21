@@ -1,22 +1,27 @@
-import { organisationChoiceLabels, organisationFilterChoices } from '@/lib/organisation-choice-label';
+import { ActionButton } from '@/components/ui/action-button';
+import { ExportDownloadLink } from '@/components/export-download-link';
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listCompanies, listDepartments } from '@/core/read';
-import { rosterExceptionCount, rosterWindowView } from '@/core/roster';
+import { rosterExceptionCount, rosterWindowEmployees } from '@/core/roster';
+import { rosterWindowPage } from '@/core/roster-presentation';
+import { Pager } from '@/components/pager';
+import { parsePageQuery, pageState } from '@/lib/pagination';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { RosterGrid, RosterTemplateButton } from '@/components/roster-grid';
 import { copyRosterAction, generateRosterAction } from './actions';
+import { RosterBulkJobPanel } from '@/components/roster-bulk-job-panel';
+import { readRosterBulkJob } from '@/core/roster-bulk-job';
 import {
   ROSTER_MAX_RANGE_DAYS,
   addDaysIso,
   addMonths,
-  buildRosterTemplate,
   monthOf,
   resolveRosterWindow,
   rosterDateLocale,
-  shiftCodeOf,
   stepRosterWindow,
   type RosterViewKind,
 } from '@/lib/roster-month';
@@ -57,7 +62,11 @@ export default async function RosterPage({
     error?: string;
     generated?: string;
     copied?: string;
+    /** A background Generate or Copy started from this screen (core/roster-bulk-job.ts); its progress panel. */
+    rosterJob?: string;
     rowSaved?: string;
+    page?: string;
+    size?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedSession();
@@ -114,7 +123,10 @@ export default async function RosterPage({
   const win = team ? rosterTeamWindow(team,todayIso) : resolved.window;
   const month = win.month;
 
-  const rosterView = await rosterWindowView(s, {
+  const pageQuery = parsePageQuery(sp);
+  if (!Number.isSafeInteger(pageQuery.offset)) Object.assign(pageQuery, parsePageQuery({size:sp.size}));
+  const rosterView = await rosterWindowPage(s, {
+    offset: pageQuery.offset, limit: pageQuery.limit,
     companyIds,
     from: win.from,
     to: win.to,
@@ -132,11 +144,28 @@ export default async function RosterPage({
    * rest-worked row got a "Bank in lieu" button went WITH the rows — it belongs to the screen that draws
    * them.
    */
-  const [exceptionCount, departments] = await Promise.all([
+  const [exceptionCount, departments, writeEmployees] = await Promise.all([
     rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso, ...(teamScope?{employmentIds:teamScope.employmentIds}:{}) }),
     listDepartments(s, { companyIds }),
+    // Generate and Copy target the WHOLE filtered workforce the unpaged roster listed, not the grid's page:
+    // the same people rosterWindowView reads, without hydrating their cells. Only read when the forms render.
+    admin && companyId
+      ? rosterWindowEmployees(s, {
+          companyIds,
+          ...(sp.bu ? { businessUnitId: sp.bu } : {}),
+          ...(sp.dept ? { departmentId: sp.dept } : {}),
+          ...(sp.q ? { q: sp.q } : {}),
+          ...(teamScope ? { employmentIds: teamScope.employmentIds } : {}),
+        }).then((r) => r.employees)
+      : Promise.resolve<Awaited<ReturnType<typeof rosterWindowEmployees>>['employees']>([]),
   ]);
 
+  // A Generate or Copy queued by this administrator: its progress, read as its creator (row security hides anyone
+  // else's job). When it ends the panel opens the same banner (or error) the synchronous action redirected to.
+  const rosterJob = admin && sp.rosterJob && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(sp.rosterJob)
+    ? await readRosterBulkJob(s, sp.rosterJob).catch(() => null)
+    : null;
+  const tJob = await getTranslations('bulkJobs.roster');
   // Success banner for the roster generator: "employments.workingRows.restRows" packed by the action.
   const gen = sp.generated && /^\d+\.\d+\.\d+$/.test(sp.generated) ? sp.generated.split('.').map(Number) : null;
   // R17 3e8350db — success banner for "copy roster": the number of rows copied onto the target window.
@@ -184,8 +213,8 @@ export default async function RosterPage({
 
   // Filter dropdown values come from the employees this session can already see, so a Business Group
   // with nobody in it never appears and a supervisor is never offered somebody else's department.
-  const buOptions = organisationFilterChoices(view.allEmployees.map((e) => ({ id: e.businessUnitId, name: e.businessUnitLabel ?? e.businessUnit, code: e.businessUnitCode })));
-  const deptOptions = organisationFilterChoices(view.allEmployees.map((e) => ({ id: e.departmentId, name: e.departmentLabel ?? e.department, code: e.departmentCode })));
+  const buOptions = view.businessUnitOptions;
+  const deptOptions = view.departmentOptions;
 
   /**
    * THE WINDOW RIDES EVERY LINK OFF THIS SCREEN. Export, Exceptions, Upload and each row's Edit all take
@@ -203,6 +232,8 @@ export default async function RosterPage({
     if (sp.bu) p.set('bu', sp.bu);
     if (sp.dept) p.set('dept', sp.dept);
     if (sp.q) p.set('q', sp.q);
+    if (pageQuery.page) p.set('page', String(pageQuery.page));
+    p.set('size', String(pageQuery.size));
     for (const [k, v] of Object.entries(over)) {
       if (v == null || v === '') p.delete(k);
       else p.set(k, v);
@@ -223,23 +254,14 @@ export default async function RosterPage({
   };
   const navBtn = 'rounded-md border border-border px-2.5 py-1 text-sm text-foreground hover:bg-muted';
 
-  // The Excel template is the month grid PRE-FILLED WITH WHAT IS ROSTERED — never with the grey ghosts.
-  // A ghosted day has no stored row; writing its code into the template and sending it back would harden
-  // every un-rostered day into an explicit assignment, which is not what "prepare the month" means.
-  // Its four identity headings are the MACHINE header (lib/roster-month#ROSTER_TEMPLATE_ID_COLUMNS) and
-  // stay English in every locale — a translated heading made the round trip impossible outside en.
-  const shiftCodeById = new Map(view.shifts.map((sh) => [sh.id, shiftCodeOf(sh)]));
-  const template = buildRosterTemplate({
-    dates: view.dates,
-    employees: view.employees,
-    cells: view.cells,
-    shiftCode: (id) => shiftCodeById.get(id) ?? '',
-  });
 
   return (
     <div className={pageWideCls}>
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={sp.error} />
+      {rosterJob && (rosterJob.op === 'generate' || rosterJob.op === 'copy') && (
+        <RosterBulkJobPanel endpoint="/roster/jobs" job={rosterJob} title={tJob(rosterJob.op)} waitingLabel={tJob('queuedBehind')} />
+      )}
       {/* a57f0584 rev 2 — WHAT THE RESOLVER DID INSTEAD, said out loud. A window that was clamped or
           reversed still renders (the dates on screen are real), so this is a NOTICE rather than an error:
           the screen tells the operator what it is showing and why it is not what they typed. Silence here
@@ -299,10 +321,8 @@ export default async function RosterPage({
                 </Link>
               )}
               <RosterTemplateButton
-                dates={view.dates}
-                rows={template.rows}
+                source={`/roster/template?${qs({})}`}
                 month={month}
-                codes={view.shifts.map((sh) => shiftCodeOf(sh))}
                 label={t('downloadTemplate')}
                 notesTitle={t('templateNotesTitle')}
                 notes={[
@@ -324,9 +344,9 @@ export default async function RosterPage({
           <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
             {t('exceptionsButton', { count: exceptionCount })}
           </Link>
-          <Link href={`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn} prefetch={false}>
+          <ExportDownloadLink href={`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn}>
             {t('exportLabel')}
-          </Link>
+          </ExportDownloadLink>
         </div>
       </div>
 
@@ -372,12 +392,12 @@ export default async function RosterPage({
         {/* Filters — Business Group, Department, Employee, the window, and a Query button, exactly the row
             the reporter's own screen carries. A plain GET form: the URL is the state, so a filtered window
             is shareable and the export link below carries the same narrowing. */}
-        <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-3">
+        <form method="get" className="grid grid-cols-1 items-end gap-3 px-4 py-3 sm:grid-cols-2 xl:grid-cols-[repeat(3,minmax(0,1fr))_auto_auto_auto]">
           {sp.myTeam && <input type="hidden" name="myTeam" value={sp.myTeam} />}
           {companyId && <input type="hidden" name="companyId" value={companyId} />}
           {/* The view is posted back with the filters, or Query would drop the operator to Month. */}
           <input type="hidden" name="view" value={win.kind} />
-          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
             {t('filterBusinessGroup')}
             <select name="bu" defaultValue={sp.bu ?? ''} className={inputCls}>
               <option value="">{t('filterAll')}</option>
@@ -388,7 +408,7 @@ export default async function RosterPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
             {t('filterDepartment')}
             <select name="dept" defaultValue={sp.dept ?? ''} className={inputCls}>
               <option value="">{t('filterAll')}</option>
@@ -399,14 +419,14 @@ export default async function RosterPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
             {t('filterEmployee')}
             <input name="q" defaultValue={sp.q ?? ''} placeholder={t('filterEmployeePlaceholder')} className={inputCls} />
           </label>
           {/* ONE control per view, and only the one the view uses. A month picker sitting inert beside a
               From/To pair is a control that does nothing, which is worse than a control that is absent. */}
           {win.kind === 'month' && (
-            <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
               {t('filterMonth')}
               <input key={win.month} type="month" name="month" defaultValue={win.month} className={inputCls} />
             </label>
@@ -415,53 +435,38 @@ export default async function RosterPage({
             /* ANY date in the week identifies it and the resolver snaps to the Monday. NOT
                `<input type="week">`: it posts `YYYY-Www`, whose week-numbering year disagrees with the
                calendar year at the turn of January — a defect nobody would ever reproduce on purpose. */
-            <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
               {t('filterWeekOf')}
               <input key={win.from} type="date" name="from" defaultValue={win.from} className={inputCls} />
             </label>
           )}
           {win.kind === 'custom' && (
             <>
-              <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
                 {t('filterFrom')}
                 <input key={win.from} type="date" name="from" defaultValue={win.from} className={inputCls} />
               </label>
-              <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
                 {t('filterTo')}
                 <input key={win.to} type="date" name="to" defaultValue={win.to} className={inputCls} />
               </label>
             </>
           )}
           <button className={btnPrimary}>{t('query')}</button>
-          <span className="ml-auto text-xs text-muted-foreground">{t('rangeCapHint', { days: ROSTER_MAX_RANGE_DAYS })}</span>
+          <span className="text-xs text-muted-foreground sm:col-span-full">{t('rangeCapHint', { days: ROSTER_MAX_RANGE_DAYS })}</span>
+          <details className="min-w-0 text-sm sm:col-span-full" data-roster-guidance>
+            <summary className="cursor-pointer py-1 font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('shifts')}</summary>
+            <div className="space-y-2 pt-2 text-muted-foreground">
+              <p>{t('manageShiftsHint')}</p>
+              {admin&&<Link href="/admin/attendance" className="inline-flex min-h-9 items-center font-medium text-primary hover:underline">{t('manageShiftsLink')} →</Link>}
+            </div>
+          </details>
         </form>
       </Card>
 
-      {/* Configurable Multi-Shift Attendance Management: shift setup moved to Shift settings (admin-only).
-          This screen is now purely for assigning shifts onto the calendar; the hint points anyone who looks
-          for shift setup here to its new home. The screen was called Attendance Policy when this card was
-          written; f21d6eee split the policy config out to /admin/attendance-policy and a324a4b3 renamed
-          what is left to Shift settings, so both this comment and roster.manageShiftsHint named the wrong
-          screen from mid-July until 2ec1e3d2.
-
-          2ec1e3d2: the SENTENCE is for everybody — a supervisor who cannot open the screen still benefits
-          from knowing where the setting lives before asking an administrator for it. The LINK is
-          administrators only, because /admin/attendance calls requireAdmin (app/admin/attendance/page.tsx)
-          and would bounce a supervisor straight back to '/' with no explanation. Same reasoning, and the
-          same shape, as the Upload / Download Template gate above. */}
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-          <span className="text-muted-foreground">{t('manageShiftsHint')}</span>
-          {admin && (
-            <Link href="/admin/attendance" className="font-medium text-primary hover:underline">
-              {t('manageShiftsLink')} →
-            </Link>
-          )}
-        </div>
-      </Card>
-
-      <Card>
-        <SectionHeader title={t('monthlyRoster')} count={view.employees.length} />
+        <SectionHeader title={t('monthlyRoster')} count={view.total} />
+        <Pager state={pageState(pageQuery, view.total, view.employees.length)} hrefFor={over=>`/roster?${qs({page:String(over.page),size:String(over.size??pageQuery.size)})}`} exportHref={`/roster/export?${qs({format:'xlsx'})}`} />
         <div className="px-4 py-3">
           {view.employees.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('noEmployees')}</p>
@@ -469,6 +474,8 @@ export default async function RosterPage({
             <p className="text-sm text-muted-foreground">{t('createShiftFirst')}</p>
           ) : (
             <RosterGrid
+              key={qs({})}
+              serverPaged
               dates={gridDates}
               employees={view.employees.map((e) => ({
                 employmentId: e.employmentId,
@@ -518,6 +525,8 @@ export default async function RosterPage({
             ) : (
               <form action={generateRosterAction} className="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="companyId" value={companyId} />
+                {/* Lets the action re-resolve the team scope; it never widens what the server admits. */}
+                <input type="hidden" name="populationQuery" value={qs({page:undefined,size:undefined})} />
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                   {t('shifts')}
                   <select name="shiftId" required className={inputCls}>
@@ -544,7 +553,7 @@ export default async function RosterPage({
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                   {t('employee')}
                   <select name="employmentIds" multiple size={4} className={`${inputCls} min-w-44`} aria-label={t('scopeEmployees')}>
-                    {view.employees.map((e) => (
+                    {writeEmployees.map((e) => (
                       <option key={e.employmentId} value={e.employmentId}>
                         {e.name}
                       </option>
@@ -559,7 +568,7 @@ export default async function RosterPage({
                     <input type="date" name="to" required defaultValue={view.to} className={inputCls} />
                   </span>
                 </label>
-                <button className={btnPrimary}>{t('generate')}</button>
+                <ActionButton actionKind="generating" className={btnPrimary}>{t('generate')}</ActionButton>
               </form>
             )}
             <p className="text-xs text-muted-foreground">{t('generateHint')}</p>
@@ -576,12 +585,13 @@ export default async function RosterPage({
         <Card>
           <SectionHeader title={t('copyTitle')} />
           <div className="space-y-3 px-4 py-3">
-            {view.employees.length === 0 ? (
+            {writeEmployees.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('noEmployees')}</p>
             ) : (
               <form action={copyRosterAction} className="flex flex-wrap items-end gap-2">
                 <input type="hidden" name="companyId" value={companyId} />
-                {view.employees.map((e) => (
+                <input type="hidden" name="populationQuery" value={qs({page:undefined,size:undefined})} />
+                {writeEmployees.map((e) => (
                   <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
                 ))}
                 <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -602,7 +612,7 @@ export default async function RosterPage({
                   {t('copyTargetStart')}
                   <input type="date" name="targetFrom" required defaultValue={view.from} className={inputCls} />
                 </label>
-                <button className={btnPrimary}>{t('copyButton')}</button>
+                <ActionButton actionKind="saving" className={btnPrimary}>{t('copyButton')}</ActionButton>
               </form>
             )}
             <p className="text-xs text-muted-foreground">{t('copyHint')}</p>

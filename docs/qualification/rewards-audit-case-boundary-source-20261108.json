@@ -1,0 +1,43 @@
+{
+  "kind": "UNINSTALLED_REWARDS_NATIVE_PARSER_RECOVERY_SOURCE_ONLY",
+  "base": "00779cb4c28b20820a972441b5ddc43cc43c5c59",
+  "sourceRef": "codex/rewards-audit-case-boundary-recovery-20261108",
+  "qualification": "NOT_RUN; root+independent source review before sole native recovery",
+  "selectors": [
+    "test/rewards-audited-read-prototype.test.ts"
+  ],
+  "nativeCases": 16,
+  "caseMs": 30000,
+  "statementMs": 20000,
+  "lockMs": 300,
+  "retainedOriginalFailure": {
+    "run": 42415490999,
+    "actualSqlState": "42601",
+    "expectedSqlState": "55000",
+    "beforeAllFailed": true,
+    "nativePassed": 0,
+    "nativeSkipped": 16,
+    "postgresErrorPosition": 5017
+  },
+  "retainedUnaffected": {
+    "ownership": {
+      "run": 42415491165,
+      "passed": 3
+    },
+    "legacy": {
+      "run": 42415491484,
+      "files": 31,
+      "nodbPassed": 35,
+      "dbPassed": 288
+    }
+  },
+  "sourceSha256": {
+    "test/prototypes/rewards-audited-read.sql": "3e9f128c618efb0505d3caa1314bd1c82b35265d3f1ee36e1f2517f9ed6bc906",
+    "test/rewards-audited-read-prototype.test.ts": "01e6e8e203d39f905df726def0ef6f6a48dc688e90dbfe12f08bf8a72ca6201a",
+    "test/prototypes/rewards-audited-read-owner.ts": "7a935b0eee7932838713d08183eaf39f96594695271fb2fc94c3f3542aae7ff5",
+    "test/prototypes/rewards-audit-projection-race.ts": "2e292a3178188e184b11bb55f79a5dbdd4c44a54c82b624618aeac28bf949674",
+    "docs/qualification/rewards-audit-case-boundary-recovery-20261108.md": "e2ad6c01b26ab5df74f8174b7493f93089b0a09ddd54c64e3b411f2d73edae9d"
+  },
+  "production": "HELD",
+  "releaseAuthorized": false
+}

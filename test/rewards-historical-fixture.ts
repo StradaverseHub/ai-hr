@@ -1,7 +1,7 @@
 /** Trusted test-owner setup for preserved pre-admission annual rows, never a production create path.
  * No current company/year registration or applied-library binding is invented. Native calendar/access
  * owners must still authorize every operation after seeding. The fixture is deliberately empty. */
-import {and,eq} from 'drizzle-orm';
+import {and,eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import type {SessionContext} from '../db/client';
 import {rewardUnit,rewardMember,businessUnit,rewardCycle,rewardEntry,rewardGovernance,rewardGovernancePublic,employment,person} from '../db/schema';
@@ -16,6 +16,7 @@ export async function historicalEmptyRewardUnit(ctx:SessionContext,templateUnitI
   const {unitGovernanceDigest:_privateBasis,...policy}=template.policy;
   const id=randomUUID();
   await tx.insert(rewardUnit).values({id,tenantId:ctx.tenantId,createdBy:ctx.userId!,cycleId:template.cycleId,companyId:template.companyId,businessUnitId,kind:'annual',policy,snapshotDate:template.snapshotDate,policyGroupVersionId:null,createdAt:template.createdAt});
+  await tx.execute(sql`update reward_unit set preparation_required=false where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
   await tx.insert(rewardMember).values({tenantId:ctx.tenantId,unitId:id,userId:ctx.userId!,role:'gr'});
   return id;
  });
@@ -36,6 +37,7 @@ export async function historicalRewardDraft(ctx:SessionContext,input:{
    tenantId:ctx.tenantId,createdBy:ctx.userId,cycleId:cycle.id,companyId:input.companyId,businessUnitId:input.businessUnitId,
    kind:'annual',policy,snapshotDate:input.snapshotDate,policyGroupVersionId:null,
   }).returning();
+  await tx.execute(sql`update reward_unit set preparation_required=false where id=${unit.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
   await tx.insert(rewardMember).values({tenantId:ctx.tenantId,unitId:unit.id,userId:ctx.userId,role:'gr'});
   const [entry]=await tx.insert(rewardEntry).values({
    tenantId:ctx.tenantId,unitId:unit.id,employmentId:source.employment.id,facts:emptyFacts(),recommendation:emptyRecommendation(),

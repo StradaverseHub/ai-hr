@@ -8,6 +8,9 @@ patchedDependencies:
   fontkit@1.9.0:
     hash: b208b0e233a985efb2decb13e5043f8c26955724f0df805849ef7b305773642a
     path: patches/fontkit@1.9.0.patch
+  postgres@3.4.9:
+    hash: f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd
+    path: patches/postgres@3.4.9.patch
 
 importers:
 
@@ -78,7 +81,7 @@ importers:
         version: 3.4.17
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(postgres@3.4.9)
+        version: 0.45.2(postgres@3.4.9(patch_hash=f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd))
       fontkit:
         specifier: ^1.9.0
         version: 1.9.0(patch_hash=b208b0e233a985efb2decb13e5043f8c26955724f0df805849ef7b305773642a)
@@ -94,6 +97,9 @@ importers:
       leaflet:
         specifier: 1.9.4
         version: 1.9.4
+      libphonenumber-js:
+        specifier: 1.13.16
+        version: 1.13.16
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.4)
@@ -129,7 +135,7 @@ importers:
         version: 4.0.0(asn1js@4.0.0)
       postgres:
         specifier: ^3.4.9
-        version: 3.4.9
+        version: 3.4.9(patch_hash=f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd)
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
@@ -3772,6 +3778,9 @@ packages:
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
+
+  libphonenumber-js@1.13.16:
+    resolution: {integrity: sha512-tIOCM9yx2Go6d5/ZANe0K+G4AZek1Ymx81HxQpf19Sri4zMP95eQbKdnUGHAvFQ4nx0PeLhFqvAfisTADXj3tQ==}
 
   lie@3.3.0:
     resolution: {integrity: sha512-UaiMJzeWRlEujzAuw5LokY1L5ecNQYZKfmyZ9L7wDHb/p5etKaxXhohBcrw0EYby+G/NA52vRSN4N39dxHAIwQ==}
@@ -7577,9 +7586,9 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.22.4
 
-  drizzle-orm@0.45.2(postgres@3.4.9):
+  drizzle-orm@0.45.2(postgres@3.4.9(patch_hash=f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd)):
     optionalDependencies:
-      postgres: 3.4.9
+      postgres: 3.4.9(patch_hash=f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd)
 
   dunder-proto@1.0.1:
     dependencies:
@@ -8592,6 +8601,8 @@ snapshots:
       prelude-ls: 1.2.1
       type-check: 0.4.0
 
+  libphonenumber-js@1.13.16: {}
+
   lie@3.3.0:
     dependencies:
       immediate: 3.0.6
@@ -9407,7 +9418,7 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.2
 
-  postgres@3.4.9: {}
+  postgres@3.4.9(patch_hash=f7b3e18bb2ab89095c19643e292f4ba33afd1d258a0afb96d63fba6508e804bd): {}
 
   prelude-ls@1.2.1: {}
 

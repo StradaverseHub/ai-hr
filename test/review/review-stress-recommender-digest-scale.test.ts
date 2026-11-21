@@ -93,7 +93,7 @@ describe('large tenant (2000 employments)',()=>{
  it('diagnostic H4: on an Inbox view (with the Inbox\'s own list) the digest adds less than 10 s on 2000 employments',async()=>{
   await bulk();
   const {listPendingTasks}=await import('../../core/approvals-inbox');
-  const tasks=await listPendingTasks(hr,undefined,{attendance:false,claims:false,performance:false,rewards:false},{noticeAcknowledgements:false});
+  const tasks=await listPendingTasks(hr,undefined,{attendance:false,claims:false,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false});
   expect(tasks.length).toBeGreaterThanOrEqual(200);
   const started=Date.now();
   const digest=await digestPreview(hr,{approvals:tasks});

@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 
@@ -306,7 +307,7 @@ export async function LeaveCreditRulesTab({
                   </div>
                 </div>
 
-                <button className={btnPrimary}>{tr('save')}</button>
+                <ActionButton actionKind="saving" className={btnPrimary}>{tr('save')}</ActionButton>
               </form>
             </Card>
           );

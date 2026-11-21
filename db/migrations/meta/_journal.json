@@ -4929,6 +4929,3002 @@
       "when": 1793330002200,
       "tag": "2600_onboarding_current_personnel",
       "breakpoints": true
+    },
+    {
+      "idx": 2400,
+      "version": "7",
+      "when": 1793330002700,
+      "tag": "3100_pay_formula_saved_availability",
+      "breakpoints": true
+    },
+    {
+      "idx": 2401,
+      "version": "7",
+      "when": 1793330002701,
+      "tag": "3101_attendance_shared_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 2410,
+      "version": "7",
+      "when": 1793330002710,
+      "tag": "3110_attendance_workflow_owner_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 2500,
+      "version": "7",
+      "when": 1793330002800,
+      "tag": "3200_ai_centre_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 2501,
+      "version": "7",
+      "when": 1793330002801,
+      "tag": "3201_ai_centre_function_coverage",
+      "breakpoints": true
+    },
+    {
+      "idx": 2700,
+      "version": "7",
+      "when": 1793330003000,
+      "tag": "3400_system_label_company_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 3000,
+      "version": "7",
+      "when": 1793330003300,
+      "tag": "3700_pay_item_company_applicability",
+      "breakpoints": true
+    },
+    {
+      "idx": 3001,
+      "version": "7",
+      "when": 1793330003301,
+      "tag": "3701_rewards_unit_preparation",
+      "breakpoints": true
+    },
+    {
+      "idx": 3002,
+      "version": "7",
+      "when": 1793330003302,
+      "tag": "3702_maybank_payment_arrangement",
+      "breakpoints": true
+    },
+    {
+      "idx": 3003,
+      "version": "7",
+      "when": 1793330003303,
+      "tag": "3703_attendance_formula_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 3004,
+      "version": "7",
+      "when": 1793330003304,
+      "tag": "3704_attendance_formula_results",
+      "breakpoints": true
+    },
+    {
+      "idx": 3005,
+      "version": "7",
+      "when": 1793330003305,
+      "tag": "3705_attendance_formula_payroll_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 3006,
+      "version": "7",
+      "when": 1793330003306,
+      "tag": "3706_attendance_formula_overtime_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 3200,
+      "version": "7",
+      "when": 1793330003500,
+      "tag": "3900_individual_transaction_calculation_method",
+      "breakpoints": true
+    },
+    {
+      "idx": 3300,
+      "version": "7",
+      "when": 1793330003600,
+      "tag": "4000_attendance_workflow_lifecycle_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 3301,
+      "version": "7",
+      "when": 1793330003601,
+      "tag": "4001_personnel_employment_filter_projection",
+      "breakpoints": true
+    },
+    {
+      "idx": 3302,
+      "version": "7",
+      "when": 1793330003602,
+      "tag": "4002_attendance_prepare_review_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 3500,
+      "version": "7",
+      "when": 1793330003800,
+      "tag": "4100_rewards_review_creator_independence",
+      "breakpoints": true
+    },
+    {
+      "idx": 3501,
+      "version": "7",
+      "when": 1793330003801,
+      "tag": "4101_attendance_formula_company_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 3600,
+      "version": "7",
+      "when": 1793330003900,
+      "tag": "4200_employee_loop_action_digest",
+      "breakpoints": true
+    },
+    {
+      "idx": 3601,
+      "version": "7",
+      "when": 1793330003901,
+      "tag": "4201_retire_attendance_formula_builder",
+      "breakpoints": true
+    },
+    {
+      "idx": 3602,
+      "version": "7",
+      "when": 1793330003902,
+      "tag": "4202_attendance_clock_policy_revisions",
+      "breakpoints": true
+    },
+    {
+      "idx": 4000,
+      "version": "7",
+      "when": 1793330004300,
+      "tag": "4600_attendance_clock_policy_group_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 4001,
+      "version": "7",
+      "when": 1793330004301,
+      "tag": "4601_last_login_event_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 4200,
+      "version": "7",
+      "when": 1793330004500,
+      "tag": "4800_ai_shared_leave_groups_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 4201,
+      "version": "7",
+      "when": 1793330004501,
+      "tag": "2103_system_performance_read_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 4202,
+      "version": "7",
+      "when": 1793330004502,
+      "tag": "2104_contract_navigation_role_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 4203,
+      "version": "7",
+      "when": 1793330004503,
+      "tag": "2105_authorization_navigation_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 4204,
+      "version": "7",
+      "when": 1793330004504,
+      "tag": "2124_ai_control_navigation_candidates",
+      "breakpoints": true
+    },
+    {
+      "idx": 4205,
+      "version": "7",
+      "when": 1793330004505,
+      "tag": "2125_approval_subject_batch",
+      "breakpoints": true
+    },
+    {
+      "idx": 4206,
+      "version": "7",
+      "when": 1793330004506,
+      "tag": "2129_personnel_native_paging",
+      "breakpoints": true
+    },
+    {
+      "idx": 4207,
+      "version": "7",
+      "when": 1793330004507,
+      "tag": "2131_ai_read_only_metadata_locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 4208,
+      "version": "7",
+      "when": 1793330004508,
+      "tag": "2132_ai_metadata_claim_preview_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 4209,
+      "version": "7",
+      "when": 1793330004509,
+      "tag": "2133_ai_action_read_only_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 4210,
+      "version": "7",
+      "when": 1793330004510,
+      "tag": "2134_claim_visibility_set_membership",
+      "breakpoints": true
+    },
+    {
+      "idx": 4211,
+      "version": "7",
+      "when": 1793330004511,
+      "tag": "2135_profile_presentation_read_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 4212,
+      "version": "7",
+      "when": 1793330004512,
+      "tag": "2136_grant_admin_role_precheck",
+      "breakpoints": true
+    },
+    {
+      "idx": 4213,
+      "version": "7",
+      "when": 1793330004513,
+      "tag": "2137_home_peer_cohort_batch",
+      "breakpoints": true
+    },
+    {
+      "idx": 4214,
+      "version": "7",
+      "when": 1793330004514,
+      "tag": "2138_ai_pause_company_discovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 4215,
+      "version": "7",
+      "when": 1793330004515,
+      "tag": "2139_workforce_bounded_read_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 4216,
+      "version": "7",
+      "when": 1793330004516,
+      "tag": "2252_probation_navigation_capability_probe",
+      "breakpoints": true
+    },
+    {
+      "idx": 4217,
+      "version": "7",
+      "when": 1793330004517,
+      "tag": "2141_approval_nonadmin_visibility_batch",
+      "breakpoints": true
+    },
+    {
+      "idx": 4218,
+      "version": "7",
+      "when": 1793330004518,
+      "tag": "2212_payroll_audit_claim_lookup_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 4219,
+      "version": "7",
+      "when": 1793330004519,
+      "tag": "3210_attendance_shared_workflow_submission_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 4220,
+      "version": "7",
+      "when": 1793330004520,
+      "tag": "2302_company_ancestry_early_exit",
+      "breakpoints": true
+    },
+    {
+      "idx": 4221,
+      "version": "7",
+      "when": 1793330004521,
+      "tag": "2303_admin_grant_direct_scan",
+      "breakpoints": true
+    },
+    {
+      "idx": 4222,
+      "version": "7",
+      "when": 1793330004522,
+      "tag": "2304_payroll_grant_direct_scan",
+      "breakpoints": true
+    },
+    {
+      "idx": 4223,
+      "version": "7",
+      "when": 1793330004523,
+      "tag": "2403_personnel_bounded_overview",
+      "breakpoints": true
+    },
+    {
+      "idx": 4224,
+      "version": "7",
+      "when": 1793330004524,
+      "tag": "2503_attendance_pending_visible_headers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4225,
+      "version": "7",
+      "when": 1793330004525,
+      "tag": "2504_notification_event_processing",
+      "breakpoints": true
+    },
+    {
+      "idx": 4226,
+      "version": "7",
+      "when": 1793330004526,
+      "tag": "2505_workforce_picker_facts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4227,
+      "version": "7",
+      "when": 1793330004527,
+      "tag": "2506_notification_receipt_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 4228,
+      "version": "7",
+      "when": 1793330004528,
+      "tag": "2507_attendance_header_column_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 4229,
+      "version": "7",
+      "when": 1793330004529,
+      "tag": "2508_notification_receipt_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 4230,
+      "version": "7",
+      "when": 1793330004530,
+      "tag": "2509_principal_statement_plan_reuse",
+      "breakpoints": true
+    },
+    {
+      "idx": 4231,
+      "version": "7",
+      "when": 1793330004531,
+      "tag": "2510_capability_statement_plan_reuse",
+      "breakpoints": true
+    },
+    {
+      "idx": 4232,
+      "version": "7",
+      "when": 1793330004532,
+      "tag": "2701_personnel_typed_overview_filter_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 4233,
+      "version": "7",
+      "when": 1793330004533,
+      "tag": "2903_notification_receipt_cycle_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 4234,
+      "version": "7",
+      "when": 1793330004534,
+      "tag": "3001_employment_membership_initplan",
+      "breakpoints": true
+    },
+    {
+      "idx": 4235,
+      "version": "7",
+      "when": 1793330004535,
+      "tag": "3102_assignment_membership_initplan",
+      "breakpoints": true
+    },
+    {
+      "idx": 4236,
+      "version": "7",
+      "when": 1793330004536,
+      "tag": "3211_access_editor_native_owner_presentation",
+      "breakpoints": true
+    },
+    {
+      "idx": 4237,
+      "version": "7",
+      "when": 1793330004537,
+      "tag": "3500_ai_centre_architecture_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 4238,
+      "version": "7",
+      "when": 1793330004538,
+      "tag": "3501_ai_centre_mandate_write_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 4239,
+      "version": "7",
+      "when": 1793330004539,
+      "tag": "4338_assistant_rewards_return_presentation_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 4240,
+      "version": "7",
+      "when": 1793330004540,
+      "tag": "4339_assistant_rewards_calendar_cancel_presentation_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 4241,
+      "version": "7",
+      "when": 1793330004541,
+      "tag": "4340_ai_management_presentation_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 4242,
+      "version": "7",
+      "when": 1793330004542,
+      "tag": "4341_home_leave_presentation_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 4243,
+      "version": "7",
+      "when": 1793330004543,
+      "tag": "4342_attendance_clock_policy_audit_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 4400,
+      "version": "7",
+      "when": 1793330004700,
+      "tag": "5000_access_reader_writer_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 4401,
+      "version": "7",
+      "when": 1793330004701,
+      "tag": "5001_access_reader_writer_serialisers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4402,
+      "version": "7",
+      "when": 1793330004702,
+      "tag": "5002_access_reader_writer_profile_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 4403,
+      "version": "7",
+      "when": 1793330004703,
+      "tag": "5003_access_reader_writer_owner_writers",
+      "breakpoints": true
+    },
+    {
+      "idx": 4404,
+      "version": "7",
+      "when": 1793330004704,
+      "tag": "5004_access_reader_writer_payroll_inputs",
+      "breakpoints": true
+    },
+    {
+      "idx": 4405,
+      "version": "7",
+      "when": 1793330004705,
+      "tag": "5005_access_reader_writer_people_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 4406,
+      "version": "7",
+      "when": 1793330004706,
+      "tag": "5006_access_wave4_admin_fair_exclusive",
+      "breakpoints": true
+    },
+    {
+      "idx": 4410,
+      "version": "7",
+      "when": 1793330004710,
+      "tag": "5010_employee_import_staged_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 4411,
+      "version": "7",
+      "when": 1793330004711,
+      "tag": "5011_bulk_job_kernel",
+      "breakpoints": true
+    },
+    {
+      "idx": 4412,
+      "version": "7",
+      "when": 1793330004712,
+      "tag": "5012_import_release_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 4413,
+      "version": "7",
+      "when": 1793330004713,
+      "tag": "5013_bulk_job_least_privilege",
+      "breakpoints": true
+    },
+    {
+      "idx": 4414,
+      "version": "7",
+      "when": 1793330004714,
+      "tag": "5014_bulk_job_owner_attribution",
+      "breakpoints": true
+    },
+    {
+      "idx": 4420,
+      "version": "7",
+      "when": 1793330004720,
+      "tag": "5020_personnel_overview_facts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4430,
+      "version": "7",
+      "when": 1793330004730,
+      "tag": "5030_leave_bulk_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 4431,
+      "version": "7",
+      "when": 1793330004731,
+      "tag": "5031_leave_ledger_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 4432,
+      "version": "7",
+      "when": 1793330004732,
+      "tag": "5032_bulk_job_unbounded_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 4433,
+      "version": "7",
+      "when": 1793330004733,
+      "tag": "5033_leave_follow_up_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 4435,
+      "version": "7",
+      "when": 1793330004735,
+      "tag": "5035_leave_stage_digests",
+      "breakpoints": true
+    },
+    {
+      "idx": 4436,
+      "version": "7",
+      "when": 1793330004736,
+      "tag": "5036_leave_type_pending_year_cycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 4440,
+      "version": "7",
+      "when": 1793330004740,
+      "tag": "5040_roster_bulk_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 4441,
+      "version": "7",
+      "when": 1793330004741,
+      "tag": "5041_bulk_job_queue_and_watch",
+      "breakpoints": true
+    },
+    {
+      "idx": 4445,
+      "version": "7",
+      "when": 1793330004745,
+      "tag": "5045_attendance_bulk_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 4450,
+      "version": "7",
+      "when": 1793330004750,
+      "tag": "5050_payroll_processing_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 4451,
+      "version": "7",
+      "when": 1793330004751,
+      "tag": "5051_payroll_processing_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 4452,
+      "version": "7",
+      "when": 1793330004752,
+      "tag": "5052_payroll_run_group",
+      "breakpoints": true
+    },
+    {
+      "idx": 4453,
+      "version": "7",
+      "when": 1793330004753,
+      "tag": "5053_bulk_job_settle",
+      "breakpoints": true
+    },
+    {
+      "idx": 4454,
+      "version": "7",
+      "when": 1793330004754,
+      "tag": "5054_payroll_partner_point_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 4455,
+      "version": "7",
+      "when": 1793330004755,
+      "tag": "5055_payroll_history_staged_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 4456,
+      "version": "7",
+      "when": 1793330004756,
+      "tag": "5056_payroll_reprocess_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 4460,
+      "version": "7",
+      "when": 1793330004760,
+      "tag": "5060_register_section_import_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 4461,
+      "version": "7",
+      "when": 1793330004761,
+      "tag": "5061_register_import_set_release",
+      "breakpoints": true
+    },
+    {
+      "idx": 4462,
+      "version": "7",
+      "when": 1793330004762,
+      "tag": "5062_employee_import_revert_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 4463,
+      "version": "7",
+      "when": 1793330004763,
+      "tag": "5063_register_import_release_key_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 4464,
+      "version": "7",
+      "when": 1793330004764,
+      "tag": "5064_employee_import_revert_release_hash",
+      "breakpoints": true
+    },
+    {
+      "idx": 4470,
+      "version": "7",
+      "when": 1793330004770,
+      "tag": "5070_system_label_import_staged_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 4471,
+      "version": "7",
+      "when": 1793330004771,
+      "tag": "5071_workforce_capability_tenant_publication",
+      "breakpoints": true
+    },
+    {
+      "idx": 4475,
+      "version": "7",
+      "when": 1793330004775,
+      "tag": "5075_bulk_job_movement_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 4476,
+      "version": "7",
+      "when": 1793330004776,
+      "tag": "5076_workforce_employment_access_set",
+      "breakpoints": true
+    },
+    {
+      "idx": 4477,
+      "version": "7",
+      "when": 1793330004777,
+      "tag": "5077_bulk_job_movement_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 4478,
+      "version": "7",
+      "when": 1793330004778,
+      "tag": "5078_bulk_job_movement_import_revert",
+      "breakpoints": true
+    },
+    {
+      "idx": 4479,
+      "version": "7",
+      "when": 1793330004779,
+      "tag": "5079_movement_revert_capture",
+      "breakpoints": true
+    },
+    {
+      "idx": 4480,
+      "version": "7",
+      "when": 1793330004780,
+      "tag": "5080_access_administrator_coalesced_assert",
+      "breakpoints": true
+    },
+    {
+      "idx": 4481,
+      "version": "7",
+      "when": 1793330004781,
+      "tag": "5081_reward_access_observation_due",
+      "breakpoints": true
+    },
+    {
+      "idx": 4482,
+      "version": "7",
+      "when": 1793330004782,
+      "tag": "5082_home_own_clock_day",
+      "breakpoints": true
+    },
+    {
+      "idx": 4483,
+      "version": "7",
+      "when": 1793330004783,
+      "tag": "5083_home_own_schedule_range",
+      "breakpoints": true
+    },
+    {
+      "idx": 4490,
+      "version": "7",
+      "when": 1793330004790,
+      "tag": "5090_audit_chain_commit_seal",
+      "breakpoints": true
+    },
+    {
+      "idx": 4520,
+      "version": "7",
+      "when": 1793330004820,
+      "tag": "5120_access_review_custody_held_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 4521,
+      "version": "7",
+      "when": 1793330004821,
+      "tag": "5121_personnel_search_set_mapping",
+      "breakpoints": true
+    },
+    {
+      "idx": 4523,
+      "version": "7",
+      "when": 1793330004823,
+      "tag": "5123_import_history_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 4524,
+      "version": "7",
+      "when": 1793330004824,
+      "tag": "5124_attendance_workflow_skipped_levels",
+      "breakpoints": true
+    },
+    {
+      "idx": 4525,
+      "version": "7",
+      "when": 1793330004825,
+      "tag": "5125_individual_txn_pricing_marker",
+      "breakpoints": true
+    },
+    {
+      "idx": 4526,
+      "version": "7",
+      "when": 1793330004826,
+      "tag": "5126_contract_internship_end_dates",
+      "breakpoints": true
+    },
+    {
+      "idx": 4527,
+      "version": "7",
+      "when": 1793330004827,
+      "tag": "5127_import_log_actor_labels",
+      "breakpoints": true
+    },
+    {
+      "idx": 4529,
+      "version": "7",
+      "when": 1793330004829,
+      "tag": "5129_payroll_history_effective_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 4530,
+      "version": "7",
+      "when": 1793330004830,
+      "tag": "5130_pay_formula_ai_draft_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 4540,
+      "version": "7",
+      "when": 1793330004840,
+      "tag": "5140_attendance_workflow_cross_company_pending",
+      "breakpoints": true
+    },
+    {
+      "idx": 4541,
+      "version": "7",
+      "when": 1793330004841,
+      "tag": "5141_attendance_workflow_escalation",
+      "breakpoints": true
+    },
+    {
+      "idx": 4542,
+      "version": "7",
+      "when": 1793330004842,
+      "tag": "5142_attendance_on_behalf",
+      "breakpoints": true
+    },
+    {
+      "idx": 4543,
+      "version": "7",
+      "when": 1793330004843,
+      "tag": "5143_attendance_final_decision_window",
+      "breakpoints": true
+    },
+    {
+      "idx": 4544,
+      "version": "7",
+      "when": 1793330004844,
+      "tag": "5144_attendance_lane_security_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 4545,
+      "version": "7",
+      "when": 1793330004845,
+      "tag": "5145_ai_attendance_on_behalf_reads",
+      "breakpoints": true
+    },
+    {
+      "idx": 4550,
+      "version": "7",
+      "when": 1793330004850,
+      "tag": "5150_attendance_policy_dated_rounding",
+      "breakpoints": true
+    },
+    {
+      "idx": 4560,
+      "version": "7",
+      "when": 1793330004860,
+      "tag": "5160_sweep_swing_thresholds",
+      "breakpoints": true
+    },
+    {
+      "idx": 4561,
+      "version": "7",
+      "when": 1793330004861,
+      "tag": "5161_leave_team_minimum_present",
+      "breakpoints": true
+    },
+    {
+      "idx": 4562,
+      "version": "7",
+      "when": 1793330004862,
+      "tag": "5162_teras_loop_request_acts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4800,
+      "version": "7",
+      "when": 1793330005100,
+      "tag": "5400_rewards_direct_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 4820,
+      "version": "7",
+      "when": 1793330005120,
+      "tag": "5420_rewards_dashboard_preparation_notices",
+      "breakpoints": true
+    },
+    {
+      "idx": 4860,
+      "version": "7",
+      "when": 1793330005160,
+      "tag": "5460_lifecycle_v9_email_recipients",
+      "breakpoints": true
+    },
+    {
+      "idx": 4880,
+      "version": "7",
+      "when": 1793330005180,
+      "tag": "5480_offboarding_items_assignment_load",
+      "breakpoints": true
+    },
+    {
+      "idx": 4900,
+      "version": "7",
+      "when": 1793330005200,
+      "tag": "5500_rewards_limit_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 4920,
+      "version": "7",
+      "when": 1793330005220,
+      "tag": "5520_rewards_role_permission_grid",
+      "breakpoints": true
+    },
+    {
+      "idx": 4940,
+      "version": "7",
+      "when": 1793330005240,
+      "tag": "5540_rewards_offcycle_company_balance",
+      "breakpoints": true
+    },
+    {
+      "idx": 4960,
+      "version": "7",
+      "when": 1793330005260,
+      "tag": "5560_rewards_limit_controls_role_level",
+      "breakpoints": true
+    },
+    {
+      "idx": 4980,
+      "version": "7",
+      "when": 1793330005280,
+      "tag": "5580_rewards_config_owner_paths",
+      "breakpoints": true
+    },
+    {
+      "idx": 5000,
+      "version": "7",
+      "when": 1793330005300,
+      "tag": "5600_rewards_config_editor_role_levels",
+      "breakpoints": true
+    },
+    {
+      "idx": 5020,
+      "version": "7",
+      "when": 1793330005320,
+      "tag": "5620_rewards_config_grants_creator_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 5040,
+      "version": "7",
+      "when": 1793330005340,
+      "tag": "5640_lifecycle_v9_email_hold_company_tenant",
+      "breakpoints": true
+    },
+    {
+      "idx": 5060,
+      "version": "7",
+      "when": 1793330005360,
+      "tag": "5660_pay_component_bonus_epf_bonus_2012",
+      "breakpoints": true
+    },
+    {
+      "idx": 5080,
+      "version": "7",
+      "when": 1793330005380,
+      "tag": "5680_payroll_history_dated_company",
+      "breakpoints": true
+    },
+    {
+      "idx": 5090,
+      "version": "7",
+      "when": 1793330005390,
+      "tag": "5690_information_payslip_snapshot_from_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5095,
+      "version": "7",
+      "when": 1793330005395,
+      "tag": "5695_employment_rehire_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 5096,
+      "version": "7",
+      "when": 1793330005396,
+      "tag": "5696_information_correction_latest_saved",
+      "breakpoints": true
+    },
+    {
+      "idx": 5140,
+      "version": "7",
+      "when": 1793330005440,
+      "tag": "5740_automation_shared_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5141,
+      "version": "7",
+      "when": 1793330005441,
+      "tag": "5741_personnel_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5142,
+      "version": "7",
+      "when": 1793330005442,
+      "tag": "5742_probation_settings_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 5143,
+      "version": "7",
+      "when": 1793330005443,
+      "tag": "5743_automation_email_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 5144,
+      "version": "7",
+      "when": 1793330005444,
+      "tag": "5744_probation_case_at_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5145,
+      "version": "7",
+      "when": 1793330005445,
+      "tag": "5745_probation_outcome_override_event",
+      "breakpoints": true
+    },
+    {
+      "idx": 5146,
+      "version": "7",
+      "when": 1793330005446,
+      "tag": "5746_probation_tracker_scale_and_extensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5147,
+      "version": "7",
+      "when": 1793330005447,
+      "tag": "5747_document_signing_review_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5148,
+      "version": "7",
+      "when": 1793330005448,
+      "tag": "5748_automation_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 5149,
+      "version": "7",
+      "when": 1793330005449,
+      "tag": "5749_probation_delegation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5150,
+      "version": "7",
+      "when": 1793330005450,
+      "tag": "5750_probation_tracker_plan_robustness",
+      "breakpoints": true
+    },
+    {
+      "idx": 5151,
+      "version": "7",
+      "when": 1793330005451,
+      "tag": "5751_probation_queues_and_form_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5152,
+      "version": "7",
+      "when": 1793330005452,
+      "tag": "5752_probation_letter_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5153,
+      "version": "7",
+      "when": 1793330005453,
+      "tag": "5753_probation_outcome_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5154,
+      "version": "7",
+      "when": 1793330005454,
+      "tag": "5754_automation_email_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 5155,
+      "version": "7",
+      "when": 1793330005455,
+      "tag": "5755_probation_routed_assignment",
+      "breakpoints": true
+    },
+    {
+      "idx": 5156,
+      "version": "7",
+      "when": 1793330005456,
+      "tag": "5756_probation_form_approver_choices",
+      "breakpoints": true
+    },
+    {
+      "idx": 5157,
+      "version": "7",
+      "when": 1793330005457,
+      "tag": "5757_probation_legacy_workflow_move",
+      "breakpoints": true
+    },
+    {
+      "idx": 5158,
+      "version": "7",
+      "when": 1793330005458,
+      "tag": "5758_probation_routed_overrides",
+      "breakpoints": true
+    },
+    {
+      "idx": 5159,
+      "version": "7",
+      "when": 1793330005459,
+      "tag": "5759_probation_employee_own_steps_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 5160,
+      "version": "7",
+      "when": 1793330005460,
+      "tag": "5760_probation_queue_kinds_and_pbp_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5161,
+      "version": "7",
+      "when": 1793330005461,
+      "tag": "5761_probation_automation_recipients_and_tracker_steps",
+      "breakpoints": true
+    },
+    {
+      "idx": 5162,
+      "version": "7",
+      "when": 1793330005462,
+      "tag": "5762_probation_form_import",
+      "breakpoints": true
+    },
+    {
+      "idx": 5163,
+      "version": "7",
+      "when": 1793330005463,
+      "tag": "5763_probation_access_roles",
+      "breakpoints": true
+    },
+    {
+      "idx": 5164,
+      "version": "7",
+      "when": 1793330005464,
+      "tag": "5764_probation_routed_holders",
+      "breakpoints": true
+    },
+    {
+      "idx": 5165,
+      "version": "7",
+      "when": 1793330005465,
+      "tag": "5765_probation_letter_signers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5166,
+      "version": "7",
+      "when": 1793330005466,
+      "tag": "5766_probation_reshape_company_in_use",
+      "breakpoints": true
+    },
+    {
+      "idx": 5170,
+      "version": "7",
+      "when": 1793330005470,
+      "tag": "5770_attendance_workflow_approver_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5171,
+      "version": "7",
+      "when": 1793330005471,
+      "tag": "5771_assistant_legacy_index_shared_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 5172,
+      "version": "7",
+      "when": 1793330005472,
+      "tag": "5772_movement_employment_periods",
+      "breakpoints": true
+    },
+    {
+      "idx": 5173,
+      "version": "7",
+      "when": 1793330005473,
+      "tag": "5773_movement_payroll_protection_and_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 5174,
+      "version": "7",
+      "when": 1793330005474,
+      "tag": "5774_employment_payment_method_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5175,
+      "version": "7",
+      "when": 1793330005475,
+      "tag": "5775_movement_payment_method_field",
+      "breakpoints": true
+    },
+    {
+      "idx": 5176,
+      "version": "7",
+      "when": 1793330005476,
+      "tag": "5776_workforce_payroll_input_invalidation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5177,
+      "version": "7",
+      "when": 1793330005477,
+      "tag": "5777_movement_closed_payroll_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 5178,
+      "version": "7",
+      "when": 1793330005478,
+      "tag": "5778_movement_payroll_windows",
+      "breakpoints": true
+    },
+    {
+      "idx": 5179,
+      "version": "7",
+      "when": 1793330005479,
+      "tag": "5779_hire_company_allocation_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 5250,
+      "version": "7",
+      "when": 1793330005550,
+      "tag": "5850_recruiting_partner_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 5251,
+      "version": "7",
+      "when": 1793330005551,
+      "tag": "5851_recruitment_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 5252,
+      "version": "7",
+      "when": 1793330005552,
+      "tag": "5852_recruitment_team_interviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 5253,
+      "version": "7",
+      "when": 1793330005553,
+      "tag": "5853_recruitment_offers_hire_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 5254,
+      "version": "7",
+      "when": 1793330005554,
+      "tag": "5854_recruitment_requisitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5255,
+      "version": "7",
+      "when": 1793330005555,
+      "tag": "5855_recruitment_candidate_privacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 5256,
+      "version": "7",
+      "when": 1793330005556,
+      "tag": "5856_recruitment_report_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5257,
+      "version": "7",
+      "when": 1793330005557,
+      "tag": "5857_recruitment_referrals",
+      "breakpoints": true
+    },
+    {
+      "idx": 5258,
+      "version": "7",
+      "when": 1793330005558,
+      "tag": "5858_recruitment_careers_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 5259,
+      "version": "7",
+      "when": 1793330005559,
+      "tag": "5859_recruitment_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5260,
+      "version": "7",
+      "when": 1793330005560,
+      "tag": "5860_recruitment_agencies",
+      "breakpoints": true
+    },
+    {
+      "idx": 5261,
+      "version": "7",
+      "when": 1793330005561,
+      "tag": "5861_recruitment_screening",
+      "breakpoints": true
+    },
+    {
+      "idx": 5262,
+      "version": "7",
+      "when": 1793330005562,
+      "tag": "5862_recruitment_background_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5263,
+      "version": "7",
+      "when": 1793330005563,
+      "tag": "5863_recruitment_talent_pools_blocked_list",
+      "breakpoints": true
+    },
+    {
+      "idx": 5264,
+      "version": "7",
+      "when": 1793330005564,
+      "tag": "5864_recruitment_consume_invitation_access_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 5265,
+      "version": "7",
+      "when": 1793330005565,
+      "tag": "5865_recruitment_custom_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 5266,
+      "version": "7",
+      "when": 1793330005566,
+      "tag": "5866_recruitment_position_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 5267,
+      "version": "7",
+      "when": 1793330005567,
+      "tag": "5867_recruitment_import_export",
+      "breakpoints": true
+    },
+    {
+      "idx": 5268,
+      "version": "7",
+      "when": 1793330005568,
+      "tag": "5868_recruitment_waiting_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 5269,
+      "version": "7",
+      "when": 1793330005569,
+      "tag": "5869_recruitment_interview_setup",
+      "breakpoints": true
+    },
+    {
+      "idx": 5270,
+      "version": "7",
+      "when": 1793330005570,
+      "tag": "5870_recruitment_candidate_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 5271,
+      "version": "7",
+      "when": 1793330005571,
+      "tag": "5871_recruitment_candidate_email_interviews_offers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5272,
+      "version": "7",
+      "when": 1793330005572,
+      "tag": "5872_recruitment_careers_verified_applicants",
+      "breakpoints": true
+    },
+    {
+      "idx": 5273,
+      "version": "7",
+      "when": 1793330005573,
+      "tag": "5873_recruitment_candidate_response_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 5274,
+      "version": "7",
+      "when": 1793330005574,
+      "tag": "5874_recruitment_candidate_survey",
+      "breakpoints": true
+    },
+    {
+      "idx": 5275,
+      "version": "7",
+      "when": 1793330005575,
+      "tag": "5875_recruitment_referral_rewards_agency_fees",
+      "breakpoints": true
+    },
+    {
+      "idx": 5276,
+      "version": "7",
+      "when": 1793330005576,
+      "tag": "5876_recruitment_ai_match_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 5277,
+      "version": "7",
+      "when": 1793330005577,
+      "tag": "5877_recruitment_agency_portal",
+      "breakpoints": true
+    },
+    {
+      "idx": 5500,
+      "version": "7",
+      "when": 1794841006100,
+      "tag": "6100_rewards_review_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 5501,
+      "version": "7",
+      "when": 1794841006101,
+      "tag": "6101_reward_person_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5502,
+      "version": "7",
+      "when": 1794841006102,
+      "tag": "6102_lifecycle_recipient_directory",
+      "breakpoints": true
+    },
+    {
+      "idx": 5503,
+      "version": "7",
+      "when": 1794841006103,
+      "tag": "6103_lifecycle_pbp_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 5504,
+      "version": "7",
+      "when": 1794841006104,
+      "tag": "6104_lifecycle_recipient_fanout",
+      "breakpoints": true
+    },
+    {
+      "idx": 5700,
+      "version": "7",
+      "when": 1794988006300,
+      "tag": "6300_resignation_journey",
+      "breakpoints": true
+    },
+    {
+      "idx": 5701,
+      "version": "7",
+      "when": 1794988006301,
+      "tag": "6301_resignation_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 5702,
+      "version": "7",
+      "when": 1794988006302,
+      "tag": "6302_resignation_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5703,
+      "version": "7",
+      "when": 1794988006303,
+      "tag": "6303_resignation_email_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 5704,
+      "version": "7",
+      "when": 1794988006304,
+      "tag": "6304_resignation_letter_teams",
+      "breakpoints": true
+    },
+    {
+      "idx": 5705,
+      "version": "7",
+      "when": 1794988006305,
+      "tag": "6305_resignation_letter_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 5706,
+      "version": "7",
+      "when": 1794988006306,
+      "tag": "6306_resignation_case_communications",
+      "breakpoints": true
+    },
+    {
+      "idx": 5707,
+      "version": "7",
+      "when": 1794988006307,
+      "tag": "6307_contract_resignation_directory_bridge",
+      "breakpoints": true
+    },
+    {
+      "idx": 5708,
+      "version": "7",
+      "when": 1794988006308,
+      "tag": "6308_contract_shared_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 5709,
+      "version": "7",
+      "when": 1794988006309,
+      "tag": "6309_contract_shared_flows",
+      "breakpoints": true
+    },
+    {
+      "idx": 5710,
+      "version": "7",
+      "when": 1794988006310,
+      "tag": "6310_contract_shared_builders",
+      "breakpoints": true
+    },
+    {
+      "idx": 5711,
+      "version": "7",
+      "when": 1794988006311,
+      "tag": "6311_shared_document_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 5712,
+      "version": "7",
+      "when": 1794988006312,
+      "tag": "6312_shared_email_rich_body",
+      "breakpoints": true
+    },
+    {
+      "idx": 5713,
+      "version": "7",
+      "when": 1794988006313,
+      "tag": "6313_native_contract_counter_and_cutover",
+      "breakpoints": true
+    },
+    {
+      "idx": 5714,
+      "version": "7",
+      "when": 1794988006314,
+      "tag": "6314_contract_shared_projections",
+      "breakpoints": true
+    },
+    {
+      "idx": 5715,
+      "version": "7",
+      "when": 1794988006315,
+      "tag": "6315_contract_shared_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 5716,
+      "version": "7",
+      "when": 1794988006316,
+      "tag": "6316_contract_shared_signing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5717,
+      "version": "7",
+      "when": 1794988006317,
+      "tag": "6317_contract_shared_decision_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5718,
+      "version": "7",
+      "when": 1794988006318,
+      "tag": "6318_contract_shared_execution_adapters",
+      "breakpoints": true
+    },
+    {
+      "idx": 5719,
+      "version": "7",
+      "when": 1794988006319,
+      "tag": "6319_contract_shared_worker_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 5720,
+      "version": "7",
+      "when": 1794988006320,
+      "tag": "6320_contract_shared_identity_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 5721,
+      "version": "7",
+      "when": 1794988006321,
+      "tag": "6321_contract_shared_email_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 5722,
+      "version": "7",
+      "when": 1794988006322,
+      "tag": "6322_contract_shared_personnel_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5723,
+      "version": "7",
+      "when": 1794988006323,
+      "tag": "6323_contract_posting_movement_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 5724,
+      "version": "7",
+      "when": 1794988006324,
+      "tag": "6324_contract_posting_projections",
+      "breakpoints": true
+    },
+    {
+      "idx": 5725,
+      "version": "7",
+      "when": 1794988006325,
+      "tag": "6325_contract_posting_receipts_and_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5726,
+      "version": "7",
+      "when": 1794988006326,
+      "tag": "6326_contract_shared_tracker",
+      "breakpoints": true
+    },
+    {
+      "idx": 5727,
+      "version": "7",
+      "when": 1794988006327,
+      "tag": "6327_contract_shared_period_open",
+      "breakpoints": true
+    },
+    {
+      "idx": 5728,
+      "version": "7",
+      "when": 1794988006328,
+      "tag": "6328_contract_shared_case_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 5729,
+      "version": "7",
+      "when": 1794988006329,
+      "tag": "6329_contract_shared_assigned_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 5730,
+      "version": "7",
+      "when": 1794988006330,
+      "tag": "6330_contract_shared_ending_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 5731,
+      "version": "7",
+      "when": 1794988006331,
+      "tag": "6331_contract_shared_decline",
+      "breakpoints": true
+    },
+    {
+      "idx": 5732,
+      "version": "7",
+      "when": 1794988006332,
+      "tag": "6332_contract_shared_offboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 5733,
+      "version": "7",
+      "when": 1794988006333,
+      "tag": "6333_contract_shared_email_document_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 5734,
+      "version": "7",
+      "when": 1794988006334,
+      "tag": "6334_automation_shared_assignment_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 5735,
+      "version": "7",
+      "when": 1794988006335,
+      "tag": "6335_shared_automation_email_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 5736,
+      "version": "7",
+      "when": 1794988006336,
+      "tag": "6336_automation_email_test_self",
+      "breakpoints": true
+    },
+    {
+      "idx": 5737,
+      "version": "7",
+      "when": 1794988006337,
+      "tag": "6337_shared_automation_email_asset_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 5738,
+      "version": "7",
+      "when": 1794988006338,
+      "tag": "6338_contract_shared_tracker_choices",
+      "breakpoints": true
+    },
+    {
+      "idx": 5739,
+      "version": "7",
+      "when": 1794988006339,
+      "tag": "6339_contract_shared_starting_setup",
+      "breakpoints": true
+    },
+    {
+      "idx": 5740,
+      "version": "7",
+      "when": 1794988006340,
+      "tag": "6340_contract_shared_tracker_retained_cases",
+      "breakpoints": true
+    },
+    {
+      "idx": 5741,
+      "version": "7",
+      "when": 1794988006341,
+      "tag": "6341_contract_shared_review_wording",
+      "breakpoints": true
+    },
+    {
+      "idx": 5742,
+      "version": "7",
+      "when": 1794988006342,
+      "tag": "6342_contract_shared_ending_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5743,
+      "version": "7",
+      "when": 1794988006343,
+      "tag": "6343_contract_shared_email_self_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 5744,
+      "version": "7",
+      "when": 1794988006344,
+      "tag": "6344_contract_shared_email_task_projection",
+      "breakpoints": true
+    },
+    {
+      "idx": 5745,
+      "version": "7",
+      "when": 1794988006345,
+      "tag": "6345_shared_email_test_asset_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 5746,
+      "version": "7",
+      "when": 1794988006346,
+      "tag": "6346_shared_email_case_file_pages",
+      "breakpoints": true
+    },
+    {
+      "idx": 5747,
+      "version": "7",
+      "when": 1794988006347,
+      "tag": "6347_probation_shared_email_asset_proof",
+      "breakpoints": true
+    },
+    {
+      "idx": 5748,
+      "version": "7",
+      "when": 1794988006348,
+      "tag": "6348_shared_groups_preserve_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 5749,
+      "version": "7",
+      "when": 1794988006349,
+      "tag": "6349_shared_groups_member_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5750,
+      "version": "7",
+      "when": 1794988006350,
+      "tag": "6350_email_test_current_human",
+      "breakpoints": true
+    },
+    {
+      "idx": 5751,
+      "version": "7",
+      "when": 1794988006351,
+      "tag": "6351_email_test_authority_utf8",
+      "breakpoints": true
+    },
+    {
+      "idx": 5752,
+      "version": "7",
+      "when": 1794988006352,
+      "tag": "6352_contract_shared_virtual_period",
+      "breakpoints": true
+    },
+    {
+      "idx": 5753,
+      "version": "7",
+      "when": 1794988006353,
+      "tag": "6353_contract_shared_case_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 5754,
+      "version": "7",
+      "when": 1794988006354,
+      "tag": "6354_contract_shared_directory_and_signer_caption",
+      "breakpoints": true
+    },
+    {
+      "idx": 5755,
+      "version": "7",
+      "when": 1794988006355,
+      "tag": "6355_contract_shared_period_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5756,
+      "version": "7",
+      "when": 1794988006356,
+      "tag": "6356_contract_shared_work_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 5757,
+      "version": "7",
+      "when": 1794988006357,
+      "tag": "6357_contract_shared_legacy_inbox_cutover",
+      "breakpoints": true
+    },
+    {
+      "idx": 5758,
+      "version": "7",
+      "when": 1794988006358,
+      "tag": "6358_contract_shared_manual_workflows",
+      "breakpoints": true
+    },
+    {
+      "idx": 5759,
+      "version": "7",
+      "when": 1794988006359,
+      "tag": "6359_contract_shared_release_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 5760,
+      "version": "7",
+      "when": 1794988006360,
+      "tag": "6360_contract_shared_native_intake_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 5761,
+      "version": "7",
+      "when": 1794988006361,
+      "tag": "6361_contract_shared_body_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5762,
+      "version": "7",
+      "when": 1794988006362,
+      "tag": "6362_contract_shared_work_page_null_guards",
+      "breakpoints": true
+    },
+    {
+      "idx": 5763,
+      "version": "7",
+      "when": 1794988006363,
+      "tag": "6363_contract_posting_canonical_assignment_receipt",
+      "breakpoints": true
+    },
+    {
+      "idx": 5764,
+      "version": "7",
+      "when": 1794988006364,
+      "tag": "6364_contract_posting_source_projection",
+      "breakpoints": true
+    },
+    {
+      "idx": 5765,
+      "version": "7",
+      "when": 1794988006365,
+      "tag": "6365_contract_posting_native_completion",
+      "breakpoints": true
+    },
+    {
+      "idx": 5766,
+      "version": "7",
+      "when": 1794988006366,
+      "tag": "6366_contract_posting_durable_job_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 5767,
+      "version": "7",
+      "when": 1794988006367,
+      "tag": "6367_contract_ordinary_signing_company_gate",
+      "breakpoints": true
+    },
+    {
+      "idx": 5768,
+      "version": "7",
+      "when": 1794988006368,
+      "tag": "6368_contract_work_exact_document_join",
+      "breakpoints": true
+    },
+    {
+      "idx": 5769,
+      "version": "7",
+      "when": 1794988006369,
+      "tag": "6369_contract_tracker_scheduled_period",
+      "breakpoints": true
+    },
+    {
+      "idx": 5770,
+      "version": "7",
+      "when": 1794988006370,
+      "tag": "6370_contract_work_case_source_anchor",
+      "breakpoints": true
+    },
+    {
+      "idx": 5771,
+      "version": "7",
+      "when": 1794988006371,
+      "tag": "6371_contract_case_progress_explanations",
+      "breakpoints": true
+    },
+    {
+      "idx": 5772,
+      "version": "7",
+      "when": 1794988006372,
+      "tag": "6372_contract_case_fallback_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 5773,
+      "version": "7",
+      "when": 1794988006373,
+      "tag": "6373_contract_email_assigned_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 5774,
+      "version": "7",
+      "when": 1794988006374,
+      "tag": "6374_contract_letter_purpose_guidance",
+      "breakpoints": true
+    },
+    {
+      "idx": 5775,
+      "version": "7",
+      "when": 1794988006375,
+      "tag": "6375_contract_template_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 5776,
+      "version": "7",
+      "when": 1794988006376,
+      "tag": "6376_contract_template_draft_publication",
+      "breakpoints": true
+    },
+    {
+      "idx": 5777,
+      "version": "7",
+      "when": 1794988006377,
+      "tag": "6377_contract_routing_check_names",
+      "breakpoints": true
+    },
+    {
+      "idx": 5778,
+      "version": "7",
+      "when": 1794988006378,
+      "tag": "6378_contract_tracker_attention_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 5779,
+      "version": "7",
+      "when": 1794988006379,
+      "tag": "6379_contract_starting_setup_completion",
+      "breakpoints": true
+    },
+    {
+      "idx": 5780,
+      "version": "7",
+      "when": 1794988006380,
+      "tag": "6380_contract_native_system_kernel",
+      "breakpoints": true
+    },
+    {
+      "idx": 5781,
+      "version": "7",
+      "when": 1794988006381,
+      "tag": "6381_contract_system_period_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 5782,
+      "version": "7",
+      "when": 1794988006382,
+      "tag": "6382_contract_system_mail_digest",
+      "breakpoints": true
+    },
+    {
+      "idx": 5783,
+      "version": "7",
+      "when": 1794988006383,
+      "tag": "6383_contract_system_provenance_rechecks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5784,
+      "version": "7",
+      "when": 1794988006384,
+      "tag": "6384_contract_accept_no_matching_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 5785,
+      "version": "7",
+      "when": 1794988006385,
+      "tag": "6385_contract_digest_queue_capability",
+      "breakpoints": true
+    },
+    {
+      "idx": 5786,
+      "version": "7",
+      "when": 1794988006386,
+      "tag": "6386_contract_system_private_row_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 5787,
+      "version": "7",
+      "when": 1794988006387,
+      "tag": "6387_contract_form_response_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 5788,
+      "version": "7",
+      "when": 1794988006388,
+      "tag": "6388_country_owned_document_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 5789,
+      "version": "7",
+      "when": 1794988006389,
+      "tag": "6389_contract_form_response_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5790,
+      "version": "7",
+      "when": 1794988006390,
+      "tag": "6390_contract_email_document_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 5791,
+      "version": "7",
+      "when": 1794988006391,
+      "tag": "6391_contract_letterhead_fallback_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 5792,
+      "version": "7",
+      "when": 1794988006392,
+      "tag": "6392_contract_retrospective_ending_legacy_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 5793,
+      "version": "7",
+      "when": 1794988006393,
+      "tag": "6393_contract_snapshot_native_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 5794,
+      "version": "7",
+      "when": 1794988006394,
+      "tag": "6394_contract_email_document_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5795,
+      "version": "7",
+      "when": 1794988006395,
+      "tag": "6395_contract_form_current_proof",
+      "breakpoints": true
+    },
+    {
+      "idx": 5796,
+      "version": "7",
+      "when": 1794988006396,
+      "tag": "6396_contract_published_form_email_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 5797,
+      "version": "7",
+      "when": 1794988006397,
+      "tag": "6397_shared_email_materialization_start",
+      "breakpoints": true
+    },
+    {
+      "idx": 5798,
+      "version": "7",
+      "when": 1794988006398,
+      "tag": "6398_shared_email_explicit_tenant_start",
+      "breakpoints": true
+    },
+    {
+      "idx": 5799,
+      "version": "7",
+      "when": 1794988006399,
+      "tag": "6399_contract_email_prerequisite_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 5800,
+      "version": "7",
+      "when": 1794988006400,
+      "tag": "6400_contract_manual_attention_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5801,
+      "version": "7",
+      "when": 1794988006401,
+      "tag": "6401_contract_email_required_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 5802,
+      "version": "7",
+      "when": 1794988006402,
+      "tag": "6402_shared_email_guard_preservation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5803,
+      "version": "7",
+      "when": 1794988006403,
+      "tag": "6403_contract_canonical_form_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 5804,
+      "version": "7",
+      "when": 1794988006404,
+      "tag": "6404_contract_intake_paged_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 5805,
+      "version": "7",
+      "when": 1794988006405,
+      "tag": "6405_contract_email_recovery_guard_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5806,
+      "version": "7",
+      "when": 1794988006406,
+      "tag": "6406_contract_email_recovery_callback_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5807,
+      "version": "7",
+      "when": 1794988006407,
+      "tag": "6407_contract_live_form_source_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 5808,
+      "version": "7",
+      "when": 1794988006408,
+      "tag": "6408_contract_email_prerequisite_state_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 5809,
+      "version": "7",
+      "when": 1794988006409,
+      "tag": "6409_contract_unsigned_email_form_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 5810,
+      "version": "7",
+      "when": 1794988006410,
+      "tag": "6410_contract_original_email_readiness_recheck",
+      "breakpoints": true
+    },
+    {
+      "idx": 5811,
+      "version": "7",
+      "when": 1794988006411,
+      "tag": "6411_contract_form_native_field_parity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5812,
+      "version": "7",
+      "when": 1794988006412,
+      "tag": "6412_contract_setup_ending_email_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 5813,
+      "version": "7",
+      "when": 1794988006413,
+      "tag": "6413_contract_setup_preserved_definition_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 5814,
+      "version": "7",
+      "when": 1794988006414,
+      "tag": "6414_contract_email_current_set_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 5815,
+      "version": "7",
+      "when": 1794988006415,
+      "tag": "6415_contract_email_work_archived_company",
+      "breakpoints": true
+    },
+    {
+      "idx": 5816,
+      "version": "7",
+      "when": 1794988006416,
+      "tag": "6416_contract_email_current_explicit_tenant",
+      "breakpoints": true
+    },
+    {
+      "idx": 5817,
+      "version": "7",
+      "when": 1794988006417,
+      "tag": "6417_contract_email_actual_upload_signal_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5818,
+      "version": "7",
+      "when": 1794988006418,
+      "tag": "6418_contract_shared_mail_native_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 5819,
+      "version": "7",
+      "when": 1794988006419,
+      "tag": "6419_contract_configuration_directory",
+      "breakpoints": true
+    },
+    {
+      "idx": 5820,
+      "version": "7",
+      "when": 1794988006420,
+      "tag": "6420_contract_historical_email_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 5821,
+      "version": "7",
+      "when": 1794988006421,
+      "tag": "6421_contract_posting_protected_job_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5822,
+      "version": "7",
+      "when": 1794988006422,
+      "tag": "6422_contract_posting_recorded_replay_frames",
+      "breakpoints": true
+    },
+    {
+      "idx": 5823,
+      "version": "7",
+      "when": 1794988006423,
+      "tag": "6423_contract_posting_prepared_target_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 5824,
+      "version": "7",
+      "when": 1794988006424,
+      "tag": "6424_contract_posting_bound_target_completion",
+      "breakpoints": true
+    },
+    {
+      "idx": 5825,
+      "version": "7",
+      "when": 1794988006425,
+      "tag": "6425_contract_posting_finish_and_commit_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 5826,
+      "version": "7",
+      "when": 1794988006426,
+      "tag": "6426_contract_posting_first_producer_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 5827,
+      "version": "7",
+      "when": 1794988006427,
+      "tag": "6427_contract_posting_admission_and_status_ports",
+      "breakpoints": true
+    },
+    {
+      "idx": 5828,
+      "version": "7",
+      "when": 1794988006428,
+      "tag": "6428_contract_posting_application_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 5829,
+      "version": "7",
+      "when": 1794988006429,
+      "tag": "6429_contract_posting_reconciliation_and_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 5830,
+      "version": "7",
+      "when": 1794988006430,
+      "tag": "6430_contract_email_document_hr_notices",
+      "breakpoints": true
+    },
+    {
+      "idx": 5831,
+      "version": "7",
+      "when": 1794988006431,
+      "tag": "6431_contract_posting_org_snapshot_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 5832,
+      "version": "7",
+      "when": 1794988006432,
+      "tag": "6432_contract_shared_navigation_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 5833,
+      "version": "7",
+      "when": 1794988006433,
+      "tag": "6433_contract_email_form_binding_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 5834,
+      "version": "7",
+      "when": 1794988006434,
+      "tag": "6434_contract_empty_opening_technical_finish",
+      "breakpoints": true
+    },
+    {
+      "idx": 5835,
+      "version": "7",
+      "when": 1794988006435,
+      "tag": "6435_automation_offboarding_configuration_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 5836,
+      "version": "7",
+      "when": 1794988006436,
+      "tag": "6436_contract_setup_fingerprint_setwise",
+      "breakpoints": true
+    },
+    {
+      "idx": 5837,
+      "version": "7",
+      "when": 1794988006437,
+      "tag": "6437_contract_completed_email_child_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 5838,
+      "version": "7",
+      "when": 1794988006438,
+      "tag": "6438_contract_setup_membership_fold",
+      "breakpoints": true
+    },
+    {
+      "idx": 5839,
+      "version": "7",
+      "when": 1794988006439,
+      "tag": "6439_contract_resignation_shared_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 5840,
+      "version": "7",
+      "when": 1794988006440,
+      "tag": "6440_own_leave_shared_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 5841,
+      "version": "7",
+      "when": 1794988006441,
+      "tag": "6441_contract_resignation_email_modules",
+      "breakpoints": true
+    },
+    {
+      "idx": 5842,
+      "version": "7",
+      "when": 1794988006442,
+      "tag": "6442_contract_probation_business_partner_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 5900,
+      "version": "7",
+      "when": 1794988006500,
+      "tag": "6500_ai_provider_candidate_presentation_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 5901,
+      "version": "7",
+      "when": 1794988006501,
+      "tag": "6501_contract_company_scope_retention",
+      "breakpoints": true
+    },
+    {
+      "idx": 10000,
+      "version": "7",
+      "when": 1794998006600,
+      "tag": "6600_probation_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 10001,
+      "version": "7",
+      "when": 1794998006601,
+      "tag": "6601_probation_intent_not_employment_activity",
+      "breakpoints": true
+    },
+    {
+      "idx": 10010,
+      "version": "7",
+      "when": 1794998006610,
+      "tag": "6610_probation_rich_email_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10011,
+      "version": "7",
+      "when": 1794998006611,
+      "tag": "6611_probation_rich_email_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 10012,
+      "version": "7",
+      "when": 1794998006612,
+      "tag": "6612_probation_email_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 10013,
+      "version": "7",
+      "when": 1794998006613,
+      "tag": "6613_probation_email_case_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 10020,
+      "version": "7",
+      "when": 1794998006620,
+      "tag": "6620_document_routing_required_acknowledgement",
+      "breakpoints": true
+    },
+    {
+      "idx": 10021,
+      "version": "7",
+      "when": 1794998006621,
+      "tag": "6621_probation_native_document_routing",
+      "breakpoints": true
+    },
+    {
+      "idx": 10022,
+      "version": "7",
+      "when": 1794998006622,
+      "tag": "6622_probation_unified_letter_publication",
+      "breakpoints": true
+    },
+    {
+      "idx": 10023,
+      "version": "7",
+      "when": 1794998006623,
+      "tag": "6623_document_route_sendback_round",
+      "breakpoints": true
+    },
+    {
+      "idx": 10024,
+      "version": "7",
+      "when": 1794998006624,
+      "tag": "6624_probation_letter_content_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 10025,
+      "version": "7",
+      "when": 1794998006625,
+      "tag": "6625_probation_letter_matching_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 10026,
+      "version": "7",
+      "when": 1794998006626,
+      "tag": "6626_probation_letter_delete_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 10030,
+      "version": "7",
+      "when": 1794998006630,
+      "tag": "6630_lifecycle_task_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 10031,
+      "version": "7",
+      "when": 1794998006631,
+      "tag": "6631_lifecycle_task_card_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 10040,
+      "version": "7",
+      "when": 1794998006640,
+      "tag": "6640_lifecycle_personnel_manager",
+      "breakpoints": true
+    },
+    {
+      "idx": 10041,
+      "version": "7",
+      "when": 1794998006641,
+      "tag": "6641_lifecycle_manager_recovery_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 10042,
+      "version": "7",
+      "when": 1794998006642,
+      "tag": "6642_lifecycle_manager_recovery_reader",
+      "breakpoints": true
+    },
+    {
+      "idx": 10050,
+      "version": "7",
+      "when": 1794998006650,
+      "tag": "6650_pay_formula_business_code_registration",
+      "breakpoints": true
+    },
+    {
+      "idx": 10056,
+      "version": "7",
+      "when": 1794998006656,
+      "tag": "6656_v9_document_routing_subject",
+      "breakpoints": true
+    },
+    {
+      "idx": 10057,
+      "version": "7",
+      "when": 1794998006657,
+      "tag": "6657_v9_document_routing_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10058,
+      "version": "7",
+      "when": 1794998006658,
+      "tag": "6658_document_route_returned_content_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 10059,
+      "version": "7",
+      "when": 1794998006659,
+      "tag": "6659_v9_routed_document_source_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 10060,
+      "version": "7",
+      "when": 1794998006660,
+      "tag": "6660_imported_tax_basis_reader",
+      "breakpoints": true
+    },
+    {
+      "idx": 10061,
+      "version": "7",
+      "when": 1794998006661,
+      "tag": "6661_tax_basis_scoped_subject_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 10070,
+      "version": "7",
+      "when": 1794998006670,
+      "tag": "6670_offboarding_requisition",
+      "breakpoints": true
+    },
+    {
+      "idx": 10071,
+      "version": "7",
+      "when": 1794998006671,
+      "tag": "6671_offboarding_requisition_exception",
+      "breakpoints": true
+    },
+    {
+      "idx": 10072,
+      "version": "7",
+      "when": 1794998006672,
+      "tag": "6672_offboarding_requisition_list",
+      "breakpoints": true
+    },
+    {
+      "idx": 10080,
+      "version": "7",
+      "when": 1794998006680,
+      "tag": "6680_personnel_completion_phone_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 10081,
+      "version": "7",
+      "when": 1794998006681,
+      "tag": "6681_personnel_completion_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 10082,
+      "version": "7",
+      "when": 1794998006682,
+      "tag": "6682_personnel_completion_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 10083,
+      "version": "7",
+      "when": 1794998006683,
+      "tag": "6683_personnel_completion_routing_bridge",
+      "breakpoints": true
+    },
+    {
+      "idx": 10084,
+      "version": "7",
+      "when": 1794998006684,
+      "tag": "6684_personnel_completion_projection",
+      "breakpoints": true
+    },
+    {
+      "idx": 10085,
+      "version": "7",
+      "when": 1794998006685,
+      "tag": "6685_personnel_completion_signature_projection",
+      "breakpoints": true
+    },
+    {
+      "idx": 10086,
+      "version": "7",
+      "when": 1794998006686,
+      "tag": "6686_probation_personnel_completion",
+      "breakpoints": true
+    },
+    {
+      "idx": 10087,
+      "version": "7",
+      "when": 1794998006687,
+      "tag": "6687_probation_personnel_completion_commands",
+      "breakpoints": true
+    },
+    {
+      "idx": 10088,
+      "version": "7",
+      "when": 1794998006688,
+      "tag": "6688_personnel_completion_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 10089,
+      "version": "7",
+      "when": 1794998006689,
+      "tag": "6689_personnel_completion_recovery_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 10090,
+      "version": "7",
+      "when": 1794998006690,
+      "tag": "6690_payroll_history_item_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 10091,
+      "version": "7",
+      "when": 1794998006691,
+      "tag": "6691_payroll_history_native_baseline_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 10092,
+      "version": "7",
+      "when": 1794998006692,
+      "tag": "6692_payroll_history_native_baseline_capture",
+      "breakpoints": true
+    },
+    {
+      "idx": 10093,
+      "version": "7",
+      "when": 1794998006693,
+      "tag": "6693_payroll_history_native_effective_and_artifact",
+      "breakpoints": true
+    },
+    {
+      "idx": 10094,
+      "version": "7",
+      "when": 1794998006694,
+      "tag": "6694_payroll_history_native_membership",
+      "breakpoints": true
+    },
+    {
+      "idx": 10095,
+      "version": "7",
+      "when": 1794998006695,
+      "tag": "6695_payroll_history_stage_boundary",
+      "breakpoints": true
+    },
+    {
+      "idx": 10096,
+      "version": "7",
+      "when": 1794998006696,
+      "tag": "6696_payroll_history_reviewed_removal_admission",
+      "breakpoints": true
+    },
+    {
+      "idx": 10097,
+      "version": "7",
+      "when": 1794998006697,
+      "tag": "6697_payroll_history_native_tax_predecessors",
+      "breakpoints": true
+    },
+    {
+      "idx": 10098,
+      "version": "7",
+      "when": 1794998006698,
+      "tag": "6698_payroll_history_maintenance_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 10099,
+      "version": "7",
+      "when": 1794998006699,
+      "tag": "6699_payroll_history_maintenance_subjects",
+      "breakpoints": true
+    },
+    {
+      "idx": 10100,
+      "version": "7",
+      "when": 1794998006700,
+      "tag": "6700_payroll_history_retained_insert",
+      "breakpoints": true
+    },
+    {
+      "idx": 10101,
+      "version": "7",
+      "when": 1794998006701,
+      "tag": "6701_payroll_history_native_anomaly_membership",
+      "breakpoints": true
+    },
+    {
+      "idx": 10360,
+      "version": "7",
+      "when": 1795028006960,
+      "tag": "6960_board_public_guidance_function_kinds",
+      "breakpoints": true
+    },
+    {
+      "idx": 10370,
+      "version": "7",
+      "when": 1795028006970,
+      "tag": "6970_fixed_transaction_import_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 10380,
+      "version": "7",
+      "when": 1795028006980,
+      "tag": "6980_payroll_transaction_export",
+      "breakpoints": true
+    },
+    {
+      "idx": 10390,
+      "version": "7",
+      "when": 1795028006990,
+      "tag": "6990_individual_import_template_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 10400,
+      "version": "7",
+      "when": 1795028007000,
+      "tag": "7000_movement_history_pay_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 10410,
+      "version": "7",
+      "when": 1795028007010,
+      "tag": "7010_payroll_history_point_read_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 10411,
+      "version": "7",
+      "when": 1795028007011,
+      "tag": "7011_payroll_tax_basis_picker_set",
+      "breakpoints": true
+    },
+    {
+      "idx": 10440,
+      "version": "7",
+      "when": 1795028007040,
+      "tag": "7040_payroll_original_employer_row_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 10450,
+      "version": "7",
+      "when": 1795028007050,
+      "tag": "7050_payroll_history_workbook_company",
+      "breakpoints": true
+    },
+    {
+      "idx": 10451,
+      "version": "7",
+      "when": 1795028007051,
+      "tag": "7051_payroll_read_authorization",
+      "breakpoints": true
+    },
+    {
+      "idx": 10452,
+      "version": "7",
+      "when": 1795028007052,
+      "tag": "7052_contract_posting_reporting_end_date",
+      "breakpoints": true
+    },
+    {
+      "idx": 10460,
+      "version": "7",
+      "when": 1795028007060,
+      "tag": "7060_payroll_reprocess_tax_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 10470,
+      "version": "7",
+      "when": 1795028007070,
+      "tag": "7070_payroll_tax_basis_group_job",
+      "breakpoints": true
     }
   ]
 }

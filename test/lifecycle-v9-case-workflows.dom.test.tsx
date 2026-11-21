@@ -1,6 +1,6 @@
 import type {ReactElement} from 'react';
 import {beforeAll,expect,it,vi} from 'vitest';
-import {fireEvent,render as renderUI,screen,within} from '@testing-library/react';
+import {act,fireEvent,render as renderUI,screen,within} from '@testing-library/react';
 import {CaseWorkflows} from '../app/lifecycle/v9/case-workflows';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {NextIntlClientProvider} from 'next-intl';
@@ -15,13 +15,14 @@ vi.mock('../app/lifecycle/v9/actions',()=>({readV9PersonnelPreview:vi.fn().mockR
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};});
 const messages=JSON.parse(readFileSync('messages/en.json','utf8'));
 function fixture(){
- const c:Case={version:9,id:'fictional-case',number:'OFB-FICTIONAL',module:'off',revision:1,state:'submitted',facts:{name:'Fictional person',employeeNo:'',employmentId:'',personId:'',joinDate:'2026-01-01',lastDay:'2026-11-01',noticeDate:'2026-10-01',employeeUserId:'employee',supervisorUserId:null,pbpUserId:null,taUserId:null,businessGroup:'',company:'',department:'',grade:'',employmentType:'',title:'',caseType:'Resignation'},checklistId:null,checklistName:'',override:'automatic',tasks:[],items:[],documents:[],runs:[],mails:[],files:[],pmChanges:[],log:[],sourceRevision:'',submittedAt:'',closedAt:null,closedBy:null,closeReason:'',cancelReason:'',revokeDate:'',finalFigures:null,review:null};
+ const c:Case={version:9,id:'fictional-case',number:'OFB-FICTIONAL',module:'off',revision:1,state:'submitted',facts:{name:'Fictional person',employeeNo:'',employmentId:'',personId:'',joinDate:'2026-01-01',lastDay:'2026-11-01',noticeDate:'2026-10-01',employeeUserId:'employee',supervisorUserId:null,taUserId:null,businessGroup:'',company:'',department:'',grade:'',employmentType:'',title:'',caseType:'Resignation'},checklistId:null,checklistName:'',override:'automatic',tasks:[],items:[],documents:[],runs:[],mails:[],files:[],pmChanges:[],log:[],sourceRevision:'',submittedAt:'',closedAt:null,closedBy:null,closeReason:'',cancelReason:'',revokeDate:'',finalFigures:null,review:null};
  const workflow:Workflow={id:'manual',name:'Fictional manual workflow',module:'off',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'Fictional',body:''}],description:''};
  const config=v9Defaults();config.workflows=[workflow];return{c,config,workflow};
 }
-it('starts the selected live workflow by ID and preserves waits for explicit continuation',()=>{
+it('starts the selected live workflow by ID and preserves waits for explicit continuation',async()=>{
  const {c,config,workflow}=fixture(),command=vi.fn(),view=render(<CaseWorkflows c={c} config={config} busy={false} command={command}/>);
  fireEvent.click(screen.getByRole('button',{name:'Start now Fictional manual workflow'}));expect(command).toHaveBeenCalledWith({type:'startWorkflow',workflowId:'manual'});
+ await act(async()=>{});
  c.runs=[{id:'run',workflowId:'manual',revision:1,date:'2026-10-29',status:'waiting',cursor:0,reason:'Delivery outcome is uncertain.',at:'',definition:workflow}];
  view.rerender(<CaseWorkflows c={c} config={config} busy={false} command={command}/>);expect(screen.getByText('Delivery outcome is uncertain.')).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'Continue Fictional manual workflow'}));expect(command).toHaveBeenLastCalledWith({type:'retryWorkflow',workflowId:'manual'});
  workflow.status='draft';view.rerender(<CaseWorkflows c={c} config={config} busy={false} command={command}/>);expect(screen.getByText('Paused')).toBeVisible();expect(screen.getByRole('button',{name:'Continue Fictional manual workflow'})).toBeDisabled();
@@ -62,3 +63,15 @@ it('permits pending per-person editing and self-tests without offering a live st
 
 function withMessages(node:ReactElement){return <NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>;}
 function render(node:ReactElement){const view=renderUI(withMessages(node));return {...view,rerender:(next:ReactElement)=>view.rerender(withMessages(next))};}
+
+it('shows a late held email with explicit Send anyway and Skip controls and the current Personnel manager',()=>{
+ const {c,config,workflow}=fixture(),command=vi.fn().mockResolvedValue({ok:true});
+ c.runs=[{id:'late-run',workflowId:workflow.id,revision:1,date:'2020-01-01',status:'waiting',cursor:0,reason:'Held',at:'',definition:structuredClone(workflow),hold:{stepId:'notify',at:'',missing:[{role:'supervisor',label:'Line manager',reason:'no supervisor on the Personnel record'}]}}];
+ c.supervisorDelivery={name:'Fictional Manager',problem:null};
+ render(<CaseWorkflows c={c} config={config} busy={false} command={command}/>);
+ expect(screen.getByText('This email is late')).toBeVisible();expect(screen.getByText(/Scheduled for/)).toHaveTextContent('01/01/2020');
+ expect(screen.getByText('Line manager found')).toBeVisible();expect(screen.getByText(/A login account is not needed/)).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Continue Fictional manual workflow'})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Send anyway'}));expect(command).toHaveBeenLastCalledWith({type:'lateEmail',workflowId:'manual',runId:'late-run',stepId:'notify',decision:'send'});
+ fireEvent.click(screen.getByRole('button',{name:'Skip this email'}));expect(command).toHaveBeenLastCalledWith({type:'lateEmail',workflowId:'manual',runId:'late-run',stepId:'notify',decision:'skip'});
+});

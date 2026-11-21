@@ -108,6 +108,16 @@ const SCREENS_BUILT = {
     route: '/admin/leave-config/types',
     mapId: 'leaveTypes',
   },
+  // 50d9b809 — SHARED LEAVE GROUPS' OWN PAGE, for the same reason as the eighth and ninth: the group editor
+  // this file guards (F3) left the leave type screen — where it was a pop-up behind a button — for a Leave
+  // Settings card and a page of its own, so the assertions follow the editor. Registering it holds the page
+  // to this file's per-screen rules: a declared route on leaveConfig, a guard in the page body, a map mount
+  // with its own id, and no server action declared in the page.
+  sharedGroups: {
+    file: 'app/admin/leave-config/shared-groups/page.tsx',
+    route: '/admin/leave-config/shared-groups',
+    mapId: 'sharedGroups',
+  },
   // 3fb1a611 (r299) — LEAVE CREDIT'S TWO TABS, the tenth and eleventh, for the same reason as the eighth and
   // ninth: the replacement policy editor this file guards (F38) moved off Company rules onto the Rules tab,
   // and the ledger + sweeps moved onto the Credits tab, so the assertions follow them. Registering both pages
@@ -339,8 +349,9 @@ const MOUNTS: [string, ScreenKey, string][] = [
   ['F44 the ledger importer', 'import', '<LeaveLedgerImport />'],
   // r281 (a73d1e14) — the half-day card is on the Special Setting row now; the mount follows the editor.
   ['F4/F26 the half-day company picker', 'specialSetting', '<HalfDayCompanyPicker'],
-  // r281 (cdd7500b) — the shared groups are on the leave TYPE screen now, at page level; mount follows.
-  ['F3 the shared leave group manager', 'leaveTypesScreen', '<LeaveSharedGroupConfig'],
+  // r281 (cdd7500b) — the shared groups moved to the leave TYPE screen, at page level.
+  // 50d9b809 — and then to a Shared Leave Groups page of their own under Leave Settings; mount follows.
+  ['F3 the shared leave group manager', 'sharedGroups', '<LeaveSharedGroupConfig'],
   // 3fb1a611 (r299) — the replacement policy is on Leave Credit's Rules tab now: the page mounts the tab, and
   // the tab mounts the eligibility picker (asserted in the company-filter case below, against RULES_TAB).
   ['F38 the replacement policy Rules tab', 'leaveCreditRules', '<LeaveCreditRulesTab'],
@@ -360,9 +371,10 @@ const POSTED_FROM: Record<string, string> = {
   setLeaveEncashmentPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
   // 3fb1a611 (r299) — off Company rules, onto Leave Credit's Rules tab.
   setToilPolicyAction: RULES_TAB,
-  createLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
-  updateLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
-  deleteLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
+  // 50d9b809 — off the leave type screen, onto the Shared Leave Groups page.
+  createLeaveSharedGroupAction: 'app/admin/leave-config/shared-groups/page.tsx',
+  updateLeaveSharedGroupAction: 'app/admin/leave-config/shared-groups/page.tsx',
+  deleteLeaveSharedGroupAction: 'app/admin/leave-config/shared-groups/page.tsx',
 };
 
 describe('a6fe37fc R3 · a flow that is not changing is MOUNTED, not re-implemented (IA §2.3)', () => {
@@ -633,7 +645,9 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
       // F3, from Leave types → Company rules → back to Leave types at PAGE level (r281, cdd7500b). The
       // reporter asked for it under leave types; the reason it left that screen was that it sat INSIDE
       // the per-type workspace, so the mount POINT — not the screen — is what changed on the way back.
-      'listLeaveSharedGroups(': 'app/admin/leave-config/types/page.tsx',
+      // 50d9b809 — then off Leave types to its own page under Leave Settings, where it is drawn inline
+      // instead of as a pop-up. Asserted absent from every other module page below, Leave types included.
+      'listLeaveSharedGroups(': 'app/admin/leave-config/shared-groups/page.tsx',
       // F38, from Replacement leave → Company rules → Leave Config › Leave Credit's Rules tab (3fb1a611, r299).
       setToilPolicyAction: RULES_TAB,
     };
@@ -884,7 +898,8 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
    */
   const DESTINATION: Record<string, string> = {
     'the half-day card': 'app/admin/leave-config/special-setting/page.tsx',
-    'shared leave groups': 'app/admin/leave-config/types/page.tsx',
+    // 50d9b809 — the shared groups' current home is their own page under Leave Settings.
+    'shared leave groups': 'app/admin/leave-config/shared-groups/page.tsx',
   };
 
   const NEW_FILE: Record<string, string> = {

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { createTranslator } from 'next-intl';
+import { createTranslator, NextIntlClientProvider } from 'next-intl';
+import { createElement } from 'react';
 import { pageState, parsePageQuery } from '../lib/pagination';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
@@ -30,7 +31,11 @@ describe('Personal earned-credit ceiling guidance', () => {
     expect(page).toContain("truncatedHint={t('truncatedHint')}");
   });
   it('still prefers an actual complete-set export and omits warnings on complete pages', async () => {
-    const withExport = renderToStaticMarkup(await Pager({ state: all, basePath: '/admin/example', exportHref: '/admin/example/export', truncatedHint: personalHint }));
+    const withExport = renderToStaticMarkup(createElement(NextIntlClientProvider, {
+      locale: 'en',
+      messages: JSON.parse(readFileSync('messages/en.json', 'utf8')),
+      children: await Pager({ state: all, basePath: '/admin/example', exportHref: '/admin/example/export', truncatedHint: personalHint }),
+    }));
     expect(withExport).toContain('href="/admin/example/export"');
     expect(withExport).not.toContain(personalHint);
     const complete = renderToStaticMarkup(await Pager({ state: pageState(parsePageQuery(), 25, 25), basePath: '/leave/credit-details', truncatedHint: personalHint }));

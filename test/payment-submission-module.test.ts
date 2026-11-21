@@ -359,9 +359,9 @@ describe('20f6c6a8 — the registry itself', () => {
     ]);
   });
 
-  it('offers salary and bank statutory formats with unconfirmed hash formats unavailable', () => {
-    expect(formatsInGroup('salary').map(f => f.id)).toEqual(['my.ocbc.salary']);
-    expect(formatsInGroup('bankStatutory').map(f => [f.id, f.available])).toEqual([['my.ocbc.kwsp', true], ['my.ocbc.socso', true], ['my.ocbc.lhdn', true], ['my.ocbc.zakat', true]]);
+  it('offers the approved initial blank-hash Maybank arrangement beside OCBC', () => {
+    expect(formatsInGroup('salary').map(f => f.id)).toEqual(['my.ocbc.salary','my.maybank74.salary']);
+    expect(formatsInGroup('bankStatutory').map(f => [f.id, f.available])).toEqual([['my.ocbc.kwsp', true], ['my.ocbc.socso', true], ['my.ocbc.lhdn', true], ['my.ocbc.zakat', true], ['my.maybank74.kwsp',true], ['my.maybank74.socso',true], ['my.maybank74.lhdn',true], ['my.maybank74.zakat',true]]);
   });
 
   it('every format states its PROVENANCE, and states it truthfully', () => {

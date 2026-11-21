@@ -1,3 +1,4 @@
+import {withSystemLabelCompanyTx} from './system-label-selection';
 /** Purpose-bound positive maintenance. No role mutation, raw-row grant or financial detail read. */
 import {z} from 'zod';
 import {and,asc,eq,inArray,sql} from 'drizzle-orm';
@@ -14,7 +15,8 @@ import {dependentFieldApplies} from '../lib/dependent-vocabulary';
 import {WorkforceAccessError} from './workforce-access';
 import {WorkforceRecordChangedError} from './workforce-code';
 import {WORKFORCE_PROFILE_FIELDS,type WorkforceProfile} from '../lib/workforce-record-fields';
-import {lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
+import {lockWorkforceRecordValueWritesTx} from './workforce-lock-mode';
 const version=z.string().regex(/^\d{1,20}$/);
 const scalar=z.union([z.string().max(4000),z.boolean(),z.number().finite(),z.null()]);
 const registerSchema=(kind:'qualification'|'emergency'|'dependent')=>z.object({kind:z.literal(kind),id:z.uuid(),version,
@@ -34,8 +36,9 @@ export async function workforceEditorTx(tx:Tx,employmentId:string):Promise<Workf
  const [row]=await tx.execute<{editor:unknown}>(sql`select app.access_workforce_editor(${employmentId}::uuid) as editor`);
  if(row?.editor==null)return null;
  const parsed=editorSchema.parse(row.editor);
+ const [scope]=await tx.execute<{company:string|null}>(sql`select app.system_label_employment_company(${employmentId}::uuid) as company`);
  const options=await tx.select({category:profileOption.category,value:profileOption.value,label:profileOption.label}).from(profileOption)
-  .where(and(inArray(profileOption.category,[...CATEGORIES]),eq(profileOption.isActive,true))).orderBy(asc(profileOption.sortOrder),asc(profileOption.value)).limit(4001);
+  .where(and(inArray(profileOption.category,[...CATEGORIES]),eq(profileOption.isActive,true),sql`app.system_label_scope_applies(${profileOption.scopeCompanyIds},${scope?.company??null}::uuid)`)).orderBy(asc(profileOption.sortOrder),asc(profileOption.value)).limit(4001);
  if(options.length>4000)throw new WorkforceMaintenanceUnavailableError();
  return {...parsed,profile:parsed.profile as WorkforceProfile,registers:parsed.registers as WorkforceEditorRow[],options};
 }
@@ -46,9 +49,17 @@ export async function workforceEditor(ctx:SessionContext,employmentId:string){
 export async function maintainWorkforceRecord(ctx:SessionContext,p:{employmentId:string;kind:WorkforceMaintenanceKind;rowId:string|null;operation:WorkforceMaintenanceOperation;patch:Record<string,unknown>;expectedVersion:string|null},outerTx?:Tx){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};p=structuredClone(p);
  try{const run=async(tx:Tx)=>{
-  await lockProfileValueWritesTx(tx,ctx.tenantId);
+  // Reader/writer lock: one person's or one employment's values. Shared Access unless the caller already holds the
+  // exclusive lock, then the subject's value locks (leave dependencies for a person's own fields, the shared
+  // profile-policy lock and the per-person or per-employment lock) before any row lock. The SQL command joins the
+  // policy lock in value mode (5005) and keeps its row locks and expected-version check.
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockWorkforceRecordValueWritesTx(tx,ctx.tenantId,p.employmentId,p.kind);
   const workspace=await workforceEditorTx(tx,p.employmentId);
   if(!workspace||!(p.kind==='qualification'?workspace.employmentMaintain:workspace.sharedMaintain))throw new WorkforceAccessError();
+  const [scope]=await tx.execute<{company:string|null}>(sql`select app.system_label_employment_company(${p.employmentId}::uuid) as company`);
+  if(!scope?.company)throw new WorkforceAccessError();
+  return withSystemLabelCompanyTx(tx,scope.company,async()=>{
   const existing=p.rowId?workspace.registers.find(row=>row.id===p.rowId&&row.kind===p.kind):null;
   if(p.kind!=='person'&&p.operation!=='add'&&!existing)throw new WorkforceRecordChangedError();
   if(p.operation!=='add'&&p.expectedVersion!==(p.kind==='person'?workspace.profileVersion:existing!.version))throw new WorkforceRecordChangedError();
@@ -92,6 +103,7 @@ export async function maintainWorkforceRecord(ctx:SessionContext,p:{employmentId
   if(!result?.result||typeof result.result.id!=='string'||typeof result.result.changed!=='boolean')throw new Error('Workforce command result unavailable');
   if(result.result.hrReviewNotice!==undefined&&typeof result.result.hrReviewNotice!=='boolean')throw new Error('Workforce consequence result unavailable');
   return result.result;
+  });
  };return outerTx?await run(outerTx):await withTenant(ctx,run);}catch(error){
   const state=pgSqlState(error);
   if(state==='42501')throw new WorkforceAccessError();

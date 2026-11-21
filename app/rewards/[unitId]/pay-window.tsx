@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Field, inputCls, tableWrapCls, theadCls, thCls, tbodyCls } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
@@ -31,7 +31,7 @@ export function PayWindowExcluded({ unitId, revision, canEdit, window, rows, kep
   const listed = rows.filter(r => r.payChange);
   return <section className="space-y-3">
     <div className="flex flex-wrap items-baseline justify-between gap-3"><h2 className="font-semibold">{t('listTitle')}</h2>
-      <Link className="text-sm text-primary hover:underline" href={`/rewards/${unitId}/export?excluded=1`}>{t('export')}</Link></div>
+      <ExportDownloadLink className="text-sm text-primary hover:underline" href={`/rewards/${unitId}/export?excluded=1`}>{t('export')}</ExportDownloadLink></div>
     <p className="max-w-3xl text-sm text-muted-foreground">{t('listHelp', { from: window.from, to: window.to })}</p>
     <div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['employee', 'change', 'effectiveOn', 'currentBasic', 'adjustedBasic', 'status'].map(k => <th key={k} className={thCls}>{t(`columns.${k}`)}</th>)}</tr></thead>
       <tbody className={tbodyCls}>{listed.map(r => <tr key={r.id}>

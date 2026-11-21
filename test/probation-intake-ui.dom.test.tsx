@@ -41,3 +41,17 @@ describe('probation intake review boundaries',()=>{
  });
 
 });
+
+// Lane M3 (prototype IntakePage): ConfigHead, then the numbered sections 1. Import, 2. Extensions, 3. Activation, before
+// the existing cohort review. Step 2 shows its empty state rather than disappearing.
+it('draws the prototype head and numbered sections in order',()=>{
+ render(<NextIntlClientProvider locale="en" messages={messages}><Intake company={company} companies={[company]} workspace={{truncated:false,excludedCount:0,candidates:[]}} activation={[{companyId:'company',personnelProbation:3,openCases:3,live:true,activationOn:'2026-11-01'}]} canPrepare={false}/></NextIntlClientProvider>);
+ expect(screen.getByRole('heading',{level:1,name:messages.probation.intake.title})).toBeInTheDocument();
+ expect(screen.getByText(messages.probationConfig.crumb.replace('{page}',messages.probation.intake.title))).toBeInTheDocument();
+ const order=screen.getAllByRole('heading',{level:2}).map(h=>h.textContent);
+ const steps=[messages.probation.intake.htmlImport.title,messages.probationConfig.intake.extensionsTitle,messages.probationConfig.intake.activationTitle,messages.probation.intake.cohort];
+ expect(steps.every(step=>order.includes(step))).toBe(true);
+ expect(steps.map(step=>order.indexOf(step))).toEqual([...steps.map(step=>order.indexOf(step))].sort((a,b)=>a-b));
+ expect(screen.getByText(messages.probationConfig.intake.noExtensions)).toBeInTheDocument();
+ expect(within(screen.getByRole('region',{name:messages.probationConfig.intake.activationTitle})).getByRole('link',{name:'Fictional Company'})).toBeInTheDocument();
+});

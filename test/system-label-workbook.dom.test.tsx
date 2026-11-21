@@ -29,6 +29,14 @@ const fixtureRow = {
   'Head Employee Code': '000007', 'Grade Codes': 'G01', 'Sort Order': '7', Rank: '3', Status: 'Active',
 };
 const elements = (parent: Document | Element, name: string) => Array.from(parent.getElementsByTagNameNS(namespace, name));
+function worksheetMetadata(xml:string){
+  // These fixtures contain only a header and one optional data row. Verify that later rows really
+  // are empty formatting, then avoid building a jsdom tree for 500 blank rows on each of 23 sheets.
+  const formatted:string[]=[];
+  const compact=xml.replace(/<row\b[^>]*\br="(\d+)"[^>]*>[\s\S]*?<\/row>/g,(row,index)=>Number(index)>2?(formatted.push(row),''):row);
+  expect(formatted.join('')).not.toMatch(/<v>[^<]+<\/v>|<f[ >]|<t>[^<]+<\/t>/);
+  return compact;
+}
 function parseXml(xml: string) {
   const document = new DOMParser().parseFromString(xml, 'application/xml');
   expect(document.getElementsByTagName('parsererror')).toHaveLength(0);
@@ -38,7 +46,7 @@ function parseXml(xml: string) {
 describe('System Labels workbook native worksheet structure', () => {
   it.each([false, true])('omits empty validation containers and preserves list features (populated export: %s)', async populated => {
     const kinds = LABEL_IMPORT_DEFINITIONS.map(definition => definition.kind);
-    expect(kinds).toHaveLength(14);
+    expect(kinds).toHaveLength(23);
     const bytes = await buildSystemLabelWorkbook({
       references, kinds,
       ...(populated ? {
@@ -55,10 +63,11 @@ describe('System Labels workbook native worksheet structure', () => {
     let listsWithoutRules = 0;
     for (const definition of LABEL_IMPORT_DEFINITIONS) {
       const index = workbook.SheetNames.indexOf(definition.kind);
-      const document = parseXml(await zip.file(`xl/worksheets/sheet${index + 1}.xml`)!.async('string'));
+      const document = parseXml(worksheetMetadata(await zip.file(`xl/worksheets/sheet${index + 1}.xml`)!.async('string')));
       const containers = elements(document, 'dataValidations');
       const rules = elements(document, 'dataValidation');
-      const expected = expectedRules[definition.kind] ?? [];
+      const ranges:Record<string,string>={Company:'Reference!$A$2:$A$3',Criteria:'Reference!$C$2:$C$3','Criteria Companies':'Reference!$A$2:$A$3','Head Employee Code':'Reference!$E$2:$E$3','Grade Codes':'Reference!$G$2:$G$3'};
+      const expected=Object.entries(ranges).flatMap(([field,reference])=>{const at=definition.columns.indexOf(field);return at<0?[]:[[`${XLSX.utils.encode_col(at)}2:${XLSX.utils.encode_col(at)}1001`,reference]];});
       // CT_DataValidations requires at least one child. Omit this optional container otherwise.
       // https://github.com/dotnet/Open-XML-SDK/blob/main/data/schemas/schemas_openxmlformats_org_spreadsheetml_2006_main.json
       expect(containers, definition.kind).toHaveLength(expected.length ? 1 : 0);
@@ -82,12 +91,27 @@ describe('System Labels workbook native worksheet structure', () => {
       expect(elements(document, 'c').find(cell => cell.getAttribute('r') === address)?.getAttribute('s')).toBe('1');
       if (populated) expect(workbook.Sheets[definition.kind][address]).toMatchObject({ v: '000123', t: 's', z: '@' });
     }
-    expect(listsWithoutRules).toBe(9);
-    expect(totalRules).toBe(15);
-    expect(readSystemLabelWorkbook(bytes)).toHaveLength(populated ? 14 : 0);
+    expect(listsWithoutRules).toBe(0);
+    expect(totalRules).toBe(72);
+    expect(readSystemLabelWorkbook(bytes)).toHaveLength(populated ? 23 : 0);
     expect(systemLabelExportId(bytes)).toBe(populated ? exportId : null);
     expect(sheets.filter(sheet => sheet.getAttribute('state') === 'veryHidden').map(sheet => sheet.getAttribute('name')))
       .toEqual(populated ? ['_Export'] : []);
   // Building and parsing 14 native worksheets is CPU work; the full gate runs other files too.
   }, 20000);
+});
+
+
+it('exports each single category first, limiting reference data to that category’s fields',async()=>{
+ const references={companies:[['Example Company','company-id']],employees:[['HEAD_ONLY','company-id','Example Head']],grades:[['GRADE_ONLY','Example Grade']]} as Parameters<typeof buildSystemLabelWorkbook>[0]['references'];
+ for(const kind of ['department','position','nationality']){
+  const rows={department:[{Code:'OPS_ONLY',Description:'Operations'}],position:[{Code:'POSITION_ONLY'}],nationality:[{Code:'NATIONALITY_ONLY'}]};
+  const bytes=await buildSystemLabelWorkbook({kinds:[kind],references,rows,includeStatus:true,exportId:'export-id'});
+  const workbook=XLSX.read(bytes,{type:'buffer'});
+  expect(workbook.SheetNames).toEqual([kind,'Instructions','Reference','_Export']);
+  const values=JSON.stringify(XLSX.utils.sheet_to_json(workbook.Sheets.Reference,{header:1}));
+  expect(values.includes('HEAD_ONLY')).toBe(kind==='department');
+  expect(values).not.toContain('GRADE_ONLY');
+  expect(readSystemLabelWorkbook(bytes).map(row=>row.values.Code)).toEqual([rows[kind as keyof typeof rows][0].Code]);
+ }
 });

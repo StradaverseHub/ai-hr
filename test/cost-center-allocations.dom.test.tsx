@@ -40,3 +40,9 @@ it('shows the shared date control and formatted history/preview while retaining 
  expect(container.textContent).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);
  expect(ports.save).not.toHaveBeenCalled();
 });
+
+it('shows a hire-company review notice and permits an explicit empty replacement',()=>{
+ render(<NextIntlClientProvider locale="en" messages={en}><CostCenterAllocations value={{...value,needsReplacement:true}}/></NextIntlClientProvider>);
+ expect(screen.getByRole('alert').textContent).toBe(en.costAllocations.replacementReview);
+ expect(screen.getByRole('button',{name:en.costAllocations.preview}).hasAttribute('disabled')).toBe(false);
+});

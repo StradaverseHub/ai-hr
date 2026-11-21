@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {describe,it,expect} from 'vitest';
 import {navigationPlacement} from '../lib/navigation-workspaces';
-const source=fs.readFileSync(path.resolve(__dirname,'../components/sidebar.tsx'),'utf8');
+const source=fs.readFileSync(path.resolve(__dirname,'../lib/navigation/shell-inventory.ts'),'utf8');
+const resolver=fs.readFileSync(path.resolve(__dirname,'../lib/navigation/shell-resolver.ts'),'utf8');
 const performance=fs.readFileSync(path.resolve(__dirname,'../packs/performance/index.ts'),'utf8');
 const lineFor=(href:string)=>source.split('\n').find(line=>line.includes(`href: '${href}'`));
 describe('Personnel navigation retains its independent audience boundaries',()=>{
@@ -24,7 +25,7 @@ describe('Personnel navigation retains its independent audience boundaries',()=>
   const row=performance.split('\n').find(line=>line.includes("href: '/performance'"));
   expect(row).toContain("labelKey: 'performanceAdmin'");
   expect(row).not.toMatch(/managerUp|adminOnly/);
-  expect(source).toContain('c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr :');
+  expect(resolver).toContain('c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr :');
   expect(navigationPlacement('/approvals')).toEqual({area:'shared'});
   expect(navigationPlacement('/performance')).toEqual({area:'strata',module:'performanceAdmin',section:'hr'});
  });

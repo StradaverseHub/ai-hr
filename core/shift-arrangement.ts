@@ -27,10 +27,11 @@
  *   · saving twice for the SAME date REPLACES that entry (supersede + insert) instead of creating a second;
  *   · periods can never overlap, because each simply runs until the next begins.
  */
-import { and, asc, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { lockLeaveDependenciesTx } from '../packs/leave/service';
+import { lockLeaveDependenciesWaitTx } from '../packs/leave/service';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
 // 8cd601d0 — `attendanceRule` is the SCHEDULE GROUP table (870b79e2 named it; there is no second table
 // behind the name). The table is imported from db/schema, never core/attendance-rule: this file is not on
 // the attendance pack's import allowlist and a schema import is not a pack import (ADR-0080 D9).
@@ -144,8 +145,10 @@ export async function assignEmployeeShiftDated(
   // b8aa3466 — the backup shift is mandatory on BOTH arrangements; the same refusal the legacy writer gives.
   if (!shiftId) throw new BackupShiftRequiredError();
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+    // One employment's arrangement ladder. Its employment lock serialises the ladder read-then-write with
+    // every other writer of this person's schedule; shift and group definitions stay fixed under shared Access.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[p.employmentId]);
     const [emp] = await tx
       .select({
         id: employment.id,
@@ -370,8 +373,9 @@ export async function removeShiftArrangement(
   p={...p};
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
-    await tx.execute(sql`select app.access_workforce_write_lock()`);
-    await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
+    // Same shared course and employment lock as assignEmployeeShiftDated.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[p.employmentId]);
     const rows = await tx
       .select({
         id: employmentShiftArrangement.id,

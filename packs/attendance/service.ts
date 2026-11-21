@@ -16,6 +16,8 @@ export * from './my-calendar';
 export * from '../../core/attendance-allowance';
 export * from '../../core/attendance-calc';
 export * from '../../core/attendance-group-policy';
+export * from '../../core/attendance-overtime-setting';
+export {attendanceClockPolicyGroupHistory, attendanceClockPolicyHistory, lockAttendanceClockPolicyConfigurationTx, saveScheduleGroupClockPolicy} from '../../core/attendance-clock-policy';
 export * from '../../core/attendance-derive';
 export * from '../../core/attendance-device';
 export * from '../../core/attendance-rule';
@@ -30,17 +32,23 @@ export * from '../../core/attendance-explain';
 export * from '../../core/attendance-clock';
 
 export * from '../../core/attendance-clock-read';
+// Manager Today's "Your team today" counts (owner decision, 12 Nov 2026).
+export * from './team-today';
 export * from '../../core/mobile-clock-attempt';
 export {resolveOwnClockEmployment,OwnClockEmploymentUnavailableError} from '../../core/attendance-clock-subject';
 
 // r424 (50ed39e1) — File Structure Mapping, Import Clocking Data and Import Logs.
 export * from '../../core/attendance-clocking-import';
+// Import Clocking Data as a background job on the shared bulk-job kernel (draft 5045).
+export * from '../../core/attendance-clocking-import-job';
 
 export * from '../../core/attendance-clock-data';
 export { ClockDataChangedError, AttendancePayrollClosedError } from '../../core/attendance-punch-change';
 
 export * from '../../core/attendance-rotation';
 export * from '../../core/attendance-workflow';
+// 96a54ed2 Request On Behalf / Approve On Behalf (permission key + HR scope or own reporting line).
+export * from '../../core/attendance-on-behalf';
 export * from '../../core/attendance-application-history';
 
 export * from './day-adjustment';
@@ -52,11 +60,11 @@ export * from '../../core/attendance-shortfall';
 // ADR0123 — canonical recorded inputs, consumed through this facade by Attendance writers.
 export { captureCanonicalOvertimePersonnelContextTx } from './overtime-input';
 
-export { previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, reconcileOvertimePatternDayTx, refreshOvertimePatternDayTx, overtimeSourceRevisionTx } from './overtime-calculation';
+export { previewOvertimePatternEmployee, previewOvertimePatternSample, calculateOvertimePatternDay, reconcileOvertimePatternDayTx, refreshOvertimePatternDayTx, refreshOvertimePatternDaysTx, overtimeSourceRevisionTx } from './overtime-calculation';
 export { canonicalOvertimeInputTx, canonicalOvertimePayrollInputTx, canonicalOvertimeToilInputTx } from './overtime-input';
 
 export { readOvertimePatternCalculation, readOvertimePatternCalculationTx, type OvertimePatternCalculationReview } from './overtime-calculation';
-export { lockOvertimeSubjectForAttendanceWriteTx, listOvertimePatterns, getOvertimePattern, overtimePatternSetup, overtimePatternWorkspaceCompanies, overtimePositionChoices, ensureOvertimePatternStarters, saveOvertimePatternDraft, forkOvertimePatternDraft, validateOvertimePatternActivation, activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern, saveOvertimePatternAssignment, closeOvertimePatternAssignment, readOvertimeCalculationTx, lockOvertimeSourceTx, assertOvertimeSettlementAvailableTx, reserveOvertimeSettlementTx, releaseOvertimeSettlementTx, readOvertimeCashSettlementsTx, listCoveredOvertimeDaysTx, releaseOvertimeSettlementsForDraftTeardownTx, OvertimeOwnerError, type OvertimePatternDraft, type OvertimePatternDetail, type OvertimePatternListItem, type OvertimePatternSetup, type OvertimeRecordOutcome, type OvertimeCashSettlementRead } from './overtime-patterns';
+export { lockOvertimeSubjectForAttendanceWriteTx, listOvertimePatterns, getOvertimePattern, legacyOvertimePatternIdForRule, overtimePatternSetup, overtimePatternWorkspaceCompanies, overtimePositionChoices, ensureOvertimePatternStarters, saveOvertimePatternDraft, forkOvertimePatternDraft, validateOvertimePatternActivation, activateOvertimePattern, stopOvertimePatternVersion, archiveOvertimePattern, saveOvertimePatternAssignment, closeOvertimePatternAssignment, readOvertimeCalculationTx, lockOvertimeSourceTx, assertOvertimeSettlementAvailableTx, reserveOvertimeSettlementTx, releaseOvertimeSettlementTx, readOvertimeCashSettlementsTx, listCoveredOvertimeDaysTx, releaseOvertimeSettlementsForDraftTeardownTx, OvertimeOwnerError, type OvertimePatternDraft, type OvertimePatternDetail, type OvertimePatternListItem, type OvertimePatternSetup, type OvertimeRecordOutcome, type OvertimeCashSettlementRead } from './overtime-patterns';
 export { createOvertimeCalculationOwner, readOvertimeSettlementForDayTx, readOvertimeToilSettlementDatesTx, readOvertimeCashDefinitionTx, readOvertimeDurationsTx, readOvertimeDurationDefinitionTx, hasOvertimePatternForDayTx, lockOvertimeDayForAttendanceWriteTx,
   type OvertimePatternVersionView, type OvertimeDurationRead, type CanonicalOvertimeInput, type CanonicalOvertimeSnapshot } from './overtime-patterns';
 export {resolveOvertimePolicyDatedToilQualificationTx, resolveOvertimeToilDurationTx, OvertimeToilEligibilityError, type OvertimeToilDuration} from './overtime-toil';
@@ -76,6 +84,8 @@ export {deriveAttendancePolicyDurationProposal,deriveAttendancePolicyClockDurati
 export {hasRecordedAttendanceGroupPolicyTx} from './policy-selection';
 // Prospective source seam for the canonical raw writer; no figure, approval or settlement write.
 export {attendancePolicyRawInputTx} from './policy-raw-input';
+export { recordedPolicyClockSourceTx, type AttendanceClockSourcePunch } from './policy-clock-input';
+export { clockPolicyTrace } from './policy-clock-evidence';
 export {attendancePolicyRawFigures,type PolicyRawFigures} from './policy-raw-figures';
 
 export {attendancePolicyRawDay,attendancePolicyUncapturedRawDay} from './policy-raw-day';
@@ -117,3 +127,4 @@ export {lockAttendanceDayScheduleIntervalTx} from './day-adjustment';
 
 // AI v2 W2: the pure day classifier the Attendance Request screen groups by, for the chat correction preparer.
 export {classifyDay,KIND_OF_SECTION,type ExceptionDay} from './exceptions';
+export {listAttendanceFormulaResults,readAttendanceFormulaResult,readAttendanceFormulaResultTx,attendanceFormulaResultStateTx} from '../../core/attendance-formulas';

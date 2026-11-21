@@ -35,7 +35,7 @@ describe('worker registry gate', () => {
     expect(read('core/agent-registry/views.ts')).toContain("if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerRegistryRefused('not_administrator')");
   });
   it('adds no server action export: every export must be in the ADR-0151 inventory, which is inside the approved digest', () => {
-    for (const file of ['app/control-tower/agents/worker-registry.tsx', 'app/assistant/centre/recommendation.ts', 'components/today/sections.tsx', 'components/ai-centre/leave-recommendation.tsx'])
+    for (const file of ['app/control-tower/agents/worker-registry.tsx', 'app/assistant/centre/recommendation.ts', 'components/ai-centre/leave-recommendation.tsx'])
       expect(read(file), file).not.toMatch(/^['"]use server['"]/m);
     expect(fs.existsSync(path.join(ROOT, 'app/control-tower/agents/registry-actions.ts'))).toBe(false);
     const actions = read('app/control-tower/agents/actions.ts');
@@ -83,14 +83,14 @@ describe('worker registry gate', () => {
 
 describe('approver recommendation', () => {
   it('is read only when the approver opens it, through the recommender, never on an ordinary Today render', () => {
-    // AI v2 Phase 1: Today (components/today/sections.tsx) replaced the AI Centre Inbox, whose component is removed.
+    // AI v2 Phase 1: Today replaced the AI Centre Inbox, whose component is removed; the earlier Today's sections were
+    // retired with the old dashboard (12 Nov 2026). Manager Today opens a recommendation in place and an administrator's
+    // or a partner's link opens /approvals (test/today-admin-page.dom.test.tsx, test/employee-home-landing.test.ts).
     expect(fs.existsSync(path.join(ROOT, 'app/assistant/centre/inbox.tsx'))).toBe(false);
-    const today = read('components/today/sections.tsx');
-    expect(today).not.toContain('recommendLeaveDecision');
-    // Only the one leave request the approver opened, only if it is in their own queue, and only while the worker may run.
-    expect(today).toContain("const asked=p.recommend&&data.recommender?data.tasks.findIndex(task=>task.kind==='leave'&&task.id===p.recommend):-1;");
-    expect(today).toContain('<LeaveRecommendationLink leaveRequestId={task.id}/>');
-    expect(read('components/ai-centre/leave-recommendation.tsx')).toContain('prefetch={false}');
+    expect(fs.existsSync(path.join(ROOT, 'components/today/sections.tsx'))).toBe(false);
+    // The never-prefetched "Show the recommendation" link left with the earlier Today (LeaveRecommendationLink, 12 Nov
+    // 2026); the panel file now holds no link at all, so nothing in it can prefetch a recommendation.
+    expect(read('components/ai-centre/leave-recommendation.tsx')).not.toContain("from 'next/link'");
     const action = read('app/assistant/centre/recommendation.ts');
     expect(action).toContain('z.guid().safeParse(leaveRequestId)');
     expect(action).toContain('await recommendLeaveDecision(session, { leaveRequestId: id.data })');

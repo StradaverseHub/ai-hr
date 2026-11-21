@@ -7,7 +7,7 @@
  */
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { scopedAdmin } from '@/lib/scope';
+import { requireAdmin } from '@/lib/authz';
 import { isAiConfigured } from '@/core/ai-config';
 import { getCustomReport, ReportAccessError, enforceReportVerb } from '@/core/custom-reports';
 import { datasetsForCategory, getDataset, type ReportDataset } from '@/core/report-registry';
@@ -30,10 +30,9 @@ export default async function ReportBuilderPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const { s } = await scopedAdmin();
-  const t = await getTranslations('reports');
-  const { id } = await params;
-  const sp = await searchParams;
+  // The builder loads a definition, with access enforced by the report owner.
+  // Company scope is resolved when the operator runs the preview or export.
+  const [s, t, { id }, sp] = await Promise.all([requireAdmin(), getTranslations('reports'), params, searchParams]);
 
   let existing: { id: string; name: string; spec: CustomReportSpec; shared: boolean } | null = null;
   let dataset: ReportDataset | undefined;

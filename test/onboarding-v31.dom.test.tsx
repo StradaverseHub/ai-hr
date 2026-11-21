@@ -32,6 +32,16 @@ describe('V3.1 localized task controls', () => {
         await waitFor(() => expect(mocks.change).toHaveBeenCalledWith('case', 7, { type: 'task', taskId: 'welcome', status: 'done' }));
         expect(mocks.refresh).toHaveBeenCalledTimes(1);
     });
+    it.each(['en','ms','zh','ta','th','vi'])('keeps the full task count with a translated bounded Claims preview in %s',locale=>{
+        const catalog=messages(locale),claims=Array.from({length:25},(_,i)=>({id:'claim-'+i,kind:'claim' as const,subjectName:'Fictional claim subject '+i,createdAt:'2026-01-01T00:00:00Z',linkPath:'/approvals?category=claim&requestId=claim-'+i}));
+        render(<NextIntlClientProvider locale={locale} messages={catalog} timeZone="Asia/Kuala_Lumpur"><TasksView items={[]} existing={claims} existingTotal={100000} claimTotal={100000}/></NextIntlClientProvider>);
+        expect(screen.getAllByText(catalog.notifications.task.claim)).toHaveLength(25);
+        const preview=screen.getByRole('region',{name:catalog.approvals.claims});
+        expect(preview.textContent).toContain(new Intl.NumberFormat(locale).format(100000));
+        expect(within(preview).getByRole('link',{name:catalog.dashboard.viewAll})).toHaveAttribute('href','/approvals?category=claim');
+        const filters=screen.getByRole('navigation',{name:translation(locale,'Task filters')});
+        expect(within(filters).getAllByRole('button')[0]).toHaveTextContent('100000');
+    });
     it('autosaves checklist tasks without unrelated configuration writes and sequences revisions', async () => {
         const config = defaultConfig('owner');
         config.checklists[0]!.tasks = [{ id: 'welcome', name: 'Welcome', by: 'group', group: 'people-gbs', method: 'manual', opens: null, due: 1, gate: false }];
@@ -151,13 +161,22 @@ describe('V3.1 localized task controls', () => {
         const pending=blankCase('pending','OB-4','draft-4',{fullName:'Older pending preparation',joinDate:join},env);pending.personnelStatus='Active';
         const rows=[working,cancelled,complete,pending].map(c=>({case:c,revision:1,isNew:false,progress:progress(config,c)}));
         const options={businessGroup:[],company:[],department:[],title:[],grade:[],employmentType:[],supervisor:[]};
-        render(<NextIntlClientProvider locale="en" messages={messages('en')}><Joiners rows={rows as never} config={config} options={options}/></NextIntlClientProvider>);
+        const {unmount}=render(<NextIntlClientProvider locale="en" messages={messages('en')}><Joiners rows={rows as never} config={config} options={options}/></NextIntlClientProvider>);
         expect(screen.getByRole('link',{name:'Older equipment work'})).toBeVisible();
         expect(screen.getByRole('link',{name:'Older pending preparation'})).toBeVisible();
         expect(screen.queryByRole('link',{name:'Old cancelled case'})).not.toBeInTheDocument();
         expect(screen.queryByRole('link',{name:'Old completed case'})).not.toBeInTheDocument();
         expect(screen.getByRole('button',{name:/Progress 0%.*Older pending preparation/})).toHaveTextContent('Pending submission');
         expect(screen.getByText('Due '+new Intl.DateTimeFormat('en',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(dayDate(join,-7)+'T00:00:00Z')))).toBeInTheDocument();
+        unmount();
+        render(<NextIntlClientProvider locale="en" messages={messages('en')}>
+            <Joiners rows={[working,pending].map(c=>({case:c,isNew:false}))} display={{today,latestSync:'2099-01-01T00:00:00.000Z'}} config={config} options={options}/>
+        </NextIntlClientProvider>);
+        expect(screen.getByText(/Latest Personnel sync/)).toHaveTextContent('2099');
+        expect(screen.getByRole('link',{name:'Older equipment work'})).toBeVisible();
+        fireEvent.change(screen.getByRole('textbox',{name:'Search by name'}),{target:{value:'pending preparation'}});
+        expect(screen.getByRole('link',{name:'Older pending preparation'})).toBeVisible();
+        expect(screen.queryByRole('link',{name:'Older equipment work'})).not.toBeInTheDocument();
     });
     it('keeps a future task visible with its status control locked', () => {
         render(<NextIntlClientProvider locale="en" messages={messages('en')} timeZone="Asia/Kuala_Lumpur"><TasksView items={[{ ...task, locked: true, lockReason: 'After Day 1 handover' }]} existing={[]}/></NextIntlClientProvider>);

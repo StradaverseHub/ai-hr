@@ -49,13 +49,29 @@ describe('audit picker recovery',()=>{
   columns.focus();await userEvent.keyboard('{Escape}');expect(more).toHaveAttribute('aria-expanded','false');expect(more).toHaveFocus();
  });
  it('explains a cleared company draft without submitting an empty scope',async()=>{
-  const submit=vi.spyOn(HTMLFormElement.prototype,'requestSubmit').mockImplementation(()=>{});
-  mount(<CompanySwitcher companies={[{id:'a',name:'Allowed company'}]} selected={['a']}/>);
-  const trigger=screen.getByRole('button',{name:'All companies'});await userEvent.click(trigger);
-  await userEvent.click(screen.getByRole('checkbox',{name:'Allowed company'}));
-  expect(submit).not.toHaveBeenCalled();expect(screen.getByRole('status')).toHaveTextContent(en.topbar.pendingCompanySelection);
-  await userEvent.keyboard('{Escape}');expect(screen.queryByRole('checkbox')).toBeNull();expect(trigger).toHaveFocus();
-  await userEvent.click(trigger);expect(screen.getByRole('checkbox')).toBeChecked();submit.mockRestore();
+  const submitted:FormDataEntryValue[][]=[];
+  const submit=vi.spyOn(HTMLFormElement.prototype,'requestSubmit').mockImplementation(function(this:HTMLFormElement){
+   submitted.push(new FormData(this).getAll('companyId'));
+  });
+  try{
+   mount(<CompanySwitcher companies={[{id:'a',name:'First company'},{id:'b',name:'Second company'}]} selected={['a','b']}/>);
+   const trigger=screen.getByRole('button',{name:en.topbar.allCompanies});await userEvent.click(trigger);
+   const clear=()=>userEvent.click(screen.getByRole('button',{name:en.topbar.chooseCompanies}));
+   await clear();
+   expect(submitted).toEqual([]);
+   expect(screen.getByRole('status')).toHaveTextContent(en.topbar.pendingCompanySelection);
+   expect(trigger).toHaveTextContent(en.topbar.allCompanies);
+   expect(screen.getByRole('checkbox',{name:'First company'})).not.toBeChecked();
+   expect(screen.getByRole('checkbox',{name:'Second company'})).not.toBeChecked();
+   await userEvent.keyboard('{Escape}');expect(screen.queryByRole('checkbox')).toBeNull();expect(trigger).toHaveFocus();
+   await userEvent.click(trigger);
+   expect(screen.getByRole('checkbox',{name:'First company'})).toBeChecked();
+   expect(screen.getByRole('checkbox',{name:'Second company'})).toBeChecked();
+   await clear();await userEvent.click(screen.getByRole('checkbox',{name:'First company'}));
+   expect(submitted).toEqual([['a']]);
+   await userEvent.click(screen.getByRole('button',{name:en.topbar.selectAll}));
+   expect(submitted).toEqual([['a'],['a','b']]);
+  }finally{submit.mockRestore();}
  });
 });
 

@@ -48,23 +48,31 @@ describe('inherited label collision single-owner contracts',()=>{
   expect(analyseStart).toBeGreaterThan(-1);expect(analyseEnd).toBeGreaterThan(analyseStart);
   const analyse=workbook.slice(analyseStart,analyseEnd);
   expect(analyse.length).toBeGreaterThan(100);
-  const orgStart=analyse.indexOf('if((ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)){'),orgEnd=analyse.indexOf('}else if((EMPLOYMENT_LABEL_CATEGORIES',orgStart);
+  const orgStart=analyse.indexOf('if((ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)){'),orgEnd=analyse.indexOf('}else if((PROFILE_LABEL_CATEGORIES',orgStart);
   expect(orgStart).toBeGreaterThan(-1);expect(orgEnd).toBeGreaterThan(orgStart);
   expect(analyse.slice(orgStart,orgEnd)).toContain("if(incumbentKeys.has(key))throw new LabelImportRowError('existing',existingCodeMessage)");
   // Incumbents remain visible refusals with no before image; only selected new rows reach creates.
   expect(analyse).toContain("outcome:'error',message:'',before:null");
-  expect(analyse).toContain("result.reason=error instanceof LabelImportRowError?error.reason:'invalidRow'");
+  expect(analyse).toContain("result.reason=error instanceof LabelImportRowError||error instanceof LabelAssignmentError?error.reason:'invalidRow'");
   expect(analyse).toContain("result.outcome='error';result.selected=false");
   expect(analyse).toContain("writes.filter(write=>output.some(row=>row.selected&&row.outcome==='add'&&row.sheet+':'+row.row===write.key))");
   expect(analyse).toContain('bulkSaveLabels(ctx,kind,{creates,updates:[]},tx)');
 
   // Confirmation independently repeats the existence analysis under the canonical writers' lock;
-  // a preview is neither an update right nor a reservation against a concurrent creator.
+  // a preview is neither an update right nor a reservation against a concurrent creator. The background job
+  // (core/system-label-import-worker.ts) repeats it at prepare under the preview token, writes under the same locks
+  // and rechecks the codes that appeared meanwhile under those locks before its release.
   const applyStart=workbook.indexOf('export function applySystemLabelImport(');
   expect(applyStart).toBeGreaterThan(analyseEnd);
   const apply=workbook.slice(applyStart);
   expect(apply.length).toBeGreaterThan(100);
-  expect(apply).toMatch(/await lockLabelCriteriaTx\(tx,ctx.tenantId\);[\s\S]*await analyse\(tx,ctx,rows,audit,p.selectedKeys\);[\s\S]*if\(preview.token!==p.token\)throw new Error[\s\S]*if\(!preview.valid\)throw new Error[\s\S]*for\(const write of writes\)await write\(\);/);
+  expect(apply).toMatch(/await lockSystemLabelImportTx\(tx,ctx,[\s\S]*await analyse\(tx,ctx,rows,audit,p.selectedKeys\);[\s\S]*if\(preview.token!==p.token\)throw new Error[\s\S]*if\(!preview.valid\)throw new Error[\s\S]*await applyWritesTx\(tx,ctx,writes\);/);
+  const lockStart=workbook.indexOf('export async function lockSystemLabelImportTx(');
+  expect(lockStart).toBeGreaterThan(-1);
+  expect(workbook.slice(lockStart,workbook.indexOf('\n}',lockStart))).toMatch(/await writerLock\(tx\);[\s\S]*await lockLeaveDependencyConfigurationTx\(tx,ctx.tenantId\);[\s\S]*LOCK TABLE profile_option, job_grade, grade_group, grade_group_member IN SHARE ROW EXCLUSIVE MODE[\s\S]*await lockLabelCriteriaTx\(tx,ctx.tenantId\);/);
+  const job=read('../core/system-label-import-worker.ts');
+  expect(job).toMatch(/async beginChunkTx\(tx,ctx,job\)\{[\s\S]*await lockTx\(tx,ctx\);/);
+  expect(job).toMatch(/await lockTx\(tx,ctx\);\s*const conflicts=await tx.execute[\s\S]*system_label_import_conflicts[\s\S]*system_label_import_release_attempt/);
   const admin=read('../core/admin.ts'),ownerStart=admin.indexOf('export async function bulkSaveLabels('),ownerEnd=admin.indexOf('const errors: LabelRowError[]',ownerStart);
   expect(ownerStart).toBeGreaterThan(-1);expect(ownerEnd).toBeGreaterThan(ownerStart);
   expect(admin.slice(ownerStart,ownerEnd)).toContain('await lockLabelCriteriaTx(tx, ctx.tenantId);');

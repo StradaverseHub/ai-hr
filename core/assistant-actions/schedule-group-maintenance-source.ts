@@ -14,7 +14,7 @@ export class ScheduleGroupMaintenanceUnavailable extends Error{constructor(){sup
 export const scheduleGroupMaintenanceUnavailable=():never=>{throw new ScheduleGroupMaintenanceUnavailable();};
 const fail=scheduleGroupMaintenanceUnavailable,hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 type Subject=AssignedSubject&{employeeName:string;employeeCode:string|null;companyName:string;attendanceRuleId:string|null;revision:string;generation:string};
-async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh)||!fresh.userId)return fail();await tx.execute(sql`select app.access_workforce_write_lock()`);return fresh;}
+async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh)||!fresh.userId)return fail();await tx.execute(sql`select app.access_configuration_write_lock()`);return fresh;}
 async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{await lockLeaveDependenciesTx(tx,ctx.tenantId,[id]);const [row]=await tx.execute<{scope:Subject|null}>(sql`select app.assistant_attendance_schedule_group_scope(${id}::uuid) as scope`);if(!row?.scope||row.scope.subjectPersonId===ctx.personId)return fail();return row.scope;}
 export async function withScheduleGroupMaintenanceSubjectTx<T>(tx:Tx,ctx:SessionContext,id:string,_mode:'pending'|'recorded',work:(fresh:SessionContext,s:AssignedSubject)=>Promise<T>):Promise<T>{const fresh=await actor(tx,ctx);return work(fresh,await subject(tx,fresh,id));}
 async function review(tx:Tx,ctx:SessionContext,human:Human){

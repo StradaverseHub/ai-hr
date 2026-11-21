@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * WP13 (architecture review R18; ADR-0151 §4.4-4.5; owner decisions 1-2, 29 Oct 2026) — the first Automatic-tier
  * entries, run by the tenant's named agent principal (0672) with no model call.
@@ -58,7 +59,7 @@ describe('WP13 Automatic-tier chasers under the agent principal', () => {
   let base: Base;
   let seq = 0;
   beforeAll(migrateTestDb);
-  beforeEach(async () => { await resetDb(); base = await seedBase(); seq = 0; model.calls = 0; vi.unstubAllEnvs(); });
+  beforeEach(async () => { await resetDb(); base = await seedAttendanceSubmissionBase(); seq = 0; model.calls = 0; vi.unstubAllEnvs(); });
   afterAll(closeAll);
 
   async function hire(b: Base, companyId = b.companyId, departmentId = b.deptA) {

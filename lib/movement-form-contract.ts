@@ -2,17 +2,30 @@
 import {isComparisonKind} from '../core/movement-kinds';
 import {personnelFormRequired} from './personnel-form-contract';
 export const MOVEMENT_FORM_IDS = {
+  "confirmationDate": "employment.employment_dates_and_service.confirmationdate",
+  "probationValue": "employment.employment_dates_and_service.probationvalue",
+  "probationUnit": "employment.employment_dates_and_service.probationunit",
+  "extendedProbationValue": "employment.employment_dates_and_service.extendedprobationvalue",
+  "extendedProbationUnit": "employment.employment_dates_and_service.extendedprobationunit",
+  "noticeBeforeConfirmationValue": "employment.employment_dates_and_service.noticebeforeconfirmationvalue",
+  "noticeBeforeConfirmationUnit": "employment.employment_dates_and_service.noticebeforeconfirmationunit",
+  "noticeAfterConfirmationValue": "employment.employment_dates_and_service.noticeafterconfirmationvalue",
+  "noticeAfterConfirmationUnit": "employment.employment_dates_and_service.noticeafterconfirmationunit",
+
   "companyId": "employment.organisation_assignment.companyname",
   "businessUnitId": "employment.organisation_assignment.businessunitname",
   "departmentId": "employment.organisation_assignment.departmentname",
   "positionId": "employment.organisation_assignment.positionname",
   "gradeId": "employment.organisation_assignment.gradename",
   "employmentType": "employment.organisation_assignment.employmenttype",
+  "contractEndDate": "employment.employment_dates_and_service.contractenddate",
+  "internshipEndDate": "employment.draft_only_employment_fields.internshipenddate",
   "locationId": "attendance.work_location_and_shift_arrangement.locationid",
   "managerEmploymentId": "employment.direct_superior_and_history.superioremploymentid",
   "basicSalary": "payroll.basic_salary_and_salary_history.basicsalary",
   "currency": "payroll.basic_salary_and_salary_history.currency",
   "payMode": "payroll.basic_salary_and_salary_history.paymode",
+  "paymentMethod": "payroll.payment_method_and_payroll_policy.paymentmethod",
   "paymentTerm": "payroll.basic_salary_and_salary_history.paymentterm",
   "orgDivision": "employment.additional_organisation_labels.orgdivision",
   "employmentCategory": "employment.additional_organisation_labels.employmentcategory",
@@ -40,7 +53,7 @@ export type MovementFormField=Exclude<keyof typeof MOVEMENT_FORM_IDS,'reason'>;
 export function movementFormFields(behaviour:string,reason?:string):MovementFormField[]{
  const fields:MovementFormField[]=['kind','remarks'];
  if(behaviour!=='blacklist')fields.push('effectiveDate');
- if(isComparisonKind(behaviour))fields.push(...(['businessUnitId','departmentId','positionId','gradeId','employmentType','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase'] as const));
+ if(isComparisonKind(behaviour))fields.push(...(['businessUnitId','departmentId','positionId','gradeId','employmentType','contractEndDate','internshipEndDate','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','paymentMethod','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase','confirmationDate','probationValue','probationUnit','extendedProbationValue','extendedProbationUnit','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit','noticeAfterConfirmationValue','noticeAfterConfirmationUnit'] as const));
  if(behaviour==='entityTransfer')fields.push('companyId');
  if(['probationExtension','secondment','actingPosition','resignation','termination'].includes(behaviour))fields.push('endDate');
  if(behaviour==='resignation')fields.push('tenderResignationDate','resignationEffectiveDate');
@@ -53,6 +66,29 @@ export function movementFormFields(behaviour:string,reason?:string):MovementForm
 }
 export function movementFormRequired(field:MovementFormField,behaviour:string):boolean{
  if(field==='kind')return true;
+ // 2260a06b — required only for the matching (resulting) Employee Type; core/movement.ts decides that.
+ if(field==='contractEndDate'||field==='internshipEndDate')return false;
  const id=behaviour==='termination'&&field==='endDate'?'employment_history.event_information.lastworkingdate':MOVEMENT_FORM_IDS[field];
  return personnelFormRequired(id,'record',{movementEndDate:behaviour==='probationExtension'||behaviour==='termination'});
+}
+
+/** Assignment facts whose owners can safely replace the period before a Movement date. */
+export const MOVEMENT_HISTORY_FIELDS = [
+  'companyId', 'departmentId', 'positionId', 'businessUnitId', 'locationId', 'employmentType',
+] as const satisfies readonly MovementFormField[];
+
+/** Dates documented on a historical event without replaying an employment lifecycle command. */
+export const MOVEMENT_HISTORY_DATE_FIELDS = [
+  'confirmationDate', 'contractEndDate', 'internshipEndDate', 'tenderResignationDate', 'resignationEffectiveDate',
+] as const satisfies readonly MovementFormField[];
+export type MovementHistoryDateField = (typeof MOVEMENT_HISTORY_DATE_FIELDS)[number];
+export function isMovementHistoryDateField(field: string): field is MovementHistoryDateField {
+  return (MOVEMENT_HISTORY_DATE_FIELDS as readonly string[]).includes(field);
+}
+export function movementHistoryDateFields(behaviour: string): readonly MovementHistoryDateField[] {
+  if (behaviour === 'resignation' || behaviour === 'termination') return MOVEMENT_HISTORY_DATE_FIELDS;
+  return ['confirmationDate', 'contractEndDate', 'internshipEndDate'];
+}
+export function historyInformationField(field: MovementHistoryDateField) {
+  return field === 'resignationEffectiveDate' ? 'resignationDate' : field;
 }

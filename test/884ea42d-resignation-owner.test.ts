@@ -4,7 +4,7 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setEmploymentInfo} from '../core/org';
-import {createMovementEvent,editMovementEvent,reverseMovementEvent,movementHistory,movementPendingEditInput,applyDueMovementsTx,resignationInformation,movementRecordedResignationOf} from '../core/movement';
+import {createMovementEvent,editMovementEvent,reverseMovementEvent,movementHistory,movementHistoryWithTypes,movementPendingEditInput,applyDueMovementsTx,resignationInformation,movementRecordedResignationOf} from '../core/movement';
 import {previewMovementImport,commitMovementImport} from '../core/movement-import';
 import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
 import {movementFormFields} from '../lib/movement-form-contract';
@@ -48,7 +48,7 @@ describe('884ea42d one resignation information owner',()=>{
   const {employmentId}=await hire();const before=await row(employmentId);await createMovementEvent(ctx,input(employmentId));
   const saved=await row(employmentId);expect(dates(saved)).toEqual({tenderResignationDate:day(-20),resignationDate:day(-10),lastWorkingDate:day(-5)});expect(saved.terminatedOn).toBe(before.terminatedOn);
   const history=await resignation(employmentId);expect(history.effectiveDate).toBe(day(-4));expect(history.canEdit).toBe(true);expect(history.canReverse).toBe(true);
-  const summary=await resignationInformation(ctx,employmentId);for(const field of ['tenderResignationDate','resignationDate','lastWorkingDate'] as const)expect(summary[field].source).toMatchObject({kind:'movement',movementId:history.id});
+  const summary=await resignationInformation(ctx,employmentId);expect((await movementHistoryWithTypes(ctx,employmentId,{includeResignation:true})).resignation).toEqual(summary);for(const field of ['tenderResignationDate','resignationDate','lastWorkingDate'] as const)expect(summary[field].source).toMatchObject({kind:'movement',movementId:history.id});
   const [event]=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.id,history.id));expect(event.actorId).toBe(ctx.userId);expect(event.payload).toMatchObject({before:{resignationDate:null},after:{resignationDate:day(-10)}});
   expect((await movementPendingEditInput(ctx,employmentId,history.id))?.values).toMatchObject({tenderResignationDate:day(-20),resignationEffectiveDate:day(-10)});
  });
@@ -79,13 +79,18 @@ describe('884ea42d one resignation information owner',()=>{
   const corrected=await resignation(employmentId);expect((await row(employmentId)).resignationDate).toBe(day(-9));const history=await movementHistory(ctx,employmentId);expect(history.find(r=>r.id===original.id)?.reversed?.corrected).toBe(true);expect(history.find(r=>r.id===original.id)?.recordedResignation?.resignationDate).toEqual({known:true,value:day(-10)});expect(history.find(r=>r.id===corrected.id)?.recordedResignation?.resignationDate).toEqual({known:true,value:day(-9)});
   await reverseMovementEvent(ctx,{employmentId,movementId:corrected.id,reason:'Restore prior historical record'});expect(dates(await row(employmentId))).toEqual(legacy);expect((await resignationInformation(ctx,employmentId)).resignationDate.source.kind).toBe('legacy');
  });
- it('blocks a closed-payroll create, correction and rollback while preserving issued financial values',async()=>{
+ it('permits closed-payroll correction, rollback and create while retaining every issued financial value',async()=>{
   const {employmentId}=await hire();await createMovementEvent(ctx,input(employmentId));const history=await resignation(employmentId);
-  await closePayroll(employmentId,today.slice(0,7));const before=dates(await row(employmentId));
-  await expect(reverseMovementEvent(ctx,{employmentId,movementId:history.id,reason:'Forbidden financial change'})).rejects.toThrow(/closed payroll/);
-  await expect(editMovementEvent(ctx,{...input(employmentId),movementId:history.id,endDate:day(-3),reason:'Forbidden financial correction'})).rejects.toThrow(/closed payroll/);
-  await expect(createMovementEvent(ctx,{...input(employmentId),resignationEffectiveDate:day(-9)})).rejects.toThrow(/closed payroll/);
-  expect(dates(await row(employmentId))).toEqual(before);const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,employmentId));expect(slips[0].netPay).toBe('4000.00');
+  await closePayroll(employmentId,today.slice(0,7));
+  const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,employmentId));
+  const batches=await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id);
+  await editMovementEvent(ctx,{...input(employmentId),movementId:history.id,endDate:day(-3),reason:'Correct fictional exit information'});
+  const corrected=await resignation(employmentId);expect((await row(employmentId)).lastWorkingDate).toBe(day(-3));
+  await reverseMovementEvent(ctx,{employmentId,movementId:corrected.id,reason:'Remove fictional incorrect exit'});
+  await createMovementEvent(ctx,{...input(employmentId),resignationEffectiveDate:day(-9)});
+  expect((await row(employmentId)).resignationDate).toBe(day(-9));
+  expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,employmentId))).toEqual(slips);
+  expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toEqual(batches);
  });
  it('a tender-only Movement remains display metadata and can be corrected without repricing closed payroll',async()=>{
   const {employmentId}=await hire();await closePayroll(employmentId,today.slice(0,7));

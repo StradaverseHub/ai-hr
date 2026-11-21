@@ -26,6 +26,8 @@ export function movementKindLabel(
   if (configuredLabel) return configuredLabel;
   switch (kind) {
     case 'historicalHire': return t('movement.eventType.historicalHire');
+    // Board 511aa74a — the returning employee's new period.
+    case 'rehire': return t('movement.eventType.rehire');
     case 'hired': return t('movement.eventType.hired');
     case 'transfer': return t('movement.eventType.transfer');
     // b7b22514 — without this case the humanized fallback below would label the row "Entity Transfer" in
@@ -46,6 +48,8 @@ export function movementKindLabel(
     case 'orgAssignmentChange': return t('movement.eventType.orgAssignmentChange');
     case 'reportingLineChange': return t('movement.eventType.reportingLineChange');
     case 'employmentTypeChange': return t('movement.eventType.employmentTypeChange');
+    case 'contractRenewal': return t('movement.eventType.contractRenewal');
+    case 'contractTermination': return t('movement.eventType.contractTermination');
     case 'gradeChange': return t('movement.eventType.gradeChange');
     // 89ea527b — the two employment-date movements.
     case 'joinDateChange': return t('movement.eventType.joinDateChange');

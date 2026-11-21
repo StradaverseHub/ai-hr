@@ -60,6 +60,8 @@ export type CompanyRef = {
   /** The column that references `company.id`. */
   column: string;
   disposition: CompanyRefDisposition;
+  /** A retained UUID array has an owning trigger and bounded predicate rather than a physical FK. */
+  referenceKind?: 'uuid-array';
   /**
    * `config` only: rows matching one of these conditions REFUSE with `reason` instead of being deleted.
    * `{r}` is replaced by the table's alias. Used for `usage_snapshot`, whose zero rows are setup noise and
@@ -78,6 +80,11 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  {table:'contract_system_digest',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain private Contract digest provenance without exposing its content.'},
+  {table:'contract_posting_producer',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain the first actual Contract posting producer through its actual retained Contract case and immutable workflow provenance.'},
+  {table:'contract_shared_settings',column:'company_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain Contract configuration and its audit references.'},
+  {table:'contract_access_member',column:'company_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain scoped Contract role assignment history.'},
+  {table:'contract_access_member',column:'business_group_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain Contract business-group assignment history.'},
   {table:'probation_activation_request',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'reward_company_classification',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'reward_company_classification',column:'canonical_company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
@@ -86,6 +93,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'company_organisation_mapping',column:'business_group_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'company_organisation_run_row',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'employment_organisation_classification',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'resignation_journey',column:'company_id',disposition:'other',existsFunction:'app.resignation_company_in_use',note:'Retain resignation history without exposing custody-protected case data.'},
   {table:'contract_case',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
   {table:'contract_configuration',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
   {table:'contract_retirement_custody',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
@@ -119,6 +127,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   // cannot count, so one fixed SECURITY DEFINER boolean answers for all four (repair fragment
   // guards-fixtures). They refuse rather than cascade: they are audit of what a person reviewed or what a
   // model was asked, and they leave only through their own expiry/retention owners.
+  {table:'pay_component',column:'applied_company_ids',referenceKind:'uuid-array',disposition:'other',existsFunction:'app.pay_component_company_in_use',note:'Selected-company Pay Items retain their configured company identities.'},
   {table:'ai_agent_promotion',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'Company-scoped promotion history retains its company without exposing private candidate or promotion rows.'},
   {table:'assistant_own_leave_review',column:'allocation_effective_company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A retained cost-allocation review preserves its effective-dated company as well as its original company; expose only a scoped retention boolean.'},
   {table:'assistant_own_leave_review',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A reviewed Assistant action custody record scoped to this company is retained audit; expose only a scoped retention boolean.'},
@@ -135,6 +144,15 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'teras_loop_case',column:'company_id',disposition:'other',note:'A loop\'s case for the company or one of its employments (0960): references, dates and counts only, written by the agent principal, never deleted (no DELETE privilege); an employment case also goes if its employment is deleted (ON DELETE CASCADE). Administrators of the company read its cases.'},
   {table:'teras_loop_run',column:'company_id',disposition:'other',note:'A loop run\'s outcome record for the company (0960): append-only, no DELETE privilege and a trigger refuses UPDATE and DELETE, so it is never cascaded. Administrators of the company read its runs; a run that reached no company has no company_id.'},
   // AI v2 P2-2b (migration 0965): the payroll Audit loop's evidence is append-only audit of a company's payroll, never cascaded.
+  {table:'attendance_formula_ot_binding',column:'company_id',disposition:'other',note:'Immutable Attendance formula overtime evidence below the existing settlement owner.'},
+  {table:'attendance_formula_ot_binding_result',column:'company_id',disposition:'other',note:'Immutable Attendance formula overtime evidence below the existing settlement owner.'},
+  {table:'attendance_formula_ot_binding_day',column:'company_id',disposition:'other',note:'Immutable Attendance formula overtime evidence below the existing settlement owner.'},
+  {table:'attendance_formula_result',column:'company_id',disposition:'other',note:'Immutable Attendance calculation evidence retained with Payroll traceability.'},
+  {table:'attendance_formula_result_event',column:'company_id',disposition:'other',note:'Append-only Attendance calculation review and transfer history.'},
+  {table:'attendance_formula',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
+  {table:'attendance_formula_revision',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
+  {table:'attendance_formula_test',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
+  {table:'attendance_formula_event',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
   {table:'payroll_audit_capture',column:'company_id',disposition:'other',note:'Append-only, hash-chained payroll audit evidence (migration 0965): no DELETE privilege and a trigger refuses UPDATE and DELETE, so a company with captured payroll evidence is never deleted.'},
   {table:'payroll_audit_finding',column:'company_id',disposition:'other',note:'Append-only control findings of the payroll Audit loop (migration 0965), retained as audit evidence.'},
   {table:'payroll_audit_disposition',column:'company_id',disposition:'other',note:'Append-only dispositions of payroll Audit loop findings (migration 0965), retained as audit evidence.'},
@@ -194,6 +212,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'employment_cost_allocation_set', column: 'company_id', disposition: 'employees', existsFunction: 'app.board3_allocation_company_in_use', note: 'Every retained allocation set, including cleared or superseded sets after a transfer, retains its company without exposing employee rows.' },
   { table: 'job_document', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Job documentation and its approval history are retained records, never company setup to cascade.' },
   { table: 'job_document_form', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Versioned authored form definitions retain their company and must not be erased by company setup deletion.' },
+  {table:'attendance_clock_policy_revision',column:'company_id',disposition:'other',note:'Retain the company named by its dated Attendance clock policy.'},
   {table:'attendance_group_policy_revision',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
   {table:'attendance_overtime_policy_part',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
   {table:'attendance_policy_attested_effect',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
@@ -207,12 +226,19 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'lc_v9_case_revision', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Immutable V9 case revisions retain their original company after employee transfers.' },
   { table: 'lc_v9_file', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Employee document files retain their company even when the case is not visible to an organisation administrator.' },
   { table: 'lc_v9_email_delivery', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Immutable employee communication intents and delivery receipts retain their company without exposing message content.' },
+  { table: 'lc_v9_email_hold', column: 'company_id', disposition: 'employees', note: 'Held workflow email steps of an On/Off Boarding case (5460) keep the case company; released holds stay as history and are never deleted.' },
+  { table: 'personnel_posting', column: 'company_id', disposition: 'employees', note: 'Personnel postings (5741) are proposed employment changes for the company\'s employees; approved postings stay as the record of who approved which movement.' },
+  { table: 'probation_access_member', column: 'company_id', disposition: 'other', existsFunction: 'app.probation_reshape_company_in_use', note: 'A person given Probation access scoped to the company (5763); revoke or retire it first, its history stays.' },
+  { table: 'probation_access_member', column: 'business_group_id', disposition: 'other', existsFunction: 'app.probation_reshape_company_in_use', note: 'A Probation access scope naming the company as business group (5763); revoke or retire it first.' },
+  { table: 'probation_form_import', column: 'company_id', disposition: 'employees', existsFunction: 'app.probation_reshape_company_in_use', note: 'Imported saved evaluation forms (5762) are retained employee records with their original bytes.' },
+  { table: 'probation_settings_scope_member', column: 'company_id', disposition: 'other', existsFunction: 'app.probation_reshape_company_in_use', note: 'The company belongs to a Probation company setting (5742); move it out of the setting first.' },
   { table: 'lc_v9_payroll_handover', column: 'company_id', disposition: 'payroll', note: 'Frozen final-pay handovers and their review history retain the company as payroll evidence.' },
   { table: 'lc_onboarding_case', column: 'company_id', disposition: 'employees', note: 'Onboarding source identity, tasks, approvals and handover history must survive company changes.' },
   { table: 'lc_onboarding_case_revision', column:'company_id', disposition:'employees', note:'Immutable onboarding case history survives company changes.' },
   { table: 'lc_onboarding_private_revision', column:'company_id', disposition:'employees', note:'Sensitive onboarding history retains HR-only access.' },
   { table: 'lc_onboarding_private', column: 'company_id', disposition: 'employees', note: 'HR-only onboarding facts retain company-scoped access.' },
   { table: 'attendance_workflow_template', column: 'company_id', disposition: 'other', note: 'Immutable approval template versions are retained configuration history.' },
+  { table: 'attendance_workflow_company', column: 'company_id', disposition: 'other', note: 'Immutable shared workflow assignments are retained configuration history.' },
   { table: 'attendance_workflow_setting', column: 'company_id', disposition: 'config', note: 'Attendance workflow enablement has no meaning after its company is deleted.' },
   { table: 'attendance_workflow_request', column: 'company_id', disposition: 'employees', note: 'Submitted routing is employee decision history and must be retained.' },
   { table: 'mobile_offline_context', column: 'company_id', disposition: 'employees', note: 'Offline clocking evidence (0647): an issued context and its claims are an employee\'s attendance record. Each is bound to an employment of this company, so the employment row already refuses the delete; no visibility function is needed.' },
@@ -258,6 +284,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'attendance_overtime_line', column: 'company_id', disposition: 'payroll', note: 'An exact overtime earning line is retained money evidence.' },
   { table: 'overtime_source_settlement', column: 'company_id', disposition: 'payroll', note: 'A cash or TOIL settlement receipt retains its company, including released claims.' },
 
+  { table: 'reward_person_history', column: 'company_id', disposition: 'payroll', existsFunction: 'app.reward_history_company_in_use', note: 'Immutable review awards and independently uploaded earlier reward history retain their company; deletion must never erase financial history.' },
+  { table: 'reward_plan_year_company', column: 'company_id', disposition: 'other', existsFunction: 'app.reward_plan_company_in_use', note: 'Retain annual company participation and plan choices, including drafts and no-award reasons.' },
   { table: 'reward_unit', column: 'company_id', disposition: 'payroll', note: 'A salary and bonus review with employee snapshots, funding and approval history. Preserve it even before posting.' },
   { table: 'reward_calendar', column: 'company_id', disposition: 'payroll', note: 'The reward approval deadlines set for a cycle in this company. They belong to the reward review history; preserve them with the reviews.' },
   { table: 'reward_company_exclusion', column: 'company_id', disposition: 'other', note: 'Company-year participation decisions retain their exclusion and ending reasons as audit history, including after a company is brought back.' },
@@ -301,6 +329,12 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'lc_staff', column: 'company_id', disposition: 'other', note: 'A user named as Onboarding & IT module staff for this company (ADR-0095). Access is removed deliberately, never as a side effect.' },
   { table: 'it_asset', column: 'company_id', disposition: 'other', note: 'An IT asset registered to this company (ADR-0095), with its holder history. The register is a record of who held what.' },
 
+  // ADR-0080 D10 — Recruitment (5851). Jobs and candidates are hiring history: a company with either refuses.
+  { table: 'recruitment_job_opening', column: 'company_id', disposition: 'other', note: 'A job opening with its MJ number, team and applications. Close it; the history stays with the company.' },
+  { table: 'recruitment_candidate', column: 'company_id', disposition: 'other', note: 'A candidate who applied to this company, and their application history.' },
+  // 5854 — a job requisition (HC number, vacancies, approval history) is hiring history like a job opening.
+  { table: 'recruitment_requisition', column: 'company_id', disposition: 'other', note: 'A job requisition with its HC number, approvals and associated jobs. Complete or cancel it; the history stays with the company.' },
+
   // ── config: deleted with the company, in this order ──────────────────────────────────────────────────
   { table: 'company_logo', column: 'company_id', disposition: 'config', note: 'The company\'s logo image, held in its own side table.' },
   { table: 'company_statutory_my', column: 'company_id', disposition: 'config', note: 'The company\'s own EPF / SOCSO / LHDN registration numbers.' },
@@ -343,6 +377,90 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
     note: 'Nightly platform usage. All-zero rows (five on ABC Comapny) are deleted and counted on company.deleted — the plan\'s decision; migration 0511\'s function removes exactly those. A non-zero row is evidence and refuses. Composite key with tenant_id.',
   },
 
+  // Recruitment setup (5851): editable defaults seeded when Recruitment is first opened. Removed by one definer
+  // function (the app role has no DELETE here and default reasons refuse deletion), only when no job opening or
+  // candidate exists — those refuse the delete first, above.
+  // 5852/5853 — further setup the same function removes first: approval flows, the offer-field set, the settings row
+  // and evaluation forms. Only interviews, scorecards and offers point at forms and fields, and those need a job opening.
+  // 5855 — the tag catalogue, removed first (tags before their groups). A candidate's tags need a candidate, which refuses above.
+  { table: 'recruitment_tag', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s manual candidate tags. Before their groups; only a candidate (which refuses the delete) carries one.' },
+  { table: 'recruitment_tag_group', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s candidate tag groups. After the tags that belong to them.' },
+  { table: 'recruitment_approval_step', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s offer and requisition approval flows (ordered approvers).' },
+  { table: 'recruitment_offer_field', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s offer-field set. Offer values point at it only through an offer, which needs a job opening.' },
+  { table: 'recruitment_company_setting', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment settings row (feedback visibility and lock, offer validity and automation).' },
+  // 5858 — the careers page and its privacy notice versions. A consent naming a version needs a candidate, which refuses above.
+  { table: 'recruitment_careers_site', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s public careers page settings (address, display name, headline, introduction, published).' },
+  { table: 'recruitment_careers_notice', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s careers privacy notice versions. Only a consent (which needs a candidate) names one.' },
+  // 5859 — users' "read up to" times for the company's recruitment updates: per-user display state, no candidate data.
+  { table: 'recruitment_task_read_marker', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Users\' own "read up to" times for the company\'s recruitment updates. Nothing references them.' },
+  // 5860 — the agency setup, children first: tag links, consultants and contracts (their terms and access lists cascade), then
+  // agencies and agency tags. Assignments and submissions point at contracts and consultants only through a job opening,
+  // which refuses the delete above.
+  { table: 'recruitment_agency_tag_link', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Tags on the company\'s agencies. Before the agencies and the tags they join.' },
+  { table: 'recruitment_agency_consultant', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Agency consultants (contact records). Before their contracts; only a submission, which needs a job opening, points at one.' },
+  { table: 'recruitment_agency_contract', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Agency contracts, with their fee terms and access lists (ON DELETE CASCADE). Before their agencies.' },
+  { table: 'recruitment_agency', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s agencies (headhunters, RPO providers). After their contracts and tag links.' },
+  { table: 'recruitment_agency_tag', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s agency tags. After the tag links that use them.' },
+  // 5861 — screening requests and their answers (answers first). Both need an application, whose job opening refuses the delete
+  // above, so the remover finds none; they are declared so every company table is covered.
+  { table: 'recruitment_screening_answer', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Hiring managers\' screening answers. Before the requests they answer; only exist with an application, whose job opening refuses the delete first.' },
+  { table: 'recruitment_screening_request', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Screening requests sent to hiring managers. After their answers; only exist with an application, whose job opening refuses the delete first.' },
+  // 5862 — background checks, children first (files, details, type links, checks), then the company's check types. All but the
+  // types need an application, whose job opening refuses the delete above; the types are real company setup.
+  { table: 'recruitment_background_check_file', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Background check authorisation files and reports. Before their checks; only exist with an application, whose job opening refuses the delete first.' },
+  { table: 'recruitment_background_check_detail', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Restricted background check details (provider, reference, authorisation, summary). Before their checks; only exist with an application.' },
+  { table: 'recruitment_background_check_type_link', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The types of a background check. Before the checks and the types they join; only exist with an application.' },
+  { table: 'recruitment_background_check', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Background checks on applications. After their files, details and type links; only exist with an application, whose job opening refuses the delete first.' },
+  { table: 'recruitment_background_check_type', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s background check types (administrators). After the type links that use them.' },
+  // 5863 — the blocked list (history, review marks, restricted values, entries: each needs a candidate, which refuses the delete
+  // above), then the custom talent pools (memberships need a candidate too; shares, sub-pools and pools are company setup).
+  { table: 'recruitment_blocked_history', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Blocked-list history (ids, action, actor, time). Before the entries; only exists with a candidate, which refuses the delete first.' },
+  { table: 'recruitment_application_review_mark', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Blocked-list review marks on applications. Before the entries; only exist with an application, whose job opening refuses the delete first.' },
+  { table: 'recruitment_blocked_entry_restricted', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Blocked-list reasons and identity values (administrators only). Before the entries; only exist with a candidate.' },
+  { table: 'recruitment_blocked_entry', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Blocked-list entries. After their history, marks and restricted values; only exist with a candidate, which refuses the delete first.' },
+  { table: 'recruitment_talent_pool_member', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Candidates in custom talent pools. Before the pools; only exist with a candidate, which refuses the delete first.' },
+  { table: 'recruitment_talent_pool_share', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The users a custom talent pool is shared with. Before the pools.' },
+  { table: 'recruitment_talent_pool', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s custom talent pools and sub-pools. Sub-pools first, then pools; after memberships and shares.' },
+  // 5865 — custom field values (each needs a candidate or a job, which refuses the delete above), then options and fields.
+  { table: 'recruitment_candidate_custom_restricted', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'A candidate\'s restricted custom values. Before the fields and options; only exist with a candidate, which refuses the delete first.' },
+  { table: 'recruitment_candidate_custom_value', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'A candidate\'s custom values. Before the fields and options; only exist with a candidate, which refuses the delete first.' },
+  { table: 'recruitment_job_custom_value', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'A job\'s custom values. Before the fields and options; only exist with a job opening, which refuses the delete first.' },
+  { table: 'recruitment_custom_field_option', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The options of the company\'s custom choice fields. After the values that choose them; before their fields.' },
+  { table: 'recruitment_custom_field', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s custom candidate and job fields. After their values and options.' },
+  // 5866 — position templates (company setup) and their custom values; a job opening made from one refuses the delete above.
+  { table: 'recruitment_position_template_value', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'A position template\'s custom job field values. Before the templates (they also go with their template by ON DELETE CASCADE).' },
+  { table: 'recruitment_position_template', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s position templates for new positions. After their values; a job made from one is history and refuses the delete first.' },
+  // 5867 — candidate imports, their row results, To assign markers, import notes and saved export column sets. Notes and markers need a
+  // candidate, which refuses the delete first; an import whose every row was refused names no candidate, so it can exist without one.
+  { table: 'recruitment_candidate_import_note', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The notes column of a candidate import, per candidate. Before the imports; only exists with a candidate, which refuses the delete first.' },
+  { table: 'recruitment_to_assign', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'To assign markers (candidates with no application). Before the imports; only exist with a candidate, which refuses the delete first.' },
+  { table: 'recruitment_candidate_import_row', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'One result per import file row (ids, outcome, codes). Before the imports (they also go with their import by ON DELETE CASCADE).' },
+  { table: 'recruitment_candidate_import', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Candidate imports (company, importer, confirmation, file rows, ending). After their rows, markers and notes.' },
+  { table: 'recruitment_export_template', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s saved export column sets. Company setup with no candidate data.' },
+  // 5868 — per-stage waiting limits (company setup, no candidate data); before the stages they name.
+  { table: 'recruitment_stage_waiting_rule', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s per-stage waiting limits (reminder and suggest-archiving days). Before the stages they name.' },
+  // 5869 — interview set-up (company setup, no candidate data): question links before the questions and the evaluation forms they
+  // name; group members before their groups; rooms before their addresses. An interview naming an address or room needs an
+  // application, whose job opening refuses the delete first.
+  { table: 'recruitment_interview_question_link', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Which bank questions a scorecard template shows. Before the questions and the evaluation forms they name.' },
+  { table: 'recruitment_interview_question', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s interview question bank (guidance only). After the links that name its questions.' },
+  { table: 'recruitment_interviewer_group_member', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The users of an interviewer group. Before the groups (they also go with their group by ON DELETE CASCADE).' },
+  { table: 'recruitment_interviewer_group', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s interviewer groups. After their members; a group grants no access and is not recorded on interviews.' },
+  { table: 'recruitment_interview_room', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Meeting rooms of the company\'s interview addresses. Before the addresses; an interview booking one needs a job opening, which refuses the delete first.' },
+  { table: 'recruitment_interview_address', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s interview addresses. After their rooms; an interview naming one needs a job opening, which refuses the delete first.' },
+  // 5870 — candidate e-mail: per-e-mail delivery rows (each needs an application), the company's template overrides and sender settings.
+  { table: 'recruitment_candidate_email', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'Candidate e-mails (frozen address and content, delivery state). Only exist with an application, whose job opening refuses the delete first.' },
+  { table: 'recruitment_candidate_email_template', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s candidate e-mail wording per kind and language. Company setup with no candidate data.' },
+  { table: 'recruitment_candidate_email_setting', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s candidate e-mail switch, sender name, reply-to and language. Company setup with no candidate data.' },
+  { table: 'recruitment_referral_reward', column: 'company_id', disposition: 'other', note: 'Decided referral rewards (slice 23). Only exist for hired referrals, whose job opening refuses the delete first; kept as pay history.' },
+  { table: 'recruitment_referral_reward', column: 'payee_company_id', disposition: 'other', note: 'The company whose payroll receives an approved referral reward (slice 23). Kept as pay history; the receiving employment refuses the delete first.' },
+  { table: 'recruitment_agency_fee', column: 'company_id', disposition: 'other', note: 'Agency fees of hired agency applications (slice 23). Only exist with an application, whose job opening refuses the delete first.' },
+  { table: 'recruitment_candidate_survey_response', column: 'company_id', disposition: 'other', note: 'Anonymous candidate survey answers (slice 22). Only exist after applications, whose job opening refuses the delete first; pruned after 24 months.' },
+  { table: 'recruitment_agency_portal_submission', column: 'company_id', disposition: 'other', note: 'Agency portal submissions waiting in, or decided from, the HR inbox (slice 25). Each names a job opening, which refuses the delete first; declined rows are pruned 180 days after the decision.' },
+  { table: 'recruitment_evaluation_form', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s interview evaluation forms. Interviews and scorecards point at them only through a job opening.' },
+  { table: 'recruitment_archive_reason', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s rejection / archive reasons. Removed with its stages and processes.' },
+  { table: 'recruitment_process', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment processes; their ordered stages go with them (ON DELETE CASCADE).' },
+  { table: 'recruitment_stage', column: 'company_id', disposition: 'config', deleteFunction: 'app.recruitment_delete_company_setup', note: 'The company\'s recruitment stage catalogue. After the processes that order it.' },
   // ── config-if-unreferenced: the company's own org structure, deleted unless something outside uses it ──
   { table: 'department', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Before business_unit, which a department references.' },
   { table: 'position', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Positions of this company. An assignment or approval rule elsewhere naming one refuses.' },
@@ -388,6 +506,7 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'replacement_holiday', column: 'source_holiday_id', references: 'holiday', effect: 'blocks', existsFunction: 'app.replacement_holiday_source_company_in_use', note: 'A retained employee allocation may reference another company’s original holiday. Preserve that source without exposing the employee allocation outside current visibility.' },
   { table: 'attendance_rule_shift', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Explicit Schedule Group membership may serve shared shifts; remove it through its owner before deleting company setup.' },
   { table: 'attendance_rule_shift', column: 'shift_id', references: 'shift', effect: 'blocks', note: 'A Schedule Group explicitly retains this shift; company deletion must not silently change its allowed pool.' },
+  {table:'attendance_clock_policy_revision',column:'rule_id',references:'attendance_rule',effect:'blocks',existsFunction:'app.attendance_clock_rule_company_in_use',note:'A dated clock policy retains the exact Schedule Group, including legacy company-owned groups.'},
   {table:'attendance_group_policy_revision',column:'rule_id',references:'attendance_rule',effect:'blocks',existsFunction:'app.attendance_policy_rule_company_in_use',note:'Immutable policy revisions retain their Schedule Group independently of current employment visibility.'},
   { table: 'attendance_exception_revision', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Immutable exception-policy revisions retain their Schedule Group.' },
   { table: 'overtime_pattern', column: 'legacy_rule_id', references: 'attendance_rule', effect: 'blocks', note: 'The live bridge into retained legacy overtime history must be removed through the unused Schedule Group owner, not company cascade.' },
@@ -400,6 +519,75 @@ export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
   { table: 'payroll_attendance_allowance_source', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A payroll contribution retains the policy that owns it; company deletion cannot detach it.' },
   { table: 'attendance_allowance_transfer', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A transfer attempt retains the policy identity for later audit and operator resolution.' },
   { table: 'reward_unit', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'A reward review retains its business unit and financial approval history; it must never disappear with company setup.' },
+  { table: 'recruitment_process_stage', column: 'process_id', references: 'recruitment_process', effect: 'part', note: 'A process\'s ordered stages. ON DELETE CASCADE.' },
+  { table: 'recruitment_process_stage', column: 'stage_id', references: 'recruitment_stage', effect: 'part', note: 'A stage\'s place in a process. ON DELETE CASCADE.' },
+  { table: 'recruitment_job_opening', column: 'process_id', references: 'recruitment_process', effect: 'blocks', note: 'A job keeps its recruitment process.' },
+  { table: 'recruitment_job_opening', column: 'department_id', references: 'department', effect: 'blocks', note: 'A job keeps its department.' },
+  { table: 'recruitment_job_opening', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'A job keeps its business unit.' },
+  { table: 'recruitment_application', column: 'current_stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'An application keeps its stage.' },
+  { table: 'recruitment_application', column: 'stage_left_at_archive', references: 'recruitment_stage', effect: 'blocks', note: 'An archived application keeps the stage it left.' },
+  { table: 'recruitment_application', column: 'archive_reason_id', references: 'recruitment_archive_reason', effect: 'blocks', note: 'An archived application keeps its reason.' },
+  { table: 'recruitment_application_event', column: 'from_stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'Append-only application history keeps its stages.' },
+  { table: 'recruitment_application_event', column: 'to_stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'Append-only application history keeps its stages.' },
+  { table: 'recruitment_stage_waiting_rule', column: 'stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'A stage\'s waiting limit (no cascade). The company delete removes the rules before the stages.' },
+  { table: 'recruitment_interview_question_link', column: 'question_id', references: 'recruitment_interview_question', effect: 'blocks', note: 'A linked question is kept (retire it instead); the company delete removes links before questions.' },
+  { table: 'recruitment_interview_question_link', column: 'evaluation_form_id', references: 'recruitment_evaluation_form', effect: 'blocks', note: 'A template\'s question links keep it; the company delete removes links before the evaluation forms.' },
+  { table: 'recruitment_interviewer_group_member', column: 'group_id', references: 'recruitment_interviewer_group', effect: 'part', note: 'A group\'s member list. ON DELETE CASCADE.' },
+  { table: 'recruitment_interview_room', column: 'address_id', references: 'recruitment_interview_address', effect: 'blocks', note: 'A room keeps its address; deleting an address removes its unused rooms first, and the company delete removes rooms before addresses.' },
+  { table: 'recruitment_interview', column: 'address_id', references: 'recruitment_interview_address', effect: 'blocks', note: 'An interview keeps its address; an interview needs a job opening, which refuses the company delete first.' },
+  { table: 'recruitment_interview', column: 'room_id', references: 'recruitment_interview_room', effect: 'blocks', note: 'An interview keeps its booked room; an interview needs a job opening, which refuses the company delete first.' },
+  { table: 'recruitment_application_event', column: 'archive_reason_id', references: 'recruitment_archive_reason', effect: 'blocks', note: 'Append-only application history keeps its reasons.' },
+  { table: 'recruitment_interview', column: 'stage_id', references: 'recruitment_stage', effect: 'blocks', note: 'An interview keeps the stage it was scheduled in.' },
+  { table: 'recruitment_interview', column: 'evaluation_form_id', references: 'recruitment_evaluation_form', effect: 'blocks', note: 'An interview keeps its evaluation form.' },
+  { table: 'recruitment_scorecard', column: 'evaluation_form_id', references: 'recruitment_evaluation_form', effect: 'blocks', note: 'Feedback keeps the form it answered.' },
+  { table: 'recruitment_offer_value', column: 'field_id', references: 'recruitment_offer_field', effect: 'blocks', note: 'An offer value keeps its field.' },
+  { table: 'recruitment_tag', column: 'group_id', references: 'recruitment_tag_group', effect: 'blocks', note: 'A tag keeps its group; the company delete removes tags before groups.' },
+  { table: 'recruitment_candidate_tag', column: 'tag_id', references: 'recruitment_tag', effect: 'blocks', note: 'A candidate keeps their tags; a candidate refuses the company delete first.' },
+  // 5860 — inside the agency setup (deleted in order by app.recruitment_delete_company_setup) and from job-side rows, which need
+  // a job opening and so refuse the delete first.
+  { table: 'recruitment_agency_tag_link', column: 'agency_id', references: 'recruitment_agency', effect: 'blocks', note: 'A tag link keeps its agency; the company delete removes links first.' },
+  { table: 'recruitment_agency_tag_link', column: 'tag_id', references: 'recruitment_agency_tag', effect: 'blocks', note: 'A tag in use is kept; the company delete removes links before tags.' },
+  { table: 'recruitment_agency_contract', column: 'agency_id', references: 'recruitment_agency', effect: 'blocks', note: 'A contract keeps its agency; the company delete removes contracts first.' },
+  { table: 'recruitment_agency_contract_terms', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'part', note: 'A contract\'s fee rate and file. ON DELETE CASCADE.' },
+  { table: 'recruitment_agency_contract_user', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'part', note: 'A Restricted contract\'s access list. ON DELETE CASCADE.' },
+  { table: 'recruitment_agency_consultant', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'A consultant keeps their contract; the company delete removes consultants first.' },
+  { table: 'recruitment_job_agency_contract', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'A job released to a contract keeps it; a job opening refuses the company delete first.' },
+  { table: 'recruitment_agency_submission', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'An agency submission keeps its contract; it needs a job opening, which refuses the company delete first.' },
+  { table: 'recruitment_agency_submission', column: 'consultant_id', references: 'recruitment_agency_consultant', effect: 'blocks', note: 'An agency submission keeps its consultant; it needs a job opening, which refuses the company delete first.' },
+  { table: 'recruitment_agency_portal_submission', column: 'contract_id', references: 'recruitment_agency_contract', effect: 'blocks', note: 'A portal submission keeps its contract; it needs a job opening, which refuses the company delete first.' },
+  { table: 'recruitment_agency_portal_submission', column: 'consultant_id', references: 'recruitment_agency_consultant', effect: 'blocks', note: 'A portal submission keeps its consultant; it needs a job opening, which refuses the company delete first.' },
+  // 5861 — an answer keeps its request; the company delete removes answers before requests.
+  { table: 'recruitment_screening_answer', column: 'request_id', references: 'recruitment_screening_request', effect: 'blocks', note: 'A screening answer keeps its request; the company delete removes answers first.' },
+  // 5862 — a background check's files, details and type links keep their check; a type link keeps its type. The company delete
+  // removes the children first.
+  { table: 'recruitment_background_check_file', column: 'check_id', references: 'recruitment_background_check', effect: 'blocks', note: 'A background check file keeps its check; the company delete removes files first.' },
+  { table: 'recruitment_background_check_detail', column: 'check_id', references: 'recruitment_background_check', effect: 'blocks', note: 'A background check\'s details keep their check; the company delete removes details first.' },
+  { table: 'recruitment_background_check_type_link', column: 'check_id', references: 'recruitment_background_check', effect: 'blocks', note: 'A background check keeps its types; the company delete removes the links first.' },
+  { table: 'recruitment_background_check_type_link', column: 'type_id', references: 'recruitment_background_check_type', effect: 'blocks', note: 'A type in use is kept (disable it instead); the company delete removes the links before the types.' },
+  // 5863 — blocked-list children keep their entry; pool memberships and shares go with their pool (ON DELETE CASCADE); a sub-pool
+  // keeps its parent (the company delete removes sub-pools first).
+  { table: 'recruitment_blocked_history', column: 'entry_id', references: 'recruitment_blocked_entry', effect: 'blocks', note: 'Blocked-list history keeps its entry; the company delete removes history first.' },
+  { table: 'recruitment_application_review_mark', column: 'entry_id', references: 'recruitment_blocked_entry', effect: 'blocks', note: 'A review mark keeps its entry; the company delete removes marks first.' },
+  { table: 'recruitment_blocked_entry_restricted', column: 'entry_id', references: 'recruitment_blocked_entry', effect: 'blocks', note: 'An entry\'s reason and identity values keep their entry; the company delete removes them first.' },
+  { table: 'recruitment_talent_pool_member', column: 'pool_id', references: 'recruitment_talent_pool', effect: 'part', note: 'A pool\'s memberships. ON DELETE CASCADE.' },
+  { table: 'recruitment_talent_pool_share', column: 'pool_id', references: 'recruitment_talent_pool', effect: 'part', note: 'A pool\'s listed users. ON DELETE CASCADE.' },
+  { table: 'recruitment_talent_pool', column: 'parent_id', references: 'recruitment_talent_pool', effect: 'blocks', note: 'A sub-pool keeps its pool (delete the sub-pools first); the company delete removes sub-pools first.' },
+  // 5865 — values keep their field and option (the field and option cannot be deleted while used); options keep their field.
+  { table: 'recruitment_candidate_custom_value', column: 'field_id', references: 'recruitment_custom_field', effect: 'blocks', note: 'A field with values is kept (disable it instead); the company delete removes values first.' },
+  { table: 'recruitment_candidate_custom_value', column: 'option_id', references: 'recruitment_custom_field_option', effect: 'blocks', note: 'An option in use is kept (disable it instead); the company delete removes values first.' },
+  { table: 'recruitment_candidate_custom_restricted', column: 'field_id', references: 'recruitment_custom_field', effect: 'blocks', note: 'A field with values is kept; the company delete removes values first.' },
+  { table: 'recruitment_candidate_custom_restricted', column: 'option_id', references: 'recruitment_custom_field_option', effect: 'blocks', note: 'An option in use is kept; the company delete removes values first.' },
+  { table: 'recruitment_job_custom_value', column: 'field_id', references: 'recruitment_custom_field', effect: 'blocks', note: 'A field with values is kept; the company delete removes values first.' },
+  { table: 'recruitment_job_custom_value', column: 'option_id', references: 'recruitment_custom_field_option', effect: 'blocks', note: 'An option in use is kept; the company delete removes values first.' },
+  { table: 'recruitment_custom_field_option', column: 'field_id', references: 'recruitment_custom_field', effect: 'blocks', note: 'An option keeps its field; deleting an unused field removes its options first, and the company delete removes options before fields.' },
+  // 5866 — a template's values are its parts; a job keeps nothing of a deleted template but the reference is cleared (SET NULL).
+  { table: 'recruitment_position_template_value', column: 'template_id', references: 'recruitment_position_template', effect: 'part', note: 'A template\'s custom job field values. ON DELETE CASCADE.' },
+  { table: 'recruitment_job_opening', column: 'created_from_template_id', references: 'recruitment_position_template', effect: 'blocks', note: 'A job made from the template; the job itself refuses the company delete first.' },
+  // 5867 — an import's row results are its parts; markers and notes keep their import (the company delete removes them first).
+  { table: 'recruitment_candidate_import_row', column: 'import_id', references: 'recruitment_candidate_import', effect: 'part', note: 'An import\'s row results. ON DELETE CASCADE.' },
+  { table: 'recruitment_to_assign', column: 'import_id', references: 'recruitment_candidate_import', effect: 'blocks', note: 'A To assign marker keeps the import that created it; the company delete removes markers first.' },
+  { table: 'recruitment_candidate_import_note', column: 'import_id', references: 'recruitment_candidate_import', effect: 'blocks', note: 'An import note keeps its import; the company delete removes notes first.' },
+  { table: 'recruitment_requisition', column: 'department_id', references: 'department', effect: 'blocks', note: 'A requisition keeps its department.' },
   { table: 'shift_ot_window', column: 'shift_id', references: 'shift', effect: 'part', note: 'A shift\'s clock-time OT windows. ON DELETE CASCADE.' },
   { table: 'attendance_rule_ot_row', column: 'rule_id', references: 'attendance_rule', effect: 'part', note: 'A rule\'s OT rows. ON DELETE CASCADE.' },
   { table: 'holiday_group_holiday', column: 'holiday_id', references: 'holiday', effect: 'blocks', note: 'ON DELETE CASCADE, but a holiday group may serve another company: removing our holiday from it would change their calendar. Refuses.' },

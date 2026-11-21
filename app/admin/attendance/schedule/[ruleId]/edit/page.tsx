@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/authz';
+import { isGroupAdmin } from '@/lib/authz';
+import { scopedAdmin } from '@/lib/scope';
+import { scheduleClockCompanies } from '../../clock-policy-options';
 import { listAttendanceRules } from '@/core/attendance-rule';
 import { Card, PageHeader } from '@/components/ui';
 import { SCHEDULE, scheduleGroupViewPath } from '../../../../attendance-policy/schedule-panel';
@@ -50,8 +52,9 @@ export default async function EditScheduleGroupPage({
   params: Promise<{ ruleId: string }>;
   searchParams: Promise<{ error?: string; section?: string; typedWeek?: string; saveAck?: string }>;
 }) {
-  const s = await requireAdmin();
+  const {s,scopeIds} = await scopedAdmin();
   const t = await getTranslations('admin.scheduleConfig');
+  const te = await getTranslations('scheduleGroupEditor');
   const { ruleId } = await params;
   const sp = await searchParams;
 
@@ -61,7 +64,7 @@ export default async function EditScheduleGroupPage({
   if (!rule) {
     return (
       <div className="w-full min-w-0 space-y-6">
-        <PageHeader title={t('editTitle')} back={{ href: SCHEDULE, label: t('backToList') }} />
+        <PageHeader title={te('editTitle')} back={{ href: SCHEDULE, label: t('backToList') }} />
         <Card>
           <p className="p-4 text-sm text-muted-foreground">{t('groupGone')}</p>
         </Card>
@@ -72,7 +75,7 @@ export default async function EditScheduleGroupPage({
   return (
     <div className="w-full min-w-0 space-y-6">
       <PageHeader
-        title={t('editTitle')}
+        title={te('editTitle')}
         description={rule.name}
         /* BACK RETURNS TO THE LIST — the reporter's words. It writes nothing, which is why the four Saves
            can each be a plain button: there is exactly one way out of this page that discards nothing and
@@ -87,6 +90,8 @@ export default async function EditScheduleGroupPage({
       <ScheduleGroupSections
         s={s}
         rule={rule}
+        clockCompanies={await scheduleClockCompanies(s,scopeIds,rule.id)}
+        canEditShared={isGroupAdmin(s)}
         rules={rules}
         mode="edit"
         error={sp.error}

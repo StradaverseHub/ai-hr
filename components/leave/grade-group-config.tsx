@@ -1,4 +1,8 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
+import {SystemLabelScope} from '../system-label-scope';
+
+import {SystemLabelExportButton} from '../system-label-export-button';
 
 import { useTranslations } from 'next-intl';
 import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
@@ -37,7 +41,7 @@ import { Badge, Button, Field, btnPrimary, inputCls } from '@/components/ui';
  * shortcut when grade MASTER data moved to Settings → System Labels → Organisation Labels — which is the
  * screen this editor has now followed it onto).
  */
-export type GradeGroupRow = { id: string; name: string; gradeIds: string[]; archived: boolean };
+export type GradeGroupRow = { id: string; name: string; gradeIds: string[]; archived: boolean;scopeCompanyIds?:string[]|null };
 export type GradeGroupGradeOption = { id: string; name: string };
 
 export function GradeGroupConfig({
@@ -60,6 +64,7 @@ export function GradeGroupConfig({
 
   return (
     <div className="space-y-3 p-3" data-tour="grade-groups">
+      <div className="flex justify-end"><SystemLabelExportButton kind="grade_groups"/></div>
       <p className="text-xs text-muted-foreground">{t('groupsHelp')}</p>
       <ul className="divide-y divide-border rounded-lg border border-border">
         {gradeGroups.length === 0 && (
@@ -70,7 +75,7 @@ export function GradeGroupConfig({
             <details>
               <summary className="flex cursor-pointer items-center justify-between gap-2">
                 <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  {g.name}
+                  {g.name} <SystemLabelScope ids={g.scopeCompanyIds}/>
                   {g.archived && <Badge variant="warning">{t('archived')}</Badge>}
                   <span className="text-xs font-normal text-muted-foreground">
                     {t('memberCount', { count: g.gradeIds.length })}
@@ -141,7 +146,7 @@ export function GradeGroupConfig({
             {grades.length === 0 && <span className="text-xs text-muted-foreground">{t('noGrades')}</span>}
           </div>
         </div>
-        <button className={btnPrimary}>{t('addGroup')}</button>
+        <ActionButton actionKind="saving" className={btnPrimary}>{t('addGroup')}</ActionButton>
       </form>
     </div>
   );

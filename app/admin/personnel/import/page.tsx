@@ -9,10 +9,9 @@ import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listCostCenters, listPositions, listBusinessUnits } from '@/core/admin';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { personnelCatalogReferenceValues } from '@/lib/personnel-import-catalog';
-import { listEmployeeImportRuns } from '@/core/import';
-import { PageHeader } from '@/components/ui';
+import { PageHeader, pageWideCls } from '@/components/ui';
 import { ImportWorkbench } from './import-workbench';
-import { ImportHistory } from './import-history';
+import { IMPORT_HISTORY_PATH } from './history/import-history-views';
 
 export default async function ImportPage() {
   const t = await getTranslations('people.import');
@@ -30,7 +29,6 @@ export default async function ImportPage() {
     // same reason as the catalogs above: the Reference sheet must list the values `analyze()` accepts,
     // and the only way to guarantee that is to generate it from the list `analyze()` reads.
     allProfileOptions,
-    importRuns,
     nricPolicy,
   ] = await Promise.all([
     listCompanies(s,{adminOnly:true}),
@@ -38,9 +36,6 @@ export default async function ImportPage() {
     listPositions(s),
     listCostCenters(s),
     listAllProfileOptions(s,{activeOnly:true}),
-    // cf43c909 — past runs. Read here (not inside the client island) so the history is server-rendered and
-    // RLS-scoped; `commitImportAction` revalidates this path, so a finished import appears without a reload.
-    listEmployeeImportRuns(s),
     getPeopleGeneral(s),
   ]);
   // Company-specific guidance uses the same visibility owners as full-import validation.
@@ -69,7 +64,8 @@ export default async function ImportPage() {
     scopeIds.length === 1 ? scopeIds[0] : (operating?.id ?? companies[0]?.id ?? '');
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    // ccd3a65c — full width, like Import History and the Import Log it now opens from the header.
+    <div className={pageWideCls}>
       {/* 4ea70bb7 — this back link names the same destination as the wizard's and the profile's, and all
           three now say Personnel Management. people.import is admin-only (nothing outside
           app/admin/personnel/import reads the namespace), so backLabel could be renamed IN PLACE — no
@@ -79,6 +75,15 @@ export default async function ImportPage() {
         back={{ href: '/admin/personnel', label: t('backLabel') }}
         title={t('title')}
         description={t('description')}
+        actions={
+          <Link
+            href={IMPORT_HISTORY_PATH}
+            className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-border bg-card px-4 text-sm font-medium transition-colors hover:bg-muted active:scale-[.98]"
+          >
+            {t('historyButton')}
+            <span aria-hidden>→</span>
+          </Link>
+        }
       />
       {companies.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('noCompanies')}</p>
@@ -114,11 +119,8 @@ export default async function ImportPage() {
               catalogs:Object.fromEntries(Object.entries(allProfileOptions).map(([category,options])=>[category,personnelCatalogReferenceValues(options)])),
             }}
           />
-          {/* cf43c909 — the record of what has been loaded. Always rendered, empty state included, so an
-              admin who has never imported still learns that a history exists before they upload. */}
-          <ImportHistory runs={importRuns} />
-          {/* c4055300 / ADR-0155 — the shared Import History: original file, before/after and Revert. */}
-          <p className="text-sm"><Link href="/admin/personnel/import/history" className="text-primary underline">{t('importHistoryLink')}</Link></p>
+          {/* ccd3a65c — past imports moved to Import History (the header button): one list of every import,
+              including the section runs the old box here showed, with a row-by-row Import Log each. */}
         </>
       )}
     </div>

@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useActionState,useEffect,useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -32,7 +33,7 @@ export function TestingInstructionEditor({ initial,caseId,versionId,draftRevisio
     <fieldset className="space-y-3"><legend className="text-base font-semibold">{t('steps')}</legend>{definition.steps.map((step,index)=><div key={step.id} className="rounded-lg border border-border p-3"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><span className="text-sm font-medium">{t('stepNumber',{number:index+1})}</span><div className="flex gap-2">{([-1,1] as const).map(offset=><button key={offset} type="button" disabled={index+offset<0||index+offset>=definition.steps.length} className="rounded border px-2 py-1 text-sm disabled:opacity-40" onClick={()=>move(index,offset)} aria-label={t(offset<0?'moveUp':'moveDown',{number:index+1})}>{t(offset<0?'up':'down')}</button>)}<button type="button" className="rounded border px-2 py-1 text-sm" onClick={()=>set('steps',definition.steps.filter(s=>s.id!==step.id))}>{t('remove')}</button></div></div><div className="grid gap-3 sm:grid-cols-2">{(['action','expected'] as const).map(key=><label key={key}><span className="mb-1 block text-sm">{t(key)}</span><textarea className={`${inputCls} h-auto min-h-20 py-2`} value={step[key]} onChange={e=>set('steps',definition.steps.map(s=>s.id===step.id?{...s,[key]:e.target.value}:s))}/></label>)}</div></div>)}<button type="button" className="rounded border px-3 py-2 text-sm" disabled={definition.steps.length>=TESTING_LIMITS.steps} onClick={()=>{let n=1;while(definition.steps.some(s=>s.id===`step${n}`))n++;set('steps',[...definition.steps,{id:`step${n}`,action:'',expected:''}]);}}>{t('addStep')}</button></fieldset>
     {tooLarge&&<p role="alert" className="text-sm text-destructive">{t('errors.limit')}</p>}
     {state.error&&<p role="alert" className="break-words text-sm text-destructive">{t(`errors.${state.error}`)}</p>}
-    <div className="flex flex-wrap gap-3"><button className={btnPrimary} type="submit" name="intent" value="draft" disabled={pending||tooLarge}>{pending?t('saving'):t('saveDraft')}</button><button className="rounded-md border px-4 py-2 text-sm font-medium" type="submit" name="intent" value="publish" disabled={pending||tooLarge}>{t('savePublish')}</button></div>
+    <div className="flex flex-wrap gap-3"><ActionButton aria-busy={pending} className={btnPrimary} type="submit" name="intent" value="draft" disabled={pending||tooLarge}>{pending?t('saving'):t('saveDraft')}</ActionButton><ActionButton aria-busy={pending} className="rounded-md border px-4 py-2 text-sm font-medium" type="submit" name="intent" value="publish" disabled={pending||tooLarge}>{t('savePublish')}</ActionButton></div>
     <p className="text-sm text-muted-foreground">{t('publishNote')}</p>
   </form>;
 }

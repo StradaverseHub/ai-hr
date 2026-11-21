@@ -1,9 +1,11 @@
+import type { AttendanceSubmissionAction } from '@/components/attendance-submission-form';
+import { attendanceOnBehalfSubject, attendanceSubmissionRouteOnBehalf, ownAttendanceSubmissionRoute } from '@/packs/attendance/service';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { CalendarPlus } from 'lucide-react';
 import { getSession } from '@/lib/session';
-import { myEmployment, reportingLinesFor } from '@/core/read';
+import { myEmployment } from '@/core/read';
 import { attendanceForEmploymentRange, myAttendanceCorrections } from '@/packs/attendance/service';
 import {
   Button,
@@ -18,7 +20,10 @@ import {
 } from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { myRequestCorrection } from '@/app/me/actions';
+import { OnBehalfBanner } from '@/app/attendance/on-behalf/banner';
 import { CorrectionDialog, CorrectionForm, LeaveInsteadNote, type CorrectionCopy } from './correction-form';
+import { AttendanceSubmissionRouteProgress } from '@/components/attendance-route-progress';
+import type { ReactNode } from 'react';
 import {
   KIND_OF_SECTION,
   defaultSection,
@@ -105,6 +110,8 @@ export default async function AttendanceIrregularityPage({
     section?: string;
     /** The day whose Fix panel is open (YYYY-MM-DD). */
     fix?: string;
+    /** 96a54ed2 Request On Behalf: the chosen employee (Attendance › Request On Behalf). */
+    onBehalfOf?: string;
   }>;
 }) {
   const t = await getTranslations('me');
@@ -116,7 +123,11 @@ export default async function AttendanceIrregularityPage({
   if (parseSection(sp.section) === 'overtime') redirect('/attendance/plan-ot');
 
   const s = await getSession();
-  const me = await myEmployment(s);
+  // 96a54ed2 — Request On Behalf opens THIS screen for a chosen employee: their records, their workflow and rules,
+  // under a banner. The service decides whether the caller may act for them; an unauthorised choice is a 404.
+  const onBehalf = sp.onBehalfOf ? await attendanceOnBehalfSubject(s, 'request', sp.onBehalfOf) : null;
+  if (sp.onBehalfOf && !onBehalf) notFound();
+  const me = onBehalf ?? await myEmployment(s);
 
   if (!me) {
     return (
@@ -137,17 +148,17 @@ export default async function AttendanceIrregularityPage({
   const from = addDays(today, -CORRECTION_WINDOW_DAYS);
   const to = addDays(today, -1); // yesterday — see the header note on why today is out.
 
-  const [days, requests, lines] = await Promise.all([
+  const [days, requests, route] = await Promise.all([
     attendanceForEmploymentRange(s, me.employmentId, from, to),
     // Read for ONE thing now: which dates already have a request waiting. The list itself moved to
     // /attendance/request-status; what stays here is the marker on the row, which is a different statement.
     myAttendanceCorrections(s, me.employmentId, { limit: 200 }),
-    reportingLinesFor(s, me.employmentId),
+    onBehalf ? attendanceSubmissionRouteOnBehalf(s, me.employmentId, 'irregularity') : ownAttendanceSubmissionRoute(s, me.employmentId, 'irregularity'),
   ]);
-  // Who a request goes to. Resolved from the administrative reporting line — the edge assertCanDecide
-  // routes an attendance decision along — falling back to HR rather than blank, because "nobody" is never
-  // the answer: an employee with no line still has their request decided, by HR. The employee NEVER picks.
-  const approver = lines.managers.find((m) => m.lineType === 'administrative')?.name ?? t('otGoesToUnknown');
+  // 237c31e6 — "Goes to" is the approval progress panel: every level and approver (name · Employee ID) before Submit,
+  // or the refusal with a warning on the level that cannot be resolved. Resolved once here, read-free.
+  const approver = await AttendanceSubmissionRouteProgress({ route });
+  const workflowFingerprint = route.available ? route.fingerprint : null;
 
   // An employee who is not on clocking at all has no attendance rows, and every scheduled day in the
   // window would then read as an unexplained absence — a wall of red for somebody whose company simply
@@ -198,6 +209,7 @@ export default async function AttendanceIrregularityPage({
     q.set('section', next.section ?? section);
     const fix = next.fix === undefined ? sp.fix : next.fix;
     if (fix) q.set('fix', fix);
+    if (onBehalf) q.set('onBehalfOf', onBehalf.employmentId);
     return `/attendance/requests?${q.toString()}`;
   };
 
@@ -235,9 +247,11 @@ export default async function AttendanceIrregularityPage({
   const request: CorrectionRequest = {
     copy,
     approver,
+    workflowFingerprint,
     submitAction: myRequestCorrection,
     minDate: from,
     maxDate: to,
+    onBehalfOf: onBehalf?.employmentId ?? null,
   };
 
   return (
@@ -275,7 +289,9 @@ export default async function AttendanceIrregularityPage({
               cancelLabel={t('maCancel')}
               copy={copy}
               approver={approver}
+              workflowFingerprint={workflowFingerprint}
               submitAction={myRequestCorrection}
+              behalfEmploymentId={onBehalf?.employmentId ?? null}
               section="other"
               requestKind="other"
               day={null}
@@ -286,6 +302,7 @@ export default async function AttendanceIrregularityPage({
         }
       />
 
+      {onBehalf && <OnBehalfBanner name={onBehalf.name} employeeCode={onBehalf.employeeCode} />}
       <ErrorBanner message={sp.error} />
 
       {/* ── The three exception sections ──────────────────────────────────────────────────────────── */}
@@ -332,7 +349,9 @@ export default async function AttendanceIrregularityPage({
             <CorrectionForm
               copy={copy}
               approver={approver}
+              workflowFingerprint={workflowFingerprint}
               submitAction={myRequestCorrection}
+              behalfEmploymentId={onBehalf?.employmentId ?? null}
               /* OFF THE DAY, NOT THE TAB. With one mixed list the open filter no longer implies the
                  kind, and taking it from `section` would file an `all` request under a section that is
                  not one — the r227 lesson, which was about exactly this. */
@@ -421,10 +440,12 @@ type T = Awaited<ReturnType<typeof getTranslations<'me'>>>;
  *  off the row and cannot be taken from the open tab by accident. */
 type CorrectionRequest = {
   copy: CorrectionCopy;
-  approver: string;
-  submitAction: (formData: FormData) => void | Promise<void>;
+  approver: ReactNode;
+  workflowFingerprint: string | null;
+  submitAction: AttendanceSubmissionAction;
   minDate: string;
   maxDate: string;
+  onBehalfOf: string | null;
 };
 
 /**
@@ -527,7 +548,9 @@ function ExceptionTable({
                       cancelLabel={t('maCancel')}
                       copy={request.copy}
                       approver={request.approver}
+                      workflowFingerprint={request.workflowFingerprint}
                       submitAction={request.submitAction}
+                      behalfEmploymentId={request.onBehalfOf}
                       section={d.section}
                       requestKind={KIND_OF_SECTION[d.section]}
                       day={{
@@ -581,6 +604,8 @@ function foundText(d: ExceptionDay, t: T): string {
   if (d.flag === 'late') {
     parts.push(d.lateMinutes != null ? t('maFoundLateBy', { minutes: d.lateMinutes }) : t('maFoundLateUnknown'));
   }
+  // 2f803985 — Show Lateness Exception After Offset: the lateness the overtime offset did not absorb.
+  if (d.latenessAfterOffsetMinutes != null) parts.push(t('maFoundLateAfterOffset', { minutes: d.latenessAfterOffsetMinutes }));
   if (d.earlyOutMinutes != null && d.earlyOutMinutes > 0) {
     parts.push(t('maFoundEarlyBy', { minutes: d.earlyOutMinutes }));
   }

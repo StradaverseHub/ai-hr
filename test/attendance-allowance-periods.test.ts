@@ -438,7 +438,7 @@ describe('source-owned allowance periods', () => {
     await owner.db.update(schema.payrollBatch).set({status:'closed'}).where(eq(schema.payrollBatch.id,batchId));
     await expect(transferAllowancesToBatch(f.ctx,{policyId:p.id,batchId,reprocess:true})).rejects.toThrow();
     const [source] = await sources(batchId);
-    await expect(withTenant(f.ctx,tx=>tx.update(schema.attendanceAllowanceResult).set({amount:'0.00'}).where(eq(schema.attendanceAllowanceResult.id,source.resultId)))).rejects.toThrow();
+    await expect(withTenant(f.ctx,tx=>tx.update(schema.attendanceAllowanceResult).set({amount:'0.00'}).where(eq(schema.attendanceAllowanceResult.id,source.resultId!)))).rejects.toThrow();
     await expect(withTenant(f.ctx,tx=>tx.delete(schema.payrollAttendanceAllowanceSource).where(eq(schema.payrollAttendanceAllowanceSource.id,source.id)))).rejects.toThrow();
     await expect(withTenant(f.ctx,tx=>tx.update(schema.payrollAttendanceAllowanceSource).set({amount:source.amount}).where(eq(schema.payrollAttendanceAllowanceSource.id,source.id)))).rejects.toThrow();
     expect(await componentAmount(batchId,f.employees[0],f.componentId)).toBe('0.50');

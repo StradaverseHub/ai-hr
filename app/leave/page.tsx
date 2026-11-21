@@ -198,6 +198,7 @@ export default async function LeavePage({
   const t = await getTranslations('leave');
   // R37 e5a158d3: the relocated detailed balance table reuses the `me` namespace's as-at-form + table labels.
   const tMe = await getTranslations('me');
+  const nav = await getTranslations('nav');
   const admin = isAdmin(session);
   // R5 Build #2 (Fix B): MYT "today" so the "hasn't started yet" cut-off matches the service (Malaysia time),
   // not a UTC clock that would allow/block a day near KL midnight. The default-date on the apply form uses it too.
@@ -241,6 +242,7 @@ export default async function LeavePage({
           <p className="mt-2 text-sm text-muted-foreground">
             {me == null ? tMe('notLinked') : t('inquiryMovedToTracker')}
           </p>
+          {admin && <Link href="/leave/tracker" className="mt-4 inline-flex min-h-9 items-center rounded-md border border-input px-4 text-sm font-medium hover:bg-muted">{nav('teamLeaveTracker')}</Link>}
         </Card>
       </div>
     );

@@ -7,7 +7,7 @@
 import { requestOwnOvertimePlanV2 } from '@/core/mobile-attendance';
 import { mobileInput } from '@/lib/mobile-api/body';
 import { mobileRoute, MobileBadRequest } from '@/lib/mobile-api/handler';
-import { mobileEmployment } from '@/lib/mobile-api/request';
+import { mobileEmployment, mobileLocale } from '@/lib/mobile-api/request';
 import { OvertimePlanCommand, OvertimePlanResult } from '@/lib/mobile-api/v2/attendance';
 
 export const POST = mobileRoute(OvertimePlanResult, async (s, req) => {
@@ -15,5 +15,5 @@ export const POST = mobileRoute(OvertimePlanResult, async (s, req) => {
   if (!command.success) throw new MobileBadRequest('Invalid command');
   const employmentId = await mobileEmployment(s, req);
   if (!employmentId) throw new MobileBadRequest('No own employment');
-  return requestOwnOvertimePlanV2(s, employmentId, command.data);
+  return requestOwnOvertimePlanV2(s, employmentId, command.data, mobileLocale(req));
 });

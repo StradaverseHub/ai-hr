@@ -55,6 +55,9 @@ vi.mock('next-intl/server', () => ({
 }));
 
 import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
+import { NextIntlClientProvider } from 'next-intl';
+import messages from '../messages/en.json';
 import { GET as pdfGET } from '../app/payroll/cp21/[employmentId]/pdf/route';
 import Cp21PreviewPage from '../app/payroll/cp21/[employmentId]/preview/page';
 import EventPage from '../app/payroll/statutory-forms/event/page';
@@ -376,8 +379,18 @@ export function eaIncomePartsForSource(source:{basic:unknown;overtime:unknown;bo
           expect(end).toBeGreaterThan(start);
           return source.slice(start, end + 2);
         };
+        // 2026-11-13 (deduction grouping, owner-approved payslip display change): restorePayItemQuantities
+        // restores a keyed day count for every deduction code, not only ABSENT. Its only callers are the
+        // payslip overtime/deduction display readers — outside EA's financial path. Undo exactly that one
+        // edit (it must occur once) and the rest of the file must still match the pinned history byte-for-byte.
+        const groupingNow = `    // 2026-11-13 — every deduction code, not only ABSENT: a keyed unpaid-leave day count (unit 'days') is
+    // restored the same way, so a grouped row can say "3 days". A bare null unit is still ABSENT-only below.
+    if (!code) continue;`;
+        const groupingWas = `    if (!code || (kind === 'deduction' && code !== 'ABSENT')) continue;`;
+        expect(unchanged.split(groupingNow).length).toBe(2);
+        const beforeGrouping = unchanged.replace(groupingNow, groupingWas);
         // The follow-up changes only the overtime presentation reader, outside EA's financial path.
-        expect(unchanged.replace(overtimeReader(followup), overtimeReader(payrollDisplay))).toBe(payrollDisplay);
+        expect(beforeGrouping.replace(overtimeReader(followup), overtimeReader(payrollDisplay))).toBe(payrollDisplay);
       }else expect(unchanged === show(f), f).toBe(true);
     }
     const slice = (src: string) => {
@@ -422,8 +435,8 @@ export function eaIncomePartsForSource(source:{basic:unknown;overtime:unknown;bo
         `,
       `
     const originalSlips = slips.map(s => ({...s}));
-    const correctedBases = await readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
-    const taxBasisCorrections = [...correctedBases.values()].map(value => value.correction);
+    const correctedBases = await (await import('../../packs/payroll/service')).readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
+    const taxBasisCorrections = [...correctedBases.values()].flatMap(value => value.correction?[value.correction]:[]);
     for (const slip of slips) {
       const corrected = correctedBases.get(slip.id);
       if (corrected) slip.statutory = corrected.statutory;
@@ -504,12 +517,13 @@ describe('r415 · the PDF route and the preview', () => {
   });
 
   it('the preview renders the A4 viewer, carries the typed answers, and names what it dropped', async () => {
-    const html = renderToStaticMarkup(
-      await Cp21PreviewPage({
+    const html = renderToStaticMarkup(createElement(NextIntlClientProvider, {
+      locale: 'en', messages,
+      children: await Cp21PreviewPage({
         params: Promise.resolve({ employmentId }),
         searchParams: Promise.resolve({ a3: '2026-04-15', a16: '2026-04-01', a18: 'yes' }),
       }),
-    );
+    }));
     expect(html).toContain('data-statutory-pdf-viewer');
     expect(html).toContain('aspect-[210/297]');
     expect(html).toContain(`/payroll/cp21/${employmentId}/pdf?a3=2026-04-15&amp;a18=yes&amp;inline=1`);

@@ -50,7 +50,7 @@ export type OwnerAnchor=`${string}#${string}`;
 export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public_holiday'|'absence'|'team_leave_balance'
  |'employment_profile'|'reporting_line'|'payslip'|'pay_change'|'claim_status'|'module_work'|'leave_approval_step'
  /** Step 4 explainers and setup co-pilot (./entities-explain.ts, ./entities-setup.ts). */
- |'statutory_explanation'|'entitlement_explanation'|'attendance_day_explanation'|'setup_copilot'|'password_policy_guidance'|'correction_controls_guidance'|'organisation_tagging_guidance'
+ |'statutory_explanation'|'entitlement_explanation'|'attendance_day_explanation'|'setup_copilot'|'password_policy_guidance'|'correction_controls_guidance'|'organisation_tagging_guidance'|'reward_reviews_guidance'|'offboarding_requisitions_guidance'|'document_signing_guidance'|'payroll_history_records_guidance'
  /** Step 5 recommendations, digest, agent registry and existing worker inputs (./entities-recommend.ts). */
  |'leave_decision_recommendation'|'daily_digest'|'agent_worker'|'payroll_anomaly'|'readiness_gap'|'pending_approval'|'followup_item'
  /** The harness's suggest_action result, including the pending leave requests an approver chooses between. */
@@ -88,7 +88,11 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** AI v2 Phase 2 P2-6: the AI quality page's figures, for administrators (./entities-quality.ts). */
  |'ai_quality'
  /** Payroll history learning (P2): "Learned this cycle", counts only, for payroll administrators (./entities-payroll-learning.ts). */
- |'payroll_learning';
+ |'payroll_learning'
+ /** 50d9b809: the shared leave groups on Leave Settings › Shared Leave Groups, configuration only, for administrators (./entities-leave-settings.ts). */
+ |'shared_leave_group'
+ /** 96a54ed2: the Request On Behalf employees and Approve On Behalf approvers lists (./entities-attendance-on-behalf.ts). */
+ |'attendance_on_behalf_subject'|'attendance_on_behalf_approver';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

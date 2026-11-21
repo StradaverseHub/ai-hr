@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule, isGroupAdmin } from '@/lib/authz';
@@ -24,7 +25,7 @@ export default async function WorkflowEmailPage({searchParams}:{searchParams:Pro
         <fieldset disabled={!mayWrite} className="grid gap-3 sm:grid-cols-2">
           {notificationPreferenceCategories.map(category=><label key={category} className="flex items-center gap-2 text-sm"><input type="checkbox" name="category" value={category} defaultChecked={enabled.has(category)}/>{t(`categories.${category}`)}</label>)}
         </fieldset>
-        {mayWrite?<button type="submit" className={btnPrimary}>{t('savePolicy')}</button>:<p className="text-sm text-muted-foreground">{t('groupAdminHelp')}</p>}
+        {mayWrite?<ActionButton type="submit" className={btnPrimary}>{t('savePolicy')}</ActionButton>:<p className="text-sm text-muted-foreground">{t('groupAdminHelp')}</p>}
       </form>
     </Card>
     <Card data-tour="workflow-email-deliveries" className="p-5"><SectionHeader title={t('deliveries')}/><p className="mb-4 text-sm text-muted-foreground">{t('deliveriesHelp')}</p>
@@ -32,7 +33,7 @@ export default async function WorkflowEmailPage({searchParams}:{searchParams:Pro
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">{d.recipientCode?<span>{t('recipientCode')}: {d.recipientCode}</span>:null}<strong>{notificationPreferenceCategories.find(c=>c===d.category)?t(`categories.${d.category}`):t('category')}</strong><span>{t(`statuses.${d.status}`)}</span><span>{t('attempts')}: {d.attempts}</span><time dateTime={d.createdAt.toISOString()}>{d.createdAt.toISOString().slice(0,16).replace('T',' ')} UTC</time></div>
         <p className="break-all text-xs text-muted-foreground">{t('deliveryReference')}: {d.id}</p>
         {notificationEmailErrors.find(e=>e===d.error)&&<p className="text-sm text-muted-foreground">{t(`errors.${d.error}`)}</p>}
-        {mayWrite&&d.status==='failed'&&<form action={retryWorkflowEmail} className="flex flex-wrap items-center gap-3"><input type="hidden" name="deliveryId" value={d.id}/><label className="flex items-start gap-2 text-sm"><input type="checkbox" name="acknowledged" value="true" required className="mt-1"/>{t('retryAck')}</label><button type="submit" className={btnPrimary}>{t('retry')}</button></form>}
+        {mayWrite&&d.status==='failed'&&<form action={retryWorkflowEmail} className="flex flex-wrap items-center gap-3"><input type="hidden" name="deliveryId" value={d.id}/><label className="flex items-start gap-2 text-sm"><input type="checkbox" name="acknowledged" value="true" required className="mt-1"/>{t('retryAck')}</label><ActionButton type="submit" className={btnPrimary}>{t('retry')}</ActionButton></form>}
       </li>)}</ul>}
     </Card>
     <AccountEmailDeliveries items={accountDeliveries} returnTo="/admin/settings/notifications"/>

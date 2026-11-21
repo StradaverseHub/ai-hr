@@ -1,11 +1,12 @@
 'use client';
 
+import { AttendanceSubmissionForm, AttendanceSubmissionButton, type AttendanceSubmissionAction } from '@/components/attendance-submission-form';
 import { useState, type ComponentProps, type ReactNode } from 'react';
 import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Button, Field, inputCls } from '@/components/ui';
 
-type Action = (fd: FormData) => void | Promise<void>;
+type Action = AttendanceSubmissionAction;
 
 /**
  * c6bb5f5a — the attendance-correction request form, stated ONCE and mounted twice.
@@ -65,6 +66,7 @@ export type CorrectionDay = {
 export function CorrectionForm({
   copy,
   approver,
+  workflowFingerprint,
   submitAction,
   section,
   requestKind,
@@ -73,9 +75,12 @@ export function CorrectionForm({
   maxDate,
   cancel,
   onSubmitted,
+  behalfEmploymentId,
 }: {
   copy: CorrectionCopy;
-  approver: string;
+  /** 237c31e6: the approval progress panel (components/attendance-route-progress.tsx), resolved by the page. */
+  approver: ReactNode;
+  workflowFingerprint?: string | null;
   submitAction: Action;
   /** Which section the request is filed from — carried so the action lands back on the right tab. */
   section: string;
@@ -91,9 +96,13 @@ export function CorrectionForm({
    *  outside a `Dialog.Root`, and the inline `?fix=` panel has no dialog around it. */
   cancel?: ReactNode;
   onSubmitted?: () => void;
+  /** 96a54ed2 Request On Behalf: the chosen employee (posted as `onBehalfOf`; not named on* so it never reads as a handler). The action and service re-check the caller may act for them. */
+  behalfEmploymentId?: string | null;
 }) {
   return (
-    <form action={submitAction} onSubmit={onSubmitted} className="space-y-2.5 p-4">
+    <AttendanceSubmissionForm action={submitAction} onSubmitted={onSubmitted} className="space-y-2.5 p-4">
+      {workflowFingerprint&&<input type="hidden" name="workflowFingerprint" value={workflowFingerprint} />}
+      {behalfEmploymentId&&<input type="hidden" name="onBehalfOf" value={behalfEmploymentId} />}
       <input type="hidden" name="section" value={section} />
       <input type="hidden" name="requestKind" value={requestKind} />
       {day ? (
@@ -159,18 +168,16 @@ export function CorrectionForm({
       </Field>
       <p className="text-[11px] text-muted-foreground">{copy.attachmentHelp}</p>
       <Field label={copy.goesTo}>
-        {/* Read-only and deliberately NOT a form field: the approver is resolved from the reporting line at
-            decide time (assertCanDecide), so anything posted from here would be ignored. */}
-        <div className={`${inputCls} flex items-center bg-muted/40`}>{approver}</div>
+        <div className="rounded-md border border-input bg-muted/40 px-3 py-2" data-approval-progress>{approver}</div>
       </Field>
       <p className="text-[11px] text-muted-foreground">{copy.originalKept}</p>
       <div className="flex items-center justify-end gap-2 pt-1">
         {cancel}
-        <Button type="submit" size="sm">
+        <AttendanceSubmissionButton type="submit" size="sm" disabled={workflowFingerprint===null}>
           {copy.submit}
-        </Button>
+        </AttendanceSubmissionButton>
       </div>
-    </form>
+    </AttendanceSubmissionForm>
   );
 }
 

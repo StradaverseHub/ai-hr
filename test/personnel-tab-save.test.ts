@@ -381,7 +381,12 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
       const history = formTags(stripComments(read('app/admin/personnel/[employmentId]/movement-history-actions.tsx')));
       expect(history.filter((tag) => /action=\{reverseAction\}/.test(tag))).toHaveLength(1);
       for (const tag of history) expect(tag).not.toContain('data-save-section');
-      const bound = [...formTags(PAGE()).map((tag) => /action=\{([\s\S]*?)\}/.exec(tag)?.[1] ?? ''), 'reverseMovementEventAction']
+      expect(PAGE()).toContain('currentLineId={currentSuperior?.id ?? null}');
+      expect(PAGE()).toContain('action={setDirectSuperiorAction}');
+      const superior = formTags(stripComments(read('app/admin/personnel/[employmentId]/direct-superior-change-form.tsx')));
+      expect(superior.filter(tag => /action=\{action\}/.test(tag))).toHaveLength(1);
+      for (const tag of superior) expect(tag).not.toContain('data-save-section');
+      const bound = [...formTags(PAGE()).map((tag) => /action=\{([\s\S]*?)\}/.exec(tag)?.[1] ?? ''), 'reverseMovementEventAction', 'setDirectSuperiorAction']
         .join(' | ');
       for (const action of BUCKET_B) {
         expect(bound, `${action} must still be bound to a <form action={…}>`).toContain(action);
@@ -483,13 +488,13 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
      * that the real anchor still carries the attribute.
      */
     it('the Employment History workbook anchor stays exempt from the unsaved-changes guard', () => {
-      // `<a[\s>]` and not `<a`, so `<article`/`<aside` cannot be mistaken for an anchor.
+      // Match the native anchor or its feedback component, without matching article/aside.
       const anchors = PAGE()
-        .split(/<a[\s>]/)
+        .split(/<(?:a|ExportDownloadLink)[\s>]/)
         .slice(1)
         .map((chunk) => chunk.slice(0, chunk.indexOf('>')));
       const exportAnchor = anchors.find((tag) => tag.includes('movement-export'));
-      expect(exportAnchor, 'the Export to Excel anchor is still a bare <a> on this page').toBeDefined();
+      expect(exportAnchor, 'the Export to Excel control still renders a native anchor').toBeDefined();
       expect(exportAnchor).toContain(`${UNSAVED_GUARD_ATTR}="ignore"`);
     });
 

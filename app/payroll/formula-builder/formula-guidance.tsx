@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 /** Feedback 02472802 round 2: Formula Help & Examples, the plain-language explanation, checks before
  * saving and the sample-value test. Everything here is advisory or read-only: saving still goes through
  * saveFormulaAction and activation still needs the saved revision's employee test. */
@@ -7,7 +8,8 @@ import Link from 'next/link';
 import {useTranslations} from 'next-intl';
 import {personnelFormulaFieldDescriptor} from '@/lib/pay-formula-personnel';
 import {parsePayFormula,type FormulaValue} from '@/lib/pay-formula-language';
-import {explainPayFormula,type FormulaExplanationWords} from '@/lib/pay-formula-explain';
+import {describePayFormula} from '@/lib/pay-formula-explain';
+import {PayFormulaExplanationPanel} from '@/components/pay-formula-explanation';
 import {PAY_FORMULA_TEMPLATE_KEYS,payFormulaTemplateSource,type PayFormulaTemplateKey} from '@/lib/pay-formula-templates';
 import type {FormulaDiagnostic} from '@/lib/pay-formula-diagnostics';
 import {PAY_FORMULA_SAMPLE_VARIABLES,payFormulaSampleFields,type PayFormulaSampleResult,type PayFormulaSampleStep,type PayFormulaSampleValues,type PayFormulaSampleVariable} from '@/lib/pay-formula-sample';
@@ -49,13 +51,9 @@ export function FormulaHelpPanel({tab,onTab,library,canUseTemplate}:{tab:Formula
 
 export function FormulaExplanation({text,templateKey}:{text:string;templateKey?:PayFormulaTemplateKey}){
  const t=useTranslations('payFormula'),templateSource=useFormulaTemplateSource();
- const words:FormulaExplanationWords=useMemo(()=>({and:t('explain.and'),or:t('explain.or'),not:t('explain.not'),true:t('true'),false:t('false'),variable:code=>t('functions.'+code)}),[t]);
- const lines=useMemo(()=>{try{return explainPayFormula(parsePayFormula(text),words);}catch{return null;}},[text,words]);
+ const rows=useMemo(()=>{try{return describePayFormula(parsePayFormula(text),t);}catch{return null;}},[text,t]);
  const curated=templateKey&&text===templateSource(templateKey);
- return <section aria-labelledby="formula-explanation-title" className="rounded-lg border border-amber-300/70 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-950/30 dark:text-amber-100">
-  <h3 id="formula-explanation-title" className="font-semibold">{t('explain.title')}</h3>
-  {curated?<p className="mt-1">{t('templates.'+templateKey+'.explanation')}</p>:lines?<ul className="mt-1 space-y-1">{lines.map((line,index)=><li key={index} style={{paddingInlineStart:line.depth*1.25+'rem'}}>{t('explain.'+line.key,line.values)}</li>)}</ul>:<p className="mt-1">{t('explain.unavailable')}</p>}
- </section>;
+ return <PayFormulaExplanationPanel content={curated?t('templates.'+templateKey+'.explanation'):rows}/>;
 }
 
 export function FormulaChecks({diagnostics,onSelect}:{diagnostics:readonly FormulaDiagnostic[];onSelect?:(diagnostic:FormulaDiagnostic)=>void}){
@@ -63,7 +61,8 @@ export function FormulaChecks({diagnostics,onSelect}:{diagnostics:readonly Formu
  const message=(d:FormulaDiagnostic)=>{
   if(d.code==='unknown_function'||d.code==='unknown_variable')return t(d.suggestion?'checks.'+d.code+'Suggest':'checks.'+d.code,{name:d.name??'',suggestion:d.suggestion??''});
   if(d.code==='missing_return'||d.code==='division_by_zero')return t('checks.'+d.code);
-  if(d.code==='possible_zero_divisor')return t('checks.possible_zero_divisor',{name:d.name??''});
+  if(d.code==='possible_zero_divisor')return t(d.missingItem?'checks.possible_zero_divisorMissingItem':'checks.possible_zero_divisor',{name:d.name??''});
+  if(d.code==='internal_id_compared')return d.name==='companyId'?t('checks.internal_id_comparedCompany',{value:d.value??''}):t(d.suggestion?'checks.internal_id_comparedSuggest':'checks.internal_id_compared',{name:d.name??'',value:d.value??'',suggestion:d.suggestion??''});
   return d.message;
  };
  return <section aria-labelledby="formula-checks-title" className="space-y-2">
@@ -108,7 +107,7 @@ export function FormulaSampleTest({text}:{text:string}){
   <p className="text-sm text-muted-foreground">{t('testArea.sampleHelp')}</p>
   <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{visible.map((name:PayFormulaSampleVariable)=><label key={name} className="text-sm">{t('testArea.fields.'+name)}<input className={formulaInput} inputMode="decimal" value={values[name]??''} onChange={event=>setValues({...values,[name]:event.target.value})}/></label>)}</fieldset>
   {fields.length>0&&<fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">{fields.map(field=><label key={field.key} className="text-sm">{fieldLabel(field)}<input className={formulaInput} type={field.type==='date'?'date':'text'} maxLength={500} value={values.fields?.[field.key]??''} onChange={event=>setValues({...values,fields:{...values.fields,[field.key]:event.target.value}})}/></label>)}</fieldset>}
-  <button type="button" className={formulaPrimary} disabled={pending||!text.trim()} onClick={run}>{pending?t('working'):t('testArea.run')}</button>
+  <ActionButton aria-busy={pending} type="button" className={formulaPrimary} disabled={pending||!text.trim()} onClick={run}>{pending?t('working'):t('testArea.run')}</ActionButton>
   {error&&resultKey===inputKey&&<p className="text-sm text-destructive">{error}</p>}
   {shownResult&&<div role="status" className="space-y-3">
    <span className={'inline-block rounded-full px-3 py-1 text-sm '+(shownResult.passed?'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200':'bg-destructive/10 text-destructive')}>{t(shownResult.passed?'testArea.passed':'testArea.failed')}</span>

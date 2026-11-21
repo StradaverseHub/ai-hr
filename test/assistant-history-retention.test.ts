@@ -8,7 +8,7 @@ import {afterAll,afterEach,beforeAll,beforeEach,describe,it,expect,vi} from 'vit
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {recordOwnAgentFeedback} from '../core/module-agent-feedback';
 import {erasePersonPii,erasePersonPiiTx} from '../core/pdpa';
 import {saveAiProviderConfig,resolveActiveAiConfig} from '../core/ai-config';
@@ -63,7 +63,7 @@ describe('actual own transcript retirement without allowance reset',()=>{
  });
  it('refuses during the actual calling-user source interval without partial content retirement, then succeeds after release',async()=>{
   const mine=await actor();await transcript(mine.ctx);const before=await rows();let ready!:()=>void,release!:()=>void;const entered=new Promise<void>(yes=>{ready=yes;}),done=new Promise<void>(yes=>{release=yes;});
-  const timeout=setTimeout(()=>release(),10000),holder=withTenant(mine.ctx,async tx=>{await lockAccessConfigurationTx(tx,b.tenantId);ready();await done;});
+  const timeout=setTimeout(()=>release(),10000),holder=withTenant(mine.ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);ready();await done;});
   try{await entered;await expect(eraseOwnAssistantHistory(mine.ctx)).rejects.toThrow(/^Assistant history retirement unavailable\.$/);expect(await rows()).toEqual(before);}finally{release();clearTimeout(timeout);await holder;}
   expect(await eraseOwnAssistantHistory(mine.ctx)).toEqual({retired:1});retired((await rows())[0]);
  });

@@ -18,7 +18,8 @@ describe('Classic header browser fixture source boundary',()=>{
    expect(cls.length).toBeGreaterThan(20);
    expect(header).toContain(`className="${cls}"`);
   }
-  expect([...header.matchAll(/<(NotificationCenter|LanguageSwitcher|ThemeToggle|UserMenu)\b/g)].map(match=>match[1])).toEqual(['NotificationCenter','LanguageSwitcher','ThemeToggle','UserMenu']);
+  expect([...header.matchAll(/<(ShellNotificationCenter|LanguageSwitcher|ThemeToggle|UserMenu)\b/g)].map(match=>match[1])).toEqual(['ShellNotificationCenter','LanguageSwitcher','ThemeToggle','UserMenu']);
+  expect(readFileSync('app/shell-notification-center.tsx','utf8')).toContain('return <NotificationCenter');
  });
  it('loads the same global workspace CSS that styles the live header',()=>{
   expect(readFileSync('app/layout.tsx','utf8')).toContain("import './onboarding-workspace.css'");

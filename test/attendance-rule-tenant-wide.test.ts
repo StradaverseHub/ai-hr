@@ -21,7 +21,7 @@ import {createDepartment} from '../core/admin';
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { checkIn, checkOut } from '../core/attendance';
 import {
@@ -32,7 +32,7 @@ import {
   type AttendanceRuleInput,
 } from '../core/attendance-rule';
 import { assignDefaultShift, createShift } from '../core/roster';
-import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const WED = '2026-07-01'; // ISO weekday 3
 let b: Base;
@@ -131,11 +131,14 @@ describe('6da67ab7 — the rule reaches the employee through the SHIFT, not thro
 });
 
 describe('6da67ab7 — one Standard, one library, no company axis', () => {
-  it('ensureStandardRule is a tenant singleton however many companies exist', async () => {
+  it('creates one audited Standard during concurrent first use across companies', async () => {
     const a = adminCtx(b);
     await otherCompany();
-    const first = await ensureStandardRule(a);
+    const results = await Promise.all([ensureStandardRule(a), ensureStandardRule(a)]);
+    const [first] = results;
     const again = await ensureStandardRule(a);
+    expect(results.filter(row => row.created)).toHaveLength(1);
+    expect(results.every(row => row.id === first.id)).toBe(true);
     expect(again.id).toBe(first.id);
     expect(again.created).toBe(false);
     const defaults = await owner.db
@@ -143,6 +146,33 @@ describe('6da67ab7 — one Standard, one library, no company axis', () => {
       .from(schema.attendanceRule)
       .where(eq(schema.attendanceRule.isDefault, true));
     expect(defaults).toHaveLength(1);
+    const events = await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.aggregateId,first.id),eq(schema.domainEvent.eventType,'attendance-rule.created')));
+    expect(events).toEqual([{payload:{name:'Standard',isDefault:true,seeded:true}}]);
+  });
+
+  it('reads an existing Standard as company HR while the Access and Leave configuration locks are held', async () => {
+    const a=adminCtx(b);
+    const {id}=await ensureStandardRule(a);
+    const companyId=await otherCompany(),userId=await createAppUser(b.tenantId,null,'hr_admin');
+    await owner.db.update(schema.roleAssignment).set({companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+    const scoped={...a,userId,grants:[{role:'hr_admin' as const,companyId}]};
+    let read:ReturnType<typeof listAttendanceRules>|undefined;
+    let deadline:ReturnType<typeof setTimeout>|undefined;
+    try{
+      await owner.client.begin(async tx=>{
+        await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+        await tx`select pg_advisory_xact_lock(hashtextextended(${'leave-dependency-configuration:'+b.tenantId},0))`;
+        read=listAttendanceRules(scoped);
+        const timeout=new Promise<never>((_,reject)=>{
+          deadline=setTimeout(()=>reject(new Error('Schedule rules waited for a held configuration lock')),4000);
+        });
+        expect(await Promise.race([read,timeout])).toMatchObject([{id,name:'Standard',isDefault:true}]);
+      });
+    }finally{
+      clearTimeout(deadline);
+      await read?.catch(()=>{});
+    }
   });
 
   it('rule names are unique tenant-wide and the library lists without a company argument', async () => {

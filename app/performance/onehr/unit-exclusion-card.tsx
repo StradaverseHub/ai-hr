@@ -107,7 +107,7 @@ export function UnitExclusionCard({ screen }: { screen: UnitExclusionScreen }) {
                     <td className={tdCls}>{ruleScope(r)}</td>
                     <td className={tdCls}>{r.createdByName ?? '—'}</td>
                     <td className={`${tdCls} whitespace-nowrap`}>{formatDmy(r.createdAt)}</td>
-                    {editable && <td className={tdCls}><Button type="button" variant="secondary" size="sm" disabled={busy} onClick={() => setBringBack(r)}>{t('bringBack')}</Button></td>}
+                    {editable && <td className={tdCls}><Button aria-busy={busy} type="button" variant="secondary" size="sm" disabled={busy} onClick={() => setBringBack(r)}>{t('bringBack')}</Button></td>}
                   </tr>
                 ))}
               </tbody>
@@ -166,7 +166,7 @@ export function UnitExclusionCard({ screen }: { screen: UnitExclusionScreen }) {
             {chosen && !chosen.departments.length && <p className="text-sm text-muted-foreground">{t('noDepartments')}</p>}
           </fieldset>
           <ErrorBanner message={formError} />
-          <Button type="button" variant="outline" disabled={!ready || busy} onClick={runPreview}>{t('preview')}</Button>
+          <Button aria-busy={busy} type="button" variant="outline" disabled={!ready || busy} onClick={runPreview}>{t('preview')}</Button>
         </section>
       )}
 
@@ -209,8 +209,8 @@ export function UnitExclusionCard({ screen }: { screen: UnitExclusionScreen }) {
           </ul>
           <ErrorBanner message={saveError} />
           <div className="flex flex-wrap gap-3">
-            <Button type="button" variant="outline" disabled={busy} onClick={reset}>{t('cancel')}</Button>
-            <Button type="button" disabled={busy} onClick={() => setConfirming(true)}>{t('continue')}</Button>
+            <Button aria-busy={busy} type="button" variant="outline" disabled={busy} onClick={reset}>{t('cancel')}</Button>
+            <Button aria-busy={busy} type="button" disabled={busy} onClick={() => setConfirming(true)}>{t('continue')}</Button>
           </div>
         </section>
       )}

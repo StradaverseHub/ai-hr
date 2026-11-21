@@ -1,0 +1,85 @@
+{
+  "kind": "UNINSTALLED_LOOKUP_BENCHMARK_LIFETIME_EVIDENCE_RECOVERY",
+  "base": "3e9ebeafc0cd41326790c3435b009090db9b0dac",
+  "sourceRef": "codex/employee-native-benchmark-evidence-20261108",
+  "qualification": "NOT_RUN; root and independent review before hosted chunks",
+  "releaseAuthorized": false,
+  "production": "HELD",
+  "selectors": {
+    "native": [
+      "test/employee-choice-native-purpose-plan.test.ts"
+    ],
+    "pure": [
+      "test/employee-choice-benchmark-ownership.test.ts"
+    ]
+  },
+  "declaredNativeExecutions": 6,
+  "pureModelCases": 8,
+  "wholePortsPerVariant": 17,
+  "actualPlanPhasesRequired": 42,
+  "nativeCallPairsRequired": 25,
+  "serverScopeIds": 50000,
+  "allLimit": 2000,
+  "targetMs": 1000,
+  "budgets": {
+    "fileTotalMs": 900000,
+    "newWorkMs": 840000,
+    "reservedMs": 60000,
+    "caseMs": 300000,
+    "statementMs": 20000,
+    "lockMs": 300,
+    "workflowJobMinutes": 20,
+    "rawCutBytes": 67108864,
+    "simultaneousGrowingRawCutsMax": 2,
+    "progressRecordsMax": 2048,
+    "progressBytesMax": 2097152
+  },
+  "retainedCancelled": {
+    "run": 42414058820,
+    "controller": "b7c0393aa3c7606a33dd15103426e5c535324065",
+    "conclusion": "cancelled",
+    "annotation": "The job has exceeded the maximum execution time of 20m0s",
+    "selectedLogAvailable": false,
+    "artifactsAvailable": false,
+    "nativeAcceptanceOrCleanupProven": false,
+    "diagnosedQueryBottleneck": false
+  },
+  "retainedOrdinary": {
+    "run": 42414060739,
+    "source": "3e9ebeafc0cd41326790c3435b009090db9b0dac",
+    "parserPassed": 12,
+    "nativePassed": 10
+  },
+  "historicalReferenceOnly": {
+    "run": 42411157207,
+    "source": "6e563cb1228b4d88769dbb06dff804d1e5910bfa",
+    "actualJobElapsedSeconds": 577,
+    "actualExecutionStepSeconds": 499,
+    "predictsNewPerformance": false
+  },
+  "sourceSha256": {
+    "test/employee-choice-native-purpose-plan.test.ts": "56c22c77e4b795674bf378401d6205daf185e4848b3c4d76ecdd58792441eda1",
+    "test/performance/employee-choice-benchmark-lifetime.ts": "57f993c46ef4fc55e2ec745372f175335d1504d6406df3b452a26d30706eb944",
+    "test/performance/employee-choice-benchmark-evidence.ts": "53f5a71f0324d8b5c5ffac70aa1638b2bfc04197e5dba6cd5bd4ba62d8bb904d",
+    "test/employee-choice-benchmark-ownership.test.ts": "c8f71606de339b0b660bfe719ac1937cbb7720d0bf63d8ec5f1815f1aa3433a0",
+    "docs/qualification/employee-choice-benchmark-evidence-recovery-20261108.md": "978c24f4bfc5b9edb241bbd8676660072af1e6d3dcd37dbf41b682d530c95b74"
+  },
+  "unchangedSourceSha256": {
+    "core/employee-choice.ts": "ce1e3559addbffa4b4e780594ebcc5fcf917ddffde79a6155cc7fbcecdbcfbd5",
+    "test/fixtures/employee-choice-native-purpose.sql": "0ea638f797f57c22e6631d83f6d5d7bc63d752a5c6818d26ed34fd4441122d04",
+    "test/performance/employee-choice-native-current-baseline.ts": "fc1a1603aa7a032a0450dfca98eddd6068de5a1913478d25e5e7e90eea8e3816",
+    "test/performance/employee-choice-native-purpose-reader.ts": "08e50db545dc32af18bddee7eae36a902ceacfbabc2c14a841b8a5b2b82cfd22",
+    "test/performance/employee-choice-native-purpose-owner.ts": "013376ff8f131441dc655d862acc9fc1693e5bf1064d71b7b3e6782873b59956",
+    "test/performance/employee-choice-native-purpose-session.ts": "a372db1140e4b87837416dd612dc03d548fc78ce222b28892554e5529d5fefaf",
+    "test/performance/employee-choice-auto-explain.ts": "215614296084876164a57c3097e9b724a755eb37f59d3d99187a35f17bc44331",
+    "test/performance/employee-choice-auto-explain-parser.ts": "c2542db7f843bea0943f2e71cddc612db93c817f60baa120fb915fdb17fabbc6",
+    "test/performance/personnel-native-fixture.ts": "3b72cd22e8e97c730192454bca58b87795e362654b6a26250a2fe3cf752bc4fa",
+    "test/performance/employee-choice-assignment-authority.ts": "0fbd4efb24d79dbf55660219df0aab009ea00774b4dd1588996d4de98caaeb7d",
+    "test/performance/employee-choice-plan-work.ts": "4a6eb56b6e96e5311b233ce5259f5cdc2edc149c1e5bde33d92d980662670560",
+    ".github/workflows/alpha-focused-checks.yml": "cc3c8e9bac07370bd70f1333bff6f697c2943120771cb8f8ca07caf87543e827"
+  },
+  "applicationOrNativeSqlChanged": false,
+  "performanceOraclesChanged": false,
+  "localApplicationChecksExecuted": false,
+  "staticRelativeImportsPresent": 20
+}

@@ -2,8 +2,8 @@ import { redirect } from 'next/navigation';
 
 /**
  * Redirect stub (a4e49748). The System Settings nav group makes the bare /admin/settings prefix a
- * plausible address to type, but no page lives here — forward to the group's first screen (Employee ID
- * numbering) instead of a hard 404. This is NOT the optional System Settings landing page (deliberately
+ * plausible address to type, but no page lives here — forward to the group's first screen (since 82748f92 the
+ * People › Settings card page, which lists Employee ID numbering first) instead of a hard 404. This is NOT the optional System Settings landing page (deliberately
  * not built; see the a4e49748 plan). No guard here — the destination page enforces admin access; this
  * stub only redirects (so it is intentionally NOT a function-access column, same as the
  * profile-options stub). Query string is preserved.
@@ -20,5 +20,5 @@ export default async function SystemSettingsRedirect({
     else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
   }
   const qs = usp.toString();
-  redirect(`/admin/settings/employee-id${qs ? `?${qs}` : ''}`);
+  redirect(`/admin/settings/people${qs ? `?${qs}` : ''}`);
 }

@@ -1,5 +1,6 @@
+import {withoutVerifiedTaxOpeningProvenance,type OpeningPrefix} from './helpers/payroll-opening-provenance';
 import {readFileSync,writeFileSync} from 'node:fs';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {requirePackFor} from '../localization/registry';
@@ -9,8 +10,14 @@ import {createBatch,createAdditionalRun,generatePayslips,upsertPayComponent,setE
 import {saveTp3} from '../core/tp3';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import * as schema from '../db/schema';
+import {withoutVerifiedStatutoryTrace} from './helpers/statutory-trace-evidence';
 // Frozen historical money oracle generated with the original 2026 calculator.
 // Keep its already-past periods stable; the current-year capture test is separate.
+// 2026-11-13 (owner decision A) — the ONE sanctioned change to this oracle: a PCB exemption is income-tax
+// only, so the exempt travel/unlimited slices (ticked EPF + SOCSO) are now EPF and SOCSO/EIS wages. Moved:
+// bases.epf/socsoEis (+80 Jan, +30 Feb and bonus run), Jan EPF 1111/1212 -> 1122/1224 (net, totals,
+// employer cost), and the EPF relief that follows it (K1/K2/K2t, epfClaimed, ytdNet); the lines that carry
+// the slice gain `exemptStatutory: true`. PCB, gross, cash buckets and exemptionUsed are unchanged.
 const year=2026;
 const pack=requirePackFor('MY');
 const flags={kind:'allowance' as const,isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:true,includedInHrdfBase:false,pcbRemunerationType:'normal' as const,epfBonus2012:false};
@@ -124,11 +131,41 @@ describe('r387 complete monetary parity against original calculation',()=>{
   ];
   for(const spec of specs){const {amount,...input}=spec;const c=await upsertPayComponent(ctx,{...flags,...input,label:input.name});await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:c.id,amount,allowZeroAmount:amount===0,effectiveFrom:`${year}-01-01`});}
   await saveTp3(ctx,{personId:e.personId,assessmentYear:year,sectionC:{c1:{amount:30000},c2:{subItems:{i:pack.payroll.pcbExemptionTables.pcb.PCB_TRA_BUSINESS-50}}}});
-  const first=await createBatch(ctx,{companyId:base.companyId,payPeriod:`${year}-01`});await generatePayslips(ctx,{batchId:first.batchId});
-  const second=await createBatch(ctx,{companyId:base.companyId,payPeriod:`${year}-02`});await generatePayslips(ctx,{batchId:second.batchId});
+  // Capture the exact prior native owners BEFORE processing consumes their opening. The fixture,
+  // not the resulting stamp, chooses the complete source population: Jan has none, Feb has Jan,
+  // and the Feb bonus has Jan plus its earlier regular run. No imported history is present.
+  const openingPrefixes=new Map<string,OpeningPrefix>();
+  const capturePrefix=async(priorBatchIds:string[]):Promise<OpeningPrefix>=>{
+    if(!priorBatchIds.length)return [];
+    const sources=await owner.client<{id:string;employment_id:string;company_id:string;source:Record<string,unknown>;batch:Record<string,unknown>}[]>`
+      select p.id,p.employment_id,b.company_id,to_jsonb(p) as source,
+        jsonb_build_object('id',b.id,'company_id',b.company_id,'pay_period',b.pay_period,'run_seq',b.run_seq,
+          'run_type',b.run_type,'cycle_id',b.payroll_cycle_id,'batch_date',b.batch_date) as batch
+      from public.payslip p join public.payroll_batch b on b.id=p.batch_id
+      where p.tenant_id=${base.tenantId}::uuid and p.employment_id=${e.employmentId}::uuid
+        and b.company_id=${base.companyId}::uuid and b.id=any(${priorBatchIds}::uuid[])
+      order by b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`;
+    expect(sources).toHaveLength(priorBatchIds.length);
+    expect(sources.map(row=>String(row.batch.id)).sort()).toEqual([...priorBatchIds].sort());
+    const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>isRecord(item)
+      ?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
+    return sources.map(row=>{
+      expect(row).toMatchObject({employment_id:e.employmentId,company_id:base.companyId});
+      expect(row.source).toMatchObject({id:row.id,tenant_id:base.tenantId,employment_id:e.employmentId,batch_id:row.batch.id});
+      return {payslipId:row.id,sourceHash:createHash('sha256').update(canonical({source:row.source,batch:row.batch,importRevision:null})).digest('hex')};
+    });
+  };
+  const first=await createBatch(ctx,{companyId:base.companyId,payPeriod:`${year}-01`});
+  openingPrefixes.set(first.batchId,await capturePrefix([]));
+  await generatePayslips(ctx,{batchId:first.batchId});
+  const second=await createBatch(ctx,{companyId:base.companyId,payPeriod:`${year}-02`});
+  openingPrefixes.set(second.batchId,await capturePrefix([first.batchId]));
+  await generatePayslips(ctx,{batchId:second.batchId});
   const extra=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:`${year}-02`,runType:'bonus'});
   const bonus=await upsertPayComponent(ctx,{...flags,code:'SYNTH_TAXABLE_BONUS',label:'Cash Bonus',name:'Cash Bonus',includedInSocsoEis:false,pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:true});
-  await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:bonus.id,amount:1000});await generatePayslips(ctx,{batchId:extra.batchId});
+  await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:bonus.id,amount:1000});
+  openingPrefixes.set(extra.batchId,await capturePrefix([first.batchId,second.batchId]));
+  await generatePayslips(ctx,{batchId:extra.batchId});
   const snapshots:ReturnType<typeof nativeMoneySnapshot>[]=[];
   const comp=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,e.employmentId));
   expect(comp).toHaveLength(1);expect(Number(comp[0].basicSalary)).toBe(10000);
@@ -147,10 +184,22 @@ describe('r387 complete monetary parity against original calculation',()=>{
     if(!row)throw new Error('Expected the selected employee native payslip');
     // Tax recalculation adds opening-exemption provenance to the saved statutory JSON. Assert it exactly,
     // then compare every remaining native money field against the unchanged golden.
-    const native=row.statutory as Record<string,unknown>;
+    // 69d6ed3c — statutory trace v1 is verified against this payslip's own amounts, then set aside.
+    expect(row).toMatchObject({tenantId:base.tenantId,employmentId:e.employmentId,batchId:batch.batchId});
+    const expectedPrefix=openingPrefixes.get(batch.batchId);
+    expect(expectedPrefix).toBeDefined();
+    const native=withoutVerifiedTaxOpeningProvenance(
+      withoutVerifiedStatutoryTrace(row.statutory as Record<string,unknown>),
+      {year,companyId:base.companyId,employmentId:e.employmentId},expectedPrefix!,
+    );
     expect(native.taxBasisOpeningExemptionYear).toBe(year);
     expect(native.taxBasisOpeningExemptionUsed).toEqual({PCB_TRA_BUSINESS:5950});
-    const {taxBasisOpeningExemptionYear,taxBasisOpeningExemptionUsed,...statutory}=native;
+    // c2ea9567 adds the HRD Corp levy working to regular runs only. This company is not HRDF-registered:
+    // the working itemises the RM10,000 basic, charges nothing, and agrees with the stored base and levy.
+    const bases=native.bases as Record<string,unknown>;
+    if(batch===extra)expect(native.hrdfWorking).toBeUndefined();
+    else expect(native.hrdfWorking).toEqual({version:1,items:[{kind:'basic',amount:10000}],wages:bases.hrdf,status:'not_registered',subject:false,rate:0,calculatedLevy:0,levy:native.hrdf});
+    const {taxBasisOpeningExemptionYear,taxBasisOpeningExemptionUsed,hrdfWorking,...statutory}=native;
     snapshots.push(nativeMoneySnapshot({...row,statutory},ids));
   }
   if(process.env.R387_WRITE_BASELINE){writeFileSync(process.env.R387_WRITE_BASELINE,JSON.stringify(snapshots,null,2)+'\n');}

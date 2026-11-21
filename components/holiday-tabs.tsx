@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server';
+import { HOLIDAY_SUBMENU } from '@/lib/navigation/module-submenus';
 import Link from '@/components/intent-link';
 
 /**
@@ -10,15 +11,13 @@ import Link from '@/components/intent-link';
  */
 export async function HolidayTabs({ active }: { active: 'holidays' | 'groups' }) {
   const t = await getTranslations('admin.holidayTabs');
-  const tabs = [
-    { key: 'holidays', href: '/admin/holidays', label: t('holidays') },
-    { key: 'groups', href: '/admin/holidays/groups', label: t('groups') },
-  ] as const;
+  const tabs = HOLIDAY_SUBMENU.map(tab=>({...tab,label:t(tab.labelKey)}));
   return (
     <div className="flex gap-1 overflow-x-auto border-b border-border">
       {tabs.map((tab) => (
         <Link
           key={tab.key}
+          data-navigation-destination={tab.id}
           href={tab.href}
           className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${
             active === tab.key

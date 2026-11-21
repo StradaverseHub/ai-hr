@@ -61,6 +61,9 @@ const nextMonth=(period:string)=>{const y=Number(period.slice(0,4)),m=Number(per
 
 /** Every artefact of one company and pay month, read as `reader`. Read-only. */
 export async function collectPayrollPeriodArtefactsTx(tx:Tx,reader:SessionContext,p:Readonly<{companyId:string;payPeriod:string}>):Promise<AuditArtefact[]>{
+ // Events are chained when their transaction commits (audit-chain commit seal migration). Should this transaction have appended any,
+ // seal them first so their chain values are captured, as they were when the chain was assigned at insert.
+ await tx.execute(sql`select app.domain_event_chain_flush(${reader.tenantId}::uuid)`);
  const {companyId,payPeriod}=p,out:AuditArtefact[]=[];
  // Instants render in UTC whatever the session, so the same owner row always yields the same content and hash.
  await tx.execute(sql`set local timezone='UTC'`);

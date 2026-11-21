@@ -15,7 +15,7 @@ export class PassportMaintenanceUnavailable extends Error{constructor(){super('P
 export const passportMaintenanceUnavailable=():never=>{throw new PassportMaintenanceUnavailable();};
 const fail=passportMaintenanceUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 type Subject=AssignedSubject&{employeeName:string;employeeCode:string|null;companyName:string;scopeDigest:string;country:string;companyIds:string[];statutoryId:string};
-export async function assertPassportMaintenanceActorTx(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();assertModuleEnabled(fresh,'country-my');await tx.execute(sql`select app.access_workforce_write_lock()`);await lockProfileValueWritesTx(tx,fresh.tenantId);return fresh;}
+export async function assertPassportMaintenanceActorTx(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve');if(!isAdmin(fresh))return fail();assertModuleEnabled(fresh,'country-my');await tx.execute(sql`select app.access_configuration_write_lock()`);await lockProfileValueWritesTx(tx,fresh.tenantId);return fresh;}
 async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{
  const [nomination]=await tx.execute<{scope:{personId:string;companyId:string;country:string;companyIds:string[];scopeDigest:string}|null}>(sql`select app.assistant_passport_maintenance_scope(${id}::uuid) as scope`);const scope=nomination?.scope;if(!scope)return fail();
  await assertWorkforcePersonTx(tx,ctx,scope.personId,'maintain');

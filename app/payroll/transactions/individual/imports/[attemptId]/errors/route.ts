@@ -22,7 +22,7 @@ export async function GET(_request: Request, {params}: {params: Promise<{attempt
     return [
       row.rowNum, [row.employeeId, row.employeeName].filter(Boolean).join(' · '),
       row.payItemCode, input?.__pay_period, input?.__configured_cycle, row.effectiveFrom,
-      input?.__input_unit, input?.quantity, input?.amount ?? row.amount,
+      row.inputType ?? input?.__input_unit, row.inputValue == null ? input?.quantity : String(row.inputValue), input?.amount ?? row.amount,
       old.has(key as never) ? old(key as never, (row.detail ?? {}) as never) : t('failed'),
     ];
   })]);

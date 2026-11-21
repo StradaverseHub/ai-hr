@@ -12,7 +12,7 @@
  * Append-only: answering again records a new answer, and the latest one counts. Only the person answers, about their own
  * current-year employment (the TP3 owner's own eligibility), as themselves; row-level security checks the same. Each
  * answer is a `payroll-tp3.previous-employer-answered` domain event. No model is called. */
-import {and,desc,eq} from 'drizzle-orm';
+import {and,desc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
 import {payrollTp3PreviousEmployerAnswer} from '../../db/teras-payroll-cycle-schema';
@@ -28,10 +28,25 @@ const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The person's latest answer for one assessment year, as this transaction may read it, or null. */
 export async function latestTp3AnswerTx(tx:Tx,tenantId:string,personId:string,assessmentYear:number):Promise<Tp3PreviousEmployerAnswer|null>{
  const [row]=await tx.select({had:payrollTp3PreviousEmployerAnswer.hadPreviousEmployer}).from(payrollTp3PreviousEmployerAnswer)
-  .where(and(eq(payrollTp3PreviousEmployerAnswer.tenantId,tenantId),eq(payrollTp3PreviousEmployerAnswer.personId,personId),
-   eq(payrollTp3PreviousEmployerAnswer.assessmentYear,assessmentYear)))
+  .where(latestTp3AnswerWhere(tenantId,personId,assessmentYear))
   .orderBy(desc(payrollTp3PreviousEmployerAnswer.answeredAt),desc(payrollTp3PreviousEmployerAnswer.id)).limit(1);
- return row?(row.had?'yes':'no'):null;
+ return tp3AnswerOf(row);
+}
+const latestTp3AnswerWhere=(tenantId:string,personId:string,assessmentYear:number)=>and(eq(payrollTp3PreviousEmployerAnswer.tenantId,tenantId),
+ eq(payrollTp3PreviousEmployerAnswer.personId,personId),eq(payrollTp3PreviousEmployerAnswer.assessmentYear,assessmentYear));
+const tp3AnswerOf=(row:{had:boolean}|undefined):Tp3PreviousEmployerAnswer|null=>row?(row.had?'yes':'no'):null;
+/** myTp3PreviousEmployerAnswer in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the
+ * latest answer's row by the same predicate and order, as {had} or null. null where the owner reads nothing. */
+export function myTp3PreviousEmployerAnswerBundleSql(ctx:SessionContext,assessmentYear:number){
+ if(!ctx.userId||ctx.agent||!ctx.personId)return null;
+ return sql`(select jsonb_build_object('had',${payrollTp3PreviousEmployerAnswer.hadPreviousEmployer}) from ${payrollTp3PreviousEmployerAnswer}
+  where ${latestTp3AnswerWhere(ctx.tenantId,ctx.personId,assessmentYear)}
+  order by ${payrollTp3PreviousEmployerAnswer.answeredAt} desc, ${payrollTp3PreviousEmployerAnswer.id} desc limit 1)`;
+}
+export function myTp3PreviousEmployerAnswerFromBundle(value:unknown):Tp3PreviousEmployerAnswer|null{
+ const row=value as {had:unknown}|null;
+ if(row!==null&&typeof row?.had!=='boolean')throw new Error('The bundled TP3 answer is unavailable.');
+ return tp3AnswerOf(row===null?undefined:{had:row.had as boolean});
 }
 
 /** The caller's own latest answer for one assessment year (the checklist's read, as the person). */

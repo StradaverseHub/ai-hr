@@ -1,3 +1,4 @@
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
@@ -9,6 +10,9 @@ import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
 import { listLeaveGenerationRuns } from '@/packs/leave/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { GenerateForm } from '@/components/leave/generate-form';
+import { LeaveCohortJobPanel } from '@/components/leave-cohort-job-panel';
+import { activeLeaveCohortJob, readLeaveCohortJob } from '@/core/leave-cohort-job';
+import { LEAVE_GENERATION_JOB_KIND, leaveCohortJobActive } from '@/lib/leave-cohort-job';
 import { LeaveConfigMap, leaveConfigPageHeader } from '@/components/leave-config-map';
 import { openLeaveYearAction } from '../../actions';
 import { previewLeaveGenerationAction } from '../../leave/generate/actions';
@@ -55,7 +59,7 @@ import { previewLeaveGenerationAction } from '../../leave/generate/actions';
 export default async function LeaveConfigGeneratePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; job?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
@@ -66,7 +70,12 @@ export default async function LeaveConfigGeneratePage({
   const tOrg = await getTranslations('admin.profileOptions.category');
   const tEmploymentType = await getTranslations('people.wizard.employmentType');
   const tCrit = await getTranslations('admin.leave.adjustmentsCriteria');
-  const { error } = await searchParams;
+  const { error, job: jobId } = await searchParams;
+  // A Generate Entitlement run in the background (the Generate button enqueues it): the one just started, or the
+  // person's own running one, rejoined after a reload. A finished job shows nothing here; its log entry is below.
+  const named = jobId ? await readLeaveCohortJob(s, jobId) : null;
+  const running = named?.kind === LEAVE_GENERATION_JOB_KIND && leaveCohortJobActive(named.state) ? named
+    : named ? null : await activeLeaveCohortJob(s, LEAVE_GENERATION_JOB_KIND);
 
   const companies = await listCompanies(s);
   const companyIds = companies.map((c) => c.id);
@@ -146,6 +155,7 @@ export default async function LeaveConfigGeneratePage({
           this IS that screen. */}
       <LeaveConfigMap current="generateEntitlement" />
       <ErrorBanner message={error} />
+      {running && <LeaveCohortJobPanel job={running} />}
 
       <Card>
         <SectionHeader title={t('generateTitle')} />
@@ -210,12 +220,12 @@ export default async function LeaveConfigGeneratePage({
                   that a refresh can repeat. THE ADDRESS IS THE OLD ONE ON PURPOSE — the `/export` route
                   handler moves with the screen in Round 5 (IA §3.2), and this round adds and removes
                   nothing, so pointing at a handler that does not exist yet would break the download. */}
-              <a
+              <ExportDownloadLink
                 href={`/admin/leave/generate/export?run=${run.id}`}
                 className="shrink-0 text-xs font-medium text-primary underline underline-offset-2"
               >
                 {t('generateRunsDownload')}
-              </a>
+              </ExportDownloadLink>
             </li>
           ))}
         </ul>

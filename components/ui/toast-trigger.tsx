@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { hasPendingLegacyScheduleRedirect, legacyScheduleDestinationHash } from '@/lib/legacy-schedule-redirect';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
+import { useTranslations } from 'next-intl';
 import { useDatabaseErrorText } from '@/components/database-error-text';
 
 /**
@@ -15,6 +16,7 @@ export function ToastFromQuery() {
   const router = useRouter();
   const pathname = usePathname();
   const databaseErrorText = useDatabaseErrorText();
+  const approved = useTranslations('approvals')('dateStatus.approved');
 
   useEffect(() => {
     // The legacy destination forwards these values. Consuming them here would race that redirect
@@ -22,16 +24,20 @@ export function ToastFromQuery() {
     if (hasPendingLegacyScheduleRedirect(pathname, window.location.hash)) return;
     const ok = params.get('toast');
     const err = params.get('error');
-    if (!ok && !err) return;
-    if (ok) toast.success(ok);
+    const seal = params.get('approvalSeal') === '1';
+    if (!ok && !err && !seal) return;
+    if (ok) toast.success(seal && !err && document.documentElement.dataset.uiTheme === 'atelier'
+      ? <span>{ok}<span aria-hidden="true" className="atelier-approval-seal">{approved}</span></span>
+      : ok);
     if (err) toast.error(databaseErrorText(err));
     const next = new URLSearchParams(params.toString());
     next.delete('toast');
     next.delete('error');
+    next.delete('approvalSeal');
     const qs = next.toString();
     const hash = legacyScheduleDestinationHash(pathname, window.location.hash);
     router.replace(`${pathname}${qs ? `?${qs}` : ''}${hash}`, { scroll: false });
-  }, [params, pathname, router]);
+  }, [params, pathname, router, approved]);
 
   return null;
 }

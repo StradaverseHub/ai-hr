@@ -153,6 +153,16 @@ describe('getMobileSession — bearer only, fail closed', () => {
     // And it resolves through the shared resolver, not a copy of it.
     expect(body).toContain('resolveWorkosPrincipal(');
     expect(body).toContain('withEntitlements(');
-    expect(body).toContain('app.principal_by_subject(');
+    // edf5257ce (docs/adr/2026-11-06-database-work-admission.md) moved the raw principal_by_subject read
+    // into ONE admitted authentication reader that the browser session also uses; the bearer path calls it.
+    expect(body).toContain('const lookup = (sub: string) => readPrincipalBySubject(sub);');
+    const readerStart = src.indexOf('const readPrincipalBySubject = ');
+    const readerEnd = src.indexOf('\nconst ', readerStart + 1);
+    expect(readerStart, 'shared subject reader exists').toBeGreaterThan(-1);
+    expect(readerEnd, 'shared subject reader has a closing boundary').toBeGreaterThan(readerStart);
+    const reader = src.slice(readerStart, readerEnd);
+    expect(reader).toContain("withPoolWork('authentication',");
+    expect(reader).toContain('app.principal_by_subject(');
+    expect(src, 'the browser session resolves through the same reader').toContain('Array.from(await readPrincipalBySubject(subject))');
   });
 });

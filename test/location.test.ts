@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * ADR-0054 — Location master data: CRUD + integrity, the DomainEvent substrate, RLS read+write scoping
  * (as a real ai_hr_app admin, NOT owner.db which bypasses RLS), the INSERT…RETURNING-under-app-role path,
@@ -88,7 +89,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
 });
 
 describe('location master data (ADR-0054)', () => {

@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * RL Control & Validation Engine (0113). Builds on the TOIL engine (ADR-0033):
  *  - consumption → register: approving a REPLACEMENT leave request decrements toil_accrual FIFO-by-expiry
@@ -179,7 +180,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
   // TOIL is a per-tenant entitlement now. seedBase seeds NO `toil` row (it is not in the parity set), so
   // this file has to grant it explicitly — the row, not an env var, is what a real session resolves.
   // toil's `dependsOn` closure is satisfied: `leave` is CORE (always on) and `attendance` is seeded
@@ -255,7 +256,7 @@ describe('Auto-accrual on attendance approval (step 2)', () => {
       checkOut: '17:00:00',
       reason: 'Correction',
     });
-    await decideAttendanceCorrection(a, { correctionId: cor.correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: cor.correctionId, decision: 'approved' });
     return employmentId;
   }
 
@@ -272,7 +273,7 @@ describe('Auto-accrual on attendance approval (step 2)', () => {
     // Re-approve the same day via a fresh correction: the no-double-bank guard is swallowed (no throw, no dup).
     const a = ctx;
     const cor2 = await requestAttendanceCorrection(a, { employmentId, date: REST_DAY, checkIn: '08:00:00', checkOut: '17:00:00', reason: 'Correction' });
-    await expect(decideAttendanceCorrection(a, { correctionId: cor2.correctionId, decision: 'approved' })).resolves.toMatchObject({ status: 'approved' });
+    await expect(decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: cor2.correctionId, decision: 'approved' })).resolves.toMatchObject({ status: 'approved' });
     expect(await replacementBalance(employmentId)).toBe(1); // still one credit
   });
 
@@ -288,7 +289,7 @@ describe('Auto-accrual on attendance approval (step 2)', () => {
     await setToilPolicy(a, policy(b.companyId, { autoAccrueOnApproval: true, allowFirstScheduleEligible: false }));
     await setRestDay(a, { employmentId, shiftDate: REST_DAY });
     const cor = await requestAttendanceCorrection(a, { employmentId, date: REST_DAY, checkIn: '08:00:00', checkOut: '17:00:00', reason: 'Correction' });
-    await expect(decideAttendanceCorrection(a, { correctionId: cor.correctionId, decision: 'approved' })).resolves.toMatchObject({ status: 'approved' });
+    await expect(decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: cor.correctionId, decision: 'approved' })).resolves.toMatchObject({ status: 'approved' });
     expect(await replacementBalance(employmentId)).toBe(0);
   });
 
@@ -361,7 +362,7 @@ describe('Request / approval dates on a banked credit (00307068)', () => {
       checkOut: '17:00:00',
       reason: 'Correction',
     });
-    await decideAttendanceCorrection(a, { correctionId: cor.correctionId, decision: 'approved' });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId: cor.correctionId, decision: 'approved' });
 
     const [acc] = await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId, employmentId));
     // On THIS path the employee really did ask, and the correction IS the request — so its own creation

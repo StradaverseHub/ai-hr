@@ -1,3 +1,4 @@
+import {withAiCentreFunction,assertAiCentreRunningTx} from '../ai-centre-control';
 /** AI v2 Phase 2, P2-5 — the Living Handbook: policies in the company's own words, the values the system enforces from
  * them, and where the two disagree (migration 2009; AI Centre › Policies, approved mock-up Handbook.dc.html).
  *
@@ -201,6 +202,12 @@ async function enforceableTx(tx:Tx,ctx:SessionContext,version:VersionRow,targets
 export async function readPolicyValues(supplied:SessionContext,input:Readonly<{versionId:unknown}>,model:PolicyValueModel|null){
  const ctx=capture(supplied);requireAdministrator(ctx);
  const versionId=uuid.safeParse(input.versionId);if(!versionId.success)throw new PolicyRefused('invalid');
+ // The model is an opaque trusted port; capture the request, never clone that port.
+ return withAiCentreFunction(ctx,'read:operation_policy_values',()=>readPolicyValuesActivity(ctx,{versionId:versionId.data},model));
+}
+async function readPolicyValuesActivity(supplied:SessionContext,input:Readonly<{versionId:unknown}>,model:PolicyValueModel|null){
+ const ctx=capture(supplied);requireAdministrator(ctx);
+ const versionId=uuid.safeParse(input.versionId);if(!versionId.success)throw new PolicyRefused('invalid');
  const today=todayInKualaLumpur(),targets=await ownerTargets(ctx,today);
  const prepared=await withTenant(ctx,async tx=>{
   const version=await versionTx(tx,ctx,versionId.data);
@@ -216,6 +223,7 @@ export async function readPolicyValues(supplied:SessionContext,input:Readonly<{v
  try{raw=await model.propose({text:prepared.version.body,settings:settingPrompts(prepared.settings,targets)});}catch{throw new PolicyRefused('model_unavailable');}
  const result=adjudicateProposals(typeof raw==='string'?raw:'',prepared.version.body,prepared.settings,targets);
  return withTenant(ctx,async tx=>{
+  await assertAiCentreRunningTx(tx,ctx);
   const version=await versionTx(tx,ctx,prepared.version.id,true);
   // The text may have changed while the model read it: its proposals would be for words no longer there.
   if(version.status!=='draft'||version.body!==prepared.version.body)throw new PolicyRefused('not_draft');

@@ -4,9 +4,10 @@
  * figures through the real DB kernel, and that the per-run deltas sum to the single-batch month:
  *   - the regular run is normal remuneration; the bonus run is additional remuneration (Steps 1–5);
  *   - SOCSO/EIS are charged ONCE (only the regular run); the bonus run adds RM0 (Act 4 s.6(7)/6(9));
- *   - EPF is ONE Third Schedule lookup on the month's normal wage plus its additional remuneration, so
- *     the employer 13%/12% step follows the whole month (bdf7d248, r210 — it was anchored to the normal
- *     wage until then, which is why the employer assertion below moved from RM1,950 to RM1,800).
+ *   - EPF is ONE Third Schedule lookup on the month's normal wage plus its additional remuneration
+ *     (bdf7d248, r210), except the employer under KWSP's Part A bonus note: a ≤RM5,000 normal wage whose
+ *     bonus takes the month above RM5,000 pays 13% of the month (7f5cc653, 2026-11-16 — which is why the
+ *     employer assertion below moved from RM1,800 back to RM1,950).
  * Gated behind the `multi_cycle_payroll` MODULE ENTITLEMENT (ADR-0077 slice 3 — it was the
  * MULTI_CYCLE_PAYROLL_ENABLED deployment flag until the gate moved into `tenant_module`), so it never
  * runs for real payroll until the §7 sign-off.
@@ -106,12 +107,13 @@ describe('Wave 2C #4 — multi-cycle kernel (ADR-0024 §7 sign-off figures)', ()
     expect(r2.eisEmployee).toBe(0);
     expect(r2.eisEmployer).toBe(0);
 
-    // §7 #1/#2 — the Third Schedule read ONCE for the month (bdf7d248, r210): RM5,000 + RM10,000 is a
-    // RM15,000 month, employee ceil(11% × 15,000) = RM1,650, employer ceil(12% × 15,000) = RM1,800.
-    // The employer figure was RM1,950 while the 13%/12% step was anchored to the normal wage alone;
-    // ADR-0024 §7 carries the restated sign-off figures and the date the rule changed.
+    // §7 #1/#2 — employee: the Third Schedule read ONCE for the month (bdf7d248): RM5,000 + RM10,000 is
+    // a RM15,000 month, ceil(11% × 15,000) = RM1,650.
+    // RESTATED 2026-11-16 FOR ITEM 7f5cc653 (ADR-0024 addendum 2026-11-16): employer was 1,800 (the 12%
+    // row for RM15,000) under bdf7d248's combined reading. KWSP's Part A bonus note keeps a ≤RM5,000
+    // earner whose bonus crosses RM5,000 at 13% of the month's wages: 15,000 × 13% = RM1,950 (was 1,800).
     expect(round2(r1.epfEmployee + r2.epfEmployee)).toBe(1650);
-    expect(round2(r1.epfEmployer + r2.epfEmployer)).toBe(1800);
+    expect(round2(r1.epfEmployer + r2.epfEmployer)).toBe(1950);
   });
 
   it('createAdditionalRun is GATED behind the multi_cycle_payroll entitlement', async () => {

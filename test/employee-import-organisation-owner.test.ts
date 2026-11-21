@@ -1,5 +1,6 @@
 import {beforeAll,beforeEach,afterAll,it,expect} from 'vitest';
-import {and,eq,isNull} from 'drizzle-orm';
+import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
+import {withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {validateEmployeeImport,commitEmployeeImport} from '../core/import';
 import {assignmentHistory} from '../core/read';
@@ -55,4 +56,53 @@ it('Category code beats another label at full import and a rename retains the sa
  expect(fresh.category.find(option=>option.value===saved.employmentCategory)?.label).toBe('Renamed category');
  const [unchanged]=await owner.db.select({code:s.employment.employmentCategory}).from(s.employment).where(eq(s.employment.id,saved.id));
  expect(unchanged.code).toBe('Shared');
+});
+
+
+it('keeps the Employee Import owner’s timeout through deferred checks and rolls back a refused file',async()=>{
+ const ctx=adminCtx(base),companyId=base.companyId;
+ const [setting]=await withTenant(ctx,tx=>tx.execute<{milliseconds:number}>(sql`
+  select setting::int as milliseconds from pg_catalog.pg_settings where name='statement_timeout'
+ `));
+ const timeout=setting.milliseconds;
+ if(!Number.isSafeInteger(timeout)||timeout<0)throw Error('Invalid fictional database timeout');
+ const records=['TIMEOUT-IMPORT-OK','TIMEOUT-IMPORT-FIRST','TIMEOUT-IMPORT-REFUSED'].map((code,index)=>({
+  employee_code:code,full_name:`Fictional timeout import ${index}`,email:`timeout-import-${index}@fixture.test`,
+  department:'Finance',hired_on:todayInKualaLumpur(),ic_number:`${91+index}0505051234`,basic_salary:'3000',
+ }));
+ const completed=()=>owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).where(and(
+  eq(s.domainEvent.tenantId,base.tenantId),eq(s.domainEvent.aggregateId,companyId),eq(s.domainEvent.eventType,'employee-import.completed'),
+ ));
+ try{
+  // Only the three fictional test employees can enter the deferred observer. The interpolated value is a checked integer.
+  await owner.client.unsafe(`create function public.fixture_employee_import_timeout() returns trigger language plpgsql as $$
+   begin
+    if (select setting::int from pg_catalog.pg_settings where name='statement_timeout') <> ${timeout} then
+     raise exception 'Fictional Employee Import changed the caller statement timeout';
+    end if;
+    if new.employee_code='TIMEOUT-IMPORT-REFUSED' then raise exception 'Fictional Employee Import deferred refusal'; end if;
+    return null;
+   end $$`);
+  await owner.client.unsafe(`create constraint trigger fixture_employee_import_timeout after insert on public.employment
+   deferrable initially deferred for each row when (new.employee_code in ('TIMEOUT-IMPORT-OK','TIMEOUT-IMPORT-FIRST','TIMEOUT-IMPORT-REFUSED'))
+   execute function public.fixture_employee_import_timeout()`);
+  const accepted=await commitEmployeeImport(ctx,{companyId,records:records.slice(0,1)});
+  expect(accepted).toMatchObject({imported:1,failed:[],fileErrors:[]});
+  expect(await completed()).toHaveLength(1);
+  const remaining=records.slice(1);
+  const preview=await validateEmployeeImport(ctx,{companyId,records:remaining});
+  expect(preview.rows.map(row=>row.errors)).toEqual([[],[]]);
+  expect(preview.fileErrors).toEqual([]);
+  const refused=await commitEmployeeImport(ctx,{companyId,records:remaining});
+  expect(refused.imported).toBe(0);
+  expect(refused.failed).toHaveLength(2);
+  const stored=await owner.db.select({code:s.employment.employeeCode}).from(s.employment).where(and(
+   eq(s.employment.tenantId,base.tenantId),inArray(s.employment.employeeCode,records.map(row=>row.employee_code)),
+  ));
+  expect(stored).toEqual([{code:records[0].employee_code}]);
+  expect(await completed()).toHaveLength(1);
+ }finally{
+  await owner.client.unsafe('drop trigger if exists fixture_employee_import_timeout on public.employment');
+  await owner.client.unsafe('drop function if exists public.fixture_employee_import_timeout()');
+ }
 });

@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { FileText, Plus, Upload, X } from 'lucide-react';
@@ -93,9 +94,9 @@ export function KbComposer() {
             <button type="button" onClick={() => setOpen(false)} className={btnGhost}>
               {t('cancel')}
             </button>
-            <button type="submit" className={btnPrimary}>
+            <ActionButton type="submit" className={btnPrimary}>
               {t('create')}
-            </button>
+            </ActionButton>
           </div>
         </form>
       ) : (
@@ -122,10 +123,10 @@ export function KbComposer() {
             <button type="button" onClick={() => setOpen(false)} className={btnGhost}>
               {t('cancel')}
             </button>
-            <button type="submit" className={btnPrimary}>
+            <ActionButton type="submit" className={btnPrimary}>
               <Upload className="size-4" />
               {t('upload')}
-            </button>
+            </ActionButton>
           </div>
         </form>
       )}

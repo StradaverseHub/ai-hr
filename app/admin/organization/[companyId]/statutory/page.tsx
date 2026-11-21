@@ -110,7 +110,12 @@ export default async function CompanyStatutorySetupPage({
           <StatutorySetupScreen
             companyId={c.id}
             filingCountry={c.country}
-            statutory={statutory}
+            statutory={statutory ? {
+              epfEmployerNo: statutory.epfEmployerNo,
+              socsoEmployerCode: statutory.socsoEmployerCode,
+              lhdnEmployerNo: statutory.lhdnEmployerNo,
+              hrdfStatus: statutory.hrdfStatus,
+            } : null}
             statutoryAuthorities={authorities}
             bankProfiles={bankProfiles}
             // The authorised-signatory picker is COMPANY-scoped: the service refuses to newly appoint

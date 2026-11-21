@@ -40,3 +40,11 @@ The [operator runbook](../../scripts/improve/README.md#environment-specific-feed
 owns commands; [release policy](../PRODUCTION-RELEASE-HANDOFF.md) owns release authority. Migration
 allocation must be reconciled with the actual installed ledger before integration/application.
 This decision record does not establish installation or acceptance in either environment.
+
+## Release completion — owner decision, 17 November 2026
+
+Every production release must finish board reconciliation before being reported complete. The
+[required handoff step](../PRODUCTION-RELEASE-HANDOFF.md#5-reconcile-the-board-before-completing-production)
+owns membership, milestone recording, independent read-back, the verified empty-list case and recovery
+when the installation succeeds but board reconciliation remains pending. This requirement uses the
+existing milestone recorder and preserves its authorization, feedback-cycle and audit boundaries.

@@ -1,0 +1,10 @@
+[
+  "test/rewards-setup-presentation-snapshot.test.ts",
+  "test/rewards-setup-owner.test.ts",
+  "test/rewards-setup-model.test.ts",
+  "test/rewards-setup-workbook.test.ts",
+  "test/rewards-policy-groups.test.ts",
+  "test/rewards-policy-membership.test.ts",
+  "test/rewards-policy-version-diff.test.ts",
+  "test/module-gate.test.ts"
+]

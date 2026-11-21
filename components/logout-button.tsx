@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 import { useTranslations } from 'next-intl';
 import { logoutAction } from '@/app/auth-actions';
 import { cn } from '@/lib/utils';
@@ -17,7 +18,7 @@ export function LogoutButton({ variant = 'inline' }: { variant?: 'inline' | 'men
   const menu = variant === 'menu';
   return (
     <form action={logoutAction} className={cn(menu && 'block')}>
-      <button
+      <ActionButton
         type="submit"
         role={menu ? 'menuitem' : undefined}
         className={cn(
@@ -28,7 +29,7 @@ export function LogoutButton({ variant = 'inline' }: { variant?: 'inline' | 'men
         )}
       >
         {t('logout')}
-      </button>
+      </ActionButton>
     </form>
   );
 }

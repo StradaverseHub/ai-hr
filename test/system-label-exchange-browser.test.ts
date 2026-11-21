@@ -1,0 +1,500 @@
+/** Actual HTTP/UI journey on a disposable hosted-runner database, never an installation. */
+import {describe,it,expect,afterAll,afterEach} from 'vitest';
+import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
+import {appendFileSync,chmodSync,closeSync,createWriteStream,fstatSync,mkdirSync,mkdtempSync,openSync,readFileSync,readSync,rmSync,statfsSync,writeFileSync} from 'node:fs';
+import {isAbsolute,join,resolve} from 'node:path';
+import {totalmem,availableParallelism} from 'node:os';
+import {performance} from 'node:perf_hooks';
+import {finished} from 'node:stream/promises';
+import {setTimeout as delay} from 'node:timers/promises';
+import {chromium,type Browser,type ConsoleMessage,type Page,type Request,type Response} from 'playwright';
+import {eq} from 'drizzle-orm';
+import {adminCtx,migrateTestDb,resetDb,seedBase,owner,closeAll} from './harness';
+import {createCompany} from '../core/admin';
+import {runBulkJobTick} from '../core/bulk-job-worker';
+import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
+import * as s from '../db/schema';
+import {buildSystemLabelWorkbook,readSystemLabelWorkbook} from '../lib/system-label-workbook';
+import {LOCALE_COOKIE,locales} from '../i18n/config';
+import en from '../messages/en.json';
+let server:ChildProcess|undefined,browserLaunch:Promise<Browser>|undefined,serverLog:ReturnType<typeof createWriteStream>|undefined;
+let serverClosed=false,serverSpawnFailed=false,logFailed=false;
+let serverStartTicks:string|undefined;
+let publishResult:(()=>void)|undefined;
+let capacityTimer:ReturnType<typeof setInterval>|undefined;
+let sampleCapacity:((phase:string)=>void)|undefined;
+let capacityEvidenceFailed=false;
+let swapDirectory:string|undefined;
+const GiB=1024**3;
+function runnerSwapBytes(){
+ const total=readFileSync('/proc/meminfo','utf8').match(/^SwapTotal:\s+(\d+) kB$/m);
+ if(!total)throw new Error('System Labels runner swap total unavailable');
+ return Number(total[1])*1024;
+}
+function addHostedSwap(){
+ if(process.platform!=='linux'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted')return;
+ // The full-gate runner shut down with no swap. A retry with 4 GiB reached
+ // all locales but exhausted the reserve while compiling the import job routes.
+ const required=8*GiB;
+ const current=runnerSwapBytes();
+ if(current>=required)return;
+ const root=process.env.RUNNER_TEMP;
+ if(!root||!isAbsolute(root))throw new Error('System Labels requires a private runner temp directory');
+ const bytes=Math.ceil((required-current)/1024**2)*1024**2;
+ const disk=statfsSync(root);
+ if(disk.bavail*disk.bsize<bytes+4*GiB)throw new Error('Insufficient disk for bounded System Labels swap');
+ swapDirectory=mkdtempSync(join(root,'system-label-swap-'));
+ const file=join(swapDirectory,'swapfile');
+ execFileSync('fallocate',['-l',String(bytes),file],{timeout:10000});
+ chmodSync(file,0o600);
+ execFileSync('mkswap',[file],{timeout:10000});
+ execFileSync('sudo',['swapon','--',file],{timeout:10000});
+ // Linux excludes its swap header page from SwapTotal.
+ if(runnerSwapBytes()<required-1024**2)throw new Error('System Labels runner swap did not activate');
+}
+function stopHostedSwap(){
+ if(!swapDirectory)return;
+ const file=join(swapDirectory,'swapfile');
+ const isActive=()=>readFileSync('/proc/swaps','utf8').split('\n').some(row=>row.split(/\s+/)[0]===file);
+ // After Next exits, the kernel can still need to page in data belonging to
+ // the runner and test driver. The hosted retry exhausted a 10s cleanup budget.
+ if(isActive())execFileSync('sudo',['swapoff','--',file],{timeout:60000});
+ if(isActive())throw new Error('System Labels test swap is still active');
+ rmSync(swapDirectory,{recursive:true});
+ swapDirectory=undefined;
+}
+function logTail(path:string,limit:number){
+ const fd=openSync(path,'r');
+ try{
+  const size=fstatSync(fd).size,start=Math.max(0,size-limit);
+  const tail=Buffer.alloc(size-start);
+  return tail.subarray(0,readSync(fd,tail,0,tail.length,start)).toString('utf8');
+ }finally{closeSync(fd);}
+}
+function remaining(deadline:number,label:string){
+ const ms=Math.floor(deadline-performance.now());
+ if(ms<=0)throw new Error(`System Labels ${label} deadline exceeded`);
+ return ms;
+}
+async function within(deadline:number,label:string,work:()=>Promise<void>){
+ const ms=remaining(deadline,label);
+ let timer:ReturnType<typeof setTimeout>|undefined;
+ try{
+  await Promise.race([work(),new Promise<never>((_,reject)=>{
+   timer=setTimeout(()=>reject(new Error(`System Labels ${label} did not settle`)),ms);
+  })]);
+  remaining(deadline,label);
+ }finally{clearTimeout(timer);}
+}
+function detachedLeaderStart(child:ChildProcess){
+ const pid=child.pid;
+ if(process.platform!=='linux'||child!==server||!pid||serverClosed||serverSpawnFailed||child.exitCode!==null||child.signalCode!==null)return;
+ let stat:string;
+ try{stat=readFileSync(`/proc/${pid}/stat`,'utf8');}catch{return;}
+ const commandEnd=stat.lastIndexOf(') ');
+ if(!stat.startsWith(`${pid} (`)||commandEnd<0)return;
+ const fields=stat.slice(commandEnd+2).trim().split(/\s+/);
+ const [state,parent,group,session]=fields;
+ const start=fields[19];
+ if(!state||!['R','S','D','T','t','I'].includes(state)||parent!==String(process.pid)
+  ||group!==String(pid)||session!==String(pid)||!start||!/^[1-9]\d*$/.test(start))return;
+ return start;
+}
+function signalGroup(pid:number,signal:0|'SIGTERM'|'SIGKILL'){
+ try{process.kill(-pid,signal);return true;}
+ catch(error){if((error as NodeJS.ErrnoException).code==='ESRCH')return false;throw error;}
+}
+async function stopNext(deadline:number){
+ const child=server;
+ if(!child)return;
+ const pid=child.pid;
+ if(!pid&&!serverSpawnFailed)throw new Error('System Labels Next process identity unavailable');
+ const signalOwnedLeader=(signal:'SIGTERM'|'SIGKILL')=>{
+  // Recheck the original detached leader immediately before either mutating group signal.
+  if(!pid||!serverStartTicks||detachedLeaderStart(child)!==serverStartTicks)return false;
+  remaining(deadline,'Next cleanup');
+  return signalGroup(pid,signal);
+ };
+ let groupPresent=pid?signalGroup(pid,0):false;
+ const sentTerm=groupPresent&&signalOwnedLeader('SIGTERM');
+ const termEnd=performance.now()+5000;
+ let escalated=false;
+ while(groupPresent||!serverClosed){
+  await delay(Math.min(100,remaining(deadline,'Next cleanup')));
+  remaining(deadline,'Next cleanup');
+  if(groupPresent&&pid)groupPresent=signalGroup(pid,0);
+  if(groupPresent&&sentTerm&&!escalated&&performance.now()>=termEnd){
+   escalated=true;
+   signalOwnedLeader('SIGKILL');
+  }
+ }
+}
+async function stop(){
+ clearInterval(capacityTimer);try{sampleCapacity?.('cleanup-begin');}catch{capacityEvidenceFailed=true;console.error('SYSTEM_LABEL_CAPACITY_ERROR cleanup sample unavailable');}
+ const begin=performance.now();
+ const closeDeadline=begin+15000,deadline=begin+27000;
+ const [chrome,next]=await Promise.allSettled([
+  within(closeDeadline,'browser cleanup',async()=>{
+   if(!browserLaunch)return;
+   const browser=await browserLaunch;
+   const connected=browser.isConnected();
+   await browser.close();
+   if(!connected)throw new Error('System Labels browser disconnected before cleanup');
+   if(browser.isConnected())throw new Error('System Labels browser still connected after close');
+  }),
+  within(closeDeadline,'Next cleanup',()=>stopNext(closeDeadline)),
+ ]);
+ const rest=await Promise.allSettled([
+  within(deadline,'database pool cleanup',closeAll),
+  within(deadline,'server log cleanup',async()=>{
+   if(!serverLog)return;
+   if(server&&!serverClosed)throw new Error('System Labels server log drain unconfirmed');
+   const drained=finished(serverLog,{cleanup:true});
+   serverLog.end();await drained;
+   if(logFailed)throw new Error('System Labels server log failed');
+  }),
+ ]);
+ const failures=[chrome,next,...rest].flatMap(result=>result.status==='rejected'?[result.reason]:[]);
+ if(failures.length)throw new AggregateError(failures,'System Labels owned cleanup incomplete');
+ remaining(deadline,'cleanup');
+ // Release swap only after the browser and Next have exited. The disposable runner
+ // owns the remaining file and swap lifetime if either process could not be stopped.
+ stopHostedSwap();
+ sampleCapacity?.('cleanup-complete');
+ publishResult?.();
+}
+afterAll(stop,120000);
+afterEach(async ({task})=>{
+ if(task.result?.state!=='fail')return;
+ // A failed navigation may leave the browser protocol unable to answer diagnostics.
+ try{if(serverLog&&typeof serverLog.path==='string')console.error('Owned Next server failure tail:',logTail(serverLog.path,12000));}
+ catch{console.error('Owned Next server failure tail unavailable');}
+},30000);
+describe('System Labels authenticated Excel browser journey',()=>{
+ it('downloads, previews and imports actual authorized data, refuses restricted global imports, and renders six languages',async({signal,task})=>{
+  const evidence=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR??'/tmp/aihr-label-browser-evidence');mkdirSync(evidence,{recursive:true});
+  const capacityStarted=performance.now();
+  sampleCapacity=phase=>{
+   const meminfo=readFileSync('/proc/meminfo','utf8');
+   const field=(name:string)=>{const match=meminfo.match(new RegExp('^'+name+':\\s+(\\d+) kB','m'));if(!match)throw Error('Actual runner memory field unavailable');return Number(match[1])*1024;};
+   const available=field('MemAvailable');
+   const row={source:process.env.AIHR_CI_HEAD,phase,elapsedMs:Math.round(performance.now()-capacityStarted),
+    memTotalBytes:field('MemTotal'),memAvailableBytes:available,swapTotalBytes:field('SwapTotal'),swapFreeBytes:field('SwapFree'),
+    vitestPid:process.pid,vitestRssBytes:process.memoryUsage.rss(),nextPid:server?.pid??null,nextLeaderStartTicks:serverStartTicks??null,
+    webpackParallelism:1,lowHeadroomDiagnostic:available<1.5*1024**3,releaseAuthorized:false};
+   // A diagnostic flag is never a capacity/test PASS. Keep actual per-PID heap and DB cgroup evidence too.
+   appendFileSync(join(evidence,'system-label-capacity-phases.jsonl'),JSON.stringify(row)+'\n');
+   console.info('SYSTEM_LABEL_CAPACITY '+JSON.stringify(row));
+  };
+  if(process.platform==='linux'){
+   sampleCapacity('case-entry');
+   capacityTimer=setInterval(()=>{try{sampleCapacity?.('interval');}catch{capacityEvidenceFailed=true;console.error('SYSTEM_LABEL_CAPACITY_ERROR actual sample unavailable');}},10000);capacityTimer.unref();
+  }else sampleCapacity=undefined;
+  const url=new URL(process.env.TEST_DATABASE_URL!);
+  expect(['127.0.0.1','localhost'].includes(url.hostname)).toBe(true);
+  expect(url.pathname).toMatch(/test/);
+  await migrateTestDb();sampleCapacity?.('migrations-ready');await resetDb();sampleCapacity?.('reset-ready');const b=await seedBase();sampleCapacity?.('seed-ready');
+  const other=await createCompany(adminCtx(b),{legalName:'Fictional browser company B'});
+  await owner.db.insert(s.position).values({tenantId:b.tenantId,companyId:b.companyId,title:'BROWSER_POSITION_ONLY'});
+  await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:b.companyId,name:'BROWSER_INACTIVE_DEPARTMENT',archivedAt:new Date()});
+  await owner.db.update(s.appUser).set({onboardedAt:new Date()}).where(eq(s.appUser.id,b.adminUserId));
+  const [restricted]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'fictional-label-browser-restricted',onboardedAt:new Date()}).returning();
+  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:restricted.id,role:'hr_admin',companyId:b.companyId});
+  const log=join(evidence,'system-label-browser-server.log'),stream=createWriteStream(log);serverLog=stream;
+  stream.once('error',()=>{logFailed=true;});
+  const port=3149,origin=`http://127.0.0.1:${port}`;
+  // next dev restarts itself once its used heap passes 80% of the limit, and the page request after that restart never
+  // completed on the hosted runner. With the background import's job routes compiled too, the 8 GiB limit's threshold
+  // (6.9 GB) was crossed during the six-language loop. Measured with a 12 GiB limit (run 42949281523): the dev server's
+  // peak used heap was 7.61 GB against a 10.35 GB restart threshold, peak RSS 11.75 GB. Only this test starts a dev server,
+  // and the gate gives it one unit (two workers) on a 16 GB runner. Each run records the peaks and the runner's least
+  // available memory under system-label-dev-server-heap/ in its evidence.
+  const memory=totalmem(),heapMiB=memory>=15*1024**3?12288:memory>=12*1024**3?8192:4096;
+  const heapEvidence=join(evidence,'system-label-dev-server-heap');mkdirSync(heapEvidence,{recursive:true});
+  writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,webpackParallelism:1,runner:process.env.RUNNER_ENVIRONMENT??'local'}));
+  const labelsPath='/admin/settings/system-labels',profilePath='/admin/settings/system-labels/profile-options';
+  type LabelsPath=typeof labelsPath|typeof profilePath;
+  function importTrigger(target:Page,messages:typeof en){
+   return target.locator('[data-label-import]').getByRole('button',{name:messages.admin.systemLabels.excel.import,exact:true})
+    .and(target.locator('[data-label-import-ready="true"]'));
+  }
+  async function navigate(target:Page,path:LabelsPath,messages:typeof en,locale:(typeof locales)[number]='en'){
+   const url=origin+path,deadline=performance.now()+180000;
+   const isDocument=(response:Response)=>{
+    const request=response.request();
+    return response.url()===url&&request.isNavigationRequest()&&request.resourceType()==='document'&&request.frame()===target.mainFrame();
+   };
+   const isHtml=(response:Response)=>response.headers()['content-type']?.split(';',1)[0].trim().toLowerCase()==='text/html';
+   let observedStatus:number|null=null,observedHtml:boolean|null=null,stage='document';
+   const observe=(response:Response)=>{
+    try{
+     if(isDocument(response)){observedStatus=response.status();observedHtml=isHtml(response);}
+    }catch{/* The final response check still requires the exact main frame. */}
+   };
+   target.on('response',observe);
+   try{
+    let response:Response|null;
+    for(let attempt=0;;attempt++){
+     signal.throwIfAborted();
+     if(!server||serverSpawnFailed||server.exitCode!==null||server.signalCode!==null)throw new Error('Owned preview process exited');
+     try{response=await target.goto(url,{waitUntil:'domcontentloaded',timeout:remaining(deadline,'navigation')});break;}
+     catch(error){
+      // Preserve only the existing connection-level restart tolerance, under one navigation clock.
+      if(signal.aborted||observedStatus!==null||attempt>=5||deadline-performance.now()<=750
+       ||!/ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_EMPTY_RESPONSE/.test(String(error)))throw error;
+      await delay(750);
+     }
+    }
+    stage='response';
+    if(!response)throw new Error('System Labels navigation returned no document response');
+    expect(isDocument(response)&&response.request().redirectedFrom()===null).toBe(true);
+    expect(response.status()).toBe(200);
+    expect(isHtml(response)).toBe(true);
+    expect(target.url()).toBe(url);
+    const readyDeadline=Math.min(deadline,performance.now()+90000);
+    const heading=path===labelsPath?messages.admin.systemLabels.pageTitle:messages.admin.profileOptions.title;
+    stage='heading';
+    await target.getByRole('heading',{name:heading,level:1,exact:true}).waitFor({state:'visible',timeout:remaining(readyDeadline,stage)});
+    stage='export';
+    await target.getByRole('button',{name:messages.systemLabelExchange.export,exact:true}).waitFor({state:'visible',timeout:remaining(readyDeadline,stage)});
+    stage='import-hydration';
+    const trigger=importTrigger(target,messages);
+    await trigger.waitFor({state:'visible',timeout:remaining(readyDeadline,stage)});
+    expect(await trigger.isEnabled({timeout:remaining(readyDeadline,stage)})).toBe(true);
+    remaining(readyDeadline,stage);
+    signal.throwIfAborted();
+    return response;
+   }catch(error){
+    console.error('System Labels navigation diagnostics:',{path,locale,viewport:target.viewportSize(),stage,observedStatus,observedHtml});
+    throw error;
+   }finally{target.off('response',observe);}
+  }
+  async function openImport(target:Page,role:'group-admin'|'company-admin',load?:()=>Promise<void>){
+   const counts={pageErrors:0,consoleErrors:0,scriptRequestFailures:0,scriptHttpErrors:0};
+   const localScript=(request:Request)=>request.resourceType()==='script'&&request.url().startsWith(origin+'/_next/static/');
+   const pageError=()=>{counts.pageErrors++;};
+   const consoleError=(message:ConsoleMessage)=>{if(message.type()==='error')counts.consoleErrors++;};
+   const requestFailed=(request:Request)=>{if(localScript(request))counts.scriptRequestFailures++;};
+   const responseError=(response:Response)=>{if(response.status()>=400&&localScript(response.request()))counts.scriptHttpErrors++;};
+   target.on('pageerror',pageError);target.on('console',consoleError);target.on('requestfailed',requestFailed);target.on('response',responseError);
+   let stage='document';
+   try{
+    if(load)await load();
+    const deadline=performance.now()+90000;
+    const remaining=()=>{
+     const ms=Math.floor(deadline-performance.now());
+     if(ms<=0)throw Error('System Labels upload opening deadline exceeded');
+     return ms;
+    };
+    stage='client-ready';
+    const trigger=importTrigger(target,en);
+    await trigger.waitFor({state:'visible',timeout:remaining()});
+    expect(await trigger.isEnabled({timeout:remaining()})).toBe(true);
+    stage='click';
+    await trigger.click({timeout:remaining()});
+    stage='dialog';
+    const dialog=target.getByRole('dialog',{name:en.labelsImportWizard.title,exact:true});
+    await dialog.waitFor({state:'visible',timeout:remaining()});
+    return dialog;
+   }catch(error){
+    console.error('System Labels upload opening diagnostics:',{role,stage,...counts});
+    throw error;
+   }finally{
+    target.off('pageerror',pageError);target.off('console',consoleError);target.off('requestfailed',requestFailed);target.off('response',responseError);
+   }
+  }
+  // Verify real Noto packages, selected font faces and glyphs before skipping duplicate package work.
+  signal.throwIfAborted();
+  if(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'){
+   const fontSetupStarted=performance.now();
+   const fontEvidence=join(evidence,'system-label-font-readiness.json');
+   const requiredFaces=[
+    {family:'Noto Sans',lang:'en',pkg:'fonts-noto-core',sample:'System Labels Tetapan Nhãn hệ thống'},
+    {family:'Noto Sans Tamil',lang:'ta',pkg:'fonts-noto-core',sample:'அமைப்பு பெயர்கள்'},
+    {family:'Noto Sans Thai',lang:'th',pkg:'fonts-noto-core',sample:'ป้ายกำกับระบบ'},
+    {family:'Noto Sans CJK SC',lang:'zh-cn',pkg:'fonts-noto-cjk',sample:'系统标签'},
+   ];
+   const probe=()=>{
+    const command=(file:string,args:string[])=>execFileSync(file,args,{encoding:'utf8',stdio:'pipe',timeout:10000,maxBuffer:1024**2}).trim();
+    const statuses=command('dpkg-query',['-W','-f','${db:Status-Status}\n','fonts-noto-core','fonts-noto-cjk']).split('\n');
+    if(statuses.length!==2||statuses.some(status=>status!=='installed'))throw Error('Required Noto packages are not installed');
+    return requiredFaces.map(face=>{
+     const [file,families,index]=command('fc-match',['--format','%{file}\n%{family}\n%{index}\n',`${face.family}:lang=${face.lang}`]).split('\n');
+     if(!file?.startsWith('/usr/share/fonts/')||!families?.split(',').map(value=>value.trim()).includes(face.family)||!/^\d+$/.test(index??''))throw Error('Actual required Noto face unavailable');
+     const owner=command('dpkg-query',['-S',file]);if(!owner.startsWith(face.pkg+': '))throw Error('Required font face has a different package owner');
+     const ranges=command('fc-query',['--index',index,'--format','%{charset}',file]).split(/\s+/).filter(Boolean).map(range=>range.split('-').map(value=>Number.parseInt(value,16)));
+     if(!ranges.length||ranges.some(range=>range.length>2||range.some(value=>!Number.isSafeInteger(value))))throw Error('Actual font charset unavailable');
+     for(const character of face.sample){const code=character.codePointAt(0)!;if(!ranges.some(([first,last=first])=>code>=first&&code<=last))throw Error('Required Noto script glyph unavailable');}
+     return {family:face.family,lang:face.lang,package:face.pkg,file,index:Number(index),sampleGlyphsVerified:true};
+    });
+   };
+   let ready:ReturnType<typeof probe>|undefined;
+   try{ready=probe();}catch{console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'not-ready',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));}
+   if(!ready){
+    let phase='update';
+    try{
+     console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase,elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
+     execFileSync('sudo',['apt-get','update','-qq'],{stdio:'pipe',timeout:120000});
+     phase='install';console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase,elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
+     execFileSync('sudo',['apt-get','install','-y','--no-install-recommends','fonts-noto-core','fonts-noto-cjk'],{stdio:'pipe',timeout:120000});
+    }catch(error){
+     const failure=error as {code?:string;signal?:string;stdout?:Buffer;stderr?:Buffer};
+     console.error('SYSTEM_LABEL_FONT_INSTALL_FAILURE '+JSON.stringify({phase,elapsedMs:Math.round(performance.now()-fontSetupStarted),code:failure.code,signal:failure.signal,
+      stdout:failure.stdout?.subarray(-8192).toString('utf8'),stderr:failure.stderr?.subarray(-8192).toString('utf8')}));throw error;
+    }
+    ready=probe();
+   }
+   writeFileSync(fontEvidence,JSON.stringify({source:process.env.AIHR_CI_HEAD,faces:ready,elapsedMs:Math.round(performance.now()-fontSetupStarted),releaseAuthorized:false},null,2));
+   console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'verified-ready',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
+   sampleCapacity?.('fonts-ready');
+  }
+  // No production credentials or identity provider. Recycle only this owned detached server:
+  // the first combined capture exhausted runner headroom after the six-language loop (44573956115).
+  // Fresh processes retain the isolated database and sessions while releasing compiled dev-route graphs.
+  async function startOwnedNext(){
+   signal.throwIfAborted();
+   serverClosed=false;serverSpawnFailed=false;serverStartTicks=undefined;
+   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
+    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NEXT_WEBPACK_PARALLELISM:'1',NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
+   sampleCapacity?.('next-spawned');
+   const nextChild=server;
+   nextChild.once('spawn',()=>{if(server===nextChild)serverStartTicks=detachedLeaderStart(nextChild);});
+   nextChild.once('error',()=>{if(server===nextChild)serverSpawnFailed=true;});
+   nextChild.once('close',()=>{if(server===nextChild)serverClosed=true;});
+   server.stdout?.pipe(stream,{end:false});server.stderr?.pipe(stream,{end:false});
+   let ready=false;
+   for(let attempt=0;attempt<120;attempt++){
+    if(serverSpawnFailed||server.exitCode!==null||server.signalCode!==null)throw new Error('Owned preview server stopped: '+logTail(log,5000));
+    try{await fetch(origin+'/login',{signal:AbortSignal.timeout(2000)});ready=true;break;}catch{await delay(500);}
+   }
+   expect(ready,'Owned preview server is reachable').toBe(true);sampleCapacity?.('login-ready');
+  }
+  async function recycleNext(phase:string,currentPage:Page){
+   // Prevent the old page's hot-reload client from recompiling its route during the next phase.
+   const browserContext=currentPage.context();
+   await currentPage.close();
+   const deadline=performance.now()+20000;
+   await within(deadline,'phase server cleanup',()=>stopNext(deadline));
+   sampleCapacity?.(phase+'-stopped');
+   await startOwnedNext();
+   const nextPage=await browserContext.newPage();nextPage.setDefaultTimeout(90000);return nextPage;
+  }
+  addHostedSwap();
+  await startOwnedNext();
+  signal.throwIfAborted();
+  browserLaunch=chromium.launch({...(process.platform==='linux'?{channel:'chrome'}:{}),headless:true});
+  const browser=await browserLaunch;
+  signal.throwIfAborted();
+  const context=await browser.newContext({viewport:{width:1440,height:1050},acceptDownloads:true});
+  await context.addCookies([{name:'dev_user',value:b.adminUserId,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
+  let page=await context.newPage();page.setDefaultTimeout(90000);
+  const downloadCategory=async(kind:string)=>{
+   const button=page.getByRole('button',{name:en.systemLabelExchange.export,exact:true});
+   await expect.poll(()=>button.count()).toBe(1);
+   const downloaded=page.waitForEvent('download');await button.click();
+   const download=await downloaded;
+   expect(download.suggestedFilename()).toBe(`system-labels-${kind}.xlsx`);
+   const path=await download.path();expect(path).toBeTruthy();
+   const rows=readSystemLabelWorkbook(readFileSync(path!));
+   expect(rows.every(row=>row.sheet===kind)).toBe(true);
+   return rows;
+  };
+  await navigate(page,labelsPath,en);
+  // Even a fresh personal catalogue must retain its category rail and Excel export.
+  await navigate(page,profilePath,en);
+  await page.screenshot({path:join(evidence,'system-label-profile-options-empty.png'),fullPage:true});
+  await owner.db.insert(s.profileOption).values({tenantId:b.tenantId,category:'religion',value:'BROWSER_RELIGION_ONLY',label:'Fictional religion option'});
+  await navigate(page,profilePath,en);
+  await page.getByRole('button',{name:/^Religion/}).click();
+  expect((await downloadCategory('religion')).map(row=>row.values.Code)).toContain('BROWSER_RELIGION_ONLY');
+
+  await navigate(page,labelsPath,en);
+  await page.getByRole('button',{name:en.admin.systemLabels.filter,exact:true}).click();
+  await page.getByPlaceholder(en.admin.systemLabels.searchPlaceholder,{exact:true}).fill('A code absent from the table');
+  const departments=await downloadCategory('department');
+  expect(departments.map(row=>row.values.Code)).toEqual(expect.arrayContaining(['Finance','BROWSER_INACTIVE_DEPARTMENT']));
+  expect(departments.map(row=>row.values.Code)).not.toContain('BROWSER_POSITION_ONLY');
+  await page.getByRole('button',{name:/^Positions/}).click();
+  const positions=await downloadCategory('position');
+  expect(positions.map(row=>row.values.Code)).toContain('BROWSER_POSITION_ONLY');
+  expect(positions.map(row=>row.values.Code)).not.toContain('Finance');
+  await page.getByRole('button',{name:/^Departments/}).click();
+  const bytes=await buildSystemLabelWorkbook({kinds:['department','division','grade_groups'],includeStatus:true,references:{companies:[],grades:[],employees:[]},rows:{
+   department:[{Code:'BROWSER_GLOBAL_LABEL',Label:'Fictional global label'},{Code:'BROWSER_INVALID_LABEL',Company:'Unknown company'}],
+   division:[{Code:'BROWSER_COMPANY_LABEL',Label:'Fictional scoped label',Company:other.id}],
+   grade_groups:[{Code:'',Label:'',Name:'BROWSER_GROUP_LABEL'}],
+  }});
+  const importDialog=await openImport(page,'group-admin');
+  await importDialog.getByLabel(en.labelsImportWizard.upload,{exact:true}).setInputFiles({name:'fictional-labels.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:bytes});
+  await page.getByRole('button',{name:en.labelsImportWizard.check,exact:true}).click();
+  await page.getByRole('button',{name:'Import 3 new codes',exact:true}).waitFor();
+  expect(await page.getByRole('dialog').innerText()).toContain(en.systemLabelExchange.global);
+  expect(await page.getByRole('dialog').innerText()).toContain('Fictional browser company B');
+  expect(await page.getByRole('dialog').innerText()).toContain('BROWSER_GROUP_LABEL');
+  await page.screenshot({path:join(evidence,'system-label-preview-en-desktop.png'),fullPage:true});
+  await page.getByRole('button',{name:'Import 3 new codes',exact:true}).click();
+  // 44810ec04 runs the confirmed import as a background job on the shared bulk-job kernel, and the wizard follows the
+  // job to the summary the synchronous import showed. This disposable runner has no worker process, so the test runs
+  // the worker's own tick (the call scripts/bank-import-runner.ts makes) until the wizard shows that outcome.
+  await expect.poll(async()=>{
+   await runBulkJobTick(owner.client,{handlers:BULK_JOB_HANDLERS});
+   return page.getByRole('dialog').innerText();
+  },{timeout:120000,interval:250}).toContain('Failed rows: 1');
+  // Board c074c6b8: the result screen lists the row that was not imported, read back from the job.
+  await page.getByRole('table',{name:en.labelsImportWizard.problemsTitle}).getByText('Company is unknown, ambiguous, inactive or outside your administrator scope.',{exact:true}).waitFor();
+  const [labelJob]=await owner.client<{state:string}[]>`select state from bulk_job where tenant_id=${b.tenantId}::uuid and kind='system_label_import' order by created_at desc limit 1`;
+  expect(labelJob).toEqual({state:'completed'});
+  const [global]=await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_GLOBAL_LABEL'));
+  expect(global).toMatchObject({tenantId:b.tenantId,isGlobal:true});
+  const [scoped]=await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'BROWSER_COMPANY_LABEL'));
+  expect(scoped).toMatchObject({tenantId:b.tenantId,scopeCompanyIds:[other.id]});
+  const [group]=await owner.db.select().from(s.gradeGroup).where(eq(s.gradeGroup.name,'BROWSER_GROUP_LABEL'));expect(group).toMatchObject({tenantId:b.tenantId,scopeCompanyIds:null});
+  expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_INVALID_LABEL'))).toHaveLength(0);
+  await page.getByRole('button',{name:en.labelsImportWizard.step3,exact:true}).click();
+  for(const [localeIndex,locale] of locales.entries()){
+   if(localeIndex%2===0)page=await recycleNext('locale-'+locale,page);
+   const messages:typeof en=JSON.parse(readFileSync(join(process.cwd(),'messages',locale+'.json'),'utf8'));
+   await context.addCookies([{name:LOCALE_COOKIE,value:locale,url:origin}]);
+   for(const [name,width,height]of [['desktop',1440,1050],['mobile',390,844]] as const){
+    sampleCapacity?.('locale-'+locale+'-'+name+'-begin');
+    await page.setViewportSize({width,height});await navigate(page,labelsPath,messages,locale);
+    expect(await page.locator('body').innerText()).not.toMatch(/MISSING_MESSAGE|INVALID_MESSAGE|Application error/);
+    await page.screenshot({path:join(evidence,`system-label-exchange-${locale}-${name}.png`),fullPage:true});sampleCapacity?.('locale-'+locale+'-'+name+'-complete');
+   }
+  }
+  page=await recycleNext('restricted-role',page);
+  const restrictedContext=await browser.newContext({viewport:{width:1440,height:1050}});
+  await restrictedContext.addCookies([{name:'dev_user',value:restricted.id,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
+  const restrictedPage=await restrictedContext.newPage();restrictedPage.setDefaultTimeout(90000);
+  const restrictedImportDialog=await openImport(restrictedPage,'company-admin',async()=>{
+   const response=await navigate(restrictedPage,labelsPath,en);
+   // Inspect the actual response before any client changes, without loading another page.
+   const serverTriggers=await restrictedPage.evaluate(html=>{
+    const template=document.createElement('template');
+    template.innerHTML=html;
+    return Array.from(template.content.querySelectorAll<HTMLButtonElement>('[data-label-import] button[data-label-import-ready]'),
+     button=>({disabled:button.disabled,ready:button.getAttribute('data-label-import-ready')}));
+   },await response.text());
+   expect(serverTriggers).toEqual([{disabled:true,ready:'false'}]);
+  });
+  const refused=await buildSystemLabelWorkbook({kinds:['department'],rows:{department:[{Code:'BROWSER_FORBIDDEN_GLOBAL'}]},references:{companies:[],grades:[],employees:[]}});
+  await restrictedImportDialog.getByLabel(en.labelsImportWizard.upload,{exact:true}).setInputFiles({name:'forbidden-global.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:refused});
+  await restrictedPage.getByRole('button',{name:en.labelsImportWizard.check,exact:true}).click();
+  // Board c074c6b8: the refusal shows the server's own sentence (catalogue text) with its column.
+  await restrictedPage.getByText(en.labelsImportWizard.problem.globalAdminRequired,{exact:true}).waitFor();
+  expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_FORBIDDEN_GLOBAL'))).toHaveLength(0);
+  const allowedExport=await restrictedContext.request.get(origin+'/admin/settings/system-labels/current-data?kind=division&inactive=1');
+  expect(allowedExport.status()).toBe(200);expect(readSystemLabelWorkbook(await allowedExport.body()).some(row=>row.values.Code==='BROWSER_COMPANY_LABEL')).toBe(false);
+  await restrictedPage.screenshot({path:join(evidence,'system-label-restricted-global-refusal.png'),fullPage:true});
+  await restrictedContext.close();
+  await context.close();
+  signal.throwIfAborted();
+  sampleCapacity?.('functional-checks-complete');
+  publishResult=()=>{
+   if(task.result?.state!=='pass')return;
+   if(capacityEvidenceFailed)throw Error('System Labels capacity telemetry incomplete');
+   writeFileSync(join(evidence,'system-label-browser-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional and isolated',download:true,preview:true,imported:3,refused:1,restrictedGlobalRefused:true,foreignCompanyExportHidden:true,selectedCategoryDownloads:3,locales:locales.length,viewports:2},null,2));
+  };
+ // Recycle after each two-language group; the unbounded process exhausted memory in run 44573956115.
+ },900000);
+});

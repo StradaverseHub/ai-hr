@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 const ports = vi.hoisted(() => ({ unsafe: vi.fn(), record: vi.fn() }));
-vi.mock('../db/client', () => ({ client: { unsafe: ports.unsafe } }));
+vi.mock('../db/client', () => ({ client: { unsafe: ports.unsafe }, withPoolWork:(_lane:string,work:()=>unknown)=>work(),withSystemWork:(work:()=>unknown)=>work() }));
 vi.mock('../lib/internal-auth/record-store', () => ({ readRecord: ports.record }));
 import { loginPresentationTenantId, publicLoginPresentation } from '../lib/login-presentation-server';
 import { DEFAULT_LOGIN_PRESENTATION } from '../lib/login-presentation';

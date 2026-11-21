@@ -1,0 +1,605 @@
+"""Staging-only managed update. Bundle with the reviewed format and installer, hash-pin as root.
+No entry point or source imports: the private bundle supplies the reviewed modules.
+Drain before web installation; activate only after exact web source/build arrival.
+adopt-stopped replaces drain+activate only for a cleanly stopped prior worker without a managed receipt.
+"""
+import argparse
+import fcntl
+import hashlib
+from http.client import HTTPConnection
+import json
+import os
+from pathlib import Path
+import pwd
+import re
+import stat
+import sys
+import tempfile
+import time
+
+
+def digest(raw):
+    return hashlib.sha256(raw).hexdigest()
+
+
+def file_fence(base, *, failure_only=False):
+    guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
+    if guard is not None:guard.file_mutation(failure_only=failure_only)
+
+
+def publish(base,path,raw,mode,*,failure_only=False):
+    file_fence(base,failure_only=failure_only)
+    base.write_new(path,raw,mode)
+
+
+def healthy_web_state(base, source, build):
+    """Current service and bounded native DB health, bracketed by exact deployment identity."""
+    state = base.deployment_state(source, build)
+    base.command(['/usr/bin/systemctl', 'is-active', '--quiet', 'aihr'])
+    connection = HTTPConnection('127.0.0.1', 3000, timeout=8)
+    try:
+        connection.request('GET', '/health', headers={'Connection': 'close'})
+        response = connection.getresponse()
+        raw = response.read(4097)
+        base.check(response.status == 200 and len(raw) <= 4096 and json.loads(raw) == {'status': 'ok'}, 'current web health is not confirmed')
+    finally:
+        connection.close()
+    base.check(base.deployment_state(source, build) == state, 'web identity changed during health verification')
+    base.command(['/usr/bin/systemctl', 'is-active', '--quiet', 'aihr'])
+    return state
+
+
+SERVICE_PROPERTY_FIELDS = ['User','Group','WorkingDirectory','FragmentPath','DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','Environment','EnvironmentFiles','PassEnvironment','RootDirectory','RootImage','PAMName','MainPID','NRestarts','ActiveState','SubState','Restart','NeedDaemonReload','ExecStart','Result','ExecMainCode','ExecMainStatus','SendSIGKILL','UnitFileState']
+
+
+def properties(base):
+    # One complete systemd observation: never combine two different transition instants.
+    raw = base.command(['/usr/bin/systemctl', 'show', 'aihr-bank-import.service', '--no-pager',
+                        *['--property=' + field for field in SERVICE_PROPERTY_FIELDS]]).stdout
+    return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
+
+
+def drain_configuration(report):
+    # ExecStart has a fixed command prefix followed by systemd's changing exit metadata.
+    # The complete original value is still retained and must match in the terminal pair.
+    runtime = {'MainPID','ActiveState','SubState','Result','ExecMainCode','ExecMainStatus'}
+    result = {key:value for key,value in report.items() if key not in runtime}
+    if 'ExecStart' in result:
+        result['ExecStart'] = result['ExecStart'].partition('; start_time=')[0]
+    return result
+
+
+def validate_existing(base, source, unit_hash, env_hash, receipt_env_hash=None):
+    """The current environment always equals env_hash. The prior receipt records env_hash too, unless the operator pins
+    receipt_env_hash (--previous-worker-env-sha256): the reviewed sha recorded before a key was added after activation."""
+    release = base.ROOT / 'releases' / source
+    for path in (base.UNIT, base.ENV, release / 'worker-install-v2.json'):
+        base.root_protected(path, regular=True)
+    base.check(digest(base.read_bounded(base.UNIT, 65536)) == unit_hash == digest(base.service_unit(source).encode()), 'reviewed prior unit differs')
+    base.check(digest(base.read_bounded(base.ENV, 1024**2)) == env_hash, 'protected worker environment differs')
+    record = json.loads(base.read_bounded(release / 'worker-install-v2.json', 65536))
+    base.check(record.get('source') == source and record.get('unitSha256') == unit_hash and
+               record.get('selectedEnvironmentSha256') == (env_hash if receipt_env_hash is None else receipt_env_hash) and
+               record.get('serviceStable') is True, 'prior managed installation receipt differs')
+    report = properties(base)
+    base.validate_service(report, release)
+    base.check(report.get('Restart') == 'on-failure' and report.get('NeedDaemonReload') == 'no', 'loaded prior service is not the reviewed configuration')
+    return report
+
+
+OVERRIDE_KEYS = ('DropInPaths', 'ExecStartPre', 'ExecStartPost', 'ExecStop', 'ExecStopPost', 'ExecCondition',
+                 'PassEnvironment', 'RootDirectory', 'RootImage', 'PAMName')
+
+
+def unit_or_identity_processes(uid):
+    """Every live PID running as the worker identity (any of real/effective/saved/fs UID) or inside the unit's cgroup.
+    A process that exits during the scan is gone; any other unreadable process refuses the adoption.
+    """
+    found = []
+    for entry in sorted(Path('/proc').iterdir(), key=lambda item: item.name):
+        if not entry.name.isdigit():
+            continue
+        try:
+            status = (entry / 'status').read_bytes()
+            groups = (entry / 'cgroup').read_bytes()
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        uids = next((line.split()[1:] for line in status.splitlines() if line.startswith(b'Uid:')), None)
+        if not uids:
+            raise ValueError('Worker adoption refused: process identity is unreadable')
+        unit = b'/aihr-bank-import.service'
+        if str(uid).encode() in uids or any(line.endswith(unit) or unit + b'/' in line for line in groups.splitlines()):
+            found.append(int(entry.name))
+    return found
+
+
+def stopped_runtime(base):
+    fields = ['ControlGroup', 'ExecMainPID', 'ExecMainExitTimestamp', 'InactiveEnterTimestamp']
+    raw = base.command(['/usr/bin/systemctl', 'show', 'aihr-bank-import.service', '--no-pager',
+                        *['--property=' + field for field in fields]]).stdout
+    return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
+
+
+def validate_stopped_prior(base, source, unit_hash, env_hash):
+    """adopt-stopped only: a cleanly exited prior worker installed before managed receipts existed.
+    The operator's observed unit hash pins it instead of a unit re-rendered from the current template.
+    Refuses an active, failed, restarting or reloaded unit and any live unit/identity process.
+    """
+    release = base.ROOT / 'releases' / source
+    for path in (base.UNIT, base.ENV):
+        base.root_protected(path, regular=True)
+    receipt = release / 'worker-install-v2.json'
+    base.check(not receipt.exists() and not receipt.is_symlink(), 'prior worker has a managed receipt; use drain and activate')
+    base.check(digest(base.read_bounded(base.UNIT, 65536)) == unit_hash, 'observed prior unit differs')
+    base.check(digest(base.read_bounded(base.ENV, 1024**2)) == env_hash, 'protected worker environment differs')
+    try:
+        identity = pwd.getpwnam(base.USER)
+    except KeyError:
+        identity = None
+    base.check(identity is not None and identity.pw_uid > 0, 'existing dedicated worker identity required')
+    report = properties(base)
+    for key, wanted in {'User': base.USER, 'Group': base.USER, 'WorkingDirectory': str(release), 'FragmentPath': str(base.UNIT),
+                        'EnvironmentFiles': str(base.ENV) + ' (ignore_errors=no)'}.items():
+        base.check(report.get(key) == wanted, 'prior worker service configuration differs: ' + key)
+    for key in OVERRIDE_KEYS:
+        # systemd 255 omits an unset Exec*/override property from `systemctl show --property=`; absent means unset.
+        base.check(report.get(key, '') == '', 'unreviewed prior service override: ' + key)
+    base.check(report.get('Restart') == 'on-failure' and report.get('NeedDaemonReload') == 'no' and
+               report.get('UnitFileState') == 'enabled', 'loaded prior service is not the observed configuration')
+    base.check(report.get('ActiveState') == 'inactive' and report.get('SubState') == 'dead' and report.get('MainPID') == '0',
+               'prior worker is not stopped')
+    base.check(report.get('Result') == 'success' and report.get('ExecMainStatus') == '0', 'prior worker did not exit cleanly')
+    runtime = stopped_runtime(base)
+    base.check(runtime.get('ControlGroup') == '', 'systemd still tracks a prior worker control group')
+    live = unit_or_identity_processes(identity.pw_uid)
+    base.check(not live, 'a live process remains for the prior worker unit or identity')
+    return {'state': 'stopped', 'forcedKill': False, 'properties': report, 'runtime': runtime, 'livePids': live}
+
+
+def staging_database(base, value, role):
+    """installer_v2's approved local staging database check; parse errors are converted outside the handler so no
+    traceback can carry the URI."""
+    config = None
+    try:
+        config = base.database_config(value, role)
+    except ValueError:
+        pass
+    base.check(config is not None, 'protected worker environment database URI is not the approved staging database (value withheld)')
+    return config
+
+
+def reviewed_environment(base, pinned):
+    """Only with --previous-worker-env-sha256, before anything is written: the changed protected environment keeps
+    installer_v2's closed format (one KEY=<JSON string> line per key, as it writes them), reviewed keys only, the approved
+    staging database roles on one endpoint and root-protected TLS files. Messages never include keys or values."""
+    raw = base.read_bounded(base.ENV, 1024**2)
+    base.check(digest(raw) == pinned, 'protected worker environment differs')
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        text = None
+    base.check(text is not None, 'protected worker environment is not UTF-8')
+    environment = {}
+    for line in text.split('\n'):
+        if line == '':
+            continue
+        key, separator, encoded = line.partition('=')
+        try:
+            value = json.loads(encoded) if separator and re.fullmatch('[A-Z_][A-Z0-9_]*', key) else None
+        except ValueError:
+            value = None
+        base.check(isinstance(value, str) and encoded == json.dumps(value, ensure_ascii=False),
+                   'protected worker environment has unreviewed syntax (values withheld)')
+        base.check(key in base.ENV_KEYS, 'protected worker environment has an unreviewed key (values withheld)')
+        base.check(key not in environment, 'protected worker environment repeats a key')
+        base.check(len(value) <= 65536 and not any(ord(c) < 32 or ord(c) == 127 for c in value),
+                   'protected worker environment has an unreviewed value (values withheld)')
+        environment[key] = value
+    base.check('DATABASE_URL' in environment and 'MIGRATION_DATABASE_URL' in environment, 'protected worker environment lacks a database URL')
+    app = staging_database(base, environment['DATABASE_URL'], 'ai_hr_app')
+    owner = staging_database(base, environment['MIGRATION_DATABASE_URL'], 'ai_hr_owner')
+    base.check((app['PGHOST'], app['PGPORT'], app['PGDATABASE']) == (owner['PGHOST'], owner['PGPORT'], owner['PGDATABASE']),
+               'app and owner URLs must target the same approved staging database')
+    for key in ('NODE_EXTRA_CA_CERTS', 'PGSSLROOTCERT', 'PGSSLCERT', 'PGSSLKEY'):
+        for path in sorted({environment.get(key), app.get(key), owner.get(key)} - {None, ''}):
+            base.root_protected(path, regular=True)
+
+
+def validate_process(base, report, source):
+    identity = pwd.getpwnam(base.USER)
+    pid = int(report.get('MainPID', '0'))
+    base.check(pid > 0 and report.get('ActiveState') == 'active' and report.get('SubState') == 'running', 'worker is not active')
+    process = Path('/proc') / str(pid)
+    base.check(process.stat().st_uid == identity.pw_uid and
+               (process / 'cwd').resolve() == base.ROOT / 'releases' / source, 'live worker identity/source differs')
+    base.check(base.read_bounded(process / 'cmdline', 65536).split(b'\0')[:-1] ==
+               [str(base.NODE).encode(), b'--import', b'tsx', b'scripts/bank-import-runner.ts'], 'live worker command differs')
+    raw = base.read_bounded(base.ENV, 1024**2).decode()
+    environment = dict((key, json.loads(value)) for line in raw.splitlines() if line for key, value in [line.split('=', 1)])
+    base.check(set(environment) <= base.ENV_KEYS, 'unreviewed worker environment key')
+    actual = dict(item.split(b'=', 1) for item in base.read_bounded(process / 'environ', 1024**2).split(b'\0') if b'=' in item)
+    base.check(all(actual.get(key.encode()) == value.encode() for key, value in environment.items()), 'live worker environment differs')
+    base.check(not any(key.encode() in actual for key in ('NODE_OPTIONS', 'NODE_PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'PYTHONPATH')), 'unexpected worker loader environment')
+    return pid
+
+
+def drain(base, initial, previous):
+    """Require a clean, non-restarting exit and two identical complete terminal observations.
+    All observations share the original 330-second deadline; no stop/disable/force-kill fallback.
+    """
+    pid = validate_process(base, initial, previous)
+    fresh = properties(base)
+    base.check(fresh == initial, 'service changed before managed drain')
+    base.command(['/usr/bin/systemctl', 'kill', '--kill-whom=main', '--signal=SIGTERM', 'aihr-bank-import.service'])
+    deadline = time.monotonic() + 330
+    original_deadline = getattr(base, 'VERIFIED_OPERATION_DEADLINE', None)
+    base.VERIFIED_OPERATION_DEADLINE = min(deadline, original_deadline) if original_deadline is not None else deadline
+    terminal = None
+    observations = [initial]
+    outcome = 'refused'
+    try:
+        while time.monotonic() < deadline:
+            report = properties(base)
+            base.check(time.monotonic() < deadline, 'drain observation deadline exceeded')
+            observations.append(report)
+            base.check(len(observations) <= 168, 'drain observation bound exceeded')
+            base.validate_service(report, base.ROOT / 'releases' / previous)
+            base.check(report.get('NRestarts') == initial.get('NRestarts'), 'worker restarted during drain')
+            current = int(report.get('MainPID', '0'))
+            base.check(current in (0, pid), 'worker PID changed during drain')
+            base.check(drain_configuration(report) == drain_configuration(initial), 'service configuration changed during drain')
+            if current == 0:
+                base.check(report.get('Result') == 'success' and report.get('ExecMainStatus') == '0', 'worker did not exit successfully')
+            dead = current == 0 and report.get('ActiveState') == 'inactive' and report.get('SubState') == 'dead'
+            if terminal is not None:
+                base.check(dead, 'worker did not remain drained')
+            if dead:
+                if terminal == report:
+                    outcome = 'stable'
+                    return {'pid': pid, 'state': 'drained', 'forcedKill': False}
+                terminal = report
+            else:
+                base.check(report.get('ActiveState') in ('active', 'activating', 'deactivating'), 'worker drain entered an unexpected state')
+            if deadline - time.monotonic() < 2:
+                raise RuntimeError('Worker drain deadline reached before complete stability interval')
+            time.sleep(2)
+        raise RuntimeError('Worker drain deadline reached; retain prior unit and packages, inspect current process before proceeding')
+    finally:
+        base.VERIFIED_OPERATION_DEADLINE = original_deadline
+        # Bounded real observations, not a receipt. Service Environment is fixed nonsecret unit settings.
+        print(json.dumps({'kind':'WORKER_DRAIN_OBSERVATIONS_NOT_RECEIPT','outcome':outcome,'reports':observations}), file=sys.stderr)
+
+
+def atomic_unit(base, raw, expected_prior):
+    base.root_protected(base.UNIT.parent)
+    base.check(digest(base.read_bounded(base.UNIT, 65536)) == expected_prior, 'unit changed before atomic replacement')
+    fd, name = tempfile.mkstemp(prefix='.aihr-worker-update-', dir=base.UNIT.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            os.fchmod(stream.fileno(), 0o644)
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
+        file_fence(base,failure_only=bool(guard and guard.quarantine))
+        os.replace(name, base.UNIT)
+        directory = os.open(base.UNIT.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def quiesce_failed_activation(base, operation, source, failure=None):
+    """Quarantine only this updater's exact candidate unit; never restore an old worker.
+    Persist failure evidence, prevent automatic starts, and drain without forced termination.
+    If any protection cannot be established, report uncertainty and require administrator recovery.
+    """
+    result = {'source': source, 'accepted': False, 'stopped': False, 'disabled': False, 'forcedKill': False}
+    if failure is not None:result['failure']=failure
+    candidate = base.service_unit(source).encode()
+    try:
+        publish(base,operation / 'activation-failed.json', json.dumps(result, sort_keys=True).encode(), 0o400,failure_only=True)
+    except Exception:
+        result['failureRecordUnavailable'] = True
+    try:
+        quarantine = base.service_unit(source).replace('Restart=on-failure\n', 'Restart=no\nSendSIGKILL=no\n').encode()
+        atomic_unit(base, quarantine, digest(candidate))
+        base.command(['/usr/bin/systemctl', 'daemon-reload'])
+        report = properties(base)
+        base.validate_service(report, base.ROOT / 'releases' / source)
+        base.check(report.get('Restart') == 'no' and report.get('SendSIGKILL') == 'no' and
+                   report.get('NeedDaemonReload') == 'no', 'failure quarantine is not loaded; do not arm a timed stop')
+        try:
+            base.command(['/usr/bin/systemctl', 'disable', 'aihr-bank-import.service'])
+        except Exception:
+            result['disableRequestFailed'] = True
+        # A boot-enable error must not leave rejected work running. Recheck stop protection
+        # independently, then request the graceful stop even if disabling was uncertain.
+        report = properties(base)
+        base.validate_service(report, base.ROOT / 'releases' / source)
+        base.check(report.get('Restart') == 'no' and report.get('SendSIGKILL') == 'no' and
+                   report.get('NeedDaemonReload') == 'no', 'failure quarantine changed before stop')
+        try:
+            base.command(['/usr/bin/systemctl', 'stop', '--no-block', 'aihr-bank-import.service'])
+        except Exception:
+            result['stopRequestFailed'] = True
+        deadline = time.monotonic() + 330
+        while time.monotonic() < deadline:
+            report = properties(base)
+            base.validate_service(report, base.ROOT / 'releases' / source)
+            base.check(report.get('Restart') == 'no' and report.get('SendSIGKILL') == 'no', 'failure quarantine changed')
+            result['disabled'] = report.get('UnitFileState') == 'disabled'
+            if report.get('MainPID') == '0' and report.get('ActiveState') in ('inactive', 'failed'):
+                result['stopped'] = True
+                if not result['disabled']:
+                    result['quiescenceUnconfirmed'] = True
+                break
+            time.sleep(2)
+    except Exception:
+        result['quiescenceUnconfirmed'] = True
+    try:
+        guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
+        if guard is not None and result['stopped']:
+            guard.observer.publish_stopped_failure_observation(result,properties)
+        else:
+            publish(base,operation / 'activation-failure-observation.json', json.dumps(result, sort_keys=True).encode(), 0o400,failure_only=True)
+    except Exception:
+        result['observationUnavailable'] = True
+    return result
+
+
+def stage_release(base, fmt, archive, operation, args, manifest):
+    """Extract authenticated bytes into a new immutable release; shared by activate and adopt-stopped."""
+    staged = operation / 'activation-release'
+    file_fence(base)
+    staged.mkdir(mode=0o700)
+    fmt.extract_archive(archive, staged, args.source, args.lock_sha256, args.package_sha256)
+    entries = {row['path']: row for row in manifest['entries']}
+    for path in staged.rglob('*'):
+        if not path.is_symlink():
+            os.chmod(path, 0o755 if path.is_dir() else entries[path.relative_to(staged).as_posix()]['mode'])
+    os.chmod(staged, 0o755)
+    release = base.ROOT / 'releases' / args.source
+    base.root_protected(release.parent)
+    base.check(not release.exists() and not release.is_symlink(), 'immutable destination already exists')
+    file_fence(base)
+    os.rename(staged, release)
+    return release
+
+
+def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha256, receipt, ci_observer=None, prepare_release=None, enable_after_verification=False):
+    """Atomic current-template unit, reload, start, three stable observations, receipt; quarantine on any failure.
+    Shared by activate and adopt-stopped; only the pinned prior unit hash and receipt provenance differ.
+    """
+    try:
+        if ci_observer:
+            ci_observer.slot('M0',45)
+        if prepare_release is not None:release=prepare_release()
+        atomic_unit(base, base.service_unit(args.source).encode(), prior_unit_sha256)
+        base.command(['/usr/bin/systemctl', 'daemon-reload'])
+        base.validate_service(properties(base), release)
+        if ci_observer:
+            ci_observer.complete_fence()  # F3: reload -> start
+            ci_observer.slot('M1',45)
+        try:
+            base.command(['/usr/bin/systemctl', 'start', 'aihr-bank-import.service'])
+        finally:
+            if ci_observer and ci_observer.guard.start_sent:
+                try:ci_observer.record_started(properties(base))
+                except Exception:pass  # No ownership evidence means NO conditional quarantine permission.
+        if ci_observer:
+            ci_observer.complete_fence()  # F4: exact owned start captured
+        stable_pid = None
+        for _ in range(3):
+            if ci_observer:ci_observer.slot('W/F'+str(_+1),24)
+            time.sleep(4)
+            report = properties(base)
+            base.validate_service(report, release)
+            base.check(report.get('NRestarts') == '0' and report.get('NeedDaemonReload') == 'no', 'updated service is not stable')
+            pid = validate_process(base, report, args.source)
+            if ci_observer:ci_observer.assert_owned_worker(report)
+            base.check(stable_pid in (None, pid), 'updated worker PID changed')
+            stable_pid = pid
+            if ci_observer:
+                ci_observer.complete_fence(shared_stability_deadline=True)  # F5/F6/F7, SAME absolute24s end includes sleep
+        if ci_observer:
+            ci_observer.content_audit()  # S1
+            ci_observer.complete_fence()  # F8
+            ci_observer.full_audit()  # A1: failure is fatal, no retry/fallback
+            ci_observer.complete_fence()  # F9
+            ci_observer.slot('receipt',15)
+            receipt = {**receipt, **ci_observer.receipt()}
+        else:
+            base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before worker acceptance')
+        base.check(digest(base.read_bounded(base.ENV, 1024**2)) == args.worker_env_sha256, 'worker environment changed during activation')
+        if enable_after_verification:
+            # Published recovery starts from a disabled quarantine. Arm boot only
+            # AFTER the full graph passes; any failure still has exact owned-PID
+            # quarantine authority, including disabling again. Never arm pre-start.
+            base.check(ci_observer is not None and ci_observer.guard.stage=='recover-published-ci-runtime',
+                       'boot enablement requires explicit published recovery')
+            ci_observer.check_slot()
+            base.command(['/usr/bin/systemctl','enable','aihr-bank-import.service'])
+            report=properties(base);base.validate_service(report,release);ci_observer.assert_owned_worker(report)
+            base.check(report.get('UnitFileState')=='enabled' and report.get('NeedDaemonReload')=='no' and
+                       report.get('Restart')=='on-failure','verified published worker boot enablement failed')
+            ci_observer.check_slot();receipt={**receipt,'workerBootEnabled':True}
+        accepted = {**receipt, 'source': args.source, 'webBuildId': args.build_id, 'archiveSha256': args.archive_sha256,
+                    'selectedEnvironmentSha256': args.worker_env_sha256,
+                    'unitSha256': digest(base.service_unit(args.source).encode()), 'workerPid': stable_pid,
+                    'serviceStable': True, 'journeyVerified': False}
+        publish(base,release / 'worker-install-v2.json', fmt.canonical(accepted), 0o444)
+        publish(base,operation / 'activated.json', fmt.canonical(accepted), 0o400)
+        print(json.dumps(accepted))
+        return accepted
+    except Exception as error:
+        # Includes replacement/fsync, reload/start, process proof and receipt persistence failures.
+        # Quarantine refuses any foreign/unchanged unit rather than touching another release.
+        failure=ci_observer.failure_summary(error)if ci_observer else None
+        if failure is not None:
+            print(json.dumps({'kind':'WORKER_ACTIVATION_FAILURE_CAUSE','failure':failure}),file=sys.stderr,flush=True)
+        if ci_observer:
+            try:
+                ci_observer.failure_deadline(30)
+                ci_observer.authorize_quarantine()
+                ci_observer.failure_deadline(330)
+                observed=quiesce_failed_activation(base,operation,args.source,failure=failure)
+            except Exception:
+                observed={'source':args.source,'accepted':False,'stopped':False,'disabled':False,'forcedKill':False,'quiescenceUnconfirmed':True,'ownedProcessQuarantineRefused':True}
+            finally:ci_observer.guard.quarantine=False
+        else:
+            observed = quiesce_failed_activation(base, operation, args.source)
+        print(json.dumps({'workerActivationFailed': True, **observed}), file=sys.stderr)
+        raise RuntimeError('Worker activation failed; retained packages and protected failure observations require explicit administrator recovery') from None
+
+
+def adopt_stopped(base, fmt, args, operation, identity):
+    """Staging-only replacement for drain+activate when the prior worker is already cleanly stopped and has no
+    managed receipt. It never signals, kills, restores or deletes the prior worker, its release or its records.
+    """
+    state = healthy_web_state(base, args.source, args.build_id)
+    prior = validate_stopped_prior(base, args.previous_worker_source, args.observed_unit_sha256, args.worker_env_sha256)
+    base.check(not operation.exists() and not operation.is_symlink(), 'existing update attempt needs separate recovery review')
+    operation.mkdir(mode=0o700)
+    # The adopted unit cannot be re-rendered from any reviewed template; retain its exact bytes for recovery.
+    prior_unit = base.read_bounded(base.UNIT, 65536)
+    base.check(digest(prior_unit) == args.observed_unit_sha256, 'observed prior unit differs')
+    base.write_new(operation / 'prior-unit.service', prior_unit, 0o400)
+    archive = operation / 'authenticated-worker.zip'
+    base.snapshot_archive(args.archive, archive, args.archive_sha256, fmt.MAX_ARCHIVE)
+    manifest = fmt.inspect_archive(archive, args.source, args.lock_sha256, args.package_sha256)
+    manifest_sha256 = fmt.digest(fmt.canonical(manifest))
+    base.write_new(operation / 'stopped-prior.json', fmt.canonical({'identity': identity, 'manifestSha256': manifest_sha256, 'prior': prior}), 0o400)
+    release = stage_release(base, fmt, archive, operation, args, manifest)
+    base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before activation')
+    # Re-verify the pinned unit, environment and stopped state immediately before replacement.
+    base.check(validate_stopped_prior(base, args.previous_worker_source, args.observed_unit_sha256, args.worker_env_sha256) == prior,
+               'prior worker changed before unit replacement')
+    replace_and_start(base, fmt, args, operation, release, state, args.observed_unit_sha256,
+                      {'manifestSha256': manifest_sha256, 'mode': 'adopt-stopped', 'previousWorkerSource': args.previous_worker_source,
+                       'previousUnitSha256': args.observed_unit_sha256,
+                       'priorObservationSha256': fmt.digest(fmt.canonical(prior))})
+
+
+def upgrade(argv, fmt, base, ci=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('phase', choices=['drain', 'activate', 'adopt-stopped', 'activate-ci-runtime'])
+    common = ('previous-worker-source', 'source', 'build-id', 'archive', 'archive-sha256', 'lock-sha256', 'package-sha256', 'worker-env-sha256')
+    managed = ('previous-web-source', 'previous-web-build', 'unit-sha256')
+    adopted = ('observed-unit-sha256',)
+    for name in common + managed + adopted:
+        parser.add_argument('--' + name)
+    # Optional, drain/activate only: the env sha the prior receipt records, when a reviewed key was added after activation.
+    parser.add_argument('--previous-worker-env-sha256')
+    parser.add_argument('--ci-runtime-authorization')
+    parser.add_argument('--ci-runtime-authorization-sha256')
+    args = parser.parse_args(argv)
+    conditional = args.phase == 'activate-ci-runtime'
+    for name in ('ci_runtime_authorization','ci_runtime_authorization_sha256'):
+        base.check((getattr(args,name) is not None) == conditional, 'CI runtime authority flags belong only to activate-ci-runtime')
+    if conditional:
+        base.check(ci is not None and re.fullmatch('[a-f0-9]{64}', args.ci_runtime_authorization_sha256 or ''), 'reviewed bundled CI runtime observer and authorization hash required')
+        ci.require_operation_guard(base)
+    adopt = args.phase == 'adopt-stopped'
+    rebind = args.previous_worker_env_sha256
+    for name in common + (adopted if adopt else managed):
+        base.check(getattr(args, name.replace('-', '_')) is not None, '--' + name + ' is required for ' + args.phase)
+    for name in (managed + ('previous-worker-env-sha256',)) if adopt else adopted:
+        base.check(getattr(args, name.replace('-', '_')) is None, '--' + name + ' is not part of ' + args.phase)
+    base.check(os.geteuid() == 0, 'root must run the independently hash-pinned self-contained bundle with Python -I')
+    for value in ((args.previous_worker_source, args.source) if adopt else (args.previous_web_source, args.previous_worker_source, args.source)):
+        base.check(re.fullmatch('[a-f0-9]{40}', value or ''), 'exact sources required')
+    base.check(args.previous_worker_source != args.source, 'update requires a different worker source')
+    for value in ((args.build_id,) if adopt else (args.previous_web_build, args.build_id)):
+        base.check(re.fullmatch('[A-Za-z0-9_-]{1,160}', value or ''), 'exact builds required')
+    pinned = (args.observed_unit_sha256,) if adopt else (args.unit_sha256,)
+    for value in (args.archive_sha256, args.lock_sha256, args.package_sha256, *pinned, args.worker_env_sha256,
+                  *(() if rebind is None else (rebind,))):
+        base.check(re.fullmatch('[a-f0-9]{64}', value or ''), 'independently authenticated digests required')
+    base.check(rebind != args.worker_env_sha256, 'omit --previous-worker-env-sha256 when the environment is unchanged')
+    base.root_protected(base.NODE, regular=True)
+    base.check(base.command([str(base.NODE), '--version']).stdout.strip() == 'v22.23.3', 'reviewed worker runtime required')
+    lock = base.install_lock_directory() / 'install.lock'
+    fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    info = os.fstat(fd)
+    base.check(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1 and not info.st_mode & 0o077, 'private administrator lock required')
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
+        if guard is not None:guard.bind_install(fd,lock)
+        base.root_protected(base.ROOT)
+        operations = base.ROOT / 'upgrades'
+        if not operations.exists():
+            file_fence(base)
+            operations.mkdir(mode=0o700)
+        base.root_protected(operations)
+        operation = operations / args.source
+        identity = {name.replace('-', '_'): getattr(args, name.replace('-', '_')) for name in common + (adopted if adopt else managed)}
+        if rebind is not None:
+            # Bound into the drain record only when given, so records of unchanged-environment updates keep their bytes.
+            identity['previous_worker_env_sha256'] = rebind
+        if adopt:
+            adopt_stopped(base, fmt, args, operation, identity)
+            return
+        if args.phase == 'drain':
+            state = healthy_web_state(base, args.previous_web_source, args.previous_web_build)
+            report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256, rebind)
+            if rebind is not None:
+                reviewed_environment(base, args.worker_env_sha256)
+            base.check(not operation.exists() and not operation.is_symlink(), 'existing update attempt needs separate recovery review')
+            file_fence(base)
+            operation.mkdir(mode=0o700)
+            archive = operation / 'authenticated-worker.zip'
+            file_fence(base)
+            base.snapshot_archive(args.archive, archive, args.archive_sha256, fmt.MAX_ARCHIVE)
+            staged = operation / 'release'
+            file_fence(base)
+            staged.mkdir(mode=0o700)
+            manifest = fmt.extract_archive(archive, staged, args.source, args.lock_sha256, args.package_sha256)
+            base.check(healthy_web_state(base, args.previous_web_source, args.previous_web_build) == state, 'web baseline changed before drain')
+            base.check(validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256, rebind) == report,
+                       'worker changed during preparation')
+            result = drain(base, report, args.previous_worker_source)
+            publish(base,operation / 'drained.json', fmt.canonical({'identity': identity, 'manifestSha256': fmt.digest(fmt.canonical(manifest)), 'drain': result}), 0o400)
+            print(json.dumps({'source': args.source, **result}))
+            return
+        base.root_protected(operation)
+        base.root_protected(operation / 'drained.json', regular=True)
+        drain_bytes = base.read_bounded(operation / 'drained.json', 65536)
+        record = json.loads(drain_bytes)
+        base.check(record.get('identity') == identity and record.get('drain', {}).get('state') == 'drained', 'exact drain record required')
+        if conditional:
+            base.check(not (operation / 'ci-runtime-started.json').exists() and not (operation / 'ci-runtime-started.json').is_symlink(), 'existing CI runtime attempt needs separate recovery review')
+        observer = ci.RuntimeObservation(base, fmt, args, operation, drain_bytes) if conditional else None
+        state = None if observer else healthy_web_state(base, args.source, args.build_id)
+        if observer:
+            publish(base,operation / 'ci-runtime-started.json', fmt.canonical({'authorizationSha256': digest(observer.bytes), 'journeyVerified': False}), 0o400)
+        report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256, rebind)
+        if rebind is not None:
+            reviewed_environment(base, args.worker_env_sha256)
+        base.check(report.get('MainPID') == '0' and report.get('ActiveState') == 'inactive', 'prior worker is not drained')
+        archive = operation / 'authenticated-worker.zip'
+        base.root_protected(archive, regular=True)
+        base.check(digest(base.read_bounded(archive, fmt.MAX_ARCHIVE)) == args.archive_sha256, 'prepared package changed')
+        manifest = fmt.inspect_archive(archive, args.source, args.lock_sha256, args.package_sha256)
+        base.check(fmt.digest(fmt.canonical(manifest)) == record.get('manifestSha256'), 'prepared manifest changed')
+        # Re-extract authenticated bytes instead of trusting an earlier unpacked tree.
+        release = stage_release(base, fmt, archive, operation, args, manifest)
+        if observer:
+            observer.complete_fence()  # F0
+            observer.content_audit()  # S0
+            observer.complete_fence()  # F1
+            observer.full_audit()  # A0: genuine owner byte proof BEFORE unit/service mutation
+            observer.complete_fence()  # F2
+            observer.admit_mutation()
+        else:
+            base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before activation')
+        replace_and_start(base, fmt, args, operation, release, state, args.unit_sha256,
+                          {'manifestSha256': record['manifestSha256'], 'previousWebSource': args.previous_web_source,
+                           'previousWebBuildId': args.previous_web_build, 'previousWorkerSource': args.previous_worker_source}, observer)
+    finally:
+        os.close(fd)

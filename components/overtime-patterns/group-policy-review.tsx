@@ -33,6 +33,8 @@ export function OvertimeGroupPolicyReview({companies,groups,companyId,groupId,re
   ['unclocked',yes(p.overtime.allowBackdatedWithoutClock)],['midnight',yes(p.overtime.splitAtMidnight)],['lateOffset',yes(p.overtime.offsetLateness)],
   ['approval',t(`approvals.${p.overtime.approval}`)],['autoMethod',t(`methods.${p.overtime.autoMethod}`)],
   ['rounding',p.overtime.rounding.mode==='none'?t('roundings.none'):t('roundingStep',{mode:t(`roundings.${p.overtime.rounding.mode}`),count:p.overtime.rounding.step!})],
+  // 87bd9656 — absent means the Overtime Backdate Control is off.
+  ['backdate',p.overtime.backdateLimitDays===undefined?t('off'):t('backdateDays',{count:p.overtime.backdateLimitDays})],
  ]:[];
  const details=(rows:string[][])=><dl className="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">{rows.map(([key,value])=><div key={key}><dt className="text-sm text-muted-foreground">{t(`fields.${key}`)}</dt><dd className="mt-1 text-sm font-medium">{value}</dd></div>)}</dl>;
  return <section id="group-policy-review" aria-labelledby="group-policy-review-title" className="space-y-4 scroll-mt-6">

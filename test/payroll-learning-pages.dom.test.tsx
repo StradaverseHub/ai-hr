@@ -92,7 +92,7 @@ vi.mock('../core/payroll-learning/evidence',()=>({
 vi.mock('../core/payroll-learning/status',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll-learning/status')>()),
  learnedThisCycle:async()=>{state.reads.push('learned');return state.learned;}}));
 vi.mock('../db/client',async importOriginal=>({...(await importOriginal<typeof import('../db/client')>()),withTenant:async(_s:unknown,fn:(tx:unknown)=>unknown)=>fn({})}));
-vi.mock('../core/payroll',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll')>()),batchDetail:async()=>({id:'00000000-0000-4000-8000-0000000000b1'})}));
+vi.mock('../core/payroll',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll')>()),batchHeader:async()=>({id:'00000000-0000-4000-8000-0000000000b1'})}));
 vi.mock('../core/payroll-anomaly',async importOriginal=>({...(await importOriginal<typeof import('../core/payroll-anomaly')>()),
  anomalyQueue:async()=>fx.queue,
  anomalyMetrics:async()=>({total:2,autoClearRate:0,coverage:1,flaggedPerThousand:1000,unresolvedFlagged:2,block:0,review:2}),

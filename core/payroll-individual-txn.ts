@@ -1,4 +1,8 @@
-import {payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-employment-eligibility';
+import { isTxnUnit } from '../lib/payroll-transaction-units';
+import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
+import {individualTxnPricingMarkerTx,priceIndividualTxnInputTx,type IndividualCalculationMethod} from '../packs/payroll/individual-calculation';
+import { assertPayComponentCompaniesTx } from './pay-component-company';
+import {payrollEmploymentEnd,payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 /**
  * 1.2.2 Individual Transaction (ADR-0056, amended by f1564110 Phase 2) — a pure dated one-off payroll
  * transaction ledger.
@@ -24,7 +28,7 @@ import {payrollEmploymentPredicate,type PayrollEligibilityRun} from './payroll-e
  * Substrate discipline: every write appends a DomainEvent. Payloads are redaction-safe (reference ids + kind,
  * no cleartext amounts — ADR-0030 Layer-0 precedent, mirroring setEmploymentPayComponent).
  */
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertPayComponentReady } from '../lib/pay-component-contract';
@@ -60,9 +64,7 @@ export type TxnKind = (typeof TXN_KINDS)[number];
 export const isTxnKind = (v: unknown): v is TxnKind => TXN_KINDS.includes(v as TxnKind);
 
 /** The descriptive unit set for `quantity` (validated app-side; mirrors the ROUNDING_METHODS pattern). */
-export const TXN_UNITS = ['amount', 'qty', 'hours', 'days', 'units'] as const;
-export type TxnUnit = (typeof TXN_UNITS)[number];
-export const isTxnUnit = (v: unknown): v is TxnUnit => TXN_UNITS.includes(v as TxnUnit);
+export { TXN_UNITS, isTxnUnit, type TxnUnit } from '../lib/payroll-transaction-units';
 
 /**
  * 4e403268 (0432) — WHERE a ledger line came from. Same shape as TXN_UNITS above and for the same reason:
@@ -123,6 +125,36 @@ export class InvalidTxnDateError extends Error {
   constructor(public readonly txnDate: string) {
     super('Enter a valid Effective Date in YYYY-MM-DD format.');
     this.name = 'InvalidTxnDateError';
+  }
+}
+
+/**
+ * ad6ed930 — the Effective Date is after the employee's last day (payrollEmploymentEnd: the earliest of termination,
+ * resignation and last working date). The Individual Transaction window caps its date picker there for convenience;
+ * this is the server's refusal, with the date, so the window can say "This employee left on …". `leftOn` is ISO.
+ */
+export class TxnAfterLeavingDateError extends Error {
+  constructor(public readonly employmentId: string, public readonly txnDate: string, public readonly leftOn: string) {
+    super(`This employee left on ${leftOn}. Choose an effective date on or before that day.`);
+    this.name = 'TxnAfterLeavingDateError';
+  }
+}
+
+/**
+ * ad6ed930 — refuse any (employment, Effective Date) pair dated after that employment's last day. One set-based read
+ * for the whole submission (no per-row query). Employments with no last day pass untouched.
+ */
+export async function assertTxnDatesWithinEmploymentTx(tx: Tx, employmentIds: readonly string[], txnDates: readonly string[]): Promise<void> {
+  if (employmentIds.length === 0 || txnDates.length === 0) return;
+  const latest = [...txnDates].sort()[txnDates.length - 1]!;
+  const rows = await tx
+    .select({ id: employment.id, leftOn: sql<string | null>`${payrollEmploymentEnd}::text` })
+    .from(employment)
+    .where(and(inArray(employment.id, [...employmentIds]), sql`${payrollEmploymentEnd} < ${latest}::date`));
+  for (const r of rows) {
+    if (!r.leftOn) continue;
+    const after = txnDates.filter((d) => d > r.leftOn!).sort()[0];
+    if (after) throw new TxnAfterLeavingDateError(r.id, after, r.leftOn);
   }
 }
 
@@ -503,6 +535,7 @@ export type IndividualTxnRow = {
   amount: string;
   quantity: string | null;
   unit: string | null;
+  calculationMethod?: IndividualCalculationMethod | null;
   notes: string | null;
 };
 
@@ -594,6 +627,7 @@ export function listIndividualTxns(ctx: SessionContext, p: { batchId: string }):
         amount: payrollIndividualTxn.amount,
         quantity: payrollIndividualTxn.quantity,
         unit: payrollIndividualTxn.unit,
+        calculationMethod: payrollIndividualTxn.calculationMethod,
         notes: payrollIndividualTxn.notes,
       })
       .from(payrollIndividualTxn)
@@ -620,6 +654,10 @@ export type IndividualTxnDetail = {
   amount: string;
   quantity: string | null;
   unit: string | null;
+  calculationMethod?: IndividualCalculationMethod | null;
+  /** 792053e5 pricing marker. Lets Edit tell a priced amount (quantity is the input) from a raw input; see
+   *  lib/pay-formula-input.ts. */
+  pricingSource?: string | null;
   notes: string | null;
   /** c11e81aa — the configured Pay Cycle this row was saved against, or null when it named none. The
    *  Edit form prefills its Pay Cycle from this; attach-on-generate routes the row by it. */
@@ -664,6 +702,8 @@ export function getIndividualTxn(ctx: SessionContext, p: { id: string }): Promis
         amount: payrollIndividualTxn.amount,
         quantity: payrollIndividualTxn.quantity,
         unit: payrollIndividualTxn.unit,
+        calculationMethod: payrollIndividualTxn.calculationMethod,
+        pricingSource: payrollIndividualTxn.pricingSource,
         notes: payrollIndividualTxn.notes,
         intendedCycleId: payrollIndividualTxn.intendedCycleId,
         batchStatus: payrollBatch.status,
@@ -730,6 +770,7 @@ export function createIndividualTxn(
     if (!emp || emp.companyId !== target.companyId) {
       throw new CompanyMismatchError(emp?.companyId ?? 'unknown', target.companyId);
     }
+    await assertPayComponentCompaniesTx(tx, ctx, [{componentId:p.componentId, employmentId:p.employmentId, effectiveDate:p.txnDate}]);
     const [row] = await tx
       .insert(payrollIndividualTxn)
       .values({
@@ -783,6 +824,7 @@ export type BulkTxnRow = {
   amount: number;
   quantity?: number | null;
   unit?: string | null;
+  calculationMethod?: IndividualCalculationMethod;
   notes?: string | null;
   componentId?: string | null;
   /** 4e403268 — one of TXN_SOURCES. Omitted / null means hand-keyed (see `txnSourceOf`); the day-by-day
@@ -1109,6 +1151,12 @@ export function createIndividualTxnsBulk(
      * is exactly what "Cancel writes nothing" has to mean for a Continue that could not be honoured.
      */
     widenScopeIfNeeded?: boolean;
+    /**
+     * ad6ed930 — refuse an Effective Date after the payee's last day (TxnAfterLeavingDateError). Set by the Individual
+     * Transaction window, whose date picker caps at that day; the server is the authority for it. Imports and back
+     * pay keep their existing rules (omitted ⇒ unchanged).
+     */
+    refuseAfterLeavingDate?: boolean;
   },
 ): Promise<{ ids: string[]; widenedEmploymentIds: string[] }> {
   return withTenant(ctx, (tx) => createIndividualTxnsBulkTx(tx, ctx, p));
@@ -1118,6 +1166,8 @@ export function createIndividualTxnsBulk(
 export async function createIndividualTxnsBulkTx(
   tx: Tx, ctx: SessionContext, p: Parameters<typeof createIndividualTxnsBulk>[1],
 ): Promise<{ ids: string[]; widenedEmploymentIds: string[] }> {
+    // Match generation's catalogue → period order; never upgrade a lock after owning the payroll period.
+    if(p.rows.some(row=>row.calculationMethod!==undefined))await lockPayComponentCatalogReadTx(tx,ctx);
     // De-dupe the selection defensively (a repeated employee would double-post the grid) and require ≥1 payee.
     const employmentIds = [...new Set(p.employmentIds)];
     if (employmentIds.length === 0) throw new EmptyEmployeeSelectionError();
@@ -1165,7 +1215,7 @@ export async function createIndividualTxnsBulkTx(
     const widenedEmploymentIds: string[] = [];
     // Validate every row BEFORE inserting any (fail fast) into a typed set — the transaction still guarantees
     // all-or-nothing if a later insert fails (e.g. numeric overflow), which the real-rollback test exercises (C8).
-    const validated: Array<{ kind: TxnKind; txnDate: string; amount: number; quantity?: number | null; unit?: string | null; notes?: string | null; componentId?: string | null; source?: string | null; sourceRef?: string | null }> = [];
+    const validated: Array<{ kind: TxnKind; txnDate: string; amount: number; quantity?: number | null; unit?: string | null; calculationMethod?: IndividualCalculationMethod; notes?: string | null; componentId?: string | null; source?: string | null; sourceRef?: string | null }> = [];
     const seenSignatures = new Set<string>();
     for (const r of p.rows) {
       if (!isTxnKind(r.kind)) throw new InvalidTxnKindError(r.kind);
@@ -1173,24 +1223,39 @@ export async function createIndividualTxnsBulkTx(
       // 4e403268 — validated with the same shape as `unit` above. Null is legal and means hand-keyed.
       if (r.source != null && !isTxnSource(r.source)) throw new InvalidTxnSourceError(r.source);
       assertTransactionDate(r.txnDate);
-      if (!(r.amount > 0)) throw new AmountNotPositiveError(r.amount); // C6 — magnitude semantics, all 5 kinds
+      if (r.calculationMethod!=='formula' && !(r.amount > 0)) throw new AmountNotPositiveError(r.amount); // C6 — magnitude semantics, all 5 kinds
       // Duplicate-record validation: reject a byte-for-byte identical row within the same submission (the
       // reporter's "validate duplicate records before submission"). Distinct amounts/remarks pass through; the
       // multi-employee cartesian below is NOT a duplicate (same grid, different payee).
       const sig = txnRowSignature(r);
       if (seenSignatures.has(sig)) throw new DuplicateTxnRowError(sig);
       seenSignatures.add(sig);
-      validated.push({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, quantity: r.quantity, unit: r.unit, notes: r.notes, componentId: r.componentId, source: r.source, sourceRef: r.sourceRef });
+      validated.push({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, quantity: r.quantity, unit: r.unit, calculationMethod: r.calculationMethod, notes: r.notes, componentId: r.componentId, source: r.source, sourceRef: r.sourceRef });
     }
     // Phase 3 — component picks validated in ONE query (exists / not archived / kind match); a new payable
     // (earning/deduction) row REQUIRES a component while INDIVIDUAL_TXN_PAY_ENABLED is on.
     await assertTxnComponents(tx, validated, individualTxnPayEnabled(ctx));
+    if (p.refuseAfterLeavingDate) await assertTxnDatesWithinEmploymentTx(tx, employmentIds, validated.map((r) => r.txnDate));
+
+    await assertPayComponentCompaniesTx(tx, ctx, employmentIds.flatMap(employmentId => validated.map(row => ({componentId:row.componentId,employmentId,effectiveDate:row.txnDate}))));
 
     // Cartesian insert: the validated grid is recorded once per selected employee. Outer loop = employees so
     // each row's subjectEmploymentId / payload employmentId names the right payee.
     const ids: string[] = [];
+    const pricingRules:Parameters<typeof individualTxnPricingMarkerTx>[3]=new Map();
     for (const eid of employmentIds) {
       for (const r of validated) {
+        const priced=r.calculationMethod===undefined?null:await priceIndividualTxnInputTx(tx,ctx,{
+          componentId:r.componentId??null,employmentId:eid,companyId:targetCompanyId,payPeriod,txnDate:r.txnDate,
+          quantity:r.quantity??null,unit:r.unit??null,amount:r.amount,method:r.calculationMethod,
+          cycleId:intendedCycleId,batchId:target.batchId,
+        });
+        if(priced&&!(priced.amount>0))throw new AmountNotPositiveError(priced.amount);
+        // 792053e5 — WHICH PRICING PRODUCED THIS AMOUNT, so processing an open run can re-price it with the latest
+        // saved formula. A typed amount is never marked; see individualTxnPricingMarkerTx.
+        const marker=await individualTxnPricingMarkerTx(tx,ctx,{componentId:r.componentId??null,employmentId:eid,companyId:targetCompanyId,payPeriod,txnDate:r.txnDate,
+          quantity:r.quantity??null,unit:r.unit??null,amount:priced?.amount??r.amount,calculationMethod:priced?.calculationMethod??null,
+          formulaRevisionId:priced&&'formulaRevisionId' in priced?priced.formulaRevisionId:null},pricingRules);
         const [row] = await tx
           .insert(payrollIndividualTxn)
           .values({
@@ -1202,7 +1267,9 @@ export async function createIndividualTxnsBulkTx(
             kind: r.kind,
             componentId: r.componentId ?? null,
             txnDate: r.txnDate,
-            amount: money(r.amount),
+            amount: money(priced?.amount??r.amount),
+            calculationMethod: priced?.calculationMethod??null,
+            ...marker,
             quantity: r.quantity != null ? money(r.quantity) : null,
             unit: r.unit ?? null,
             notes: r.notes ?? null,
@@ -1231,6 +1298,7 @@ export async function createIndividualTxnsBulkTx(
             // c11e81aa — WHICH RUN THIS ROW IS WAITING FOR, recorded at the moment the operator chose it.
             // A reference id, so it stays inside ADR-0030 Layer 0 exactly as componentId does.
             intendedCycleId,
+            ...(priced?.calculationMethod?{calculationMethod:priced.calculationMethod,...('formulaRevisionId' in priced?{formulaId:priced.formulaId,formulaRevisionId:priced.formulaRevisionId}:{})}:{}),
           },
         });
         ids.push(row.id);
@@ -1333,6 +1401,7 @@ export async function insertIndividualTxnsTx(
     if (!(r.amount > 0)) throw new AmountNotPositiveError(r.amount);
   }
   await assertTxnComponents(tx, p.rows, individualTxnPayEnabled(ctx));
+  await assertPayComponentCompaniesTx(tx, ctx, p.rows.map(row => ({componentId:row.componentId,employmentId:row.employmentId,effectiveDate:row.txnDate})));
   for (const r of p.rows) {
     const [row] = await tx
       .insert(payrollIndividualTxn)
@@ -1385,15 +1454,23 @@ export function updateIndividualTxn(
     amount?: number;
     quantity?: number | null;
     unit?: string | null;
+    /** OMITTED leaves the stored input method alone. aac17dd0 — null is an explicit CLEAR: an inline "Calculated by
+     *  Formula" row moved from a typed Amount back to Hours or Days returns to the legacy derived path (method NULL)
+     *  and takes its pay_item_rule marker again. */
+    calculationMethod?: IndividualCalculationMethod | null;
     notes?: string | null;
     componentId?: string | null;
     /** c11e81aa — the configured Pay Cycle. OMITTED leaves the stored choice alone; null clears it (the
      *  row falls back to "the regular run may collect me"). On a row already attached to a run, the named
      *  cycle must agree with that run's type — see InvalidTxnCycleError('run_mismatch'). */
     intendedCycleId?: string | null;
+    /** ad6ed930 — as on createIndividualTxnsBulk: refuse MOVING the Effective Date after the employee's last day. A
+     *  row already dated there stays editable (its other fields), so saved transactions keep working as before. */
+    refuseAfterLeavingDate?: boolean;
   },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
+    if(p.calculationMethod!==undefined)await lockPayComponentCatalogReadTx(tx,ctx);
     const existing=await lockIndividualTxnForWrite(tx,ctx,p.id);
     // Attached ⇒ the owning batch must still be writable — draft or processed, never closed (the batch's
     // payPeriod is authoritative). Unattached ⇒ no batch gate. Both preserve the processing month
@@ -1405,9 +1482,10 @@ export function updateIndividualTxn(
     if (p.unit != null && !isTxnUnit(p.unit)) throw new InvalidTxnUnitError(p.unit);
     const nextDate = p.txnDate ?? existing.txnDate;
     assertTransactionDate(nextDate);
+    if (p.refuseAfterLeavingDate && nextDate !== existing.txnDate) await assertTxnDatesWithinEmploymentTx(tx, [existing.employmentId], [nextDate]);
     // C6 — the retained edit path is the OTHER surviving write surface (the create-form path is removed).
     // Enforce the same amount>0 magnitude rule the bulk save enforces, so both write paths agree.
-    if (p.amount !== undefined && !(p.amount > 0)) throw new AmountNotPositiveError(p.amount);
+    if (p.calculationMethod!=='formula' && p.amount !== undefined && !(p.amount > 0)) throw new AmountNotPositiveError(p.amount);
     // Phase 3 — the resulting (kind, component) pair must stay coherent. A kind change AWAY from
     // earning/deduction drops any stored component; an explicit componentId patch is validated. The
     // require-component rule is NOT applied here (an edit is not a NEW payable row — legacy componentless
@@ -1419,6 +1497,7 @@ export function updateIndividualTxn(
           ? existing.componentId
           : null;
     await assertTxnComponents(tx, [{ kind: nextKind, componentId: nextComponentId }], false);
+    await assertPayComponentCompaniesTx(tx, ctx, [{componentId:nextComponentId,employmentId:existing.employmentId,effectiveDate:nextDate}]);
     // c11e81aa — the company comes from the ROW (attached rows get it from their batch either way), so a
     // cycle from another company is refused here rather than stored and acted on at generate time.
     const nextIntendedCycleId = await resolveIntendedCycleId(tx, {
@@ -1428,11 +1507,20 @@ export function updateIndividualTxn(
       batchCycleId: batch != null ? batch.payrollCycleId : null,
     });
 
+    const priced=p.calculationMethod==null?null:await priceIndividualTxnInputTx(tx,ctx,{
+      componentId:nextComponentId,employmentId:existing.employmentId,companyId:batch?.companyId??existing.companyId!,
+      payPeriod,txnDate:nextDate,quantity:p.quantity===undefined?(existing.quantity==null?null:Number(existing.quantity)):p.quantity,
+      unit:p.unit===undefined?existing.unit:p.unit,amount:p.amount??Number(existing.amount),method:p.calculationMethod,
+      cycleId:nextIntendedCycleId===undefined?existing.intendedCycleId:nextIntendedCycleId,batchId:existing.batchId,
+    });
     const patch: Record<string, unknown> = {};
+    if(priced){patch.amount=money(priced.amount);patch.calculationMethod=priced.calculationMethod;}
+    const clearsMethod=p.calculationMethod===null&&existing.calculationMethod!=null;
+    if(clearsMethod)patch.calculationMethod=null;
     if (p.kind !== undefined) patch.kind = p.kind;
     if (nextComponentId !== existing.componentId) patch.componentId = nextComponentId;
     if (p.txnDate !== undefined) patch.txnDate = p.txnDate;
-    if (p.amount !== undefined) patch.amount = money(p.amount);
+    if (p.amount !== undefined) patch.amount = money(priced?.amount??p.amount);
     if (p.quantity !== undefined) patch.quantity = p.quantity != null ? money(p.quantity) : null;
     if (p.unit !== undefined) patch.unit = p.unit ?? null;
     if (p.notes !== undefined) patch.notes = p.notes ?? null;
@@ -1440,6 +1528,18 @@ export function updateIndividualTxn(
     // `updated_at` (see the note below on why that timestamp has to stay meaningful).
     if (nextIntendedCycleId !== undefined && nextIntendedCycleId !== existing.intendedCycleId) {
       patch.intendedCycleId = nextIntendedCycleId;
+    }
+    // 792053e5 — the pricing marker follows the row's FINAL inputs: an edit that re-prices (or types over) the amount
+    // re-decides it; a saved-formula row the edit did not re-price keeps its own.
+    if (Object.keys(patch).length > 0) {
+      const nextMethod=(p.calculationMethod===null?null:priced?.calculationMethod??existing.calculationMethod??null) as IndividualCalculationMethod|null;
+      const nextQuantity=patch.quantity!==undefined?(patch.quantity==null?null:Number(patch.quantity)):existing.quantity==null?null:Number(existing.quantity);
+      const marker=nextMethod==='formula'&&!priced
+        ?{pricingSource:existing.pricingSource,pricingRef:existing.pricingRef,pricedAt:existing.pricedAt}
+        :await individualTxnPricingMarkerTx(tx,ctx,{componentId:nextComponentId??null,employmentId:existing.employmentId,companyId:batch?.companyId??existing.companyId!,payPeriod,
+          txnDate:nextDate,quantity:nextQuantity,unit:(patch.unit!==undefined?patch.unit:existing.unit) as string|null,amount:Number(patch.amount??existing.amount),
+          calculationMethod:nextMethod,formulaRevisionId:priced&&'formulaRevisionId' in priced?priced.formulaRevisionId:null});
+      Object.assign(patch,marker);
     }
     if (Object.keys(patch).length > 0) {
       // 49e7e0a2 — stamp WHEN this row changed. Written only alongside a real field change, so a no-op
@@ -1461,6 +1561,8 @@ export function updateIndividualTxn(
       subjectEmploymentId: existing.employmentId,
       // References only (no cleartext amount) — ADR-0030 Layer 0.
       payload: {
+        ...(priced?{calculationMethod:priced.calculationMethod,...('formulaRevisionId' in priced?{formulaId:priced.formulaId,formulaRevisionId:priced.formulaRevisionId}:{})}:{}),
+        ...(clearsMethod?{calculationMethod:null,previousCalculationMethod:existing.calculationMethod}:{}),
         before: {
           kind: existing.kind,
           txnDate: existing.txnDate,
@@ -1551,6 +1653,7 @@ export function listUnattachedIndividualTxns(
         amount: payrollIndividualTxn.amount,
         quantity: payrollIndividualTxn.quantity,
         unit: payrollIndividualTxn.unit,
+        calculationMethod: payrollIndividualTxn.calculationMethod,
         notes: payrollIndividualTxn.notes,
         // Non-null on every unattached row (0175 CHECK); the cast keeps the row type honest for callers.
         payPeriod: payrollIndividualTxn.payPeriod,

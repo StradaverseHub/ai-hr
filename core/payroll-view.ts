@@ -1,3 +1,5 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
+import {recordedPayrollReconciliationItems} from '../lib/payroll-comparison-source';
 import { ALL_RECORDED_PAY_ITEMS } from '../lib/payroll-period-comparison';
 import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,overlayInformationDocument} from './information-correction-history';
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
@@ -32,7 +34,7 @@ import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch }
 import { randomUUID } from 'node:crypto';
 import {readPayrollOvertimePatternCashTx, OvertimePayrollError, type OvertimePayrollErrorCode} from './payroll-overtime-pattern';
 import {OvertimeOwnerError} from '../packs/attendance/service';
-import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type SessionContext, type Tx } from '../db/client';
 import { pricesChildReliefFromGrid } from './dependents';
@@ -41,6 +43,7 @@ import { pricesChildReliefFromGrid } from './dependents';
 import { withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent } from '../db/events';
 import { toCsv } from '../lib/csv';
+import {ALL_ROW_CEILING,type PageQuery} from '../lib/pagination';
 // 9cbf5e0d — one Employee Status engine, shared with Personnel and the dashboard.
 import { employmentStatusSql } from './employment-status-sql';
 // d0d2c9d1 — the scope resolver generatePayslips itself uses, so the "who will this run leave out?"
@@ -55,6 +58,8 @@ import {
   collectableCycleIds,
   intendedCycleFilter,
   listPayslipLessEligible,
+  payslipLessEligiblePage,
+  payrollCloseCompanyIdsTx,
   resolveBatchScopeFilter,
   type BatchScope,
   type PayrollSkipReason,
@@ -203,6 +208,7 @@ export type FixedTransactionViewRow = {
   runType: RunType | null;
   /** 4fffe638 — the linked configured Payroll Cycle's name; null when the row is not linked. */
   payrollCycleName: string | null;
+  payrollCycleCode?: string | null;
   remarks: string | null;
 };
 
@@ -216,15 +222,79 @@ export type FixedTransactionViewRow = {
  * item → all employees assigned to it), `status` ('active' = validTo null or ≥ today; 'ended' =
  * validTo < today — the same rule the Fixed keying screen derives per-row).
  */
+/** Explicit SQL aliases let a single statement return count and a bounded JSON page. Numeric
+ * money/quantity retain the legacy string DTO instead of passing through JSON numeric precision. */
+function inquiryColumns<T>(fields:{[K in keyof T]:SQLWrapper}):{[K in keyof T]:SQL.Aliased<T[K]>}{
+  return Object.fromEntries(Object.entries(fields).map(([key,value])=>[key,
+    (key==='amount'||key==='quantity'?sql`${value as SQLWrapper}::text`:sql`${value as SQLWrapper}`).as(key),
+  ])) as {[K in keyof T]:SQL.Aliased<T[K]>};
+}
+
+async function inquiryPage<T>(tx:Tx,source:SQLWrapper,order:SQL,page:PageQuery):Promise<{rows:T[];total:number}>{
+  if(!Number.isSafeInteger(page.limit)||page.limit<1||page.limit>ALL_ROW_CEILING||!Number.isFinite(page.offset)||!Number.isInteger(page.offset)||page.offset<0)
+    throw new RangeError('Choose a supported inquiry page.');
+  // One database statement owns both count and page, after the unchanged Payroll history barrier.
+  // NOT MATERIALIZED lets count discard payload columns and the page apply its own bounded order.
+  const [result]=await tx.execute<{rows:T[];total:string}>(sql`
+    with filtered as not materialized (${source}),
+    totals as (select count(*)::text as total from filtered),
+    page as (select * from filtered order by ${order} limit ${page.limit} offset ${Math.min(Number.MAX_SAFE_INTEGER,page.offset)})
+    select totals.total,(select coalesce(jsonb_agg(to_jsonb(page) order by ${order}),'[]'::jsonb) from page) as rows from totals`);
+  const total=Number(result?.total);
+  if(!Number.isSafeInteger(total)||total<0||!Array.isArray(result?.rows))throw Error('Payroll inquiry page unavailable.');
+  return {rows:result.rows,total};
+}
+
+/** SQL twin of the public pure rule; native parity tests cover missing/older/newer payslips. */
+function individualReprocessSql(){
+  return sql<boolean>`coalesce(${payrollBatch.status}='processed' and (${payslip.createdAt} is null
+    or coalesce(${payrollIndividualTxn.updatedAt},${payrollIndividualTxn.createdAt})>${payslip.createdAt}),false)`;
+}
+
+export const INDIVIDUAL_INQUIRY_SORT_KEYS=['payPeriod','txnDate','employeeName','company','kind','amount','batchStatus','createdBy','createdOn'] as const;
+export type IndividualInquirySortKey=typeof INDIVIDUAL_INQUIRY_SORT_KEYS[number];
+export type IndividualInquirySort={key:IndividualInquirySortKey;direction:'asc'|'desc'};
+export function parseIndividualInquirySort(key?:string,direction?:string):IndividualInquirySort{
+  const known=INDIVIDUAL_INQUIRY_SORT_KEYS.includes(key as IndividualInquirySortKey);
+  return {key:known?key as IndividualInquirySortKey:'payPeriod',direction:known&&direction==='asc'?'asc':'desc'};
+}
+function individualInquiryOrder(sort:IndividualInquirySort){
+  const text=(key:string)=>sql`lower(coalesce(${sql.identifier(key)},'')) collate "C"`;
+  const field=sort.key==='amount'?sql`${sql.identifier('amount')}::numeric`:
+    sort.key==='batchStatus'?sql`case when "batchStatus"='processed' and ("payslipCalculatedAt" is null or "changedAt">"payslipCalculatedAt") then 'reprocess' else coalesce("batchStatus",'') end`:
+    ['employeeName','company','createdBy'].includes(sort.key)?text(sort.key):sort.key==='kind'?sql`"kind"::text collate "C"`:sql`${sql.identifier(sort.key)}`;
+  return sql`${field} ${sort.direction==='asc'?sql`asc`:sql`desc`},"id" asc`;
+}
+
+export function listFixedTransactionsPage(ctx:SessionContext,p:FixedTransactionFilter,page:PageQuery,asOf=todayIso()):Promise<{rows:FixedTransactionViewRow[];total:number}>{
+  if(!p.companyIds.length)return Promise.resolve({rows:[],total:0});
+  return withTenant(ctx,async tx=>{
+    await tx.execute(sql`set transaction read only`);
+    return inquiryPage<FixedTransactionViewRow>(tx,fixedTransactionQuery(tx,p,asOf),sql`"employeeName","code","validFrom","id"`,page);
+  });
+}
+export async function listIndividualTxnsPage(ctx:SessionContext,p:IndividualTxnFilter,page:PageQuery,sort:IndividualInquirySort=parseIndividualInquirySort()):Promise<{rows:IndividualTxnViewRow[];total:number}>{
+  if(!p.companyIds.length)return {rows:[],total:0};
+  sort=parseIndividualInquirySort(sort.key,sort.direction);
+  const result=await withTenant(ctx,async tx=>{
+    await tx.execute(sql`set transaction read only`);
+    return inquiryPage<Omit<IndividualTxnViewRow,'reprocessRequired'>>(tx,individualTransactionQuery(tx,p),individualInquiryOrder(sort),page);
+  });
+  return {total:result.total,rows:result.rows.map(row=>({...row,reprocessRequired:individualTxnReprocessRequired(row)}))};
+}
+
+export type FixedTransactionFilter={companyIds:string[];employmentId?:string;componentId?:string;status?:'active'|'ended'};
 export function listFixedTransactionsAcross(
   ctx: SessionContext,
-  p: { companyIds: string[]; employmentId?: string; componentId?: string; status?: 'active' | 'ended' },
+  p: FixedTransactionFilter,
 ): Promise<FixedTransactionViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
-  const today = todayIso();
-  return withTenant(ctx, (tx) =>
-    tx
-      .select({
+  return withTenant(ctx,tx=>fixedTransactionQuery(tx,p,todayIso()).orderBy(asc(person.fullName),asc(payComponent.code),asc(employmentPayComponent.validFrom),asc(employmentPayComponent.id)));
+}
+
+function fixedTransactionQuery(tx:Tx,p:FixedTransactionFilter,today:string,afterId?:string){
+  return tx
+      .select(inquiryColumns<FixedTransactionViewRow>({
         id: employmentPayComponent.id,
         employmentId: employmentPayComponent.employmentId,
         employeeName: person.fullName,
@@ -241,8 +311,9 @@ export function listFixedTransactionsAcross(
         runType: employmentPayComponent.runType,
         // 4fffe638 — LEFT JOIN on a single FK: an unlinked row keeps its run-type label, nothing multiplies.
         payrollCycleName: payrollCycle.name,
+        payrollCycleCode: payrollCycle.code,
         remarks: employmentPayComponent.remarks,
-      })
+      }))
       .from(employmentPayComponent)
       .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
       .leftJoin(payrollCycle, eq(payrollCycle.id, employmentPayComponent.payrollCycleId))
@@ -252,6 +323,7 @@ export function listFixedTransactionsAcross(
       .where(
         and(
           inArray(employment.companyId, p.companyIds),
+          afterId ? gt(employmentPayComponent.id, afterId) : undefined,
           isNull(employmentPayComponent.supersededAt),
           p.employmentId ? eq(employmentPayComponent.employmentId, p.employmentId) : undefined,
           p.componentId ? eq(employmentPayComponent.componentId, p.componentId) : undefined,
@@ -261,8 +333,7 @@ export function listFixedTransactionsAcross(
           p.status === 'ended' ? lt(employmentPayComponent.validTo, today) : undefined,
         ),
       )
-      .orderBy(asc(person.fullName), asc(payComponent.code), asc(employmentPayComponent.validFrom)),
-  );
+;
 }
 
 // ───────────────────── 2. Individual Transaction View ─────────────────────
@@ -282,8 +353,10 @@ export type IndividualTxnViewRow = {
    *  never permission to choose another cycle of the same type. Archived names remain readable. */
   batchCycleId: string | null;
   batchCycleName: string | null;
+  batchCycleCode?: string | null;
   intendedCycleId: string | null;
   intendedCycleName: string | null;
+  intendedCycleCode?: string | null;
   batchStatus: string | null;
   kind: PayrollTxnKind;
   /** 4e403268 — THE PAY ITEM, on the listing row at last. Until this round the projection deliberately
@@ -347,38 +420,17 @@ export type IndividualTxnFilter = {
  * and LEFT-joined to the row's 'created' DomainEvent → app_user → person for the Created By / Created Date
  * dimensions. Read-only (pure SELECT — no event appended here).
  */
-async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<IndividualTxnViewRow[]> {
-  if (p.companyIds.length === 0) return []; // fail closed — no scope, no rows
+function individualTransactionQuery(tx:Tx,p:IndividualTxnFilter,afterId?:string){
   const kind = cleanTxnKind(p.kind);
   const batchStatus = cleanBatchStatus(p.batchStatus);
   const createdFrom = cleanDate(p.createdFrom);
   const createdTo = cleanDate(p.createdTo);
 
-  // Department filter: resolve the department's current-assignment employments ONCE (fail-closed on an empty
-  // department), then narrow by the id set. A dedicated pre-query avoids a row-multiplying assignment join.
-  let deptEmploymentIds: string[] | undefined;
-  if (p.departmentId) {
-    const deptRows = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .innerJoin(
-        assignment,
-        and(
-          eq(assignment.employmentId, employment.id),
-          isNull(assignment.validTo),
-          isNull(assignment.supersededAt),
-          eq(assignment.departmentId, p.departmentId),
-        ),
-      );
-    deptEmploymentIds = deptRows.map((r) => r.id);
-    if (deptEmploymentIds.length === 0) return [];
-  }
-
-  // f1564110 Phase 2: the row's OWN (company_id, pay_period) columns are authoritative (stamped on every
-  // write, backfilled by 0175), so the batch join becomes a LEFT join purely for run/status metadata and
-  // UNATTACHED rows (batch_id NULL — keyed in before the month's run exists) stay visible in the inquiry.
-  const rows = await tx
-    .select({
+  // EXISTS keeps the exact current-assignment membership without transporting every matching ID.
+  const departmentMatch=p.departmentId?sql`exists(select 1 from ${assignment} a where a.employment_id=${payrollIndividualTxn.employmentId}
+    and a.valid_to is null and a.superseded_at is null and a.department_id=${p.departmentId}::uuid)`:undefined;
+  return tx
+    .select(inquiryColumns<Omit<IndividualTxnViewRow,'reprocessRequired'>>({
       id: payrollIndividualTxn.id,
       employmentId: payrollIndividualTxn.employmentId,
       employeeName: person.fullName,
@@ -390,8 +442,10 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
       runSeq: payrollBatch.runSeq,
       batchCycleId: payrollBatch.payrollCycleId,
       batchCycleName: individualBatchCycle.name,
+      batchCycleCode: individualBatchCycle.code,
       intendedCycleId: payrollIndividualTxn.intendedCycleId,
       intendedCycleName: individualIntendedCycle.name,
+      intendedCycleCode: individualIntendedCycle.code,
       batchStatus: payrollBatch.status,
       kind: payrollIndividualTxn.kind,
       componentId: payrollIndividualTxn.componentId,
@@ -413,7 +467,7 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
         string | null
       >`to_char(${payslip.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')`,
       batchNeedsRecalcForEmployment: sql<boolean>`(${payrollBatch.needsRecalcAt} is not null and coalesce(${payrollBatch.recalcEmploymentIds}, '[]'::jsonb) @> to_jsonb(${payrollIndividualTxn.employmentId}::text))`,
-    })
+    }))
     .from(payrollIndividualTxn)
     .leftJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
     // The selected cycle is an ID, not runType. Keep authorized archived names for existing rows.
@@ -460,10 +514,11 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
     .where(
       and(
         inArray(payrollIndividualTxn.companyId, p.companyIds),
+        afterId ? gt(payrollIndividualTxn.id, afterId) : undefined,
         periodFilter(p.year, p.month, payrollIndividualTxn.payPeriod),
         p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
         kind ? eq(payrollIndividualTxn.kind, kind) : undefined,
-        deptEmploymentIds ? inArray(payrollIndividualTxn.employmentId, deptEmploymentIds) : undefined,
+        departmentMatch,
         // 'unattached' and 'reprocess' are NOT batch statuses (see cleanBatchStatus). 'reprocess' narrows
         // in SQL to the runs it can possibly apply to — processed ones — and the row-level half is applied
         // below through the SAME pure rule the screen uses, so the filter and the badges cannot disagree.
@@ -474,17 +529,23 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
             : batchStatus
               ? eq(payrollBatch.status, batchStatus)
               : undefined,
+        batchStatus==='reprocess'?individualReprocessSql():batchStatus==='processed'?sql`not (${individualReprocessSql()})`:undefined,
         p.createdBy ? eq(domainEvent.actorId, p.createdBy) : undefined,
         createdFrom ? gte(sql`${payrollIndividualTxn.createdAt}::date`, createdFrom) : undefined,
         createdTo ? lte(sql`${payrollIndividualTxn.createdAt}::date`, createdTo) : undefined,
       ),
     )
-    .orderBy(desc(payrollIndividualTxn.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id));
+;
+}
+
+async function queryIndividualTxns(tx:Tx,p:IndividualTxnFilter):Promise<IndividualTxnViewRow[]>{
+  if(!p.companyIds.length)return [];
+  const batchStatus=cleanBatchStatus(p.batchStatus);
+  const rows=await individualTransactionQuery(tx,p).orderBy(desc(payrollIndividualTxn.payPeriod),asc(payrollIndividualTxn.txnDate),asc(payrollIndividualTxn.id));
   // 510f4bd1 — DERIVED once, here, from facts the row already carries. Every consumer (the History grid,
   // its CSV, the workspace panel) reads this same boolean rather than re-deciding, which is what stops the
   // two screens saying different things about one line.
-  const derived = rows.map((r) => ({ ...r, reprocessRequired: individualTxnReprocessRequired(r) })) as
-    IndividualTxnViewRow[];
+  const derived = rows.map(row=>({...row,reprocessRequired:individualTxnReprocessRequired(row)})) as IndividualTxnViewRow[];
   // THE STATUS FILTER HAS TO SELECT WHAT THE STATUS COLUMN SHOWS, or the screen contradicts itself. Once
   // a stale row on a processed run is LABELLED Pending reprocessing, `?txnStatus=processed` must stop
   // returning it — otherwise filtering to Processed lists rows the grid beside it calls something else.
@@ -504,6 +565,41 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
 export function listIndividualTxnsAcross(ctx: SessionContext, p: IndividualTxnFilter): Promise<IndividualTxnViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   return withTenant(ctx, (tx) => queryIndividualTxns(tx, p));
+}
+
+export type TransactionExportQuery =
+  | { kind: 'fixed'; filters: FixedTransactionFilter; asOf: string }
+  | { kind: 'individual'; filters: IndividualTxnFilter };
+
+/** Page through the screen's exact predicates under one read snapshot, independent of its visible page. */
+export async function readTransactionExport<T>(
+  ctx: SessionContext,
+  query: TransactionExportQuery,
+  consume: (total: number, rows: AsyncIterable<FixedTransactionViewRow | IndividualTxnViewRow>) => Promise<T>,
+): Promise<T> {
+  const pageSize = 500;
+  return withTenant(ctx, async (tx) => {
+    const source = query.kind === 'fixed'
+      ? fixedTransactionQuery(tx, query.filters, query.asOf)
+      : individualTransactionQuery(tx, query.filters);
+    const [count] = await tx.execute<{total: string}>(sql`select count(*)::text as total from (${source}) as filtered_export`);
+    const total = Number(count?.total);
+    if (!Number.isSafeInteger(total) || total < 0) throw new Error('The payroll export count is unavailable.');
+    async function* rows() {
+      let afterId: string | undefined;
+      for (let remaining = total; remaining > 0;) {
+        const page: (FixedTransactionViewRow | IndividualTxnViewRow)[] = query.kind === 'fixed'
+          ? await fixedTransactionQuery(tx, query.filters, query.asOf, afterId).orderBy(asc(employmentPayComponent.id)).limit(pageSize)
+          : (await individualTransactionQuery(tx, query.filters, afterId).orderBy(asc(payrollIndividualTxn.id)).limit(pageSize))
+            .map((row) => ({ ...row, reprocessRequired: individualTxnReprocessRequired(row) }));
+        if (!page.length) break;
+        for (const row of page) yield row;
+        remaining -= page.length;
+        afterId = page.at(-1)?.id;
+      }
+    }
+    return consume(total, rows());
+  }, { readOnlySnapshot: true });
 }
 
 /**
@@ -974,6 +1070,7 @@ export type ProcessedPayslipViewRow = {
    * to showing no provenance block rather than fail to compile.
    */
   batchId?: string;
+  payrollCycleId?: string | null;
   payPeriod: string;
   runType: RunType;
   runSeq: number;
@@ -1034,14 +1131,50 @@ export type ProcessedPayslipViewRow = {
  * add a status predicate. Optional `cycle` = payroll run type (the Payroll-Cycle filter);
  * unknown values are ignored rather than cast to the pg enum (which would throw).
  */
+type ProcessedPayslipFilters = {
+  companyIds: string[];
+  year?: number;
+  month?: number;
+  employmentId?: string;
+  cycle?: string;
+  payrollCycleId?: string;
+};
+
+function processedPayslipFilters(p: ProcessedPayslipFilters) {
+  const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
+  return and(
+    inArray(payrollBatch.companyId, p.companyIds),
+    periodFilter(p.year, p.month),
+    p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
+    p.payrollCycleId ? eq(payrollBatch.payrollCycleId, p.payrollCycleId) : undefined,
+    cycle ? sql`${filterRunTypeSql} = ${cycle}` : undefined,
+  );
+}
+
+/** Resolve the latest visible period before reading payslip rows for the History landing page. */
+export async function latestProcessedPayslipPeriod(ctx: SessionContext, p: ProcessedPayslipFilters) {
+  if (!p.companyIds.length) return null;
+  return withTenant(ctx, async (tx) => {
+    const [live] = await tx.select({ payPeriod: payrollBatch.payPeriod })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(processedPayslipFilters(p))
+      .orderBy(desc(payrollBatch.payPeriod))
+      .limit(1);
+    const retained = await informationPayslipDocuments(tx, {
+      ...p, cycle: p.payrollCycleId ? undefined : cleanRunType(p.cycle), intendedCycle: true, limit: 1,
+    });
+    const periods = [live?.payPeriod, ...retained.map((doc) => informationDocumentRow(doc).payPeriod)];
+    return periods.filter((period): period is string => !!period).sort().at(-1) ?? null;
+  });
+}
+
 export function listProcessedPayslipsAcross(
   ctx: SessionContext,
-  p: {
-    companyIds: string[];
-    year?: number;
-    month?: number;
-    employmentId?: string;
-    cycle?: string;
+  p: ProcessedPayslipFilters & {
     /**
      * 862ed0ad — a hard row cap. This read was UNBOUNDED: no limit, no pagination, every payslip in
      * scope for all time, each carrying its whole `statutory` jsonb blob. That was survivable while
@@ -1061,7 +1194,7 @@ export function listProcessedPayslipsAcross(
   },
 ): Promise<ProcessedPayslipViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
-  const cycle = cleanRunType(p.cycle);
+  const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
   const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
   return withTenant(ctx, async (tx) => {
     const q = tx
@@ -1076,6 +1209,7 @@ export function listProcessedPayslipsAcross(
         currency: company.currency,
         // 417d4937 — the run id, so a caller can ask the ledger which transactions this slip consumed.
         batchId: payslip.batchId,
+        payrollCycleId: payrollBatch.payrollCycleId,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -1107,24 +1241,17 @@ export function listProcessedPayslipsAcross(
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(
-        and(
-          inArray(payrollBatch.companyId, p.companyIds),
-          periodFilter(p.year, p.month),
-          p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
-          // b240c0ff — imported history filters under its real Pay Cycle (see `filterRunTypeSql`).
-          cycle ? sql`${filterRunTypeSql} = ${cycle}` : undefined,
-        ),
-      )
+      .where(processedPayslipFilters(p))
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
       .$dynamic();
     // An absent cap does not call .limit() at all, so every existing caller — including the CSV
     // export, which must never be clipped — issues exactly the query it issued before.
     const rows=await (limit ? q.limit(limit) : q);
-    const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true});
+    // Same cap as the live rows: the landing tab must not read (or fail on) every retained document ever kept.
+    const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true,limit});
     const seen=new Set(rows.map(row=>row.id));
     for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
-      rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
+      rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payrollCycleId:r.payrollCycleId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
     }
     if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return limit?rows.slice(0,limit):rows;
@@ -1172,6 +1299,7 @@ export type PayslipRunRow = {
   /** THIS employee's payslip in that run. */
   payslipId: string;
   companyId: string;
+  payrollCycleId?: string | null;
   /** 'YYYY-MM'. */
   payPeriod: string;
   runType: RunType;
@@ -1193,6 +1321,7 @@ export function listPayslipRunsFor(
       .select({
         payslipId: payslip.id,
         companyId: payrollBatch.companyId,
+        payrollCycleId: payrollBatch.payrollCycleId,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -1206,7 +1335,7 @@ export function listPayslipRunsFor(
     const seen=new Set(rows.map(r=>r.payslipId));
     for(const document of await informationPayslipDocuments(tx,p)){
       const r=informationDocumentRow(document);if(seen.has(r.id))continue;
-      rows.push({payslipId:r.id,companyId:r.companyId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null});
+      rows.push({payslipId:r.id,companyId:r.companyId,payrollCycleId:r.payrollCycleId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null});
     }
     return rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.companyId.localeCompare(b.companyId));
   });
@@ -1369,12 +1498,24 @@ export function listPayrollRegisterAcross(
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName));
 
     const retained=await informationPayslipDocuments(tx,{...p,cycle});
-    for(const document of retained){
-      const saved=informationDocumentRow(document),index=rows.findIndex(r=>r.correctionSlipId===saved.id);
-      if(index>=0)rows[index]=overlayInformationDocument(rows[index],document);
-      else rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+    if(retained.length){
+      const firstIndexBySlipId = new Map<string, number>();
+      for (const [index, row] of rows.entries()) {
+        // Preserve the first match when more than one live row has the same slip ID.
+        if (!firstIndexBySlipId.has(row.correctionSlipId)) firstIndexBySlipId.set(row.correctionSlipId, index);
+      }
+      for (const document of retained) {
+        const saved = informationDocumentRow(document);
+        const index = firstIndexBySlipId.get(saved.id);
+        if (index !== undefined) {
+          rows[index] = overlayInformationDocument(rows[index], document);
+        } else {
+          firstIndexBySlipId.set(saved.id, rows.length);
+          rows.push({correctionSlipId:saved.id,employeeCode:saved.employeeCode,employeeName:saved.employeeName,company:saved.company,currency:saved.currency,department:saved.department,position:saved.position,jobGrade:saved.jobGrade,employmentStatus:saved.employmentStatus,employmentType:saved.employmentType,payPeriod:saved.payPeriod,payrollCycle:saved.runType,runSeq:saved.runSeq,historyImportAttemptId:saved.historyImportAttemptId??null,historyImportCycleName:saved.historyImportCycleName??null,daysWorked:saved.daysWorked??null,basic:saved.basic,allowance:saved.allowance,overtime:saved.overtime,bonus:saved.bonus,gross:saved.gross,statutory:saved.statutory,otherDeductions:saved.otherDeductions,totalDeductions:saved.totalDeductions,net:saved.net,employerCost:saved.employerCost});
+        }
+      }
+      rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     }
-    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return rows.map((r) => {
       const st = (r.statutory ?? {}) as Record<string, unknown>;
       const n = (k: string): number => {
@@ -1596,7 +1737,7 @@ export function payslipForReview(
         position: position.title,
         jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`),
         employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`),
-        paymentMethod: employment.paymentMethod,
+        paymentMethod: employmentPaymentMethodOnSql(sql`${employment.id}`),
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
         icNumber: employeeStatutoryMy.icNumber,
@@ -2516,7 +2657,8 @@ export type PendingMoneyDoor =
 
 /** Exact immutable cash evidence; presentation does not create or reprice a contribution. */
 export type PendingOvertimeCashEvidence = {
-  sourceId: string; calculationId: string; sourceRevision: number; settlementId: string;
+  sourceId: string; calculationId: string;
+  formulaBindingId?: string; sourceRevision: number; settlementId: string;
   lineId: string; earningItemId: string; date: string; currency: string; minorScale: number; amountMinorUnits: string;
 };
 export type PendingOvertimeReview =
@@ -2599,7 +2741,7 @@ const PENDING_MONEY_DOORS: readonly PendingMoneyDoor[] = [
  * Read-only: no DomainEvent (CLAUDE.md substrate rule — events follow state-changing writes, and there
  * are none here).
  */
-export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
+export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string;employmentIds?:readonly string[] }): Promise<PendingBatchMoney> {
   return withTenant(ctx, (tx) => pendingBatchMoneyTx(tx, ctx, p));
 }
 
@@ -2608,13 +2750,15 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
  * it holds the run's locks, and a nested `withTenant` would open a SECOND connection that never joins
  * them (db/client.ts). The body is unchanged; only who opens the transaction moved.
  */
-export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
+export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: string;employmentIds?:readonly string[] }): Promise<PendingBatchMoney> {
   const typedComponents = isModuleEnabled(ctx, 'typed_pay_components');
   // Matches generatePayslips' own dependency: the individual fold rides the per-component fold, so with
   // typed components off a payable one-off row has nothing to fold through and pays nothing either.
   const individualTxnPay = typedComponents && settingEnabled(ctx, 'payroll.individual_txn_pay_enabled');
   return (async () => {
     let inertRows = 0;
+    const selected=p.employmentIds?new Set(p.employmentIds):null;
+    const selectedOnly=(column:SQLWrapper)=>p.employmentIds?inArray(column,[...p.employmentIds]):undefined;
     const empty: PendingBatchMoney = { lines: [], byDoor: [], employees: 0, earnings: 0, deductions: 0, inertRows: 0 };
     const [batch] = await tx
       .select({
@@ -2631,7 +2775,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
-    if (!batch) return empty;
+    if (!batch || selected?.size===0) return empty;
 
     const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
     const periodStart = `${batch.payPeriod}-01`;
@@ -2659,16 +2803,17 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
     let formulaOvertimeReview: PendingOvertimeReview;
     try {
       const cash = await readPayrollOvertimePatternCashTx(tx, ctx, p);
-      const ids = [...cash.byEmployment.keys()];
+      const ids = [...cash.byEmployment.keys()].filter(id=>!selected||selected.has(id));
       const people = ids.length ? await tx.select({employmentId: employment.id, employeeName: person.fullName, employeeCode: employment.employeeCode})
         .from(employment).innerJoin(person, eq(person.id, employment.personId)).where(inArray(employment.id, ids)) : [];
       const byId = new Map(people.map(row => [row.employmentId, row]));
-      const formulaLines: PendingMoneyLine[] = cash.lines.map(line => {
+      const formulaLines: PendingMoneyLine[] = cash.lines.filter(line=>!selected||selected.has(line.employmentId)).map(line => {
         const who = byId.get(line.employmentId);
         if (!who) throw new OvertimePayrollError('unavailable');
         return {...who, door: 'overtime', itemName: line.earningItemName, amount: Number(line.amountMinorUnits) / 100,
           note: null, overtimeCash: {sourceId: line.sourceId, calculationId: line.calculationId,
             sourceRevision: line.sourceRevision, settlementId: line.settlementId, lineId: line.lineId,
+            ...(line.formulaBindingId?{formulaBindingId:line.formulaBindingId}:{}),
             earningItemId: line.earningItemId, date: line.date, currency: line.evidence.mapping.currency,
             minorScale: 2, amountMinorUnits: line.amountMinorUnits}};
       });
@@ -2696,7 +2841,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .from(payrollInput)
       .innerJoin(employment, eq(employment.id, payrollInput.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payrollInput.batchId, p.batchId));
+      .where(and(eq(payrollInput.batchId, p.batchId),selectedOnly(payrollInput.employmentId)));
     for (const r of inputs) {
       const who = { employmentId: r.employmentId, employeeName: r.employeeName, employeeCode: r.employeeCode };
       push(who, 'overtime', Number(r.overtime), null, r.otSource);
@@ -2724,7 +2869,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
       .innerJoin(employment, eq(employment.id, payrollBatchComponent.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payrollBatchComponent.batchId, p.batchId));
+      .where(and(eq(payrollBatchComponent.batchId, p.batchId),selectedOnly(payrollBatchComponent.employmentId)));
     for (const r of batchComps) {
       if (!(Math.abs(Number(r.amount)) > 0)) continue;
       if (!typedComponents) {
@@ -2766,7 +2911,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
       .where(
-        attachesUnattached
+        and(selectedOnly(payrollIndividualTxn.employmentId),attachesUnattached
           ? or(
               eq(payrollIndividualTxn.batchId, p.batchId),
               and(
@@ -2776,7 +2921,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
                 intentFilter,
               ),
             )
-          : eq(payrollIndividualTxn.batchId, p.batchId),
+          : eq(payrollIndividualTxn.batchId, p.batchId)),
       );
     for (const r of txnRows) {
       // 'leave' is RECORD-ONLY in v1 (the kernel does not fold it into pay — see generatePayslips), so it
@@ -2827,6 +2972,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
           // excluded for the same reason basic salary is (see the section docstring).
           sql`${payComponent.code} <> 'BASIC'`,
           scopeFilter,
+          selectedOnly(employmentPayComponent.employmentId),
         ),
       );
     for (const r of fixed) {
@@ -2957,6 +3103,16 @@ export async function listPayslipLessEligibleWithSkip(
   return rows.map((r) => ({ ...r, skip: pending && could(r) ? nothingPayableSkipKind(r.employmentId, pending) : null }));
 }
 
+/** SQL-bounded new-employee page; financial readiness only examines its members. Global formula-overtime
+ * availability stays with its existing native owner: an unrelated failed proof must not become a definite skip. */
+export async function payslipLessEligibleWithSkipPage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string}){
+ const result=await payslipLessEligiblePage(ctx,p);
+ const could=(r:PayslipLessEligibleRow)=>r.blockers.length===0&&!r.outsideScope&&r.warnings.includes('nothingPayable');
+ const ids=result.rows.filter(could).map(r=>r.employmentId);
+ const pending=ids.length?await pendingBatchMoney(ctx,{batchId:p.batchId,employmentIds:ids}):null;
+ return {...result,rows:result.rows.map(r=>({...r,skip:pending&&could(r)?nothingPayableSkipKind(r.employmentId,pending):null}))};
+}
+
 // ───────────────────── 9. When a run was processed (dashboard "Processed date") ─────────────────────
 
 /**
@@ -2997,22 +3153,41 @@ export function listBatchProcessedDates(
   batchIds: readonly string[],
 ): Promise<Map<string, string>> {
   if (batchIds.length === 0) return Promise.resolve(new Map());
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({
-        batchId: domainEvent.aggregateId,
-        processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
-      })
-      .from(domainEvent)
-      .where(
-        and(
-          eq(domainEvent.aggregateType, 'payroll-batch'),
-          eq(domainEvent.eventType, 'payroll-batch.processed'),
-          inArray(domainEvent.aggregateId, batchIds as string[]),
-        ),
-      )
-      .groupBy(domainEvent.aggregateId);
-    return new Map(rows.map((r) => [r.batchId, r.processedOn]));
+  return withTenant(ctx, tx => listBatchProcessedDatesTx(tx, batchIds));
+}
+
+async function listBatchProcessedDatesTx(tx: Tx, batchIds: readonly string[]): Promise<Map<string, string>> {
+  if (batchIds.length === 0) return new Map();
+  const rows = await tx
+    .select({
+      batchId: domainEvent.aggregateId,
+      processedOn: sql<string>`to_char(max(${domainEvent.occurredAt}) at time zone ${HR_LOCAL_TZ}::text, 'YYYY-MM-DD')`,
+    })
+    .from(domainEvent)
+    .where(
+      and(
+        eq(domainEvent.aggregateType, 'payroll-batch'),
+        eq(domainEvent.eventType, 'payroll-batch.processed'),
+        inArray(domainEvent.aggregateId, batchIds as string[]),
+      ),
+    )
+    .groupBy(domainEvent.aggregateId);
+  return new Map(rows.map((row) => [row.batchId, row.processedOn]));
+}
+
+/** Only visible-page metadata, using one Payroll history barrier and the original close authority. */
+export function payrollDashboardBatchMetadata(
+  ctx: SessionContext,
+  batchIds: readonly string[],
+  processedCompanyIds: readonly string[],
+): Promise<{ processedOn: Map<string, string>; closeCompanies: Set<string> }> {
+  if (batchIds.length === 0 && processedCompanyIds.length === 0) {
+    return Promise.resolve({ processedOn: new Map(), closeCompanies: new Set() });
+  }
+  return withTenant(ctx, async tx => {
+    const processedOn = await listBatchProcessedDatesTx(tx, batchIds);
+    const closeCompanies = await payrollCloseCompanyIdsTx(tx, ctx, processedCompanyIds);
+    return { processedOn, closeCompanies };
   });
 }
 
@@ -3230,6 +3405,9 @@ export function listFilableRunsForPeriod(
  * permissions and audit; this owner owns saved payroll semantics. No live company-currency fallback. */
 export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p: {
   companyIds: readonly string[]; previousPeriod: string; currentPeriod: string; runType: 'regular' | 'all'; cycleIds?: string[]; previousCycleIds?: string[]; payItemCode: string;
+  /** One employee's comparison (Payroll Reconciliation's row link): only that employee's saved results are read.
+   *  Run completeness is still checked over each whole run, with one grouped count. */
+  employmentId?: string;
 }) {
   if (!p.companyIds.length) return { runs: [], sources: [] };
   if (p.companyIds.length > 1000) throw new Error('Payroll comparison exceeds 1000 companies. Narrow the scope.');
@@ -3251,22 +3429,31 @@ export async function payrollComparisonSourcesTx(tx: Tx, ctx: SessionContext, p:
   if (availability.issues.length || !batches.length) return { runs, sources: [] };
   const batchById = new Map(batches.map(batch => [batch.id, batch]));
   const results = await tx.select({ id: payslip.id, version: payslip.version, runId: payslip.batchId,
-    employmentId: payslip.employmentId, basicSalary: payslip.basicSalary, statutory: payslip.statutory,
+    employmentId: payslip.employmentId, basicSalary: payslip.basicSalary, allowance:payslip.allowance,overtimePay:payslip.overtimePay,bonus:payslip.bonus,otherDeductions:payslip.otherDeductions,netPay:payslip.netPay,grossPay:payslip.grossPay,totalDeductions:payslip.totalDeductions,employerCost:payslip.employerCost, statutory: payslip.statutory,
     coverageFrom: payslip.coverageFrom, coverageTo: payslip.coverageTo }).from(payslip)
-    .where(and(eq(payslip.tenantId, ctx.tenantId), inArray(payslip.batchId, batches.map(batch => batch.id))))
+    .where(and(eq(payslip.tenantId, ctx.tenantId), inArray(payslip.batchId, batches.map(batch => batch.id)),
+      p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined))
     .orderBy(asc(payslip.id)).limit(20001);
   if (results.length > 20000) throw new Error('Payroll comparison exceeds 20000 saved results. Narrow the company scope.');
-  const counts=new Map<string,number>();for(const result of results)counts.set(result.runId,(counts.get(result.runId)??0)+1);
+  const counts=new Map<string,number>();
+  if (p.employmentId) {
+    // Completeness is a property of the whole run, not of the one employee read: count every run's results in SQL.
+    const runCounts = batches.length ? await tx.select({ runId: payslip.batchId, n: sql<number>`count(*)::int` }).from(payslip)
+      .where(and(eq(payslip.tenantId, ctx.tenantId), inArray(payslip.batchId, batches.map(batch => batch.id))))
+      .groupBy(payslip.batchId) : [];
+    for (const row of runCounts) counts.set(row.runId, Number(row.n));
+  } else for(const result of results)counts.set(result.runId,(counts.get(result.runId)??0)+1);
   if(batches.some(batch=>(counts.get(batch.id)??0)!==batch.expectedResults))throw new Error('Saved payroll results are incomplete or unavailable in this scope. No partial comparison was generated.');
   const sources = results.map(slip => {
     const batch = batchById.get(slip.runId)!;
     const period = payPeriodBounds(batch.period);
     if (!period) throw new Error('Saved payroll period is invalid.');
+    const recordedItems=recordedPayrollReconciliationItems(slip.statutory,{'@total/allowance':slip.allowance,'@total/overtime':slip.overtimePay,'@total/bonus':slip.bonus,'@total/otherDeductions':slip.otherDeductions,'@total/netPay':slip.netPay,'@total/grossPay':slip.grossPay,'@total/totalDeductions':slip.totalDeductions,'@total/employerCost':slip.employerCost});
     const allItems = p.payItemCode === ALL_RECORDED_PAY_ITEMS;
     return { id: slip.id, version: slip.version, runId: slip.runId, employmentId: slip.employmentId,
       companyId: batch.companyId, currency: recordedPayrollComparisonCurrency(slip.statutory, batch.companyId),
-      amount: recordedPayrollComparisonAmount(slip.basicSalary, slip.statutory, allItems?'BASIC':p.payItemCode,batch.companyId),
-      recordedItems: allItems ? slip.statutory : undefined,
+      amount: recordedPayrollComparisonAmount(slip.basicSalary, recordedItems, allItems?'BASIC':p.payItemCode,batch.companyId),
+      recordedItems: allItems ? recordedItems : undefined,
       coverage: payslipCoverage(slip, period),
       // The recorded factor describes Basic. It cannot prove a different item's proration.
       proratedCoverage: recordedPayrollProrationCoverage(slip.statutory,batch.companyId,period,allItems?'BASIC':p.payItemCode) };

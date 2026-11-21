@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from '../employment-payment-method';
 /** AI v2 P2-2a — the Salary payroll loop, from the salary cut-off to close (owner decisions, payroll-cycle loops, items
  * 1, 2, 3 and 5). PREPARE ONLY, IN EVERY COMPANY, ENFORCED: this module reads through the payroll owners and returns
  * observations; it never creates, processes, approves, closes or reopens a run, and it never generates or sends a bank
@@ -38,13 +39,13 @@ import {terasPayrollSwingDisposition} from '../../db/teras-payroll-cycle-schema'
 import {isModuleEnabled} from '../entitlements';
 import {anomalyMetrics} from '../payroll-anomaly';
 import {DETECTORS} from '../payroll-anomaly-detectors';
-import type {StoredPayslipRow} from '../pay-difference';
 import {packFor} from '../../localization/registry';
 import {BankPaymentFileError} from '../../localization/country-pack';
 import {read,unique,type LoopDetectInput,type LoopDetection,type LoopObservation} from './detect';
 import {companyCutOffs,nextPeriod,preSalaryWindows,previousPeriod} from './payroll-inputs';
 import {payrollLoopSettingsTx} from './payroll-loop-settings';
 import {netSwings,type ComponentIds,type SwingSummary} from './net-swing';
+import {swingRowsTx} from './swing-rows';
 import {listPayComponents} from '../../packs/payroll/service';
 import type {LoopFacts} from './types';
 import {acknowledgementFor,acknowledgementsTx,currentDepartmentsTx,type Acknowledgement} from './acknowledgements';
@@ -101,8 +102,8 @@ async function bankCheckFor(sponsor:SessionContext,batch:Batch,country:string):P
  // The run's own recorded net pay and headcount, and what of it is paid by bank (cash and cheque are not in the file).
  const [own]=await withTenant(sponsor,tx=>tx.select({
   slips:sql<number>`count(*)::int`,
-  bankRecords:sql<number>`(count(*) filter (where ${employment.paymentMethod}='bank_transfer' and ${payslip.netPay}>0))::int`,
-  otherCents:sql<string>`coalesce(sum(round(${payslip.netPay}*100)) filter (where ${employment.paymentMethod} is distinct from 'bank_transfer'),0)::text`})
+  bankRecords:sql<number>`(count(*) filter (where ${employmentPaymentMethodOnSql(sql`${employment.id}`)}='bank_transfer' and ${payslip.netPay}>0))::int`,
+  otherCents:sql<string>`coalesce(sum(round(${payslip.netPay}*100)) filter (where ${employmentPaymentMethodOnSql(sql`${employment.id}`)} is distinct from 'bank_transfer'),0)::text`})
   .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId)).where(eq(payslip.batchId,batch.id)));
  const bankRecords=Number(own?.bankRecords??0);
  // Nobody is paid by bank (cash and cheque only): the run's net pay to bank is nothing, and so is the bank file.
@@ -138,21 +139,8 @@ async function ruleVersionsFor(sponsor:SessionContext,batch:Batch,country:string
 }
 
 async function swingsFor(sponsor:SessionContext,companyId:string,period:string,setting:{thresholdBp:number;exclusions:readonly string[]},componentIds:ComponentIds):Promise<SwingSummary>{
- const periods=[period,previousPeriod(period),previousPeriod(previousPeriod(period)),previousPeriod(previousPeriod(previousPeriod(period)))];
- const rows=await withTenant(sponsor,tx=>tx.select({employmentId:payslip.employmentId,payPeriod:payrollBatch.payPeriod,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq,
-  basic:payslip.basicSalary,allowance:payslip.allowance,overtime:payslip.overtimePay,bonus:payslip.bonus,gross:payslip.grossPay,statutory:payslip.statutory,
-  otherDeductions:payslip.otherDeductions,totalDeductions:payslip.totalDeductions,net:payslip.netPay,daysWorked:payslip.daysWorked})
-  .from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId))
-  .where(and(eq(payrollBatch.companyId,companyId),inArray(payrollBatch.payPeriod,periods),inArray(payrollBatch.status,['processed','closed']))));
- const byEmployment=new Map<string,StoredPayslipRow[]>();
- for(const row of rows){
-  const list=byEmployment.get(row.employmentId)??[];
-  list.push({companyId,company:'',payPeriod:row.payPeriod,runType:row.runType,runSeq:row.runSeq,basic:row.basic,allowance:row.allowance,overtime:row.overtime,
-   bonus:row.bonus,gross:row.gross,statutory:row.statutory,otherDeductions:row.otherDeductions,totalDeductions:row.totalDeductions,net:row.net,daysWorked:row.daysWorked});
-  byEmployment.set(row.employmentId,list);
- }
- // Only people paid in the period itself are compared.
- for(const [employmentId,list] of byEmployment)if(!list.some(row=>row.payPeriod===period))byEmployment.delete(employmentId);
+ // The same reader, and so the same baseline, as the anomaly layer's net-swing (core/loops/swing-rows.ts).
+ const byEmployment=await withTenant(sponsor,tx=>swingRowsTx(tx,{companyId,period}));
  return netSwings(byEmployment,{period,companyId,thresholdBp:setting.thresholdBp,exclusions:setting.exclusions,componentIds});
 }
 
@@ -180,7 +168,8 @@ export async function detectSalaryPayroll(sponsor:SessionContext,input:LoopDetec
   netTotal:sql<unknown>`${payrollBatch.totals}->'net'`})
   .from(payrollBatch).where(and(inArray(payrollBatch.companyId,companies),isNull(payrollBatch.historyImportAttemptId),
    sql`(${inArray(payrollBatch.payPeriod,wanted)} or ${tracked.runs.size?inArray(payrollBatch.id,[...tracked.runs.keys()]):sql`false`})`))))
-  .map(row=>({id:row.id,companyId:row.companyId,payPeriod:row.payPeriod,runType:row.runType,runSeq:row.runSeq,status:row.status,employeeCount:row.employeeCount,
+  // A run the background payroll job is still processing has no final figures: the loop treats it as not processed yet.
+  .map(row=>({id:row.id,companyId:row.companyId,payPeriod:row.payPeriod,runType:row.runType,runSeq:row.runSeq,status:row.status==='processing'?'draft' as const:row.status,employeeCount:row.employeeCount,
    stale:row.needsRecalcAt!=null,batchDate:row.batchDate,netTotal:row.netTotal}))
   .filter(row=>{const p=periodsOf.get(row.companyId);return !!p&&(row.payPeriod===p.active||row.payPeriod===p.current||tracked.runs.has(row.id));});
  const observations:LoopObservation[]=[];

@@ -52,11 +52,15 @@ import * as att from '../packs/attendance/service';
 import * as leave from '../packs/leave/service';
 import { attendanceApplicationType, AttendanceWorkflowError } from '../lib/attendance-workflow';
 import { AttendanceLevelError } from '../lib/attendance-workflow-v3';
+import { AttendanceWorkflowSubmissionError } from '../lib/attendance-workflow-submission';
 import { claimCrossesMidnight } from '../lib/extended-hours';
 import { plannedOvertimeMinutes } from '../lib/overtime-duration';
 import { isDatabaseError } from '../lib/db-error';
 import { HR_LOCAL_TZ, todayInKualaLumpur } from '../lib/hr-date';
 import { publicErrorMessage } from '../lib/public-error';
+import { OvertimeBackdateNotAllowedError } from '../lib/overtime-backdate';
+import { mobileTranslator } from '../lib/mobile-api/server-text';
+import type { Locale } from '../i18n/config';
 import { encodeCursor } from '../lib/mobile-api/v2/common';
 import {
   ATTENDANCE_APPLICATIONS_CURSOR, AttendanceCorrectionResult, AttendanceWithdrawResult, OvertimePlanResult, ReplacementLeaveResult,
@@ -156,11 +160,12 @@ export async function ownAttendanceDay(ctx: SessionContext, employmentId: string
   // app/attendance/my-records/[date]/page.tsx: the form is disabled while a request for the date waits, and for a future date.
   const pending = requests.some((r) => r.status === 'pending');
   const future = date > today;
+  const route = !pending && !future ? await submissionRoute(ctx, employmentId, 'irregularity') : undefined;
   return {
     outcome: 'found', timeZone: HR_LOCAL_TZ, today,
     day: attendanceDayOf(row, punches, today),
     applications: requests.map(applicationSummaryOf),
-    correction: { offered: !pending && !future, blockedBy: future ? 'future' : pending ? 'pending' : null },
+    correction: { offered: !pending && !future, blockedBy: future ? 'future' : pending ? 'pending' : null, ...(route&&{route}) },
   };
 }
 
@@ -206,7 +211,7 @@ function routingOf(flow: Workflow, status: string): AttendanceApplicationDetailV
       level: index + 1, name: stage.name ?? '',
       status: decision ? decision.decision : status === 'pending' ? (index === flow.currentStage ? 'waiting' : 'not_reached') : 'not_required',
       approvers: approvers.slice(0, 20),
-      decision: decision ? { actorName: decision.actualActorName, actingMode: decision.actingMode, decidedAt: iso(decision.decidedAt)!, remarks: decision.remarks ?? null } : null,
+      decision: decision ? { actorName: decision.actualActorName, actingMode: decision.actingMode === 'on_behalf' ? 'administrator' : decision.actingMode, /* 96a54ed2: the mobile v2 contract is unchanged this round */ decidedAt: iso(decision.decidedAt)!, remarks: decision.remarks ?? null } : null,
     };
   });
   return { templateName: flow.templateName, templateVersion: flow.templateVersion, currentLevel: status === 'pending' ? flow.currentStage + 1 : null, levels: levels.slice(0, 20) };
@@ -265,6 +270,12 @@ export async function ownAttendanceApplication(ctx: SessionContext, employmentId
   return r ? { outcome: 'found', timeZone: HR_LOCAL_TZ, application: applicationDetailOf(r) } : NOT_FOUND;
 }
 
+async function submissionRoute(ctx:SessionContext,employmentId:string,type:Parameters<typeof att.ownAttendanceSubmissionRoute>[2]){
+  const route=await att.ownAttendanceSubmissionRoute(ctx,employmentId,type);
+  // The mobile v2 contract is unchanged (237c31e6): the refusal carries its reason only.
+  return route.available ? {available:true as const,firstApprovers:route.firstApprovers,fingerprint:route.fingerprint} : {available:false as const,reason:route.reason};
+}
+
 // ── Commands ───────────────────────────────────────────────────────────────────────────────────────────────
 
 /** A kernel validation refusal: a PLAIN Error the service threw with a sentence for the reader (never a driver error). */
@@ -278,16 +289,20 @@ export function attendanceCommandRefusal(e: unknown): AttendanceCommandRefusal {
   if (e instanceof att.AttendanceCorrectionFutureDateError) return refuse('future');
   if (e instanceof att.AttendanceCorrectionPendingError) return refuse('pending_exists');
   if (e instanceof att.AttendancePayrollClosedError) return refuse('payroll_closed');
+  if (e instanceof AttendanceWorkflowSubmissionError) return {...refuse('workflow_unavailable'),workflowReason:e.reason};
   if (e instanceof AttendanceLevelError || e instanceof AttendanceWorkflowError) return refuse('workflow_unavailable');
   // The overtime plan's two dated refusals (an approved plan still waiting for the day; overtime already counted on
   // it). Typed for the web's localized sentence; here the kernel's own sentence travels as the message.
   if (e instanceof att.OvertimePlanAlreadyApprovedError || e instanceof att.OvertimeAlreadyCountedError) return refuse('invalid');
+  // 87bd9656 — Overtime Backdate Control. The overtime plan command replaces this English sentence with the
+  // translated one (requestOwnOvertimePlanV2); any other caller still gets a refusal, never a 500.
+  if (e instanceof OvertimeBackdateNotAllowedError) return refuse('invalid');
   if (e instanceof att.ClockDataChangedError || plainRefusal(e)) return refuse('invalid');
   throw e;
 }
 
-async function command<S extends z.ZodType, R>(run: () => Promise<z.output<S>>, refusal: (e: unknown) => R): Promise<z.output<S> | R> {
-  try { return await run(); } catch (e) { return refusal(e); }
+async function command<S extends z.ZodType, R>(run: () => Promise<z.output<S>>, refusal: (e: unknown) => R | Promise<R>): Promise<z.output<S> | R> {
+  try { return await run(); } catch (e) { return await refusal(e); }
 }
 
 /**
@@ -298,11 +313,12 @@ async function command<S extends z.ZodType, R>(run: () => Promise<z.output<S>>, 
 export async function requestOwnAttendanceCorrectionV2(ctx: SessionContext, employmentId: string, p: AttendanceCorrectionCommand): Promise<z.output<typeof AttendanceCorrectionResult>> {
   if (!attendanceEnabled(ctx)) return MODULE_OFF;
   const checkIn = p.checkIn ?? null, checkOut = p.checkOut ?? null, reason = p.reason.trim(), remark = p.remark?.trim() || null;
+  const routing = p.workflowFingerprint ? {workflowFingerprint:p.workflowFingerprint} : {};
   return command<typeof AttendanceCorrectionResult, AttendanceCommandRefusal>(() => withMobileCommandReceipt(ctx, {
-    kind: 'attendance.correction', requestId: p.requestId, intent: { date: p.date, checkIn, checkOut, reason, remark },
+    kind: 'attendance.correction', requestId: p.requestId, intent: { date: p.date, checkIn, checkOut, reason, remark, ...routing },
     actorEmploymentId: employmentId, response: AttendanceCorrectionResult,
   }, async (tx) => {
-    const out = await att.requestAttendanceCorrection(ctx, { employmentId, date: p.date, checkIn, checkOut, reason, remark }, tx);
+    const out = await att.requestAttendanceCorrection(ctx, { employmentId, date: p.date, checkIn, checkOut, reason, remark, ...routing }, tx);
     return { outcome: 'submitted' as const, id: out.correctionId, date: p.date };
   }), attendanceCommandRefusal);
 }
@@ -327,7 +343,7 @@ export async function overtimePlanOfferV2(ctx: SessionContext, employmentId: str
   const base = { timeZone: HR_LOCAL_TZ, today: todayInKualaLumpur() };
   if (!attendanceEnabled(ctx)) return { enabled: false, employmentId: null, allowed: false, reason: 'module_off', ...base };
   if (!employmentId) return { enabled: true, employmentId: null, allowed: false, reason: 'no_employment', ...base };
-  return { enabled: true, employmentId, allowed: true, reason: null, ...base };
+  return { enabled: true, employmentId, allowed: true, reason: null, route:await submissionRoute(ctx,employmentId,'self_overtime'), ...base };
 }
 
 /**
@@ -336,22 +352,29 @@ export async function overtimePlanOfferV2(ctx: SessionContext, employmentId: str
  * requestAttendanceCorrection with requestedOtMinutes, the window, the reason and the remark. The kernel files it as
  * `self_overtime`, validates it and routes it. Replays its first accepted answer under the same requestId.
  */
-export async function requestOwnOvertimePlanV2(ctx: SessionContext, employmentId: string, p: OvertimePlanCommand): Promise<z.output<typeof OvertimePlanResult>> {
+export async function requestOwnOvertimePlanV2(ctx: SessionContext, employmentId: string, p: OvertimePlanCommand, locale: Locale = 'en'): Promise<z.output<typeof OvertimePlanResult>> {
   if (!attendanceEnabled(ctx)) return MODULE_OFF;
   const minutes = plannedOvertimeMinutes(p.plannedStart, p.plannedEnd);
   // myRequestOvertime's own sentence for the same refusal.
   if (minutes == null) return { outcome: 'refused', code: 'invalid', message: 'Enter different valid start and end times.' };
   const reason = p.reason.trim(), remark = p.remark?.trim() || null;
+  const routing = p.workflowFingerprint ? {workflowFingerprint:p.workflowFingerprint} : {};
   return command<typeof OvertimePlanResult, AttendanceCommandRefusal>(() => withMobileCommandReceipt(ctx, {
     kind: 'attendance.overtime-plan', requestId: p.requestId,
-    intent: { date: p.date, plannedStart: p.plannedStart, plannedEnd: p.plannedEnd, reason, remark },
+    intent: { date: p.date, plannedStart: p.plannedStart, plannedEnd: p.plannedEnd, reason, remark, ...routing },
     actorEmploymentId: employmentId, response: OvertimePlanResult,
   }, async (tx) => {
     const out = await att.requestAttendanceCorrection(ctx, {
-      employmentId, date: p.date, requestedOtMinutes: minutes, reason, remark, plannedStartTime: p.plannedStart, plannedEndTime: p.plannedEnd,
+      employmentId, date: p.date, requestedOtMinutes: minutes, reason, remark, plannedStartTime: p.plannedStart, plannedEndTime: p.plannedEnd, ...routing,
     }, tx);
     return { outcome: 'submitted' as const, id: out.correctionId, date: p.date, minutes };
-  }), attendanceCommandRefusal);
+  }), async (e) => {
+    const refusal = attendanceCommandRefusal(e);
+    if (!(e instanceof OvertimeBackdateNotAllowedError)) return refusal;
+    // 87bd9656 — the web's own sentence (scheduleOvertimeSetting.backdateRefused) in the app's language.
+    const t = await mobileTranslator(locale, 'scheduleOvertimeSetting');
+    return { ...refusal, message: t('backdateRefused', { days: e.limitDays, date: e.earliestDate }) ?? refusal.message };
+  });
 }
 
 // ── Replacement leave (Leave Credit) ───────────────────────────────────────────────────────────────────────

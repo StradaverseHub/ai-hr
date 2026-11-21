@@ -39,26 +39,31 @@ const input=(over:Partial<typeof setting>&{componentIds?:ReadonlyMap<string,stri
 const meal=(name:string,amount:number,code='A0040')=>({code,name,amount,buckets:[{bucket:'reimburse',amount}]});
 
 describe('the net-swing flag: the pay-difference service\'s change, as a share of last month\'s net pay',()=>{
- it('starts at ±15%, and flags a salary change with a bonus run by the share of the net change',()=>{
+ it('starts at ±15%, and does not flag a salary change with a bonus run that the payroll records explain',()=>{
   expect(DEFAULT_SWING_THRESHOLD_BP).toBe(1500);
-  // (5,630.35 − 4,295.35) / 4,295.35 = 1,335 / 4,295.35 = 31.08% → 3108 basis points.
+  // (5,630.35 − 4,295.35) / 4,295.35 = 1,335 / 4,295.35 = 31.08% → 3108 basis points. "Check the payroll first" (owner,
+  // 11 November 2026): the bonus run's 890.00, and the salary change's 500.00 basic less its 55.00 computed EPF, explain
+  // all 1,335.00, so nothing is left unexplained and the person is not flagged.
   expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input())).toEqual({employmentId:'e1',changed:true,swingBp:3108,direction:'up',
-   pattern:'cause:salary_change',causes:['salary_change','additional_run'],flagged:true,excluded:false});
-  // The company's own threshold decides: at ±35% the same change is not flagged.
-  expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({thresholdBp:3500}))).toMatchObject({swingBp:3108,flagged:false,excluded:false});
-  // Exactly at the threshold is not over it.
-  expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({thresholdBp:3108}))).toMatchObject({flagged:false});
+   pattern:'cause:salary_change',causes:['salary_change','additional_run'],flagged:false,excluded:false,unexplainedBp:0,
+   explainedBy:['additional_run','salary_change'],netPay:5630.35,previousNetPay:4295.35});
+  // The company's own threshold decides an unexplained change: the 1,000 meal allowance (23.28%) is not flagged at ±35%,
+  // and exactly at the threshold is not over it.
+  expect(netSwingFor('e2',[SEPTEMBER,OCT_ALLOWANCE],input({thresholdBp:3500}))).toMatchObject({swingBp:2328,flagged:false,excluded:false});
+  expect(netSwingFor('e2',[SEPTEMBER,OCT_ALLOWANCE],input({thresholdBp:2328}))).toMatchObject({flagged:false});
  });
  it('names a pay item that explains most of the change by its component\'s id, and an approved exclusion stops that flag only while it explains it',()=>{
   // 1,000 / 4,295.35 = 23.28% → 2328 basis points; the meal allowance item (code A0040) moved by the whole 1,000.
   expect(netSwingFor('e2',[SEPTEMBER,OCT_ALLOWANCE],input())).toEqual({employmentId:'e2',changed:true,swingBp:2328,direction:'up',
-   pattern:`item:${MEAL_ID}`,causes:[],flagged:true,excluded:false});
+   pattern:`item:${MEAL_ID}`,causes:[],flagged:true,excluded:false,unexplainedBp:2328,explainedBy:[],netPay:5295.35,previousNetPay:4295.35});
   expect(netSwingFor('e2',[SEPTEMBER,OCT_ALLOWANCE],input({exclusions:[`item:${MEAL_ID}`]}))).toMatchObject({swingBp:2328,flagged:false,excluded:true});
-  // A cause can be excluded too, but (Phase 2 hardening) it explains a change only when it is the only cause and the swing
-  // is under twice the threshold: here a second cause (the additional run) and a swing of 31.08%, over twice 15%, so the
-  // person is still flagged. test/payroll-loops-hardening.test.ts covers each side. A different exclusion changes nothing.
-  expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({exclusions:['cause:salary_change']}))).toMatchObject({flagged:true,excluded:false});
-  expect(netSwingFor('e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS],input({exclusions:[`item:${MEAL_ID}`]}))).toMatchObject({flagged:true,excluded:false});
+  // The meal allowance AND a bonus run: (5,295.35 + 890.00 − 4,295.35) / 4,295.35 = 44.00%; the bonus run explains 890.00,
+  // and the 1,000 left (23.28%) is still over 15%. Excluding the meal item does not hide it: the 890.00 left once that
+  // item's own change is set aside is 20.72%, over the threshold (Phase 2 hardening); a cause exclusion is not its pattern.
+  const both=[SEPTEMBER,OCT_ALLOWANCE,OCT_BONUS];
+  expect(netSwingFor('e8',both,input())).toMatchObject({swingBp:4400,unexplainedBp:2328,explainedBy:['additional_run'],pattern:`item:${MEAL_ID}`,flagged:true});
+  expect(netSwingFor('e8',both,input({exclusions:[`item:${MEAL_ID}`]}))).toMatchObject({flagged:true,excluded:false});
+  expect(netSwingFor('e8',both,input({exclusions:['cause:additional_run']}))).toMatchObject({flagged:true,excluded:false});
  });
  it('keeps a learned pattern when the component is renamed, and never guesses between two components of one name',()=>{
   // September's 200 meal allowance becomes October's 1,200 under a new name; the code, and so the id, is the same.
@@ -81,7 +86,8 @@ describe('the net-swing flag: the pay-difference service\'s change, as a share o
   expect(netSwingFor('e4',[OCT_REGULAR],input())).toBeNull();
   expect(netSwingFor('e5',[row({net:'0.00'}),OCT_REGULAR],input())).toMatchObject({changed:true,swingBp:null,flagged:false});
   const summary=netSwings(new Map([['e1',[SEPTEMBER,OCT_REGULAR,OCT_BONUS]],['e2',[SEPTEMBER,OCT_ALLOWANCE]],['e3',[SEPTEMBER,row({payPeriod:'2026-10'})]]]),input());
-  expect([summary.compared,summary.changed,summary.flagged]).toEqual([3,2,2]);
+  // e1's change is explained by its payroll records; only e2's is flagged.
+  expect([summary.compared,summary.changed,summary.flagged]).toEqual([3,2,1]);
   expect(summary.causes).toMatchObject({salary_change:1,additional_run:1,unpaid_leave:0});
  });
 });

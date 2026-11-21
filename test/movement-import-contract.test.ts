@@ -19,6 +19,11 @@ describe('Movement file is the New Event transport',()=>{
   expect(movementFormRequired('kind',kind)).toBe(true);
  });
  it.each([['29-Feb-2024','2024-02-29'],['01-jan-2026','2026-01-01'],['2026-10-18','2026-10-18'],['29-Feb-2025',null],['31-Apr-2026',null],['01/02/2026',null],['0000-01-01',null]])('parses %s without locale ambiguity', (raw,expected)=>expect(movementImportDate(raw!)).toBe(expected));
+ it.each([['confirmationDate','confirmation_date'],['contractEndDate','contract_end_date'],['internshipEndDate','internship_end_date']] as const)('accepts the workbook date format for %s and rejects impossible dates', (field,column)=>{
+  const parsed=parseMovementImport(`employee_code,event_type,effective_date,${column}\nEMP-1,promotion,18-Oct-2026,19-Oct-2026`);
+  expect(parsed.fileErrors).toEqual([]);expect(movementImportCellIssues(parsed.records[0],'promotion')).toEqual([]);
+  parsed.records[0].cells[field]='31-Feb-2026';expect(movementImportCellIssues(parsed.records[0],'promotion')).toContain(`invalid_date:${field}`);
+ });
  it('renders DD-MMM-YYYY and accepts its exact transport headers, quoted remarks and leading-zero IDs',()=>{
   const values=MOVEMENT_IMPORT_COLUMNS.map(column=>({employee_code:'0007',event_type:'secondment',effective_date:'18-Oct-2026',remarks:'Fictional, quoted\nremark'}[column]??''));
   const parsed=parseMovementImport(toCsv([MOVEMENT_IMPORT_HEADERS,values]));expect(parsed.fileErrors).toEqual([]);

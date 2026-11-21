@@ -1,14 +1,15 @@
-import {accountAvailable,type RecoveryExemption} from './account-state';
+import {accountAvailable} from './account-state';
+import {settleRecoveryExemption,consumeRecoveryExemption} from './recovery-exemption';
 import { replacePassword,effectivePasswordPolicy } from './password-policy';
 import { randomUUID } from 'node:crypto';
 import {emailLocale,type EmailLocale} from '../email-design/model';
 import {recoveryEmailDesign} from '../email-design/delivery';
 import {renderEmailDesign} from '../email-design/render';
 import {accountEmailAction,recoveryEmailContent} from '../account-email-content';
-import { client } from '../../db/client';
+import { client, withPoolWork } from '../../db/client';
 import { internalConfig } from './config';
 import { digest, opaque, validOpaque } from './crypto';
-import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions } from './store';
+import { admittedAuthSql, authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions } from './store';
 import { canonicalOrg, credentialByLogin, takeRate, InternalAuthError, verifyCredentialFactor, type Credential } from './service';
 import { sendInternalMail, type MailTransport } from './mail';
 import { AccountEmailDeliveryError } from '../account-email-model';
@@ -44,10 +45,10 @@ export async function requestRecovery(organization: string, username: string, tr
 /** Exact delivery lease + authenticated original account binding; an email address is never a lookup. */
 export async function sendInternalRecovery(email: string, context?: { deliveryId: string; leaseToken: string }, transport?: MailTransport) {
   if (!context) throw new AccountEmailDeliveryError('notEligible');
-  const rows = await client.unsafe('select app.internal_auth_recovery_source($1::uuid,$2::uuid) id', [context.deliveryId, context.leaseToken]);
+  const rows = await withPoolWork('authentication', () => client.unsafe('select app.internal_auth_recovery_source($1::uuid,$2::uuid) id', [context.deliveryId, context.leaseToken]), undefined, {idempotent:true});
   const source = rows[0]?.id;
   if (!source) throw new AccountEmailDeliveryError('notEligible');
-  const binding = await readRecord<RecoveryContext>(client, `recovery-mail:${source}`);
+  const binding = await readRecord<RecoveryContext>(admittedAuthSql, `recovery-mail:${source}`);
   if (!binding || binding.email !== email) throw new AccountEmailDeliveryError('notEligible');
   const token = await authTransaction(binding.subject, async tx => {
     const c = await readRecord<Credential>(tx, `credential:${binding.subject}`, true);
@@ -62,14 +63,14 @@ export async function sendInternalRecovery(email: string, context?: { deliveryId
     await writeRecord(tx, `recovery-active:${c.subject}`, { key }, c.subject);
     return raw;
   });
-  const [principal]=await client.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[binding.issuer,binding.subject]);
+  const [principal]=await withPoolWork('authentication',()=>client.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[binding.issuer,binding.subject]),undefined,{idempotent:true});
   if(principal?.tenant_id!==binding.tenantId||!principal.app_user_id)throw new AccountEmailDeliveryError('notEligible');
   const design=await recoveryEmailDesign({tenantId:binding.tenantId,userId:principal.app_user_id},binding.locale??'en'),link=`${internalConfig().origin}/reset-password#token=${token}`;
   await sendInternalMail({to:email,...renderEmailDesign(design.document,'recovery',design.locale,{...recoveryEmailContent(link,design.locale),link,buttonLabel:accountEmailAction('recovery',design.locale)},{...design.data,expiry_minutes:'30'})},transport);
 }
 export async function completeRecovery(raw: string, password: string, code: string) {
   if (!validOpaque(raw)) throw new InternalAuthError('invalidChallenge');
-  const key = `recovery:${digest(raw)}`, initial = await readRecord<Recovery>(client, key);
+  const key = `recovery:${digest(raw)}`, initial = await readRecord<Recovery>(admittedAuthSql, key);
   if (!initial) throw new InternalAuthError('invalidChallenge');
   await takeRate(`recovery-complete:${initial.subject}`, 10);
   const result = await authTransaction(initial.subject, async tx => {
@@ -78,19 +79,13 @@ export async function completeRecovery(raw: string, password: string, code: stri
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
     if (principal[0]?.tenant_id !== c.tenantId) throw new InternalAuthError('invalidChallenge');
     const requireVerification=(await effectivePasswordPolicy(tx,c.tenantId)).requirements?.firstResetVerification;
-    const exemptionKey=`recovery-exemption:${c.subject}`;
-    const exemption=await readRecord<RecoveryExemption>(tx,exemptionKey,true);
-    const exempt=exemption?.purpose==='password-reset'&&exemption.expiresAt>Date.now();
-    if (!exempt && (requireVerification&&!c.totpSecret || c.totpSecret && !await verifyCredentialFactor(c, code))) return false;
+    // An ended pause is settled (deleted and audited as expired) and never admits the reset.
+    const exemption=await settleRecoveryExemption(tx,c);
+    if (!exemption && (requireVerification&&!c.totpSecret || c.totpSecret && !await verifyCredentialFactor(c, code))) return false;
     await replacePassword(tx, c, password); c.version = randomUUID(); c.mustChange = false; delete c.temporaryPasswordExpiresAt; delete c.temporaryPasswordUsed;
-    if(exempt) {
-      // A verified, one-use administrator recovery grant retires the lost factor only after the
-      // replacement password passes policy. Next sign-in must enroll a fresh authenticator.
-      c.totpSecret=null;c.lastStep=-1;c.recoveryHashes=[];
-      await deleteRecord(tx,exemptionKey);
-      const [subject]=await tx.unsafe('select app_user_id from app.principal_by_identity($1,$2)',[c.issuer,c.subject]);
-      if(subject)await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'app-user.recovery-exemption-consumed','user',$2::uuid,NULL)",[c.tenantId,subject.app_user_id]);
-    }
+    // A verified, one-use administrator pause retires the lost factor only after the replacement
+    // password passes policy. Next sign-in must enrol a fresh authenticator.
+    if(exemption) await consumeRecoveryExemption(tx,c,exemption,'password-reset');
     await revokeCredentialsSessions(tx, c.subject);
     await writeRecord(tx, `credential:${c.subject}`, c, c.subject);
     await deleteRecord(tx, key);

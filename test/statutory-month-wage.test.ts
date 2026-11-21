@@ -120,19 +120,32 @@ describe('the month’s statutory wage is the month’s wage ONCE', () => {
   /**
    * A RESET RUN DROPS OUT BY CONSTRUCTION, WHICH IS WHY THERE IS NO PREDICATE FOR IT HERE.
    * `resetProcessedBatch` DELETEs the run's payslips before flipping the batch to draft, so it hands in no
-   * row at all. Asserted on the kernel's source (comments stripped) rather than assumed, because the whole
-   * fold rests on it: were a reset run to keep its payslips, its stale basis could out-rank the real one.
+   * row at all. This source guard follows the public transaction into its native owner. The actual
+   * physical delete, draft state and denied/rolled-back resets are exercised by payroll-reset.test.ts
+   * and payroll-reset-native-proof.test.ts. A stale retained row could out-rank the surviving run.
    */
   it('needs no reset-run predicate, because resetProcessedBatch deletes the payslips first', () => {
     const src = code('core/payroll.ts');
-    const at = src.indexOf('export async function resetProcessedBatch');
-    expect(at).toBeGreaterThan(-1);
-    const body = src.slice(at, at + 4000);
-    const del = body.indexOf('.delete(payslip)');
+    const entryAt = src.indexOf('export async function resetProcessedBatch(');
+    const ownerAt = src.indexOf('export async function resetProcessedBatchTx(');
+    expect(entryAt).toBeGreaterThan(-1);expect(ownerAt).toBeGreaterThan(entryAt);
+    const ownerEnd = src.indexOf('\nexport ', ownerAt + 1);
+    expect(ownerEnd, 'the native owner must have an explicit nonempty source boundary').toBeGreaterThan(ownerAt);
+    const entry = src.slice(entryAt, ownerAt), body = src.slice(ownerAt, ownerEnd);
+    expect(entry, 'public reset must use one tenant transaction').toMatch(/return\s+withTenant\(ctx,\s*async\s*\(tx\)\s*=>/);
+    expect(entry, 'public reset must call its native owner in that transaction').toMatch(/await\s+resetProcessedBatchTx\(tx,\s*ctx,\s*p\)/);
+    const permission = body.indexOf("assertPayrollPermission(tx, ctx, 'payroll.rollback', batch.companyId)");
+    const processed = body.indexOf("if (batch.status !== 'processed') throw new BatchNotResettableError()");
+    // This automatically updatable, scope-checked native write view deletes physical payslips;
+    // the effective-history read projection is deliberately not a reset/delete authority.
+    const del = body.indexOf('tx.delete(nativePayrollPayslipWrite).where(eq(nativePayrollPayslipWrite.batchId, p.batchId))');
     const draft = body.indexOf("status: 'draft'");
-    expect(del, 'resetProcessedBatch must delete the run’s payslips').toBeGreaterThan(-1);
+    expect(permission, 'native reset must check granular company rollback authority').toBeGreaterThan(-1);
+    expect(processed, 'native reset must require an actually processed run').toBeGreaterThan(-1);
+    expect(del, 'resetProcessedBatchTx must delete this run’s native payslips').toBeGreaterThan(-1);
     expect(draft).toBeGreaterThan(-1);
-    expect(del, 'the delete must precede the flip to draft').toBeLessThan(draft);
+    expect(permission).toBeLessThan(del);expect(processed).toBeLessThan(del);
+    expect(del, 'the delete must precede the flip to draft in the same transaction').toBeLessThan(draft);
     // And the fold's own half of it: a month whose reset run contributed no row reads the surviving run.
     const w = monthWageFor(monthWagesFrom([slip('E1', 1, { epf: ONE_MONTH, socsoEis: ONE_MONTH })]), 'E1');
     expect(w.epf).toBe(ONE_MONTH);

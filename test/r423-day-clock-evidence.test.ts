@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * r423 (83c0d3c8, plan point 13) — HR'S DAY DETAIL SHOWS WHERE EACH SELF-SERVICE CLOCKING WAS MADE.
  *
@@ -61,7 +62,7 @@ beforeAll(migrateTestDb);
 afterAll(closeAll);
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
   SESSION = adminCtx(b);
   SCOPE = [b.companyId];
 });

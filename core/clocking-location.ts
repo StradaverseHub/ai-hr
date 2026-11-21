@@ -732,14 +732,12 @@ function usableAssignedClockingLocationSql(){
 
 /** Minimal names of the same usable assigned sites. Total is computed before the three-name display
  * bound; no address, coordinates, geofence radius or other employee data is selected. */
-export function employeeClockingLocationLabels(ctx:SessionContext,employmentId:string){
- return withTenant(ctx,async tx=>{
-  const rows=await tx.select({name:clockingLocation.name,total:sql<number>`count(*) over ()`.mapWith(Number)})
-   .from(employeeClockingLocation).innerJoin(clockingLocation,eq(clockingLocation.id,employeeClockingLocation.clockingLocationId))
-   .where(and(eq(employeeClockingLocation.employmentId,employmentId),usableAssignedClockingLocationSql()))
-   .orderBy(asc(clockingLocation.name),asc(clockingLocation.id)).limit(3);
-  return {total:rows[0]?.total??0,names:rows.map(row=>row.name)};
- });
+export async function employeeClockingLocationLabelsTx(tx:Tx,employmentId:string){
+ const rows=await tx.select({name:clockingLocation.name,total:sql<number>`count(*) over ()`.mapWith(Number)})
+  .from(employeeClockingLocation).innerJoin(clockingLocation,eq(clockingLocation.id,employeeClockingLocation.clockingLocationId))
+  .where(and(eq(employeeClockingLocation.employmentId,employmentId),usableAssignedClockingLocationSql()))
+  .orderBy(asc(clockingLocation.name),asc(clockingLocation.id)).limit(3);
+ return {total:rows[0]?.total??0,names:rows.map(row=>row.name)};
 }
 
 /** The clocking sites currently assigned to one employment. Deliberately does NOT join `location`: this is

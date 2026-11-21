@@ -1,5 +1,6 @@
 'use client';
 
+import { ActionButton } from '@/components/ui/action-button';
 /**
  * Card wrapper for a single analytics chart: title + the chart (passed as children) + a per-chart image
  * export menu (PNG / JPEG / PDF). Reuses the design-system Card; the export menu calls lib/chart-export
@@ -49,12 +50,12 @@ export function ChartCard({
 
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
         <h3 className="text-sm font-semibold">{title}</h3>
         {!isEmpty && (
           <div className="inline-flex items-center gap-1.5" aria-label={exportLabel}>
             {FORMATS.map(({ fmt, label }) => (
-              <button
+              <ActionButton aria-busy={busy}
                 key={fmt}
                 type="button"
                 disabled={busy}
@@ -62,7 +63,7 @@ export function ChartCard({
                 className="rounded-lg border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
               >
                 ↓ {label}
-              </button>
+              </ActionButton>
             ))}
           </div>
         )}
@@ -73,7 +74,7 @@ export function ChartCard({
         ) : (
           children
         )}
-        {footnote && !isEmpty && <p className="mt-2 text-[11px] text-muted-foreground">{footnote}</p>}
+        {footnote && !isEmpty && <p className="mt-3 text-sm text-muted-foreground">{footnote}</p>}
       </div>
     </Card>
   );

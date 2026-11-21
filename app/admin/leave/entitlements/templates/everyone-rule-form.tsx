@@ -62,7 +62,7 @@ export function EveryoneRuleForm({
   const t = useTranslations('admin.entitlementTemplates');
   const [validFrom, setValidFrom] = useState(today);
   const [count, setCount] = useState<number | null>(null);
-  const [, startTransition] = useTransition();
+  const [countPending, startTransition] = useTransition();
 
   // ⚠️ THE POPULATION IS DATED, so the count is too: `resolveOrgCriteriaTargets` excludes anybody not yet
   // hired or already terminated as at the date asked about. A count fetched for today and shown beside an
@@ -81,7 +81,7 @@ export function EveryoneRuleForm({
   }, [validFrom, today, countAction]);
 
   return (
-    <form action={action} className="mb-4 space-y-2 rounded-md border border-border p-3">
+    <form action={action} aria-busy={countPending} data-action-region className="mb-4 space-y-2 rounded-md border border-border p-3">
       {embeddedLeaveTypeId ? (
         <input type="hidden" name="embeddedLeaveTypeId" value={embeddedLeaveTypeId} />
       ) : null}

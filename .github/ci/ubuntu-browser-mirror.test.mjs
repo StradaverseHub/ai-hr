@@ -41,3 +41,13 @@ test('exact mirror-list source needs actual bounded recognized mirror order',()=
  for(const bad of [undefined,'',mirrors.replace('priority:1','priority:5'),mirrors.replace('https://archive.ubuntu.com','https://example.com')])assert.throws(()=>ubuntuMirrorSource(input,'primary-https',bad));
  assert.throws(()=>ubuntuMirrorSource(input.replace('/etc/apt/apt-mirrors.txt','/tmp/mirrors'),'primary-https',mirrors));
 });
+test('observed AWS and other official regional EC2 runner entries map only to canonical signed HTTPS',()=>{
+ const input=stanza.replace('http://azure.archive.ubuntu.com/ubuntu/','mirror+file:/etc/apt/apt-mirrors.txt');
+ for(const region of ['us-east-2','eu-west-1','ap-southeast-2','us-gov-east-1']){
+  const actual=mirrors.replace('azure.archive.ubuntu.com',region+'.ec2.archive.ubuntu.com');
+  const r=ubuntuMirrorSource(input,'primary-https',actual);assert.equal(r.text,input.replace('mirror+file:/etc/apt/apt-mirrors.txt','https://archive.ubuntu.com/ubuntu/'));assert.equal(r.proof.signaturePolicyUnchanged,true);assert.equal(r.proof.packageSelectionUnchanged,true);
+ }
+});
+for(const [label,endpoint]of [
+ ['lookalike suffix','http://us-east-2.ec2.archive.ubuntu.com.evil.test/ubuntu/'],['lookalike prefix','http://evil-us-east-2.ec2.archive.ubuntu.com/ubuntu/'],['unrelated EC2 domain','http://us-east-2.ec2.amazonaws.com/ubuntu/'],['credentials','http://user@us-east-2.ec2.archive.ubuntu.com/ubuntu/'],['port','http://us-east-2.ec2.archive.ubuntu.com:80/ubuntu/'],['query','http://us-east-2.ec2.archive.ubuntu.com/ubuntu/?mirror=evil'],['fragment','http://us-east-2.ec2.archive.ubuntu.com/ubuntu/#evil'],['alternate path','http://us-east-2.ec2.archive.ubuntu.com/other/'],['unsigned downgrade of second mirror','http://example.test/ubuntu/'],
+])test('regional mirror refuses '+label,()=>{const input=stanza.replace('http://azure.archive.ubuntu.com/ubuntu/','mirror+file:/etc/apt/apt-mirrors.txt');assert.throws(()=>ubuntuMirrorSource(input,'primary-https',mirrors.replace('http://azure.archive.ubuntu.com/ubuntu/',endpoint)));});

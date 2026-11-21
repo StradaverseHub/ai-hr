@@ -1,0 +1,1106 @@
+{
+  "schemaVersion": 1,
+  "fixture": "system-load-v1",
+  "engine": "chromium",
+  "scope": "14 reviewed destinations/48 source cases: 10 native link destinations/40 cases and 4 HR-only direct route/content destinations/8 cases. Existing native fictional hire, payroll, attendance, reward prerequisite and sealed saved-history owners supply independent expected facts. Direct entry never qualifies native menu coverage. Policies and unseeded Ask roles assert explicit controls/empty state only. Remaining catalogue, dynamic menus, query views and unrepresented roles stay unverified.",
+  "scenarios": [
+    {
+      "id": "submenu.claims.types.companyHR.usable",
+      "destinationId": "submenu.claims.types",
+      "role": "companyHR",
+      "href": "/admin/claims",
+      "originHref": "/admin/claims",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [
+        {
+          "kind": "open-details",
+          "selector": "main details:has(input[name=\"code\"])"
+        }
+      ],
+      "checks": [
+        {
+          "id": "code-editor",
+          "kind": "enabled",
+          "selector": "main input[name=\"code\"]",
+          "tag": "input"
+        },
+        {
+          "id": "name-editor",
+          "kind": "enabled",
+          "selector": "main input[name=\"name\"]",
+          "tag": "input"
+        }
+      ]
+    },
+    {
+      "id": "submenu.claims.types.groupHR.usable",
+      "destinationId": "submenu.claims.types",
+      "role": "groupHR",
+      "href": "/admin/claims",
+      "originHref": "/admin/claims",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [
+        {
+          "kind": "open-details",
+          "selector": "main details:has(input[name=\"code\"])"
+        }
+      ],
+      "checks": [
+        {
+          "id": "code-editor",
+          "kind": "enabled",
+          "selector": "main input[name=\"code\"]",
+          "tag": "input"
+        },
+        {
+          "id": "name-editor",
+          "kind": "enabled",
+          "selector": "main input[name=\"name\"]",
+          "tag": "input"
+        }
+      ]
+    },
+    {
+      "id": "submenu.claims.types.employee.denied",
+      "destinationId": "submenu.claims.types",
+      "role": "employee",
+      "href": "/admin/claims",
+      "originHref": "/admin/claims",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.claims.types.manager.denied",
+      "destinationId": "submenu.claims.types",
+      "role": "manager",
+      "href": "/admin/claims",
+      "originHref": "/admin/claims",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.holidays.groups.companyHR.usable",
+      "destinationId": "submenu.holidays.groups",
+      "role": "companyHR",
+      "href": "/admin/holidays/groups",
+      "originHref": "/admin/holidays",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "add-group",
+          "kind": "enabled",
+          "selector": "main a[href=\"/admin/holidays/groups/new\"]",
+          "tag": "a"
+        },
+        {
+          "id": "new-group-destination",
+          "kind": "attribute",
+          "selector": "main a[href=\"/admin/holidays/groups/new\"]",
+          "name": "href",
+          "expected": "/admin/holidays/groups/new"
+        }
+      ]
+    },
+    {
+      "id": "submenu.holidays.groups.groupHR.usable",
+      "destinationId": "submenu.holidays.groups",
+      "role": "groupHR",
+      "href": "/admin/holidays/groups",
+      "originHref": "/admin/holidays",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "add-group",
+          "kind": "enabled",
+          "selector": "main a[href=\"/admin/holidays/groups/new\"]",
+          "tag": "a"
+        },
+        {
+          "id": "new-group-destination",
+          "kind": "attribute",
+          "selector": "main a[href=\"/admin/holidays/groups/new\"]",
+          "name": "href",
+          "expected": "/admin/holidays/groups/new"
+        }
+      ]
+    },
+    {
+      "id": "submenu.holidays.groups.employee.denied",
+      "destinationId": "submenu.holidays.groups",
+      "role": "employee",
+      "href": "/admin/holidays/groups",
+      "originHref": "/admin/holidays/groups",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.holidays.groups.manager.denied",
+      "destinationId": "submenu.holidays.groups",
+      "role": "manager",
+      "href": "/admin/holidays/groups",
+      "originHref": "/admin/holidays/groups",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.systemLabels.organisation.companyHR.usable",
+      "destinationId": "submenu.systemLabels.organisation",
+      "role": "companyHR",
+      "href": "/admin/settings/system-labels",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "grid-columns",
+          "kind": "count",
+          "selector": "main table:visible thead th",
+          "minimum": 4
+        },
+        {
+          "id": "grid-control",
+          "kind": "enabled",
+          "selector": "main button[type=\"button\"]:enabled",
+          "tag": "button"
+        }
+      ]
+    },
+    {
+      "id": "submenu.systemLabels.organisation.groupHR.usable",
+      "destinationId": "submenu.systemLabels.organisation",
+      "role": "groupHR",
+      "href": "/admin/settings/system-labels",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "grid-columns",
+          "kind": "count",
+          "selector": "main table:visible thead th",
+          "minimum": 4
+        },
+        {
+          "id": "grid-control",
+          "kind": "enabled",
+          "selector": "main button[type=\"button\"]:enabled",
+          "tag": "button"
+        }
+      ]
+    },
+    {
+      "id": "submenu.systemLabels.organisation.employee.denied",
+      "destinationId": "submenu.systemLabels.organisation",
+      "role": "employee",
+      "href": "/admin/settings/system-labels",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.systemLabels.organisation.manager.denied",
+      "destinationId": "submenu.systemLabels.organisation",
+      "role": "manager",
+      "href": "/admin/settings/system-labels",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.systemLabels.profileOptions.companyHR.usable",
+      "destinationId": "submenu.systemLabels.profileOptions",
+      "role": "companyHR",
+      "href": "/admin/settings/system-labels/profile-options",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "empty-catalog-setup",
+          "kind": "enabled",
+          "selector": "main button[type=\"submit\"]:text-is(\"Add default options\")",
+          "tag": "button"
+        },
+        {
+          "id": "empty-catalog-description",
+          "kind": "text",
+          "selector": "main p:text-is(\"No profile options yet. Add the default set to get started.\")",
+          "expected": "No profile options yet. Add the default set to get started."
+        }
+      ]
+    },
+    {
+      "id": "submenu.systemLabels.profileOptions.groupHR.usable",
+      "destinationId": "submenu.systemLabels.profileOptions",
+      "role": "groupHR",
+      "href": "/admin/settings/system-labels/profile-options",
+      "originHref": "/admin/settings/system-labels",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "empty-catalog-setup",
+          "kind": "enabled",
+          "selector": "main button[type=\"submit\"]:text-is(\"Add default options\")",
+          "tag": "button"
+        },
+        {
+          "id": "empty-catalog-description",
+          "kind": "text",
+          "selector": "main p:text-is(\"No profile options yet. Add the default set to get started.\")",
+          "expected": "No profile options yet. Add the default set to get started."
+        }
+      ]
+    },
+    {
+      "id": "submenu.systemLabels.profileOptions.employee.denied",
+      "destinationId": "submenu.systemLabels.profileOptions",
+      "role": "employee",
+      "href": "/admin/settings/system-labels/profile-options",
+      "originHref": "/admin/settings/system-labels/profile-options",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.systemLabels.profileOptions.manager.denied",
+      "destinationId": "submenu.systemLabels.profileOptions",
+      "role": "manager",
+      "href": "/admin/settings/system-labels/profile-options",
+      "originHref": "/admin/settings/system-labels/profile-options",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.leaveInquiry.balances.companyHR.usable",
+      "destinationId": "submenu.leaveInquiry.balances",
+      "role": "companyHR",
+      "href": "/leave/employee-balances",
+      "originHref": "/leave/employee-balances",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "as-of-filter",
+          "kind": "enabled",
+          "selector": "main input[name=\"asOf\"]",
+          "tag": "input"
+        },
+        {
+          "id": "source-person",
+          "kind": "text",
+          "selector": "main [data-testid=\"employee-balances-table\"] tbody",
+          "expected": "$fixture.firstCompanyPersonName"
+        }
+      ]
+    },
+    {
+      "id": "submenu.leaveInquiry.balances.groupHR.usable",
+      "destinationId": "submenu.leaveInquiry.balances",
+      "role": "groupHR",
+      "href": "/leave/employee-balances",
+      "originHref": "/leave/employee-balances",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "as-of-filter",
+          "kind": "enabled",
+          "selector": "main input[name=\"asOf\"]",
+          "tag": "input"
+        },
+        {
+          "id": "source-person",
+          "kind": "text",
+          "selector": "main [data-testid=\"employee-balances-table\"] tbody",
+          "expected": "$fixture.firstCompanyPersonName"
+        }
+      ]
+    },
+    {
+      "id": "submenu.leaveInquiry.balances.employee.denied",
+      "destinationId": "submenu.leaveInquiry.balances",
+      "role": "employee",
+      "href": "/leave/employee-balances",
+      "originHref": "/leave/employee-balances",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.leaveInquiry.balances.manager.denied",
+      "destinationId": "submenu.leaveInquiry.balances",
+      "role": "manager",
+      "href": "/leave/employee-balances",
+      "originHref": "/leave/employee-balances",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.leaveInquiry.records.companyHR.usable",
+      "destinationId": "submenu.leaveInquiry.records",
+      "role": "companyHR",
+      "href": "/leave/employee-records",
+      "originHref": "/leave/employee-balances",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "records-search",
+          "kind": "enabled",
+          "selector": "main input[name=\"q\"]",
+          "tag": "input"
+        }
+      ]
+    },
+    {
+      "id": "submenu.leaveInquiry.records.groupHR.usable",
+      "destinationId": "submenu.leaveInquiry.records",
+      "role": "groupHR",
+      "href": "/leave/employee-records",
+      "originHref": "/leave/employee-balances",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "records-search",
+          "kind": "enabled",
+          "selector": "main input[name=\"q\"]",
+          "tag": "input"
+        }
+      ]
+    },
+    {
+      "id": "submenu.leaveInquiry.records.employee.denied",
+      "destinationId": "submenu.leaveInquiry.records",
+      "role": "employee",
+      "href": "/leave/employee-records",
+      "originHref": "/leave/employee-records",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.leaveInquiry.records.manager.denied",
+      "destinationId": "submenu.leaveInquiry.records",
+      "role": "manager",
+      "href": "/leave/employee-records",
+      "originHref": "/leave/employee-records",
+      "outcome": "denied",
+      "readiness": "controls",
+      "steps": [],
+      "checks": []
+    },
+    {
+      "id": "submenu.attendance.overview.employee.usable",
+      "destinationId": "submenu.attendance.overview",
+      "role": "employee",
+      "href": "/attendance",
+      "originHref": "/attendance",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "scoped-month-person",
+          "kind": "text",
+          "selector": "main [data-tour=\"attendance-summary\"] tbody",
+          "expected": "$fixture.actorName"
+        },
+        {
+          "id": "month-summary-columns",
+          "kind": "count",
+          "selector": "main [data-tour=\"attendance-summary\"] thead th",
+          "minimum": 9,
+          "maximum": 9
+        }
+      ]
+    },
+    {
+      "id": "submenu.attendance.overview.manager.usable",
+      "destinationId": "submenu.attendance.overview",
+      "role": "manager",
+      "href": "/attendance",
+      "originHref": "/attendance",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "scoped-month-person",
+          "kind": "text",
+          "selector": "main [data-tour=\"attendance-summary\"] tbody",
+          "expected": "$fixture.actorName"
+        },
+        {
+          "id": "month-summary-columns",
+          "kind": "count",
+          "selector": "main [data-tour=\"attendance-summary\"] thead th",
+          "minimum": 9,
+          "maximum": 9
+        }
+      ]
+    },
+    {
+      "id": "submenu.attendance.overview.companyHR.usable",
+      "destinationId": "submenu.attendance.overview",
+      "role": "companyHR",
+      "href": "/attendance",
+      "originHref": "/attendance",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "scoped-month-person",
+          "kind": "text",
+          "selector": "main [data-tour=\"attendance-summary\"] tbody",
+          "expected": "$fixture.actorName"
+        },
+        {
+          "id": "month-summary-columns",
+          "kind": "count",
+          "selector": "main [data-tour=\"attendance-summary\"] thead th",
+          "minimum": 9,
+          "maximum": 9
+        }
+      ]
+    },
+    {
+      "id": "submenu.attendance.overview.groupHR.usable",
+      "destinationId": "submenu.attendance.overview",
+      "role": "groupHR",
+      "href": "/attendance",
+      "originHref": "/attendance",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "scoped-month-person",
+          "kind": "text",
+          "selector": "main [data-tour=\"attendance-summary\"] tbody",
+          "expected": "$fixture.actorName"
+        },
+        {
+          "id": "month-summary-columns",
+          "kind": "count",
+          "selector": "main [data-tour=\"attendance-summary\"] thead th",
+          "minimum": 9,
+          "maximum": 9
+        }
+      ]
+    },
+    {
+      "id": "submenu.attendance.daily.employee.usable",
+      "destinationId": "submenu.attendance.daily",
+      "role": "employee",
+      "href": "/attendance/daily",
+      "originHref": "/attendance",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "scoped-day-person",
+          "kind": "text",
+          "selector": "main [data-tour=\"attendance-day\"] tbody",
+          "expected": "$fixture.actorName"
+        },
+        {
+          "id": "native-day-filter",
+          "kind": "enabled",
+          "selector": "main input[name=\"date\"]",
+          "tag": "input"
+        },
+        {
+          "id": "native-fixture-day",
+          "kind": "value",
+          "selector": "main input[name=\"date\"]",
+          "expected": "$fixture.seedToday"
+        }
+      ]
+    },
+    {
+      "id": "submenu.attendance.daily.manager.usable",
+      "destinationId": "submenu.attendance.daily",
+      "role": "manager",
+      "href": "/attendance/daily",
+      "originHref": "/attendance",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "scoped-day-person",
+          "kind": "text",
+          "selector": "main [data-tour=\"attendance-day\"] tbody",
+          "expected": "$fixture.actorName"
+        },
+        {
+          "id": "native-day-filter",
+          "kind": "enabled",
+          "selector": "main input[name=\"date\"]",
+          "tag": "input"
+        },
+        {
+          "id": "native-fixture-day",
+          "kind": "value",
+          "selector": "main input[name=\"date\"]",
+          "expected": "$fixture.seedToday"
+        }
+      ]
+    },
+    {
+      "id": "submenu.attendance.daily.companyHR.usable",
+      "destinationId": "submenu.attendance.daily",
+      "role": "companyHR",
+      "href": "/attendance/daily",
+      "originHref": "/attendance",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "scoped-day-person",
+          "kind": "text",
+          "selector": "main [data-tour=\"attendance-day\"] tbody",
+          "expected": "$fixture.actorName"
+        },
+        {
+          "id": "native-day-filter",
+          "kind": "enabled",
+          "selector": "main input[name=\"date\"]",
+          "tag": "input"
+        },
+        {
+          "id": "native-fixture-day",
+          "kind": "value",
+          "selector": "main input[name=\"date\"]",
+          "expected": "$fixture.seedToday"
+        }
+      ]
+    },
+    {
+      "id": "submenu.attendance.daily.groupHR.usable",
+      "destinationId": "submenu.attendance.daily",
+      "role": "groupHR",
+      "href": "/attendance/daily",
+      "originHref": "/attendance",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "scoped-day-person",
+          "kind": "text",
+          "selector": "main [data-tour=\"attendance-day\"] tbody",
+          "expected": "$fixture.actorName"
+        },
+        {
+          "id": "native-day-filter",
+          "kind": "enabled",
+          "selector": "main input[name=\"date\"]",
+          "tag": "input"
+        },
+        {
+          "id": "native-fixture-day",
+          "kind": "value",
+          "selector": "main input[name=\"date\"]",
+          "expected": "$fixture.seedToday"
+        }
+      ]
+    },
+    {
+      "id": "submenu.aiCentre.ask.employee.usable",
+      "destinationId": "submenu.aiCentre.ask",
+      "role": "employee",
+      "href": "/assistant",
+      "originHref": "/policies",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-composer",
+          "kind": "enabled",
+          "selector": "main [data-ask-conversation] textarea",
+          "tag": "textarea"
+        },
+        {
+          "id": "sealed-owned-history-count",
+          "kind": "count",
+          "selector": "nav[data-ai-saved-chats-ready=\"true\"] a[href^=\"/assistant?e=\"]",
+          "minimum": 20,
+          "maximum": 20
+        },
+        {
+          "id": "sealed-owned-first-title",
+          "kind": "text-exact",
+          "selector": "nav[data-ai-saved-chats-ready=\"true\"] a[href^=\"/assistant?e=\"]",
+          "expected": "$fixture.firstSavedHistoryTitle"
+        }
+      ],
+      "entry": "ai-centre-tab"
+    },
+    {
+      "id": "submenu.aiCentre.ask.manager.usable",
+      "destinationId": "submenu.aiCentre.ask",
+      "role": "manager",
+      "href": "/assistant",
+      "originHref": "/policies",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-composer",
+          "kind": "enabled",
+          "selector": "main [data-ask-conversation] textarea",
+          "tag": "textarea"
+        }
+      ],
+      "entry": "ai-centre-tab"
+    },
+    {
+      "id": "submenu.aiCentre.ask.companyHR.usable",
+      "destinationId": "submenu.aiCentre.ask",
+      "role": "companyHR",
+      "href": "/assistant",
+      "originHref": "/policies",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-composer",
+          "kind": "enabled",
+          "selector": "main [data-ask-conversation] textarea",
+          "tag": "textarea"
+        },
+        {
+          "id": "sealed-owned-history-count",
+          "kind": "count",
+          "selector": "nav[data-ai-saved-chats-ready=\"true\"] a[href^=\"/assistant?e=\"]",
+          "minimum": 20,
+          "maximum": 20
+        },
+        {
+          "id": "sealed-owned-first-title",
+          "kind": "text-exact",
+          "selector": "nav[data-ai-saved-chats-ready=\"true\"] a[href^=\"/assistant?e=\"]",
+          "expected": "$fixture.firstSavedHistoryTitle"
+        }
+      ],
+      "entry": "ai-centre-tab"
+    },
+    {
+      "id": "submenu.aiCentre.ask.groupHR.usable",
+      "destinationId": "submenu.aiCentre.ask",
+      "role": "groupHR",
+      "href": "/assistant",
+      "originHref": "/policies",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-composer",
+          "kind": "enabled",
+          "selector": "main [data-ask-conversation] textarea",
+          "tag": "textarea"
+        }
+      ],
+      "entry": "ai-centre-tab"
+    },
+    {
+      "id": "submenu.aiCentre.policies.employee.usable",
+      "destinationId": "submenu.aiCentre.policies",
+      "role": "employee",
+      "href": "/policies",
+      "originHref": "/assistant",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-policy-role",
+          "kind": "count",
+          "selector": "main [data-ai-centre-policies=\"reader\"]",
+          "minimum": 1,
+          "maximum": 1
+        },
+        {
+          "id": "native-empty-policy-state",
+          "kind": "text-exact",
+          "selector": "main [data-policies-empty]",
+          "expected": "Your company has not published any policies here yet."
+        }
+      ],
+      "entry": "ai-centre-tab"
+    },
+    {
+      "id": "submenu.aiCentre.policies.manager.usable",
+      "destinationId": "submenu.aiCentre.policies",
+      "role": "manager",
+      "href": "/policies",
+      "originHref": "/assistant",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-policy-role",
+          "kind": "count",
+          "selector": "main [data-ai-centre-policies=\"reader\"]",
+          "minimum": 1,
+          "maximum": 1
+        },
+        {
+          "id": "native-empty-policy-state",
+          "kind": "text-exact",
+          "selector": "main [data-policies-empty]",
+          "expected": "Your company has not published any policies here yet."
+        }
+      ],
+      "entry": "ai-centre-tab"
+    },
+    {
+      "id": "submenu.aiCentre.policies.companyHR.usable",
+      "destinationId": "submenu.aiCentre.policies",
+      "role": "companyHR",
+      "href": "/policies",
+      "originHref": "/assistant",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-policy-role",
+          "kind": "count",
+          "selector": "main [data-ai-centre-policies=\"admin\"]",
+          "minimum": 1,
+          "maximum": 1
+        },
+        {
+          "id": "native-empty-policy-state",
+          "kind": "text-exact",
+          "selector": "main [data-policies-empty]",
+          "expected": "No policies yet. Write your first one with New policy."
+        },
+        {
+          "id": "native-policy-create-entry",
+          "kind": "enabled",
+          "selector": "main a[data-policy-new]",
+          "tag": "a"
+        }
+      ],
+      "entry": "ai-centre-tab"
+    },
+    {
+      "id": "submenu.aiCentre.policies.groupHR.usable",
+      "destinationId": "submenu.aiCentre.policies",
+      "role": "groupHR",
+      "href": "/policies",
+      "originHref": "/assistant",
+      "outcome": "usable",
+      "readiness": "controls",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-policy-role",
+          "kind": "count",
+          "selector": "main [data-ai-centre-policies=\"admin\"]",
+          "minimum": 1,
+          "maximum": 1
+        },
+        {
+          "id": "native-empty-policy-state",
+          "kind": "text-exact",
+          "selector": "main [data-policies-empty]",
+          "expected": "No policies yet. Write your first one with New policy."
+        },
+        {
+          "id": "native-policy-create-entry",
+          "kind": "enabled",
+          "selector": "main a[data-policy-new]",
+          "tag": "a"
+        }
+      ],
+      "entry": "ai-centre-tab"
+    },
+    {
+      "id": "shell.personnelAdmin.companyHR.usable",
+      "destinationId": "shell.personnelAdmin",
+      "role": "companyHR",
+      "href": "/admin/personnel",
+      "originHref": "/",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-personnel-table",
+          "kind": "text",
+          "selector": "main [data-tour=\"people-table\"] tbody",
+          "expected": "$fixture.firstCompanyPersonName"
+        },
+        {
+          "id": "native-private-search",
+          "kind": "personnel-private-search",
+          "selector": "form[method=\"post\"][action=\"/admin/personnel/search\"] input[type=\"text\"][name=\"term\"]",
+          "tag": "input"
+        }
+      ],
+      "entry": "shell-menu"
+    },
+    {
+      "id": "shell.personnelAdmin.groupHR.usable",
+      "destinationId": "shell.personnelAdmin",
+      "role": "groupHR",
+      "href": "/admin/personnel",
+      "originHref": "/",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-personnel-table",
+          "kind": "text",
+          "selector": "main [data-tour=\"people-table\"] tbody",
+          "expected": "$fixture.firstCompanyPersonName"
+        },
+        {
+          "id": "native-private-search",
+          "kind": "personnel-private-search",
+          "selector": "form[method=\"post\"][action=\"/admin/personnel/search\"] input[type=\"text\"][name=\"term\"]",
+          "tag": "input"
+        }
+      ],
+      "entry": "shell-menu"
+    },
+    {
+      "id": "shell.payrollProcess.companyHR.usable",
+      "destinationId": "shell.payrollProcess",
+      "role": "companyHR",
+      "href": "/payroll",
+      "originHref": "/",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-seeded-payroll-period",
+          "kind": "text-exact",
+          "selector": "main [data-tour=\"payroll-batches\"] tbody td:first-child a",
+          "expected": "$fixture.seedMonth"
+        },
+        {
+          "id": "native-new-run-entry",
+          "kind": "enabled",
+          "selector": "main a[data-tour=\"payroll-create\"][href^=\"/payroll/process?from=\"]",
+          "tag": "a"
+        }
+      ],
+      "entry": "shell-menu"
+    },
+    {
+      "id": "shell.payrollProcess.groupHR.usable",
+      "destinationId": "shell.payrollProcess",
+      "role": "groupHR",
+      "href": "/payroll",
+      "originHref": "/",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-seeded-payroll-period",
+          "kind": "text-exact",
+          "selector": "main [data-tour=\"payroll-batches\"] tbody td:first-child a",
+          "expected": "$fixture.seedMonth"
+        },
+        {
+          "id": "native-new-run-entry",
+          "kind": "enabled",
+          "selector": "main a[data-tour=\"payroll-create\"][href^=\"/payroll/process?from=\"]",
+          "tag": "a"
+        }
+      ],
+      "entry": "shell-menu"
+    },
+    {
+      "id": "shell.analytics.companyHR.usable",
+      "destinationId": "shell.analytics",
+      "role": "companyHR",
+      "href": "/analytics",
+      "originHref": "/",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-headcount",
+          "kind": "text-exact",
+          "selector": "main [data-analytics-metric=\"activeHeadcount\"] [data-analytics-value]",
+          "expected": "$fixture.activeHeadcount"
+        },
+        {
+          "id": "complete-native-metric-inventory",
+          "kind": "count",
+          "selector": "main [data-analytics-metric] [data-analytics-value]",
+          "minimum": 4,
+          "maximum": 4
+        },
+        {
+          "id": "native-scope-filter",
+          "kind": "enabled",
+          "selector": "main form[method=\"get\"] select[name=\"companyId\"]",
+          "tag": "select"
+        }
+      ],
+      "entry": "shell-menu"
+    },
+    {
+      "id": "shell.analytics.groupHR.usable",
+      "destinationId": "shell.analytics",
+      "role": "groupHR",
+      "href": "/analytics",
+      "originHref": "/",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-headcount",
+          "kind": "text-exact",
+          "selector": "main [data-analytics-metric=\"activeHeadcount\"] [data-analytics-value]",
+          "expected": "$fixture.activeHeadcount"
+        },
+        {
+          "id": "complete-native-metric-inventory",
+          "kind": "count",
+          "selector": "main [data-analytics-metric] [data-analytics-value]",
+          "minimum": 4,
+          "maximum": 4
+        },
+        {
+          "id": "native-scope-filter",
+          "kind": "enabled",
+          "selector": "main form[method=\"get\"] select[name=\"companyId\"]",
+          "tag": "select"
+        }
+      ],
+      "entry": "shell-menu"
+    },
+    {
+      "id": "shell.rosterManager.companyHR.usable",
+      "destinationId": "shell.rosterManager",
+      "role": "companyHR",
+      "href": "/roster",
+      "originHref": "/",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-scoped-employments",
+          "kind": "fixture-roster-rows",
+          "selector": "main [data-roster-grid] tbody tr[data-roster-employment-id]",
+          "minimum": 1,
+          "maximum": 25
+        },
+        {
+          "id": "native-roster-person",
+          "kind": "text",
+          "selector": "main [data-roster-grid] tbody",
+          "expected": "$fixture.firstCompanyPersonName"
+        },
+        {
+          "id": "native-roster-search",
+          "kind": "enabled",
+          "selector": "main input[name=\"q\"]",
+          "tag": "input"
+        },
+        {
+          "id": "native-roster-month",
+          "kind": "roster-month",
+          "selector": "main input[type=\"month\"][name=\"month\"]",
+          "expected": "$fixture.seedMonth"
+        }
+      ],
+      "entry": "shell-menu"
+    },
+    {
+      "id": "shell.rosterManager.groupHR.usable",
+      "destinationId": "shell.rosterManager",
+      "role": "groupHR",
+      "href": "/roster",
+      "originHref": "/",
+      "outcome": "usable",
+      "readiness": "populated",
+      "steps": [],
+      "checks": [
+        {
+          "id": "native-scoped-employments",
+          "kind": "fixture-roster-rows",
+          "selector": "main [data-roster-grid] tbody tr[data-roster-employment-id]",
+          "minimum": 1,
+          "maximum": 25
+        },
+        {
+          "id": "native-roster-person",
+          "kind": "text",
+          "selector": "main [data-roster-grid] tbody",
+          "expected": "$fixture.firstCompanyPersonName"
+        },
+        {
+          "id": "native-roster-search",
+          "kind": "enabled",
+          "selector": "main input[name=\"q\"]",
+          "tag": "input"
+        },
+        {
+          "id": "native-roster-month",
+          "kind": "roster-month",
+          "selector": "main input[type=\"month\"][name=\"month\"]",
+          "expected": "$fixture.seedMonth"
+        }
+      ],
+      "entry": "shell-menu"
+    }
+  ]
+}

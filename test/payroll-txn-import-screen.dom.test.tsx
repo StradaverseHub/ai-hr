@@ -129,10 +129,12 @@ const RESULT: TxnImportResult = {
   recalcBatchIds: ['b1'],
 };
 
-function renderButtons(kind: 'fixed' | 'individual' = 'fixed') {
+function renderButtons(kind: 'fixed' | 'individual' = 'fixed', queueFixedAction?: (input: {
+  csv: string; fileName: string; operationKey: string;
+}) => Promise<string>) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <TxnImportButtons kind={kind} reference={REFERENCE} />
+      <TxnImportButtons kind={kind} reference={REFERENCE} queueFixedAction={queueFixedAction} />
     </NextIntlClientProvider>,
   );
 }
@@ -241,6 +243,22 @@ describe('5c65367d · the preview', () => {
     await user.click(confirm);
     expect(commitMock).toHaveBeenCalledTimes(1);
     expect(commitMock.mock.calls[0][1]).toBe('fixed');
+  });
+
+  it('hands the fixed workbook to the background worker on confirmation', async () => {
+    const user = userEvent.setup();
+    const queue = vi.fn().mockResolvedValue('fixed-batch-id');
+    renderButtons('fixed', queue);
+    await user.click(screen.getByRole('button', { name: 'Import Excel' }));
+    await user.upload(screen.getByLabelText('Choose .xlsx file'), file('queued-fixed.xlsx'));
+    const confirm = await screen.findByRole('button', { name: 'Import 1 valid record' });
+    expect(queue).not.toHaveBeenCalled();
+    await user.click(confirm);
+    expect(queue).toHaveBeenCalledOnce();
+    expect(queue).toHaveBeenCalledWith({
+      csv: expect.stringContaining('X000001,BONUS'), fileName: 'queued-fixed.xlsx', operationKey: expect.any(String),
+    });
+    expect(commitMock).not.toHaveBeenCalled();
   });
 
   it('DISABLES Confirm when nothing in the file is valid', async () => {

@@ -1,4 +1,5 @@
 'use client';
+import { ActionButton } from '@/components/ui/action-button';
 import { useActionState, type ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
 import { INITIAL_TESTING_ACTION_STATE, type TestingActionState } from '@/lib/system-testing/action-model';
@@ -10,6 +11,6 @@ export function TestingActionForm({ action,children,label,className='' }: { acti
   return <form action={submit} className={className}>
     {children}
     {state.error&&<p role="alert" className="my-3 break-words text-sm text-destructive">{t(`errors.${state.error}`)}</p>}
-    <button type="submit" className={btnPrimary} disabled={pending}>{pending?t('saving'):label}</button>
+    <ActionButton aria-busy={pending} type="submit" className={btnPrimary} disabled={pending}>{pending?t('saving'):label}</ActionButton>
   </form>;
 }

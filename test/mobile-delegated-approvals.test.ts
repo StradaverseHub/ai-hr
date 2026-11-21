@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /** Delegated mobile routing audit: actual v2 composers/native decision services and mobile receipts.
  * Fictional migrated CI database only; no bearer token, installation, device or provider call. */
 import {randomUUID} from 'node:crypto';
@@ -22,7 +23,7 @@ const hire=(name:string,departmentId=b.deptB)=>hireEmployee(root,{person:{fullNa
 async function login(person:Person,role:'employee'|'manager'){const userId=await createAppUser(b.tenantId,person.personId,role);return{...await entitledCtx(b,[role]),userId,personId:person.personId,grants:[{role,companyId:null}]} satisfies SessionContext;}
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
- await resetDb();b=await seedBase();for(const module of ['claims','attendance','toil'])await setModule(b.tenantId,module,'active');root={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
+ await resetDb();b=await seedAttendanceSubmissionBase();for(const module of ['claims','attendance','toil'])await setModule(b.tenantId,module,'active');root={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
  subject=await hire('Fictional mobile claimant',b.deptA);manager=await hire('Fictional mobile manager');stand=await hire('Fictional mobile stand-in');const report=await hire('Fictional stand-in report');
  for(const [sub,mgr] of [[subject,manager],[report,stand]])await setReportingLine(root,{subordinateEmploymentId:sub.employmentId,managerEmploymentId:mgr.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
  lineId=(await setReportingLine(root,{subordinateEmploymentId:manager.employmentId,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:'2020-01-01'})).reportingLineId;

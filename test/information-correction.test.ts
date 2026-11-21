@@ -1,6 +1,6 @@
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import {and,eq,sql} from 'drizzle-orm';
+import {and,eq,isNull,sql} from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee,setEmploymentGrade} from '../core/org';
@@ -10,7 +10,9 @@ import {createMovementEvent,movementHistory,movementDetail,reverseMovementEvent}
 import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {readInformationCorrection,previewInformationCorrection,correctInformation,informationCorrectionHistory,informationCorrectionOptions} from '../core/information-correction';
+import {WorkforceAccessError} from '../core/workforce-access';
 import {previewInformationUpload,confirmInformationUpload} from '../core/information-correction-import';
+import {organisationImportWarningsTx} from '../core/derived-organisation-display';
 import {openLeaveYear,accrueEarnedLeave,reprojectEntitlementForEmployment} from '../core/leave';
 import {reconcileInformationSnapshots} from '../scripts/reconcile-information-snapshots';
 import {PDFDocument} from 'pdf-lib';
@@ -24,6 +26,9 @@ import {payslipForReview,listPayrollRegisterAcross,listPayslipRunsFor,listProces
 import {INFORMATION_HEADERS,type InformationChanges} from '../lib/information-correction';
 import {parseInformationWorkbook,informationWorkbook} from '../lib/information-correction-workbook';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {createTranslator} from 'next-intl';
+import enMessages from '../messages/en.json';
+import {informationCorrectionErrorLogFor} from '../core/information-correction-error-log';
 let b:Base;
 beforeAll(()=>migrateTestDb());beforeEach(async()=>{await resetDb();b=await seedBase();await owner.db.update(schema.company).set({companyLabel:'DEMO'}).where(eq(schema.company.id,b.companyId));});afterAll(()=>closeAll());
 const ctx=()=>adminCtx(b);
@@ -74,7 +79,9 @@ describe('8550b282 information-only corrections',()=>{
   expect(await document(after!)).toEqual(pdfBefore);
   expect(await eaStatement(ctx(),{employmentId:id,companyId:b.companyId,year:'2025'})).toEqual(eaBefore);
   const register=await listPayrollRegisterAcross(ctx(),{companyIds:[b.companyId],year:2025});expect(register.length).toBe(1);expect(register[0]).toMatchObject({jobGrade:null,employmentType:'full_time',net:'2660.00'});
-  const versions=await owner.db.select().from(schema.assignment).where(eq(schema.assignment.employmentId,id));expect(versions).toHaveLength(2);expect(versions.find(a=>a.validTo===null)).toMatchObject({validFrom:todayInKualaLumpur(),employmentType:'part_time'});
+  // Board 154511c4 — the first dated record now starts on the corrected Group Join Date (it is superseded and
+  // re-inserted), so the live history is that record from 2025-01-01 plus the type change from today.
+  const versions=await owner.db.select().from(schema.assignment).where(and(eq(schema.assignment.employmentId,id),isNull(schema.assignment.supersededAt)));expect(versions).toHaveLength(2);expect(versions.find(a=>a.validTo===null)).toMatchObject({validFrom:todayInKualaLumpur(),employmentType:'part_time'});expect(versions.find(a=>a.validTo!==null)).toMatchObject({validFrom:'2025-01-01',employmentType:'full_time'});
   const history=await informationCorrectionHistory(ctx(),id);expect(history).toHaveLength(1);expect(history[0].actorId).toBe(ctx().userId);expect(history[0].payload).toMatchObject({method:'manual',reason:'Correct signed employment record',before:{hiredOn:'2025-01-15'},after:{hiredOn:'2025-01-01'}});
  });
  it('preserves the first snapshot through repeated corrections and refuses stale reviews',async()=>{
@@ -115,12 +122,17 @@ describe('8550b282 information-only corrections',()=>{
   await expect(apply(permanent,{employmentType:'contract'})).rejects.toThrow('contract start and end');
   expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(1);expect(await informationCorrectionHistory(ctx(),permanent)).toHaveLength(0);
  });
- it('stops when historical original metadata cannot be verified after a later change',async()=>{
-  const id=await fixture();await closedSlip(id);
+ // Board 4604dccc r3 (migration 5690) — a later change no longer stops the correction: the payslip keeps the grade it
+ // was issued with, taken from the recorded change, and the later grade is never stamped onto it.
+ it('corrects after a later change, keeping the payslip grade from the recorded history',async()=>{
+  const id=await fixture();const {slip}=await closedSlip(id);
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'G02',name:'Changed later'}).returning();
   await setEmploymentGrade(ctx(),{employmentId:id,gradeId:grade.id});
-  await expect(apply(id,{hiredOn:'2025-01-01'})).rejects.toThrow('Original historical information cannot be verified');
-  expect(await owner.db.select().from(schema.informationPayslipSnapshot)).toHaveLength(0);
+  await apply(id,{hiredOn:'2025-01-01'});
+  const [snapshot]=await owner.db.select().from(schema.informationPayslipSnapshot).where(eq(schema.informationPayslipSnapshot.payslipId,slip.id));
+  expect(snapshot.grade).not.toBe('Changed later');
+  expect((snapshot.documentMetadata as {snapshotBasis:{reconstructed:string[]}}).snapshotBasis.reconstructed).toContain('jobGrade');
+  expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,slip.id)))[0]).toEqual(slip);
  });
  it('corrects a compatible company without moving prior payroll or its dated assignment',async()=>{
   const id=await fixture(),{slip,batch}=await closedSlip(id,{epfEmployee:315,epfEmployer:369,pcb:10,socsoEmployee:12,socsoEmployer:18,eisEmployee:3,eisEmployer:3,bases:{epf:3000,socso:3000,eis:3000}});
@@ -179,6 +191,28 @@ describe('8550b282 information-only corrections',()=>{
  it('refuses a normal employee and another tenant',async()=>{
   const id=await fixture();await expect(previewInformationCorrection({...ctx(),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},{employmentId:id,changes:{},reason:'Inspect information'})).rejects.toThrow();
   await expect(previewInformationCorrection({...ctx(),tenantId:randomUUID()},{employmentId:id,changes:{},reason:'Inspect information'})).rejects.toThrow();
+  // The form load and an import row's review refuse them too (both are shared-lock reads since 12 November 2026).
+  await expect(readInformationCorrection({...ctx(),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},id)).rejects.toThrow();
+  await expect(readInformationCorrection({...ctx(),tenantId:randomUUID()},id)).rejects.toThrow();
+  await expect(previewInformationCorrection({...ctx(),roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]},{employmentId:id,changes:{},reason:'Inspect information'},{extended:true})).rejects.toThrow();
+ });
+ it('refuses another company administrator on the form, the review and the save alike, and shows a company administrator the same form',async()=>{
+  const id=await fixture();const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional other company',companyLabel:'OTHER'}).returning();
+  const scoped=async(companyId:string,name:string)=>{
+   const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:name,primaryEmail:randomUUID()+'@example.test'}).returning();
+   const userId=await createAppUser(b.tenantId,p.id,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+   return {...ctx(),userId,personId:p.id,grants:[{role:'hr_admin',companyId}]};
+  };
+  const outsider=await scoped(other.id,'Fictional other company administrator'),insider=await scoped(b.companyId,'Fictional company administrator');
+  const input={employmentId:id,changes:{hiredOn:'2025-01-10'},reason:'Correct signed offer date'};
+  await expect(readInformationCorrection(outsider,id)).rejects.toThrow(WorkforceAccessError);
+  await expect(previewInformationCorrection(outsider,input)).rejects.toThrow(WorkforceAccessError);
+  await expect(previewInformationCorrection(outsider,input,{extended:true})).rejects.toThrow(WorkforceAccessError);
+  await expect(correctInformation(outsider,{...input,fingerprint:'0'.repeat(64),method:'manual'})).rejects.toThrow(WorkforceAccessError);
+  // The company's own administrator sees exactly what a group administrator sees, and nothing was written.
+  expect(await readInformationCorrection(insider,id)).toEqual(await readInformationCorrection(ctx(),id));
+  expect(await previewInformationCorrection(insider,input)).toEqual(await previewInformationCorrection(ctx(),input));
+  expect((await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0].hiredOn).toBe('2025-01-15');expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(0);
  });
  it('requires compatible destination organisation dimensions for Company',async()=>{
   const id=await fixture();const [co]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Destination',companyLabel:'DEST'}).returning();
@@ -194,13 +228,58 @@ describe('8550b282 information-only corrections',()=>{
   const again=await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});expect(again).toEqual(result);expect(await informationCorrectionHistory(ctx(),id)).toHaveLength(1);
   const [history]=await informationCorrectionHistory(ctx(),id);expect(history.payload).toMatchObject({method:'excel',batchId:preview.attemptId,filename:'corrections.xlsx'});
  });
+ it('d3ba1e9f: Import History gives the Error Log built from the recorded attempt, scoped like its Import Log',async()=>{
+  await fixture();await fixture('EMP-002');
+  const file=workbook([['DEMO','EMP-001','','','2025-01-01','','','','Correct signed record'],['DEMO','EMP-002','','','','','UNKNOWN','','Correct grade'],['DEMO','MISSING','','','','','','','Unknown employee']]);
+  const preview=await previewInformationUpload(ctx(),{name:'corrections.xlsx',content:file,operationKey:randomUUID()});
+  await confirmInformationUpload(ctx(),{attemptId:preview.attemptId,previewHash:preview.plan.previewHash});
+  const t={problems:createTranslator({locale:'en',messages:enMessages}) as never,shared:createTranslator({locale:'en',messages:enMessages,namespace:'importProblems'}) as never};
+  const log=await informationCorrectionErrorLogFor(ctx(),preview.attemptId,t);
+  expect(log).toMatchObject({total:2,truncated:false});
+  expect(log!.lines.map(l=>[l.sheet,l.row,l.reference,l.field,l.value,l.problem,l.stage,l.result])).toEqual([
+   ['Corrections',3,'EMP-002','Job Grade','UNKNOWN','Job Grade is not an active system code.','check','refused'],
+   ['Corrections',4,'MISSING','Employee ID','MISSING','Employee ID is unknown or ambiguous within the existing company.','check','refused'],
+  ]);
+  // Another company's administrator in the tenant sees none of this company's rows; another tenant sees no attempt.
+  const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional other company',companyLabel:'OTHER'}).returning();
+  const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional other company administrator',primaryEmail:randomUUID()+'@example.test'}).returning();
+  const userId=await createAppUser(b.tenantId,person.id,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(eq(schema.roleAssignment.appUserId,userId));
+  const outsider={...ctx(),userId,personId:person.id,grants:[{role:'hr_admin',companyId:other.id}]};
+  const scoped=await informationCorrectionErrorLogFor(outsider,preview.attemptId,t);
+  expect(scoped===null||scoped.lines.length===0).toBe(true);
+  expect(await informationCorrectionErrorLogFor(adminCtx(await seedBase()),preview.attemptId,t)).toBeNull();
+  // Not this kind: null.
+  expect(await informationCorrectionErrorLogFor(ctx(),randomUUID(),t)).toBeNull();
+ });
+ it('resolves every row\'s employee in one read and reviews each row as the single-employee review does, with the same refusals',async()=>{
+  // 12 November 2026 (SCALE rule 2): the rows' employees are read in one statement, not one transaction per row.
+  const id=await fixture();await fixture('EMP-002');
+  const rows=[['DEMO','EMP-001','','','2025-01-01','','','','Correct signed record'],['DEMO','EMP-002','','','','','UNKNOWN','','Correct grade'],['DEMO','MISSING','','','','','','','Unknown employee'],['NOPE','EMP-001','','','','','','','Unknown company']];
+  const plan=(await previewInformationUpload(ctx(),{name:'set.xlsx',content:workbook(rows),operationKey:randomUUID()})).plan.rows;
+  expect(plan[0].errors).toEqual([]);
+  expect(plan[0].preview).toEqual(await previewInformationCorrection(ctx(),{employmentId:id,changes:{hiredOn:'2025-01-01'},reason:'Correct signed record'},{extended:true}));
+  expect(plan[0].warnings).toEqual((await withTenant(ctx(),tx=>organisationImportWarningsTx(tx,ctx(),{companyId:b.companyId,asOf:plan[0].preview!.effectiveOn}))).warnings);
+  expect(plan.slice(1).map(row=>row.errors)).toEqual([['Job Grade is not an active system code.'],['Employee ID is unknown or ambiguous within the existing company.'],['Company Code is unknown, ambiguous or outside your permission.']]);
+  // Another company's administrator cannot name these employees, and another tenant's same Company Code finds none of them.
+  const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional other company',companyLabel:'OTHER'}).returning();
+  const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional other company administrator',primaryEmail:randomUUID()+'@example.test'}).returning();
+  const userId=await createAppUser(b.tenantId,person.id,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId:other.id}).where(eq(schema.roleAssignment.appUserId,userId));
+  const outsider={...ctx(),userId,personId:person.id,grants:[{role:'hr_admin',companyId:other.id}]};
+  expect((await previewInformationUpload(outsider,{name:'set.xlsx',content:workbook(rows.slice(0,1)),operationKey:randomUUID()})).plan.rows[0].errors).toEqual(['Company Code is unknown, ambiguous or outside your permission.']);
+  const foreign=await seedBase();await owner.db.update(schema.company).set({companyLabel:'DEMO'}).where(eq(schema.company.id,foreign.companyId));
+  expect((await previewInformationUpload(adminCtx(foreign),{name:'set.xlsx',content:workbook(rows.slice(0,1)),operationKey:randomUUID()})).plan.rows[0].errors).toEqual(['Employee ID is unknown or ambiguous within the existing company.']);
+ });
  it('refuses duplicate target rows, invalid reasons and formula cells at preview',async()=>{
   await fixture();const content=workbook([['DEMO','EMP-001','','','2025-01-01','','','','Correct record'],['DEMO','EMP-001','','','2025-01-02','','','','']]);
   const p=await previewInformationUpload(ctx(),{name:'duplicates.xlsx',content,operationKey:randomUUID()});expect(p.plan.counts.valid).toBe(0);expect(p.plan.rows.every(r=>r.errors.length>0)).toBe(true);
   const book=XLSX.read(content,{type:'buffer'});book.Sheets.Corrections.E2={t:'n',f:'1+1',v:2};const rows=parseInformationWorkbook(XLSX.write(book,{type:'buffer',bookType:'xlsx'}));expect(rows[0].errors.join(' ')).toContain('formulas');
  });
  it('produces a usable blank template with live reference sheets',async()=>{
-  const file=informationWorkbook(await informationCorrectionOptions(ctx()));const book=XLSX.read(file,{type:'array'});expect(book.SheetNames).toEqual(['Corrections','Instructions','Companies','Job Grades','Employment Types']);expect(book.Sheets.Companies.A2.v).toBe('DEMO');expect(book.Sheets.Corrections.I1.v).toBe('Correction Reason');
+  const file=informationWorkbook(await informationCorrectionOptions(ctx()));const book=XLSX.read(file,{type:'array'});expect(book.SheetNames).toEqual(['Corrections','Instructions','Companies','Job Grades','Employment Types','Business Units','Departments','Positions','Organisation Labels','Period Units']);expect(book.Sheets.Companies.A2.v).toBe('DEMO');
+  // ccd3a65c — version 2: the further details sit between Employment Type and the reason; 2260a06b's two type end
+  // dates come first, right after Employment Type.
+  expect(book.Sheets.Corrections.I1.v).toBe('Contract End Date');expect(book.Sheets.Corrections.J1.v).toBe('Internship End Date');
+  expect(book.Sheets.Corrections.K1.v).toBe('Business Unit');expect(book.Sheets.Corrections.AF1.v).toBe('Correction Reason');expect(book.Sheets.Departments.B2.v).toBe('Finance');
  });
  it('preserves leading zeros and accepts actual Excel dates; blank cells stay absent',()=>{
   const rows=parseInformationWorkbook(workbook([['DEMO','00001','','',45658,'','','','Correct record']]));expect(rows[0].employeeCode).toBe('00001');expect(rows[0].values['Group Join Date']).toBe('2025-01-01');expect(rows[0].values['Job Grade']).toBeUndefined();
@@ -242,7 +321,6 @@ describe('8550b282 information-only corrections',()=>{
   const id=await fixture(),{slip}=await closedSlip(id);
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'LEGACY',name:'Later grade'}).returning();
   await setEmploymentGrade(ctx(),{employmentId:id,gradeId:grade.id});
-  await expect(apply(id,{hiredOn:'2025-01-01'})).rejects.toThrow('reconcile the historical');
   const manifest={version:1 as const,tenantId:b.tenantId,actorUserId:ctx().userId!,verifiedOriginals:true as const,items:[{payslipId:slip.id,employmentId:id,companyId:b.companyId,original:{grade:null,employmentType:'full_time' as const,hiredOn:'2025-01-15',joinDate:null},evidence:[{path:'private-original.pdf',sha256:'a'.repeat(64),reference:'Reviewed original statement'}]}]};
   expect(await reconcileInformationSnapshots(owner,manifest)).toMatchObject({mode:'dry-run',missing:1});
   expect(await owner.db.select().from(schema.informationPayslipSnapshot)).toHaveLength(0);

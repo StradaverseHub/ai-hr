@@ -161,10 +161,10 @@ export function ReleaseBoard({ cycleId, cycleName, potential, midYear, email, fi
       <span aria-live="polite" className="text-sm font-medium">{chosen.length ? t('selected', { count: chosen.length }) : t('noneSelected')}</span>
       {chosen.length > 0 && counts.gate > 0 && result !== 'feedback' && <span className="text-sm text-amber-700 dark:text-amber-400">{t('gate', { count: counts.gate })}</span>}
       <span className="ms-auto flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" disabled={pending || !counts.n1 || result === 'feedback'} onClick={() => setDialog({ kind: 'leaders', rows: chosen })}>{counts.n1 ? t('toLeadersCount', { count: counts.n1 }) : t('toLeaders')}</Button>
-        <Button type="button" disabled={pending || !(counts.n2 || counts.gate)} onClick={() => setDialog({ kind: 'employees', rows: chosen })}>{counts.n2 ? t('toEmployeesCount', { count: counts.n2 }) : t('toEmployees')}</Button>
+        <Button aria-busy={pending} type="button" variant="outline" disabled={pending || !counts.n1 || result === 'feedback'} onClick={() => setDialog({ kind: 'leaders', rows: chosen })}>{counts.n1 ? t('toLeadersCount', { count: counts.n1 }) : t('toLeaders')}</Button>
+        <Button aria-busy={pending} type="button" disabled={pending || !(counts.n2 || counts.gate)} onClick={() => setDialog({ kind: 'employees', rows: chosen })}>{counts.n2 ? t('toEmployeesCount', { count: counts.n2 }) : t('toEmployees')}</Button>
         <span className="relative">
-          <Button ref={revokeRef} type="button" variant="ghost" disabled={pending || !chosen.length} aria-haspopup="menu" aria-expanded={menu} aria-controls="release-revoke-menu" onClick={() => setMenu((m) => !m)}>{t('revoke')} ▾</Button>
+          <Button aria-busy={pending} ref={revokeRef} type="button" variant="ghost" disabled={pending || !chosen.length} aria-haspopup="menu" aria-expanded={menu} aria-controls="release-revoke-menu" onClick={() => setMenu((m) => !m)}>{t('revoke')} ▾</Button>
           {menu && <div id="release-revoke-menu" role="menu" className="absolute bottom-full right-0 z-20 mb-1 min-w-56 rounded-md border border-border bg-popover p-1 shadow-md"
             onKeyDown={(e) => { if (e.key === 'Escape') { setMenu(false); revokeRef.current?.focus(); } }}>
             {(['revokeEmployees', 'revokeBoth'] as const).map((k) => <button key={k} type="button" role="menuitem" className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setMenu(false); setDialog({ kind: k, rows: chosen }); }}>{t(k)}</button>)}
@@ -182,7 +182,7 @@ export function ReleaseBoard({ cycleId, cycleName, potential, midYear, email, fi
             <AlertDialog.Description asChild><div className="space-y-3">{body.content}</div></AlertDialog.Description>
             <div className="flex justify-end gap-2 pt-2">
               <AlertDialog.Cancel asChild><Button type="button" variant="outline" size="sm">{t('dialog.cancel')}</Button></AlertDialog.Cancel>
-              <AlertDialog.Action asChild><Button type="button" size="sm" variant={body.danger ? 'destructive' : 'default'} disabled={body.off || pending} onClick={confirm}>{pending ? t('dialog.working') : body.confirm}</Button></AlertDialog.Action>
+              <AlertDialog.Action asChild><Button aria-busy={pending} type="button" size="sm" variant={body.danger ? 'destructive' : 'default'} disabled={body.off || pending} onClick={confirm}>{pending ? t('dialog.working') : body.confirm}</Button></AlertDialog.Action>
             </div>
           </>}
         </AlertDialog.Content>

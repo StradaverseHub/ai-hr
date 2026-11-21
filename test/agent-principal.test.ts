@@ -24,7 +24,17 @@ import { captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 const copies = { en, ms, zh, vi: viCopy, th, ta };
 const visual = vi.hoisted(() => ({ locale: 'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta' }));
 vi.mock('next-intl/server', () => ({
-  getTranslations: async (namespace: any) => createTranslator({ locale: visual.locale, messages: copies[visual.locale], namespace }),
+  // The real server queue requests only these three original subtrees. Client
+  // islands below still receive the complete, unchanged six-locale catalogues.
+  getTranslations: async (namespace: 'controlTower.orchestrator'|'controlTower.corrections'|'controlTower.readinessScreen.gap') => createTranslator({
+    locale: visual.locale,
+    messages: { controlTower: {
+      orchestrator: copies[visual.locale].controlTower.orchestrator,
+      corrections: copies[visual.locale].controlTower.corrections,
+      readinessScreen: { gap: copies[visual.locale].controlTower.readinessScreen.gap },
+    } },
+    namespace,
+  }),
   getFormatter: async () => createFormatter({ locale: visual.locale, timeZone: 'Asia/Kuala_Lumpur' }),
 }));
 vi.mock('../app/control-tower/orchestrator-actions', () => ({ refreshOrchestrationAction: vi.fn() }));
@@ -261,6 +271,7 @@ describe('ADR-0151 §4.5 — named agent principal', () => {
       for (const [role, view] of [['group', group], ['company', company]] as const) {
         const element = await OrchestrationWorkQueue({ view, canViewRuns: role === 'group' });
         const html = renderToStaticMarkup(createElement(NextIntlClientProvider, { locale, messages: copies[locale], children: element }));
+        expect(html).toContain(copies[locale].controlTower.orchestrator.workTitle);
         expect(html).not.toContain(copies[locale].controlTower.orchestrator.unobserved);
         if (role === 'company') expect(html).not.toContain('Foreign Company Fixture');
         await captureAiReviewScreenshots(html.replace('<details class=', '<details open class='), locale,

@@ -1,3 +1,4 @@
+import {seedAttendanceSubmissionBase} from './helpers/attendance-submission-fixture';
 /**
  * r368 · c8282468 — WHAT THE DAY SAID BEFORE SOMEBODY CHANGED IT.
  *
@@ -200,7 +201,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await resetDb();
-  b = await seedBase();
+  b = await seedAttendanceSubmissionBase();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -218,7 +219,7 @@ describe('1 · a clock correction records the day as it STOOD', () => {
       checkOut: '19:00',
       reason: 'Gate log shows 19:00; the device missed the punch',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved', today: DAY_AFTER });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved', today: DAY_AFTER });
 
     const payloads = await amendedPayloads(employmentId, DATE);
     expect(payloads, 'one amendment, for one correction').toHaveLength(1);
@@ -267,7 +268,7 @@ describe('1 · a clock correction records the day as it STOOD', () => {
       checkOut: '19:30',
       reason: 'Worked late on the cut-over',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved', today: DAY_AFTER });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved', today: DAY_AFTER });
 
     const { before, after } = expectFullPair((await amendedPayloads(employmentId, DATE))[0]);
     expect(before!.checkInLat).toBe(pre.checkInLat);
@@ -294,7 +295,7 @@ describe('1 · a clock correction records the day as it STOOD', () => {
       checkOut: '20:00',
       reason: 'Approved overtime on the cut-over',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved', today: DAY_AFTER });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved', today: DAY_AFTER });
 
     const p = (await amendedPayloads(employmentId, DATE))[0];
     for (const k of AFTER_ONLY_CLOCK) {
@@ -320,7 +321,7 @@ describe('2 · an OT-only correction', () => {
       requestedOtMinutes: 180,
       reason: 'Agreed three hours for the release',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved', today: DAY_AFTER });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved', today: DAY_AFTER });
 
     const payloads = await amendedPayloads(employmentId, DATE);
     expect(payloads).toHaveLength(1);
@@ -362,7 +363,7 @@ describe('3 · a DEFERRED approval records it when the plan LANDS', () => {
       otReasonCategory: 'project_deadline',
     });
     // `today` is the day BEFORE the plan's date, so this is the deferred branch.
-    const res = await decideAttendanceCorrection(a, { correctionId, decision: 'approved', today: DAY_BEFORE });
+    const res = await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved', today: DAY_BEFORE });
     expect(res.deferred, 'a future-dated plan is HELD, not applied').toBe(true);
     expect(await attendanceRow(employmentId, DATE), 'NO placeholder row').toBeUndefined();
     expect(await amendedPayloads(employmentId, DATE), 'nothing moved, so nothing is amended').toEqual([]);
@@ -400,7 +401,7 @@ describe('4 · a day that had no record at all', () => {
       checkOut: '18:00',
       reason: 'Forgot to clock in and out entirely',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved', today: DAY_AFTER });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved', today: DAY_AFTER });
 
     const { before, after } = expectFullPair((await amendedPayloads(employmentId, DATE))[0], { beforeNull: true });
     expect(before).toBeNull();
@@ -430,7 +431,7 @@ describe('5 · what the Audit Trail actually renders', () => {
       checkOut: '19:00',
       reason: 'Gate log shows 19:00',
     });
-    await decideAttendanceCorrection(a, { correctionId, decision: 'approved', today: DAY_AFTER });
+    await decideAttendanceCorrection(a, { expectedStageIndex: 0, correctionId, decision: 'approved', today: DAY_AFTER });
     const payload = (await amendedPayloads(employmentId, DATE))[0];
 
     const lines = describePayload(payload);

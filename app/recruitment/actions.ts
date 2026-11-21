@@ -1,0 +1,1101 @@
+'use server';
+/**
+ * Recruitment server actions. Each one only translates a form into a service call: the service checks the
+ * module, the caller's recruitment administration of the company and every rule, and row security refuses
+ * again. A refusal comes back to the page as a stable error code (?problem=<code>), never as SQL. Recruitment uses its own
+ * parameter, not ?error=: the global toast (components/ui/toast-trigger.tsx) consumes ?error= and would show the raw code
+ * and strip it before the page's ErrorBanner could say the sentence.
+ */
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+import { getTranslations } from 'next-intl/server';
+import { getSession } from '@/lib/session';
+import { pgSqlState } from '@/lib/db-error';
+import { formValuesOf, type FormRefusal } from './form-state';
+import {
+  addApplication, addJobMember, addPoolCandidateToJob, associateJob, cancelInterview, changeJobStatus, changeRequisitionStatus, createJob,
+  createRequisition, decideOffer, decideRequisition, deleteArchiveReason, dissociateJob, markOfferSent, moveApplication, recordOfferDecision,
+  rejectApplication, removeJobMember, saveApprovalFlow, saveArchiveReason, saveEvaluationForm, saveOffer, saveOfferField, scheduleInterview,
+  setCandidateResponse, submitOffer, submitRequisition, submitScorecard, updateInterviewSettings, updateJob, updateOfferSettings, updateProcess,
+  updateRequisition, updateStage, withdrawOffer, withdrawRequisition, RecruitmentError,
+  addCandidateEntry, addCandidateTag, deleteCandidateFile, destroyCandidates, recordConsent, removeCandidateEntry, removeCandidateTag,
+  saveCandidateRestricted, saveTag, saveTagGroup, updateCandidateProfile, updatePrivacySettings, uploadCandidateFile, CANDIDATE_FILE_MAX_BYTES,
+  checkDuplicateCandidate, RECRUITMENT_ERROR_CODES, type DuplicateCheck, setJobReferralPortal, updateReferralSettings,
+  setJobReferralReward, decideReferralReward, sendRewardToPayroll, recordAgencyFee, decideAgencyFee,
+  setCareersPublished, setJobCareersPage, updateCareersSettings, markRecruitmentTasksRead,
+  acceptAgencySubmission, addAgencyContractUser, assignAgencyContract, deleteAgencyTag, recordAgencySubmission, rejectAgencySubmission, removeAgencyAssignment,
+  removeAgencyContractFile, removeAgencyContractUser, saveAgency, saveAgencyConsultant, saveAgencyContract, saveAgencyTag, updateAgencyAssignment,
+  uploadAgencyContractFile, CONTRACT_FILE_MAX_BYTES, removeAgencySubmissionData,
+  answerScreening, reassignScreening, sendForScreening, withdrawScreening,
+  addBackgroundCheck, addDefaultBackgroundCheckTypes, cancelBackgroundCheck, completeBackgroundCheck, deleteBackgroundCheckType,
+  recordBackgroundCheckAuthorisation, saveBackgroundCheckType, startBackgroundCheck, CHECK_FILE_MAX_BYTES, type CheckFileInput,
+  addCandidateToPool, blockCandidate, deletePool, removeCandidateFromPool, resolveReviewMark, savePool, unblockCandidate,
+  customValuesFromForm, deleteCustomField, deleteCustomFieldOption, moveCustomField, moveCustomFieldOption, saveCustomField, saveCustomFieldOption,
+  CUSTOM_FIELD_LOCALES, interviewPlanFromForm,
+  deletePositionTemplate, savePositionTemplate, setPositionTemplateEnabled, updatePositionTemplateSetting,
+  previewCandidateImport, startCandidateImport, candidateImportJob, cancelCandidateImport, assignToJob, setToAssignHidden, saveExportTemplate, deleteExportTemplate,
+  type ImportPreview, type CandidateImportJob,
+  archiveSuggestedApplications, deleteWaitingRule, saveWaitingRule, type SuggestedArchiveRefusal,
+  addInterviewers, deleteInterviewAddress, deleteInterviewQuestion, deleteInterviewRoom, deleteInterviewerGroup, saveInterviewAddress, saveInterviewQuestion,
+  saveInterviewRoom, saveInterviewerGroup, setInterviewQuestionRetired,
+  saveCandidateEmailSettings, saveCandidateEmailTemplate, resetCandidateEmailTemplate, retryCandidateEmail,
+  previewInterviewInvitation, sendOfferByEmail, type InvitationPreview, type InterviewEmailOutcome,
+  suggestMatchSummary, updateMatchSummarySetting, type RecruitmentMatchSummary,
+  recordAgencyPortalSubmission, declineAgencyPortalSubmission, updateAgencyPortalSetting,
+} from '@/packs/recruitment/service';
+import { getLocale } from 'next-intl/server';
+
+const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
+/** Only same-site recruitment paths may be returned to. */
+const back = (f: FormData, fallback: string) => {
+  const to = str(f, 'returnTo');
+  return to.startsWith('/recruitment') && !to.startsWith('//') ? to : fallback;
+};
+const withParam = (url: string, key: string, value: string) => `${url}${url.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`;
+const errorCode = (e: unknown) => (e instanceof RecruitmentError ? e.code : 'unexpected');
+/** The query parameter a refusal code comes back in (read by every Recruitment page's ErrorBanner, recruitmentErrorText). */
+const PROBLEM_PARAM = 'problem';
+
+async function run<R>(url: string, work: (s: Awaited<ReturnType<typeof getSession>>) => Promise<R>, done?: string | ((result: R) => string)): Promise<never> {
+  const s = await getSession();
+  let result: R;
+  try {
+    result = await work(s);
+  } catch (e) {
+    // Only the error's kind and SQLSTATE: a database error's message carries its bound values (candidate details,
+    // private offer values, notes), which must never reach the server log.
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    redirect(withParam(url, PROBLEM_PARAM, errorCode(e)));
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(typeof done === 'function' ? done(result) : done ?? withParam(url, 'notice', 'saved'));
+}
+
+const jobFields = (f: FormData) => ({
+  // Slice 14: the custom job fields, when the form carried them (Job info and New position; not the settings form).
+  custom: customValuesFromForm(f),
+  title: str(f, 'title'), description: String(f.get('description') ?? ''), jobGradeIds: f.getAll('jobGradeIds').map(String),
+  workLocation: str(f, 'workLocation'), recruitmentType: str(f, 'recruitmentType'), employmentType: str(f, 'employmentType'),
+  businessUnitId: str(f, 'businessUnitId'), departmentId: str(f, 'departmentId'), processId: str(f, 'processId'),
+  autoArchiveAfterReject: f.get('autoArchiveAfterReject') === 'on',
+  // Slice 15: the interview plan, when the form carried it (Job settings and New position; not Job info).
+  interviewPlanFormIds: interviewPlanFromForm(f),
+});
+
+/**
+ * New position (slice 1; slice 15 review). The save RETURNS a refusal instead of redirecting: the person stays on the same form, in
+ * the same company, with everything typed — the custom fields and the interview plan included — and each refused field is named
+ * beside it (app/recruitment/action-form.tsx). Typed values go back only to this viewer in the action's state, never into a URL.
+ * A successful save redirects to the new position.
+ */
+export async function createJobFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const s = await getSession();
+  let id: string;
+  try {
+    ({ id } = await createJob(s, {
+      ...jobFields(f), companyId: str(f, 'companyId'), positionAttribute: str(f, 'positionAttribute'), recruiterUserId: str(f, 'recruiterUserId'),
+      requisitionId: str(f, 'requisitionId'),
+      // Slice 15: the template the form was opened from (recorded on the job; every normal rule applies).
+      templateId: str(f, 'templateId'),
+    }));
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(`/recruitment/positions/${id}?notice=created`);
+}
+
+/** A refused form save as the form's state: the code, its sentence in the viewer's language, the refused fields and the typed values. */
+async function refusal(prev: FormRefusal, f: FormData, e: unknown): Promise<FormRefusal> {
+  // Only the error's kind and SQLSTATE are logged: a database error's message carries bound values.
+  if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+  const t = await getTranslations('recruitment.errors');
+  const problem = errorCode(e);
+  const errorText = (RECRUITMENT_ERROR_CODES as readonly string[]).includes(problem) ? t(problem as (typeof RECRUITMENT_ERROR_CODES)[number]) : t('unexpected');
+  return {
+    status: 'refused', problem, errorText, fields: e instanceof RecruitmentError ? [...(e.detail ?? [])] : [], values: formValuesOf(f), nonce: (prev.nonce ?? 0) + 1,
+  };
+}
+
+export async function updateJobAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  const url = back(f, `/recruitment/positions/${encodeURIComponent(jobId)}`);
+  const s = await getSession();
+  try {
+    await updateJob(s, jobId, jobFields(f));
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    // The refused fields (e.g. an interview plan with a gap) come back so the page can name them.
+    const fields = e instanceof RecruitmentError && e.detail?.length ? `&fields=${encodeURIComponent(e.detail.join(','))}` : '';
+    redirect(`${withParam(url, PROBLEM_PARAM, errorCode(e))}${fields}`);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(url, 'notice', 'saved'));
+}
+
+export async function changeJobStatusAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}`), (s) => changeJobStatus(s, jobId, str(f, 'status')));
+}
+
+/** Slice 7: the job's "Show on the referral portal" setting (recruitment administrators; the service and 5857 refuse others). */
+export async function setJobReferralPortalAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobReferralPortal(s, jobId, f.get('showOnReferralPortal') === 'on'));
+}
+
+/** Slice 23: the job's referral reward (recruitment administrators; empty clears it; the service and 5875 refuse others). */
+export async function setJobReferralRewardAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobReferralReward(s, jobId, str(f, 'referralReward')));
+}
+
+/** Slice 23: decide a hired referral's reward (administrators of the job's company, never the referrer or the hire). */
+export async function decideReferralRewardAction(f: FormData) {
+  return run(back(f, '/recruitment/rewards'), (s) => decideReferralReward(s, {
+    referralId: str(f, 'referralId'), decision: str(f, 'decision'), payeeEmploymentId: str(f, 'payeeEmploymentId') || undefined, reason: str(f, 'reason'),
+  }));
+}
+
+/** Slice 23: send an approved reward to payroll as one earning (payroll administrators of the receiving company). */
+export async function sendRewardToPayrollAction(f: FormData) {
+  return run(back(f, '/recruitment/rewards?view=payroll'), (s) => sendRewardToPayroll(s, {
+    rewardId: str(f, 'rewardId'), payPeriod: str(f, 'payPeriod'), componentId: str(f, 'componentId'),
+  }));
+}
+
+/** Slice 23: record or correct an agency fee (administrators). */
+export async function recordAgencyFeeAction(f: FormData) {
+  return run(back(f, '/recruitment/rewards?view=fees'), (s) => recordAgencyFee(s, str(f, 'applicationId'), {
+    amount: str(f, 'amount'), currency: str(f, 'currency'), invoiceRef: str(f, 'invoiceRef'), note: str(f, 'note'),
+  }));
+}
+
+/** Slice 23: approve or decline an agency fee (an administrator other than its last recorder). */
+export async function decideAgencyFeeAction(f: FormData) {
+  return run(back(f, '/recruitment/rewards?view=fees'), (s) => decideAgencyFee(s, { feeId: str(f, 'feeId'), decision: str(f, 'decision'), reason: str(f, 'reason') }));
+}
+
+/** Slice 8: the job's "Show on careers page" switch (recruitment administrators; the service and 5858 refuse others). */
+export async function setJobCareersPageAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => setJobCareersPage(s, jobId, f.get('showOnCareersPage') === 'on'));
+}
+
+export async function addJobMemberAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=team`), (s) => addJobMember(s, jobId, str(f, 'role'), str(f, 'userId')));
+}
+
+export async function removeJobMemberAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=team`), (s) => removeJobMember(s, jobId, str(f, 'memberId')));
+}
+
+/** What the Add application form shows after a save that did not complete (slice 5). */
+export type AddApplicationState = {
+  status: 'idle' | 'error' | 'duplicate';
+  errorText?: string;
+  duplicate?: DuplicateCheck;
+  /** The typed values, returned to the same viewer who typed them so the form keeps them. Never logged or put in a URL. */
+  values?: Record<string, string>;
+  nonce?: number;
+};
+/**
+ * Add application with duplicate detection. A possible duplicate returns what the SERVICE lets the viewer know: a count
+ * only for a job operator, the matches for an administrator. An administrator resolves it with `existingCandidateId`
+ * (add to that candidate) or `confirmSeparate`. Success revalidates and redirects as every other action does.
+ */
+export async function addApplicationFormAction(prev: AddApplicationState, f: FormData): Promise<AddApplicationState> {
+  const s = await getSession();
+  const values = Object.fromEntries(['jobId', 'fullName', 'email', 'phone', 'idType', 'idNumber', 'candidateSource', 'sendReceipt'].map((k) => [k, str(f, k)]));
+  const input = { ...values, existingCandidateId: str(f, 'existingCandidateId'), confirmSeparate: str(f, 'confirmSeparate') };
+  const nonce = (prev.nonce ?? 0) + 1;
+  let receipt: 'queued' | 'no_email' | 'value_link' | undefined;
+  try {
+    ({ receipt } = await addApplication(s, input));
+  } catch (e) {
+    if (e instanceof RecruitmentError && e.code === 'possible_duplicate') {
+      try {
+        return { status: 'duplicate', duplicate: await checkDuplicateCandidate(s, input), values, nonce };
+      } catch (inner) {
+        e = inner;
+      }
+    }
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    const t = await getTranslations('recruitment.errors');
+    const code = errorCode(e);
+    const errorText = (RECRUITMENT_ERROR_CODES as readonly string[]).includes(code) ? t(code as (typeof RECRUITMENT_ERROR_CODES)[number]) : t('unexpected');
+    return { status: 'error', errorText, values, nonce };
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(back(f, '/recruitment/candidates'), 'notice', receipt === 'queued' ? 'receipt-queued' : receipt === 'no_email' ? 'receipt-no-email'
+    : receipt === 'value_link' ? 'receipt-value-link' : 'saved'));
+}
+
+export async function moveApplicationAction(f: FormData) {
+  return run(back(f, '/recruitment/candidates'), (s) => moveApplication(s, str(f, 'applicationId'), str(f, 'targetStageId') || undefined));
+}
+
+/** Slice 19: the reject and archive dialogs' "Send rejection e-mail" tick, its delay and the fingerprint of the preview shown. */
+const rejectionEmailChoice = (f: FormData) => ({
+  send: f.get('sendEmail') === 'on', delayDays: str(f, 'emailDelay') || '0', fingerprint: str(f, 'emailFingerprint'),
+  // Suggested to archive: one fingerprint per listed application ("emailFingerprint.<application id>").
+  fingerprints: Object.fromEntries([...f.keys()].filter((k) => k.startsWith('emailFingerprint.')).map((k) => [k.slice('emailFingerprint.'.length), str(f, k)])),
+});
+
+export async function rejectApplicationAction(f: FormData) {
+  const url = back(f, '/recruitment/candidates');
+  return run(url, (s) => rejectApplication(s, str(f, 'applicationId'), str(f, 'archiveReasonId'), rejectionEmailChoice(f)),
+    (r) => withParam(url, 'notice', r.email === 'queued' ? 'rejected-email' : r.email === 'no_email' ? 'rejected-no-email'
+      : r.email === 'value_link' ? 'rejected-value-link' : r.email === 'not_previewed' ? 'rejected-not-previewed' : 'saved'));
+}
+
+export async function updateStageAction(f: FormData) {
+  return run(back(f, '/recruitment/settings'), (s) => updateStage(s, str(f, 'stageId'), { name: str(f, 'name'), type: str(f, 'type'), enabled: f.get('enabled') === 'on' }));
+}
+
+export async function updateProcessAction(f: FormData) {
+  return run(back(f, '/recruitment/settings'), (s) => updateProcess(s, str(f, 'processId'), { name: str(f, 'name'), enabled: f.get('enabled') === 'on' }));
+}
+
+export async function saveArchiveReasonAction(f: FormData) {
+  return run(back(f, '/recruitment/settings'), (s) => saveArchiveReason(s, {
+    id: str(f, 'reasonId'), companyId: str(f, 'companyId'), internal: str(f, 'internal'), external: str(f, 'external'), displayed: f.get('displayed') === 'on',
+  }));
+}
+
+export async function deleteArchiveReasonAction(f: FormData) {
+  return run(back(f, '/recruitment/settings'), (s) => deleteArchiveReason(s, str(f, 'reasonId')));
+}
+
+// ── Slice 2: interviews and feedback ────────────────────────────────────────────────────────────────────
+
+const appPage = (f: FormData, tab: string) => back(f, `/recruitment/applications/${encodeURIComponent(str(f, 'applicationId'))}?tab=${tab}`);
+
+/**
+ * Schedule an interview (slice 2; slice 18 review). The save RETURNS a refusal (a room already booked at that time, an unavailable
+ * room, groups leaving nobody …) so the form keeps everything typed; a successful save redirects to the Interviews tab.
+ */
+/** Slice 20: what a schedule form's interview e-mail outcome tells the person (scheduled or cancelled either way). */
+const interviewEmailNotice = (prefix: 'invitation' | 'cancelled', outcome: InterviewEmailOutcome | null) =>
+  outcome === 'queued' ? `${prefix}-queued` : outcome === 'no_email' ? `${prefix}-no-email` : outcome === 'value_link' ? `${prefix}-value-link` : 'saved';
+
+export async function scheduleInterviewFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const s = await getSession();
+  let emailed: InterviewEmailOutcome | null = null;
+  try {
+    ({ email: emailed } = await scheduleInterview(s, {
+      applicationId: str(f, 'applicationId'), roundNo: str(f, 'roundNo'), type: str(f, 'type'), startsAt: str(f, 'startsAt'),
+      durationMinutes: str(f, 'durationMinutes'), site: str(f, 'site'), meetingRoom: str(f, 'meetingRoom'),
+      interviewerIds: f.getAll('interviewerIds').map(String), formId: str(f, 'formId'),
+      groupIds: f.getAll('groupIds').map(String), addressId: str(f, 'addressId'), roomId: str(f, 'roomId'),
+    }, {
+      // Slice 20: the invitation the form showed (its subject and text, exactly as shown).
+      send: f.get('sendInvitation') === 'on', subject: String(f.get('invitationSubject') ?? ''), text: String(f.get('invitationText') ?? ''),
+    }));
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(appPage(f, 'interviews'), 'notice', interviewEmailNotice('invitation', emailed)));
+}
+
+/** Slice 20: the invitation e-mail for what the schedule form holds so far (read-only; called as the person types). */
+export async function previewInvitationAction(input: Record<string, string>): Promise<InvitationPreview> {
+  const s = await getSession();
+  try {
+    return await previewInterviewInvitation(s, {
+      applicationId: input.applicationId, roundNo: input.roundNo, type: input.type, startsAt: input.startsAt, durationMinutes: input.durationMinutes,
+      addressId: input.addressId, roomId: input.roomId, site: (input.site ?? '').trim(), meetingRoom: (input.meetingRoom ?? '').trim(),
+    });
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment invitation preview failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    return { status: 'unavailable' };
+  }
+}
+
+/** Slice 18: add people and/or interviewer groups to an open interview (each current member once). */
+export async function addInterviewersAction(f: FormData) {
+  return run(appPage(f, 'interviews'), (s) => addInterviewers(s, str(f, 'interviewId'), {
+    interviewerIds: f.getAll('interviewerIds').map(String), groupIds: f.getAll('groupIds').map(String),
+  }));
+}
+
+export async function cancelInterviewAction(f: FormData) {
+  const url = appPage(f, 'interviews');
+  return run(url, (s) => cancelInterview(s, str(f, 'interviewId'), { send: f.get('sendEmail') === 'on', fingerprint: str(f, 'emailFingerprint') }),
+    (r) => withParam(url, 'notice', interviewEmailNotice('cancelled', r.email)));
+}
+
+export async function setCandidateResponseAction(f: FormData) {
+  return run(appPage(f, 'interviews'), (s) => setCandidateResponse(s, str(f, 'interviewId'), str(f, 'response')));
+}
+
+/** Feedback fields arrive as rating:<criterion key> and notes:<criterion key>; the service validates them against the form. */
+export async function submitScorecardAction(f: FormData) {
+  const ratings: Record<string, { rating?: unknown; notes?: unknown }> = {};
+  for (const [key, value] of f.entries()) {
+    const m = /^(rating|notes):([a-z0-9]{1,20})$/.exec(key);
+    if (!m) continue;
+    ratings[m[2]] = { ...ratings[m[2]], [m[1] === 'rating' ? 'rating' : 'notes']: String(value) };
+  }
+  const interviewId = str(f, 'interviewId');
+  return run(back(f, `/recruitment/interviews/${encodeURIComponent(interviewId)}/feedback`),
+    (s) => submitScorecard(s, interviewId, { ratings, result: str(f, 'result'), overview: String(f.get('overview') ?? '') }),
+    withParam(appPage(f, 'interviews'), 'notice', 'saved'));
+}
+
+export async function updateInterviewSettingsAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=interviews'), (s) => updateInterviewSettings(s, str(f, 'companyId'), {
+    scorecardsPrivate: f.get('scorecardsPrivate') === 'on', feedbackEditLock: str(f, 'feedbackEditLock'), resultRequired: f.get('resultRequired') === 'on',
+  }));
+}
+
+export async function saveEvaluationFormAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=interviews'), (s) => saveEvaluationForm(s, {
+    id: str(f, 'formId'), companyId: str(f, 'companyId'), name: str(f, 'name'), source: String(f.get('source') ?? ''),
+    isDefault: f.get('isDefault') === 'on', enabled: f.get('enabled') === 'on',
+  }));
+}
+
+// ── Slice 3: offers ─────────────────────────────────────────────────────────────────────────────────────
+
+/** Offer values arrive as text:<field id>, amount:<field id> and currency:<field id>. */
+export async function saveOfferAction(f: FormData) {
+  const values: Record<string, { text?: unknown; amount?: unknown; currency?: unknown }> = {};
+  for (const [key, value] of f.entries()) {
+    const m = /^(text|amount|currency):([0-9a-f-]{36})$/i.exec(key);
+    if (!m) continue;
+    values[m[2]] = { ...values[m[2]], [m[1]]: String(value) };
+  }
+  return run(appPage(f, 'offer'), (s) => saveOffer(s, str(f, 'applicationId'), values));
+}
+export async function submitOfferAction(f: FormData) {
+  return run(appPage(f, 'offer'), (s) => submitOffer(s, str(f, 'offerId')));
+}
+export async function withdrawOfferAction(f: FormData) {
+  return run(appPage(f, 'offer'), (s) => withdrawOffer(s, str(f, 'offerId')));
+}
+export async function decideOfferAction(f: FormData) {
+  return run(back(f, '/recruitment/approvals'), (s) => decideOffer(s, str(f, 'offerId'), str(f, 'decision'), str(f, 'comment')));
+}
+export async function markOfferSentAction(f: FormData) {
+  return run(appPage(f, 'offer'), (s) => markOfferSent(s, str(f, 'offerId'), str(f, 'channel')));
+}
+/** Slice 20: "Send offer by e-mail" with the fingerprint of the e-mail shown. */
+export async function sendOfferByEmailAction(f: FormData) {
+  const url = appPage(f, 'offer');
+  return run(url, (s) => sendOfferByEmail(s, str(f, 'offerId'), str(f, 'emailFingerprint')), withParam(url, 'notice', 'offer-email-queued'));
+}
+export async function recordOfferDecisionAction(f: FormData) {
+  return run(appPage(f, 'offer'), (s) => recordOfferDecision(s, str(f, 'offerId'), str(f, 'decision')));
+}
+export async function updateOfferSettingsAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=offers'), (s) => updateOfferSettings(s, str(f, 'companyId'), {
+    validDays: str(f, 'validDays'), acceptMovesForward: f.get('acceptMovesForward') === 'on', declineArchives: f.get('declineArchives') === 'on',
+  }));
+}
+export async function saveOfferFieldAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=offers'), (s) => saveOfferField(s, {
+    id: str(f, 'fieldId'), companyId: str(f, 'companyId'), label: str(f, 'label'), type: str(f, 'type'), choices: String(f.get('choices') ?? ''),
+    required: f.get('required') === 'on', needsApproval: f.get('needsApproval') === 'on', private: f.get('private') === 'on', enabled: f.get('enabled') === 'on',
+    includeInEmail: f.get('includeInEmail') === 'on',
+  }));
+}
+export async function saveApprovalFlowAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=offers'), (s) => saveApprovalFlow(s, str(f, 'companyId'), str(f, 'kind'), f.getAll('approverIds').map(String)));
+}
+
+// ── Slice 4: requisitions and the talent pool ───────────────────────────────────────────────────────────
+
+const requisitionFields = (f: FormData) => ({
+  companyId: str(f, 'companyId'), title: str(f, 'title'), description: String(f.get('description') ?? ''), vacancies: str(f, 'vacancies'),
+  jobGradeIds: f.getAll('jobGradeIds').map(String), hiringManagerUserId: str(f, 'hiringManagerUserId'), partnerUserId: str(f, 'partnerUserId'),
+  recruiterUserId: str(f, 'recruiterUserId'), workLocation: str(f, 'workLocation'), employmentType: str(f, 'employmentType'),
+  recruitmentType: str(f, 'recruitmentType'), departmentId: str(f, 'departmentId'), dateOpened: str(f, 'dateOpened'),
+  targetOnboardDate: str(f, 'targetOnboardDate'), yearsExperience: str(f, 'yearsExperience'), education: str(f, 'education'),
+  salaryMin: str(f, 'salaryMin'), salaryMax: str(f, 'salaryMax'), salaryCurrency: str(f, 'salaryCurrency'), workingDays: str(f, 'workingDays'),
+  workingHours: str(f, 'workingHours'), mandatorySkills: String(f.get('mandatorySkills') ?? ''), preferredSkills: String(f.get('preferredSkills') ?? ''),
+  benefits: String(f.get('benefits') ?? ''),
+});
+
+export async function createRequisitionAction(f: FormData) {
+  const s = await getSession();
+  let id: string;
+  try {
+    ({ id } = await createRequisition(s, requisitionFields(f)));
+  } catch (e) {
+    const fields = e instanceof RecruitmentError && e.detail?.length ? `&fields=${encodeURIComponent(e.detail.join(','))}` : '';
+    redirect(`/recruitment/requisitions/new?company=${encodeURIComponent(str(f, 'companyId'))}&${PROBLEM_PARAM}=${errorCode(e)}${fields}`);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(`/recruitment/requisitions/${id}?notice=created`);
+}
+const reqPage = (f: FormData) => back(f, `/recruitment/requisitions/${encodeURIComponent(str(f, 'requisitionId'))}`);
+export async function updateRequisitionAction(f: FormData) {
+  return run(reqPage(f), (s) => updateRequisition(s, str(f, 'requisitionId'), requisitionFields(f)));
+}
+export async function submitRequisitionAction(f: FormData) {
+  return run(reqPage(f), (s) => submitRequisition(s, str(f, 'requisitionId')));
+}
+export async function withdrawRequisitionAction(f: FormData) {
+  return run(reqPage(f), (s) => withdrawRequisition(s, str(f, 'requisitionId')));
+}
+export async function decideRequisitionAction(f: FormData) {
+  return run(back(f, '/recruitment/approvals'), (s) => decideRequisition(s, str(f, 'requisitionId'), str(f, 'decision'), str(f, 'comment')));
+}
+export async function changeRequisitionStatusAction(f: FormData) {
+  return run(reqPage(f), (s) => changeRequisitionStatus(s, str(f, 'requisitionId'), str(f, 'status')));
+}
+export async function associateJobAction(f: FormData) {
+  return run(reqPage(f), (s) => associateJob(s, str(f, 'requisitionId'), str(f, 'jobId')));
+}
+export async function dissociateJobAction(f: FormData) {
+  return run(reqPage(f), (s) => dissociateJob(s, str(f, 'requisitionId'), str(f, 'jobId')));
+}
+export async function addPoolCandidateToJobAction(f: FormData) {
+  return run(back(f, '/recruitment/talent-pool'), (s) => addPoolCandidateToJob(s, str(f, 'applicationId'), str(f, 'jobId')));
+}
+
+// ── Slice 5: candidate records and privacy ───────────────────────────────────────────────────────────────
+
+const candidatePage = (f: FormData) => appPage(f, 'candidate');
+
+export async function updateCandidateProfileAction(f: FormData) {
+  return run(candidatePage(f), (s) => updateCandidateProfile(s, str(f, 'candidateId'), {
+    fullName: str(f, 'fullName'), email: str(f, 'email'), phone: str(f, 'phone'), location: str(f, 'location'), currentCompany: str(f, 'currentCompany'),
+    currentTitle: str(f, 'currentTitle'), highestEducation: str(f, 'highestEducation'), noticePeriod: str(f, 'noticePeriod'), source: str(f, 'source'),
+  }, customValuesFromForm(f)));
+}
+export async function saveCandidateRestrictedAction(f: FormData) {
+  return run(candidatePage(f), (s) => saveCandidateRestricted(s, str(f, 'candidateId'), {
+    currentSalaryAmount: str(f, 'currentSalaryAmount'), currentSalaryCurrency: str(f, 'currentSalaryCurrency'),
+    expectedSalaryAmount: str(f, 'expectedSalaryAmount'), expectedSalaryCurrency: str(f, 'expectedSalaryCurrency'),
+    idType: str(f, 'idType'), idNumber: str(f, 'idNumber'),
+  }));
+}
+export async function addCandidateEntryAction(f: FormData) {
+  return run(candidatePage(f), (s) => addCandidateEntry(s, str(f, 'candidateId'), {
+    kind: str(f, 'kind'), organisation: str(f, 'organisation'), title: str(f, 'title'), fromMonth: str(f, 'fromMonth'), toMonth: str(f, 'toMonth'),
+    isCurrent: f.get('isCurrent') === 'on',
+  }));
+}
+export async function removeCandidateEntryAction(f: FormData) {
+  return run(candidatePage(f), (s) => removeCandidateEntry(s, str(f, 'entryId')));
+}
+/** The browser-declared type is never trusted: the service reads the file's own bytes (core/employee-documents). */
+export async function uploadCandidateFileAction(f: FormData) {
+  const file = f.get('file');
+  return run(candidatePage(f), async (s) => {
+    if (!(file instanceof File) || file.size === 0) throw new RecruitmentError('missing_fields', ['file']);
+    if (file.size > CANDIDATE_FILE_MAX_BYTES) throw new RecruitmentError('file_too_large');
+    await uploadCandidateFile(s, str(f, 'candidateId'), {
+      kind: str(f, 'kind'), fileName: file.name, content: Buffer.from(await file.arrayBuffer()), permissionConfirmed: f.get('permissionConfirmed') === 'on',
+    });
+  });
+}
+export async function deleteCandidateFileAction(f: FormData) {
+  return run(candidatePage(f), (s) => deleteCandidateFile(s, str(f, 'fileId')));
+}
+export async function addCandidateTagAction(f: FormData) {
+  return run(candidatePage(f), (s) => addCandidateTag(s, str(f, 'candidateId'), str(f, 'tagId')));
+}
+export async function removeCandidateTagAction(f: FormData) {
+  return run(candidatePage(f), (s) => removeCandidateTag(s, str(f, 'candidateId'), str(f, 'tagId')));
+}
+export async function recordConsentAction(f: FormData) {
+  return run(candidatePage(f), (s) => recordConsent(s, str(f, 'candidateId'), {
+    status: str(f, 'status'), effectiveOn: str(f, 'effectiveOn'), method: str(f, 'method'), noticeReference: str(f, 'noticeReference'),
+  }));
+}
+export async function updatePrivacySettingsAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=privacy'), (s) => updatePrivacySettings(s, str(f, 'companyId'), {
+    monthsWithoutConsent: str(f, 'monthsWithoutConsent'), monthsWithConsent: str(f, 'monthsWithConsent'), repeatWindowMonths: str(f, 'repeatWindowMonths'),
+  }));
+}
+/** Slice 7: the company's referral protection period in days (0 switches it off). */
+export async function updateReferralSettingsAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=referrals'), (s) => updateReferralSettings(s, str(f, 'companyId'), { protectionDays: str(f, 'protectionDays') }));
+}
+/** Slice 8: the careers page fields; a changed privacy notice text becomes a new version (earlier ones are kept). */
+export async function updateCareersSettingsAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=careers'), (s) => updateCareersSettings(s, str(f, 'companyId'), {
+    address: str(f, 'address'), displayName: str(f, 'displayName'), headline: str(f, 'headline'), introduction: String(f.get('introduction') ?? ''),
+    notice: String(f.get('notice') ?? ''),
+  }));
+}
+/** Slice 8: publish or withdraw the careers page (publishing is refused while anything it needs is missing). */
+export async function setCareersPublishedAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=careers'), (s) => setCareersPublished(s, str(f, 'companyId'), str(f, 'published') === 'on'));
+}
+/** Destruction: the administrator's selection and explicit confirmation; the service re-checks every candidate is due. */
+export async function destroyCandidatesAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=privacy'), (s) => destroyCandidates(s, str(f, 'companyId'), f.getAll('candidateIds').map(String), f.get('confirm') === 'on'),
+    withParam(back(f, '/recruitment/settings?section=privacy'), 'notice', 'removed'));
+}
+export async function saveTagGroupAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=tags'), (s) => saveTagGroup(s, {
+    id: str(f, 'groupId'), companyId: str(f, 'companyId'), name: str(f, 'name'), enabled: f.get('enabled') === 'on',
+  }));
+}
+export async function saveTagAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=tags'), (s) => saveTag(s, {
+    id: str(f, 'tagId'), groupId: str(f, 'groupId'), name: str(f, 'name'), enabled: f.get('enabled') === 'on',
+  }));
+}
+
+/**
+ * Slice 9: "Mark all as read" in the Overview Tasks panel — one update category, or all, for the companies the panel shows.
+ * The service writes only the caller's own read markers and refuses a company whose recruitment they may not see.
+ */
+export async function markRecruitmentTasksReadAction(f: FormData) {
+  const category = str(f, 'category');
+  return run(back(f, '/recruitment'), (s) => markRecruitmentTasksRead(s, f.getAll('companyId').map(String), category));
+}
+
+// ── Slice 10: agencies and headhunters ─────────────────────────────────────────────────────────────────────────
+const AGENCIES = '/recruitment/settings?section=agencies';
+const contractPage = (id: string) => `/recruitment/settings/agencies/contracts/${encodeURIComponent(id)}`;
+const contractFields = (f: FormData) => ({
+  name: str(f, 'name'), contractType: str(f, 'contractType'), status: str(f, 'status') || 'enabled', feeRate: str(f, 'feeRate'), startsOn: str(f, 'startsOn'),
+  endsOn: str(f, 'endsOn'), hrContactUserId: str(f, 'hrContactUserId'), access: str(f, 'access') || 'public', protectionDays: str(f, 'protectionDays'),
+});
+/** An agency tag: create, rename, enable or disable (administrators). */
+export async function saveAgencyTagAction(f: FormData) {
+  return run(back(f, AGENCIES), (s) => saveAgencyTag(s, { id: str(f, 'tagId'), companyId: str(f, 'companyId'), name: str(f, 'name'), enabled: f.get('enabled') === 'on' }));
+}
+/** Delete an unused agency tag; a tag on an agency is kept (disable it instead). */
+export async function deleteAgencyTagAction(f: FormData) {
+  return run(back(f, AGENCIES), (s) => deleteAgencyTag(s, str(f, 'tagId')));
+}
+/** An agency: create or rename, and its tags. */
+export async function saveAgencyAction(f: FormData) {
+  return run(back(f, AGENCIES), (s) => saveAgency(s, { id: str(f, 'agencyId'), companyId: str(f, 'companyId'), name: str(f, 'name'), tagIds: f.getAll('tagIds').map(String) }));
+}
+/** A new contract opens its own page; a changed one returns to it. The fee rate is a percentage, never an amount. */
+export async function saveAgencyContractAction(f: FormData) {
+  const id = str(f, 'contractId');
+  if (id) return run(back(f, contractPage(id)), (s) => saveAgencyContract(s, { id, ...contractFields(f) }));
+  const s = await getSession();
+  let created: string;
+  try {
+    ({ id: created } = await saveAgencyContract(s, { agencyId: str(f, 'agencyId'), ...contractFields(f) }));
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    redirect(withParam(back(f, AGENCIES), PROBLEM_PARAM, errorCode(e)));
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(contractPage(created), 'notice', 'saved'));
+}
+/** The contract PDF (type read from the bytes by the service). */
+export async function uploadAgencyContractFileAction(f: FormData) {
+  const id = str(f, 'contractId');
+  const file = f.get('file');
+  return run(contractPage(id), async (s) => {
+    if (!(file instanceof File) || file.size === 0) throw new RecruitmentError('missing_fields', ['file']);
+    if (file.size > CONTRACT_FILE_MAX_BYTES) throw new RecruitmentError('file_too_large');
+    await uploadAgencyContractFile(s, id, { fileName: file.name, content: Buffer.from(await file.arrayBuffer()) });
+  });
+}
+export async function removeAgencyContractFileAction(f: FormData) {
+  const id = str(f, 'contractId');
+  return run(contractPage(id), (s) => removeAgencyContractFile(s, id));
+}
+export async function addAgencyContractUserAction(f: FormData) {
+  const id = str(f, 'contractId');
+  return run(contractPage(id), (s) => addAgencyContractUser(s, id, str(f, 'userId')));
+}
+export async function removeAgencyContractUserAction(f: FormData) {
+  const id = str(f, 'contractId');
+  return run(contractPage(id), (s) => removeAgencyContractUser(s, id, str(f, 'userId')));
+}
+/** A consultant (a contact record; nothing is sent to them). */
+export async function saveAgencyConsultantAction(f: FormData) {
+  const contractId = str(f, 'contractId');
+  return run(contractPage(contractId), (s) => saveAgencyConsultant(s, {
+    id: str(f, 'consultantId'), contractId, name: str(f, 'name'), email: str(f, 'email'), mobile: str(f, 'mobile'), status: str(f, 'status') || 'active',
+  }));
+}
+/** Release a job to a contract usable today by the actor (administrators and the job's recruiter). */
+export async function assignAgencyContractAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  return run(back(f, `/recruitment/positions/${encodeURIComponent(jobId)}?tab=settings`), (s) => assignAgencyContract(s, jobId, str(f, 'contractId'), String(f.get('requirements') ?? '')));
+}
+export async function updateAgencyAssignmentAction(f: FormData) {
+  return run(back(f, '/recruitment/positions'), (s) => updateAgencyAssignment(s, str(f, 'assignmentId'), String(f.get('requirements') ?? '')));
+}
+export async function removeAgencyAssignmentAction(f: FormData) {
+  return run(back(f, '/recruitment/positions'), (s) => removeAgencyAssignment(s, str(f, 'assignmentId')));
+}
+/**
+ * Record an agency submission (the job's recruiter, assistants and administrators). The page learns only the outcome:
+ * added as a new candidate, refused as protected by an earlier application, or waiting for an administrator. Typed values
+ * never travel in the URL or the log.
+ */
+export async function recordAgencySubmissionAction(f: FormData) {
+  const jobId = str(f, 'jobId');
+  const [contractId = '', consultantId = ''] = str(f, 'consultant').split('|');
+  const resume = f.get('resume');
+  const returnTo = back(f, `/recruitment/candidates?job=${encodeURIComponent(jobId)}`);
+  const s = await getSession();
+  let outcome: string;
+  try {
+    if (resume instanceof File && resume.size > CANDIDATE_FILE_MAX_BYTES) throw new RecruitmentError('file_too_large');
+    const hasResume = resume instanceof File && resume.size > 0;
+    ({ outcome } = await recordAgencySubmission(s, {
+      jobId, contractId, consultantId, fullName: str(f, 'fullName'), email: str(f, 'email'), mobile: str(f, 'mobile'), idType: str(f, 'idType'), idNumber: str(f, 'idNumber'),
+      currentSalaryAmount: str(f, 'currentSalaryAmount'), currentSalaryCurrency: str(f, 'currentSalaryCurrency'), expectedSalaryAmount: str(f, 'expectedSalaryAmount'),
+      expectedSalaryCurrency: str(f, 'expectedSalaryCurrency'), comments: String(f.get('comments') ?? ''), submittedOn: str(f, 'submittedOn'),
+      ...(hasResume ? { resumeName: resume.name, resumeContent: Buffer.from(await resume.arrayBuffer()), permissionConfirmed: f.get('permissionConfirmed') === 'on' } : {}),
+    }));
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    redirect(withParam(returnTo, PROBLEM_PARAM, errorCode(e)));
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(returnTo, 'notice', `agency-${outcome}`));
+}
+/** Accept a waiting submission (administrators): onto the chosen existing candidate, or as a new candidate. */
+export async function acceptAgencySubmissionAction(f: FormData) {
+  const id = str(f, 'submissionId');
+  const target = str(f, 'target');
+  return run(`/recruitment/agency-submissions/${encodeURIComponent(id)}`, (s) => acceptAgencySubmission(s, id, { candidateId: target === 'new' ? '' : target }));
+}
+/** Reject a waiting submission with a reason (administrators). */
+export async function rejectAgencySubmissionAction(f: FormData) {
+  const id = str(f, 'submissionId');
+  return run(`/recruitment/agency-submissions/${encodeURIComponent(id)}`, (s) => rejectAgencySubmission(s, id, String(f.get('reason') ?? '')));
+}
+/** Remove the personal data of a refused or rejected agency submission (administrators; explicit confirmation). */
+export async function removeAgencySubmissionDataAction(f: FormData) {
+  const id = str(f, 'submissionId');
+  return run(back(f, `/recruitment/agency-submissions/${encodeURIComponent(id)}`), (s) => removeAgencySubmissionData(s, id, f.get('confirm') === 'on'),
+    withParam(back(f, `/recruitment/agency-submissions/${encodeURIComponent(id)}`), 'notice', 'removed'));
+}
+
+// ── Slice 11: resume screening by hiring managers ──────────────────────────────────────────────────────────────
+/** A same-site return path without the board's one-card preselection (so the page does not reopen the send panel). */
+const withoutSend = (url: string) => url.replace(/([?&])send=[^&#]*&?/, '$1').replace(/[?&]$/, '');
+/** "Send to hiring manager" for one card or a selection of one job: the chosen reviewers, the note and the optional move. */
+export async function sendForScreeningAction(f: FormData) {
+  const url = withoutSend(back(f, '/recruitment/candidates'));
+  // The panel ticks every hiring manager; unticking them all is a refusal, not "everyone" (the service's default).
+  if (f.get('reviewersChosen') === '1' && !f.getAll('reviewerUserIds').length) {
+    return run(url, async () => { throw new RecruitmentError('missing_fields'); });
+  }
+  return run(url, (s) => sendForScreening(s, {
+    applicationIds: f.getAll('applicationIds').map(String), reviewerUserIds: f.getAll('reviewerUserIds').map(String),
+    note: String(f.get('note') ?? ''), move: f.get('move') === 'on',
+  }), (r) => (r.held ? withParam(withParam(url, 'notice', 'screening-sent-held'), 'held', String(r.held)) : withParam(url, 'notice', 'screening-sent')));
+}
+/** "Reassign": ask more of the job's hiring managers about one application. */
+export async function reassignScreeningAction(f: FormData) {
+  const applicationId = str(f, 'applicationId');
+  const url = back(f, `/recruitment/applications/${encodeURIComponent(applicationId)}?tab=screening`);
+  return run(url, (s) => reassignScreening(s, { applicationId, reviewerUserIds: f.getAll('reviewerUserIds').map(String), note: String(f.get('note') ?? '') }),
+    withParam(url, 'notice', 'screening-sent'));
+}
+/** "Withdraw": close an open screening request without an answer. */
+export async function withdrawScreeningAction(f: FormData) {
+  const applicationId = str(f, 'applicationId');
+  return run(back(f, `/recruitment/applications/${encodeURIComponent(applicationId)}?tab=screening`), (s) => withdrawScreening(s, str(f, 'requestId')));
+}
+/** The hiring manager's screening feedback: Advance, Reject or Pending, and an optional comment. */
+export async function answerScreeningAction(f: FormData) {
+  const url = back(f, '/recruitment/screening');
+  return run(url, (s) => answerScreening(s, str(f, 'requestId'), { result: str(f, 'result'), comment: String(f.get('comment') ?? '') }),
+    withParam(url, 'notice', 'screening-answered'));
+}
+
+// ── Slice 12: background checks ─────────────────────────────────────────────────────────────────────────────────
+const checkPage = (f: FormData) => back(f, `/recruitment/applications/${encodeURIComponent(str(f, 'applicationId'))}?tab=checks`);
+const checkSettings = (f: FormData) => back(f, '/recruitment/settings?section=checks');
+/** An optional file from the form (none chosen: undefined). The browser-declared type is never trusted: the service reads the
+ *  file's own bytes (core/employee-documents) and checks the size again. */
+async function optionalFile(f: FormData, field: string): Promise<CheckFileInput | undefined> {
+  const file = f.get(field);
+  if (!(file instanceof File) || file.size === 0) return undefined;
+  if (file.size > CHECK_FILE_MAX_BYTES) throw new RecruitmentError('file_too_large');
+  return { fileName: file.name, content: Buffer.from(await file.arrayBuffer()), permissionConfirmed: f.get(`${field}Permission`) === 'on' };
+}
+/** Settings › Background checks: add or change a type (administrators). */
+export async function saveBackgroundCheckTypeAction(f: FormData) {
+  return run(checkSettings(f), (s) => saveBackgroundCheckType(s, {
+    id: str(f, 'typeId') || undefined, companyId: str(f, 'companyId'), name: str(f, 'name'), description: String(f.get('description') ?? ''),
+    // The edit form sends its checkbox with a marker (an unticked box sends nothing); a new type starts enabled.
+    enabled: f.get('enabledField') === '1' ? f.get('enabled') === 'on' : true,
+  }));
+}
+export async function deleteBackgroundCheckTypeAction(f: FormData) {
+  return run(checkSettings(f), (s) => deleteBackgroundCheckType(s, str(f, 'typeId')));
+}
+/** "Add these types": the six defaults offered to a company with none. */
+export async function addDefaultBackgroundCheckTypesAction(f: FormData) {
+  return run(checkSettings(f), (s) => addDefaultBackgroundCheckTypes(s, str(f, 'companyId')));
+}
+/** "Add background check" on an application. */
+export async function addBackgroundCheckAction(f: FormData) {
+  return run(checkPage(f), (s) => addBackgroundCheck(s, {
+    applicationId: str(f, 'applicationId'), typeIds: f.getAll('typeIds').map(String), provider: str(f, 'provider'), providerReference: str(f, 'providerReference'),
+  }), withParam(checkPage(f), 'notice', 'check-added'));
+}
+/** The candidate's written authorisation, an optional authorisation file, and optionally starting the check. */
+export async function recordBackgroundCheckAuthorisationAction(f: FormData) {
+  return run(checkPage(f), async (s) => recordBackgroundCheckAuthorisation(s, str(f, 'checkId'), {
+    authorisedOn: str(f, 'authorisedOn'), method: str(f, 'method'), providerReference: str(f, 'providerReference'), start: f.get('start') === 'on',
+  }, await optionalFile(f, 'file')), withParam(checkPage(f), 'notice', 'check-authorised'));
+}
+export async function startBackgroundCheckAction(f: FormData) {
+  return run(checkPage(f), (s) => startBackgroundCheck(s, str(f, 'checkId')), withParam(checkPage(f), 'notice', 'check-started'));
+}
+/** Complete with an outcome, an optional summary and an optional report. */
+export async function completeBackgroundCheckAction(f: FormData) {
+  return run(checkPage(f), async (s) => completeBackgroundCheck(s, str(f, 'checkId'), {
+    outcome: str(f, 'outcome'), summary: String(f.get('summary') ?? ''), providerReference: str(f, 'providerReference'),
+  }, await optionalFile(f, 'report')), withParam(checkPage(f), 'notice', 'check-completed'));
+}
+export async function cancelBackgroundCheckAction(f: FormData) {
+  return run(checkPage(f), (s) => cancelBackgroundCheck(s, str(f, 'checkId'), { reason: String(f.get('reason') ?? '') }),
+    withParam(checkPage(f), 'notice', 'check-cancelled'));
+}
+
+// ── Slice 13: talent pools and the blocked list ─────────────────────────────────────────────────────────────────
+const poolSettingsPage = (f: FormData) => back(f, '/recruitment/settings?section=pools');
+/** Settings › Talent pools: create a pool or sub-pool, or edit one (name, description, sharing and listed users). */
+export async function savePoolAction(f: FormData) {
+  return run(poolSettingsPage(f), (s) => savePool(s, {
+    id: str(f, 'poolId') || undefined, companyId: str(f, 'companyId'), name: str(f, 'name'), description: String(f.get('description') ?? ''),
+    // Editing never moves a pool: the edit form sends no parent.
+    ...(f.has('parentId') ? { parentId: str(f, 'parentId') } : {}),
+    sharing: str(f, 'sharing'), sharedUserIds: f.getAll('sharedUserIds').map(String),
+  }));
+}
+export async function deletePoolAction(f: FormData) {
+  return run(poolSettingsPage(f), (s) => deletePool(s, str(f, 'poolId')));
+}
+/** Add a candidate to a pool, or remove them (talent pool page, application page, Candidates board). */
+export async function addCandidateToPoolAction(f: FormData) {
+  const url = back(f, '/recruitment/talent-pool');
+  return run(url, (s) => addCandidateToPool(s, str(f, 'poolId'), str(f, 'candidateId')), withParam(url, 'notice', 'pool-added'));
+}
+export async function removeCandidateFromPoolAction(f: FormData) {
+  const url = back(f, '/recruitment/talent-pool');
+  return run(url, (s) => removeCandidateFromPool(s, str(f, 'poolId'), str(f, 'candidateId')), withParam(url, 'notice', 'pool-removed'));
+}
+/** "Add to blocked list" (administrators): the candidate and a reason. */
+export async function blockCandidateAction(f: FormData) {
+  const url = back(f, '/recruitment/talent-pool?pool=blocked');
+  return run(url, (s) => blockCandidate(s, str(f, 'candidateId'), String(f.get('reason') ?? '')), withParam(url, 'notice', 'blocked'));
+}
+/** Remove an entry from the blocked list (administrators), with a reason. */
+export async function unblockCandidateAction(f: FormData) {
+  const url = back(f, '/recruitment/talent-pool?pool=blocked');
+  return run(url, (s) => unblockCandidate(s, str(f, 'entryId'), String(f.get('reason') ?? '')), withParam(url, 'notice', 'unblocked'));
+}
+/** Resolve a review mark (administrators): "Not the same person", or "Remove from blocked list" with a reason. */
+export async function resolveReviewMarkAction(f: FormData) {
+  const url = back(f, '/recruitment/candidates');
+  return run(url, (s) => resolveReviewMark(s, str(f, 'markId'), str(f, 'resolution'), String(f.get('reason') ?? '')), withParam(url, 'notice', 'review-resolved'));
+}
+
+// ── Slice 14: custom candidate and job fields ───────────────────────────────────────────────────────────────────
+const fieldSettingsPage = (f: FormData) => back(f, '/recruitment/settings?section=fields');
+const labelInputs = (f: FormData) => Object.fromEntries(CUSTOM_FIELD_LOCALES.map((l) => [`label_${l}`, str(f, `label_${l}`)]));
+/** Settings › Custom fields: create a field (company and record kind) or edit one (labels, help text, type, flags, number settings). */
+export async function saveCustomFieldAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => saveCustomField(s, {
+    id: str(f, 'fieldId') || undefined, companyId: str(f, 'companyId'), kind: str(f, 'kind'), ...labelInputs(f),
+    // A field with values sends no type (its select is locked); the service keeps the stored one.
+    ...(f.has('type') ? { type: str(f, 'type') } : {}),
+    helpText: str(f, 'helpText'), required: f.get('required') === 'on', restricted: f.get('restricted') === 'on', enabled: f.get('enabled') === 'on',
+    numberMin: str(f, 'numberMin'), numberMax: str(f, 'numberMax'), numberDecimals: str(f, 'numberDecimals'),
+  }));
+}
+export async function deleteCustomFieldAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => deleteCustomField(s, str(f, 'fieldId')));
+}
+export async function moveCustomFieldAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => moveCustomField(s, str(f, 'fieldId'), str(f, 'direction')));
+}
+/** An option of a choice field: add (field) or edit (option): labels and enabled. */
+export async function saveCustomFieldOptionAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => saveCustomFieldOption(s, {
+    id: str(f, 'optionId') || undefined, fieldId: str(f, 'fieldId'), ...labelInputs(f), enabled: f.get('enabled') === 'on',
+  }));
+}
+export async function deleteCustomFieldOptionAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => deleteCustomFieldOption(s, str(f, 'optionId')));
+}
+export async function moveCustomFieldOptionAction(f: FormData) {
+  return run(fieldSettingsPage(f), (s) => moveCustomFieldOption(s, str(f, 'optionId'), str(f, 'direction')));
+}
+
+// ── Slice 15: position templates ──────────────────────────────────────────────────────────────────────────────
+const templateSettingsPage = (f: FormData) => back(f, '/recruitment/settings?section=templates');
+/** Settings › Position templates: create (company) or edit (template) a template — the job form's fields, the process, the interview
+ *  plan and custom job field values. Like the new-position form, a refusal is RETURNED (the form keeps everything typed and names
+ *  the refused fields); a successful save redirects to the list. */
+export async function savePositionTemplateFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const templateId = str(f, 'templateId');
+  const companyId = str(f, 'companyId');
+  const s = await getSession();
+  try {
+    await savePositionTemplate(s, {
+      id: templateId || undefined, companyId, name: str(f, 'name'), title: str(f, 'title'), description: String(f.get('description') ?? ''),
+      workLocation: str(f, 'workLocation'), employmentType: str(f, 'employmentType'), recruitmentType: str(f, 'recruitmentType'),
+      jobGradeIds: f.getAll('jobGradeIds').map(String), businessUnitId: str(f, 'businessUnitId'), departmentId: str(f, 'departmentId'),
+      processId: str(f, 'processId'), interviewPlanFormIds: f.getAll('interviewPlanFormIds').map(String), enabled: f.get('enabled') === 'on',
+      custom: customValuesFromForm(f),
+    });
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(`/recruitment/settings?${new URLSearchParams({ company: companyId, section: 'templates' })}`, 'notice', 'saved'));
+}
+export async function setPositionTemplateEnabledAction(f: FormData) {
+  return run(templateSettingsPage(f), (s) => setPositionTemplateEnabled(s, str(f, 'templateId'), str(f, 'enabled')));
+}
+export async function deletePositionTemplateAction(f: FormData) {
+  return run(templateSettingsPage(f), (s) => deletePositionTemplate(s, str(f, 'templateId')));
+}
+/** The company's "New position from template" switch. */
+export async function updatePositionTemplateSettingAction(f: FormData) {
+  return run(templateSettingsPage(f), (s) => updatePositionTemplateSetting(s, str(f, 'companyId'), f.get('enabled') === 'on'));
+}
+
+// ── Slice 16: candidate import, To assign and export templates ──────────────────────────────────────────────────
+
+/** A refusal for the import screen (a client component): the code only, never SQL or a value. */
+type ImportRefusal = { problem: string };
+const importRefusal = (e: unknown): ImportRefusal => {
+  if (!(e instanceof RecruitmentError)) console.error('recruitment import action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+  return { problem: errorCode(e) };
+};
+/** Check the whole file and say what would happen. Writes nothing (READ ONLY). The file's text comes back to this viewer only. */
+export async function previewCandidateImportAction(input: { companyId: string; text: string; fileName: string }): Promise<ImportPreview | ImportRefusal> {
+  const s = await getSession();
+  try { return await previewCandidateImport(s, input); } catch (e) { return importRefusal(e); }
+}
+/** Start the previewed import (with the permission confirmation): only enqueues the background job. */
+export async function startCandidateImportAction(input: { companyId: string; text: string; fileName: string; previewHash: string; permissionConfirmed: boolean;
+  operationKey?: string }): Promise<{ importId: string } | ImportRefusal> {
+  const s = await getSession();
+  try {
+    const started = await startCandidateImport(s, { ...input, locale: await getLocale() });
+    revalidatePath('/recruitment', 'layout');
+    return { importId: started.importId };
+  } catch (e) { return importRefusal(e); }
+}
+/** The import's progress, for the progress panel's polling. */
+export async function candidateImportStatusAction(importId: string): Promise<CandidateImportJob | ImportRefusal> {
+  const s = await getSession();
+  try { return await candidateImportJob(s, importId); } catch (e) { return importRefusal(e); }
+}
+export async function cancelCandidateImportAction(importId: string): Promise<{ ok: true } | ImportRefusal> {
+  const s = await getSession();
+  try { await cancelCandidateImport(s, importId); return { ok: true }; } catch (e) { return importRefusal(e); }
+}
+const toAssignPage = (f: FormData) => back(f, '/recruitment/to-assign');
+export async function assignToJobAction(f: FormData) {
+  return run(toAssignPage(f), (s) => assignToJob(s, str(f, 'candidateId'), str(f, 'jobId')), withParam(toAssignPage(f), 'notice', 'assigned'));
+}
+export async function hideToAssignAction(f: FormData) {
+  return run(toAssignPage(f), (s) => setToAssignHidden(s, str(f, 'candidateId'), true), withParam(toAssignPage(f), 'notice', 'hidden'));
+}
+export async function showToAssignAction(f: FormData) {
+  return run(toAssignPage(f), (s) => setToAssignHidden(s, str(f, 'candidateId'), false), withParam(toAssignPage(f), 'notice', 'shown'));
+}
+const exportTemplatePage = (f: FormData) => `/recruitment/settings?${new URLSearchParams({ company: str(f, 'companyId'), section: 'exports' })}`;
+export async function saveExportTemplateAction(f: FormData) {
+  return run(exportTemplatePage(f), (s) => saveExportTemplate(s, {
+    id: str(f, 'templateId') || undefined, companyId: str(f, 'companyId'), kind: str(f, 'kind'), name: str(f, 'name'), columns: f.getAll('columns').map(String),
+  }));
+}
+export async function deleteExportTemplateAction(f: FormData) {
+  return run(exportTemplatePage(f), (s) => deleteExportTemplate(s, str(f, 'templateId')));
+}
+
+// ── Slice 17: waiting limits and the "Suggested to archive" list ──────────────────────────────────────────────────
+const waitingSettingsPage = (f: FormData) => `/recruitment/settings?${new URLSearchParams({ company: str(f, 'companyId'), section: 'waiting' })}`;
+/** Settings › Waiting limits: set one stage's limit. A refusal is RETURNED (the stage's form keeps what was typed and names the
+ *  refused fields); a successful save redirects to the section. */
+export async function saveWaitingRuleFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const s = await getSession();
+  try {
+    await saveWaitingRule(s, { companyId: str(f, 'companyId'), stageId: str(f, 'stageId'), remindDays: str(f, 'remindDays'), archiveDays: str(f, 'archiveDays'),
+      dayKind: str(f, 'dayKind') });
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(waitingSettingsPage(f), 'notice', 'saved'));
+}
+export async function deleteWaitingRuleAction(f: FormData) {
+  return run(waitingSettingsPage(f), (s) => deleteWaitingRule(s, { companyId: str(f, 'companyId'), stageId: str(f, 'stageId') }));
+}
+
+/** The outcome of archiving from a job's "Suggested to archive" list, for the list's own form (never in a URL): how many were
+ *  archived, and each selected application left as it was with the sentence why. */
+export type SuggestedArchiveState = {
+  status: 'idle' | 'done' | 'refused';
+  archived?: number;
+  /** "N applications archived", in the viewer's language (absent when none was). */
+  archivedText?: string;
+  refused?: { applicationId: string; code: SuggestedArchiveRefusal; text: string }[];
+  /** Slice 19: "N rejection e-mails queued; M candidates have no e-mail address", when the e-mail was ticked. */
+  emailText?: string;
+  problem?: string; errorText?: string; nonce?: number;
+};
+export async function archiveSuggestedAction(prev: SuggestedArchiveState, f: FormData): Promise<SuggestedArchiveState> {
+  const s = await getSession();
+  const nonce = (prev.nonce ?? 0) + 1;
+  try {
+    const result = await archiveSuggestedApplications(s, { jobId: str(f, 'jobId'), applicationIds: f.getAll('applicationIds').map(String), archiveReasonId: str(f, 'archiveReasonId'),
+      email: rejectionEmailChoice(f) });
+    const [t, te] = await Promise.all([getTranslations('recruitment.waiting'), getTranslations('recruitment.candidateEmail')]);
+    revalidatePath('/recruitment', 'layout');
+    return { status: 'done', archived: result.archived.length, nonce,
+      emailText: result.emailQueued !== undefined ? te('notice.bulk', { queued: result.emailQueued,
+        skipped: (result.emailNoAddress ?? 0) + (result.emailValueLink ?? 0) + (result.emailNotPreviewed ?? 0) }) : undefined,
+      archivedText: result.archived.length ? t('archivedNotice', { count: result.archived.length }) : undefined,
+      refused: result.refused.map((r) => ({ applicationId: r.applicationId, code: r.code, text: t(`refused.${r.code}`) })) };
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment action failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    const t = await getTranslations('recruitment.errors');
+    const problem = errorCode(e);
+    const errorText = (RECRUITMENT_ERROR_CODES as readonly string[]).includes(problem) ? t(problem as (typeof RECRUITMENT_ERROR_CODES)[number]) : t('unexpected');
+    return { status: 'refused', problem, errorText, nonce };
+  }
+}
+
+// ── Slice 18: interview set-up (groups, question bank, addresses and rooms) ─────────────────────────────────────────
+const setupPage = (f: FormData, section: 'groups' | 'questions' | 'places') =>
+  `/recruitment/settings?${new URLSearchParams({ company: str(f, 'companyId'), section })}`;
+/** Save a set-up form; a refusal is RETURNED (the form keeps what was typed and names the refused fields). */
+async function setupSave(prev: FormRefusal, f: FormData, section: 'groups' | 'questions' | 'places', work: (s: Awaited<ReturnType<typeof getSession>>) => Promise<unknown>): Promise<FormRefusal> {
+  const s = await getSession();
+  try {
+    await work(s);
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(setupPage(f, section), 'notice', 'saved'));
+}
+export async function saveInterviewerGroupFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  return setupSave(prev, f, 'groups', (s) => saveInterviewerGroup(s, {
+    id: str(f, 'groupId') || undefined, companyId: str(f, 'companyId'), name: str(f, 'name'), memberIds: f.getAll('memberIds').map(String),
+  }));
+}
+export async function deleteInterviewerGroupAction(f: FormData) {
+  return run(setupPage(f, 'groups'), (s) => deleteInterviewerGroup(s, str(f, 'groupId')));
+}
+export async function saveInterviewQuestionFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  return setupSave(prev, f, 'questions', (s) => saveInterviewQuestion(s, {
+    id: str(f, 'questionId') || undefined, companyId: str(f, 'companyId'), title: str(f, 'title'), guidance: String(f.get('guidance') ?? ''),
+    category: str(f, 'category'), formIds: f.getAll('formIds').map(String),
+  }));
+}
+export async function setInterviewQuestionRetiredAction(f: FormData) {
+  return run(setupPage(f, 'questions'), (s) => setInterviewQuestionRetired(s, { id: str(f, 'questionId'), retired: str(f, 'retired') }));
+}
+export async function deleteInterviewQuestionAction(f: FormData) {
+  return run(setupPage(f, 'questions'), (s) => deleteInterviewQuestion(s, str(f, 'questionId')));
+}
+export async function saveInterviewAddressFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  return setupSave(prev, f, 'places', (s) => saveInterviewAddress(s, {
+    id: str(f, 'addressId') || undefined, companyId: str(f, 'companyId'), name: str(f, 'name'), address: String(f.get('address') ?? ''),
+    region: str(f, 'region'), mapUrl: str(f, 'mapUrl'),
+  }));
+}
+export async function deleteInterviewAddressAction(f: FormData) {
+  return run(setupPage(f, 'places'), (s) => deleteInterviewAddress(s, str(f, 'addressId')));
+}
+export async function saveInterviewRoomFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  return setupSave(prev, f, 'places', (s) => saveInterviewRoom(s, {
+    id: str(f, 'roomId') || undefined, addressId: str(f, 'addressId'), name: str(f, 'name'), capacity: str(f, 'capacity'), enabled: f.get('enabled') === 'on',
+  }));
+}
+export async function deleteInterviewRoomAction(f: FormData) {
+  return run(setupPage(f, 'places'), (s) => deleteInterviewRoom(s, str(f, 'roomId')));
+}
+
+// ── Slice 19: candidate e-mail ───────────────────────────────────────────────────────────────────────────────────
+const emailSettingsPage = (f: FormData) => `/recruitment/settings?${new URLSearchParams({ company: str(f, 'companyId'), section: 'email', ...(str(f, 'lang') ? { lang: str(f, 'lang') } : {}) })}`;
+
+/** Settings › Candidate e-mail: the switch, sender name, reply-to and language. A refusal is RETURNED (the form keeps what was typed). */
+export async function saveCandidateEmailSettingsFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const s = await getSession();
+  try {
+    await saveCandidateEmailSettings(s, str(f, 'companyId'), { enabled: f.get('enabled') === 'on', senderName: str(f, 'senderName'), replyTo: str(f, 'replyTo'), locale: str(f, 'locale'),
+      reminderEnabled: f.get('reminderEnabled') === 'on', reminderHours: str(f, 'reminderHours'),
+      surveyHired: f.get('surveyHired') === 'on', surveyRejected: f.get('surveyRejected') === 'on', surveyDelayDays: str(f, 'surveyDelayDays') });
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(emailSettingsPage(f), 'notice', 'saved'));
+}
+
+/** One kind's wording in one language. An unknown placeholder or a link is refused and the typed text stays. */
+export async function saveCandidateEmailTemplateFormAction(prev: FormRefusal, f: FormData): Promise<FormRefusal> {
+  const s = await getSession();
+  try {
+    await saveCandidateEmailTemplate(s, { companyId: str(f, 'companyId'), kind: str(f, 'kind'), locale: str(f, 'locale'), subject: str(f, 'subject'), body: String(f.get('body') ?? '') });
+  } catch (e) {
+    return refusal(prev, f, e);
+  }
+  revalidatePath('/recruitment', 'layout');
+  redirect(withParam(emailSettingsPage(f), 'notice', 'saved'));
+}
+
+export async function resetCandidateEmailTemplateAction(f: FormData) {
+  return run(emailSettingsPage(f), (s) => resetCandidateEmailTemplate(s, { companyId: str(f, 'companyId'), kind: str(f, 'kind'), locale: str(f, 'locale') }));
+}
+
+/** An administrator sends a failed or uncertain e-mail again, acknowledging that the candidate may receive it twice. */
+export async function retryCandidateEmailAction(f: FormData) {
+  const url = back(f, `/recruitment/applications/${encodeURIComponent(str(f, 'applicationId'))}?tab=emails`);
+  return run(url, (s) => retryCandidateEmail(s, { emailId: str(f, 'emailId'), acknowledged: f.get('acknowledged') === 'on' }), withParam(url, 'notice', 'email-retried'));
+}
+
+// ── Slice 24: AI match summary suggestions ───────────────────────────────────────────────────────────────────
+
+/** Settings › AI match summaries: an administrator turns the company's switch on or off. */
+export async function updateMatchSummarySettingAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=ai'), (s) => updateMatchSummarySetting(s, str(f, 'companyId'), f.get('enabled') === 'on'));
+}
+
+/** A refusal for the suggestion panel (a client component): the code and, for text that holds an identifier, the field paths. */
+export type MatchSummaryResult = { summary: RecruitmentMatchSummary } | { problem: string; fields?: string[] };
+
+/** Ask for a match summary suggestion. The reply goes to this viewer only and is never stored; nothing on the application changes. */
+export async function suggestMatchSummaryAction(applicationId: string): Promise<MatchSummaryResult> {
+  const s = await getSession();
+  try {
+    return { summary: await suggestMatchSummary(s, applicationId) };
+  } catch (e) {
+    if (!(e instanceof RecruitmentError)) console.error('recruitment match summary failed', e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    const fields = e instanceof RecruitmentError && e.code === 'ai_identifier' ? [...(e.detail ?? [])] : undefined;
+    return fields ? { problem: errorCode(e), fields } : { problem: errorCode(e) };
+  }
+}
+
+// ── Slice 25: the agency portal inbox and switch ─────────────────────────────────────────────────────────────
+
+const inboxPage = (f: FormData) => back(f, '/recruitment/agency-portal');
+/** Record a portal submission through slice 10 (its outcome shows on the job; a slice 10 refusal leaves it waiting). */
+export async function recordAgencyPortalAction(f: FormData) {
+  const url = inboxPage(f);
+  return run(url, (s) => recordAgencyPortalSubmission(s, str(f, 'id')), withParam(url, 'notice', 'recorded'));
+}
+export async function declineAgencyPortalAction(f: FormData) {
+  const url = inboxPage(f);
+  return run(url, (s) => declineAgencyPortalSubmission(s, str(f, 'id'), str(f, 'reason')), withParam(url, 'notice', 'declined'));
+}
+/** Settings › Agency portal: an administrator turns the company's portal on or off. */
+export async function updateAgencyPortalSettingAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=portal'), (s) => updateAgencyPortalSetting(s, str(f, 'companyId'), f.get('enabled') === 'on'));
+}

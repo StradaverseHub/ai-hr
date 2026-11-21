@@ -7,7 +7,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {saveProfileEditPolicy,saveProfileVisibilityPolicy,saveOwnPhotoSubmissionSetting,readProfilePresentationPolicy} from '../core/profile-edit-policy';
 import {saveProfileRoutingPolicy} from '../core/profile-routing';
-import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {hireEmployee} from '../core/org';
 import {essVisibleFields} from '../lib/personnel-ess-contract';
 import {EMPTY_PROFILE_ROUTING,PROFILE_ROUTING_KEY,type ProfileRouteRule} from '../lib/profile-routing-policy';
@@ -43,7 +43,7 @@ async function heldAccess(revokeWithinOwnedTransaction=false){
  const watchdog=setTimeout(()=>{failed(Error('owned profile policy handshake timed out'));release();},10000);
  let revokeActualAuthority:()=>Promise<void>=async()=>{throw Error('Revocation requires the owned owner transaction');};
  const hold=async(tx:Tx)=>{
-  await lockAccessConfigurationTx(tx,base.tenantId);
+  await lockAccessConfigurationWriteTx(tx,base.tenantId);
   if(revokeWithinOwnedTransaction)revokeActualAuthority=async()=>{
    // role_assignment is the actual app.principal owner. Its BEFORE DELETE trigger joins Access;
    // perform this fixture revocation in the SAME owned holder transaction, never a blocked peer.

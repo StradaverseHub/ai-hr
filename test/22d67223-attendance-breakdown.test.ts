@@ -59,9 +59,13 @@ describe('22d67223 · the screen refuses, it does not merely hide its link', () 
    * The reason the guard has to be refusal rather than scoping, stated as an assertion so that changing
    * the picker forces this decision to be re-made rather than quietly invalidating it.
    */
-  it('still feeds its picker from listEmployees, which is why scoping alone would not do', () => {
+  // e2bf843dd moved the picker from listEmployees to the shared employee-choice port. That port keeps the
+  // same tenant population filtered only by these company ids, with no narrowing by role (an employee
+  // session can read it: test/employee-choice-db.test.ts), so the reason for refusing at the door stands.
+  it('still feeds its picker from the company-filtered employee-choice population, which is why scoping alone would not do', () => {
     const src = codeOnly(read(SCREEN));
-    expect(src.includes('listEmployees(s, scopeIds)')).toBe(true);
+    expect(src.includes("readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'names',selectedId:sp.emp})")).toBe(true);
+    expect(src.includes('listEmployees('), 'one picker population, not two').toBe(false);
   });
 
   it('is its OWN column in the access grid, guarded scopedAdmin', () => {
@@ -107,10 +111,14 @@ describe('f728826a · the employee panel is the shared one, on the same scope', 
 
   it('feeds the panel from the SAME scope-fenced read, not a wider one', () => {
     const src = codeOnly(read(SCREEN));
-    expect(src).toContain('listEmployees(s, scopeIds)');
-    expect(src).toContain('const panelEmployees: ScopeEmployee[] = employees.map(');
-    // …and the selection is still re-guarded against that list before any read uses it.
-    expect(src).toContain('employees.some((e) => e.employmentId === sp.emp)');
+    // e2bf843dd: one scope-fenced employee-choice read feeds the panel…
+    expect(src).toContain("const choices=await readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'names',selectedId:sp.emp});");
+    expect(src).toContain('remote={{initial:choices}}');
+    // …and the selection any read uses is the one that owner authorized, never the raw query parameter.
+    expect(src).toContain('const selected=choices.selected;');
+    expect(src).toContain('const selectedEmp=selected?.employmentId;');
+    expect(src).toContain('readIndividualAttendance(s,selectedEmp,range,');
+    expect(src, 'the raw emp parameter never reaches a read').not.toMatch(/readIndividualAttendance\(s,\s*sp\.emp/);
   });
 
   it('keeps this screen’s own query parameter, so existing links still open the same person', () => {
@@ -144,8 +152,11 @@ describe('f728826a · the employee panel is the shared one, on the same scope', 
 
   it('the date range keeps ONE definition of a valid range', () => {
     const src = codeOnly(read(SCREEN));
-    // Moving the controls must not grow a second parser; the shape check stays where it was.
-    expect((src.match(/dateRe\.test/g) ?? []).length, 'parsed once').toBe(2);
+    // Moving the controls must not grow a second parser. d7fb94b2a handed the range to the shared Attendance
+    // range owner (the 400-day contract), so the page resolves it exactly once and parses no dates itself.
+    expect((src.match(/resolveMyAttendanceRange\(/g) ?? []).length, 'resolved once').toBe(1);
+    expect(src).toContain('resolveMyAttendanceRange(sp,todayIso,ATTENDANCE_RANGE_MAX_DAYS)');
+    expect(src, 'no second, local date parser').not.toMatch(/dateRe|\\d\{4\}-\\d\{2\}-\\d\{2\}/);
     expect(src, 'and the employee rides the form so submitting dates cannot clear it').toContain(
       '<input type="hidden" name="emp"',
     );

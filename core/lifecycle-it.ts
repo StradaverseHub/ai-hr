@@ -11,14 +11,15 @@
  *   - nobody decides their own record, and L2 must be a different person from L1;
  *   - an Issued asset can only be returned for the employee it is issued to, matched by employee number.
  */
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { employment, itAsset, itAssetCatalogue, itAssetRequest, itRequisition, itRequisitionItem, lcHistory, person } from '../db/schema';
 import { PROVISION_ASSET_RETURN, PROVISION_LAPTOP_ISSUE } from './lifecycle-defaults';
 import { issuedToTx, issueAssetTx, returnAssetTx, type Holder } from './lifecycle-assets';
 import { loadCompanyConfigTx, loadProvisionListTx } from './lifecycle-config';
 import { canAdvanceRequest, initialApprovalStatus, nextApproval, type ApprovalStatus } from './lifecycle-rules';
-import { LEVEL, LifecycleError, atLeast, clean, levelOf, nextNumber, recordChange, requireLevel, withTenant } from './lifecycle-base';
+import { LEVEL, LifecycleError, clean, levelOf, nextNumber, recordChange, requireLevel, withTenant } from './lifecycle-base';
+import { LIFECYCLE_LIST_LIMIT, lifecycleRequisitionListFilter, pendingLifecycleAssetRequestFilter, pendingLifecycleRequisitionFilter } from './lifecycle-list-filters';
 
 export type RequisitionKind = 'requisition' | 'return' | 'standalone';
 export type RequisitionRow = typeof itRequisition.$inferSelect;
@@ -67,12 +68,8 @@ export async function createStandaloneRequisition(ctx: SessionContext, p: Omit<R
 export async function listRequisitions(ctx: SessionContext, f: { companyId?: string; kind?: RequisitionKind; status?: string; approval?: string } = {}): Promise<RequisitionRow[]> {
   return withTenant(ctx, async (tx) => {
     await requireLevel(tx, f.companyId ?? null, LEVEL.agent, 'only IT staff read requisitions');
-    const conds = [];
-    if (f.companyId) conds.push(eq(itRequisition.companyId, f.companyId));
-    if (f.kind) conds.push(eq(itRequisition.kind, f.kind));
-    if (f.status) conds.push(eq(itRequisition.status, f.status));
-    if (f.approval) conds.push(eq(itRequisition.approvalStatus, f.approval));
-    return tx.select().from(itRequisition).where(conds.length ? and(...conds) : undefined).orderBy(desc(itRequisition.number)).limit(1000);
+    return tx.select().from(itRequisition).where(lifecycleRequisitionListFilter(f))
+      .orderBy(desc(itRequisition.number)).limit(LIFECYCLE_LIST_LIMIT);
   });
 }
 
@@ -271,7 +268,10 @@ export async function createAssetRequest(ctx: SessionContext, p: AssetRequestInp
   });
 }
 
-export async function listAssetRequests(ctx: SessionContext, f: { status?: string; mine?: boolean } = {}): Promise<(AssetRequestRow & { itemName: string; itemCode: string })[]> {
+export async function listAssetRequests(ctx: SessionContext, f: { status?: string; mine?: boolean; limit?: number } = {}): Promise<(AssetRequestRow & { itemName: string; itemCode: string })[]> {
+  // The hub needs five rows; regular list callers retain their existing1000-row ceiling.
+  const limit=f.limit??1000;
+  if(!Number.isSafeInteger(limit)||limit<1||limit>1000)throw new LifecycleError('Invalid asset request preview limit.');
   return withTenant(ctx, async (tx) => {
     const conds = [];
     if (f.status) conds.push(eq(itAssetRequest.status, f.status));
@@ -279,7 +279,7 @@ export async function listAssetRequests(ctx: SessionContext, f: { status?: strin
     // RLS returns managers/admins every request and everyone else only their own.
     const rows = await tx.select({ r: itAssetRequest, itemName: itAssetCatalogue.itemName, itemCode: itAssetCatalogue.itemCode })
       .from(itAssetRequest).innerJoin(itAssetCatalogue, eq(itAssetCatalogue.id, itAssetRequest.catalogueId))
-      .where(conds.length ? and(...conds) : undefined).orderBy(desc(itAssetRequest.number)).limit(1000);
+      .where(conds.length ? and(...conds) : undefined).orderBy(desc(itAssetRequest.number)).limit(limit);
     return rows.map((x) => ({ ...x.r, itemName: x.itemName, itemCode: x.itemCode }));
   });
 }
@@ -378,9 +378,8 @@ export async function cancelAssetRequest(ctx: SessionContext, number: string, re
 export async function pendingApprovals(ctx: SessionContext): Promise<{ requisitions: RequisitionRow[]; assetRequests: AssetRequestRow[] }> {
   return withTenant(ctx, async (tx) => {
     if ((await levelOf(tx, null)) < LEVEL.manager) return { requisitions: [], assetRequests: [] };
-    // Only the companies where the caller can actually DECIDE (manager there), not every company they touch.
-    const requisitions = await tx.select().from(itRequisition).where(and(inArray(itRequisition.approvalStatus, ['pending', 'pending_l2']), sql`${itRequisition.status} <> 'cancelled'`, atLeast(itRequisition.companyId, LEVEL.manager))).orderBy(asc(itRequisition.number));
-    const assetRequests = await tx.select().from(itAssetRequest).where(and(inArray(itAssetRequest.status, ['requested', 'pending_approval']), atLeast(itAssetRequest.companyId, LEVEL.manager))).orderBy(asc(itAssetRequest.number));
+    const requisitions = await tx.select().from(itRequisition).where(pendingLifecycleRequisitionFilter()).orderBy(asc(itRequisition.number));
+    const assetRequests = await tx.select().from(itAssetRequest).where(pendingLifecycleAssetRequestFilter()).orderBy(asc(itAssetRequest.number));
     return { requisitions, assetRequests };
   });
 }

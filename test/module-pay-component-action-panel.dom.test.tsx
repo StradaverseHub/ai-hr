@@ -1,3 +1,4 @@
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 // @vitest-environment jsdom
 /** Authored UNRUN: real human gestures, full native form capture and exact-action recovery. */
 import React from 'react';

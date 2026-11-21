@@ -1,0 +1,337 @@
+import { randomUUID } from 'node:crypto';
+import { and, eq, sql } from 'drizzle-orm';
+import { beforeAll,beforeEach,afterAll,describe,it,expect } from 'vitest';
+import { withTenant,type SessionContext } from '../db/client';
+import * as schema from '../db/schema';
+import { hireEmployee } from '../core/org';
+import { setCompensation } from '../core/comp';
+import { createAppUser,owner,closeAll,resetDb,migrateTestDb,seedBase,setModule,entitledCtx,type Base } from './harness';
+import { createPreparingRewardUnit as createApprovedRewardUnit,createApprovedRewardUnit as createRetainedRewardUnit } from './rewards-setup-fixture';
+import { initializeRewardGovernanceFixture,refreshRewardFixtureBudget,changeRewardFixtureInputs } from './rewards-governance-fixture';
+import { setRewardMember } from './rewards-access-fixture';
+import { previewRewardPreparationRelease,getRewardUnit,getRewardUnitGovernance,refreshRewardSources,importRewardFacts,getRewardPreparationStatus,getRewardPreparationChecklist,changeRewardPreparation,saveRewardUnitInputs,decideRewardUnit,rewardPreparationNotices,rewardDashboard,getRewardDashboardPreference,saveRewardDashboardPreference,rewardAccessAdministration,previewRewardAccessChange,saveRewardAccessChange } from '../packs/rewards/service';
+import {rewardAccessPageCompanies,rewardAccessPageEntry,rewardNavigation} from '../packs/rewards/access-policy';
+import {dispatchNotificationsFromSweep} from '../core/notifications';
+import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
+
+let base:Base,gr:SessionContext,checker:SessionContext,reviewer:SessionContext,unitId:string,employmentId:string,buId:string;
+const snapshotDate='2026-01-01';
+async function change(ctx:SessionContext,command:Record<string,unknown>){
+ const current=await getRewardPreparationChecklist(ctx,unitId);
+ // Board 60f1fdcd: release is high impact; it carries the reviewed summary digest and a reason.
+ const review=command.kind==='release'&&!('summaryDigest' in command)?await previewRewardPreparationRelease(ctx,unitId).catch(()=>null):null;
+ return changeRewardPreparation(ctx,unitId,current.revision,{...command,...(['confirm','release'].includes(String(command.kind))?{basis:current.basis}:{}),
+  ...(command.kind==='release'?{reason:'Fictional preparation reviewed before release',summaryDigest:review?.digest??'0'.repeat(64),...command}:{})});
+}
+async function confirmAll(){
+ await change(gr,{kind:'expected',date:'2026-11-30'});
+ for(const step of REWARD_PREPARATION_STEPS)await change(gr,{kind:'confirm',step});
+}
+
+describe('native checked preparation of new annual Rewards reviews',()=>{
+ beforeAll(async()=>{await migrateTestDb();});afterAll(closeAll);
+ beforeEach(async()=>{
+  await resetDb();base=await seedBase();await setModule(base.tenantId,'rewards','active');gr=await entitledCtx(base);
+  const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:base.tenantId,companyId:base.companyId,code:'PREP-BU',name:'Preparation unit'}).returning();buId=bu.id;
+  const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:base.tenantId,code:'12',name:'Grade 12',rank:12}).returning();
+  const subject=await hireEmployee(gr,{person:{fullName:'Fictional preparation employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,businessUnitId:bu.id,gradeId:grade.id,employmentType:'full_time',hiredOn:'2024-01-01'});
+  employmentId=subject.employmentId;
+  await owner.db.update(schema.employment).set({confirmationDate:'2024-04-01'}).where(eq(schema.employment.id,employmentId));
+  await setCompensation(gr,{employmentId,basicSalary:5000,effectiveFrom:'2024-01-01'});
+  unitId=await createApprovedRewardUnit(gr,{name:'Preparation fixture',year:2026,companyId:base.companyId,businessUnitId:bu.id,snapshotDate});
+  const [maker]=await owner.db.select({personId:schema.appUser.personId}).from(schema.appUser).where(eq(schema.appUser.id,gr.userId!));gr={...gr,personId:maker.personId};
+  checker=await initializeRewardGovernanceFixture(gr,unitId);
+  const [p]=await owner.db.insert(schema.person).values({tenantId:base.tenantId,fullName:'Fictional BU reviewer',primaryEmail:randomUUID()+'@fixture.test'}).returning();
+  const userId=await createAppUser(base.tenantId,p.id,'employee');reviewer={...gr,userId,personId:p.id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  await setRewardMember(gr,unitId,(await getRewardUnit(gr,unitId)).unit.revision,userId,'bu');
+  await refreshRewardSources(gr,unitId,(await getRewardUnit(gr,unitId)).unit.revision,snapshotDate);
+  for(const actor of [gr,checker]){
+   const current=await getRewardUnit(actor,unitId);
+   const pending=current.rows.filter(row=>!row.facts.reviewed);
+   if(pending.length)await importRewardFacts(actor,unitId,current.unit.revision,pending.map(row=>({employmentId:row.source.employmentId,facts:{...row.facts,talent:'STAR' as const,performance:'ME' as const,reviewed:true}})));
+  }
+  await refreshRewardFixtureBudget(gr,unitId);
+ });
+
+ it('withholds figures and setup from a scoped reviewer before checked release',async()=>{
+  const notice=await getRewardPreparationStatus(reviewer,unitId);
+  expect(notice).toMatchObject({required:true,released:false,setupVisible:false,preparation:null,stateForSetup:null,history:[]});
+  await expect(getRewardUnit(reviewer,unitId)).rejects.toThrow();
+  await expect(getRewardPreparationChecklist(reviewer,unitId)).rejects.toThrow();
+  const records=await withTenant(reviewer,tx=>tx.select({source:schema.rewardEntry.source}).from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)));
+  expect(records).toEqual([]);
+ });
+
+ it('refuses an incomplete or stale release and lets the preparer release with a reason (board 60f1fdcd)',async()=>{
+  await expect(change(checker,{kind:'release'})).rejects.toThrow(/Complete/);
+  await confirmAll();
+  // A stale summary or a missing reason is refused; the person who confirmed the steps may then release.
+  await expect(change(gr,{kind:'release',summaryDigest:'f'.repeat(64)})).rejects.toThrow(/Review the summary again/);
+  await expect(change(gr,{kind:'release',reason:'short'})).rejects.toThrow();
+  const before=await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId));
+  await change(gr,{kind:'release'});
+  const [logged]=await owner.db.execute<{n:number;actor:string|null;high:boolean}>(sql`select count(*)::int as n,max(actor_id::text) as actor,bool_and(high_impact) as high from reward_config_change where area='preparation' and item_id=${unitId}::uuid`);
+  expect(logged).toEqual({n:1,actor:gr.userId,high:true});
+  expect((await getRewardPreparationStatus(reviewer,unitId)).released).toBe(true);
+  expect((await getRewardUnit(reviewer,unitId)).unit.id).toBe(unitId);
+  expect(await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId))).toEqual(before);
+ });
+
+ it('binds a confirmation to its rendered basis and refuses a stale source view',async()=>{
+  const previous=await getRewardPreparationChecklist(gr,unitId);
+  const current=await getRewardUnit(gr,unitId),entry=current.rows.find(row=>row.source.employmentId===employmentId)!;
+  await importRewardFacts(gr,unitId,current.unit.revision,[{employmentId,facts:{...entry.facts,segment:'Changed reviewed classification'}}]);
+  const fresh=await getRewardPreparationChecklist(gr,unitId);
+  await expect(changeRewardPreparation(gr,unitId,fresh.revision,{kind:'confirm',step:'data',basis:previous.basis})).rejects.toThrow(/changed/);
+ });
+
+ it('locks ordinary setup changes and clears old confirmations on a reasoned controlled change',async()=>{
+  await confirmAll();await change(checker,{kind:'release'});
+  const gov=await getRewardUnitGovernance(gr,unitId);
+  await expect(saveRewardUnitInputs(gr,unitId,gov.revision,{...gov.inputs!,multiplierBp:12500},'Fictional changed multiplier')).rejects.toThrow(/locked/);
+  await change(gr,{kind:'reopen',reason:'Fictional source correction needs rechecking'});
+  const current=await getRewardPreparationChecklist(gr,unitId);
+  expect(current.preparation.state).toBe('preparing');expect(current.preparation.steps).toEqual({});
+  expect((await getRewardPreparationStatus(reviewer,unitId)).released).toBe(false);
+ });
+
+ it('withdraws release and appends one bounded invalidation event when a native source owner changes facts',async()=>{
+  await confirmAll();await change(checker,{kind:'release'});
+  const [purpose]=await owner.db.execute<{fn_owner:string;plan_read:boolean;lease_execute:boolean;digest_write:boolean;lineage_write:boolean}>(sql`select
+   pg_get_userbyid(p.proowner) as fn_owner,
+   has_table_privilege('ai_hr_reward_preparation_invalidator','public.reward_plan_company','SELECT') as plan_read,
+   has_function_privilege('ai_hr_reward_preparation_invalidator','app.reward_review_plan_writing()','EXECUTE') as lease_execute,
+   has_column_privilege('ai_hr_reward_preparation_invalidator','public.reward_unit','approved_digest','UPDATE') as digest_write,
+   has_column_privilege('ai_hr_reward_preparation_invalidator','public.reward_unit','policy_group_version_id','UPDATE') as lineage_write
+   from pg_proc p where p.oid='app.reward_preparation_source_changed()'::regprocedure`);
+  expect(purpose).toEqual({fn_owner:'ai_hr_reward_preparation_invalidator',plan_read:false,lease_execute:false,digest_write:true,lineage_write:false});
+
+  // Model an independently authorized native source publisher, outside the setup form.
+  await owner.db.transaction(async tx=>{
+   await tx.execute(sql`select set_config('app.tenant_id',${base.tenantId},true),set_config('app.user_id',${gr.userId!},true)`);
+   await tx.execute(sql`update reward_entry set facts=jsonb_set(facts,'{segment}','"Native source correction"'::jsonb) where unit_id=${unitId}::uuid and employment_id=${employmentId}::uuid`);
+  });
+  expect((await getRewardPreparationStatus(reviewer,unitId)).released).toBe(false);
+  const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.preparation-invalidated')));
+  expect(events).toHaveLength(1);expect(events[0].payload).toEqual({to:'draft',reason:'source-changed'});
+  expect((await getRewardPreparationChecklist(gr,unitId)).preparation.steps).toEqual({});
+ });
+
+ it('withholds every figure and set-up note until release, for reviewers and Group Rewards alike (4de410ed)',async()=>{
+  const pending=await rewardDashboard(reviewer,[base.companyId],{scope:unitId});
+  expect(pending).toMatchObject({year:2026,years:[2026],figures:null,context:null,excluded:[],waiting:[],roles:[],businessUnits:[{id:buId,label:'PREP-BU'}]});
+  expect(pending.preparing).toEqual([{unitId,company:expect.any(String),expectedRelease:null}]);
+  expect(pending.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:null,blocked:false,preparing:true}]);
+  expect(await rewardPreparationNotices({...reviewer,userId:randomUUID(),personId:undefined})).toEqual([]);
+  // Group Rewards already inspects the review, but the dashboard still treats it as being prepared.
+  await change(gr,{kind:'expected',date:'2026-11-30'});
+  const inspecting=await rewardDashboard(gr,[base.companyId],{scope:unitId});
+  expect(inspecting).toMatchObject({figures:null,context:null,waiting:[],preparing:[{unitId,expectedRelease:'2026-11-30'}]});
+  expect(inspecting.companies[0]).toMatchObject({headcount:null,preparing:true});
+  for(const view of [pending,inspecting])expect(JSON.stringify(view)).not.toMatch(/poolStatus|setupVisible|missing|Fictional preparation employee|bonusPoolCents/);
+ });
+
+ it('projects combined released figures only inside live scope and saves presentation for the current login (356ae8c1, 81a7b286)',async()=>{
+  await confirmAll();await change(checker,{kind:'release'});
+  const native=await getRewardUnit(gr,unitId),dashboard=await rewardDashboard(gr,[base.companyId],{scope:unitId,period:'annual'});
+  // The earlier single-review preference decodes to its Business unit; one company is All companies.
+  expect(dashboard.choice).toEqual({version:2,kind:'annual',period:'annual',businessUnit:buId,companies:[],year:2026});expect(dashboard.years).toEqual([2026]);
+  expect(dashboard.preparing).toEqual([]);expect(dashboard.excluded).toEqual([]);
+  expect(dashboard.context).toEqual({businessUnit:'PREP-BU',companies:1,cycle:expect.any(String),cycleVaries:false,snapshot:snapshotDate,snapshotVaries:false});
+  expect(dashboard.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:native.rows.length,blocked:native.flags.some(f=>f.severity==='block'),preparing:false}]);
+  expect(native.rows.length).toBeGreaterThan(0);
+  const b=native.budgets.standard;
+  expect(dashboard.figures!.salary.standard.merit).toMatchObject({used:b.used[0],pool:b.pools[0],balance:b.pools[0]-b.used[0]});
+  expect(dashboard.figures!.salary.standard.special).toMatchObject({used:b.used[2],pool:b.pools[2]});
+  expect(dashboard.figures!.bonus.standard).toMatchObject({used:b.bonusUsedCents,pool:b.bonusPoolCents});
+  expect(dashboard.figures!.bonus.h).toMatchObject({used:native.budgets.h.bonusUsedCents,pool:native.budgets.h.bonusPoolCents});
+  expect(JSON.stringify(dashboard)).not.toContain('Fictional preparation employee');
+  // Unauthorized company scope, Business unit and company ids never widen the read.
+  const outside=await rewardDashboard(gr,[randomUUID()],{version:2,businessUnit:buId,companies:[base.companyId]});
+  expect(outside).toMatchObject({figures:null,businessUnits:[],companies:[],preparing:[]});
+  const foreign=await rewardDashboard(gr,[base.companyId],{version:2,businessUnit:randomUUID(),companies:[randomUUID()]});
+  expect(foreign.choice).toMatchObject({businessUnit:buId,companies:[]});expect(foreign.figures).toEqual(dashboard.figures);
+  // Only Group Rewards, CTRO and EC on every review may keep All business units.
+  expect((await rewardDashboard(gr,[base.companyId],{version:2,businessUnit:'all'})).choice.businessUnit).toBe('all');
+  expect((await rewardDashboard(reviewer,[base.companyId],{version:2,businessUnit:'all'})).choice.businessUnit).toBe(buId);
+  await saveRewardDashboardPreference(gr,[base.companyId],{version:2,period:'annual',businessUnit:buId,companies:[base.companyId,'not-an-id']});
+  expect(await getRewardDashboardPreference(gr)).toEqual({version:2,kind:'annual',period:'annual',businessUnit:buId,companies:[base.companyId]});
+  expect(await getRewardDashboardPreference(reviewer)).toBeNull();
+  await expect(saveRewardDashboardPreference(reviewer,[],{version:2,period:'annual'})).rejects.toThrow(/scope/);
+ });
+
+ it('scopes bars, company buttons and the context line to the picked review year; Waiting on you is not limited to it (81a7b286)',async()=>{
+  // An earlier, already released 2025 review of the same company and Business unit, with its own budget basis.
+  const earlierId=await createRetainedRewardUnit(gr,{name:'Earlier year fixture',year:2025,companyId:base.companyId,businessUnitId:buId,snapshotDate});
+  const earlierChecker=await initializeRewardGovernanceFixture(gr,earlierId);
+  await setRewardMember(gr,earlierId,(await getRewardUnit(gr,earlierId)).unit.revision,reviewer.userId!,'bu');
+  await refreshRewardSources(gr,earlierId,(await getRewardUnit(gr,earlierId)).unit.revision,snapshotDate);
+  for(const actor of [gr,earlierChecker]){
+   const current=await getRewardUnit(actor,earlierId),fresh=current.rows.filter(row=>!row.facts.reviewed);
+   if(fresh.length)await importRewardFacts(actor,earlierId,current.unit.revision,fresh.map(row=>({employmentId:row.source.employmentId,facts:{...row.facts,talent:'STAR' as const,performance:'ME' as const,reviewed:true}})));
+  }
+  await refreshRewardFixtureBudget(gr,earlierId);
+  const governance=await getRewardUnitGovernance(gr,earlierId),basis=(governance.inputs??governance.legacyInputs)!;
+  // The fixture PAT actual is zero, so its bonus pool is zero; the earlier year meets its PAT target and has a bonus pool.
+  await changeRewardFixtureInputs(gr,earlierId,{patActual:Math.max(basis.targetCents??0,100)});
+  await confirmAll();await change(checker,{kind:'release'});
+  const latest=await getRewardUnit(gr,unitId),earlier=await getRewardUnit(gr,earlierId);
+  // Company buttons count the rows this reviewer may see.
+  const seenLatest=await getRewardUnit(reviewer,unitId),seenEarlier=await getRewardUnit(reviewer,earlierId);
+  expect(earlier.budgets.standard.bonusPoolCents).not.toBe(latest.budgets.standard.bonusPoolCents);
+
+  const byDefault=await rewardDashboard(reviewer,[base.companyId],{version:2,period:'monthly',businessUnit:buId});
+  expect(byDefault).toMatchObject({year:2026,years:[2026,2025],choice:{year:2026}});
+  expect(byDefault.context).toMatchObject({cycle:'Preparation fixture',companies:1});
+  expect(byDefault.figures!.bonus.standard).toMatchObject({used:latest.budgets.standard.bonusUsedCents,pool:latest.budgets.standard.bonusPoolCents});
+  expect(byDefault.figures!.salary.standard.merit).toMatchObject({used:latest.budgets.standard.used[0],pool:latest.budgets.standard.pools[0]});
+  expect(byDefault.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:seenLatest.rows.length,blocked:seenLatest.flags.some(f=>f.severity==='block'),preparing:false}]);
+
+  const picked=await rewardDashboard(reviewer,[base.companyId],{version:2,period:'monthly',businessUnit:buId,year:2025});
+  expect(picked).toMatchObject({year:2025,years:[2026,2025],choice:{year:2025,businessUnit:buId,companies:[]}});
+  expect(picked.context).toMatchObject({cycle:'Earlier year fixture',companies:1,cycleVaries:false});
+  expect(picked.figures!.bonus.standard).toMatchObject({used:earlier.budgets.standard.bonusUsedCents,pool:earlier.budgets.standard.bonusPoolCents});
+  expect(picked.figures!.salary.standard.merit).toMatchObject({used:earlier.budgets.standard.used[0],pool:earlier.budgets.standard.pools[0]});
+  expect(picked.figures!.bonus.standard.pool).not.toBe(byDefault.figures!.bonus.standard.pool);
+  expect(picked.companies).toEqual([{id:base.companyId,label:expect.any(String),headcount:seenEarlier.rows.length,blocked:seenEarlier.flags.some(f=>f.severity==='block'),preparing:false}]);
+  // Waiting on you lists the same released reviews from every year whichever year is picked.
+  expect(picked.waiting).toEqual(byDefault.waiting);
+  expect(byDefault.waiting.every(row=>[unitId,earlierId].includes(row.id))).toBe(true);
+
+  // A year outside the viewer's reviews, or a malformed one, falls back to the latest and discloses nothing more.
+  for(const year of [2019,2027,'2025',2025.5]){
+   const fallback=await rewardDashboard(reviewer,[base.companyId],{version:2,period:'monthly',businessUnit:buId,year});
+   expect(fallback).toMatchObject({year:2026,years:[2026,2025],choice:{year:2026}});expect(fallback.figures).toEqual(byDefault.figures);expect(fallback.companies).toEqual(byDefault.companies);
+  }
+  // Outside company scope there are no years to pick, whatever year is asked for.
+  expect(await rewardDashboard(reviewer,[randomUUID()],{version:2,year:2025})).toMatchObject({years:[],figures:null,companies:[],waiting:[]});
+  // The picked year is saved with the rest of the choice for this login only.
+  await saveRewardDashboardPreference(reviewer,[base.companyId],{version:2,period:'monthly',businessUnit:buId,companies:[],year:2025});
+  expect(await getRewardDashboardPreference(reviewer)).toEqual({version:2,kind:'annual',period:'monthly',businessUnit:buId,companies:[],year:2025});
+  expect((await rewardDashboard(reviewer,[base.companyId],await getRewardDashboardPreference(reviewer))).figures).toEqual(picked.figures);
+ });
+
+ it('retains permitted BG aggregate contributions without returning a BG personal line',async()=>{
+  const current=await getRewardUnit(gr,unitId),entry=current.rows.find(row=>row.source.employmentId===employmentId)!;
+  await importRewardFacts(gr,unitId,current.unit.revision,[{employmentId,facts:{...entry.facts,confidentiality:'bg'}}]);
+  await refreshRewardFixtureBudget(gr,unitId);await confirmAll();await change(checker,{kind:'release'});
+  const permitted=await getRewardUnit(gr,unitId),review=await getRewardUnit(reviewer,unitId),dashboard=await rewardDashboard(reviewer,[base.companyId],{scope:unitId});
+  expect(review.rows.some(row=>row.source.employmentId===employmentId)).toBe(false);
+  expect(dashboard.excluded).toEqual([]);expect(dashboard.preparing).toEqual([]);
+  expect(dashboard.figures!.salary.standard.merit.used).toBe(permitted.budgets.standard.used[0]);
+  expect(dashboard.figures!.salary.standard.promotion.pool).toBe(permitted.budgets.standard.pools[1]);
+  expect(JSON.stringify(dashboard)).not.toContain('Fictional preparation employee');
+ });
+
+ it('prevents even an inspection seat from advancing preparation and restarts an already-routed review on a controlled change',async()=>{
+  const initial=await getRewardUnit(gr,unitId);
+  await expect(decideRewardUnit(gr,unitId,initial.unit.revision,'approve','Fictional premature approval')).rejects.toThrow(/must be released/);
+  await expect(withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)))).rejects.toMatchObject({cause:{message:expect.stringMatching(/independently checked/)}});
+  await confirmAll();await change(checker,{kind:'release'});
+  await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)));
+  await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'draft'}).where(eq(schema.rewardUnit.id,unitId)));
+  expect((await getRewardPreparationStatus(reviewer,unitId)).released).toBe(true);
+  await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)));
+  const routed=await getRewardPreparationChecklist(gr,unitId);expect(routed.canEdit).toBe(false);expect(routed.canReopen).toBe(true);
+  await change(gr,{kind:'reopen',reason:'Fictional routed review needs a source correction'});
+  expect((await getRewardUnit(gr,unitId)).unit.status).toBe('draft');expect((await getRewardPreparationChecklist(gr,unitId)).canEdit).toBe(true);
+  expect((await getRewardPreparationStatus(reviewer,unitId)).released).toBe(false);
+ });
+
+ it('preserves historical GR setup editing without inventing release or step history',async()=>{
+  await owner.db.execute(sql`update reward_unit set preparation_required=false where id=${unitId}::uuid`);
+  const historical=await getRewardPreparationChecklist(gr,unitId);expect(historical.access.required).toBe(false);expect(historical.canEdit).toBe(true);expect(historical.preparation.steps).toEqual({});
+  await expect(change(gr,{kind:'expected',date:'2026-11-30'})).rejects.toThrow(/Legacy review/);
+  const gov=await getRewardUnitGovernance(gr,unitId);await saveRewardUnitInputs(gr,unitId,gov.revision,{...gov.inputs!,multiplierBp:11000},'Fictional legacy multiplier correction');
+  expect((await getRewardPreparationChecklist(gr,unitId)).preparation.steps).toEqual({});
+ });
+
+ it('notifies the current pre-change approver once after the review returns to draft',async()=>{
+  const recipient=await hireEmployee(gr,{person:{fullName:'Fictional current GR approver',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+  const userId=await createAppUser(base.tenantId,recipient.personId,'employee');
+  await setRewardMember(gr,unitId,(await getRewardUnit(gr,unitId)).unit.revision,userId,'gr');
+  // Hiring the recipient changes the live roster: acknowledge that source change before release.
+  await refreshRewardSources(gr,unitId,(await getRewardUnit(gr,unitId)).unit.revision,snapshotDate);
+  for(const actor of [gr,checker]){
+   const current=await getRewardUnit(actor,unitId),pending=current.rows.filter(row=>!row.facts.reviewed);
+   if(pending.length)await importRewardFacts(actor,unitId,current.unit.revision,pending.map(row=>({employmentId:row.source.employmentId,facts:{...row.facts,talent:'STAR' as const,performance:'ME' as const,reviewed:true}})));
+  }
+  await refreshRewardFixtureBudget(gr,unitId);
+  await confirmAll();await change(checker,{kind:'release'});
+  await withTenant(gr,tx=>tx.update(schema.rewardUnit).set({status:'gr'}).where(eq(schema.rewardUnit.id,unitId)));
+  await change(gr,{kind:'reopen',reason:'Fictional routed review correction requires a fresh check'});
+  await setModule(base.tenantId,'notifications','active');const active=await entitledCtx(base),system:SessionContext={tenantId:base.tenantId,roles:['hr_admin'],entitlements:active.entitlements};
+  const[event]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.preparation-changed')));
+  expect(event.payload).toEqual({to:'gr'});expect((await getRewardUnit(gr,unitId)).unit.status).toBe('draft');
+  await dispatchNotificationsFromSweep(system,owner);await dispatchNotificationsFromSweep(system,owner);
+  const notices=await owner.db.select().from(schema.notification).where(and(eq(schema.notification.sourceEventId,event.id),eq(schema.notification.recipientEmploymentId,recipient.employmentId)));
+  expect(notices).toHaveLength(1);expect(notices[0].kind).toBe('rewards.preparation-changed');expect(notices[0].linkPath).toBe(`/rewards/${unitId}`);
+ });
+
+ it('honors denied review pages and dated personal exceptions for waiting notices',async()=>{
+  await owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,changed_by,reason) values(${base.tenantId}::uuid,'bu','review.view',false,${gr.userId!}::uuid,'Fictional restricted review page')`);
+  await expect(getRewardPreparationStatus(reviewer,unitId)).rejects.toThrow(/access/);expect(await rewardPreparationNotices(reviewer)).toEqual([]);
+  await owner.db.execute(sql`insert into reward_page_grant(tenant_id,user_id,company_id,capability,valid_from,valid_to,active,created_by,reason) values(${base.tenantId}::uuid,${reviewer.userId!}::uuid,${base.companyId}::uuid,'review.view','2020-01-01','2099-12-31',true,${gr.userId!}::uuid,'Fictional dated personal page exception')`);
+  expect((await getRewardPreparationStatus(reviewer,unitId)).released).toBe(false);expect(await rewardPreparationNotices(reviewer)).toHaveLength(1);
+  await owner.db.execute(sql`update reward_page_grant set valid_to='2020-12-31' where tenant_id=${base.tenantId}::uuid and user_id=${reviewer.userId!}::uuid`);
+  await expect(getRewardPreparationStatus(reviewer,unitId)).rejects.toThrow(/access/);expect(await rewardPreparationNotices(reviewer)).toEqual([]);
+ });
+
+ it('keeps access administration available without disclosing a preparing review',async()=>{
+  const [person]=await owner.db.insert(schema.person).values({tenantId:base.tenantId,fullName:'Fictional unseated HR administrator',primaryEmail:randomUUID()+'@fixture.test'}).returning();
+  const userId=await createAppUser(base.tenantId,person.id,'hr_admin');
+  await owner.db.update(schema.roleAssignment).set({companyId:base.companyId}).where(eq(schema.roleAssignment.appUserId,userId));
+  const admin:SessionContext={...gr,userId,personId:person.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:base.companyId}]};
+  const [subject]=await owner.db.select({personId:schema.employment.personId}).from(schema.employment).where(eq(schema.employment.id,employmentId));
+  const checkerLogin=await createAppUser(base.tenantId,subject.personId,'employee');
+  await expect(getRewardUnit(admin,unitId)).rejects.toThrow();
+  expect(await withTenant(admin,tx=>tx.select({source:schema.rewardEntry.source}).from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)))).toEqual([]);
+  const administration=await rewardAccessAdministration(admin,[base.companyId]);expect(administration.reviews.map(row=>row.id)).toContain(unitId);
+  expect(await rewardNavigation(admin)).toContain('/admin/rewards/access');
+  expect(await rewardAccessPageEntry(admin)).toEqual({companies:[{id:base.companyId}],groupRewards:false});
+  await expect(rewardAccessPageCompanies(admin)).rejects.toThrow(/Group Rewards/);
+  expect(JSON.stringify(administration.reviews)).not.toContain('basicCents');expect(JSON.stringify(administration.reviews)).not.toContain('policy');
+  const input={unitId,revision:(await getRewardUnit(gr,unitId)).unit.revision,before:null,after:{userId:checkerLogin,role:'gr'},reason:'Fictional HR administrator proposes another preparation checker'};
+  const preview=await previewRewardAccessChange(admin,input);const saved=await saveRewardAccessChange(admin,input,preview.digest);
+  expect(saved.requestId).toBeTruthy();
+  const requests=await owner.db.select().from(schema.rewardAccessRequest).where(eq(schema.rewardAccessRequest.id,saved.requestId));expect(requests).toHaveLength(1);
+  await expect(getRewardUnit(admin,unitId)).rejects.toThrow();
+  const foreign=await seedBase();await setModule(foreign.tenantId,'rewards','active');
+  expect((await rewardAccessAdministration(await entitledCtx(foreign),[base.companyId])).reviews).toEqual([]);
+  expect(await rewardAccessPageEntry(await entitledCtx(foreign))).toEqual({companies:[],groupRewards:false});
+ });
+
+ it.each([false,true])('preserves native owner RLS behavior with preparation released=%s',async released=>{
+  if(released){await confirmAll();await change(checker,{kind:'release'});}
+  const role='board_rewards_owner_'+randomUUID().replaceAll('-',''),rollback=new Error('Rollback this ownership parity fixture');
+  await expect(owner.client.begin(async connection=>{
+   await connection.unsafe(`CREATE ROLE "${role}" NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE INHERIT`);
+   const [identity]=await connection`select pg_get_userbyid(relowner) as name from pg_class where oid='public.app_user'::regclass`;
+   const parent=String(identity.name);expect(parent).toMatch(/^[A-Za-z_][A-Za-z0-9_]*$/);
+   await connection.unsafe(`GRANT "${parent}",ai_hr_app TO "${role}"`);
+   const [attributes]=await connection`select rolsuper,rolbypassrls from pg_roles where rolname=${role}`;
+   expect(attributes).toMatchObject({rolsuper:false,rolbypassrls:false});
+   // Preserve dedicated reader/invalidator identities and their forced-RLS policies. Only native
+   // owner functions become the non-superuser schema owner, matching the staging ownership shape.
+   const functions=await connection`select p.oid::regprocedure::text as signature from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.prosecdef and p.prokind='f' and p.proowner=(select relowner from pg_class where oid='public.app_user'::regclass) order by p.oid`;
+   expect(functions.length).toBeGreaterThan(0);
+   await connection.unsafe(functions.map(fn=>`ALTER FUNCTION ${String(fn.signature)} OWNER TO "${role}"`).join(';'));
+   await connection.unsafe('SET LOCAL ROLE ai_hr_app');await connection.unsafe('SET LOCAL row_security=on');
+   for(const actor of [gr,reviewer]){
+    const roles=actor.roles??[],grants=actor.grants??roles.map(value=>({role:value,companyId:null}));
+    await connection`select set_config('app.tenant_id',${actor.tenantId},true),set_config('app.user_id',${actor.userId??''},true),set_config('app.roles',${roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true),set_config('app.agent_principal_id','',true)`;
+    const [view]=await connection`select app.reward_preparation_view(${unitId}::uuid) as value`;
+    expect(view.value).toMatchObject({required:true,released,setupVisible:actor===gr});
+    if(actor===reviewer){expect(view.value.preparation).toBeNull();expect(view.value.stateForSetup).toBeNull();}
+    else expect(view.value.actorNames).toBeDefined();
+   }
+   await connection`select set_config('app.tenant_id',${randomUUID()},true)`;
+   const [foreign]=await connection`select app.reward_preparation_view(${unitId}::uuid) as value`;expect(foreign.value).toBeNull();
+   throw rollback;
+  })).rejects.toBe(rollback);
+ });
+
+ it('keeps the preparation compatibility flag out of ordinary runtime control',async()=>{
+  await expect(withTenant(gr,tx=>tx.execute(sql`update reward_unit set preparation_required=false where id=${unitId}::uuid`))).rejects.toThrow();
+ });
+});

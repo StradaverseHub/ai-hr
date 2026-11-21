@@ -1,0 +1,124 @@
+{
+  "kind": "EMPLOYEE_SPARSE_TENANT_POINT_PATH_SOURCE_ONLY",
+  "directParent": "23db568d4cb4dce686db2b47c923f86f32dbacb2",
+  "selector": "test/employee-choice-unicode-scale.test.ts",
+  "testSource": {
+    "parent": {
+      "gitBlob": "d9d5dd7a931223de842c8bdeb68346df10394df7",
+      "bytes": 60644,
+      "sha256": "8234ac0db9b0d859790124833ba925fa3410c0cdce3e77d4ed52ee661d9a72be"
+    },
+    "current": {
+      "gitBlob": "028f24358231b16a50d0bddc3724b5daf0108fb7",
+      "bytes": 62986,
+      "sha256": "30a93e49300d40513e59084af0cc29154e0b99867c7c6fed8779491bbc001676"
+    },
+    "preserved": {
+      "sourceTests": 1,
+      "registrationsWhole": 3,
+      "assertionsWhole": 88,
+      "clockCallsWhole": 40,
+      "taggedTemplatesWhole": 26,
+      "changedTaggedTemplates": 1,
+      "changedFunctions": [
+        "summarizePlan",
+        "sparsePathRefusals",
+        "facetIndexes",
+        "readFacetPlannerCatalogue",
+        "probeDepartmentFacet"
+      ],
+      "newPrivateHelpers": [
+        "usesEmploymentTenantPointIndex"
+      ]
+    }
+  },
+  "sourceInverse": {
+    "restore": "test/employee-choice-unicode-scale.test.ts",
+    "remove": "docs/qualification/employee-sparse-tenant-point-path-source-20261109.json",
+    "targetGitTree": "7c573fd914042fe35b26d5047c505678b346eabd"
+  },
+  "protectedGitBlobs": {
+    "core/employee-choice.ts": "a772876f19acb9ba1e590ad9089842b13e410808",
+    "db/migrations/2126_company_organisation_tagging.sql": "1ca32335380bb7aedecad6942643a8ad836b505f",
+    "test/performance/personnel-native-fixture.ts": "933f1543bf2ea08aae446d805720272e597dacf0",
+    "test/performance/employee-choice-department-pair-probe.ts": "a207a051ea485dc47ed2814fcc72f2afa1edce1e",
+    "db/client.ts": "0c4f28e00393a763608b506d608a3cf7df542c57",
+    ".github/workflows/alpha-focused-checks.yml": "e993882d7e92f28bd4f75f31556f5a971dfe47f6"
+  },
+  "historicalFailure": {
+    "source": "65ce54b300b6dffc083c51f7650efb9a9f48047e",
+    "controller": "e70686353134de3471f08fe7a27e937f14fdcc95",
+    "run": 42565465670,
+    "attempt": 1,
+    "artifactId": 13651387358,
+    "artifactDigest": "sha256:de1491f054b0af29b77efa16000282f4aa19dd7b020de160c595976365dcc360",
+    "reportedTest": {
+      "passed": 0,
+      "failed": 1,
+      "caseMs": 108238.438419,
+      "firstFailureLine": 736,
+      "gate": {
+        "matched": "pass",
+        "sparseBaselineStress": "pass",
+        "sparseProductPairs": "fail"
+      },
+      "nativeFailures": {
+        "work": null,
+        "gates": [
+          {
+            "kind": "AssertionError",
+            "code": null,
+            "messageSha256": "7c2acd1d9312c1d0437ed17045e927745edb813908537439982b032330d7db71"
+          }
+        ],
+        "cleanup": []
+      }
+    },
+    "catalogueUnchanged": true,
+    "originalCaseStillFailed": true,
+    "nativeIndexWitnesses": {
+      "B0-twenty-five-ids": {
+        "node": "Bitmap Heap Scan",
+        "index": "employment_pkey",
+        "nativeIndexCondSha256": "b4d2754d187e00c8853fee76be2db16c603b5c7f90dd4b18f00b46af272bc5cf",
+        "pointKeyCount": 25,
+        "loops": 1,
+        "rows": 25
+      },
+      "B0-one-id": {
+        "node": "Index Scan",
+        "index": "company_org_employment_tenant_uq",
+        "nativeIndexCondSha256": "d1a1bc37b2522abf20673abb54a5b1ef8a557002a478a60b5871a6748af5dd3e",
+        "pointKeyCount": 1,
+        "tenantEquality": true,
+        "loops": 1,
+        "rows": 1
+      },
+      "B1-one-id": {
+        "node": "Index Scan",
+        "index": "company_org_employment_tenant_uq",
+        "nativeIndexCondSha256": "d1a1bc37b2522abf20673abb54a5b1ef8a557002a478a60b5871a6748af5dd3e",
+        "pointKeyCount": 1,
+        "tenantEquality": true,
+        "loops": 1,
+        "rows": 1
+      },
+      "B1-twenty-five-ids": {
+        "node": "Bitmap Heap Scan",
+        "index": "employment_pkey",
+        "nativeIndexCondSha256": "b4d2754d187e00c8853fee76be2db16c603b5c7f90dd4b18f00b46af272bc5cf",
+        "pointKeyCount": 25,
+        "loops": 1,
+        "rows": 25
+      }
+    }
+  },
+  "admission": {
+    "scope": "Only one-id candidate EXPLAINs can use the alternate witness. The existing primary-key path and 25-ID control are unchanged.",
+    "catalogue": "The existing held owner queries retain all Assignment index rows and at most one named Employment index in the same before/after exact equality. Only the existing public unique btree (id, tenant_id) on the exact Employment OID with valid, ready and live flags is eligible.",
+    "plan": "The physical authorized-members subtree must show the exact direct public Employment Index Scan, one loop, one row, zero rows removed by filter or index recheck, and the complete one-ID array and tenant UUID conditions matching the same sealed product query bindings.",
+    "scopePreserved": "Product SQL, prepared-plan checks, native DTOs, cardinality, traffic, relative and absolute timing checks, all test clocks and native settlement are unchanged."
+  },
+  "runtimeQualificationPending": true,
+  "releaseEligible": false
+}

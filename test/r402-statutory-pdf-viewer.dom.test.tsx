@@ -11,8 +11,13 @@
  * The viewer is generic (the EPF / SOCSO / LHDN items embed it next), so the slots are exercised too.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render as mount, screen } from '@testing-library/react';
 import * as React from 'react';
+
+import { NextIntlClientProvider } from 'next-intl';
+import en from '../messages/en.json';
+
+const render = (ui: React.ReactElement) => mount(<NextIntlClientProvider locale="en" messages={en}>{ui}</NextIntlClientProvider>);
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (

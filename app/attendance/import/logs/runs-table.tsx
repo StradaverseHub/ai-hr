@@ -5,6 +5,7 @@ import { formatDmyTime } from '@/lib/date-display';
 import { typeHelpCls } from '@/components/ui/section-card';
 import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh } from '@/components/ui/stacked-table';
 import { RunStatusPill } from './run-status';
+import { formatImportActor, formatImportBatch } from '@/lib/import-reference';
 
 /**
  * r424 — the import-log list, shared by the logs page and the foot of one log. Most recent first.
@@ -12,6 +13,7 @@ import { RunStatusPill } from './run-status';
  */
 export async function RunsTable({ runs, currentId }: { runs: ClockingImportRunRow[]; currentId?: string }) {
   const t = await getTranslations('clockingFile');
+  const labels = await getTranslations('importLog');
   if (runs.length === 0) return <p className={`px-1 py-6 ${typeHelpCls}`}>{t('logs.empty')}</p>;
   const num = 'text-right tabular-nums @max-3xl:text-left';
   return (
@@ -34,11 +36,12 @@ export async function RunsTable({ runs, currentId }: { runs: ClockingImportRunRo
             </StackedTd>
             <StackedTd label={t('logs.colFile')} role="full" className="font-medium">
               <Link className="text-primary underline-offset-2 hover:underline monolith:text-ink monolith:underline" href={`/attendance/import/logs/${r.id}`}>
-                {r.fileName || '—'}
+                {formatImportBatch(labels, r.id)}
               </Link>
+              <span className={`block break-all font-normal ${typeHelpCls}`}>{r.fileName || '—'}</span>
             </StackedTd>
             <StackedTd label={t('logs.colMapping')}>{r.mappingName || '—'}</StackedTd>
-            <StackedTd label={t('logs.colUser')}>{r.userName ?? t('logs.unknownUser')}</StackedTd>
+            <StackedTd label={t('logs.colUser')}>{formatImportActor(labels, r.actor)}</StackedTd>
             <StackedTd label={t('logs.colTotal')} className={num}>
               {r.totalLines.toLocaleString('en')}
             </StackedTd>

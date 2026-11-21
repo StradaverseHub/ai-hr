@@ -23,7 +23,7 @@
  *                     docs/audits/665de026-schedule-save-classification.md §5.
  *   · overtime      — the before-shift overtime switch and each band's rounding (r277). Real, stored.
  *   · attendance    — the grace periods and the two "after N, record M" pairs (r277). Real, stored.
- *   · workingDay    — 07ebd04d (r331, migration 0483) put weekly_pattern / half_pattern / off_pattern on
+ *   · workingDay    — (RETIRED by c03670cc; now part of General) 07ebd04d (r331, migration 0483) put weekly_pattern / half_pattern / off_pattern on
  *                     `attendance_rule` with two CHECK constraints, and core/attendance-rule.ts has both
  *                     exposed and validated them since. NO SCREEN READ OR EDITED THEM until this one. It is
  *                     the only genuinely new section in 665de026; everything else is relocation.
@@ -40,12 +40,8 @@ import { scheduleGroupViewPath } from '../../attendance-policy/schedule-panel';
 
 export const SCHEDULE_SECTION_KEYS = [
   'general',
-  // r429 (f6819e19) · D7 — WORKING DAY MOVES TO SECOND. It used to be listed seventh, appended after
-  // 07ebd04d gave it storage; this round makes it the section the reporter now opens the page FOR — the
-  // Shift page's own week row is retired (D1), so this is the only place a working week is set at all —
-  // and asks it to carry the live "Shifts in this group" preview beside it. The other five keep their
-  // relative order.
-  'workingDay',
+  // c03670cc — 'workingDay' (the Duty Roster tab, second since r429) is RETIRED: its switch and rotation
+  // sit in General directly under Shift Allowed. resolveSection maps old links to General.
   'holiday',
   'overtime',
   'attendance',
@@ -56,7 +52,11 @@ export const SCHEDULE_SECTION_KEYS = [
 export type ScheduleSectionKey = (typeof SCHEDULE_SECTION_KEYS)[number];
 
 /** The sections that render a control or a value. The rest render the "not built yet" line. */
-export const SCHEDULE_BUILT_SECTIONS = ['general', 'overtime', 'attendance', 'workingDay'] as const;
+export const SCHEDULE_BUILT_SECTIONS = ['general', 'overtime', 'attendance'] as const;
+
+/** c03670cc — retired section keys and where their content lives now. The Duty Roster tab (`workingDay`)
+ * moved into General, directly under Shift Allowed, so bookmarks and old save redirects land there. */
+const RETIRED_SECTIONS: Readonly<Record<string, ScheduleSectionKey>> = { workingDay: 'general' };
 
 /** One section's anchor on the per-group page, so a save can return the reader to the section they saved. */
 export const sectionAnchor = (key: ScheduleSectionKey) => `section-${key}`;
@@ -91,5 +91,6 @@ export const RULE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 
 /** `?section=` read by VALUE against the closed key list, exactly as `?tab=` was. Junk ⇒ no section. */
 export function resolveSection(raw: string | undefined): ScheduleSectionKey | null {
+  if (raw && Object.prototype.hasOwnProperty.call(RETIRED_SECTIONS, raw)) return RETIRED_SECTIONS[raw];
   return (SCHEDULE_SECTION_KEYS as readonly string[]).includes(raw ?? '') ? (raw as ScheduleSectionKey) : null;
 }

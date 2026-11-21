@@ -66,8 +66,8 @@ export const V25_REPLACED:readonly (readonly [v24:string,v25:string])[]=[
 ];
 /** Revert v26's single added guidance topic to recover main's v25. */
 export function v25ShapedSpec(){
- const guidanceTopics=HARNESS_SPEC.offer.guidanceTopics.filter(topic=>topic!=='organisation_tagging');
- return {...HARNESS_SPEC,version:25,offer:{...HARNESS_SPEC.offer,guidanceTopics}};
+ const previous=v26ShapedSpec(),guidanceTopics=previous.offer.guidanceTopics.filter(topic=>topic!=='organisation_tagging');
+ return {...previous,version:25,offer:{...previous.offer,guidanceTopics}};
 }
 
 /** Revert main v25's named-date instruction to recover main's v24. */
@@ -81,4 +81,34 @@ export function v24ShapedSpec(){
 export function v24OrganisationShapedSpec(){
  const v23=v23ShapedSpec();
  return {...v23,version:24,offer:{...v23.offer,guidanceTopics:[...v23.offer.guidanceTopics,'organisation_tagging']}};
+}
+
+/** v29's one topic (50d9b809, the Shared Leave Groups page), appended to operations_status. v29 adds no instruction line. */
+export const V29_TOPIC='shared_leave_groups';
+/** v30's two topics (96a54ed2, the Request On Behalf and Approve On Behalf pages), appended to operations_status. v30 adds
+ * no instruction line. */
+export const V30_TOPICS=['attendance_on_behalf_subjects','attendance_on_behalf_approvers'] as const;
+/** The v31 public topics are removed when reconstructing the exact released v30 spec. */
+export const V31_GUIDANCE_TOPICS=['offboarding_requisitions','document_signing','payroll_history_records'] as const;
+export function v30ShapedSpec(){return {...HARNESS_SPEC,version:30,offer:{...HARNESS_SPEC.offer,guidanceTopics:HARNESS_SPEC.offer.guidanceTopics.filter(topic=>!(V31_GUIDANCE_TOPICS as readonly string[]).includes(topic))}};}
+/** v30 with its two operations topics removed: v29 exactly. */
+export function v29ShapedSpec(){
+ const current=v30ShapedSpec(),topicTools={...current.offer.topicTools,operations_status:current.offer.topicTools.operations_status.filter(topic=>!(V30_TOPICS as readonly string[]).includes(topic))};
+ return {...current,version:29,offer:{...current.offer,topicTools}};
+}
+/** The v29 spec with its one topic removed and the version set to 28: v28 exactly, preserving its recorded digest.
+ * 96a54ed2: built from v29, not the current spec. */
+export function v28ShapedSpec(){
+ const v29=v29ShapedSpec();
+ const topicTools={...v29.offer.topicTools,operations_status:v29.offer.topicTools.operations_status.filter(topic=>topic!==V29_TOPIC)};
+ return {...v29,version:28,offer:{...v29.offer,topicTools}};
+}
+/** Recover the exact prior published spec, preserving its original digest. 50d9b809: built from v28, not the current spec. */
+export function v26ShapedSpec(){
+ const v28=v28ShapedSpec();
+ return {...v28,version:26,offer:{...v28.offer,guidanceTopics:v28.offer.guidanceTopics.filter(topic=>topic!=='reward_reviews')}};
+}
+export function v27ShapedSpec(){
+ const prior=v26ShapedSpec();
+ return {...prior,version:27,offer:{...prior.offer,guidanceTopics:[...prior.offer.guidanceTopics,'attendance_formula_library','attendance_formula_authoring','reward_reviews']}};
 }

@@ -21,7 +21,9 @@ import * as schema from '../db/schema';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { createCompany, setCompanyDefaultPayrollCycle } from '../core/admin';
 import { DEFAULT_PAYROLL_CYCLES, listPayrollCycles, setPayrollCycleActive } from '../core/payroll-cycle';
-import { companiesMissingCycle, runMultiCompanyPayroll } from '../core/payroll-run-group';
+import { companiesMissingCycle } from '../core/payroll-run-group';
+// The run now processes each company as a background job; the helper drives the worker to the settled result.
+import { runMultiCompanyPayrollToEnd as runMultiCompanyPayroll } from './payroll-run-group-helpers';
 import { createBatch } from '../core/payroll';
 import { preferredCycleId } from '../app/payroll/process/selection-logic';
 import type { SessionContext } from '../db/client';

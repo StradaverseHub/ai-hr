@@ -30,7 +30,7 @@ async function pendingLeave(){
 describe('Assistant approval queue (counts only)',()=>{
  it('counts the work actually assigned to the person, with the queue page and review action, and no names or ids',async()=>{
   const {employee,manager,request}=await pendingLeave();
-  const canonical=await listPendingTasks(manager.ctx,[b.companyId],{attendance:false,claims:false,performance:false,rewards:false},{noticeAcknowledgements:false});
+  const canonical=await listPendingTasks(manager.ctx,[b.companyId],{attendance:false,claims:false,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false});
   expect(canonical.map(row=>row.kind)).toEqual(['leave']);
   const summary=await approvalQueueFor(manager.ctx,b.companyId);
   expect(summary.total).toBe(1);expect(summary.groups).toHaveLength(1);

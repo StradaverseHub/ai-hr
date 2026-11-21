@@ -1,0 +1,38 @@
+{
+  "kind": "SYSTEM_LABEL_HEAD_CHOICES_FAILED_AREA_RECOVERY_REQUEST",
+  "releaseEligible": false,
+  "status": "Prepared source; hosted recovery pending",
+  "originalSource": "36c30441da0228b0707c9614a34c42e9e6c9dd28",
+  "originalController": "109a046ef38f90514f1da458056aa09e015a47a4",
+  "originalRun": "42384455076",
+  "originalAttempt": 1,
+  "originalResults": {
+    "nodb": {"passed": 58, "failed": 7},
+    "db": {"passed": 55, "failed": 0},
+    "typecheck": "FAIL: two TS2769 diagnostics for unsupported getByRole exact option",
+    "linuxBuild": "PASS"
+  },
+  "diagnosis": [
+    "All seven DOM failures stop at text queries matching both the native summary and hidden search label",
+    "The summary selector preserves unique matching and real user clicks; no assertion, fixture, timeout or application behavior changes",
+    "Role name string matching is already exact; remove the unsupported exact option without broadening names"
+  ],
+  "runTypecheck": true,
+  "runBuild": false,
+  "files": [
+    "test/system-label-head-choice.dom.test.tsx",
+    "test/system-labels-draft-pagination.dom.test.tsx",
+    "test/system-labels-head-column.dom.test.tsx"
+  ],
+  "retainedEvidence": [
+    "Original run and failures remain unchanged",
+    "All seven native database files and six unaffected NODB files retain their passing evidence",
+    "The original Linux build remains valid because this repair changes only tests and this recovery request"
+  ],
+  "execution": "Standard hosted Actions only; integration owner reviews and dispatches the frozen repair",
+  "limitations": [
+    "This request is not a recovery pass receipt or release authorization",
+    "No local application tests, compiler, build, push or deployment performed",
+    "Actual browser and worker qualification remain separate required gates"
+  ]
+}

@@ -1,3 +1,4 @@
+import {withAiCentreFunction} from '../../../core/ai-centre-control';
 import {withAiAdmissionCheck,preparePrivateAiTask} from '../../../core/ai-governance';
 import type {GenerateArgs} from '../../../lib/ai/types';
 import {AiPrivacyGateError} from '../../../lib/ai/provider-privacy-error';
@@ -35,7 +36,11 @@ export async function assessmentDevelopmentContextTx(tx:Tx,ctx:SessionContext,re
  return {view,plan,gaps,room};
 }
 const source=assessmentDevelopmentContext;
-export async function suggestAssessmentDevelopmentGoals(ctx:SessionContext,reviewId:string,requestId:string){
+export async function suggestAssessmentDevelopmentGoals(...args:Parameters<typeof suggestAssessmentDevelopmentGoalsActivity>):Promise<Awaited<ReturnType<typeof suggestAssessmentDevelopmentGoalsActivity>>>{
+ args=structuredClone(args);
+ return withAiCentreFunction(args[0],'read:operation_development_goals',()=>suggestAssessmentDevelopmentGoalsActivity(...args));
+}
+async function suggestAssessmentDevelopmentGoalsActivity(ctx:SessionContext,reviewId:string,requestId:string){
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  z.uuid().parse(requestId);const before=await source(ctx,reviewId),fieldKey=`idp_goals:${before.view.cycle.id}`;
  const quota=before.view.developmentQuota??await withPerformanceTenant(ctx,tx=>assessmentAiQuotaTx(tx,ctx,fieldKey));

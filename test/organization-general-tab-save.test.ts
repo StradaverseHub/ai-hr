@@ -119,6 +119,22 @@ describe('§1 the one Save reaches each card’s own writer', () => {
     expect(row.parentCompanyId).toBe(other);
   });
 
+  it('refuses stale registration forms and retains existing filing values', async () => {
+    const pack = (await import('../localization/registry')).packFor('MY')!;
+    await pack.companyStatutory.set(ADMIN, {
+      companyId: b.companyId, epfEmployerNo: 'EPF-KEPT', socsoEmployerCode: 'SOCSO-KEPT',
+      ssmRegistrationNo: 'SSM-KEPT', myinvoisTin: 'TIN-KEPT', hrdfStatus: 'optional',
+    });
+    const result = await saveCompanyGeneralTabAction(payload(b.companyId, {
+      registration: { ssmRegistrationNo: '', myinvoisTin: '', hrdfStatus: 'mandatory' },
+    }));
+    expect(result).toMatchObject({ ok: false, saved: [], failedSection: 'registration' });
+    expect(await pack.companyStatutory.get(ADMIN, b.companyId)).toMatchObject({
+      ssmRegistrationNo: 'SSM-KEPT', myinvoisTin: 'TIN-KEPT', epfEmployerNo: 'EPF-KEPT',
+      socsoEmployerCode: 'SOCSO-KEPT', hrdfStatus: 'optional',
+    });
+  });
+
   it('an UNTOUCHED card is never written — its service is not called at all', async () => {
     await saveCompanyGeneralTabAction(
       payload(b.companyId, { parent: { parentCompanyId: other } }),
@@ -212,7 +228,6 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
     archiveCompany: noop,
     deleteCompany: noop,
     setParent: noop,
-    setStatutory: noop,
     setBankProfile: noop,
     removeBankProfile: noop,
     setStatutoryAuthority: noop,
@@ -339,7 +354,7 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
     // A company with one bank account and one configured body renders every kind of form this screen has.
     // ⚠️ 48652e18 (r419): 8 → 7. The blank "add a bank account" form is behind a closed button on arrival
     // now (the reporter's approved request), so a static render has one form fewer; the next case names it.
-    expect(all.length, 'the whole screen is in this markup').toBeGreaterThanOrEqual(7);
+    expect(all.length, 'the whole screen is in this markup').toBeGreaterThanOrEqual(6);
     const marked = all.filter((f) => f.attrs.includes('data-save-section'));
     const ids = marked.map((f) => /data-save-section="([^"]+)"/.exec(f.attrs)?.[1]);
     expect(ids).toEqual([...COMPANY_GENERAL_TAB_SECTION_ORDER]);
@@ -403,7 +418,6 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
       'archive',
       'bankEditor',
       'remove',
-      'statutoryIdentity',
     ]);
     for (const f of unmarked) expect(f.body, f.attrs.slice(0, 80)).toMatch(/<button\b/);
     // …and the three that ARE marked lost theirs: that is what "one Save" means.
@@ -442,55 +456,12 @@ describe('§3 the bucket, pinned from the RENDERED panel and not from the audit'
     );
   });
 
-  /**
-   * FINDING 1 OF THE AUDIT — ⚠️ THE ONE CASE IN THIS FILE THAT HAS NOW BEEN REWRITTEN TWICE, AND BOTH
-   * TIMES REWRITTEN RATHER THAN REMOVED, BECAUSE THE HALF IT WAS WRITTEN FOR NEVER STOPPED BEING THE POINT.
-   *
-   * 65b22c00 SAID: the SSM / MyInvois registrations form is bucket (a) and keeps its OWN button, because it
-   * is drawn on the Statutory tab, a scope cannot span two panes, and folding it in would mean moving the
-   * card off a tab r226 put it on for a reason — a decision for the reporter.
-   *
-   * r352 SAID: the reporter settled it the other way. Their approved redesign put the eight bodies in a
-   * rail with one workspace and one Save for the tab, so the tab had a scope the card could join without
-   * moving, and `saveStatutoryIdentity` left the screen.
-   *
-   * r353 SAYS: the reporter CONTESTED that redesign — "Do not expand the statutory settings directly
-   * within the existing Statutory tab" — and the eight editors went to a dedicated screen. That takes the
-   * scope with them: a sticky Save/Discard bar above ONE two-field card is exactly the "worse than none"
-   * finding 1 named. So the card has its own Save button again and 65b22c00's original sentence is true
-   * once more, by the reporter's own instruction rather than by us reverting them.
-   *
-   * WHAT THIS CASE HAS GUARDED THROUGH ALL THREE, unchanged and asserted by POSITION: the card is on the
-   * STATUTORY tab. The failure it was written against is the card drifting onto General as a side effect
-   * of a save-button change, and every round has had a save-button change in it.
-   */
-  it('the statutory registrations card keeps its own Save, on the STATUTORY tab, never moved to General', () => {
+  it('omits SSM and TIN controls while keeping the General Save scope', () => {
     const html = markup({ statutory: null });
-    const en = JSON.parse(read('messages/en.json')).admin.organization as Record<string, string>;
-    // Its OWN button is back — the retired caption returning to service, not a new string.
-    expect(html, 'bucket (a) with its own control, as finding 1 left it').toContain(en.saveStatutoryIdentity);
-    const form = formsIn(html).find((f) => f.body.includes('name="ssmRegistrationNo"'));
-    expect(form, 'the registrations form is rendered').toBeTruthy();
-    expect(form!.attrs, 'and it is NOT a section of a consolidated Save any more').not.toContain('data-save-section');
-    expect(form!.body, 'it submits itself').toMatch(/<button[^>]*type="submit"/);
-    // THERE IS ONE SCOPE ON THIS SCREEN AGAIN, and the card is outside it — which is the position claim.
-    // Pinned against the General pane's own end marker so it cannot be satisfied by ordering luck.
-    const panel = read('components/company-panel.tsx');
-    const generalPane = panel.slice(
-      panel.indexOf("cn('space-y-4', tab === 'general'"),
-      panel.indexOf('{/* end General tab */}'),
-    );
-    expect(generalPane, 'the card did not drift onto General').not.toContain('name="ssmRegistrationNo"');
-    const statutoryPane = panel.slice(
-      panel.indexOf("cn('space-y-4', tab === 'statutory'"),
-      panel.indexOf('{/* end Statutory tab */}'),
-    );
-    expect(statutoryPane, 'it is still where r226 put it').toContain('name="ssmRegistrationNo"');
-    expect(html.indexOf('data-tab-save-scope="general"'), 'the General scope is rendered').toBeGreaterThan(-1);
-    expect(html, 'and the statutory scope is gone with the editors it owned').not.toContain(
-      'data-tab-save-scope="statutory"',
-    );
-    // And General's own vocabulary never grew an identity section on the way past.
-    expect(COMPANY_GENERAL_TAB_SECTION_ORDER as readonly string[]).not.toContain('identity');
+    expect(html).not.toContain('name="ssmRegistrationNo"');
+    expect(html).not.toContain('name="myinvoisTin"');
+    expect(html).not.toContain('data-save-section="registration"');
+    expect(html).toContain('data-tab-save-scope="general"');
+    expect(html).not.toContain('data-tab-save-scope="statutory"');
   });
 });

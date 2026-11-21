@@ -58,7 +58,10 @@ class RedirectError extends Error {
   }
 }
 vi.mock('../lib/session', () => ({ getSession: vi.fn(async () => ctx) }));
-vi.mock('../lib/authz', () => ({ requireAdmin: vi.fn(async () => ctx) }));
+vi.mock('../lib/authz', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz')>()),
+  requireAdmin: vi.fn(async () => ctx),
+}));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => '/admin/attendance/schedule/group/edit',
@@ -256,7 +259,7 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDb();
   b = await seedBase();
-  ctx = adminCtx(b);
+  ctx = {...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]};
   const made = await createAttendanceRule(ctx!, ruleInput({ name: 'Plant crew' }));
   ruleId = made.id;
 });
@@ -278,8 +281,9 @@ describe('A. the seven selects decode into the three stored arrays, and Rest is 
     expect(target.startsWith(`${SCHEDULE}/${ruleId}/edit?toast=`), target).toBe(true);
     const q = new URL(target, 'http://x').searchParams;
     expect(q.get('toast')).toBe(SC.savedToast);
-    expect(q.get('section')).toBe('workingDay');
-    expect(target.endsWith('#section-workingDay'), 'and the browser lands on that heading').toBe(true);
+    // c03670cc — the working week and the Duty Roster sit in General; the Duty Roster tab is retired.
+    expect(q.get('section')).toBe('general');
+    expect(target.endsWith('#section-general'), 'and the browser lands on that heading').toBe(true);
     // Exactly one `?`. The r287 → r301 defect was a parameter concatenated in FRONT of the query key.
     expect(target.split('?').length - 1, target).toBe(1);
   });
@@ -356,7 +360,7 @@ describe('B. the two CHECK constraints of migration 0483', () => {
     expect(message).toContain('working week with no working day');
     expect(message, 'and it says what to do about it').toMatch(/Tick at least one full or half working day/);
     expect(target.startsWith(`${SCHEDULE}/${ruleId}/edit?error=`), target).toBe(true);
-    expect(q.get('section')).toBe('workingDay');
+    expect(q.get('section')).toBe('general');
 
     expect(week((await getAttendanceRule(ctx!, ruleId))!), 'the stored week is untouched').toEqual(before);
   });
@@ -443,7 +447,10 @@ describe('C. the marker — a submission that said nothing must not CLEAR the we
     // And the page really does emit it, so the contract is pinned across BOTH files (CLAUDE.md §8).
     const page = readFileSync(pathJoin(root, 'app/admin/attendance/schedule/group-sections.tsx'), 'utf8');
     expect(page, 'the new editor saves pool and rotation together').toContain('ScheduleRotationEditor');
-    expect(page, 'the legacy independent week form is retired').not.toContain('name="weekEditor" value="1"');
+    // 2f803985 — the legacy week form remains ONLY for the Standard group, which cannot rotate.
+    expect(page.match(/name="weekEditor" value="1"/g) ?? [], 'one week form').toHaveLength(1);
+    expect(page.slice(page.indexOf('const pattern = rule.isDefault'), page.indexOf('<ScheduleRotationEditor ruleId')),
+      'and it is the Standard branch').toContain('name="weekEditor" value="1"');
   });
 });
 
@@ -563,7 +570,7 @@ describe('F. the screen — Edit edits it, View shows it, and "no week" is a sen
       expect(html, `every day can be set to ${kind}`).toContain(`<option value="${kind}"`);
     }
     // The words come from the namespace that already owns them, not a second copy under this screen's.
-    for (const word of [en.roster.dayKindFull, en.roster.dayKindHalf, en.roster.dayKindOff, en.roster.dayKindRest]) {
+    for (const word of [en.admin.rotation.full, en.admin.rotation.half, en.admin.rotation.off, en.admin.rotation.rest]) {
       expect(html).toContain(esc(word));
     }
   });
@@ -576,9 +583,9 @@ describe('F. the screen — Edit edits it, View shows it, and "no week" is a sen
     expect(html, 'no editable day control on a read-only page').not.toContain('name="dayKind_1"');
     expect(html, 'nor the marker that would let one post').not.toContain('name="weekEditor"');
     // …and it still SAYS the week, so "read-only" is not "absent".
-    const section = html.slice(html.indexOf('id="section-workingDay"'));
-    expect(section).toContain(esc(en.admin.attendancePolicy.dayMon));
-    expect(section).toContain(esc(en.roster.dayKindHalf));
+    const section = html.slice(html.indexOf('id="section-general"'));
+    expect(section).toContain(esc(en.admin.rotation.weekday1));
+    expect(section).toContain(esc(en.admin.rotation.half));
   });
 
   it('a group that declares no week says so in words, on both pages', async () => {

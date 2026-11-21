@@ -6,6 +6,8 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 const actions=vi.hoisted(()=>({photo:vi.fn(),save:vi.fn(),preview:vi.fn(),fields:vi.fn(),legacy:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>Object.assign((key:string)=>key,{has:()=>false})}));
+// 82748f92: the unsaved-changes check is a client island needing the intl provider; its behaviour is test/people-settings-navigation.dom.test.tsx.
+vi.mock('@/components/people-settings-navigation',()=>({PeopleSettingsNavigation:()=>null}));
 vi.mock('@/lib/authz',()=>({requireAdmin:async()=>({tenantId:'fictional',roles:['hr_admin']}),isGroupAdmin:()=>true}));
 vi.mock('@/core/entitlements',()=>({getSetting:(_ctx:unknown,key:string)=>key==='ess.profile_photo_edit'?false:undefined}));
 vi.mock('@/core/read',()=>({listCompanies:async()=>[],listDepartments:async()=>[],listJobGrades:async()=>[],listEmployees:async()=>[]}));

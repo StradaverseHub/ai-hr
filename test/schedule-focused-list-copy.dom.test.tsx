@@ -1,5 +1,5 @@
 import {cloneElement,isValidElement,type ReactNode} from 'react';
-import {expect,it,vi} from 'vitest';
+import {beforeEach,expect,it,vi} from 'vitest';
 import {render,screen} from '@testing-library/react';
 import {createTranslator,NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
@@ -9,18 +9,45 @@ import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 const catalog=vi.hoisted(()=>({locale:'en',messages:{} as typeof en}));
+const owners=vi.hoisted(()=>({
+  ensure:vi.fn(async()=>{}),
+  list:vi.fn(async():Promise<{isDefault:boolean}[]>=>[]),
+}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:catalog.locale,messages:catalog.messages,namespace:namespace as never,onError:error=>{throw error;}})}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('Unexpected redirect '+url);}}));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({})}));
 vi.mock('../components/attendance-settings-navigation',()=>({AttendanceSettingsNavigation:()=>null}));
 vi.mock('../components/legacy-schedule-anchor',()=>({LegacyScheduleAnchor:()=>null}));
-vi.mock('../core/attendance-rule',()=>({ensureStandardRule:async()=>{},listAttendanceRules:async()=>[]}));
+vi.mock('../core/attendance-rule',()=>({ensureStandardRule:owners.ensure,listAttendanceRules:owners.list}));
 // The Offline clocking card's server read (DB); its own card is covered by test/offline-clocking-card.dom.test.tsx.
 vi.mock('../app/admin/attendance-policy/offline-clocking-data',()=>({loadOfflineClockingSettings:async()=>[]}));
 vi.mock('../app/admin/attendance-policy/offline-clocking-actions',()=>({saveOfflineClockingAction:vi.fn()}));
 vi.mock('../app/admin/attendance-policy/rule-actions',()=>({copyAttendanceRuleAction:vi.fn(),deleteAttendanceRuleAction:vi.fn(),setAttendanceRuleStatusAction:vi.fn()}));
 import Page from '../app/admin/attendance/schedule/page';
 import {ScheduleGroupCard} from '../app/admin/attendance-policy/schedule-group-card';
+
+beforeEach(()=>{
+  catalog.locale='en';catalog.messages=en;
+  owners.ensure.mockReset().mockResolvedValue(undefined);
+  owners.list.mockReset().mockResolvedValue([]);
+});
+
+it('uses the existing Standard from the page read without calling the write owner',async()=>{
+  owners.list.mockResolvedValueOnce([{isDefault:true}]);
+  await Page({searchParams:Promise.resolve({})});
+  expect(owners.list).toHaveBeenCalledTimes(1);
+  expect(owners.ensure).not.toHaveBeenCalled();
+});
+
+it('repairs a missing Standard through the existing write owner before refreshing the page list',async()=>{
+  owners.list.mockResolvedValueOnce([{isDefault:false}]).mockResolvedValueOnce([{isDefault:true}]);
+  await Page({searchParams:Promise.resolve({})});
+  expect(owners.ensure).toHaveBeenCalledTimes(1);
+  expect(owners.list).toHaveBeenCalledTimes(2);
+  const [read,refresh]=owners.list.mock.invocationCallOrder;
+  expect(owners.ensure.mock.invocationCallOrder[0]).toBeGreaterThan(read);
+  expect(owners.ensure.mock.invocationCallOrder[0]).toBeLessThan(refresh);
+});
 
 /** Resolve the known async server card; all visible UI components still render normally. */
 async function resolveCard(node:ReactNode):Promise<ReactNode>{

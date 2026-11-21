@@ -1,3 +1,4 @@
+import {aiCentreActivity,aiCentreEvent} from '../lib/ai/centre-activity';
 /**
  * Domain-event substrate (ADR-0006). `appendEvent` writes an immutable event in the
  * CURRENT transaction, so a state change and its audit record commit together —
@@ -32,6 +33,8 @@ export type MovementTag = {
    *  before/after has to come from the sibling `employment.info.updated` event of the SAME movement.
    *  Absent on legacy events and on single-leg writes made outside the Movement module. */
   groupId?: string;
+  /** Fixed Contract posting provenance; emitted only by the source-bound canonical Movement port. */
+  contractPostingId?: string;
 };
 
 export type AppendEventArgs = {
@@ -64,6 +67,20 @@ export function appendEvent(tx: Tx, e: AppendEventArgs, options: { returnId: boo
 export async function appendEvent(
   tx: Tx, e: AppendEventArgs, options?: { returnId: boolean },
 ): Promise<string | void> {
+  const activity=aiCentreActivity(e.tenantId);
+  let aiGeneration:number|undefined;
+  if(aiCentreEvent(e.eventType)||activity&&!['teras-mandate.stopped','teras-mandate.resumed','ai-centre.function-changed'].includes(e.eventType)){
+    // AI control check: keep the stop switch stable (its writers hold Access exclusively). A transaction
+    // already holding Access shared is a converted writer and joins shared instead of upgrading, which two
+    // such writers could deadlock on; one holding nothing or exclusive keeps the exclusive lock as before.
+    await tx.execute(sql`select case when app.access_lock_mode_held(${e.tenantId}::uuid)='S'
+      then pg_advisory_xact_lock_shared(hashtextextended(${"access-configuration:"+e.tenantId},0))
+      else pg_advisory_xact_lock(hashtextextended(${"access-configuration:"+e.tenantId},0)) end`);
+    const [control]=await tx.execute<{generation:number}>(sql`select app.ai_centre_assert_running(${aiCentreActivity(e.tenantId)?.generation??null}::integer) as generation`);
+    if(control?.generation==null)throw Error('AI activity stopped');
+    for(const key of activity?.functions??[]){const [row]=await tx.execute<{allowed:boolean}>(sql`select app.ai_centre_read_allowed(${key}) as allowed`);if(row?.allowed!==true)throw Error('AI function stopped');}
+    if(aiCentreEvent(e.eventType))aiGeneration=control.generation;
+  }
   const insert = tx.insert(domainEvent).values({
     id: e.id,
     tenantId: e.tenantId,
@@ -76,10 +93,12 @@ export async function appendEvent(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     payload: (e.payload ?? null) as any,
   });
-  if (options?.returnId) {
+  if (options?.returnId || aiGeneration!==undefined) {
     const [row] = await insert.returning({ id: domainEvent.id });
     if (!row) throw new Error('domain_event.insert_reference_missing');
-    return row.id;
+    if(aiGeneration!==undefined)await tx.execute(sql`select app.ai_centre_stamp_event(${row.id}::uuid,${aiGeneration}::integer)`);
+    if(options?.returnId)return row.id;
+    return;
   }
   await insert;
 }
@@ -88,6 +107,10 @@ export async function appendEvent(
  *  file). Same columns, same rules as appendEvent; an empty list is a no-op. */
 export async function appendEvents(tx: Tx, es: AppendEventArgs[]): Promise<void> {
   if (es.length === 0) return;
+  if(es.some(e=>aiCentreEvent(e.eventType)||aiCentreActivity(e.tenantId))){
+    for(const event of es)await appendEvent(tx,event);
+    return;
+  }
   await tx.insert(domainEvent).values(
     es.map((e) => ({
       id: e.id,

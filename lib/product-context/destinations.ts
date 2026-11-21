@@ -84,20 +84,22 @@ const SIDEBAR:readonly (readonly [string,string,DestinationAudience,string|null]
  ['/control-tower/agents/runs','aiManagementRuns','admin',null],
  ['/reports?cat=master','reportMaster','admin',null],['/reports?cat=attendance','reportAttendance','admin',null],['/reports?cat=leave','reportLeave','admin',null],
  ['/reports?cat=payroll','reportPayroll','admin',null],['/reports?cat=claim','reportClaim','admin',null],['/reports?cat=performance','reportPerformance','admin',null],
- ['/admin/settings/employee-id','employeeIdConfig','admin',null],['/admin/settings/people-general','peopleGeneral','admin',null],
- ['/admin/settings/dashboard','dashboardCardConfig','admin',null],['/admin/settings/system-labels','systemLabels','admin',null],
- ['/admin/system-settings/approval-delegation','delegations','admin',null],['/admin/settings/movement','movementSettings','admin',null],
- ['/admin/settings/hiring-defaults','hiringDefaults','admin',null],['/admin/holidays','holidays','admin',null],
- ['/admin/settings/profile-requests','profileRequestSettings','admin',null],['/admin/settings/login','loginPresentation','admin',null],
+ // 82748f92: the six People setup pages are cards on People › Settings now; they stay in the linkable-pages index below.
+ ['/admin/settings/people','peopleSettings','admin',null],
+ ['/admin/settings/dashboard','dashboardCardConfig','admin',null],
+ ['/admin/system-settings/approval-delegation','delegations','admin',null],
+ ['/admin/holidays','holidays','admin',null],
+ ['/admin/settings/login','loginPresentation','admin',null],
  ['/admin/settings/email','identityEmail','admin',null],['/admin/settings/entra','entra','admin',null],['/admin/settings/email-templates','emailTemplates','admin',null],
  ['/admin/settings/notifications','workflowEmail','admin',null],['/admin/scheduled-actions','scheduledActions','admin',null],
  ['/admin/privacy','dataPrivacy','admin',null],['/admin/system-explorer','systemExplorer','admin','system_explorer'],
  ['/admin/system-testing','systemTesting','admin','system_testing'],
  ['/lifecycle/probation','probationConfirmation','admin','lifecycle'],
+ ['/lifecycle/probation/postings','probationPostings','admin','lifecycle'],
  ['/lifecycle/probation/intake','probationIntake','admin','lifecycle'],
+ ['/lifecycle/probation/access','probationAccess','admin','lifecycle'],
  ['/lifecycle/probation/settings','probationSettings','admin','lifecycle'],
  ['/lifecycle/probation/forms','probationForms','admin','lifecycle'],
- ['/lifecycle/probation/routes','probationRoutes','admin','lifecycle'],
  ['/lifecycle/probation/workflows','probationWorkflows','admin','lifecycle'],
  ['/lifecycle/probation/templates','probationTemplates','admin','lifecycle'],
  ['/lifecycle/contracts','contractManagement','admin','lifecycle'],
@@ -105,6 +107,10 @@ const SIDEBAR:readonly (readonly [string,string,DestinationAudience,string|null]
  ['/lifecycle/contracts/settings','contractSettings','admin','lifecycle'],
  ['/lifecycle/contracts/workflows','contractWorkflows','admin','lifecycle'],
  ['/lifecycle/contracts/templates','contractTemplates','admin','lifecycle'],
+ // ADR 2026-11-15-probation-shared-automation, decision 1: the shared HR Automation builders.
+ ['/automation/workflows','automationWorkflows','admin','lifecycle'],
+ ['/automation/templates','automationTemplates','admin','lifecycle'],
+ ['/automation/groups','automationGroups','admin','lifecycle'],
 ];
 const groupAudience=(group:'main'|'manage'|'admin'):DestinationAudience=>group==='admin'?'admin':group==='manage'?'manager':'everyone';
 const rowAudience=(row:NavChildDescriptor,fallback:DestinationAudience):DestinationAudience=>row.adminOnly?'admin':row.managerUp&&fallback==='everyone'?'manager':fallback;
@@ -151,21 +157,70 @@ const under=(route:string,area:string)=>route===area||route.startsWith(area+'/')
 /** AI Centre restructure (owner decisions 26–29, 4 Nov 2026): the guarded forward stubs of removed pages. Each only runs
  * its guard and forwards to the page that owns the fact now, so it is not a link target; a reply links the owner. */
 export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/control-tower/actions','/control-tower/opportunities','/payroll/reports',
- '/control-tower/agents/inventory','/control-tower/agents/orchestrator']);
+ '/control-tower/agents/inventory','/control-tower/agents/orchestrator','/admin/rewards',
+ '/admin/attendance/settings/formula-builder','/admin/attendance/settings/formula-builder/new']);
 /** Native workflow grants and an active View As session cannot be inferred from a coarse role or module. */
 export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
+ // Resignation postings use configured/current-or-pending group membership plus company/workforce authority.
+ // The shell resolves offboardingPostingAccess; a coarse HR role must not advertise this queue.
+ '/lifecycle/offboarding/postings',
+ // Contract postings require native posting-group and workforce authority, beyond a coarse HR role.
+ '/lifecycle/contracts/postings',
  '/admin/attendance/settings/offline-clocking',
  '/payroll/statutory-forms/filing-history',
+ // Export artifacts and import outcomes are scoped to the initiating user and current Payroll grants.
+ '/payroll/transaction-view/workbooks',
+ '/payroll/transactions/fixed/imports',
  '/admin/rewards/access/view-as',
+ '/admin/rewards/earlier-plans',
  '/admin/rewards/bonus-matrices',
+ '/admin/rewards/change-log',
+ '/admin/rewards/limit-controls',
  '/admin/rewards/pat-inputs',
- '/admin/rewards/plans',
+ '/admin/rewards/review-plans',
+ '/admin/rewards/review-setup',
  '/admin/rewards/salary-structures',
  '/admin/rewards/setup-access',
  '/admin/rewards/uploaded',
  '/rewards/analytics',
+ // Earlier history uploads require effective Group Rewards plus group/company setup authority.
+ '/rewards/history-upload',
+ // b945f0cc: seat-scoped off-cycle flows stay in native navigation.
+ '/rewards/offcycle/new',
+ '/rewards/offcycle/settings',
  '/rewards/promotions',
  '/rewards/rules',
+ // ADR-0049 — Recruitment admits HR administrators and the company-scoped Recruiting Partner per company
+ // (app.can_admin_recruitment_for); neither the coarse admin role nor the manage group says who that is.
+ '/recruitment',
+ '/recruitment/candidates',
+ '/recruitment/positions',
+ '/recruitment/positions/new',
+ '/recruitment/settings',
+ '/recruitment/interviews',
+ '/recruitment/requisitions',
+ '/recruitment/requisitions/new',
+ '/recruitment/talent-pool',
+ '/recruitment/approvals',
+ '/recruitment/reports',
+ // Recruitment slice 11 — To screen lists a hiring manager's own screening requests; being a hiring manager of a
+ // job is a per-job team membership, not a role or tenant-wide module.
+ '/recruitment/screening',
+ // Recruitment slice 16 — Import candidates and the To assign list admit recruitment administrators and the recruiters and
+ // assistants of some job in the company (app.recruitment_operates_in_company); a per-job team membership, not a role.
+ '/recruitment/candidates/import',
+ '/recruitment/to-assign',
+ // Recruitment slice 17 — a job's "Suggested to archive" list admits the job's recruiters, assistants and the company's recruitment
+ // administrators (app.can_operate_recruitment_job); a per-job team membership, not a role.
+ '/recruitment/suggested-archive',
+ // Recruitment slices 23 and 25 — referral rewards (the company's recruitment administrators; the receiving company's payroll
+ // administrators through ?view=payroll) and the agency portal inbox (the job's operators): per-company and per-job, not a role.
+ '/recruitment/rewards',
+ '/recruitment/agency-portal',
+ // Recruitment slice 7 — referrals admit a person by their own active employment in a company with Recruitment
+ // (app.recruitment_referral_eligible); no role or tenant-wide module says who that is.
+ '/me/referrals',
+ '/me/referrals/mine',
 ]);
 export function classifyPage(route:string,source:string):Readonly<{audience:DestinationAudience;module:string|null}>|null{
  if(NOT_LINKABLE.some(area=>under(route,area))||FORWARD_STUBS.has(route)||NATIVE_SCOPE_ONLY_PAGES.has(route))return null;
@@ -188,7 +243,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/attendance/settings','admin',null],['/admin/attendance/settings/company-policy','admin',null],
  ['/admin/attendance/settings/overtime-patterns','admin',null],['/admin/attendance/settings/registered-devices','admin',null],
  ['/admin/attendance/settings/work-schedule-overtime','admin',null],['/admin/audit','admin',null],['/admin/card-assignment','admin','attendance'],
- ['/admin/claims','admin',null],['/admin/claims/forms','admin',null],['/admin/claims/limits','admin',null],['/admin/claims/mileage','admin',null],
+ ['/admin/claims','admin',null],['/admin/claims/limits','admin',null],['/admin/claims/mileage','admin',null],
  ['/admin/claims/reimbursements','admin',null],['/admin/holidays','admin',null],['/admin/holidays/groups','admin',null],
  ['/admin/holidays/groups/new','admin',null],['/admin/holidays/replacements','admin',null],['/admin/job-descriptions','admin',null],
  ['/admin/job-descriptions/configuration','admin',null],['/admin/job-descriptions/new','admin',null],['/admin/leave','admin',null],
@@ -200,27 +255,27 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/leave-config/leave-credit','admin',null],['/admin/leave-config/leave-credit/rules','admin','toil'],
  ['/admin/leave-config/records','admin',null],['/admin/leave-config/records/balances','admin',null],
  ['/admin/leave-config/records/entitlement','admin',null],['/admin/leave-config/settings','admin',null],
- ['/admin/leave-config/special-setting','admin',null],['/admin/leave-config/types','admin',null],['/admin/leave/adjustments','admin',null],
+ ['/admin/leave-config/shared-groups','admin',null],['/admin/leave-config/special-setting','admin',null],['/admin/leave-config/types','admin',null],['/admin/leave/adjustments','admin',null],
  ['/admin/leave/application-rules','admin',null],['/admin/leave/approval','admin',null],['/admin/leave/audit','admin',null],
  ['/admin/leave/entitlements','admin',null],['/admin/leave/entitlements/archive','admin',null],
  ['/admin/leave/entitlements/ledger-archive','admin',null],['/admin/leave/entitlements/templates','admin',null],
  ['/admin/leave/generate','admin',null],['/admin/leave/import','admin',null],['/admin/leave/payroll','admin',null],
  ['/admin/leave/replacement','admin',null],['/admin/lifecycle','admin','lifecycle'],['/admin/lifecycle/onboarding','admin','lifecycle'],
  ['/admin/lifecycle/onboarding/access','admin','lifecycle'],['/admin/lifecycle/onboarding/groups','admin','lifecycle'],['/admin/loans','admin',null],
- ['/admin/loans/new','admin',null],['/admin/locations','admin',null],['/admin/locations/clocking/new','admin',null],
+ ['/admin/loans/new','admin',null],['/admin/locations/clocking/new','admin',null],
  ['/admin/notice-board','admin',null],['/admin/notice-board/new','admin',null],['/admin/organization','admin',null],['/admin/organization/new','admin',null],
  ['/admin/organization/organisation-tagging','admin',null],['/admin/pay-components','admin',null],['/admin/pay-components/new','admin',null],
  ['/admin/payroll-config','admin',null],['/admin/payroll-cycle','admin',null],['/admin/payroll-permissions','admin',null],
  ['/admin/payroll-policy','admin',null],['/admin/personnel','admin',null],['/admin/personnel/child-relief','admin',null],
  ['/admin/personnel/duplicates','admin',null],['/admin/personnel/import','admin',null],['/admin/personnel/import/history','admin',null],
  ['/admin/personnel/new','admin',null],['/admin/personnel/profile-changes','admin',null],['/admin/personnel/settings','admin',null],
- ['/admin/privacy','admin',null],['/admin/privacy/case-handlers','admin',null],['/admin/rewards','admin','rewards'],['/admin/rewards/access','admin','rewards'],
- ['/admin/rewards/shared','admin','rewards'],['/admin/scheduled-actions','admin',null],['/admin/security-center','admin',null],['/admin/security-center/password-policy','admin',null],
+ ['/admin/privacy','admin',null],['/admin/privacy/case-handlers','admin',null],['/admin/rewards/access','admin','rewards'],
+ ['/admin/scheduled-actions','admin',null],['/admin/security-center','admin',null],['/admin/security-center/password-policy','admin',null],
  ['/admin/settings','admin',null],['/admin/settings/dashboard','admin',null],['/admin/settings/email','admin',null],
  ['/admin/settings/email-templates','admin',null],['/admin/settings/employee-id','admin',null],['/admin/settings/entra','admin',null],['/admin/settings/hiring-defaults','admin',null],
  ['/admin/settings/login','admin',null],['/admin/settings/movement','admin',null],['/admin/settings/movement/reasons','admin',null],
  ['/admin/settings/movement/types/new','admin',null],['/admin/settings/notifications','admin','notifications'],
- ['/admin/settings/people-general','admin',null],['/admin/settings/profile-options','admin',null],['/admin/settings/profile-requests','admin',null],
+ ['/admin/settings/people','admin',null],['/admin/settings/people-general','admin',null],['/admin/settings/profile-options','admin',null],['/admin/settings/profile-requests','admin',null],
  ['/admin/settings/profile-requests/rules','admin',null],['/admin/settings/system-labels','admin',null],
  ['/admin/settings/system-labels/profile-options','admin',null],['/admin/system-explorer','admin','system_explorer'],
  ['/admin/system-settings/approval-delegation','admin',null],['/admin/system-testing','admin','system_testing'],
@@ -232,7 +287,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/attendance/application-history','admin','attendance'],['/attendance/application-history/visible','everyone','attendance'],
  ['/attendance/breakdown','admin','attendance'],['/attendance/clock','everyone','attendance'],['/attendance/daily','everyone','attendance'],
  ['/attendance/import','admin','attendance'],['/attendance/import/logs','admin','attendance'],['/attendance/individual','everyone','attendance'],
- ['/attendance/my-records','everyone','attendance'],['/attendance/my-roster','everyone','attendance'],['/attendance/plan-ot','everyone','attendance'],
+ ['/attendance/my-records','everyone','attendance'],['/attendance/my-roster','everyone','attendance'],['/attendance/on-behalf/approve','everyone','attendance'],['/attendance/on-behalf/request','everyone','attendance'],['/attendance/plan-ot','everyone','attendance'],
  ['/attendance/plan-ot/apply','everyone','attendance'],['/attendance/recompute','admin','attendance'],
  ['/attendance/request-status','everyone','attendance'],['/attendance/requests','everyone','attendance'],['/cases','everyone',null],['/claims','everyone','claims'],
  ['/control-tower/agents','admin',null],
@@ -250,9 +305,9 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/letters/reports','admin','employees'],['/letters/settings','admin','employees'],['/letters/settings/automation','admin','employees'],
  ['/letters/settings/policy','admin','employees'],['/letters/templates','admin','employees'],['/letters/templates/new','admin','employees'],
  ['/lifecycle','everyone','lifecycle'],['/lifecycle/acknowledgement','everyone','lifecycle'],['/lifecycle/onboarding','everyone','lifecycle'],
- ['/lifecycle/onboarding/checklists','everyone','lifecycle'],['/lifecycle/requisitions/onboarding','everyone','lifecycle'],
+ ['/lifecycle/onboarding/checklists','everyone','lifecycle'],['/lifecycle/requisitions/offboarding','everyone','lifecycle'],['/lifecycle/requisitions/onboarding','everyone','lifecycle'],
  ['/lifecycle/v9','everyone','lifecycle'],['/manage/my-team','manager',null],['/me','everyone',null],['/me/calendar','everyone',null],['/me/cases','everyone',null],['/me/cases/new','everyone',null],
- ['/me/ea','everyone','payroll'],['/me/home','everyone',null],['/me/letters','everyone','employees'],['/me/lifecycle','everyone','lifecycle'],
+ ['/me/document-signing','everyone','lifecycle'],['/me/ea','everyone','payroll'],['/me/home','everyone',null],['/me/letters','everyone','employees'],['/me/lifecycle','everyone','lifecycle'],
  ['/me/notifications','everyone','notifications'],['/me/payroll-readiness','everyone',null],['/me/payslip','everyone','payroll'],['/me/performance','everyone',null],
  ['/me/tax-relief','everyone','payroll'],['/me/tp3','everyone','payroll'],['/notices','everyone',null],['/org','everyone',null],
  ['/payroll','admin','payroll'],['/payroll/back-pay','admin','payroll'],['/payroll/borang-8a/preview','admin','payroll'],
@@ -261,7 +316,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/payroll/configuration/hrdf','admin','payroll'],['/payroll/configuration/pcb','admin','payroll'],
  ['/payroll/configuration/skbbk','admin','payroll'],['/payroll/configuration/socso','admin','payroll'],['/payroll/control-tower','admin','payroll'],
  ['/payroll/cp39/preview','admin','payroll'],['/payroll/cp8d/preview','admin','payroll'],['/payroll/formula-builder','admin','payroll'],
- ['/payroll/formula-builder/new','admin','payroll'],['/payroll/history-import','admin','payroll'],['/payroll/history-import/logs','admin','payroll'],
+ ['/payroll/formula-builder/new','admin','payroll'],['/payroll/history-import','admin','payroll'],['/payroll/history-import/logs','admin','payroll'],['/payroll/history-import/records','admin','payroll'],
  ['/payroll/income-tax-recalculation','admin','payroll'],['/payroll/individual-payslip','admin','payroll'],
  ['/payroll/multi-cycle-worksheet','admin','payroll'],['/payroll/payment-submission','admin','payroll'],
  ['/payroll/payslip-information','admin','payroll'],['/payroll/pcb-detail','admin','payroll'],['/payroll/process','admin','payroll'],
@@ -286,7 +341,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/performance/plan/team','everyone','performance'],['/performance/team','everyone','performance'],
  ['/performance/team/kpis','everyone','performance'],['/performance/workspace','everyone','performance'],['/personnel','everyone',null],
  ['/policies','everyone',null],
- ['/reports','admin',null],['/reports/employee-master','admin',null],['/rewards','everyone','rewards'],['/rewards/approvals','everyone','rewards'],
+ ['/reports','admin',null],['/reports/employee-master','admin',null],['/rewards','everyone','rewards'],['/rewards/approvals','everyone','rewards'],['/rewards/reviews','everyone','rewards'],
  ['/roster','everyone','attendance'],['/roster/exceptions','everyone','attendance'],['/roster/import','admin','attendance'],
  ['/system-testing','everyone','system_testing'],['/tasks','everyone',null],
 ] satisfies PageRow[]).map(row=>Object.freeze(row)));

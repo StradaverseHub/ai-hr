@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
+import type { AbstractIntlMessages } from 'next-intl';
 import { PasswordPolicyForm } from '../app/admin/settings/login/password-policy-form';
 import { DEFAULT_PASSWORD_POLICY } from '../lib/password-policy';
 import en from '../messages/en.json';
@@ -13,7 +14,7 @@ import vietnamese from '../messages/vi.json';
 const save = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({ status: 'saved', revision: 1 })));
 vi.mock('../app/admin/settings/login/password-policy-actions', () => ({ savePasswordPolicyAction: (...args: unknown[]) => save(...args) }));
 afterEach(() => { cleanup(); save.mockReset(); save.mockResolvedValue({ status: 'saved', revision: 1 }); });
-function wrap(locale = 'en', messages = en) {
+function wrap(locale = 'en', messages: AbstractIntlMessages = en) {
   return render(<NextIntlClientProvider locale={locale} messages={messages} onError={error => { throw error; }}><PasswordPolicyForm policy={DEFAULT_PASSWORD_POLICY} revision={0}/></NextIntlClientProvider>);
 }
 describe('password security settings', () => {

@@ -9,6 +9,7 @@ import { isHealthRoute } from '@/lib/health-route';
 import { isMobileApiRoute } from '@/lib/mobile-api/routes';
 import {isLetterVerificationRoute} from '@/lib/letter-verification';
 import {isPublicEmailAssetRead} from '@/lib/email-design/asset-route';
+import {isCareersRoute} from '@/lib/careers-route';
 
 /**
  * Authentication routing and demo access protection.
@@ -25,7 +26,9 @@ import {isPublicEmailAssetRead} from '@/lib/email-design/asset-route';
  * In the legacy WorkOS/demo branch, realAuthEnabled() or SHARE_PASSWORD must guard non-development
  * requests; otherwise the middleware refuses to serve. The demo HTTP Basic gate checks the shared
  * password, accepts any username and does not authenticate individual employees (see HOSTING.md).
- * Auth-route and health/mobile/letter-verification bypasses retain their own handler checks.
+ * Auth-route and health/mobile/letter-verification bypasses retain their own handler checks. The public careers page
+ * (Recruitment slice 8) is admitted by exact path and method only (lib/careers-route.ts); its handlers set no cookie and
+ * reach data only through the careers definer functions.
  *
  * Only the legacy WorkOS helper uses AuthKit. It forwards the headers required by withAuth() and
  * creates the PKCE verifier cookie on its redirect response, rather than in a Server Component.
@@ -130,7 +133,7 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   if (internalSelected()) {
     if (!internalReady()) return refuseUnconfigured();
     const path = req.nextUrl.pathname;
-    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || isLetterVerificationRoute(path) || isPublicEmailAssetRead(path,req.method)) return withPathname(req);
+    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || isLetterVerificationRoute(path) || isPublicEmailAssetRead(path,req.method) || isCareersRoute(path,req.method)) return withPathname(req);
     if (/^[A-Za-z0-9_-]{43}$/.test(req.cookies.get(INTERNAL_SESSION_COOKIE)?.value || '')) return withPathname(req);
     if (wantsStatusNotRedirect(req)) return new NextResponse('Authentication required.', { status: 401, headers: { 'cache-control': 'no-store' } });
     const destination = new URL('/login', internalConfig().origin);
@@ -140,7 +143,7 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   if (keycloakSelected()) {
     if (!keycloakReady()) return refuseUnconfigured();
     const path = req.nextUrl.pathname;
-    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || isLetterVerificationRoute(path) || isPublicEmailAssetRead(path,req.method)) return withPathname(req);
+    if (isAuthRoute(path) || isHealthRoute(path) || isMobileApiRoute(path) || isLetterVerificationRoute(path) || isPublicEmailAssetRead(path,req.method) || isCareersRoute(path,req.method)) return withPathname(req);
     return withKeycloakSession(req);
   }
   const password = process.env.SHARE_PASSWORD;
@@ -156,6 +159,8 @@ export function middleware(req: NextRequest): NextResponse | Promise<NextRespons
   // above also applies to health. See lib/health-route.ts.
   if (isHealthRoute(req.nextUrl.pathname)) return withPathname(req);
   if (isLetterVerificationRoute(req.nextUrl.pathname)) return withPathname(req);
+  // Recruitment slice 8: the public careers page and job paths, by exact shape and method, ahead of the demo Basic gate.
+  if (isCareersRoute(req.nextUrl.pathname,req.method)) return withPathname(req);
   // Assets contain only validated raster bytes and use unguessable tokens. Provider readiness above
   // still owns admission; mail proxies receive no HR session or administrative endpoint access.
   if (isPublicEmailAssetRead(req.nextUrl.pathname,req.method)) return withPathname(req);

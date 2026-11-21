@@ -22,9 +22,12 @@ import {
   or,
   sql,
   type SQL,
+  type SQLWrapper,
 } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { isAdmin } from '../lib/authz-model';
+import { assertAiPresentationPrincipalTx } from './ai-principal';
+import { ALL_ROW_CEILING, PAGE_SIZE_OPTIONS, pageState, type PageQuery, type PageState } from '../lib/pagination';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 // 9cbf5e0d — one Employee Status engine; the dashboard reads it instead of the legacy stored enum.
@@ -264,21 +267,31 @@ function headcountSourceRowsTx(tx:Tx,scopeIds:string[]|undefined,asOf:string){
       .where(and(activeAsOf(asOf), scopeWhere(scopeIds)));
 }
 export async function headcountSummaryTx(tx:Tx,scopeIds:string[]|undefined,opts:{asOf:string}):Promise<HeadcountSummary>{
-  const rows=await headcountSourceRowsTx(tx,scopeIds,opts.asOf);
-    const tally = (key: 'company' | 'department' | 'position'): DimensionCount[] => {
-      const m = new Map<string, number>();
-      for (const r of rows) {
-        const name = r[key] ?? '—';
-        m.set(name, (m.get(name) ?? 0) + 1);
-      }
-      return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-    };
-    return {
-      total: rows.length,
-      byCompany: tally('company'),
-      byDepartment: tally('department'),
-      byPosition: tally('position'),
-    };
+  // Group the exact native source, including its LEFT-join multiplicity. Do not
+  // join Person here: headcount's existing population does not require that join.
+  const source = headcountSourceRowsTx(tx, scopeIds, opts.asOf).as('analytics_headcount');
+  const companyName = sql`coalesce(${source.company}, '—')`;
+  const departmentName = sql`coalesce(${source.department}, '—')`;
+  const positionName = sql`coalesce(${source.position}, '—')`;
+  const rows = await tx.select({
+    dimension: sql<'total'|'company'|'department'|'position'>`case
+      when grouping(${companyName})=0 then 'company'
+      when grouping(${departmentName})=0 then 'department'
+      when grouping(${positionName})=0 then 'position' else 'total' end`,
+    name: sql<string|null>`case
+      when grouping(${companyName})=0 then ${companyName}
+      when grouping(${departmentName})=0 then ${departmentName}
+      when grouping(${positionName})=0 then ${positionName} else null end`,
+    count: count(),
+  }).from(source).groupBy(sql`grouping sets ((), (${companyName}), (${departmentName}), (${positionName}))`);
+  const dimension = (key:'company'|'department'|'position'):DimensionCount[] => rows
+    .filter(row=>row.dimension===key)
+    .map(row=>({name:row.name??'—',count:Number(row.count)}))
+    // Old equal-count order depended on an unordered scan. Make ties stable;
+    // retain the existing descending-count order and every bucket, including ''.
+    .sort((a,b)=>b.count-a.count || a.name.localeCompare(b.name));
+  return {total:Number(rows.find(row=>row.dimension==='total')?.count??0),
+    byCompany:dimension('company'),byDepartment:dimension('department'),byPosition:dimension('position')};
 }
 /** Active headcount as of a date, tallied by company, department, and position. */
 export function headcountSummary(ctx:SessionContext,scopeIds:string[]|undefined,opts:{asOf:string}):Promise<HeadcountSummary>{
@@ -320,14 +333,10 @@ export type MasterDataRow = {
  *  The optional `filter` (ADR-0047) narrows by department (on the CURRENT assignment) and free-text `q`.
  *  Note: a department-filtered master-data export legitimately excludes employees with no open
  *  assignment — that is intended behaviour for the roster view (see ADR-0047 §4). */
-export function masterDataExport(
-  ctx: SessionContext,
-  scopeIds: string[] | undefined,
-  opts: { includeComp?: boolean; includeTerminated?: boolean; filter?: ReportFilter } = {},
-): Promise<MasterDataRow[]> {
-  const withComp = !!opts.includeComp && isAdmin(ctx);
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
+type MasterDataOptions = { includeTerminated?: boolean; filter?: ReportFilter };
+/** Shared source retains every export join, including compensation multiplicity. */
+function masterDataRowsTx(tx:Tx, scopeIds:string[]|undefined, opts:MasterDataOptions) {
+  return tx
       .select({
         employeeCode: employment.employeeCode,
         name: person.fullName,
@@ -367,8 +376,28 @@ export function masterDataExport(
           qWhere(opts.filter),
           scopeWhere(scopeIds),
         ),
-      )
-      .orderBy(person.fullName);
+      );
+}
+
+/** Exact dashboard count. No employee or compensation values leave the database. */
+export function masterDataCount(ctx:SessionContext,scopeIds:string[]|undefined,opts:MasterDataOptions={}):Promise<number>{
+  const scope=scopeIds?.slice(), input={...opts,filter:opts.filter?{...opts.filter}:undefined};
+  return withAnalyticsPresentation(ctx,tx=>masterDataCountTx(tx,scope,input));
+}
+
+async function masterDataCountTx(tx:Tx,scope:string[]|undefined,input:MasterDataOptions):Promise<number> {
+    const source=masterDataRowsTx(tx,scope,input).as('analytics_master_count');
+    const [row]=await tx.select({total:count()}).from(source);
+    return Number(row?.total??0);
+}
+export function masterDataExport(
+  ctx: SessionContext,
+  scopeIds: string[] | undefined,
+  opts: { includeComp?: boolean; includeTerminated?: boolean; filter?: ReportFilter } = {},
+): Promise<MasterDataRow[]> {
+  const withComp = !!opts.includeComp && isAdmin(ctx);
+  return withTenant(ctx, async (tx) => {
+    const rows = await masterDataRowsTx(tx,scopeIds,opts).orderBy(person.fullName);
     return rows.map((r) => {
       const base: MasterDataRow = {
         employeeCode: r.employeeCode,
@@ -390,6 +419,41 @@ export function masterDataExport(
       return base;
     });
   });
+}
+
+/** Snapshot ownership is local to this request; no permission state is cached. */
+function withAnalyticsPresentation<T>(supplied:SessionContext,read:(tx:Tx)=>Promise<T>):Promise<T>{
+  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+  return withTenant(ctx,async tx=>{
+    await assertAiPresentationPrincipalTx(tx,ctx);
+    return read(tx);
+  },{readOnlySnapshot:true});
+}
+
+/** A selected manager filter is an employment identity, not a manager-role grant.
+ * The old dropdown offered every visible employment. Preserve that membership
+ * without loading its complete roster or unrelated assignment/compensation facts. */
+export function analyticsManagerSelection(ctx:SessionContext,scopeIds:string[]|undefined,selectedId:string|undefined):Promise<{employmentId:string;name:string}|null>{
+  if(!selectedId||!UUID_RE.test(selectedId))return Promise.resolve(null);
+  const scope=scopeIds?.slice();
+  return withAnalyticsPresentation(ctx,async tx=>{
+    const [row]=await tx.select({employmentId:employment.id,name:person.fullName})
+      .from(employment).innerJoin(person,eq(person.id,employment.personId))
+      .innerJoin(company,eq(company.id,employment.companyId))
+      .where(and(eq(employment.id,selectedId),scopeWhere(scope))).limit(1);
+    return row??null;
+  });
+}
+
+type PeriodReportInput = {from:string;to:string;filter?:ReportFilter};
+export type AnalyticsReportPage<T> = {rows:T[];state:PageState};
+function validatedReportPage(input:PageQuery):PageQuery {
+  const page={...input};
+  if (!Number.isSafeInteger(page.page)||page.page<0||!Number.isSafeInteger(page.offset)||page.offset<0||
+      !(page.size==='all'||PAGE_SIZE_OPTIONS.some(size=>size===page.size))||
+      page.limit!==(page.size==='all'?ALL_ROW_CEILING:page.size)||
+      page.offset!==(page.size==='all'?0:page.page*page.limit))throw new Error('Invalid analytics page');
+  return page;
 }
 
 export type HireRow = {
@@ -425,19 +489,16 @@ const assignmentEffectiveAt = (
 
 /** Employees hired within [from, to] (inclusive) — the new-hire cohort for the period.
  *  `filter` (ADR-0047): department resolved against the assignment effective on the hire date. */
-export function newHires(
-  ctx: SessionContext,
-  scopeIds: string[] | undefined,
-  p: { from: string; to: string; filter?: ReportFilter },
-): Promise<HireRow[]> {
-  return withTenant(ctx, (tx) =>
-    tx
+function newHiresRowsTx(tx:Tx,scopeIds:string[]|undefined,p:PeriodReportInput) {
+  return tx
       .select({
-        name: person.fullName,
-        company: company.legalName,
-        department: department.name,
-        position: position.title,
-        hiredOn: employment.hiredOn,
+        employmentId: sql<string>`${employment.id}`.as('employment_id'),
+        assignmentId: sql<string|null>`${assignment.id}`.as('assignment_id'),
+        name: sql<string>`${person.fullName}`.as('name'),
+        company: sql<string>`${company.legalName}`.as('company'),
+        department: sql<string|null>`${department.name}`.as('department'),
+        position: sql<string|null>`${position.title}`.as('position'),
+        hiredOn: sql<string>`${employment.hiredOn}`.mapWith(employment.hiredOn).as('hiredOn'),
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -453,11 +514,36 @@ export function newHires(
           qWhere(p.filter),
           scopeWhere(scopeIds),
         ),
-      )
-      .orderBy(desc(employment.hiredOn)),
-  );
+      );
 }
 
+/** Complete export; the page API below never limits this source. */
+export function newHires(ctx:SessionContext,scopeIds:string[]|undefined,p:PeriodReportInput):Promise<HireRow[]>{
+  return withTenant(ctx,async tx=>{
+    const rows=await newHiresRowsTx(tx,scopeIds,p).orderBy(desc(employment.hiredOn));
+    return rows.map(({employmentId,assignmentId,...row})=>row);
+  });
+}
+
+export async function newHiresPage(ctx:SessionContext,scopeIds:string[]|undefined,p:PeriodReportInput&{page:PageQuery}):Promise<AnalyticsReportPage<HireRow>>{
+  const page=validatedReportPage(p.page),scope=scopeIds?.slice(),input={from:p.from,to:p.to,filter:p.filter?{...p.filter}:undefined};
+  return withAnalyticsPresentation(ctx,tx=>newHiresPageTx(tx,scope,input,page));
+}
+
+async function newHiresPageTx(tx:Tx,scope:string[]|undefined,input:PeriodReportInput,page:PageQuery):Promise<AnalyticsReportPage<HireRow>> {
+    const source=newHiresRowsTx(tx,scope,input).as('analytics_newHires_page');
+    const rows=await tx.select({
+      name:source.name,
+      company:source.company,
+      department:source.department,
+      position:source.position,
+      hiredOn:source.hiredOn,
+      total:sql<number>`count(*) over()::int`,
+    }).from(source).orderBy(desc(source.hiredOn),source.name,source.employmentId,source.assignmentId).limit(page.limit).offset(page.offset);
+    // An empty page still reports the full population (including an out-of-range page).
+    const total=rows.length?Number(rows[0].total):Number((await tx.select({total:count()}).from(source))[0]?.total??0);
+    return {rows:rows.map(({total,...row})=>row),state:pageState(page,total,rows.length)};
+}
 export type TerminationRow = {
   name: string;
   company: string;
@@ -471,39 +557,71 @@ export type TerminationRow = {
  *  `filter` (ADR-0047): department resolved against the assignment effective on the termination date.
  *  This matters because a terminated employee's open assignment is CLOSED (validTo set), so a current
  *  assignment join would yield a null department and silently drop every leaver from a dept filter. */
-export function terminations(
-  ctx: SessionContext,
-  scopeIds: string[] | undefined,
-  p: { from: string; to: string; filter?: ReportFilter },
-): Promise<TerminationRow[]> {
-  return withTenant(ctx, (tx) =>
-    tx
+function terminationsRowsTx(tx:Tx,scopeIds:string[]|undefined,p:PeriodReportInput) {
+  const datedAssignment=aliasedTable(assignment,'termination_assignment');
+  // Native RLS can estimate this population as a handful of rows and then
+  // materialize every assignment for every leaver (50k × 10k in the measured
+  // plan). Keep the indexed employment/date correlation inside a real OFFSET 0
+  // boundary. Drizzle's .offset(0) omits SQL, so use its public SQL join API.
+  // No LIMIT: inclusive validTo can legitimately match both adjacent versions.
+  const temporalAssignments=sql`(select ${assignment.id},${assignment.departmentId}
+    from ${assignment} where ${assignmentEffectiveAt(employment.terminatedOn,true)} offset 0)
+    as ${sql.identifier('termination_assignment')}`;
+  return tx
       .select({
-        name: person.fullName,
-        company: company.legalName,
-        department: department.name,
-        terminatedOn: employment.terminatedOn,
-        terminationType: employment.terminationType,
-        terminationReason: employment.terminationReason,
+        employmentId: sql<string>`${employment.id}`.as('employment_id'),
+        assignmentId: sql<string|null>`${datedAssignment.id}`.as('assignment_id'),
+        name: sql<string>`${person.fullName}`.as('name'),
+        company: sql<string>`${company.legalName}`.as('company'),
+        department: sql<string|null>`${department.name}`.as('department'),
+        terminatedOn: sql<string|null>`${employment.terminatedOn}`.mapWith(employment.terminatedOn).as('terminatedOn'),
+        terminationType: sql<string|null>`${employment.terminationType}`.as('terminationType'),
+        terminationReason: sql<string|null>`${employment.terminationReason}`.as('terminationReason'),
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
-      .leftJoin(assignment, assignmentEffectiveAt(employment.terminatedOn, true))
-      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoinLateral(temporalAssignments,sql`true`)
+      .leftJoin(department, eq(department.id, datedAssignment.departmentId))
       .where(
         and(
           gte(employment.terminatedOn, p.from),
           lte(employment.terminatedOn, p.to),
-          p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,
+          p.filter?.departmentId ? eq(datedAssignment.departmentId, p.filter.departmentId) : undefined,
           qWhere(p.filter),
           scopeWhere(scopeIds),
         ),
-      )
-      .orderBy(desc(employment.terminatedOn)),
-  );
+      );
 }
 
+/** Complete export; the page API below never limits this source. */
+export function terminations(ctx:SessionContext,scopeIds:string[]|undefined,p:PeriodReportInput):Promise<TerminationRow[]>{
+  return withTenant(ctx,async tx=>{
+    const rows=await terminationsRowsTx(tx,scopeIds,p).orderBy(desc(employment.terminatedOn));
+    return rows.map(({employmentId,assignmentId,...row})=>row);
+  });
+}
+
+export async function terminationsPage(ctx:SessionContext,scopeIds:string[]|undefined,p:PeriodReportInput&{page:PageQuery}):Promise<AnalyticsReportPage<TerminationRow>>{
+  const page=validatedReportPage(p.page),scope=scopeIds?.slice(),input={from:p.from,to:p.to,filter:p.filter?{...p.filter}:undefined};
+  return withAnalyticsPresentation(ctx,tx=>terminationsPageTx(tx,scope,input,page));
+}
+
+async function terminationsPageTx(tx:Tx,scope:string[]|undefined,input:PeriodReportInput,page:PageQuery):Promise<AnalyticsReportPage<TerminationRow>> {
+    const source=terminationsRowsTx(tx,scope,input).as('analytics_terminations_page');
+    const rows=await tx.select({
+      name:source.name,
+      company:source.company,
+      department:source.department,
+      terminatedOn:source.terminatedOn,
+      terminationType:source.terminationType,
+      terminationReason:source.terminationReason,
+      total:sql<number>`count(*) over()::int`,
+    }).from(source).orderBy(desc(source.terminatedOn),source.name,source.employmentId,source.assignmentId).limit(page.limit).offset(page.offset);
+    // An empty page still reports the full population (including an out-of-range page).
+    const total=rows.length?Number(rows[0].total):Number((await tx.select({total:count()}).from(source))[0]?.total??0);
+    return {rows:rows.map(({total,...row})=>row),state:pageState(page,total,rows.length)};
+}
 export type TurnoverResult = {
   leavers: number;
   headcountStart: number;
@@ -568,24 +686,21 @@ export type ChangeJobRow = {
  *  - Terminations are excluded for free: `terminateEmploymentTx` closes the open row WITHOUT inserting
  *    a successor, so there is no in-window `validFrom` successor to falsely report.
  */
-export function changeJobTransactions(
-  ctx: SessionContext,
-  scopeIds: string[] | undefined,
-  p: { from: string; to: string; filter?: ReportFilter },
-): Promise<ChangeJobRow[]> {
+function changeJobTransactionsRowsTx(tx:Tx,scopeIds:string[]|undefined,p:PeriodReportInput) {
   const prior = aliasedTable(assignment, 'prior_assignment');
   const fromDept = aliasedTable(department, 'from_department');
   const fromPos = aliasedTable(position, 'from_position');
-  return withTenant(ctx, (tx) =>
-    tx
+  return tx
       .select({
-        name: person.fullName,
-        company: company.legalName,
-        fromDepartment: fromDept.name,
-        toDepartment: department.name,
-        fromPosition: fromPos.title,
-        toPosition: position.title,
-        effectiveOn: assignment.validFrom,
+        employmentId: sql<string>`${employment.id}`.as('employment_id'),
+        assignmentId: sql<string|null>`${assignment.id}`.as('assignment_id'),
+        name: sql<string>`${person.fullName}`.as('name'),
+        company: sql<string>`${company.legalName}`.as('company'),
+        fromDepartment: sql<string|null>`${fromDept.name}`.as('fromDepartment'),
+        toDepartment: sql<string|null>`${department.name}`.as('toDepartment'),
+        fromPosition: sql<string|null>`${fromPos.title}`.as('fromPosition'),
+        toPosition: sql<string|null>`${position.title}`.as('toPosition'),
+        effectiveOn: sql<string>`${assignment.validFrom}`.mapWith(assignment.validFrom).as('effectiveOn'),
       })
       .from(assignment)
       .innerJoin(employment, eq(employment.id, assignment.employmentId))
@@ -616,64 +731,93 @@ export function changeJobTransactions(
           qWhere(p.filter),
           scopeWhere(scopeIds),
         ),
-      )
-      .orderBy(desc(assignment.validFrom), person.fullName),
-  );
+      );
 }
 
+/** Complete export; the page API below never limits this source. */
+export function changeJobTransactions(ctx:SessionContext,scopeIds:string[]|undefined,p:PeriodReportInput):Promise<ChangeJobRow[]>{
+  return withTenant(ctx,async tx=>{
+    const rows=await changeJobTransactionsRowsTx(tx,scopeIds,p).orderBy(desc(assignment.validFrom), person.fullName);
+    return rows.map(({employmentId,assignmentId,...row})=>row);
+  });
+}
+
+export async function changeJobTransactionsPage(ctx:SessionContext,scopeIds:string[]|undefined,p:PeriodReportInput&{page:PageQuery}):Promise<AnalyticsReportPage<ChangeJobRow>>{
+  const page=validatedReportPage(p.page),scope=scopeIds?.slice(),input={from:p.from,to:p.to,filter:p.filter?{...p.filter}:undefined};
+  return withAnalyticsPresentation(ctx,tx=>changeJobTransactionsPageTx(tx,scope,input,page));
+}
+
+type ChangeJobPageEnvelope = {total:number} & (
+  | (Omit<ChangeJobRow,'effectiveOn'> & {assignmentId:string;effectiveOn:string|Date})
+  | {assignmentId:null;name:null;company:null;fromDepartment:null;toDepartment:null;fromPosition:null;toPosition:null;effectiveOn:null}
+);
+
+/** The LEFT JOIN's absent assignment is transport only; never a business row.
+ * Raw execute bypasses select-field decoding, so retain the column's date decoder. */
+function changeJobPageRow(row:ChangeJobPageEnvelope):ChangeJobRow|null {
+  if(row.assignmentId===null)return null;
+  const effectiveOn=assignment.validFrom.mapFromDriverValue(row.effectiveOn);
+  if(typeof effectiveOn!=='string')throw new Error('Invalid change-job effective date');
+  return {name:row.name,company:row.company,fromDepartment:row.fromDepartment,toDepartment:row.toDepartment,
+    fromPosition:row.fromPosition,toPosition:row.toPosition,effectiveOn};
+}
+
+async function changeJobTransactionsPageTx(tx:Tx,scope:string[]|undefined,input:PeriodReportInput,page:PageQuery):Promise<AnalyticsReportPage<ChangeJobRow>> {
+    const source=changeJobTransactionsRowsTx(tx,scope,input);
+    // Exactly one evaluation of the unchanged relation feeds both the exact
+    // population count and the bounded page, including an empty/past-end page.
+    const envelope=await tx.execute<ChangeJobPageEnvelope>(sql`
+      with analytics_changeJobTransactions_page as materialized (${source.getSQL()})
+      select population.total, selected.assignment_id as "assignmentId", selected.name, selected.company,
+        selected."fromDepartment", selected."toDepartment", selected."fromPosition", selected."toPosition", selected."effectiveOn"
+      from (select count(*)::int as total from analytics_changeJobTransactions_page) population
+      left join (
+        select * from analytics_changeJobTransactions_page
+        order by "effectiveOn" desc, name, employment_id, assignment_id
+        limit ${page.limit} offset ${page.offset}
+      ) selected on true
+      order by selected."effectiveOn" desc, selected.name, selected.employment_id, selected.assignment_id
+    `);
+    const rows=envelope.map(changeJobPageRow).filter((row):row is ChangeJobRow=>row!==null);
+    return {rows,state:pageState(page,Number(envelope[0].total),rows.length)};
+}
 // ───────────────────────── Dimension distributions (visual charts) ─────────────────────────
-// Every distribution is filter-aware and tallied in JS (small result sets) so the Unknown / Unassigned
-// bucketing logic lives in one place. Person-level dimensions (gender / marital / age) sum to the
-// total headcount INCLUDING the explicit "Unknown" bucket (NULL value); they don't depend on the
-// current assignment so they never need an Unassigned bucket. Assignment-derived dimensions
-// (cost-centre / department / 5-way status come from the current assignment) count rows with no current
-// assignment into an explicit "Unassigned" bucket so the design narrows intentionally and the chart
-// still sums to the total headcount.
+// Every distribution is filter-aware and shares one native population. Count each raw value in
+// PostgreSQL, then fold those counts into the existing presentation buckets in JavaScript.
 //
 // Bucket sentinel keys are returned as machine codes; the UI maps them to localized labels.
 export const UNKNOWN_BUCKET = '__unknown__';
 export const UNASSIGNED_BUCKET = '__unassigned__';
 
-/** Tally a list of (nullable) string keys into a sorted DimensionCount[], folding null → nullBucket. */
-function tally(rows: (string | null)[], nullBucket = UNKNOWN_BUCKET): DimensionCount[] {
-  const m = new Map<string, number>();
-  for (const r of rows) {
-    const name = r ?? nullBucket;
-    m.set(name, (m.get(name) ?? 0) + 1);
-  }
-  return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
-}
+const demographicFields = [
+  'gender', 'maritalStatus', 'dateOfBirth', 'workState', 'costCenterName', 'employmentStatus', 'departmentName',
+] as const;
+type DemographicField = (typeof demographicFields)[number];
+type DemographicCountRow = Record<DemographicField, string | null> & { groupingMask: number; count: string };
+const demographicTotalMask = (1 << demographicFields.length) - 1;
+const demographicFieldByMask = new Map(demographicFields.map((field, index) =>
+  [demographicTotalMask ^ (1 << (demographicFields.length - 1 - index)), field] as const,
+));
 
-/** The base row set for person-level dimensions: one row per active-as-of-asOf employment matching the
- *  filters, carrying the person attributes + the current assignment's dept/costCentre/status. */
-function dimensionRows(
-  ctx: SessionContext,
-  scopeIds: string[] | undefined,
-  filters: AnalyticsFilters,
-  asOf: string,
-) {
-  return withTenant(ctx, (tx) =>
-    tx
-      .select({
-        gender: person.gender,
-        maritalStatus: person.maritalStatus,
-        dateOfBirth: person.dateOfBirth,
-        workState: employment.workState,
-        costCenterName: costCenter.name,
-        // 9cbf5e0d — the DERIVED Employee Status as of asOf, so the chart shows what the Personnel screens
-        // show. The legacy stored assignment.status is not read here any more.
-        employmentStatus: employmentStatusSql(asOf),
-        departmentName: department.name,
-      })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(assignment, currentAssignment)
-      .leftJoin(department, eq(department.id, assignment.departmentId))
-      .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
-      .where(
-        analyticsWhere({ ...filters, lifecycleStatus: filters.lifecycleStatus ?? 'active' }, scopeIds, { asOf }),
-      ),
-  );
+/** The original visible employment population supplies every dimension. */
+function dimensionRowsTx(tx: Tx, scopeIds: string[] | undefined, filters: AnalyticsFilters, asOf: string) {
+  return tx
+    .select({
+      // A bytewise equality grouping retains the original distinct JS string keys.
+      gender: sql<string | null>`${person.gender}::text collate "C"`.as('gender'),
+      maritalStatus: sql<string | null>`${person.maritalStatus}::text collate "C"`.as('maritalStatus'),
+      dateOfBirth: sql<string | null>`${person.dateOfBirth}::text collate "C"`.as('dateOfBirth'),
+      workState: sql<string | null>`${employment.workState}::text collate "C"`.as('workState'),
+      costCenterName: sql<string | null>`${costCenter.name}::text collate "C"`.as('costCenterName'),
+      employmentStatus: sql<string>`(${employmentStatusSql(asOf)})::text collate "C"`.as('employmentStatus'),
+      departmentName: sql<string | null>`${department.name}::text collate "C"`.as('departmentName'),
+    })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .leftJoin(assignment, currentAssignment)
+    .leftJoin(department, eq(department.id, assignment.departmentId))
+    .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
+    .where(analyticsWhere({ ...filters, lifecycleStatus: filters.lifecycleStatus ?? 'active' }, scopeIds, { asOf }));
 }
 
 /** Bucket a date-of-birth (ISO) into an age band as of `asOf`; null DOB → UNKNOWN_BUCKET. */
@@ -713,23 +857,51 @@ export async function workforceDemographics(
   scopeIds: string[] | undefined,
   opts: { asOf: string; filters?: AnalyticsFilters },
 ): Promise<Demographics> {
-  const filters = opts.filters ?? {};
-  const rows = await dimensionRows(ctx, scopeIds, filters, opts.asOf);
-  const byAgeBand = tally(rows.map((r) => ageBand(r.dateOfBirth, opts.asOf))).sort(
-    (a, b) => AGE_ORDER.indexOf(a.name) - AGE_ORDER.indexOf(b.name),
-  );
+  return withTenant(ctx,tx=>workforceDemographicsTx(tx,scopeIds,opts));
+}
+async function workforceDemographicsTx(
+  tx: Tx, scopeIds: string[] | undefined, opts: { asOf: string; filters?: AnalyticsFilters },
+): Promise<Demographics> {
+  const population = dimensionRowsTx(tx, scopeIds, opts.filters ?? {}, opts.asOf).as('demographic_population');
+  const columns = demographicFields.map(field => sql.identifier(field));
+  const columnList = sql.join(columns, sql`, `);
+  const groups = sql.join(columns.map(column => sql`(${column})`), sql`, `);
+  // GROUPING distinguishes a real NULL bucket from an absent dimension or the total.
+  const rows = await tx.execute<DemographicCountRow>(sql`
+    select grouping(${columnList}) as "groupingMask", ${columnList}, count(*)::text as count
+    from ${population}
+    group by grouping sets ((), ${groups})
+  `);
+
+  const tallies = new Map(demographicFields.map(field => [field, new Map<string, number>()] as const));
+  let total = 0;
+  for (const row of rows) {
+    const count = Number(row.count);
+    if (row.groupingMask === demographicTotalMask) {
+      total = count;
+      continue;
+    }
+    const field = demographicFieldByMask.get(row.groupingMask);
+    if (!field) throw new Error('Unexpected workforce demographic grouping');
+    const value = row[field];
+    const nullBucket = field === 'costCenterName' || field === 'departmentName' ? UNASSIGNED_BUCKET : UNKNOWN_BUCKET;
+    // Keep the original date interpretation and fold raw DOB counts into the age bands here.
+    const name = field === 'dateOfBirth' ? ageBand(value, opts.asOf) : value ?? nullBucket;
+    const buckets = tallies.get(field)!;
+    buckets.set(name, (buckets.get(name) ?? 0) + count);
+  }
+  const dimension = (field: DemographicField) =>
+    [...tallies.get(field)!].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+  const byAgeBand = dimension('dateOfBirth').sort((a, b) => AGE_ORDER.indexOf(a.name) - AGE_ORDER.indexOf(b.name));
   return {
-    total: rows.length,
-    byGender: tally(rows.map((r) => r.gender)),
-    byMarital: tally(rows.map((r) => r.maritalStatus)),
+    total,
+    byGender: dimension('gender'),
+    byMarital: dimension('maritalStatus'),
     byAgeBand,
-    byLocation: tally(rows.map((r) => r.workState)),
-    // assignment-derived → no current assignment folds to UNASSIGNED_BUCKET (so the chart sums to total).
-    byCostCentre: tally(rows.map((r) => r.costCenterName), UNASSIGNED_BUCKET),
-    byDepartment: tally(rows.map((r) => r.departmentName), UNASSIGNED_BUCKET),
-    // Derived from the employment's own lifecycle, so — unlike the other assignment-derived dimensions —
-    // an employee with no current assignment still lands in a real bucket, never "Unassigned".
-    byEmploymentStatus: tally(rows.map((r) => r.employmentStatus)),
+    byLocation: dimension('workState'),
+    byCostCentre: dimension('costCenterName'),
+    byDepartment: dimension('departmentName'),
+    byEmploymentStatus: dimension('employmentStatus'),
   };
 }
 
@@ -751,10 +923,16 @@ export async function demographicsByNationality(
 ): Promise<DimensionCount[] | null> {
   if (!isAdmin(ctx)) return null; // (a) admin-only — scoped viewers get the card omitted.
   const filters = opts.filters ?? {};
-  return withTenant(ctx, async (tx) => {
-    // (b) DISTINCT person base: select the person id + citizenship once per person, not per employment.
+  return withTenant(ctx,tx=>demographicsByNationalityTx(tx,ctx,scopeIds,opts,filters));
+}
+
+async function demographicsByNationalityTx(tx:Tx,ctx:SessionContext,scopeIds:string[]|undefined,opts:{asOf:string;filters?:AnalyticsFilters},filters:AnalyticsFilters):Promise<DimensionCount[]|null> {
+  if (!isAdmin(ctx)) return null;
+    // (b) Aggregate distinct people in the native enum bucket, retaining every
+    // original join/filter. At most three citizenships plus missing-row Unknown
+    // cross the driver; concurrent employments still count one person.
     const rows = await tx
-      .selectDistinct({ personId: person.id, citizenship: employeeStatutoryMy.epfCitizenship })
+      .select({ citizenship: employeeStatutoryMy.epfCitizenship, count: sql<string>`count(distinct ${person.id})` })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(assignment, currentAssignment)
@@ -762,11 +940,13 @@ export async function demographicsByNationality(
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, person.id))
       .where(
         analyticsWhere({ ...filters, lifecycleStatus: filters.lifecycleStatus ?? 'active' }, scopeIds, { asOf: opts.asOf }),
-      );
-    return tally(rows.map((r) => r.citizenship));
-  });
+      )
+      .groupBy(employeeStatutoryMy.epfCitizenship);
+    // The original DISTINCT query had no order. Preserve descending counts;
+    // equal-count bucket order remains unspecified, without a new collation.
+    return rows.map((r) => ({ name: r.citizenship ?? UNKNOWN_BUCKET, count: Number(r.count) }))
+      .sort((a, b) => b.count - a.count);
 }
-
 // ───────────────────────────── Leave analytics ─────────────────────────────
 // leave_ledger is tenant-scoped only (no companyId/department/costCenter), so EVERY leave aggregation
 // JOINs leave_ledger → employment → company and applies scopeWhere explicitly. Read-only → no events.
@@ -780,7 +960,10 @@ export async function leaveUtilisation(
   scopeIds: string[] | undefined,
   filters: AnalyticsFilters = {},
 ): Promise<LeaveUtilisationRow[]> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>leaveUtilisationTx(tx,scopeIds,filters));
+}
+
+async function leaveUtilisationTx(tx:Tx,scopeIds:string[]|undefined,filters:AnalyticsFilters):Promise<LeaveUtilisationRow[]> {
     const rows = await tx
       .select({
         name: leaveType.name,
@@ -799,9 +982,7 @@ export async function leaveUtilisation(
       .groupBy(leaveType.name)
       .orderBy(leaveType.name);
     return rows.map((r) => ({ name: r.name, granted: Number(r.granted), taken: Number(r.taken) }));
-  });
 }
-
 // ─────────────────── Carry-forward & forfeiture report ───────────────────
 // Per (employment, ANNUAL leave type) row for the leave-year cycle STARTING in the selected year: what
 // carried in, its expiry date, and what was forfeited at open (cap-excess) vs at expiry — sourced from
@@ -845,12 +1026,174 @@ export type CarryForwardReportRow = {
 const isAnniversaryEarned = (leaveCycle: string | null, method: string | undefined): boolean =>
   leaveCycle === 'anniversary' && isEarnedMethod(method);
 
-export async function carryForwardReport(
-  ctx: SessionContext,
-  scopeIds: string[] | undefined,
-  p: { year: number; filter?: ReportFilter; companyId?: string },
-): Promise<CarryForwardReportRow[]> {
-  return withTenant(ctx, async (tx) => {
+type CarryForwardInput = {year:number;filter?:ReportFilter;companyId?:string};
+function carryForwardEmploymentTerms(scopeIds:string[]|undefined,p:CarryForwardInput) {
+  const yearStart=`${p.year}-01-01`,yearEnd=`${p.year}-12-31`;
+  return {
+    scope:scopeWhere(scopeIds),
+    company:p.companyId ? eq(employment.companyId,p.companyId) : undefined,
+    hired:lte(employment.hiredOn,yearEnd),
+    termination:or(isNull(employment.terminatedOn),gte(employment.terminatedOn,yearStart)),
+  };
+}
+
+function carryForwardPopulationWhere(scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]){
+  const terms=carryForwardEmploymentTerms(scopeIds,p);
+  return and(
+    terms.scope,
+    selectedIds ? inArray(employment.id,selectedIds) : undefined,
+    terms.company,
+    p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,
+    qWhere(p.filter),
+    terms.hired,
+    terms.termination,
+  );
+}
+
+/** The joined population for exports, selected-row enrichment and department-filtered identities. */
+function carryForwardPopulationTx(tx:Tx,scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]){
+  return tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        company: company.legalName,
+        department: department.name,
+        hiredOn: employment.hiredOn,
+        gradeId: employment.gradeId,
+        companyId: employment.companyId,
+        leaveCycle: company.leaveCycle,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(carryForwardPopulationWhere(scopeIds,p,selectedIds))
+      .orderBy(employment.id);
+}
+
+/** Complete historical report: page limits never apply to exports. */
+export function carryForwardReport(ctx:SessionContext,scopeIds:string[]|undefined,p:CarryForwardInput):Promise<CarryForwardReportRow[]>{
+  return withTenant(ctx,tx=>carryForwardRowsTx(tx,scopeIds,p));
+}
+
+/** Calculate only the requested rows, retaining the existing localeCompare order.
+ * Every identity is scanned and counted; only the requested rank prefix is retained.
+ * Deep pages can still retain the population. Ledger/template reads are page-only. */
+export async function carryForwardReportPage(ctx:SessionContext,scopeIds:string[]|undefined,p:CarryForwardInput&{page:PageQuery}):Promise<AnalyticsReportPage<CarryForwardReportRow>>{
+  const page=validatedReportPage(p.page),scope=scopeIds?.slice(),input={year:p.year,companyId:p.companyId,filter:p.filter?{...p.filter}:undefined};
+  return withAnalyticsPresentation(ctx,tx=>carryForwardReportPageTx(tx,scope,input,page));
+}
+
+type CarryPageIdentity = {employmentId:string;name:string};
+type RankedCarryPageIdentity = CarryPageIdentity & {sourceOrdinal:number};
+
+/** The old stable name sort used the cursor's UUID order to break equal comparisons. */
+function carryPageIdentityOrder(a:RankedCarryPageIdentity,b:RankedCarryPageIdentity):number {
+  return a.name.localeCompare(b.name)||a.sourceOrdinal-b.sourceOrdinal;
+}
+function carryPageRetentionLimit(page:PageQuery):number {
+  return page.offset>Number.MAX_SAFE_INTEGER-page.limit?Number.MAX_SAFE_INTEGER:page.offset+page.limit;
+}
+/** A max heap retains the earliest rank prefix without allocating the requested size. */
+function retainCarryPageIdentity(heap:RankedCarryPageIdentity[],candidate:RankedCarryPageIdentity,retain:number):void {
+  if(heap.length<retain){
+    let index=heap.length;heap.push(candidate);
+    while(index>0){
+      const parent=Math.floor((index-1)/2);
+      if(carryPageIdentityOrder(heap[parent],candidate)>=0)break;
+      heap[index]=heap[parent];index=parent;
+    }
+    heap[index]=candidate;
+    return;
+  }
+  if(carryPageIdentityOrder(candidate,heap[0])>=0)return;
+  let index=0;
+  for(;;){
+    const left=index*2+1;if(left>=heap.length)break;
+    const right=left+1,child=right<heap.length&&carryPageIdentityOrder(heap[right],heap[left])>0?right:left;
+    if(carryPageIdentityOrder(heap[child],candidate)<=0)break;
+    heap[index]=heap[child];index=child;
+  }
+  heap[index]=candidate;
+}
+
+function carryIdentityDeclaration(tx:Tx,scope:string[]|undefined,input:CarryForwardInput) {
+  const alias='analytics_carry_population';
+  const declare=(population:SQLWrapper,id:SQLWrapper,name:SQLWrapper)=>sql`declare analytics_carry_identities no scroll cursor for
+      select ${id} as "employmentId",${name} as name from ${population}
+      order by ${id}`;
+  const search=input.filter?.departmentId ? undefined : qWhere(input.filter);
+  if(search){
+    // Keep company bindings ahead of search. A matching Person PK supplies at most one
+    // non-null name marker per partition. Employment events carry NULL and sort after
+    // the marker. An empty name still matches by email and is distinct from no marker.
+    const terms=carryForwardEmploymentTerms(scope,input);
+    const companyScope=and(terms.scope,terms.company);
+    const population=sql`(
+      with "analytics_carry_scoped_employment" as not materialized (
+        select ${employment.id}, ${employment.personId}, ${employment.companyId}, ${employment.hiredOn}, ${employment.terminatedOn}
+        from ${employment}${companyScope ? sql` where ${companyScope}` : undefined}
+      )
+      select employment_id, carried_name
+      from (
+        select employment_id, max(person_name) over (
+          partition by person_id order by event_kind
+          rows between unbounded preceding and current row
+        ) as carried_name
+        from (
+          select ${person.id} as person_id, 0 as event_kind,
+            null::uuid as employment_id, ${person.fullName} as person_name
+          from ${person} where ${search}
+          union all
+          select ${employment.personId}, 1, ${employment.id}, null::text
+          from "analytics_carry_scoped_employment" as ${employment}
+          inner join ${company} on ${eq(company.id,employment.companyId)}
+          where ${and(terms.hired,terms.termination)}
+        ) as "analytics_carry_identity_events"
+      ) as "analytics_carry_windowed"
+      where employment_id is not null and carried_name is not null
+    ) ${sql.identifier(alias)}`;
+    return declare(population,sql`${sql.identifier(alias)}."employment_id"`,sql`${sql.identifier(alias)}."carried_name"`);
+  }
+  // assignment_no_overlap allows at most one open, non-superseded assignment per employment.
+  // Department's primary key makes the second left join cardinality-preserving as well.
+  const population=input.filter?.departmentId
+    ? carryForwardPopulationTx(tx,scope,input).as(alias)
+    : tx.select({employmentId:employment.id,name:person.fullName})
+        .from(employment)
+        .innerJoin(person,eq(person.id,employment.personId))
+        .innerJoin(company,eq(company.id,employment.companyId))
+        .where(carryForwardPopulationWhere(scope,input))
+        .orderBy(employment.id).as(alias);
+  return declare(population,population.employmentId,population.name);
+}
+
+async function carryForwardReportPageTx(tx:Tx,scope:string[]|undefined,input:CarryForwardInput,page:PageQuery):Promise<AnalyticsReportPage<CarryForwardReportRow>> {
+    const [annual]=await tx.select({id:leaveType.id}).from(leaveType).where(eq(leaveType.code,'ANNUAL')).limit(1);
+    if(!annual)return {rows:[],state:pageState(page,0,0)};
+    const identities:RankedCarryPageIdentity[]=[],retain=carryPageRetentionLimit(page);
+    let total=0;
+    await tx.execute(carryIdentityDeclaration(tx,scope,input));
+    for(;;){
+      const batch=await tx.execute<CarryPageIdentity>(sql`fetch forward 4096 from analytics_carry_identities`);
+      for(const identity of batch){
+        if(!Number.isSafeInteger(total+1))throw new Error('Analytics population count exceeds safe integer');
+        retainCarryPageIdentity(identities,{...identity,sourceOrdinal:total},retain);total++;
+      }
+      if(batch.length<4096)break;
+    }
+    await tx.execute(sql`close analytics_carry_identities`);
+    // At year-end December, every valid hire month is <= the as-of month.
+    // earnedCycleStart therefore starts in input.year for calendar AND anniversary
+    // populations admitted above. No financial eligibility is inferred from a cap.
+    identities.sort(carryPageIdentityOrder);
+    const selected=identities.slice(page.offset,retain).map(row=>row.employmentId);
+    const rows=selected.length?await carryForwardRowsTx(tx,scope,input,selected):[];
+    return {rows,state:pageState(page,total,rows.length)};
+}
+async function carryForwardRowsTx(tx:Tx,scopeIds:string[]|undefined,p:CarryForwardInput,selectedIds?:string[]):Promise<CarryForwardReportRow[]>{
+  if(selectedIds?.length===0)return [];
     const year = p.year;
     const yearStart = `${year}-01-01`;
     const yearEnd = `${year}-12-31`;
@@ -868,34 +1211,8 @@ export async function carryForwardReport(
     // Population: employments hired on/before the year-end (so a cycle could have started this year) and
     // NOT terminated before Jan 1 of the year — leavers mid-year Y still appear (their final forfeit is a
     // record). Since-archived ANNUAL types are not filtered (history, not future action).
-    const emps = await tx
-      .select({
-        employmentId: employment.id,
-        name: person.fullName,
-        company: company.legalName,
-        department: department.name,
-        hiredOn: employment.hiredOn,
-        gradeId: employment.gradeId,
-        companyId: employment.companyId,
-        leaveCycle: company.leaveCycle,
-      })
-      .from(employment)
-      .innerJoin(person, eq(person.id, employment.personId))
-      .innerJoin(company, eq(company.id, employment.companyId))
-      .leftJoin(assignment, currentAssignment)
-      .leftJoin(department, eq(department.id, assignment.departmentId))
-      .where(
-        and(
-          scopeWhere(scopeIds),
-          p.companyId ? eq(employment.companyId, p.companyId) : undefined,
-          p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,
-          qWhere(p.filter),
-          lte(employment.hiredOn, yearEnd),
-          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
-        ),
-      );
+    const emps = await carryForwardPopulationTx(tx,scopeIds,p,selectedIds);
     if (emps.length === 0) return [];
-    const empIds = emps.map((e) => e.employmentId);
 
     // Every ANNUAL policy version (dated), so we can resolve the version active at EACH employee's cycle
     // open — not just the currently-active one (past-year reports must use the historical cap/expiry).
@@ -1081,7 +1398,6 @@ export async function carryForwardReport(
     }
     rows.sort((a, b) => a.employeeName.localeCompare(b.employeeName));
     return rows;
-  });
 }
 
 export type LeaveBalanceRow = { name: string; balance: number };
@@ -1095,7 +1411,10 @@ export async function leaveBalancesSummary(
   scopeIds: string[] | undefined,
   filters: AnalyticsFilters = {},
 ): Promise<LeaveBalanceRow[]> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>leaveBalancesSummaryTx(tx,scopeIds,filters));
+}
+
+async function leaveBalancesSummaryTx(tx:Tx,scopeIds:string[]|undefined,filters:AnalyticsFilters):Promise<LeaveBalanceRow[]> {
     const rows = await tx
       .select({
         name: leaveType.name,
@@ -1109,9 +1428,7 @@ export async function leaveBalancesSummary(
       .groupBy(leaveType.name)
       .orderBy(leaveType.name);
     return rows.map((r) => ({ name: r.name, balance: Number(r.balance) }));
-  });
 }
-
 export type SickLeaveTrendRow = { month: string; days: number };
 export type SickLeaveTrend = { configured: boolean; series: SickLeaveTrendRow[] };
 
@@ -1127,7 +1444,10 @@ export async function sickLeaveTrend(
   p: { from: string; to: string; sickCode?: string; filters?: AnalyticsFilters },
 ): Promise<SickLeaveTrend> {
   const filters = p.filters ?? {};
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>sickLeaveTrendTx(tx,scopeIds,p,filters));
+}
+
+async function sickLeaveTrendTx(tx:Tx,scopeIds:string[]|undefined,p:{from:string;to:string;sickCode?:string;filters?:AnalyticsFilters},filters:AnalyticsFilters):Promise<SickLeaveTrend> {
     const types = await tx.select({ id: leaveType.id, code: leaveType.code }).from(leaveType);
     const sickIds = p.sickCode
       ? types.filter((t) => t.code === p.sickCode).map((t) => t.id)
@@ -1152,9 +1472,7 @@ export async function sickLeaveTrend(
       .groupBy(sql`to_char(${leaveLedger.effectiveOn}, 'YYYY-MM')`)
       .orderBy(sql`to_char(${leaveLedger.effectiveOn}, 'YYYY-MM')`);
     return { configured: true, series: rows.map((r) => ({ month: r.month, days: Number(r.days) })) };
-  });
 }
-
 // ─────────────────────────── Employee-movement series ───────────────────────────
 export type MovementRow = { month: string; hires: number; leavers: number; netChange: number };
 
@@ -1168,7 +1486,10 @@ export async function movementByMonth(
   p: { from: string; to: string; filters?: AnalyticsFilters },
 ): Promise<MovementRow[]> {
   const filters = p.filters ?? {};
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>movementByMonthTx(tx,scopeIds,p,filters));
+}
+
+async function movementByMonthTx(tx:Tx,scopeIds:string[]|undefined,p:{from:string;to:string;filters?:AnalyticsFilters},filters:AnalyticsFilters):Promise<MovementRow[]> {
     const baseWhere = (dateCol: typeof employment.hiredOn | typeof employment.terminatedOn) =>
       and(gte(dateCol, p.from), lte(dateCol, p.to), analyticsWhere({ ...filters, lifecycleStatus: undefined }, scopeIds, {}));
     const hireRows = await tx
@@ -1198,9 +1519,7 @@ export async function movementByMonth(
     for (const r of leaveRows) ensure(r.month).leavers = Number(r.c);
     for (const row of m.values()) row.netChange = row.hires - row.leavers;
     return [...m.values()].sort((a, b) => a.month.localeCompare(b.month));
-  });
 }
-
 /** Turnover honouring the new dashboard filters (extends the period KPI to company-filter parity).
  *  Average headcount = (active at from + active at to) / 2; turnover = leavers ÷ avg × 100. */
 export function turnoverRateFiltered(
@@ -1210,7 +1529,10 @@ export function turnoverRateFiltered(
 ): Promise<TurnoverResult> {
   const filters = p.filters ?? {};
   const companyWhere = filters.companyId ? eq(employment.companyId, filters.companyId) : undefined;
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>turnoverRateFilteredTx(tx,scopeIds,p,companyWhere));
+}
+
+async function turnoverRateFilteredTx(tx:Tx,scopeIds:string[]|undefined,p:{from:string;to:string;filters?:AnalyticsFilters},companyWhere:SQL|undefined):Promise<TurnoverResult> {
     const headcountAt = async (d: string): Promise<number> => {
       const [r] = await tx
         .select({ c: count() })
@@ -1228,5 +1550,73 @@ export function turnoverRateFiltered(
     const avgHeadcount = round1((headcountStart + headcountEnd) / 2);
     const turnoverPct = avgHeadcount > 0 ? round1((leavers / avgHeadcount) * 100) : 0;
     return { leavers, headcountStart, headcountEnd, avgHeadcount, turnoverPct };
+}
+
+/** The dashboard already owns one immutable snapshot. Count its three
+ * Employment-only populations in one scan, without importing the movement
+ * report's Person/Assignment joins or its broader filter set. Standalone RC
+ * readers above retain their original statement boundaries. */
+async function dashboardTurnoverAggregateTx(tx:Tx,scopeIds:string[]|undefined,p:{from:string;to:string},companyWhere:SQL|undefined):Promise<TurnoverResult>{
+ const [row]=await tx.select({
+  leavers:sql<string>`count(*) filter (where ${gte(employment.terminatedOn,p.from)} and ${lte(employment.terminatedOn,p.to)})`.as('analytics_turnover_leavers'),
+  headcountStart:sql<string>`count(*) filter (where ${activeAsOf(p.from)})`.as('analytics_turnover_start'),
+  headcountEnd:sql<string>`count(*) filter (where ${activeAsOf(p.to)})`.as('analytics_turnover_end'),
+ }).from(employment).where(and(scopeWhere(scopeIds),companyWhere));
+ const leavers=Number(row?.leavers??0),headcountStart=Number(row?.headcountStart??0),headcountEnd=Number(row?.headcountEnd??0);
+ const avgHeadcount = round1((headcountStart + headcountEnd) / 2);
+ const turnoverPct = avgHeadcount > 0 ? round1((leavers / avgHeadcount) * 100) : 0;
+ return { leavers, headcountStart, headcountEnd, avgHeadcount, turnoverPct };
+}
+
+/** Expand each joined source row into its two dated events, then aggregate
+ * months natively. A hire and termination in the same month remain two events;
+ * no employment/person deduplication is introduced. The derived-status filter
+ * deliberately keeps its original two-query owner and separate clock reads. */
+async function dashboardMovementAggregateTx(tx:Tx,scopeIds:string[]|undefined,p:{from:string;to:string;filters?:AnalyticsFilters},filters:AnalyticsFilters):Promise<MovementRow[]>{
+ if(filters.assignmentStatus)return movementByMonthTx(tx,scopeIds,p,filters);
+ const eventDate=sql`"analytics_movement_event"."event_date"`;
+ const month=sql<string>`to_char(${eventDate}, 'YYYY-MM')`;
+ const events=sql`(values ('hire'::text,${employment.hiredOn}),('leaver'::text,${employment.terminatedOn})) as "analytics_movement_event"("kind","event_date")`;
+ const rows=await tx.select({month,
+  hires:sql<string>`count(*) filter (where "analytics_movement_event"."kind"='hire')`.as('analytics_movement_hires'),
+  leavers:sql<string>`count(*) filter (where "analytics_movement_event"."kind"='leaver')`.as('analytics_movement_leavers'),
+ }).from(employment).innerJoin(person,eq(person.id,employment.personId)).leftJoin(assignment,currentAssignment)
+  .innerJoinLateral(events,sql`true`)
+  .where(and(gte(eventDate,p.from),lte(eventDate,p.to),analyticsWhere({...filters,lifecycleStatus:undefined},scopeIds,{})))
+  .groupBy(month);
+ return rows.map(row=>{const hires=Number(row.hires),leavers=Number(row.leavers);return {month:row.month,hires,leavers,netChange:hires-leavers};})
+  .sort((a,b)=>a.month.localeCompare(b.month));
+}
+
+export type AnalyticsDashboardInput = {
+  from:string;to:string;year:number;filters:AnalyticsFilters;
+  pages:{hires:PageQuery;terms:PageQuery;changeJobs:PageQuery;carryForward:PageQuery};
+};
+
+/** One display admission and one snapshot own all dashboard reports. Canonical
+ * report bodies run sequentially on this Tx; no borrowed sibling can outlive it.
+ * Metadata, exports and standalone report admissions retain their existing owners. */
+export async function analyticsDashboard(supplied:SessionContext,scopeIds:string[]|undefined,p:AnalyticsDashboardInput) {
+  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
+  const scope=scopeIds?.slice(),from=p.from,to=p.to,year=p.year,filters={...p.filters};
+  const filter:ReportFilter={departmentId:filters.departmentId,q:filters.q};
+  const pages={hires:validatedReportPage(p.pages.hires),terms:validatedReportPage(p.pages.terms),
+    changeJobs:validatedReportPage(p.pages.changeJobs),carryForward:validatedReportPage(p.pages.carryForward)};
+  return withAnalyticsPresentation(ctx,async tx=>{
+    await tx.execute(sql`set local jit=off`);
+    const hc=await headcountSummaryTx(tx,scope,{asOf:to});
+    const hires=await newHiresPageTx(tx,scope,{from,to,filter},pages.hires);
+    const terms=await terminationsPageTx(tx,scope,{from,to,filter},pages.terms);
+    const turnover=await dashboardTurnoverAggregateTx(tx,scope,{from,to},filters.companyId?eq(employment.companyId,filters.companyId):undefined);
+    const changeJobs=await changeJobTransactionsPageTx(tx,scope,{from,to,filter},pages.changeJobs);
+    const demographics=await workforceDemographicsTx(tx,scope,{asOf:to,filters});
+    const nationality=await demographicsByNationalityTx(tx,ctx,scope,{asOf:to,filters},filters);
+    const leaveUtil=await leaveUtilisationTx(tx,scope,filters);
+    const leaveBalances=await leaveBalancesSummaryTx(tx,scope,filters);
+    const sickTrend=await sickLeaveTrendTx(tx,scope,{from,to,filters},filters);
+    const movement=await dashboardMovementAggregateTx(tx,scope,{from,to,filters},filters);
+    const carryForward=await carryForwardReportPageTx(tx,scope,{year,filter,companyId:filters.companyId},pages.carryForward);
+    const masterCount=await masterDataCountTx(tx,scope,{filter});
+    return {hc,hires,terms,turnover,changeJobs,demographics,nationality,leaveUtil,leaveBalances,sickTrend,movement,carryForward,masterCount};
   });
 }

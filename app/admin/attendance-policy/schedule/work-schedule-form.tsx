@@ -1,3 +1,4 @@
+import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import type { AttendancePolicyView } from '@/core/attendance';
 import { Card, Field, btnPrimary, inputCls } from '@/components/ui';
@@ -154,7 +155,7 @@ export async function WorkScheduleForm({
         </fieldset>
 
         <div className="flex items-center gap-3">
-          <button className={btnPrimary}>{t('save')}</button>
+          <ActionButton actionKind="saving" className={btnPrimary}>{t('save')}</ActionButton>
           <span className="text-xs text-muted-foreground">{t('lateHint')}</span>
         </div>
       </form>

@@ -37,14 +37,14 @@ describe('page style recovery', () => {
     const original = link(); original.setAttribute('integrity', 'sha256-fixture'); original.nonce = 'fixture-nonce';
     render(<NextIntlClientProvider locale="en" messages={en}><Providers><input aria-label="Username" defaultValue="employee.private"/></Providers></NextIntlClientProvider>);
     act(() => { original.dispatchEvent(new Event('error')); });
-    expect(screen.getByRole('status')).toHaveTextContent(en.pageStyleRecovery.restoring);
+    expect(screen.getByText(en.pageStyleRecovery.restoring).closest('[role="status"]')).toBeInTheDocument();
     const retry = replacement(), url = new URL(retry.href);
     expect(url.origin).toBe(window.location.origin); expect(url.pathname).toBe('/_next/static/chunks/global.css');
     expect(url.searchParams.get('_aihr_style_retry')).toBeTruthy();
     expect(retry.getAttribute('integrity')).toBe('sha256-fixture'); expect(retry.nonce).toBe('fixture-nonce');
     expect(original.nextElementSibling).toBe(retry);
     act(() => { Object.defineProperty(retry, 'sheet', { value: {} }); retry.dispatchEvent(new Event('load')); });
-    expect(screen.queryByRole('status')).not.toBeInTheDocument(); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.pageStyleRecovery.restoring)).not.toBeInTheDocument(); expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Username' })).toHaveValue('employee.private');
     expect(original.href).toBe(new URL('/_next/static/chunks/global.css', window.location.origin).href);
     cleanup(); expect(retry.isConnected).toBe(true);

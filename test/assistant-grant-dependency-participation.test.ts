@@ -6,7 +6,7 @@ import { withTenant } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
-import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
+import { lockAccessConfigurationWriteTx } from '../core/access-configuration-lock';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let b: Base;
 beforeAll(migrateTestDb); beforeEach(async () => { await resetDb(); b = await seedBase(); }); afterAll(closeAll);
@@ -27,7 +27,7 @@ describe('Assistant grant writers join the existing caller-authority barrier', (
     const started = new Promise<void>((yes, no) => { ready = yes; failed = no; });
     const finish = new Promise<void>(yes => { release = yes; });
     const watchdog = setTimeout(() => { failed(new Error('owned grant handshake timed out')); release(); }, 10_000);
-    const holder = withTenant(ctx, async tx => { await lockAccessConfigurationTx(tx, b.tenantId); ready(); await finish; });
+    const holder = withTenant(ctx, async tx => { await lockAccessConfigurationWriteTx(tx, b.tenantId); ready(); await finish; });
     void holder.catch(failed);
     let writing: Promise<unknown> | undefined, writeFailure: unknown;
     try {

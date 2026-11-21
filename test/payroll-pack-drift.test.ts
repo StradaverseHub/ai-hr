@@ -62,12 +62,24 @@ const BOUNDARIES = [
   'core/payroll-policy',
   'core/payroll-policy-config',
   'core/payroll-individual-txn',
+  // Pack-local entry pricing is private too; outside callers still use the service facade.
+  'packs/payroll/individual-calculation',
   'core/payroll-run-group',
   'core/payroll-view',
   'core/payroll-readiness',
   'core/payroll-history-import',
   // Immutable import/correction owner: guard its external callers as well as its sibling imports.
   'core/payroll-history-revisions',
+  // Canonical history maintenance/tax owners; not outside-consumer debt exceptions.
+  'core/payroll-history-maintenance-plan',
+  'core/payroll-history-maintenance-read',
+  'core/payroll-history-maintenance-state',
+  'core/payroll-history-maintenance',
+  'core/payroll-history-native-baseline',
+  'core/payroll-import-tax-source',
+  'core/payroll-tax-basis-read',
+  'core/payroll-tax-basis',
+  'core/payroll-tax-basis-group',
   'core/payroll-permissions-admin',
   'core/pay-components',
   'core/pay-formula',
@@ -104,6 +116,21 @@ const ALWAYS_ALLOWED = [
   'core/payroll-readiness.ts',
   'core/payroll-history-import.ts',
   'core/payroll-history-revisions.ts',
+  'core/payroll-history-maintenance-plan.ts',
+  'core/payroll-history-maintenance-read.ts',
+  'core/payroll-history-maintenance-state.ts',
+  'core/payroll-history-maintenance.ts',
+  'core/payroll-history-native-baseline.ts',
+  'core/payroll-import-tax-source.ts',
+  'core/payroll-tax-basis-read.ts',
+  'core/payroll-tax-basis.ts',
+  // The payroll pack's own handlers on the shared bulk-job kernel (owner bulk-job decisions, 10 Nov 2026): processing
+  // (078caace2), history upload/revert (dd6326b7e) and selective reprocess (2304b7d65). Pack implementation, so they
+  // import their siblings like core/payroll-run-group.ts does; the kernel registry and outsiders do not gain access.
+  'core/payroll-processing-job.ts',
+  'core/payroll-history-job.ts',
+  'core/payroll-reprocess-job.ts',
+  'core/payroll-tax-basis-group.ts',
   'core/payroll-permissions-admin.ts',
   'core/pay-components.ts',
   'core/pay-formula.ts',
@@ -138,7 +165,9 @@ describe('ADR-0080 D9: payroll pack import ratchet (rung 7 — the money path)',
       root,
       scan: ['app', 'components', 'core', 'db', 'i18n', 'lib', 'localization', 'middleware.ts', 'packs', 'scripts'],
       boundary,
-      allowedImporters: isPackImporter,
+      // The shared registry wires this exact worker entry point. It has no access to the tax calculation owner.
+      allowedImporters: rel => isPackImporter(rel) ||
+        (boundary === 'core/payroll-tax-basis-group' && rel === 'core/bulk-job-handlers.ts'),
       allowlist,
     }),
   );
@@ -157,12 +186,20 @@ describe('ADR-0080 D9: payroll pack import ratchet (rung 7 — the money path)',
       writeFileSync(join(fixture,'core/payroll-overtime-pattern.ts'),"import {policy} from './payroll-policy'; export const formula=policy;\n");
       writeFileSync(join(fixture,'core/pay-formula-personnel.ts'),"import {policy} from './payroll-policy'; export const personnel=policy;\n");
       writeFileSync(join(fixture,'core/payroll-policy.ts'),'export const policy=1;\n');
+      writeFileSync(join(fixture,'packs/payroll/individual-calculation.ts'),"import {policy} from '../../core/payroll-policy'; export const entry=policy;\n");
       writeFileSync(join(fixture,'packs/payroll/service.ts'),"export * from '../../core/payroll-overtime-pattern';\n");
       const outside=join(fixture,'app/outside.ts');writeFileSync(outside,"import {formula} from '@/core/payroll-overtime-pattern';\n");
       const scan=()=>[...new Set(BOUNDARIES.flatMap(boundary=>runImportRatchet({root:fixture,scan:['app','core','packs'],boundary,allowedImporters:isPackImporter,allowlist:[]}).violations))].sort();
       expect(scan()).toEqual(['app/outside.ts']);
       writeFileSync(outside,"import {personnel} from '@/core/pay-formula-personnel';\n");
       expect(scan()).toEqual(['app/outside.ts']);
+      writeFileSync(outside,"import {entry} from '@/packs/payroll/individual-calculation';\n");
+      expect(scan()).toEqual(['app/outside.ts']);
+      for(const helper of ["payroll-history-maintenance-plan", "payroll-history-maintenance-read", "payroll-history-maintenance-state", "payroll-history-maintenance", "payroll-history-native-baseline", "payroll-import-tax-source", "payroll-tax-basis-read", "payroll-tax-basis", "payroll-tax-basis-group"]){
+        writeFileSync(join(fixture,'core',helper+'.ts'),'export const owned=1;\n');
+        writeFileSync(outside,`import {owned} from '@/core/${helper}';\n`);
+        expect(scan(),helper).toEqual(['app/outside.ts']);
+      }
       // The outsider must consume the facade; it is never added to debt or the pack implementation set.
       writeFileSync(outside,"import {formula} from '@/packs/payroll/service';\n");expect(scan()).toEqual([]);
     }finally{rmSync(fixture,{recursive:true,force:true});}

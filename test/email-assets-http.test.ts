@@ -2,7 +2,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {NextRequest} from 'next/server';
 import {GET} from '../app/email-assets/[token]/route';
 const storage=vi.hoisted(()=>({execute:vi.fn()}));
-vi.mock('@/db/client',()=>({db:{execute:storage.execute}}));
+vi.mock('@/db/client',()=>({db:{execute:storage.execute},withPoolWork:(_lane:string,work:()=>unknown)=>work(),withSystemWork:(work:()=>unknown)=>work()}));
 const token='a1'.repeat(32),path='/email-assets/'+token,origin='https://hr.example.test';
 const internal={AUTH_PROVIDER:'internal',AUTH_PUBLIC_ORIGIN:origin,AUTH_SESSION_KEY:'a'.repeat(64)};
 const keycloak={...internal,AUTH_PROVIDER:'keycloak',KEYCLOAK_ISSUER:origin+'/identity/realms/ai-hr',KEYCLOAK_WEB_CLIENT_ID:'fixture-web',KEYCLOAK_WEB_CLIENT_SECRET:'fixture-secret',KEYCLOAK_MOBILE_CLIENT_ID:'fixture-mobile',KEYCLOAK_API_AUDIENCE:'fixture-api'};

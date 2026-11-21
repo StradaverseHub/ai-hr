@@ -10,7 +10,7 @@ import {setCompanyParent} from '../core/admin';
 import {setCompensation} from '../core/comp';
 import {prepareCompanyOrganisationRun,companyOrganisationRuns,decideCompanyOrganisationRun,processCompanyOrganisationRun,employmentOrganisationTagsTx} from '../core/company-organisation';
 import {organisationImportWarningsTx} from '../core/derived-organisation-display';
-import {createMovementEvent} from '../core/movement';
+import {createMovementEvent,reverseMovementEvent,movementHistory} from '../core/movement';
 import {correctHireDetails} from '../core/hire-correction';
 import {correctInformation,previewInformationCorrection} from '../core/information-correction';
 import {createBatch,preProcessAdvisory,generatePayslips} from '../core/payroll';
@@ -18,6 +18,10 @@ import {rewardPolicyMemberships} from '../packs/rewards/service';
 import {setupChecker,setupRewardLibrariesFixture} from './rewards-setup-fixture';
 import {saveRewardPlanConfiguration,saveRewardSetupPlan} from '../packs/rewards/plan-configuration';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import * as XLSX from 'xlsx';
+import {randomUUID} from 'node:crypto';
+import {previewInformationUpload} from '../core/information-correction-import';
+import {INFORMATION_HEADERS_V2} from '../lib/information-correction';
 let b:Base,ctx:SessionContext,checker:SessionContext,oldBu:string,newBu:string;
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4)),hireDate=`${year-2}-01-01`;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -48,7 +52,8 @@ it('preserves legacy choice and historical prefix, then ignores manual BU in nat
  const next=await hire('derived',{hiredOn:today,businessUnitId:oldBu});expect((await versions(next.employmentId))[0].businessUnitId).toBe(newBu);
  await setEmploymentAssignment(ctx,{employmentId:next.employmentId,effectiveDate:today,businessUnitId:oldBu});expect((await versions(next.employmentId)).at(-1)?.businessUnitId).toBe(newBu);
  await createMovementEvent(ctx,{employmentId:next.employmentId,kind:'transfer',effectiveDate:today,departmentId:b.deptB,businessUnitId:oldBu});expect((await versions(next.employmentId)).at(-1)).toMatchObject({departmentId:b.deptB,businessUnitId:newBu});
- await createMovementEvent(ctx,{employmentId:next.employmentId,kind:'transfer',effectiveDate:today,departmentId:b.deptA});expect((await versions(next.employmentId)).at(-1)).toMatchObject({departmentId:b.deptA,businessUnitId:newBu});
+ const transfer=(await movementHistory(ctx,next.employmentId)).find(row=>row.kind==='transfer')!;
+ await reverseMovementEvent(ctx,{employmentId:next.employmentId,movementId:transfer.id,reason:'Remove the incorrect same-day department selection'});expect((await versions(next.employmentId)).at(-1)).toMatchObject({departmentId:b.deptA,businessUnitId:newBu});
  await correctHireDetails(ctx,{employmentId:next.employmentId,reason:'Correct original Personnel position',changes:{positionId:b.positionId,businessUnitId:oldBu}});expect((await versions(next.employmentId)).at(-1)?.businessUnitId).toBe(newBu);
  const review=await previewInformationCorrection(ctx,{employmentId:next.employmentId,changes:{employmentType:'part_time'},reason:'Correct signed employment type'});
  await correctInformation(ctx,{employmentId:next.employmentId,changes:{employmentType:'part_time'},reason:review.reason,fingerprint:review.fingerprint,method:'manual'});expect((await versions(next.employmentId)).at(-1)).toMatchObject({employmentType:'part_time',businessUnitId:newBu});
@@ -63,11 +68,12 @@ it('makes an explicit missing-BU mapping pending, saves Personnel and blocks pay
  await setCompensation(ctx,{employmentId:next.employmentId,basicSalary:5000,effectiveFrom:today});
  const [cycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:b.tenantId,companyId:b.companyId,code:'ORG_READY',name:'Organisation readiness',runType:'regular'}).returning();
  const {batchId}=await createBatch(ctx,{companyId:b.companyId,payPeriod:today.slice(0,7),payrollCycleId:cycle.id});
- const advisory=await preProcessAdvisory(ctx,batchId);expect(advisory.organisationGrouping).toEqual([expect.objectContaining({employmentId:next.employmentId,name:'Fictional pending'})]);
+ const advisory=await preProcessAdvisory(ctx,batchId);expect(advisory.missingCompensation).toEqual([]);expect(advisory.organisationGrouping).toEqual([expect.objectContaining({employmentId:next.employmentId,name:'Fictional pending'})]);
  await expect(generatePayslips(ctx,{batchId})).rejects.toThrow();expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual([]);
  // New Rewards reviews require a proven current company/BU membership before their dated
  // roster is read. Today's corrected mapping must not clear yesterday's pending plan snapshot.
  await publish(today,newBu);
+ expect((await preProcessAdvisory(ctx,batchId)).organisationGrouping).toEqual([]);
  expect(await rewardPolicyMemberships(ctx,[b.companyId])).toContainEqual({companyId:b.companyId,businessUnitId:newBu});
  expect(await withTenant(ctx,tx=>employmentOrganisationTagsTx(tx,ctx,{employmentId:next.employmentId,asOf:pendingOn}))).toMatchObject({status:'pending',businessUnitId:null});
  const grChecker=await setupChecker(ctx),{policy,salary,bonus}=await setupRewardLibrariesFixture(ctx,year,undefined,grChecker);
@@ -85,4 +91,15 @@ it('bounds a backdated projection by the next reviewed mapping, keeps future tag
  const rows=await versions(id);expect(rows.length).toBeGreaterThanOrEqual(3);expect(rows.at(-1)).toMatchObject({validFrom:futureDate,businessUnitId:oldBu});
  const before=JSON.stringify(rows);const projected=await withTenant(ctx,tx=>projectEmploymentOrganisationAssignmentTx(tx,ctx,{employmentId:id,effectiveOn:earlierDate,trigger:'restructure'}));expect(projected).toEqual({changed:0,assignmentIds:[]});expect(JSON.stringify(await versions(id))).toBe(before);
  const events=await owner.db.execute<{count:string}>(sql`select count(*)::text as count from domain_event where subject_employment_id=${id}::uuid and event_type='employment.organisation.projected'`);expect(Number(events[0].count)).toBeGreaterThan(0);
+});
+it('ccd3a65c refuses a Business Unit correction where the Group structure sets it, naming the column',async()=>{
+ const {employmentId:id}=await hire('ico-bu');
+ await owner.db.update(schema.employment).set({employeeCode:'BU-001'}).where(eq(schema.employment.id,id));
+ await owner.db.update(schema.company).set({companyLabel:'DEMO'}).where(eq(schema.company.id,b.companyId));
+ await publish();
+ const headers=[...INFORMATION_HEADERS_V2],row=headers.map(h=>({'Company Code':'DEMO','Employee ID':'BU-001','Business Unit':'LEGACY','Correction Reason':'Keyed in wrong at hire'} as Record<string,string>)[h]??'');
+ const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([headers,row]),'Corrections');
+ const preview=await previewInformationUpload(ctx,{name:'bu.xlsx',content:XLSX.write(book,{type:'buffer',bookType:'xlsx'}) as Buffer,operationKey:randomUUID()});
+ expect(preview.plan.rows[0].errors).toEqual(['Business Unit: the Group structure sets the Business Unit for this company. Leave this cell blank.']);
+ expect((await versions(id)).at(-1)?.businessUnitId).toBe(newBu);
 });

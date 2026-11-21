@@ -45,7 +45,8 @@ describe.skipIf(!available)('WP7 equivalence with the pre-registry hand lists (b
   const before=legacyActions.MODULE_AGENT_ACTIONS as Record<string,Declaration>,handoffs=legacyHandoffs.moduleHumanActionHandoffs as Handoffs;
   const ids=(row:Declaration)=>JSON.stringify(row.actions.map(action=>action.id).sort());
   let compared=0;
-  for(const module of AGENT_MODULE_CODES){
+  // Modules added after base 7d397734d (Recruitment, 2026-11-10) have no legacy declaration to compare against.
+  for(const module of AGENT_MODULE_CODES.filter(code=>Object.hasOwn(before,code))){
    const legacy=before[module]!,current=MODULE_AGENT_ACTIONS[module];
    if(ids(legacy)!==ids(current))continue;compared++;
    expect(JSON.stringify(current),module).toBe(JSON.stringify(legacy));
@@ -71,7 +72,10 @@ describe.skipIf(!available)('WP7 equivalence with the pre-registry hand lists (b
   const parseLegacy=legacyActions.parseModuleAgentActionNomination as (value:unknown)=>unknown;
   const candidates=[...legacyIds,...MODULE_AGENT_CAPABILITIES.map(row=>row[1]),'payroll.delete','leave.APPLY','constructor','__proto__'];
   let checked=0;
-  for(const module of [...AGENT_MODULE_CODES,'future_module'])for(const action of candidates)for(const phase of ['read','explain','prepare','confirm','execute']){
+  // A module added after the base is refused by the legacy parser by construction; compare only modules the base knew.
+  const legacyModules=AGENT_MODULE_CODES.filter(code=>Object.hasOwn(legacyActions.MODULE_AGENT_ACTIONS as object,code));
+  expect(AGENT_MODULE_CODES.filter(code=>!legacyModules.includes(code))).toEqual(['recruitment']);
+  for(const module of [...legacyModules,'future_module'])for(const action of candidates)for(const phase of ['read','explain','prepare','confirm','execute']){
    const value={module,action,phase};expect(outcome(()=>parseModuleAgentActionNomination(value)),JSON.stringify(value)).toBe(outcome(()=>parseLegacy(value)));checked++;
   }
   expect(checked).toBeGreaterThan(1000);

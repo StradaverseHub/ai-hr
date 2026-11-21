@@ -27,10 +27,10 @@ const workosCallback = handleAuth({
   baseURL: appOrigin(),
   onSuccess: async ({ user }) => {
     try {
-      const { client } = await import('@/db/client');
-      const rows = await client<{ app_user_id: string; tenant_id: string }[]>`
+      const { client, withPoolWork } = await import('@/db/client');
+      const rows = await withPoolWork('authentication', () => client<{ app_user_id: string; tenant_id: string }[]>`
         select app_user_id, tenant_id from app.principal_by_subject(${user.id})
-      `;
+      `, undefined, {idempotent:true});
       const resolved = rows[0];
       if (resolved) {
         await recordLoginSucceeded({ tenantId: resolved.tenant_id, userId: resolved.app_user_id });

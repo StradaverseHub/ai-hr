@@ -42,6 +42,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { movementEventType } from '../db/schema';
 import { INTERCHANGEABLE_COMPARISON_KINDS, MOVEMENT_KINDS, type MovementKind } from './movement';
+import {isContractPostingMovementKind} from './movement-kinds';
 import {
   deleteMovementTypeControlsTx,
   movementTypeControlsTx,
@@ -206,44 +207,52 @@ async function inUseCodesTx(tx: Tx, tenantId: string): Promise<Set<string>> {
  * shipped list was not asked for), then custom types by their sort order. `sortOrder` is carried so a later
  * item can make the whole list orderable without a schema change.
  */
-export function listMovementEventTypes(ctx: SessionContext): Promise<MovementEventTypeRow[]> {
+export function listMovementEventTypes(ctx: SessionContext, options: { includeUsage?: boolean } = {}): Promise<MovementEventTypeRow[]> {
   return withTenant(ctx, async (tx) => {
     const overlay = await overlayTx(tx, ctx.tenantId);
-    const inUse = await inUseCodesTx(tx, ctx.tenantId);
-    const rows: MovementEventTypeRow[] = MOVEMENT_KINDS.map((kind, i) => {
-      const o = overlay.get(kind);
-      return {
-        code: kind,
-        behaviourKind: kind,
-        label: o?.label ?? null,
-        description: o?.description ?? null,
-        active: o ? o.isActive : true,
-        sortOrder: o?.sortOrder ?? i,
-        builtIn: true,
-        inUse: inUse.has(kind),
-        // Never o.createdAt: that is when the tenant first RENAMED or switched this built-in, not when
-        // the type came into being. See the field's doc comment.
-        createdAt: null,
-      };
-    });
-    for (const [code, o] of overlay) {
-      if (isBuiltInKind(code)) continue;
-      rows.push({
-        code,
-        // A custom row's behaviour is validated on write; a value that somehow fell outside the allowed set
-        // degrades to the neutral record-only kind rather than borrowing a lifecycle kind's consequences.
-        behaviourKind: isConfigurableBehaviourKind(o.behaviourKind) ? o.behaviourKind : 'secondment',
-        label: o.label,
-        description: o.description,
-        active: o.isActive,
-        sortOrder: o.sortOrder,
-        builtIn: false,
-        inUse: inUse.has(code),
-        createdAt: o.createdAt,
-      });
-    }
-    return rows;
+    // Only settings need usage to show whether a type can be deleted.
+    const inUse = options.includeUsage === false ? undefined : await inUseCodesTx(tx, ctx.tenantId);
+    return movementEventTypeChoices(overlay.values(),inUse);
   });
+}
+
+export function movementEventTypeChoices(
+  catalogue: Iterable<typeof movementEventType.$inferSelect>, inUse?: ReadonlySet<string>,
+): MovementEventTypeRow[] {
+  const overlay = new Map(Array.from(catalogue, row => [row.code,row]));
+  const rows: MovementEventTypeRow[] = MOVEMENT_KINDS.map((kind, i) => {
+    const o = overlay.get(kind);
+    return {
+      code: kind,
+      behaviourKind: kind,
+      label: o?.label ?? null,
+      description: o?.description ?? null,
+      active: o ? o.isActive : true,
+      sortOrder: o?.sortOrder ?? i,
+      builtIn: true,
+      inUse: inUse?.has(kind) ?? false,
+      // Never o.createdAt: that is when the tenant first RENAMED or switched this built-in, not when
+      // the type came into being. See the field's doc comment.
+      createdAt: null,
+    };
+  });
+  for (const [code, o] of overlay) {
+    if (isBuiltInKind(code)) continue;
+    rows.push({
+      code,
+      // A custom row's behaviour is validated on write; a value that somehow fell outside the allowed set
+      // degrades to the neutral record-only kind rather than borrowing a lifecycle kind's consequences.
+      behaviourKind: isConfigurableBehaviourKind(o.behaviourKind) ? o.behaviourKind : 'secondment',
+      label: o.label,
+      description: o.description,
+      active: o.isActive,
+      sortOrder: o.sortOrder,
+      builtIn: false,
+      inUse: inUse?.has(code) ?? false,
+      createdAt: o.createdAt,
+    });
+  }
+  return rows;
 }
 
 /**
@@ -267,7 +276,7 @@ export async function getMovementEventTypeForSettings(
 
 /** The types the New Event form offers — the catalogue minus everything switched off. */
 export async function activeMovementEventTypes(ctx: SessionContext): Promise<MovementEventTypeRow[]> {
-  return (await listMovementEventTypes(ctx)).filter((r) => r.active);
+  return (await listMovementEventTypes(ctx)).filter((r) => r.active&&!isContractPostingMovementKind(r.behaviourKind));
 }
 
 /**
@@ -333,7 +342,9 @@ export async function activeMovementEventTypeChoicesTx(tx:Tx,tenantId:string){
  const byCode=new Map(overlays.map(row=>[row.code,row]));
  const resolvedChoices=[];
  for(const code of new Set([...MOVEMENT_KINDS,...overlays.map(row=>row.code)])){
-  const resolved=resolveMovementTypeRow(code,byCode.get(code));if(resolved?.active)resolvedChoices.push(resolved);
+  // Board 511aa74a — Rehired is recorded on New Event only (its own command, core/rehire.ts); the movement import
+  // never offers it, so its workbook catalogue (and fingerprint) is the one it was before the kind existed.
+  const resolved=resolveMovementTypeRow(code,byCode.get(code));if(resolved?.active&&resolved.behaviourKind!=='rehire')resolvedChoices.push(resolved);
  }
  if(resolvedChoices.length>1000)throw new MovementTypeError('movement_catalog_too_large');
  const controls=await movementTypeControlsTx(tx,tenantId,resolvedChoices);

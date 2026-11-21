@@ -24,13 +24,19 @@ UNIT=Path('/etc/systemd/system/aihr-bank-import.service')
 USER='aihr-import'
 LOCK_DIRECTORY=Path('/run/aihr-bank-import')
 BASE_ENV={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'}
-ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY'}
+ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY','MOVEMENT_IMPORT_WORKBOOK_KEY','MOVEMENT_IMPORT_WORKBOOK_KEY_ID'}
 
 def check(ok,message):
     if not ok: raise ValueError('Worker installation refused: '+message)
 
+VERIFIED_OPERATION_DEADLINE=None  # Absolute monotonic slot end; normal commands retain45s.
+VERIFIED_OPERATION_GUARD=None  # Fixed launcher only; normal installer paths have no queue dependency.
+VERIFIED_OPERATION_FDS=()  # Set only by the fixed root-owned staging launcher; default behavior is unchanged.
+
 def command(argv,*,input=None,env=None,allow_failure=False):
-    result=subprocess.run(argv,input=input,env=env or BASE_ENV,cwd='/',capture_output=True,text=True,timeout=45)
+    timeout=45 if VERIFIED_OPERATION_DEADLINE is None else min(45,VERIFIED_OPERATION_DEADLINE-time.monotonic())
+    check(timeout>0,'absolute operation command deadline exceeded')
+    result=subprocess.run(argv,input=input,env=env or BASE_ENV,cwd='/',capture_output=True,text=True,timeout=timeout,pass_fds=VERIFIED_OPERATION_FDS)
     if not allow_failure: check(result.returncode==0,'administrator/runtime command failed (credentials suppressed)')
     return result
 
@@ -107,6 +113,8 @@ User=aihr-import
 Group=aihr-import
 WorkingDirectory=/opt/aihr-import/releases/{source}
 Environment=NODE_ENV=production
+Environment=AIHR_DB_PROCESS_ROLE=worker
+Environment=AIHR_DB_POOL_MAX=2
 EnvironmentFile=/etc/aihr/import-worker.env
 UnsetEnvironment=NODE_OPTIONS NODE_PATH LD_PRELOAD LD_LIBRARY_PATH PYTHONPATH
 ExecStart=/opt/node22/bin/node --import tsx scripts/bank-import-runner.ts
@@ -136,10 +144,11 @@ def service_properties():
     return dict(line.split('=',1) for line in raw.splitlines() if '=' in line)
 
 def validate_service(properties,release):
-    for key,wanted in {'User':USER,'Group':USER,'WorkingDirectory':str(release),'FragmentPath':str(UNIT),'Environment':'NODE_ENV=production','EnvironmentFiles':str(ENV)+' (ignore_errors=no)'}.items():
+    for key,wanted in {'User':USER,'Group':USER,'WorkingDirectory':str(release),'FragmentPath':str(UNIT),'Environment':'NODE_ENV=production AIHR_DB_PROCESS_ROLE=worker AIHR_DB_POOL_MAX=2','EnvironmentFiles':str(ENV)+' (ignore_errors=no)'}.items():
         check(properties.get(key)==wanted,'actual worker service configuration differs: '+key)
     for key in ['DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','PassEnvironment','RootDirectory','RootImage','PAMName']:
-        check(properties.get(key)=='','unreviewed service override: '+key)
+        # systemd 255 omits an unset Exec*/override property from `systemctl show --property=`; absent means unset.
+        check(properties.get(key,'')=='','unreviewed service override: '+key)
 
 def stop_owned_first_install():
     """Normal managed stop; independently disable even if the stop request fails or times out."""

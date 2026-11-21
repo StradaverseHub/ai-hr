@@ -19,7 +19,16 @@ import {definitionOfDoneInputs} from './definition-of-done-inputs';
 /** Ceilings at the allowlist's creation (claude/teras-integration a2a39018). Lower them as gaps close; never raise. */
 // Re-baselined at integration against released main 50ea2471: +1 entry (page:/admin/settings/entra, semantic+guide+corpus).
 // AI Centre restructure (4 Nov 2026): lowered to the counts after it (356/344/236/4/339 before, 352/341/233/4/335 after).
-const CEILING={entries:352,semantic:341,guide:233,readiness:4,corpus:335} as const;
+// 50d9b809: lowered to the counts after it (352/341/233/4/335 before, 351/340/232/4/334 after): the leave admin guide now
+// links Leave Settings, closing its guide gap, and the new Shared Leave Groups page shipped with no gap of its own.
+// 90377f8ca and 6781b901f made /admin/claims/forms and /admin/locations route-handler redirects, so they left the
+// linkable pages and their entries closed: lowered to the counts after it (351/340/232/4/334 before, 349/338/231/4/332 after).
+// Re-baselined at integration of the Irwin combined release (82748f92, 2026-11-12): +1 entry (page:/admin/settings/people,
+// semantic+corpus; its guide gap is closed). The card hub needs a registered People Settings read (a migration) before it closes.
+// 96a54ed2 (owner decision, 12 November 2026, "Close it properly"): /attendance/on-behalf/request and /approve ship with their
+// semantic reads, guide links and corpus turns, so they add no gap and the ceilings are unchanged.
+// The former Rewards Shared page is now a guarded route forwarder, outside LINKABLE_PAGES.
+const CEILING={entries:349,semantic:338,guide:231,readiness:4,corpus:332} as const;
 
 const allowed=():Map<string,string[]>=>{const map=new Map<string,string[]>();
  for(const [signature,keys] of Object.entries(DEFINITION_OF_DONE_GAPS))for(const key of keys){
@@ -36,6 +45,10 @@ function compare(gaps:Readonly<Record<string,readonly string[]>>,list:ReadonlyMa
 describe('definition of done',()=>{
  const inputs=definitionOfDoneInputs(),gaps=definitionOfDoneGaps(inputs),list=allowed();
  it('covers organisation review with its literal semantic owner, guide and corpus without a new gap',()=>{expect(inputs.pages.some(page=>page.path==='/admin/organization/organisation-tagging')).toBe(true);expect(gaps['page:/admin/organization/organisation-tagging']).toBeUndefined();});
+ it('ships all three board pages with semantic, bundled guide, existing readiness and corpus coverage',()=>{
+  for(const page of ['/lifecycle/requisitions/offboarding','/me/document-signing','/payroll/history-import/records']){expect(inputs.pages.some(row=>row.path===page),page).toBe(true);expect(gaps['page:'+page],page).toBeUndefined();}
+  expect(inputs.moduleStages.get('payroll')).toBe('company_payroll_setup');expect(inputs.stagesWithoutOwner.has('company_payroll_setup')).toBe(false);
+ });
  it('reads the live registries',()=>{
   expect(inputs.actions.length).toBeGreaterThanOrEqual(71);expect(inputs.pages.length).toBeGreaterThanOrEqual(293);
   expect(inputs.guideBodies.length).toBeGreaterThan(40);expect(inputs.corpus.length).toBeGreaterThan(150);

@@ -12,9 +12,10 @@ import {commitEmployeeImport,validateEmployeeImport} from '../core/import';
 import {getPeopleGeneral,savePeopleGeneral} from '../core/people-general';
 import {getImportAttempt,importAttemptSource,importSourceHash,listImportAttempts} from '../core/import-history';
 import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
+import {revertImportToOutcome} from './helpers/employee-import-revert';
 import {readBankStatutoryStateTx,bankStatutorySubjectTx} from '../core/bank-statutory-import';
 import {commitBankStatutoryUpload} from '../core/bank-statutory-upload';
-import {listEmployeesPage,listEmployeesForPayrollRun,dashboardStats,listEmployees} from '../core/read';
+import {listEmployeesPage,listEmployeesForPayrollRun,listEmployees} from '../core/read';
 import {headcountSummary} from '../core/analytics';
 import {getTaxSelectionMY} from '../localization/my/tax-selection';
 import {importAttemptStatus} from '../lib/import-history';
@@ -127,13 +128,12 @@ describe('524303d9 · Import History and Revert (void)',()=>{
   const e10=await employmentOf('EV010');
   const listedBefore=await listEmployeesPage(a,{limit:50,offset:0},'workforce');
   expect(listedBefore.rows.map(r=>r.employeeCode).sort()).toEqual(['EV010','EV011']);
-  expect((await dashboardStats(a)).headcount).toBe(2);
   expect((await listEmployeesForPayrollRun(a,b.companyId,'2026-03')).map(r=>r.employeeCode).sort()).toEqual(['EV010','EV011']);
 
   const preview=await previewImportRevertForAttempt(a,attemptId);
   expect(preview,JSON.stringify(preview.blockers)).toMatchObject({eligible:true,blockers:[]});
-  await expect(revertImportForAttempt(a,attemptId,{previewHash:preview.previewHash,reason:'no'})).rejects.toThrow('Enter a reason');
-  await revertImportForAttempt(a,attemptId,{previewHash:preview.previewHash,reason:'Wrong company in this file'});
+  await expect(revertImportToOutcome(a,attemptId,{previewHash:preview.previewHash,reason:'no'})).rejects.toThrow('Enter a reason');
+  await revertImportToOutcome(a,attemptId,{previewHash:preview.previewHash,reason:'Wrong company in this file'});
 
   const[voided]=await owner.db.select().from(s.employment).where(eq(s.employment.id,e10.id));
   expect(voided).toMatchObject({employeeCode:null,voidedEmployeeCode:'EV010',voidReason:'Wrong company in this file',voidedImportAttemptId:attemptId,voidedBy:a.userId});
@@ -149,13 +149,12 @@ describe('524303d9 · Import History and Revert (void)',()=>{
   // Gone from the people list, the pickers, headcount (dashboard and analytics) and payroll selection.
   expect((await listEmployeesPage(a,{limit:50,offset:0},'workforce')).rows).toEqual([]);
   expect(await listEmployees(a)).toEqual([]);
-  expect((await dashboardStats(a)).headcount).toBe(0);
   expect((await headcountSummary(a,undefined,{asOf:'2026-03-01'})).total).toBe(0);
   expect(await listEmployeesForPayrollRun(a,b.companyId,'2026-03')).toEqual([]);
 
   // Once only.
   await expect(previewImportRevertForAttempt(a,attemptId)).rejects.toThrow('already been reverted');
-  await expect(revertImportForAttempt(a,attemptId,{previewHash:preview.previewHash,reason:'Again please'})).rejects.toThrow('already been reverted');
+  await expect(revertImportToOutcome(a,attemptId,{previewHash:preview.previewHash,reason:'Again please'})).rejects.toThrow('already been reverted');
 
   // The same file imports again: the Employee IDs, emails and NRICs were released.
   const again=await importFile(a,rows);
@@ -174,7 +173,7 @@ describe('524303d9 · Import History and Revert (void)',()=>{
    expect.objectContaining({label:'EV020 · Everything Subject 20',reason:expect.stringContaining('payroll inputs or results')}),
    expect.objectContaining({label:'EV021 · Everything Subject 21',reason:expect.stringContaining('leave')}),
   ]));
-  await expect(revertImportForAttempt(a,result.attemptId!,{previewHash:preview.previewHash,reason:'Undo the file'})).rejects.toThrow('cannot be reverted');
+  await expect(revertImportToOutcome(a,result.attemptId!,{previewHash:preview.previewHash,reason:'Undo the file'})).rejects.toThrow('cannot be reverted');
   expect((await owner.db.select().from(s.employment).where(and(eq(s.employment.tenantId,b.tenantId),isNull(s.employment.voidedAt))))).toHaveLength(2);
   const failed=(await getImportAttempt(a,result.attemptId!))!;expect(failed.events.map(e=>e.kind)).toContain('revert_failed');
  });
@@ -194,7 +193,7 @@ describe('524303d9 · Import History and Revert (void)',()=>{
   const direct=withTenant(a,tx=>tx.execute(sql`update employment set voided_at=now(),voided_by=${a.userId}::uuid,void_reason='manual',voided_import_attempt_id=gen_random_uuid(),voided_employee_code=employee_code,employee_code=null where id=${e.id}::uuid`));
   await expect(direct).rejects.toThrow();
   const preview=await previewImportRevertForAttempt(a,result.attemptId!);
-  await revertImportForAttempt(a,result.attemptId!,{previewHash:preview.previewHash,reason:'Duplicate file'});
+  await revertImportToOutcome(a,result.attemptId!,{previewHash:preview.previewHash,reason:'Duplicate file'});
   // Final: the voided row has left every ordinary read and write.
   const after=await withTenant(a,tx=>tx.execute(sql`update employment set void_reason='changed' where id=${e.id}::uuid returning id`));
   expect([...after]).toEqual([]);

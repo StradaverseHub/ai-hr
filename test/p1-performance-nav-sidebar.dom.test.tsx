@@ -18,6 +18,7 @@ vi.mock('next/navigation', () => ({ usePathname: () => nav.path, useSearchParams
 vi.mock('../lib/session', () => ({ getSession: vi.fn() }));
 vi.mock('../core/entitlements', () => ({ isModuleEnabled: vi.fn() }));
 import { Sidebar } from '../components/sidebar';
+import { SIDEBAR_AUDIENCE_INVENTORY, isCollapsible, type ChildItem } from '../lib/navigation/shell-inventory';
 
 const CYCLE = '0f9b4c1e-2d3a-4b5c-8d7e-6f5a4b3c2d1e';
 const LATEST = `/performance/${CYCLE}/cycle/calendar`;
@@ -77,5 +78,24 @@ describe.each(['classic', 'monolith', 'atelier'])('%s rail: the two performance 
     nav.path = path;
     rail(theme, { canAdministerOnehr: true, performanceAdminHref: LATEST });
     expect([...document.querySelectorAll('a[aria-current="page"]')].map(link => link.getAttribute('href'))).toEqual([lit]);
+  });
+});
+
+// No current Performance descriptor is locked, but the shared row contract still supports a disabled
+// plan. Exercise the real Sidebar renderer with a declared row, not a copied span implementation.
+describe.each(['classic', 'monolith', 'atelier'])('%s disabled shell destination', theme => {
+  it('renders a non-link and never claims the current route', () => {
+    const home = SIDEBAR_AUDIENCE_INVENTORY[0];
+    const dashboard = home.items[0];
+    if (isCollapsible(dashboard)) throw new Error('fixture requires the Dashboard leaf');
+    const locked: ChildItem = {...dashboard, href:'/locked-plan', labelKey:'development', disabled:true};
+    home.items.push(locked);
+    nav.path = '/locked-plan';
+    try {
+      rail(theme);
+      expect(screen.getByText(messages.nav.development).closest('[aria-disabled="true"]')).not.toBeNull();
+      expect(document.querySelector('a[href="/locked-plan"]')).toBeNull();
+      expect(document.querySelector('[aria-disabled="true"][aria-current]')).toBeNull();
+    } finally { home.items.pop(); }
   });
 });

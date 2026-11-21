@@ -26,7 +26,7 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
   const td=await getTranslations('rewardsDeletion'),tc=await getTranslations('rewardsConfig');
   const ta=await getTranslations('rewardsAccessControl'),tt=await getTranslations('rewardsAdminTabs');
   const v = await getRewardConfiguration(s, unitId);
-  const choices = await rewardSetupChoices(s, scopeIds);
+  const choices = await rewardSetupChoices(s, scopeIds, { fields: ['users'] });
   const { unit } = v;
   const senior = !readOnly && v.canConfigure ? await getRewardSeniorMembership(s, unitId) : null;
   const calendar = await getRewardCalendar(s, unitId);
@@ -36,7 +36,6 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
   const userName = (id: string) => choices.users.find(u => u.id === id)?.name ?? t('assignedUser');
   const fields = <><input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={unit.revision} /></>;
   return <div className="w-full space-y-6">
-    {choices.companies.length > 0 && <Link href="/admin/rewards" className="text-sm text-primary hover:underline">← {t('adminTitle')}</Link>}
     <PageHeader title={`${t('configuration')} · ${v.cycle?.name ?? t('title')} · ${v.name}`} description={`${t(`kinds.${unit.kind}`)} · ${unit.kind === 'annual' && unit.status === 'withdrawn' ? tc('cancelled') : t(`stages.${unit.status}`)}`} />
     <ErrorBanner message={error} />
     {readOnly&&<p className="rounded-md border p-3 text-sm">{td('viewHelp')}</p>}
@@ -62,11 +61,11 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
     {!v.canConfigure && <p className="max-w-3xl text-sm text-muted-foreground">{unit.status === 'draft' ? t('configurationPermission') : t('locked')}</p>}
     <RewardCalendarForm unitId={unitId} revision={calendar.revision} values={calendar.values} canEdit={!readOnly && calendar.canEdit} />
     {senior && <SeniorMembership key={senior.revision} value={senior} />}
-    <RewardPolicyContent libraryOwned={v.libraryBound} readOnly={readOnly} canReadPat={v.canReadPat} canConfigure={v.canConfigure} unitId={unitId} revision={unit.revision} policy={unit.policy} />
+    <section id="applied-setup"><RewardPolicyContent limitsOwned={v.limitsOwned} libraryOwned={v.libraryBound} readOnly={readOnly} canReadPat={v.canReadPat} canConfigure={v.canConfigure} unitId={unitId} revision={unit.revision} policy={unit.policy} /></section>
   </div>;
 }
 
-async function RewardPolicyContent({libraryOwned,readOnly,canConfigure,canReadPat,unitId,revision,policy}:{libraryOwned:boolean;readOnly:boolean;canConfigure:boolean;canReadPat:boolean;unitId:string;revision:number;policy:import('@/packs/rewards/model').RewardPolicy}){
- if(readOnly||!canConfigure)return <RewardPolicyFields libraryOwned={libraryOwned} policy={policy} readOnly unitId={unitId} hideUnitInputs={!canReadPat}/>;
- return <PolicyForm libraryOwned={libraryOwned} unitId={unitId} revision={revision} policy={policy}/>;
+async function RewardPolicyContent({limitsOwned,libraryOwned,readOnly,canConfigure,canReadPat,unitId,revision,policy}:{limitsOwned:boolean;libraryOwned:boolean;readOnly:boolean;canConfigure:boolean;canReadPat:boolean;unitId:string;revision:number;policy:import('@/packs/rewards/model').RewardPolicy}){
+ if(readOnly||!canConfigure)return <RewardPolicyFields limitsOwned={limitsOwned} libraryOwned={libraryOwned} policy={policy} readOnly unitId={unitId} hideUnitInputs={!canReadPat}/>;
+ return <PolicyForm limitsOwned={limitsOwned} libraryOwned={libraryOwned} unitId={unitId} revision={revision} policy={policy}/>;
 }

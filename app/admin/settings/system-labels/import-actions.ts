@@ -2,7 +2,8 @@
 
 import { scopedAdmin } from '@/lib/scope';
 import { revalidatePath } from 'next/cache';
-import { previewSystemLabelImport, applySystemLabelImport } from '@/core/system-label-import';
+import { previewSystemLabelImport } from '@/core/system-label-import';
+import { startSystemLabelImportJob, SystemLabelImportJobError } from '@/core/system-label-import-job';
 import { LABEL_WORKBOOK_MAX_BYTES } from '@/lib/system-label-workbook';
 import { publicErrorMessage } from '@/lib/public-error';
 
@@ -28,14 +29,14 @@ export async function previewLabelsAction(data:FormData) {
   catch(e){return {ok:false as const,message:publicErrorMessage(e)};}
 }
 
+/** Starts the background import of the previewed workbook (the worker writes it; the screen follows its progress). */
 export async function importLabelsAction(data:FormData) {
   const {s}=await scopedAdmin();
   try {
-    const summary=await applySystemLabelImport(s,{bytes:await upload(data),mode:'add',
-      token:String(data.get('token')??''),confirmUpdates:false,selectedKeys:selection(data)});
+    const file=data.get('file');
+    const started=await startSystemLabelImportJob(s,{bytes:await upload(data),token:String(data.get('token')??''),selectedKeys:selection(data),
+      fileName:file instanceof File?file.name:undefined,operationKey:typeof data.get('operationKey')==='string'?String(data.get('operationKey')):undefined});
     revalidatePath('/admin/settings/system-labels');
-    revalidatePath('/admin/personnel');
-    revalidatePath('/admin/settings/system-labels/profile-options');
-    return {ok:true as const,summary};
-  }catch(e){return {ok:false as const,message:publicErrorMessage(e)};}
+    return {ok:true as const,job:started.job};
+  }catch(e){return {ok:false as const,message:e instanceof SystemLabelImportJobError?e.message:publicErrorMessage(e)};}
 }

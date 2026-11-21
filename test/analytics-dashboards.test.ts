@@ -93,6 +93,32 @@ describe('Reporting & Analytics — dashboards aggregation', () => {
     expect(sumCounts(d.byEmploymentStatus)).toBe(4);
   });
 
+  it('folds weighted native counts into the existing age and null buckets', async () => {
+    const first = await hire('Count One');
+    const second = await hire('Count Two');
+    const third = await hire('Count Three');
+    const unassigned = await hire('Count Four');
+    for (const member of [first, second]) {
+      await setPerson(member.personId, { gender: 'female', maritalStatus: 'married', dateOfBirth: '1990-05-01' });
+    }
+    await setPerson(third.personId, { gender: 'female', maritalStatus: 'single', dateOfBirth: '1991-01-01' });
+    await owner.db.update(assignment).set({ validTo: '2026-02-01' }).where(eq(assignment.employmentId, unassigned.employmentId));
+
+    const result = await workforceDemographics(a, [base.companyId], { asOf: ASOF });
+    expect(result.total).toBe(4);
+    expect(result.byAgeBand).toEqual([{ name: '35-44', count: 3 }, { name: UNKNOWN_BUCKET, count: 1 }]);
+    expect(result.byGender).toEqual([{ name: 'female', count: 3 }, { name: UNKNOWN_BUCKET, count: 1 }]);
+    expect(Object.fromEntries(result.byMarital.map(({ name, count }) => [name, count]))).toEqual({
+      married: 2, single: 1, [UNKNOWN_BUCKET]: 1,
+    });
+    expect(result.byDepartment).toEqual([{ name: 'Finance', count: 3 }, { name: UNASSIGNED_BUCKET, count: 1 }]);
+    const empty = await workforceDemographics(a, [base.companyId], { asOf: ASOF, filters: { q: 'unmatched-count-fixture' } });
+    expect(empty).toEqual({
+      total: 0, byGender: [], byMarital: [], byAgeBand: [], byLocation: [],
+      byCostCentre: [], byDepartment: [], byEmploymentStatus: [],
+    });
+  });
+
   // 9cbf5e0d — this used to assert the stored 5-way assignment.status (on_leave / probation), then (r75) that
   // a legacy row carrying a retired value still DERIVED to 'active'. R81 removes the column outright, so that
   // fixture can no longer be written at all: the guarantee is now structural rather than behavioural. What is
