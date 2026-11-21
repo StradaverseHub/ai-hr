@@ -643,7 +643,7 @@ async function measureShellLinks(fixture){
   for(const path of ['/admin/personnel','/payroll','/analytics','/roster']){
    const row={journey:'shell-navigation',role:actor.role,route:path,status:'incomplete'};
    report.journeys.push(row);
-   let clickStart,documentRequests=0;
+   let clickStart,documentRequests=0,stage='initial-document';
    const beforeClick={routeRequests:0,destinationRequests:0};
    const observe=request=>{
     if(request.resourceType()==='document'&&request.frame()===page.mainFrame())documentRequests++;
@@ -659,21 +659,28 @@ async function measureShellLinks(fixture){
     page.on('request',observe);
     const deadline=performance.now()+30000;
     const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
+    stage='native-menu-control';
     await clickNativeShellDestination(page,path,remaining,async ()=>{
      // The flyout is visible but the user has not selected any link. Give browser
      // scheduling and intent dwell time to emit speculative route requests.
      await pause(250);
+     stage='destination-click';
      clickStart=performance.now();
      documentRequests=0;
     });
+    stage='destination-url';
     await page.waitForURL(origin+path,{timeout:remaining()});
+    stage='destination-content';
     assert.equal(await readyContent(page,actor,path,remaining),'usable-content');
     await assertContentAvailable(page);
     assert.equal(documentRequests,0,'Shell link triggered a full document reload');
     assert(Number.isFinite(clickStart),'Shell click time was not observed');
     row.elapsedMs=performance.now()-clickStart;
     row.status='observed';
-   }catch(error){row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';}
+   }catch(error){
+    row.failedStep=stage;
+    row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
+   }
    finally{page.off('request',observe);row.documentRequests=documentRequests;row.beforeClick=beforeClick;save();}
   }
  }finally{await context.close();}

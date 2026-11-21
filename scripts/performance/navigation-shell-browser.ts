@@ -45,7 +45,7 @@ async function traverseNativeShellDestination(page:Page,href:string,remaining:()
  let interactions=0;
  for(const workspace of [null,...alternatives]){
   if(workspace!==null){
-   const button=workspaces.nth(workspace);assert(await button.isEnabled(),'Native workspace is unavailable');
+   const button=workspaces.nth(workspace).and(page.locator(':enabled'));
    await button.click({timeout:remaining()});
    await workspaces.nth(workspace).and(sidebar.locator('[aria-pressed="true"]')).waitFor({state:'visible',timeout:remaining()});
   }
@@ -69,8 +69,7 @@ async function traverseNativeShellDestination(page:Page,href:string,remaining:()
    }
    if(!next)break;
    assert(++interactions<=128,'Native navigation disclosure traversal exceeds its bound');opened.add(id);
-   assert(await next.isEnabled(),'Native navigation disclosure is unavailable');
-   await next.click({timeout:remaining()});
+   await next.and(page.locator(':enabled')).click({timeout:remaining()});
    await page.locator(roots.map(root=>root+' button[aria-controls='+JSON.stringify(id)+'][aria-expanded="true"]').join(','))
     .waitFor({state:'visible',timeout:remaining()});
   }
