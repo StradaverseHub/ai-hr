@@ -1,4 +1,4 @@
-/** Compare the exact Leave decision query with subject scope applied inside its native owner. */
+/** Attribute work in the unchanged Leave decision query on the fictional group fixture. */
 import { sql, type SQL } from 'drizzle-orm';
 import { afterAll, expect, it } from 'vitest';
 import { accountTaskCallerSql } from '../core/account-task-bundle';
@@ -12,27 +12,61 @@ import { closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase } from
 
 afterAll(closeAll);
 
-type Explain = { 'Planning Time': number; 'Execution Time': number };
-const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
+type PlanNode = {
+  'Node Type': string;
+  'Relation Name'?: string;
+  'Function Name'?: string;
+  'Subplan Name'?: string;
+  'Actual Total Time'?: number;
+  'Actual Rows'?: number;
+  'Actual Loops'?: number;
+  'Rows Removed by Filter'?: number;
+  Plans?: PlanNode[];
+};
+type Explain = { Plan: PlanNode; 'Planning Time': number; 'Execution Time': number };
+const relations = new Set(['leave_request','leave_approval_step','leave_cancellation_request',
+  'leave_cancellation_step','employment','person','reporting_line','role_assignment']);
+const functions = new Set(['delegated_approval_subjects','delegated_approval_subject',
+  'visible_employment_ids','can_decide_via_delegation']);
+const subplans = new Set(['CTE headers','CTE subject_rows','CTE distinct_subjects']);
 
-async function profile(tx: Tx, statement: SQL, samples: number) {
-  const plans: Explain[] = [];
-  for (let sample = 0; sample < samples; sample++) {
-    const [row] = await tx.execute<{ 'QUERY PLAN': Explain[] }>(
-      sql`explain (analyze, timing off, summary, format json) ${statement}`,
-    );
-    const plan = row['QUERY PLAN'][0];
-    expect(Number.isFinite(plan['Planning Time']) && Number.isFinite(plan['Execution Time'])).toBe(true);
-    plans.push(plan);
+async function profile(tx: Tx, statement: SQL) {
+  const [row] = await tx.execute<{ 'QUERY PLAN': Explain[] }>(
+    sql`explain (analyze, timing on, summary, format json) ${statement}`,
+  );
+  const plan = row['QUERY PLAN'][0];
+  expect(Number.isFinite(plan['Planning Time']) && Number.isFinite(plan['Execution Time'])).toBe(true);
+  const details = [];
+  const pending = [plan.Plan];
+  while (pending.length) {
+    const node = pending.pop()!;
+    pending.push(...(node.Plans ?? []));
+    // PostgreSQL reports actual time and rows per loop. Times here include child nodes.
+    const loops = node['Actual Loops'] ?? 0;
+    const relation = node['Relation Name'] ?? '';
+    const routine = node['Function Name'] ?? '';
+    const subplan = node['Subplan Name'] ?? '';
+    details.push({
+      kind: node['Node Type'],
+      ...(relations.has(relation) && { relation }),
+      ...(functions.has(routine) && { routine }),
+      ...(subplans.has(subplan) && { subplan }),
+      loops,
+      rows: Math.round((node['Actual Rows'] ?? 0) * loops),
+      removedRows: Math.round((node['Rows Removed by Filter'] ?? 0) * loops),
+      inclusiveMs: Math.round((node['Actual Total Time'] ?? 0) * loops * 1000) / 1000,
+    });
   }
   return {
-    samples,
-    planningMs: median(plans.map(plan => plan['Planning Time'])),
-    executionMs: median(plans.map(plan => plan['Execution Time'])),
+    planningMs: plan['Planning Time'],
+    executionMs: plan['Execution Time'],
+    owners: details.filter(node => node.relation || node.routine || node.subplan)
+      .sort((a, b) => b.inclusiveMs - a.inclusiveMs).slice(0, 15),
+    leading: details.sort((a, b) => b.inclusiveMs - a.inclusiveMs).slice(0, 8),
   };
 }
 
-it('scopes Leave subjects before authorization while preserving the live decisions', async () => {
+it('attributes native execution time while retaining the expected delegated Leave decision', async () => {
   await migrateTestDb();
   await resetDb();
   const base = await seedBase();
@@ -115,49 +149,21 @@ it('scopes Leave subjects before authorization while preserving the live decisio
   ];
   expect(fixture.singleCompanyId).not.toBe(base.companyId);
   type ApprovalSection = { leave: { defer: boolean; rows: { id: string }[] } };
-  async function measure() {
-    const results = [];
-    for (const { role, session, companyIds } of cases) {
-      results.push(await withTenant(session, async tx => {
-        await assertAssignedWorkPrincipalTx(tx, session);
-        await tx.execute(sql`select set_config('aihr_fixture.leave_company_ids',
-          ${companyIds ? '{' + companyIds.join(',') + '}' : ''},true), set_config('jit','off',true)`);
-        const statement = sql`with ${accountTaskCallerSql(session)}
-          select ${pendingLeaveDecisionTasksBundleSql(tx, session, companyIds)} as value`;
-        const [row] = await tx.execute<{ value: ApprovalSection }>(statement);
-        return { role, value: row.value, ...await profile(tx, statement, 5) };
-      }, { readOnlySnapshot: true }));
-    }
-    return results;
-  }
-  const readDefinition = async () => (await owner.client<{ definition: string; source: string }[]>`
-    select pg_get_functiondef(oid) as definition, prosrc as source from pg_proc
-    where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure
-  `)[0];
-  const original = await readDefinition();
-  const guard = 'WHERE e.tenant_id=app.current_tenant_id() AND e.id=ANY(subject_ids)';
-  expect(original.source.split(guard)).toHaveLength(2);
-  // Add only the selected company predicate inside the existing native subject
-  // owner. The outer list filter, delegation, RLS and step checks still run.
-  const replacement = original.definition.replace(guard, guard + `
-    AND (wanted_module <> 'leave' OR wanted_task <> 'leave.application'
-      OR nullif(current_setting('aihr_fixture.leave_company_ids',true),'') IS NULL
-      OR e.company_id=ANY(nullif(current_setting('aihr_fixture.leave_company_ids',true),'')::uuid[]))`);
-  const baseline = await measure();
-  try {
-    await owner.client.unsafe(replacement);
-    expect((await readDefinition()).source).not.toBe(original.source);
-    const candidate = await measure();
-    expect(candidate.map(row => row.value)).toEqual(baseline.map(row => row.value));
-    expect(candidate.find(row => row.role === 'delegate own scope')?.value.leave.rows)
-      .toContainEqual(expect.objectContaining({ id: named.leave_request_id }));
-    expect(candidate.find(row => row.role === 'delegate excluded scope')?.value.leave.rows).toEqual([]);
-    expect(candidate.find(row => row.role === 'group empty')?.value.leave.rows).toEqual([]);
-    console.info('LEAVE_APPROVAL_SCOPE_PROFILE ' + JSON.stringify(candidate.map(({ role, executionMs, value }, index) => ({
-      role, controlMs: baseline[index].executionMs, candidateMs: executionMs, matchedRows: value.leave.rows.length,
-    }))));
-  } finally {
-    await owner.client.unsafe(original.definition);
-    expect((await readDefinition()).definition).toBe(original.definition);
+  for (const { role, session, companyIds } of cases) {
+    const result = await withTenant(session, async tx => {
+      await assertAssignedWorkPrincipalTx(tx, session);
+      await tx.execute(sql`set local jit=off`);
+      const statement = sql`with ${accountTaskCallerSql(session)}
+        select ${pendingLeaveDecisionTasksBundleSql(tx, session, companyIds)} as value`;
+      const [row] = await tx.execute<{ value: ApprovalSection }>(statement);
+      if (role === 'delegate own scope') {
+        expect(row.value.leave.rows).toContainEqual(expect.objectContaining({ id: named.leave_request_id }));
+      }
+      if (role === 'delegate excluded scope' || role === 'group empty') {
+        expect(row.value.leave.rows).toEqual([]);
+      }
+      return { matchedRows: row.value.leave.rows.length, ...await profile(tx, statement) };
+    }, { readOnlySnapshot: true });
+    console.info('LEAVE_APPROVAL_PLAN_PROFILE ' + JSON.stringify({ role, ...result }));
   }
 }, 240_000);
