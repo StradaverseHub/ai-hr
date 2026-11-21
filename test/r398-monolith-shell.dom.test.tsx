@@ -29,10 +29,12 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
   redirect: vi.fn(),
 }));
-// Server actions and the delegation panel: server-only imports that cannot load in jsdom; nothing here
-// submits them.
-vi.mock('../app/delegations/actions', () => ({ loadDelegationContextAction: vi.fn() }));
-vi.mock('../components/delegation-manager', () => ({ DelegationManager: () => null }));
+const delegation = vi.hoisted(() => ({ read: vi.fn(), moduleLoaded: vi.fn() }));
+vi.mock('../app/delegations/actions', () => ({ loadDelegationContextAction: delegation.read }));
+vi.mock('../components/delegation-manager', () => {
+  delegation.moduleLoaded();
+  return { DelegationManager: () => <div data-testid="delegation-editor" /> };
+});
 vi.mock('../app/notification-actions', () => ({
   markAllNotificationsReadAction: vi.fn(),
   markNotificationReadAction: vi.fn(),
@@ -203,6 +205,22 @@ describe('Classic rail renders today’s markup', () => {
 });
 
 describe('the intent bar is the command bar made visible', () => {
+  it('loads neither the Delegation editor nor its context until the action is selected', async () => {
+    setTheme('monolith');
+    delegation.read.mockResolvedValueOnce({});
+    wrap(<><CommandBar /><IntentBar /></>);
+    const input = screen.getByRole('textbox', { name: messages.commandBar.open });
+    fireEvent.change(input, { target: { value: 'deleg' } });
+    fireEvent.submit(input.closest('form')!);
+    const dialog = await screen.findByRole('dialog');
+    expect(delegation.moduleLoaded).not.toHaveBeenCalled();
+    expect(delegation.read).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByText(messages.commandBar.delegationTitle));
+    expect(await within(dialog).findByTestId('delegation-editor')).toBeVisible();
+    expect(delegation.moduleLoaded).toHaveBeenCalledOnce();
+    expect(delegation.read).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
   it('is a labelled input whose Enter opens the EXISTING command bar with the typed query', async () => {
     setTheme('monolith');
     wrap(
