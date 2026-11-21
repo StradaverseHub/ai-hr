@@ -10,10 +10,12 @@ const generationOptions = { temperature: 0, seed: 42, num_predict: 512 };
 
 async function main() {
   const [model, outfile, ...flags] = process.argv.slice(2);
-  const benchmarks = flags.filter(flag => flag === '--protected' || flag === '--protected-work-summary');
+  const runners = { '--protected': runProtectedLeaveComparison, '--protected-work-summary': runProtectedWorkSummaryComparison };
+  const isBenchmark = (flag: string): flag is keyof typeof runners => Object.hasOwn(runners, flag);
+  const benchmarks = flags.filter(isBenchmark);
   // An exact locally installed tag keeps this experiment independent of cloud-provider credentials.
   if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile ||
-      flags.some(flag => flag !== '--schema' && !benchmarks.includes(flag)) || new Set(flags).size !== flags.length || benchmarks.length > 1)
+      flags.some(flag => flag !== '--schema' && !isBenchmark(flag)) || new Set(flags).size !== flags.length || benchmarks.length > 1)
     throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema] [--protected | --protected-work-summary]');
   const answerFormat = flags.includes('--schema') ? leaveAnswerJsonSchema : 'json';
   localOutputPath(outfile);
@@ -43,8 +45,8 @@ async function main() {
       throw Error('Local model returned an incomplete response.');
     return { text: result.response, inputTokens: result.prompt_eval_count, outputTokens: result.eval_count };
   };
-  const runners = { '--protected': runProtectedLeaveComparison, '--protected-work-summary': runProtectedWorkSummaryComparison };
-  const run = runners[benchmarks[0] as keyof typeof runners] ?? runLeaveImprovement;
+  const [benchmark] = benchmarks;
+  const run = benchmark ? runners[benchmark] : runLeaveImprovement;
   const report = await run(generate);
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
   writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions, answerFormatDigest: routingDigest(answerFormat) }, null, 2));
