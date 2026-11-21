@@ -13,6 +13,7 @@ import { previewRewardPreparationRelease,getRewardUnit,getRewardUnitGovernance,r
 import {rewardAccessPageCompanies,rewardAccessPageEntry,rewardNavigation} from '../packs/rewards/access-policy';
 import {dispatchNotificationsFromSweep} from '../core/notifications';
 import { REWARD_PREPARATION_STEPS } from '../packs/rewards/preparation-model';
+import { observeNativeRead } from './helpers/native-read-observer';
 
 let base:Base,gr:SessionContext,checker:SessionContext,reviewer:SessionContext,unitId:string,employmentId:string,buId:string;
 const snapshotDate='2026-01-01';
@@ -61,6 +62,62 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   const records=await withTenant(reviewer,tx=>tx.select({source:schema.rewardEntry.source}).from(schema.rewardEntry).where(eq(schema.rewardEntry.unitId,unitId)));
   expect(records).toEqual([]);
  });
+
+ it('profiles the shell Rewards permission statement with a preparing review in a 70-company group',async()=>{
+  const companies=await owner.db.insert(schema.company).values(Array.from({length:69},(_,index)=>({
+   tenantId:base.tenantId,legalName:`Fictional Rewards navigation company ${index}`,
+  }))).returning({id:schema.company.id});
+  const people=await owner.db.insert(schema.person).values(Array.from({length:1000},(_,index)=>({
+   tenantId:base.tenantId,fullName:`Fictional Rewards navigation person ${index}`,
+   primaryEmail:`navigation-${index}@fictional.test`,
+  }))).returning({id:schema.person.id});
+  await owner.db.insert(schema.employment).values(people.map((person,index)=>({
+   tenantId:base.tenantId,personId:person.id,companyId:companies[index%companies.length].id,
+   employeeCode:`NAV-${index}`,hiredOn:'2024-01-01',
+  })));
+  const staff:SessionContext={...reviewer,personId:people[0].id,
+   userId:await createAppUser(base.tenantId,people[0].id,'employee')};
+  expect(await rewardNavigation(staff)).toEqual([]);
+  expect(await rewardPreparationNotices(reviewer)).toHaveLength(1);
+  expect(await rewardNavigation(reviewer)).toContain('/rewards');
+  const observer=observeNativeRead({captureQueries:true});
+  try{await rewardNavigation(reviewer);}finally{observer.restore();}
+  const statements=observer.queries.filter(query=>/with visible_units\s+as/.test(query.sql));
+  expect(statements).toHaveLength(1);
+  expect(statements[0].params).toEqual([]);
+
+  for(const [name,actor] of Object.entries({staff,reviewer,groupRewards:gr})){
+   const timing=await owner.client.begin(async tx=>{
+    type Counter={id:string;name:string;calls:number;selfMs:number;totalMs:number};
+    const counters=()=>tx<Counter[]>`select f.funcid::text as id,p.proname as name,
+     f.calls::int,f.self_time as "selfMs",f.total_time as "totalMs"
+     from pg_stat_xact_user_functions f join pg_proc p on p.oid=f.funcid
+     where f.schemaname='app' and f.calls>0`;
+    await tx.unsafe("set local track_functions='all'");
+    const before=new Map((await counters()).map(row=>[row.id,row]));
+    await tx.unsafe('set local role ai_hr_app');
+    const grants=actor.grants??(actor.roles??[]).map(role=>({role,companyId:null}));
+    const roles=actor.roles??Array.from(new Set(grants.map(grant=>grant.role)));
+    await tx`select set_config('app.tenant_id',${actor.tenantId},true),set_config('app.user_id',${actor.userId??''},true),
+     set_config('app.roles',${roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true),
+     set_config('app.agent_principal_id','',true),set_config('jit','off',true)`;
+    const started=performance.now();
+    for(let trial=0;trial<5;trial++){
+     const [row]=await tx.unsafe<{review:boolean}[]>(statements[0].sql);
+     expect(row.review,name).toBe(name!=='staff');
+    }
+    const totalMs=performance.now()-started;
+    await tx.unsafe('reset role');
+    const top=(await counters()).map(({id,name,calls,selfMs,totalMs})=>({name,
+     calls:calls-(before.get(id)?.calls??0),selfMs:selfMs-(before.get(id)?.selfMs??0),
+     totalMs:totalMs-(before.get(id)?.totalMs??0)})).filter(row=>row.calls>0)
+     .sort((a,b)=>b.selfMs-a.selfMs).slice(0,12);
+    expect(top.length,name).toBeGreaterThan(1);
+    return {totalMs,top};
+   });
+   console.info('REWARDS_NAVIGATION_NATIVE_WORK '+JSON.stringify({name,...timing}));
+  }
+ },180000);
 
  it('refuses an incomplete or stale release and lets the preparer release with a reason (board 60f1fdcd)',async()=>{
   await expect(change(checker,{kind:'release'})).rejects.toThrow(/Complete/);
