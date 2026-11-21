@@ -146,11 +146,12 @@ describe('accessible count label: nav.approvalsCount', () => {
 
 describe('the count is the viewer\'s own pending queue, computed once', () => {
   it('the layout derives the matching inbox destinations from the same canonical task read — no second query', () => {
-    expect(layout).toContain('approvalCount:approvalSummary.approvalCount');
+    const preview=readFileSync(new URL('../app/api/notifications/shell-tasks/route.ts',import.meta.url),'utf8');
+    expect(preview).toContain('approvalCount=approval.approvalCount+lifecycle.approvalCount');
     const shellTasks=readFileSync(new URL('../lib/shell-task-summary.ts',import.meta.url),'utf8');
     expect(shellTasks).toContain('pendingTaskSummary(session, scopeIds,');
-    expect(layout).not.toContain('await readShellTaskSummary(');
-    expect(layout).toContain('<ShellApprovalFactsProvider source={approvalFacts}');
+    expect(layout).not.toContain('readShellTaskSummary(');
+    expect(layout).toContain('<ShellApprovalFactsProvider requestRevision={taskPreviewRevision}');
     const callSites = shellTasks.match(/\b(?:pendingTaskSummary|listPendingTasks)\(/g);
     expect(callSites, 'exactly one task read in the root layout').toEqual(['pendingTaskSummary(']);
   });
@@ -160,12 +161,11 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
     // approval records. The nav badge is strictly approval items.
     const bellSlot=readFileSync(new URL('../app/shell-notification-center.tsx',import.meta.url),'utf8');
     expect(bellSlot).toContain('taskCount={bell.taskCount}');
-    expect(bellSlot).toContain('lifecyclePreview={lifecyclePreview}');
     const bell=readFileSync(new URL('../components/notification-center.tsx',import.meta.url),'utf8');
     expect(bell).toContain("const taskCount=baseTaskCount+(lifecycle?.count??0)+(approvals?.state==='ready'?approvals.total:0);");
     expect(layout).not.toMatch(/approvalCount[:=][^\n]+taskNotifCount/);
     // Onboarding work joins My tasks/the bell, never the legacy Approval Items count.
-    expect(layout).toContain('approvalCount:approvalSummary.approvalCount+lifecycle.approvalCount');
+    expect(layout).not.toContain('lifecycleModuleInbox(');
   });
 
   it('each work row renders its own count only when positive', () => {

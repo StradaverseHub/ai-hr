@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import type { LifecycleTaskItem } from '@/lib/lifecycle-task-item';
 import { contractInbox, contractSharedWorkPage, contractSharedPostingWorkPage } from '@/packs/contracts/service';
+import {settleReadGroup} from '@/lib/settle-read-group';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import type { lifecycleModuleNavigation } from './workflow-availability';
 import { v9EmailHoldInbox } from '@/packs/lifecycle/service';
@@ -20,13 +21,13 @@ export async function lifecycleModuleInbox(
   const sharedEnabled =
     options.includeShared !== false &&
     (isModuleEnabledOrFalse(ctx, 'lifecycle') || !!ctx.entitlements?.scopedModules.lifecycle?.length);
-  const [contracts, holds, shared, postings] = await Promise.all([
-    navigation.contractStaff.page ? contractInbox(ctx) : Promise.resolve({ count: 0, items: [] }),
-    v9EmailHoldInbox(ctx).catch(() => ({ count: 0, items: [] })),
-    sharedEnabled
+  const [contracts, holds, shared, postings] = await settleReadGroup([
+    ()=>navigation.contractStaff.page ? contractInbox(ctx) : { count: 0, items: [] },
+    ()=>v9EmailHoldInbox(ctx).catch(() => ({ count: 0, items: [] })),
+    ()=>sharedEnabled
       ? contractSharedWorkPage(ctx, { limit: 20 })
-      : Promise.resolve({ items: [], total: 0, approvalTotal: 0, taskTotal: 0 }),
-    sharedEnabled ? contractSharedPostingWorkPage(ctx, { limit: 20 }) : Promise.resolve({ items: [], total: 0 }),
+      : { items: [], total: 0, approvalTotal: 0, taskTotal: 0 },
+    ()=>sharedEnabled ? contractSharedPostingWorkPage(ctx, { limit: 20 }) : { items: [], total: 0 },
   ]);
   const holdCopy = holds.items.length ? await getTranslations('lifecycleEmailHold') : null;
   const contractCopy = contracts.items.some((item) => ['reconciliation', 'date_amendment'].includes(item.kind))

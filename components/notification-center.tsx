@@ -96,9 +96,10 @@ export function NotificationCenter({
   canApprove?: boolean;
 }) {
   const interactive=useClientReady();
-  const approvals=useShellApprovalFacts()?.result;
+  const shell=useShellApprovalFacts();
+  const approvals=shell?.result;
   const lifecycleStream=useShellStreamValue(lifecyclePreview);
-  const lifecycle=lifecycleStream?.state==='ready'?lifecycleStream.value:undefined;
+  const lifecycle=shell?.lifecycle??(lifecycleStream?.state==='ready'?lifecycleStream.value:undefined);
   const tasksPending=approvals?.state==='pending'||(Boolean(lifecyclePreview)&&!lifecycleStream);
   const tasksUnavailable=approvals?.state==='unavailable'||lifecycleStream?.state==='unavailable';
   const tasksKnown=!tasksPending&&!tasksUnavailable;
@@ -351,6 +352,7 @@ export function NotificationCenter({
         aria-expanded={open}
         onClick={() => {
           if (!open) {
+            shell?.requestPreview();
             setApprovalHistory(null);
             setClaimPreview(null);
           }

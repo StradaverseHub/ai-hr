@@ -23,6 +23,7 @@ vi.mock('../core/assistant-launcher',()=>({assistantShellFor:async()=>({allowed:
 vi.mock('../core/shell-navigation-access',()=>({readShellNavigationAccess:async()=>({
  accessConfigurationAvailable:false,workforceAvailable:false,onboarded:m.onboarded,
 })}));
+vi.mock('../packs/contracts/service',()=>({contractNavigationAccess:async()=>({page:false})}));
 vi.mock('../packs/claims/service',()=>({countPendingClaimTasks:m.claimCount}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSummary:async(...args:unknown[])=>{
  const items=await m.tasks(...args);return m.summaryOverride??{items,total:items.length,approvalCount:items.filter((item:{linkPath:string})=>item.linkPath.split(/[?#]/,1)[0]==='/approvals').length,claimTotal:items.filter((item:{kind:string})=>item.kind==='claim').length};
@@ -45,7 +46,8 @@ import Layout from '../app/layout';
 import {NotificationCenter} from '../components/notification-center';
 import {ShellNotificationCenter} from '../app/shell-notification-center';
 import {Sidebar} from '../components/sidebar';
-import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components/shell-approval-facts';
+import {GET as getShellTasks} from '../app/api/notifications/shell-tasks/route';
+import {ShellApprovalFactsProvider} from '../components/shell-approval-facts';
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
@@ -59,7 +61,12 @@ function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|und
 }
 const bellElement=async(tree:React.ReactNode)=>ShellNotificationCenter(propsOf(tree,ShellNotificationCenter) as Parameters<typeof ShellNotificationCenter>[0]);
 const sidebarProps=(node:React.ReactNode)=>propsOf(node,Sidebar);
-const approvalSource=(node:React.ReactNode)=>propsOf(node,ShellApprovalFactsProvider)!.source as Promise<ShellApprovalResult>;
+async function taskPreview(node:React.ReactNode){
+ expect(propsOf(node,ShellApprovalFactsProvider)?.requestRevision).toEqual(expect.any(String));
+ const response=await getShellTasks(new Request('https://example.test/api/notifications/shell-tasks'));
+ expect(response.status).toBe(200);
+ return response.json();
+}
 
 describe('root layout admin document entry',()=>{
  beforeEach(()=>{
@@ -155,8 +162,8 @@ describe('root layout assigned Attendance inbox navigation',()=>{
   m.operator.mockResolvedValue(false);
   m.tasks.mockResolvedValue([{id:'fictional-task',kind,subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals'}]);
   const tree=await Layout({children:null}),props=sidebarProps(tree);
-  await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
-  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',approvalCount:1,
+  expect(m.tasks).not.toHaveBeenCalled();
+  expect((await taskPreview(tree)).approvals).toMatchObject({state:'ready',approvalCount:1,
    hasAssignedAttendanceApproval:kind==='attendance',hasAssignedApproval:true});
   expect(props!.canApprove).toBe(false);
   expect(props!.canAccessTeam).toBe(false);
@@ -171,8 +178,8 @@ describe('root layout assigned Attendance inbox navigation',()=>{
    {id:'fictional-profile',kind:'profile',subjectName:'Fictional colleague',createdAt,linkPath:'/admin/personnel/profile-changes#request-fictional-profile'},
   ]);
   const tree=await Layout({children:null}),props=sidebarProps(tree);
-  await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
-  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:2,approvalCount:1,
+  expect(m.tasks).not.toHaveBeenCalled();
+  expect((await taskPreview(tree)).approvals).toMatchObject({state:'ready',total:2,approvalCount:1,
    hasAssignedAttendanceApproval:false,hasAssignedApproval:false});
   expect(props!.canApprove).toBe(false);
   expect(props!.isAdmin).toBe(true);
@@ -188,9 +195,9 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
  m.tasks.mockResolvedValue(items);m.summaryOverride={items,total:2,approvalCount:1,claimTotal:0};m.lifecycleCount=7;
  m.claimCount.mockResolvedValue(10000);
  const tree=await Layout({children:null});
- await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
- await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000});
- await expect(approvalSource(tree)).resolves.toMatchObject({lifecycleMyTasksCount:7});
+ expect(m.tasks).not.toHaveBeenCalled();
+ const preview=await taskPreview(tree);
+ expect(preview.approvals).toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000,lifecycleMyTasksCount:7});
  expect(m.tasks.mock.calls[0]?.[2]).toMatchObject({claims:false});
  expect(m.tasks.mock.calls[0]?.[3]).toEqual({deferClaimPreview:true});
  expect(m.claimCount).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({userId:'hr'}),['selected-company']);
@@ -198,10 +205,10 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
  const props=propsOf(bell,NotificationCenter);
  expect(props?.taskCount).toBe(0);
  expect(props?.claimPreviewRevision).toEqual(expect.any(String));
- await expect(props?.lifecyclePreview).resolves.toMatchObject({count:7,items:[]});
+ expect(preview.lifecycle).toMatchObject({count:7,items:[]});
 });
 
-it('renders the shell while the lifecycle queue is pending and streams the same queue once',async()=>{
+it('renders the shell before requesting the Lifecycle queue and requests it once',async()=>{
  m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});
  m.operator.mockResolvedValue(false);
  m.lifecycleCount=4;
@@ -211,22 +218,14 @@ it('renders the shell while the lifecycle queue is pending and streams the same 
   expect(currentDatabaseWorkload()).toBe('background');
   return gate;
  });
- const ready=vi.fn();
- const layout=Layout({children:<main>Available before the lifecycle queue</main>}).then(async tree=>{
-  const bell=await bellElement(tree);
-  ready();
-  return {tree,bell};
- });
- try{
-  await vi.waitFor(()=>expect(ready).toHaveBeenCalledOnce());
- }finally{
-  release();
- }
- const {tree,bell}=await layout;
+ const tree=await Layout({children:<main>Available before the lifecycle queue</main>});
  expect(sidebarProps(tree)).toBeDefined();
- await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',lifecycleMyTasksCount:4});
- await expect(propsOf(bell,NotificationCenter)?.lifecyclePreview).resolves.toMatchObject({count:4});
- expect(m.lifecycleWait).toHaveBeenCalledOnce();
+ expect(propsOf(await bellElement(tree),NotificationCenter)).toBeDefined();
+ expect(m.lifecycleWait).not.toHaveBeenCalled();
+ const preview=taskPreview(tree);
+ try{await vi.waitFor(()=>expect(m.lifecycleWait).toHaveBeenCalledOnce());}
+ finally{release();}
+ await expect(preview).resolves.toMatchObject({approvals:{state:'ready',lifecycleMyTasksCount:4},lifecycle:{count:4}});
 });
 
 it('returns the authenticated shell while the approval owner is still pending',async()=>{
@@ -241,22 +240,22 @@ it('returns the authenticated shell while the approval owner is still pending',a
  expect(currentDatabaseWorkload()).toBe('interactive');
  expect(sidebarProps(tree)).toBeDefined();
  expect(propsOf(tree,ShellNotificationCenter)).toBeDefined();
+ expect(m.tasks).not.toHaveBeenCalled();
+ const preview=taskPreview(tree);
  await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
  finish([]);
- await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:0});
+ await expect(preview).resolves.toMatchObject({approvals:{state:'ready',total:0}});
  expect(m.claimCount).not.toHaveBeenCalled();
 });
 
 it('reports a failed approval read without exposing its details or failing the page',async()=>{
  m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
  m.tasks.mockRejectedValueOnce(Error('Private failure'));
- const log=vi.spyOn(console,'error').mockImplementation(()=>{});
- try{
-  const tree=await Layout({children:<main>Available despite approvals</main>});
-  expect(sidebarProps(tree)).toBeDefined();
-  await expect(approvalSource(tree)).resolves.toEqual({state:'unavailable'});
-  expect(log).toHaveBeenCalledExactlyOnceWith('Shared shell approval facts unavailable');
- }finally{log.mockRestore();}
+ const tree=await Layout({children:<main>Available despite approvals</main>});
+ expect(sidebarProps(tree)).toBeDefined();
+ const preview=await taskPreview(tree);
+ expect(preview.approvals).toEqual({state:'unavailable'});
+ expect(JSON.stringify(preview)).not.toContain('Private failure');
 });
 
 describe('personal Home opens without automatic overlays',()=>{

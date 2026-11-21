@@ -1,14 +1,13 @@
 import type { SessionContext } from '@/db/client';
-import { NotificationCenter, type NotificationLifecyclePreview } from '@/components/notification-center';
+import { NotificationCenter } from '@/components/notification-center';
 import { dispatchNotifications, notificationBellSummary } from '@/core/notifications';
 import { onboardingNoticeSummary } from '@/packs/lifecycle/service';
 
-export async function ShellNotificationCenter({ session, scope, catchUp, lifecycleEnabled, lifecyclePreview, claimPreviewRevision, canApprove }: {
+export async function ShellNotificationCenter({ session, scope, catchUp, lifecycleEnabled, claimPreviewRevision, canApprove }: {
   session: SessionContext;
   scope: { letterCompanyIds?: string[] } | null;
   catchUp: boolean;
   lifecycleEnabled: boolean;
-  lifecyclePreview: Promise<NotificationLifecyclePreview>;
   claimPreviewRevision?: string;
   canApprove: boolean;
 }) {
@@ -23,7 +22,6 @@ export async function ShellNotificationCenter({ session, scope, catchUp, lifecyc
   return <NotificationCenter
     unread={bell.unread + notices.unreadCount}
     items={[...bell.items, ...notices.unread]}
-    lifecyclePreview={lifecyclePreview}
     taskNotifications={bell.tasks}
     claimPreviewRevision={claimPreviewRevision}
     taskCount={bell.taskCount}

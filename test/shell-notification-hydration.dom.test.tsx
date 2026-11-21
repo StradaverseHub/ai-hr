@@ -1,7 +1,7 @@
 import {Suspense} from 'react';
 import {renderToString} from 'react-dom/server';
 import {hydrateRoot,type Root} from 'react-dom/client';
-import {act} from '@testing-library/react';
+import {act,fireEvent,render} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
 import {NextIntlClientProvider} from 'next-intl';
 import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components/shell-approval-facts';
@@ -82,4 +82,42 @@ describe('approval facts and notification bell hydration ordering',()=>{
   const result=await probe({delayBell:true,total:0,monolith:true});
   expect(result.errors).toEqual([]);expect(result.warnings).toEqual([]);expect(result.label).toContain('0 open tasks');
  });
+});
+
+it('fetches early on bell intent, avoids a duplicate at page load, and ignores obsolete scope results',async()=>{
+ const waiting=vi.spyOn(document,'readyState','get').mockReturnValue('loading');
+ const first=deferred<Response>(),second=deferred<Response>();
+ const fetchPreview=vi.fn().mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+ vi.stubGlobal('fetch',fetchPreview);
+ const tree=(revision:string)=><NextIntlClientProvider locale="en" timeZone="Asia/Kuala_Lumpur" messages={en}>
+  <ShellApprovalFactsProvider requestRevision={revision} canOpenApprovalsWithoutAssignment={false}>
+   <NotificationCenter unread={0} items={[]}/>
+  </ShellApprovalFactsProvider>
+ </NextIntlClientProvider>;
+ const view=render(tree('first'));
+ const result=(total:number)=>Response.json({approvals:{state:'ready',items:[],total,claimTotal:0,approvalCount:total,
+  hasAssignedAttendanceApproval:false,hasAssignedApproval:total>0},lifecycle:null});
+ try{
+  expect(fetchPreview).not.toHaveBeenCalled();
+  fireEvent.click(view.getByRole('button',{name:/^Notifications, /}));
+  expect(view.getByRole('button',{name:'History'})).toBeDefined();
+  expect(fetchPreview).toHaveBeenCalledExactlyOnceWith('/api/notifications/shell-tasks',
+   expect.objectContaining({credentials:'same-origin',cache:'no-store'}));
+  fireEvent(window,new Event('load'));
+  expect(fetchPreview).toHaveBeenCalledOnce();
+
+  const obsolete=fetchPreview.mock.calls[0][1].signal as AbortSignal;
+  waiting.mockReturnValue('complete');
+  view.rerender(tree('second'));
+  expect(obsolete.aborted).toBe(true);
+  expect(fetchPreview).toHaveBeenCalledTimes(2);
+  await act(async()=>{first.resolve(result(99));await first.promise;});
+  expect(view.getByRole('button',{name:/^Notifications, /}).getAttribute('aria-label')).not.toContain('99 open tasks');
+  await act(async()=>{second.resolve(result(2));await second.promise;});
+  expect(view.getByRole('button',{name:/^Notifications, /}).getAttribute('aria-label')).toContain('2 open tasks');
+ }finally{
+  view.unmount();
+  waiting.mockRestore();
+  vi.unstubAllGlobals();
+ }
 });

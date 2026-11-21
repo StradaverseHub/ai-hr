@@ -53,18 +53,13 @@ import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { readSignedInShellNavigation } from '@/lib/shell-navigation-context';
-import { readShellTaskSummary } from '@/lib/shell-task-summary';
-import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
 import '@/core/home-request-preamble';
-import {requestReadScope} from '@/lib/request-read-scope';
-import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
-import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
+import { onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { ShellNotificationCenter } from './shell-notification-center';
-import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
 import { WELCOME_TOUR_ID } from '@/lib/onboarding-tour-events';
 import { tourSteps } from '@/lib/onboarding-tour';
@@ -72,7 +67,7 @@ import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlem
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
 import { NavIndexProvider } from '@/components/nav-index-context';
-import {ShellApprovalFactsProvider,type ShellApprovalResult} from '@/components/shell-approval-facts';
+import {ShellApprovalFactsProvider} from '@/components/shell-approval-facts';
 import { AiAskAvailability } from '@/components/ai-centre/ask-availability';
 import { BackToInbox } from '@/components/ai-centre/back-to-inbox';
 import { IntentBar } from '@/components/intent-bar';
@@ -243,49 +238,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
   const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
-  // The rail needs lifecycle destinations now. The bell and task badges can stream their preview.
-  const lifecyclePreview = withBackgroundReadWork(session.tenantId, async () => {
-    const [onboardingQueue, inbox] = await Promise.all([
-      lifecycleEnabled ? onboardingTasks(session) : [],
-      lifecycleModuleInbox(session, scopedLifecycleNavigation),
-    ]);
-    return {
-      items: [...onboardingQueue.map(onboardingNotificationTask), ...inbox.items],
-      count: onboardingQueue.length + inbox.count,
-      myTasksCount: onboardingQueue.length + inbox.myTasksCount,
-      approvalCount: inbox.approvalCount,
-      queueLinks: inbox.queueLinks,
-    };
-  });
-  // The passive badge and task preview stream separately from navigation. Reserve
-  // interactive database capacity for the active page and the user's explicit actions.
-  // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
-  // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
-  const approvalSummaryWork = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => readShellTaskSummary(session, scopeIds, {
-    attendance: isModuleEnabledOrFalse(session, 'attendance'),
-    claims: claimsEnabled,
-    performance: isModuleEnabledOrFalse(session, 'performance'),
-    rewards: isModuleEnabledOrFalse(session, 'rewards'),
-    // Recruitment slice 9: the bell (and the sidebar's My tasks badge, which is this total) asks for the recruitment
-    // to-dos — live, under the viewer's own access; nothing for a viewer with no recruitment role, and no call at all
-    // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
-    recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
-    probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
-  }),undefined,requestReadScope()));
-  const approvalFacts: Promise<ShellApprovalResult> = Promise.all([approvalSummaryWork, lifecyclePreview]).then(([approvalSummary, lifecycle]): ShellApprovalResult => ({
-    state:'ready',
-    items:approvalSummary.items,
-    total:approvalSummary.total,
-    lifecycleMyTasksCount:lifecycle.myTasksCount,
-    approvalCount:approvalSummary.approvalCount+lifecycle.approvalCount,
-    claimTotal:approvalSummary.claimTotal,
-    // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
-    hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
-    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycle.approvalCount)>0,
-  }),():ShellApprovalResult=>{
-    console.error('Shared shell approval facts unavailable');
-    return {state:'unavailable'};
-  });
+  // Task previews have their own request lifetime. A scope refresh invalidates any prior preview.
+  const taskPreviewRevision=crypto.randomUUID();
   return (
     <html
       lang={locale}
@@ -303,7 +257,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               float separately on the canvas with gutters between them. */}
           {/* Atelier round 1 — the rail publishes its visible destinations here for the command bar's "Go to"
               list and the Atelier breadcrumb (components/nav-index-context.tsx). */}
-          <ShellApprovalFactsProvider source={approvalFacts} canOpenApprovalsWithoutAssignment={canOpenAdminRail||canApprove}>
+          <ShellApprovalFactsProvider requestRevision={taskPreviewRevision} canOpenApprovalsWithoutAssignment={canOpenAdminRail||canApprove}>
           <NavIndexProvider>
           {/* AI v2 W4 — the command bar offers "Ask AI Centre" only to a login with Assistant access (presentation only). */}
           <AiAskAvailability available={assistantAccess}>
@@ -490,8 +444,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       scope={notificationScope}
                       catchUp={catchUpNotifications}
                       lifecycleEnabled={lifecycleEnabled}
-                      lifecyclePreview={lifecyclePreview}
-                      claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
+                      claimPreviewRevision={claimsEnabled ? taskPreviewRevision : undefined}
                       canApprove={canApprove}
                     />
                   </Suspense>

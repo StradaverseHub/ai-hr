@@ -6,6 +6,7 @@ import {capacityAwareRoute} from '@/lib/database-degraded';
 import {onboardingNotificationTask} from '@/lib/onboarding-notification-task';
 import {companyContextForPage} from '@/lib/scope';
 import {getSession} from '@/lib/session';
+import {settleReadGroup} from '@/lib/settle-read-group';
 import {readShellTaskSummary} from '@/lib/shell-task-summary';
 import {contractNavigationAccess} from '@/packs/contracts/service';
 import {onboardingTasks} from '@/packs/lifecycle/service';
@@ -31,9 +32,9 @@ function readApprovals(session:SessionContext,signal:AbortSignal){
 async function readLifecycle(session:SessionContext,signal:AbortSignal){
  const contractStaff=await contractNavigationAccess(session);
  signal.throwIfAborted();
- const [onboarding,inbox]=await Promise.all([
-  isModuleEnabledOrFalse(session,'lifecycle')?onboardingTasks(session):[],
-  lifecycleModuleInbox(session,{contractStaff}),
+ const [onboarding,inbox]=await settleReadGroup([
+  ()=>isModuleEnabledOrFalse(session,'lifecycle')?onboardingTasks(session):[],
+  ()=>lifecycleModuleInbox(session,{contractStaff}),
  ]);
  return {
   items:[...onboarding.map(onboardingNotificationTask),...inbox.items],
