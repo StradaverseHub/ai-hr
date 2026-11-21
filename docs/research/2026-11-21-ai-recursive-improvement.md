@@ -256,9 +256,12 @@ The paired version 2 suite adds `modelDigest` and `minimumSavedCalls` to the sam
 node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG NEW_REPORT.json --paired-leave-routing /path/to/private/cases.json SHA256
 ```
 
-Two evaluators can sign their aggregate reports after the coordinator freezes a shared plan. Each evaluator keeps their own suite and private signing key. The coordinator records the plan's SHA-256 independently before evaluation. The plan names `version: 1`, `trialId`, `tenantId`, `authorId`, `approverId`, `candidateSha`, `candidateDigest`, `baselineDigest`, `sourceDigest`, `modelDigest`, `answerFormatDigest`, `generationOptionsDigest`, `committedAt`, `expiresAt` and two `evaluators`. Each evaluator entry contains `id`, the Ed25519 public key's base64url JWK `x` value as `publicKey`, `holdoutDigest` and `minimumSavedCalls`. The four participant IDs, both keys and both suite digests must be distinct. The plan expires within 72 hours.
+Two evaluators can sign their aggregate reports after the coordinator freezes a shared plan. Each evaluator keeps their own suite and private signing key. The coordinator records the plan's SHA-256 independently before evaluation. The plan names `version: 2`, `trialId`, `tenantId`, `authorId`, `approverId`, `candidateSha`, `candidateDigest`, `baselineDigest`, `sourceDigest`, `modelDigest`, `answerFormatDigest`, `generationOptionsDigest`, `committedAt`, `expiresAt` and two `evaluators`. Each evaluator entry contains `id`, the Ed25519 public key's base64url JWK `x` value as `publicKey`, `holdoutDigest`, the private `caseDigests` list and `minimumSavedCalls`. The four participant IDs, both keys and both suite digests must be distinct. The plan expires within 72 hours.
+
+Each evaluator runs `describe-suite` to send their scenario fingerprints and file digest to the coordinator before the plan is pinned. The fingerprints ignore JSON formatting, question letter case and whitespace, and the declared expected answer. The coordinator shares neither evaluator's suite with the other. The verifier refuses repeated fingerprints within or across suites and binds each signed report to the planned scenario set and size. The coordinator still checks paraphrases, sources and independence of authorship.
 
 ```sh
+node --import tsx scripts/experiments/protected-leave-routing-receipt-cli.ts describe-suite CASES.json CASES_SHA256
 node --import tsx scripts/experiments/protected-leave-routing-receipt-cli.ts sign PLAN.json PLAN_SHA256 EVALUATOR_UUID REPORT.json PRIVATE.pem RECEIPT.json
 node --import tsx scripts/experiments/protected-leave-routing-receipt-cli.ts verify PLAN.json PLAN_SHA256 RECEIPT_ONE.json RECEIPT_TWO.json
 ```

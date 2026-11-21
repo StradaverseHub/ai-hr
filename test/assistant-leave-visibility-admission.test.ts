@@ -24,7 +24,7 @@ import {applyLeaveAdjustmentBatch} from '../packs/leave/service';
 import {assistantQuestionBudgetBinding,completeAssistantQuestionBudgetTx} from '../core/assistant-question-budget';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,recheckAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability} from '../core/module-agent-releases';
 import {agentReviewWorkspaceTx,createConversationAgentCandidate,promoteConversationAgentCandidate,rollbackAssistantPromotion} from '../core/module-agent-releases';
-import {signPairedLeaveEvaluation} from '../lib/ai/assistant-leave-evaluation-receipt';
+import {leaveEvaluationCaseSetDigest,signPairedLeaveEvaluation} from '../lib/ai/assistant-leave-evaluation-receipt';
 import {routingDigest} from '../lib/ai/module-agent-routing';
 import {ASSISTANT_LOCAL_LEAVE_VARIANT} from '../lib/ai/assistant-conversation-candidate';
 import {ASSISTANT_PRIVATE_CONTRACT,adjudicatePrivateAssistantTerminal,capturePrivateAssistantTask,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
@@ -122,18 +122,19 @@ describe('actual Mine flags bind current provider input and historical source di
    const keys=[generateKeyPairSync('ed25519'),generateKeyPairSync('ed25519')];
    const now=new Date(),expiresAt=new Date(now.getTime()+15*60_000).toISOString();
    const generationOptions={temperature:0,seed:42,num_predict:512};
-   const plan={version:1,trialId:randomUUID(),tenantId:base.tenantId,authorId,approverId:promoter.userId,
+   const plan={version:2,trialId:randomUUID(),tenantId:base.tenantId,authorId,approverId:promoter.userId,
     candidateSha:'c'.repeat(40),candidateDigest:created.candidateDigest,...binding,modelDigest:'d'.repeat(64),
     answerFormatDigest:routingDigest('json'),generationOptionsDigest:routingDigest(generationOptions),
     committedAt:now.toISOString(),expiresAt,
     evaluators:[reviewer,second].map((actor,index)=>({id:actor.userId,
-     publicKey:keys[index].publicKey.export({format:'jwk'}).x,holdoutDigest:routingDigest(['fictional',index]),minimumSavedCalls:2}))};
+     publicKey:keys[index].publicKey.export({format:'jwk'}).x,holdoutDigest:routingDigest(['fictional',index]),
+     caseDigests:Array.from({length:4},(_,caseIndex)=>routingDigest(['fictional',index,caseIndex])),minimumSavedCalls:2}))};
    const bytes=Buffer.from(JSON.stringify(plan)),digest=createHash('sha256').update(bytes).digest('hex');
    // Fictional signed aggregates exercise the authorization path. No model quality is inferred from them.
    const receipts=plan.evaluators.map((item,index)=>signPairedLeaveEvaluation(bytes,digest,item.id,{
     evidence:'offline_paired_leave_routing_holdout',scope:'single_active_own_employment',
     candidateSha:plan.candidateSha,modelDigest:plan.modelDigest,answerFormatDigest:plan.answerFormatDigest,
-    holdoutDigest:item.holdoutDigest,minimumSavedCalls:2,generationOptions,model:'fictional:fixture',
+    holdoutDigest:item.holdoutDigest,caseSetDigest:leaveEvaluationCaseSetDigest(item.caseDigests),minimumSavedCalls:2,generationOptions,model:'fictional:fixture',
     cases:4,expectedDirect:2,correctDirect:2,correctDeferrals:2,wrongDirect:0,unexpectedDirect:0,missedDirect:0,
     meetsThreshold:true,releaseAuthorized:false,baselineCalls:2,baselineCorrect:2,baselineRejected:0,
     candidateFallbackCalls:0,candidateCorrect:2,gains:0,regressions:0,savedCalls:2,baselineInputTokens:18,baselineOutputTokens:8,

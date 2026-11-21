@@ -7,10 +7,10 @@ const count = z.number().int().min(0).max(32);
 const tokens = z.number().int().min(0).max(1_000_000_000);
 const evaluator = z.object({
   id: z.uuid(), publicKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
-  holdoutDigest: digest, minimumSavedCalls: count.min(1),
+  holdoutDigest: digest, caseDigests: z.array(digest).min(4).max(32), minimumSavedCalls: count.min(1),
 }).strict();
 const planSchema = z.object({
-  version: z.literal(1), trialId: z.uuid(), tenantId: z.uuid(), authorId: z.uuid(), approverId: z.uuid(),
+  version: z.literal(2), trialId: z.uuid(), tenantId: z.uuid(), authorId: z.uuid(), approverId: z.uuid(),
   candidateSha: z.string().regex(/^[a-f0-9]{40}$/), candidateDigest: digest, baselineDigest: digest, sourceDigest: digest,
   modelDigest: digest, answerFormatDigest: digest, generationOptionsDigest: digest,
   committedAt: z.iso.datetime(), expiresAt: z.iso.datetime(), evaluators: z.tuple([evaluator, evaluator]),
@@ -18,7 +18,7 @@ const planSchema = z.object({
 const reportSchema = z.object({
   evidence: z.literal('offline_paired_leave_routing_holdout'), candidateSha: planSchema.shape.candidateSha,
   scope: z.literal('single_active_own_employment'),
-  holdoutDigest: digest, modelDigest: digest, minimumSavedCalls: count.min(1),
+  holdoutDigest: digest, caseSetDigest: digest, modelDigest: digest, minimumSavedCalls: count.min(1),
   cases: count.min(4), expectedDirect: count.min(2), correctDirect: count, correctDeferrals: count, wrongDirect: z.literal(0),
   unexpectedDirect: z.literal(0), missedDirect: z.literal(0), meetsThreshold: z.literal(true), releaseAuthorized: z.literal(false),
   baselineCalls: count, baselineCorrect: count, baselineRejected: count, candidateFallbackCalls: z.literal(0),
@@ -35,6 +35,9 @@ type Receipt = z.infer<typeof receiptSchema>;
 
 const refused = (): never => { throw Error('Frozen paired leave evidence could not be confirmed.'); };
 export const LEAVE_RECEIPT_INPUT_LIMIT = 64 * 1024;
+export const leaveEvaluationCaseSetDigest = (cases: readonly string[]) =>
+  routingDigest(['aihr.assistant.leave-evaluation-case-set.v1', [...cases].sort()]);
+
 function readPlan(bytes: Buffer, planDigest: string, now: Date) {
   if (!bytes.length || bytes.length > LEAVE_RECEIPT_INPUT_LIMIT || createHash('sha256').update(bytes).digest('hex') !== planDigest)
     return refused();
@@ -45,7 +48,9 @@ function readPlan(bytes: Buffer, planDigest: string, now: Date) {
   const plan = parsed.data;
   const [first, second] = plan.evaluators;
   const start = Date.parse(plan.committedAt), end = Date.parse(plan.expiresAt);
-  if (new Set([plan.authorId, plan.approverId, first.id, second.id]).size !== 4 ||
+  const caseDigests = [...first.caseDigests, ...second.caseDigests];
+  if (new Set(caseDigests).size !== caseDigests.length ||
+      new Set([plan.authorId, plan.approverId, first.id, second.id]).size !== 4 ||
       first.publicKey === second.publicKey || first.holdoutDigest === second.holdoutDigest ||
       !Number.isFinite(now.getTime()) || !(start <= now.getTime() && now.getTime() < end) || end - start > 72 * 3600_000)
     return refused();
@@ -60,7 +65,8 @@ function checkReport(plan: Plan, id: string, supplied: unknown) {
   const { expectedDirect: direct, cases, baselineCorrect } = report;
   if (report.candidateSha !== plan.candidateSha || report.modelDigest !== plan.modelDigest ||
       report.answerFormatDigest !== plan.answerFormatDigest || routingDigest(report.generationOptions) !== plan.generationOptionsDigest ||
-      report.holdoutDigest !== signer.holdoutDigest || report.minimumSavedCalls !== signer.minimumSavedCalls ||
+      report.holdoutDigest !== signer.holdoutDigest || report.caseSetDigest !== leaveEvaluationCaseSetDigest(signer.caseDigests) ||
+      report.cases !== signer.caseDigests.length || report.minimumSavedCalls !== signer.minimumSavedCalls ||
       cases - direct < 2 || report.correctDirect !== direct || report.correctDeferrals !== cases - direct ||
       report.baselineCalls !== direct || baselineCorrect > direct || report.baselineRejected > direct - baselineCorrect ||
       report.candidateCorrect !== direct || report.gains !== direct - baselineCorrect ||
@@ -71,7 +77,7 @@ function checkReport(plan: Plan, id: string, supplied: unknown) {
 }
 
 const material = (receipt: Omit<Receipt, 'signature'>) => Buffer.from(JSON.stringify([
-  'aihr.assistant.paired-leave-evidence.v1', receipt.planDigest, receipt.evaluatorId, receipt.report,
+  'aihr.assistant.paired-leave-evidence.v2', receipt.planDigest, receipt.evaluatorId, receipt.report,
 ]));
 
 export function signPairedLeaveEvaluation(planBytes: Buffer, planDigest: string, evaluatorId: string,

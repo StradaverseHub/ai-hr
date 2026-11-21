@@ -18,7 +18,7 @@ export function installedLocalLeaveEvidence(binding: {
     if (checked.tenantId !== binding.tenantId || checked.authorId !== binding.authorId ||
         checked.candidateDigest !== binding.candidateDigest || checked.baselineDigest !== binding.baselineDigest ||
         checked.sourceDigest !== binding.sourceDigest) return null;
-    return Object.freeze({ kind: 'paired_leave_offline_v1' as const, planDigest: checked.planDigest,
+    return Object.freeze({ kind: 'paired_leave_offline_v2' as const, planDigest: checked.planDigest,
       receiptSetDigest: checked.receiptSetDigest, approverId: checked.approverId, expiresAt: checked.expiresAt });
   } catch { return null; }
 }

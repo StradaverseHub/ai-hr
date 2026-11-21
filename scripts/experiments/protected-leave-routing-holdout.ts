@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { adjudicateAssistantAnswerPlan } from '../../lib/ai/assistant-answer-plan';
 import { presentGroundedToolOutcome } from '../../lib/ai/grounded-tool-presentation';
+import { leaveEvaluationCaseSetDigest } from '../../lib/ai/assistant-leave-evaluation-receipt';
 import { routingDigest } from '../../lib/ai/module-agent-routing';
 import {
   adjudicatePrivateAssistantTerminal, privateAssistantCatalogue, resolvePrivateAssistantClarifiedIntent,
@@ -37,6 +38,27 @@ const pairedHoldout = z.object({
   version: z.literal(2), candidateSha: sha, cases: casesSchema,
   modelDigest: z.string().regex(/^[a-f0-9]{64}$/), minimumSavedCalls: z.number().int().min(1).max(32),
 }).strict();
+
+const normalizedText = (value: string) => value.normalize('NFKC').toLowerCase().trim().replace(/\s+/gu, ' ');
+
+function caseDigests(cases: z.infer<typeof casesSchema>) {
+  const digests = cases.map(({ scenario: input }) => routingDigest(['aihr.assistant.leave-evaluation-case.v1', {
+    question: normalizedText(input.question),
+    clarification: input.clarification ? [input.clarification.slot, normalizedText(input.clarification.answer)] : null,
+    employments: input.employments.map(({ company, balances }) => [
+      normalizedText(company),
+      balances.map(row => [normalizedText(row.leaveType), row.available, row.taken, row.pending, row.withheld]),
+    ]),
+  }])).sort();
+  if (new Set(digests).size !== cases.length) throw Error('Use distinct fictional scenarios covering direct answers and deferrals.');
+  return digests;
+}
+
+/** Private preregistration material. Keep the per-scenario digests with the coordinator. */
+export function describePairedLeaveRoutingCases(bytes: Buffer, holdoutDigest: string) {
+  const parsed = pairedHoldout.parse(readFrozenHoldoutJson(bytes, holdoutDigest));
+  return { holdoutDigest, caseDigests: caseDigests(parsed.cases) };
+}
 
 function project(input: z.infer<typeof scenario>) {
   const clarification: PrivateAssistantClarification | null = input.clarification
@@ -77,9 +99,9 @@ function observe(source: ReturnType<typeof project>): z.infer<typeof expected> {
 /** Score a precommitted fictional suite. The report carries neither individual results nor case contents. */
 function scoreCases(cases: z.infer<typeof casesSchema>, requireOneEmployment = false) {
   const expectedDirect = cases.filter(row => row.expected.kind === 'direct').length;
-  if (expectedDirect < 2 || cases.length - expectedDirect < 2 ||
-      new Set(cases.map(row => routingDigest(row.scenario))).size !== cases.length)
+  if (expectedDirect < 2 || cases.length - expectedDirect < 2)
     throw Error('Use distinct fictional scenarios covering direct answers and deferrals.');
+  const fingerprints = caseDigests(cases);
 
   const scores = { correctDirect: 0, correctDeferrals: 0, wrongDirect: 0, unexpectedDirect: 0, missedDirect: 0 };
   const paired = cases.map(item => {
@@ -94,7 +116,7 @@ function scoreCases(cases: z.infer<typeof casesSchema>, requireOneEmployment = f
     else scores.wrongDirect++;
     return { ...item, source, observed, correct };
   });
-  return { paired, result: { cases: cases.length, expectedDirect,
+  return { paired, fingerprints, result: { cases: cases.length, expectedDirect,
     ...scores, meetsThreshold: scores.correctDirect + scores.correctDeferrals === cases.length } };
 }
 
@@ -112,7 +134,7 @@ export async function scorePairedLeaveRoutingHoldout(bytes: Buffer, holdoutDiges
   const parsed = pairedHoldout.safeParse(readFrozenHoldoutJson(bytes, holdoutDigest));
   if (!parsed.success || parsed.data.candidateSha !== candidateSha || parsed.data.modelDigest !== modelDigest)
     throw Error('Invalid frozen paired leave suite.');
-  const { paired, result } = scoreCases(parsed.data.cases, true);
+  const { paired, fingerprints, result } = scoreCases(parsed.data.cases, true);
   const { minimumSavedCalls } = parsed.data;
   if (minimumSavedCalls > result.expectedDirect) throw Error('Saved-call target exceeds the direct case count.');
   const comparisons = paired.flatMap(({ scenario, expected, source, observed, correct }, index) => {
@@ -145,6 +167,6 @@ export async function scorePairedLeaveRoutingHoldout(bytes: Buffer, holdoutDiges
     if (!defers && correct) comparison.savedCalls++;
   }
   return { evidence: 'offline_paired_leave_routing_holdout', scope: 'single_active_own_employment', candidateSha, holdoutDigest, modelDigest, minimumSavedCalls,
-    ...result, ...comparison, meetsThreshold: result.meetsThreshold && comparison.regressions === 0 && comparison.savedCalls >= minimumSavedCalls,
+    caseSetDigest: leaveEvaluationCaseSetDigest(fingerprints), ...result, ...comparison, meetsThreshold: result.meetsThreshold && comparison.regressions === 0 && comparison.savedCalls >= minimumSavedCalls,
     releaseAuthorized: false };
 }
