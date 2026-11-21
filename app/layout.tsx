@@ -51,17 +51,14 @@ import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator, requireAdmin, requireModule } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
-import { readSignedInShellNavigation } from '@/lib/shell-navigation-context';
+import { readSignedInShellRail } from '@/lib/shell-navigation-context';
 import { readShellTaskSummary } from '@/lib/shell-task-summary';
 import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
-import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
-import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
-import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
-import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
+import { onboardingTasks } from '@/packs/lifecycle/service';
 import { ShellNotificationCenter } from './shell-notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
@@ -189,8 +186,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const { context: [{ allowed, scopeIds }, viewer, navigationAccess], features, identityEmailAvailable } =
-    await readSignedInShellNavigation(session);
+  const {
+    context: [{ allowed, scopeIds }, viewer, navigationAccess], features, identityEmailAvailable,
+    lifecycleEnabled, onboardingNav, scopedLifecycleNavigation, offboardingPostingsAccess, performanceAdminPath,
+  } = await readSignedInShellRail(session);
   const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
   const {
     letters: letterDestinations,
@@ -216,12 +215,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const notificationScope = notifEnabled ? {} :
     letterNotificationCompanies.length > 0 ? { letterCompanyIds: letterNotificationCompanies } : null;
   const catchUpNotifications = notifEnabled && isAdmin(session) && (session.grants === undefined || isGroupAdmin(session));
-  // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
-  // cycle this OneHR administrator administers, started here so it overlaps other shell reads. No cycle, a
-  // viewer who is not a OneHR administrator, the module off or a failed read all leave the pack's /performance.
-  const performanceAdminHref = canAdminOnehr(session) && isModuleEnabledOrFalse(session, 'performance')
-    ? latestOnehrAdminCycleId(session).then(id => (id ? adminSectionHref(id, 'cycle') : undefined), () => undefined)
-    : Promise.resolve(undefined);
   // 3-tab bell (feedback 1514d366) — one notification framework for every role, role-scoped by the reads:
   //   • Notification tab: unread informational (non-action) notifications + their unread badge.
   //   • Task tab: the live approvals queue (listPendingTasks — replaces the retired count-only legacy
@@ -232,16 +225,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
-  const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
-    lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    lifecycleModuleNavigation(session),
-    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
-  ]);
   const onboardingAccess=onboardingNav.module;
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
-  const performanceAdminPath=await performanceAdminHref;
   // The rail needs lifecycle destinations now. The bell and task badges can stream their preview.
   const lifecyclePreview = withBackgroundReadWork(session.tenantId, async () => {
     const [onboardingQueue, inbox] = await Promise.all([

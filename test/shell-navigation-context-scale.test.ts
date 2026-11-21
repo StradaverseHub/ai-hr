@@ -1,11 +1,17 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { lifecycleModuleNavigation } from '../app/lifecycle/workflow-availability';
+import { isModuleEnabledOrFalse } from '../core/entitlements';
 import { withIndependentTransactions, type SessionContext } from '../db/client';
 import type { SharedReadStats } from '../db/shared-read';
 import { appExternalIdentity, deploymentIdentityOperator, employment } from '../db/schema';
-import { readShellNavigationContext, readSignedInShellNavigation } from '../lib/shell-navigation-context';
+import { canAdminOnehr } from '../lib/authz-model';
+import { readShellNavigationContext, readSignedInShellNavigation, readSignedInShellRail } from '../lib/shell-navigation-context';
 import {canConfigureIdentityEmail} from '../lib/identity/email-settings';
 import { readShellFeatureNavigation } from '../lib/shell-feature-navigation';
+import { onboardingNavigation } from '../packs/lifecycle/service';
+import { adminSectionHref, latestOnehrAdminCycleId } from '../packs/performance/service';
+import { offboardingPostingAccess } from '../packs/personnel-postings/service';
 import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule } from './harness';
 import { buildScaleFixture, type ScaleFixture } from './helpers/ai-centre-scale-fixture';
 
@@ -29,7 +35,9 @@ beforeAll(async () => {
   await migrateTestDb();
   await resetDb();
   const base = await seedBase();
-  for (const module of ['assistant', 'rewards', 'recruitment']) await setModule(base.tenantId, module, 'active');
+  for (const module of ['assistant', 'rewards', 'recruitment', 'lifecycle', 'performance']) {
+    await setModule(base.tenantId, module, 'active');
+  }
   group = await buildScaleFixture(base, { employments: 1000, events: 0 });
   const [staff] = await owner.db
     .select({ personId: employment.personId, companyId: employment.companyId })
@@ -86,6 +94,51 @@ it('keeps shell identity, scope and features equivalent on one connection at gro
   } finally {
     browser.companyScope = undefined;
     hooks.__aihrPerfSharedRead = oldHook;
+  }
+});
+
+it('keeps all rail destinations while avoiding separate Lifecycle and Performance transactions', async () => {
+  const cases = [
+    { session: group.personas.group, companyScope: undefined },
+    { session: group.personas.group, companyScope: group.singleCompanyId },
+    { session: group.personas.multi, companyScope: undefined },
+    { session: group.personas.single, companyScope: group.singleCompanyId },
+    { session: employee, companyScope: undefined },
+  ];
+  const hooks = globalThis as {
+    __aihrPerfBeginTransaction?: () => { acquired: () => void; finished: () => void };
+  };
+  const previousHook = hooks.__aihrPerfBeginTransaction;
+  let opened = 0;
+  hooks.__aihrPerfBeginTransaction = () => ({ acquired: () => { opened++; }, finished: () => {} });
+  try {
+    for (const { session, companyScope } of cases) {
+      browser.companyScope = companyScope;
+      expect(isModuleEnabledOrFalse(session, 'lifecycle')).toBe(true);
+      opened = 0;
+      const navigation = await readSignedInShellNavigation(session);
+      const [onboardingNav, scopedLifecycleNavigation, offboardingPostingsAccess, cycle] = await Promise.all([
+        onboardingNavigation(session),
+        lifecycleModuleNavigation(session),
+        offboardingPostingAccess(session),
+        canAdminOnehr(session) ? latestOnehrAdminCycleId(session) : null,
+      ]);
+      const separateTransactions = opened;
+      opened = 0;
+      expect(await readSignedInShellRail(session)).toEqual({
+        ...navigation,
+        lifecycleEnabled: true,
+        onboardingNav,
+        scopedLifecycleNavigation,
+        offboardingPostingsAccess,
+        performanceAdminPath: cycle ? adminSectionHref(cycle, 'cycle') : undefined,
+      });
+      expect(opened).toBe(1);
+      expect(separateTransactions).toBeGreaterThan(opened);
+    }
+  } finally {
+    browser.companyScope = undefined;
+    hooks.__aihrPerfBeginTransaction = previousHook;
   }
 });
 
