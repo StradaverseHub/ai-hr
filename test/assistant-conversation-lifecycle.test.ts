@@ -10,6 +10,7 @@ import {preparePrivateAiTask} from '../core/ai-governance';
 import {ASSISTANT_PRIVATE_CONTRACT,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {askAssistant} from '../core/assistant';
 import {resolveActiveAiConfig} from '../core/ai-config';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
 import {openaiAdapter} from '../lib/ai/providers/openai';
@@ -44,7 +45,15 @@ async function dispatchMain(selected:Awaited<ReturnType<typeof prepare>>){
 async function persist(tx:Tx,ctx:SessionContext,capability:Parameters<typeof completeAssistantConversationStrategyTx>[2]){await recheckAssistantConversationStrategyTx(tx,ctx,capability);const id=randomUUID();await tx.execute(sql`insert into public.assistant_exchange(id,tenant_id,app_user_id,question,answer) values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,'fictional human question','fictional audit-only terminal')`);await completeAssistantConversationStrategyTx(tx,ctx,capability,id);return id;}
 async function finishEvaluation(ctx:SessionContext,id:string){for(let batch=0;batch<2*ASSISTANT_CONVERSATION_HOLDOUTS.length;batch++){const report=await evaluateConversationAgentCandidate(ctx,{candidateId:id,consent:consent()});if(report.state==='complete')return report;}throw Error('Incomplete synthetic lifecycle fixture');}
 describe('actual main conversation governance and inflight custody',()=>{
- it('uses a promoted strategy only while it was evaluated against the current AI source; a stale one falls back to the standard strategy',async()=>{const a=await candidate();await transport(a.author,true);await finishEvaluation(a.reviewer,a.candidateId);await finishEvaluation(a.second,a.candidateId);const promotion=await promoteConversationAgentCandidate(a.promoter,{candidateId:a.candidateId,maxJobs:2,hours:1});
+ it('reserves promoted capacity for provider selection and falls back when the source changes',async()=>{const a=await candidate();const sent=await transport(a.author,true);await finishEvaluation(a.reviewer,a.candidateId);await finishEvaluation(a.second,a.candidateId);const promotion=await promoteConversationAgentCandidate(a.promoter,{candidateId:a.candidateId,maxJobs:2,hours:1});
+  const beforeLocal=sent.mock.calls.length;
+  const greeting=await askAssistant(a.author,{question:'Hello!'});
+  expect(greeting).toMatchObject({stop:'end',turns:0,toolsUsed:[]});
+  expect(sent).toHaveBeenCalledTimes(beforeLocal);
+  const [localUse]=await owner.db.execute<{promotion_id:string|null;state:string}>(sql`select promotion_id,state from public.ai_assistant_answer_strategy_use where exchange_id=${greeting.exchangeId}::uuid`);
+  expect(localUse).toEqual({promotion_id:null,state:'completed'});
+  const [beforeProvider]=await owner.db.execute<{used:number}>(sql`select used_jobs::int as used from public.ai_agent_promotion where id=${promotion.promotionId}::uuid`);
+  expect(beforeProvider.used).toBe(0);
   const current=await prepare(a.author);expect(current.provenance).toMatchObject({mode:'promoted',version:1});retireAssistantConversationStrategyCapability(current.capability);
   // The module-agent source digest moved after evaluation: the promotion is skipped, not refused, and no further job
   // is consumed (the one use is the current preparation above).

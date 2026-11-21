@@ -1144,8 +1144,9 @@ const strategyPrincipal=(ctx:SessionContext)=>routingDigest([ctx.tenantId,ctx.us
 /** Calling command already owns its native assistant_question spend root. Composition preserves that
  * issued root and all prior checks; this helper never rebinds a human question to candidate budget.
  * `continuationSourceTx` (a clarification continuation only) rechecks the caller's transient source
- * context in this marker transaction and before every provider round trip; it can only refuse. */
-export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:SessionContext,configuration:ResolvedAiConfig,question:string,continuationSourceTx?:(tx:Tx)=>Promise<void>){
+ * context in this marker transaction and before every provider round trip; it can only refuse.
+ * A local-only answer still needs the completion marker for custody, with no promotion exposure. */
+export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:SessionContext,configuration:ResolvedAiConfig,question:string,continuationSourceTx?:(tx:Tx)=>Promise<void>,selection:'local'|'provider'='provider'){
  if(typeof question!=='string'||!question.trim()||question.length>ASSISTANT_CONVERSATION_LIMITS.history||(continuationSourceTx!==undefined&&typeof continuationSourceTx!=='function'))return fail();const questionDigest=routingDigest([supplied.tenantId,supplied.userId,question]);
  const ctx=capture(supplied),fresh=await guard(tx,ctx,false);await agentReleaseIntervalTx(tx,ctx,ctx.userId!,false);await signalIntervalTx(tx,ctx,ctx.userId!);
  // Under the guard's Access interval and before this marker exists: an erasure committed after the
@@ -1154,7 +1155,7 @@ export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:Sess
  const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
  // A promotion evaluated against an earlier AI source (MODULE_AGENT_SOURCE_DIGEST moved) is not current: skip it, so
  // the person gets the standard strategy rather than a refused question; it stays retained for audit and rollback.
- const [selected]=await tx.execute<{id:string}>(sql`select p.id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and c.kind='assistant_answer_prompt_v1' and c.source_digest=${MODULE_AGENT_SOURCE_DIGEST} and p.expires_at>clock_timestamp() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
+ const [selected]=selection==='provider'?await tx.execute<{id:string}>(sql`select p.id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and c.kind='assistant_answer_prompt_v1' and c.source_digest=${MODULE_AGENT_SOURCE_DIGEST} and p.expires_at>clock_timestamp() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`):[];
  let strategy:AssistantConversationCandidate=ASSISTANT_CONVERSATION_BASELINE,promotionId:string|null=null,version=0,candidateDigest=conversationBaselineDigest;
  if(selected){const selectedPromotion=await currentConversationPromotionTx(tx,ctx,selected.id,snapshot.fingerprint);strategy=captureAssistantConversationCandidate(selectedPromotion.candidate.configuration);promotionId=selected.id;version=selectedPromotion.candidate.version;candidateDigest=selectedPromotion.candidate.candidate_digest;await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${selected.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);}
  const id=randomUUID(),provenance=Object.freeze({mode:promotionId?'promoted' as const:'baseline' as const,version,configurationDigest:routingDigest(strategy)}),capability=Object.freeze({});

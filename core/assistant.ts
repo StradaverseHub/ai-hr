@@ -189,13 +189,16 @@ async function askAssistantActivity(
   // Retention/custody is rechecked again in the content transaction after provider latency.
   const continuationCheck:((tx:Tx)=>Promise<void>)|undefined=clarification?tx=>assertOwnAssistantClarificationCurrentTx(tx,ctx,clarification):
     conversationContext?tx=>assertOwnAssistantConversationContextCurrentTx(tx,ctx,conversationContext):undefined;
-  // Stored history is human-readable. Each continuation is loaded by the actual own-row owner,
-  // and only human text enters context; no prior model answer or historical HR result is replayed.
-  // RETENTION (owner rule: raw chat content lives 30 days from ITS OWN question). A continuation stores
-  // ONLY the new human question. The original question stays in the original exchange under that exchange's
-  // deadline and reaches the provider below as transient turn context; copying it into this new row would
-  // give it a fresh 30 days, so a clarification read on day 29 would carry it to day 59.
+  // Each continuation is loaded by the own-row owner. Persist the new question
+  // separately so prior questions keep their own 30-day retention deadlines.
   const question = humanQuestion;
+  // Own-row context is interpreted only by the closed local grammar. No human
+  // wording, prior answer, or provider continuation state enters a model request.
+  const intent=clarification?resolvePrivateAssistantClarifiedIntent(clarification):resolvePrivateAssistantContextualIntent(humanQuestion,assistantConversationLocalHistory(conversationContext));
+  const proposal=resolvePrivateAssistantProposal(humanQuestion);
+  const ownLeaveBalance=intent.intent!==null&&isOwnLeaveBalanceIntent(intent.intent);
+  const ownRequestStatus=intent.intent!==null&&isOwnRequestStatusIntent(intent.intent);
+  const localOnly=intent.social!==null||proposal!==null||intent.intent===null||intent.intent==='pay_change'||ownLeaveBalance||ownRequestStatus;
 
   const now = p.now ?? new Date();
   const deadline = now.getTime() + EXCHANGE_DEADLINE_MS;
@@ -207,11 +210,9 @@ async function askAssistantActivity(
     // configuration through every converse/tool step; no late completed exchange ID or prompt hash.
     const rooted=await bindAiSpendTaskTx(tx,ctx,cfg,{kind:'assistant_question'});
     const budget=assistantQuestionBudgetBinding(ctx,rooted);
-    // A continuation's original question is transient provider context read in its own earlier
-    // transaction. The strategy owner rechecks that own source exchange in this marker transaction and
-    // before every provider round trip, so history erased or retired since that read never reaches one.
+    // Recheck the source exchange before recording custody and before any model request.
     const conversationStrategy=await prepareAssistantConversationStrategyTx(tx,ctx,rooted,question,
-      continuationCheck);
+      continuationCheck,localOnly?'local':'provider');
     return { cfg:conversationStrategy.configuration, conversationStrategy, ...budget };
   }).catch(error=>{
     if(error instanceof AssistantQuestionBudgetError)throw new AssistantError(error.budgetCode);
@@ -231,10 +232,6 @@ async function askAssistantActivity(
   // offer nothing.
   const proposalCaller: AssistantProposalCaller = await withTenant(ctx, (tx) => assistantProposalCallerTx(tx, ctx)).catch(() => CLOSED_PROPOSAL_CALLER);
   const tools = offered.map((t) => t.spec);
-  // Own-row context is interpreted only by the closed LOCAL grammar. Human wording, prior
-  // answers, tenant labels and provider continuation state never enter a provider request.
-  const intent=clarification?resolvePrivateAssistantClarifiedIntent(clarification):resolvePrivateAssistantContextualIntent(humanQuestion,assistantConversationLocalHistory(conversationContext));
-  const proposal=resolvePrivateAssistantProposal(humanQuestion);
   const audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[] = [];
 
   const sourceReads: AssistantSourceRead[] = [];
@@ -270,7 +267,6 @@ async function askAssistantActivity(
       // These server-owned own-subject calls are the only local read plan for the recognized intent.
       // No model-supplied argument, person identity, tool name or output can nominate another read.
       const module=intent.module;if(!module)throw new AssistantError('invalid_question');
-      const ownLeaveBalance=isOwnLeaveBalanceIntent(intent.intent);
       const selected:readonly {name:string;input:Record<string,unknown>}[]=ownLeaveBalance?[{name:'my_leave_balances',input:{}}]:
         intent.intent==='leave_requests'?[{name:'my_leave_requests',input:{limit:10}}]:intent.intent==='claim_statuses'?[{name:'my_claim_statuses',input:{limit:10}}]:
         intent.intent==='holidays'?[{name:'upcoming_holidays',input:{from:intent.fromDate??todayInKualaLumpur(),limit:10}}]:intent.intent==='reporting_line'?[{name:'my_reporting_line',input:{}}]:
@@ -291,7 +287,7 @@ async function askAssistantActivity(
       const hasReferences=catalogue.operation==='conversation'&&catalogue.reads.some(read=>read.explanations.length||read.cards.some(card=>card.facts.some(fact=>fact.available)));
       if(selectedCards.slot){answerPlan={version:1,mode:'clarify',slot:selectedCards.slot};stop='end';answer=JSON.stringify(answerPlan);}
       else if(!hasReferences){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'insufficient',code:'no_verified_facts'},answerReads,{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
-      else if(ownLeaveBalance||isOwnRequestStatusIntent(intent.intent)){
+      else if(ownLeaveBalance||ownRequestStatus){
         const localPlan=ownLeaveBalance?selectOwnLeaveBalance(catalogue):selectOwnRequestStatuses(catalogue);
         if(localPlan){
           answerPlan=adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(JSON.stringify(localPlan),catalogue),answerReads);
