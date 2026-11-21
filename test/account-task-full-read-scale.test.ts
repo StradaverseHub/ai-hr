@@ -1,31 +1,22 @@
-/** Compare the full native shell statement with one test-only typed predicate substitution. */
+/** Compare the unchanged native shell statement around a disposable expression index. */
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {sql,SQL} from 'drizzle-orm';
-import {PgDialect} from 'drizzle-orm/pg-core';
+import {sql} from 'drizzle-orm';
 import {afterAll,expect,it} from 'vitest';
 import {accountTaskCallerSql,accountTaskStatement,accountTaskStatementSections} from '../core/account-task-bundle';
-import {readPreparedTenantRows,withSharedReadSnapshot,type SessionContext,type Tx} from '../db/client';
+import {readPreparedTenantRows,withSharedReadSnapshot,withTenant,type SessionContext,type Tx} from '../db/client';
 import {leaveType} from '../db/schema';
 import {buildScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 
 afterAll(closeAll);
-const dialect=new PgDialect();
+const indexName='fixture_employment_person_text_idx';
 const modules={attendance:true,claims:false,performance:true,rewards:true,lifecycle:false};
 
-function fullStatement(tx:Tx,session:SessionContext,companyIds:readonly string[],typed:boolean){
- const statement=accountTaskStatement(accountTaskStatementSections(tx,session,modules,{
+function fullStatement(tx:Tx,session:SessionContext,companyIds:readonly string[]){
+ return accountTaskStatement(accountTaskStatementSections(tx,session,modules,{
   companyIds,personal:false,notices:true,
  }),session);
- if(!typed||!session.personId)return statement;
- const original=dialect.sqlToQuery(accountTaskCallerSql(session)).sql;
- const matching=statement.queryChunks.filter(chunk=>chunk instanceof SQL&&dialect.sqlToQuery(chunk).sql===original);
- expect(matching).toHaveLength(1);
- const caller=sql`task_caller as materialized (
-  select array(select e.id from public.employment e where e.person_id=${session.personId}::uuid) as own_ids
- )`;
- return new SQL(statement.queryChunks.map(chunk=>chunk===matching[0]?caller:chunk));
 }
 
 function percentile(values:number[],fraction:number){
@@ -33,7 +24,7 @@ function percentile(values:number[],fraction:number){
  return Math.round(sorted[Math.ceil(sorted.length*fraction)-1]*100)/100;
 }
 
-it('preserves complete shell task facts while comparing scoped prepared reads across eight concurrent requests',async()=>{
+it('measures the unchanged shared task query before, with, and after a disposable expression index',async()=>{
   await migrateTestDb();
   await resetDb();
   const base = await seedBase();
@@ -80,35 +71,51 @@ it('preserves complete shell task facts while comparing scoped prepared reads ac
     {role:'company HR',session:fixture.personas.single,companyIds:[fixture.singleCompanyId]},
     {role:'employee',session:employeeContext,companyIds:[employee.company_id]},
   ];
-  const read=async (actor:typeof actors[number],typed:boolean)=>withSharedReadSnapshot(actor.session,()=>
-   readPreparedTenantRows(actor.session,tx=>fullStatement(tx,actor.session,actor.companyIds,typed)));
-  const result=[];
-  for(const actor of actors){
-   const baseline=await read(actor,false);
-   expect(baseline).toHaveLength(1);
-   expect(baseline[0]?.principal).toBe(true);
-   expect(await read(actor,true)).toEqual(baseline);
-   const durations={current:[] as number[],typed:[] as number[]};
-   for(const order of [[false,true],[true,false],[false,true],[true,false]]){
-    for(const typed of order){
-     const wave=await Promise.all(Array.from({length:8},async()=>{
+  const read=(actor:typeof actors[number])=>withSharedReadSnapshot(actor.session,()=>
+   readPreparedTenantRows(actor.session,tx=>fullStatement(tx,actor.session,actor.companyIds)));
+  const baseline=await Promise.all(actors.map(read));
+  for(const rows of baseline){expect(rows).toHaveLength(1);expect(rows[0]?.principal).toBe(true);}
+
+  const report:{
+   phase:string;role:string;selectedCompanies:number;samples:number;p50Ms:number;p95Ms:number;indexInCallerPlan:boolean;
+  }[]=[];
+  async function measure(phase:string){
+   for(const [index,actor] of actors.entries()){
+    const durations:number[]=[];
+    for(let wave=0;wave<4;wave++){
+     durations.push(...await Promise.all(Array.from({length:8},async()=>{
       const start=performance.now();
-      const rows=await read(actor,typed);
+      const rows=await read(actor);
       const duration=performance.now()-start;
-      expect(rows).toEqual(baseline);
+      expect(rows).toEqual(baseline[index]);
       return duration;
-     }));
-     durations[typed?'typed':'current'].push(...wave);
+     })));
     }
+    const plan=await withTenant(actor.session,tx=>tx.execute(sql`
+     explain (format json) with ${accountTaskCallerSql(actor.session)} select own_ids from task_caller
+    `),{readOnlySnapshot:true});
+    report.push({phase,role:actor.role,selectedCompanies:actor.companyIds.length,
+     samples:durations.length,p50Ms:percentile(durations,.5),p95Ms:percentile(durations,.95),
+     indexInCallerPlan:JSON.stringify(plan).includes(indexName)});
    }
-   const stats=Object.fromEntries(Object.entries(durations).map(([mode,values])=>[mode,{
-    samples:values.length,p50Ms:percentile(values,.5),p95Ms:percentile(values,.95),
-   }]));
-   result.push({role:actor.role,selectedCompanies:actor.companyIds.length,...stats});
   }
-  console.info('ACCOUNT_TASK_FULL_READ '+JSON.stringify(result));
+  await measure('before');
+  let indexBytes=0;
+  await owner.client`create index fixture_employment_person_text_idx on public.employment ((person_id::text))`;
+  try {
+   await owner.client`analyze public.employment`;
+   const [storage]=await owner.client`select pg_relation_size('public.fixture_employment_person_text_idx')::int as bytes`;
+   indexBytes=storage.bytes;
+   expect(indexBytes).toBeGreaterThan(0);
+   await measure('with-index');
+  }finally{
+   await owner.client`drop index public.fixture_employment_person_text_idx`;
+   await owner.client`analyze public.employment`;
+  }
+  await measure('after-removal');
+  const evidence={releaseEligible:false,companies:fixture.companyIds.length,employments:fixture.employmentIds.length,indexBytes,results:report};
+  console.info('ACCOUNT_TASK_EXPRESSION_INDEX '+JSON.stringify(evidence));
   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR){
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'account-task-full-read.json'),
-    JSON.stringify({releaseEligible:false,companies:fixture.companyIds.length,employments:fixture.employmentIds.length,results:result},null,2));
+   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'account-task-expression-index.json'),JSON.stringify(evidence,null,2));
   }
 },240_000);
