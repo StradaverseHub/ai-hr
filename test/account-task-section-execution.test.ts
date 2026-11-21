@@ -113,7 +113,25 @@ it('measures each signed-in shell task section with live identity and company sc
         expect(fragment.value, owner).toEqual(original.value[owner]);
         performanceOwners.push({ owner, ...await profile(tx, ownerStatement, 5) });
       }
-      return { full, breakdown: breakdown.sort((a, b) => b.executionMs - a.executionMs), performanceOwners };
+      // Compare the same RLS-visible facts, with an indexable UUID predicate on the person column.
+      const typedCaller = sql`task_caller as materialized (
+        select array(select e.id from public.employment e where e.person_id=${session.personId}::uuid) as own_ids
+      )`;
+      const currentIds = sql`with ${caller} select own_ids from task_caller`;
+      const typedIds = sql`with ${typedCaller} select own_ids from task_caller`;
+      const [before] = await tx.execute<{ own_ids: string[] }>(currentIds);
+      const [after] = await tx.execute<{ own_ids: string[] }>(typedIds);
+      expect([...after.own_ids].sort()).toEqual([...before.own_ids].sort());
+      const typedAssessment = sql`with ${typedCaller} select ${expressions[1]} as value`;
+      const [candidate] = await tx.execute<{ value: unknown }>(typedAssessment);
+      expect(candidate.value).toEqual(original.value.assessment);
+      const typedEmployment = {
+        currentIds: await profile(tx, currentIds, 5),
+        typedIds: await profile(tx, typedIds, 5),
+        assessment: await profile(tx, typedAssessment, 5),
+      };
+      return { full, breakdown: breakdown.sort((a, b) => b.executionMs - a.executionMs),
+        performanceOwners, typedEmployment };
     }, { readOnlySnapshot: true });
     results.push({ role, selectedCompanies: companyIds.length, ...result });
     console.info('ACCOUNT_TASK_SECTION_EXECUTION '+JSON.stringify(results.at(-1)));
