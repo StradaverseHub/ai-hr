@@ -37,9 +37,10 @@ const censusPersonnelMovement=shardInput==='personnel-movement';
 const censusPayrollFormulaEvaluation=shardInput==='payroll-formula-evaluation';
 const censusFullFixtureRecords=shardInput==='fixture-records';
 const rewardsUpload=shardInput==='rewards-upload';
+const rewardsLibraries=shardInput==='rewards-libraries';
 const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
-assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords||rewardsUpload)&&groupShape)),'Invalid static census configuration');
+assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords||rewardsUpload||rewardsLibraries)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
 const staticPart=shardMatch?.[2]===undefined?undefined:Number(shardMatch[2]);
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
@@ -731,6 +732,50 @@ async function seedRewardsUploadOptions(owner,fixture){
  assert.equal(companies.length,70);
  assert.equal(units.length,140);
  return {companies,units};
+}
+
+async function measureRewardsLibraries(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ const actor=fixture.users[0];
+ assert.equal(actor.role,'groupHR');
+ report.rewardsLibraries=[];
+ const context=await signedInContext(actor);
+ try{
+  const page=await context.newPage();
+  await page.addInitScript(observeStartup);
+  for(const path of ['/admin/rewards/salary-structures','/admin/rewards/bonus-matrices']){
+   for(const pass of ['first','repeat']){
+    const row={path,role:actor.role,pass,ready:false,stage:'response'};
+    report.rewardsLibraries.push(row);save();
+    const start=performance.now(),remaining=()=>Math.max(1,15000-(performance.now()-start));
+    try{
+     const response=await page.goto(origin+path,{waitUntil:'commit',timeout:remaining()});
+     row.responseMs=Math.round(performance.now()-start);
+     row.status=response?.status();
+     assert.equal(row.status,200);
+     assert.equal(new URL(page.url()).pathname,path);
+     row.stage='library-list';save();
+     const main=page.locator('main:visible');
+     await main.locator('h1:visible').first().waitFor({timeout:remaining()});
+     await main.locator('form input[name="year"]:visible').first().waitFor({timeout:remaining()});
+     await main.getByRole('table').first().locator('thead th').first().waitFor({timeout:remaining()});
+     row.listReadyMs=Math.round(performance.now()-start);
+     row.stage='editor';save();
+     const draft=main.locator('form button[name="mode"][value="draft"]:visible');
+     await draft.waitFor({timeout:remaining()});
+     assert(await draft.isEnabled({timeout:remaining()}));
+     assert.equal(await main.locator('[role="alert"]:visible,[data-read-unavailable]:visible').count(),0);
+     Object.assign(row,{stage:'complete',ready:true,readyMs:Math.round(performance.now()-start)});
+    }catch(error){
+     row.failure=error?.name==='TimeoutError'?'timeout':error?.name==='AssertionError'?'assertion':'browser';
+     row.failedMs=Math.round(performance.now()-start);
+    }
+    save();
+   }
+  }
+ }finally{await context.close();}
+ assert(report.rewardsLibraries.length===4&&report.rewardsLibraries.every(row=>row.ready),'Rewards library form checks incomplete');
 }
 
 async function measureRewardsUpload(fixture){
@@ -1665,7 +1710,7 @@ try{
  report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords&&!rewardsUpload)await seedNotificationReads(fixture);
+  if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords&&!rewardsUpload&&!rewardsLibraries)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
   await waitForApp();
@@ -1683,6 +1728,7 @@ try{
    }
    finally{await db.end({timeout:5});}
   }else if(rewardsUpload)await measureRewardsUpload(fixture);
+  else if(rewardsLibraries)await measureRewardsLibraries(fixture);
   else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
   else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
   else{
