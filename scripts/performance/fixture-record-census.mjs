@@ -473,12 +473,48 @@ function personnelDirectoryRoutes(fixture) {
   ]);
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, personnelDirectory }) {
+async function attendanceRecordRoutes(db, fixture) {
+  const [group, company] = fixture.users;
+  assert.equal(group.role, 'groupHR');
+  assert.equal(company.role, 'companyHR');
+  assert.equal(group.companyId, company.companyId);
+  const employee = fixture.users.find(user => user.role === 'employee' && user.companyId === company.companyId);
+  assert(employee, 'Expected a fictional employee in the shared company');
+  const [day] = await db`select attendance_date::text as date, left(check_in_at::text, 5) as check_in
+    from attendance
+    where tenant_id=${employee.tenantId}::uuid and employment_id=${employee.employmentId}::uuid
+      and check_in_at is not null and attendance_date < current_date
+    order by attendance_date desc limit 1`;
+  assert.match(day?.date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(day?.check_in, /^\d{2}:\d{2}$/);
+  const mappingId = fixture.tenants[employee.tenant].clockingMappingId;
+  assert.match(mappingId, /^[0-9a-f-]{36}$/i);
+  const mappingName = 'PERF coded clocking CSV';
+  const mappingPath = '/admin/attendance/file-mappings/' + mappingId;
+  return [
+    { actor: employee, template: '/attendance/my-records/[date]',
+      path: '/attendance/my-records/' + day.date + '?employmentId=' + employee.employmentId,
+      content: day.check_in, exactContent: true, witness: 'h2:text-is("Clock data")' },
+    ...[group, company].map(actor => ({
+      actor, template: '/attendance/individual/[date]',
+      path: '/attendance/individual/' + day.date + '?emp=' + employee.employmentId,
+      content: day.check_in, exactContent: true,
+      witness: `[data-day-section="employee"] :text-is("${employee.name}")`,
+    })),
+    { actor: group, template: '/admin/attendance/file-mappings/[mappingId]',
+      path: mappingPath, exactHeading: mappingName, witness: `a[href="${mappingPath}/edit"]` },
+    { actor: group, template: '/admin/attendance/file-mappings/[mappingId]/edit',
+      path: mappingPath + '/edit', witness: `input[id$="-name"][value="${mappingName}"]` },
+  ];
+}
+
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, personnelDirectory, attendanceRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
     : importHistory ? importHistoryRoutes(fixture)
     : personnelDirectory ? personnelDirectoryRoutes(fixture)
+    : attendanceRecords ? await attendanceRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
