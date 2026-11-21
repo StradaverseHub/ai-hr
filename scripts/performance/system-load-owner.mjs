@@ -1923,7 +1923,10 @@ async function main(){
  if(mixedWorkflows){
   // Observe durable effects after the workload and timed resource sampling have settled.
   try{report.mixedWorkflows.payrollAfterTraffic={status:'checked',rows:await mixedWorkflows.verifyPayrollAfterTraffic()};}
-  catch{report.mixedWorkflows.payrollAfterTraffic={status:'unavailable'};}
+  catch(error){
+   const {kind,code}=driverErrorFact(error);
+   report.mixedWorkflows.payrollAfterTraffic={status:'unavailable',kind,code};
+  }
   save();
   try{report.mixedWorkflows.failedAttendanceEffects={status:'checked',rows:await mixedWorkflows.verifyFailedAttendanceActions()};}
   catch(error){

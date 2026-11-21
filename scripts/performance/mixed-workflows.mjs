@@ -1,3 +1,4 @@
+import {readPayrollAfterTraffic} from './payroll-after-traffic.mjs';
 /** Real built browser actions, replayed over HTTPS; owner DB access is a read-only oracle. */
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -464,20 +465,6 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
     as f(action text,employment_id uuid,marker text,correction_id uuid)
    group by action order by action`;
  }
- async function verifyPayrollAfterTraffic(){
-  if(!attemptedPayroll.length)return [];
-  const attempts=attemptedPayroll.map(({tenant,tenantId,batchId,userId})=>({tenant,tenant_id:tenantId,batch_id:batchId,user_id:userId}));
-  return db`select target.tenant,batch.status as "batchState",jobs.count as "jobCount",
-   case when jobs.count=1 then jobs.state end as "jobState",slips.count as "payslipCount"
-   from jsonb_to_recordset(${JSON.stringify(attempts)}::jsonb) as target(tenant int,tenant_id uuid,batch_id uuid,user_id uuid)
-   left join public.payroll_batch batch on batch.id=target.batch_id and batch.tenant_id=target.tenant_id
-   cross join lateral (select count(*)::int as count,min(job.state) as state from public.bulk_job job
-    where job.tenant_id=target.tenant_id and job.created_by=target.user_id and job.kind='payroll_process'
-     and job.input->>'batchId'=target.batch_id::text) jobs
-   cross join lateral (select count(*)::int as count from public.payslip slip
-    where slip.tenant_id=target.tenant_id and slip.batch_id=target.batch_id) slips
-   order by target.tenant`;
- }
  async function runPayroll(user,loadState){
   assert.equal(user.role,'groupHR');
   const startedWith=loadState(),started=performance.now();
@@ -560,5 +547,6 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   }
   return [...cases.values()];
  }
- return {run,runPayroll,verifyFailedAttendanceActions,verifyPayrollAfterTraffic,plannedWrites};
+ return {run,runPayroll,verifyFailedAttendanceActions,
+  verifyPayrollAfterTraffic:()=>readPayrollAfterTraffic(db,attemptedPayroll),plannedWrites};
 }

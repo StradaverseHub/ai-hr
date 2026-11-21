@@ -30,6 +30,7 @@ import {payrollProcessJobHandler,payrollProcessingStatus,requestPayrollProcessin
 import {approveTp1ForPerson,getTp1ForPerson,submitTp1} from '../core/tax-relief';
 import {initializeHiredTaxSelectionMYTx} from '../localization/my/tax-selection';
 import {withTenant} from '../db/client';
+import {readPayrollAfterTraffic} from '../scripts/performance/payroll-after-traffic.mjs';
 import {adminCtx,closeAll,createAppUser,entitledCtx,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 
 /** The synchronous path's digest for this fixture (test/payroll-lock-equivalence.test.ts, recorded on the base). */
@@ -156,7 +157,12 @@ describe('payroll processing background job',()=>{
   await resetProcessedBatch(f.a,{batchId:f.batchId,reason:'Fictional job equivalence reset'});
 
   const started=await f.lastSequence();
+  const attempted={tenant:0,tenantId:base.tenantId,batchId:f.batchId,userId:f.a.userId};
+  const expected=(batchState:string,jobCount:number,jobState:string|null,payslipCount:number)=>
+   [{tenant:0,batchState,jobCount,jobState,payslipCount}];
+  expect(await readPayrollAfterTraffic(owner.client,[attempted])).toEqual(expected('draft',0,null,0));
   const {jobId,existing}=await requestPayrollProcessing(f.a,{batchId:f.batchId});
+  expect(await readPayrollAfterTraffic(owner.client,[attempted])).toEqual(expected('processing',1,'queued',0));
   expect(existing).toBe(false);
   expect(await requestPayrollProcessing(f.a,{batchId:f.batchId})).toEqual({jobId,existing:true});
   const [processing]=await owner.db.select({status:schema.payrollBatch.status,processingJobId:schema.payrollBatch.processingJobId}).from(schema.payrollBatch).where(eq(schema.payrollBatch.id,f.batchId));
@@ -166,6 +172,7 @@ describe('payroll processing background job',()=>{
 
   const done=await runJob(jobId);
   expect(done).toMatchObject({state:'completed',error:null});
+  expect(await readPayrollAfterTraffic(owner.client,[attempted])).toEqual(expected('processed',1,'completed',5));
   // begin + three chunks of two employees.
   expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(4);
   const viaJob=await f.snapshot();
