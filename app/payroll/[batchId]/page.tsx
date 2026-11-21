@@ -22,6 +22,7 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { closeAction, generateAction, resetAction, unlockAction } from '../actions';
 import { payrollProcessingStatus } from '@/core/payroll-processing-job';
 import { PayrollProcessingPanel } from './processing-progress';
+import { PayrollProcessingReceipt } from './processing-receipt';
 // b372e923 — the payroll result destination, now spelled in ONE place because the Reprocess result table
 // links to it too and the reporter's requirement is that the two cannot be different screens.
 import { payrollResultHref } from '../payroll-result-href';
@@ -76,8 +77,11 @@ export default async function BatchPage({
   }>;
 }) {
   const s = await requireAdmin();
-  const t = await getTranslations('payroll.batch');
-  const ta = await getTranslations('anomaly');
+  const [t, ta, actionFeedback] = await Promise.all([
+    getTranslations('payroll.batch'),
+    getTranslations('anomaly'),
+    getTranslations('common.actionFeedback'),
+  ]);
   const { batchId } = await params;
   if (!UUID_RE.test(batchId)) notFound(); // see UUID_RE — a non-uuid segment must 404, not 500
   const sp = await searchParams;
@@ -451,27 +455,32 @@ export default async function BatchPage({
                     operator's filter selection to the current period. Posts the already-whitelisted
                     `backHref`, exactly as the reset form below does. */}
                 <input type="hidden" name="from" value={backHref} />
-                {preBlockers > 0 ? (
-                  // The checks below identify the actual blocker. The write path rechecks all of them.
-                  <Button type="submit" disabled title={t('preChecksNotReady')}>
-                    {t('generatePayslips')}
-                  </Button>
-                ) : preWarnings > 0 ? (
-                  // Warnings only: explicit confirm required; the dialog posts ackWarnings=1.
-                  <>
-                    <input type="hidden" name="ackWarnings" value="1" />
-                    <ConfirmSubmit
-                      variant="default"
-                      title={t('preConfirmTitle')}
-                      description={t('preConfirmDescription', { n: preWarnings })}
-                      confirmLabel={t('preConfirmLabel')}
-                    >
+                <PayrollProcessingReceipt
+                  key={processingJob?.finishedAt ?? batch.id}
+                  unavailable={actionFeedback('uncertain')}
+                >
+                  {preBlockers > 0 ? (
+                    // The checks below identify the actual blocker. The write path rechecks all of them.
+                    <Button type="submit" disabled title={t('preChecksNotReady')}>
                       {t('generatePayslips')}
-                    </ConfirmSubmit>
-                  </>
-                ) : (
-                  <Button type="submit">{t('generatePayslips')}</Button>
-                )}
+                    </Button>
+                  ) : preWarnings > 0 ? (
+                    // Warnings only: explicit confirm required; the dialog posts ackWarnings=1.
+                    <>
+                      <input type="hidden" name="ackWarnings" value="1" />
+                      <ConfirmSubmit
+                        variant="default"
+                        title={t('preConfirmTitle')}
+                        description={t('preConfirmDescription', { n: preWarnings })}
+                        confirmLabel={t('preConfirmLabel')}
+                      >
+                        {t('generatePayslips')}
+                      </ConfirmSubmit>
+                    </>
+                  ) : (
+                    <Button type="submit">{t('generatePayslips')}</Button>
+                  )}
+                </PayrollProcessingReceipt>
               </form>
             )}
             {/* e440991b — REPROCESS, at the TOP of the run screen. It used to be a panel at the very
