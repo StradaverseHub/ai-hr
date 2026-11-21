@@ -16,6 +16,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,routePools} from './system-route-manifest.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {projectLoadedAdvisoryDiagnostics,projectMixedBrowserVisitFailure} from './worker-comparison-failure.mjs';
+import {summarizeMixedResponsePhases} from './mixed-response-phases.mjs';
 import {mixedDriverPrimaryOrigin,projectMixedNavigationPreflightFailure} from './mixed-driver-primary-origin.mjs';
 import {projectMixedPreflightLockWaits} from './lock-sample-attribution.mjs';
 import {browserPreflightErrorFingerprint} from './browser-failure.ts';
@@ -758,6 +759,20 @@ async function measureMixedLoad(command,fixture){
    const kinds=['navigation','read','write'];
    const knownRoutes=new Set([...Object.values(routePools).flat(),'/payroll/[batchId]',
     '/attendance/my-records/[date]','/attendance/application-history/[id]','/api/personnel/search']);
+   const samplesPath=join(driverEvidence,'http-samples.json');
+   report.mixedResponsePhases={available:false};
+   try{
+    const metadata=statSync(samplesPath);
+    if(metadata.isFile()&&metadata.size<=16*1024*1024){
+     const samples=JSON.parse(readFileSync(samplesPath,'utf8'));
+     const rows=summarizeMixedResponsePhases(samples,data.measurementWindow,knownRoutes);
+     if(rows.length)report.mixedResponsePhases={
+      available:true,driverAccountingComplete:data.functionalAccountingComplete===true,
+      scope:'Completed successful HTTP responses on allowlisted routes, started in the steady window. After-headers includes transfer and driver processing. Failed transport remains in the failure report.',
+      rows,
+     };
+    }
+   }catch{/* Missing or malformed optional timing evidence remains unavailable. */}
    const failureCode=value=>typeof value==='string'&&/^(?:[0-9A-Z]{5}|[A-Za-z][A-Za-z_0-9]{1,50})$/.test(value)?value:null;
    const summarizeFailures=(rows,key)=>{
     const groups=new Map();
