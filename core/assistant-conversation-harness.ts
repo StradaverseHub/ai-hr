@@ -9,7 +9,8 @@ import {ProviderWorkloadUnavailableError} from '../lib/ai/provider-workload-poli
 import type {ConverseArgs} from '../lib/ai/types';
 import {captureAgentReadBatch} from '../lib/ai/agent-read-batch';
 import {routingDigest} from '../lib/ai/module-agent-routing';
-import {ASSISTANT_CONVERSATION_HOLDOUTS} from '../lib/ai/assistant-conversation-holdouts';
+import {ASSISTANT_CONVERSATION_HOLDOUTS,protectedConversationFixtureTask} from '../lib/ai/assistant-conversation-holdouts';
+import {adjudicatePrivateAssistantTerminal} from '../lib/ai/provider-assistant-policy';
 import {ASSISTANT_CONVERSATION_BASELINE,assistantConversationCandidateSystem,captureAssistantConversationCandidate,nextAssistantConversationArms,scoreAssistantConversationTrial,type ConversationArm,type ConversationToolObservation,type ConversationCaseResult} from '../lib/ai/assistant-conversation-candidate';
 import type {AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
 import {assistantProposalCatalogue,syntheticAssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
@@ -24,23 +25,32 @@ export async function executeAssistantConversationHoldout(configuration:unknown,
  const candidate=captureAssistantConversationCandidate(configuration),queue=nextAssistantConversationArms(ASSISTANT_CONVERSATION_HOLDOUTS,prior,binding);
  let calls=0,completed=0,unavailable=0;
  for(const request of queue){
-  // Three actual round trips cover balance->explanation->terminal. Reserve remaining CALL capacity,
-  // not money, before starting an arm; no arm receives an independent twelve-call allowance.
-  if(calls+3>12)break;
   const fixture=ASSISTANT_CONVERSATION_HOLDOUTS.find(row=>row.id===request.id)!;
+  const maxCalls=fixture.protectedSelection?1:3;
+  if(calls+maxCalls>12)break;
+  const strategy=request.arm==='baseline'?ASSISTANT_CONVERSATION_BASELINE:candidate;
+  const protectedTask=fixture.protectedSelection?protectedConversationFixtureTask(fixture,strategy.variant):null;
   const turns:AiTurn[]=[{role:'user',content:JSON.stringify({locale:fixture.locale,question:fixture.question,evaluationClock:'2026-10-01',fictionalSource:true})}],reads:AssistantAnswerRead[]=[],observedTools:ConversationToolObservation[]=[];
   const privateSteps:{calls:{id:string;expectedIndex:number|null}[]}[]=[];
   let terminal:unknown,failed=false,inputTokens=0,outputTokens=0,costCredits=0,costKnown=true,tokensKnown=true;const started=performance.now(),firstCall=calls;
-  for(let step=0;step<3;step++){
+  for(let step=0;step<maxCalls;step++){
    const usage:{settled?:Parameters<NonNullable<AiAdmissionLifecycle['settled']>>[1]}={};
    try{
     const observed=withAiAdmissionLifecycle(cfg,'module_agent_evaluation',{async settled(_tx,event){usage.settled=event;}});calls++;
-    const task=await preparePrivateAiTask(observed,'synthetic_assistant_conversation_v1',async()=>({fixtureId:fixture.id,strategy:request.arm==='baseline'?ASSISTANT_CONVERSATION_BASELINE:candidate,steps:structuredClone(privateSteps)}));
+    const task=await preparePrivateAiTask(observed,'synthetic_assistant_conversation_v1',async()=>({fixtureId:fixture.id,strategy,steps:structuredClone(privateSteps)}));
     let response:Awaited<ReturnType<typeof converse>>;
     try{if(task.operation!=='conversation')throw Error('Synthetic conversation operation unavailable.');response=await converse(task.configuration,task.args as ConverseArgs);}finally{task.dispose();}
     if(response.usageReported===false||!usage.settled?.succeeded||usage.settled.actualTokens===null)tokensKnown=false;inputTokens+=response.usage.inputTokens+response.usage.cachedInputTokens;outputTokens+=response.usage.outputTokens;
     const charge=usage.settled?.accounting.providerObservationStatus==='reported'?usage.settled.accounting.openrouterAccountCostCredits:null;
     if(charge===null||charge===undefined)costKnown=false;else costCredits+=charge;
+    if(protectedTask){
+     reads.push(...fixture.reads);
+     if(response.toolCalls.length||response.stop==='tool_use')observedTools.push({name:'unavailable_source',input:null});
+     else if(response.stop==='end')try{
+      terminal=JSON.stringify(adjudicatePrivateAssistantTerminal(response.text,protectedTask.local));
+     }catch{terminal=undefined;}
+     break;
+    }
     if(response.stop!=='tool_use'){terminal=response.stop==='end'?response.text:undefined;break;}
     if(response.providerState!==undefined)throw new ProviderWorkloadUnavailableError('synthetic_provider_continuation_state');
     const batch=captureAgentReadBatch(response.toolCalls);turns.push({role:'assistant',content:'',toolCalls:[...batch]});

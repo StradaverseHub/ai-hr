@@ -1,10 +1,10 @@
 import {withAiCentreFunction} from './ai-centre-control';
-import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateAssistantProposal,capturePrivateAssistantTask,adjudicatePrivateAssistantReadPlan} from '../lib/ai/provider-assistant-policy';
+import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateAssistantProposal,capturePrivateAssistantTask,adjudicatePrivateAssistantReadPlan,adjudicatePrivateAssistantTerminal} from '../lib/ai/provider-assistant-policy';
 import {assistantReadableModules} from './assistant-readable-modules';
 import {ASSISTANT_CONVERSATION_LIMITS} from './assistant-clarification';
 import type {ResolvedAiConfig,GenerateArgs} from '../lib/ai/types';
 import {captureAssistantConversationCandidate,assistantConversationCandidateSystem,nextAssistantConversationArms,ASSISTANT_CONVERSATION_BASELINE,ASSISTANT_CONVERSATION_ENGINE_DIGEST,ASSISTANT_CONVERSATION_POLICY_DIGEST,compareAssistantConversationArms,scoreAssistantConversationTrial,type ConversationArm,type ConversationCaseResult,type AssistantConversationCandidate} from '../lib/ai/assistant-conversation-candidate';
-import {ASSISTANT_CONVERSATION_HOLDOUTS,ASSISTANT_CONVERSATION_INPUT_DIGEST,ASSISTANT_CONVERSATION_SUITE_DIGEST} from '../lib/ai/assistant-conversation-holdouts';
+import {ASSISTANT_CONVERSATION_HOLDOUTS,ASSISTANT_CONVERSATION_INPUT_DIGEST,ASSISTANT_CONVERSATION_SUITE_DIGEST,protectedConversationFixtureTask} from '../lib/ai/assistant-conversation-holdouts';
 import {executeAssistantConversationHoldout} from './assistant-conversation-harness';
 import type {NativeOutcomeServerContext} from './assistant-actions/completed-outcome-readers';
 import {captureNativeCandidateSignals,captureNativeCandidateSignalIds,type NativeCandidateSignal} from '../lib/ai/module-native-signals';
@@ -1042,6 +1042,10 @@ async function conversationArmsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRo
  for(const row of rows){const proof=open('conversation-arm',ctx.tenantId,row.id,row.receipt),fixture=ASSISTANT_CONVERSATION_HOLDOUTS.find(item=>item.id===row.fixture_id);
   if(!fixture||!exact(proof,['version','candidateDigest','binding','evaluatorId','providerFingerprint','suiteDigest','result'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||proof.evaluatorId!==evaluatorId||proof.providerFingerprint!==providerFingerprint||proof.suiteDigest!==ASSISTANT_CONVERSATION_SUITE_DIGEST)return fail();
   const result=proof.result as ConversationCaseResult;if(!result||!exact(result,['id','sourceFingerprint','plan','tools','passed','securityFailure','observation'])||result.id!==fixture.id||result.sourceFingerprint!==fixture.sourceFingerprint||typeof result.passed!=='boolean'||result.passed!==row.passed||typeof result.securityFailure!=='boolean')return fail();
+  if(fixture.protectedSelection&&result.plan!==null){
+   const task=protectedConversationFixtureTask(fixture,'baseline_v1');
+   try{adjudicatePrivateAssistantTerminal(JSON.stringify(result.plan),task.local);}catch{return fail();}
+  }
   const checked=scoreAssistantConversationTrial(fixture,{terminal:result.plan===null?null:JSON.stringify(result.plan),reads:fixture.reads,tools:result.tools,observation:result.observation});
   if(result.passed&&(!checked.passed||result.securityFailure)||!result.passed&&result.plan!==null&&routingDigest(checked.plan)!==routingDigest(result.plan))return fail();
   arms.push(Object.freeze({arm:row.arm,candidateDigest:candidate.candidate_digest,providerFingerprint,case:Object.freeze(result)}));
@@ -1117,7 +1121,7 @@ async function evaluateConversationAgentCandidateActivity(ctx:SessionContext,inp
 async function verifiedConversationEvaluationsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow,providerFingerprint:string){
  const rows=await tx.execute<{id:string;evaluator_user_id:string;receipt:string}>(sql`select distinct on(evaluator_user_id) id,evaluator_user_id,receipt from public.ai_agent_evaluation where tenant_id=${ctx.tenantId}::uuid and candidate_id=${candidate.id}::uuid and suite_digest=${ASSISTANT_CONVERSATION_SUITE_DIGEST} order by evaluator_user_id,completed_at desc,id desc limit 9`);if(rows.length<2||rows.length>8)return fail();
  const checked:{id:string;evaluatorId:string;receiptDigest:string}[]=[];for(const row of rows){if(row.evaluator_user_id===candidate.author_user_id)return fail();const proof=open('conversation-evaluation',ctx.tenantId,row.id,row.receipt),arms=await conversationArmsTx(tx,ctx,candidate,providerFingerprint,row.evaluator_user_id),comparison=compareAssistantConversationArms(ASSISTANT_CONVERSATION_HOLDOUTS,arms,{candidateDigest:candidate.candidate_digest,providerFingerprint});
-  if(!exact(proof,['version','candidateDigest','binding','evaluatorId','providerFingerprint','suiteDigest','armSetDigest','comparison'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||proof.evaluatorId!==row.evaluator_user_id||proof.providerFingerprint!==providerFingerprint||proof.suiteDigest!==ASSISTANT_CONVERSATION_SUITE_DIGEST||proof.armSetDigest!==conversationArmSetDigest(arms)||routingDigest(proof.comparison)!==routingDigest(comparison)||!comparison.complete||!comparison.qualityImproved||comparison.candidate.securityFailures!==0||comparison.candidate.correct!==ASSISTANT_CONVERSATION_HOLDOUTS.length)return fail();
+  if(!exact(proof,['version','candidateDigest','binding','evaluatorId','providerFingerprint','suiteDigest','armSetDigest','comparison'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||proof.evaluatorId!==row.evaluator_user_id||proof.providerFingerprint!==providerFingerprint||proof.suiteDigest!==ASSISTANT_CONVERSATION_SUITE_DIGEST||proof.armSetDigest!==conversationArmSetDigest(arms)||routingDigest(proof.comparison)!==routingDigest(comparison)||!comparison.complete||!comparison.qualityImproved||comparison.protectedSelection.cases===0||comparison.candidate.securityFailures!==0||comparison.candidate.correct!==ASSISTANT_CONVERSATION_HOLDOUTS.length)return fail();
   checked.push({id:row.id,evaluatorId:row.evaluator_user_id,receiptDigest:routingDigest(row.receipt)});
  }return checked;
 }

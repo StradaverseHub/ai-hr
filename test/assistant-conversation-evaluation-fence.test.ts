@@ -50,7 +50,7 @@ function evaluationTransport(pauseOn:Step|null){
  let reached!:()=>void,open!:()=>void,paused=false,callsAtPause=-1;
  const atPause=new Promise<void>(yes=>{reached=yes;}),gate=new Promise<void>(yes=>{open=yes;});
  const spy=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_cfg,args)=>{
-  const first=args.turns[0];if(first.role!=='user')throw Error('Expected fixed synthetic human turn');const input=JSON.parse(first.content),fixture=ASSISTANT_CONVERSATION_HOLDOUTS.find(row=>row.locale===input.locale&&row.question===input.question);if(!fixture)throw Error('Unexpected non-synthetic question');
+  const first=args.turns[0];if(first.role!=='user')throw Error('Expected fixed synthetic human turn');const input=JSON.parse(first.content),fixture=ASSISTANT_CONVERSATION_HOLDOUTS.find(row=>row.protectedSelection ? row.protectedIntent===input.intent&&args.tools.length===0 : row.locale===input.locale&&row.question===input.question);if(!fixture)throw Error('Unexpected non-synthetic question');
   const completed=args.turns.flatMap(turn=>turn.role==='tool'?turn.results.filter(row=>!row.isError):[]).length,expected=fixture.expectedTools[completed];
   if(pauseOn&&!paused&&(expected?'tool':'terminal')===pauseOn){paused=true;callsAtPause=spy.mock.calls.length;reached();await gate;}
   if(expected)return{text:'',stop:'tool_use',toolCalls:[{id:'fence-call-'+completed,name:expected.name,input:expected.input}],usage:{inputTokens:1,outputTokens:1,cachedInputTokens:0},usageReported:true};

@@ -27,6 +27,20 @@ const FROZEN_LEGACY_REQUESTS_SHA256="15bdda3dfe961a0c7f03aae0f43e43ab72876fe3aa0
 const descriptor=(id:string)=>{const value=getProviderWorkloadDescriptor(id);if(!value)throw Error('Unknown fixture contract');return value;};
 const bytes=(id:string,source:unknown)=>JSON.stringify(descriptor(id).capture(source).args);
 describe('purpose-specific protected workload contracts',()=>{
+ it('sends exactly the serving wire shape for registered protected-selection fixtures',()=>{
+  const contract=descriptor('synthetic_assistant_conversation_v1');
+  const fixtureId='en:protected:attendance',strategy=ASSISTANT_CONVERSATION_BASELINE;
+  const args=contract.capture({fixtureId,strategy,steps:[]}).args;
+  expect(args).toMatchObject({turns:[{role:'user'}],tools:[],maxTokens:2048,timeoutMs:30000});
+  if(!('turns' in args)||args.turns[0].role!=='user')throw Error('Expected an ordinal catalogue');
+  expect(JSON.parse(args.turns[0].content)).toMatchObject({
+   version:1,operation:'conversation',intent:'attendance',strategy:'baseline_v1',
+   reads:[{read:0,module:'attendance',cards:[{card:0,facts:[{field:'date',available:true},{field:'status',available:true},{field:'workedMinutes',available:true},{field:'otMinutes',available:true}]}]}],
+  });
+  expect(args.turns[0].content).not.toMatch(/My attendance|2026-01-01|470|fixtureId|expected/);
+  expect(()=>contract.capture({fixtureId,strategy,steps:[{calls:[{id:'invented',expectedIndex:0}]}]})).toThrow();
+  expect(()=>contract.capture({fixtureId,strategy,steps:[],question:'Private text'})).toThrow();
+ });
  it('constructs exact synthetic protocol bytes and never accepts a user-authored system or marker',()=>{
   const marker='eval_00000000-0000-4000-8000-000000000001';
   const echo=descriptor('synthetic_protocol_echo_v1');expect(echo.operation).toBe('draft');expect(echo.features).toEqual(['provider_evaluation']);expect(echo.capture({marker}).args).toMatchObject({prompt:`Return exactly this token and nothing else: ${marker}`,maxTokens:1024});

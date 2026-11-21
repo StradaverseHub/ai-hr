@@ -14,7 +14,7 @@ export type {NativeOutlineSection,NativeInsightOutline} from './native-insight-o
 import {PROMPT_HOLDOUTS,promptCandidateSystem,capturePromptPlanCandidate} from './module-agent-prompt-candidate';
 import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST,humanQuestionPrompt} from './human-plan-holdouts';
 import {PERSONNEL_IMPORT_ASSISTANCE_REGISTRY} from '../personnel-import-assistance';
-import {ASSISTANT_CONVERSATION_HOLDOUTS} from './assistant-conversation-holdouts';
+import {ASSISTANT_CONVERSATION_HOLDOUTS,protectedConversationFixtureTask} from './assistant-conversation-holdouts';
 import {captureAssistantConversationCandidate,assistantConversationCandidateSystem} from './assistant-conversation-candidate';
 import {buildAssistantConversationSystem} from './assistant-conversation-system';
 import {assistantProposalCatalogue,syntheticAssistantProposalCaller} from './assistant-action-catalogue';
@@ -173,6 +173,10 @@ const contracts=Object.freeze({
   // Strict source capture deliberately uses null-prototype records. Rebuild only these two already
   // captured data fields as a plain object for the source-owned closed candidate validator.
   const strategy=captureAssistantConversationCandidate({...row(r.strategy,['kind','variant'])});
+  if(fixture.protectedSelection){
+   if(list(r.steps,2).length!==0)return refuse();
+   return protectedConversationFixtureTask(fixture,strategy.variant);
+  }
   const turns:AiTurn[]=[{role:'user',content:JSON.stringify({locale:fixture.locale,question:fixture.question,evaluationClock:'2026-10-01',fictionalSource:true})}];
   for(const value of list(r.steps,2)){
    const step=row(value,['calls']),calls:AiToolCall[]=[],results:AiToolResult[]=[];

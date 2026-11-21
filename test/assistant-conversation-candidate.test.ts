@@ -56,4 +56,16 @@ describe('source-owned main conversation candidate',()=>{
  it('requires complete paired independent correctness and zero candidate security failure, preserving unknown resource observations',()=>{
   const rows=ASSISTANT_CONVERSATION_HOLDOUTS.slice(0,2),arms=rows.flatMap(row=>[arm(row,'baseline',{terminal:JSON.stringify({version:1,mode:'insufficient',code:'unsupported_explanation'})}),arm(row,'candidate')]);const report=compareAssistantConversationArms(rows,arms,binding);expect(report.qualityImproved).toBe(true);expect(report.baseline.correct).toBe(0);expect(report.candidate.elapsedMs).toBeNull();expect(report.candidate.p95Ms).toBeNull();expect(report.candidate.costCredits).toBeNull();expect(compareAssistantConversationArms(rows,arms.slice(1),binding).qualityImproved).toBe(false);
  });
+ it('requires gain on the protected selection cases, even if a legacy tool case improves',()=>{
+  const legacy=ASSISTANT_CONVERSATION_HOLDOUTS.find(row=>row.id==='en:domain:employees')!;
+  const protectedCase=ASSISTANT_CONVERSATION_HOLDOUTS.find(row=>row.id==='en:protected:employees')!;
+  const legacyOnly=[arm(legacy,'baseline',{terminal:'invalid'}),arm(legacy,'candidate'),arm(protectedCase,'baseline'),arm(protectedCase,'candidate')];
+  expect(compareAssistantConversationArms([legacy,protectedCase],legacyOnly,binding)).toMatchObject({
+   complete:true,qualityImproved:false,protectedSelection:{cases:1,baselineCorrect:1,candidateCorrect:1},
+  });
+  const protectedGain=[...legacyOnly.slice(0,2),arm(protectedCase,'baseline',{terminal:'invalid'}),arm(protectedCase,'candidate')];
+  expect(compareAssistantConversationArms([legacy,protectedCase],protectedGain,binding)).toMatchObject({
+   complete:true,qualityImproved:true,protectedSelection:{cases:1,baselineCorrect:0,candidateCorrect:1},
+  });
+ });
 });
