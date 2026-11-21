@@ -69,6 +69,12 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     row.featureId && row.runtime.use30 &&
     (row.kind === 'chat' || row.kind === 'specialist' || row.kind === 'embedded_feature' || row.kind === 'operator_loop') &&
     !isTemplateOnlyAiFeature(row.featureId) ? [[row.featureId, row.runtime.use30] as const] : [])) : null;
+  const modelTotals = modelActivity ? [...modelActivity.values()].reduce((totals, use) => {
+    totals.allowed += use.runs;
+    totals.failed += use.failed;
+    totals.blocked += use.blocked;
+    return totals;
+  }, {allowed: 0, failed: 0, blocked: 0}) : null;
   const recentFeatureActivity = modelActivity ? [...modelActivity.entries()]
     .filter(([, use]) => use.runs > 0)
     .sort(([, a], [, b]) => b.runs - a.runs || b.blocked - a.blocked) : [];
@@ -256,12 +262,11 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         {isGroupAdmin(s) && <>
           <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
             <dt className="font-medium">{workerOverview('model')}</dt>
-            <dd className="text-muted-foreground">{modelActivity
-              ? workerOverview('modelCounts', {
-                used: recentFeatureActivity.length,
-                failed: [...modelActivity.values()].reduce((sum, use) => sum + use.failed, 0),
-                blocked: [...modelActivity.values()].reduce((sum, use) => sum + use.blocked, 0),
-              }) : workerOverview('unavailable')}</dd>
+            <dd className="text-muted-foreground">{modelTotals
+              ? modelTotals.allowed || modelTotals.blocked
+                ? workerOverview('modelCounts', {...modelTotals, used: recentFeatureActivity.length})
+                : workerOverview('modelEmpty')
+              : workerOverview('unavailable')}</dd>
             <dd><Link href={aiManagementHref('runs')} className={btnGhost}>{workerOverview('runHistory')}</Link></dd>
             {(recentFeatureActivity.length > 0 || blockedOnlyActivity.length > 0 || featuresWithoutAttempts.length > 0) && <dd className="min-w-0 sm:col-start-2">
               {recentFeatureActivity.length > 0 && <ul className="divide-y divide-border">

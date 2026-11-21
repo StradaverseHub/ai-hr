@@ -17,7 +17,7 @@ import {aiInventoryComponents,registryRow,AI_DATA_REGISTER} from '../lib/ai/ai-i
 import {AI_FEATURES} from '../lib/ai/features';
 import workerOverviewMessages from '../app/control-tower/agents/worker-overview-messages.json';
 const copies={en,ms,zh,vi:viCopy,th,ta};
-const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true,alertsUnavailable:false,inventoryUnavailable:false,actionActivity:true,reminders30:3}));
+const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true,alertsUnavailable:false,inventoryUnavailable:false,noModelActivity:false,actionActivity:true,reminders30:3}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:withAiCentre(state.locale,copies[state.locale] as any),namespace}),getLocale: async () => state.locale, getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/control-tower/agents/inventory',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
@@ -49,7 +49,7 @@ vi.mock('../core/ai-inventory',async()=>{
   rows:aiInventoryComponents().map(c=>({...c,runtime:{switch:{kind:c.outOfBand?'platform':c.featureId?'policy':'none',on:c.featureId?true:null,state:c.featureId?'ready':null},
    actionPaused:c.kind==='action'?c.id==='leave.cancel':null,allowance:c.featureId&&c.kind!=='action'?{dailyRequests:50,monthlyTokens:200000}:null,
    lastRun:c.id!=='payroll_explanation'&&c.id!=='pay_rule_draft'&&(c.featureId||c.id==='ai-alerts')?at:null,
-   use30:c.id==='payroll_explanation'||c.id==='pay_rule_draft'?{runs:0,failed:0,blocked:c.id==='payroll_explanation'?1:0,tokens:0,reportedCredits:null}:
+   use30:state.noModelActivity&&c.featureId&&c.kind!=='action'&&c.kind!=='read_binding'?{runs:0,failed:0,blocked:0,tokens:0,reportedCredits:null}:c.id==='payroll_explanation'||c.id==='pay_rule_draft'?{runs:0,failed:0,blocked:c.id==='payroll_explanation'?1:0,tokens:0,reportedCredits:null}:
     c.featureId&&c.kind!=='action'&&c.kind!=='read_binding'?{runs:12,failed:1,blocked:0,tokens:5400,reportedCredits:0.0123}:null,
    reminders30:c.kind==='action'&&c.tier==='automatic'?(c.id==='attendance.missing_clock.remind'?state.reminders30:0):null,
    outcomes:c.kind==='action'&&c.tier!=='automatic'?{
@@ -68,7 +68,7 @@ vi.mock('../core/ai-inventory',async()=>{
  };
 });
 import {AiManagementScreen} from '../app/control-tower/agents/screen';
-afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;state.inventoryUnavailable=false;state.actionActivity=true;state.reminders30=3;});
+afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;state.inventoryUnavailable=false;state.noModelActivity=false;state.actionActivity=true;state.reminders30=3;});
 const session={tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never;
 const renderPage=async(locale:keyof typeof copies,section:'features'|'runs',searchParams={})=>{
  const workerControls=state.group&&section==='features'?{
@@ -123,7 +123,7 @@ describe('AI inventory in six rendered locales',()=>{
   expect(moreFeatures.open).toBe(false);
   expect(moreFeatures.querySelectorAll('li').length).toBeGreaterThan(0);
   expect(moreFeatures.previousElementSibling?.children).toHaveLength(3);
-  expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('1 blocked attempt');
+  expect(within(overview).getByText('204 allowed across 17 features · 17 failed · 1 blocked attempt')).toBeInTheDocument();
   expect(within(overview).getByText('Activity evidence unavailable')).toBeInTheDocument();
   expect(within(overview).getByRole('link',{name:en.aiManagement.features.hr_assistant})).toHaveAttribute('href','/control-tower/agents/runs?feature=hr_assistant');
   const blockedOnly=within(overview).getByText('Blocked attempts only (1)').closest('details')!;
@@ -152,14 +152,24 @@ describe('AI inventory in six rendered locales',()=>{
   expect(details.open).toBe(true);
  },60000);
 
+ it.each([false,true])('distinguishes zero recorded model attempts from unavailable evidence (%s)',async unavailable=>{
+  state.locale='en';
+  state.noModelActivity=true;
+  state.inventoryUnavailable=unavailable;
+  await renderPage('en','features');
+  const row=within(screen.getByText('Model requests · Last 30 days').parentElement!);
+  expect(row.getByText(unavailable?'Activity evidence unavailable':'No model requests or blocked attempts recorded')).toBeInTheDocument();
+  expect(row.getByRole('link',{name:'Run history'})).toBeInTheDocument();
+ });
+
  it('shows separate evidence for admitted requests, blocked-only features and individual reads',async()=>{
   state.locale='en';
   const view=await renderPage('en','features');
   view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!.open=true;
   const inventory=view.container.querySelector<HTMLElement>('#ai-inventory')!;
   const row=(id:string)=>within(inventory.querySelector<HTMLElement>(`#ai-component-${id}`)!);
-  expect(row('chat-hr_assistant').getByText(/Latest admitted request.*Oct 29, 2026/)).toBeInTheDocument();
-  expect(row('embedded_feature-payroll_explanation').getByText('No admitted request recorded')).toBeInTheDocument();
+  expect(row('chat-hr_assistant').getByText(/Latest allowed request.*Oct 29, 2026/)).toBeInTheDocument();
+  expect(row('embedded_feature-payroll_explanation').getByText('No allowed request recorded')).toBeInTheDocument();
   const read=inventory.querySelector<HTMLElement>('tr[id^="ai-component-read_binding-"]')!;
   expect(within(read).getByText('Individual read activity unavailable')).toBeInTheDocument();
   expect(within(read).queryByText(/Oct 29, 2026/)).toBeNull();
