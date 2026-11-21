@@ -10,6 +10,8 @@ import {adminCtx,createAppUser,setModule,owner,migrateTestDb,resetDb,seedBase,cl
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {withRewardsTenant} from '../core/module-gate';
+import {uploadedRewardChoices} from '../packs/rewards/uploaded-awards';
 import {saveRewardLibrary,rewardLibraries,rewardLibraryPageAccess} from '../packs/rewards/libraries';
 import {saveRewardPatBatch,rewardPatInputs} from '../packs/rewards/pat-inputs';
 import {rewardConfigChangeLog} from '../packs/rewards/config-change';
@@ -196,4 +198,60 @@ it('lets ai_hr_owner execute every function the board owner definers call',async
  const purpose=await owner.db.execute<{fn:string;owner:string}>(sql`select p.oid::regprocedure::text as fn,pg_get_userbyid(p.proowner)::text as owner from pg_proc p
   where p.oid in('app.reward_architecture_for_source(uuid,uuid,uuid,date)'::regprocedure,'app.reward_snapshot_pay_change_kind(uuid)'::regprocedure) order by 1`);
  expect(purpose).toEqual([{fn:'app.reward_architecture_for_source(uuid,uuid,uuid,date)',owner:'ai_hr_reward_setup_reader'},{fn:'app.reward_snapshot_pay_change_kind(uuid)',owner:'ai_hr_reward_setup_reader'}]);
+});
+
+
+it('keeps Rewards upload choices and their order for group and company HR on a group fixture',async()=>{
+ const companies=await owner.db.insert(schema.company).values(
+  Array.from({length:69},(_,index)=>({tenantId:b.tenantId,legalName:'Fictional company '+String(index).padStart(2,'0')})),
+ ).returning({id:schema.company.id});
+ const companyIds=[b.companyId,...companies.map(company=>company.id)];
+ await owner.db.execute(sql`
+  with workforce as materialized (
+   select gen_random_uuid() as person_id,n, (${companyIds}::uuid[])[1+(n-1)%70] as company_id
+   from generate_series(1,1000) as source(n)
+  ), people as (
+   insert into person (id,tenant_id,full_name)
+   select person_id,${b.tenantId}::uuid,'Fictional upload worker '||n from workforce returning id
+  )
+  insert into employment (tenant_id,person_id,company_id,employee_code,hired_on)
+  select ${b.tenantId}::uuid,people.id,workforce.company_id,'UP-'||workforce.n,date '2024-01-01'
+  from people join workforce on workforce.person_id=people.id
+ `);
+ await owner.db.insert(schema.businessUnit).values([
+  ...companyIds.map((companyId,index)=>({tenantId:b.tenantId,companyId,code:'U'+String(index).padStart(2,'0'),
+   name:'Fictional company unit',label:index===0?' Home unit ':''})),
+  {tenantId:b.tenantId,companyId:b.companyId,code:'Archived',name:'Archived unit',archivedAt:new Date()},
+ ]);
+ await owner.db.insert(schema.rewardCycle).values([
+  {tenantId:b.tenantId,createdBy:b.adminUserId,name:'Fictional prior cycle',year:2025},
+  {tenantId:b.tenantId,createdBy:b.adminUserId,name:'Fictional current cycle',year:2026},
+ ]);
+ const group=await hrAdmin(b,null,'Fictional upload group HR');
+ const scoped=await hrAdmin(b,b.companyId,'Fictional upload company HR');
+ const unrelated=await employee(b,'Fictional upload bystander');
+ for(const [actor,companyId] of [[group,null],[scoped,b.companyId]] as const){
+  await owner.db.execute(sql`insert into reward_setup_grant (tenant_id,user_id,company_id,role,valid_from,created_by,reason)
+   values (${b.tenantId}::uuid,${actor.userId}::uuid,${companyId}::uuid,'gr',date '2000-01-01',
+    ${b.adminUserId}::uuid,'Fictional upload option comparison')`);
+ }
+ for(const [actor,expectedIds] of [[group,companyIds],[scoped,[b.companyId]]] as const){
+  const previous=await withRewardsTenant(actor,async tx=>{
+   const companies=await tx.execute(sql`select id,legal_name as name from company
+    where tenant_id=app.current_tenant_id() and archived_at is null and app.reward_setup_allowed(id,'manage') order by legal_name`);
+   const units=await tx.execute(sql`select id,company_id as "companyId",coalesce(nullif(trim(label),''),code) as name
+    from business_unit where tenant_id=app.current_tenant_id() and archived_at is null
+     and (is_global or app.reward_setup_allowed(company_id,'manage')) order by code`);
+   const cycles=await tx.execute(sql`select id,name,year from reward_cycle where tenant_id=app.current_tenant_id() order by year desc,name`);
+   const [cycleCreation]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_allowed(null,'manage') as allowed`);
+   return {companies:[...companies],units:[...units],cycles:[...cycles],canCreateCycle:!!cycleCreation?.allowed};
+  });
+  const choices=await uploadedRewardChoices(actor);
+  expect(choices).toEqual(previous);
+  expect(choices.companies.map(company=>company.id).sort()).toEqual([...expectedIds].sort());
+  expect(choices.units.map(unit=>unit.companyId).sort()).toEqual([...expectedIds].sort());
+  expect(choices.units[0]?.name).toBe('Home unit');
+  expect(choices.canCreateCycle).toBe(actor===group);
+ }
+ await expect(uploadedRewardChoices(unrelated)).rejects.toThrow('Group Rewards upload creation authority is required.');
 });
