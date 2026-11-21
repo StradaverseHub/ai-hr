@@ -78,15 +78,14 @@ try{
   fixture.lifecycleRecords={onboarding,offboarding,asset,request,joiner,leaver,model,justification};
  }
  if(env.PERF_LIFECYCLE_RECORDS==='true'){
-  const {createCycle,configureOnehrCycle,openCycle}=await source('packs/performance/service.ts');
+  const {createCycle,openCycle}=await source('packs/performance/service.ts');
   const year=fixture.today.slice(0,4);
   const name='Fictional Browser Performance Cycle';
   setStage('performance-cycle-create');
   const {cycleId}=await createCycle(ctx,{
-   companyId:company.companyId,name,periodStart:year+'-01-01',periodEnd:year+'-12-31',
+   companyId:company.companyId,name,periodStart:year+'-01-01',periodEnd:year+'-12-31',assessmentWorkflow:true,
   });
   setStage('performance-cycle-open');
-  await configureOnehrCycle(ctx,cycleId,null);
   const opened=await openCycle(ctx,{cycleId});
   assert(opened.reviewsSpawned>0,'Expected a populated OneHR cycle');
   fixture.performanceRecords={cycleId,name};
