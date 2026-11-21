@@ -1609,3 +1609,7 @@ Exactly 28 active digests move from `65440170ff7c02918cd7ac458d4b95a3afc8456e2d0
 The repository owner approved carrying forward the 28 existing provider approvals to staging fingerprint `77c730fdc7c2927ecf4be129b18cd0e5304e6fdd4ec1e48713c9e1139f85daa2`. The reviewed source is `8d3eae64042b1d9a070950827f80bd5a4491ba50` and covers 1,833 files. The covered changes improve payroll and personnel error presentation, shared error copy, and audit dates. Provider fields, purposes, and transports are unchanged.
 
 Exactly 28 approved digests move from `f5db9c3caab0bffe3368c66d40f96d695ec3f09516160178cb1ddd859e01a5b8`. Reversing those substitutions restores the registry byte for byte. The derived module-agent fingerprint is `271eed506ac3af764ee10eebebbdc139693b07e95f3b9f3690d43d254b9bdf01` across 497 files.
+
+### Company-scoped payroll run review, 22 November 2026 MYT
+
+The repository owner approved carrying the same 28 provider approvals to staging fingerprint `e376fb8ae81b6cabc78a9e71e87f208925f6933ca6a7305a09d700f12c7688e4`. The payroll review change projects saved outcomes using the current payroll grants. Provider fields, purposes, and endpoints keep their approved scope. Exactly 28 digest literals change from `77c730fdc7c2927ecf4be129b18cd0e5304e6fdd4ec1e48713c9e1139f85daa2`. Reversing the substitutions restores the previous approval registry byte for byte.

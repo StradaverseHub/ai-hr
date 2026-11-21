@@ -5,17 +5,18 @@
  * either a finished outcome (refused before any job, exactly as before) or the job it waits for. When the last job
  * finishes, the group is settled once: the same `CompanyOutcome`s the synchronous path built (succeeded with the
  * run's payslip and skip counts, or failed with the reason its error maps to), the same `summarize` header and, for
- * a multi-company run, the same `payroll-run-group.completed` event. Only the group's creator reads or settles it.
+ * a multi-company run, the same `payroll-run-group.completed` event. Review reads use a separate company-scoped projection.
  */
 import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import type postgres from 'postgres';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
-import {bulkJobProgress,bulkJobWorkerStatusTx,isBulkJobId,type BulkJobRow} from './bulk-job';
+import {bulkJobWorkerStatusTx,isBulkJobId,type BulkJobRow} from './bulk-job';
 import {importedTaxReviewPeriod,summarize,type CompanyOutcome,type RunGroupReasonCode,type RunGroupResult,type PayrollTransactionFailure} from './payroll-run-group-result';
 import {PAYROLL_PROCESS_JOB_KIND} from '../lib/payroll-processing-job';
 import type {BulkJobProgress,BulkJobWorkerStatus} from '../lib/bulk-job';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 
 /** A company whose run is still being processed by its job. `failed` is what the synchronous path reported for
  * this company when its generation threw (the multi-company run reported 0 selected and no run; a resumed run kept
@@ -26,17 +27,20 @@ export type StoredCompanyOutcome=CompanyOutcome|PendingCompanyOutcome;
 export type RunGroupKind='run'|'resume';
 /** What the result screen shows: the finished result, or each company's progress while any job runs. */
 export type RunGroupView={id:string;kind:RunGroupKind;payPeriod:string;done:boolean;result:RunGroupResult|null;
- companies:{companyId:string;companyName:string;status:StoredCompanyOutcome['status'];job:BulkJobProgress|null}[];worker:BulkJobWorkerStatus};
+ companies:{companyId:string;companyName:string;status:StoredCompanyOutcome['status'];job:ReviewProgress|null}[];worker:BulkJobWorkerStatus};
 
 type GroupRow={id:string;tenant_id:string;created_by:string;kind:RunGroupKind;pay_period:string;started_at:Date|string;company_ids:string[];outcomes:StoredCompanyOutcome[];
  sealed_at:Date|null;ended_at:Date|string|null;result:RunGroupResult|null;event_id:string|null};
 type JobOutcomeRow=Pick<BulkJobRow,'id'|'state'|'result'|'plan'|'finished_at'|'error'>;
+type ReviewProgress=Pick<BulkJobProgress,'state'|'stepsTotal'|'stepsDone'|'updatedAt'>;
+type ReviewJob=ReviewProgress & Pick<JobOutcomeRow,'result'|'plan'> & {finished_at:string|null;historicalTaxPeriod:string|null};
+type ReviewRow={kind:RunGroupKind;pay_period:string;started_at:Date|string;settled_end_at:Date|string|null;outcome:StoredCompanyOutcome;job:ReviewJob|null};
 const pending=(o:StoredCompanyOutcome):o is PendingCompanyOutcome=>o.status==='processing';
 const iso=(value:Date|string)=>new Date(value).toISOString();
 const TERMINAL=new Set(['completed','failed','cancelled']);
 
 /** The finished company outcome for a job, exactly as the synchronous path built it; null while it still runs. */
-function finishedOutcome(o:PendingCompanyOutcome,job:JobOutcomeRow|undefined):CompanyOutcome|null{
+function finishedOutcome(o:PendingCompanyOutcome,job:Pick<JobOutcomeRow,'state'|'result'|'plan'> & {error?:string|null;historicalTaxPeriod?:string|null} | null | undefined):CompanyOutcome|null{
  if(!job||!TERMINAL.has(job.state))return null;
  if(job.state==='completed'){
   const result=(job.result??{}) as {payslips?:number;skipped?:number};
@@ -46,7 +50,7 @@ function finishedOutcome(o:PendingCompanyOutcome,job:JobOutcomeRow|undefined):Co
  }
  const transactionFailure=(job.plan as {transactionFailure?:PayrollTransactionFailure}|null)?.transactionFailure;
  const storedReason=(job.plan as {failureReason?:RunGroupReasonCode}|null)?.failureReason;
- const historicalTaxPeriod=importedTaxReviewPeriod(job.error);
+ const historicalTaxPeriod=job.historicalTaxPeriod??importedTaxReviewPeriod(job.error);
  const reason=historicalTaxPeriod?'IMPORTED_TAX_HISTORY_REVIEW_REQUIRED':storedReason??'SYSTEM_VALIDATION_ERROR';
  return{companyId:o.companyId,companyName:o.companyName,status:'failed',...(o.failed.batchId?{batchId:o.failed.batchId}:{}),
   employeesSelected:o.failed.employeesSelected,employeesSucceeded:0,reason,...(transactionFailure?{transactionFailure}:{}),...(historicalTaxPeriod?{historicalTaxPeriod}:{})};
@@ -183,41 +187,33 @@ export async function settleRunGroupsForJob(owner:postgres.ReservedSql,job:Pick<
  }catch(error){await owner`rollback`;throw error;}
 }
 
-/** Enrich legacy results from their own job's allowlisted refusal without changing the saved audit result. */
-async function withHistoricalTaxDetails(tx: Tx, group: GroupRow, result: RunGroupResult): Promise<RunGroupResult> {
- const byCompany=new Map(group.outcomes.filter(pending).map(outcome=>[outcome.companyId,outcome.jobId]));
- const legacy=result.perCompany.filter(outcome=>outcome.status==='failed'&&outcome.reason==='SYSTEM_VALIDATION_ERROR');
- const ids=legacy.flatMap(outcome=>{
-  const jobId=byCompany.get(outcome.companyId);
-  return jobId?[jobId]:[];
- });
- if(!ids.length)return result;
- const jobs=await tx.execute<Pick<BulkJobRow,'id'|'error'>>(sql`select id,error from bulk_job
-  where tenant_id=${group.tenant_id}::uuid and kind=${PAYROLL_PROCESS_JOB_KIND}
-    and state='failed' and id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)})`);
- const periodsByJob=new Map(jobs.map(job=>[job.id,importedTaxReviewPeriod(job.error)]));
- return {...result,perCompany:result.perCompany.map(outcome=>{
-  const period=outcome.status==='failed'&&outcome.reason==='SYSTEM_VALIDATION_ERROR'
-   ?periodsByJob.get(byCompany.get(outcome.companyId)??''):undefined;
-  return period?{...outcome,reason:'IMPORTED_TAX_HISTORY_REVIEW_REQUIRED',historicalTaxPeriod:period}:outcome;
- })};
-}
-
-/** The result screen's view of a group: the settled result, or (while a job runs) each company's job progress.
- * When every job has finished but the group is not settled yet, the same outcomes are derived for display. */
+/** The database returns only authorized companies and the narrowly projected job fields for their rows. */
 export async function readRunGroup(ctx:SessionContext,id:string):Promise<RunGroupView|null>{
  if(!isBulkJobId(id))return null;
  return withTenant(ctx,async tx=>{
-  const [g]=await tx.execute<GroupRow>(sql`select * from payroll_run_group where id=${id}::uuid`);
-  if(!g)return null;
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  const rows=await tx.execute<ReviewRow>(sql`select * from app.payroll_run_review(${id}::uuid)`);
+  const group=rows[0];
+  if(!group)return null;
+  const companies=rows.map(({outcome,job})=>({
+   companyId:outcome.companyId,companyName:outcome.companyName,status:outcome.status,
+   job:job?{state:job.state,stepsTotal:job.stepsTotal,stepsDone:job.stepsDone,updatedAt:job.updatedAt}:null,
+  }));
   const worker=await bulkJobWorkerStatusTx(tx,PAYROLL_PROCESS_JOB_KIND);
-  const jobs=g.result?new Map<string,BulkJobRow>():await jobsTx(tx,g.outcomes.filter(pending).map(o=>o.jobId));
-  const companies=g.outcomes.map(o=>({companyId:o.companyId,companyName:o.companyName,status:o.status,job:pending(o)&&jobs.get(o.jobId)?bulkJobProgress(jobs.get(o.jobId)!):null}));
-  if(g.result)return{id:g.id,kind:g.kind,payPeriod:g.pay_period,done:true,result:await withHistoricalTaxDetails(tx,g,g.result),companies,worker};
-  const resolved=g.outcomes.map(o=>pending(o)?finishedOutcome(o,jobs.get(o.jobId)):o);
-  if(resolved.some(o=>o===null))return{id:g.id,kind:g.kind,payPeriod:g.pay_period,done:false,result:null,companies,worker};
-  const finished=[...jobs.values()].map(j=>j.finished_at).filter((t):t is Date=>t!=null).map(t=>new Date(t).getTime());
-  const endedAt=new Date(finished.length?Math.max(...finished):Date.now()).toISOString();
-  return{id:g.id,kind:g.kind,payPeriod:g.pay_period,done:true,result:summarize(g.pay_period,iso(g.started_at),endedAt,resolved as CompanyOutcome[]),companies,worker};
+  const common={id,kind:group.kind,payPeriod:group.pay_period,companies,worker};
+  const resolved=rows.map(({outcome,job})=>{
+   if(pending(outcome))return finishedOutcome(outcome,job);
+   // A legacy saved result used a generic error even though its job recorded a known tax blocker.
+   const period=job?.historicalTaxPeriod;
+   return period&&outcome.status==='failed'&&outcome.reason==='SYSTEM_VALIDATION_ERROR'
+    ?{...outcome,reason:'IMPORTED_TAX_HISTORY_REVIEW_REQUIRED' as const,historicalTaxPeriod:period}:outcome;
+  });
+  if(resolved.some(outcome=>outcome===null))return{...common,done:false,result:null};
+
+  const startedAt=iso(group.started_at);
+  // For a partial view, derive its finish time from visible jobs only.
+  const finished=rows.flatMap(({job})=>job?.finished_at?[iso(job.finished_at)]:[]);
+  const endedAt=group.settled_end_at?iso(group.settled_end_at):finished.sort().at(-1)??startedAt;
+  return{...common,done:true,result:summarize(group.pay_period,startedAt,endedAt,resolved as CompanyOutcome[])};
  });
 }

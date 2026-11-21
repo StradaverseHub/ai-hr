@@ -9,22 +9,25 @@
  */
 import { PayItemFormulaRepriceError } from '../packs/payroll/individual-calculation';
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import { setCompensation } from '../core/comp';
 import { hireEmployee } from '../core/org';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { startMultiCompanyPayroll, type RunGroupResult } from '../core/payroll-run-group';
-import { readRunGroup, settleRunGroupsForJob } from '../core/payroll-run-group-store';
+import { readRunGroup, recordRunGroup, settleRunGroupsForJob } from '../core/payroll-run-group-store';
 import { runBulkJobTick } from '../core/bulk-job-worker';
 import { payrollProcessJobHandler } from '../core/payroll-processing-job';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { drainRunGroup } from './payroll-run-group-helpers';
 
 let scope: { s: SessionContext; scopeIds: string[] };
-vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => scope) }));
+vi.mock('@/lib/authz', async (original) => ({
+  ...await original<typeof import('../lib/authz')>(),
+  requirePayrollAccess: async () => scope.s,
+}));
 vi.mock('next/navigation', () => ({
   notFound: () => { throw new Error('NEXT_NOT_FOUND'); },
   redirect: (url: string) => { throw new Error(`NEXT_REDIRECT:${url}`); },
@@ -40,6 +43,7 @@ import { createElement, type FC, type ReactNode } from 'react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
 import ResultPage from '../app/payroll/process/result/page';
+import { GET as resultStatus } from '../app/payroll/process/result/status/route';
 
 const tick = () => runBulkJobTick(owner.client, { handlers: [payrollProcessJobHandler] });
 /** The result page exactly as the browser asks for it after the wizard's redirect (`?g=<group>`). */
@@ -62,6 +66,13 @@ describe('a company job that fails inside a wizard run group renders as its reas
   let deptB: string;
   let entitlements: SessionContext['entitlements'];
   const groupAdmin = (): SessionContext => ({ tenantId: base.tenantId, userId: base.adminUserId, grants: [{ role: 'hr_admin', companyId: null }], entitlements });
+  async function reviewer(companyId: string, role: 'hr_admin' | 'payroll_partner' | 'employee' = 'hr_admin'): Promise<SessionContext> {
+    const [user] = await owner.db.insert(schema.appUser).values({ tenantId: base.tenantId, workosUserId: randomUUID() })
+      .returning({ id: schema.appUser.id });
+    await owner.db.insert(schema.roleAssignment).values({ tenantId: base.tenantId, appUserId: user.id, companyId, role });
+    return { tenantId: base.tenantId, userId: user.id, grants: [{ role, companyId }], entitlements };
+  }
+  const statusRequest = (id: string) => new Request('https://example.test/payroll/process/result/status?g=' + id);
   async function paid(ctx: SessionContext, companyId: string, departmentId: string, name: string) {
     const e = await hireEmployee(ctx, { person: { fullName: name, primaryEmail: `${name.toLowerCase()}.${randomUUID().slice(0, 6)}@rg.test` }, companyId, departmentId, employmentType: 'full_time', hiredOn: '2026-01-01' });
     await setCompensation(ctx, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
@@ -197,9 +208,18 @@ describe('a company job that fails inside a wizard run group renders as its reas
     // Admitted (nothing is computed in the request), then made unready before its job prepares.
     expect((await jobOf(companyB)).status).toBe('processing');
     await owner.db.update(schema.compensation).set({ validFrom: '2026-07-01' }).where(eq(schema.compensation.employmentId, bob));
-    // While Alpha's run is processing and Beta's has already failed, the screen shows progress, not a page error.
-    const waiting = await readRunGroup(a, groupId);
+    // A non-creator can watch only the company for which they hold payroll authority.
+    const peer = await reviewer(base.companyId, 'payroll_partner');
+    const waiting = await readRunGroup(peer, groupId);
     expect(waiting?.done).toBe(false);
+    expect(waiting?.companies.map(c => c.companyId)).toEqual([base.companyId]);
+    expect(waiting?.companies[0].job).toMatchObject({ state: 'queued' });
+    scope.s = peer;
+    const response = await resultStatus(statusRequest(groupId));
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    expect((await response.json()).companies).toEqual(waiting?.companies);
+    expect(await withTenant(peer, tx => tx.execute(sql`select id from payroll_run_group where id=${groupId}::uuid`))).toHaveLength(0);
+    scope.s = a;
 
     const result = await drainRunGroup(groupId);
     expect(result.perCompany.find((c) => c.companyId === companyB)).toEqual({ companyId: companyB, companyName: 'Beta Sdn Bhd', status: 'failed', employeesSelected: 0, employeesSucceeded: 0, reason: 'PRE_PROCESS_BLOCKED' });
@@ -231,6 +251,50 @@ describe('a company job that fails inside a wizard run group renders as its reas
     } finally {spy.mockRestore();}
   });
 
+  it('recomputes visible totals and order across 70 companies and 1,000 employments', async () => {
+    const a = groupAdmin();
+    const others = await owner.client<{id:string;legal_name:string}[]>`
+      insert into company(tenant_id,legal_name)
+      select ${base.tenantId}::uuid,'Fictional payroll scope '||n from generate_series(1,68)n returning id,legal_name`;
+    const ids = [base.companyId, companyB, ...others.map(c => c.id)];
+    await owner.client`with people as (
+      insert into person(tenant_id,full_name,primary_email)
+      select ${base.tenantId}::uuid,'Fictional scope employee '||n,'group-scope-'||n||'@fixture.invalid'
+      from generate_series(1,1000) n returning id
+    ), ranked as (select id,row_number() over(order by id)::int as n from people)
+    insert into employment(tenant_id,person_id,company_id,employee_code,hired_on)
+    select ${base.tenantId}::uuid,id,(${ids}::uuid[])[1+((n-1)%70)],'GROUP-SCOPE-'||n,'2025-01-01'::date from ranked`;
+    const counts = await owner.client<{company_id:string;count:number}[]>`
+      select company_id,count(*)::int as count from employment where tenant_id=${base.tenantId}::uuid
+      and employee_code like 'GROUP-SCOPE-%' group by company_id`;
+    const countByCompany = new Map(counts.map(row => [row.company_id,row.count]));
+    const outcomes = ids.map((companyId,index) => ({
+      companyId, companyName: ['Fictional BKG November','Private Beta',...others.map(c => c.legal_name)][index],
+      status: index===0?'failed' as const:'succeeded' as const,
+      employeesSelected: countByCompany.get(companyId)!,
+      employeesSucceeded: index===0?0:countByCompany.get(companyId)!,
+      ...(index===0?{reason:'IMPORTED_TAX_HISTORY_REVIEW_REQUIRED' as const,historicalTaxPeriod:'2026-01'}:{}),
+    }));
+    const id = await recordRunGroup(a,{kind:'run',payPeriod:'2026-11',startedAt:'2026-11-21T05:17:40Z',requested:ids,outcomes});
+    expect((await readRunGroup(a,id))?.result).toMatchObject({overallStatus:'partial',totalCompanies:70,totalEmployeesSelected:1000,perCompany:outcomes});
+    const one = await reviewer(base.companyId);
+    const view = await readRunGroup(one,id);
+    expect(view?.result).toMatchObject({overallStatus:'failed',totalCompanies:1,companiesSucceeded:0,
+      totalEmployeesSelected:15,totalEmployeesFailed:15,perCompany:[outcomes[0]]});
+    scope.s = one;
+    const body = await renderResult(id);
+    expect(body).toContain('Fictional BKG November');
+    expect(body).not.toContain('Private Beta');
+    expect(body).not.toContain(companyB);
+    expect(body).not.toContain('Fictional payroll scope 1');
+    for(const ctx of [await reviewer(base.companyId,'employee'),{...one,tenantId:randomUUID()},
+      {...one,grants:[{role:'hr_admin' as const,companyId:companyB}]}]){
+      expect(await readRunGroup(ctx,id)).toBeNull();
+      scope.s=ctx;
+      expect((await resultStatus(statusRequest(id))).status).toBe(404);
+    }
+  });
+
   it('shows the imported history blocker, recovery link and MYT for current and legacy results', async () => {
     const a = groupAdmin();
     await paid(a, base.companyId, base.deptA, 'Imported History Employee');
@@ -250,6 +314,7 @@ describe('a company job that fails inside a wizard run group renders as its reas
         ...result, startedAt: '2026-11-21T05:17:40Z', endedAt: '2026-11-21T05:17:46Z', perCompany: [legacyOutcome],
       };
       await owner.client`update payroll_run_group set result=${JSON.stringify(legacy)}::jsonb where id=${groupId}::uuid`;
+      scope.s = await reviewer(base.companyId);
       const page = await renderResult(groupId);
       for (const text of ['historicalTaxForPeriod', '2026-01', '/payroll/income-tax-recalculation?', 'month=5', '13:17:40 MYT', '13:17:46 MYT']) {
         expect(page).toContain(text);

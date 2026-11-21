@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { dateTimeFormatter } from '@/lib/date-time-formatter';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
-import { scopedAdmin } from '@/lib/scope';
+import { requirePayrollAccess } from '@/lib/authz';
 import { Badge, Card, ErrorBanner, EmployeeCode, PageHeader } from '@/components/ui';
 import { listEmployeesForPayrollRun } from '@/core/read';
 // r227 — the skipped are read from the run's own durable event, not carried in the redirect. See below.
@@ -41,7 +41,7 @@ export default async function PayrollProcessResultPage({
 }: {
   searchParams: Promise<{ r?: string; g?: string; from?: string }>;
 }) {
-  const { s } = await scopedAdmin();
+  const s = await requirePayrollAccess();
   const t = await getTranslations('payroll.process');
   const { r, g, from } = await searchParams;
   // 9066bd6c — this screen is the terminal step of the run flow and had no way back at all: the only
@@ -61,7 +61,7 @@ export default async function PayrollProcessResultPage({
       </div>
     );
   }
-  const result = group ? group.result : decodeRunGroupResult(r);
+  const result = g ? group?.result : decodeRunGroupResult(r);
 
   if (!result) {
     return (
