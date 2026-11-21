@@ -546,7 +546,7 @@ async function personnelRosterRoutes(db, fixture) {
       witness: 'dl dd:visible', scenario: 'directory profile' },
     { actor, template: '/roster/edit/[employmentId]', path: '/roster/edit/' + id + '?' + new URLSearchParams({ companyId: company.companyId }),
       exactHeading: 'Edit month — ' + subject.name,
-      witness: `form:has(${employmentInput}) select[name="brush"]:has(option:text-is("Fictional performance day"))` },
+      witness: `form:has(${employmentInput}) select[name="brush"]:has(option:text-is("PERF-DAY · Fictional performance day"))` },
     { actor, template: '/admin/attendance/schedule-assignment/[employmentId]', path: '/admin/attendance/schedule-assignment/' + id,
       exactHeading: 'Shift arrangement', content: subject.name,
       witness: `#section-schedule-group form:has(${employmentInput}) select[name="attendanceRuleId"]` },
