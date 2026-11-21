@@ -12,9 +12,10 @@
  */
 import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
-import { lockAccessConfigurationReadTx } from '../core/access-configuration-lock';
+import * as access from '../core/access-configuration-lock';
+import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import {
@@ -287,7 +288,7 @@ describe('cancelOwnLeave — pending withdraw', () => {
     let independentRead: Promise<boolean> | undefined;
     try {
       await owner.db.transaction(async holder => {
-        await lockAccessConfigurationReadTx(holder, b.tenantId);
+        await access.lockAccessConfigurationReadTx(holder, b.tenantId);
         const [backend] = await holder.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
         const blockers = () => holder.execute<{ pid: number; mode: string; blockedBy: number[] }>(sql`
           with key as (select hashtextextended(${'access-configuration:' + b.tenantId}, 0) as id)
@@ -305,7 +306,7 @@ describe('cancelOwnLeave — pending withdraw', () => {
           return withdrawalPid !== undefined;
         }, { timeout: 1500, interval: 25 }).toBe(true);
         independentRead = withTenant(otherCtx, async tx => {
-          await lockAccessConfigurationReadTx(tx, b.tenantId);
+          await access.lockAccessConfigurationReadTx(tx, b.tenantId);
           const [principal] = await tx.execute<{ current: boolean }>(sql`select app.principal_snapshot_current() as current`);
           return principal.current;
         });
@@ -320,6 +321,36 @@ describe('cancelOwnLeave — pending withdraw', () => {
     } finally {
       await Promise.allSettled([withdrawal, independentRead]);
     }
+  });
+
+  it('withdraws with shared Access while another employment holds its own Leave lock', async () => {
+    const id = await pendingThreeDay();
+    await withTenant(otherCtx, async holder => {
+      await access.lockAccessConfigurationReadTx(holder, b.tenantId);
+      await lockLeaveDependenciesTx(holder, b.tenantId, [other.employmentId]);
+      // Substitute the single production acquisition in this scripted call. The
+      // production authorization, subject dependency, ledger and event still run.
+      const lock = vi.spyOn(access, 'lockAccessConfigurationWriteTx').mockImplementationOnce(async (tx, tenantId) => {
+        await access.lockAccessConfigurationTx(tx, tenantId);
+        const [principal] = await tx.execute<{ valid: boolean }>(sql`
+          select app.principal_snapshot_current() and app.is_self_person(${subject.personId}::uuid) as valid
+        `);
+        if (principal?.valid !== true) throw new Error('Withdrawal principal is no longer current');
+      });
+      try {
+        await expect(cancelOwnLeave(subjectCtx, { leaveRequestId: id })).resolves.toEqual({
+          previousStatus: 'pending', restoredDays: 0,
+        });
+        expect(lock).toHaveBeenCalledTimes(1);
+        expect(await access.accessLockModeHeldTx(holder, b.tenantId)).toBe('S');
+      } finally {
+        lock.mockRestore();
+      }
+    });
+    expect((await rowOf(id)).status).toBe('cancelled');
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(20);
+    expect((await eventTypesFor(b.tenantId, id)).filter(type => type === 'leave-request.self-cancelled'))
+      .toEqual(['leave-request.self-cancelled']);
   });
 
   it('refuses to self-cancel an APPROVED leave (routed to the give-back flow instead)', async () => {
