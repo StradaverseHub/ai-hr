@@ -147,7 +147,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   // catch. `sampleCode` is a PREVIEW of the next running number, not a reservation; the ID the employee
   // actually gets is issued inside the create transaction and the prompt's confirmation reports THAT.
   const employeeIdRules: Record<string, EmployeeIdRule> = {};
-  for (const c of companies) employeeIdRules[c.id] = resolveEmployeeIdRule(idConfigs, c.id);
+  if (canCreate) for (const c of companies) employeeIdRules[c.id] = resolveEmployeeIdRule(idConfigs, c.id);
 
   // Drafts share the employee list and stay pinned on its first page (06f0cb8f/579255c3).
   // The Draft card counts the view it opens; the pager still counts employments only.

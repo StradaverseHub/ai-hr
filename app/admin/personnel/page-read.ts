@@ -1,19 +1,28 @@
 import type {SQL} from 'drizzle-orm';
-import type {SessionContext} from '@/db/client';
-import {listCompanies, listDepartments, readPersonnelOverviewTx} from '@/core/read';
+import type {SessionContext, Tx} from '@/db/client';
+import {company} from '@/db/schema';
+import {listDepartments, readPersonnelOverviewTx} from '@/core/read';
 import {personnelPrivateCriteriaFrom, personnelPrivateCriteriaSql} from '@/core/personnel-private-search';
 import {employeeListColumnsFrom, LIST_PREFERENCES_SQL} from '@/core/employee-list-prefs';
 import {administratorPhotoRowsSql, employmentPhotoIdsTx} from '@/core/person-photo';
 import {listConfigs} from '@/core/employee-id-config';
 import {rehiredAsForEmploymentsTx} from '@/core/rehire';
 import type {WorkforcePageRead} from '@/lib/workforce-authz';
-import {sql} from 'drizzle-orm';
+import {and, inArray, isNull, sql} from 'drizzle-orm';
 import type {PageQuery} from '@/lib/pagination';
 import {readPersonnelDraftList} from './draft-list-read';
 import {draftListScope, headcountFilters, type PersonnelListQuery} from './list-query';
 
 /** The reader's saved Personnel columns, selected in the gate's bounds statement (see below). */
 export const personnelPageExtra = (session: SessionContext): SQL => session.userId ? LIST_PREFERENCES_SQL : sql`null::jsonb`;
+
+/** The page gate owns the workforce scope; each choice needs only its ID and label. */
+export async function readPersonnelCompanyLabelsTx(tx: Tx, workforceIds: string[]) {
+  if (!workforceIds.length) return [];
+  return tx.select({id: company.id, name: company.legalName}).from(company)
+    .where(and(isNull(company.archivedAt), inArray(company.id, workforceIds)))
+    .orderBy(company.legalName);
+}
 
 /** Everything the Personnel screen reads, inside the ONE read-only snapshot its Workforce gate opens.
  *
@@ -35,8 +44,7 @@ export async function readPersonnelPageTx(access: WorkforcePageRead, p: {
     attach: criteria ? {criteria} : undefined,
     pagePhotos: ids => administratorPhotoRowsSql(session, ids),
   });
-  const workforceIds = new Set(access.companyIds);
-  const companies = (await listCompanies(session, {}, tx)).filter(row => workforceIds.has(row.id));
+  const companies = canCreate || query.company || criteria ? await readPersonnelCompanyLabelsTx(tx, access.companyIds) : [];
   const departments = scopeIds.length ? await listDepartments(session, {companyIds: scopeIds, usage: false}, tx) : [];
   // b1b1879d — drafts follow the TOP-BAR company scope exactly as the employees do.
   const drafts = isAdmin
