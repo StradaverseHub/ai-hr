@@ -1053,11 +1053,14 @@ async function measureCommandDelegation(fixture){
    const option=dialog.getByRole('button',{name:/^Approval Delegation/});
    await option.waitFor({state:'visible',timeout:15000});
    row.beforeSelection=(await documentTiming(page))?.appScripts;
-   row.step='delegation-editor';
+   row.step='delegation-panel';
    const selected=performance.now();
    await option.click({timeout:15000});
-   await dialog.getByText('Delegations',{exact:true}).first().waitFor({state:'visible',timeout:15000});
    await dialog.getByRole('link',{name:'Open full page',exact:true}).waitFor({state:'visible',timeout:15000});
+   row.step='delegation-editor';
+   await dialog.getByText('New delegation',{exact:true}).waitFor({state:'visible',timeout:15000});
+   await dialog.locator('[data-ui-section-header]').filter({hasText:/^Delegations\s*\(\d+\)$/})
+    .waitFor({state:'visible',timeout:15000});
    row.editorReadyMs=Math.round(performance.now()-selected);
    row.afterSelection=(await documentTiming(page))?.appScripts;
    assert(row.beforeSelection?.decodedBodyBytes>0&&row.afterSelection?.decodedBodyBytes>=row.beforeSelection.decodedBodyBytes);
