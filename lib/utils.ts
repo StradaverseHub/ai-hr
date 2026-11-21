@@ -1,3 +1,4 @@
+import { HR_LOCAL_TZ } from './hr-date';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -18,7 +19,7 @@ export function initials(name: string): string {
 
 /** Format an ISO date as e.g. "12 Mar 2024". */
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
+  return new Date(iso).toLocaleDateString("en-GB", { timeZone: HR_LOCAL_TZ,
     day: "2-digit",
     month: "short",
     year: "numeric",

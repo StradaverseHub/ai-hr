@@ -231,4 +231,34 @@ describe('a company job that fails inside a wizard run group renders as its reas
     } finally {spy.mockRestore();}
   });
 
+  it('shows the imported history blocker, recovery link and MYT for current and legacy results', async () => {
+    const a = groupAdmin();
+    await paid(a, base.companyId, base.deptA, 'Imported History Employee');
+    const { groupId } = await startMultiCompanyPayroll(a, {
+      companyIds: [base.companyId], payPeriod: '2026-05',
+      payrollCycleId: await regularCycleId(base.companyId), employmentIds: [],
+    });
+    const failure = new Error('Imported wage inputs require review for 2026-01. Preview the historical tax inputs and resolve the named missing evidence.');
+    const spy = vi.spyOn(payrollProcessJobHandler, 'applyStepTx').mockRejectedValueOnce(failure);
+    try {
+      const result = await drainRunGroup(groupId);
+      expect(result.perCompany[0]).toMatchObject({
+        status: 'failed', reason: 'IMPORTED_TAX_HISTORY_REVIEW_REQUIRED', historicalTaxPeriod: '2026-01',
+      });
+      const legacyOutcome = { ...result.perCompany[0], reason: 'SYSTEM_VALIDATION_ERROR', historicalTaxPeriod: undefined };
+      const legacy = {
+        ...result, startedAt: '2026-11-21T05:17:40Z', endedAt: '2026-11-21T05:17:46Z', perCompany: [legacyOutcome],
+      };
+      await owner.client`update payroll_run_group set result=${JSON.stringify(legacy)}::jsonb where id=${groupId}::uuid`;
+      const page = await renderResult(groupId);
+      for (const text of ['historicalTaxForPeriod', '2026-01', '/payroll/income-tax-recalculation?', 'month=5', '13:17:40 MYT', '13:17:46 MYT']) {
+        expect(page).toContain(text);
+      }
+      expect(page).not.toContain(failure.message);
+      expect(await readRunGroup({...a,userId:randomUUID()},groupId)).toBeNull();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
 });

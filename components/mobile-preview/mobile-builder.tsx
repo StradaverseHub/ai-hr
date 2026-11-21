@@ -1,4 +1,5 @@
 'use client';
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { ActionButton } from '@/components/ui/action-button';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -115,7 +116,7 @@ export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; 
           </section>
           <section><h2>{t('appearance')}</h2>{(['appearance', 'clockLayout', 'leaveLayout', 'motion'] as const).map(key => <label key={key}>{t(key)}<select value={design[key]} onChange={e => edit(key, e.target.value as MobileDesignV2[typeof key])}>{({ appearance: ['dark', 'light', 'system'], clockLayout: ['flow', 'punch', 'rail'], leaveLayout: ['ledger', 'list'], corners: ['crisp', 'soft'], motion: ['standard', 'reduced'] }[key]).map(value => <option key={value} value={value}>{t(value)}</option>)}</select></label>)}</section>
           <button type="button" className={styles.textButton} onClick={() => { setDesign(composeMobileDesign(DEFAULT_MOBILE_DESIGN)); setReview(null); }}>{t('reset')}</button>
-        </fieldset></> : <div className={styles.history}><p className={styles.help}>{t('historyHelp')}</p>{!state.releases.length && <p>{t('noReleases')}</p>}{state.releases.map((release, index) => <article key={release.revision}><div><strong>{t('version', { revision: release.revision })}</strong>{index === 0 && <span>{t('current')}</span>}</div><time dateTime={release.publishedAt}>{new Date(release.publishedAt).toLocaleString()}</time><p>{release.config.brandName} · {t(release.config.clockLayout)}</p>{index > 0 && <button type="button" disabled={pending || dirty} onClick={() => setReview({ command: 'rollback', revision: release.revision })}><Undo2 size={15} />{t('restore')}</button>}</article>)}</div>}
+        </fieldset></> : <div className={styles.history}><p className={styles.help}>{t('historyHelp')}</p>{!state.releases.length && <p>{t('noReleases')}</p>}{state.releases.map((release, index) => <article key={release.revision}><div><strong>{t('version', { revision: release.revision })}</strong>{index === 0 && <span>{t('current')}</span>}</div><time dateTime={release.publishedAt}>{new Date(release.publishedAt).toLocaleString(undefined, { timeZone: HR_LOCAL_TZ })}</time><p>{release.config.brandName} · {t(release.config.clockLayout)}</p>{index > 0 && <button type="button" disabled={pending || dirty} onClick={() => setReview({ command: 'rollback', revision: release.revision })}><Undo2 size={15} />{t('restore')}</button>}</article>)}</div>}
       </aside>
     </div>
   </section>;

@@ -190,7 +190,7 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
   if(options.companies.length===0||options.years.length===0)return <section className="rounded-xl border border-border p-6"><p className="text-sm text-muted-foreground">{t('noHistoryAvailable')}</p></section>;
   return <div className="space-y-6">
     {!canRecalculate&&<p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">{t('readOnly')}</p>}
-    {initialSelection&&<p role="status" className="rounded-lg border border-border bg-muted/30 p-4 text-sm">{t('retryHint')}</p>}
+    {initialSelection?.employmentIds&&<p role="status" className="rounded-lg border border-border bg-muted/30 p-4 text-sm">{t('retryHint')}</p>}
     <section className="space-y-5 rounded-xl border border-border p-5" aria-labelledby="tax-basis-period-title">
       <fieldset disabled={busy!==null||loadingResultPage} className="space-y-5 disabled:opacity-70">
         <legend id="tax-basis-period-title" className="font-semibold">{t('recalculationPeriod')}</legend>

@@ -1,3 +1,4 @@
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -116,7 +117,7 @@ export default async function PayrollConfigCompaniesPage({
                       <Badge variant={cfg ? 'success' : 'warning'}>{cfg ? t('statusSet') : t('statusNotSet')}</Badge>
                     </td>
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                      {cfg ? cfg.updatedAt.toISOString().slice(0, 10) : '—'}
+                      {cfg ? todayInKualaLumpur(cfg.updatedAt) : '—'}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-3">

@@ -1,3 +1,4 @@
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { loopActorOf } from '@/lib/ai-centre/loop-attribution';
@@ -105,7 +106,7 @@ export async function AuditTable({
                 <time
                   className="shrink-0 tabular-nums text-xs text-muted-foreground"
                   dateTime={new Date(r.occurredAt).toISOString()}
-                  title={dmyDates ? formatDmyTime(new Date(r.occurredAt)) : new Date(r.occurredAt).toLocaleString()}
+                  title={dmyDates ? formatDmyTime(new Date(r.occurredAt)) : new Date(r.occurredAt).toLocaleString(undefined, { timeZone: HR_LOCAL_TZ })}
                 >
                   {relativeTime(r.occurredAt, nowMs)}
                 </time>
@@ -123,7 +124,7 @@ export async function AuditTable({
                 <div className="flex gap-2 pt-0.5 text-[10px] text-muted-foreground/70">
                   <dt>{t('at')}</dt>
                   <dd className="tabular-nums">
-                    {dmyDates ? formatDmyTime(new Date(r.occurredAt)) : new Date(r.occurredAt).toLocaleString()}
+                    {dmyDates ? formatDmyTime(new Date(r.occurredAt)) : new Date(r.occurredAt).toLocaleString(undefined, { timeZone: HR_LOCAL_TZ })}
                   </dd>
                 </div>
                 <div className="pt-0.5 text-[10px] text-muted-foreground/70">{t('sequence', { seq: r.sequence })}</div>

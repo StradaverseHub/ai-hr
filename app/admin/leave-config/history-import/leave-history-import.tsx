@@ -1,4 +1,5 @@
 'use client';
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 
@@ -849,7 +850,7 @@ function ImportLog({
                       {/* The viewer's own locale and timezone: a run is a wall-clock moment for the
                           person who ran it, not an HR date, so it is deliberately NOT routed through
                           the Kuala Lumpur date helper (which answers a different question). */}
-                      {new Date(run.createdAt).toLocaleString()}
+                      {new Date(run.createdAt).toLocaleString(undefined, { timeZone: HR_LOCAL_TZ })}
                     </td>
                     <td className="px-3 py-2 font-medium">
                       {formatImportBatch(labels, run.id)}
