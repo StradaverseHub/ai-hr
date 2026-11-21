@@ -9,13 +9,16 @@ import {readFrozenHoldoutJson} from './protected-work-summary-holdout';
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const count = z.number().int().min(0).max(32);
+const paired = z.object({gains: count, regressions: count});
 const report = z.object({
   evidence: z.literal('offline_explanation_revision_holdout'),
   releaseAuthorized: z.literal(false),
   locale: z.enum(['en', 'ms']).optional(),
   comparator: z.enum(['canonical_english_explanation_retrieval_v2', 'canonical_malay_explanation_retrieval_v1']),
   cases: count.min(4),
+  original: z.object({correct: count, rejected: count}),
   candidate: z.object({correct: count, rejected: count}),
+  deterministic: z.object({correct: count, abstained: count}),
   modelDigest: digest,
   developmentReportDigest: digest,
   holdoutDigest: digest,
@@ -26,7 +29,9 @@ const report = z.object({
     correct: count,
     rejected: count,
     modelCalls: count,
-    versusFocused: z.object({gains: count, regressions: count}),
+    versusOriginal: paired,
+    versusFocused: paired,
+    versusDeterministic: paired,
   })).min(1).max(16),
 });
 
@@ -38,7 +43,7 @@ export function assessExplanationRouting(minimumMargin: number, english: BoundRe
   const comparators = ['canonical_english_explanation_retrieval_v2', 'canonical_malay_explanation_retrieval_v1'];
   const evaluated = [english, malay].map(({bytes, sha256}, index) => {
     const parsed = report.safeParse(readFrozenHoldoutJson(bytes, sha256));
-    if (!parsed.success) throw Error('Expected a frozen explanation routing report.');
+    if (!parsed.success) throw Error('Expected a frozen explanation routing report with all three paired comparisons.');
     const row = parsed.data;
     const locale = locales[index];
     if ((row.locale ?? 'en') !== locale || row.comparator !== comparators[index])
@@ -50,20 +55,27 @@ export function assessExplanationRouting(minimumMargin: number, english: BoundRe
       throw Error('Routing report has duplicate margins.');
     const route = row.retrievalMargins.find(policy => policy.minimumMargin === minimumMargin);
     if (!route) throw Error('The proposed margin was not evaluated in each locale.');
-    const {correct: focusedCorrect, rejected: focusedRejected} = row.candidate;
-    const {gains, regressions} = route.versusFocused;
-    if (focusedCorrect + focusedRejected > row.cases || route.correct + route.rejected > row.cases ||
-        route.modelCalls > row.cases || gains > row.cases - focusedCorrect || regressions > focusedCorrect ||
-        route.correct !== focusedCorrect + gains - regressions)
+    const comparisons = {
+      original: {correct: row.original.correct, unavailable: row.original.rejected, ...route.versusOriginal},
+      focused: {correct: row.candidate.correct, unavailable: row.candidate.rejected, ...route.versusFocused},
+      deterministic: {correct: row.deterministic.correct, unavailable: row.deterministic.abstained, ...route.versusDeterministic},
+    };
+    if (route.correct + route.rejected > row.cases || route.modelCalls > row.cases ||
+        Object.values(comparisons).some(({correct, unavailable, gains, regressions}) =>
+          correct + unavailable > row.cases || gains > row.cases - correct || regressions > correct ||
+          route.correct !== correct + gains - regressions))
       throw Error('Inconsistent paired routing counts.');
+    const {correct: focusedCorrect, gains, regressions} = comparisons.focused;
     return {locale, reportSha256: sha256, holdoutDigest: row.holdoutDigest, modelDigest: row.modelDigest,
       developmentReportDigest: row.developmentReportDigest, cases: row.cases, focusedCorrect,
-      routedCorrect: route.correct, rejected: route.rejected, gains, regressions, callsAvoided: row.cases - route.modelCalls};
+      routedCorrect: route.correct, rejected: route.rejected, gains, regressions, callsAvoided: row.cases - route.modelCalls,
+      comparisons};
   });
   const [en, ms] = evaluated;
   if (en.modelDigest !== ms.modelDigest || en.developmentReportDigest !== ms.developmentReportDigest ||
       en.holdoutDigest === ms.holdoutDigest) throw Error('Routing reports do not share a model and parent with distinct cases.');
-  const preservesQuality = evaluated.every(row => row.regressions === 0 && row.rejected === 0);
+  const preservesQuality = evaluated.every(row => row.rejected === 0 &&
+    Object.values(row.comparisons).every(comparison => comparison.regressions === 0));
   const hasGain = evaluated.some(row => row.gains > 0);
   const savesCalls = evaluated.some(row => row.callsAvoided > 0);
   return {evidence: 'offline_explanation_routing_screen', releaseAuthorized: false, minimumMargin,

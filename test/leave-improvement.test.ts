@@ -259,11 +259,12 @@ describe('paired English and Malay routing evidence', () => {
   const languageReport = (locale: 'en' | 'ms', gains: number, regressions: number, modelDigest = 'a'.repeat(64)) => ({
     evidence: 'offline_explanation_revision_holdout', releaseAuthorized: false, locale,
     comparator: locale === 'en' ? 'canonical_english_explanation_retrieval_v2' : 'canonical_malay_explanation_retrieval_v1',
-    cases: 5, candidate: {correct: 3, rejected: 0}, modelDigest,
+    cases: 5, original: {correct: 3, rejected: 0}, candidate: {correct: 3, rejected: 0},
+    deterministic: {correct: 3, abstained: 1}, modelDigest,
     developmentReportDigest: 'b'.repeat(64), holdoutDigest: (locale === 'en' ? 'c' : 'd').repeat(64),
     answerFormatDigest: routingDigest(EXPLANATION_ANSWER_FORMAT), generationOptions: EXPLANATION_GENERATION_OPTIONS,
     retrievalMargins: [{minimumMargin: 4, correct: 3 + gains - regressions, rejected: 0, modelCalls: 3,
-      versusFocused: {gains, regressions}}],
+      versusOriginal: {gains, regressions}, versusFocused: {gains, regressions}, versusDeterministic: {gains, regressions}}],
   });
   const bind = (value: unknown) => {
     const bytes = Buffer.from(JSON.stringify(value));
@@ -277,6 +278,23 @@ describe('paired English and Malay routing evidence', () => {
     expect(assessExplanationRouting(4, english, bind(languageReport('ms', 0, 0)))).toMatchObject({
       eligibleForFreshEvaluation: true, releaseAuthorized: false,
     });
+  });
+
+  it.each(['versusOriginal', 'versusDeterministic'] as const)('rejects a loss against %s even when the focused comparison improves', key => {
+    const english = languageReport('en', 1, 0);
+    english.retrievalMargins[0][key] = {gains: 2, regressions: 1};
+    expect(assessExplanationRouting(4, bind(english), bind(languageReport('ms', 0, 0)))).toMatchObject({
+      eligibleForFreshEvaluation: false, preservesQuality: false, hasGain: true, savesCalls: true,
+    });
+  });
+
+  it('rejects screening evidence with missing or inconsistent reference comparisons', () => {
+    const english = languageReport('en', 1, 0);
+    const malay = bind(languageReport('ms', 0, 0));
+    const {versusOriginal: _, ...legacy} = english.retrievalMargins[0];
+    expect(() => assessExplanationRouting(4, bind({...english, retrievalMargins: [legacy]}), malay)).toThrow('all three paired comparisons');
+    english.retrievalMargins[0].versusDeterministic = {gains: 1, regressions: 1};
+    expect(() => assessExplanationRouting(4, bind(english), malay)).toThrow('Inconsistent paired routing counts');
   });
 
   it('refuses missing margins, duplicated locales, altered bytes and mismatched model identities', () => {
