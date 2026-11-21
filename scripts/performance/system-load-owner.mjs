@@ -1,3 +1,4 @@
+import {createLoadedAccessBlockerDiagnostics} from './loaded-access-blockers.mjs';
 /** Real HTTPS requests + Chromium against the isolated production server; no auth/test route bypass. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
@@ -203,6 +204,7 @@ const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
 // Serial and parallel comparison cells share the same driver diagnostics.
 const serialComparison=measureDevelopment&&isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE);
 const loadedAdvisoryDiagnostics=measureDevelopment?createLoadedAdvisoryDiagnostics():null;
+const loadedAccessBlockers=measureDevelopment?createLoadedAccessBlockerDiagnostics():null;
 const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics(loadedAdvisoryDiagnostics):null;
 let comparisonStage='driver-initialization',comparisonWorkload=null;
 function markComparisonStage(stage){comparisonStage=stage;comparisonWorkload=null;}
@@ -428,6 +430,7 @@ function recordLockSampling(){
   loaded:measureDevelopment?{
    ...qualified('loaded',loaded,loadedCadenceClosed),
    advisoryDiagnostics:loadedAdvisoryDiagnostics.facts(),
+   accessBlockers:loadedAccessBlockers.facts(),
   }:loaded,
   ...(measureDevelopment?{
    privatePreflightTiming:measuredPreflightLockTiming(measuredPreflightLockWitnesses(preflight.samples,preflight.window)??[],preflight.window),
@@ -587,6 +590,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks,auditLocks},phase,interval)
    if(loadedAdvisoryDiagnostics&&phase==='loaded'&&withinDiagnosticCensus)try{
     loadedAdvisoryDiagnostics.observe(appConnections.waitingOnLock,queuedLocks.filter(row=>row.app_session)
      .map(row=>lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)?.split(':',1)[0]));
+    if(blockingAppSessions>0)loadedAccessBlockers.observe(locks,lockLabels);
    }catch{/* Attribution cannot alter the retained native sample. */}
    let attribution;
    if(wait&&probe&&fullDevelopmentRoutes&&blockingAppSessions>0&&attributedSamples<6){
