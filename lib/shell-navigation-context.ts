@@ -1,6 +1,8 @@
 import { withSharedReadSnapshot, type SessionContext } from '../db/client';
 import { readShellNavigationAccess } from '../core/shell-navigation-access';
 import { isAdmin } from './authz-model';
+import {canConfigureIdentityEmail} from './identity/email-settings';
+import {settleReadGroup} from './settle-read-group';
 import { companyContextForPage } from './scope';
 import { readShellFeatureNavigation } from './shell-feature-navigation';
 import { viewerIdentity } from './viewer';
@@ -18,9 +20,15 @@ export function readShellNavigationContext(session: SessionContext) {
 /** Resolve scope before feature links on the same authenticated database snapshot. */
 export function readSignedInShellNavigation(session: SessionContext) {
   return withSharedReadSnapshot(session, async () => {
-    const context = await readShellNavigationContext(session);
-    const [{ scopeIds }] = context;
-    const features = await readShellFeatureNavigation(session, scopeIds);
-    return { context, features };
+    const [navigation, identityEmailAvailable] = await settleReadGroup([
+      async () => {
+        const context = await readShellNavigationContext(session);
+        const [{ scopeIds }] = context;
+        const features = await readShellFeatureNavigation(session, scopeIds);
+        return { context, features };
+      },
+      () => canConfigureIdentityEmail(session),
+    ]);
+    return { ...navigation, identityEmailAvailable };
   });
 }

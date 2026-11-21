@@ -2,13 +2,18 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { withIndependentTransactions, type SessionContext } from '../db/client';
 import type { SharedReadStats } from '../db/shared-read';
-import { employment } from '../db/schema';
+import { appExternalIdentity, deploymentIdentityOperator, employment } from '../db/schema';
 import { readShellNavigationContext, readSignedInShellNavigation } from '../lib/shell-navigation-context';
+import {canConfigureIdentityEmail} from '../lib/identity/email-settings';
 import { readShellFeatureNavigation } from '../lib/shell-feature-navigation';
 import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule } from './harness';
 import { buildScaleFixture, type ScaleFixture } from './helpers/ai-centre-scale-fixture';
 
-const browser = vi.hoisted(() => ({ companyScope: undefined as string | undefined }));
+const browser = vi.hoisted(() => ({
+  companyScope: undefined as string | undefined,
+  identity: null as {issuer:string;subject:string;email:string;emailVerified:boolean}|null,
+}));
+vi.mock('../lib/identity/provider',()=>({currentProviderSession:async()=>browser.identity}));
 vi.mock('next/headers', () => ({
   cookies: async () => ({
     get: (name: string) => name === 'company_scope' && browser.companyScope
@@ -68,7 +73,7 @@ it('keeps shell identity, scope and features equivalent on one connection at gro
 
       const shared = await readSignedInShellNavigation(session);
       const independent = await withIndependentTransactions(() => readSignedInShellNavigation(session));
-      expect(shared).toEqual({ context, features });
+      expect(shared).toEqual({ context, features, identityEmailAvailable: false });
       expect(shared).toEqual(independent);
       const [companies, viewer] = shared.context;
       expect([...companies.scopeIds].sort()).toEqual([...expected].sort());
@@ -83,3 +88,38 @@ it('keeps shell identity, scope and features equivalent on one connection at gro
     hooks.__aihrPerfSharedRead = oldHook;
   }
 });
+
+it('reuses the shell connection for current enrolled email operator authority', async()=>{
+  const current=group.personas.group;
+  if(!current.userId)throw Error('Missing group HR app identity');
+  const authorized={issuer:'https://fixture.test/auth',subject:'enrolled-operator',email:'operator@example.test',emailVerified:true};
+  await owner.db.insert(appExternalIdentity).values({
+    issuer:authorized.issuer,subject:authorized.subject,appUserId:current.userId,
+  });
+  await owner.db.insert(deploymentIdentityOperator).values({
+    issuer:authorized.issuer,subject:authorized.subject,testEmail:authorized.email,
+  });
+  vi.stubEnv('AUTH_PROVIDER','internal');
+  browser.identity=authorized;
+  const hooks=globalThis as {__aihrPerfBeginTransaction?:()=>{acquired:()=>void;finished:()=>void}};
+  const previous=hooks.__aihrPerfBeginTransaction;
+  let opened=0;
+  hooks.__aihrPerfBeginTransaction=()=>({acquired:()=>{opened++;},finished:()=>{}});
+  try {
+    expect((await readSignedInShellNavigation(current)).identityEmailAvailable).toBe(true);
+    expect(opened).toBe(1);
+    expect(await canConfigureIdentityEmail(current)).toBe(true);
+    expect(opened).toBe(2);
+    expect((await readSignedInShellNavigation(group.personas.single)).identityEmailAvailable).toBe(false);
+    browser.identity={...authorized,email:'changed@example.test'};
+    expect((await readSignedInShellNavigation(current)).identityEmailAvailable).toBe(false);
+    browser.identity=authorized;
+    await owner.db.update(deploymentIdentityOperator).set({revokedAt:new Date()})
+      .where(eq(deploymentIdentityOperator.subject,authorized.subject));
+    expect((await readSignedInShellNavigation(current)).identityEmailAvailable).toBe(false);
+  } finally {
+    hooks.__aihrPerfBeginTransaction=previous;
+    browser.identity=null;
+    vi.unstubAllEnvs();
+  }
+}, 90_000);

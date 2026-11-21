@@ -1,7 +1,6 @@
 import { webSessionChannel } from '@/lib/internal-auth/web-session';
 import type { Metadata } from 'next';
 import { publicLoginPresentation } from '@/lib/login-presentation-server';
-import { canConfigureIdentityEmail } from '@/lib/identity/email-settings';
 import { Plus_Jakarta_Sans, Geist_Mono, DM_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
 import { cookies, headers } from 'next/headers';
@@ -190,7 +189,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const { context: [{ allowed, scopeIds }, viewer, navigationAccess], features } =
+  const { context: [{ allowed, scopeIds }, viewer, navigationAccess], features, identityEmailAvailable } =
     await readSignedInShellNavigation(session);
   const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
   const {
@@ -242,7 +241,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const onboardingAccess=onboardingNav.module;
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
-  const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
+  const performanceAdminPath=await performanceAdminHref;
   // The rail needs lifecycle destinations now. The bell and task badges can stream their preview.
   const lifecyclePreview = withBackgroundReadWork(session.tenantId, async () => {
     const [onboardingQueue, inbox] = await Promise.all([
