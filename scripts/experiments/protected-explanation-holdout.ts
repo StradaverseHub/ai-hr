@@ -4,6 +4,7 @@ import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { SPECIALIST_HOLDOUTS } from '../../lib/ai/module-specialist-holdouts';
 import { SPECIALIST_FINDINGS } from '../../lib/ai/module-specialists';
 import en from '../../messages/en.json';
+import ms from '../../messages/ms.json';
 import type { PilotModel } from '../teras/leave-improvement';
 import {
   choose, EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationCases, observeModel, type ExplanationCase,
@@ -14,6 +15,7 @@ const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const finding = z.enum(SPECIALIST_FINDINGS).refine(value => value !== 'scope_current_caller');
 const holdout = z.strictObject({
   version: z.literal(1),
+  locale: z.enum(['en', 'ms']).optional(),
   modelDigest: digest,
   developmentReportDigest: digest,
   minimumGain: z.number().int().min(1),
@@ -44,15 +46,21 @@ const developmentReportSchema = z.object({
 
 const normalize = (text: string) => text.normalize('NFKC').toLowerCase().match(/[\p{L}\p{M}]+/gu) ?? [];
 const catalogue = ({ module, choices }: ExplanationCase) => routingDigest([module, [...choices].sort()]);
-const englishFindings = en.assistant.workspace.specialistFindings;
-const commonWords = new Set('a an and are as at been but by can does for from has have i in is it its not of on or that the this to was were with you your'.split(' '));
-const terms = (text: string) => new Set(normalize(text).filter(word => !commonWords.has(word)));
+const findings: Record<'en' | 'ms', Record<string, string>> = {
+  en: en.assistant.workspace.specialistFindings,
+  ms: ms.assistant.workspace.specialistFindings,
+};
+const commonWords = {
+  en: new Set('a an and are as at been but by can does for from has have i in is it its not of on or that the this to was were with you your'.split(' ')),
+  ms: new Set('adakah apakah atau bagi boleh dalam dan dengan di daripada ini itu ke kepada pada saya serta tidak untuk yang'.split(' ')),
+};
+const terms = (text: string, locale: 'en' | 'ms') => new Set(normalize(text).filter(word => !commonWords[locale].has(word)));
 
-function deterministicChoice({ choices, focus }: ExplanationCase) {
-  const words = terms(focus);
+function deterministicChoice({ choices, focus }: ExplanationCase, locale: 'en' | 'ms') {
+  const words = terms(focus, locale);
   const documents = choices.map(choice => {
-    const finding = choice.slice('specialist_finding:'.length) as keyof typeof englishFindings;
-    return { choice, words: terms(finding + ' ' + englishFindings[finding]) };
+    const finding = choice.slice('specialist_finding:'.length);
+    return { choice, words: terms(finding + ' ' + findings[locale][finding], locale) };
   });
   const frequencies = new Map<string, number>();
   for (const document of documents) for (const word of document.words) frequencies.set(word, (frequencies.get(word) ?? 0) + 1);
@@ -71,6 +79,7 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
   const parsedSpec = holdout.safeParse(readFrozenHoldoutJson(bytes, expectedSha));
   if (!parsedSpec.success) throw Error('Invalid frozen explanation holdout.');
   const spec = parsedSpec.data;
+  const locale = spec.locale ?? 'en';
   const parsedReport = developmentReportSchema.safeParse(readFrozenHoldoutJson(developmentReport, spec.developmentReportDigest));
   if (!parsedReport.success) throw Error('Invalid frozen explanation development report.');
   const report = parsedReport.data;
@@ -92,7 +101,8 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
   const cases: ExplanationCase[] = spec.cases.map(row => {
     const allowed = new Set(SPECIALIST_HOLDOUTS.filter(fixture => fixture.module === row.module).flatMap(fixture => fixture.expected));
     if (new Set(row.choices).size !== row.choices.length || !row.choices.includes(row.expected) ||
-        row.choices.some(choice => !allowed.has(choice))) throw Error('Invalid specialist selection catalogue.');
+        row.choices.some(choice => !allowed.has(choice) || !findings[locale][choice]))
+      throw Error('Invalid specialist selection catalogue or missing localized finding.');
     const fixture = {
       ...row,
       choices: row.choices.map(choice => `specialist_finding:${choice}` as const),
@@ -119,7 +129,7 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
   for (const fixture of cases) {
     const past = await choose(call, fixture, false);
     const next = await choose(call, fixture, true);
-    const {choice: fixed, margin} = deterministicChoice(fixture);
+    const {choice: fixed, margin} = deterministicChoice(fixture, locale);
     // Both policies would send the identical focused request on a retrieval abstention.
     // Reuse that observed response to attribute accuracy and calls without extra sampling.
     for (const policy of retrievalMargins) {
@@ -147,7 +157,8 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
   return {
     evidence: 'offline_explanation_revision_holdout', releaseAuthorized: false,
     holdoutDigest: expectedSha, developmentReportDigest: spec.developmentReportDigest,
-    comparator: 'canonical_english_explanation_retrieval_v2', cases: cases.length, minimumGain: spec.minimumGain,
+    comparator: locale === 'en' ? 'canonical_english_explanation_retrieval_v2' : 'canonical_malay_explanation_retrieval_v1',
+    locale, cases: cases.length, minimumGain: spec.minimumGain,
     original, deterministic, candidate, retrievalFirst, retrievalMargins, confirmedGain,
     beatsDeterministic: candidate.rejected === 0 && deterministic.gains >= spec.minimumGain && deterministic.regressions === 0,
     budget,

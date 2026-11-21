@@ -127,16 +127,33 @@ describe('evaluator-held explanation choices', () => {
     await expect(scoreProtectedExplanationHoldout(mixed, sha(mixed), savedReport, modelDigest, noCall))
       .rejects.toThrow('reuses an exposed catalogue');
   });
+
+  it('uses the declared Malay catalogue while preserving the model request shape', async () => {
+    const savedReport = bytes(report);
+    const localized = cases.map((row, index) => ({
+      ...row, focus: ['Tuntutan draf tersimpan', 'Kelulusan tuntutan sudah dibayar',
+        'Kelayakan baharu cuti gantian', 'Adakah bayaran terbukti pada slip gaji'][index],
+    }));
+    const input = bytes({...JSON.parse(spec(savedReport, localized).toString()), locale: 'ms'});
+    const result = await scoreProtectedExplanationHoldout(input, sha(input), savedReport, modelDigest, async ({prompt}) => {
+      const request = JSON.parse(prompt);
+      expect(request).not.toHaveProperty('locale');
+      return {text: JSON.stringify({choice: request.choices[0]}), inputTokens: 1, outputTokens: 1};
+    });
+    expect(result).toMatchObject({locale: 'ms', comparator: 'canonical_malay_explanation_retrieval_v1'});
+    expect(result.deterministic.correct).toBeGreaterThan(0);
+    expect(result.retrievalFirst.modelCalls).toBeLessThan(localized.length);
+  });
 });
 
-it('reuses only earlier fictional business questions and labels on unexposed modules', () => {
-  const cases = historicalExplanationCases();
+it.each(['en', 'ms'] as const)('reuses earlier %s fictional business questions and labels on unexposed modules', locale => {
+  const cases = historicalExplanationCases(locale);
   expect(cases.length).toBeGreaterThanOrEqual(4);
   expect(new Set(cases.map(row => row.module)).size).toBe(cases.length);
   for (const row of cases) {
     expect(explanationCases().some(exposed => exposed.module === row.module)).toBe(false);
     expect(['claims', 'rewards']).not.toContain(row.module);
-    const source = ASSISTANT_CONVERSATION_HOLDOUTS.find(item => item.locale === 'en' && item.category === 'domain' &&
+    const source = ASSISTANT_CONVERSATION_HOLDOUTS.find(item => item.locale === locale && item.category === 'domain' &&
       item.module === row.module && item.question === row.focus);
     expect(source?.expected).toMatchObject({mode: 'answer',
       blocks: expect.arrayContaining([expect.objectContaining({kind: 'explanation', card: null, code: 'specialist_finding:' + row.expected})])});

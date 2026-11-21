@@ -17,9 +17,9 @@ const generic = new Set<SpecialistFinding>([
 ]);
 const prefix = 'specialist_finding:';
 
-export function historicalExplanationCases() {
+export function historicalExplanationCases(locale: 'en' | 'ms' = 'en') {
   return ASSISTANT_CONVERSATION_HOLDOUTS.flatMap(row => {
-    if (row.locale !== 'en' || row.category !== 'domain' || row.security || row.module === null ||
+    if (row.locale !== locale || row.category !== 'domain' || row.security || row.module === null ||
         exposedModules.has(row.module) || row.expected.mode !== 'answer') return [];
     const explanations = row.expected.blocks.filter(block => block.kind === 'explanation');
     if (explanations.length !== 1 || explanations[0].card !== null ||
@@ -33,7 +33,7 @@ export function historicalExplanationCases() {
   });
 }
 
-function writeCases(outfile: string, developmentReportPath: string) {
+function writeCases(outfile: string, developmentReportPath: string, locale: 'en' | 'ms') {
   const target = localOutputPath(outfile);
   if (existsSync(target)) throw Error('Use a new local case file.');
   for (const file of authoredInputs) {
@@ -45,11 +45,11 @@ function writeCases(outfile: string, developmentReportPath: string) {
   const report = JSON.parse(reportBytes.toString('utf8'));
   if (!/^[a-f0-9]{64}$/.test(report.modelDigest ?? '') || report.advanced !== true || report.revision !== 'include_source_focus')
     throw Error('Supply the winning model development report.');
-  const cases = historicalExplanationCases();
+  const cases = historicalExplanationCases(locale);
   if (cases.length < 4 || cases.length > 32 || new Set(cases.map(row => row.module)).size !== cases.length)
     throw Error('Historical benchmark roster is incomplete or repeated.');
   const minimumGain = Math.max(2, Math.ceil(cases.length / 4));
-  const spec = {version: 1, modelDigest: report.modelDigest,
+  const spec = {version: 1, ...(locale === 'ms' ? {locale} : {}), modelDigest: report.modelDigest,
     developmentReportDigest: createHash('sha256').update(reportBytes).digest('hex'), minimumGain, cases};
   writeLocalOutput(target, JSON.stringify(spec, null, 2));
   console.log(JSON.stringify({source: HISTORICAL_EXPLANATION_SOURCE, cases: cases.length, minimumGain,
@@ -57,7 +57,8 @@ function writeCases(outfile: string, developmentReportPath: string) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const [outfile, developmentReport, ...rest] = process.argv.slice(2);
-  if (!outfile || !developmentReport || rest.length) throw Error('Supply a new case file and an exact development report.');
-  writeCases(outfile, developmentReport);
+  const [outfile, developmentReport, locale = 'en', ...rest] = process.argv.slice(2);
+  if (!outfile || !developmentReport || rest.length || (locale !== 'en' && locale !== 'ms'))
+    throw Error('Supply a new case file, an exact development report and optionally en or ms.');
+  writeCases(outfile, developmentReport, locale);
 }
