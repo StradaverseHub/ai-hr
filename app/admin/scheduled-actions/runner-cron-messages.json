@@ -1,8 +1,32 @@
 {
-  "en": {"dispatch": "Latest legacy cron dispatch", "detail": "Cron sent the payroll check to run. The outcome is recorded separately."},
-  "ms": {"dispatch": "Pelancaran terkini oleh cron lama", "detail": "Cron melancarkan semakan penggajian. Hasil pelaksanaan direkodkan secara berasingan."},
-  "zh": {"dispatch": "旧版 cron 最近一次启动", "detail": "cron 启动了工资检查。运行结果单独记录。"},
-  "vi": {"dispatch": "Lần khởi chạy gần nhất từ cron cũ", "detail": "Cron đã khởi chạy kiểm tra bảng lương. Kết quả chạy được ghi riêng."},
-  "ta": {"dispatch": "பழைய cron தொடங்கிய சமீபத்திய நேரம்", "detail": "cron ஊதியச் சரிபார்ப்பைத் தொடங்கியது. இயக்கத்தின் முடிவு தனியாகப் பதிவாகும்."},
-  "th": {"dispatch": "การเริ่มงานล่าสุดจาก cron เดิม", "detail": "cron เริ่มการตรวจสอบเงินเดือน ผลการทำงานจะบันทึกแยกต่างหาก"}
+  "en": {
+    "dispatch": "Latest legacy cron dispatch",
+    "detail": "Cron requested a run. Completion is shown separately when verified.",
+    "monitoringResults": "Protected monitoring logs"
+  },
+  "ms": {
+    "dispatch": "Pelancaran terkini oleh cron lama",
+    "detail": "Cron meminta pelaksanaan tugas. Penyelesaian ditunjukkan selepas disahkan.",
+    "monitoringResults": "Log pemantauan terlindung"
+  },
+  "zh": {
+    "dispatch": "旧版 cron 最近一次启动",
+    "detail": "cron 已请求运行此任务。确认完成后会单独显示。",
+    "monitoringResults": "受保护的监控日志"
+  },
+  "vi": {
+    "dispatch": "Lần khởi chạy gần nhất từ cron cũ",
+    "detail": "Cron đã yêu cầu chạy tác vụ. Kết quả hoàn tất được hiển thị riêng khi đã xác minh.",
+    "monitoringResults": "Nhật ký giám sát được bảo vệ"
+  },
+  "ta": {
+    "dispatch": "பழைய cron தொடங்கிய சமீபத்திய நேரம்",
+    "detail": "இந்தப் பணியை இயக்க cron கோரியது. நிறைவு சரிபார்க்கப்பட்டதும் தனியாகக் காட்டப்படும்.",
+    "monitoringResults": "பாதுகாக்கப்பட்ட கண்காணிப்புப் பதிவுகள்"
+  },
+  "th": {
+    "dispatch": "การเริ่มงานล่าสุดจาก cron เดิม",
+    "detail": "cron ขอให้เริ่มงานนี้ เมื่อยืนยันว่าเสร็จแล้วจะแสดงแยกต่างหาก",
+    "monitoringResults": "บันทึกการตรวจสอบที่มีการป้องกัน"
+  }
 }

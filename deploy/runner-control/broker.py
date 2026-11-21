@@ -55,7 +55,7 @@ def command(*args,allow_missing=False):
     return result.stdout
 
 def properties(unit):
-    keys=['LoadState','ActiveState','UnitFileState','Result','ExecMainStatus','ExecMainExitTimestamp','NextElapseUSecRealtime','LastTriggerUSec','TimersCalendar','TimersMonotonic','ExecMainExitTimestampMonotonic','NextElapseUSecMonotonic']
+    keys=['LoadState','ActiveState','UnitFileState','Result','ExecMainStatus','ExecMainExitTimestamp','NextElapseUSecRealtime','LastTriggerUSec','AccuracyUSec','RandomizedDelayUSec','TimersCalendar','TimersMonotonic','ExecMainExitTimestampMonotonic','NextElapseUSecMonotonic']
     output=command('show',unit,'--no-pager',*['--property='+key for key in keys],allow_missing=True)
     result={}
     for line in output.splitlines():
@@ -92,14 +92,23 @@ def next_run(timer):
         return (datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=monotonic-time.monotonic())).isoformat()
     return None
 
-def legacy_payroll_dispatch():
+LEGACY_WORKER_CRON={'payroll-loops':'payroll-loop-tick','ai-alerts':'ai-alerts'}
+
+def legacy_worker_cron_pattern(worker):
+    # Match the installed and documented wrappers from the start of the actual cron command.
+    script=LEGACY_WORKER_CRON[worker]
+    return (r'^\([^()]+\) CMD \(cd /opt/ai-hr && '
+            r'(?:/usr/bin/flock -n /[-a-zA-Z0-9_./]+ )?deploy/cron-alert[.]sh '+script+
+            r' /[-a-zA-Z0-9_./]+ /opt/node20/bin/node --env-file=[.]env[.]production --import tsx scripts/'+script+r'[.]ts\)$')
+
+def legacy_worker_dispatch(worker):
     # The Debian cron daemon owns these journal fields. Return only its dispatch time.
     # Missing or inaccessible logs provide no evidence about whether a schedule exists.
     try:
         result=subprocess.run([
             '/usr/bin/journalctl','--quiet','--no-pager','--since=-2h','--lines=1','--output=json',
             '--output-fields=__REALTIME_TIMESTAMP',
-            r'--grep=^\([^()]+\) CMD \(.*\bnode[[:space:]]+.*\bscripts/payroll-loop-tick[.]ts(?=[[:space:])]|$)',
+            '--grep='+legacy_worker_cron_pattern(worker),
             '_UID=0','_EXE=/usr/sbin/cron','_SYSTEMD_UNIT=cron.service','SYSLOG_IDENTIFIER=CRON',
         ],capture_output=True,text=True,timeout=2,env={'PATH':'/usr/bin:/bin','LC_ALL':'C'})
         if result.returncode or not result.stdout or len(result.stdout)>4096:return None
@@ -111,6 +120,15 @@ def legacy_payroll_dispatch():
     except (OSError,subprocess.TimeoutExpired,ValueError,KeyError,TypeError):
         return None
 
+def freshness_seconds(frequency,timer):
+    if frequency=='interval' and not re.search(r'OnCalendar=',timer.get('TimersCalendar','')):
+        interval=re.search(r'OnUnitInactiveUSec=(.*?)\s*;',timer.get('TimersMonotonic',''))
+        cadence=monotonic_seconds(interval.group(1)) if interval else 0
+        if cadence:
+            # Allow a full extra interval plus the installed scheduling tolerances.
+            return 2*cadence+monotonic_seconds(timer.get('AccuracyUSec','1min'))+monotonic_seconds(timer.get('RandomizedDelayUSec'))
+    return {'daily':48*3600,'monthly':65*86400,'yearly':400*86400,'interval':48*3600,'continuous':48*3600}[frequency]
+
 def row_status(policy,row):
     setting=policy['jobs'].get(row['id'],{'managed':False,'note':'Not commissioned; existing external schedules must be checked.'})
     service=properties(row['unit']+'.service')
@@ -121,7 +139,7 @@ def row_status(policy,row):
     # A disabled schedule can still have an in-flight service; these are separate facts.
     health=('missing' if not installed else 'running' if service.get('ActiveState')=='activating' or row['frequency']=='continuous' and service.get('ActiveState')=='active' else 'failed' if service.get('Result') not in (None,'','success') else 'unknown' if not service.get('ExecMainExitTimestamp') else 'success')
     last_mono=monotonic_seconds(service.get('ExecMainExitTimestampMonotonic'))
-    threshold={'daily':48*3600,'monthly':65*86400,'yearly':400*86400,'interval':48*3600,'continuous':48*3600}[row['frequency']]
+    threshold=freshness_seconds(row['frequency'],timer)
     if enabled and active.get('ActiveState') not in ('active','activating'): health='stopped'
     if enabled and health=='success' and last_mono and time.monotonic()-last_mono>threshold: health='stale'
     result={'id':row['id'],'managed':setting['managed'],'hold':held(policy,row['id']),'note':setting['note'],'installed':installed,'enabled':enabled,'health':health,'running':service.get('ActiveState') in ('active','activating'),'lastRun':service.get('ExecMainExitTimestamp') or None,'nextRun':next_run(timer),'schedule':displayed_schedule(timer)}
@@ -167,12 +185,13 @@ def separate_capability(row):
 
 def handle(body,policy,catalog):
     require(isinstance(body,dict),'invalid request')
-    if body in ({'op':'status'},{'op':'status_with_cron'}):
+    if body in ({'op':'status'},{'op':'status_with_cron'},{'op':'status_with_worker_cron'}):
         runners=[row_status(policy,row) for row in catalog]
-        payroll=next((row for row in runners if row['id']=='payroll-loops'),None)
-        if body['op']=='status_with_cron' and payroll is not None:
-            dispatched=legacy_payroll_dispatch()
-            if dispatched:payroll['legacyCronDispatchedAt']=dispatched
+        workers={'status':(),'status_with_cron':('payroll-loops',),'status_with_worker_cron':LEGACY_WORKER_CRON}[body['op']]
+        for row in runners:
+            if row['id'] in workers:
+                dispatched=legacy_worker_dispatch(row['id'])
+                if dispatched:row['legacyCronDispatchedAt']=dispatched
         return {'environment':policy['environment'],'checkedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'runners':runners}
     require(set(body)=={'op','id','actor','revision','enabled','schedule'} and body['op']=='configure','invalid request fields')
     require(isinstance(body['actor'],str) and str(uuid.UUID(body['actor']))==body['actor'],'operator identity required')

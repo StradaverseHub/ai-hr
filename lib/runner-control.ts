@@ -24,11 +24,11 @@ async function port(body:unknown):Promise<unknown> {
 export async function runnerControlSnapshot(session:SessionContext):Promise<RunnerSnapshot|null> {
  if(!isOperator(session)&&!isGroupAdmin(session))throw new Error('Runner status is restricted to administrators.');
  try{
-  const response=await port({op:'status_with_cron'}).catch((error:unknown)=>{
-   if(error instanceof RunnerPortRefused&&error.status===409)return port({op:'status'});
-   throw error;
-  });
-  return runnerSnapshotSchema.parse(response);
+  for(const op of ['status_with_worker_cron','status_with_cron','status']){
+   try{return runnerSnapshotSchema.parse(await port({op}));}
+   catch(error){if(!(error instanceof RunnerPortRefused&&error.status===409))throw error;}
+  }
+  return null;
  }catch{return null;}
 }
 export async function configureRunner(session:SessionContext,input:RunnerChange):Promise<void> {

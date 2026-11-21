@@ -80,7 +80,7 @@ class RunnerControlTests(unittest.TestCase):
         stamp=str(int(when.timestamp())*1000000)
         raw=json.dumps({'__REALTIME_TIMESTAMP':stamp,'MESSAGE':'Private cron command from fixture'})
         with patch.object(b.subprocess,'run',return_value=subprocess.CompletedProcess([],0,raw,'')) as run:
-            self.assertEqual(b.legacy_payroll_dispatch(),when.isoformat().replace('+00:00','Z'))
+            self.assertEqual(b.legacy_worker_dispatch('payroll-loops'),when.isoformat().replace('+00:00','Z'))
             args=run.call_args.args[0]
             self.assertEqual(args[0],'/usr/bin/journalctl')
             for option in ['--output-fields=__REALTIME_TIMESTAMP','--since=-2h','--lines=1','_UID=0','_EXE=/usr/sbin/cron','_SYSTEMD_UNIT=cron.service']:
@@ -89,16 +89,49 @@ class RunnerControlTests(unittest.TestCase):
     def test_legacy_dispatch_absence_or_failure_never_changes_native_state(self):
         for raw in ['', '{"__REALTIME_TIMESTAMP":[]}', '{"__REALTIME_TIMESTAMP":"1000000000000000"}', '{"__REALTIME_TIMESTAMP":"9000000000000000"}']:
             with patch.object(b.subprocess,'run',return_value=subprocess.CompletedProcess([],0,raw,'')):
-                self.assertIsNone(b.legacy_payroll_dispatch())
+                self.assertIsNone(b.legacy_worker_dispatch('payroll-loops'))
         with patch.object(b.subprocess,'run',side_effect=subprocess.TimeoutExpired('journalctl',2)):
-            self.assertIsNone(b.legacy_payroll_dispatch())
-        with patch.object(b,'row_status',side_effect=lambda _policy,row:{'id':row['id'],'installed':False,'lastRun':None}),patch.object(b,'legacy_payroll_dispatch',return_value='2026-11-21T15:45:00Z') as evidence:
+            self.assertIsNone(b.legacy_worker_dispatch('payroll-loops'))
+        with patch.object(b,'row_status',side_effect=lambda _policy,row:{'id':row['id'],'installed':False,'lastRun':None}),patch.object(b,'legacy_worker_dispatch',return_value='2026-11-21T15:45:00Z') as evidence:
             old=b.handle({'op':'status'},self.policy,CATALOG)['runners']
             self.assertFalse(any('legacyCronDispatchedAt' in row for row in old))
             evidence.assert_not_called()
             rows=b.handle({'op':'status_with_cron'},self.policy,CATALOG)['runners']
-            evidence.assert_called_once_with()
+            evidence.assert_called_once_with('payroll-loops')
             self.assertEqual([row for row in rows if 'legacyCronDispatchedAt' in row],[{'id':'payroll-loops','installed':False,'lastRun':None,'legacyCronDispatchedAt':'2026-11-21T15:45:00Z'}])
+    def test_legacy_worker_patterns_match_wrappers_and_refuse_lookalikes(self):
+        prefix='(fixture) CMD (cd /opt/ai-hr && '
+        command=lambda job: 'deploy/cron-alert.sh '+job+' /private/fixture.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/'+job+'.ts)'
+        alerts=prefix+command('ai-alerts')
+        payroll=prefix+'/usr/bin/flock -n /private/fixture.lock '+command('payroll-loop-tick')
+        for key,genuine,other in [('payroll-loops',payroll,alerts),('ai-alerts',alerts,payroll)]:
+            pattern=b.legacy_worker_cron_pattern(key)
+            self.assertRegex(genuine,pattern)
+            self.assertNotRegex(other,pattern)
+            self.assertNotRegex(genuine.replace('&& ','&& echo ',1),pattern)
+            self.assertNotRegex(genuine.replace('.ts)', '.ts; false)',1),pattern)
+        with patch.object(b,'row_status',side_effect=lambda _policy,row:{'id':row['id'],'installed':False,'lastRun':None}),patch.object(b,'legacy_worker_dispatch',return_value='2026-11-21T15:45:00Z') as evidence:
+            rows=b.handle({'op':'status_with_worker_cron'},self.policy,CATALOG)['runners']
+            self.assertEqual({call.args[0] for call in evidence.call_args_list},{'payroll-loops','ai-alerts'})
+            self.assertEqual({row['id'] for row in rows if 'legacyCronDispatchedAt' in row},{'payroll-loops','ai-alerts'})
+            self.assertTrue(all(row['lastRun'] is None and not row['installed'] for row in rows))
+    def test_installed_interval_drives_overdue_status(self):
+        retention=next(row for row in CATALOG if row['id']=='ai-retention')
+        service={'LoadState':'loaded','Result':'success','ActiveState':'inactive',
+                 'ExecMainExitTimestamp':'Sun 2026-11-01 03:00:00 +08','ExecMainExitTimestampMonotonic':'1000000'}
+        timer={'LoadState':'loaded','UnitFileState':'enabled','ActiveState':'active',
+               'TimersMonotonic':'{ OnUnitInactiveUSec=5min ; next_elapse=0 }',
+               'AccuracyUSec':'15s','RandomizedDelayUSec':'15s'}
+        def props(unit):return service if unit.endswith('.service') else timer
+        with patch.object(b,'properties',side_effect=props),patch.object(b.time,'monotonic',return_value=631):
+            self.assertEqual(b.row_status(self.policy,retention)['health'],'success')
+        with patch.object(b,'properties',side_effect=props),patch.object(b.time,'monotonic',return_value=632):
+            self.assertEqual(b.row_status(self.policy,retention)['health'],'stale')
+            service['ActiveState']='activating'
+            self.assertEqual(b.row_status(self.policy,retention)['health'],'running')
+            service.update(ActiveState='inactive',Result='exit-code')
+            self.assertEqual(b.row_status(self.policy,retention)['health'],'failed')
+        self.assertEqual(b.freshness_seconds('interval',{'TimersCalendar':'{ OnCalendar=hourly ; next_elapse=0 }'}),48*3600)
     def test_production_holds_override_commissioned_policy(self):
         policy={**self.policy,'environment':'production'}
         for key in ['replacement-holidays','backups']:

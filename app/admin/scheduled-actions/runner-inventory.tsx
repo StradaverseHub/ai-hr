@@ -34,7 +34,7 @@ export async function RunnerInventory({snapshot,canControl}:{snapshot:RunnerSnap
       <span className="font-medium">{cron.dispatch}</span> · <time dateTime={status.legacyCronDispatchedAt}>{date.format(new Date(status.legacyCronDispatchedAt))}</time>
       <span className="block text-xs text-muted-foreground">{cron.detail}</span>
      </p>}
-     <p className="mt-3 text-sm"><span className="text-muted-foreground">{t('results')}: </span>{entry.destination&&(!canControl||entry.destination.startsWith('/operator'))?<Link className="text-primary underline underline-offset-4" href={entry.destination==='/admin/scheduled-actions'?'#recent-run-history':entry.destination}>{t(`jobs.${entry.id}.results`)}</Link>:canControl&&(entry.destination==='/admin/scheduled-actions'||entry.id==='ai-alerts')?t('jobs.ai-retention.results'):t(`jobs.${entry.id}.results`)}</p>
+     <p className="mt-3 text-sm"><span className="text-muted-foreground">{t('results')}: </span>{entry.destination&&(!canControl||entry.destination.startsWith('/operator'))?<Link className="text-primary underline underline-offset-4" href={entry.destination==='/admin/scheduled-actions'?'#recent-run-history':entry.destination}>{t(`jobs.${entry.id}.results`)}</Link>:canControl&&entry.id==='ai-alerts'?cron.monitoringResults:canControl&&entry.destination==='/admin/scheduled-actions'?t('jobs.ai-retention.results'):t(`jobs.${entry.id}.results`)}</p>
      {status?.note&&<p className="mt-2 text-sm text-muted-foreground">{status.note}</p>}
      {status?.hold&&<p className="mt-2 text-sm">{t('holdNote')}</p>}
      {canControl&&status&&<RunnerControls key={status.revision} runner={status} frequency={entry.frequency}/>}
