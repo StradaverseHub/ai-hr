@@ -65,7 +65,7 @@ on:
         default: false
         type: boolean
       reuse_first_use_build:
-        description: Reuse the verified Clocking Import candidate build for the preflight diagnostic
+        description: Reuse the exact verified application build for the lock-attribution diagnostic
         default: false
         type: boolean
       model_eval:
@@ -134,7 +134,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 9bbb0ad9a6011f7ea3d2b56e02fbab53bf906323 ]];
+            [[ "$EXPECTED_SHA" != 323936b3ae6c210aa993f5682acb862034ba78ef ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -233,19 +233,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          build_source=a00a15863ecfcd98962573ecd9f63f4cf9997df4
-          test "$AIHR_CI_HEAD" = 9bbb0ad9a6011f7ea3d2b56e02fbab53bf906323
+          build_source=a458ecc0087722ec939b67a673f6c0ef017ba332
+          test "$AIHR_CI_HEAD" = 323936b3ae6c210aa993f5682acb862034ba78ef
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
-          harness_diff="$(printf 'M\t%s\n' scripts/performance/mixed-workflows.mjs scripts/performance/mixed-workflows.test.mjs)"
+          harness_diff="$(printf 'A\t%s\nM\t%s\nM\t%s\n' \
+            .github/ci/mixed-loaded-advisory.test.mjs \
+            scripts/performance/system-load-owner.mjs \
+            scripts/performance/worker-comparison-failure.mjs)"
           test "$(git diff --name-status "$build_source" "$AIHR_CI_HEAD")" = "$harness_diff"
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136639790563 --jq '
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136663689130 --jq '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44838158125 and .head_sha == "aa25055ffd3822c426f575a0386bf143fdef8586"' | grep -qx true
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14680780164/zip > "$archive"
-          printf '%s  %s\n' 'e86f81b3e38677208f085c37307acb8b616a4bc7cd571b64f840575dec662be0' "$archive" | sha256sum -c -
+            .run_id == 44845333202 and .head_sha == "b6ccfc0457474d67015f03284f6d46fdb7cb10cf"' | grep -qx true
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14683043052/zip > "$archive"
+          printf '%s  %s\n' '91646cc00aa15b82cd12a607bca5ad51cef3bb1e20fa06a25862aa9debb6f4a6' "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
@@ -257,7 +260,7 @@ jobs:
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
           if [[ "$REUSE_BUILD" == true ]]; then
-            expected_build_source=a00a15863ecfcd98962573ecd9f63f4cf9997df4
+            expected_build_source=a458ecc0087722ec939b67a673f6c0ef017ba332
           fi
           test "$(cat "$packet/source-sha")" = "$expected_build_source"
           chmod 700 "$PWD"
