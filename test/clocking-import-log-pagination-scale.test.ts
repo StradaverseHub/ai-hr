@@ -49,16 +49,17 @@ it('compares the full import log with a SQL page under group, company and cross-
   // set of employment-bound lines visible to a company administrator.
   await owner.db.execute(sql`
     with staff as (
-      select id, row_number() over(order by id)::int as n
+      select id, row_number() over(order by id)::int as staff_index
       from employment where tenant_id=${base.tenantId}::uuid
       order by id limit 1000
     )
     insert into clocking_import_line(tenant_id,run_id,line_no,employment_id,result,raw_line)
-    select ${base.tenantId}::uuid,${run.id}::uuid,n,
-      case when n%8=0 then null else staff.id end,
-      case when n%8=0 then 'unmatched_card' when n%8=1 then 'invalid_time' else 'imported' end,
-      case when n%8 in(0,1) then repeat('Fictional receipt row ',16) else null end
-    from generate_series(1,24000) n join staff on staff.n=((n-1)/24)+1
+    select ${base.tenantId}::uuid,${run.id}::uuid,source.line_no,
+      case when source.line_no%8=0 then null else staff.id end,
+      case when source.line_no%8=0 then 'unmatched_card' when source.line_no%8=1 then 'invalid_time' else 'imported' end,
+      case when source.line_no%8 in(0,1) then repeat('Fictional receipt row ',16) else null end
+    from generate_series(1,24000) as source(line_no)
+    join staff on staff.staff_index=((source.line_no-1)/24)+1
   `);
 
   for (const [role, session] of [['group', group.personas.group], ['company', group.personas.single]] as const) {
