@@ -1797,7 +1797,7 @@ async function main(){
   let iteration=0,loadPhase='navigation',loadRoute;
   try{
   if(mixedWorkflows&&user.role==='groupHR'){
-   loadPhase='payroll-processing';loadRoute='/payroll/[batchId]';
+   loadPhase='mixed-workflow';loadRoute='/payroll/[batchId]';
    await waitForSteadyUsers();
    await mixedWorkflows.runPayroll(user,loadState);
    await pause(thinkTimeMs);
