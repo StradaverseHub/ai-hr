@@ -1744,6 +1744,45 @@ async function measurePublicLogin(){
  }
 }
 
+async function measureShellBellReadiness({page,user,report,save}){
+ const started=performance.now();
+ const timeout=()=>Math.max(1,15000-Math.round(performance.now()-started));
+ const elapsed=()=>Math.round(performance.now()-started);
+ const steps=report.shellBellReadiness=[];
+ const record=(step,extra={})=>{steps.push({step,elapsedMs:elapsed(),...extra});save();};
+ const path='/me/cases';
+ report.actionStage='shell-bell-document';
+ const response=await page.goto(origin+path,{waitUntil:'commit',timeout:timeout()});
+ assert.equal(response?.status(),200);
+ assert.equal(new URL(page.url()).pathname,path);
+ record('document-headers');
+ const bell=page.getByRole('button',{name:/^Notifications, /});
+ const history=page.getByRole('button',{name:'History',exact:true});
+ const known=page.getByRole('button',{name:/^Notifications, .* open tasks$/});
+ await Promise.all([
+  (async()=>{
+   assert.equal(await readyContent(page,user,path,timeout),'usable-content');
+   record('page-content');
+  })(),
+  (async()=>{
+   report.actionStage='shell-bell-trigger';
+   await bell.waitFor({state:'visible',timeout:timeout()});
+   record('bell-visible');
+   report.actionStage='shell-bell-first-open';
+   while(!(await history.isVisible())){
+    assert(performance.now()-started<15000,'The bell trigger did not open the menu before the deadline');
+    await bell.click({timeout:timeout()});
+    try{await history.waitFor({state:'visible',timeout:Math.min(100,timeout())});}
+    catch(error){if(error.name!=='TimeoutError')throw error;}
+   }
+   record('bell-menu-open',{taskCountAvailable:await known.isVisible()});
+   report.actionStage='shell-bell-task-count';
+   await known.waitFor({state:'visible',timeout:timeout()});
+   record('task-count-available');
+  })(),
+ ]);
+}
+
 async function measureShellPopovers({page,user,report,save}){
  report.actionStage='shell-popover-document-open';
  report.shellPopoverSteps=[];
@@ -2003,7 +2042,7 @@ async function measureLifecycleMenu({page,user,fixture,report,save}){
 }
 
 const actionLaneByJourney={
- 'personal-calendar-month':'shell','shell-popovers':'shell','welcome-tour':'shell','assistant-saved-history':'shell','notification-read':'shell',
+ 'personal-calendar-month':'shell','shell-popovers':'shell','shell-bell-readiness':'shell','welcome-tour':'shell','assistant-saved-history':'shell','notification-read':'shell',
  'group-company-scope':'workforce','group-lifecycle-menu':'workforce','roster-exceptions':'workforce','daily-attendance-filters':'workforce',
  'job-description-editor-open':'workforce','personnel-switcher':'workforce','org-explorer':'workforce','personnel-movement':'workforce','new-joiners-search':'workforce',
  'own-released-payslip-detail':'payroll','payroll-history-breakdown':'payroll','payroll-wizard':'payroll','payroll-register-pager':'payroll','payroll-register-boundary':'payroll','payroll-scope-denial':'payroll',
@@ -2033,6 +2072,7 @@ async function measureActions(fixture){
   {name:'personal-calendar-month',actorIndex:4,run:measureCalendarMonth,timings:result=>result.calendarSteps},
   ...[0,1].map(actorIndex=>({name:'roster-exceptions',actorIndex,run:measureRosterExceptions,timings:result=>result.rosterExceptionSteps})),
   ...[0,4].map(actorIndex=>({name:'shell-popovers',actorIndex,run:measureShellPopovers,timings:result=>result.shellPopoverSteps})),
+  ...[0,4].map(actorIndex=>({name:'shell-bell-readiness',actorIndex,run:measureShellBellReadiness,timings:result=>result.shellBellReadiness})),
   {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
   ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
    timings:result=>result.attendanceFilterSteps})),
