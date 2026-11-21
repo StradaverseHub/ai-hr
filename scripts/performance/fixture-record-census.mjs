@@ -512,18 +512,20 @@ async function verifyFormulaSample(page, main, source, value, row) {
 
 function importHistoryRoutes(fixture) {
   const [group, company] = fixture.users;
-  const { companyId, employeeCode, employeeName, personnel, payroll } = fixture.importHistory;
+  const { companyId, employeeCode, employeeName, personnel, payroll, fixed } = fixture.importHistory;
   assert.equal(group.role, 'groupHR');
   assert.equal(company.role, 'companyHR');
   assert.equal(group.companyId, companyId);
   assert.equal(company.companyId, companyId);
-  for (const id of [personnel.attemptId, personnel.runId, payroll.attemptId, payroll.recordId]) {
+  for (const id of [personnel.attemptId, personnel.runId, payroll.attemptId, payroll.recordId, fixed.id]) {
     assert.match(id, /^[0-9a-f-]{36}$/i);
   }
   const personnelBase = '/admin/personnel/import/history';
   const payrollBase = '/payroll/history-import';
   const personnelRun = `${personnelBase}/runs/${personnel.runId}`;
   const payrollLog = `${payrollBase}/logs/${payroll.attemptId}`;
+  const fixedBase = '/payroll/transactions/fixed/imports';
+  const fixedPath = fixedBase + '/' + fixed.id;
   return [group, company].flatMap(actor => [
     { actor, template: personnelBase + '/[attemptId]', path: personnelBase + '/' + personnel.attemptId,
       exactHeading: personnel.file, witness: `tbody td:has-text("${employeeName}")` },
@@ -533,7 +535,27 @@ function importHistoryRoutes(fixture) {
       exactHeading: payroll.file, witness: `a[href="${payrollLog}/report"]` },
     { actor, template: payrollBase + '/records/[recordId]', path: payrollBase + '/records/' + payroll.recordId,
       exactHeading: `${employeeCode} · ${employeeName}`, witness: `a[href="${payrollLog}"]:text-is("${payroll.file}")` },
+    { actor, template: fixedBase + '/[id]', path: fixedPath,
+      exactHeading: 'Batch ' + fixed.id.slice(0, 8).toUpperCase(), content: fixed.file,
+      witness: `tbody tr:has(td:text-is("${fixed.missingEmployee}")) td:has-text("does not exist")`,
+      download: { href: fixedPath + '/errors', filename: 'fixed-transaction-import-errors.xlsx' } },
   ]);
+}
+
+async function verifyWorkbookDownload(page, main, expected, row) {
+  row.step = 'import-error-download';
+  const timeout = 15000;
+  const started = performance.now();
+  const pending = page.waitForEvent('download', { timeout }).catch(() => null);
+  await main.locator(`a[href="${expected.href}"]`).click({ timeout });
+  const download = await pending;
+  assert.equal(download?.suggestedFilename(), expected.filename);
+  const response = await download.createReadStream();
+  assert(response, 'Expected a workbook download');
+  const chunks = [];
+  for await (const chunk of response) chunks.push(chunk);
+  assert.equal(Buffer.concat(chunks).subarray(0, 4).toString('hex'), '504b0304');
+  row.errorWorkbookMs = Math.round(performance.now() - started);
 }
 
 export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory }) {
@@ -596,6 +618,10 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           if (entry.formulaSample && pass === 'first') {
             row.formulaPageReadyMs = Math.round(performance.now() - started);
             await verifyFormulaSample(page, main, entry.formulaSample.source, entry.formulaSample.value, row);
+          }
+          if (entry.download && pass === 'first') {
+            row.importPageReadyMs = Math.round(performance.now() - started);
+            await verifyWorkbookDownload(page, main, entry.download, row);
           }
           row.outcome = 'usable-content';
         } catch (error) {

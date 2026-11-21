@@ -1634,7 +1634,7 @@ try{
    const path=join(privateDir,'import-history-seed-stage');
    if(existsSync(path)){
     const stage=readFileSync(path,'utf8');
-    if(['principal','personnel','payroll','complete'].includes(stage))report.importHistorySeedStage=stage;
+    if(['principal','personnel','payroll','fixed-transaction','complete'].includes(stage))report.importHistorySeedStage=stage;
     save();
    }
   }

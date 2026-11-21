@@ -1,5 +1,6 @@
 /** Seed retained Personnel and Payroll records through the real import owners. */
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -18,9 +19,10 @@ assert(fixture.users.length===500&&group.role==='groupHR'&&companyHr.role==='com
 assert.equal(companyHr.companyId,group.companyId);
 const source=file=>import(pathToFileURL(resolve(process.cwd(),file)).href);
 const [{client,createDb},{resolveEntitlementsTx},{commitEmployeeImport},{getImportAttempt,getImportRun},
- payroll,{parseCsvRecords,toCsv},{PAYROLL_HISTORY_HEADERS}]=await Promise.all([
+ payroll,{parseCsvRecords,toCsv},{PAYROLL_HISTORY_HEADERS},fixedImports,{runBulkJobTick}]=await Promise.all([
  source('db/client.ts'),source('core/entitlements.ts'),source('core/import.ts'),source('core/import-history.ts'),
  source('packs/payroll/service.ts'),source('lib/csv.ts'),source('lib/payroll-history-import-schema.ts'),
+ source('core/fixed-transaction-import-job.ts'),source('core/bulk-job-worker.ts'),
 ]);
 const owner=createDb(env.MIGRATION_DATABASE_URL,{max:1});
 const resultPath=name=>resolve(env.PERF_PRIVATE_DIR,name);
@@ -73,10 +75,31 @@ try{
  assert(record,'Expected a retained Payroll record for the imported employee');
  const detail=await payroll.payrollHistoryMaintenanceRecord(ctx,record.id);
  assert(detail?.items.some(item=>item.code==='BASIC'&&Number(item.amount)===Number(amount)&&item.sourceAttemptId===preview.attemptId));
+
+ mark('fixed-transaction');
+ const fixedFile='fictional-fixed-transaction-errors.xlsx';
+ const missingEmployee='PERF-UNKNOWN-FIXED';
+ const scope=[group.companyId];
+ const fixedId=await fixedImports.queueFixedTransactionImport(ctx,{
+  csv:toCsv([['Employee ID','Pay Item Code','Amount','Start Date'],
+   [missingEmployee,'BONUS','100',fixture.month+'-01']]),
+  fileName:fixedFile,companyIds:scope,operationKey:randomUUID(),validationOnly:true,
+ });
+ let job=await fixedImports.readFixedTransactionImport(ctx,fixedId,scope);
+ for(let tick=0;tick<10&&!['completed','failed'].includes(job.state);tick++){
+  await runBulkJobTick(owner.client,{handlers:[fixedImports.fixedTransactionImportJobHandler]});
+  job=await fixedImports.readFixedTransactionImport(ctx,fixedId,scope);
+ }
+ assert.equal(job.state,'failed');
+ assert.equal(job.error,'noValidRows');
+ assert.equal(job.counters.invalid,1);
+ assert.equal(job.counters.written??0,0);
+ assert(job.rows.some(row=>row.employeeId===missingEmployee&&row.reason==='employeeUnknown'));
  writeFileSync(resultPath('import-history-browser.json'),JSON.stringify({
   companyId:group.companyId,employeeName,employeeCode,
   personnel:{attemptId:imported.attemptId,runId:imported.runId,file:personnelFile},
   payroll:{attemptId:preview.attemptId,recordId:record.id,file:payrollFile},
+  fixed:{id:fixedId,file:fixedFile,missingEmployee},
  }),{mode:0o600});
  mark('complete');
 }finally{await Promise.all([owner.client.end(),client.end()]);}
