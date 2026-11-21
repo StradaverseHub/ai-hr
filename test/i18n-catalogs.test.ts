@@ -28,10 +28,10 @@ it.each(locales)('retains every source message and English fallback for %s in th
  expect(messagesForLocale(locale)).toBe(promise);
 });
 it('keeps explicit document-language requests separate from the current UI cookie',async()=>{
- const read=request as unknown as (input:{locale?:string})=>Promise<{locale:string;messages:unknown}>;
+ const read=request as unknown as (input:{locale?:string})=>Promise<{locale:string;messages:unknown;timeZone:string}>;
  f.cookie='ms';
  const explicit=await read({locale:'zh'}),ordinary=await read({});
- expect(explicit).toEqual({locale:'zh',messages:await messagesForLocale('zh')});
- expect(ordinary).toEqual({locale:'ms',messages:await messagesForLocale('ms')});
- f.cookie='unrecognized';expect(await read({locale:'unrecognized'})).toEqual({locale:'en',messages:await messagesForLocale('en')});
+ expect(explicit).toEqual({locale:'zh',timeZone:'Asia/Kuala_Lumpur',messages:await messagesForLocale('zh')});
+ expect(ordinary).toEqual({locale:'ms',timeZone:'Asia/Kuala_Lumpur',messages:await messagesForLocale('ms')});
+ f.cookie='unrecognized';expect(await read({locale:'unrecognized'})).toEqual({locale:'en',timeZone:'Asia/Kuala_Lumpur',messages:await messagesForLocale('en')});
 });
