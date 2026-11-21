@@ -84,6 +84,7 @@ describe('AI centre step 5, rendered per role', () => {
     expect(view.container.querySelector('#ai-registry')).toBeNull();
     expect(view.container.querySelector('[data-worker-switch], input[name="worker"]')).toBeNull();
     expect(view.container.querySelector('#ai-features')).not.toBeNull();
+    expect(screen.queryByRole('link', { name: /Latest pre-salary company run/ })).toBeNull();
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-step5-company-admin-workers', FICTION, 'atelier');
   }, 120000);
 
@@ -101,11 +102,17 @@ describe('AI centre step 5, rendered per role', () => {
   it('group administrator: the registry, a worker detail and the outcome summary', async () => {
     Object.assign(state, { admin: true, group: true });
     const view = wrap(await AiManagementScreen({ session, section: 'features', searchParams: Promise.resolve({ worker: 'daily_digest' }), builtInChecks: [], registry: {
-      rows: ROWS,
+      rows: [...ROWS, worker('loop_payroll_inputs', { family: 'preparer', effect: 'prepare', lastRunAt: new Date('2026-11-03T01:30:00Z') })],
       summary: { tenantId: 'fictional', since: null, records: 128, byWorker: [], byFamily: { watcher: 40, chaser: 30, preparer: 18, decider: 0, explainer: 40 }, mandates: [] },
       detail: { worker: ROWS[3], recentRuns: [{ at: new Date('2026-11-02T00:30:00Z'), runId: 'r1', outcomeKind: 'prepared', humanInvolvement: 'none', decision: null, mandateId: 'm1' }],
         mandates: [{ id: 'm1', grantorUserId: 'u', grantorPersonId: 'p', agentIdentity: 'agent.daily_digest', state: 'active', validUntil: new Date('2027-01-31T00:00:00Z'), revokedBy: null, version: 1 }] },
     } }));
+    const overview = screen.getByRole('region', { name: 'Activity overview' });
+    const preSalary = within(overview).getByRole('link', { name: /Latest pre-salary company run/ });
+    expect(preSalary).toHaveAttribute('href', '/control-tower/loops/loop_payroll_inputs#loop-recent-runs');
+    expect(preSalary.querySelector('time')).toHaveAttribute('datetime', '2026-11-03T01:30:00.000Z');
+    expect(preSalary).toHaveTextContent(/9:30 AM/);
+    expect(within(overview).getByRole('link', { name: 'Open scheduled actions' })).toHaveAttribute('href', '/admin/scheduled-actions');
     const copy = enWithAiCentre.aiCentre.registry;
     const registry = view.container.querySelector('#ai-registry') as HTMLElement;
     expect(within(registry).getByText(copy.workers.approver_recommendation)).toBeInTheDocument();

@@ -80,6 +80,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     return totals;
   }, {prepared: 0, completed: 0}) : null;
   const workerActivity = registry?.rows.filter(row => row.trigger.kind === 'schedule');
+  const latestPreSalaryRun = workerActivity?.find(row => row.id === 'loop_payroll_inputs')?.lastRunAt;
   const workerOverview = section === 'features' ? await getWorkerOverviewCopy() : null;
   const alertBanner = await aiManagementAlerts(s, view);
   const alerts = alertBanner.status==='ok' ? alertBanner.alerts : [];
@@ -278,7 +279,14 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
                 allowed: workerActivity.filter(row => row.gate.run).length,
                 recorded: workerActivity.filter(row => row.lastRunAt !== null).length,
                 total: workerActivity.length,
-              }) : workerOverview('unavailable')}</dd>
+              }) : workerOverview('unavailable')}
+              {latestPreSalaryRun && <Link href="/control-tower/loops/loop_payroll_inputs#loop-recent-runs" prefetch={false}
+                className="mt-1 flex min-h-9 w-fit flex-wrap items-center gap-x-2 text-xs font-medium text-primary underline underline-offset-4 pointer-coarse:min-h-11">
+                {workerOverview('preSalaryCompanyRun')} <time dateTime={latestPreSalaryRun.toISOString()}>
+                  {f.dateTime(latestPreSalaryRun,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}
+                </time>
+              </Link>}
+            </dd>
             <dd><Link href="/admin/scheduled-actions" className={btnGhost}>{tc('workers.systemJobsLink')}</Link></dd>
           </div>
         </>}
