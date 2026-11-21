@@ -2,6 +2,50 @@ import assert from 'node:assert/strict';
 
 const workSiteName = 'Fictional Census Work Site';
 const clockingPointName = 'Fictional Census Clocking Point';
+const fixedItemCode = 'PERF-CENSUS-FIXED';
+const fixedItemName = 'Fictional Census Fixed Allowance';
+const fixedItemNote = 'Fictional census recurring allowance';
+
+export async function seedFixedTransactionRecord(owner, fixture) {
+  const company = fixture.users[1];
+  const employee = fixture.users[4];
+  assert.equal(company.role, 'companyHR');
+  assert.equal(employee.tenantId, company.tenantId);
+  assert.equal(employee.companyId, company.companyId);
+  await owner.begin(async tx => {
+    await tx`select set_config('app.tenant_id', ${company.tenantId}, true)`;
+    const [item] = await tx`
+      insert into pay_component (tenant_id, code, name, kind)
+      values (${company.tenantId}, ${fixedItemCode}, ${fixedItemName}, 'allowance')
+      returning id
+    `;
+    await tx`
+      insert into employment_pay_component (tenant_id, employment_id, component_id, amount, valid_from, remarks)
+      values (${company.tenantId}, ${employee.employmentId}, ${item.id}, 123.45,
+        date_trunc('month', ${fixture.today}::date)::date, ${fixedItemNote})
+    `;
+  });
+}
+
+async function fixedTransactionRoutes(db, fixture) {
+  const [group, company] = fixture.users;
+  const employee = fixture.users[4];
+  const records = await db`
+    select fixed.id
+    from employment_pay_component fixed
+    join pay_component item on item.tenant_id = fixed.tenant_id and item.id = fixed.component_id
+    where fixed.tenant_id = ${company.tenantId} and fixed.employment_id = ${employee.employmentId}
+      and fixed.superseded_at is null and item.code = ${fixedItemCode}
+  `;
+  assert.equal(records.length, 1, 'Expected one fictional fixed transaction for the in-scope employee');
+  const template = '/payroll/transactions/fixed/[id]';
+  const path = '/payroll/transactions/fixed/' + records[0].id + '?employmentId=' + employee.employmentId;
+  return [group, company].map(actor => ({
+    actor, template, path,
+    exactHeading: fixedItemCode + ' — ' + fixedItemName,
+    witness: `form:has(input[name="amount"][value="123.45"]) input[name="remarks"][value="${fixedItemNote}"]`,
+  }));
+}
 
 export async function seedWorkLocationRecords(owner, fixture) {
   const [group, company] = fixture.users;
@@ -463,6 +507,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
+      ...await fixedTransactionRoutes(db, fixture),
       ...await organisationLifecycleRoutes(db, fixture),
       ...(fixture.performanceRecordsUnavailable ? [] : await performanceRoutes(db, fixture)),
     ];

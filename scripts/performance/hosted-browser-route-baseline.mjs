@@ -1,5 +1,5 @@
 import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
-import {measureFixtureRecordCensus,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
+import {measureFixtureRecordCensus,seedFixedTransactionRecord,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
@@ -1584,6 +1584,7 @@ try{
    report.fixture.groupShape=counts;
    if(censusFullFixtureRecords){
     await seedStatutoryLeaver(owner,fixture);
+    await seedFixedTransactionRecord(owner,fixture);
     report.fixture.workLocationScale=await seedWorkLocationRecords(owner,fixture);
    }
    save();
