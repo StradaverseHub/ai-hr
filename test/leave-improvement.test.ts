@@ -104,7 +104,10 @@ describe('evaluator-held explanation choices', () => {
     expect(result).toMatchObject({
       candidate: { correct: 4, rejected: 0 }, original: { correct: 2, gains: 2, regressions: 0 },
       deterministic: { correct: 3, abstained: 1, gains: 1, regressions: 0 },
-      retrievalFirst: { correct: 4, rejected: 0, modelCalls: 1, versusFocused: { gains: 0, regressions: 0 } },
+      retrievalFirst: {
+        correct: 4, rejected: 0, modelCalls: 1, versusFocused: { gains: 0, regressions: 0 },
+        versusOriginal: { gains: 2, regressions: 0 }, versusDeterministic: { gains: 1, regressions: 0 },
+      },
       retrievalMargins: expect.arrayContaining([
         expect.objectContaining({ minimumMargin: 1, correct: 4, modelCalls: 1 }),
         expect.objectContaining({ minimumMargin: 8, correct: 4, modelCalls: 4 }),

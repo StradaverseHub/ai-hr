@@ -56,6 +56,11 @@ const commonWords = {
 };
 const terms = (text: string, locale: 'en' | 'ms') => new Set(normalize(text).filter(word => !commonWords[locale].has(word)));
 
+function recordComparison(evidence: {gains: number; regressions: number}, passed: boolean, referencePassed: boolean) {
+  if (passed && !referencePassed) evidence.gains++;
+  if (!passed && referencePassed) evidence.regressions++;
+}
+
 function deterministicChoice({ choices, focus }: ExplanationCase, locale: 'en' | 'ms') {
   const words = terms(focus, locale);
   const documents = choices.map(choice => {
@@ -125,32 +130,37 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
     minimumMargin,
     correct: 0, rejected: 0, modelCalls: 0,
     versusFocused: { gains: 0, regressions: 0 },
+    versusOriginal: { gains: 0, regressions: 0 },
+    versusDeterministic: { gains: 0, regressions: 0 },
   }));
   for (const fixture of cases) {
     const past = await choose(call, fixture, false);
     const next = await choose(call, fixture, true);
+    const originalCorrect = past === 'correct';
+    const focusedCorrect = next === 'correct';
     const {choice: fixed, margin} = deterministicChoice(fixture, locale);
+    const deterministicCorrect = fixed === fixture.expected;
     // Both policies would send the identical focused request on a retrieval abstention.
     // Reuse that observed response to attribute accuracy and calls without extra sampling.
     for (const policy of retrievalMargins) {
       const usesModel = margin < policy.minimumMargin;
-      const routed = usesModel ? next : fixed === fixture.expected ? 'correct' : 'incorrect';
+      const routed = usesModel ? next : deterministicCorrect ? 'correct' : 'incorrect';
+      const routedCorrect = routed === 'correct';
       if (usesModel) policy.modelCalls++;
-      if (routed === 'correct') policy.correct++;
+      if (routedCorrect) policy.correct++;
       if (routed === 'rejected') policy.rejected++;
-      if (routed === 'correct' && next !== 'correct') policy.versusFocused.gains++;
-      if (routed !== 'correct' && next === 'correct') policy.versusFocused.regressions++;
+      recordComparison(policy.versusFocused, routedCorrect, focusedCorrect);
+      recordComparison(policy.versusOriginal, routedCorrect, originalCorrect);
+      recordComparison(policy.versusDeterministic, routedCorrect, deterministicCorrect);
     }
-    if (past === 'correct') original.correct++;
+    if (originalCorrect) original.correct++;
     if (past === 'rejected') original.rejected++;
-    if (next === 'correct') candidate.correct++;
+    if (focusedCorrect) candidate.correct++;
     if (next === 'rejected') candidate.rejected++;
-    if (fixed === fixture.expected) deterministic.correct++;
+    if (deterministicCorrect) deterministic.correct++;
     if (fixed === null) deterministic.abstained++;
-    if (next === 'correct' && past !== 'correct') original.gains++;
-    if (next !== 'correct' && past === 'correct') original.regressions++;
-    if (next === 'correct' && fixed !== fixture.expected) deterministic.gains++;
-    if (next !== 'correct' && fixed === fixture.expected) deterministic.regressions++;
+    recordComparison(original, focusedCorrect, originalCorrect);
+    recordComparison(deterministic, focusedCorrect, deterministicCorrect);
   }
   const confirmedGain = candidate.rejected === 0 && original.gains >= spec.minimumGain && original.regressions === 0;
   const {minimumMargin: _, ...retrievalFirst} = retrievalMargins[0];
