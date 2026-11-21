@@ -1,10 +1,15 @@
-import { eq } from 'drizzle-orm';
+import { performance } from 'node:perf_hooks';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
+import { withScopedLifecycleTenant } from '../core/module-gate';
 import { withIndependentTransactions, type SessionContext } from '../db/client';
 import type { SharedReadStats } from '../db/shared-read';
 import { employment } from '../db/schema';
+import { v9Defaults } from '../lib/lifecycle-v9-defaults';
+import { defaultConfig } from '../lib/onboarding-model';
 import { readShellNavigationContext, readSignedInShellNavigation } from '../lib/shell-navigation-context';
 import { readShellFeatureNavigation } from '../lib/shell-feature-navigation';
+import { offboardingPostingAccess } from '../packs/personnel-postings/service';
 import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule } from './harness';
 import { buildScaleFixture, type ScaleFixture } from './helpers/ai-centre-scale-fixture';
 
@@ -24,7 +29,7 @@ beforeAll(async () => {
   await migrateTestDb();
   await resetDb();
   const base = await seedBase();
-  for (const module of ['assistant', 'rewards', 'recruitment']) await setModule(base.tenantId, module, 'active');
+  for (const module of ['assistant', 'rewards', 'recruitment', 'lifecycle']) await setModule(base.tenantId, module, 'active');
   group = await buildScaleFixture(base, { employments: 1000, events: 0 });
   const [staff] = await owner.db
     .select({ personId: employment.personId, companyId: employment.companyId })
@@ -81,5 +86,67 @@ it('keeps shell identity, scope and features equivalent on one connection at gro
   } finally {
     browser.companyScope = undefined;
     hooks.__aihrPerfSharedRead = oldHook;
+  }
+});
+
+it('measures the native Offboarding Postings access check under real group and company grants', async () => {
+  const { group: groupAdmin, single, multi } = group.personas;
+  const { tenantId, userId } = groupAdmin;
+  if (!userId || !single.userId) throw new Error('The approver fixtures require persisted app users');
+  const onboarding = defaultConfig(userId);
+  const lifecycle = v9Defaults(onboarding.groups);
+  const approvers = { id: 'scale-posting-approvers', name: 'Posting approvers', members: [userId, single.userId], limit: 0 };
+  onboarding.groups.push(approvers);
+  lifecycle.groups.push(approvers);
+  lifecycle.offboarding = { ...lifecycle.offboarding, postingApproverGroupId: approvers.id };
+  await owner.db.execute(sql`
+    insert into lc_onboarding_config(tenant_id, revision, data)
+    values (${tenantId}::uuid, 1, ${JSON.stringify(onboarding)}::jsonb)
+    on conflict (tenant_id) do update set data=excluded.data, revision=excluded.revision
+  `);
+  await owner.db.execute(sql`
+    insert into lc_v9_config(tenant_id, revision, data)
+    values (${tenantId}::uuid, ${lifecycle.revision}, ${JSON.stringify(lifecycle)}::jsonb)
+    on conflict (tenant_id) do update set data=excluded.data, revision=excluded.revision
+  `);
+  const actors = [
+    { name: 'group-approver', session: groupAdmin, allowed: true },
+    { name: 'company-approver', session: single, allowed: true },
+    { name: 'hr-outside-approver-group', session: multi, allowed: false },
+    { name: 'employee', session: employee, allowed: false },
+  ];
+  const hooks = globalThis as {
+    __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
+  };
+  const previousHook = hooks.__aihrPerfBeginTransaction;
+  try {
+    for (const { name, session, allowed } of actors) {
+      expect(await offboardingPostingAccess(session), name).toBe(allowed);
+      const samples = [];
+      for (let trial = 0; trial < 6; trial++) {
+        let acquiredAt = Number.NaN;
+        hooks.__aihrPerfBeginTransaction = () => ({
+          acquired: () => { acquiredAt = performance.now(); },
+          finished: () => {},
+        });
+        const startedAt = performance.now();
+        const result = await withScopedLifecycleTenant(session, async tx => {
+          const queryAt = performance.now();
+          const [row] = await tx.execute<{ ok: boolean }>(sql`select app.offboarding_posting_queue_access() as ok`);
+          return { allowed: row?.ok, queryAt, queryReturnedAt: performance.now() };
+        });
+        expect(result.allowed, name).toBe(allowed);
+        expect(acquiredAt).toBeGreaterThanOrEqual(startedAt);
+        samples.push({
+          transactionEntryMs: acquiredAt - startedAt,
+          tenantBootstrapMs: result.queryAt - acquiredAt,
+          statementRoundTripMs: result.queryReturnedAt - result.queryAt,
+          totalMs: performance.now() - startedAt,
+        });
+      }
+      console.info('OFFBOARDING_NATIVE_PROFILE', JSON.stringify({ name, allowed, samples }));
+    }
+  } finally {
+    hooks.__aihrPerfBeginTransaction = previousHook;
   }
 });
