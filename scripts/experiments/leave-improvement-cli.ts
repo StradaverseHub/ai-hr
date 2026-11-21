@@ -142,8 +142,7 @@ async function main() {
   const answerFormatDigest = routingDigest(explanationPriority ? EXPLANATION_ANSWER_FORMAT :
     useIndexedFormat ? PROTECTED_INDEXED_FORMAT : useCatalogueFormat ? PROTECTED_CATALOGUE_FORMAT : answerFormat);
   writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions, answerFormatDigest }, null, 2));
-  if (pairedLeave && 'meetsThreshold' in report && !report.meetsThreshold) process.exitCode = 2;
-  if (hasPrevious && 'meetsThreshold' in report && !report.meetsThreshold) process.exitCode = 2;
+  if ((pairedLeave || workSummaryHoldout) && 'meetsThreshold' in report && !report.meetsThreshold) process.exitCode = 2;
 }
 
 main().catch(error => {

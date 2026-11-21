@@ -11,8 +11,20 @@ import { guidanceContractDigest, isGuidance, protectedStrategyDigest, withProtec
 
 export const PROTECTED_HOLDOUT_LIMIT_BYTES = 1024 * 1024;
 export const PROTECTED_HOLDOUT_GENERATION_OPTIONS = Object.freeze({ temperature: 0, seed: 42, num_predict: 512 });
-const holdoutContractDigest = routingDigest([guidanceContractDigest, PROTECTED_CATALOGUE_FORMAT, PROTECTED_HOLDOUT_GENERATION_OPTIONS]);
+const repetitions = 2;
+const holdoutContractDigest = routingDigest([guidanceContractDigest, PROTECTED_CATALOGUE_FORMAT,
+  PROTECTED_HOLDOUT_GENERATION_OPTIONS, repetitions, 'stable-case-comparison']);
 const fail = (): never => { throw Error('Invalid frozen protected holdout.'); };
+type AnswerOutcome = Awaited<ReturnType<typeof evaluateProtectedAnswer>>['diagnostic']['outcome'];
+
+function recordCase(scores: {correct: number; rejected: number; gains: number; regressions: number},
+  reference: readonly AnswerOutcome[], candidate: readonly AnswerOutcome[]) {
+  const candidateStable = candidate.every(outcome => outcome === 'correct');
+  if (reference.every(outcome => outcome === 'correct')) scores.correct++;
+  if (reference.includes('rejected')) scores.rejected++;
+  if (candidateStable && !reference.includes('correct')) scores.gains++;
+  if (!candidateStable && reference.includes('correct')) scores.regressions++;
+}
 
 export function readFrozenHoldoutJson(bytes: Buffer, digest: unknown) {
   if (!bytes.length || bytes.length > PROTECTED_HOLDOUT_LIMIT_BYTES ||
@@ -47,7 +59,8 @@ function addPriorExposure(previous: { report: Buffer; cases: Buffer }, reportDig
   parentDigest: string, modelDigest: string, seen: Set<string>) {
   const report = readFrozenHoldoutJson(previous.report, reportDigest);
   if (report?.evidence !== 'offline_protected_holdout' || report.contractDigest !== holdoutContractDigest ||
-      report.releaseAuthorized !== false || report.meetsThreshold !== true || report.modelDigest !== modelDigest ||
+      report.releaseAuthorized !== false || report.meetsThreshold !== true || report.repetitions !== repetitions ||
+      report.modelDigest !== modelDigest ||
       report.parentDigest !== protectedStrategyDigest([]) || report.candidateDigest !== parentDigest ||
       report.regressions !== 0 || report.candidateRejected !== 0 ||
       !Number.isSafeInteger(report.minimumGain) || report.minimumGain < 1 ||
@@ -112,46 +125,48 @@ export async function scoreProtectedWorkSummaryHoldout(bytes: Buffer, expectedSh
   }
 
   const usage = { calls: 0, inputTokens: 0, outputTokens: 0 };
-  const parent = withProtectedGuidance(model, parentRules);
-  const candidate = withProtectedGuidance(model, candidateRules);
-  const scores = { parentCorrect: 0, candidateCorrect: 0, parentRejected: 0, candidateRejected: 0, gains: 0, regressions: 0 };
+  const arms = ([
+    {name: 'parent', run: withProtectedGuidance(model, parentRules)},
+    {name: 'candidate', run: withProtectedGuidance(model, candidateRules)},
+    {name: 'canonical', run: model},
+  ] as const).slice(0, continuation ? 3 : 2);
+  const parent = { correct: 0, rejected: 0, gains: 0, regressions: 0 };
   const canonical = { correct: 0, rejected: 0, gains: 0, regressions: 0 };
+  let candidateCorrect = 0;
+  let candidateRejected = 0;
+  const candidateCorrectByRepeat = Array<number>(repetitions).fill(0);
   function recordUsage(result: Awaited<ReturnType<typeof evaluateProtectedAnswer>>) {
     usage.calls++;
     usage.inputTokens += result.inputTokens;
     usage.outputTokens += result.outputTokens;
   }
-  for (const fixture of cases) {
-    const previous = await evaluateProtectedAnswer(fixture, 'baseline_v1', parent);
-    const next = await evaluateProtectedAnswer(fixture, 'baseline_v1', candidate);
-    recordUsage(previous);
-    recordUsage(next);
-    const previousCorrect = previous.diagnostic.outcome === 'correct';
-    const nextCorrect = next.diagnostic.outcome === 'correct';
-    if (previousCorrect) scores.parentCorrect++;
-    if (nextCorrect) scores.candidateCorrect++;
-    if (previous.diagnostic.outcome === 'rejected') scores.parentRejected++;
-    if (next.diagnostic.outcome === 'rejected') scores.candidateRejected++;
-    if (!previousCorrect && nextCorrect) scores.gains++;
-    if (previousCorrect && !nextCorrect) scores.regressions++;
-    if (continuation) {
-      const original = await evaluateProtectedAnswer(fixture, 'baseline_v1', model);
-      recordUsage(original);
-      const originalCorrect = original.diagnostic.outcome === 'correct';
-      if (originalCorrect) canonical.correct++;
-      if (original.diagnostic.outcome === 'rejected') canonical.rejected++;
-      if (!originalCorrect && nextCorrect) canonical.gains++;
-      if (originalCorrect && !nextCorrect) canonical.regressions++;
+  for (const [index, fixture] of cases.entries()) {
+    const outcomes: Record<(typeof arms)[number]['name'], AnswerOutcome[]> = { parent: [], candidate: [], canonical: [] };
+    for (let repeat = 0; repeat < repetitions; repeat++) {
+      // Rotate the first arm across cases and again on the repeat.
+      const start = (index + repeat) % arms.length;
+      for (const arm of [...arms.slice(start), ...arms.slice(0, start)]) {
+        const result = await evaluateProtectedAnswer(fixture, 'baseline_v1', arm.run);
+        recordUsage(result);
+        outcomes[arm.name].push(result.diagnostic.outcome);
+      }
+      if (outcomes.candidate[repeat] === 'correct') candidateCorrectByRepeat[repeat]++;
     }
+    if (outcomes.candidate.every(outcome => outcome === 'correct')) candidateCorrect++;
+    if (outcomes.candidate.includes('rejected')) candidateRejected++;
+    recordCase(parent, outcomes.parent, outcomes.candidate);
+    if (continuation) recordCase(canonical, outcomes.canonical, outcomes.candidate);
   }
-  const meetsThreshold = scores.gains >= spec.minimumGain && scores.regressions === 0 && scores.candidateRejected === 0 &&
+  const meetsThreshold = parent.gains >= spec.minimumGain && parent.regressions === 0 && candidateRejected === 0 &&
     (!continuation || (canonical.gains >= spec.minimumGain && canonical.regressions === 0));
   return {
     evidence: 'offline_protected_holdout', releaseAuthorized: false, holdoutDigest: expectedSha256, modelDigest,
     contractDigest: holdoutContractDigest,
     developmentReportDigest: spec.developmentReportDigest,
     parentDigest: spec.parentDigest, candidateDigest: spec.candidateDigest, minimumGain: spec.minimumGain,
-    cases: cases.length, ...scores, meetsThreshold, usage,
+    cases: cases.length, repetitions, parentCorrect: parent.correct, parentRejected: parent.rejected,
+    candidateCorrect, candidateRejected, candidateCorrectByRepeat, gains: parent.gains, regressions: parent.regressions,
+    meetsThreshold, usage,
     ...(continuation ? { previousReportDigest: spec.previousReportDigest, canonical } : {}),
   };
 }

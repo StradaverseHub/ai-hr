@@ -313,12 +313,40 @@ describe('evaluator-held protected answer cases', () => {
     };
     const bytes = file();
     const report = await scoreProtectedWorkSummaryHoldout(bytes, hash(bytes), developmentReport, modelDigest, model);
-    expect(calls).toBe(4);
+    expect(calls).toBe(8);
     expect(report).toMatchObject({
-      cases: 2, gains: 2, regressions: 0, candidateRejected: 0, meetsThreshold: true, releaseAuthorized: false,
-      usage: { calls: 4, inputTokens: 40, outputTokens: 20 },
+      cases: 2, repetitions: 2, gains: 2, regressions: 0, candidateCorrectByRepeat: [2, 2], candidateRejected: 0,
+      meetsThreshold: true, releaseAuthorized: false, usage: { calls: 8, inputTokens: 80, outputTokens: 40 },
     });
     expect(JSON.stringify(report)).not.toMatch(/fictional-oracle|Fictional value sentinel|progressTotal/);
+  });
+
+  it('counts gains across both repeats and catches a lost answer even when both arms miss in the same repeat', async () => {
+    const bytes = file();
+    const seen = new Map<string, number>();
+    const firstCaseCallOrder: string[] = [];
+    const report = await scoreProtectedWorkSummaryHoldout(bytes, hash(bytes), developmentReport, modelDigest,
+      async ({ system, prompt }) => {
+        const fixture = fictional.find(row => row.intent === JSON.parse(prompt).intent)!;
+        const isFirstCase = fixture === fictional[0];
+        const arm = system.includes(guidanceOptions.include_meaning) ? 'candidate' : 'parent';
+        if (isFirstCase) firstCaseCallOrder.push(arm);
+        const identity = `${fixture.id}:${arm}`;
+        const repeat = seen.get(identity) ?? 0;
+        seen.set(identity, repeat + 1);
+        const plan = adjudicateAssistantAnswerPlan(fixture.expected, fixture.reads);
+        if (plan.mode !== 'answer') throw Error('Expected an answer fixture.');
+        const correct = isFirstCase ? repeat === 0 : arm === 'candidate';
+        return {
+          text: JSON.stringify(correct ? plan : {...plan, blocks: plan.blocks.slice(0, 1)}),
+          inputTokens: 10, outputTokens: 5,
+        };
+      });
+    expect(firstCaseCallOrder).toEqual(['parent', 'candidate', 'candidate', 'parent']);
+    expect(report).toMatchObject({
+      repetitions: 2, candidateCorrect: 1, candidateCorrectByRepeat: [2, 1], candidateRejected: 0,
+      parentCorrect: 0, gains: 1, regressions: 1, meetsThreshold: false,
+    });
   });
 
   it('refuses a changed case file and exposed case catalogues before any model call', async () => {
@@ -416,7 +444,7 @@ describe('evaluator-held protected answer cases', () => {
       expect(scored).toMatchObject({
         gains: 2, regressions: 0, meetsThreshold: !originalCorrect, previousReportDigest: hash(previous.report),
         canonical: { correct: originalCorrect ? 2 : 0, gains: originalCorrect ? 0 : 2, regressions: 0 },
-        usage: { calls: 6, inputTokens: 60, outputTokens: 30 },
+        repetitions: 2, usage: { calls: 12, inputTokens: 120, outputTokens: 60 },
       });
     }
   });
