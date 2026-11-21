@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { runProtectedLeaveComparison } from '../scripts/experiments/protected-leave-comparison';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
@@ -77,5 +78,31 @@ describe('leave experiment output schema', () => {
       { version: 1, mode: 'refuse', code: 'unsupported_request', prose: 'a disclosure' },
       { version: 1, mode: 'answer', blocks: [] },
     ]) expect(leaveAnswerFormat.safeParse(invalid).success).toBe(false);
+  });
+});
+
+describe('protected leave comparison', () => {
+  it('exercises the owned provider projection without words, dates, titles or numeric leave values', async () => {
+    const report = await runProtectedLeaveComparison(async ({ prompt, system }) => {
+      expect(prompt).not.toMatch(/Fictional local|11\.25|7\.5|how much|my pending/i);
+      expect(system).toContain('There are no HR values or human words here');
+      const payload = JSON.parse(prompt);
+      expect(payload.reads[0].cards).toHaveLength(1);
+      const expectedFact: Record<string, number> = { leave_available: 1, leave_taken: 2, leave_pending: 3 };
+      const fact = expectedFact[payload.intent];
+      expect(payload.reads[0].cards[0].facts[fact]).toMatchObject({ fact, available: true });
+      return { text: JSON.stringify({ version: 1, mode: 'answer', blocks: [{ kind: 'fact', read: 0, card: 0, fact }] }), inputTokens: 1, outputTokens: 1 };
+    });
+    expect(report.budget.calls).toBe(18);
+    expect(report.strategies.map(item => item.correct)).toEqual([9, 9]);
+    expect(report.localCases.map(item => item.intent)).toEqual([null, null, null]);
+  });
+
+  it('rejects references outside the prepared source rather than counting syntactically valid plans as correct', async () => {
+    const report = await runProtectedLeaveComparison(async () => ({
+      text: '{"version":1,"mode":"answer","blocks":[{"kind":"fact","read":0,"card":1,"fact":1}]}',
+      inputTokens: 1, outputTokens: 1,
+    }));
+    expect(report.strategies.map(item => [item.correct, item.rejected])).toEqual([[0, 9], [0, 9]]);
   });
 });
