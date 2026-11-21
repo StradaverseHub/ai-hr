@@ -46,6 +46,7 @@ const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
 const combinedGroupArtifacts=new Map([
  ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],
  ['71e0dceb1a393817f3040518e82dc845a27700b0',{runId:44927404845,artifactId:14716484117}],
+ ['0ba883e0aa294bb0f15dcfe2433deedb52d11996',{runId:44935634462,artifactId:14719437695}],
 ]);
 const combinedGroupArtifact=combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
 const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
