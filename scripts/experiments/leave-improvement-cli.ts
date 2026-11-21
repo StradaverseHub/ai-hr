@@ -1,6 +1,7 @@
 import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { runProtectedLeaveComparison } from './protected-leave-comparison';
 import { runProtectedWorkSummaryComparison } from './protected-work-summary-comparison';
+import { protectedGuidanceProposalSchema, runProtectedWorkSummaryImprovement } from './protected-work-summary-improvement';
 import { leaveAnswerJsonSchema } from './leave-answer-format';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from './protected-catalogue-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../teras/leave-improvement';
@@ -11,7 +12,11 @@ const generationOptions = { temperature: 0, seed: 42, num_predict: 512 };
 
 async function main() {
   const [model, outfile, ...flags] = process.argv.slice(2);
-  const runners = { '--protected': runProtectedLeaveComparison, '--protected-work-summary': runProtectedWorkSummaryComparison };
+  const runners = {
+    '--protected': runProtectedLeaveComparison,
+    '--protected-work-summary': runProtectedWorkSummaryComparison,
+    '--improve-protected-work-summary': runProtectedWorkSummaryImprovement,
+  };
   const isBenchmark = (flag: string): flag is keyof typeof runners => Object.hasOwn(runners, flag);
   const benchmarks = flags.filter(isBenchmark);
   const [benchmark] = benchmarks;
@@ -21,7 +26,7 @@ async function main() {
   if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile ||
       flags.some(flag => flag !== '--schema' && flag !== '--catalogue-schema' && !isBenchmark(flag)) ||
       new Set(flags).size !== flags.length || benchmarks.length > 1 || (useCatalogueFormat && (!benchmark || useStaticSchema)))
-    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema] [--protected | --protected-work-summary]');
+    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema] [--protected | --protected-work-summary | --improve-protected-work-summary]');
   const answerFormat = useStaticSchema ? leaveAnswerJsonSchema : 'json';
   localOutputPath(outfile);
   const deadline = AbortSignal.timeout(30 * 60_000);
@@ -41,7 +46,8 @@ async function main() {
   const modelDigest = await models();
   const generate: PilotModel = async ({ mode, system, prompt }) => {
     if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
-    const format = mode !== 'answer' ? 'json' : useCatalogueFormat ? protectedCatalogueAnswerJsonSchema(JSON.parse(prompt)) : answerFormat;
+    const revisionFormat = benchmark === '--improve-protected-work-summary' ? protectedGuidanceProposalSchema : 'json';
+    const format = mode !== 'answer' ? revisionFormat : useCatalogueFormat ? protectedCatalogueAnswerJsonSchema(JSON.parse(prompt)) : answerFormat;
     const result = await request('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -46,22 +46,35 @@ const specialistFixtures = [
   { id: 'notifications:unread', question: 'My notifications', intent: 'notifications', fields: [[0, 'notificationCreated']], explanation: 'specialist_finding:notification_unread_not_delivery_proof' },
 ] as const;
 
+const validationFixtures = [
+  { id: 'attendance:present', question: 'My attendance', intent: 'attendance', fields: [[0, 'workedMinutes']], explanation: 'specialist_finding:attendance_status_recorded' },
+  { id: 'lifecycle:complete', question: 'My onboarding', intent: 'lifecycle', fields: [[0, 'progressDone'], [0, 'progressTotal']], explanation: 'specialist_finding:lifecycle_progress_complete' },
+  { id: 'toil:expired-converted', question: 'My replacement credits', intent: 'toil', fields: [[0, 'expiredCredit']], explanation: 'specialist_finding:credit_expired_not_available' },
+  { id: 'notifications:read', question: 'My notifications', intent: 'notifications', fields: [[0, 'notificationCreated']], explanation: 'specialist_finding:notification_read_recorded' },
+] as const;
+
+function canonicalFixture(fixture: typeof specialistFixtures[number] | typeof validationFixtures[number]) {
+  const sourceCase = SPECIALIST_HOLDOUTS.find(row => row.id === fixture.id);
+  if (!sourceCase || sourceCase.module !== fixture.intent) throw Error('Missing canonical work summary fixture.');
+  const capability = MODULE_AGENT_CAPABILITIES.find(([module]) => module === fixture.intent)?.[1];
+  if (!capability) throw Error('Missing canonical work summary capability.');
+  const source = {
+    module: fixture.intent, capability, scope: 'current-caller', data: sourceCase.data,
+    humanActions: moduleHumanActionHandoffs(fixture.intent),
+  };
+  const configuration = { kind: 'canonical_specialist_v1', module: fixture.intent, playbook: 'canonical_domain_v1' } as const;
+  const assessment = executeCanonicalSpecialist(configuration, source);
+  const specialistWork = compactSpecialistWork(assessment, { mode: 'baseline', version: 0, configuration });
+  return answerFixture({ ...fixture, tool: 'my_module_work', outcome: { ok: true, ...source, specialistWork } });
+}
+
+export function protectedWorkSummarySplits() {
+  return { development: specialistFixtures.map(canonicalFixture), validation: validationFixtures.map(canonicalFixture) };
+}
+
 /** Development benchmarks for the live post-read contract, using fictional source data. */
 export async function runProtectedWorkSummaryComparison(model: PilotModel) {
-  const cases = specialistFixtures.map(fixture => {
-    const sourceCase = SPECIALIST_HOLDOUTS.find(row => row.id === fixture.id);
-    if (!sourceCase || sourceCase.module !== fixture.intent) throw Error('Missing canonical work summary fixture.');
-    const capability = MODULE_AGENT_CAPABILITIES.find(([module]) => module === fixture.intent)?.[1];
-    if (!capability) throw Error('Missing canonical work summary capability.');
-    const source = {
-      module: fixture.intent, capability, scope: 'current-caller', data: sourceCase.data,
-      humanActions: moduleHumanActionHandoffs(fixture.intent),
-    };
-    const configuration = { kind: 'canonical_specialist_v1', module: fixture.intent, playbook: 'canonical_domain_v1' } as const;
-    const assessment = executeCanonicalSpecialist(configuration, source);
-    const specialistWork = compactSpecialistWork(assessment, { mode: 'baseline', version: 0, configuration });
-    return answerFixture({ ...fixture, tool: 'my_module_work', outcome: { ok: true, ...source, specialistWork } });
-  });
+  const cases = specialistFixtures.map(canonicalFixture);
   cases.push(answerFixture({
     id: 'claims:two-statuses', question: 'My claims', intent: 'claim_statuses', tool: 'my_claim_statuses',
     outcome: { ok: true, claims: [
