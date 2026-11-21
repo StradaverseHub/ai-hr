@@ -174,7 +174,8 @@ class QueueCutoverTest(TestCase):
         batch = self.request("prepare", tickets=[ticket], candidate=self.candidate.source,
                              baseline=self.baseline.source, baselineBuild="old", strategy="index-expansion")
         self.assertEqual(batch["plan"]["migration"], tag)
-        self.lease = self.request("claim", batch=batch["batch"])
+        with patch.object(self.queue, "probe", return_value={**self.cutover.queue_state(), "backend": "canonical"}):
+            self.lease = self.request("claim", batch=batch["batch"])
         self.installing()
         path = self.cutover.prepared_path(self.candidate.artifact)
         receipt = read_json(path)
