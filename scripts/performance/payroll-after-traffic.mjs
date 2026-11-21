@@ -2,9 +2,10 @@
 export async function readPayrollAfterTraffic(db,attemptedPayroll){
   if(!attemptedPayroll.length)return [];
   const attempts=attemptedPayroll.map(({tenant,tenantId,batchId,userId})=>({tenant,tenant_id:tenantId,batch_id:batchId,user_id:userId}));
+  // Bind the records as JSON so a prepared statement cannot encode pre-serialized text as a JSON string.
   return db`select target.tenant,batch.status as "batchState",jobs.count as "jobCount",
    case when jobs.count=1 then jobs.state end as "jobState",slips.count as "payslipCount"
-   from jsonb_to_recordset(${JSON.stringify(attempts)}::jsonb) as target(tenant int,tenant_id uuid,batch_id uuid,user_id uuid)
+   from jsonb_to_recordset(${db.json(attempts)}::jsonb) as target(tenant int,tenant_id uuid,batch_id uuid,user_id uuid)
    left join public.payroll_batch batch on batch.id=target.batch_id and batch.tenant_id=target.tenant_id
    cross join lateral (select count(*)::int as count,min(job.state) as state from public.bulk_job job
     where job.tenant_id=target.tenant_id and job.created_by=target.user_id and job.kind='payroll_process'

@@ -173,6 +173,11 @@ describe('payroll processing background job',()=>{
   const done=await runJob(jobId);
   expect(done).toMatchObject({state:'completed',error:null});
   expect(await readPayrollAfterTraffic(owner.client,[attempted])).toEqual(expected('processed',1,'completed',5));
+  const unmatchedTenant={...attempted,tenant:1,tenantId:f.batchId};
+  expect(await readPayrollAfterTraffic(owner.client,[unmatchedTenant,attempted])).toEqual([
+   ...expected('processed',1,'completed',5),
+   {tenant:1,batchState:null,jobCount:0,jobState:null,payslipCount:0},
+  ]);
   // begin + three chunks of two employees.
   expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(4);
   const viaJob=await f.snapshot();
