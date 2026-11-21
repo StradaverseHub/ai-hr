@@ -99,16 +99,20 @@ it('uses the same bounded visibility and configuration company owner for 1,000 e
   values(${b.tenantId}::uuid,${all.companies[0].id}::uuid,${intake.userId}::uuid,'gbs',${start}::date,${admin.userId}::uuid)`);
  expect((await legacy(intake)).intake).toBe(true);
 
- const actors=await Promise.all(Object.entries({admin,viewer,outsider,settings,intake}).map(async ([name,ctx])=>
+ const builder=await ordinary();
+ await grant(builder,['workflows']);
+ expect((await contractNavigationAccess(builder)).automation).toBe(true);
+ const actors=await Promise.all(Object.entries({admin,viewer,outsider,settings,intake,builder}).map(async ([name,ctx])=>
   ({name,ctx,expected:await contractNavigationAccess(ctx)})));
  const replacement=readFileSync(new URL('./fixtures/contract-navigation-intake-scope.sql',import.meta.url),'utf8');
  const rollback=new Error('Roll back the Contract permission comparison');
  await expect(owner.client.begin(async tx=>{
   await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
   await tx.unsafe("set local track_functions='all'");
-  const readIdentity=async()=>(await tx`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
+  const readIdentity=()=>tx`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
    pg_get_userbyid(p.proowner) as owner from pg_proc p
-   where p.oid='app.contract_shared_navigation_access()'::regprocedure`)[0];
+   where p.oid in ('app.contract_shared_navigation_access()'::regprocedure,'app.automation_can_configure(text)'::regprocedure)
+   order by p.oid`;
   type FunctionTiming={name:string;calls:number;selfMs:number;totalMs:number};
   const readCounters=()=>tx<(FunctionTiming&{id:string})[]>`
    select f.funcid::text as id,p.proname as name,f.calls::int,f.self_time as "selfMs",f.total_time as "totalMs"
@@ -142,7 +146,8 @@ it('uses the same bounded visibility and configuration company owner for 1,000 e
    return results;
   };
   const identity=await readIdentity();
-  expect(identity).toMatchObject({owner:'ai_hr_owner',prosecdef:true,provolatile:'s'});
+  expect(identity).toHaveLength(2);
+  for(const boundary of identity)expect(boundary).toMatchObject({owner:'ai_hr_owner',prosecdef:true,provolatile:'s'});
   const canonical=await measureActors();
   await tx.unsafe('set local role ai_hr_owner');
   await tx.unsafe(replacement);
