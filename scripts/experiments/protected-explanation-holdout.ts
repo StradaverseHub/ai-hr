@@ -3,6 +3,7 @@ import { AGENT_MODULE_CODES } from '../../lib/ai/module-agents';
 import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { SPECIALIST_HOLDOUTS } from '../../lib/ai/module-specialist-holdouts';
 import { SPECIALIST_FINDINGS } from '../../lib/ai/module-specialists';
+import en from '../../messages/en.json';
 import type { PilotModel } from '../teras/leave-improvement';
 import {
   choose, EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationCases, observeModel, type ExplanationCase,
@@ -43,13 +44,21 @@ const developmentReportSchema = z.object({
 
 const normalize = (text: string) => text.normalize('NFKC').toLowerCase().match(/[\p{L}\p{M}]+/gu) ?? [];
 const catalogue = ({ module, choices }: ExplanationCase) => routingDigest([module, [...choices].sort()]);
+const englishFindings = en.assistant.workspace.specialistFindings;
+const commonWords = new Set('a an and are as at been but by can does for from has have i in is it its not of on or that the this to was were with you your'.split(' '));
+const terms = (text: string) => new Set(normalize(text).filter(word => !commonWords.has(word)));
 
 function deterministicChoice({ choices, focus }: ExplanationCase) {
-  const words = new Set(normalize(focus));
-  const ignored = new Set(['not', 'recorded', 'status', 'own', 'is', 'in']);
-  const ranked = choices.map(choice => ({
+  const words = terms(focus);
+  const documents = choices.map(choice => {
+    const finding = choice.slice('specialist_finding:'.length) as keyof typeof englishFindings;
+    return { choice, words: terms(finding + ' ' + englishFindings[finding]) };
+  });
+  const frequencies = new Map<string, number>();
+  for (const document of documents) for (const word of document.words) frequencies.set(word, (frequencies.get(word) ?? 0) + 1);
+  const ranked = documents.map(({ choice, words: document }) => ({
     choice,
-    overlap: normalize(choice.slice('specialist_finding:'.length)).filter(word => words.has(word) && !ignored.has(word)).length,
+    overlap: [...words].reduce((sum, word) => document.has(word) ? sum + documents.length + 1 - frequencies.get(word)! : sum, 0),
   })).sort((a, b) => b.overlap - a.overlap);
   return ranked[0].overlap > ranked[1].overlap ? ranked[0].choice : null;
 }
@@ -120,7 +129,7 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
   return {
     evidence: 'offline_explanation_revision_holdout', releaseAuthorized: false,
     holdoutDigest: expectedSha, developmentReportDigest: spec.developmentReportDigest,
-    comparator: 'canonical_code_word_overlap_v1', cases: cases.length, minimumGain: spec.minimumGain,
+    comparator: 'canonical_english_explanation_retrieval_v2', cases: cases.length, minimumGain: spec.minimumGain,
     original, deterministic, candidate, confirmedGain,
     beatsDeterministic: candidate.rejected === 0 && deterministic.gains >= spec.minimumGain && deterministic.regressions === 0,
     budget,
