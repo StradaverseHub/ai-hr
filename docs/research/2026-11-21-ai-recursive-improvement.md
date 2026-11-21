@@ -66,3 +66,16 @@ The next product-path candidate should bind each recognized balance intent to it
 The registered conversation release evaluator sends a fictional question, offers model-selected tools and returns synthetic canonical results. Its scorer checks tool arguments and the final answer plan. The serving Assistant resolves recognized intent, selects caller-authorized sources and handles clarification locally. For its model-backed answer path it sends the typed intent and a closed catalogue of available ordinal facts and explanations, with an empty tool list. The same named strategy appears in both paths, but the provider makes different decisions. A pass in the registered evaluation establishes behavior in the synthetic tool workflow. The protected comparison above exercises the serving selection contract on development fixtures. [Release evaluator](../../core/assistant-conversation-harness.ts) · [Serving path](../../core/assistant.ts) · [Protected catalogue and adjudicator](../../lib/ai/provider-assistant-policy.ts)
 
 Use two sources of evidence for the next trial. Evaluate local routing, source permissions and clarification against independent expected results at the Assistant entry point. For the model-backed portion, give the provider only the catalogue built by the serving projection. Score both arms against independently specified semantic facts or explanation codes, including unavailable siblings and multiple eligible cards. Bind any promotion receipt to this evaluator and its exact contract as well as the candidate, baseline and provider. The existing synthetic tool suite remains useful as regression evidence for the workflow it exercises.
+
+### Protected work summaries
+
+`--protected-work-summary` evaluates six fictional cases across attendance, onboarding, replacement credits, notifications, claims and leave requests. It recreates the protected catalogue from source-shaped outputs, validates replies with both serving adjudicators, and compares the selected references with fixture expectations. Four cases include source-owned explanations. Two cover status summaries whose expected facts span more than one record. These development cases include published specialist fixtures and measure exact agreement with the specified summary. They leave questions about broader usefulness, source authorization and release readiness to separate tests.
+
+The same pinned Qwen 2.5 1.5B model ran both strategies with both formats at source `3ef4524c591b4a2e65ea13ab396dc18d7a36a200`, fixture digest `264e5c1b36c77517c334f15d0a186e4af309ab4af6b3d6fc4af35efcba1b98ab`. Each format used 12 calls. Both strategies had the same result.
+
+| Output format | Exact matches per strategy | Rejected per strategy | Valid but different selections per strategy |
+| --- | ---: | ---: | ---: |
+| Generic JSON | 0/6 | 2/6 | 4/6 |
+| Answer schema | 0/6 | 1/6 | 5/6 |
+
+The schema allowed a valid claim selection, but it did not match the required two-record answer. Both formats still produced a rejected plan for the leave request summary. Neither strategy earned promotion. A provider capable of selecting the required facts and explanations on development cases would give the next optimization experiment a usable baseline.
