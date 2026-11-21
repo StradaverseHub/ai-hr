@@ -185,7 +185,10 @@ jobs:
           esac
           case "$MIXED_DATABASE_TOPOLOGY" in
             direct) ;;
-            transaction-pool) [[ "$REUSE_BUILD" == true && "$SHELL_PERMISSION_VARIANT" == none ]] || exit 2 ;;
+            transaction-pool)
+              [[ "$SHELL_PERMISSION_VARIANT" == none && "$BROWSER_MIXED_LOAD" == true ]] || exit 2
+              [[ "$REUSE_BUILD" == true || "$EXPECTED_SHA" == ebd93ebeb25fcae0e6033b793f88b3ab617d6760 ]] || exit 2
+              ;;
             *) exit 2 ;;
           esac
           if [[ "$MIXED_GROUP_SCALE" == true && ( "$REUSE_BUILD" != true || "$SHELL_PERMISSION_VARIANT" != none ) ]]; then
