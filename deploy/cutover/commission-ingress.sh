@@ -121,8 +121,15 @@ mv -fT -- "$temp" "$site"
 /usr/sbin/nginx -t
 systemctl reload nginx
 for base in http://127.0.0.1:3301 "https://$origin"; do
-  curl -fsS --max-time 8 "$base/health" | jq -e '. == {"status":"ok"}' >/dev/null
-  [[ "$(curl -fsS --max-time 8 "$base$manifest" | sha256sum | cut -d' ' -f1)" == "$digest" ]]
+  deadline=$((SECONDS + 20))
+  until curl -fsS --max-time 4 "$base/health" 2>/dev/null | jq -e '. == {"status":"ok"}' >/dev/null &&
+      [[ "$(curl -fsS --max-time 4 "$base$manifest" 2>/dev/null | sha256sum | cut -d' ' -f1)" == "$digest" ]]; do
+    if (( SECONDS >= deadline )); then
+      printf 'Timed out verifying the canonical build at %s. Restoring original ingress.\n' "$base" >&2
+      exit 1
+    fi
+    sleep 1
+  done
 done
 trap - EXIT
 printf 'Canonical staging build %s verified through both ingress routes. Original site: %s\n' "$build" "$backup"
