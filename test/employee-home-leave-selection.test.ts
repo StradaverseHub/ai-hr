@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
+import {revalidatePath} from 'next/cache';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as s from '../db/schema';
@@ -33,6 +34,17 @@ describe('Home selected employment continues through the existing leave applicat
   const selected=await owner.db.select().from(s.leaveRequest).where(eq(s.leaveRequest.employmentId,second.employmentId));
   expect(selected).toHaveLength(1);expect(selected[0]).toMatchObject({startDate:add(1),endDate:add(2),status:'pending'});
   expect(await owner.db.select().from(s.leaveRequest).where(eq(s.leaveRequest.employmentId,first.employmentId))).toEqual([]);
+ });
+ it('returns a confirmed dialog receipt without rendering Leave and History inside the action stream',async()=>{
+  const {second,form}=await fixture();
+  vi.mocked(revalidatePath).mockClear();
+  const result=await requestLeaveAction(form,true);
+  expect(result).toMatchObject({redirectTo:expect.stringContaining('employmentId='+second.employmentId)});
+  expect(result).toMatchObject({redirectTo:expect.stringContaining('toast=submittedToast')});
+  expect(revalidatePath).not.toHaveBeenCalled();
+  const rows=await owner.db.select().from(s.leaveRequest).where(eq(s.leaveRequest.employmentId,second.employmentId));
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({startDate:add(1),endDate:add(2),status:'pending'});
  });
  it('keeps the second own employment subject to the same hidden-figure settings',async()=>{
   const {first,second,type}=await fixture();

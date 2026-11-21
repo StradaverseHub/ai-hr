@@ -277,8 +277,6 @@ export async function requestLeaveAction(formData: FormData, inlineErrors = fals
       )}`,selectedOwnReturnId,
     ));
   }
-  revalidatePath('/leave');
-  revalidatePath('/leave/history');
   // Success confirmation (feedback 45c781e2) — until now a successful submission was SILENT: the dialog
   // closed and the page refreshed, which is indistinguishable from having dismissed it. It rides the
   // redirect rather than being raised in the client, so it fires only on CONFIRMED success — this line is
@@ -294,7 +292,11 @@ export async function requestLeaveAction(formData: FormData, inlineErrors = fals
   // raw query string, so never pass an i18n key), leaving exactly one emitter and the right words in it.
   const tToast = await getTranslations('leave');
   const done = encodeURIComponent(tToast('submittedToast'));
+  // The dialog navigates after it receives the confirmed write. Revalidating here
+  // would make the action response wait for a second render of the Leave page.
   if (inlineErrors) return {redirectTo:withLeaveEmploymentContext(`/leave${warnQuery}${warnQuery ? '&' : '?'}toast=${done}`,selectedOwnReturnId)};
+  revalidatePath('/leave');
+  revalidatePath('/leave/history');
   redirect(withLeaveEmploymentContext(`/leave${warnQuery}${warnQuery ? '&' : '?'}toast=${done}`,selectedOwnReturnId));
 }
 
