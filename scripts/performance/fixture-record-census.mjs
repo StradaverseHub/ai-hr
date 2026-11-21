@@ -494,7 +494,9 @@ async function attendanceRecordRoutes(db, fixture) {
   return [
     { actor: employee, template: '/attendance/my-records/[date]',
       path: '/attendance/my-records/' + day.date + '?employmentId=' + employee.employmentId,
-      content: day.check_in, exactContent: true, witness: 'h2:text-is("Clock data")' },
+      witness: '[data-ui-section-header]:text-is("Clock data") + div'
+        + ' > div:has(> :text-is("Check-in"))'
+        + ` > :text-is("${day.check_in}")` },
     ...[group, company].map(actor => ({
       actor, template: '/attendance/individual/[date]',
       path: '/attendance/individual/' + day.date + '?emp=' + employee.employmentId,
