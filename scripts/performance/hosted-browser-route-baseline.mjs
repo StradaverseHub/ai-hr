@@ -27,6 +27,7 @@ import {exerciseMovement} from './movement-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 import {MAIN_POOLER,poolerTarget} from '../../test/helpers/pgbouncer-target.ts';
+import {seedBrowserGroupShape} from './browser-group-shape.mjs';
 
 const origin='https://localhost:3443';
 const appPort=3174;
@@ -41,6 +42,8 @@ assert(shellPermissionVariant==='none'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUIL
 const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 assert(['direct','transaction-pool'].includes(databaseTopology));
 assert(databaseTopology==='direct'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly&&shellPermissionVariant==='none'));
+const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
+assert(!groupScale||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly&&shellPermissionVariant==='none'));
 assert(!env.DATABASE_POOLED_URL?.trim(),'The benchmark owns its web database topology');
 const webDatabaseConnections=8;
 const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
@@ -1884,6 +1887,16 @@ try{
   }
  }
  if(driverCommand)await verifyMixedFixtureBinding(driverCommand);
+ if(groupScale){
+  const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
+  const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1});
+  try{
+   const {counts}=await seedBrowserGroupShape(owner,fixture);
+   report.fixture.groupShape=counts;
+   report.fixture.companies=counts.companies+counts.otherTenantCompanies;
+   save();
+  }finally{await owner.end({timeout:5});}
+ }
  report.fixtureVerified=true;
  save();
  if(!fixtureOnly){

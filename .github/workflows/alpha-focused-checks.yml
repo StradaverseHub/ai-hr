@@ -90,6 +90,10 @@ on:
         type: choice
         default: direct
         options: [direct, transaction-pool]
+      mixed_group_scale:
+        description: Add the existing 70-company group fixture without changing the 500 traffic actors
+        default: false
+        type: boolean
       model_eval:
         description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
         required: false
@@ -109,7 +113,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-shell-permissions-${{ inputs.candidate_ref }}-${{ inputs.mixed_shell_permission_variant }}-${{ inputs.mixed_database_topology }}
+  group: alpha-focused-shell-permissions-${{ inputs.candidate_ref }}-${{ inputs.mixed_shell_permission_variant }}-${{ inputs.mixed_database_topology }}-${{ inputs.mixed_group_scale }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -178,6 +182,9 @@ jobs:
             transaction-pool) [[ "$REUSE_BUILD" == true && "$SHELL_PERMISSION_VARIANT" == none ]] || exit 2 ;;
             *) exit 2 ;;
           esac
+          if [[ "$MIXED_GROUP_SCALE" == true && ( "$REUSE_BUILD" != true || "$SHELL_PERMISSION_VARIANT" != none ) ]]; then
+            exit 2
+          fi
           node .github/ci/focused-checks.mjs selection
         env:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
@@ -191,6 +198,7 @@ jobs:
           REUSE_BUILD: ${{ inputs.reuse_first_use_build }}
           SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
           MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
+          MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
@@ -329,6 +337,7 @@ jobs:
           AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_first_use_build }}
           AIHR_BROWSER_SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
           AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
+          AIHR_BROWSER_MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
