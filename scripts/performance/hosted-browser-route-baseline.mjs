@@ -34,7 +34,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','command-delegation'].includes(surfaceProbe),'Unknown browser surface');
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
 ]);
@@ -1028,6 +1028,42 @@ async function measureSurfaceProbe(fixture,surface){
   }finally{await context.close();}
  }
  if(!rewardSurface)assert(visits.every(row=>row.status==='observed'),'A focused surface did not become usable on each visit');
+}
+
+async function measureCommandDelegation(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
+ const actor=fixture.users[0];
+ assert.equal(actor.role,'groupHR');
+ const rows=report.commandDelegation=[];
+ for(const visit of [1,2,3]){
+  const context=await signedInContext(actor);
+  try{
+   const page=await context.newPage();
+   await page.addInitScript(observeStartup);
+   const row={visit,role:actor.role,status:'incomplete',step:'document'};
+   rows.push(row);
+   await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:30000});
+   assert.equal(page.url(),origin+'/');
+   await readyContent(page,actor,'/',()=>15000,undefined,fixture);
+   await page.locator('button[data-tour="account"]:enabled').waitFor({state:'visible',timeout:15000});
+   row.step='command-menu';
+   await page.keyboard.press('Control+k');
+   const dialog=page.getByRole('dialog',{name:'Search',exact:true});
+   const option=dialog.getByRole('button',{name:/^Approval Delegation/});
+   await option.waitFor({state:'visible',timeout:15000});
+   row.beforeSelection=(await documentTiming(page))?.appScripts;
+   row.step='delegation-editor';
+   const selected=performance.now();
+   await option.click({timeout:15000});
+   await dialog.getByText('Delegations',{exact:true}).first().waitFor({state:'visible',timeout:15000});
+   await dialog.getByRole('link',{name:'Open full page',exact:true}).waitFor({state:'visible',timeout:15000});
+   row.editorReadyMs=Math.round(performance.now()-selected);
+   row.afterSelection=(await documentTiming(page))?.appScripts;
+   assert(row.beforeSelection?.decodedBodyBytes>0&&row.afterSelection?.decodedBodyBytes>=row.beforeSelection.decodedBodyBytes);
+   row.status='observed';
+  }finally{save();await context.close();}
+ }
 }
 
 async function measureLeaveBalanceWindows(fixture){
@@ -2432,6 +2468,7 @@ try{
     'Some scripted actions did not reach their verified result');
   }
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
+  else if(surfaceProbe==='command-delegation')await measureCommandDelegation(fixture);
   else if(surfaceProbe==='leave-balances')await measureLeaveBalanceWindows(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
