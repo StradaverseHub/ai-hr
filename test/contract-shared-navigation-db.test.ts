@@ -1,5 +1,6 @@
 /** Normal migrations must admit 6012 before running this source-only proposal suite. No SQL installation bypass. */
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
@@ -11,6 +12,7 @@ import {contractNavigationAccess,contractSharedTracker,contractSharedConfigurati
 import {contractSharedWorkPage} from '../core/contract-shared-tasks';
 import {contractPostingFixture,finishContractPostingJob,releaseContractPosting} from './helpers/contract-posting-fixture';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {PROJECT_INSTALLED_OWNERSHIP} from './helpers/installed-owner-projection';
 let b:Base,admin:SessionContext;
 const year=Number(todayInKualaLumpur().slice(0,4)),start=`${year}-01-01`,end=`${year+1}-12-31`;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -88,35 +90,71 @@ it('uses the same bounded visibility and configuration company owner for 1,000 e
  expect(choices.companies).toEqual([all.companies[0]]);expect(await contractNavigationAccess(settings)).toEqual({page:true,configure:true,intake:false,automation:false,postings:false});
  expect(await owner.db.execute(sql`select id from contract_case where tenant_id=${b.tenantId}::uuid`)).toEqual([]);
 
- for(const [name,actor] of Object.entries({admin,viewer,outsider,settings})){
-  const expected=await contractNavigationAccess(actor);
-  const measured=await owner.client.begin(async tx=>{
-   await tx.unsafe("set local track_functions='all'");
-   await tx.unsafe('set local role ai_hr_app');
-   const roles=actor.roles??[];
-   const grants=actor.grants??roles.map(role=>({role,companyId:null}));
-   await tx`select set_config('app.tenant_id',${actor.tenantId},true),
-    set_config('app.user_id',${actor.userId??''},true),
-    set_config('app.roles',${roles.join(',')},true),
-    set_config('app.grants',${JSON.stringify(grants)},true),
-    set_config('app.agent_principal_id','',true),set_config('jit','off',true)`;
-   for(let trial=0;trial<5;trial++){
-    const [row]=await tx`select app.contract_shared_navigation_access() as facts`;
-    expect(row.facts,name).toEqual(expected);
+ const intake=await ordinary();
+ const config=(await v9Workspace(admin)).config!;
+ const groupId=randomUUID();
+ await v9SaveConfig(admin,config.revision,{...config,peopleOpsGroup:groupId,groups:[...config.groups,
+  {id:groupId,name:'Fictional Contract intake group',members:[intake.userId!],limit:10}]});
+ await owner.db.execute(sql`insert into contract_role_assignment(tenant_id,company_id,user_id,role,valid_from,created_by)
+  values(${b.tenantId}::uuid,${all.companies[0].id}::uuid,${intake.userId}::uuid,'gbs',${start}::date,${admin.userId}::uuid)`);
+ expect((await legacy(intake)).intake).toBe(true);
+
+ const actors=await Promise.all(Object.entries({admin,viewer,outsider,settings,intake}).map(async ([name,ctx])=>
+  ({name,ctx,expected:await contractNavigationAccess(ctx)})));
+ const replacement=readFileSync(new URL('./fixtures/contract-navigation-intake-scope.sql',import.meta.url),'utf8');
+ const rollback=new Error('Roll back the Contract permission comparison');
+ await expect(owner.client.begin(async tx=>{
+  await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
+  await tx.unsafe("set local track_functions='all'");
+  const readIdentity=async()=>(await tx`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
+   pg_get_userbyid(p.proowner) as owner from pg_proc p
+   where p.oid='app.contract_shared_navigation_access()'::regprocedure`)[0];
+  type FunctionTiming={name:string;calls:number;selfMs:number;totalMs:number};
+  const readCounters=()=>tx<(FunctionTiming&{id:string})[]>`
+   select f.funcid::text as id,p.proname as name,f.calls::int,f.self_time as "selfMs",f.total_time as "totalMs"
+   from pg_stat_xact_user_functions f join pg_proc p on p.oid=f.funcid
+   where f.schemaname='app' and f.calls>0`;
+  const measureActors=async()=>{
+   const results:Record<string,{root:FunctionTiming|undefined;entitlementCalls:number;top:FunctionTiming[]}>={};
+   for(const {name,ctx,expected} of actors){
+    const before=new Map((await readCounters()).map(row=>[row.id,row]));
+    await tx.unsafe('set local role ai_hr_app');
+    const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
+    const roles=ctx.roles??Array.from(new Set(grants.map(grant=>grant.role)));
+    await tx`select set_config('app.tenant_id',${ctx.tenantId},true),
+     set_config('app.user_id',${ctx.userId??''},true),set_config('app.roles',${roles.join(',')},true),
+     set_config('app.grants',${JSON.stringify(grants)},true),
+     set_config('app.agent_principal_id','',true),set_config('jit','off',true)`;
+    for(let trial=0;trial<5;trial++){
+     const [row]=await tx`select app.contract_shared_navigation_access() as facts`;
+     expect(row.facts,name).toEqual(expected);
+    }
+    await tx.unsafe('reset role');
+    const work=(await readCounters()).map(({id,name,calls,selfMs,totalMs})=>({name,
+     calls:calls-(before.get(id)?.calls??0),selfMs:selfMs-(before.get(id)?.selfMs??0),
+     totalMs:totalMs-(before.get(id)?.totalMs??0)})).filter(row=>row.calls>0);
+    const root=work.find(row=>row.name==='contract_shared_navigation_access');
+    expect(root?.calls,name).toBe(5);
+    results[name]={root,
+     entitlementCalls:work.filter(row=>row.name==='contract_company_entitled').reduce((n,row)=>n+row.calls,0),
+     top:work.sort((a,b)=>b.selfMs-a.selfMs).slice(0,8)};
    }
-   await tx.unsafe('reset role');
-   const [root]=await tx`select calls::int,total_time as "totalMs"
-    from pg_stat_xact_user_functions where funcid='app.contract_shared_navigation_access()'::regprocedure`;
-   const functions=await tx`select p.proname as name,f.calls::int,f.self_time as "selfMs",f.total_time as "totalMs"
-    from pg_stat_xact_user_functions f join pg_proc p on p.oid=f.funcid
-    where f.schemaname='app' and f.calls>0
-    order by f.self_time desc,p.proname,p.oid limit 16`;
-   expect(root?.calls,name).toBe(5);
-   expect(functions.length,name).toBeGreaterThan(1);
-   return {root,functions};
-  });
-  console.info('CONTRACT_NAVIGATION_NATIVE_WORK '+JSON.stringify({name,...measured}));
- }
+   return results;
+  };
+  const identity=await readIdentity();
+  expect(identity).toMatchObject({owner:'ai_hr_owner',prosecdef:true,provolatile:'s'});
+  const canonical=await measureActors();
+  await tx.unsafe('set local role ai_hr_owner');
+  await tx.unsafe(replacement);
+  await tx.unsafe('reset role');
+  expect(await readIdentity()).toEqual(identity);
+  const scoped=await measureActors();
+  console.info('CONTRACT_NAVIGATION_INTAKE_SCOPE '+JSON.stringify({canonical,scoped}));
+  for(const name of ['admin','viewer','outsider','settings']){
+   expect(scoped[name].entitlementCalls,name).toBeLessThan(canonical[name].entitlementCalls/4);
+  }
+  throw rollback;
+ })).rejects.toBe(rollback);
 },180000);
 
 it('does not invoke a generic case, document or directory fallback from the new native hint',async()=>{
