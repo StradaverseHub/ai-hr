@@ -2,13 +2,7 @@ import { routingDigest } from '../../lib/ai/module-agent-routing';
 import type { PilotModel } from '../teras/leave-improvement';
 import { evaluateProtectedAnswer, type ProtectedAnswerFixture } from './protected-answer-comparison';
 import { protectedWorkSummarySplits } from './protected-work-summary-comparison';
-
-const guidanceOptions = Object.freeze({
-  include_meaning: 'Include the most specific available explanation of what the selected fact means when the explanation directly covers the requested intent.',
-  group_evidence: 'Choose the minimal set of available facts needed to make the answer intelligible. Keep facts from the same record together before their explanation.',
-  verify_references: 'Before emitting the answer, verify every read, card and fact ordinal matches an available reference, then check that the selected references answer the intent.',
-});
-type Guidance = keyof typeof guidanceOptions;
+import { guidanceOptions, guidanceContractDigest, isGuidance, protectedStrategyDigest, withProtectedGuidance, type Guidance } from './protected-work-summary-guidance';
 export const protectedGuidanceProposalSchema = Object.freeze({
   type: 'object', additionalProperties: false, required: ['add'],
   properties: { add: { type: 'string', enum: Object.keys(guidanceOptions) } },
@@ -17,8 +11,7 @@ export const protectedGuidanceProposalSchema = Object.freeze({
 function captureProposal(text: string, current: readonly Guidance[]): Guidance | null {
   try {
     const proposal = JSON.parse(text);
-    if (!proposal || Object.keys(proposal).join() !== 'add' || typeof proposal.add !== 'string' ||
-        !Object.hasOwn(guidanceOptions, proposal.add) || current.includes(proposal.add)) return null;
+    if (!proposal || Object.keys(proposal).join() !== 'add' || !isGuidance(proposal.add) || current.includes(proposal.add)) return null;
     return proposal.add;
   } catch {
     return null;
@@ -44,10 +37,9 @@ export async function runProtectedWorkSummaryImprovement(model: PilotModel) {
   };
   async function score(cases: readonly ProtectedAnswerFixture[], rules: readonly Guidance[]) {
     const diagnostics = [];
+    const answer = withProtectedGuidance(call, rules);
     for (const fixture of cases) {
-      const result = await evaluateProtectedAnswer(fixture, 'baseline_v1', request => call(rules.length ? {
-        ...request, system: request.system + '\n' + rules.map(rule => guidanceOptions[rule]).join('\n'),
-      } : request));
+      const result = await evaluateProtectedAnswer(fixture, 'baseline_v1', answer);
       diagnostics.push({ id: fixture.id, intent: fixture.intent, ...result.diagnostic });
     }
     return {
@@ -56,8 +48,8 @@ export async function runProtectedWorkSummaryImprovement(model: PilotModel) {
     };
   }
 
-  const contractDigest = routingDigest(guidanceOptions);
-  const strategyDigest = (rules: readonly Guidance[]) => routingDigest([contractDigest, 'baseline_v1', rules]);
+  const contractDigest = guidanceContractDigest;
+  const strategyDigest = protectedStrategyDigest;
   const baseline = await score(validation, []);
   let parent: { rules: readonly Guidance[]; score: typeof baseline } = { rules: [], score: baseline };
   const rounds = [];

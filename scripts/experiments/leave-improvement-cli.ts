@@ -1,3 +1,5 @@
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, relative, sep } from 'node:path';
 import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { runProtectedLeaveComparison } from './protected-leave-comparison';
 import { runProtectedWorkSummaryComparison } from './protected-work-summary-comparison';
@@ -5,14 +7,20 @@ import { protectedGuidanceProposalSchema, runProtectedWorkSummaryImprovement } f
 import { leaveAnswerJsonSchema } from './leave-answer-format';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from './protected-catalogue-answer-format';
 import { PROTECTED_INDEXED_FORMAT, protectedIndexedAnswer } from './protected-indexed-answer-format';
+import { PROTECTED_HOLDOUT_LIMIT_BYTES, scoreProtectedWorkSummaryHoldout } from './protected-work-summary-holdout';
 import { runLeaveImprovement, type PilotModel } from '../teras/leave-improvement';
-import { localOutputPath, writeLocalOutput } from '../teras/output';
+import { localOutputPath, REPO_ROOT, writeLocalOutput } from '../teras/output';
 
 const baseUrl = 'http://127.0.0.1:11434';
 const generationOptions = { temperature: 0, seed: 42, num_predict: 512 };
 
 async function main() {
-  const [model, outfile, ...flags] = process.argv.slice(2);
+  const [model, outfile, ...args] = process.argv.slice(2);
+  const holdoutMode = args[0] === '--protected-holdout';
+  const [, holdoutPath, holdoutSha] = args;
+  if (holdoutMode && (args.length !== 3 || !holdoutPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
+    throw Error('Use --protected-holdout FILE SHA256 with an evaluator-held fictional case file.');
+  const flags = holdoutMode ? [] : args;
   const runners = {
     '--protected': runProtectedLeaveComparison,
     '--protected-work-summary': runProtectedWorkSummaryComparison,
@@ -21,17 +29,27 @@ async function main() {
   const isBenchmark = (flag: string): flag is keyof typeof runners => Object.hasOwn(runners, flag);
   const benchmarks = flags.filter(isBenchmark);
   const [benchmark] = benchmarks;
-  const useCatalogueFormat = flags.includes('--catalogue-schema');
+  const useCatalogueFormat = holdoutMode || flags.includes('--catalogue-schema');
   const useStaticSchema = flags.includes('--schema');
   const useIndexedFormat = flags.includes('--indexed-catalogue');
   // An exact locally installed tag keeps this experiment independent of cloud-provider credentials.
   if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile ||
       flags.some(flag => !['--schema', '--catalogue-schema', '--indexed-catalogue'].includes(flag) && !isBenchmark(flag)) ||
-      new Set(flags).size !== flags.length || benchmarks.length > 1 || (useCatalogueFormat && (!benchmark || useStaticSchema)) ||
+      new Set(flags).size !== flags.length || benchmarks.length > 1 || (useCatalogueFormat && !holdoutMode && (!benchmark || useStaticSchema)) ||
       (useIndexedFormat && (benchmark !== '--protected-work-summary' || useStaticSchema || useCatalogueFormat)))
     throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema | --indexed-catalogue] [--protected | --protected-work-summary | --improve-protected-work-summary]');
   const answerFormat = useStaticSchema ? leaveAnswerJsonSchema : 'json';
-  localOutputPath(outfile);
+  const target = localOutputPath(outfile);
+  let holdout: Buffer | undefined;
+  if (holdoutMode) {
+    const path = realpathSync(holdoutPath);
+    const location = relative(realpathSync(REPO_ROOT), path);
+    const stat = statSync(path);
+    if ((!isAbsolute(location) && !location.startsWith('..' + sep)) || !stat.isFile() ||
+        stat.size > PROTECTED_HOLDOUT_LIMIT_BYTES || existsSync(target))
+      throw Error('Use a holdout outside the checkout and a new report path.');
+    holdout = readFileSync(path);
+  }
   const deadline = AbortSignal.timeout(30 * 60_000);
   const request = async (path: string, init?: RequestInit) => {
     const response = await fetch(baseUrl + path, { ...init, redirect: 'error', signal: AbortSignal.any([deadline, AbortSignal.timeout(90_000)]) });
@@ -65,7 +83,7 @@ async function main() {
     return { text: indexed ? indexed.decode(result.response) : result.response, inputTokens: result.prompt_eval_count, outputTokens: result.eval_count };
   };
   const run = benchmark ? runners[benchmark] : runLeaveImprovement;
-  const report = await run(generate);
+  const report = holdout ? await scoreProtectedWorkSummaryHoldout(holdout, holdoutSha, modelDigest, generate) : await run(generate);
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
   const answerFormatDigest = routingDigest(useIndexedFormat ? PROTECTED_INDEXED_FORMAT : useCatalogueFormat ? PROTECTED_CATALOGUE_FORMAT : answerFormat);
   writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions, answerFormatDigest }, null, 2));

@@ -1,12 +1,68 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { runProtectedLeaveComparison } from '../scripts/experiments/protected-leave-comparison';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
 import { protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
 import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
+import { scoreProtectedWorkSummaryHoldout } from '../scripts/experiments/protected-work-summary-holdout';
+import { guidanceOptions, protectedStrategyDigest } from '../scripts/experiments/protected-work-summary-guidance';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
+
+describe('evaluator-held protected answer cases', () => {
+  const modelDigest = 'a'.repeat(64);
+  const published = protectedWorkSummarySplits().development.slice(0, 2);
+  const fictional = published.map(fixture => ({
+    ...fixture, id: 'fictional-oracle-' + fixture.intent,
+    reads: fixture.reads.map(read => ({ ...read, presentation: {
+      ...read.presentation, cards: read.presentation.cards.map((card, index) => index === 0 ? {
+        ...card, title: { kind: 'text' as const, value: 'Fictional value sentinel' },
+        facts: card.facts.slice(0, -1),
+      } : card),
+    } })),
+  }));
+  const hash = (body: Buffer) => createHash('sha256').update(body).digest('hex');
+  const file = (cases = fictional) => Buffer.from(JSON.stringify({
+    version: 1, cases, modelDigest, minimumGain: 2,
+    parentRules: [], parentDigest: protectedStrategyDigest([]),
+    candidateRules: ['include_meaning'], candidateDigest: protectedStrategyDigest(['include_meaning']),
+  }));
+
+  it('scores a frozen pair without sending expected answers or reporting case details', async () => {
+    let calls = 0;
+    const model: PilotModel = async ({ mode, system, prompt }) => {
+      calls++;
+      expect(mode).toBe('answer');
+      expect(prompt).not.toMatch(/fictional-oracle|Fictional value sentinel|expected|progressTotal":\s*[0-9]/);
+      const fixture = fictional.find(row => row.intent === JSON.parse(prompt).intent);
+      expect(fixture).toBeDefined();
+      return {
+        text: system.includes(guidanceOptions.include_meaning) ? JSON.stringify(fixture!.expected) : '{}',
+        inputTokens: 10, outputTokens: 5,
+      };
+    };
+    const bytes = file();
+    const report = await scoreProtectedWorkSummaryHoldout(bytes, hash(bytes), modelDigest, model);
+    expect(calls).toBe(4);
+    expect(report).toMatchObject({
+      cases: 2, gains: 2, regressions: 0, candidateRejected: 0, meetsThreshold: true, releaseAuthorized: false,
+      usage: { calls: 4, inputTokens: 40, outputTokens: 20 },
+    });
+    expect(JSON.stringify(report)).not.toMatch(/fictional-oracle|Fictional value sentinel|progressTotal/);
+  });
+
+  it('refuses a changed case file and exposed case catalogues before any model call', async () => {
+    const noCall: PilotModel = async () => { throw Error('Model should not be called'); };
+    const bytes = file();
+    await expect(scoreProtectedWorkSummaryHoldout(bytes, '0'.repeat(64), modelDigest, noCall))
+      .rejects.toThrow('Invalid frozen protected holdout');
+    const exposed = file(published.map(fixture => ({ ...fixture, id: 'renamed-' + fixture.intent })));
+    await expect(scoreProtectedWorkSummaryHoldout(exposed, hash(exposed), modelDigest, noCall))
+      .rejects.toThrow('Holdout repeats an exposed');
+  });
+});
 
 function fakeModel(options: { regress?: boolean; fail?: boolean } = {}) {
   const parents: string[] = [];
