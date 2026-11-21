@@ -8,9 +8,12 @@
  * person and value is fictional; S9SENTINEL marks values that must never appear in a to-do or an update.
  */
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type postgres from 'postgres';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import * as moduleGate from '../core/module-gate';
 import { appUser, company, employment, jobGrade, person, roleAssignment } from '../db/schema';
 import { pgSqlState } from '../lib/db-error';
 import { addCalendarMonths, timeInKualaLumpur, todayInKualaLumpur } from '../lib/hr-date';
@@ -163,6 +166,74 @@ async function world() {
     interview, first,
   };
 }
+
+it('reuses a prepared personal task plan under the native Recruitment gate', async () => {
+  const fixture = await world();
+  const dialect = new PgDialect();
+  const nativeGate = moduleGate.withRecruitmentTenant;
+  const now = new Date();
+  const samples = [];
+  const repetitions = 8;
+  for (const [role, actor, scope, expected] of [
+    ['interviewer', fixture.i1, [base.companyId], [`feedback:${fixture.iv3}`]],
+    ['bystander', fixture.bystander, [base.companyId], []],
+    ['outside selected company', fixture.i1, [otherCompanyId], []],
+    ['explicitly empty selection', fixture.i1, [], []],
+    ['group HR', admin, undefined, []],
+  ] as const) {
+    const statements: ReturnType<PgDialect['sqlToQuery']>[] = [];
+    const gateSpy = vi.spyOn(moduleGate, 'withRecruitmentTenant').mockImplementation(
+      <T>(ctx: SessionContext, read: (tx: Tx) => Promise<T>, options?: Parameters<typeof nativeGate>[2]) =>
+        nativeGate(ctx, async tx => {
+          const execute = tx.execute.bind(tx);
+          const executeSpy = vi.spyOn(tx, 'execute').mockImplementation(query => {
+            if (typeof query !== 'string') {
+              const compiled = dialect.sqlToQuery(query.getSQL());
+              if (compiled.sql.includes('from recruitment_background_check') && compiled.sql.includes('from recruitment_requisition')) statements.push(compiled);
+            }
+            return execute(query);
+          });
+          try { return await read(tx); }
+          finally { executeSpy.mockRestore(); }
+        }, options),
+    );
+    try {
+      expect(todoKeys(await recruitmentTodos(actor, scope, { now }))).toEqual(expected);
+    } finally {
+      gateSpy.mockRestore();
+    }
+    expect(statements).toHaveLength(1);
+    const [statement] = statements;
+    samples.push(await nativeGate(actor, async tx => {
+      const { session } = tx as unknown as { session: { client: postgres.TransactionSql } };
+      const connection = session.client;
+      const parameters = statement.params as postgres.ParameterOrJSON<never>[];
+      const unnamedMs: number[] = [], preparedMs: number[] = [];
+      await tx.execute(sql`set local jit=off`);
+      await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
+      const preparedQuery = '/*recruitment-personal-plan-proof*/' + statement.sql;
+      const counters = () => connection<{ generic: number; custom: number }[]>`
+        select coalesce(sum(generic_plans),0)::int as generic,
+          coalesce(sum(custom_plans),0)::int as custom
+        from pg_prepared_statements where statement = ${preparedQuery}`;
+      const [before] = await counters();
+      for (let index = 0; index < repetitions; index++) {
+        const started = performance.now();
+        const baseline = await connection.unsafe(statement.sql, parameters, { prepare: false });
+        unnamedMs.push(performance.now() - started);
+        const preparedStarted = performance.now();
+        const prepared = await connection.unsafe(preparedQuery, parameters, { prepare: true });
+        preparedMs.push(performance.now() - preparedStarted);
+        expect(Array.from(prepared)).toEqual(Array.from(baseline));
+      }
+      const [after] = await counters();
+      expect(after.generic - before.generic).toBe(repetitions);
+      expect(after.custom - before.custom).toBe(0);
+      return { role, unnamedMs, preparedMs };
+    }, { readOnlySnapshot: true }));
+  }
+  console.info('Recruitment personal task plan timings', JSON.stringify(samples));
+});
 
 describe('case 59 — the to-do list is exactly the viewer\'s pending work, and follows the action and access', () => {
   it('lists approval steps, due feedback and per-job counts against independent sets; items leave after the action and with the job', async () => {
