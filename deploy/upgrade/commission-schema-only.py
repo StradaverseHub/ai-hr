@@ -8,7 +8,7 @@ import shlex
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
-REMOTE = r'''
+REMOTE = r"""
 import base64, fcntl, hashlib, json, os, pathlib, subprocess, sys, tempfile
 root=pathlib.Path('/var/tmp/aihr-deploy/staging-release-queue')
 os.umask(0o077)
@@ -69,7 +69,7 @@ run('systemctl','--user','daemon-reload')
 run('systemctl','--user','enable','--now',timer.name)
 run('systemctl','--user','is-active','--quiet',timer.name)
 print(json.dumps({'pickup':'active','baseline':p['baseline'],'build':p['build']}))
-'''
+"""
 
 
 def main():
