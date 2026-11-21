@@ -86,6 +86,8 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     }
     return totals;
   }, {prepared: 0, completed: 0}) : null;
+  const reminders30 = inventory?.scope === 'full'
+    ? inventory.rows.reduce((total, row) => total + (row.runtime.reminders30 ?? 0), 0) : null;
   const workerActivity = registry?.rows.filter(row => row.trigger.kind === 'schedule');
   const latestPreSalaryRun = workerActivity?.find(row => row.id === 'loop_payroll_inputs')?.lastRunAt;
   const workerOverview = section === 'features' ? await getWorkerOverviewCopy() : null;
@@ -296,6 +298,13 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
               ? workerOverview(actionActivity.prepared === 0 ? 'actionCountsEmpty' : 'actionCounts', actionActivity)
               : workerOverview('unavailable')}</dd>
             {actionActivity && <dd><a href="#ai-inventory-actions" className={btnGhost}>{workerOverview('actionDetails')}</a></dd>}
+          </div>
+          <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+            <dt className="font-medium">{workerOverview('automaticReminders')}</dt>
+            <dd className="text-muted-foreground">{reminders30 === null
+              ? workerOverview('unavailable') : workerOverview('reminderCounts', {count: reminders30})}</dd>
+            {reminders30 !== null && <dd><Link href="/assistant?view=insights&pdays=30#automatic-reminder-outcomes" prefetch={false}
+              className={btnGhost}>{workerOverview('reminderDetails')}</Link></dd>}
           </div>
           <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
             <dt className="font-medium">{workerOverview('scheduled')}</dt>

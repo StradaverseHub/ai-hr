@@ -2,6 +2,7 @@
  *  `hr_assistant:<actionId>` (0696) enforced in the owning transaction, run history paging and date range, the
  *  alert thresholds and drift, and tenant isolation. Fictional fixtures only; no model is called. */
 import { sql } from 'drizzle-orm';
+import { hireEmployee } from '../core/org';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
@@ -91,12 +92,36 @@ describe('AI inventory access (ADR-0151 §4.7)', () => {
       expect(row).not.toHaveProperty('runtime');
       expect(Object.keys(row).sort()).toEqual(['actionPaused', 'category', 'id', 'key', 'kind', 'module', 'outOfBand', 'pauseKey', 'tier']);
     }
+    expect(full.rows.find(r => r.id === 'attendance.missing_clock.remind' && r.kind === 'action')?.runtime.reminders30).toBe(0);
     expect(registry).not.toHaveProperty('register');
     expect(registry).not.toHaveProperty('alerts');
 
     await expect(aiInventoryView(employee, await aiManagementView(group))).rejects.toBeInstanceOf(AiControlError);
     await expect(aiRunHistory(companyHr, {})).rejects.toBeInstanceOf(AiControlError);
     await expect(aiRunHistory(employee, {})).rejects.toBeInstanceOf(AiControlError);
+  });
+
+  it('counts only in-window scheduled reminder receipts for registered automatic actions', async () => {
+    const hired = await hireEmployee(adminCtx(base), {
+      person: { fullName: 'Reminder fixture', primaryEmail: 'inventory-reminder@example.test' },
+      companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2024-01-01', paymentMethod: 'bank_transfer',
+    } as never);
+    const receipt = {
+      tenantId: base.tenantId, aggregateType: 'automatic-chase', aggregateId: hired.employmentId,
+      eventType: 'automatic-chase.followup-raised', actorType: 'agent' as const, subjectEmploymentId: hired.employmentId,
+      payload: {action:'attendance.missing_clock.remind',stage:'2026-01-05'},
+    };
+    await owner.db.insert(schema.domainEvent).values([
+      receipt,
+      {...receipt, occurredAt: new Date(Date.now() - 35 * 86_400_000)},
+      {...receipt, actorType: 'system'},
+      {...receipt, subjectEmploymentId: null},
+    ]);
+    const full = await aiInventoryView(group, await aiManagementView(group));
+    if (full.scope !== 'full') throw Error('expected full scope');
+    const clock = full.rows.find(r => r.kind === 'action' && r.id === receipt.payload.action)!;
+    expect(clock.runtime).toMatchObject({reminders30:1, use30:null, outcomes:null});
+    expect(full.rows.find(r => r.key === 'chat:hr_assistant')?.runtime.reminders30).toBeNull();
   });
 
   it('keeps blocked attempts and shared Assistant usage out of individual last-run dates', async () => {

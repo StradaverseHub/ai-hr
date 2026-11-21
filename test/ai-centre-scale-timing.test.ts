@@ -37,7 +37,8 @@ import {listWorkers} from '../core/agent-registry/views';
 import {outcomeSummary} from '../core/agent-registry/export';
 import {aiCentreControlReads} from '../app/control-tower/agents/centre-controls';
 import {isGroupAdmin} from '../lib/authz-model';
-import {closeAll,migrateTestDb,resetDb,seedBase,setModule} from './harness';
+import {closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
+import {domainEvent} from '../db/schema';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {explainStatements,observeStatements,type ExplainedStatement} from './helpers/statement-observer';
 
@@ -106,6 +107,11 @@ beforeAll(async()=>{
  const b=await seedBase();
  for(const code of ['assistant','claims','notifications','attendance','lifecycle','payroll'])await setModule(b.tenantId,code,'active');
  fixture=await buildScaleFixture(b);
+ await owner.db.insert(domainEvent).values(fixture.activeEmploymentIds.slice(0,500).map(employmentId=>({
+  tenantId:b.tenantId,aggregateType:'automatic-chase',aggregateId:employmentId,
+  eventType:'automatic-chase.followup-raised',actorType:'agent',subjectEmploymentId:employmentId,
+  payload:{action:'attendance.missing_clock.remind',stage:'2026-01-05'},
+ })));
 },300_000);
 afterAll(closeAll);
 

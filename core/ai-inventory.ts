@@ -53,6 +53,7 @@ export type AiInventoryRuntime=Readonly<{
  allowance:Readonly<{dailyRequests:number|null;monthlyTokens:number|null}>|null;
  lastRun:Date|null;
  use30:Readonly<{runs:number;failed:number;blocked:number;tokens:number;reportedCredits:number|null}>|null;
+ reminders30:number|null;
  outcomes:Readonly<{prepared:number;completed:number;refused:number;discarded:number;expired:number;reversed:number|null}>|null;
  audit:Readonly<{count:number;latestAt:Date|null}>;
 }>;
@@ -109,6 +110,8 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
   const lastAdmitted=new Map(Array.from(await tx.execute<{feature_id:string;last_run:string|Date}>(sql`select feature_id,max(started_at) as last_run
    from ai_model_run where operation<>'probe' and state<>'blocked' group by feature_id`)).map(r=>[r.feature_id,new Date(r.last_run)]));
   const outcomes=new Map(Array.from(await tx.execute<Outcome>(sql`select * from app.assistant_action_outcome_summary(${from}::timestamptz)`)).map(r=>[r.action_kind,r]));
+  const reminders=new Map(Array.from(await tx.execute<{action_id:string;chased:number}>(sql`select action_id,chased
+   from app.automatic_chase_outcome_summary(${from}::timestamptz)`)).map(r=>[r.action_id,r.chased]));
   // ai-control.* events keyed by what they changed, plus the tenant-setting changes that ARE the switch of a
   // setting-backed feature (one switch owner, 0692).
   const settingKeys=AI_FEATURES.flatMap(f=>f.setting?[f.setting]:[]);
@@ -137,6 +140,7 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
     actionPaused:paused(c),
     allowance:c.featureId&&c.kind!=='action'&&switchKind!=='platform'?allowance:null,
     lastRun,use30:shownUse,
+    reminders30:c.kind==='action'&&c.tier==='automatic'?(reminders.get(c.id)??0):null,
     outcomes:c.kind==='action'&&c.tier!=='automatic'?{prepared:o?.prepared??0,completed:o?.completed??0,refused:o?.refused??0,discarded:o?.discarded??0,expired:o?.expired??0,reversed:o?o.reversed:null}:null,
     audit:auditOwn??auditFeature??{count:0,latestAt:null},
    }};

@@ -17,7 +17,7 @@ import {aiInventoryComponents,registryRow,AI_DATA_REGISTER} from '../lib/ai/ai-i
 import {AI_FEATURES} from '../lib/ai/features';
 import workerOverviewMessages from '../app/control-tower/agents/worker-overview-messages.json';
 const copies={en,ms,zh,vi:viCopy,th,ta};
-const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true,alertsUnavailable:false,inventoryUnavailable:false,actionActivity:true}));
+const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true,alertsUnavailable:false,inventoryUnavailable:false,actionActivity:true,reminders30:3}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:withAiCentre(state.locale,copies[state.locale] as any),namespace}),getLocale: async () => state.locale, getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/control-tower/agents/inventory',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
@@ -51,6 +51,7 @@ vi.mock('../core/ai-inventory',async()=>{
    lastRun:c.id!=='payroll_explanation'&&c.id!=='pay_rule_draft'&&(c.featureId||c.id==='ai-alerts')?at:null,
    use30:c.id==='payroll_explanation'||c.id==='pay_rule_draft'?{runs:0,failed:0,blocked:c.id==='payroll_explanation'?1:0,tokens:0,reportedCredits:null}:
     c.featureId&&c.kind!=='action'&&c.kind!=='read_binding'?{runs:12,failed:1,blocked:0,tokens:5400,reportedCredits:0.0123}:null,
+   reminders30:c.kind==='action'&&c.tier==='automatic'?(c.id==='attendance.missing_clock.remind'?state.reminders30:0):null,
    outcomes:c.kind==='action'&&c.tier!=='automatic'?{
     prepared:state.actionActivity?(c.id==='leave.cancel'?8:c.id==='leave.edit'?3:0):0,
     completed:state.actionActivity?(c.id==='leave.cancel'?6:c.id==='leave.edit'?1:0):0,
@@ -67,7 +68,7 @@ vi.mock('../core/ai-inventory',async()=>{
  };
 });
 import {AiManagementScreen} from '../app/control-tower/agents/screen';
-afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;state.inventoryUnavailable=false;state.actionActivity=true;});
+afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;state.inventoryUnavailable=false;state.actionActivity=true;state.reminders30=3;});
 const session={tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never;
 const renderPage=async(locale:keyof typeof copies,section:'features'|'runs',searchParams={})=>{
  const workerControls=state.group&&section==='features'?{
@@ -175,6 +176,18 @@ describe('AI inventory in six rendered locales',()=>{
   expect(Boolean(row.queryByRole('link',{name:'View action outcomes'}))).toBe(!inventoryUnavailable);
  });
 
+ it.each([3,0,null])('reports scheduled reminder receipts separately from model requests (%s)',async count=>{
+  state.locale='en';
+  state.reminders30=count??0;
+  state.inventoryUnavailable=count===null;
+  await renderPage('en','features');
+  const row=within(screen.getByText('Automatic reminders · Last 30 days').parentElement!);
+  expect(row.getByText(count===null?'Activity evidence unavailable':count===0?'No reminders recorded':'3 reminders recorded')).toBeInTheDocument();
+  if(count===null)expect(row.queryByRole('link')).toBeNull();
+  else expect(row.getByRole('link',{name:'View reminder outcomes'})).toHaveAttribute('href','/assistant?view=insights&pdays=30#automatic-reminder-outcomes');
+  if(count===3)expect(within(document.getElementById('ai-component-action-attendance-missing_clock-remind')!).getByText('3 reminders recorded')).toBeInTheDocument();
+ });
+
  it.each(['#ai-inventory','#ai-centre-jobs'])('reveals a bookmarked worker section on entry at %s',async hash=>{
   const location=window.location.href;
   try {
@@ -192,6 +205,7 @@ describe('AI inventory in six rendered locales',()=>{
   expect(screen.getAllByText(workerOverviewMessages[locale].checkScheduler)).toHaveLength(4);
   expect(screen.getAllByText(workerOverviewMessages[locale].noScheduledRunRecorded)).toHaveLength(2);
   expect(screen.getByRole('link',{name:workerOverviewMessages[locale].actionDetails})).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:workerOverviewMessages[locale].reminderDetails})).toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent(inv.alerts.title);
   for(const kind of Object.keys(inv.kinds) as (keyof typeof inv.kinds)[])expect(screen.getByRole('heading',{level:3,name:new RegExp(inv.kinds[kind].replace(/[()]/g,'\\$&'))})).toBeInTheDocument();
   expect(screen.getAllByText('hr_assistant:leave.cancel').length).toBeGreaterThan(0);
@@ -218,6 +232,7 @@ describe('AI inventory in six rendered locales',()=>{
   state.locale=locale;state.group=false;const inv=copies[locale].aiManagement.inv;
   await renderPage(locale,'features');
   expect(screen.queryByText(workerOverviewMessages[locale].checkScheduler)).toBeNull();
+  expect(screen.queryByText(workerOverviewMessages[locale].automaticReminders)).toBeNull();
   expect(screen.getByRole('note')).toHaveTextContent(inv.registryNotice);
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.queryByRole('button',{name:new RegExp(inv.pauseAction)})).toBeNull();

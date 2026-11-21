@@ -200,7 +200,7 @@ export async function CapacityProcesses({ reads, query, companies, baselines, ke
       </Card>
 
       {/* WP13 (R18) — the Automatic-tier reminders the scheduled agent sent, beside the Assistant's actions. */}
-      <Card className="overflow-hidden">
+      <Card id="automatic-reminder-outcomes" className="scroll-mt-4 overflow-hidden">
         <SectionHeader title={o('automaticTitle')} subtitle={o('automaticSubtitle', { from: day(outcomes.from) })} />
         {outcomes.automatic.some(a => a.chased > 0) ? <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">
