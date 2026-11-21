@@ -58,6 +58,28 @@ def executions():
     path=STATE/'executions.jsonl'
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
+def verify_payroll_cron_conflict(web_uid):
+    directory=REPO/'deploy/runner-control'
+    spec=importlib.util.spec_from_file_location('installer',directory/'install.py')
+    installer=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(installer)
+    catalog=json.loads((directory/'catalog.json').read_text())
+    payroll=next(row for row in catalog if row['id']=='payroll-loops')
+    fixture={**payroll,'unit':UNIT}
+    installer.validate_managed(fixture,web_uid)
+    # Use the disposable account's real crontab, and give cron only a harmless command.
+    crontab=('/usr/bin/crontab','-u',FIXTURE)
+    run(*crontab,'-',input='@reboot /usr/bin/true scripts/payroll-loop-tick.ts\n')
+    try:
+        installer.validate_managed(fixture,web_uid)
+    except installer.b.Refused as error:
+        assert 'legacy cron still owns this runner' in str(error),error
+    else:
+        raise AssertionError('Payroll runner allowed while legacy cron still owns it')
+    finally:
+        run(*crontab,'-r')
+    installer.validate_managed(fixture,web_uid)
+
 def main():
     assert os.geteuid()==0 and os.environ.get('GITHUB_ACTIONS')=='true','Disposable Actions root fixture only'
     assert Path('/proc/1/comm').read_text().strip()=='systemd','A real systemd VM is required'
@@ -96,6 +118,7 @@ WantedBy=timers.target
     for suffix,text in [('service',unit),('timer',timer)]:
         path=Path('/etc/systemd/system')/(UNIT+'.'+suffix);assert not path.exists();path.write_text(text);os.chmod(path,0o644)
     run('/usr/bin/systemctl','daemon-reload')
+    verify_payroll_cron_conflict(web.pw_uid)
     POLICY.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
     policy={'environment':'staging','webUid':web.pw_uid,'jobs':{KEY:{'managed':True,'note':'Disposable CI fixture, no HR or DB.'}}}
     POLICY.write_text(json.dumps(policy));os.chmod(POLICY,0o600)
@@ -129,7 +152,7 @@ WantedBy=timers.target
         audits=[json.loads(line) for line in Path('/var/lib/aihr-runner-control/audit.jsonl').read_text().splitlines()]
         assert any(row['outcome']=='applied' and row['enabled'] for row in audits)
         assert any(row['outcome']=='applied' and not row['enabled'] for row in audits)
-        proof={'kind':'DISPOSABLE_SYSTEMD_FIXTURE_NOT_STAGING_ACCEPTANCE','source':os.environ.get('GITHUB_SHA'),'runId':os.environ.get('GITHUB_RUN_ID'),'executions':actual,'dedicatedUid':identity.pw_uid,'activation':True,'intervalEdit':True,'stableRevision':True,'staleEditRefused':True,'disabled':True,'wrongUidRefused':True,'simulatedProductionHoldsRefused':True,'auditOutcomes':[row['outcome'] for row in audits]}
+        proof={'kind':'DISPOSABLE_SYSTEMD_FIXTURE_NOT_STAGING_ACCEPTANCE','source':os.environ.get('GITHUB_SHA'),'runId':os.environ.get('GITHUB_RUN_ID'),'executions':actual,'dedicatedUid':identity.pw_uid,'activation':True,'intervalEdit':True,'stableRevision':True,'staleEditRefused':True,'disabled':True,'wrongUidRefused':True,'duplicatePayrollCronRefused':True,'simulatedProductionHoldsRefused':True,'auditOutcomes':[row['outcome'] for row in audits]}
         output=Path(os.environ['RUNNER_TEMP'])/'runner-control-systemd-proof.json';output.write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(proof))
     finally:
         for unit in [UNIT+'.timer','aihr-runner-control.socket']:
