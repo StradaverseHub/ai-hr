@@ -55,8 +55,8 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44829692223,artifactId:14676665918,
-  sourceSha:'0c71def1c6c0c454371e87c859c259c3f8a8f26c'}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44838158125,artifactId:14680780164,
+  sourceSha:'a00a15863ecfcd98962573ecd9f63f4cf9997df4'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
@@ -527,7 +527,13 @@ async function measureMixedLoad(command){
    if(navigationFailure)report.mixedNavigationPreflightFailure=navigationFailure;
    const mutation=data.mixedWorkflows?.error;
    const mutationStages=['leaveCreate','leaveEdit','leaveCancel','personnelCreate','personnelEdit','personnelDelete',
-    'attendanceCreate','payrollProcess','payrollPublicationProcess','payrollClose','importValidate','importCommit'];
+    'attendanceCreate','attendanceApprove','payrollProcess','payrollPublicationProcess','payrollClose','importValidate','importCommit'];
+   const currentMutationStage=data.mixedWorkflows?.currentStage;
+   if(mutationStages.includes(currentMutationStage)){
+    report.mixedMutationPreflightStage=currentMutationStage;
+    report.mixedObservedMutationStages=(data.mixedWorkflows.capturedTransport??[]).slice(0,32)
+     .map(row=>row.stage).filter(stage=>mutationStages.includes(stage));
+   }
    if(mutationStages.includes(mutation?.stage)){
     const count=value=>Number.isSafeInteger(value)&&value>=0&&value<=500?value:null;
     report.mixedMutationPreflightFailure={stage:mutation.stage,posts:count(mutation.posts),actionPosts:count(mutation.actionPosts)};

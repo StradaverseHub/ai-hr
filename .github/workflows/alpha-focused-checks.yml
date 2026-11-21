@@ -65,7 +65,7 @@ on:
         default: false
         type: boolean
       reuse_first_use_build:
-        description: Reuse the verified shell-readiness build for the preflight diagnostic
+        description: Reuse the verified Clocking Import candidate build for the preflight diagnostic
         default: false
         type: boolean
       model_eval:
@@ -134,7 +134,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 6ad318efb778cf53c9d0162e68e46fa597a0efb9 ]];
+            [[ "$EXPECTED_SHA" != a00a15863ecfcd98962573ecd9f63f4cf9997df4 ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -228,25 +228,21 @@ jobs:
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
-      - name: Retrieve the pinned shell-readiness build
+      - name: Retrieve the pinned candidate build
         if: ${{ inputs.reuse_first_use_build }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          build_source=0c71def1c6c0c454371e87c859c259c3f8a8f26c
-          test "$AIHR_CI_HEAD" = 6ad318efb778cf53c9d0162e68e46fa597a0efb9
+          build_source=a00a15863ecfcd98962573ecd9f63f4cf9997df4
+          test "$AIHR_CI_HEAD" = "$build_source"
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
-          # The compiled app comes from the original source and only the browser harness is newer.
-          expected_diff="$(printf 'M\t%s\n' scripts/performance/mixed-workflows.mjs test/ui-audit-interactions.dom.test.tsx)"
-          test "$(git diff --name-status "$build_source" "$AIHR_CI_HEAD")" = "$expected_diff"
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136611395963 --jq '
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136639790563 --jq '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44829692223 and .head_sha == "42b67a43596298efee3e27611d106fa3bd3a0ace"' | grep -qx true
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14676665918/zip > "$archive"
-          printf '%s  %s\n' 'f1ca02df54bb5b24ffb6660a6e69a45fa5ea73501c9a7d6abcbf838f4eb5a8e3' "$archive" | sha256sum -c -
+            .run_id == 44838158125 and .head_sha == "aa25055ffd3822c426f575a0386bf143fdef8586"' | grep -qx true
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14680780164/zip > "$archive"
+          printf '%s  %s\n' 'e86f81b3e38677208f085c37307acb8b616a4bc7cd571b64f840575dec662be0' "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
@@ -258,7 +254,7 @@ jobs:
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
           if [[ "$REUSE_BUILD" == true ]]; then
-            expected_build_source=0c71def1c6c0c454371e87c859c259c3f8a8f26c
+            expected_build_source=a00a15863ecfcd98962573ecd9f63f4cf9997df4
           fi
           test "$(cat "$packet/source-sha")" = "$expected_build_source"
           chmod 700 "$PWD"
