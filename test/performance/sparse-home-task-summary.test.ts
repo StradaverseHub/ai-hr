@@ -59,7 +59,7 @@ it('coalesces four sparse header owners without omitting any actual assigned wor
  const [resign]=await owner.db.insert(s.resignationRequest).values(resignation).returning();
  const [mgr]=await owner.db.insert(s.employmentReview).values({...review,reviewType:'probation'}).returning();
  const [hr]=await owner.db.insert(s.employmentReview).values({...review,reviewType:'contract',status:'pending_hr'}).returning();
- for(const [ctx,companies] of [[group,scope],[managerCtx,scope],[otherCtx,scope],[adminCtx(foreign),[foreign.companyId]],[group,[]],[group,[foreign.companyId]]] as [SessionContext,string[]][]){
+ for(const [ctx,companies] of [[group,scope],[managerCtx,scope],[otherCtx,scope],[adminCtx(foreign),[foreign.companyId]],[group,undefined],[group,[]],[group,[foreign.companyId]]] as [SessionContext,string[]|undefined][]){
   const expected=await original(ctx,companies);expect(await candidate(ctx,companies)).toEqual(expected);expect(await owners(ctx,companies)).toEqual(expected);
  }
  const g=await candidate(group,scope),m=await candidate(managerCtx,scope);

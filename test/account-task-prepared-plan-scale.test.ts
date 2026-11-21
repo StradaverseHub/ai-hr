@@ -3,7 +3,7 @@ import { sql } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type postgres from 'postgres';
 import { afterAll, expect, it } from 'vitest';
-import { ACCOUNT_TASK_CLAIM_PREVIEW, accountTaskStatement, accountTaskStatementSections } from '../core/account-task-bundle';
+import { ACCOUNT_TASK_CLAIM_PREVIEW, HOME_ACCOUNT_TASK_READ, accountTaskStatement, accountTaskStatementSections, readAccountTaskBundle } from '../core/account-task-bundle';
 import type { SessionContext, Tx } from '../db/client';
 import { withTenant } from '../db/client';
 import { createClaimType } from '../packs/claims/service';
@@ -133,5 +133,38 @@ it('preserves task facts with one bound company array across the supported selec
       expect(actual[0]?.claims?.total ?? -1).toBe(noClaims ? 0 : Math.max(1, expected[0]?.claims?.total ?? 0));
     }, { readOnlySnapshot: true });
   }
+
+  const session = group.personas.group;
+  const home = await readAccountTaskBundle(session, modules);
+  const empty = await readAccountTaskBundle(session, modules, { ...HOME_ACCOUNT_TASK_READ, companyIds: [] });
+  expect(home?.read.companyIds).toBeUndefined();
+  expect(home?.claims?.total).toBeGreaterThan(ACCOUNT_TASK_CLAIM_PREVIEW);
+  expect(empty?.read.companyIds).toEqual([]);
+  expect(empty?.claims).toEqual({ total: 0, items: [] });
+
+  // Keep the existing owners' SQL for special scopes. An omitted selection is
+  // account-wide. An explicitly empty selection is a real filter.
+  await withTenant(session, async tx => {
+    const texts = new Set<string>();
+    for (const { selection, read } of [
+      { selection: 'omitted', read: HOME_ACCOUNT_TASK_READ },
+      { selection: 'empty', read: { ...HOME_ACCOUNT_TASK_READ, companyIds: [] } },
+    ]) {
+      const original = accountTaskStatement(accountTaskStatementSections(tx, session, modules, read), session);
+      const query = dialect.sqlToQuery(original);
+      texts.add(query.sql);
+      await tx.execute(sql`set local plan_cache_mode=auto`);
+      const expected = await tx.execute<Row>(original);
+      expect(expected[0]?.principal).toBe(true);
+      expect(expected[0]?.claims?.total).toBe(selection === 'empty' ? 0 : home?.claims?.total);
+      await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
+      const params = query.params as postgres.ParameterOrJSON<never>[];
+      const actual = await nativeConnection(tx).unsafe<Row[]>(query.sql, params, { prepare: true });
+      expect([...actual]).toEqual([...expected]);
+    }
+    expect(texts.size).toBe(2);
+  }, { readOnlySnapshot: true });
+
   console.info('ACCOUNT_TASK_ARRAY_PROFILE', JSON.stringify(results));
+  console.info('ACCOUNT_TASK_SPECIAL_SCOPES', JSON.stringify({ omittedClaims: home?.claims?.total, emptyClaims: empty?.claims?.total }));
 }, 90000);
