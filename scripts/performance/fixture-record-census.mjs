@@ -455,11 +455,30 @@ function importHistoryRoutes(fixture) {
   ]);
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory }) {
+function personnelDirectoryRoutes(fixture) {
+  const [group, company] = fixture.users;
+  assert.equal(group.role, 'groupHR');
+  assert.equal(company.role, 'companyHR');
+  assert.equal(group.companyId, company.companyId);
+  const subject = fixture.users.find(user => user.role === 'employee' && user.companyId === company.companyId);
+  assert(subject, 'Expected a fictional employee in the shared company');
+  const template = '/admin/personnel';
+  const witness = `tbody tr[data-employment-id="${subject.employmentId}"]`;
+  const search = new URLSearchParams({q: subject.name});
+  const companySearch = new URLSearchParams({q: subject.name,company: company.companyId});
+  return [group, company].flatMap(actor => [
+    { actor, template, path: template, witness: 'tbody tr[data-employment-id]', scenario: 'directory open' },
+    { actor, template, path: template + '?' + search, witness, scenario: 'employee search' },
+    { actor, template, path: template + '?' + companySearch, witness, scenario: 'company-filtered search' },
+  ]);
+}
+
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, personnelDirectory }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
     : importHistory ? importHistoryRoutes(fixture)
+    : personnelDirectory ? personnelDirectoryRoutes(fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -474,7 +493,8 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     try {
       const page = await context.newPage();
       for (const pass of ['first', 'repeat']) {
-        const row = { template: entry.template, role: entry.actor.role, pass, outcome: 'browser-failure', step: 'response' };
+        const row = { template: entry.template, role: entry.actor.role, pass, outcome: 'browser-failure', step: 'response',
+          ...(entry.scenario && {scenario: entry.scenario}) };
         rows.push(row);
         const started = performance.now();
         const remaining = () => Math.max(1, Math.floor(15000 - (performance.now() - started)));
