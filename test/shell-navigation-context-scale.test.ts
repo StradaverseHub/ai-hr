@@ -121,10 +121,7 @@ it('measures the native Offboarding Postings access check under real group and c
     __aihrPerfBeginTransaction?: (poolMax: number) => { acquired: () => void; finished: () => void };
   };
   const previousHook = hooks.__aihrPerfBeginTransaction;
-  // This probe exists only in the isolated test database. Its definer boundary
-  // matches the native owner, and assertions and timings use application sessions.
-  await owner.db.execute(sql`
-    create function app.offboarding_queue_set_probe() returns boolean
+  const permissionBody = `returns boolean
     language plpgsql stable security definer set search_path=pg_catalog,public,pg_temp as $probe$
     declare
       people_ops boolean;
@@ -156,10 +153,15 @@ it('measures the native Offboarding Postings access check under real group and c
       end if;
       return false;
     end; $probe$
-  `);
+  `;
+  // This probe exists only in the isolated test database. Its definer boundary
+  // matches the native owner, and assertions and timings use application sessions.
+  await owner.db.transaction(async tx => {
+    await tx.execute(sql.raw('create function app.offboarding_queue_set_probe() ' + permissionBody));
+    await tx.execute(sql`revoke all on function app.offboarding_queue_set_probe() from public`);
+    await tx.execute(sql`grant execute on function app.offboarding_queue_set_probe() to ai_hr_app`);
+  });
   try {
-    await owner.db.execute(sql`revoke all on function app.offboarding_queue_set_probe() from public`);
-    await owner.db.execute(sql`grant execute on function app.offboarding_queue_set_probe() to ai_hr_app`);
     for (const { name, session, allowed } of actors) {
       expect(await offboardingPostingAccess(session), name).toBe(allowed);
       const samples = [];
@@ -219,6 +221,41 @@ it('measures the native Offboarding Postings access check under real group and c
         tx.execute<{ ok: boolean }>(sql`select app.offboarding_queue_set_probe() as ok`));
       expect(result[0]?.ok).toBe(expected);
     }
+
+    const outsiderBase = await seedBase();
+    await setModule(outsiderBase.tenantId, 'lifecycle', 'active');
+    const outsider = await entitledCtx(outsiderBase, ['hr_admin']);
+    const [outsiderPrincipal] = await withScopedLifecycleTenant(outsider, tx =>
+      tx.execute<{ current: boolean }>(sql`select app.principal_snapshot_current() as current`));
+    expect(outsiderPrincipal?.current).toBe(true);
+    const readIdentity = () => owner.db.execute<{
+      oid: number; owner: string; definer: boolean; volatility: string; config: string[];
+      grants: string; publicExecute: boolean; applicationExecute: boolean; definition: string;
+    }>(sql`
+      select p.oid::int as oid, pg_get_userbyid(p.proowner)::text as owner, p.prosecdef as definer,
+        p.provolatile::text as volatility, p.proconfig as config, p.proacl::text as grants,
+        exists(select 1 from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+          where a.grantee=0 and a.privilege_type='EXECUTE') as "publicExecute",
+        has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as "applicationExecute",
+        pg_get_functiondef(p.oid) as definition
+      from pg_proc p where p.oid='app.offboarding_posting_queue_access()'::regprocedure
+    `);
+    const [before] = await readIdentity();
+    expect(before).toMatchObject({ definer: true, volatility: 's', publicExecute: false, applicationExecute: true });
+    try {
+      await owner.db.execute(sql.raw('create or replace function app.offboarding_posting_queue_access() ' + permissionBody));
+      const [after] = await readIdentity();
+      expect(after).toEqual({ ...before, definition: after.definition });
+      expect(after.definition).not.toBe(before.definition);
+      for (const [session, expected] of [
+        [groupAdmin, true], [single, true], [multi, true], [employee, false], [outsider, false],
+      ] as const) {
+        expect(await offboardingPostingAccess(session)).toBe(expected);
+      }
+    } finally {
+      await owner.db.execute(sql.raw(before.definition));
+    }
+    expect((await readIdentity())[0]).toEqual(before);
   } finally {
     hooks.__aihrPerfBeginTransaction = previousHook;
     await owner.db.execute(sql`drop function app.offboarding_queue_set_probe()`);
