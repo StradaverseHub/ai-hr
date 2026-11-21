@@ -19,6 +19,7 @@ const balances = [
   { name: 'partial', available: 7.5, taken: 1, pending: 4, withheld: true },
 ] as const;
 const strategies = ['baseline_v1', 'focused_v1'] as const;
+type Outcome = 'rejected' | 'correct' | 'wrong_selection';
 
 /** Fictional source recreation through the same owned projection and terminal adjudicator as the app. */
 export async function runProtectedLeaveComparison(model: PilotModel) {
@@ -51,7 +52,7 @@ export async function runProtectedLeaveComparison(model: PilotModel) {
   const localCases = ['Show my colleague’s leave balance', 'How much annual leave do I have?', 'Why did my annual leave not match eligibility?']
     .map(question => ({ question, intent: resolvePrivateAssistantIntent(question).intent }));
   const budget = { calls: 0, inputTokens: 0, outputTokens: 0 };
-  const comparisons = [];
+  const comparisons: { id: string; strategy: typeof strategies[number]; outcome: Outcome }[] = [];
   for (const fixture of cases) {
     for (const strategy of strategies) {
       const local = privateAssistantCatalogue(fixture.intent, fixture.reads, strategy, fixture.selected.selection);
@@ -66,7 +67,7 @@ export async function runProtectedLeaveComparison(model: PilotModel) {
       budget.calls++;
       budget.inputTokens += response.inputTokens;
       budget.outputTokens += response.outputTokens;
-      let outcome: 'rejected' | 'correct' | 'wrong_selection';
+      let outcome: Outcome;
       try {
         const plan = adjudicatePrivateAssistantTerminal(response.text, local);
         outcome = routingDigest(plan) === routingDigest(fixture.expected) ? 'correct' : 'wrong_selection';

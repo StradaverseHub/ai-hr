@@ -50,6 +50,13 @@ The same pinned Qwen model ran source `c2985339892276d5ebb7a02fbb5e933cd0cf0483`
 
 The source-owned local resolver did not recognize any of the 30 public questions in that experiment. In contrast, “my leave balance” resolves to the caller’s own available balance. “How much annual leave do I have?” still resolves to no supported intent. This distinguishes local coverage from post-read model quality. The app’s protected contract supplies typed intent and ordinal field availability. It keeps the person’s wording and the canonical values local. [Live Assistant path](../../core/assistant.ts) · [Protected provider projection](../../lib/ai/provider-assistant-policy.ts)
 
-The `--protected` comparison replays that projection and adjudicator with nine fictional cases per strategy for available, taken and pending balances. At source `cf4567e4063b0124c44dace8c536e408b415c6f4`, the default achieved 2/9 with generic JSON and 2/9 with the schema. The focused strategy achieved 0/9 in both formats. The schema reduced rejected default outputs from one to zero while wrong selections increased from six to seven. A valid reference can still answer the wrong question. Ordinary and zero-balance fixtures can project to the same provider input, so the nine cases do not represent nine independent prompts.
+The `--protected` comparison replays that projection and adjudicator with nine fictional cases per strategy for available, taken and pending balances. The initial scorer used fixed ordinals for partially withheld records, where the projection compacts the visible facts. Use the rerun at source `350c2c9ccdbc05eb00dac35a8988456472a7d912`, with fixture digest `4ae10e481493dded154e3831447c73ad9ee1cfe5dbc2d8fcd117bbe928f74b86`, for the corrected results below. The scorer checks each fixture's named field against its projected position. Both formats used the same pinned Qwen model and made 18 calls each.
+
+| Output format | Default correct | Default rejected | Default wrong field | Focused correct | Focused rejected | Focused wrong field |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Generic JSON | 3/9 | 1/9 | 5/9 | 1/9 | 0/9 | 8/9 |
+| Answer schema | 3/9 | 0/9 | 6/9 | 1/9 | 0/9 | 8/9 |
+
+The schema eliminated the one rejected default output and left field-selection accuracy unchanged. Ordinary and zero-balance fixtures can project to the same provider input. These are fictional development cases with repeated projections.
 
 The next product-path candidate should bind each recognized balance intent to its requested canonical field through the existing authorization and source selection. Model-assisted improvement can then be measured separately on decisions that need more than a fixed field lookup. Promotion still requires fresh independent cases and staging rollback evidence.
