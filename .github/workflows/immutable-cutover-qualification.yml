@@ -2,9 +2,9 @@ name: Immutable cutover qualification
 on:
   push:
     branches: [codex/immutable-release-cutover-20261120, codex/staging-cutover-queue-20261121]
-    paths: ['deploy/cutover/**', 'scripts/staging/**', '.github/ci/staging-cutover-build.mjs', '.github/workflows/immutable-cutover-qualification.yml']
+    paths: ['deploy/cutover/**', 'scripts/staging/**', '.github/ci/staging-cutover-build*.mjs', '.github/workflows/immutable-cutover-qualification.yml']
   pull_request:
-    paths: ['deploy/cutover/**', 'scripts/staging/**', '.github/ci/staging-cutover-build.mjs', '.github/workflows/immutable-cutover-qualification.yml']
+    paths: ['deploy/cutover/**', 'scripts/staging/**', '.github/ci/staging-cutover-build*.mjs', '.github/workflows/immutable-cutover-qualification.yml']
 permissions:
   contents: read
 jobs:
@@ -26,4 +26,4 @@ jobs:
           bash -n deploy/cutover/prepare-canonical.sh
           bash -n deploy/cutover/canonical-deploy.sh
           bash -n deploy/cutover/release.sh
-          node --check .github/ci/staging-cutover-build.mjs
+          node --test .github/ci/staging-cutover-build.test.mjs

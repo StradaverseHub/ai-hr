@@ -22,6 +22,29 @@ const api = (route) => JSON.parse(execFileSync('gh', ['api', `repos/${REPOSITORY
 const sha = (value) => typeof value === 'string' && /^[0-9a-f]{40}$/.test(value);
 const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding: 'utf8', timeout: 12000}).trim();
 
+// An accepted canonical baseline plus authenticated before/after bytes lets
+// us reconcile narrowly scoped regular-file edits without rescanning the tree.
+export function sourceDelta(cwd, baseline, candidate) {
+  const raw = execFileSync('git', ['diff', '--name-status', '-z', '--no-renames', baseline, candidate],
+    {cwd, encoding: 'utf8', timeout: 12000});
+  const changes = raw.split('\0').slice(0, -1);
+  if (!changes.length || changes.length > 200 || changes.length % 2) return null;
+  const paths = [], before = [], after = [];
+  for (let i = 0; i < changes.length; i += 2) {
+    const [status, file] = changes.slice(i, i + 2);
+    if (status !== 'M' || !/^(app|components|lib|messages|test)\/[a-zA-Z0-9_./-]+$/.test(file)
+        || file.split('/').some(part => !part || part === '.' || part === '..')) return null;
+    const mode = (ref) => git(cwd, 'ls-tree', ref, '--', file).split(' ')[0];
+    if (mode(baseline) !== '100644' || mode(candidate) !== '100644') return null;
+    const hashAt = (ref) => createHash('sha256').update(execFileSync('git', ['show', `${ref}:${file}`],
+      {cwd, timeout: 12000, maxBuffer: 16 * 1024 ** 2})).digest('hex');
+    paths.push(file);
+    before.push(`${hashAt(baseline)}  ${file}`);
+    after.push(`${hashAt(candidate)}  ${file}`);
+  }
+  return {baseline, candidate, paths, before, after};
+}
+
 export async function verifyCutoverBuild({source, baseline, controller, runId, directory}) {
   const candidate = cleanHead(source);
   assert(sha(baseline) && sha(controller) && Number.isSafeInteger(runId) && runId > 0);
@@ -65,10 +88,14 @@ export async function verifyCutoverBuild({source, baseline, controller, runId, d
   await Promise.all([pipeline(child.stdout, createWriteStream(archive, {flags: 'wx', mode: 0o600})), exited]);
   const digest = createHash('sha256');
   for await (const chunk of createReadStream(archive)) digest.update(chunk);
+  const delta = sourceDelta(source, baseline, candidate);
+  const deltaBytes = JSON.stringify(delta) + '\n';
+  await writeFile(path.join(directory, 'source-delta.json'), deltaBytes, {flag: 'wx', mode: 0o600});
   const prepared = {
     ...build,
     schema: installHash(installJson(expectedMigrationLedger(source))),
     sourceArchiveSha256: digest.digest('hex'),
+    sourceDeltaSha256: createHash('sha256').update(deltaBytes).digest('hex'),
     startedAt: run.run_started_at,
     publishedAt: artifact.created_at,
   };

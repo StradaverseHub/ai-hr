@@ -19,6 +19,10 @@ mkdir -m 700 "$stage"
 # the per-attempt directory to have exactly 0700 without the inherited bit.
 chmod g-s "$stage"
 test "$(stat -c '%a' "$stage")" = 700
+delta=$(jq -er .sourceDeltaSha256 verified.json)
+[[ "$delta" =~ ^[a-f0-9]{64}$ ]]
+printf '%s  %s\n' "$delta" source-delta.json | sha256sum -c --status
+install -m 600 source-delta.json "$stage/source-delta.json"
 PYTHONDONTWRITEBYTECODE=1 python3 /opt/ai-hr/.github/ci/build-bundle.py unpack-with-origin \
   "$packet/build.tar.gz" "$packet/build-manifest.json" "$stage/next" /opt/ai-hr "$producer"
 test "$(cat "$stage/next/BUILD_ID")" = "$build"

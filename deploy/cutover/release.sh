@@ -31,7 +31,7 @@ if [[ "$mode" == prepare ]]; then
     ln production-build-v1/bytes/build-bundle.tar.gz build.tar.gz
     ln production-build-v1/bytes/build-bundle-files.json build-manifest.json
     cp "$here"/prepare-runtime.sh "$here"/prepare-canonical.sh .
-    tar -cf - verified.json source.tar.gz build.tar.gz build-manifest.json prepare-runtime.sh prepare-canonical.sh
+    tar -cf - verified.json source-delta.json source.tar.gz build.tar.gz build-manifest.json prepare-runtime.sh prepare-canonical.sh
   ) | "${ssh[@]}" "umask 077; tar -xf - -C '$packet'"
   stamp transfer_finished_at
   "${ssh[@]}" "bash -se -- '$packet'" <<'REMOTE'

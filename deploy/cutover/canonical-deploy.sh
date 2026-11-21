@@ -60,8 +60,34 @@ test "$old" != "$new"
 test "$(cat "$source/.next/BUILD_ID")" = "$new"
 for lock in pnpm-lock.yaml package.json; do cmp -s "$source/$lock" "$live/$lock"; done
 sudo -n -l /usr/bin/systemctl restart aihr >/dev/null
-mkdir "$stage/previous-source"
-source_rsync --link-dest="$live" "$live/" "$stage/previous-source/"
+backup=$stage/previous-source
+mkdir "$backup"
+delta=$stage/source-delta.json
+scoped=0
+if [[ -f "$delta" ]] && jq -e 'type=="object"' "$delta" >/dev/null; then
+  jq -e --arg before "$baseline" --arg after "$candidate" \
+    '.baseline==$before and .candidate==$after and (.paths|length)>0 and (.paths|length)<=100
+      and ((.paths|unique|length) == (.paths|length))
+      and ((.before|length) == (.paths|length)) and ((.after|length) == (.paths|length))
+      and (. as $m | all(range(0; .paths|length);
+        (. as $i | ($m.before[$i] | test("^[a-f0-9]{64}  ") and endswith("  " + $m.paths[$i]))
+                    and ($m.after[$i] | test("^[a-f0-9]{64}  ") and endswith("  " + $m.paths[$i])))))' \
+    "$delta" >/dev/null
+  jq -er '.paths[]' "$delta" > "$stage/source-files"
+  jq -er '.before[]' "$delta" > "$stage/source-before"
+  jq -er '.after[]' "$delta" > "$stage/source-after"
+  while IFS= read -r file; do
+    [[ "$file" =~ ^(app|components|lib|messages|test)/[a-zA-Z0-9_./-]+$ ]]
+    test "$(realpath "$live/$file")" = "$live/$file"
+    test "$(realpath "$source/$file")" = "$source/$file"
+  done < "$stage/source-files"
+  sha256sum --check --strict --status "$stage/source-before"
+  (cd "$source" && sha256sum --check --strict --status "$stage/source-after")
+  rsync -a --files-from="$stage/source-files" "$live/" "$backup/"
+  scoped=1
+else
+  source_rsync --link-dest="$live" "$live/" "$backup/"
+fi
 # The retained applied SQL is authenticated as a single-link original. Keep
 # independent copies in the rollback snapshot even when other files share inodes.
 for file in "$stage/previous-source/.github/ci/historical-migrations/"*.sql; do
@@ -81,7 +107,12 @@ rollback() {
     set -e
     dstate begin "$baseline" "$$" "$stage/canonical.log"
     dstate phase cutover-canonical-rollback
-    source_rsync --checksum "$stage/previous-source/" "$live/"
+    if (( scoped )); then
+      rsync -a --checksum --files-from="$stage/source-files" "$backup/" "$live/"
+      sha256sum --check --strict --status "$stage/source-before"
+    else
+      source_rsync --checksum "$backup/" "$live/"
+    fi
     if [[ "$(cat .next/BUILD_ID)" == "$new" ]]; then
       exchange rollback "$old" "$new"
       sudo -n /usr/bin/systemctl restart aihr
@@ -105,12 +136,20 @@ trap 'exit 143' TERM
 dstate pending "$candidate"
 dstate begin "$candidate" "$$" "$stage/canonical.log"
 dstate phase cutover-canonical-install
-source_rsync --checksum "$source/" "$live/"
+if (( scoped )); then
+  rsync -a --checksum --files-from="$stage/source-files" "$source/" "$live/"
+else
+  source_rsync --checksum "$source/" "$live/"
+fi
 exchange activate "$new" "$old"
 dstate built
 sudo -n /usr/bin/systemctl restart aihr
 prove_direct "$new"
-test -z "$(source_rsync --dry-run --itemize-changes --checksum "$source/" "$live/")"
+if (( scoped )); then
+  sha256sum --check --strict --status "$stage/source-after"
+else
+  test -z "$(source_rsync --dry-run --itemize-changes --checksum "$source/" "$live/")"
+fi
 dstate finish 0
 verify_state "$candidate" "$new"
 trap - EXIT
