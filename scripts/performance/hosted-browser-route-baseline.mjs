@@ -798,6 +798,23 @@ async function measureMixedLoad(command,fixture){
 
    const knownRoutes=new Set([...Object.values(routePools).flat(),'/payroll/[batchId]',
     '/attendance/my-records/[date]','/attendance/application-history/[id]','/api/personnel/search']);
+   if(Array.isArray(data.browser)){
+    const activeUsers=state=>Number.isSafeInteger(state?.active)&&state.active>=0&&state.active<=500?state.active:null;
+    const atSteady500=state=>activeUsers(state)===500&&state.inSteadyWindow===true;
+    const visits=data.browser.flatMap(row=>{
+     if(!row||row.entry!=='document'||row.signIn||!row.contentWitness||row.scopeDenied
+      ||!knownRoutes.has(row.path)||!roles.includes(row.role)||!['baseline','loaded'].includes(row.phase)
+      ||nonnegative(row.elapsedMs)===null)return [];
+     return [{route:row.path,role:row.role,phase:row.phase,readyMs:nonnegative(row.elapsedMs),
+      ...counts(row,['ttfbMs','domInteractiveMs']),
+      activeAtOpen:activeUsers(row.startedWith),activeAtReady:activeUsers(row.usableWith),
+      insideSteady500:atSteady500(row.startedWith)&&atSteady500(row.usableWith)}];
+    }).sort((first,second)=>Number(second.phase==='loaded')-Number(first.phase==='loaded'));
+    report.mixedBrowserReadiness={
+     scope:'Known document routes with an authorized browser content witness. Browser readiness and HTTP response completion are separately measured.',
+     rows:visits.slice(0,200),omitted:Math.max(0,visits.length-200),
+    };
+   }
    const samplesPath=join(driverEvidence,'http-samples.json');
    report.mixedResponsePhases={available:false};
    try{
