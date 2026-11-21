@@ -431,15 +431,8 @@ function readMixedRootStatements(name,dockerConfig){
  }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
 }
 
-function captureAccessServerLog({containerId,dockerConfig,driverEvidence,fixture}){
+function captureAccessServerLogWindow({containerId,dockerConfig,fixture,from,to}){
  try{
-  const waitsPath=join(driverEvidence,'database-waits.json');
-  if(statSync(waitsPath).size>8*1024*1024)return {state:'sample-file-over-cap'};
-  const samples=JSON.parse(readFileSync(waitsPath,'utf8'))
-   .filter(sample=>sample.phase==='loaded'&&Number.isSafeInteger(sample.at)&&sample.at>0);
-  if(samples.length<2)return {state:'sample-window-unavailable'};
-  const from=Math.min(...samples.map(sample=>sample.at));
-  const to=Math.max(...samples.map(sample=>sample.at));
   const tenantIds=fixture.tenants.map(tenant=>tenant.tenantId);
   assert(tenantIds.length===2&&tenantIds.every(id=>/^[a-f0-9-]{36}$/.test(id)));
   const docker=(args,options)=>spawnSync('/usr/bin/docker',[
@@ -465,6 +458,84 @@ function captureAccessServerLog({containerId,dockerConfig,driverEvidence,fixture
  }
 }
 
+function captureAccessServerLog({containerId,dockerConfig,driverEvidence,fixture}){
+ try{
+  const waitsPath=join(driverEvidence,'database-waits.json');
+  if(statSync(waitsPath).size>8*1024*1024)return {state:'sample-file-over-cap'};
+  const samples=JSON.parse(readFileSync(waitsPath,'utf8'))
+   .filter(sample=>sample.phase==='loaded'&&Number.isSafeInteger(sample.at)&&sample.at>0);
+  if(samples.length<2)return {state:'sample-window-unavailable'};
+  const from=Math.min(...samples.map(sample=>sample.at));
+  const to=Math.max(...samples.map(sample=>sample.at));
+  return captureAccessServerLogWindow({containerId,dockerConfig,fixture,from,to});
+ }catch{return {state:'collection-unavailable'};}
+}
+
+async function calibrateAccessServerLog({containerId,dockerConfig,fixture}){
+ // The controller has already verified the identity and ownership of this job's
+ // disposable database container. Run the witness before workload statistics reset.
+ assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
+ const tenantId=fixture.tenants[0]?.tenantId;
+ assert(/^[a-f0-9-]{36}$/.test(tenantId??''));
+ const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
+ const database=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:3,connect_timeout:2,
+  connection:{statement_timeout:'3000ms',application_name:'aihr-fixture-lock-log-witness'}});
+ let release,announceHolder,announceWaiter;
+ const held=new Promise(resolve=>{announceHolder=resolve;});
+ const waiting=new Promise(resolve=>{announceWaiter=resolve;});
+ const released=new Promise(resolve=>{release=resolve;});
+ const key='access-configuration:'+tenantId;
+ const from=Date.now();
+ const holder=database.begin(async tx=>{
+  await tx`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`;
+  const [row]=await tx`select pg_backend_pid() as pid`;
+  announceHolder(row.pid);
+  await released;
+ });
+ const guardedHolder=holder.catch(()=>announceHolder(null));
+ let waiter,stage='hold';
+ try{
+  const holderPid=await held;
+  assert(Number.isInteger(holderPid));
+  stage='wait';
+  waiter=database.begin(async tx=>{
+   // Only the controlled positive sample uses a shorter timeout. The measured
+   // load still uses the existing database configuration.
+   await tx`set local deadlock_timeout='100ms'`;
+   const [row]=await tx`select pg_backend_pid() as pid`;
+   announceWaiter(row.pid);
+   await tx`select pg_advisory_xact_lock(hashtextextended(${key},0))`;
+  });
+  void waiter.catch(()=>announceWaiter(null));
+  const waiterPid=await waiting;
+  assert(Number.isInteger(waiterPid)&&waiterPid!==holderPid);
+  stage='sample';
+  const deadline=performance.now()+1500;
+  let observed=false;
+  while(performance.now()<deadline&&!observed){
+   const [row]=await database`select ${holderPid}::int=any(pg_blocking_pids(${waiterPid}::int)) as observed`;
+   observed=row?.observed===true;
+   if(!observed)await pause(20);
+  }
+  assert(observed,'The native waiter must be blocked by the controlled holder');
+  await pause(250);
+  release();
+  await Promise.all([holder,waiter]);
+  stage='collect';
+  // Give the container logger a chance to flush the native acquisition receipt.
+  await pause(250);
+  const result=captureAccessServerLogWindow({containerId,dockerConfig,fixture,from,to:Date.now()});
+  return {...result,confirmedWaiter:true,matchedKnownWait:result.groups?.some(group=>
+   group.mode==='ExclusiveLock'&&group.event==='still-waiting')===true};
+ }catch{
+  return {state:'calibration-unavailable',stage,matchedKnownWait:false};
+ }finally{
+  release();
+  await Promise.allSettled([guardedHolder,waiter]);
+  await database.end({timeout:2});
+ }
+}
+
 async function measureMixedLoad(command,fixture){
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name),'Expected the job-owned PostgreSQL container');
@@ -487,6 +558,12 @@ async function measureMixedLoad(command,fixture){
  report.mixedDatabaseProfile={durableAndStatementStatistics:configured==='t'};
  save();
  assert.equal(configured,'t','The workload database lacks its required durability or statement instrumentation');
+ report.mixedDatabaseProfile.accessServerLogCalibration=await calibrateAccessServerLog({containerId,dockerConfig,fixture});
+ save();
+ if(env.AIHR_BROWSER_LOCK_LOG_CALIBRATION_ONLY==='true'){
+  assert(report.mixedDatabaseProfile.accessServerLogCalibration.matchedKnownWait,'PostgreSQL lock log calibration did not match the known wait');
+  return;
+ }
 
  const clockTicks=execFileSync('/usr/bin/getconf',['CLK_TCK'],{encoding:'utf8',timeout:5000}).trim();
  assert(/^[1-9][0-9]*$/.test(clockTicks));
