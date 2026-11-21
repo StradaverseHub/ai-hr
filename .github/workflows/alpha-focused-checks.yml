@@ -277,7 +277,7 @@ jobs:
           digest="$(jq -er '.sha256 | select(test("^[0-9a-f]{64}$"))' <<< "$pin")"
           gh api "repos/StradaverseHub/ai-hr/actions/jobs/$job_id" | jq -e --argjson run "$run_id" --arg controller "$controller" '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == $run and .head_sha == $controller' > /dev/null
+            .run_id == $run and .head_sha == $controller' | grep -qx true
           archive="$(mktemp "$RUNNER_TEMP/combined-action-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
           gh api "repos/StradaverseHub/ai-hr/actions/artifacts/$artifact_id/zip" > "$archive"
