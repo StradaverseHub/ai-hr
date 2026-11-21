@@ -1,3 +1,5 @@
+import { Suspense, type ReactNode } from 'react';
+import type { SessionContext } from '@/db/client';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import {notFound} from 'next/navigation';
@@ -66,15 +68,12 @@ export default async function ClaimsPage({
     );
   }
 
-  const [types, drafts, {rows: claimPage, state: pgState}, currency] = await Promise.all([
+  const [types, drafts, currency, common] = await Promise.all([
     getEmployeeClaimTypes(s, me.employmentId),
     listClaimDraftsForEmployment(s, me.employmentId),
-    listClaimHistoryPage(s, me.employmentId, sp),
     currencyOfEmployment(s, me.employmentId).catch(() => null),
-
+    getTranslations('common'),
   ]);
-  // Only displayed rejections need detail facts; older history stays in the database.
-  const rejectReasons = await claimRecordFacts(s, claimPage.filter(c => c.status === 'rejected').map(c => c.id));
   const editing = sp.draft ? drafts.find((d) => d.id === sp.draft) : undefined;
   if(selectedQuery.employmentId&&sp.draft!==undefined&&!editing)notFound();
   const draftPrefill: ClaimDraftPrefill | undefined = editing
@@ -234,70 +233,96 @@ export default async function ClaimsPage({
         </Card>
       )}
 
-      <Card data-tour="claims-history" className="overflow-hidden">
-        <SectionHeader title={t('myClaims')} count={pgState.total} />
-        <Pager basePath="/claims" params={selectedQuery} state={pgState} />
-        {pgState.total === 0 ? (
-          <p className="px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">{t('colType')}</th>
-                <th className="px-4 py-2 font-medium">{t('colAmount')}</th>
-                <th className="px-4 py-2 font-medium">{t('colDate')}</th>
-                <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {claimPage.map((c) => (
-                <tr key={c.id} className="border-t border-border align-top">
-                  <td className="px-4 py-2.5">
-                    <div className="font-medium">{c.typeName}</div>
-                    {c.itemName && <div className="text-xs text-muted-foreground">{c.itemName}</div>}
-                    {c.quantityKm != null && (
-                      <div className="text-xs text-muted-foreground">{t('distanceLabel')}: {c.quantityKm} km</div>
-                    )}
-                    {c.description && <div className="text-xs text-muted-foreground">{c.description}</div>}
-                    {c.attachments.map((a) => (
-                      <a key={a.id} href={`/claims/attachment/${a.id}?inline=1`} target="_blank" rel="noopener noreferrer" className="mt-0.5 block text-xs text-primary underline-offset-2 hover:underline">
-                        ↗ {a.fileName}
-                      </a>
-                    ))}
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums">
-                    {rm(c.amount)}
-                    {c.status === 'approved' && (
-                      <span className="ml-1 text-[10px] text-muted-foreground">{c.taxable ? t('taxableBadge') : t('nonTaxableBadge')}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums">{c.incurredOn}</td>
-                  <td className="px-4 py-2.5">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[c.status] ?? 'bg-muted text-muted-foreground'}`}>
-                      {t(`status_${c.status}` as 'status_pending')}
-                    </span>
-                    {c.status === 'rejected' && rejectReasons.get(c.id)?.rejectReason && (
-                      <div className="mt-1 max-w-xs break-words text-xs text-muted-foreground">{t('rejectReasonShown', { reason: rejectReasons.get(c.id)!.rejectReason! })}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    {c.status === 'pending' && (
-                      <form action={cancelClaimAction}>
-                        {subjectField}
-                        <input type="hidden" name="id" value={c.id} />
-                        <ConfirmSubmit size="sm" variant="ghost" className="text-destructive hover:text-destructive" title={t('cancelConfirmTitle')} description={t('cancelConfirmDescription')} confirmLabel={t('cancelConfirmLabel')}>
-                          {t('cancel')}
-                        </ConfirmSubmit>
-                      </form>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+      <Suspense fallback={
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('myClaims')} />
+          <p role="status" className="px-4 py-6 text-sm text-muted-foreground">{common('loading')}</p>
+        </Card>
+      }>
+        <ClaimHistory session={s} employmentId={me.employmentId} pageQuery={sp} params={selectedQuery} subjectField={subjectField} />
+      </Suspense>
     </div>
+  );
+}
+
+async function ClaimHistory({ session, employmentId, pageQuery, params, subjectField }: {
+  session: SessionContext;
+  employmentId: string;
+  pageQuery: { page?: string; size?: string };
+  params: Record<string, string>;
+  subjectField: ReactNode;
+}) {
+  const [t, { rows: claimPage, state: pgState }] = await Promise.all([
+    getTranslations('claims'),
+    listClaimHistoryPage(session, employmentId, pageQuery),
+  ]);
+  // Only the displayed rejected rows need the separate facts transaction.
+  const rejectedIds = claimPage.filter(claim => claim.status === 'rejected').map(claim => claim.id);
+  const rejectReasons = rejectedIds.length ? await claimRecordFacts(session, rejectedIds) : undefined;
+  return (
+    <Card data-tour="claims-history" className="overflow-hidden">
+      <SectionHeader title={t('myClaims')} count={pgState.total} />
+      <Pager basePath="/claims" params={params} state={pgState} />
+      {pgState.total === 0 ? (
+        <p className="px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-4 py-2 font-medium">{t('colType')}</th>
+              <th className="px-4 py-2 font-medium">{t('colAmount')}</th>
+              <th className="px-4 py-2 font-medium">{t('colDate')}</th>
+              <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+              <th className="px-4 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {claimPage.map((c) => (
+              <tr key={c.id} className="border-t border-border align-top">
+                <td className="px-4 py-2.5">
+                  <div className="font-medium">{c.typeName}</div>
+                  {c.itemName && <div className="text-xs text-muted-foreground">{c.itemName}</div>}
+                  {c.quantityKm != null && (
+                    <div className="text-xs text-muted-foreground">{t('distanceLabel')}: {c.quantityKm} km</div>
+                  )}
+                  {c.description && <div className="text-xs text-muted-foreground">{c.description}</div>}
+                  {c.attachments.map((a) => (
+                    <a key={a.id} href={`/claims/attachment/${a.id}?inline=1`} target="_blank" rel="noopener noreferrer" className="mt-0.5 block text-xs text-primary underline-offset-2 hover:underline">
+                      ↗ {a.fileName}
+                    </a>
+                  ))}
+                </td>
+                <td className="px-4 py-2.5 tabular-nums">
+                  {rm(c.amount)}
+                  {c.status === 'approved' && (
+                    <span className="ml-1 text-[10px] text-muted-foreground">{c.taxable ? t('taxableBadge') : t('nonTaxableBadge')}</span>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 tabular-nums">{c.incurredOn}</td>
+                <td className="px-4 py-2.5">
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[c.status] ?? 'bg-muted text-muted-foreground'}`}>
+                    {t(`status_${c.status}` as 'status_pending')}
+                  </span>
+                  {c.status === 'rejected' && rejectReasons?.get(c.id)?.rejectReason && (
+                    <div className="mt-1 max-w-xs break-words text-xs text-muted-foreground">{t('rejectReasonShown', { reason: rejectReasons?.get(c.id)?.rejectReason ?? '' })}</div>
+                  )}
+                </td>
+                <td className="px-4 py-2.5 text-right">
+                  {c.status === 'pending' && (
+                    <form action={cancelClaimAction}>
+                      {subjectField}
+                      <input type="hidden" name="id" value={c.id} />
+                      <ConfirmSubmit size="sm" variant="ghost" className="text-destructive hover:text-destructive" title={t('cancelConfirmTitle')} description={t('cancelConfirmDescription')} confirmLabel={t('cancelConfirmLabel')}>
+                        {t('cancel')}
+                      </ConfirmSubmit>
+                    </form>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
   );
 }

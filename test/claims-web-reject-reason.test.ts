@@ -46,9 +46,10 @@ describe('web claim rejection reason', () => {
   it('the employee list shows the reason through the claims owner reader, translated in every locale', () => {
     const claims = read('app/claims/page.tsx');
     // History is paged now: fetch private rejection facts only for displayed rejected IDs.
-    const history = between(claims, 'const [types, drafts, {rows: claimPage, state: pgState}', 'const editing =');
-    expect(history).toContain('listClaimHistoryPage(s, me.employmentId, sp)');
-    expect(history).toMatch(/claimRecordFacts\(s, claimPage\.filter\(c => c\.status === 'rejected'\)\.map\(c => c\.id\)\)/);
+    const history = between(claims, 'async function ClaimHistory(', 'data-tour="claims-history"');
+    expect(history).toContain('listClaimHistoryPage(session, employmentId, pageQuery)');
+    expect(history).toContain("claimPage.filter(claim => claim.status === 'rejected').map(claim => claim.id)");
+    expect(history).toContain('rejectedIds.length ? await claimRecordFacts(session, rejectedIds)');
     expect(claims).toMatch(/t\('rejectReasonShown', \{ reason:/);
     for (const locale of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const catalogue = JSON.parse(read(`messages/${locale}.json`)) as { claims: Record<string, string> };
