@@ -7,6 +7,7 @@ import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed
 import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
 import { scoreProtectedWorkSummaryHoldout } from '../scripts/experiments/protected-work-summary-holdout';
 import { runProtectedExplanationPriority } from '../scripts/experiments/protected-explanation-priority';
+import type { ProtectedAnswerFixture } from '../scripts/experiments/protected-answer-comparison';
 import { guidanceOptions, protectedStrategyDigest } from '../scripts/experiments/protected-work-summary-guidance';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
@@ -41,7 +42,7 @@ describe('evaluator-held protected answer cases', () => {
     } })),
   }));
   const hash = (body: Buffer) => createHash('sha256').update(body).digest('hex');
-  const file = (cases = fictional) => Buffer.from(JSON.stringify({
+  const file = (cases: readonly ProtectedAnswerFixture[] = fictional) => Buffer.from(JSON.stringify({
     version: 1, cases, modelDigest, minimumGain: 2,
     parentRules: [], parentDigest: protectedStrategyDigest([]),
     candidateRules: ['include_meaning'], candidateDigest: protectedStrategyDigest(['include_meaning']),
