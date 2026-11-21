@@ -335,7 +335,9 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
    await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess');
    const completionObservedMs=await assertProcessed(batchId);await exportPayroll(actor,batchId,1);
-   evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50,completionObservedMs});save();
+   const [observed] = await readPayrollAfterTraffic(db,[{...actor,batchId}]);
+   assert.deepEqual(observed,{tenant:actor.tenant,batchState:'processed',jobCount:1,jobState:'completed',payslipCount:50});
+   evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50,completionObservedMs,observerVerified:true});save();
   });
  }
  // Publish a separate completed past-month run; current-month mutations retain their open period.

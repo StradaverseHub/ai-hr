@@ -1925,7 +1925,8 @@ async function main(){
   try{report.mixedWorkflows.payrollAfterTraffic={status:'checked',rows:await mixedWorkflows.verifyPayrollAfterTraffic()};}
   catch(error){
    const {kind,code}=driverErrorFact(error);
-   report.mixedWorkflows.payrollAfterTraffic={status:'unavailable',kind,code};
+   const sqlState=error?.name==='PostgresError'&&/^[0-9A-Z]{5}$/.test(error.code) ? error.code : null;
+   report.mixedWorkflows.payrollAfterTraffic={status:'unavailable',kind,code,sqlState};
   }
   save();
   try{report.mixedWorkflows.failedAttendanceEffects={status:'checked',rows:await mixedWorkflows.verifyFailedAttendanceActions()};}
