@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import { client, withPoolWork } from '../db/client';
 import { internalSelected } from './internal-auth/config';
-import { DEFAULT_LOGIN_PRESENTATION, validateLoginPresentation } from './login-presentation';
+import { DEFAULT_LOGIN_PRESENTATION, validateLoginPresentation, type LoginPresentation } from './login-presentation';
 
 /** Installation config chooses the public tenant; request headers and query strings never do. */
 export async function loginPresentationTenantId(): Promise<string | null> {
@@ -16,8 +16,7 @@ export async function loginPresentationTenantId(): Promise<string | null> {
   return null;
 }
 
-/** Artwork failures must never make authentication unavailable. No private record reaches the client. */
-export const publicLoginPresentation = cache(async () => {
+async function readPublicLoginPresentation(): Promise<LoginPresentation> {
   try {
     const tenantId = await loginPresentationTenantId();
     if (!tenantId) return DEFAULT_LOGIN_PRESENTATION;
@@ -27,4 +26,21 @@ export const publicLoginPresentation = cache(async () => {
     console.error('Public login artwork unavailable; using default presentation.');
     return DEFAULT_LOGIN_PRESENTATION;
   }
+}
+
+let inFlightPresentation: Promise<LoginPresentation> | undefined;
+
+/** A successful save separates subsequent reads from a query already underway. */
+export function forgetPublicLoginPresentation() {
+  inFlightPresentation = undefined;
+}
+
+/** Concurrent renders share the installation's public artwork query until it settles. */
+export const publicLoginPresentation = cache(() => {
+  if (inFlightPresentation) return inFlightPresentation;
+  const pending = readPublicLoginPresentation().finally(() => {
+    if (inFlightPresentation === pending) forgetPublicLoginPresentation();
+  });
+  inFlightPresentation = pending;
+  return pending;
 });

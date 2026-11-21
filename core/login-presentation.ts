@@ -4,6 +4,7 @@ import { loginPresentation } from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { isGroupAdmin } from '../lib/authz-model';
 import { DEFAULT_LOGIN_PRESENTATION, validateLoginPresentation } from '../lib/login-presentation';
+import { forgetPublicLoginPresentation } from '../lib/login-presentation-server';
 
 export function assertLoginPresentationAdmin(ctx: SessionContext) {
   if (!ctx.userId || !isGroupAdmin(ctx)) throw new Error('forbidden');
@@ -21,7 +22,7 @@ export async function saveLoginPresentation(ctx: SessionContext, value: unknown,
   assertLoginPresentationAdmin(ctx);
   const presentation = validateLoginPresentation(value);
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new Error('invalid');
-  return withTenant(ctx, async tx => {
+  const saved = await withTenant(ctx, async tx => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`login-presentation:${ctx.tenantId}`},0))`);
     const [proof] = await tx.execute(sql`select app.principal_snapshot_current() as allowed`) as unknown as { allowed: boolean }[];
     if (!proof?.allowed) throw new Error('forbidden');
@@ -34,4 +35,6 @@ export async function saveLoginPresentation(ctx: SessionContext, value: unknown,
       eventType: 'login-presentation.updated', actor: actorOf(ctx), payload: { revision, mediaType: presentation.mediaType } });
     return { revision };
   });
+  forgetPublicLoginPresentation();
+  return saved;
 }
