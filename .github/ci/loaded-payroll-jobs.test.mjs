@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { projectLoadedPayrollJobs, projectPayrollAfterTraffic } from '../../scripts/performance/loaded-payroll-jobs.mjs';
+import { projectLoadedPayrollJobs, projectPayrollAfterTraffic, projectTimedOutPayrollResponses } from '../../scripts/performance/loaded-payroll-jobs.mjs';
 
 const atSteady = { active: 500, launched: 500, inSteadyWindow: true };
 const job = tenant => ({
@@ -53,4 +53,20 @@ test('distinguishes durable results from an unconfirmed response and strips data
   for (const rows of [[completed, completed], [{ ...missing, jobState: 'queued' }], [{ ...completed, payslipCount: -1 }]]) {
     assert.deepEqual(projectPayrollAfterTraffic({ status: 'checked', rows }), invalid);
   }
+});
+
+test('publishes only the approved Payroll timeout boundaries and no redirect values', () => {
+  const tenantForActor = new Map([[7, 0], [10, 1]]);
+  const timeout = { user: 7, action: 'payrollProcess', route: '/payroll/[batchId]', method: 'POST',
+    role: 'groupHR', error: 'ABORT_ERR', startedMs: 50, elapsedMs: 90000.4,
+    responseHeaders: { status: 200, ttfbMs: 350.4, payrollRedirect: 'queued', rawRedirect: 'private' } };
+  const otherTenant = { ...timeout, user: 10, responseHeaders: null };
+  assert.deepEqual(projectTimedOutPayrollResponses([otherTenant, { ...timeout, startedMs: 10 }, timeout],
+    30, tenantForActor), [
+    { tenant: 0, elapsedMs: 90000, headers: { status: 200, elapsedMs: 350, redirect: 'queued' } },
+    { tenant: 1, elapsedMs: 90000, headers: null },
+  ]);
+  assert.deepEqual(projectTimedOutPayrollResponses([timeout, timeout], 30, tenantForActor), []);
+  assert.deepEqual(projectTimedOutPayrollResponses([{ ...timeout,
+    responseHeaders: { ...timeout.responseHeaders, payrollRedirect: '/payroll/private' } }], 30, tenantForActor), []);
 });

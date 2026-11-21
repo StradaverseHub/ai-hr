@@ -65,3 +65,26 @@ export function projectPayrollAfterTraffic(input) {
   }
   return { status: 'checked', rows };
 }
+
+/** The action may return its redirect headers while the response stream is still open. */
+export function projectTimedOutPayrollResponses(errors, loadStartedMs, tenantForActor) {
+  if (!Array.isArray(errors) || !Number.isFinite(loadStartedMs)) return [];
+  const attempts = [];
+  for (const row of errors) {
+    if (row?.action !== 'payrollProcess' || row.route !== '/payroll/[batchId]' ||
+        row.role !== 'groupHR' || row.method !== 'POST' || row.error !== 'ABORT_ERR' ||
+        !Number.isFinite(row.startedMs) || row.startedMs < loadStartedMs) continue;
+    const tenant = tenantForActor.get(row.user);
+    const headers = row.responseHeaders;
+    const timing = value => Number.isFinite(value) && value >= 0 && value <= 180000;
+    if (![0, 1].includes(tenant) || attempts.some(attempt => attempt.tenant === tenant) ||
+        !timing(row.elapsedMs) || (headers && (!Number.isInteger(headers.status) ||
+        headers.status < 100 || headers.status > 599 || !timing(headers.ttfbMs) ||
+        headers.ttfbMs > row.elapsedMs ||
+        !['queued', 'refused', 'unexpected', 'none'].includes(headers.payrollRedirect)))) return [];
+    attempts.push({ tenant, elapsedMs: Math.round(row.elapsedMs), headers: headers ? {
+      status: headers.status, elapsedMs: Math.round(headers.ttfbMs), redirect: headers.payrollRedirect,
+    } : null });
+  }
+  return attempts.sort((left, right) => left.tenant - right.tenant);
+}

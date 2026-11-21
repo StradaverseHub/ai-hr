@@ -3,7 +3,7 @@ import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {projectMixedRootStatementWork} from './mixed-root-statement-work.mjs';
-import {projectLoadedPayrollJobs,projectPayrollAfterTraffic} from './loaded-payroll-jobs.mjs';
+import {projectLoadedPayrollJobs,projectPayrollAfterTraffic,projectTimedOutPayrollResponses} from './loaded-payroll-jobs.mjs';
 import {randomBytes} from 'node:crypto';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,statSync,writeFileSync} from 'node:fs';
@@ -695,6 +695,9 @@ async function measureMixedLoad(command,fixture){
    }
    const loadedPayroll=projectLoadedPayrollJobs(data.mixedWorkflows?.loadedPayroll);
    if(loadedPayroll)report.mixedLoadedPayrollJobs=loadedPayroll;
+   const payrollTimeouts=projectTimedOutPayrollResponses(data.requestErrors,data.measurementWindow?.startPerformanceMs,
+    new Map(fixture.users.filter(user=>user.role==='groupHR').map(user=>[user.index,user.tenant])));
+   if(payrollTimeouts.length)report.mixedPayrollTimeouts=payrollTimeouts;
    const payrollAfterTraffic=projectPayrollAfterTraffic(data.mixedWorkflows?.payrollAfterTraffic);
    if(payrollAfterTraffic)report.mixedPayrollAfterTraffic=payrollAfterTraffic;
    const observerPreflight=data.mixedWorkflows?.payrollObserverPreflight;
