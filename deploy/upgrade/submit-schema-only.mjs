@@ -29,7 +29,7 @@ assert.equal(index.digest,row.hash);
 const workflow='.github/workflows/staging-schema-only.yml';
 const test='deploy/upgrade/schema-only.test.mjs';
 const controller=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
-for(const proof of [workflow,test,'deploy/upgrade/index-expansion.mjs','db/migrations/0518_clocking_file_import.sql','patches/postgres@3.4.9.patch']){
+for(const proof of [workflow,test,'deploy/upgrade/index-expansion.mjs','db/migrations/0546_employee_master_reports.sql','patches/postgres@3.4.9.patch']){
   assert(readFileSync(path.join(cwd,proof)).equals(readFileSync(path.join(controller,proof))), 'Reviewed evidence input differs: '+proof);
 }
 const allowed=new Set([workflow,test,sql,'db/migrations/meta/_journal.json','docs/MIGRATION-ALLOCATION.md']);
