@@ -47,6 +47,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveEntitlementsTx} from './entitlements';
 import {withAssistantAdmissionReadsTx} from './assistant-read-session';
 import {assistantSourceReplay} from './assistant-disclosure-read';
+import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from '../packs/leave/service';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,readGovernedSpecialistToolResultTx,type AssistantConversationStrategyCapability} from './module-agent-releases';
 import { adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
 import { assistantToolAnswerExplanations } from '../lib/ai/assistant-tool-answer-evidence';
@@ -239,6 +240,7 @@ async function askAssistantActivity(
   let sourcesComplete = true;
   let answer = '';
   let answerPlan: AssistantAnswerPlan | undefined;
+  let ownLeaveEmployment: string | undefined;
   const answerReads: AssistantAnswerRead[] = [];
   let stop: AiStop = 'other';
   let turnCount = 0;
@@ -268,7 +270,11 @@ async function askAssistantActivity(
       for(const result of results){if(result.isError)continue;const read=ordinal++;try{if(!isGroundedToolName(result.name))continue;const outcome=JSON.parse(result.content),presentation=presentGroundedToolOutcome(result.name,outcome);if(presentation&&read<8){answerReads.push(Object.freeze({read,presentation,explanations:assistantAnswerExplanationAvailability(assistantToolAnswerExplanations(result.name,outcome,presentation))}));
         // Identity grouping remains local and comes from this exact successful own-subject source.
         // Multiple own employments with the same company label remain ambiguous, never merged.
-        if(result.name==='my_leave_balances'&&Array.isArray(outcome.employments)){let card=0;for(const employment of outcome.employments){if(!employment||typeof employment!=='object'||!Array.isArray(employment.balances))continue;for(const _balance of employment.balances){if(card<presentation.cards.length&&typeof employment.employmentId==='string'&&typeof employment.company==='string')localEmployments.push({read,card,key:employment.employmentId,labels:[employment.company]});card++;}}}
+        if(result.name==='my_leave_balances'&&Array.isArray(outcome.employments)){
+          const subject=outcome.employments.length===1?outcome.employments[0]?.employmentId:undefined;
+          if(typeof subject==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(subject))ownLeaveEmployment=subject;
+          let card=0;for(const employment of outcome.employments){if(!employment||typeof employment!=='object'||!Array.isArray(employment.balances))continue;for(const _balance of employment.balances){if(card<presentation.cards.length&&typeof employment.employmentId==='string'&&typeof employment.company==='string')localEmployments.push({read,card,key:employment.employmentId,labels:[employment.company]});card++;}}
+        }
       }}catch{/* No unsupported source acquires answer authority. */}}
       if(!sourcesComplete)throw new AssistantError('provider_error');
       const selectedCards=selectPrivateAssistantCards(intent.intent,answerReads,clarification,localEmployments);
@@ -348,6 +354,7 @@ async function askAssistantActivity(
     error: failure,
     sourceReads: sourcesComplete ? sourceReads : undefined,
     answerPlan,
+    ownLeaveEmployment: answerPlan?.mode==='answer' && sourcesComplete && sourceReads.length===1 && sourceReads[0].name==='my_leave_balances' ? ownLeaveEmployment : undefined,
   });
   // Content withdrawn mid-flight (history cleared, erasure, access change): accounting was recorded, the
   // answer was not. The caller sees the generic, warm failure and nothing that confirms what was erased.
@@ -412,6 +419,8 @@ type PersistInput = {
   error: string | null;
   sourceReads?: readonly AssistantSourceRead[];
   answerPlan?: AssistantAnswerPlan;
+  /** The single own employment observed by the canonical leave source, checked again before retention. */
+  ownLeaveEmployment?: string;
   /** The own exchange this one answered (0658); the guard refuses anything else. */
   continuesExchangeId?: string | null;
 };
@@ -462,6 +471,17 @@ async function persistWithContent(ctx: SessionContext, id: string, p: PersistInp
     // Keep the owner Access interval through INSERT + marker completion + accounting COMMIT.
     // A source erased during the sole provider call must never acquire fresh retained content.
     if(p.continuationCheck)await p.continuationCheck(tx);
+    if(p.ownLeaveEmployment){
+      await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
+      const valid=await withAssistantAdmissionReadsTx(ctx,tx,async session=>{
+        if(!await assistantFunctionAllowed(ctx,session,'read:my_leave_balances'))return false;
+        const subjects=await session.myEmployments();
+        if(subjects.length!==1||subjects[0].employmentId!==p.ownLeaveEmployment||!p.sourceReads)return false;
+        await lockLeaveDependenciesTx(tx,ctx.tenantId,[subjects[0].employmentId]);
+        return assistantSourceReplay(ctx,session)(p.sourceReads);
+      });
+      if(!valid)throw new AiGatewayError('The current Assistant leave source could not be confirmed.');
+    }
     const [row] = await tx
       .insert(assistantExchange)
       .values({

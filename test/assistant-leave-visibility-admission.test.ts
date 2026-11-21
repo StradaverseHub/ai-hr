@@ -1,4 +1,4 @@
-/** Actual flag-toggled admission/history cases; authored UNRUN. Transport is mocked, never live. */
+/** Native leave admission, retention and history. Provider transport and disclosure review are fictional. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -26,6 +26,7 @@ import {ASSISTANT_PRIVATE_CONTRACT,adjudicatePrivateAssistantTerminal,capturePri
 import {adjudicateAssistantAnswerPlan} from '../lib/ai/assistant-answer-plan';
 import {isGroundedToolName,presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
 import {AiPrivacyGateError} from '../lib/ai/provider-privacy-error';
+import * as providerReviews from '../lib/ai/provider-data-reviews';
 import {AiGatewayError} from '../lib/ai/types';
 import {resolveActiveAiConfig} from '../core/ai-config';
 import {converse} from '../lib/ai';
@@ -38,6 +39,10 @@ let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-visible-source-passphrase');vi.stubEnv('OPENAI_API_KEY','fictional-visibility-key');
  for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
+ // The proposed build awaits real source review. All provider transports in this file are intercepted.
+ vi.spyOn(providerReviews,'assertProviderDataContractReviewed').mockImplementation(contract=>{
+  if(contract!==ASSISTANT_PRIVATE_CONTRACT)throw new AiPrivacyGateError('unreviewed');
+ });
  await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
 async function fixture(){const admin=adminCtx(base);await seedEntitlement(admin,{leaveTypeId:base.annualLeaveTypeId,annualDays:113.75,validFrom:'2020-01-01'});
  const mine=await hireEmployee(admin,{person:{fullName:'Fictional Mine Visibility',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,
@@ -48,6 +53,31 @@ async function fixture(){const admin=adminCtx(base);await seedEntitlement(admin,
   entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});return {admin,ctx,userId,employmentId:mine.employmentId};}
 const response:ConverseResult={text:'Fictional response',stop:'end',toolCalls:[],usageReported:true,usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0}};
 describe('actual Mine flags bind current provider input and historical source disclosure',()=>{
+ it.each(['visibility','balance'] as const)('retires in-flight Assistant content after a native %s change and settles the actual usage',async change=>{
+  const {admin,ctx,userId,employmentId}=await fixture();
+  const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_config,args)=>{
+   const turn=args.turns[0];
+   if(turn?.role!=='user')throw Error('Expected a masked Assistant catalogue.');
+   const selected=selectProtectedLeaveCount(capturePrivateAssistantTask(JSON.parse(turn.content)).local);
+   expect(selected).toMatchObject({kind:'fact',read:0,card:0});
+   if(change==='visibility')await updateLeaveType(admin,{id:base.annualLeaveTypeId,name:'Annual Leave',essViewConfig:{available:false}});
+   else await applyLeaveAdjustmentBatch(admin,{leaveTypeIds:[base.annualLeaveTypeId],employmentIds:[employmentId],
+    targetMode:'individual',effectiveOn:todayInKualaLumpur(),days:5,reason:'Fictional in-flight leave correction'});
+   return {...response,text:JSON.stringify({version:1,mode:'answer',blocks:[selected]}),
+    usage:{inputTokens:7,outputTokens:5,cachedInputTokens:0}};
+  });
+  await expect(askAssistant(ctx,{question:'My leave balance'})).rejects.toMatchObject({code:'provider_error'});
+  expect(transport).toHaveBeenCalledOnce();
+  const [exchange]=await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.appUserId,userId));
+  expect(exchange).toMatchObject({question:'',answer:null,disclosureReceipt:null,toolCalls:[],inputTokens:7,outputTokens:5});
+  expect(exchange.contentRetiredAt).toBeInstanceOf(Date);
+  const [quota]=await owner.db.execute(sql`select exchange_id::text,accounted_tokens::int,completed_at is not null as completed
+   from app.assistant_question_budget where tenant_id=${base.tenantId}::uuid and user_id=${userId}::uuid`);
+  expect(quota).toEqual({exchange_id:exchange.id,accounted_tokens:12,completed:true});
+  const [usage]=await owner.db.select().from(schema.assistantUsage).where(eq(schema.assistantUsage.tenantId,base.tenantId));
+  expect(usage).toMatchObject({exchangeCount:1,inputTokens:7,outputTokens:5});
+ });
+
  it.each(['visibility','balance'] as const)('rehearses zero-provider leave accounting across a concurrent %s edit',async change=>{
   const {admin,ctx,userId,employmentId}=await fixture();
   const transport=vi.spyOn(openaiAdapter,'converse').mockRejectedValue(Error('No model request is expected.'));
