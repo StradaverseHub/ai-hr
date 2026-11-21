@@ -486,7 +486,7 @@ describe('evaluator-owned leave routing suite', () => {
     { scenario: { question, employments: [{ ...company, balances: [{ ...balance, available: null, withheld: true }] }] }, expected: defer },
     { scenario: { question: 'Show me Mina Fictional’s balance', employments: [company] }, expected: defer },
   ];
-  function frozen(rows = cases) {
+  function frozen(rows: readonly unknown[] = cases) {
     const bytes = Buffer.from(JSON.stringify({ version: 1, candidateSha, cases: rows }));
     return { bytes, digest: createHash('sha256').update(bytes).digest('hex') };
   }
