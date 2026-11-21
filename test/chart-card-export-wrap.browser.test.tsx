@@ -16,7 +16,7 @@ it.each([260, 150])('keeps every export control inside a %i px analytics card', 
   );
   const heading = view.getByRole('heading', {name: 'Fictional employee distribution by department'});
   const bounds = heading.parentElement!.getBoundingClientRect();
-  const controls = within(view.getByRole('group', {name: 'Export chart'})).getAllByRole('button');
+  const controls = within(view.getByRole('group', {name: 'Export chart · Fictional employee distribution by department'})).getAllByRole('button');
   expect(controls.map(control => control.textContent?.trim())).toEqual(['↓ PNG', '↓ JPEG', '↓ PDF']);
   for (const control of controls) {
     const rect = control.getBoundingClientRect();
