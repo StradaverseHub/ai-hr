@@ -1,6 +1,6 @@
 /** Actual flag-toggled admission/history cases; authored UNRUN. Transport is mocked, never live. */
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
@@ -17,7 +17,11 @@ import {serializeAgentReadResult} from '../lib/ai/agent-read-batch';
 import {prepareAssistantConversation} from '../core/assistant-provider-input';
 import {preparePrivateAiTask} from '../core/ai-governance';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
-import {ASSISTANT_PRIVATE_CONTRACT,capturePrivateAssistantTask,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
+import {assertAiCentreRunningTx} from '../core/ai-centre-control';
+import {assistantQuestionBudgetBinding,completeAssistantQuestionBudgetTx} from '../core/assistant-question-budget';
+import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability} from '../core/module-agent-releases';
+import {ASSISTANT_PRIVATE_CONTRACT,adjudicatePrivateAssistantTerminal,capturePrivateAssistantTask,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
+import {adjudicateAssistantAnswerPlan} from '../lib/ai/assistant-answer-plan';
 import {isGroundedToolName,presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
 import {AiPrivacyGateError} from '../lib/ai/provider-privacy-error';
 import {AiGatewayError} from '../lib/ai/types';
@@ -42,6 +46,76 @@ async function fixture(){const admin=adminCtx(base);await seedEntitlement(admin,
   entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});return {admin,ctx,userId};}
 const response:ConverseResult={text:'Fictional response',stop:'end',toolCalls:[],usageReported:true,usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0}};
 describe('actual Mine flags bind current provider input and historical source disclosure',()=>{
+ it('rehearses local leave custody with zero provider calls, native quota and a same-transaction source recheck',async()=>{
+  const {admin,ctx,userId}=await fixture();
+  const transport=vi.spyOn(openaiAdapter,'converse').mockRejectedValue(Error('No model request is expected.'));
+  await owner.db.insert(schema.assistantBudget).values({
+   tenantId:base.tenantId,effectiveFrom:todayInKualaLumpur(),perUserDailyQuestions:2,monthlyTokenCeiling:1000,
+  });
+  const question='My leave balance';
+  const tool=ASSISTANT_TOOLS.find(row=>row.spec.name==='my_leave_balances')!;
+  async function prepareLocalLeave(){
+   const reservation=await withTenant(ctx,async tx=>{
+    const cfg=await resolveActiveAiConfig(tx,ctx,'hr_assistant');
+    if(!cfg)throw Error('Missing fictional configured gateway.');
+    const rooted=await bindAiSpendTaskTx(tx,ctx,cfg,{kind:'assistant_question'});
+    const {period,reservation}=assistantQuestionBudgetBinding(ctx,rooted);
+    const strategy=await prepareAssistantConversationStrategyTx(tx,ctx,rooted,question);
+    return {period,reservation,strategy};
+   });
+   const result=await tool.run(ctx,{});
+   const presentation=presentGroundedToolOutcome('my_leave_balances',result);
+   if(!result.ok||!presentation)throw Error('Missing canonical leave source.');
+   const reads=[{read:0,presentation,explanations:[]}];
+   const catalogue=privateAssistantCatalogue('leave_available',reads,reservation.strategy.variant);
+   const selected=selectProtectedLeaveCount(catalogue);
+   if(!selected)throw Error('Expected one visible canonical leave count.');
+   const terminal=JSON.stringify({version:1,mode:'answer',blocks:[selected]});
+   const plan=adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(terminal,catalogue),reads);
+   return {...reservation,plan,evidence:[{name:'my_leave_balances',input:{},digest:assistantSourceDigest(result)}]};
+  }
+  // Model-free rehearsal only. Serving still uses its currently approved admission path.
+  async function persistLocalLeave(draft:Awaited<ReturnType<typeof prepareLocalLeave>>){
+   const exchangeId=randomUUID(),answer=JSON.stringify(draft.plan);
+   const binding={tenantId:base.tenantId,userId,exchangeId,question,answer};
+   try {
+    await withTenant(ctx,async tx=>{
+     await assertAiCentreRunningTx(tx,ctx);
+     const valid=await withAssistantAdmissionReadsTx(ctx,tx,read=>assistantSourceReplay(ctx,read)(draft.evidence));
+     if(!valid)throw Error('The canonical leave source changed.');
+     const disclosureReceipt=sealAssistantDisclosure(binding,draft.evidence,draft.plan);
+     if(!disclosureReceipt)throw Error('The current source did not yield a disclosure receipt.');
+     await tx.insert(schema.assistantExchange).values({id:exchangeId,tenantId:base.tenantId,appUserId:userId,
+      question,answer,disclosureReceipt,stop:'end',turnCount:0,inputTokens:0,outputTokens:0,cachedInputTokens:0});
+     await completeAssistantConversationStrategyTx(tx,ctx,draft.strategy.capability,exchangeId);
+     await tx.insert(schema.assistantUsage).values({tenantId:base.tenantId,period:draft.period,
+      inputTokens:0,outputTokens:0,cachedInputTokens:0,exchangeCount:1});
+     await completeAssistantQuestionBudgetTx(tx,ctx,draft.reservation,exchangeId);
+    });
+   } finally {retireAssistantConversationStrategyCapability(draft.strategy.capability);}
+   return exchangeId;
+  }
+  const visible=await persistLocalLeave(await prepareLocalLeave());
+  const before=await loadAiWorkspace(ctx,{selectedExchangeId:visible,includeGovernance:false});
+  expect(before.history[0].grounded?.mode).toBe('grounded');
+  expect(JSON.stringify(before.history[0].grounded)).toContain('113.75');
+
+  const stale=await prepareLocalLeave();
+  await updateLeaveType(admin,{id:base.annualLeaveTypeId,name:'Annual Leave',essViewConfig:{available:false}});
+  await expect(persistLocalLeave(stale)).rejects.toThrow('The canonical leave source changed.');
+  await expect(askAssistant(ctx,{question})).rejects.toMatchObject({code:'budget_daily'});
+  expect(transport).not.toHaveBeenCalled();
+  expect(await owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,base.tenantId))).toEqual([]);
+  const rows=await owner.db.execute(sql`select exchange_id::text,accounted_tokens::int,completed_at is not null as completed from app.assistant_question_budget
+   where tenant_id=${base.tenantId}::uuid and user_id=${userId}::uuid order by exchange_id nulls last`);
+  expect([...rows]).toEqual([{exchange_id:visible,accounted_tokens:0,completed:true},{exchange_id:null,accounted_tokens:0,completed:false}]);
+  const after=await loadAiWorkspace(ctx,{selectedExchangeId:visible,includeGovernance:false});
+  expect(after.history.map(row=>({id:row.id,answer:row.answer,mode:row.grounded?.mode})))
+   .toEqual([{id:visible,answer:null,mode:'unavailable'}]);
+  const [usage]=await owner.db.select().from(schema.assistantUsage).where(eq(schema.assistantUsage.tenantId,base.tenantId));
+  expect(usage).toMatchObject({exchangeCount:1,inputTokens:0,outputTokens:0,cachedInputTokens:0});
+ });
+
  it('evaluates the leave-count candidate on actual Assistant catalogues and declines a newly hidden value',async()=>{
   const {admin,ctx,userId}=await fixture();
   const selections:ReturnType<typeof selectProtectedLeaveCount>[]=[];
