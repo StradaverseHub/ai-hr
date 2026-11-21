@@ -1028,8 +1028,8 @@ async function ownSpecialistSignalChoicesTx(tx:Tx,ctx:SessionContext){
 /** Main-conversation candidates have separate evidence; routing receipts are never upgraded. */
 export async function createConversationAgentCandidate(ctx:SessionContext,input:{version:number;configuration:unknown;signalIds?:readonly string[];nativeSignalIds?:readonly string[]},server:NativeOutcomeServerContext={}){
  const current=capture(ctx),configuration=captureAssistantConversationCandidate(input.configuration),version=input.version,signalIds=captureSignalIds(input.signalIds),nativeSignalIds=captureNativeCandidateSignalIds(input.nativeSignalIds),capability=Object.freeze({notificationIdentity:server.notificationIdentity});
- // This strategy requires independently held paired routing evidence. The prompt-only owner cannot issue it.
- if(configuration.variant===ASSISTANT_LOCAL_LEAVE_VARIANT)return fail();
+ // Only the installed paired holdouts can qualify the local routing trial.
+ if(configuration.variant===ASSISTANT_LOCAL_LEAVE_VARIANT&&(signalIds.length||nativeSignalIds.length))return fail();
  if(!exact(input,['version','configuration',...(input.signalIds===undefined?[]:['signalIds']),...(input.nativeSignalIds===undefined?[]:['nativeSignalIds'])])||!Number.isSafeInteger(version)||version<1)return fail();
  return withTenant(current,async tx=>{if(nativeSignalIds.length)await boundNativeOutcomeTransactionTx(tx);await guard(tx,current,true);
   const id=randomUUID(),native_signal_refs=await ownNativeCandidateSignalsTx(tx,current,nativeSignalIds,undefined,capability),signal_refs=await ownSignalRefsTx(tx,current,signalIds);

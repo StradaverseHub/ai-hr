@@ -1,5 +1,6 @@
 /** Native leave admission, retention and history. Provider transport and disclosure review are fictional. */
-import {randomUUID} from 'node:crypto';
+import {createHash,generateKeyPairSync,randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
@@ -22,7 +23,9 @@ import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from '..
 import {applyLeaveAdjustmentBatch} from '../packs/leave/service';
 import {assistantQuestionBudgetBinding,completeAssistantQuestionBudgetTx} from '../core/assistant-question-budget';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability} from '../core/module-agent-releases';
-import * as conversationRelease from '../core/module-agent-releases';
+import {createConversationAgentCandidate,promoteConversationAgentCandidate,rollbackAssistantPromotion} from '../core/module-agent-releases';
+import {signPairedLeaveEvaluation} from '../lib/ai/assistant-leave-evaluation-receipt';
+import {routingDigest} from '../lib/ai/module-agent-routing';
 import {ASSISTANT_LOCAL_LEAVE_VARIANT} from '../lib/ai/assistant-conversation-candidate';
 import {ASSISTANT_PRIVATE_CONTRACT,adjudicatePrivateAssistantTerminal,capturePrivateAssistantTask,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
 import {adjudicateAssistantAnswerPlan} from '../lib/ai/assistant-answer-plan';
@@ -46,51 +49,120 @@ beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-visible-source-pas
   if(contract!==ASSISTANT_PRIVATE_CONTRACT)throw new AiPrivacyGateError('unreviewed');
  });
  await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
-async function fixture(){const admin=adminCtx(base);await seedEntitlement(admin,{leaveTypeId:base.annualLeaveTypeId,annualDays:113.75,validFrom:'2020-01-01'});
+async function fixture(role: 'employee'|'hr_admin'='employee'){const admin=adminCtx(base);await seedEntitlement(admin,{leaveTypeId:base.annualLeaveTypeId,annualDays:113.75,validFrom:'2020-01-01'});
  const mine=await hireEmployee(admin,{person:{fullName:'Fictional Mine Visibility',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,
   departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
- const userId=await createAppUser(base.tenantId,mine.personId,'employee');await grantAssistant(admin,{appUserId:userId});
- const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:mine.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ const userId=await createAppUser(base.tenantId,mine.personId,role);await grantAssistant(admin,{appUserId:userId});
+ const ctx:SessionContext={...await entitledCtx(base,[role]),userId,personId:mine.personId,roles:[role],grants:[{role,companyId:null}]};
  await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:mine.employmentId,leaveTypeId:base.annualLeaveTypeId,
   entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});return {admin,ctx,userId,employmentId:mine.employmentId};}
 const response:ConverseResult={text:'Fictional response',stop:'end',toolCalls:[],usageReported:true,usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0}};
 describe('actual Mine flags bind current provider input and historical source disclosure',()=>{
- it('serves the bounded local route with real Assistant custody when nominated by a fictional trial issuer',async()=>{
-  const {admin,ctx,userId}=await fixture();
-  await expect(conversationRelease.createConversationAgentCandidate(admin,{
-   version:1,configuration:{kind:'assistant_answer_prompt_v1',variant:ASSISTANT_LOCAL_LEAVE_VARIANT},
-  })).rejects.toThrow();
-  const issue=conversationRelease.prepareAssistantConversationStrategyTx;
-  // Nominate only the route in this test. Keep the native spend root, strategy marker and retention checks.
-  vi.spyOn(conversationRelease,'prepareAssistantConversationStrategyTx').mockImplementation(async(...args)=>({
-   ...await issue(...args),localLeave:true,
-  }));
-  const transport=vi.spyOn(openaiAdapter,'converse').mockRejectedValue(Error('Unexpected provider call.'));
-  const served=await askAssistant(ctx,{question:'My leave balance'});
-  expect(served).toMatchObject({stop:'end',turns:0,toolsUsed:['my_leave_balances']});
-  expect(transport).not.toHaveBeenCalled();
-  const [exchange]=await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id,served.exchangeId));
-  expect(exchange).toMatchObject({appUserId:userId,provider:null,model:null,inputTokens:0,outputTokens:0});
-  expect(await owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,base.tenantId))).toEqual([]);
-  const [quota]=await owner.db.execute(sql`select exchange_id::text,accounted_tokens::int,completed_at is not null as completed
-   from app.assistant_question_budget where tenant_id=${base.tenantId}::uuid and user_id=${userId}::uuid`);
-  expect(quota).toEqual({exchange_id:served.exchangeId,accounted_tokens:0,completed:true});
-  const history=await loadAiWorkspace(ctx,{selectedExchangeId:served.exchangeId,includeGovernance:false});
-  expect(history.history[0].grounded?.mode).toBe('grounded');
-  expect(JSON.stringify(history.history[0].grounded)).toContain('113.75');
+ it('registers, promotes, serves and rolls back the local leave candidate through native owners',async()=>{
+  const {admin,ctx,userId:authorId}=await fixture('hr_admin');
+  async function participant(name:string,role:'employee'|'hr_admin'='hr_admin'){
+   const person=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},
+    companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+   const userId=await createAppUser(base.tenantId,person.personId,role);
+   await grantAssistant(admin,{appUserId:userId});
+   return {...await entitledCtx(base,[role]),userId,personId:person.personId,roles:[role],
+    grants:[{role,companyId:null}]} satisfies SessionContext;
+  }
+  const employee=await participant('Fictional Leave Employee','employee');
+  const reviewer=await participant('Fictional Leave Reviewer');
+  const second=await participant('Fictional Second Leave Reviewer');
+  const promoter=await participant('Fictional Leave Approver');
+  const nomination={version:2,configuration:{kind:'assistant_answer_prompt_v1',variant:ASSISTANT_LOCAL_LEAVE_VARIANT}};
+  const old=await createConversationAgentCandidate(ctx,{version:1,configuration:{kind:'assistant_answer_prompt_v1',variant:'focused_v1'}});
+  const [constraint]=await owner.db.execute<{name:string;definition:string}>(sql`select conname as name,pg_get_constraintdef(oid) as definition
+   from pg_constraint where conrelid='public.ai_agent_candidate'::regclass and contype='c'
+   and pg_get_constraintdef(oid) like '%focused_v1%'`);
+  expect(constraint?.definition).toContain('focused_v1');
+  await owner.db.execute(sql.raw(readFileSync('docs/research/assistant-local-leave-candidate.draft.sql','utf8')));
+  try{
+   await expect(createConversationAgentCandidate(employee,nomination)).rejects.toThrow();
+   await expect(createConversationAgentCandidate(ctx,{...nomination,signalIds:[randomUUID()]})).rejects.toThrow();
+   const created=await createConversationAgentCandidate(ctx,nomination);
+   expect(created.state).toBe('unevaluated');
+   const [binding]=await owner.db.execute<{baselineDigest:string;sourceDigest:string}>(sql`
+    select baseline_digest as "baselineDigest",source_digest as "sourceDigest" from public.ai_agent_candidate where id=${created.candidateId}::uuid`);
+   const [legacy]=await owner.db.execute(sql`select candidate_digest from public.ai_agent_candidate where id=${old.candidateId}::uuid`);
+   expect(legacy.candidate_digest).toBe(old.candidateDigest);
 
-  await updateLeaveType(admin,{id:base.annualLeaveTypeId,name:'Annual Leave',essViewConfig:{available:false}});
-  transport.mockImplementationOnce(async(_config,args)=>{
-   const turn=args.turns[0];
-   if(turn?.role!=='user')throw Error('Expected a protected fallback catalogue.');
-   const {local}=capturePrivateAssistantTask(JSON.parse(turn.content));
-   expect(local.strategy).toBe('baseline_v1');
-   expect(selectProtectedLeaveCount(local)).toBeNull();
-   return response;
-  });
-  await expect(askAssistant(ctx,{question:'My leave balance'})).resolves.toMatchObject({turns:1});
-  expect(transport).toHaveBeenCalledOnce();
- });
+   const request={candidateId:created.candidateId,maxJobs:2,hours:1};
+   vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE','');
+   vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256','');
+   await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
+   const keys=[generateKeyPairSync('ed25519'),generateKeyPairSync('ed25519')];
+   const now=new Date(),expiresAt=new Date(now.getTime()+15*60_000).toISOString();
+   const generationOptions={temperature:0,seed:42,num_predict:512};
+   const plan={version:1,trialId:randomUUID(),tenantId:base.tenantId,authorId,approverId:promoter.userId,
+    candidateSha:'c'.repeat(40),candidateDigest:created.candidateDigest,...binding,modelDigest:'d'.repeat(64),
+    answerFormatDigest:routingDigest('json'),generationOptionsDigest:routingDigest(generationOptions),
+    committedAt:now.toISOString(),expiresAt,
+    evaluators:[reviewer,second].map((actor,index)=>({id:actor.userId,
+     publicKey:keys[index].publicKey.export({format:'jwk'}).x,holdoutDigest:routingDigest(['fictional',index]),minimumSavedCalls:2}))};
+   const bytes=Buffer.from(JSON.stringify(plan)),digest=createHash('sha256').update(bytes).digest('hex');
+   // Fictional signed aggregates exercise the authorization path. No model quality is inferred from them.
+   const receipts=plan.evaluators.map((item,index)=>signPairedLeaveEvaluation(bytes,digest,item.id,{
+    evidence:'offline_paired_leave_routing_holdout',scope:'single_active_own_employment',
+    candidateSha:plan.candidateSha,modelDigest:plan.modelDigest,answerFormatDigest:plan.answerFormatDigest,
+    holdoutDigest:item.holdoutDigest,minimumSavedCalls:2,generationOptions,model:'fictional:fixture',
+    cases:4,expectedDirect:2,correctDirect:2,correctDeferrals:2,wrongDirect:0,unexpectedDirect:0,missedDirect:0,
+    meetsThreshold:true,releaseAuthorized:false,baselineCalls:2,baselineCorrect:2,baselineRejected:0,
+    candidateFallbackCalls:0,candidateCorrect:2,gains:0,regressions:0,savedCalls:2,baselineInputTokens:18,baselineOutputTokens:8,
+   },keys[index].privateKey,now));
+   const bundle=JSON.stringify({plan:bytes.toString('base64url'),receipts});
+   vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE',bundle);
+   vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256','0'.repeat(64));
+   await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
+   vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256',digest);
+   await expect(promoteConversationAgentCandidate(ctx,request)).rejects.toThrow();
+   await expect(promoteConversationAgentCandidate(reviewer,request)).rejects.toThrow();
+   const promotion=await promoteConversationAgentCandidate(promoter,request);
+   expect(promotion).toMatchObject({coverage:'paired-offline-leave-routing',maxJobs:2});
+   expect(Date.parse(promotion.expiresAt)).toBe(Date.parse(expiresAt));
+
+   const transport=vi.spyOn(openaiAdapter,'converse').mockRejectedValue(Error('Unexpected provider call.'));
+   const ask=()=>askAssistant(ctx,{question:'My leave balance'});
+   const served=await ask();
+   expect(served).toMatchObject({stop:'end',turns:0,toolsUsed:['my_leave_balances']});
+   expect(transport).not.toHaveBeenCalled();
+   const [exchange]=await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id,served.exchangeId));
+   expect(exchange).toMatchObject({appUserId:authorId,provider:null,model:null,inputTokens:0,outputTokens:0});
+   expect(await owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,base.tenantId))).toEqual([]);
+   const [quota]=await owner.db.execute(sql`select exchange_id::text,accounted_tokens::int,completed_at is not null as completed
+    from app.assistant_question_budget where tenant_id=${base.tenantId}::uuid and user_id=${authorId}::uuid`);
+   expect(quota).toEqual({exchange_id:served.exchangeId,accounted_tokens:0,completed:true});
+   const history=await loadAiWorkspace(ctx,{selectedExchangeId:served.exchangeId,includeGovernance:false});
+   expect(history.history[0].grounded?.mode).toBe('grounded');
+   expect(JSON.stringify(history.history[0].grounded)).toContain('113.75');
+
+   await rollbackAssistantPromotion(promoter,{promotionId:promotion.promotionId,reason:'human'});
+   await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
+   transport.mockImplementationOnce(async(_config,args)=>{
+    const turn=args.turns[0];
+    if(turn?.role!=='user')throw Error('Expected a protected fallback catalogue.');
+    const {local}=capturePrivateAssistantTask(JSON.parse(turn.content));
+    expect(local.strategy).toBe('baseline_v1');
+    const selection=selectProtectedLeaveCount(local);
+    if(!selection)throw Error('Expected the fictional canonical leave count.');
+    return {...response,text:JSON.stringify({version:1,mode:'answer',blocks:[selection]})};
+   });
+   await expect(ask()).resolves.toMatchObject({turns:1});
+   expect(transport).toHaveBeenCalledOnce();
+   const [used]=await owner.db.execute(sql`select used_jobs::int as used from public.ai_agent_promotion where id=${promotion.promotionId}::uuid`);
+   expect(used).toEqual({used:1});
+  }finally{
+   // Vitest can reuse this worker's database. Remove the local candidate and restore the exact original CHECK.
+   await resetDb();
+   await owner.db.transaction(async tx=>{
+    const name=sql.identifier(constraint.name);
+    await tx.execute(sql`alter table public.ai_agent_candidate drop constraint ${name}`);
+    await tx.execute(sql`alter table public.ai_agent_candidate add constraint ${name} ${sql.raw(constraint.definition)}`);
+   });
+  }
+ },90_000);
 
  it.each(['visibility','balance'] as const)('retires in-flight Assistant content after a native %s change and settles the actual usage',async change=>{
   const {admin,ctx,userId,employmentId}=await fixture();
