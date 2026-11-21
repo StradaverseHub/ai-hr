@@ -463,14 +463,45 @@ function payrollFormulaEvaluationRoutes(fixture) {
   assert.equal(company.role, 'companyHR');
   assert.equal(evaluation.companyId, company.companyId);
   assert.match(evaluation.id, /^[0-9a-f-]{36}$/i);
+  assert.match(evaluation.formulaId, /^[0-9a-f-]{36}$/i);
   assert.equal(Number(evaluation.amount), 25);
   assert.equal(evaluation.componentCode, 'PERF_TRACE_AMOUNT');
-  return [group, company].map(actor => ({
-    actor, template: '/payroll/formula-builder/evaluations/[id]',
-    path: '/payroll/formula-builder/evaluations/' + evaluation.id,
-    exactHeading: 'Saved formula calculation', content: evaluation.componentCode, exactContent: true,
-    witness: 'dl div:has(dt:text-is("Calculated amount")) dd:text-is("' + evaluation.amount + '")',
-  }));
+  return [
+    ...[group, company].map(actor => ({
+      actor, template: '/payroll/formula-builder/evaluations/[id]',
+      path: '/payroll/formula-builder/evaluations/' + evaluation.id,
+      exactHeading: 'Saved formula calculation', content: evaluation.componentCode, exactContent: true,
+      witness: 'dl div:has(dt:text-is("Calculated amount")) dd:text-is("' + evaluation.amount + '")',
+    })),
+    {
+      actor: group, template: '/payroll/formula-builder/[id]',
+      path: '/payroll/formula-builder/' + evaluation.formulaId + '?view=1',
+      exactHeading: 'PERF_TRACE', witness: '[data-formula-source-panel] textarea',
+      formulaSample: { source: 'Return {#Input} * 2', value: '12.5' },
+    },
+  ];
+}
+
+async function verifyFormulaSample(page, main, source, value, row) {
+  const timeout = 15000;
+  row.step = 'formula-source';
+  assert.equal(await main.locator('[data-formula-source-panel] textarea').inputValue({ timeout }), source);
+  row.step = 'formula-sample';
+  await main.getByRole('tab', { name: 'Sample values', exact: true }).click({ timeout });
+  const sample = main.locator('#formula-test-sample');
+  await sample.getByRole('textbox', { name: 'Input (for example hours or days)', exact: true })
+    .fill(value, { timeout });
+  const started = performance.now();
+  const action = page.waitForResponse(result =>
+    result.request().method() === 'POST' && Boolean(result.request().headers()['next-action']),
+  { timeout }).catch(() => null);
+  await sample.getByRole('button', { name: 'Run test', exact: true }).click({ timeout });
+  const result = await action;
+  assert.equal(result?.status(), 200, 'Expected the native formula sample Server Action');
+  const outcome = sample.getByRole('status');
+  await outcome.getByText('Test passed', { exact: true }).waitFor({ state: 'visible', timeout });
+  await outcome.getByText(/^25(?:\.0+)?$/).waitFor({ state: 'visible', timeout });
+  row.sampleCalculationMs = Math.round(performance.now() - started);
 }
 
 function importHistoryRoutes(fixture) {
@@ -555,6 +586,10 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             const pdf = await pdfResponse;
             assert(pdf?.ok() && pdf.headers()['content-type']?.startsWith('application/pdf'),
               'The preview did not receive the expected PDF');
+          }
+          if (entry.formulaSample && pass === 'first') {
+            row.formulaPageReadyMs = Math.round(performance.now() - started);
+            await verifyFormulaSample(page, main, entry.formulaSample.source, entry.formulaSample.value, row);
           }
           row.outcome = 'usable-content';
         } catch (error) {

@@ -61,6 +61,7 @@ try{
   'Payroll must retain exactly one matching calculation for the fictional employee');
  writeFileSync(resolve(env.PERF_PRIVATE_DIR,'payroll-formula-evaluation.json'),JSON.stringify({
   id:rows[0].id,amount:rows[0].amount,componentCode:component.code,companyId:group.companyId,
+  formulaId:saved.id,
  }),{mode:0o600});
  mark('complete');
 }finally{await Promise.all([owner.client.end(),client.end()]);}
