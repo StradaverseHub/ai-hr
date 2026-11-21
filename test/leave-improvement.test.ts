@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { runProtectedLeaveComparison, runProtectedLeaveRouting, selectProtectedLeaveCount } from '../scripts/experiments/protected-leave-comparison';
+import { runProtectedLeaveComparison, runProtectedLeaveRouting } from '../scripts/experiments/protected-leave-comparison';
+import { selectProtectedLeaveCount } from '../lib/ai/assistant-leave-count';
 import { scorePairedLeaveRoutingHoldout, scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';

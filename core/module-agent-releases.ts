@@ -3,7 +3,7 @@ import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateA
 import {assistantReadableModules} from './assistant-readable-modules';
 import {ASSISTANT_CONVERSATION_LIMITS} from './assistant-clarification';
 import type {ResolvedAiConfig,GenerateArgs} from '../lib/ai/types';
-import {captureAssistantConversationCandidate,assistantConversationCandidateSystem,nextAssistantConversationArms,ASSISTANT_CONVERSATION_BASELINE,ASSISTANT_CONVERSATION_ENGINE_DIGEST,ASSISTANT_CONVERSATION_POLICY_DIGEST,compareAssistantConversationArms,scoreAssistantConversationTrial,type ConversationArm,type ConversationCaseResult,type AssistantConversationCandidate} from '../lib/ai/assistant-conversation-candidate';
+import {captureAssistantConversationCandidate,assistantConversationCandidateSystem,assistantConversationProviderVariant,nextAssistantConversationArms,ASSISTANT_CONVERSATION_BASELINE,ASSISTANT_CONVERSATION_ENGINE_DIGEST,ASSISTANT_CONVERSATION_POLICY_DIGEST,ASSISTANT_LOCAL_LEAVE_VARIANT,compareAssistantConversationArms,scoreAssistantConversationTrial,type ConversationArm,type ConversationCaseResult,type AssistantConversationCandidate} from '../lib/ai/assistant-conversation-candidate';
 import {ASSISTANT_CONVERSATION_HOLDOUTS,ASSISTANT_CONVERSATION_INPUT_DIGEST,ASSISTANT_CONVERSATION_SUITE_DIGEST} from '../lib/ai/assistant-conversation-holdouts';
 import {executeAssistantConversationHoldout} from './assistant-conversation-harness';
 import type {NativeOutcomeServerContext} from './assistant-actions/completed-outcome-readers';
@@ -1027,6 +1027,8 @@ async function ownSpecialistSignalChoicesTx(tx:Tx,ctx:SessionContext){
 /** Main-conversation candidates have separate evidence; routing receipts are never upgraded. */
 export async function createConversationAgentCandidate(ctx:SessionContext,input:{version:number;configuration:unknown;signalIds?:readonly string[];nativeSignalIds?:readonly string[]},server:NativeOutcomeServerContext={}){
  const current=capture(ctx),configuration=captureAssistantConversationCandidate(input.configuration),version=input.version,signalIds=captureSignalIds(input.signalIds),nativeSignalIds=captureNativeCandidateSignalIds(input.nativeSignalIds),capability=Object.freeze({notificationIdentity:server.notificationIdentity});
+ // This strategy requires independently held paired routing evidence. The prompt-only owner cannot issue it.
+ if(configuration.variant===ASSISTANT_LOCAL_LEAVE_VARIANT)return fail();
  if(!exact(input,['version','configuration',...(input.signalIds===undefined?[]:['signalIds']),...(input.nativeSignalIds===undefined?[]:['nativeSignalIds'])])||!Number.isSafeInteger(version)||version<1)return fail();
  return withTenant(current,async tx=>{if(nativeSignalIds.length)await boundNativeOutcomeTransactionTx(tx);await guard(tx,current,true);
   const id=randomUUID(),native_signal_refs=await ownNativeCandidateSignalsTx(tx,current,nativeSignalIds,undefined,capability),signal_refs=await ownSignalRefsTx(tx,current,signalIds);
@@ -1115,6 +1117,7 @@ async function evaluateConversationAgentCandidateActivity(ctx:SessionContext,inp
  });
 }
 async function verifiedConversationEvaluationsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow,providerFingerprint:string){
+ if(captureAssistantConversationCandidate(candidate.configuration).variant===ASSISTANT_LOCAL_LEAVE_VARIANT)return fail();
  const rows=await tx.execute<{id:string;evaluator_user_id:string;receipt:string}>(sql`select distinct on(evaluator_user_id) id,evaluator_user_id,receipt from public.ai_agent_evaluation where tenant_id=${ctx.tenantId}::uuid and candidate_id=${candidate.id}::uuid and suite_digest=${ASSISTANT_CONVERSATION_SUITE_DIGEST} order by evaluator_user_id,completed_at desc,id desc limit 9`);if(rows.length<2||rows.length>8)return fail();
  const checked:{id:string;evaluatorId:string;receiptDigest:string}[]=[];for(const row of rows){if(row.evaluator_user_id===candidate.author_user_id)return fail();const proof=open('conversation-evaluation',ctx.tenantId,row.id,row.receipt),arms=await conversationArmsTx(tx,ctx,candidate,providerFingerprint,row.evaluator_user_id),comparison=compareAssistantConversationArms(ASSISTANT_CONVERSATION_HOLDOUTS,arms,{candidateDigest:candidate.candidate_digest,providerFingerprint});
   if(!exact(proof,['version','candidateDigest','binding','evaluatorId','providerFingerprint','suiteDigest','armSetDigest','comparison'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||proof.evaluatorId!==row.evaluator_user_id||proof.providerFingerprint!==providerFingerprint||proof.suiteDigest!==ASSISTANT_CONVERSATION_SUITE_DIGEST||proof.armSetDigest!==conversationArmSetDigest(arms)||routingDigest(proof.comparison)!==routingDigest(comparison)||!comparison.complete||!comparison.qualityImproved||comparison.candidate.securityFailures!==0||comparison.candidate.correct!==ASSISTANT_CONVERSATION_HOLDOUTS.length)return fail();
@@ -1162,7 +1165,8 @@ export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:Sess
  const [created]=await tx.execute<{incarnation:string}>(sql`insert into public.ai_assistant_answer_strategy_use(id,tenant_id,user_id,person_id,promotion_id,candidate_digest,provider_fingerprint,source_digest,receipt) values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${ctx.personId??null}::uuid,${promotionId}::uuid,${candidateDigest},${snapshot.fingerprint},${MODULE_AGENT_SOURCE_DIGEST},${receipt}) returning incarnation::text as incarnation`);if(!created||!/^\d+$/.test(created.incarnation))return fail();
  const record:ConversationStrategyUse={ctx,id,incarnation:created.incarnation,promotionId,candidateDigest,providerFingerprint:snapshot.fingerprint,questionDigest,provenance};conversationStrategyUses.set(capability,record);
  const wrapped=withAiAdmissionCheck(configuration,'hr_assistant',async carrier=>{await recheckAssistantConversationStrategyTx(carrier,ctx,capability);if(continuationSourceTx)await continuationSourceTx(carrier);});
- return Object.freeze({configuration:wrapped,system:assistantConversationCandidateSystem(strategy),variant:strategy.variant,capability:capability as AssistantConversationStrategyCapability,provenance});
+ return Object.freeze({configuration:wrapped,system:assistantConversationCandidateSystem(strategy),variant:assistantConversationProviderVariant(strategy.variant),
+  localLeave:strategy.variant===ASSISTANT_LOCAL_LEAVE_VARIANT,capability:capability as AssistantConversationStrategyCapability,provenance});
 }
 /** Rechecked before each provider round-trip and before the actual exchange insert. No missing or
  * erased metadata is recreated, no used-job count/native spend is refunded after uncertainty. */

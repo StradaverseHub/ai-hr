@@ -22,6 +22,8 @@ import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from '..
 import {applyLeaveAdjustmentBatch} from '../packs/leave/service';
 import {assistantQuestionBudgetBinding,completeAssistantQuestionBudgetTx} from '../core/assistant-question-budget';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability} from '../core/module-agent-releases';
+import * as conversationRelease from '../core/module-agent-releases';
+import {ASSISTANT_LOCAL_LEAVE_VARIANT} from '../lib/ai/assistant-conversation-candidate';
 import {ASSISTANT_PRIVATE_CONTRACT,adjudicatePrivateAssistantTerminal,capturePrivateAssistantTask,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
 import {adjudicateAssistantAnswerPlan} from '../lib/ai/assistant-answer-plan';
 import {isGroundedToolName,presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
@@ -33,7 +35,7 @@ import {converse} from '../lib/ai';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {ConverseArgs,ConverseResult} from '../lib/ai/types';
-import {selectProtectedLeaveCount} from '../scripts/experiments/protected-leave-comparison';
+import {selectProtectedLeaveCount} from '../lib/ai/assistant-leave-count';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
@@ -53,6 +55,43 @@ async function fixture(){const admin=adminCtx(base);await seedEntitlement(admin,
   entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});return {admin,ctx,userId,employmentId:mine.employmentId};}
 const response:ConverseResult={text:'Fictional response',stop:'end',toolCalls:[],usageReported:true,usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0}};
 describe('actual Mine flags bind current provider input and historical source disclosure',()=>{
+ it('serves the bounded local route with real Assistant custody when nominated by a fictional trial issuer',async()=>{
+  const {admin,ctx,userId}=await fixture();
+  await expect(conversationRelease.createConversationAgentCandidate(admin,{
+   version:1,configuration:{kind:'assistant_answer_prompt_v1',variant:ASSISTANT_LOCAL_LEAVE_VARIANT},
+  })).rejects.toThrow();
+  const issue=conversationRelease.prepareAssistantConversationStrategyTx;
+  // Nominate only the route in this test. Keep the native spend root, strategy marker and retention checks.
+  vi.spyOn(conversationRelease,'prepareAssistantConversationStrategyTx').mockImplementation(async(...args)=>({
+   ...await issue(...args),localLeave:true,
+  }));
+  const transport=vi.spyOn(openaiAdapter,'converse').mockRejectedValue(Error('Unexpected provider call.'));
+  const served=await askAssistant(ctx,{question:'My leave balance'});
+  expect(served).toMatchObject({stop:'end',turns:0,toolsUsed:['my_leave_balances']});
+  expect(transport).not.toHaveBeenCalled();
+  const [exchange]=await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id,served.exchangeId));
+  expect(exchange).toMatchObject({appUserId:userId,provider:null,model:null,inputTokens:0,outputTokens:0});
+  expect(await owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,base.tenantId))).toEqual([]);
+  const [quota]=await owner.db.execute(sql`select exchange_id::text,accounted_tokens::int,completed_at is not null as completed
+   from app.assistant_question_budget where tenant_id=${base.tenantId}::uuid and user_id=${userId}::uuid`);
+  expect(quota).toEqual({exchange_id:served.exchangeId,accounted_tokens:0,completed:true});
+  const history=await loadAiWorkspace(ctx,{selectedExchangeId:served.exchangeId,includeGovernance:false});
+  expect(history.history[0].grounded?.mode).toBe('grounded');
+  expect(JSON.stringify(history.history[0].grounded)).toContain('113.75');
+
+  await updateLeaveType(admin,{id:base.annualLeaveTypeId,name:'Annual Leave',essViewConfig:{available:false}});
+  transport.mockImplementationOnce(async(_config,args)=>{
+   const turn=args.turns[0];
+   if(turn?.role!=='user')throw Error('Expected a protected fallback catalogue.');
+   const {local}=capturePrivateAssistantTask(JSON.parse(turn.content));
+   expect(local.strategy).toBe('baseline_v1');
+   expect(selectProtectedLeaveCount(local)).toBeNull();
+   return response;
+  });
+  await expect(askAssistant(ctx,{question:'My leave balance'})).resolves.toMatchObject({turns:1});
+  expect(transport).toHaveBeenCalledOnce();
+ });
+
  it.each(['visibility','balance'] as const)('retires in-flight Assistant content after a native %s change and settles the actual usage',async change=>{
   const {admin,ctx,userId,employmentId}=await fixture();
   const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_config,args)=>{

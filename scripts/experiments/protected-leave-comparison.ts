@@ -2,8 +2,8 @@ import { presentGroundedToolOutcome } from '../../lib/ai/grounded-tool-presentat
 import { adjudicateAssistantAnswerPlan } from '../../lib/ai/assistant-answer-plan';
 import {
   adjudicatePrivateAssistantTerminal, privateAssistantCatalogue, resolvePrivateAssistantIntent, selectPrivateAssistantCards,
-  type PrivateAssistantPayload,
 } from '../../lib/ai/provider-assistant-policy';
+import { selectProtectedLeaveCount } from '../../lib/ai/assistant-leave-count';
 import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { compareProtectedAnswers } from './protected-answer-comparison';
 import type { PilotModel } from '../teras/leave-improvement';
@@ -59,18 +59,6 @@ export async function runProtectedLeaveComparison(model: PilotModel) {
     localCases,
     ...await compareProtectedAnswers(cases, model),
   };
-}
-
-/** An offline routing candidate for explicit, unambiguous own leave counts. */
-export function selectProtectedLeaveCount(local: PrivateAssistantPayload) {
-  if (local.operation !== 'conversation') return null;
-  const request = questions.find(row => row.intent === local.intent);
-  const [read] = local.reads;
-  if (!request || local.reads.length !== 1 || read.module !== 'leave' || read.cards.length !== 1) return null;
-  const [card] = read.cards;
-  const matches = card.facts.filter(fact => fact.available && fact.field === request.field);
-  if (matches.length !== 1) return null;
-  return {kind: 'fact' as const, read: read.read, card: card.card, fact: matches[0].fact};
 }
 
 function clarifiedLeaveFixtures() {

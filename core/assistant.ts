@@ -47,6 +47,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveEntitlementsTx} from './entitlements';
 import {withAssistantAdmissionReadsTx} from './assistant-read-session';
 import {assistantSourceReplay} from './assistant-disclosure-read';
+import {selectProtectedLeaveCount} from '../lib/ai/assistant-leave-count';
 import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from './leave-dependency-lock';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,readGovernedSpecialistToolResultTx,type AssistantConversationStrategyCapability} from './module-agent-releases';
 import { adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
@@ -240,6 +241,7 @@ async function askAssistantActivity(
   let sourcesComplete = true;
   let answer = '';
   let answerPlan: AssistantAnswerPlan | undefined;
+  let answeredLeaveLocally = false;
   let ownLeaveEmployment: string | undefined;
   const answerReads: AssistantAnswerRead[] = [];
   let stop: AiStop = 'other';
@@ -280,8 +282,15 @@ async function askAssistantActivity(
       const selectedCards=selectPrivateAssistantCards(intent.intent,answerReads,clarification,localEmployments);
       const catalogue=privateAssistantCatalogue(intent.intent,answerReads,conversationStrategy.variant,selectedCards.selection);
       const hasReferences=catalogue.operation==='conversation'&&catalogue.reads.some(read=>read.explanations.length||read.cards.some(card=>card.facts.some(fact=>fact.available)));
+      const localLeave=conversationStrategy.localLeave && ownLeaveEmployment && !selectedCards.slot &&
+        sourceReads.length===1 && sourceReads[0].name==='my_leave_balances' ? selectProtectedLeaveCount(catalogue) : null;
       if(selectedCards.slot){answerPlan={version:1,mode:'clarify',slot:selectedCards.slot};stop='end';answer=JSON.stringify(answerPlan);}
       else if(!hasReferences){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'insufficient',code:'no_verified_facts'},answerReads,{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
+      else if(localLeave){
+        const terminal=JSON.stringify({version:1,mode:'answer',blocks:[localLeave]});
+        answerPlan=adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(terminal,catalogue),answerReads,{question:humanQuestion,proposalCaller});
+        answer=JSON.stringify(answerPlan);stop='end';answeredLeaveLocally=true;
+      }
       else{
         const prepared=await preparePrivateAiTask(cfg,ASSISTANT_PRIVATE_CONTRACT,async(tx,current)=>{
           if(Date.now()>=deadline)throw new AiGatewayError('The current Assistant source access could not be confirmed.');
@@ -348,7 +357,7 @@ async function askAssistantActivity(
     turnCount,
     hitTurnCap,
     stop,
-    cfg,
+    cfg: answeredLeaveLocally ? {provider:null,model:null} : cfg,
     spend,
     period,
     error: failure,
@@ -413,7 +422,7 @@ type PersistInput = {
   turnCount: number;
   hitTurnCap: boolean;
   stop: AiStop;
-  cfg: { provider: string; model: string };
+  cfg: { provider: string | null; model: string | null };
   spend: AiUsage;
   period: string;
   error: string | null;

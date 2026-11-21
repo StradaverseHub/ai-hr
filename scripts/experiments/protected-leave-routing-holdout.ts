@@ -6,7 +6,7 @@ import {
   adjudicatePrivateAssistantTerminal, privateAssistantCatalogue, resolvePrivateAssistantClarifiedIntent,
   resolvePrivateAssistantContextualIntent, resolvePrivateAssistantProposal, selectPrivateAssistantCards, type PrivateAssistantClarification,
 } from '../../lib/ai/provider-assistant-policy';
-import { selectProtectedLeaveCount } from './protected-leave-comparison';
+import { selectProtectedLeaveCount } from '../../lib/ai/assistant-leave-count';
 import { readFrozenHoldoutJson } from './protected-work-summary-holdout';
 import { evaluateProtectedAnswer } from './protected-answer-comparison';
 import type { PilotModel } from '../teras/leave-improvement';
