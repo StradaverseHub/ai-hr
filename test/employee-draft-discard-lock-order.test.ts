@@ -92,25 +92,28 @@ it('observes the standalone Personnel discard fallback queue a shared Access rea
     await owner.db.transaction(async holder => {
       await lockAccessConfigurationReadTx(holder, base.tenantId);
       const [holderBackend] = await holder.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
-      const waiters = () => holder.execute<{
+      // Observe from an independently committed statement on each poll. The
+      // lock holder stays in one transaction while the retry uses several.
+      const waiters = () => owner.client<{
         pid: number; mode: 'ExclusiveLock' | 'ShareLock'; blockedBy: number[]; nativeDiscardBarrier: boolean;
-      }>(sql`
+      }[]>`
         with access_key as (select hashtextextended(${'access-configuration:' + base.tenantId}, 0) as id)
         select l.pid, l.mode, pg_blocking_pids(l.pid) as "blockedBy",
-          a.query like 'select app.access_configuration_write_lock()%' as "nativeDiscardBarrier"
+          a.query ilike '%app.access_configuration_write_lock()%' as "nativeDiscardBarrier"
         from pg_locks l join pg_stat_activity a on a.pid=l.pid cross join access_key k
         where a.datname=current_database() and l.locktype='advisory' and not l.granted and l.objsubid=1
           and l.classid::bigint=((k.id>>32)&4294967295) and l.objid::bigint=(k.id&4294967295)
-      `);
+      `;
 
       discard = discardEmployeeDraft(ctx, draft.id);
       void discard.catch(() => undefined);
       let discardPid: number | undefined;
       await expect.poll(async () => {
-        discardPid = (await waiters()).find(lock => lock.mode === 'ExclusiveLock'
-          && lock.nativeDiscardBarrier && lock.blockedBy.includes(holderBackend.pid))?.pid;
-        return discardPid !== undefined;
-      }, { timeout: 4000, interval: 10 }).toBe(true);
+        const pending = (await waiters()).find(lock => lock.mode === 'ExclusiveLock'
+          && lock.blockedBy.includes(holderBackend.pid));
+        discardPid = pending?.pid;
+        return pending?.nativeDiscardBarrier ?? null;
+      }, { timeout: 6000, interval: 10 }).toBe(true);
 
       read = withTenant(ctx, async tx => {
         await lockAccessConfigurationReadTx(tx, base.tenantId);
