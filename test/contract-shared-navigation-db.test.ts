@@ -87,6 +87,36 @@ it('uses the same bounded visibility and configuration company owner for 1,000 e
  const settings=await ordinary();await grant(settings,['access'],all.companies[0].id);const choices=await contractSharedConfigurationChoices(settings);
  expect(choices.companies).toEqual([all.companies[0]]);expect(await contractNavigationAccess(settings)).toEqual({page:true,configure:true,intake:false,automation:false,postings:false});
  expect(await owner.db.execute(sql`select id from contract_case where tenant_id=${b.tenantId}::uuid`)).toEqual([]);
+
+ for(const [name,actor] of Object.entries({admin,viewer,outsider,settings})){
+  const expected=await contractNavigationAccess(actor);
+  const measured=await owner.client.begin(async tx=>{
+   await tx.unsafe("set local track_functions='all'");
+   await tx.unsafe('set local role ai_hr_app');
+   const roles=actor.roles??[];
+   const grants=actor.grants??roles.map(role=>({role,companyId:null}));
+   await tx`select set_config('app.tenant_id',${actor.tenantId},true),
+    set_config('app.user_id',${actor.userId??''},true),
+    set_config('app.roles',${roles.join(',')},true),
+    set_config('app.grants',${JSON.stringify(grants)},true),
+    set_config('app.agent_principal_id','',true),set_config('jit','off',true)`;
+   for(let trial=0;trial<5;trial++){
+    const [row]=await tx`select app.contract_shared_navigation_access() as facts`;
+    expect(row.facts,name).toEqual(expected);
+   }
+   await tx.unsafe('reset role');
+   const [root]=await tx`select calls::int,total_time as "totalMs"
+    from pg_stat_xact_user_functions where funcid='app.contract_shared_navigation_access()'::regprocedure`;
+   const functions=await tx`select p.proname as name,f.calls::int,f.self_time as "selfMs",f.total_time as "totalMs"
+    from pg_stat_xact_user_functions f join pg_proc p on p.oid=f.funcid
+    where f.schemaname='app' and f.calls>0
+    order by f.self_time desc,p.proname,p.oid limit 16`;
+   expect(root?.calls,name).toBe(5);
+   expect(functions.length,name).toBeGreaterThan(1);
+   return {root,functions};
+  });
+  console.info('CONTRACT_NAVIGATION_NATIVE_WORK '+JSON.stringify({name,...measured}));
+ }
 },180000);
 
 it('does not invoke a generic case, document or directory fallback from the new native hint',async()=>{
