@@ -14,11 +14,11 @@ vi.mock('../../core/mandates/mandates',()=>({readMandateKeysTx:async()=>({enable
 vi.mock('../../app/control-tower/agents/centre-control-actions',()=>({setAiCentreFunctionAction:vi.fn(),setAiCentreJobAction:vi.fn(),setAiCentreStopAction:vi.fn()}));
 
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
-vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: enWithAiCentre as never, namespace }) }));
+vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: enWithAiCentre as never, namespace }) }));
 vi.mock('../../app/control-tower/agents/actions', () => ({ setAiFeatureAction: vi.fn() }));
 
 import { WorkerRegistry } from '../../app/control-tower/agents/worker-registry';
-import { AiCentreControls } from '../../app/control-tower/agents/centre-controls';
+import { aiCentreControlSections } from '../../app/control-tower/agents/centre-controls';
 
 afterEach(cleanup);
 const wrap = (node: React.ReactNode) => render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never} timeZone="Asia/Kuala_Lumpur">{node}</NextIntlClientProvider>);
@@ -32,8 +32,8 @@ const digestRow = {
 describe('Worker registry job-type switch', () => {
   it.each([false,true])('links the registry to a real job-type control (enabled: %s)',async enabled=>{
     control.enabled=enabled;
-    const controls=await AiCentreControls({session:{tenantId:'fictional-control-tenant'}});
-    wrap(<><WorkerRegistry rows={[digestRow]} summary={null} detail={null}/>{controls}</>);
+    const {settings}=await aiCentreControlSections({tenantId:'fictional-control-tenant'});
+    wrap(<><WorkerRegistry rows={[digestRow]} summary={null} detail={null}/>{settings}</>);
     const link=screen.getByRole('link',{name:enWithAiCentre.aiCentre.registry.switchOwner.job_type});
     expect(link).toHaveAttribute('href','#ai-centre-jobs');
     expect(document.querySelector('#worker-daily_digest a[href="/assistant?view=jobs"]')).toBeNull();

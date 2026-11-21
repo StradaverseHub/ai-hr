@@ -14,7 +14,7 @@ import ta from '../messages/ta.json';
 const copies={en,ms,zh,vi:viCopy,th,ta};
 const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta'}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
-vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:withAiCentre(state.locale,copies[state.locale] as any),namespace}),getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
+vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:withAiCentre(state.locale,copies[state.locale] as any),namespace}),getLocale: async () => state.locale, getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/control-tower/agents',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../app/delegations/actions',()=>({loadDelegationContextAction:vi.fn()}));

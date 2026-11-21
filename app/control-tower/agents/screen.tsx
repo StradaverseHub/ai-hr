@@ -6,7 +6,7 @@ import {nanosToUsd} from '@/lib/ai/spend-allocation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { type requireAdmin, isAdmin, isGroupAdmin } from '@/lib/authz';
 import { AI_RUN_STATE_FILTERS, aiManagementPageView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary, type AiManagementAllowanceUser } from '@/core/ai-management';
-import { AI_FEATURES, isAiFeature } from '@/lib/ai/features';
+import { AI_FEATURES, isAiFeature, isTemplateOnlyAiFeature } from '@/lib/ai/features';
 import type { AgentFeature } from '@/core/agent-principal';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
 import { Badge, Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, btnGhost, inputCls, pageWideCls } from '@/components/ui';
@@ -25,14 +25,17 @@ import { BUILT_IN_PLACEMENT, FEATURE_PLACEMENT, WORKER_FAMILIES, groupByFamily }
 import type { AgentStatus } from '@/core/control-domains';
 import type { WorkerDetail, WorkerRow } from '@/core/agent-registry/views';
 import type { OutcomeSummary } from '@/core/agent-registry/export';
+import { getWorkerOverviewCopy } from './worker-overview-copy';
 import { WorkerRegistry } from './worker-registry';
+import { WorkerDetails } from './worker-details';
 import { applyBulkAssistantAction, clearGroupAllowanceAction, setGroupAllowanceAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAiFeatureCapAction, setAssistantPermissionAction } from './actions';
 
 export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string;planning?:string;bulk?:string;bulkWho?:string;bulkUser?:string|string[];from?:string;to?:string;page?:string;worker?:string};
 
 /** One AI management section per route (app/control-tower/agents/<section>/page.tsx); the sub-menu links them.
  * Provider and Assistant pages pass their own content as children. */
-export async function AiManagementScreen({session:s,section,searchParams,children,builtInChecks,registry}:{session:Awaited<ReturnType<typeof requireAdmin>>;section:AiManagementSection;searchParams:Promise<AiManagementSearch>;children?:ReactNode;builtInChecks?:readonly AgentStatus[]|null;
+export async function AiManagementScreen({session:s,section,searchParams,children,builtInChecks,registry,workerControls}:{session:Awaited<ReturnType<typeof requireAdmin>>;section:AiManagementSection;searchParams:Promise<AiManagementSearch>;children?:ReactNode;builtInChecks?:readonly AgentStatus[]|null;
+  workerControls?:Readonly<{stop:ReactNode;settings:ReactNode}>;
   /** AI centre step 5: the worker registry, for group administrators only (the features page reads it). */
   registry?:Readonly<{rows:readonly WorkerRow[];summary:OutcomeSummary|null;detail:WorkerDetail|null}>|null}) {
   const sp = await searchParams;
@@ -62,6 +65,22 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const inventory = section==='features' ? await aiInventoryView(s, view).catch(() => null) : null;
   // Awaited here (not rendered as an async child) so the section renders wherever the screen does.
   const inventorySection = inventory ? await AiInventorySection({inventory,mayPause:isGroupAdmin(s)}) : null;
+  const modelActivity = inventory?.scope === 'full' ? new Map(inventory.rows.flatMap(row =>
+    row.featureId && row.runtime.use30 &&
+    (row.kind === 'chat' || row.kind === 'specialist' || row.kind === 'embedded_feature' || row.kind === 'operator_loop') &&
+    !isTemplateOnlyAiFeature(row.featureId) ? [[row.featureId, row.runtime.use30] as const] : [])) : null;
+  const recentFeatureActivity = modelActivity ? [...modelActivity.entries()]
+    .filter(([, use]) => use.runs > 0 || use.blocked > 0)
+    .sort(([, a], [, b]) => b.runs - a.runs || b.blocked - a.blocked) : [];
+  const actionActivity = inventory?.scope === 'full' ? inventory.rows.reduce((totals, row) => {
+    if (row.kind === 'action' && row.runtime.outcomes) {
+      totals.prepared += row.runtime.outcomes.prepared;
+      totals.completed += row.runtime.outcomes.completed;
+    }
+    return totals;
+  }, {prepared: 0, completed: 0}) : null;
+  const workerActivity = registry?.rows.filter(row => row.trigger.kind === 'schedule');
+  const workerOverview = section === 'features' ? await getWorkerOverviewCopy() : null;
   const alertBanner = await aiManagementAlerts(s, view);
   const alerts = alertBanner.status==='ok' ? alertBanner.alerts : [];
   const history = section==='runs' && isGroupAdmin(s) ? await aiRunHistory(s,{from:sp.from,to:sp.to,page:sp.page},runFilter) : null;
@@ -178,6 +197,15 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const attentionEmpty = attention.companies.length+attention.users.length+attention.blocked.length===0;
   const filtered = !!(runFilter.state||runFilter.feature);
   const defaultUse = {daily:{used:0,limit:view.userDefault?.dailyRequests??null,level:null},tokens:{used:0,limit:view.userDefault?.monthlyTokens??null,level:null},enabled:view.userDefault?.enabled!==false,maxConcurrent:view.userDefault?.maxConcurrent??null};
+  const recentFeatureRows = workerOverview ? recentFeatureActivity.map(([feature, use]) => <li key={feature} className="flex flex-wrap items-baseline justify-between gap-x-4 py-2">
+    <Link href={aiManagementHref('runs') + '?feature=' + encodeURIComponent(feature)} className="inline-flex min-h-9 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
+      {t(`features.${feature}`)}
+    </Link>
+    <div className="text-xs tabular-nums text-muted-foreground">
+      <p>{workerOverview('featureActivity', {count: use.runs})}</p>
+      {(use.failed > 0 || use.blocked > 0) && <p>{workerOverview('featureIssues', {blocked: use.blocked, failed: use.failed})}</p>}
+    </div>
+  </li>) : [];
   return <div className={pageWideCls}>
     <AiCentreGroupTabs group="administration" active={group} payroll={false} groupAdmin={isGroupAdmin(s)} />
     <PageHeader title={tc(`titles.${group}`)} description={tc(`descriptions.${group}`)}/>
@@ -193,7 +221,6 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     {alerts.length>0&&<section role="alert" aria-labelledby="ai-alerts-heading" className="rounded-xl border border-amber-500/50 bg-amber-50 p-4 text-sm dark:bg-amber-950/30">
       <h2 id="ai-alerts-heading" className="font-semibold">{t('inv.alerts.title')}</h2>
       <ul className="mt-2 list-disc space-y-1 pl-5">{alerts.map(a=><li key={a.kind}><span className={a.level==='critical'?'font-semibold text-red-700 dark:text-red-300':''}>{t(`inv.alerts.${a.kind}`,{count:a.count,detail:a.detail??''})}</span></li>)}</ul>
-      <p className="mt-2 text-xs text-muted-foreground">{t('inv.alerts.help')}</p>
     </section>}
     {alertBanner.status==='unavailable'&&<p role="status" className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>}
     {section==='overview'&&<Card id="ai-map" className="scroll-mt-4 p-5">
@@ -211,7 +238,66 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         {attention.blocked.length>0&&<section><h3 className="text-sm font-medium">{t('attentionBlocked')}</h3><ul className="mt-1 divide-y divide-border">{attention.blocked.map(b=><li key={b.id} className="py-2"><Link href={userLink(b.label)} className="break-words text-sm text-primary hover:underline">{b.label}</Link><p className="mt-1 text-xs text-muted-foreground">{t('blockedToday',{count:b.count})}{b.reason&&t.has(`reasons.${b.reason}`)?` · ${t(`reasons.${b.reason}`)}`:''}</p></li>)}</ul></section>}
       </div>}
     </Card>}
-    {section==='features'&&children}
+    {section==='features'&&workerControls?.stop}
+    {workerOverview && <section aria-labelledby="worker-overview-title" className="border-y border-border py-4">
+      <h2 id="worker-overview-title" className="text-base font-semibold">{workerOverview('title')}</h2>
+      <dl className="mt-2 divide-y divide-border text-sm">
+        {isGroupAdmin(s) && <>
+          <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+            <dt className="font-medium">{workerOverview('model')}</dt>
+            <dd className="text-muted-foreground">{modelActivity
+              ? workerOverview('modelCounts', {
+                used: recentFeatureActivity.filter(([, use]) => use.runs > 0).length,
+                failed: [...modelActivity.values()].reduce((sum, use) => sum + use.failed, 0),
+                blocked: [...modelActivity.values()].reduce((sum, use) => sum + use.blocked, 0),
+              }) : workerOverview('unavailable')}</dd>
+            <dd><Link href={aiManagementHref('runs')} className={btnGhost}>{workerOverview('runHistory')}</Link></dd>
+            {recentFeatureActivity.length > 0 && <dd className="sm:col-start-2">
+              <ul className="divide-y divide-border">
+                {recentFeatureRows.slice(0, 3)}
+              </ul>
+              {recentFeatureRows.length > 3 && <details className="border-t border-border">
+                <summary className="min-h-11 cursor-pointer py-3 font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {workerOverview('moreFeatures', {count: recentFeatureRows.length - 3})}
+                </summary>
+                <ul className="divide-y divide-border">{recentFeatureRows.slice(3)}</ul>
+              </details>}
+            </dd>}
+          </div>
+          <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+            <dt className="font-medium">{workerOverview('assistantActions')}</dt>
+            <dd className="text-muted-foreground">{actionActivity
+              ? workerOverview(actionActivity.prepared === 0 ? 'actionCountsEmpty' : 'actionCounts', actionActivity)
+              : workerOverview('unavailable')}</dd>
+            {actionActivity && <dd><a href="#ai-inventory-actions" className={btnGhost}>{workerOverview('actionDetails')}</a></dd>}
+          </div>
+          <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+            <dt className="font-medium">{workerOverview('scheduled')}</dt>
+            <dd className="text-muted-foreground">{workerActivity
+              ? workerOverview('scheduleCounts', {
+                allowed: workerActivity.filter(row => row.gate.run).length,
+                recorded: workerActivity.filter(row => row.lastRunAt !== null).length,
+                total: workerActivity.length,
+              }) : workerOverview('unavailable')}</dd>
+            <dd><Link href="/admin/scheduled-actions" className={btnGhost}>{tc('workers.systemJobsLink')}</Link></dd>
+          </div>
+        </>}
+        <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+          <dt className="font-medium">{workerOverview('loops')}</dt>
+          <dd className="text-muted-foreground">{workerOverview('loopsHelp')}</dd>
+          <dd><Link href="/control-tower/loops" className={btnGhost}>{workerOverview('openLoops')}</Link></dd>
+        </div>
+        <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+          <dt className="font-medium">{workerOverview('quality')}</dt>
+          <dd className="text-muted-foreground">{workerOverview('qualityHelp')}</dd>
+          <dd className="flex flex-wrap gap-2 sm:justify-end">
+            <Link href="/assistant?view=insights#ai-quality" className={btnGhost}>{workerOverview('openQuality')}</Link>
+            {isGroupAdmin(s) && <Link href={aiManagementHref('assistant', {anchor:'#ai-reviews-heading'})} className={btnGhost}>{workerOverview('openReviews')}</Link>}
+          </dd>
+        </div>
+      </dl>
+    </section>}
+    {workerOverview && <WorkerDetails label={workerOverview('details')} initiallyOpen={Boolean(sp.worker || sp.toast || sp.error)}>
     {section==='features'&&registry&&<WorkerRegistry rows={registry.rows} summary={registry.summary} detail={registry.detail}/>}
     {section==='features'&&<Card id="ai-features" className="scroll-mt-4 overflow-hidden">
       <div className="p-5"><SectionHeader title={t('inventory')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('inventoryHelp')}</p>{!isGroupAdmin(s)&&<p className="mt-2 text-sm text-muted-foreground">{t('scopedNotice')}</p>}</div>
@@ -222,6 +308,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
           {byFamily[family].map(feature=>{
           const activity=view.usage.find(u=>u.feature_id===feature.id);
           const placement=FEATURE_PLACEMENT[feature.id];
+          const recent = modelActivity?.get(feature.id);
           return <tr key={feature.id} id={`ai-feature-${feature.id}`} className="scroll-mt-4">
             <td className="px-5 py-4"><p className="font-medium">{t(`features.${feature.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(`kinds.${feature.kind}`)} · {tc(`workers.triggers.${placement.trigger}`)} · {tc(`workers.effects.${placement.effect}`)}</p><p className="mt-2 max-w-md text-xs leading-relaxed text-muted-foreground">{t(`privateFeatures.${feature.id}`)}</p>{(()=>{
               // ADR-0151 §4.5 — the named agent principal runs a switched-on agent only under a named administrator's switch-on.
@@ -230,7 +317,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
                 :sw?.state==='unattributed'?<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('agentUnattributed')}</p>:null;})()}
               {feature.staleOverride&&<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t(feature.staleOverride.enabled?'staleOverrideOn':'staleOverrideOff')}</p>}</td>
             <td className="px-5 py-4"><span className={feature.state==='ready'?'text-emerald-700 dark:text-emerald-300':'text-muted-foreground'}>{t(`states.${feature.state}`)}</span></td>
-            <td className="px-5 py-4">{usage(activity)}{activity&&<p className="mt-1 text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(activity.blocked),failed:numbers(activity.failed)})}</p>}</td>
+            <td className="px-5 py-4">{recent && workerOverview && <p className="mb-1 text-sm tabular-nums">{workerOverview('featureActivity', {count: recent.runs})}</p>}{usage(activity)}{activity&&<p className="mt-1 text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(activity.blocked),failed:numbers(activity.failed)})}</p>}</td>
             <td className="px-5 py-4">{feature.mayWrite?<form action={setAiFeatureAction}><input type="hidden" name="feature" value={feature.id}/><input type="hidden" name="enabled" value={String(!feature.enabled)}/><ActionButton type="submit" className={btnGhost} aria-label={`${t(feature.enabled?'pause':'enable')} · ${t(`features.${feature.id}`)}`}>{t(feature.enabled?'pause':'enable')}</ActionButton></form>:t(feature.kind==='platform'?'platformManaged':'readOnly')}</td>
           </tr>;
         })}</tbody>)}</table></div>
@@ -250,6 +337,8 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     </Card>}
     {/* The inventory and audit columns, on the same page: the one list of every AI piece (owner decision 29). */}
     {section==='features'&&(inventorySection ?? <p role="status" data-inventory-unavailable className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>)}
+    {workerControls?.settings}
+    </WorkerDetails>}
     {view.section==='allowances'&&<>
     <Card id="company-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('companyLimits')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('limitHelp')}</p><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('concurrentHelp')}</p><p className="mt-2 max-w-4xl text-xs text-muted-foreground">{t('attribution')}</p>

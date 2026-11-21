@@ -68,7 +68,7 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
         <h3 id="ai-paused-mobile" className="text-sm font-semibold">{t('inv.pausedTitle')} <span className="font-normal text-muted-foreground">({n(pausedRows.length)})</span></h3>
         <ul className="mt-1 space-y-1">{pausedRows.map(r=><li key={r.key} className="flex flex-wrap items-center gap-2 text-sm"><a href={`#${rowAnchor(r.key)}-card`} className="break-all text-primary hover:underline">{name(r)}</a>{pausedState(r)}</li>)}</ul>
       </section>}
-      {groups.map(({kind,rows})=><section key={kind} aria-labelledby={`ai-kind-${kind}`} className="border-t border-border">
+      {groups.map(({kind,rows})=><section key={kind} id={kind==='action'?'ai-inventory-actions':undefined} aria-labelledby={`ai-kind-${kind}`} className="scroll-mt-4 border-t border-border">
         <div className="hidden md:block">
           <h3 id={`ai-kind-${kind}`} className="bg-muted/40 px-5 py-2 text-sm font-semibold">{t(`inv.kinds.${kind as AiComponentKind}`)} <span className="font-normal text-muted-foreground">({n(rows.length)})</span></h3>
           <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><caption className="sr-only">{t(`inv.kinds.${kind as AiComponentKind}`)}</caption>
