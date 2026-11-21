@@ -22,6 +22,12 @@ node --import tsx .github/ci/operator-release.mjs verify-recovery \
 
 Use `deploy-recovery` with the same identities only under staging deployment authority. Run only failed/invalidated areas; a focused pass alone or the old scheduling-only assessors still grants no deployment authority. This is an explicit recovery policy version, not an undocumented relaxation of normal single-run admission.
 
+### Missing isolated database unit recovery
+
+The proposed `aihr-missing-db-recovery/v1` route covers one isolated database unit whose first-attempt full-gate runner disappeared during test execution before uploading its report. It retains the original failed run, successful build, and all unaffected unit reports. The replacement keeps its own GitHub run, controller, job and archive identities. It runs the same unit with the full-gate database configuration and role prerequisites. Verification rejects additional missing coverage, unknown candidate execution history and incomplete replacement evidence. A separate focused timeout can be recorded only when GitHub confirms the timeout and the attempt published no report.
+
+Use `operator-release.mjs verify-missing-db-recovery CANDIDATE_WORKTREE ORIGINAL_RUN_ID JSON_OPTIONS` for staging preflight. Options name the `replayRunId`, `unitId`, `candidateBranch`, `producerBranch`, `producerController`, `producerDiagnosticRunId` and `verifierDiagnosticRunId`. Include `focusedTimeoutRunId` when one occurred. Without independent review of the exact verifier, the result is diagnostic. The same options drive `deploy-missing-db-recovery` only after the reviewer supplies the exact verified SHA as `AIHR_MISSING_DB_REVIEWED_CONTROLLER` and an authorized staging operator holds the matching lease. The route rechecks evidence and staging state before source transfer and before launch. Human staging acceptance and production authority remain separate.
+
 Current case: repair candidate/controller `c4fad43c1d67d69125a3f37e7549a5a8a7053362`, baseline `348b720e7a82c5e5573fc09196d06dfce50c787c`, original full run `40990989039`. The currently observed failure is the `nodb-f0f364cf77d50dce` unit's unhandled autosave callback from `test/onehr-ui.dom.test.tsx`; final complete failed-area selection must use the terminal job inventory, not this interim observation. No second whole gate was dispatched.
 
 
