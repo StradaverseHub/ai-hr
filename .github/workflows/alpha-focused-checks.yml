@@ -64,6 +64,10 @@ on:
         description: Provision the default Attendance rule before mixed traffic for the existing-tenant comparison
         default: false
         type: boolean
+      browser_replacement_catalogue:
+        description: Controlled fictional comparison of replacement leave type presence (absent or present)
+        default: ''
+        type: string
       reuse_first_use_build:
         description: Reuse the exact verified application build for the lock-attribution diagnostic
         default: false
@@ -132,9 +136,12 @@ jobs:
           if [[ "$ESTABLISHED_ATTENDANCE" == true && "$BROWSER_MIXED_LOAD" != true ]]; then
             exit 2
           fi
+          if [[ -n "$REPLACEMENT_CATALOGUE" ]] && {
+            [[ ! "$REPLACEMENT_CATALOGUE" =~ ^(absent|present)$ || "$ESTABLISHED_ATTENDANCE" != true || "$REUSE_BUILD" != true ]];
+          }; then exit 2; fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != f311902b9efe081250e678e321a757142620e223 ]];
+            [[ "$EXPECTED_SHA" != acce6ee10f61ca8500639a6ad1cf01266d0f8d58 ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -143,6 +150,7 @@ jobs:
           BROWSER_ROUTE_BASELINE: ${{ inputs.browser_route_baseline }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
           ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
+          REPLACEMENT_CATALOGUE: ${{ inputs.browser_replacement_catalogue }}
           REUSE_BUILD: ${{ inputs.reuse_first_use_build }}
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
@@ -234,7 +242,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           build_source=a458ecc0087722ec939b67a673f6c0ef017ba332
-          test "$AIHR_CI_HEAD" = f311902b9efe081250e678e321a757142620e223
+          test "$AIHR_CI_HEAD" = acce6ee10f61ca8500639a6ad1cf01266d0f8d58
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
           harness_diff="$(printf '%s\t%s\n' A .github/ci/loaded-access-blockers.test.mjs \
@@ -242,6 +250,7 @@ jobs:
             A scripts/performance/loaded-access-blockers.mjs \
             M scripts/performance/lock-sample-attribution.mjs \
             M scripts/performance/measured-lock-observer.mjs \
+            M scripts/performance/system-fixture-owner.mjs \
             M scripts/performance/system-load-owner.mjs \
             M scripts/performance/worker-comparison-failure.mjs)"
           test "$(git diff --name-status "$build_source" "$AIHR_CI_HEAD")" = "$harness_diff"
@@ -276,6 +285,7 @@ jobs:
           AIHR_BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
           AIHR_BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
           AIHR_BROWSER_ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
+          AIHR_BROWSER_REPLACEMENT_CATALOGUE: ${{ inputs.browser_replacement_catalogue }}
           AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_first_use_build }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}
           AUTH_PROVIDER: internal

@@ -33,6 +33,9 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
+const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
+assert(['','absent','present'].includes(replacementCatalogue));
+assert(!replacementCatalogue||(establishedAttendance&&env.AIHR_BROWSER_REUSED_BUILD==='true'));
 assert(!establishedAttendance||mixedLoad,'Established Attendance comparison requires mixed traffic');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
@@ -469,6 +472,15 @@ async function measureMixedLoad(command){
    retainMixedStartupFailure('measure-500-user-mixed-load');
   }else{
    const data=JSON.parse(readFileSync(resultPath,'utf8'));
+   if(replacementCatalogue){
+    const attestation=data.replacementCatalogueAtLoadStart;
+    const count=attestation?.presentTenants;
+    report.replacementCatalogue={
+     expected:replacementCatalogue,
+     presentTenants:attestation?.tenants===2&&Number.isInteger(count)&&count>=0&&count<=2?count:null,
+     verified:attestation?.tenants===2&&count===(replacementCatalogue==='present'?2:0),
+    };
+   }
    // The driver resets statement counters immediately before loaded setup.
    // Failure or startup snapshots before that reset would mix in preflight work.
    if(Number.isFinite(data.measurementWindow?.startPerformanceMs)){
