@@ -34,7 +34,8 @@ const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
-const censusRewards=shardInput==='rewards-records';
+const profileRewards=shardInput==='rewards-read-profile';
+const censusRewards=shardInput==='rewards-records'||profileRewards;
 const censusLifecycle=shardInput==='fixture-records';
 const censusFixtureRecords=censusLifecycle||censusPayrollCorrections||censusRewards;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
@@ -1619,7 +1620,17 @@ try{
   report.fixture.joinersSeeded=true;
  }
  report.fixtureVerified=true;
- if(!fixtureOnly){
+ if(profileRewards){
+  try{
+   await run('profile-rewards-reads',process.execPath,['--conditions=react-server','--import','tsx',
+    '../automation/scripts/performance/rewards-read-profile.mjs'],{...dbEnv,AIHR_DB_POOL_MAX:'8'},240000);
+   report.complete=true;
+  }finally{
+   const observations=join(privateDir,'rewards-read-profile.json');
+   if(existsSync(observations))report.rewardsReadProfile=JSON.parse(readFileSync(observations,'utf8'));
+   save();
+  }
+ }else if(!fixtureOnly){
   if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
