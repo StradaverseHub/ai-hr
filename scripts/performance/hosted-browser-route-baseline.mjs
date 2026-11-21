@@ -798,6 +798,10 @@ async function measureMixedLoad(command,fixture){
     report.mixedObservedMutationStages=(data.mixedWorkflows.capturedTransport??[]).slice(0,32)
      .map(row=>row.stage).filter(stage=>mutationStages.includes(stage));
    }
+   const correctionTransport=data.mixedWorkflows?.capturedTransport?.find(row=>row.stage==='attendanceCreate');
+   if(['FormData','native FormData'].includes(correctionTransport?.encoding)&&[200,303].includes(correctionTransport.status)){
+    report.mixedAttendanceCorrectionTransport={encoding:correctionTransport.encoding,status:correctionTransport.status};
+   }
    if(mutationStages.includes(mutation?.stage)){
     const count=value=>Number.isSafeInteger(value)&&value>=0&&value<=500?value:null;
     report.mixedMutationPreflightFailure={stage:mutation.stage,posts:count(mutation.posts),actionPosts:count(mutation.actionPosts)};
