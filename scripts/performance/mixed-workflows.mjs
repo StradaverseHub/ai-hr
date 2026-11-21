@@ -12,14 +12,19 @@ import {readRouteForMeasurement} from './system-route-manifest.mjs';
 
 const attendanceFingerprint=/^[a-f0-9]{64}$/;
 const attendanceApprovalMarker='PERF_ATTENDANCE_BROWSER_APPROVAL';
+const attendanceCorrectionMarker='PERF_ATTENDANCE_BROWSER';
+const nativeActionName=/^\$ACTION_ID_([a-f0-9]{42})$/;
 const payrollQueuedMessage='Payroll processing started. This page shows its progress.';
 
-export function isNativeAttendanceApprovalPost(request,url){
+function isNativeAttendanceFormPost(request,url,marker){
  return request.method()==='POST'&&request.url()===url&&request.isNavigationRequest()
   &&request.resourceType()==='document'&&!request.headers()['next-action']
   &&/^multipart\/form-data\b/i.test(request.headers()['content-type']??'')
-  &&Boolean(request.postDataBuffer()?.includes(Buffer.from(attendanceApprovalMarker)));
+  &&Boolean(request.postDataBuffer()?.includes(Buffer.from(marker)));
 }
+
+export const isNativeAttendanceApprovalPost=(request,url)=>isNativeAttendanceFormPost(request,url,attendanceApprovalMarker);
+export const isNativeAttendanceCorrectionPost=(request,url)=>isNativeAttendanceFormPost(request,url,`\r\n${attendanceCorrectionMarker}\r\n`);
 
 export function readAttendanceCorrectionForm(html,{actionId,date,employmentId}){
  assert(typeof actionId==='string'&&/^[a-f0-9]{42}$/.test(actionId),'Missing captured Attendance action identity');
@@ -69,7 +74,7 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  const attemptedPayroll=[];
  async function capture(page,click,kind){
   report.mixedWorkflows.currentStage=kind;save();
-  const marker={attendanceCreate:'PERF_ATTENDANCE_BROWSER',attendanceApprove:attendanceApprovalMarker,leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
+  const marker={attendanceCreate:attendanceCorrectionMarker,attendanceApprove:attendanceApprovalMarker,leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
   const currentUrl=page.url();
   // Bind to a request initiated after arming this click, never an advisory response already in flight.
   // Capture needs transport metadata only. Redirect/toast navigation can cancel the original stream;
@@ -78,7 +83,8 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   const waiting=page.waitForRequest(req=>{
    if(req.method()!=='POST')return false;
    posts++;
-   if(!req.headers()['next-action'])return kind==='attendanceApprove'&&isNativeAttendanceApprovalPost(req,currentUrl);
+   if(!req.headers()['next-action'])return (kind==='attendanceApprove'&&isNativeAttendanceApprovalPost(req,currentUrl))
+    ||(kind==='attendanceCreate'&&isNativeAttendanceCorrectionPost(req,currentUrl));
    actionPosts++;
    return !marker||req.postDataBuffer()?.includes(Buffer.from(marker));
   },{timeout:90000});
@@ -111,10 +117,19 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    assert.equal(fieldOrder.filter(name=>/^\$ACTION_ID_[a-f0-9]{42}$/.test(name)).length,1,
     'Native Attendance approval did not carry its named server action');
   }
+  let formActionId=headers['next-action'];
+  if(kind==='attendanceCreate'&&!formActionId){
+   const names=fieldOrder.filter(name=>name.startsWith('$ACTION_'));
+   const actionName=names.length===1?nativeActionName.exec(names[0]):null;
+   assert(actionName&&fields.reason===attendanceCorrectionMarker&&response.status()===303,
+    'Native Attendance correction did not submit the witnessed form');
+   assert.equal(attendanceCorrectionOutcome({headers:response.headers()},new URL(currentUrl)),'corrected');
+   formActionId=actionName[1];
+  }
   const redirect=response.headers()['x-action-redirect']??response.headers().location;
   const actionUrl=new URL(req.url());
-  const template={kind,path:actionUrl.pathname+actionUrl.search,fields,fieldOrder,headers,status:response.status()};
-  report.mixedWorkflows.capturedTransport.push({stage:kind,path:actionUrl.pathname,status:response.status(),encoding:Array.isArray(fields)?'typed JSON':'FormData',shape:Array.isArray(fields)?fields.map(value=>value&&typeof value==='object'?Object.keys(value).sort():typeof value):fieldOrder});save();
+  const template={kind,path:actionUrl.pathname+actionUrl.search,fields,fieldOrder,headers,status:response.status(),formActionId};
+  report.mixedWorkflows.capturedTransport.push({stage:kind,path:actionUrl.pathname,status:response.status(),encoding:Array.isArray(fields)?'typed JSON':headers['next-action']?'FormData':'native FormData',shape:Array.isArray(fields)?fields.map(value=>value&&typeof value==='object'?Object.keys(value).sort():typeof value):fieldOrder});save();
   if(redirect){const target=new URL(String(redirect).split(';')[0],base);if(target.searchParams.has('error')){report.mixedWorkflows.error={stage:kind,message:target.searchParams.get('error')};save();throw Error('Browser mutation refused: '+target.searchParams.get('error'));}}
   templates[kind]=template;return template;
  }
@@ -269,14 +284,14 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const form=attendanceCorrectionForm(page);
    await form.locator('input[type="time"][name="checkIn"]').fill('09:15');
    await form.locator('input[type="time"][name="checkOut"]').fill('18:15');
-   await form.locator('input[name="reason"]').fill('PERF_ATTENDANCE_BROWSER');
+   await form.locator('input[name="reason"]').fill(attendanceCorrectionMarker);
    const captured=await capture(page,()=>form.getByRole('button',{name:'Submit correction',exact:true}).click(),'attendanceCreate');
    // React FormData actions encode controls under a wire prefix. Capture the
    // selector field in the browser so replay cannot append an unbound root field.
    const selectors=Object.entries(captured.fields).filter(([key])=>key==='employmentId'||key.endsWith('_employmentId'));
    assert(selectors.length===1&&selectors[0][1]===employee.employmentId,'Missing encoded Attendance subject selector');
    await page.waitForLoadState('networkidle');
-   [correction]=await db`select id,status from attendance_correction where employment_id=${employee.employmentId}::uuid and reason='PERF_ATTENDANCE_BROWSER'`;
+   [correction]=await db`select id,status from attendance_correction where employment_id=${employee.employmentId}::uuid and reason=${attendanceCorrectionMarker}`;
    assert(correction&&correction.status==='pending');
   });
   const approver=approverFor(employee),reviewCtx=await context(approver);
@@ -473,7 +488,7 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   const page=await request(user,template.path,undefined,200,true,{},[],'attendanceForm');
   assert(/^text\/html\b/i.test(page.headers['content-type']??''),'Attendance form owner did not return HTML');
   const fingerprint=readAttendanceCorrectionForm(page.content,{
-   actionId:template.headers['next-action'],date:fixture.today,employmentId:user.employmentId,
+   actionId:template.formActionId,date:fixture.today,employmentId:user.employmentId,
   });
   return {template,fingerprint};
  }
