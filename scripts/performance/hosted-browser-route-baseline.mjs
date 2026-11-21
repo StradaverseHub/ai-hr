@@ -1,3 +1,4 @@
+import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {projectMixedRootStatementWork} from './mixed-root-statement-work.mjs';
@@ -579,12 +580,14 @@ async function measureMixedLoad(command){
     const preflight=data.lockSampling.preflight,loaded=data.lockSampling.loaded;
     const sessionSamples=(loaded?.samples??[]).flatMap(sample=>
      sample.state==='complete'&&Number.isSafeInteger(sample.appSessions)&&sample.appSessions>=0?[sample.appSessions]:[]);
+    const advisoryDiagnostics=projectLoadedAdvisoryDiagnostics(loaded?.advisoryDiagnostics,loaded?.completed);
     report.mixedLockSampling={
      preflight:{...cadenceFacts(preflight?.cadence),...counts(preflight,['completed','failures']),
       sampleFailures:(preflight?.samples??[]).filter(sample=>sample.state==='failed').slice(0,8)
        .map(safeFailure).filter(Boolean)},
      loaded:{...cadenceFacts(loaded?.cadence),...counts(loaded,['completed','failures']),
-      advisoryDiagnostics:projectLoadedAdvisoryDiagnostics(loaded?.advisoryDiagnostics,loaded?.completed),
+      advisoryDiagnostics,
+      accessBlockers:projectLoadedAccessBlockers(loaded?.accessBlockers,advisoryDiagnostics?.families['access-configuration']),
       sessionSamples:sessionSamples.length,
       peakOpenAppDatabaseSessions:sessionSamples.length?Math.max(...sessionSamples):null},
      preflightClient:cadenceFacts(data.lockSampling.privatePreflightClientCadence),

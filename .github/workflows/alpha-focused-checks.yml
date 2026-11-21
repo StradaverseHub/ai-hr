@@ -122,7 +122,7 @@ jobs:
       - name: Focused controller regression checks
         run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/system-label-fonts.test.mjs .github/ci/ubuntu-browser-mirror.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
       - name: Check mixed-load diagnostic field projection
-        run: node --test .github/ci/mixed-preflight-lock-evidence.test.mjs .github/ci/mixed-driver-primary-origin.test.mjs .github/ci/mixed-root-statement-work.test.mjs
+        run: node --test .github/ci/mixed-preflight-lock-evidence.test.mjs .github/ci/mixed-driver-primary-origin.test.mjs .github/ci/mixed-root-statement-work.test.mjs .github/ci/mixed-loaded-advisory.test.mjs .github/ci/loaded-access-blockers.test.mjs
       - name: Validate bounded manifest
         id: selection
         run: |
@@ -134,7 +134,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 323936b3ae6c210aa993f5682acb862034ba78ef ]];
+            [[ "$EXPECTED_SHA" != f311902b9efe081250e678e321a757142620e223 ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -234,13 +234,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           build_source=a458ecc0087722ec939b67a673f6c0ef017ba332
-          test "$AIHR_CI_HEAD" = 323936b3ae6c210aa993f5682acb862034ba78ef
+          test "$AIHR_CI_HEAD" = f311902b9efe081250e678e321a757142620e223
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
-          harness_diff="$(printf 'A\t%s\nM\t%s\nM\t%s\n' \
-            .github/ci/mixed-loaded-advisory.test.mjs \
-            scripts/performance/system-load-owner.mjs \
-            scripts/performance/worker-comparison-failure.mjs)"
+          harness_diff="$(printf '%s\t%s\n' A .github/ci/loaded-access-blockers.test.mjs \
+            A .github/ci/mixed-loaded-advisory.test.mjs \
+            A scripts/performance/loaded-access-blockers.mjs \
+            M scripts/performance/lock-sample-attribution.mjs \
+            M scripts/performance/measured-lock-observer.mjs \
+            M scripts/performance/system-load-owner.mjs \
+            M scripts/performance/worker-comparison-failure.mjs)"
           test "$(git diff --name-status "$build_source" "$AIHR_CI_HEAD")" = "$harness_diff"
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
