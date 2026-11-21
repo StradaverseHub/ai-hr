@@ -514,6 +514,45 @@ function personnelDirectoryRoutes(fixture) {
   ]);
 }
 
+async function personnelRosterRoutes(db, fixture) {
+  const [group, company] = fixture.users;
+  assert.equal(group.role, 'groupHR');
+  assert.equal(company.role, 'companyHR');
+  assert.equal(group.companyId, company.companyId);
+  const subject = fixture.users.find(user => user.role === 'employee' && user.companyId === company.companyId);
+  assert(subject, 'Expected a fictional employee in the shared company');
+  const [record] = await db`
+    select p.full_name, c.legal_name, e.employee_code,
+      exists (select 1 from domain_event d where d.tenant_id = e.tenant_id and d.subject_employment_id = e.id
+        and d.event_type = 'employment.hired') as hired
+    from employment e
+    join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
+    join company c on c.id=e.company_id and c.tenant_id=e.tenant_id
+    where e.tenant_id=${company.tenantId}::uuid and e.company_id=${company.companyId}::uuid
+      and e.id=${subject.employmentId}::uuid
+  `;
+  assert(record?.hired && record.employee_code && record.legal_name, 'Expected the named employee and native hire event');
+  assert.equal(record.full_name, subject.name);
+  const id = subject.employmentId;
+  const profile = '/admin/personnel/' + id;
+  const employmentInput = `input[name="employmentId"][value="${id}"]`;
+  return [group, company].flatMap(actor => [
+    { actor, template: '/admin/personnel/[employmentId]', path: profile, exactHeading: subject.name,
+      content: record.employee_code, witness: 'form[data-save-section="person"] input:visible:not([type="hidden"])' },
+    { actor, template: '/admin/personnel/[employmentId]/movement/[mode]', path: profile + '/movement/history',
+      exactHeading: subject.name, witness: '#section-assignment-history :text-is("Hired")', scenario: 'employment history' },
+    { actor, template: '/personnel/[employmentId]', path: '/personnel/' + id, exactHeading: subject.name,
+      content: record.legal_name, exactContent: true,
+      witness: 'dl dd:visible', scenario: 'directory profile' },
+    { actor, template: '/roster/edit/[employmentId]', path: '/roster/edit/' + id + '?' + new URLSearchParams({ companyId: company.companyId }),
+      exactHeading: 'Edit month — ' + subject.name,
+      witness: `form:has(${employmentInput}) select[name="brush"]:has(option:text-is("Fictional performance day"))` },
+    { actor, template: '/admin/attendance/schedule-assignment/[employmentId]', path: '/admin/attendance/schedule-assignment/' + id,
+      exactHeading: 'Shift arrangement', content: subject.name,
+      witness: `#section-schedule-group form:has(${employmentInput}) select[name="attendanceRuleId"]` },
+  ]);
+}
+
 async function attendanceRecordRoutes(db, fixture) {
   const [group, company] = fixture.users;
   assert.equal(group.role, 'groupHR');
@@ -551,7 +590,7 @@ async function attendanceRecordRoutes(db, fixture) {
   ];
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, personnelDirectory, attendanceRecords, payrollRegisterRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, personnelDirectory, attendanceRecords, payrollRegisterRecords, personnelRosterRecords }) {
   const before = payrollCorrections || payrollRegisterRecords ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -559,6 +598,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : personnelDirectory ? personnelDirectoryRoutes(fixture)
     : attendanceRecords ? await attendanceRecordRoutes(db, fixture)
     : payrollRegisterRecords ? await payrollRegisterRoutes(db, fixture)
+    : personnelRosterRecords ? await personnelRosterRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),

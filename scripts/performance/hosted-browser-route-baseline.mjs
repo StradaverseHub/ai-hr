@@ -39,8 +39,9 @@ const censusImportHistory=shardInput==='import-history';
 const censusPersonnelDirectory=shardInput==='personnel-directory';
 const censusAttendanceRecords=shardInput==='attendance-records';
 const censusPayrollRegisterRecords=shardInput==='payroll-register-records';
+const censusPersonnelRosterRecords=shardInput==='personnel-roster-records';
 const censusFullFixtureRecords=shardInput==='fixture-records';
-const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusPersonnelDirectory||censusAttendanceRecords||censusPayrollRegisterRecords;
+const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusPersonnelDirectory||censusAttendanceRecords||censusPayrollRegisterRecords||censusPersonnelRosterRecords;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1636,7 +1637,7 @@ try{
     await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
      importHistory:censusImportHistory,personnelDirectory:censusPersonnelDirectory,
-     attendanceRecords:censusAttendanceRecords,payrollRegisterRecords:censusPayrollRegisterRecords});
+     attendanceRecords:censusAttendanceRecords,payrollRegisterRecords:censusPayrollRegisterRecords,personnelRosterRecords:censusPersonnelRosterRecords});
     if(censusFullFixtureRecords)await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
    }
    finally{await db.end({timeout:5});}
