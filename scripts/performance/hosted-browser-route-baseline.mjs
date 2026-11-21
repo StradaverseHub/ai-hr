@@ -776,9 +776,15 @@ async function measureMixedLoad(command,fixture){
     };
    }
    const routeRows=steady?.routeLatency?.rows??[];
+   const routeAttemptCounts=row=>{
+    const metrics=['attempts','transportFailures','completedWithinTarget'];
+    if(row.kind==='navigation'||!metrics.every(key=>Number.isSafeInteger(row[key])&&row[key]>=0))return {};
+    if(row.attempts!==row.samples+row.transportFailures||row.completedWithinTarget>row.samples)return {};
+    return counts(row,metrics);
+   };
    const routes=routeRows.filter(row=>roles.includes(row.role)&&kinds.includes(row.kind)
     &&typeof row.route==='string'&&(knownRoutes.has(row.route)||/^\/[a-z/-]{0,120}$/.test(row.route)))
-    .map(row=>({role:row.role,kind:row.kind,route:row.route,...counts(row,sampleMetrics),
+    .map(row=>({role:row.role,kind:row.kind,route:row.route,...counts(row,sampleMetrics),...routeAttemptCounts(row),
      ...(typeof row.action==='string'&&/^[A-Za-z][A-Za-z_-]{0,80}$/.test(row.action)?{action:row.action}:{}),
      targetMet:row.targetMet===true,sparseSample:row.sparseSample===true}));
    const navigationFailure=projectMixedNavigationPreflightFailure(data.mixedNavigationPreflightFailure);

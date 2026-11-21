@@ -165,7 +165,8 @@ jobs:
           }; then exit 2; fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != b00e2b2738312d87d5bea6f0ac7c877517d0b75d || "$REPLACEMENT_CATALOGUE" != present || "$LOCK_LOG_CALIBRATION_ONLY" == true || "$LOCK_LOG_SHORT_WINDOW" == true ]];
+            [[ "$REPLACEMENT_CATALOGUE" != present || "$LOCK_LOG_CALIBRATION_ONLY" == true || "$LOCK_LOG_SHORT_WINDOW" == true ]] ||
+            [[ "$EXPECTED_SHA" != b00e2b2738312d87d5bea6f0ac7c877517d0b75d && "$EXPECTED_SHA" != a57fcbf20bd074a756ea8c8f9e6ca6023b0b3d02 ]];
           }; then exit 2; fi
           case "$SHELL_PERMISSION_VARIANT" in
             none) ;;
@@ -280,9 +281,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           build_source=b00e2b2738312d87d5bea6f0ac7c877517d0b75d
-          test "$AIHR_CI_HEAD" = b00e2b2738312d87d5bea6f0ac7c877517d0b75d
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          test "$AIHR_CI_HEAD" = "$build_source"
+          case "$AIHR_CI_HEAD" in
+            "$build_source") ;;
+            a57fcbf20bd074a756ea8c8f9e6ca6023b0b3d02)
+              test "$(git rev-parse HEAD^)" = "$build_source"
+              harness_diff="$(printf '%s\t%s\n' M scripts/performance/route-latency.mjs \
+                M scripts/performance/system-load-owner.mjs M test/performance-route-latency.test.ts)"
+              test "$(git diff --name-status "$build_source" "$AIHR_CI_HEAD")" = "$harness_diff"
+              ;;
+            *) exit 2 ;;
+          esac
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
           gh api repos/StradaverseHub/ai-hr/actions/jobs/136827202599 --jq '
