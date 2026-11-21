@@ -192,7 +192,7 @@ describe('register import job (all-or-nothing)',()=>{
    expect(progress.state).toBe('failed');
    expect(progress.result).toMatchObject({updated:0,skipped:6,failed:[],runId:null});
    expect(progress.result!.fileErrors).toHaveLength(1);
-   expect(progress.result!.fileErrors[0]).toMatch(/^No register rows were written\. This change was refused by a safeguard/);
+   expect(progress.result!.fileErrors[0]).toMatch(/^No register rows were written\. A system rule prevented this change\..*DB-R-[0-9A-F]{6}/);
    expect(await endState(job)).toEqual(before);
   }finally{
    await owner.client.unsafe('drop trigger if exists register_fixture_refuse on employee_qualification');

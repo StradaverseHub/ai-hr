@@ -83,7 +83,7 @@ describe('bcb56d37 tenant NRIC policy: actual app role and atomic admission',()=
     const a=await hire('A'),c=await hire('B');
     await setIcProfileMY(ctx,{personId:a.personId,icNumber:identity});
     const error=await refusal(setIcProfileMY(ctx,{personId:c.personId,icNumber:'900101-01-1234'}));
-    const safe=publicErrorMessage(error);expect(safe).toContain(NRIC_DUPLICATE_MESSAGE);expect(safe).not.toContain(identity);expect(safe).not.toContain(a.personId);
+    const safe=publicErrorMessage(error);expect(safe).toMatch(/Another employee record already uses this NRIC\..*Reference DB-N-[0-9A-F]{6}\./);expect(safe).not.toContain(identity);expect(safe).not.toContain(a.personId);
     await policy(true);await setIcProfileMY(ctx,{personId:c.personId,icNumber:'900101 01 1234'});
     expect(a.personId).not.toBe(c.personId);expect(await ic(a.personId)).toBe(identity);expect(await ic(c.personId)).toBe(identity);expect(await occupants()).toBe(2);
     const users=await owner.db.select().from(schema.appUser).where(eq(schema.appUser.personId,c.personId));expect(users).toHaveLength(0);
