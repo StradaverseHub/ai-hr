@@ -79,3 +79,25 @@ The same pinned Qwen 2.5 1.5B model ran both strategies with both formats at sou
 | Answer schema | 0/6 | 1/6 | 5/6 |
 
 The schema allowed a valid claim selection, but it did not match the required two-record answer. Both formats still produced a rejected plan for the leave request summary. Neither strategy earned promotion. A provider capable of selecting the required facts and explanations on development cases would give the next optimization experiment a usable baseline.
+
+### Larger model on the same protected cases
+
+Local Qwen 2.5 3B, model digest `357c53fb659c5076de1d65ccb0b397446227b71a42be9d1603d46168015c9e4b`, ran both protected benchmarks on the same fixture and answer schema digests used for the smaller model. The run used 30 calls. The 3B model did not improve exact matches in either benchmark.
+
+| Workload | Strategy | Qwen 2.5 1.5B exact matches | Qwen 2.5 3B exact matches | Qwen 2.5 3B rejected |
+| --- | --- | ---: | ---: | ---: |
+| Work summaries | Default | 0/6 | 0/6 | 6/6 |
+| Work summaries | Focused | 0/6 | 0/6 | 4/6 |
+| Leave balances | Default | 3/9 | 2/9 | 5/9 |
+| Leave balances | Focused | 1/9 | 0/9 | 7/9 |
+
+More model parameters within this family did not establish a stronger baseline for these fixtures. The larger model was rejected more often at the protected boundary. This comparison covers two local model builds and the same fictional development cases.
+
+The next run used the same 3B model, prompt, case roster and both strategies. It changed only the decoding format. `--catalogue-schema` restricts the model to an answer plan and enumerates the individual fact and explanation references available in that request. Both adjudicators still check the plan. The runner records invalid-plan reasons and, for valid plans, missing or extra references and order-only differences. It discards raw replies. At source `c499cc52aec9b3f59f4190e83f8319bb8ae9df9e`, with work-summary fixture digest `264e5c1b36c77517c334f15d0a186e4af309ab4af6b3d6fc4af35efcba1b98ab`, it used 12 calls.
+
+| 3B strategy | Static schema exact matches | Catalogue schema exact matches | Static schema rejected | Catalogue schema rejected |
+| --- | ---: | ---: | ---: | ---: |
+| Default | 0/6 | 0/6 | 6/6 | 1/6 |
+| Focused | 0/6 | 0/6 | 4/6 | 1/6 |
+
+All ten valid catalogue-constrained replies omitted required content. None failed on ordering alone. The format improved admissibility while leaving answer quality unchanged. Exact-answer selection on these cases needs a stronger baseline or a revised division of work between model and application before prompt iteration can demonstrate gains. Stable source-owned facts and required explanations can form the deterministic part of that division. Any learned selection still needs separate evidence on fresh cases.
