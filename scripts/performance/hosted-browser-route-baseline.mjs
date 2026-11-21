@@ -1800,14 +1800,15 @@ async function measureShellBellReadiness({page,user,report,save}){
  }finally{page.off('response',observe);}
 }
 
-async function measureAutomaticShellPreview({page,user,report,save}){
- const started=performance.now(),path='/me/cases';
+async function measureAutomaticShellPreview({page,user,report,save},path){
+ const started=performance.now();
  const budget=()=>Math.max(1,15000-Math.round(performance.now()-started));
  report.actionStage='shell-preview-document-start';
  const response=await page.goto(origin+path,{waitUntil:'commit',timeout:budget()});
  assert.equal(response?.status(),200);
  assert.equal(new URL(page.url()).pathname,path);
  assert.equal(await readyContent(page,user,path,budget),'usable-content');
+ const contentReadyMs=Math.round(performance.now()-started);
  report.actionStage='shell-preview-automatic-task-count';
  await page.getByRole('button',{name:/^Notifications, .* open tasks$/}).waitFor({state:'visible',timeout:budget()});
  const timing=await page.evaluate(path=>{
@@ -1822,6 +1823,7 @@ async function measureAutomaticShellPreview({page,user,report,save}){
   'Automatic preview must follow the initial document');
  assert(timing.previewEnd>=timing.previewStart);
  report.automaticShellPreview=[
+  {step:'usable-content',elapsedMs:contentReadyMs},
   {step:'document-complete',elapsedMs:Math.round(timing.documentEnd)},
   {step:'document-load',elapsedMs:Math.round(timing.loadStart)},
   {step:'preview-start',elapsedMs:Math.round(timing.previewStart)},
@@ -2089,7 +2091,8 @@ async function measureLifecycleMenu({page,user,fixture,report,save}){
 }
 
 const actionLaneByJourney={
- 'personal-calendar-month':'shell','shell-popovers':'shell','shell-bell-readiness':'shell','shell-preview-automatic':'shell','welcome-tour':'shell','assistant-saved-history':'shell','notification-read':'shell',
+ 'personal-calendar-month':'shell','shell-popovers':'shell','shell-bell-readiness':'shell','shell-preview-automatic':'shell','shell-preview-home':'shell',
+ 'shell-preview-payroll':'shell','shell-preview-personnel':'shell','shell-preview-claims':'shell','welcome-tour':'shell','assistant-saved-history':'shell','notification-read':'shell',
  'group-company-scope':'workforce','group-lifecycle-menu':'workforce','roster-exceptions':'workforce','daily-attendance-filters':'workforce',
  'job-description-editor-open':'workforce','personnel-switcher':'workforce','org-explorer':'workforce','personnel-movement':'workforce','new-joiners-search':'workforce',
  'own-released-payslip-detail':'payroll','payroll-history-breakdown':'payroll','payroll-wizard':'payroll','payroll-register-pager':'payroll','payroll-register-boundary':'payroll','payroll-scope-denial':'payroll',
@@ -2120,8 +2123,15 @@ async function measureActions(fixture){
   ...[0,1].map(actorIndex=>({name:'roster-exceptions',actorIndex,run:measureRosterExceptions,timings:result=>result.rosterExceptionSteps})),
   ...[0,4].map(actorIndex=>({name:'shell-popovers',actorIndex,run:measureShellPopovers,timings:result=>result.shellPopoverSteps})),
   ...[0,4].map(actorIndex=>({name:'shell-bell-readiness',actorIndex,run:measureShellBellReadiness,timings:result=>result.shellBellReadiness})),
-  ...(sha===detachedShellSource?[0,4].map(actorIndex=>({name:'shell-preview-automatic',actorIndex,
-   run:measureAutomaticShellPreview,timings:result=>result.automaticShellPreview})):[]),
+  ...(sha===detachedShellSource?[
+   ['shell-preview-automatic',0,'/me/cases'],
+   ['shell-preview-automatic',4,'/me/cases'],
+   ['shell-preview-home',4,'/'],
+   ['shell-preview-payroll',0,'/payroll'],
+   ['shell-preview-personnel',1,'/admin/personnel'],
+   ['shell-preview-claims',2,'/claims'],
+  ].map(([name,actorIndex,path])=>({name,actorIndex,
+   run:options=>measureAutomaticShellPreview(options,path),timings:result=>result.automaticShellPreview})):[]),
   {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
   ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
    timings:result=>result.attendanceFilterSteps})),
