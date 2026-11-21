@@ -20,32 +20,66 @@ export const INTENT_DWELL_MS = 80;
  * Why not `prefetch={true}` everywhere: that renders every visible destination in full on every page
  * load — the sidebar alone shows dozens — which this box cannot afford. Intent narrows it to the one or
  * two links the user is about to click (Next's documented hover-prefetch pattern, applied with `true`).
+ * End eligibility when the interaction ends so persistent links do not re-prefetch on later cache invalidations.
  * Leave viewport prefetch off unless the caller explicitly requests it.
  * Freshness is bounded by `experimental.staleTimes.static` in next.config.ts (30 s).
  */
 type IntentLinkProps = ComponentProps<typeof Link> & { prefetchOnIntentOnly?: boolean };
 
-export function IntentLink({ prefetch, prefetchOnIntentOnly = true, onPointerEnter, onPointerLeave, onFocus, onTouchStart, ...rest }: IntentLinkProps) {
-  const [intent, setIntent] = useState(false);
+export function IntentLink({
+  prefetch, prefetchOnIntentOnly = true, onPointerEnter, onPointerLeave, onFocus, onBlur,
+  onTouchStart, onTouchEnd, onTouchCancel, ...rest
+}: IntentLinkProps) {
+  const [hovering, setHovering] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [touching, setTouching] = useState(false);
   const dwell = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clear = () => { if (dwell.current) { clearTimeout(dwell.current); dwell.current = null; } };
-  useEffect(() => clear, []);
-  const viewportPrefetch = prefetchOnIntentOnly ? false : null;
-  const initialPrefetch = prefetch === undefined ? viewportPrefetch : prefetch;
+  useEffect(() => () => {
+    if (dwell.current !== null) clearTimeout(dwell.current);
+  }, []);
+  const intent = hovering || focused || touching;
+  const initialPrefetch = prefetch === undefined ? (prefetchOnIntentOnly ? false : null) : prefetch;
   return (
     <Link
       {...rest}
       // An explicit `prefetch={false}` from the caller wins: that link asked never to prefetch.
       prefetch={intent && prefetch !== false ? true : initialPrefetch}
-      onPointerEnter={(e) => { if (!intent && !dwell.current) dwell.current = setTimeout(() => { dwell.current = null; setIntent(true); }, INTENT_DWELL_MS); onPointerEnter?.(e); }}
-      onPointerLeave={(e) => { clear(); onPointerLeave?.(e); }}
+      onPointerEnter={(e) => {
+        onPointerEnter?.(e);
+        if (prefetch === false || e.defaultPrevented || e.pointerType === 'touch' || dwell.current !== null) return;
+        dwell.current = setTimeout(() => {
+          dwell.current = null;
+          setHovering(true);
+        }, INTENT_DWELL_MS);
+      }}
+      onPointerLeave={(e) => {
+        if (dwell.current !== null) {
+          clearTimeout(dwell.current);
+          dwell.current = null;
+        }
+        setHovering(false);
+        onPointerLeave?.(e);
+      }}
       onFocus={(e) => {
         onFocus?.(e);
-        if (e.defaultPrevented) return;
-        clear();
-        setIntent(true);
+        if (prefetch !== false && !e.defaultPrevented) setFocused(true);
       }}
-      onTouchStart={(e) => { clear(); setIntent(true); onTouchStart?.(e); }}
+      onBlur={(e) => {
+        setFocused(false);
+        onBlur?.(e);
+      }}
+      onTouchStart={(e) => {
+        onTouchStart?.(e);
+        if (prefetch !== false && !e.defaultPrevented) setTouching(true);
+      }}
+      onTouchEnd={(e) => {
+        setTouching(false);
+        onTouchEnd?.(e);
+      }}
+      onTouchCancel={(e) => {
+        setTouching(false);
+        onTouchCancel?.(e);
+      }}
     />
   );
 }
