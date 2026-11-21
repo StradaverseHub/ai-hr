@@ -185,7 +185,7 @@ jobs:
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
               false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:cddd7cebf757d0392ed06bead78300732fd54256) ;;
-              true:5175d387846c18fcc83ef96091cb1b4e1b538241|true:71e0dceb1a393817f3040518e82dc845a27700b0|true:0ba883e0aa294bb0f15dcfe2433deedb52d11996)
+              true:5175d387846c18fcc83ef96091cb1b4e1b538241|true:71e0dceb1a393817f3040518e82dc845a27700b0|true:0ba883e0aa294bb0f15dcfe2433deedb52d11996|true:57fac422707b3a6174a290722ea0bb53da89f7c0)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
               *) exit 2 ;;
             esac
@@ -321,6 +321,13 @@ jobs:
               .run_id == 44935634462 and .head_sha == "51577c8e853a3403eb2d24186a89ac0106b03bf4"' | grep -qx true
             gh api repos/StradaverseHub/ai-hr/actions/artifacts/14719437695/zip > "$archive"
             digest=542f98fb6c9be917331f78d8b84039824ffd68e011221132f2c741926e15eba3
+          elif [[ "$AIHR_CI_HEAD" == 57fac422707b3a6174a290722ea0bb53da89f7c0 ]]; then
+            test "$MIXED_GROUP_SCALE" = true
+            gh api repos/StradaverseHub/ai-hr/actions/jobs/136994182359 --jq '
+              .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+              .run_id == 44952743961 and .head_sha == "cb8e3941d42db34d8ed2314f476b995822c8a854"' | grep -qx true
+            gh api repos/StradaverseHub/ai-hr/actions/artifacts/14726742052/zip > "$archive"
+            digest=a042685750c1eb70cccb022f7ea2814969f5083389ad611e524127231453bd54
           elif [[ "$AIHR_CI_HEAD" == 71e0dceb1a393817f3040518e82dc845a27700b0 ]]; then
             test "$MIXED_GROUP_SCALE" = true
             gh api repos/StradaverseHub/ai-hr/actions/jobs/136916537962 --jq '
@@ -375,7 +382,8 @@ jobs:
           expected_build_source="$AIHR_CI_HEAD"
           if [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" != 5175d387846c18fcc83ef96091cb1b4e1b538241 &&
                 "$AIHR_CI_HEAD" != 71e0dceb1a393817f3040518e82dc845a27700b0 &&
-                "$AIHR_CI_HEAD" != 0ba883e0aa294bb0f15dcfe2433deedb52d11996 ]]; then
+                "$AIHR_CI_HEAD" != 0ba883e0aa294bb0f15dcfe2433deedb52d11996 &&
+                "$AIHR_CI_HEAD" != 57fac422707b3a6174a290722ea0bb53da89f7c0 ]]; then
             expected_build_source=b00e2b2738312d87d5bea6f0ac7c877517d0b75d
           fi
           test "$(cat "$packet/source-sha")" = "$expected_build_source"
