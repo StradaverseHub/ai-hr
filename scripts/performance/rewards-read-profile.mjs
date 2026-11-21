@@ -43,6 +43,16 @@ try{
   ]);
   report.batch=await compareRewardsRosterReads({ctx,target,owner,withRewardsTenant,sql});
   save();
+ }else if(env.PERF_REWARDS_NATIVE_PROFILE==='true'){
+  const [{profileRewardsRosterNativeReads},{withRewardsTenant},{sql},{employedByCompanyDuring},
+   {personnelGroupingReadinessTx},{onehrRewardResultTx,onehrRewardResultsTx}]=await Promise.all([
+   import('./rewards-roster-native-profile.mjs'),source('core/module-gate.ts'),
+   import(pathToFileURL(resolve(process.cwd(),'node_modules/drizzle-orm/index.js')).href),
+   source('core/employment-company.ts'),source('core/personnel-quality.ts'),source('packs/performance/service.ts'),
+  ]);
+  report.native=await profileRewardsRosterNativeReads({ctx,target,withRewardsTenant,sql,employedByCompanyDuring,
+   personnelGroupingReadinessTx,onehrRewardResultTx,onehrRewardResultsTx});
+  save();
  }else{
   const unitId=target.unitId;
   const reads=[
