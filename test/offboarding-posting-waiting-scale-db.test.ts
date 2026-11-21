@@ -1,12 +1,14 @@
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,it,expect,vi} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {type SessionContext} from '../db/client';
 import {owner,migrateTestDb,resetDb,closeAll,createAppUser,seedBase,adminCtx,setModule} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
 import {hireEmployee} from '../core/org';
 import {listPersonnelPostings,loadOffboardingPostingApprovers} from '../packs/personnel-postings/service';
 import {observeNativeRead} from './helpers/native-read-observer';
+import {PROJECT_INSTALLED_OWNERSHIP} from './helpers/installed-owner-projection';
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
 
 it('keeps waiting labels and the existing queue equivalent across 70 companies and 1000 employments, scopes and roles',async()=>{
@@ -34,6 +36,7 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
  await owner.db.execute(sql`insert into domain_event(id,tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) select x."movementId",${f.base.tenantId}::uuid,'employment',x."employmentId",'employment.movement.recorded','user',${f.managerUserId}::uuid,x."employmentId",jsonb_build_object('type','promotion','effectiveDate','2026-11-16','remarks','Imported fictional historical receipt') from jsonb_to_recordset(${data}::jsonb) x("movementId" uuid,"employmentId" uuid,status text) where x.status='approved'`);
  await owner.db.execute(sql`insert into personnel_posting(id,tenant_id,company_id,employment_id,number,source,source_ref,event_type,proposed,approver_group_id,status,approved_by,approved_at,applied,movement_id,idempotency_key,created_at) select x.id,${f.base.tenantId}::uuid,x."companyId",x."employmentId",10000+x.n,x.source,x."sourceRef",case when x.source='probation' then 'confirmation' else 'promotion' end,case when x.source='probation' then '{"effectiveDate":"2026-11-16"}'::jsonb else '{"effectiveDate":"2026-11-16","basicSalary":"5500.00"}'::jsonb end,'waiting-scale',x.status,case when x.status='approved' then ${f.managerUserId}::uuid end,case when x.status='approved' then x."createdAt" end,case when x.status='approved' then '{"effectiveDate":"2026-11-16","basicSalary":"5500.00"}'::jsonb end,case when x.status='approved' then x."movementId"::text end,'historical-'||x.n,x."createdAt" from jsonb_to_recordset(${data}::jsonb) x(id uuid,n integer,"companyId" uuid,"employmentId" uuid,"sourceRef" uuid,"movementId" uuid,source text,status text,"createdAt" timestamptz)`);
  const subjectUser=await createAppUser(f.base.tenantId,fixture[2].personId,'employee'),subject=context(subjectUser,['employee'],fixture[2].personId);
+ const outsideGroupHr=context(await createAppUser(f.base.tenantId,null,'hr_admin'),['hr_admin']);
  const outsiderBase=await seedBase();await setModule(outsiderBase.tenantId,'lifecycle','active');
  const actors=[{name:'all PeopleOps',ctx:f.admin,wanted:pending},{name:'all configured approver',ctx:approver,wanted:pending},{name:'one-company PeopleOps',ctx:scoped,wanted:pending.filter(p=>p.companyId===single)},{name:'empty company',ctx:empty,wanted:[]},{name:'ordinary employee',ctx:f.watcher,wanted:[]},{name:'subject employee',ctx:subject,wanted:[]},{name:'other tenant',ctx:adminCtx(outsiderBase),wanted:[]}];
  for(const actor of actors){
@@ -47,6 +50,73 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
   }
   expect(got,actor.name+' complete ordering/count').toEqual(actor.wanted.map(row=>row.id));
  }
+ const queueReplacement=readFileSync(new URL('./fixtures/offboarding-posting-queue-replacement.sql',import.meta.url),'utf8');
+ const rollback=new Error('Roll back the test-only ownership projection and replacement');
+ await expect(owner.client.begin(async tx=>{
+  await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
+  await tx.unsafe('set local role ai_hr_owner');
+  const readDefinition=async()=>{
+   const [definition]=await tx`
+    select p.oid::text,p.proacl::text,p.prosecdef,p.provolatile,p.proconfig,
+           pg_catalog.pg_get_userbyid(p.proowner) as owner
+    from pg_catalog.pg_proc p where p.oid='app.offboarding_posting_queue_access()'::regprocedure
+   `;
+   return definition;
+  };
+  const readActor=async(ctx:SessionContext)=>{
+   const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
+   const roles=ctx.roles??Array.from(new Set(grants.map(grant=>grant.role)));
+   await tx.unsafe('set local role ai_hr_app');
+   await tx`
+    select set_config('app.tenant_id',${ctx.tenantId},true),
+           set_config('app.user_id',${ctx.userId??''},true),
+           set_config('app.roles',${roles.join(',')},true),
+           set_config('app.grants',${JSON.stringify(grants)},true),
+           set_config('app.agent_principal_id',${ctx.agent?.principalId??''},true),
+           set_config('jit','off',true)
+   `;
+   const [row]=await tx<{allowed:boolean}[]>`select app.offboarding_posting_queue_access() as allowed`;
+   return row.allowed;
+  };
+  const verifyActors=async()=>{
+   const expected=[true,true,true,true,false,false,false];
+   for(const [index,actor] of actors.entries()){
+    expect(await readActor(actor.ctx),actor.name).toBe(expected[index]);
+   }
+   expect(await readActor(outsideGroupHr),'HR outside every relevant group').toBe(false);
+  };
+  const measure=async(ctx:SessionContext)=>{
+   await readActor(ctx);
+   const samples:number[]=[];
+   for(let i=0;i<3;i++){
+    const [plan]=await tx<{'QUERY PLAN':[{'Execution Time':number}]}[]>`
+     explain (analyze,format json,timing off) select app.offboarding_posting_queue_access()
+    `;
+    samples.push(plan['QUERY PLAN'][0]['Execution Time']);
+   }
+   return samples.sort((a,b)=>a-b)[1];
+  };
+  const measureRoles=async()=>({
+   employee:await measure(f.watcher),
+   hrOutsideGroups:await measure(outsideGroupHr),
+   historicalApprover:await measure(approver),
+   peopleOps:await measure(f.admin),
+  });
+
+  const before=await readDefinition();
+  expect(before).toMatchObject({owner:'ai_hr_owner',prosecdef:true,provolatile:'s'});
+  await verifyActors();
+  const canonicalMs=await measureRoles();
+  await tx.unsafe('set local role ai_hr_owner');
+  await tx.unsafe(queueReplacement);
+  expect(await readDefinition()).toEqual(before);
+  await verifyActors();
+  const candidateMs=await measureRoles();
+  console.info('OFFBOARDING_QUEUE_MEMBERSHIP_PROOF '+JSON.stringify({canonicalMs,candidateMs}));
+  expect(candidateMs.employee).toBeLessThan(canonicalMs.employee/4);
+  expect(candidateMs.hrOutsideGroups).toBeLessThan(canonicalMs.hrOutsideGroups/4);
+  throw rollback;
+ })).rejects.toBe(rollback);
  const ids=fixture.slice(0,50).map(row=>row.id),singleIds=fixture.filter(row=>row.companyId===single).map(row=>row.id);
  expect(await loadOffboardingPostingApprovers(f.admin,ids)).toEqual(Object.fromEntries(fixture.slice(0,50).filter(row=>row.source==='offboarding'&&row.status==='pending').map(row=>[row.id,{names:['Scale Aina','Scale Bala','Scale Chen'],total:4}]))); // Explicit approved and Probation IDs never disclose waiting names.
  expect(await loadOffboardingPostingApprovers(scoped,ids)).toEqual(Object.fromEntries(fixture.slice(0,50).filter(row=>row.companyId===single&&row.source==='offboarding'&&row.status==='pending').map(row=>[row.id,{names:['Scale Aina','Scale Bala','Scale Chen'],total:4}])));
