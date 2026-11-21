@@ -1,10 +1,10 @@
 name: Immutable cutover qualification
 on:
   push:
-    branches: [codex/immutable-release-cutover-20261120]
-    paths: ['deploy/cutover/**', '.github/workflows/immutable-cutover-qualification.yml']
+    branches: [codex/immutable-release-cutover-20261120, codex/staging-cutover-queue-20261121]
+    paths: ['deploy/cutover/**', 'scripts/staging/**', '.github/workflows/immutable-cutover-qualification.yml']
   pull_request:
-    paths: ['deploy/cutover/**', '.github/workflows/immutable-cutover-qualification.yml']
+    paths: ['deploy/cutover/**', 'scripts/staging/**', '.github/workflows/immutable-cutover-qualification.yml']
 permissions:
   contents: read
 jobs:
@@ -18,4 +18,6 @@ jobs:
       - name: Qualify live HTTP activation and recovery on disposable services
         env:
           PYTHONDONTWRITEBYTECODE: '1'
-        run: python3 -m unittest discover -s deploy/cutover -v
+        run: |
+          python3 -m unittest discover -s deploy/cutover -v
+          python3 -m unittest discover -s scripts/staging -v

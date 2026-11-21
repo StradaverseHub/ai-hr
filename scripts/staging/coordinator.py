@@ -53,7 +53,8 @@ class Coordinator:
     def __init__(self, root=ROOT, probe=None):
         self.root = Path(root)
         private(self.root, True)
-        self.probe = probe or live_state
+        self.cutover = os.path.lexists(self.root / 'cutover.json')
+        self.probe = probe or (lambda: live_state(self.root))
         for name in ('queue.sqlite3', 'operations.lock'):
             p = self.root / name
             fd = os.open(p, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
@@ -127,6 +128,7 @@ class Coordinator:
         return {'protocol': PROTOCOL, 'releaseAuthorized': False, **result}
 
     def apply(self, action, actor, r):
+        if action == 'observe': return {'runtime': self.probe()}
         if action == 'status':
             l = dict(self.db.execute('SELECT * FROM lease').fetchone()); l.pop('token_hash')
             return {'lease': l, 'tickets': [dict(x) for x in self.db.execute('SELECT * FROM tickets ORDER BY sequence')], 'batches': [dict(x) for x in self.db.execute('SELECT * FROM batches ORDER BY sequence')], 'events': [dict(x) for x in self.db.execute('SELECT * FROM events ORDER BY sequence DESC LIMIT 100')]}
@@ -164,6 +166,8 @@ class Coordinator:
             candidate = sha(r['candidate']); baseline = sha(r['baseline']); build = text(r['baselineBuild'])
             self.ready(baseline, build)
             plan = {'candidate': candidate, 'baseline': baseline, 'baselineBuild': build, 'tickets': ids, 'members': [s['source'] for s in specs]}
+            if self.cutover and all(s['risk'] == 'ordinary' and not s['migrations'] for s in specs):
+                plan['lane'] = 'cutover'
             key = str(uuid.uuid4())
             self.db.execute('INSERT INTO batches(id,plan,state) VALUES(?,?,?)', (key, canonical(plan), 'prepared'))
             for i in ids: self.db.execute("UPDATE tickets SET state='prepared' WHERE id=?", (i,))
@@ -175,7 +179,14 @@ class Coordinator:
             b = self.row('batches', r['batch']); require(b['state'] == 'prepared', 'Prepared batch required')
             first = self.db.execute("SELECT id FROM batches WHERE state='prepared' ORDER BY sequence LIMIT 1").fetchone()
             require(first['id'] == b['id'], 'An earlier prepared batch has priority; block/requeue it explicitly')
-            p = json.loads(b['plan']); self.ready(p['baseline'], p['baselineBuild'])
+            p = json.loads(b['plan'])
+            if self.cutover and not plan_is_cutover(p):
+                s = canonical_live_state()
+                require(s.get('state') == 'ok' and s.get('stale_build') == '0'
+                        and s.get('ref') == s.get('built_ref') == p['baseline']
+                        and s.get('build_id') == s.get('built_build_id') == p['baselineBuild'],
+                        'Upgrade requires the observed release in the canonical installation')
+            self.ready(p['baseline'], p['baselineBuild'])
             token = secrets.token_hex(32); epoch = l['epoch'] + 1
             self.db.execute("UPDATE lease SET epoch=?,batch=?,token_hash=?,phase='claimed',build=NULL", (epoch, b['id'], hashlib.sha256(token.encode()).hexdigest()))
             self.db.execute("UPDATE batches SET state='leased' WHERE id=?", (b['id'],))
@@ -199,6 +210,8 @@ class Coordinator:
         if action == 'phase':
             phases = ['claimed', 'installing', 'arrived', 'accepting', 'capturing']
             phase = r['phase']; require(phase in phases and phases.index(l['phase']) <= phases.index(phase) <= phases.index(l['phase']) + 1, 'Lease phases cannot skip arrival or go backwards')
+            if plan_is_cutover(p) and phase == 'arrived' and l['phase'] == 'installing':
+                raise ValueError('Cutover arrival must be verified by the shared cutover controller')
             build = r.get('build') or l['build']
             if phases.index(phase) >= 2:
                 text(build); self.ready(p['candidate'], build)
@@ -226,7 +239,21 @@ class Coordinator:
         raise ValueError('Unknown operation')
 
 
-def live_state():
+def plan_is_cutover(plan):
+    return plan.get('lane') == 'cutover'
+
+
+def live_state(root=ROOT):
+    if os.path.lexists(root / 'cutover.json'):
+        if __package__:
+            from .staging import open_staging
+        else:
+            from staging import open_staging
+        return open_staging(root / 'cutover.json').queue_state()
+    return canonical_live_state()
+
+
+def canonical_live_state():
     require(APP.is_dir() and APP.resolve() == APP, 'Canonical staging application missing')
     out = subprocess.run(['bash', 'deploy/deploy-state.sh', 'status'], cwd=APP, check=True, capture_output=True, text=True, timeout=15).stdout
     subprocess.run(['systemctl', 'is-active', '--quiet', 'aihr'], check=True, timeout=15)

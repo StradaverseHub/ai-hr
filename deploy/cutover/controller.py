@@ -105,11 +105,15 @@ class Cutover:
         if get_json(UnixHTTPConnection(self.endpoint(release)), "/health") != expected:
             raise RuntimeError("Prepared endpoint reported a different release")
 
+    def ingress(self):
+        return http.client.HTTPConnection("127.0.0.1", self.ingress_port, timeout=5)
+
     def live_health(self):
-        return Release(**get_json(
-            http.client.HTTPConnection("127.0.0.1", self.ingress_port, timeout=5),
-            "/health",
-        ))
+        return Release(**get_json(self.ingress(), "/health"))
+
+    def prove_outcome(self, connect, expected):
+        if get_json(connect(), "/release-check") != expected:
+            raise RuntimeError("Release endpoint did not demonstrate the expected outcome")
 
     def assert_live(self, release):
         if self.pointer.resolve(strict=True) != self.endpoint(release) or self.live_health() != release:
@@ -134,8 +138,7 @@ class Cutover:
             if hashlib.file_digest(artifact, "sha256").hexdigest() != candidate.artifact:
                 raise RuntimeError("Artifact digest does not match candidate")
         self.direct_health(candidate)
-        if get_json(UnixHTTPConnection(self.endpoint(candidate)), "/release-check") != smoke:
-            raise RuntimeError("Prepared candidate does not demonstrate the expected outcome")
+        self.prove_outcome(lambda: UnixHTTPConnection(self.endpoint(candidate)), smoke)
         receipt = {
             "baseline": asdict(baseline),
             "candidate": asdict(candidate),
@@ -178,9 +181,7 @@ class Cutover:
             try:
                 self.switch(candidate)
                 self.assert_live(candidate)
-                live = http.client.HTTPConnection("127.0.0.1", self.ingress_port, timeout=5)
-                if get_json(live, "/release-check") != receipt["smoke"]:
-                    raise RuntimeError("Running candidate did not demonstrate the expected outcome")
+                self.prove_outcome(self.ingress, receipt["smoke"])
             except Exception as error:
                 try:
                     self.restore_pending()
