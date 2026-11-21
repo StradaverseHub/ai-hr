@@ -78,7 +78,22 @@ describe('actual Mine flags bind current provider input and historical source di
    from pg_constraint where conrelid='public.ai_agent_candidate'::regclass and contype='c'
    and pg_get_constraintdef(oid) like '%focused_v1%'`);
   expect(constraint?.definition).toContain('focused_v1');
-  await owner.db.execute(sql.raw(readFileSync('docs/research/assistant-local-leave-candidate.draft.sql','utf8')));
+  const draft=readFileSync('docs/research/assistant-local-leave-candidate.draft.sql','utf8');
+  await owner.db.transaction(async tx=>{
+   const [original]=await tx.execute<{role:string}>(sql`select pg_get_userbyid(relowner) as role
+    from pg_class where oid='public.ai_agent_candidate'::regclass`);
+   // The hosted template was migrated by the fixture administrator. Recreate production
+   // ownership for this exact DDL, then restore the fixture owner before any application call.
+   await tx.execute(sql`alter table public.ai_agent_candidate owner to ai_hr_owner`);
+   await tx.execute(sql`set local role ai_hr_owner`);
+   const [role]=await tx.execute<{name:string;superuser:boolean;createrole:boolean;bypassrls:boolean}>(sql`
+    select current_user as name,rolsuper as superuser,rolcreaterole as createrole,rolbypassrls as bypassrls
+    from pg_roles where rolname=current_user`);
+   expect(role).toEqual({name:'ai_hr_owner',superuser:false,createrole:false,bypassrls:false});
+   await tx.execute(sql.raw(draft));
+   await tx.execute(sql`reset role`);
+   await tx.execute(sql`alter table public.ai_agent_candidate owner to ${sql.identifier(original.role)}`);
+  });
   try{
    await expect(createConversationAgentCandidate(employee,nomination)).rejects.toThrow();
    await expect(createConversationAgentCandidate(ctx,{...nomination,signalIds:[randomUUID()]})).rejects.toThrow();
