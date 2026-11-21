@@ -34,7 +34,8 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','command-delegation','tp3-catalogue'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','command-delegation','tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe),'Unknown browser surface');
+const tp3CatalogueProbe=['tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe);
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
 ]);
@@ -49,7 +50,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(!['leave-inbox','leave-balances','roster','tp3-catalogue'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
+assert(!(tp3CatalogueProbe||['leave-inbox','leave-balances','roster'].includes(surfaceProbe))||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -1091,6 +1092,11 @@ async function measureTp3Catalogue(fixture){
  const copies=Object.fromEntries(['en','ms'].map(locale=>
   [locale,JSON.parse(readFileSync(join(process.cwd(),'messages',locale+'.json'),'utf8')).myTp3]));
  assert(copies.en.saveDraft!==copies.ms.saveDraft,'Expected distinct draft button labels');
+ const network=surfaceProbe==='tp3-catalogue-network'
+  ? {latency:100,downloadThroughput:192000,uploadThroughput:96000}
+  : null;
+ if(network)report.tp3CatalogueNetwork=network;
+ const timeout=network?45000:15000;
  const rows=report.tp3Catalogue=[];
  for(const visit of [1,2,3]){
   const context=await signedInContext(actor);
@@ -1099,31 +1105,47 @@ async function measureTp3Catalogue(fixture){
    await page.addInitScript(observeStartup);
    const row={visit,status:'incomplete',step:'document',translationErrors:0};
    rows.push(row);
+   if(network){
+    const cdp=await context.newCDPSession(page);
+    await cdp.send('Network.enable');
+    const {ruleIds}=await cdp.send('Network.emulateNetworkConditionsByRule',{
+     matchedNetworkConditions:[{urlPattern:'',...network}],
+    });
+    assert.equal(ruleIds.length,1);
+    row.throttledRequests=0;
+    cdp.on('Network.requestWillBeSentExtraInfo',({appliedNetworkConditionsId})=>{
+     if(appliedNetworkConditionsId===ruleIds[0])row.throttledRequests++;
+    });
+   }
    page.on('console',message=>{
     if(/MISSING_MESSAGE|IntlError/.test(message.text()))row.translationErrors++;
    });
-   const response=await page.goto(origin+path,{waitUntil:'domcontentloaded',timeout:15000});
+   const openStarted=performance.now();
+   const response=await page.goto(origin+path,{waitUntil:'domcontentloaded',timeout});
    assert.equal(response?.status(),200);
    row.step='editable-form';
-   await readyContent(page,actor,path,()=>15000,undefined,fixture);
+   await readyContent(page,actor,path,()=>timeout,undefined,fixture);
    const form=page.locator('form:has(input[name="tp3Form"])');
-   await form.getByRole('button',{name:copies.en.saveDraft,exact:true}).waitFor({state:'visible',timeout:15000});
-   const month=form.locator('select[name="deductionMonth"]');
-   await month.selectOption('3',{timeout:15000});
+   await form.getByRole('button',{name:copies.en.saveDraft,exact:true}).waitFor({state:'visible',timeout});
+   const month=form.locator('select[name="deductionMonth"]:enabled');
+   await month.waitFor({state:'visible',timeout});
+   row.initialFormReadyMs=Math.round(performance.now()-openStarted);
+   await month.selectOption('3',{timeout});
    row.initial=(await documentTiming(page))?.appScripts;
    assert(row.initial?.decodedBodyBytes>0);
    row.step='language-switch';
    const started=performance.now();
-   await page.getByRole('button',{name:'Change language',exact:true}).click({timeout:15000});
-   await page.locator('button[name="locale"][value="ms"]:visible').click({timeout:15000});
-   await form.getByRole('button',{name:copies.ms.saveDraft,exact:true}).waitFor({state:'visible',timeout:15000});
+   await page.getByRole('button',{name:'Change language',exact:true}).click({timeout});
+   await page.locator('button[name="locale"][value="ms"]:visible').click({timeout});
+   await form.getByRole('button',{name:copies.ms.saveDraft,exact:true}).waitFor({state:'visible',timeout});
    assert.equal(await page.locator('html').getAttribute('lang'),'ms');
    assert.equal(await month.inputValue(),'3','Language switch lost an unsaved deduction month');
    await page.locator('button[data-tour="account"]').getByText(actor.name,{exact:true}).first()
-    .waitFor({state:'visible',timeout:15000});
+    .waitFor({state:'visible',timeout});
    row.languageSwitchMs=Math.round(performance.now()-started);
    row.afterLocaleChange=(await documentTiming(page))?.appScripts;
    assert.equal(row.translationErrors,0,'A translation was missing in the TP3 page or shell');
+   if(network)assert(row.throttledRequests>0,'Expected requests to use the Chromium network profile');
    row.status='observed';
   }finally{save();await context.close();}
  }
@@ -2498,7 +2520,7 @@ try{
     const {requests,companyRequests,dates}=fixture.approvalsLeave;
     report.fixture.approvalsLeave={requests,companyRequests,dates};
    }
-   if(surfaceProbe==='tp3-catalogue')await seedEditableTp3Actor(owner,fixture);
+   if(tp3CatalogueProbe)await seedEditableTp3Actor(owner,fixture);
    save();
   }finally{await owner.end({timeout:5});}
  }
@@ -2533,7 +2555,7 @@ try{
   }
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='command-delegation')await measureCommandDelegation(fixture);
-  else if(surfaceProbe==='tp3-catalogue')await measureTp3Catalogue(fixture);
+  else if(tp3CatalogueProbe)await measureTp3Catalogue(fixture);
   else if(surfaceProbe==='leave-balances')await measureLeaveBalanceWindows(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
