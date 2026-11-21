@@ -1,19 +1,23 @@
-import type { messagesForLocale as canonicalMessages } from './catalogs';
+import type { AbstractIntlMessages } from 'next-intl';
+import type { ClientCatalogueScope } from './client-catalogue';
 import type { Locale } from './config';
 
-type Messages = Awaited<ReturnType<typeof canonicalMessages>>;
-const bundles = new Map<Locale, Promise<Messages>>();
+const bundles = new Map<string, Promise<AbstractIntlMessages>>();
 
 /** A production browser imports the selected locale with its fallback already merged. */
-export function messagesForLocale(locale: Locale): Promise<Messages> {
-  const cached = bundles.get(locale);
+export function messagesForClient(locale: Locale, scope: ClientCatalogueScope): Promise<AbstractIntlMessages> {
+  const key = scope + ':' + locale;
+  const cached = bundles.get(key);
   if (cached) return cached;
 
-  const requested = import(`./client-assets/${locale}.json`).then(asset => asset.default as Messages)
+  const asset = scope === 'tp3'
+    ? import(`./client-assets/tp3/${locale}.json`)
+    : import(`./client-assets/${locale}.json`);
+  const requested = asset.then(bundle => bundle.default as AbstractIntlMessages)
     .catch(error => {
-      bundles.delete(locale);
+      bundles.delete(key);
       throw error;
     });
-  bundles.set(locale, requested);
+  bundles.set(key, requested);
   return requested;
 }
