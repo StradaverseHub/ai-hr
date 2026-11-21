@@ -2,10 +2,9 @@
 
 /**
  * Client tab shell — originally the admin Employee Detail page (feedback f2904eeb), now also the
- * employee ESS "My Workspace" page (feedback 311ad7ba). The page is a server component that pre-loads
- * every section's data, so this shell takes the already-rendered section JSX as per-tab `panels` and
- * just shows/hides them on click — no data fetching moves client-side and every existing server-action
- * <form> stays wired exactly as it was on the long-scroll page.
+ * employee ESS "My Workspace" page (feedback 311ad7ba). The shell shows and hides server-rendered
+ * panels by key. The admin record can request a missing panel through App Router navigation. Its
+ * server actions and the client guard for unsaved edits stay on the same sheet.
  *
  * Why client `useState` rather than route segments: switching tabs must keep in-progress form state
  * and server-action bindings alive (a leave application half-typed, an unsaved contact edit), and the
@@ -22,7 +21,8 @@
  * inside this shell contains the target, it activates that panel so the tour spotlight can measure a
  * visible element (panels stay mounted-but-hidden, so `querySelector` finds targets in hidden tabs).
  */
-import { useEffect, useId, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, useTransition, type MutableRefObject, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { firstDirtyGuard } from '@/lib/unsaved-changes';
 
@@ -31,16 +31,7 @@ export const TOUR_REVEAL_EVENT = 'tour:reveal';
 
 export type PersonnelTabKey = 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification' | 'others';
 
-export function ClientTabs<K extends string>({
-  tabs,
-  panels,
-  emptyLabel,
-  defaultTab,
-  ariaLabel = 'Sections',
-  selectRef,
-  onTabChange,
-  monolithTxt = false,
-}: {
+type ClientTabsProps<K extends string> = {
   tabs: { key: K; label: string }[];
   panels: Partial<Record<K, ReactNode>>;
   // Shown when a tab's panel resolves to nothing (e.g. Documents for an employee with no records,
@@ -74,10 +65,28 @@ export function ClientTabs<K extends string>({
    * keep today's strip in both themes until their own step-4 slice.
    */
   monolithTxt?: boolean;
-}) {
+  /** Missing panels in this set are fetched on first explicit selection. */
+  deferredTabs?: readonly K[];
+  requestPanel?: (key: K) => void;
+};
+
+export function ClientTabs<K extends string>({
+  tabs,
+  panels,
+  emptyLabel,
+  defaultTab,
+  ariaLabel = 'Sections',
+  selectRef,
+  onTabChange,
+  monolithTxt = false,
+  deferredTabs,
+  requestPanel,
+}: ClientTabsProps<K>) {
   const tabShellId = useId();
   const initial = defaultTab && tabs.some((tab) => tab.key === defaultTab) ? defaultTab : tabs[0]?.key;
   const [active, setActive] = useState<K | undefined>(initial);
+  const [loadingPanel, startPanelLoad] = useTransition();
+  const needsPanel = (key: K) => deferredTabs?.includes(key) && panels[key] === undefined;
 
   // Tab retention across save→redirect→reload (feedback bd2f0bb2). Every per-section Save on this page is a
   // server-action <form> that finishes with redirect(`.../${employmentId}?toast=Saved`) — a tab-less URL that
@@ -94,6 +103,13 @@ export function ClientTabs<K extends string>({
   const shellRef = useRef<HTMLDivElement>(null);
 
   const commitTab = (key: K) => {
+    if (needsPanel(key) && requestPanel) {
+      startPanelLoad(() => {
+        requestPanel(key);
+        setActive(key);
+      });
+      return;
+    }
     setActive(key);
     onTabChange?.(key);
     if (typeof window !== 'undefined') {
@@ -121,7 +137,7 @@ export function ClientTabs<K extends string>({
    * is the identical immediate switch it always was.
    */
   const selectTab = (key: K) => {
-    if (key === active) return;
+    if (loadingPanel || (key === active && !needsPanel(key))) return;
     const guard = firstDirtyGuard();
     if (guard) {
       guard.prompt(() => commitTab(key));
@@ -187,6 +203,7 @@ export function ClientTabs<K extends string>({
       <nav
         role="tablist"
         aria-label={ariaLabel}
+        aria-busy={loadingPanel || undefined}
         className={cn(
           'flex max-w-full gap-1 overflow-x-auto rounded-[1.25rem] border border-border bg-card p-1.5 shadow-[var(--shadow-card)]',
           monolithTxt &&
@@ -202,6 +219,7 @@ export function ClientTabs<K extends string>({
             aria-controls={`${tabShellId}-panel-${tab.key}`}
             aria-selected={active === tab.key}
             aria-current={active === tab.key ? 'true' : undefined}
+            disabled={loadingPanel}
             onClick={() => selectTab(tab.key)}
             className={cn(
               'shrink-0 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-colors',
@@ -254,5 +272,12 @@ export function ClientTabs<K extends string>({
   );
 }
 
-// Back-compat alias: the admin Employee Detail page imports `PersonnelTabs` with `PersonnelTabKey`.
-export const PersonnelTabs = ClientTabs;
+/** The admin record uses an ordinary App Router request for an unloaded panel. */
+export function PersonnelTabs(props: Omit<ClientTabsProps<PersonnelTabKey>, 'requestPanel'>) {
+  const router = useRouter();
+  return <ClientTabs {...props} requestPanel={key => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', key);
+    router.replace(url.pathname + url.search + url.hash, { scroll: false });
+  }} />;
+}

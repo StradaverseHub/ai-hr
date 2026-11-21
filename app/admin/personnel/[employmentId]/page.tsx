@@ -521,7 +521,8 @@ export default async function EmployeePage({
   const encashmentSnapshot = readProfileCards ? await encashmentSnapshotForEmployment(s, employmentId) : null;
   // Personnel — Family / Dependents (phase 1): per-person benefits/insurance register (admin-only). Keyed
   // on person_id (already loaded on emp), NOT employment_id. Does NOT feed the tax num_children figure.
-  const dependents = readProfileCards ? await listDependents(s, { personId: emp.personId }) : [];
+  const readFamily = readProfileCards && tab === 'family';
+  const dependents = readFamily ? await listDependents(s, { personId: emp.personId }) : [];
   // Feedback a949184a — Qualification tab: this employment's academic/professional qualification records
   // (admin-only surface; employment-keyed, unlike the person-keyed Family register). Sorted by the service:
   // most recent graduation first, in-progress (blank graduation date) last.
@@ -812,8 +813,7 @@ export default async function EmployeePage({
     }
   };
 
-  // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
-  // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
+  // Tab labels (people.detail.tabs.*). Family is fetched on first selection or a direct tab link.
   const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
@@ -2126,7 +2126,7 @@ export default async function EmployeePage({
     </section>
   );
 
-  const familyPanel = admin ? (
+  const familyPanel = readFamily ? (
     <Card id="section-family" className="overflow-hidden">
       <SectionHeader title={t('family.title')} count={dependents.length} />
       <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
@@ -4682,7 +4682,7 @@ export default async function EmployeePage({
     // Single-card tabs pass the node directly so a null (defensive; scopedAdmin guarantees non-null
     // here) falls through to the shell's empty-state rather than rendering a blank fragment.
     profile: <>{!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}{profilePanel}{dataPrivacyCard}</>,
-    family: familyPanel,
+    family: familyPanel ?? undefined,
     // 420ebab5 part two (r255) — the Employment Information card is the tab's ONE bucket (a) form
     // (Employment Dates: probation / notice periods and lifecycle dates, overwritten in place), so it sits
     // inside the tab's save scope. The Direct Superior card and the Delegations card stay OUTSIDE it: a
@@ -5065,7 +5065,9 @@ export default async function EmployeePage({
       ) : null}
 
       <PersonnelTabs
+        key={employmentId}
         tabs={tabs}
+        deferredTabs={['family']}
         panels={panels}
         emptyLabel={t('tabs.empty')}
         defaultTab={tab as PersonnelTabKey | undefined}
