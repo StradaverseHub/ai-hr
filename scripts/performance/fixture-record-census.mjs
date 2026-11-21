@@ -429,10 +429,37 @@ function payrollFormulaEvaluationRoutes(fixture) {
   }));
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation }) {
+function importHistoryRoutes(fixture) {
+  const [group, company] = fixture.users;
+  const { companyId, employeeCode, employeeName, personnel, payroll } = fixture.importHistory;
+  assert.equal(group.role, 'groupHR');
+  assert.equal(company.role, 'companyHR');
+  assert.equal(group.companyId, companyId);
+  assert.equal(company.companyId, companyId);
+  for (const id of [personnel.attemptId, personnel.runId, payroll.attemptId, payroll.recordId]) {
+    assert.match(id, /^[0-9a-f-]{36}$/i);
+  }
+  const personnelBase = '/admin/personnel/import/history';
+  const payrollBase = '/payroll/history-import';
+  const personnelRun = `${personnelBase}/runs/${personnel.runId}`;
+  const payrollLog = `${payrollBase}/logs/${payroll.attemptId}`;
+  return [group, company].flatMap(actor => [
+    { actor, template: personnelBase + '/[attemptId]', path: personnelBase + '/' + personnel.attemptId,
+      exactHeading: personnel.file, witness: `tbody td:has-text("${employeeName}")` },
+    { actor, template: personnelBase + '/runs/[runId]', path: personnelRun,
+      exactHeading: personnel.file, witness: `div:has(dl dd:text-is("1")) a[href="${personnelBase}/${personnel.runId}/error-log"]` },
+    { actor, template: payrollBase + '/logs/[attemptId]', path: payrollLog,
+      exactHeading: payroll.file, witness: `a[href="${payrollLog}/report"]` },
+    { actor, template: payrollBase + '/records/[recordId]', path: payrollBase + '/records/' + payroll.recordId,
+      exactHeading: `${employeeCode} · ${employeeName}`, witness: `a[href="${payrollLog}"]:text-is("${payroll.file}")` },
+  ]);
+}
+
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
+    : importHistory ? importHistoryRoutes(fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),

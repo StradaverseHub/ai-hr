@@ -35,8 +35,9 @@ const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
 const censusPersonnelMovement=shardInput==='personnel-movement';
 const censusPayrollFormulaEvaluation=shardInput==='payroll-formula-evaluation';
+const censusImportHistory=shardInput==='import-history';
 const censusFullFixtureRecords=shardInput==='fixture-records';
-const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation;
+const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1596,6 +1597,20 @@ try{
    }
   }
  }
+ if(censusImportHistory){
+  try{
+   await run('seed-import-history',process.execPath,
+    ['--conditions=react-server','--import','tsx','../automation/scripts/performance/import-history-browser-fixture.mjs'],dbEnv);
+   fixture.importHistory=JSON.parse(readFileSync(join(privateDir,'import-history-browser.json'),'utf8'));
+  }finally{
+   const path=join(privateDir,'import-history-seed-stage');
+   if(existsSync(path)){
+    const stage=readFileSync(path,'utf8');
+    if(['principal','personnel','payroll','complete'].includes(stage))report.importHistorySeedStage=stage;
+    save();
+   }
+  }
+ }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
  assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
@@ -1615,7 +1630,8 @@ try{
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
    try{
     await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
-     payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation});
+     payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
+     importHistory:censusImportHistory});
     if(censusFullFixtureRecords)await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
    }
    finally{await db.end({timeout:5});}
