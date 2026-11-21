@@ -36,7 +36,7 @@ const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
 const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
 assert(['','absent','present'].includes(replacementCatalogue));
-assert(!replacementCatalogue||(establishedAttendance&&env.AIHR_BROWSER_REUSED_BUILD==='true'));
+assert(!replacementCatalogue||(establishedAttendance&&!fixtureOnly));
 assert(!establishedAttendance||mixedLoad,'Established Attendance comparison requires mixed traffic');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');

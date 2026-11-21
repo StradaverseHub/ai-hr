@@ -151,7 +151,7 @@ jobs:
             exit 2
           fi
           if [[ -n "$REPLACEMENT_CATALOGUE" ]] && {
-            [[ ! "$REPLACEMENT_CATALOGUE" =~ ^(absent|present)$ || "$ESTABLISHED_ATTENDANCE" != true || "$REUSE_BUILD" != true ]];
+            [[ ! "$REPLACEMENT_CATALOGUE" =~ ^(absent|present)$ || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true ]];
           }; then exit 2; fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
