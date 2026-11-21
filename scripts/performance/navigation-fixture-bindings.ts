@@ -16,6 +16,18 @@ export function projectNavigationFixtureBindings(value:unknown):ReadonlyMap<numb
  const calendar=performanceFixtureCalendar(fixture.today);
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)&&fixture.tenants.length===2,'Native fictional fixture population differs');
  const companies=new Set<string>(),employments=new Set<string>(),indices=new Set<number>(),bindings=new Map<number,Readonly<NavigationFixtureTextBindings>>();
+ const scaleRows: {tenant:number;companyId:string;employmentId:string;name:string}[]=fixture.groupScaleWorkforce??[];
+ if(fixture.groupScaleWorkforce!==undefined){
+  const baseCompanies=new Set(fixture.tenants.flatMap((tenant:any)=>tenant.companies.map((company:any)=>company.companyId)));
+  assert(Array.isArray(scaleRows)&&scaleRows.length===750,'Expected the full expanded fictional workforce');
+  for(const row of scaleRows){
+   assert(row&&row.tenant===0&&UUID.test(row.companyId)&&!baseCompanies.has(row.companyId)
+    &&UUID.test(row.employmentId)&&!employments.has(row.employmentId)
+    &&/^Z Fictional scale worker [0-9]{3}$/.test(row.name),'Expanded fictional roster binding differs');
+   employments.add(row.employmentId);
+  }
+  assert.equal(new Set(scaleRows.map(row=>row.companyId)).size,65);
+ }
  for(const [tenantIndex,tenant]of fixture.tenants.entries()){
   assert(tenant&&UUID.test(tenant.tenantId)&&Array.isArray(tenant.companies)&&tenant.companies.length===5,'Native fictional company fixture missing');
   for(const company of tenant.companies){assert(UUID.test(company.companyId)&&!companies.has(company.companyId),'Native fictional company identity differs');companies.add(company.companyId);}
@@ -37,7 +49,9 @@ export function projectNavigationFixtureBindings(value:unknown):ReadonlyMap<numb
     const canonical=fixtureNavigationActor(candidate.index);assert(UUID.test(candidate.employmentId)&&candidate.name===canonical.name,'Native roster fixture identity differs');
     rosterScope[candidate.employmentId]=canonical.name;
    }
-   const population=actor.role==='groupHR'?250:50;
+   const extraWorkforce=scaleRows.filter(row=>row.tenant===tenantIndex&&(actor.role==='groupHR'||row.companyId===actor.companyId));
+   for(const row of extraWorkforce)rosterScope[row.employmentId]=row.name;
+   const population=(actor.role==='groupHR'?250:50)+extraWorkforce.length;
    const extra=tenant.rewardDraft&&(actor.role==='groupHR'||tenant.rewardDraft.companyId===actor.companyId)?1:0;
    if(extra){assert(!fixture.users.some((row:any)=>row.employmentId===tenant.rewardDraft.employmentId),'Native reward fixture duplicates an existing employment');rosterScope[tenant.rewardDraft.employmentId]=null;}
    bindings.set(actor.index,Object.freeze({rosterScope:Object.freeze(rosterScope),actorName:expected.name,actorEmployeeCode:'PERF'+String(actor.index).padStart(4,'0'),
