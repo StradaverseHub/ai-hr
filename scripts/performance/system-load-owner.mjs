@@ -43,7 +43,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
-import {createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile,workerRequestFailureFact,workerStageFailureFact} from './worker-comparison-failure.mjs';
+import {createLoadedAdvisoryDiagnostics,createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile,workerRequestFailureFact,workerStageFailureFact} from './worker-comparison-failure.mjs';
 import {isWorkerComparisonCourse} from './worker-comparison.mjs';
 import {readMeasuredClockCs,readMeasuredClockIdentity} from './measured-lock-clock.mjs';
 import {createMeasuredPreflightObserver,measuredLockSampleLimit,observeDatabaseLockCore,observeMeasuredLockConnection} from './measured-lock-observer.mjs';
@@ -205,7 +205,8 @@ const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservatio
 const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
 // Serial and parallel comparison cells share the same driver diagnostics.
 const serialComparison=measureDevelopment&&isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE);
-const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics():null;
+const loadedAdvisoryDiagnostics=measureDevelopment?createLoadedAdvisoryDiagnostics():null;
+const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics(loadedAdvisoryDiagnostics):null;
 let comparisonStage='driver-initialization',comparisonWorkload=null;
 function markComparisonStage(stage){comparisonStage=stage;comparisonWorkload=null;}
 
@@ -425,7 +426,10 @@ function recordLockSampling(){
  };
  report.lockSampling={strict:samplingRequired,scope:'Sampled application heavyweight lock waits, including advisory waits. Unobserved waits are outside this evidence.',
   preflight:measureDevelopment?qualified('preflight',preflight,preflightCadenceClosed):preflight,
-  loaded:measureDevelopment?qualified('loaded',loaded,loadedCadenceClosed):loaded,
+  loaded:measureDevelopment?{
+   ...qualified('loaded',loaded,loadedCadenceClosed),
+   advisoryDiagnostics:loadedAdvisoryDiagnostics.facts(),
+  }:loaded,
   ...(measureDevelopment?{
    privatePreflightTiming:measuredPreflightLockTiming(measuredPreflightLockWitnesses(preflight.samples,preflight.window)??[],preflight.window),
    privatePreflightClientCadence:developmentMeasuredPreflightLockWindowEvidence(preflight.samples,preflight.window,preflightCadenceClosed),
@@ -487,12 +491,12 @@ async function prepareDatabaseLockScope(){
  const lockKeys=[];
  for(const [index,tenant]of fixture.tenants.entries()){
   for(const [kind,key]of [['access-configuration','access-configuration:'+tenant.tenantId],['payroll-history','payroll-history:'+tenant.tenantId],['pay-component-catalog',tenant.tenantId+':pay-component-catalog']])lockKeys.push({label:kind+':fixture-tenant-'+index,key});
-  if(serialComparison)lockKeys.push({label:'leave-dependency-configuration:fixture-tenant-'+index,key:'leave-dependency-configuration:'+tenant.tenantId});
+  if(measureDevelopment)lockKeys.push({label:'leave-dependency-configuration:fixture-tenant-'+index,key:'leave-dependency-configuration:'+tenant.tenantId});
  }
  for(const user of fixture.users){
   const key=fixture.tenants[user.tenant].tenantId+':'+user.employmentId;
   lockKeys.push({label:'employment:fixture-user-'+user.index,key});
-  if(serialComparison)lockKeys.push({label:'leave-dependency-employment:fixture-user-'+user.index,key:'leave-dependency-employment:'+key});
+  if(measureDevelopment)lockKeys.push({label:'leave-dependency-employment:fixture-user-'+user.index,key:'leave-dependency-employment:'+key});
  }
  const hashedLocks=await db`select k,((hashtextextended(k,0)>>32)&4294967295)::text as classid,(hashtextextended(k,0)&4294967295)::text as objid, (select oid::text from pg_database where datname=current_database()) as dbid from unnest(${lockKeys.map(row=>row.key)}::text[])k`;
  const labelsByKey=new Map(lockKeys.map(row=>[row.key,row.label])),lockLabels=new Map(hashedLocks.map(row=>[row.classid+':'+row.objid+':1',labelsByKey.get(row.k)]));
@@ -581,8 +585,8 @@ function sampleDatabaseLocks({lockLabels,accessLocks,auditLocks},phase,interval)
    const withinDiagnosticCensus=samples.length<measuredLockSampleLimit;
    retain(row);
    coreComplete=true;
-   if(workerLoadedDiagnostics&&phase==='loaded'&&withinDiagnosticCensus)try{
-    workerLoadedDiagnostics.lock(appConnections.waitingOnLock,queuedLocks.filter(row=>row.app_session)
+   if(loadedAdvisoryDiagnostics&&phase==='loaded'&&withinDiagnosticCensus)try{
+    loadedAdvisoryDiagnostics.observe(appConnections.waitingOnLock,queuedLocks.filter(row=>row.app_session)
      .map(row=>lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)?.split(':',1)[0]));
    }catch{/* Attribution cannot alter the retained native sample. */}
    let attribution;

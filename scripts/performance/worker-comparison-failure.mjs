@@ -81,9 +81,26 @@ function trafficOutcome(error){
  return fact.kind==='AssertionError'?'assertion':'unknown';
 }
 
-export function createWorkerLoadedDiagnostics(){
- const traffic=new Map(),families=Object.fromEntries([...advisoryFamilies].map(family=>[family,0]));
- let total=0,activityWaitSamples=0,appAdvisorySamples=0,activityWithoutAdvisorySamples=0;
+/** Count each observed advisory family at most once per completed database sample. */
+export function createLoadedAdvisoryDiagnostics(){
+ const families=Object.fromEntries([...advisoryFamilies].map(family=>[family,0]));
+ let activityWaitSamples=0,appAdvisorySamples=0,activityWithoutAdvisorySamples=0;
+ return {
+  observe(activityWaiting,queuedAppFamilies){
+   if(activityWaiting>0){activityWaitSamples++;if(!queuedAppFamilies.length)activityWithoutAdvisorySamples++;}
+   if(!queuedAppFamilies.length)return;
+   appAdvisorySamples++;
+   for(const family of new Set(queuedAppFamilies.map(value=>advisoryFamilies.has(value)?value:'advisory-unclassified')))families[family]++;
+  },
+  facts(){
+   return {activityWaitSamples,appAdvisorySamples,activityWithoutAdvisorySamples,families:{...families}};
+  },
+ };
+}
+
+export function createWorkerLoadedDiagnostics(advisory){
+ const traffic=new Map();
+ let total=0;
  return {
   traffic(role,phase,route,error){
    if(total>=500||!roles.has(role)||!trafficPhases.has(phase))return;
@@ -91,16 +108,10 @@ export function createWorkerLoadedDiagnostics(){
    if(!traffic.has(key))traffic.set(key,{role,phase,module,outcome,count:0});
    traffic.get(key).count++;total++;
   },
-  lock(activityWaiting,queuedAppFamilies){
-   if(activityWaiting>0){activityWaitSamples++;if(!queuedAppFamilies.length)activityWithoutAdvisorySamples++;}
-   if(!queuedAppFamilies.length)return;
-   appAdvisorySamples++;
-   for(const family of new Set(queuedAppFamilies.map(value=>advisoryFamilies.has(value)?value:'advisory-unclassified')))families[family]++;
-  },
   facts(){
    const groups=[...traffic.values()].sort((left,right)=>right.count-left.count).slice(0,cohortLimit);
    return {traffic:{total,omitted:total-groups.reduce((sum,row)=>sum+row.count,0),groups},
-    loadedAdvisory:{activityWaitSamples,appAdvisorySamples,activityWithoutAdvisorySamples,families}};
+    loadedAdvisory:advisory.facts()};
   },
  };
 }
@@ -257,6 +268,14 @@ const validAdvisory=value=>value===null||fields(value,['activityWaitSamples','ap
  &&integer(value.activityWaitSamples,4097)&&integer(value.appAdvisorySamples,4097)
  &&integer(value.activityWithoutAdvisorySamples,value.activityWaitSamples)
  &&fields(value.families,[...advisoryFamilies])&&Object.values(value.families).every(count=>integer(count,value.appAdvisorySamples));
+export function projectLoadedAdvisoryDiagnostics(value,completedSamples){
+ if(!integer(completedSamples,4097)||completedSamples===0||!value||!validAdvisory(value))return null;
+ const {activityWaitSamples,appAdvisorySamples,activityWithoutAdvisorySamples,families}=value;
+ if(appAdvisorySamples+activityWithoutAdvisorySamples>completedSamples
+  ||activityWaitSamples>completedSamples
+  ||activityWaitSamples-activityWithoutAdvisorySamples>appAdvisorySamples)return null;
+ return {activityWaitSamples,appAdvisorySamples,activityWithoutAdvisorySamples,families:{...families}};
+}
 const validHomeCard=value=>fields(value,['card','marker','section','message','count'])&&homeCardSet.has(value.card)&&homeMarkers.has(value.marker)
  &&(value.section===null||typeof value.section==='string'&&homeSection.test(value.section))&&typeof value.message==='string'&&value.message.length<=80&&homeMessageKey.test(value.message)&&integer(value.count,4096)&&value.count>0;
 const validHome=value=>value===null||Array.isArray(value)&&value.length<=roles.size*homePhases.size

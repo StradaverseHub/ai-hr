@@ -12,7 +12,7 @@ import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,routePools} from './system-route-manifest.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
-import {projectMixedBrowserVisitFailure} from './worker-comparison-failure.mjs';
+import {projectLoadedAdvisoryDiagnostics,projectMixedBrowserVisitFailure} from './worker-comparison-failure.mjs';
 import {mixedDriverPrimaryOrigin,projectMixedNavigationPreflightFailure} from './mixed-driver-primary-origin.mjs';
 import {projectMixedPreflightLockWaits} from './lock-sample-attribution.mjs';
 import {browserPreflightErrorFingerprint} from './browser-failure.ts';
@@ -584,6 +584,7 @@ async function measureMixedLoad(command){
       sampleFailures:(preflight?.samples??[]).filter(sample=>sample.state==='failed').slice(0,8)
        .map(safeFailure).filter(Boolean)},
      loaded:{...cadenceFacts(loaded?.cadence),...counts(loaded,['completed','failures']),
+      advisoryDiagnostics:projectLoadedAdvisoryDiagnostics(loaded?.advisoryDiagnostics,loaded?.completed),
       sessionSamples:sessionSamples.length,
       peakOpenAppDatabaseSessions:sessionSamples.length?Math.max(...sessionSamples):null},
      preflightClient:cadenceFacts(data.lockSampling.privatePreflightClientCadence),
