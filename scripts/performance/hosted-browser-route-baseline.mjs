@@ -1,4 +1,5 @@
 import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
+import {measurePersonnelProfileActions} from './personnel-profile-actions.mjs';
 import {measureFixtureRecordCensus,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
@@ -41,8 +42,9 @@ const censusAttendanceRecords=shardInput==='attendance-records';
 const censusPayrollRegisterRecords=shardInput==='payroll-register-records';
 const censusPersonnelRosterRecords=shardInput==='personnel-roster-records';
 const censusPersonnelProfileCost=shardInput==='personnel-profile-cost';
+const censusPersonnelProfileActions=shardInput==='personnel-profile-actions';
 const censusFullFixtureRecords=shardInput==='fixture-records';
-const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusPersonnelDirectory||censusAttendanceRecords||censusPayrollRegisterRecords||censusPersonnelRosterRecords||censusPersonnelProfileCost;
+const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusPersonnelDirectory||censusAttendanceRecords||censusPayrollRegisterRecords||censusPersonnelRosterRecords||censusPersonnelProfileCost||censusPersonnelProfileActions;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1635,7 +1637,8 @@ try{
    const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
    try{
-    await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
+    if(censusPersonnelProfileActions)await measurePersonnelProfileActions({db,fixture,origin,signedInContext,report,save});
+    else await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
      importHistory:censusImportHistory,personnelDirectory:censusPersonnelDirectory,
      attendanceRecords:censusAttendanceRecords,payrollRegisterRecords:censusPayrollRegisterRecords,personnelRosterRecords:censusPersonnelRosterRecords,personnelProfileCost:censusPersonnelProfileCost});
