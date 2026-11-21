@@ -8,9 +8,9 @@ import type { ConverseArgs } from '../../lib/ai/types';
 import type { PilotModel } from '../teras/leave-improvement';
 
 const questions = [
-  { question: 'My leave balance', intent: 'leave_available', field: 'available', fact: 1 },
-  { question: 'How much leave have I taken?', intent: 'leave_taken', field: 'taken', fact: 2 },
-  { question: 'My pending leave', intent: 'leave_pending', field: 'pending', fact: 3 },
+  { question: 'My leave balance', intent: 'leave_available', field: 'available' },
+  { question: 'How much leave have I taken?', intent: 'leave_taken', field: 'taken' },
+  { question: 'My pending leave', intent: 'leave_pending', field: 'pending' },
 ] as const;
 
 const balances = [
@@ -22,7 +22,7 @@ const strategies = ['baseline_v1', 'focused_v1'] as const;
 
 /** Fictional source recreation through the same owned projection and terminal adjudicator as the app. */
 export async function runProtectedLeaveComparison(model: PilotModel) {
-  const cases = questions.flatMap(({ question, intent, field, fact }) => balances.map(balance => {
+  const cases = questions.flatMap(({ question, intent, field }) => balances.map(balance => {
     const resolved = resolvePrivateAssistantIntent(question);
     if (resolved.intent !== intent) throw Error('Protected leave fixture no longer routes to the expected intent.');
     const { name, ...counts } = balance;
@@ -37,6 +37,13 @@ export async function runProtectedLeaveComparison(model: PilotModel) {
       read: 0, card: 0, key: 'fictional-local-employment', labels: ['Fictional local company'],
     }]);
     if (selected.slot) throw Error('Protected leave fixture unexpectedly needs clarification.');
+    // Fixtures name the expected semantic field. Derive only its projected
+    // ordinal because a withheld sibling never occupies a placeholder position.
+    const matches = presentation.cards[0].facts.flatMap((value, index) =>
+      value.field === field && value.value !== null ? [index] : []
+    );
+    if (matches.length !== 1) throw Error('Protected leave fixture must expose one expected field.');
+    const [fact] = matches;
     const expected = { version: 1, mode: 'answer', blocks: [{ kind: 'fact', read: 0, card: 0, fact }] };
     return { id: intent + ':' + name, intent, reads, selected, expected };
   }));

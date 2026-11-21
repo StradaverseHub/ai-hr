@@ -89,7 +89,11 @@ describe('protected leave comparison', () => {
       const payload = JSON.parse(prompt);
       expect(payload.reads[0].cards).toHaveLength(1);
       const expectedFact: Record<string, number> = { leave_available: 1, leave_taken: 2, leave_pending: 3 };
-      const fact = expectedFact[payload.intent];
+      const facts = payload.reads[0].cards[0].facts;
+      expect([2, 4]).toContain(facts.length);
+      const fact = facts.length === 2 ? 1 : expectedFact[payload.intent];
+      const field = { leave_available: 'available', leave_taken: 'taken', leave_pending: 'pending' }[payload.intent as 'leave_available'];
+      expect(facts[fact].field).toBe(field);
       expect(payload.reads[0].cards[0].facts[fact]).toMatchObject({ fact, available: true });
       return { text: JSON.stringify({ version: 1, mode: 'answer', blocks: [{ kind: 'fact', read: 0, card: 0, fact }] }), inputTokens: 1, outputTokens: 1 };
     });
