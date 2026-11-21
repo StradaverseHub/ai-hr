@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {buildUnits, hash, requiredEvidence} from './manifest.mjs';
-import {validateMissingDbReplacement, verifyMissingDbCoverage} from './missing-db-recovery-policy.mjs';
+import {MISSING_DB_RECOVERY_POLICY, requireReviewedMissingDbController, validateFocusedTimeout, validateMissingDbHistory,
+  validateMissingDbRecoveryGrantEvidence, validateMissingDbReplacement, verifyMissingDbCoverage} from './missing-db-recovery-policy.mjs';
 import {validateMissingDbSource} from './missing-db-unit.mjs';
 import {fixture, time} from './resume-test-fixtures.mjs';
 
@@ -146,4 +147,57 @@ test('refuses a replay with an unexpected full-gate success or artifact provenan
   replay.jobs.find(job => job.name === 'verify').conclusion = 'skipped';
   replay.artifacts[0].workflow_run.head_sha = '0'.repeat(40);
   assert.throws(() => validateMissingDbReplacement(replay, expectations, now), /Foreign or malformed/);
+});
+
+test('keeps the original failure and refuses unaccounted candidate executions', () => {
+  const {source, replay, candidateBranch} = replacementFixture();
+  const history = {rows: [source.run, replay.run], source: source.run, replay: replay.run, candidateBranch};
+  assert.deepEqual(validateMissingDbHistory(history).executions.map(row => row.conclusion), ['failure', 'success']);
+  for (const extra of [
+    {...replay.run, id: 701, status: 'in_progress'},
+    {...replay.run, id: 702, conclusion: 'failure'},
+    {...replay.run, updated_at: time(0)},
+  ]) assert.throws(() => validateMissingDbHistory({...history, rows: [...history.rows, extra]}));
+  assert.throws(() => validateMissingDbHistory({...history, rows: [replay.run]}), /Incomplete/);
+});
+
+test('retains a focused timeout only with authenticated stopped steps and no report', () => {
+  const {source, candidateBranch} = replacementFixture();
+  const run = {...source.run, id: 88, head_branch: 'alpha', path: '.github/workflows/alpha-focused-checks.yml',
+    display_title: `Focused only · ${candidateBranch}`, conclusion: 'cancelled', created_at: time(4), updated_at: time(2)};
+  const jobs = [
+    {...source.jobs[0], name: 'resolve', run_id: run.id},
+    {...source.jobs[0], name: 'selected-tests', run_id: run.id, conclusion: 'cancelled', steps: [
+      {name: 'Classify and execute only selected files', status: 'in_progress', conclusion: null, completed_at: null},
+      {name: 'Run actions/upload-artifact@pinned', status: 'pending', started_at: null},
+    ]},
+  ];
+  const data = {run, jobs, artifacts: [], annotations: [{annotation_level: 'failure',
+    message: 'The job has exceeded the maximum execution time of 20m0s'}]};
+  const expected = {source: source.run, candidateBranch};
+  assert.equal(validateFocusedTimeout(data, expected).runId, 88);
+  assert.throws(() => validateFocusedTimeout({...data, annotations: []}, expected), /unverified cancellation/);
+  assert.throws(() => validateFocusedTimeout({...data, artifacts: [{}]}, expected), /artifact-free/);
+});
+
+test('requires independent review of the exact verifier before a recovery grant', () => {
+  const data = replacementFixture();
+  const coverage = verifyMissingDbCoverage(data);
+  const controller = 'f'.repeat(40);
+  const fields = {sha: data.originalPlan.sha, controller: data.originalPlan.controller, verificationController: controller,
+    baseline: data.originalPlan.migrationBase, runId: data.source.run.id, policyVersion: data.originalPlan.policyVersion,
+    tests: coverage.tests};
+  const proof = {...fields, kind: 'AUTHENTICATED_MISSING_DB_RELEASE_RECOVERY', recoveryPolicy: MISSING_DB_RECOVERY_POLICY,
+    pendingReview: false, reviewedController: controller, releaseAuthorized: false, originalConclusion: 'failure',
+    replayConclusion: 'success', replayRunId: data.replay.run.id, verificationDiagnostic: {controller, runId: 803},
+    producerDiagnostic: {controller: data.replayPlan.controller, runId: 804}, unitCount: coverage.units.length,
+    coverage, history: {executions: [{id: data.replay.run.id, conclusion: 'success'}]}};
+  const evidence = recovery => ({...fields, recovery, fingerprint: hash(recovery)});
+  validateMissingDbRecoveryGrantEvidence(evidence(proof), data.source.run);
+  assert.throws(() => validateMissingDbRecoveryGrantEvidence(evidence({...proof, pendingReview: true}), data.source.run),
+    /Reviewed missing database recovery/);
+  assert.throws(() => validateMissingDbRecoveryGrantEvidence(evidence({...proof, unitCount: 1}), data.source.run),
+    /complete retained coverage/);
+  assert.throws(() => requireReviewedMissingDbController({controller, execute: true}), /Exact independent review/);
+  requireReviewedMissingDbController({controller, execute: false});
 });
