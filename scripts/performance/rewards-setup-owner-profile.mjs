@@ -1,3 +1,4 @@
+import {compareRewardsRosterMembership} from './rewards-roster-membership-comparison.mjs';
 import {compareRewardsRosterReads} from './rewards-roster-read-comparison.mjs';
 /** Attribute Rewards Set-up read time using the same fictional review as the browser suite. */
 import assert from 'node:assert/strict';
@@ -63,9 +64,10 @@ try {
     }
   }
   const rosterReads = await compareRewardsRosterReads(source, ctx, tenant.rewardDraft);
+  const membership = await compareRewardsRosterMembership(source, ctx, tenant.rewardDraft);
   writeFileSync(join(env.PERF_PRIVATE_DIR,'rewards-setup-owner-profile.json'),JSON.stringify({
     scope:'Sequential native owner reads on the authenticated fictional review after the browser visits',
-    samplesMs:rows,rosterReads,
+    samplesMs:rows,rosterReads,membership,
   }),{mode:0o600});
 } finally {
   await Promise.all([owner.client.end({timeout:5}),client.end({timeout:5})]);
