@@ -642,8 +642,35 @@ async function systemTestingRecordRoutes(db, fixture) {
     {actor:group,template:'/admin/system-testing/executions/[id]',path:'/admin/system-testing/executions/'+record.executionId,
       exactHeading:heading,content:record.actualResult,exactContent:true},
     {actor:employee,template:'/system-testing/executions/[id]',path:'/system-testing/executions/'+record.executionId,
-      exactHeading:heading,content:record.actualResult,exactContent:true},
+      exactHeading:heading,content:record.actualResult,exactContent:true,
+      testingObservation:{executionId:record.executionId,text:'Fictional browser observed the saved name again.'}},
   ];
+}
+
+async function verifyTestingObservation(page, main, db, entry, row, remaining) {
+  const { executionId, text } = entry.testingObservation;
+  const form = main.locator('form').filter({has:page.locator('textarea[name="actualResult"]')});
+  await form.locator('textarea[name="actualResult"]').fill(text,{timeout:remaining()});
+  const started = performance.now();
+  const response = page.waitForResponse(reply => {
+    const request = reply.request();
+    return request.method() === 'POST' && Boolean(request.headers()['next-action'])
+      && new URL(reply.url()).pathname === entry.path;
+  },{timeout:remaining()}).catch(() => null);
+  await form.getByRole('button',{name:'Save observation',exact:true}).click({timeout:remaining()});
+  assert((await response)?.ok(),'The observation save returned no successful action response');
+  row.testingObservationResponseMs = Math.round(performance.now() - started);
+  await main.getByText(text,{exact:true}).waitFor({state:'visible',timeout:remaining()});
+  row.testingObservationReadyMs = Math.round(performance.now() - started);
+  const [saved] = await db`
+    select e.revision,r.actual_result,r.run_by_user_id
+    from test_execution e
+    join test_run r on r.id=e.current_run_id and r.tenant_id=e.tenant_id
+    where e.id=${executionId}::uuid and e.tenant_id=${entry.actor.tenantId}::uuid
+      and r.execution_id=e.id and r.execution_revision=e.revision
+  `;
+  assert.deepEqual(saved,{revision:2,actual_result:text,run_by_user_id:entry.actor.userId});
+  row.testingObservationPersisted = true;
 }
 
 async function letterCatalogRecordRoutes(db, fixture) {
@@ -1272,6 +1299,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             await main.getByRole('heading',{name:'Version history · '+ordinal,exact:true})
               .waitFor({state:'visible',timeout:remaining()});
             row.testingVersionHistoryMs = Math.round(performance.now() - actionStart);
+          }
+          if (entry.testingObservation && pass === 'first') {
+            row.testingPageReadyMs = Math.round(performance.now() - started);
+            row.step = 'testing-observation-save';
+            await verifyTestingObservation(page,main,db,entry,row,remaining);
           }
           if (entry.letterCatalogPreview && pass === 'first') {
             row.letterPageReadyMs = Math.round(performance.now()-started);

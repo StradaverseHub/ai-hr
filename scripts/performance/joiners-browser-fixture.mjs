@@ -23,7 +23,7 @@ function recordFailure(error){
   if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code))category=code;
   else if(category==='unclassified'&&knownKinds.has(current.name))category=current.name;
   const frames=String(current.stack??'').split('\n').filter(line=>/^\s+at\b/.test(line));
-  source??=frames.map(line=>line.match(/\/(core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):(\d+):\d+\)?$/))
+  source??=frames.map(line=>line.match(/\/(core\/(?:performance|system-testing(?:-workspace)?)\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):(\d+):\d+\)?$/))
    .find(Boolean)?.slice(1).join(':')??null;
   current=Object.getOwnPropertyDescriptor(current,'cause')?.value;
  }
@@ -69,14 +69,18 @@ try{
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
  if(env.PERF_SYSTEM_TESTING_RECORDS==='true'){
-  setStage('system-testing-records');
-  const {saveTestInstructionDraft,publishTestInstruction,assignTestingCase,beginTestingExecution,saveTestingExecution}=
-   await source('core/system-testing.ts');
+  setStage('system-testing-workspace-import');
+  const workspace=await source('core/system-testing-workspace.ts');
+  const owners={...workspace.default,...workspace};
+  const {saveTestInstructionDraft,publishTestInstruction,assignTestingCase,beginTestingExecution,saveTestingExecution}=owners;
+  assert([saveTestInstructionDraft,publishTestInstruction,assignTestingCase,beginTestingExecution,saveTestingExecution]
+   .every(owner=>typeof owner==='function'),'Missing native System Testing workspace owner');
   const employee=fixture.users[4];
   assert(employee.role==='employee'&&employee.companyId===company.companyId);
   const tester={tenantId:ctx.tenantId,userId:employee.userId,personId:employee.personId,roles:['employee'],
    grants:[{role:'employee',companyId:employee.companyId}],entitlements:ctx.entitlements};
   const title='Fictional Personnel save and reopen';
+  setStage('system-testing-draft');
   const draft=await saveTestInstructionDraft(ctx,{caseId:null,expectedRevision:0,definition:{
    format:1,title,objective:'Check a saved preferred name.',functionKey:'personnel.profile',
    area:'personnel',moduleCode:'employees',category:'functional',priority:'high',active:true,
@@ -85,11 +89,15 @@ try{
    expectedBehavior:'The saved name remains visible.',expectedFunction:'Personnel profile write and read.',
    permissions:['Company HR access to the fictional employee.'],jurisdiction:null,configuration:null,screenKeys:['personnelAdmin'],
   }});
+  setStage('system-testing-publish');
   const version=await publishTestInstruction(ctx,{caseId:draft.caseId,expectedDraftRevision:draft.revision,expectedVersionId:null});
+  setStage('system-testing-assign');
   const assignment=await assignTestingCase(ctx,{caseId:draft.caseId,testerUserId:tester.userId,expectedVersionId:version.versionId,
    active:true,expectedRevision:null});
+  setStage('system-testing-begin');
   const execution=await beginTestingExecution(tester,{assignmentId:assignment.assignmentId,expectedVersionId:version.versionId,newAttempt:false});
   const actualResult='The fictional preferred name was retained.';
+  setStage('system-testing-save');
   await saveTestingExecution(tester,{executionId:execution.executionId,assignmentId:assignment.assignmentId,versionId:version.versionId,
    expectedRevision:execution.revision,status:'passed',actualResult,comments:'Fictional browser timing fixture',defectNotes:'',improvementNotes:''});
   fixture.systemTestingRecord={caseId:draft.caseId,caseNo:draft.caseNo,versionId:version.versionId,

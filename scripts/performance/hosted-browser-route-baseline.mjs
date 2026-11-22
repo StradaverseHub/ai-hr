@@ -1572,7 +1572,8 @@ try{
   if(existsSync(stagePath)){
    const stage=readFileSync(stagePath,'utf8');
    if(['fixture','onboarding-config','draft-joiners','lifecycle-defaults','legacy-onboarding','legacy-offboarding',
-    'lifecycle-asset','lifecycle-asset-request','system-testing-records','performance-cycle-grades','performance-cycle-create',
+    'lifecycle-asset','lifecycle-asset-request','system-testing-workspace-import','system-testing-draft',
+    'system-testing-publish','system-testing-assign','system-testing-begin','system-testing-save','performance-cycle-grades','performance-cycle-create',
     'performance-cycle-participants','performance-cycle-open','performance-team-review','complete'].includes(stage)){
     report.recordFixtureStage=stage;
    }
@@ -1587,7 +1588,7 @@ try{
   const locationPath=join(privateDir,'record-fixture-failure-location');
   if(existsSync(locationPath)){
    const location=readFileSync(locationPath,'utf8');
-   if(/^(?:core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):\d+$/.test(location)){
+   if(/^(?:core\/(?:performance|system-testing(?:-workspace)?)\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):\d+$/.test(location)){
     report.recordFixtureFailureLocation=location;
    }
   }
