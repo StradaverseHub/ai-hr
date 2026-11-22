@@ -161,7 +161,8 @@ jobs:
           fi
           if [[ "$BROWSER_SURFACE_PROBE" == offboarding-shell ]]; then
             [[ "$REUSE_ACTION_BUILD" == true && "$BROWSER_GROUP_SHAPE" == true &&
-               "$EXPECTED_SHA" == 5752bf523a7d79121c4ed70e1cb25c6037e87a72 ]] || exit 2
+               ( "$EXPECTED_SHA" == 5752bf523a7d79121c4ed70e1cb25c6037e87a72 ||
+                 "$EXPECTED_SHA" == 5748794e50514f15b309657ff537092b68edb58e ) ]] || exit 2
           fi
           if [[ "$REUSE_ACTION_BUILD" == true ]]; then
             [[ "$BROWSER_BASELINE" == true && "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" != true ]] || exit 2

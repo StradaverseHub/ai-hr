@@ -79,7 +79,9 @@ const reusedActionPin=env.AIHR_BROWSER_REUSED_ACTION_BUILD==='true'
  ? JSON.parse(readFileSync(new URL('./browser-action-builds.json',import.meta.url),'utf8'))[sha]
  : undefined;
 assert(env.AIHR_BROWSER_REUSED_ACTION_BUILD!=='true'||reusedActionPin,'No archive pinned for this action build');
-assert(!offboardingComparison||(reusedActionPin&&sha==='5752bf523a7d79121c4ed70e1cb25c6037e87a72'),'Exact integrated build required for the Offboarding comparison');
+assert(!offboardingComparison||(reusedActionPin&&[
+ '5752bf523a7d79121c4ed70e1cb25c6037e87a72','5748794e50514f15b309657ff537092b68edb58e',
+].includes(sha)),'Exact integrated or Workforce query build required for the Offboarding comparison');
 const report={kind:actionLane?'FICTIONAL_SCRIPTED_ACTIONS':surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(actionLane&&{actionLane}),
