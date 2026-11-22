@@ -3,6 +3,8 @@ import { ExportDownloadLink } from '@/components/export-download-link';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { Suspense, use } from 'react';
+import { withBackgroundReadWork } from '@/db/client';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listCompanies, listDepartments } from '@/core/read';
@@ -28,6 +30,10 @@ import {
 
 import {rosterTeamContext,rosterTeamWindow} from './my-team-scope';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+
+function RosterExceptionsLabel({ label }: { label: Promise<string> }) {
+  return use(label);
+}
 
 /**
  * Roster scheduling (ADR-0032 C3) — the MONTHLY shift roster for one company's employees. Manager/admin
@@ -144,9 +150,8 @@ export default async function RosterPage({
    * rest-worked row got a "Bank in lieu" button went WITH the rows — it belongs to the screen that draws
    * them.
    */
-  const [exceptionCount, departments, writeEmployees] = await Promise.all([
-    rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso, ...(teamScope?{employmentIds:teamScope.employmentIds}:{}) }),
-    listDepartments(s, { companyIds }),
+  const [departments, writeEmployees] = await Promise.all([
+    admin && companyId && view.shifts.length > 0 ? listDepartments(s, { companyIds }) : [],
     // Generate and Copy target the WHOLE filtered workforce the unpaged roster listed, not the grid's page:
     // the same people rosterWindowView reads, without hydrating their cells. Only read when the forms render.
     admin && companyId
@@ -166,6 +171,10 @@ export default async function RosterPage({
     ? await readRosterBulkJob(s, sp.rosterJob).catch(() => null)
     : null;
   const tJob = await getTranslations('bulkJobs.roster');
+  const exceptionsTitle = t('exceptionsTitle');
+  const exceptionsLabel = withBackgroundReadWork(s.tenantId, () =>
+    rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso, ...(teamScope?{employmentIds:teamScope.employmentIds}:{}) }),
+  ).then(exceptionCount => t('exceptionsButton', { count: exceptionCount }), () => exceptionsTitle);
   // Success banner for the roster generator: "employments.workingRows.restRows" packed by the action.
   const gen = sp.generated && /^\d+\.\d+\.\d+$/.test(sp.generated) ? sp.generated.split('.').map(Number) : null;
   // R17 3e8350db — success banner for "copy roster": the number of rows copied onto the target window.
@@ -342,7 +351,9 @@ export default async function RosterPage({
               same filters. It is NOT hidden when the count is zero: an Exceptions button that vanishes
               cannot tell you there is nothing wrong, it can only look like a missing feature. */}
           <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
-            {t('exceptionsButton', { count: exceptionCount })}
+            <Suspense key={qs({})} fallback={exceptionsTitle}>
+              <RosterExceptionsLabel label={exceptionsLabel} />
+            </Suspense>
           </Link>
           <ExportDownloadLink href={`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn}>
             {t('exportLabel')}
