@@ -34,7 +34,8 @@ const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
 const censusPersonnelMovement=shardInput==='personnel-movement';
-const censusAttendanceRecords=shardInput==='attendance-records';
+const attendanceDeferredPicker=shardInput==='attendance-deferred-picker';
+const censusAttendanceRecords=shardInput==='attendance-records'||attendanceDeferredPicker;
 const censusPayrollFormulaEvaluation=shardInput==='payroll-formula-evaluation';
 const censusImportHistory=shardInput==='import-history';
 const censusFullFixtureRecords=shardInput==='fixture-records';
@@ -52,6 +53,8 @@ const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');
 assert(sha===env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD??''));
 assert.equal(git('status','--porcelain'),'');
+assert(!attendanceDeferredPicker||(sha==='0ba883e0aa294bb0f15dcfe2433deedb52d11996'&&
+ env.AIHR_BROWSER_COMBINED_CENSUS_BUILD==='true'));
 
 const privateDir=mkdtempSync(join(env.RUNNER_TEMP,'route-baseline-private-'));
 const fixtureEvidenceDir=join(privateDir,'fixture-evidence');
@@ -1695,9 +1698,45 @@ try{
    const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
    try{
-    await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
+    const measure=()=>measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
-     importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords});
+     importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords,attendanceDeferredPicker});
+    if(attendanceDeferredPicker){
+     const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
+     assert(/^aihr-ci-\d+-\d+-db-1$/.test(name));
+     const dockerConfig=join(privateDir,'attendance-picker-docker-config');
+     mkdirSync(dockerConfig,{mode:0o700});
+     const label=execFileSync('/usr/bin/docker',[
+      '--config',dockerConfig,'--host','unix:///var/run/docker.sock','inspect','--type','container',
+      '--format','{{index .Config.Labels "aihr-owner"}}',name,
+     ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:5000}).trim();
+     assert.equal(label,name,'Expected the job-owned fictional database');
+     const owner=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1});
+     try{
+      const read=sql=>sql`select pg_get_functiondef(p.oid) as definition,p.proowner::text as owner,p.proacl::text as acl
+       from pg_proc p where p.oid='app.attendance_workflow_v3_approver_options(uuid[])'::regprocedure`;
+      const [original]=await read(owner);
+      const order='ORDER BY p.full_name,e.employee_code,e.id';
+      assert.equal(original.definition.split(order).length,2);
+      const deferred=original.definition.replace(order,'AND false\n '+order);
+      await owner.begin(async tx=>{
+       await tx.unsafe(deferred);
+       assert.deepEqual([...(await read(tx))],[{...original,definition:deferred}]);
+      });
+      report.attendancePickerExperiment={initialUnselectedOptions:false,restored:false};
+      try{
+       save();
+       await measure();
+      }finally{
+       await owner.begin(async tx=>{
+        await tx.unsafe(original.definition);
+        assert.deepEqual([...(await read(tx))],[original]);
+       });
+       report.attendancePickerExperiment.restored=true;
+       save();
+      }
+     }finally{await owner.end({timeout:5});}
+    }else await measure();
     if(censusFullFixtureRecords){
      await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
      assert(fixture.performanceRecords,'The full record plan requires a populated Performance assessment cycle');

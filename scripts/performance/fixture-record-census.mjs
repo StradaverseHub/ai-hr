@@ -466,7 +466,7 @@ async function personnelMovementRoutes(db, fixture) {
   return byRole.flat();
 }
 
-async function attendanceRecordRoutes(db, fixture) {
+async function attendanceRecordRoutes(db, fixture, deferredPicker) {
   const [group, company] = fixture.users;
   assert.equal(group.role, 'groupHR');
   assert.equal(company.role, 'companyHR');
@@ -483,6 +483,16 @@ async function attendanceRecordRoutes(db, fixture) {
   assert.equal(workflows.length, 1, 'Expected the seeded company Attendance approval workflow');
   const workflowName = 'Fictional performance approval';
   const workflow = '/admin/attendance/approval-workflow/' + workflows[0].lineage_id;
+  if (deferredPicker) {
+    const approver = fixture.users.find(user => user.tenantId === company.tenantId &&
+      user.companyId === company.companyId && ['groupHR', 'companyHR'].includes(user.role));
+    assert(approver?.employeeCode);
+    return [group, company].map(actor => ({
+      actor, template: '/admin/attendance/approval-workflow/[lineageId]/edit', path: workflow + '/edit',
+      exactHeading: 'Edit ' + workflowName, witness: '#attendance-workflow-form input[name="code"][value="PERF"]',
+      deferredApprover: approver,
+    }));
+  }
   const routes = [group, company].flatMap(actor => {
     const subject = fixture.users.find(user => user.role === 'employee' &&
       user.tenantId === actor.tenantId && user.companyId === actor.companyId);
@@ -518,6 +528,30 @@ async function attendanceRecordRoutes(db, fixture) {
     exactHeading: 'Attendance detail', content: employee.name, witness: 'input[name="checkIn"][value="09:00"]',
   });
   return routes;
+}
+
+async function verifyDeferredAttendancePicker(page, entry, report, save) {
+  const outcome = { role: entry.actor.role, status: 'failed', steps: {} };
+  (report.attendancePickerExperiment.actions ??= []).push(outcome);
+  const timeout = 15000;
+  const form = page.locator('#attendance-workflow-form');
+  const { employeeCode, name } = entry.deferredApprover;
+  try {
+    await form.locator('ol').getByText(name, { exact: false }).first().waitFor({ state: 'visible', timeout });
+    const started = performance.now();
+    await form.getByRole('button', { name: 'Search Employee ID or name', exact: true }).first().click({ timeout });
+    const search = form.getByRole('searchbox').first();
+    await search.waitFor({ state: 'visible', timeout });
+    outcome.steps.pickerOpenedMs = Math.round(performance.now() - started);
+    const searchStarted = performance.now();
+    await search.fill(employeeCode, { timeout });
+    const selected = form.getByRole('checkbox', { name: new RegExp(employeeCode), checked: true });
+    await selected.waitFor({ state: 'visible', timeout });
+    outcome.steps.savedApproverFoundMs = Math.round(performance.now() - searchStarted);
+    outcome.status = 'passed';
+  } finally {
+    save();
+  }
 }
 
 async function verifyAttendanceWorkflowPreview(page, db, entry, report, save) {
@@ -756,12 +790,12 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, attendanceDeferredPicker }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
     : importHistory ? importHistoryRoutes(fixture)
-    : attendanceRecords ? await attendanceRecordRoutes(db, fixture)
+    : attendanceRecords ? await attendanceRecordRoutes(db, fixture, attendanceDeferredPicker)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -840,6 +874,9 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
       }
       if (entry.workflowPreviewLineage && rows.at(-1).outcome === 'usable-content') {
         await verifyAttendanceWorkflowPreview(page, db, entry, report, save);
+      }
+      if (entry.deferredApprover && rows.at(-1).outcome === 'usable-content') {
+        await verifyDeferredAttendancePicker(page, entry, report, save);
       }
     } finally {
       await context.close();

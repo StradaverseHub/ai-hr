@@ -125,19 +125,23 @@ jobs:
       - name: Validate bounded manifest
         id: selection
         run: |
-          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all|split:[0-7]|retry-timeouts|fixture-records|payroll-corrections|personnel-movement|attendance-records|payroll-formula-evaluation|import-history)$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
+          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all|split:[0-7]|retry-timeouts|fixture-records|payroll-corrections|personnel-movement|attendance-records|attendance-deferred-picker|payroll-formula-evaluation|import-history)$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
             exit 2
           fi
           if [[ "$BROWSER_STATIC_SHARD" =~ ^(retry-timeouts|fixture-records|payroll-corrections|personnel-movement|attendance-records|payroll-formula-evaluation|import-history)$ && "$BROWSER_GROUP_SHAPE" != true ]]; then
             echo 'The selected browser shard requires the group-scale fixture.'
             exit 2
           fi
+          if [[ "$BROWSER_STATIC_SHARD" == attendance-deferred-picker ]]; then
+            [[ "$EXPECTED_SHA" == 0ba883e0aa294bb0f15dcfe2433deedb52d11996 &&
+              "$BROWSER_GROUP_SHAPE" == true && "$REUSE_CENSUS_BUILD" == true ]] || exit 2
+          fi
           if [[ "$BROWSER_STATIC_SHARD" == payroll-corrections && "$REUSE_CENSUS_BUILD" != true &&
                 "$EXPECTED_SHA" != d3d650a2ed0cee44f04c66702f58035e965a5a8f ]]; then
             exit 2
           fi
           if [[ "$REUSE_CENSUS_BUILD" == true ]]; then
-            [[ "$BROWSER_STATIC_SHARD" =~ ^(fixture-records|payroll-corrections|personnel-movement|attendance-records|payroll-formula-evaluation|import-history)$ && "$RUN_BUILD" != true ]]
+            [[ "$BROWSER_STATIC_SHARD" =~ ^(fixture-records|payroll-corrections|personnel-movement|attendance-records|attendance-deferred-picker|payroll-formula-evaluation|import-history)$ && "$RUN_BUILD" != true ]]
             jq -e --arg source "$EXPECTED_SHA" 'has($source)' scripts/performance/fixture-record-builds.json > /dev/null
           fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
