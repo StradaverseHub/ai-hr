@@ -188,6 +188,11 @@ jobs:
             [[ "$REPLACEMENT_CATALOGUE" != present || "$LOCK_LOG_CALIBRATION_ONLY" == true || "$LOCK_LOG_SHORT_WINDOW" == true ]];
           }; then exit 2; fi
           combined_group_build=false
+          shell_archive_pin=false
+          if jq -e --arg source "$EXPECTED_SHA" 'has($source)' scripts/performance/mixed-shell-archive-pins.json >/dev/null; then
+            [[ "$REUSE_BUILD" == true ]] || exit 2
+            shell_archive_pin=true
+          fi
           if [[ ( "$EXPECTED_SHA" == 5175d387846c18fcc83ef96091cb1b4e1b538241 ||
                   "$EXPECTED_SHA" == 71e0dceb1a393817f3040518e82dc845a27700b0 ||
                   "$EXPECTED_SHA" == 5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4 ||
@@ -198,7 +203,8 @@ jobs:
                   "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 ||
                   "$EXPECTED_SHA" == 34acbbea020f09217a44711f615b750b0a139302 ||
                   "$EXPECTED_SHA" == 84bad4f960c5f81475cdc4f71462bb452852fa9a ||
-                  "$EXPECTED_SHA" == ef953a158bf1fde5073ca43557268add5ff0883e ) && "$MIXED_GROUP_SCALE" == true &&
+                  "$EXPECTED_SHA" == ef953a158bf1fde5073ca43557268add5ff0883e ||
+                  "$shell_archive_pin" == true ) && "$MIXED_GROUP_SCALE" == true &&
                 "$BROWSER_MIXED_LOAD" == true && "$ESTABLISHED_ATTENDANCE" == true &&
                 "$REPLACEMENT_CATALOGUE" == present && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
                 "$SHELL_PERMISSION_VARIANT" == contract-optimized ]]; then
@@ -215,7 +221,7 @@ jobs:
               true:5175d387846c18fcc83ef96091cb1b4e1b538241|true:71e0dceb1a393817f3040518e82dc845a27700b0|true:0ba883e0aa294bb0f15dcfe2433deedb52d11996|true:57fac422707b3a6174a290722ea0bb53da89f7c0|true:52d2d170710fcfb14219abe2f9d0abc84e536748|true:5e34835d73183b2754c9b3e4ccdbfc31111917a8|true:a1d4cbb7bef482f7a6c8b75ab7fbec7611976857)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
               true:84bad4f960c5f81475cdc4f71462bb452852fa9a) [[ "$combined_group_build" == true ]] || exit 2 ;;
-              *) exit 2 ;;
+              *) [[ "$shell_archive_pin" == true && "$combined_group_build" == true ]] || exit 2 ;;
             esac
           fi
           case "$SHELL_PERMISSION_VARIANT" in
@@ -342,7 +348,23 @@ jobs:
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          if [[ "$AIHR_CI_HEAD" == 84bad4f960c5f81475cdc4f71462bb452852fa9a ]]; then
+          shell_pins=../automation/scripts/performance/mixed-shell-archive-pins.json
+          if jq -e --arg source "$AIHR_CI_HEAD" 'has($source)' "$shell_pins" >/dev/null; then
+            test "$MIXED_GROUP_SCALE" = true
+            pin="$(jq -cer --arg source "$AIHR_CI_HEAD" '.[$source]' "$shell_pins")"
+            build_source="$(jq -er '.sourceSha | select(test("^[a-f0-9]{40}$"))' <<< "$pin")"
+            controller="$(jq -er '.controllerSha | select(test("^[a-f0-9]{40}$"))' <<< "$pin")"
+            run_id="$(jq -er '.runId | tostring | select(test("^[0-9]+$"))' <<< "$pin")"
+            job_id="$(jq -er '.jobId | tostring | select(test("^[0-9]+$"))' <<< "$pin")"
+            artifact_id="$(jq -er '.artifactId | tostring | select(test("^[0-9]+$"))' <<< "$pin")"
+            digest="$(jq -er '.sha256 | select(test("^[a-f0-9]{64}$"))' <<< "$pin")"
+            test "$(git rev-parse HEAD^)" = "$build_source"
+            git diff --quiet "$build_source" HEAD -- . ':(exclude)scripts/performance/**' ':(exclude).github/ci/**'
+            gh api "repos/StradaverseHub/ai-hr/actions/jobs/$job_id" | jq -e --argjson run "$run_id" --arg controller "$controller" '
+              .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+              .run_id == $run and .head_sha == $controller' >/dev/null
+            gh api "repos/StradaverseHub/ai-hr/actions/artifacts/$artifact_id/zip" > "$archive"
+          elif [[ "$AIHR_CI_HEAD" == 84bad4f960c5f81475cdc4f71462bb452852fa9a ]]; then
             test "$MIXED_GROUP_SCALE" = true
             test "$(git rev-parse HEAD^)" = 34acbbea020f09217a44711f615b750b0a139302
             test "$(git diff --name-status HEAD^ HEAD)" = "$(printf 'M\tscripts/performance/system-load-owner.mjs')"
@@ -438,7 +460,10 @@ jobs:
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
-          if [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" == 84bad4f960c5f81475cdc4f71462bb452852fa9a ]]; then
+          shell_pins=../automation/scripts/performance/mixed-shell-archive-pins.json
+          if [[ "$REUSE_BUILD" == true ]] && jq -e --arg source "$AIHR_CI_HEAD" 'has($source)' "$shell_pins" >/dev/null; then
+            expected_build_source="$(jq -er --arg source "$AIHR_CI_HEAD" '.[$source].sourceSha' "$shell_pins")"
+          elif [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" == 84bad4f960c5f81475cdc4f71462bb452852fa9a ]]; then
             expected_build_source=34acbbea020f09217a44711f615b750b0a139302
           elif [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" != 5175d387846c18fcc83ef96091cb1b4e1b538241 &&
                 "$AIHR_CI_HEAD" != 71e0dceb1a393817f3040518e82dc845a27700b0 &&

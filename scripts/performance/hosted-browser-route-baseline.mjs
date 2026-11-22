@@ -63,7 +63,11 @@ const combinedGroupArtifacts=new Map([
  [clockingOutcomeSource,{runId:44972189937,artifactId:14734303205}],
  [browserIntegrationNativePreflight,{runId:44979719093,artifactId:14737796395,sourceSha:browserIntegrationSource}],
 ]);
-const combinedGroupArtifact=combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
+const shellComparisonPins=JSON.parse(readFileSync(new URL('./mixed-shell-archive-pins.json',import.meta.url),'utf8'));
+const shellComparisonPin=shellComparisonPins[env.AIHR_CI_HEAD];
+const combinedGroupArtifact=shellComparisonPin
+ ? {sourceSha:shellComparisonPin.sourceSha,runId:shellComparisonPin.runId,artifactId:shellComparisonPin.artifactId}
+ : combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
 const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
 const freshGroupBuilds=new Set([
  detachedShellBuild,'0ba883e0aa294bb0f15dcfe2433deedb52d11996','57fac422707b3a6174a290722ea0bb53da89f7c0',
