@@ -17,11 +17,17 @@ const path=resolve(env.PERF_PRIVATE_DIR,'fixture.json');
 const setStage=stage=>writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-stage'),stage,{mode:0o600});
 function recordFailure(error){
  const knownKinds=new Set(['DrizzleQueryError','PostgresError','PerfError','ZodError','TypeError']);
- let category='unclassified',source=null;
+ let category='unclassified',source=null,typeProblem=null;
  for(let current=error,depth=0;current instanceof Error&&depth<4;depth++){
   const code=Object.getOwnPropertyDescriptor(current,'code')?.value;
   if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code))category=code;
   else if(category==='unclassified'&&knownKinds.has(current.name))category=current.name;
+  if(current instanceof TypeError&&typeProblem===null){
+   const safeName=new Set(['businessUnit','departmentId','entries','db','insert','map','rows','client','tenantId','slice','today','companyId','personId','year','person','length','groups','query','feature']);
+   const match=current.message.match(/(?:reading '([A-Za-z0-9_]+)'|([A-Za-z0-9_.]+) is not a function)$/);
+   const name=match?.[1]??match?.[2]?.split('.').at(-1);
+   if(name&&safeName.has(name))typeProblem=(match[1]?'missing-property:':'not-callable:')+name;
+  }
   const frames=String(current.stack??'').split('\n').filter(line=>/^\s+at\b/.test(line));
   source??=frames.map(line=>line.match(/\/(core\/[a-z0-9/_-]+\.ts|db\/[a-z0-9/_-]+\.ts|packs\/(?:performance|rewards|job-architecture)\/[a-z0-9/_-]+\.ts|scripts\/(?:performance|fixtures)\/[a-z0-9/_-]+\.(?:js|mjs|ts)|test\/rewards-shared-policy-fixture\.ts):(\d+):\d+\b/i))
    .find(Boolean)?.slice(1).join(':')??null;
@@ -29,6 +35,7 @@ function recordFailure(error){
  }
  writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-failure'),category,{mode:0o600});
  if(source)writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-failure-location'),source,{mode:0o600});
+ if(typeProblem)writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-type-problem'),typeProblem,{mode:0o600});
 }
 setStage('fixture');
 const fixture=JSON.parse(readFileSync(path,'utf8'));

@@ -1583,6 +1583,13 @@ try{
     report.recordFixtureFailure=failure;
    }
   }
+  const typeProblemPath=join(privateDir,'record-fixture-type-problem');
+  if(censusRewardsRecords&&existsSync(typeProblemPath)){
+   const problem=readFileSync(typeProblemPath,'utf8');
+   if(/^(?:missing-property|not-callable):(?:businessUnit|departmentId|entries|db|insert|map|rows|client|tenantId|slice|today|companyId|personId|year|person|length|groups|query|feature)$/.test(problem)){
+    report.rewardsFixtureTypeProblem=problem;
+   }
+  }
   const locationPath=join(privateDir,'record-fixture-failure-location');
   if(existsSync(locationPath)){
    const location=readFileSync(locationPath,'utf8');
