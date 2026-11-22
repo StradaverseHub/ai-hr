@@ -1,3 +1,4 @@
+import {measureApproverOptions} from './attendance-approver-options-probe.mjs';
 import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
 import {measureFixtureRecordCensus,seedFixedTransactionRecord,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
@@ -1597,6 +1598,12 @@ try{
    }
    save();
   }finally{await owner.end({timeout:5});}
+ }
+ if(censusAttendanceRecords){
+  await measureApproverOptions(fixture,dbEnv,evidence=>{
+   report.attendanceApproverPrototype=evidence;
+   save();
+  });
  }
  if(censusPayrollCorrections&&!report.verifiedBuildArtifact)report.verifiedBuildArtifact={runId:44749573012,artifactId:14634664620,sourceSha:report.sourceSha};
  if(censusPayrollCorrections){
