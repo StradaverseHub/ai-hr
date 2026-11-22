@@ -5,23 +5,27 @@ import type { AbstractIntlMessages } from 'next-intl';
 import { messagesForLocale } from '../i18n/catalogs';
 import { locales } from '../i18n/config';
 
-// Browser module references from the signed-in shell and personal TP3. Include
-// the common error states and the shell controls that can open from this route.
-const tp3ClientNamespaces = [
+// Shared signed-in controls and error states. Home's server-rendered cards pass their own copy.
+const shellClientNamespaces = [
   'accessConfiguration', 'aiAsk.commandBar', 'aiCentre', 'approvalHistory', 'approvals',
   'assistant.fileImport', 'assistant.launcher', 'assistant.workspace.chat',
   'assistant.workspace.claimActions', 'assistant.workspace.decisionActions',
   'assistant.workspace.overtimeActions', 'assistant.workspace.proposal',
   'auth', 'bulkJobs.notification', 'commandBar', 'common', 'components.themeToggle',
   'components.uiTheme', 'delegations', 'employeeHome.greetingNotification', 'letters.notifications',
-  'myTp3', 'nav', 'notifications', 'onboarding', 'onehr.workspace',
+  'nav', 'notifications', 'onboarding', 'onehr.workspace',
   'operatorWorkspace', 'ownLeaveChange', 'pageStyleRecovery', 'payrollReadiness.reminder',
   'rewardsReviewPlans', 'scheduledActions', 'sessionTimeout', 'topbar',
 ];
 
-function tp3Catalogue(messages: AbstractIntlMessages): AbstractIntlMessages {
+const scopedClientNamespaces = {
+  home: shellClientNamespaces,
+  tp3: [...shellClientNamespaces, 'myTp3'],
+};
+
+function projectCatalogue(messages: AbstractIntlMessages, namespaces: readonly string[]): AbstractIntlMessages {
   const projected: AbstractIntlMessages = {};
-  for (const namespace of tp3ClientNamespaces) {
+  for (const namespace of namespaces) {
     const keys = namespace.split('.');
     let source = messages;
     let target = projected;
@@ -54,14 +58,15 @@ async function writeCatalogue(target: string, messages: AbstractIntlMessages) {
 }
 
 export async function prepareClientCatalogues(outputDirectory: string) {
-  const tp3Directory = join(outputDirectory, 'tp3');
-  await mkdir(tp3Directory, { recursive: true });
+  const scopes = Object.entries(scopedClientNamespaces);
+  await Promise.all(scopes.map(([scope]) => mkdir(join(outputDirectory, scope), { recursive: true })));
   await Promise.all(locales.map(async locale => {
     const messages = await messagesForLocale(locale);
     const name = locale + '.json';
     await Promise.all([
       writeCatalogue(join(outputDirectory, name), messages),
-      writeCatalogue(join(tp3Directory, name), tp3Catalogue(messages)),
+      ...scopes.map(([scope, namespaces]) =>
+        writeCatalogue(join(outputDirectory, scope, name), projectCatalogue(messages, namespaces))),
     ]);
   }));
 }
