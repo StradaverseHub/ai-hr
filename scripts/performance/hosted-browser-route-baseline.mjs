@@ -1571,7 +1571,8 @@ try{
    const stage=readFileSync(stagePath,'utf8');
    if(['fixture','onboarding-config','draft-joiners','lifecycle-defaults','legacy-onboarding','legacy-offboarding',
     'lifecycle-asset','lifecycle-asset-request','performance-cycle-grades','performance-cycle-create',
-    'performance-cycle-participants','performance-cycle-open','performance-team-review','complete'].includes(stage)){
+    'performance-cycle-participants','performance-cycle-open','performance-team-review',
+    'rewards-owner-imports','rewards-roster','rewards-approved-plan','rewards-plan-preview','rewards-draft-creation','complete'].includes(stage)){
     report.recordFixtureStage=stage;
    }
   }
@@ -1585,7 +1586,7 @@ try{
   const locationPath=join(privateDir,'record-fixture-failure-location');
   if(existsSync(locationPath)){
    const location=readFileSync(locationPath,'utf8');
-   if(/^(?:core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):\d+$/.test(location)){
+   if(/^(?:core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts|scripts\/(?:performance\/(?:joiners-browser-fixture|reward-draft-fixture)\.mjs|fixtures\/reward-approved\.ts)|packs\/rewards\/plan-configuration\.ts|test\/rewards-shared-policy-fixture\.ts):\d+$/.test(location)){
     report.recordFixtureFailureLocation=location;
    }
   }

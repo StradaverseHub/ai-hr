@@ -23,7 +23,7 @@ function recordFailure(error){
   if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code))category=code;
   else if(category==='unclassified'&&knownKinds.has(current.name))category=current.name;
   const frames=String(current.stack??'').split('\n').filter(line=>/^\s+at\b/.test(line));
-  source??=frames.map(line=>line.match(/\/(core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):(\d+):\d+\)?$/))
+  source??=frames.map(line=>line.match(/\/(core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts|scripts\/(?:performance\/(?:joiners-browser-fixture|reward-draft-fixture)\.mjs|fixtures\/reward-approved\.ts)|packs\/rewards\/plan-configuration\.ts|test\/rewards-shared-policy-fixture\.ts):(\d+):\d+\)?$/))
    .find(Boolean)?.slice(1).join(':')??null;
   current=Object.getOwnPropertyDescriptor(current,'cause')?.value;
  }
@@ -69,17 +69,22 @@ try{
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
  if(env.PERF_REWARDS_RECORDS==='true'){
+  setStage('rewards-owner-imports');
   const [schema,{prepareRewardDraftFixture},{createRewardPlanReviews,previewRewardPlanCreation}]=await Promise.all([
    source('db/schema.ts'),source('scripts/performance/reward-draft-fixture.mjs'),source('packs/rewards/plan-configuration.ts'),
   ]);
+  setStage('rewards-roster');
   const tenant=fixture.tenants[0],companies=tenant.companies,target=companies[2];
   const expectedCompanyEmploymentIds=fixture.users.filter(actor=>actor.tenant===0&&actor.companyId===target.companyId)
    .map(actor=>actor.employmentId);
   assert.equal(expectedCompanyEmploymentIds.length,50);
+  setStage('rewards-approved-plan');
   const reward=await prepareRewardDraftFixture({owner,schema,ctx,tenant,companies,company:target,today:fixture.today,
    actor:group,includeOrgExplorerMember:true,expectedCompanyEmploymentIds});
+  setStage('rewards-plan-preview');
   const preview=await previewRewardPlanCreation(ctx,reward.planVersionId);
   assert.equal(preview.rows.length,1);
+  setStage('rewards-draft-creation');
   const {created,skipped}=await createRewardPlanReviews(ctx,reward.planVersionId,preview.digest);
   assert.equal(created.length,1);
   assert.equal(skipped.length,0);
