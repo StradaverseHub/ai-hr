@@ -22,10 +22,10 @@
  * test/topbar-identity-width.browser.test.tsx; this file and that one are not substitutes.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
@@ -38,6 +38,11 @@ import zh from '../messages/zh.json';
 // opens a connection at module load; the `dom` project deliberately has no database env (test/dom-setup.ts).
 // Nothing here submits the form — the assertion is that the control EXISTS in the menu it moved into.
 vi.mock('@/app/auth-actions', () => ({ logoutAction: async () => {} }));
+
+vi.mock('next/link', () => ({
+  default: ({ prefetch, ...props }: ComponentProps<'a'> & { prefetch?: boolean | null }) =>
+    <a {...props} data-prefetch={prefetch == null ? 'default' : String(prefetch)} />,
+}));
 
 const { UserMenu, PROFILE_HREF } = await import('../components/user-menu');
 
@@ -87,6 +92,20 @@ const blankElements = (root: HTMLElement): string[] =>
     .filter((el) => !el.className.toString().includes('h-px'))
     .filter((el) => !el.className.toString().includes('inset-0'))
     .map((el) => `<${el.tagName.toLowerCase()} class="${el.className}">`);
+
+it('waits for intent before prefetching an account menu destination', async () => {
+  const { container } = wrap(<UserMenu name="Fictional HR administrator" employeeCode="FIX-1"
+    employed canViewWorkforce canConfigureAccess />);
+  await userEvent.click(trigger(container));
+  const destinations = [...screen.getByRole('menu').querySelectorAll<HTMLAnchorElement>('a[role="menuitem"]')];
+  expect(destinations.map(link => link.getAttribute('href'))).toEqual([
+    PROFILE_HREF, '/me/home', '/admin/personnel', '/admin/users/access',
+  ]);
+  expect(destinations.map(link => link.dataset.prefetch)).toEqual(['false', 'false', 'false', 'false']);
+
+  fireEvent.focus(destinations[2]);
+  expect(destinations.map(link => link.dataset.prefetch)).toEqual(['false', 'false', 'true', 'false']);
+});
 
 describe('fbf6abd0 — the corner says who is signed in', () => {
   it('shows the name AND the Employee ID without opening anything', async () => {
