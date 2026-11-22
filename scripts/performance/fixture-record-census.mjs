@@ -560,8 +560,8 @@ async function personnelProfileCostRoutes(db, fixture) {
     if (entry.template !== '/admin/personnel/[employmentId]') return [];
     return [
       { ...entry, scenario: 'profile tab' },
-      { ...entry, path: entry.path + '?tab=family', scenario: 'family tab',
-        witness: '[data-tabpanel="family"]:visible [data-ui-section-header]:visible' },
+      { ...entry, path: entry.path + '?tab=job', scenario: 'job tab',
+        witness: '[data-tabpanel="job"]:visible #section-employment-info [data-ui-section-header]:visible' },
     ];
   });
 }
@@ -598,20 +598,20 @@ async function personnelDocumentWork(page) {
   });
 }
 
-async function measurePersonnelFamilySelection(page, origin, path, row) {
+async function measurePersonnelJobSelection(page, origin, path, row) {
   const main = page.locator('main:visible').first();
-  const family = main.locator('[data-tabpanel="family"] [data-ui-section-header]').first();
+  const job = main.locator('[data-tabpanel="job"] #section-employment-info [data-ui-section-header]').first();
   const profile = main.locator('[data-tabpanel="profile"]');
   const destination = new URL(path, origin);
-  const familyTab = main.getByRole('tab', { name: 'Family', exact: true });
-  row.familyControlsOnProfile = await family.count();
+  const jobTab = main.getByRole('tab', { name: 'Job', exact: true });
+  row.jobControlsOnProfile = await job.count();
   for (const pass of ['first', 'repeat']) {
     const started = performance.now();
-    await familyTab.click({ timeout: 15000 });
-    await page.waitForURL(url => url.pathname === destination.pathname && url.searchParams.get('tab') === 'family',
+    await jobTab.click({ timeout: 15000 });
+    await page.waitForURL(url => url.pathname === destination.pathname && url.searchParams.get('tab') === 'job',
       { timeout: 15000 });
-    await family.waitFor({ state: 'visible', timeout: 15000 });
-    row[pass === 'first' ? 'firstFamilySelectionMs' : 'repeatFamilySelectionMs'] = Math.round(performance.now() - started);
+    await job.waitFor({ state: 'visible', timeout: 15000 });
+    row[pass === 'first' ? 'firstJobSelectionMs' : 'repeatJobSelectionMs'] = Math.round(performance.now() - started);
     if (pass === 'first') {
       await main.getByRole('tab', { name: 'Profile', exact: true }).click({ timeout: 15000 });
       await profile.waitFor({ state: 'visible', timeout: 15000 });
@@ -730,9 +730,9 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
       if (entry.scenario === 'profile tab' && rows.at(-1).outcome === 'usable-content') {
         const row = rows.at(-1);
         try {
-          await measurePersonnelFamilySelection(page, origin, entry.path, row);
+          await measurePersonnelJobSelection(page, origin, entry.path, row);
         } catch (error) {
-          row.step = 'personnel-family-selection';
+          row.step = 'personnel-job-selection';
           row.outcome = error.name === 'TimeoutError' ? 'timeout' : 'browser-failure';
         } finally {
           save();
