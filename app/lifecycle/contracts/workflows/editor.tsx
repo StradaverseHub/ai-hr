@@ -9,12 +9,26 @@ import {WorkflowEditorShell,WorkflowField,WorkflowButton} from '../../workflow-e
 import {saveWorkflowAction,previewWorkflowAction} from './actions';
 type Step=ContractWorkflow['steps'][number];
 type Props={embedded?:boolean;workflows:ContractWorkflowRow[];companies:{id:string;name:string}[];cases:{id:string;number:string;companyId:string;name:string}[];businessGroups?:{companyId:string;id:string;name:string}[];loadDirectory?:(input:{companyId:string;query:string;selectedUserIds:string[]})=>Promise<{ok:true;result:{id:string;name:string;employeeId:string|null}[]}|{ok:false;detail?:string}>;directories:{companyId:string;users:{id:string;name:string;employeeId:string|null}[]}[]};
+function namedReviewerIds(draft:ContractWorkflow|null):string[]{
+ const users=new Set<string>();
+ const add=(approver:ContractApprover|undefined)=>{
+  if(approver?.type==='named_employee')for(const userId of approver.userIds)users.add(userId);
+ };
+ for(const step of draft?.steps??[]){
+  switch(step.type){
+   case 'notify': step.to.forEach(add); break;
+   case 'request_approval': add(step.approver); add(step.escalationTarget); break;
+   case 'wait_signature': add(step.escalationTarget); break;
+  }
+ }
+ return [...users].slice(0,200);
+}
 export function ContractWorkflowEditor({workflows,companies,cases,businessGroups=[],directories,loadDirectory,embedded=false}:Props){
  const t=useTranslations('contractWorkflow'),router=useRouter(),[selected,setSelected]=useState(workflows[0]?.id??''),[draft,setDraft]=useState<ContractWorkflow|null>(workflows[0]?.draft??null),[pending,start]=useTransition(),[error,setError]=useState(''),[saved,setSaved]=useState(''),[caseId,setCaseId]=useState(''),[preview,setPreview]=useState<{steps:{stepId:string;type:string;matches:boolean;holderIds:string[];blocked:boolean}[]}|null>(null),[confirmPause,setConfirmPause]=useState(false);
  const [found,setFound]=useState<Record<string,{id:string;name:string;employeeId:string|null}[]>>({}),[reviewerSearch,setReviewerSearch]=useState('');
  const row=workflows.find(w=>w.id===selected),users=found[row?.companyId??'']??directories.find(d=>d.companyId===row?.companyId)?.users??[],groups=businessGroups.filter(g=>g.companyId===row?.companyId);
- const configuredIds=Array.from(new Set((JSON.stringify(draft??{}).match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi)??[]))).slice(0,200),configuredKey=configuredIds.join(',');
- useEffect(()=>{if(!loadDirectory||!row)return;let active=true;void loadDirectory({companyId:row.companyId,query:'',selectedUserIds:configuredKey?configuredKey.split(','):[]}).then(result=>{if(active&&result.ok)setFound(current=>({...current,[row.companyId]:result.result}));});return()=>{active=false;};},[loadDirectory,row?.companyId,configuredKey]);
+ const configuredIds=namedReviewerIds(draft),configuredKey=configuredIds.join(',');
+ useEffect(()=>{if(!loadDirectory||!row||!configuredKey)return;let active=true;void loadDirectory({companyId:row.companyId,query:'',selectedUserIds:configuredKey.split(',')}).then(result=>{if(active&&result.ok)setFound(current=>({...current,[row.companyId]:result.result}));});return()=>{active=false;};},[loadDirectory,row?.companyId,configuredKey]);
  function findReviewers(){if(!loadDirectory||!row)return;start(async()=>{const result=await loadDirectory({companyId:row.companyId,query:reviewerSearch,selectedUserIds:configuredIds});if(result.ok)setFound(current=>({...current,[row.companyId]:result.result}));else setError(result.detail??t('failed'));});}
  function choose(id:string){setSelected(id);setDraft(workflows.find(w=>w.id===id)?.draft??null);setError('');setSaved('');setPreview(null);setConfirmPause(false);}
  function change(update:Partial<ContractWorkflow>){if(draft){setDraft({...draft,...update});setPreview(null);setSaved('');}}
