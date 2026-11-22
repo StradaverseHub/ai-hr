@@ -467,6 +467,67 @@ async function jobDescriptionRecordRoutes(db, fixture) {
   ]);
 }
 
+async function noticeRecordRoutes(db, fixture) {
+  const [group, company, , , employee] = fixture.users;
+  const record = fixture.noticeRecord;
+  assert(record?.employmentId === employee.employmentId);
+  const recipients = await db`
+    select nr.employment_id, n.content_version, nr.first_viewed_at
+    from notice_recipient nr join notice n on n.id=nr.notice_id and n.tenant_id=nr.tenant_id
+    where n.id=${record.id}::uuid and n.tenant_id=${company.tenantId}::uuid
+      and n.company_id=${company.companyId}::uuid and n.published_at is not null
+    order by nr.employment_id
+  `;
+  assert.deepEqual([...recipients], [{ employment_id: employee.employmentId, content_version: 1, first_viewed_at: null }]);
+  return [
+    ...[group, company].map(actor => ({
+      actor, template: '/admin/notice-board/[id]', path: '/admin/notice-board/' + record.id,
+      exactHeading: record.title, content: 'This notice was published to 1 employee(s).', exactContent: true,
+    })),
+    {
+      actor:employee, template:'/notices/[id]', path:'/notices/' + record.id + '?employmentId=' + employee.employmentId,
+      exactHeading:record.title, content:record.body, exactContent:true, acknowledgeNotice:record.id,
+    },
+  ];
+}
+
+async function verifyNoticeAcknowledgement(page, main, db, entry, row, pass, timeout) {
+  const {actor, acknowledgeNotice} = entry;
+  const receipts = () => db`
+    select actor_user_id, content_version, acknowledged_at, source_event_id
+    from notice_acknowledgement where tenant_id=${actor.tenantId}::uuid
+      and notice_id=${acknowledgeNotice}::uuid and employment_id=${actor.employmentId}::uuid
+  `;
+  const [view] = await db`
+    select first_viewed_at from notice_recipient where tenant_id=${actor.tenantId}::uuid
+      and notice_id=${acknowledgeNotice}::uuid and employment_id=${actor.employmentId}::uuid
+  `;
+  assert(view?.first_viewed_at, 'The recipient view must be recorded');
+  const status = main.locator('p[role="status"] time');
+  if (pass === 'first') {
+    assert.equal((await receipts()).length, 0, 'Opening the notice must not record consent');
+    const started = performance.now();
+    const reply = page.waitForResponse(response => {
+      const request = response.request();
+      return request.method() === 'POST' && Boolean(request.headers()['next-action'])
+        && new URL(response.url()).pathname === '/notices/' + acknowledgeNotice;
+    }, { timeout });
+    const clicked = main.getByRole('button',{name:'Acknowledge this version',exact:true}).click({timeout});
+    const [response] = await Promise.all([reply,clicked]);
+    assert.equal(response.status(),200);
+    await status.waitFor({state:'visible',timeout});
+    row.noticeAcknowledgementMs = Math.round(performance.now()-started);
+  } else {
+    await status.waitFor({state:'visible',timeout});
+  }
+  const rows = await receipts();
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].actor_user_id,actor.userId);
+  assert.equal(rows[0].content_version,1);
+  assert(rows[0].acknowledged_at && rows[0].source_event_id);
+  row.noticeAcknowledgementPersisted = true;
+}
+
 async function payrollCorrectionRoutes(db, fixture) {
   const [group, company] = fixture.users;
   const subject = fixture.users[4];
@@ -873,7 +934,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -881,6 +942,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceRecords ? await attendanceRecordRoutes(db, fixture)
     : performanceReportRecords ? await performanceReportRecordRoutes(db, fixture)
     : jobDescriptionRecords ? await jobDescriptionRecordRoutes(db, fixture)
+    : noticeRecords ? await noticeRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -952,6 +1014,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             await main.getByRole('button', { name: 'Print / Save as PDF', exact: true }).click({ timeout: remaining() });
             await page.locator('html[data-fixture-printed="true"]').waitFor({ state: 'attached', timeout: remaining() });
             row.printMs = Math.round(performance.now() - printStarted);
+          }
+          if (entry.acknowledgeNotice) {
+            row.noticePageReadyMs = Math.round(performance.now()-started);
+            row.step = 'notice-acknowledgement';
+            await verifyNoticeAcknowledgement(page,main,db,entry,row,pass,remaining());
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);

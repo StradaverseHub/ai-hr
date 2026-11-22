@@ -67,6 +67,20 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_NOTICE_RECORDS==='true'){
+  const employee=fixture.users[4];
+  assert(employee.role==='employee'&&employee.companyId===company.companyId);
+  const {createNotice,publishNotice}=await source('core/notice.ts');
+  const title='Fictional Warehouse Safety Notice';
+  const body='Confirm that you reviewed the shift handover instructions.';
+  const {id}=await createNotice(ctx,{
+   companyId:company.companyId,title,body,targetMode:'individual',employmentIds:[employee.employmentId],
+   startOn:fixture.today,endOn:fixture.today,requiresAcknowledgement:true,notifyOnPublish:false,popupEnabled:false,
+  });
+  assert.equal((await publishNotice(ctx,id)).recipients,1);
+  fixture.noticeRecord={id,title,body,employmentId:employee.employmentId};
+ }
+
  if(env.PERF_JOB_DESCRIPTION_RECORDS==='true'){
   const {saveJobDraft}=await source('packs/job-descriptions/service.ts');
   const title='Fictional Warehouse Coordinator';
