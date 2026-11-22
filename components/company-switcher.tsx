@@ -8,6 +8,7 @@ import { ChevronDown } from 'lucide-react';
 import { setCompanyScope } from '@/app/scope-actions';
 import { cn } from '@/lib/utils';
 import { useIsMonolith } from '@/components/ui-theme-context';
+import { useClientReady } from '@/components/use-client-ready';
 
 /**
  * Odoo-style multi-company context: shows the active company/companies, multi-select to re-scope.
@@ -58,6 +59,7 @@ export function CompanySwitcher({
   const personalCredits = pathname === '/leave/credit-details';
   const inquiryReturnPath = pathname === '/leave/employee-balances' || pathname === '/leave/employee-records' ? pathname : undefined;
   const [open, setOpen] = useState(false);
+  const interactive = useClientReady();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [sel, setSel] = useState<Set<string>>(() => new Set(selected));
   const t = useTranslations('topbar');
@@ -101,6 +103,7 @@ export function CompanySwitcher({
         ref={triggerRef}
         data-company-switcher
         type="button"
+        disabled={!interactive}
         onClick={() => {
           // Reset the pending picks when the popover OPENS. Deselect all does not submit, so an
           // abandoned clear would otherwise linger on reopen.
