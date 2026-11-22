@@ -25,7 +25,10 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET r
  SELECT e.id,p.full_name,e.employee_code FROM valid_scope s
  JOIN public.employment e ON e.tenant_id=app.current_tenant_id()
  JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
- WHERE app.access_workforce_employment(e.id,'workforce.view')
+ WHERE app.access_workforce_employment_permitted(
+   e.tenant_id,e.company_id,e.voided_at,e.import_pending_attempt_id,
+   (SELECT app.access_workforce_permitted_companies('workforce.view'))
+  )
   AND app.attendance_selected_approver_eligible(s.company_id,e.id)
  ORDER BY p.full_name,e.employee_code,e.id
 $$;
@@ -71,13 +74,26 @@ async function requireControl(tx) {
  `;
  // The exact cross-company-pending body uses company only for tenant membership.
  assert.equal(eligibility.body,'1e59af65efaf32491df7a36f443e3f6c');
+ // Keep the exact workforce visibility owner and its existing set-based equivalent paired.
+ const contracts = [
+  ['app.access_workforce_employment(uuid,text)','dcdb6797287dc5c3339ffab3873fd892'],
+  ['app.access_workforce_permitted_companies(text)','6eb803690169338c1a8480d4c488d6c1'],
+  ['app.access_workforce_employment_permitted(uuid,uuid,timestamptz,uuid,uuid[])','4dcea99560326ecaba91f1f7942d402c'],
+  ['app.import_marker_released(uuid)','e494ebf66f1e0e7e031738300e39166d'],
+ ];
+ const bodies = await tx`
+  select sig as signature, md5(proc.prosrc) as hash
+  from unnest(${contracts.map(([signature])=>signature)}::text[]) as wanted(sig)
+  left join pg_proc proc on proc.oid=to_regprocedure(wanted.sig)
+ `;
+ assert.deepEqual(Object.fromEntries(bodies.map(row=>[row.signature,row.hash])),Object.fromEntries(contracts));
  return control;
 }
 
 export async function measureApproverOptions(fixture, dbEnv, record) {
  const db = disposableOwner(dbEnv);
  const [group, company, , , employee] = fixture.users;
- const report = {measurements:[], rolledBack:false};
+ const report = {authorization:'existing-set-based-workforce-owner',measurements:[],rolledBack:false};
  try {
   await db.begin(async tx => {
    const control = await requireControl(tx);
