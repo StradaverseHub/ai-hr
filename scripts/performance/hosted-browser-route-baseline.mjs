@@ -16,6 +16,7 @@ import {isAuthRoute} from '../../lib/auth-routes.ts';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
+import {exercisePersonnelContactSave} from './personnel-contact-save-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
 import {measureOwnPayslipDetail} from './own-payslip-detail-browser.mjs';
 import {exercisePayrollRegister,verifyPayrollRegisterBoundary} from './payroll-register-browser.mjs';
@@ -2334,7 +2335,7 @@ const actionLaneByJourney={
  'personal-calendar-month':'shell','shell-popovers':'shell','shell-bell-readiness':'shell','shell-preview-automatic':'shell','shell-preview-home':'shell',
  'shell-preview-payroll':'shell','shell-preview-personnel':'shell','shell-preview-claims':'shell','welcome-tour':'shell','assistant-saved-history':'shell','notification-read':'shell',
  'group-company-scope':'workforce','group-lifecycle-menu':'workforce','roster-exceptions':'workforce','daily-attendance-filters':'workforce',
- 'job-description-editor-open':'workforce','personnel-switcher':'workforce','org-explorer':'workforce','personnel-movement':'workforce','new-joiners-search':'workforce',
+ 'job-description-editor-open':'workforce','personnel-switcher':'workforce','personnel-contact-save':'workforce','org-explorer':'workforce','personnel-movement':'workforce','new-joiners-search':'workforce',
  'own-released-payslip-detail':'payroll','payroll-history-breakdown':'payroll','payroll-wizard':'payroll','payroll-register-pager':'payroll','payroll-register-boundary':'payroll','payroll-scope-denial':'payroll',
  'approvals-summary-readiness':'approvals','approvals-categories':'approvals','claim-approval':'approvals','saved-report-draft':'approvals',
 };
@@ -2399,6 +2400,13 @@ async function measureActions(fixture){
    await options.page.goto(origin+'/admin/personnel',{waitUntil:'domcontentloaded',timeout:15000});
    await exercisePersonnelSwitcher(options);
   },timings:result=>result.personnelSwitcherBrowser?.map(row=>({step:row.step,elapsedMs:row.elapsedMs,usable:row.usable}))},
+  ...[0,1].map(actorIndex=>({name:'personnel-contact-save',actorIndex,run:exercisePersonnelContactSave,
+   timings:result=>{
+    const profile=result.personnelProfileActions?.[0];
+    if(!profile)return [];
+    return [...profile.steps.map(({name,persistedMs,timings})=>({step:name,elapsedMs:persistedMs,...timings})),
+     ...(profile.outcome==='passed'?[{step:'discard',elapsedMs:profile.discardMs}]:[])];
+   }})),
   {name:'payroll-wizard',actorIndex:0,run:exercisePayrollBrowser,
    timings:result=>result.browserPayrollReadiness?.map(row=>({step:row.surface,elapsedMs:row.elapsedMs,usable:row.usable,
     ...(Number.isFinite(row.trace?.expectedEmployeeVisibleMs)&&{continueToReadyMs:row.trace.expectedEmployeeVisibleMs-row.trace.continueStartedMs})}))},
