@@ -124,7 +124,6 @@ class GuardedInvocation:
         self.base.check(opened.st_uid==0 and stat.S_IMODE(opened.st_mode)==0o600 and opened.st_nlink==1 and
                         (opened.st_dev,opened.st_ino)==(named.st_dev,named.st_ino),'root install lock differs')
         self.install_fd,self.install_path,self.install_identity=fd,Path(path),(opened.st_dev,opened.st_ino)
-        self.verify_install()
         self.base.VERIFIED_OPERATION_FDS=self.inherited_fds()
 
     def verify_install(self):
@@ -136,8 +135,8 @@ class GuardedInvocation:
 
     def inherited_fds(self):
         # Both descriptions remain locked in direct authority/mutation children after parent death.
-        self.verify()
-        if self.install_fd is None:return (self.lock.fd,)
+        if self.install_fd is None:return (self.verify(),)
+        # verify_install includes the complete runtime and queue verification.
         self.verify_install()
         return (self.lock.fd,self.install_fd)
 
@@ -151,8 +150,9 @@ class GuardedInvocation:
         self.last_phase=held['phase'];return held
 
     def before_mutation(self):
-        self.verify();a=self.a;b=self.base
-        if self.install_fd is not None:self.verify_install()
+        a,b=self.a,self.base
+        if self.install_fd is None:self.verify()
+        else:self.verify_install()
         b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired')
         b.check(self.ci.sha(b.read_bounded(self.ci.SOURCE/'.env.production',1024**2))==a['dotenvSha256'] and
                 self.ci.sha(b.read_bounded(b.ENV,1024**2))==self.identity['worker_env_sha256'],'approved web/worker environment changed')
@@ -207,8 +207,7 @@ def launch(argv,fmt,base,ci,update):
         guard=GuardedInvocation(base,ci,stage,args.approval,args.approval_sha256)
         ci.ACTIVE_OPERATION_GUARD=guard;base.VERIFIED_OPERATION_GUARD=guard;base.VERIFIED_OPERATION_FDS=(guard.lock.fd,)
         def fenced_command(command,**options):
-            guard.verify()
-            # The verified EX appears after upgrade acquires it; never inherit a stale/closed fd.
+            # This call verifies the full runtime and the current lock descriptions before exec.
             base.VERIFIED_OPERATION_FDS=guard.inherited_fds()
             mutating=len(command)>1 and command[0]=='/usr/bin/systemctl' and command[1]in ('kill','start','stop','daemon-reload','disable','enable')
             if mutating:

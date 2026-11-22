@@ -123,6 +123,16 @@ class KernelTests(unittest.TestCase):
             self.assertEqual(g.inherited_fds(),(g.lock.fd,g.install_fd))
             self.assertFalse(self.try_ex(self.operation));self.assertFalse(self.try_ex(self.install))
         finally:os.close(g.install_fd);g.close()
+    def test_descriptor_inheritance_rechecks_runtime_once_per_call(self):
+        g=held_guard(self.queue,self.install)
+        calls=[]
+        original=g.verify
+        g.verify=lambda:(calls.append(True),original())[1]
+        try:
+            self.assertEqual(g.inherited_fds(),(g.lock.fd,g.install_fd))
+            self.assertEqual(g.inherited_fds(),(g.lock.fd,g.install_fd))
+            self.assertEqual(len(calls),2)
+        finally:os.close(g.install_fd);g.close()
     def orphan(self,readonly):
         read,write=os.pipe();p=subprocess.Popen([sys.executable,'-I','-B',str(Path(__file__).resolve()),'--holder',str(self.queue),str(self.install),str(read),str(int(readonly))],pass_fds=(read,),stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         os.close(read);child=None;child_fd=None

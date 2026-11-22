@@ -74,6 +74,7 @@ jobs:
       - name: Model full prepared activation and deadline refusals using staging observations
         run: |
           set -o pipefail
+          python3 -I -B test/fixtures/bank-import-worker-operation-guard-tests.py
           python3 -I -B test/fixtures/bank-import-worker-staging-clock-rehearsal.py | tee "$RUNNER_TEMP/guarded-clock-graph.jsonl"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
