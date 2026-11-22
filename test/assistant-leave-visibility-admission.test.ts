@@ -50,7 +50,7 @@ vi.mock('next-intl/server',async()=>{
  const {createFormatter,createTranslator}=await import('next-intl');
  const {enWithAiCentre}=await import('./helpers/ai-centre-messages');
  return {
-  getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:enWithAiCentre,namespace}),
+  getTranslations:async(namespace:'aiManagement'|'aiCentre'|'controlTower')=>createTranslator({locale:'en',messages:enWithAiCentre,namespace}),
   getLocale:async()=> 'en',
   getFormatter:async()=>createFormatter({locale:'en',timeZone:'Asia/Kuala_Lumpur'}),
  };
@@ -58,7 +58,7 @@ vi.mock('next-intl/server',async()=>{
 
 async function renderWorkers(session:SessionContext){
  const screen=await AiManagementScreen({session,section:'features',searchParams:Promise.resolve({})});
- return renderToStaticMarkup(createElement(NextIntlClientProvider,{locale:'en',messages:enWithAiCentre},screen));
+ return renderToStaticMarkup(createElement(NextIntlClientProvider,{locale:'en',messages:enWithAiCentre,children:screen}));
 }
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 let base:Base;
