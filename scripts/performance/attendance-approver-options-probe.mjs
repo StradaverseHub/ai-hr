@@ -64,7 +64,13 @@ export async function projectAttendanceFixtureOwner(dbEnv) {
   await db.begin(async tx => {
    const [before] = await tx`select current_database() as database, session_user as login`;
    assert.deepEqual(before,{database:'ai_hr_dev',login:'postgres'});
-   await tx`CREATE ROLE ai_hr_owner LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOBYPASSRLS NOINHERIT`;
+   const [role] = await tx`select rolcanlogin as login,
+    not(rolsuper or rolcreaterole or rolcreatedb or rolbypassrls) as restricted
+    from pg_roles where rolname='ai_hr_owner'`;
+   if (role) {
+    assert(role.restricted,'Expected the existing disposable restricted owner');
+    if (!role.login) await tx`ALTER ROLE ai_hr_owner LOGIN`;
+   } else await tx`CREATE ROLE ai_hr_owner LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOBYPASSRLS NOINHERIT`;
    await tx`ALTER DATABASE ai_hr_dev OWNER TO ai_hr_owner`;
    await tx`GRANT CONNECT ON DATABASE ai_hr_dev TO ai_hr_app`;
    await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
