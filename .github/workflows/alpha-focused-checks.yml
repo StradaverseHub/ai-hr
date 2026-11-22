@@ -203,6 +203,7 @@ jobs:
                   "$EXPECTED_SHA" == 24e0b499be5f009c409e539c1e78add85d7f3b03 ||
                   "$EXPECTED_SHA" == a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778 ||
                   "$EXPECTED_SHA" == b582a3d30f2f8d22d56e46da881f405ce7095834 ||
+                  "$EXPECTED_SHA" == 953add4f96103a34ae0618a7fd43a4875e94c450 ||
                   "$EXPECTED_SHA" == ef953a158bf1fde5073ca43557268add5ff0883e ) && "$MIXED_GROUP_SCALE" == true &&
                 "$BROWSER_MIXED_LOAD" == true && "$ESTABLISHED_ATTENDANCE" == true &&
                 "$REPLACEMENT_CATALOGUE" == present && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&

@@ -58,6 +58,7 @@ const homeScopeMainCandidate='d552f70c13b8a46cf19fdd973ecbe2f80c7ccf79';
 const shellLifetimeCandidate='24e0b499be5f009c409e539c1e78add85d7f3b03';
 const nextResponseCloseCandidate='a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778';
 const nextResponseCloseWithPayrollBoundary='b582a3d30f2f8d22d56e46da881f405ce7095834';
+const scopedJobDescriptionChoices='953add4f96103a34ae0618a7fd43a4875e94c450';
 const combinedGroupArtifacts=new Map([
  ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],
  ['71e0dceb1a393817f3040518e82dc845a27700b0',{runId:44927404845,artifactId:14716484117}],
@@ -77,7 +78,7 @@ const freshGroupBuilds=new Set([
  detachedShellBuild,'0ba883e0aa294bb0f15dcfe2433deedb52d11996','57fac422707b3a6174a290722ea0bb53da89f7c0',
  '52d2d170710fcfb14219abe2f9d0abc84e536748','5e34835d73183b2754c9b3e4ccdbfc31111917a8',
  clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,homeScopeMainCandidate,shellLifetimeCandidate,
- nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,
+ nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,scopedJobDescriptionChoices,
 ]);
 const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD))&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
@@ -126,7 +127,7 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(shellLifetimeEnabled&&{shellHttpLifetime:'node-response-close'}),
- ...([nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary].includes(sha)&&{shellHttpLifetime:'next-after'}),
+ ...([nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,scopedJobDescriptionChoices].includes(sha)&&{shellHttpLifetime:'next-after'}),
  ...(reusedBuild&&{buildArtifact:combinedGroupBuild
   ? {sourceSha:sha,...combinedGroupArtifact}
   : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
@@ -764,7 +765,7 @@ async function withMixedContractNavigationComparison(work){
    }
    save();
    if(!clockingTenantQueue){
-    if([clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,browserIntegrationNativePreflight,browserIntegrationNativeControl,homeScopeMainCandidate,shellLifetimeCandidate,nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary].includes(sha)){
+    if([clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,browserIntegrationNativePreflight,browserIntegrationNativeControl,homeScopeMainCandidate,shellLifetimeCandidate,nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,scopedJobDescriptionChoices].includes(sha)){
      const rows=await owner`select exclusive from bulk_job_kind where kind='clocking_import'`;
      assert.deepEqual([...rows],[{exclusive:'tenant'}]);
      report.mixedClockingQueuePolicy={policy:'tenant'};
