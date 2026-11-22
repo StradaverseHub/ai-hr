@@ -355,6 +355,10 @@ node --import tsx scripts/experiments/protected-leave-routing-holdout-cli.ts CAS
 
 The development suite covers a selected second or third employment, duplicate company labels, an unknown company, a withheld count, multiple leave types and a named coworker. The comparison uses the serving projection and answer-selection functions on fictional source results. A serving successor would need to recheck the chosen employment and replay its canonical facts before retaining an answer. Independent evaluation and trial results are separate.
 
+A frozen 12-case development suite at `e991d8f52149c83ff95fbec60e24ca5bdef1f04b` required four additional answers before execution. The single-employment route answered 3 of 7 eligible cases. The successor answered 7 of 7, adding correct selections across two, three and four fictional own employments. Both routes deferred all 5 cases that required deferral. The report recorded zero regressions and no model calls. The author froze and ran the fictional cases for development. The comparison measures direct-answer coverage. The fallback's eventual answers and requests to a provider were outside this experiment.
+
+Case file SHA-256 `83f7599c4011fce90cf85e34e8c10171c45d9e94bbbc0f1a2b2e1f3575bd4d67`. Case set digest `448ca83464233e3fc3028179249781961027fdd228de4b88ff59ff7e39fd956f`. Aggregate report SHA-256 `e9b27bc27929b05f865cb70c270cdb297934d68ecbc37c1bcfce2985d22efbcb`.
+
 Candidate reviews shows the admission limit separately from the owner's observed trial exchanges and model responses. The model-free count comes from completed own exchanges with a retained canonical answer and zero model turns or tokens. Clearing Assistant history or strategy metadata can remove the underlying evidence. These counts measure recorded use and give no accuracy or savings estimate by themselves.
 
 ### Paired development comparison on the integrated leave candidate
