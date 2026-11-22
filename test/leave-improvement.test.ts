@@ -916,15 +916,27 @@ describe('evaluator-owned leave routing suite', () => {
         ...employment, balances:employment.balances.map(row=>item.expected.kind==='direct' && 'field' in item.expected &&
           item.expected.field!=='available' ? {...row,available:arm===0?0:8} : {...row,pending:arm===0?-0.5:-1}),
       }))}}))}));
+    const predecessorSuites=successorInputs.map(input=>
+      prepareLeavePredecessorHoldout(input.bytes,input.digest,successorSha,candidateSha));
     const successorMembers=successorInputs.map((input,index)=>({
       id:plan.evaluators[index].id, publicKey:plan.evaluators[index].publicKey,
+      predecessorHoldoutDigest:predecessorSuites[index].digest,
       ...describeSuccessorLeaveRoutingCases(input.bytes,input.digest),
     }));
-    const successorPlan={version:3,trialId:id('10'),tenantId:plan.tenantId,authorId:plan.authorId,approverId:plan.approverId,
+    const successorPlan={version:4,trialId:id('10'),tenantId:plan.tenantId,authorId:plan.authorId,approverId:plan.approverId,
       candidateSha:successorSha,candidateDigest:'1'.repeat(64),sourceDigest:'2'.repeat(64),parentArchiveDigest:archive.digest,
       committedAt:'2026-11-22T02:00:00Z',expiresAt:'2026-11-23T00:00:00Z',evaluators:successorMembers};
     const succession=freezePlan(successorPlan), later=new Date('2026-11-22T06:00:00Z');
-    const successorReports=successorInputs.map(input=>scoreLeaveRoutingSuccessor(input.bytes,input.digest,successorSha));
+    const successorReports=successorInputs.map((input,index)=>{
+      const predecessor=predecessorSuites[index];
+      const report=scoreLeavePredecessorTrial(predecessor.bytes,predecessor.digest,candidateSha);
+      return compareLeavePredecessor(input.bytes,input.digest,successorSha,candidateSha,report);
+    });
+    const sameCheckoutComparison=scoreLeaveRoutingSuccessor(successorInputs[0].bytes,successorInputs[0].digest,successorSha);
+    for(const report of [sameCheckoutComparison,{...successorReports[0],predecessorSha:'b'.repeat(40)},
+      {...successorReports[0],predecessorHoldoutDigest:predecessorSuites[1].digest}])
+      expect(()=>signLeaveSuccessorEvidence(succession.bytes,succession.digest,archive.bytes,
+        successorMembers[0].id,report,keys[0].privateKey,later)).toThrow();
     const signed=successorReports.map((report,index)=>signLeaveSuccessorEvidence(succession.bytes,succession.digest,archive.bytes,
       successorMembers[index].id,report,keys[index].privateKey,later));
     const check=(signedReports:readonly unknown[]=signed,parent=archive.bytes)=>
@@ -935,6 +947,7 @@ describe('evaluator-owned leave routing suite', () => {
     expect(()=>check(receipts)).toThrow();
     expect(()=>check([signed[0],signed[0]])).toThrow();
     expect(()=>check([{...signed[0],report:{...signed[0].report,additionalCorrectAnswers:0}},signed[1]])).toThrow();
+    expect(()=>check([{...signed[0],report:{...signed[0].report,predecessorReportDigest:'3'.repeat(64)}},signed[1]])).toThrow();
     expect(()=>check(signed,Buffer.concat([archive.bytes,Buffer.from(' ')]))).toThrow();
     expect(()=>check(signed,freezePlan({...JSON.parse(archive.bytes.toString()),acceptedAt:later.toISOString()}).bytes)).toThrow();
     const reused=freezePlan({...successorPlan,evaluators:[successorMembers[0],{

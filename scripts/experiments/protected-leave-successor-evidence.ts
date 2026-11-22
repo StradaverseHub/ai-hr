@@ -10,10 +10,10 @@ const count = z.number().int().min(0).max(32);
 const caseDigests = z.array(digest).min(4).max(32);
 const evaluator = z.object({
   id: z.uuid(), publicKey: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
-  holdoutDigest: digest, caseDigests, minimumAdditionalAnswers: count.min(1),
+  holdoutDigest: digest, predecessorHoldoutDigest: digest, caseDigests, minimumAdditionalAnswers: count.min(1),
 }).strict();
 const successorPlan = z.object({
-  version: z.literal(3), trialId: z.uuid(), tenantId: z.uuid(), authorId: z.uuid(), approverId: z.uuid(),
+  version: z.literal(4), trialId: z.uuid(), tenantId: z.uuid(), authorId: z.uuid(), approverId: z.uuid(),
   candidateSha: sha, candidateDigest: digest, sourceDigest: digest, parentArchiveDigest: digest,
   committedAt: z.iso.datetime(), expiresAt: z.iso.datetime(), evaluators: z.tuple([evaluator, evaluator]),
 }).strict();
@@ -26,12 +26,12 @@ const parentCases = z.object({ evaluators: z.tuple([
   z.object({ caseDigests }), z.object({ caseDigests }),
 ]) });
 const reportSchema = z.object({
-  evidence: z.literal('offline_leave_successor_comparison'), candidateSha: sha, holdoutDigest: digest,
+  evidence: z.literal('offline_leave_predecessor_replay'), candidateSha: sha, predecessorSha: sha,
+  holdoutDigest: digest, predecessorHoldoutDigest: digest, predecessorReportDigest: digest,
   caseSetDigest: digest, cases: count.min(4), minimumAdditionalAnswers: count.min(1), expectedDirect: count.min(2),
-  parentCorrectDirect: count.min(1), parentCorrectDeferrals: count, successorCorrectDirect: count,
+  predecessorCorrectDirect: count.min(1), predecessorCorrectDeferrals: count, successorCorrectDirect: count,
   successorCorrectDeferrals: count, additionalCorrectAnswers: count.min(1),
-  regressions: z.literal(0), wrongDirect: z.literal(0), unexpectedDirect: z.literal(0),
-  modelCalls: z.literal(0), releaseAuthorized: z.literal(false), meetsThreshold: z.literal(true),
+  releaseAuthorized: z.literal(false), meetsThreshold: z.literal(true),
 }).strict();
 const receiptSchema = z.object({ evaluatorId: z.uuid(), planDigest: digest, report: reportSchema,
   signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/),
@@ -55,33 +55,35 @@ function inspect(planBytes: Buffer, planDigest: string, archiveBytes: Buffer, no
       plan.candidateSha === parent.candidateSha || plan.candidateDigest === parent.candidateDigest ||
       new Set(combined).size !== combined.length ||
       new Set([plan.authorId, plan.approverId, first.id, second.id]).size !== 4 ||
-      first.publicKey === second.publicKey || first.holdoutDigest === second.holdoutDigest) return refused();
+      first.publicKey === second.publicKey || first.holdoutDigest === second.holdoutDigest ||
+      first.predecessorHoldoutDigest === second.predecessorHoldoutDigest) return refused();
   return { plan, parent, archive };
 }
 
-function reportFor(plan: z.infer<typeof successorPlan>, evaluatorId: string, supplied: unknown) {
+function reportFor(plan: z.infer<typeof successorPlan>, predecessorSha: string, evaluatorId: string, supplied: unknown) {
   const member = plan.evaluators.find(row => row.id === evaluatorId);
   const report = reportSchema.parse(supplied);
-  if (!member || report.candidateSha !== plan.candidateSha || report.holdoutDigest !== member.holdoutDigest ||
+  if (!member || report.candidateSha !== plan.candidateSha || report.predecessorSha !== predecessorSha ||
+      report.holdoutDigest !== member.holdoutDigest || report.predecessorHoldoutDigest !== member.predecessorHoldoutDigest ||
       report.caseSetDigest !== leaveEvaluationCaseSetDigest(member.caseDigests) || report.cases !== member.caseDigests.length ||
       report.minimumAdditionalAnswers !== member.minimumAdditionalAnswers || report.cases - report.expectedDirect < 2 ||
-      report.parentCorrectDeferrals !== report.cases - report.expectedDirect ||
-      report.successorCorrectDeferrals !== report.parentCorrectDeferrals ||
+      report.predecessorCorrectDeferrals !== report.cases - report.expectedDirect ||
+      report.successorCorrectDeferrals !== report.predecessorCorrectDeferrals ||
       report.successorCorrectDirect !== report.expectedDirect ||
-      report.additionalCorrectAnswers !== report.successorCorrectDirect - report.parentCorrectDirect ||
+      report.additionalCorrectAnswers !== report.successorCorrectDirect - report.predecessorCorrectDirect ||
       report.additionalCorrectAnswers < member.minimumAdditionalAnswers) return refused();
   if (Buffer.from(member.publicKey, 'base64url').toString('base64url') !== member.publicKey) return refused();
   return { report, publicKey: member.publicKey };
 }
 
 const material = (receipt: Omit<Receipt, 'signature'>) => Buffer.from(JSON.stringify([
-  'aihr.assistant.paired-leave-successor-evidence.v3', receipt.planDigest, receipt.evaluatorId, receipt.report,
+  'aihr.assistant.paired-leave-successor-evidence.v4', receipt.planDigest, receipt.evaluatorId, receipt.report,
 ]));
 
 export function signLeaveSuccessorEvidence(planBytes: Buffer, planDigest: string, archiveBytes: Buffer,
   evaluatorId: string, aggregate: unknown, key: KeyObject, now = new Date()): Receipt {
-  const { plan } = inspect(planBytes, planDigest, archiveBytes, now);
-  const { report, publicKey } = reportFor(plan, evaluatorId, aggregate);
+  const { plan, parent } = inspect(planBytes, planDigest, archiveBytes, now);
+  const { report, publicKey } = reportFor(plan, parent.candidateSha, evaluatorId, aggregate);
   if (key.type !== 'private' || key.asymmetricKeyType !== 'ed25519' ||
       createPublicKey(key).export({ format: 'jwk' }).x !== publicKey) return refused();
   const receipt = { evaluatorId, planDigest, report };
@@ -96,7 +98,7 @@ export function verifyLeaveSuccessorEvidence(planBytes: Buffer, planDigest: stri
   const verified = supplied.map(value => {
     const receipt = receiptSchema.parse(value);
     if (receipt.planDigest !== planDigest) return refused();
-    const { publicKey } = reportFor(plan, receipt.evaluatorId, receipt.report);
+    const { publicKey } = reportFor(plan, parent.candidateSha, receipt.evaluatorId, receipt.report);
     const signature = Buffer.from(receipt.signature, 'base64url');
     if (signature.length !== 64 || signature.toString('base64url') !== receipt.signature ||
         !verify(null, material(receipt), createPublicKey({ key: { kty: 'OKP', crv: 'Ed25519', x: publicKey }, format: 'jwk' }), signature))

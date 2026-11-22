@@ -267,7 +267,8 @@ export function compareLeavePredecessor(bytes: Buffer, holdoutDigest: string, ca
   const additionalCorrectAnswers = successor.successorCorrectDirect - predecessor.correctDirect;
   return {
     evidence: 'offline_leave_predecessor_replay', candidateSha, predecessorSha, holdoutDigest,
-    predecessorHoldoutDigest: expected.digest, caseSetDigest: successor.caseSetDigest, cases: successor.cases,
+    predecessorHoldoutDigest: expected.digest, predecessorReportDigest: routingDigest(predecessor),
+    caseSetDigest: successor.caseSetDigest, cases: successor.cases, expectedDirect: successor.expectedDirect,
     predecessorCorrectDirect: predecessor.correctDirect, predecessorCorrectDeferrals: predecessor.correctDeferrals,
     successorCorrectDirect: successor.successorCorrectDirect, successorCorrectDeferrals: successor.successorCorrectDeferrals,
     additionalCorrectAnswers, minimumAdditionalAnswers: successor.minimumAdditionalAnswers, releaseAuthorized: false,
