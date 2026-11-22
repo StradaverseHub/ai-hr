@@ -227,6 +227,13 @@ jobs:
               *) exit 2 ;;
             esac
           fi
+          if [[ "$EXPECTED_SHA" == 2d0a60f552e42f4dff934bb5f32e091d322f2734 ]]; then
+            [[ "$MIXED_GROUP_SCALE" == true && "$BROWSER_MIXED_LOAD" == true &&
+                "$ESTABLISHED_ATTENDANCE" == true && "$REPLACEMENT_CATALOGUE" == present &&
+                "$MIXED_DATABASE_TOPOLOGY" == transaction-pool && "$SHELL_PERMISSION_VARIANT" == none &&
+                "$BROWSER_FIXTURE_ONLY" != true && "$REUSE_BUILD" != true && "$RUN_BUILD" == true ]] || exit 2
+            combined_group_build=true
+          fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
               true:a84ddf3812fa6ecd60c1a54802ab5f205e2ba212)
@@ -320,7 +327,7 @@ jobs:
         run: printf 'exec-path=%s\n' "$(command -v node)" >> "$GITHUB_OUTPUT"
       - uses: ./automation/.github/actions/setup-alpha
         with:
-          node: ${{ inputs.browser_route_baseline && needs.resolve.outputs.sha != 'a84ddf3812fa6ecd60c1a54802ab5f205e2ba212' && '20' || '22.23.3' }}
+          node: ${{ inputs.browser_route_baseline && needs.resolve.outputs.sha != 'a84ddf3812fa6ecd60c1a54802ab5f205e2ba212' && needs.resolve.outputs.sha != '2d0a60f552e42f4dff934bb5f32e091d322f2734' && '20' || '22.23.3' }}
           capacity_profile: ${{ !inputs.browser_route_baseline && github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}
           mobile: ${{ !inputs.browser_route_baseline }}
       - name: Provision multilingual fonts for AI review screenshots
@@ -517,6 +524,10 @@ jobs:
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
+          if [[ "$AIHR_CI_HEAD" == 2d0a60f552e42f4dff934bb5f32e091d322f2734 ]]; then
+            test "$(git rev-parse HEAD^)" = "a84ddf3812fa6ecd60c1a54802ab5f205e2ba212"
+            test "$(git diff --name-only HEAD^ HEAD)" = app/layout.tsx
+          fi
           if [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" == a84ddf3812fa6ecd60c1a54802ab5f205e2ba212 ]]; then
             test "$(cat .next/BUILD_ID)" = "$(jq -er .nextBuildId "$RUNNER_TEMP/capacity-build-private/packet/build-provenance.json")"
             exit 0
@@ -614,7 +625,7 @@ jobs:
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
         with:
-          node: '20'
+          node: ${{ needs.resolve.outputs.sha == '2d0a60f552e42f4dff934bb5f32e091d322f2734' && '22.23.3' || '20' }}
           mobile: ${{ !inputs.browser_route_baseline }}
       # Bounded next build heap: exactly 8192 MB, only this step, only on a GitHub-hosted 16 GB Linux
       # runner (build-heap.mjs refuses anything else and any value above 8192). Raising the ceiling needs
