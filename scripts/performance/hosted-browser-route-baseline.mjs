@@ -43,7 +43,9 @@ const mixedVariant=env.AIHR_BROWSER_SHELL_PERMISSION_VARIANT??'none';
 const clockingTenantQueue=mixedVariant==='contract-optimized-clocking-queue';
 const shellPermissionVariant=clockingTenantQueue?'contract-optimized':mixedVariant;
 assert(['none','contract-control','contract-optimized'].includes(shellPermissionVariant));
-const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
+const topologyVariant=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
+const largerPool=topologyVariant==='transaction-pool-12';
+const databaseTopology=largerPool?'transaction-pool':topologyVariant;
 assert(['direct','transaction-pool'].includes(databaseTopology));
 const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
 const clockingOutcomeSource='a1d4cbb7bef482f7a6c8b75ab7fbec7611976857';
@@ -69,9 +71,11 @@ const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
 assert(!groupScale||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
 assert(!clockingTenantQueue||(env.AIHR_CI_HEAD===clockingOutcomeSource&&mixedLoad&&combinedGroupBuild&&!fixtureOnly&&!reusedBuild));
+assert(!largerPool||(env.AIHR_CI_HEAD===clockingOutcomeSource&&mixedLoad&&combinedGroupBuild&&
+ !fixtureOnly&&reusedBuild&&!clockingTenantQueue));
 assert(shellPermissionVariant==='none'||(groupScale&&databaseTopology==='transaction-pool'));
 assert(!env.DATABASE_POOLED_URL?.trim(),'The benchmark owns its web database topology');
-const webDatabaseConnections=8;
+const webDatabaseConnections=largerPool?12:8;
 const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
 assert(['','absent','present'].includes(replacementCatalogue));
 assert(!replacementCatalogue||(establishedAttendance&&!fixtureOnly));
@@ -2058,6 +2062,7 @@ try{
   if(databaseTopology==='transaction-pool'){
    webPooler=await poolerTarget({...MAIN_POOLER,serverConnections:webDatabaseConnections},dbEnv.DATABASE_URL);
    assert(webPooler,'Expected the job-owned PgBouncer fixture');
+   assert.equal(webPooler.serverConnections,webDatabaseConnections);
    report.mixedDatabaseTopology.poolerServerConnections=webPooler.serverConnections;
    save();
   }

@@ -86,10 +86,10 @@ on:
         default: none
         options: [none, contract-control, contract-optimized, contract-optimized-clocking-queue]
       mixed_database_topology:
-        description: Compare direct web connections with transaction pooling on the pinned fictional workload
+        description: Compare direct web connections and bounded pool sizes on the pinned fictional workload
         type: choice
         default: direct
-        options: [direct, transaction-pool]
+        options: [direct, transaction-pool, transaction-pool-12]
       mixed_group_scale:
         description: Add the existing 70-company group fixture without changing the 500 traffic actors
         default: false
@@ -152,6 +152,11 @@ jobs:
       - name: Validate bounded manifest
         id: selection
         run: |
+          if [[ "$MIXED_DATABASE_TOPOLOGY" == transaction-pool-12 ]]; then
+            [[ "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 &&
+              "$SHELL_PERMISSION_VARIANT" == contract-optimized && "$REUSE_BUILD" == true ]] || exit 2
+            MIXED_DATABASE_TOPOLOGY=transaction-pool
+          fi
           clocking_tenant_queue=false
           if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-clocking-queue ]]; then
             clocking_tenant_queue=true
