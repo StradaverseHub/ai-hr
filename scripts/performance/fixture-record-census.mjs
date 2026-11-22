@@ -556,6 +556,7 @@ function payrollFormulaEvaluationRoutes(fixture) {
   assert.equal(evaluation.companyId, company.companyId);
   assert.match(evaluation.id, /^[0-9a-f-]{36}$/i);
   assert.match(evaluation.formulaId, /^[0-9a-f-]{36}$/i);
+  assert.match(evaluation.cycleId, /^[0-9a-f-]{36}$/i);
   assert.equal(Number(evaluation.amount), 25);
   assert.equal(evaluation.componentCode, 'PERF_TRACE_AMOUNT');
   return [
@@ -571,6 +572,18 @@ function payrollFormulaEvaluationRoutes(fixture) {
       exactHeading: 'PERF_TRACE', witness: '[data-formula-source-panel] textarea',
       formulaSample: { source: 'Return {#Input} * 2', value: '12.5' },
     },
+    {
+      actor: group, template: '/admin/pay-components/[code]',
+      path: '/admin/pay-components/' + evaluation.componentCode,
+      exactHeading: 'Edit PERF_TRACE_AMOUNT',
+      witness: 'form:has(input[name="code"][readonly][value="PERF_TRACE_AMOUNT"]) input[name="name"][value="Fictional trace amount"]',
+    },
+    ...[group, company].map(actor => ({
+      actor, template: '/admin/payroll-cycle/[companyId]/[cycleId]',
+      path: '/admin/payroll-cycle/' + evaluation.companyId + '/' + evaluation.cycleId,
+      exactHeading: 'Fictional trace cycle',
+      witness: 'form:has(input[name="name"][value="Fictional trace cycle"]) input[name="code"][value="PERF_TRACE"]',
+    })),
   ];
 }
 
