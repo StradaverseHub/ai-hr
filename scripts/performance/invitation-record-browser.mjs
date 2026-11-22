@@ -42,6 +42,13 @@ export async function measureInvitationRecords({db,fixture,origin,compiledPages,
    }
    row.controlReadyMs=Math.round(performance.now()-started);
    row.outcome='usable-content';
+  }catch(error){
+   const diagnostic=String(error?.message??'');
+   row.failure=error?.name==='TimeoutError'?'timeout':
+    diagnostic.includes('strict mode violation')?'multiple-controls':
+    diagnostic.includes('Execution context was destroyed')?'navigation':
+    error?.code==='ERR_ASSERTION'?'assertion':'browser';
+   throw error;
   }finally{
    row.elapsedMs=Math.round(performance.now()-started);
    save();
@@ -59,7 +66,8 @@ export async function measureInvitationRecords({db,fixture,origin,compiledPages,
   action.wrongAccountBlocked=true;
   const page=await context.newPage();
   const activate=page=>page.getByRole('link',{name:'Activate account',exact:true});
-  const accept=page=>page.locator('button.login-submit');
+  const accept=page=>page.locator('section[aria-labelledby="internal-auth-title"] form')
+   .getByRole('button',{name:'Continue',exact:true});
   for(const pass of ['first','repeat']){
    action.stage='landing';
    await visit(page,landingTemplate,pass,()=>page.goto(origin+landing,{waitUntil:'commit',timeout}),
