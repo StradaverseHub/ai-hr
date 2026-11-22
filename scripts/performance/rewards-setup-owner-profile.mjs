@@ -1,3 +1,4 @@
+import {compareRewardsRosterReads} from './rewards-roster-read-comparison.mjs';
 /** Attribute Rewards Set-up read time using the same fictional review as the browser suite. */
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
@@ -61,9 +62,10 @@ try {
       assert(verify(value),'The native '+name+' owner did not admit the configured review');
     }
   }
+  const rosterReads = await compareRewardsRosterReads(source, ctx, tenant.rewardDraft);
   writeFileSync(join(env.PERF_PRIVATE_DIR,'rewards-setup-owner-profile.json'),JSON.stringify({
     scope:'Sequential native owner reads on the authenticated fictional review after the browser visits',
-    samplesMs:rows,
+    samplesMs:rows,rosterReads,
   }),{mode:0o600});
 } finally {
   await Promise.all([owner.client.end({timeout:5}),client.end({timeout:5})]);
