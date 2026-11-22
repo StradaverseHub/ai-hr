@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
 
 const probe = `
 CREATE FUNCTION app.performance_approver_options_probe(wanted_companies uuid[])
@@ -40,7 +41,7 @@ const rolledBack = new Error('Discard disposable approver prototype');
 const unknownCompany = '00000000-0000-0000-0000-000000000001';
 const contract = 'app.attendance_workflow_v3_approver_options(uuid[])';
 
-function disposableOwner(dbEnv) {
+function disposableOwner(dbEnv, restricted=false) {
  assert.equal(dbEnv.GITHUB_ACTIONS,'true');
  assert.equal(dbEnv.RUNNER_ENVIRONMENT,'github-hosted');
  assert.equal(dbEnv.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');
@@ -49,7 +50,39 @@ function disposableOwner(dbEnv) {
  assert.equal(dbEnv.PERF_HTTP_SUITE,'browser-route-baseline');
  assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
  const postgres = createRequire(join(process.cwd(),'package.json'))('postgres');
- return postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connect_timeout:5});
+ const url = new URL(dbEnv.MIGRATION_DATABASE_URL);
+ if (restricted) url.username = 'ai_hr_owner';
+ return postgres(url.href,{max:1,connect_timeout:5});
+}
+
+/** Project only the disposable fixture into the release owner's existing role model. */
+export async function projectAttendanceFixtureOwner(dbEnv) {
+ const db = disposableOwner(dbEnv);
+ const helper = pathToFileURL(join(process.cwd(),'test/helpers/installed-owner-projection.ts')).href;
+ const {PROJECT_INSTALLED_OWNERSHIP} = await import(helper);
+ try {
+  await db.begin(async tx => {
+   const [before] = await tx`select current_database() as database, session_user as login`;
+   assert.deepEqual(before,{database:'ai_hr_dev',login:'postgres'});
+   await tx`CREATE ROLE ai_hr_owner LOGIN NOSUPERUSER NOCREATEROLE NOCREATEDB NOBYPASSRLS NOINHERIT`;
+   await tx`ALTER DATABASE ai_hr_dev OWNER TO ai_hr_owner`;
+   await tx`GRANT CONNECT ON DATABASE ai_hr_dev TO ai_hr_app`;
+   await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
+   assert.equal((await requireControl(tx)).owner,'ai_hr_owner');
+  });
+ } finally {
+  await db.end({timeout:5});
+ }
+ const owner = disposableOwner(dbEnv,true);
+ try {
+  const [login] = await owner`select session_user as login,
+    not(rolsuper or rolcreaterole or rolcreatedb or rolbypassrls) as restricted
+    from pg_roles where rolname=current_user`;
+  assert.deepEqual(login,{login:'ai_hr_owner',restricted:true});
+  return {login:login.login,restricted:true,installedOwnership:true};
+ } finally {
+  await owner.end({timeout:5});
+ }
 }
 
 async function readControl(tx) {
@@ -170,10 +203,13 @@ export async function measureApproverOptions(fixture, dbEnv, record) {
 
 /** Let the exact browser build call the experiment inside the disposable runner. */
 export async function installApproverOptionsBrowserPrototype(dbEnv) {
- const db = disposableOwner(dbEnv);
+ const db = disposableOwner(dbEnv,true);
  try {
   const control = await db.begin(async tx => {
    const prior = await requireControl(tx);
+   assert.equal(prior.owner,'ai_hr_owner');
+   const [identity] = await tx`select session_user as login`;
+   assert.equal(identity.login,prior.owner);
    const definition = probe.split('REVOKE ALL')[0].replace(
     'CREATE FUNCTION app.performance_approver_options_probe',
     'CREATE OR REPLACE FUNCTION app.attendance_workflow_v3_approver_options',
@@ -189,7 +225,7 @@ export async function installApproverOptionsBrowserPrototype(dbEnv) {
    return prior;
   });
   return async () => {
-   const restore = disposableOwner(dbEnv);
+   const restore = disposableOwner(dbEnv,true);
    try {
     await restore.begin(async tx => {
      await tx.unsafe(control.definition).simple();

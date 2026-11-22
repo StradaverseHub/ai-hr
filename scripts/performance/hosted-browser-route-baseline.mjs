@@ -1,4 +1,4 @@
-import {installApproverOptionsBrowserPrototype,measureApproverOptions} from './attendance-approver-options-probe.mjs';
+import {installApproverOptionsBrowserPrototype,measureApproverOptions,projectAttendanceFixtureOwner} from './attendance-approver-options-probe.mjs';
 import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
 import {measureFixtureRecordCensus,seedFixedTransactionRecord,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
@@ -1600,6 +1600,8 @@ try{
   }finally{await owner.end({timeout:5});}
  }
  if(censusAttendanceRecords){
+  report.attendanceFixtureOwner=await projectAttendanceFixtureOwner(dbEnv);
+  save();
   await measureApproverOptions(fixture,dbEnv,evidence=>{
    report.attendanceApproverPrototype=evidence;
    save();
