@@ -1,6 +1,7 @@
 """Root-pinned one-operation CI worker cutover. Loaded only by the self-contained upgrade bundle.
 All application JavaScript runs after dropping to the actual private-install owner. No deploy records are written.
 """
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -298,47 +299,80 @@ def source_inventory(base, root, filters, deadline=None):
     rows=[]
     def clock():base.check(deadline is None or time.time()<deadline,'source inventory operation deadline exceeded')
     def identity(info):return (info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
-    def walk(fd,relative):
-        clock();before=os.fstat(fd);base.check(stat.S_ISDIR(before.st_mode),'source directory descriptor required')
+    def hash_source_file(fd, name, child, initial):
+        clock()
+        base.check(initial.st_nlink==1 and initial.st_size<=256*1024**2,'bounded non-linked source file required')
+        opened=os.open(name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=fd)
+        try:
+            base.check(identity(initial)==identity(os.fstat(opened)),'source file changed while opening')
+            digest=hashlib.sha256()
+            total=0
+            while True:
+                clock()
+                chunk=os.read(opened,1024**2)
+                if not chunk:break
+                total+=len(chunk)
+                base.check(total<=256*1024**2,'source file exceeds bound')
+                digest.update(chunk)
+            base.check(total==initial.st_size and identity(initial)==identity(os.fstat(opened))==identity(os.stat(name,dir_fd=fd,follow_symlinks=False)),'source file changed during content proof')
+            return {'path':child,'kind':'file','mode':stat.S_IMODE(initial.st_mode),'sha256':digest.hexdigest()}
+        finally:
+            os.close(opened)
+
+    def walk(fd,relative,readers):
+        clock()
+        before=os.fstat(fd)
+        base.check(stat.S_ISDIR(before.st_mode),'source directory descriptor required')
         rows.append({'path':relative,'kind':'directory','mode':stat.S_IMODE(before.st_mode)})
         names=sorted(os.listdir(fd))
-        for name in names:
-            clock();base.check(len(rows)<200000,'source inventory exceeds bound')
-            child=relative+'/'+name if relative else name
-            if exclude_source(child):continue
-            initial=os.stat(name,dir_fd=fd,follow_symlinks=False);mode=stat.S_IMODE(initial.st_mode)
-            if stat.S_ISDIR(initial.st_mode):
-                opened=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
-                try:
-                    base.check(identity(initial)==identity(os.fstat(opened)),'source directory changed while opening')
-                    walk(opened,child)
-                    base.check(identity(initial)==identity(os.fstat(opened))==identity(os.stat(name,dir_fd=fd,follow_symlinks=False)),'source directory changed during content proof')
-                finally:os.close(opened)
-            elif stat.S_ISREG(initial.st_mode):
-                base.check(initial.st_nlink==1 and initial.st_size<=256*1024**2,'bounded non-linked source file required')
-                opened=os.open(name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=fd)
-                try:
-                    base.check(identity(initial)==identity(os.fstat(opened)),'source file changed while opening')
-                    digest=hashlib.sha256();total=0
-                    while True:
-                        clock();chunk=os.read(opened,1024**2)
-                        if not chunk:break
-                        total+=len(chunk);base.check(total<=256*1024**2,'source file exceeds bound');digest.update(chunk)
-                    base.check(total==initial.st_size and identity(initial)==identity(os.fstat(opened))==identity(os.stat(name,dir_fd=fd,follow_symlinks=False)),'source file changed during content proof')
-                    rows.append({'path':child,'kind':'file','mode':mode,'sha256':digest.hexdigest()})
-                finally:os.close(opened)
-            elif stat.S_ISLNK(initial.st_mode):
-                target=os.readlink(name,dir_fd=fd);resolved=(root/child).resolve(strict=True)
-                base.check(not os.path.isabs(target) and resolved!=root and resolved.is_relative_to(root),'source link escapes frozen tree')
-                rows.append({'path':child,'kind':'link','mode':mode,'target':target})
-                base.check(identity(initial)==identity(os.stat(name,dir_fd=fd,follow_symlinks=False)),'source link changed during content proof')
-            else:base.check(False,'source inventory contains a special node')
+        pending=[]
+
+        def flush():
+            rows.extend(result.result() for result in pending)
+            pending.clear()
+
+        # A bounded batch overlaps reads on slow storage. Consume each result in
+        # traversal order and finish all reads before releasing the directory FD.
+        try:
+            for name in names:
+                clock()
+                base.check(len(rows)+len(pending)<200000,'source inventory exceeds bound')
+                child=relative+'/'+name if relative else name
+                if exclude_source(child):continue
+                initial=os.stat(name,dir_fd=fd,follow_symlinks=False)
+                if stat.S_ISREG(initial.st_mode):
+                    pending.append(readers.submit(hash_source_file,fd,name,child,initial))
+                    if len(pending)==8:flush()
+                    continue
+                flush()
+                if stat.S_ISDIR(initial.st_mode):
+                    opened=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+                    try:
+                        base.check(identity(initial)==identity(os.fstat(opened)),'source directory changed while opening')
+                        walk(opened,child,readers)
+                        base.check(identity(initial)==identity(os.fstat(opened))==identity(os.stat(name,dir_fd=fd,follow_symlinks=False)),'source directory changed during content proof')
+                    finally:os.close(opened)
+                elif stat.S_ISLNK(initial.st_mode):
+                    target=os.readlink(name,dir_fd=fd)
+                    resolved=(root/child).resolve(strict=True)
+                    base.check(not os.path.isabs(target) and resolved!=root and resolved.is_relative_to(root),'source link escapes frozen tree')
+                    rows.append({'path':child,'kind':'link','mode':stat.S_IMODE(initial.st_mode),'target':target})
+                    base.check(identity(initial)==identity(os.stat(name,dir_fd=fd,follow_symlinks=False)),'source link changed during content proof')
+                else:base.check(False,'source inventory contains a special node')
+            flush()
+        finally:
+            wait(pending)
+        clock()
         base.check(names==sorted(os.listdir(fd)) and identity(before)==identity(os.fstat(fd)),'source directory changed during complete enumeration')
+
     opened=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
     try:
-        before=os.fstat(opened);walk(opened,'')
+        before=os.fstat(opened)
+        with ThreadPoolExecutor(max_workers=4) as readers:
+            walk(opened,'',readers)
         base.check(identity(before)==identity(os.fstat(opened))==identity(root.lstat()),'source root named/descriptor identity changed')
-    finally:os.close(opened)
+    finally:
+        os.close(opened)
     return rows
 
 

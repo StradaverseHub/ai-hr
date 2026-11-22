@@ -150,9 +150,8 @@ class GuardedInvocation:
         self.last_phase=held['phase'];return held
 
     def before_mutation(self):
-        a,b=self.a,self.base
-        if self.install_fd is None:self.verify()
-        else:self.verify_install()
+        self.verify();a=self.a;b=self.base
+        if self.install_fd is not None:self.verify_install()
         b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired')
         b.check(self.ci.sha(b.read_bounded(self.ci.SOURCE/'.env.production',1024**2))==a['dotenvSha256'] and
                 self.ci.sha(b.read_bounded(b.ENV,1024**2))==self.identity['worker_env_sha256'],'approved web/worker environment changed')

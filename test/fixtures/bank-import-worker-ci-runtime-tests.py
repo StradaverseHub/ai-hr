@@ -512,6 +512,25 @@ class ConditionalRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory()as tmp:
             root=Path(tmp);(root/'a').write_text('content');(root/'link').symlink_to('a');base=SimpleNamespace(check=check,read_bounded=lambda p,limit:p.read_bytes());before=ci.source_inventory(base,root,['node_modules','.next']);(root/'a').write_text('changed');self.assertNotEqual(ci.source_inventory(base,root,['node_modules','.next']),before);(root/'escape').symlink_to('../outside')
             with self.assertRaises((ValueError,FileNotFoundError)):ci.source_inventory(base,root,['node_modules','.next'])
+    def test_batched_source_reads_keep_canonical_order_across_directories_and_links(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            expected=[{'path':'','kind':'directory','mode':stat.S_IMODE(root.stat().st_mode)}]
+            for index in range(12):
+                path=root/f'a{index:02d}'
+                content=f'file-{index}'.encode()
+                path.write_bytes(content)
+                expected.append({'path':path.name,'kind':'file','mode':stat.S_IMODE(path.stat().st_mode),
+                                 'sha256':ci.sha(content)})
+            nested=root/'b';nested.mkdir()
+            expected.append({'path':'b','kind':'directory','mode':stat.S_IMODE(nested.stat().st_mode)})
+            link=nested/'link';link.symlink_to('../a00')
+            expected.append({'path':'b/link','kind':'link','mode':stat.S_IMODE(link.lstat().st_mode),'target':'../a00'})
+            leaf=root/'c';leaf.write_bytes(b'after directory')
+            expected.append({'path':'c','kind':'file','mode':stat.S_IMODE(leaf.stat().st_mode),
+                             'sha256':ci.sha(b'after directory')})
+            self.assertEqual(ci.source_inventory(SimpleNamespace(check=check),root,['node_modules','.next']),expected)
+
     def test_root_private_authority_and_lease_refuse_public_linked_and_symlink_files(self):
         with tempfile.TemporaryDirectory()as tmp:
             root=Path(tmp);leaf=root/'credential';leaf.write_text('private');base=SimpleNamespace(check=check,root_protected=lambda *a,**kw:None)
