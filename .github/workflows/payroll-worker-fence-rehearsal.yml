@@ -1,0 +1,59 @@
+name: Payroll worker fence rehearsal
+run-name: Exact payroll worker fence capacity, no deployment
+on:
+  push:
+    branches: ['codex/payroll-worker-cutover-rehearsal-20261122']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  proof-capacity:
+    if: github.repository == 'StradaverseHub/ai-hr'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 17cdd7f2c9bfa99efa85a660a94878c6af2d3278
+          path: source
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with:
+          path: source
+          mobile: 'false'
+      - name: Authenticate and unpack the unchanged payroll build for measurement
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/payroll-ci-build.zip"
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14742163181/zip > "$archive"
+          packet="$RUNNER_TEMP/payroll-ci-packet"
+          python3 automation/.github/ci/build-transport-extract.py "$archive" "$packet" 9cf9c07de406518baa8cab6ccadca0124e4fce374e70fe6376ad3aacdf38616f
+          jq -e '.nextBuildId=="pDe2JKsQG-bY3fuGOGSVx"' "$packet/successful-build.json" >/dev/null
+          python3 automation/.github/ci/build-bundle.py unpack-with-origin "$packet/bytes/build-bundle.tar.gz" "$packet/bytes/build-bundle-files.json" "$PWD/source/.next" "$PWD/source" /home/runner/work/ai-hr/ai-hr/source
+      - name: Run actual four-root fences six times with a two-CPU limit and 4 GiB memory limit
+        run: |
+          set -euo pipefail
+          runtime="$(dirname "$(dirname "$(readlink -f "$(command -v node)")")")"
+          docker run --rm --network none --cpus 2 --memory 4g --memory-swap 4g \
+            -v "$PWD/source:$PWD/source:ro" -v "$runtime:$runtime:ro" \
+            -v "$PWD/automation/test/fixtures/bank-import-worker-fence-capacity.py:/capacity.py:ro" \
+            python:3.12-slim python3 -I -B /capacity.py "$PWD/source" "$runtime" | tee "$RUNNER_TEMP/fence-capacity.jsonl"
+      - name: Keep the focused worker safety checks
+        working-directory: source
+        run: |
+          set -euo pipefail
+          for suite in ci-runtime operation-guard prepared; do
+            python3 -I -B "test/fixtures/bank-import-worker-$suite-tests.py"
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: fence-capacity-not-release
+          path: ${{ runner.temp }}/fence-capacity.jsonl
+          if-no-files-found: warn
