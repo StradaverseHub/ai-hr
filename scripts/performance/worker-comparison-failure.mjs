@@ -1,6 +1,7 @@
 /** Closed, diagnostic-only facts from the existing fictional comparison owner. */
 import {driverErrorFact} from './driver-shutdown.mjs';
 import {routePools} from './system-route-manifest.mjs';
+import {mixedActionRouteTemplates} from './route-latency.mjs';
 
 export const workerDriverFailureFile='worker-driver-failure.json';
 export const workerDriverFailureBytes=3584;
@@ -81,9 +82,26 @@ function trafficOutcome(error){
  return fact.kind==='AssertionError'?'assertion':'unknown';
 }
 
-export function createWorkerLoadedDiagnostics(){
- const traffic=new Map(),families=Object.fromEntries([...advisoryFamilies].map(family=>[family,0]));
- let total=0,activityWaitSamples=0,appAdvisorySamples=0,activityWithoutAdvisorySamples=0;
+/** Count each observed advisory family at most once per completed database sample. */
+export function createLoadedAdvisoryDiagnostics(){
+ const families=Object.fromEntries([...advisoryFamilies].map(family=>[family,0]));
+ let activityWaitSamples=0,appAdvisorySamples=0,activityWithoutAdvisorySamples=0;
+ return {
+  observe(activityWaiting,queuedAppFamilies){
+   if(activityWaiting>0){activityWaitSamples++;if(!queuedAppFamilies.length)activityWithoutAdvisorySamples++;}
+   if(!queuedAppFamilies.length)return;
+   appAdvisorySamples++;
+   for(const family of new Set(queuedAppFamilies.map(value=>advisoryFamilies.has(value)?value:'advisory-unclassified')))families[family]++;
+  },
+  facts(){
+   return {activityWaitSamples,appAdvisorySamples,activityWithoutAdvisorySamples,families:{...families}};
+  },
+ };
+}
+
+export function createWorkerLoadedDiagnostics(advisory){
+ const traffic=new Map();
+ let total=0;
  return {
   traffic(role,phase,route,error){
    if(total>=500||!roles.has(role)||!trafficPhases.has(phase))return;
@@ -91,16 +109,10 @@ export function createWorkerLoadedDiagnostics(){
    if(!traffic.has(key))traffic.set(key,{role,phase,module,outcome,count:0});
    traffic.get(key).count++;total++;
   },
-  lock(activityWaiting,queuedAppFamilies){
-   if(activityWaiting>0){activityWaitSamples++;if(!queuedAppFamilies.length)activityWithoutAdvisorySamples++;}
-   if(!queuedAppFamilies.length)return;
-   appAdvisorySamples++;
-   for(const family of new Set(queuedAppFamilies.map(value=>advisoryFamilies.has(value)?value:'advisory-unclassified')))families[family]++;
-  },
   facts(){
    const groups=[...traffic.values()].sort((left,right)=>right.count-left.count).slice(0,cohortLimit);
    return {traffic:{total,omitted:total-groups.reduce((sum,row)=>sum+row.count,0),groups},
-    loadedAdvisory:{activityWaitSamples,appAdvisorySamples,activityWithoutAdvisorySamples,families}};
+    loadedAdvisory:advisory.facts()};
   },
  };
 }
@@ -163,6 +175,7 @@ export function workerStageFailureFact({step,role,route,sourceFile,sourceLine,er
    check:typeof navigation.checkId==='string'&&scenarioId.test(navigation.checkId)?navigation.checkId:null,counts}:null};
 }
 const requestMethods=new Set(['GET','POST']);
+const knownRequestRoutes=new Set([...knownRoutes,...mixedActionRouteTemplates]);
 const requestAbortSources=new Set(['driver-deadline','connection-reset','premature-close','abort-unattributed','not-aborted']);
 const requestDeadlineMaxMs=900000;
 const requestElapsedMaxMs=910000;
@@ -180,14 +193,14 @@ const wholeMs=(value,maximum)=>typeof value==='number'&&Number.isFinite(value)&&
  * its deadline, how long it ran, whether headers arrived, and what ended it. Never a path, query, body or header. */
 export function workerRequestFailureFact({stage,role,route,method,deadlineMs,elapsedMs,ttfbMs,httpStatus,error,deadline}={}){
  return {stage:stages.has(stage)?stage:'unavailable',role:roles.has(role)?role:null,
-  route:typeof route==='string'?knownRoutes.has(route)?route:'other':null,method:requestMethods.has(method)?method:null,
+  route:typeof route==='string'?knownRequestRoutes.has(route)?route:'other':null,method:requestMethods.has(method)?method:null,
   deadlineMs:Number.isSafeInteger(deadlineMs)&&deadlineMs>0&&deadlineMs<=requestDeadlineMaxMs?deadlineMs:null,
   elapsedMs:wholeMs(elapsedMs,requestElapsedMaxMs),ttfbMs:wholeMs(ttfbMs,requestElapsedMaxMs),
   httpStatus:Number.isInteger(httpStatus)&&httpStatus>=100&&httpStatus<=599?httpStatus:null,
   abortSource:requestAbortSource(error,deadline)};
 }
 const validRequest=value=>value===null||fields(value,['stage','role','route','method','deadlineMs','elapsedMs','ttfbMs','httpStatus','abortSource'])
- &&stages.has(value.stage)&&(value.role===null||roles.has(value.role))&&(value.route===null||value.route==='other'||knownRoutes.has(value.route))
+ &&stages.has(value.stage)&&(value.role===null||roles.has(value.role))&&(value.route===null||value.route==='other'||knownRequestRoutes.has(value.route))
  &&(value.method===null||requestMethods.has(value.method))
  &&(value.deadlineMs===null||Number.isSafeInteger(value.deadlineMs)&&value.deadlineMs>0&&value.deadlineMs<=requestDeadlineMaxMs)
  &&(value.elapsedMs===null||integer(value.elapsedMs,requestElapsedMaxMs))&&(value.ttfbMs===null||integer(value.ttfbMs,requestElapsedMaxMs))
@@ -236,6 +249,14 @@ const validAdvisory=value=>value===null||fields(value,['activityWaitSamples','ap
  &&integer(value.activityWaitSamples,4097)&&integer(value.appAdvisorySamples,4097)
  &&integer(value.activityWithoutAdvisorySamples,value.activityWaitSamples)
  &&fields(value.families,[...advisoryFamilies])&&Object.values(value.families).every(count=>integer(count,value.appAdvisorySamples));
+export function projectLoadedAdvisoryDiagnostics(value,completedSamples){
+ if(!integer(completedSamples,4097)||completedSamples===0||!value||!validAdvisory(value))return null;
+ const {activityWaitSamples,appAdvisorySamples,activityWithoutAdvisorySamples,families}=value;
+ if(appAdvisorySamples+activityWithoutAdvisorySamples>completedSamples
+  ||activityWaitSamples>completedSamples
+  ||activityWaitSamples-activityWithoutAdvisorySamples>appAdvisorySamples)return null;
+ return {activityWaitSamples,appAdvisorySamples,activityWithoutAdvisorySamples,families:{...families}};
+}
 const validHomeCard=value=>fields(value,['card','marker','section','message','count'])&&homeCardSet.has(value.card)&&homeMarkers.has(value.marker)
  &&(value.section===null||typeof value.section==='string'&&homeSection.test(value.section))&&typeof value.message==='string'&&value.message.length<=80&&homeMessageKey.test(value.message)&&integer(value.count,4096)&&value.count>0;
 const validHome=value=>value===null||Array.isArray(value)&&value.length<=roles.size*homePhases.size
