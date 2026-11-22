@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { messagesForLocale } from '../i18n/catalogs';
 import { locales } from '../i18n/config';
+import { mergeClientCatalogues } from '../i18n/merge-client-catalogues';
 import { prepareClientCatalogues } from '../scripts/prepare-client-catalogues';
 
 it('writes the canonical catalogue and smaller signed-in route catalogues for every browser language', async () => {
@@ -20,20 +21,24 @@ it('writes the canonical catalogue and smaller signed-in route catalogues for ev
       const generated = await readFile(join(output, locale + '.json'), 'utf8');
       const canonical = await messagesForLocale(locale);
       expect(generated).toBe(JSON.stringify(canonical));
+      const home = await readFile(join(output, 'home', locale + '.json'), 'utf8');
+      const shared = JSON.parse(home);
       const tp3 = await readFile(join(output, 'tp3', locale + '.json'), 'utf8');
-      const projected = JSON.parse(tp3);
+      const tp3Only = JSON.parse(tp3);
+      expect(tp3Only).toEqual({ myTp3: canonical.myTp3 });
+      const projected = mergeClientCatalogues(shared, tp3Only);
       expect(projected.nav).toEqual(canonical.nav);
       expect(projected.assistant.launcher).toEqual(canonical.assistant.launcher);
       expect(projected.payroll).toBeUndefined();
       expect(Buffer.byteLength(tp3)).toBeLessThan(Buffer.byteLength(generated) / 4);
-      const home = await readFile(join(output, 'home', locale + '.json'), 'utf8');
-      const { myTp3, ...shared } = projected;
-      expect(myTp3).toEqual(canonical.myTp3);
-      expect(JSON.parse(home)).toEqual(shared);
+      expect(projected.myTp3).toEqual(canonical.myTp3);
       expect(shared.common.actionFeedback).toEqual(canonical.common.actionFeedback);
       expect(Buffer.byteLength(home)).toBeLessThan(Buffer.byteLength(generated) / 4);
       const approvals = await readFile(join(output, 'approvals', locale + '.json'), 'utf8');
-      const approvalMessages = JSON.parse(approvals);
+      const approvalOnly = JSON.parse(approvals);
+      expect(approvalOnly.nav).toBeUndefined();
+      expect(approvalOnly.approvals).toBeUndefined();
+      const approvalMessages = mergeClientCatalogues(shared, approvalOnly);
       expect(approvalMessages.approvals).toEqual(canonical.approvals);
       expect(approvalMessages.review).toEqual(canonical.review);
       expect(approvalMessages.resignationJourney).toEqual(canonical.resignationJourney);
@@ -46,7 +51,9 @@ it('writes the canonical catalogue and smaller signed-in route catalogues for ev
       expect(approvalMessages.labelExcelRoundTrip).toEqual(canonical.labelExcelRoundTrip);
       expect(Buffer.byteLength(approvals)).toBeLessThan(Buffer.byteLength(generated) / 2);
       const payroll = await readFile(join(output, 'payroll-dashboard', locale + '.json'), 'utf8');
-      expect(JSON.parse(payroll)).toEqual({
+      const payrollOnly = JSON.parse(payroll);
+      expect(payrollOnly).toEqual({components: {confirmSubmit: canonical.components.confirmSubmit}});
+      expect(mergeClientCatalogues(shared, payrollOnly)).toEqual({
         ...shared,
         components: {...shared.components, confirmSubmit: canonical.components.confirmSubmit},
       });

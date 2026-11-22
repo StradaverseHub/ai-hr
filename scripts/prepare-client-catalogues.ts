@@ -20,15 +20,15 @@ const shellClientNamespaces = [
 
 const scopedClientNamespaces = {
   home: shellClientNamespaces,
-  tp3: [...shellClientNamespaces, 'myTp3'],
+  tp3: ['myTp3'],
   approvals: [
-    ...shellClientNamespaces, 'components.plannedAbsences', 'components.timelineNav',
+    'components.plannedAbsences', 'components.timelineNav',
     'labelExcelRoundTrip', 'leave', 'letters.reports', 'replacementRequest.formulaReview',
     'resignationCommunications', 'resignationJourney', 'review',
   ],
   // Dashboard filter and row-menu copy is passed by the server. The confirmation
   // dialog resolves its own copy when an administrator opens a draft action.
-  'payroll-dashboard': [...shellClientNamespaces, 'components.confirmSubmit'],
+  'payroll-dashboard': ['components.confirmSubmit'],
 };
 
 function projectCatalogue(messages: AbstractIntlMessages, namespaces: readonly string[]): AbstractIntlMessages {

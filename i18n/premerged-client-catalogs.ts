@@ -1,6 +1,7 @@
 import type { AbstractIntlMessages } from 'next-intl';
 import type { ClientCatalogueScope } from './client-catalogue';
 import type { Locale } from './config';
+import { mergeClientCatalogues } from './merge-client-catalogues';
 
 const bundles = new Map<string, Promise<AbstractIntlMessages>>();
 
@@ -10,14 +11,19 @@ export function messagesForClient(locale: Locale, scope: ClientCatalogueScope): 
   const cached = bundles.get(key);
   if (cached) return cached;
 
-  const asset = {
+  const loadAsset = {
     full: () => import(`./client-assets/${locale}.json`),
     home: () => import(`./client-assets/home/${locale}.json`),
     tp3: () => import(`./client-assets/tp3/${locale}.json`),
     approvals: () => import(`./client-assets/approvals/${locale}.json`),
     'payroll-dashboard': () => import(`./client-assets/payroll-dashboard/${locale}.json`),
-  }[scope]();
-  const requested = asset.then(bundle => bundle.default as AbstractIntlMessages)
+  }[scope];
+  const asset = loadAsset().then(bundle => bundle.default as AbstractIntlMessages);
+  const messages = scope === 'full' || scope === 'home'
+    ? asset
+    : Promise.all([messagesForClient(locale, 'home'), asset])
+      .then(([shell, route]) => mergeClientCatalogues(shell, route));
+  const requested = messages
     .catch(error => {
       bundles.delete(key);
       throw error;
