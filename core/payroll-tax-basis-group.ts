@@ -2,7 +2,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {assertModuleGate} from './module-gate';
 import {bulkJobProgress,bulkJobTx,enqueueBulkJobTx} from './bulk-job';
-import type {BulkJobHandler} from './bulk-job-worker';
+import type {BulkJobPreparedStepHandler} from './bulk-job-worker';
 import {calculateTaxBasisPreview,continueTaxBasisBatch,planTaxBasisPreviewTx,prepareReviewedTaxBasisConfirmation,saveTaxBasisPreviewTx} from './payroll-tax-basis';
 import {PayrollTaxBasisError,TAX_BASIS_PREVIEW_CHUNK_SIZE,type TaxBasisEmployee,type TaxBasisPreview,type TaxBasisSelection} from '../lib/payroll-tax-basis';
 
@@ -147,7 +147,7 @@ export async function readTaxBasisGroupProgress(ctx:SessionContext,id:string,off
  });
 }
 
-export const taxBasisGroupJobHandler:BulkJobHandler<Step>={
+export const taxBasisGroupJobHandler:BulkJobPreparedStepHandler<Step>={
  kind:KIND,
  mode:'per-step',
  quietNotice:()=>true,

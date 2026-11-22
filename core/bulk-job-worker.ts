@@ -64,7 +64,7 @@ export type BulkJobDiscardUnit=Omit<BulkJobUnit,'fenceTx'|'ownerTx'>&{ownerTx<T>
 /** A settle's unit: fenced app-role transactions (while the creator's authority lasts) and owner transactions. */
 export type BulkJobSettleUnit=Omit<BulkJobUnit,'ownerTx'>&{ownerTx<T>(fn:(owner:postgres.ReservedSql)=>Promise<T>):Promise<T>};
 export type BulkJobFinalized={result:unknown;counters?:Record<string,number>};
-export type BulkJobHandler<P=any>={
+type BulkJobHandlerBase<P>={
  kind:string;
  /** Fixed Contract timer consumers only; no app-role transaction or captured human identity. */
  systemOwner?:{prepare(job:BulkJobRow,unit:BulkJobDiscardUnit):Promise<unknown>;finalize(job:BulkJobRow,unit:BulkJobDiscardUnit):Promise<'more'|BulkJobFinalized>};
@@ -111,15 +111,18 @@ export type BulkJobHandler<P=any>={
   *  owner handle: owner work runs in unit.ownerTx, one transaction attributed to the job (5014). App-role work that
   *  must commit together with a marker on the job fences its transaction (unit.fenceTx) and writes it with unit.set. */
  settle?(ctx:SessionContext|null,job:BulkJobRow,unit:BulkJobSettleUnit):Promise<void>;
-} & ({
+};
+export type BulkJobHandler<P=any>=BulkJobHandlerBase<P>&{
  /** A step's write and its applied marker commit together. */
  applyStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<P>,cache:Map<string,unknown>):Promise<BulkJobStepOutcome>;
  prepareStep?:never;
-} | {
+};
+export type BulkJobPreparedStepHandler<P=any>=BulkJobHandlerBase<P>&{
  /** Read one sealed step outside the write transaction. Only the returned callback may write. */
  prepareStep(ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<P>):Promise<(tx:Tx)=>Promise<BulkJobStepOutcome>>;
  applyStepTx?:never;
-});
+};
+type WorkerHandler=BulkJobHandler|BulkJobPreparedStepHandler;
 /** A unit that cannot start until other work finishes (a tenant-serialised kind whose turn has not come): the kernel
  * runs it again after a short pause, without using the job's transient retry budget, so waiting never fails a job. */
 export class BulkJobWaiting extends Error{constructor(message='Waiting for another job of this kind to finish.'){super(message);this.name='BulkJobWaiting';}}
@@ -152,7 +155,7 @@ const report=(kind:string,phase:string,ms:number,jobId:string)=>(globalThis as W
 async function label(tx:Tx,kind:string,phase:string){await tx.execute(sql`select set_config('application_name',${`aihr-bulk:${kind}:${phase}`},true)`);}
 const merge=(a:Record<string,number>,b?:Record<string,number>)=>{if(!b)return a;const out={...a};for(const [k,v] of Object.entries(b))out[k]=(out[k]??0)+v;return out;};
 
-export type BulkJobWorkerOptions={workerId?:string;handlers:readonly BulkJobHandler[]};
+export type BulkJobWorkerOptions={workerId?:string;handlers:readonly WorkerHandler[]};
 type Uuid=`${string}-${string}-${string}-${string}-${string}`;
 /** One claim: the lease token (visible on the row) and its capability (only here and as a digest in app.bulk_job_seal). */
 type Claimed={job:BulkJobRow;token:string;capability:string;metrics:Record<string,number>;ownerPool:postgres.Sql;ownerOpen?:boolean};
@@ -287,7 +290,7 @@ async function jobTx<T>(ctx:SessionContext,c:Claimed,unit:BulkJobUnit,phase:stri
  return out;
 }
 
-async function processClaimed(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed){
+async function processClaimed(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed){
  // This one privileged human source is a constant kernel implementation, never a handler-supplied
  // owner callback. Even an injected handler cannot replace its preparation, failure or finalization.
  if(c.job.kind==='contract_posting_apply')handler=(await import('../packs/contracts/service')).contractPostingApplyJobHandler;
@@ -326,12 +329,12 @@ async function processClaimed(connection:postgres.ReservedSql,handler:BulkJobHan
   return failJob(connection,handler,c,ctx,described.error,described.errors??[],error,described.planMerge);
  }
 }
-const isTransient=(handler:BulkJobHandler,error:unknown)=>handler.isTransient?.(error)??isTransientBulkJobError(error);
+const isTransient=(handler:WorkerHandler,error:unknown)=>handler.isTransient?.(error)??isTransientBulkJobError(error);
 const WAIT_SECONDS=2;
 async function waitLater(connection:postgres.ReservedSql,c:Claimed){
  await connection`update bulk_job set not_before=now()+make_interval(secs=>${WAIT_SECONDS}),updated_at=now() where id=${c.job.id}::uuid and lease_token=${c.token}::uuid`;
 }
-async function retryLater(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,error:unknown){
+async function retryLater(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed,error:unknown){
  const [row]=await connection<{transient_retries:number}[]>`update bulk_job set transient_retries=transient_retries+1,
    not_before=now()+make_interval(secs=>least(5.0,0.05*power(2,least(transient_retries,7)))),updated_at=now()
   where id=${c.job.id}::uuid and lease_token=${c.token}::uuid returning transient_retries`;
@@ -341,7 +344,7 @@ async function retryLater(connection:postgres.ReservedSql,handler:BulkJobHandler
 
 /** Validate once; persist the ordered steps in batches with no tenant lock held; then one short transaction makes
  * them runnable together with the kind's own records. A crash before that commit simply prepares again. */
-async function prepareUnit(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,unit:BulkJobUnit,ctx:SessionContext){
+async function prepareUnit(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed,unit:BulkJobUnit,ctx:SessionContext){
  const job=c.job;
  await connection`update bulk_job set lease_expires_at=now()+make_interval(secs=>${PREPARE_LEASE_SECONDS}) where id=${job.id}::uuid and lease_token=${c.token}::uuid`;
  // The input is what the creator admitted (sealed by app.bulk_job_enqueue); nothing else may have changed it.
@@ -374,7 +377,7 @@ async function prepareUnit(connection:postgres.ReservedSql,handler:BulkJobHandle
 }
 
 /** One chunk: about chunkBudgetMs of steps, each step's write and its applied marker in the same transaction. */
-async function chunkUnit(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,unit:BulkJobUnit,ctx:SessionContext){
+async function chunkUnit(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed,unit:BulkJobUnit,ctx:SessionContext){
  const job=c.job;const budget=handler.chunkBudgetMs??250;const max=handler.prepareStep?1:handler.maxStepsPerChunk??64;
  const cache=cacheOf(job.id);
  const pendingSteps=(tx:Tx)=>tx.execute<BulkJobStep>(sql`select seq,kind,row_num,payload from app.bulk_job_pending_steps(${job.id}::uuid,${max})`);
@@ -436,7 +439,7 @@ async function chunkUnit(connection:postgres.ReservedSql,handler:BulkJobHandler,
  if(result.done&&!handler.finalize)await terminal(connection,handler,c,ctx);
 }
 
-async function finalizeUnit(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,unit:BulkJobUnit,ctx:SessionContext){
+async function finalizeUnit(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed,unit:BulkJobUnit,ctx:SessionContext){
  const job=c.job;
  // What finalize and release trust: the plan and input every unit, every step before the first unit after a step write.
  await verifySealOf(connection,c,'first');
@@ -479,7 +482,7 @@ async function finalizeContractPostingUnit(connection:postgres.ReservedSql,c:Cla
  await terminal(connection,contractPostingApplyJobHandler,c,ctx);
 }
 
-async function cancelJob(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,ctx:SessionContext){
+async function cancelJob(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed,ctx:SessionContext){
  if(handler.discard&&c.job.state!=='queued'){
   await connection`update bulk_job set state='discarding',outcome='cancelled',error=coalesce(error,'Stopped at your request.'),updated_at=now() where id=${c.job.id}::uuid and lease_token=${c.token}::uuid`;
   return;
@@ -487,7 +490,7 @@ async function cancelJob(connection:postgres.ReservedSql,handler:BulkJobHandler,
  await connection`update bulk_job set state='cancelled',error=coalesce(error,'Stopped at your request.'),finished_at=now(),updated_at=now() where id=${c.job.id}::uuid and lease_token=${c.token}::uuid`;
  return terminal(connection,handler,c,ctx);
 }
-async function failJob(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,ctx:SessionContext|null,message:string,errors:BulkJobRowError[],error:unknown,planMerge?:Record<string,unknown>){
+async function failJob(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed,ctx:SessionContext|null,message:string,errors:BulkJobRowError[],error:unknown,planMerge?:Record<string,unknown>){
  const discard=Boolean(handler.discard)&&(handler.onFailure?.(c.job,error)??(handler.mode==='atomic'?'discard':'fail'))==='discard';
  if(planMerge&&Object.keys(planMerge).length)await ownerTransaction(connection,c,'fail',owner=>workerSet(owner,c.job.id,{planMerge})).catch(()=>undefined);
  await connection`update bulk_job set state=${discard?'discarding':'failed'},outcome=${discard?'failed':null},error=${message.slice(0,4000)},
@@ -496,7 +499,7 @@ async function failJob(connection:postgres.ReservedSql,handler:BulkJobHandler,c:
  caches.delete(c.job.id);
  if(!discard)return terminal(connection,handler,c,ctx);
 }
-async function discardUnit(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,unit:BulkJobUnit){
+async function discardUnit(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed,unit:BulkJobUnit){
  const job=c.job;
  const discardUnitOf:BulkJobDiscardUnit={metric:unit.metric,set:unit.set,step:unit.step,verifySeal:unit.verifySeal,ownerTx:fn=>ownerTransaction(connection,c,'discard',fn)};
  let outcome:'more'|'done';
@@ -515,7 +518,7 @@ async function discardUnit(connection:postgres.ReservedSql,handler:BulkJobHandle
  return terminal(connection,handler,c,ctx);
 }
 /** After a terminal state commits: the kind's best-effort follow-up, then the creator's completion notice. */
-async function terminal(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,ctx:SessionContext|null){
+async function terminal(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed,ctx:SessionContext|null){
  const [fresh]=await connection<BulkJobRow[]>`select * from bulk_job where id=${c.job.id}::uuid`;
  if(!fresh||!TERMINAL.includes(fresh.state))return;
  caches.delete(fresh.id);
@@ -526,7 +529,7 @@ async function terminal(connection:postgres.ReservedSql,handler:BulkJobHandler,c
  return closeTerminal(connection,handler,c,ctx,fresh,clearPlan);
 }
 /** The kind's settle (retried until it succeeds), then the clean-up and the creator's notice. */
-async function closeTerminal(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,ctx:SessionContext|null,fresh:BulkJobRow,clearPlan:boolean){
+async function closeTerminal(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed,ctx:SessionContext|null,fresh:BulkJobRow,clearPlan:boolean){
  if(handler.settle&&!fresh.settled_at){
   try{
    const unit=unitOf(connection,c);
@@ -552,7 +555,7 @@ async function closeTerminal(connection:postgres.ReservedSql,handler:BulkJobHand
 }
 /** The creator's in-app notice (registry event bulk-job.finished), appended under their own authority exactly once.
  * When their access is gone nobody else is told; the job row still shows the outcome to an authorized creator. */
-async function notifyFinished(connection:postgres.ReservedSql,c:Claimed,job:BulkJobRow,handler?:BulkJobHandler){
+async function notifyFinished(connection:postgres.ReservedSql,c:Claimed,job:BulkJobRow,handler?:WorkerHandler){
  if(job.notified_at)return;
  let quiet=false;try{quiet=handler?.quietNotice?.(job)??false;}catch{quiet=false;}
  if(quiet){await connection`update bulk_job set notified_at=now() where id=${job.id}::uuid and notified_at is null`;return;}
@@ -576,7 +579,7 @@ async function notifyFinished(connection:postgres.ReservedSql,c:Claimed,job:Bulk
 
 /** Explicitly approved fixed Contract boundary: private native provenance and the existing lease/seal capability.
  * Declaring a handler option or clearing a user never grants execution. Existing human fences remain above. */
-async function processContractSystemClaimed(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,unit:BulkJobUnit){
+async function processContractSystemClaimed(connection:postgres.ReservedSql,handler:WorkerHandler,c:Claimed,unit:BulkJobUnit){
  const job=c.job;
  if(!['contract_schedule','contract_scheduled_automation'].includes(job.kind)||!handler.systemOwner||!handler.finalizeOwner)
   return failJob(connection,handler,c,null,'The system job has no registered native owner.',[],new BulkJobConfigurationError('Invalid system job kind.'));
