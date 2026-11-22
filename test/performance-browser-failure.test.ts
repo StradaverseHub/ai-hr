@@ -21,6 +21,16 @@ it('projects only reviewed preflight frames and fixed browser fingerprints',()=>
  }
  expect(browserPreflightErrorFingerprint('Minified React error #4188; '+secret)).toBe('other');
  expect(browserPreflightErrorFingerprint('An error occurred in the Server Components render. '+secret)).toBe('next-server-component-render');
+ for(const [message,fingerprint] of [
+  ['Failed to load resource: the server responded with a status of 503 ('+secret+')','resource-http-503'],
+  ['Failed to load resource: net::ERR_'+secret,'resource-network'],
+  ['Failed to fetch RSC payload for /assistant?query='+secret,'next-rsc-fetch'],
+  ['Error: MISSING_MESSAGE: '+secret,'translation-message'],
+  ['ChunkLoadError: Loading chunk '+secret+' failed.','script-chunk'],
+  ['Failed to load resource: the server responded with a status of 12345 '+secret,'other'],
+ ]){
+  expect(browserPreflightErrorFingerprint(message)).toBe(fingerprint);
+ }
  expect(browserPreflightErrorFingerprint(secret)).toBe('other');
 });
 

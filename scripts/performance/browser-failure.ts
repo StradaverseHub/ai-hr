@@ -20,6 +20,12 @@ export function browserPreflightErrorFingerprint(message:string){
  const react=message.match(/^(?:Error: )?Minified React error #(418|422|423|425);/);
  if(react)return 'react-minified-'+react[1];
  if(message.startsWith('An error occurred in the Server Components render.'))return 'next-server-component-render';
+ const resourceStatus=message.match(/^Failed to load resource: the server responded with a status of ([45][0-9]{2})(?: |$)/);
+ if(resourceStatus)return 'resource-http-'+resourceStatus[1];
+ if(message.startsWith('Failed to load resource: net::ERR_'))return 'resource-network';
+ if(message.startsWith('Failed to fetch RSC payload for '))return 'next-rsc-fetch';
+ if(/^(?:Error: )?(?:MISSING_MESSAGE|INVALID_MESSAGE|MISSING_FORMATTING):/.test(message))return 'translation-message';
+ if(/^(?:ChunkLoadError: |Error: )?Loading chunk [^\s]+ failed\./.test(message))return 'script-chunk';
  return 'other';
 }
 

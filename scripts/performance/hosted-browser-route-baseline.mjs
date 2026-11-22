@@ -1134,6 +1134,20 @@ async function measureMixedLoad(command,fixture){
      };
     });
    }
+   if(Array.isArray(data.browserAiCentreNavigation)){
+    const views=new Map([
+     ['/assistant','ask'],['/assistant?view=tools','tools'],['/assistant?view=privacy','privacy'],
+     ['/assistant?view=how','how'],['/assistant?view=insights','insights'],['/policies','policies'],
+     ['/control-tower/loops','operations'],['/control-tower/agents/features','administration'],
+    ]);
+    const entryPoints=new Set(['ask-footer','tools-shortcut','centre-tab']);
+    report.mixedAssistantNavigation=data.browserAiCentreNavigation.flatMap(row=>{
+     const view=views.get(row.path);
+     if(!view||!roles.includes(row.role)||!['baseline','loaded'].includes(row.phase))return [];
+     return [{view,phase:row.phase,role:row.role,usable:row.usable===true,
+      source:entryPoints.has(row.from)?row.from:null,...counts(row,['elapsedMs','readinessWaitMs'])}];
+    }).slice(0,64);
+   }
    if(Array.isArray(data.browserLanguageSwitches)){
     const languagePaths=new Set(['/claims','/admin/personnel']);
     report.mixedLanguageSwitch={
