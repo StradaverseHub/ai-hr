@@ -88,7 +88,7 @@ const freshGroupBuilds=new Set([
  clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,homeScopeMainCandidate,shellLifetimeCandidate,
  nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,indexedAccountTaskCaller,
 ]);
-const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD))&&groupScale&&establishedAttendance
+const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD)||env.AIHR_CI_HEAD===currentMainFixture)&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 const currentMainLifetimeBuild=env.AIHR_CI_HEAD===currentMainLifetimeCandidate;

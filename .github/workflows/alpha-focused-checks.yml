@@ -237,7 +237,9 @@ jobs:
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
               true:a84ddf3812fa6ecd60c1a54802ab5f205e2ba212)
-                [[ "$MIXED_DATABASE_TOPOLOGY" == transaction-pool && "$SHELL_PERMISSION_VARIANT" == none ]] || exit 2 ;;
+                [[ "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
+                   ( "$SHELL_PERMISSION_VARIANT" == none || "$SHELL_PERMISSION_VARIANT" == contract-optimized ) ]] || exit 2
+                combined_group_build=true ;;
               false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:cddd7cebf757d0392ed06bead78300732fd54256) ;;
               true:5175d387846c18fcc83ef96091cb1b4e1b538241|true:71e0dceb1a393817f3040518e82dc845a27700b0|true:0ba883e0aa294bb0f15dcfe2433deedb52d11996|true:57fac422707b3a6174a290722ea0bb53da89f7c0|true:52d2d170710fcfb14219abe2f9d0abc84e536748|true:5e34835d73183b2754c9b3e4ccdbfc31111917a8|true:a1d4cbb7bef482f7a6c8b75ab7fbec7611976857)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
