@@ -27,7 +27,7 @@ export default async function RecruitmentPositionPage({ params, searchParams }: 
 }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
-  await recruitmentViewerAccess(s, scopeIds);
+  await recruitmentViewerAccess(s, scopeIds, { seed: false });
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   let detail: JobDetail;
   try {

@@ -33,12 +33,13 @@ export type RecruitmentAccess = RecruitmentViewer & {
  * and approvals): administrators of a company in scope, members of a job team or interviewers there, or anyone with an
  * approval step waiting for them. The DATABASE answers each part (5852); nobody else gets in.
  */
-export async function recruitmentViewerAccess(s: SessionContext, scopeIds: string[], opts: { afterDecision?: boolean } = {}): Promise<RecruitmentAccess> {
+export async function recruitmentViewerAccess(s: SessionContext, scopeIds: string[], opts: { afterDecision?: boolean; seed?: boolean } = {}): Promise<RecruitmentAccess> {
   const viewer = await recruitmentViewer(s, scopeIds);
   // An approver whose last waiting step was just decided keeps the Approvals page for its confirmation; it lists
   // nothing more for them (every list there is the database's own answer for the viewer).
   if (!viewer.adminCompanies.length && !viewer.teamCompanies.length && !viewer.pendingApprovals && !opts.afterDecision) redirect('/');
-  if (viewer.adminCompanies.length) await ensureRecruitmentDefaults(s, viewer.adminCompanies.map((c) => c.id));
+  // Record pages already have a company owner and do not initialize the rest of the selected scope.
+  if (opts.seed !== false && viewer.adminCompanies.length) await ensureRecruitmentDefaults(s, viewer.adminCompanies.map((c) => c.id));
   return { ...viewer, companies: [...viewer.adminCompanies, ...viewer.teamCompanies], isAdmin: viewer.adminCompanies.length > 0 };
 }
 

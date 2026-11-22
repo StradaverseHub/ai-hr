@@ -20,7 +20,7 @@ import { RequisitionFields } from '../requisition-fields';
 export default async function RequisitionPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ problem?: string; notice?: string; fields?: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
-  await recruitmentViewerAccess(s, scopeIds);
+  await recruitmentViewerAccess(s, scopeIds, { seed: false });
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   let d: RequisitionDetail;
   try {
@@ -31,10 +31,10 @@ export default async function RequisitionPage({ params, searchParams }: { params
   }
   const [t, locale] = await Promise.all([getTranslations('recruitment.req'), getLocale()]);
   const r = d.requisition;
-  const options = d.manage ? await requisitionFormOptions(s, r.companyId) : null;
+  const terminal = r.status === 'completed' || r.status === 'cancelled';
+  const options = d.manage && !terminal ? await requisitionFormOptions(s, r.companyId) : null;
   const here = `/recruitment/requisitions/${r.id}`;
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
-  const terminal = r.status === 'completed' || r.status === 'cancelled';
   const error = await recruitmentErrorText(sp.problem);
   const fields = (sp.fields ?? '').split(',').filter(Boolean);
   const notice = sp.notice === 'created' ? t('createdNotice') : sp.notice === 'saved' ? t('savedNotice') : undefined;

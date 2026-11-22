@@ -15,7 +15,7 @@ import { recruitmentErrorText, recruitmentViewerAccess, textareaCls } from '../.
 export default async function InterviewFeedbackPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ problem?: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
-  await recruitmentViewerAccess(s, scopeIds);
+  await recruitmentViewerAccess(s, scopeIds, { seed: false });
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   let form: ScorecardForm;
   try {

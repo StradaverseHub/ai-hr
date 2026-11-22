@@ -14,7 +14,7 @@ import { Pill, klDateTime, recruitmentViewerAccess } from '../../shared';
 export default async function ScorecardPage({ params }: { params: Promise<{ id: string }> }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
-  await recruitmentViewerAccess(s, scopeIds);
+  await recruitmentViewerAccess(s, scopeIds, { seed: false });
   const { id } = await params;
   let card: ScorecardView;
   try {

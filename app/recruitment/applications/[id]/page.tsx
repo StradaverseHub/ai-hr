@@ -41,7 +41,7 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
 }) {
   await requireModule('recruitment');
   const { s, scopeIds } = await scopedSession();
-  const access = await recruitmentViewerAccess(s, scopeIds);
+  const access = await recruitmentViewerAccess(s, scopeIds, { seed: false });
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   let interviews;
   try {
