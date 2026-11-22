@@ -723,7 +723,8 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   const result = { role: actor.role, steps: [], outcome: 'failed' };
   (report.personnelProfileActions ??= []).push(result);
   const profile = page.locator('main [data-tab-save-scope="profile"]:visible');
-  const phone = profile.locator('form[data-save-section="contact"] input#perm-home-phone[name="homePhone"]');
+  const phoneSelector = 'form[data-save-section="contact"] input#perm-home-phone[name="homePhone"]';
+  const phone = profile.locator(phoneSelector);
   const button = profile.getByRole('button', { name: 'Save Changes', exact: true });
   const dirty = profile.locator('[data-tab-save-count]');
   const timeout = 15000;
@@ -777,6 +778,15 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
     }
     assert.equal(await readContact(), original);
     assert.deepEqual(result.steps.map(step => step.name), ['save', 'restore']);
+    const discardStarted = performance.now();
+    await phone.fill(marker, { timeout });
+    await dirty.waitFor({ state: 'visible', timeout });
+    await profile.getByRole('button', { name: 'Discard Changes', exact: true }).click({ timeout });
+    await page.waitForFunction(({ selector, value }) => document.querySelector(selector)?.value === value,
+      { selector: phoneSelector, value: original ?? '' }, { timeout });
+    await dirty.waitFor({ state: 'hidden', timeout });
+    assert.equal(await readContact(), original, 'Discard must leave the last persisted value intact');
+    result.discardMs = Math.round(performance.now() - discardStarted);
     result.outcome = 'passed';
   } finally {
     save();
