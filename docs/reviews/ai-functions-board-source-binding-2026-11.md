@@ -1623,3 +1623,7 @@ The repository owner approved carrying forward all 28 existing provider approval
 The repository owner approved carrying forward the same 28 AI provider approvals to exact staging fingerprint `05f640c6fe6b66fc746d574ee80df700397a55fd3a8a863739f0feda584b48af`. The combined candidate checks draft readiness, queues company-wide tax previews and recalculation, and shows recoverable interruptions. Provider data fields, purposes and endpoints are unchanged. The earlier draft-only and intermediate fingerprints do not authorize the combined build.
 
 The repository owner approved the revised exact staging fingerprint `cae18ae5edee24f89bbf4a775656d66bfab16620cc2e0a762e093d5f8281c8a3` after the two draft-preflight web actions were classified as internal presentation actions. This replaces `05f640c6fe6b66fc746d574ee80df700397a55fd3a8a863739f0feda584b48af` for the combined candidate. The existing 28 provider approvals retain their fields, purposes, endpoints and transports.
+
+## Payroll tax worker database admission, 23 November 2026
+
+The repository owner approved carrying forward the same 28 provider approvals to source fingerprint `eee00d413d961b8687f91c415030af5fde88451f2e7df0938aa5b6a97527e74e`. Payroll preview and confirmation now release the worker database slot between their read and write transactions. Provider data fields, purposes, endpoints and transports are unchanged.
