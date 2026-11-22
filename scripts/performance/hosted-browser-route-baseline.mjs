@@ -34,7 +34,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','shell-content','approvals-content','command-delegation','tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','employee-picker','content-readiness','shell-content','approvals-content','command-delegation','tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe),'Unknown browser surface');
 const tp3CatalogueProbe=['tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe);
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
@@ -54,7 +54,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(!(tp3CatalogueProbe||['leave-inbox','leave-balances','roster','shell-content','approvals-content'].includes(surfaceProbe))||groupShape,'The selected comparison requires group scale');
+assert(!(tp3CatalogueProbe||['leave-inbox','leave-balances','roster','employee-picker','shell-content','approvals-content'].includes(surfaceProbe))||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -2264,6 +2264,72 @@ async function measureFocusedRoster(fixture){
  assert.equal(report.rosterStartup.length,6);
 }
 
+async function measureEmployeePicker(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
+ report.employeePicker=[];
+ const subject=fixture.users[4];
+ assert.equal(subject.role,'employee');
+ for(const actor of fixture.users.slice(0,2)){
+  assert.equal(actor.companyId,subject.companyId);
+  for(const [path,param] of [['/attendance/individual','emp'],['/attendance/breakdown','emp'],[payrollHistoryPath,'employmentId']]){
+   const context=await signedInContext(actor);
+   const row={route:path,role:actor.role,status:'incomplete'};
+   report.employeePicker.push(row);
+   try{
+    const page=await context.newPage();
+    const started=performance.now();
+    const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
+    assert.equal(response?.status(),200);
+    assert.equal(new URL(page.url()).pathname,path);
+    const main=page.locator('main:visible');
+    const search=main.getByRole('searchbox',{name:'Search employee',exact:true});
+    await search.waitFor({state:'visible',timeout:15000});
+    row.pickerVisibleMs=Math.round(performance.now()-started);
+    const choiceResponse=departmentId=>page.waitForResponse(response=>{
+     const request=response.request();
+     if(response.url()!==origin+'/api/employee-choices'||request.method()!=='POST')return false;
+     const input=request.postDataJSON();
+     return input.query===subject.name&&input.departmentId===departmentId;
+    },{timeout:15000});
+    const readMatching=async pending=>{
+     const result=await pending;
+     assert.equal(result.status(),200);
+     const choices=await result.json();
+     const employee=choices.rows.find(row=>row.employmentId===subject.employmentId);
+     assert(employee?.departmentId,'Seeded employee must be visible with a department');
+     return employee;
+    };
+    const searched=performance.now();
+    const [employee]=await Promise.all([readMatching(choiceResponse('')),search.fill(subject.name)]);
+    const pick=main.getByRole('button').filter({hasText:subject.name}).and(page.locator('button:enabled'));
+    await pick.waitFor({state:'visible',timeout:15000});
+    row.searchReadyMs=Math.round(performance.now()-searched);
+    const details=main.locator('details').filter({has:page.getByText('More filters',{exact:true})});
+    await details.locator('summary').click({timeout:15000});
+    const department=details.getByLabel('Department',{exact:true});
+    const filtered=performance.now();
+    await Promise.all([
+     readMatching(choiceResponse(employee.departmentId)),
+     department.selectOption(employee.departmentId,{timeout:15000}),
+    ]);
+    await pick.waitFor({state:'visible',timeout:15000});
+    row.filteredReadyMs=Math.round(performance.now()-filtered);
+    const selected=performance.now();
+    await Promise.all([
+     page.waitForURL(url=>url.pathname===path&&url.searchParams.get(param)===subject.employmentId,{timeout:15000}),
+     pick.click({timeout:15000}),
+    ]);
+    await pick.and(page.locator('[aria-current="true"]')).waitFor({state:'visible',timeout:15000});
+    await assertContentAvailable(page);
+    row.selectionReadyMs=Math.round(performance.now()-selected);
+    row.status='observed';
+   }finally{save();await context.close();}
+  }
+ }
+ assert.equal(report.employeePicker.length,6);
+}
+
 async function measureCalendarMonth({page,user,fixture,report,save}){
  const path='/me/calendar';
  const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
@@ -2627,6 +2693,7 @@ try{
   else if(surfaceProbe==='leave-balances')await measureLeaveBalanceWindows(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
+  else if(surfaceProbe==='employee-picker')await measureEmployeePicker(fixture);
   else if(contentProbeRoutes.has(surfaceProbe)){
    await measureRoutes(fixture,contentProbeRoutes.get(surfaceProbe));
    assert.equal(report.observations.length,2*report.plannedRoleRoutes);
