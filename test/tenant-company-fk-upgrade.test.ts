@@ -1310,6 +1310,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.lifecycle_task_card_documents(uuid[],jsonb)',app:true},
    {fn:'app.lifecycle_personnel_manager(uuid)',app:true},
    {fn:'app.lifecycle_manager_recovery_page(text,integer)',app:true},
+   {fn:'app.payroll_tax_basis_worker_managed(uuid)',app:true},
    {fn:'app.payroll_transaction_export_read(uuid,integer)',app:true},
    {fn:'app.payroll_transaction_export_store(uuid,integer,bytea)',app:true},
   ];
@@ -1385,6 +1386,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // Literal new routine security metadata; never infer expected privileges from the final function.
   const maintenanceRoutineSecurity=[
    {"fn":"app.payroll_run_review(uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, pg_temp"]},
+   {"fn":"app.payroll_tax_basis_worker_managed(uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.v9_document_shared_routing_row(jsonb,jsonb)","owner":"OWNER","definer":false,"volatility":"i","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.v9_offboarding_document_routings(uuid,integer,text[])","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
    // Reviewed protocol-specific metadata; aliases preserve the canonical source owner.
