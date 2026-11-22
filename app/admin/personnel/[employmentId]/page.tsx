@@ -324,6 +324,7 @@ export default async function EmployeePage({
     && Object.keys(rawSearchParams).every(key=>['tab','showCorrected','from','error'].includes(key));
   const movementPage=requestedMovementPage??(directMovementHistory?'history':undefined);
   const readProfileCards = admin && !movementPage;
+  const readJobPanel = readProfileCards && rawSearchParams.tab === 'job';
   const readMovementEditorChoices = admin && (!movementPage || movementPage === 'new' || movementPage === 'edit');
   const historyHref=requestedMovementPage
     ? movementPageHref(employmentId,'history',undefined,movementContext)
@@ -417,9 +418,9 @@ export default async function EmployeePage({
     readProfileCards ? assignmentHistory(s, employmentId) : [],
     readMovementEditorChoices ? readOrganisationOptions(emp.companyId) : emptyOrganisationOptions,
     readProfileCards ? reportingLinesFor(s, employmentId, undefined, { administrativeAsOf: today }) : {managers:[],reports:[]},
-    readMovementEditorChoices || movementPage === 'correct-hire' ? listWorkforcePickOptions(s) : [],
+    readJobPanel || (readMovementEditorChoices && movementPage) || movementPage === 'correct-hire' ? listWorkforcePickOptions(s) : [],
     readMovementEditorChoices ? listJobGrades(s, { companyId: orgScopeCompanyId }) : [],
-    readProfileCards ? delegationsFor(s, employmentId) : [],
+    readJobPanel ? delegationsFor(s, employmentId) : [],
   ]);
   const [departments, positions, businessUnits, locations] = currentOrganisationOptions;
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
@@ -582,7 +583,7 @@ export default async function EmployeePage({
   // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
   // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
   const currentSuperior = reporting.managers.find((m) => m.lineType === 'administrative') ?? null;
-  const superiorHistory = readProfileCards ? await directSuperiorHistoryFor(s, employmentId, today) : [];
+  const superiorHistory = readJobPanel ? await directSuperiorHistoryFor(s, employmentId, today) : [];
   // "EMP-0008 – John Tan" labels: the Combobox filters on the label, so one picker searches Employee ID
   // and name alike. Active employees only (`others` already excludes self + terminated); the current
   // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
@@ -638,7 +639,7 @@ export default async function EmployeePage({
   const movementDocuments = movementDetailData && spMovement ? await movementAttachments(s, employmentId, spMovement) : [];
   const resignationInfo = movementProjection?.resignation ?? null;
   const allocationDate=movementPage==='view'?movementDetailData?.row.effectiveDate:movementPage==='edit'?movements.find(row=>row.id===spEditMovement)?.effectiveDate:movementPage==='correct-hire'?emp.hiredOn:undefined;
-  const costAllocationView = (readProfileCards||!!movementPage&&movementPage!=='history') && emp.companyId ? await getEmploymentCostAllocations(s, employmentId,allocationDate).catch(error=>{if(error instanceof CostAllocationError&&error.code==='date')return null;throw error;}) : null;
+  const costAllocationView = (readJobPanel||!!movementPage&&movementPage!=='history') && emp.companyId ? await getEmploymentCostAllocations(s, employmentId,allocationDate).catch(error=>{if(error instanceof CostAllocationError&&error.code==='date')return null;throw error;}) : null;
   /**
    * c063eea9 — the Correct hire details form (?correctHire=1). Read ONLY while it is open, and only where
    * the caller may correct the employment, including after an exit.
@@ -812,8 +813,7 @@ export default async function EmployeePage({
     }
   };
 
-  // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
-  // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
+  // Tab labels (people.detail.tabs.*). Job loads on first selection or when opened directly.
   const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
@@ -4697,7 +4697,7 @@ export default async function EmployeePage({
     // bar so it cannot read as "Save everything below me" — press it after changing the Direct Superior
     // and the bar answers "No unsaved changes", which is exactly the control-that-lies the classification
     // exists to prevent unless the bar has already said what it owns.
-    job: (
+    job: (readJobPanel ? (
       <>
         {admin && (
           <fieldset disabled={!canMaintainWorkforce} className="min-w-0">
@@ -4715,7 +4715,7 @@ export default async function EmployeePage({
         {delegationsCard}
         {costAllocationView && <CostCenterAllocations key={employmentId} value={costAllocationView}/>}
       </>
-    ),
+    ) : undefined),
     // Movement tab redesign (78853b97): ONE clean screen — the Employment History timeline (a
     // Hired-first projection over the domain_event ledger) with a single New Event button that folds in
     // the former Transfer / Terminate / Blacklist boxes (their audited services are reused, not
@@ -5065,6 +5065,8 @@ export default async function EmployeePage({
       ) : null}
 
       <PersonnelTabs
+        key={employmentId}
+        deferredTabs={['job']}
         tabs={tabs}
         panels={panels}
         emptyLabel={t('tabs.empty')}
