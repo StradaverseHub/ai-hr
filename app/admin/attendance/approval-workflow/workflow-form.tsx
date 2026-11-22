@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { AttendanceResolvedRoutePreview } from '@/components/attendance-resolved-route-preview';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
+import { useClientReady } from '@/components/use-client-ready';
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { AssignmentGroupsEditor } from './assignment-groups';
 import {AttendanceStageEditorV4,AttendanceCcEditor,emptyAttendanceV4Level} from './stage-editor-v4';
@@ -30,6 +31,7 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
     const v3 = useTranslations('attendanceWorkflow.v3');
     const t = useTranslations('attendanceWorkflow'), router = useRouter();
     const common = useTranslations('common');
+    const interactive = useClientReady();
     const [input, setInput] = useState<AnyAttendanceWorkflowInput>(initial ?? { ...context, companyIds:options.canManageAllCompanies?options.companies.map(c=>c.id):[context.companyId], allCompanies:options.canManageAllCompanies===true, routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: true });
     const [levelProblems, setLevelProblems] = useState<AttendanceLevelProblem[]>([]);
     const [assignmentOptions, setAssignmentOptions] = useState<Awaited<ReturnType<typeof loadAttendanceAssignmentOptionsAction>>>();
@@ -120,7 +122,7 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
         status: catalogError ? <div className="space-y-2 p-2"><p role="alert">{t('requestFailed')}</p><Button type="button" variant="secondary" onClick={loadAssignmentOptions}>{t('retryEmployees')}</Button></div>
             : <p role="status" className="p-2 text-sm text-muted-foreground">{common('loading')}</p>,
     } : undefined;
-    return <WorkflowCompanyContext.Provider value={input.allCompanies?options.companies.map(c=>c.id):input.companyIds??[input.companyId]}><AttendanceSettingsNavigation formId="attendance-workflow-form" savedRevision={savedRevision}/><form id="attendance-workflow-form" className="space-y-5" onSubmit={e => { e.preventDefault(); run(true); }}><fieldset disabled={pending || !!savedDestination} className="min-w-0 space-y-5">
+    return <WorkflowCompanyContext.Provider value={input.allCompanies?options.companies.map(c=>c.id):input.companyIds??[input.companyId]}><AttendanceSettingsNavigation formId="attendance-workflow-form" savedRevision={savedRevision}/><form id="attendance-workflow-form" className="space-y-5" onSubmit={e => { e.preventDefault(); run(true); }}><fieldset disabled={!interactive || pending || !!savedDestination} className="min-w-0 space-y-5">
   {copiedFrom&&<p role="status" className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">{t('copy.banner',{code:copiedFrom.code,version:copiedFrom.version})}</p>}
   <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('information')}</h2><div className="grid gap-4 sm:grid-cols-2">
    <div><label className="mb-3 flex min-h-11 items-center gap-2 text-sm"><input name="allCompanies" type="checkbox" checked={input.allCompanies===true} disabled={!options.canManageAllCompanies} onChange={event=>{const allCompanies=event.target.checked;setInput(old=>({...old,allCompanies,companyIds:allCompanies?options.companies.map(c=>c.id):[old.companyId]}));setPreview(null);}}/>{t('allCompany')}</label>
