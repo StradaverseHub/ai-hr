@@ -22,7 +22,9 @@
  * test/topbar-identity-width.browser.test.tsx; this file and that one are not substitutes.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { hydrateRoot, type Root } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ComponentProps, ReactNode } from 'react';
@@ -92,6 +94,34 @@ const blankElements = (root: HTMLElement): string[] =>
     .filter((el) => !el.className.toString().includes('h-px'))
     .filter((el) => !el.className.toString().includes('inset-0'))
     .map((el) => `<${el.tagName.toLowerCase()} class="${el.className}">`);
+
+it('enables the account trigger only when the first click can open the menu', async () => {
+  const tree = (
+    <NextIntlClientProvider locale="en" timeZone="Asia/Kuala_Lumpur" messages={en}>
+      <UserMenu name="Fictional employee" employeeCode="FIX-1" employed />
+    </NextIntlClientProvider>
+  );
+  const host = document.createElement('div');
+  document.body.append(host);
+  host.innerHTML = renderToString(tree);
+  const errors: unknown[] = [];
+  let root: Root | undefined;
+  try {
+    const button = trigger(host);
+    expect(button).toBeDisabled();
+    await act(async () => {
+      root = hydrateRoot(host, tree, { onRecoverableError: error => errors.push(error) });
+    });
+    expect(button).toBeEnabled();
+    await userEvent.click(button);
+    expect(within(host).getByRole('menu')).toBeVisible();
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    expect(errors).toEqual([]);
+  } finally {
+    await act(async () => root?.unmount());
+    host.remove();
+  }
+});
 
 it('waits for intent before prefetching an account menu destination', async () => {
   const { container } = wrap(<UserMenu name="Fictional HR administrator" employeeCode="FIX-1"

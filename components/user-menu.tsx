@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import Link from '@/components/intent-link';
+import { useClientReady } from '@/components/use-client-ready';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, UserRound } from 'lucide-react';
 import { Avatar } from '@/components/ui';
@@ -94,6 +95,7 @@ export function UserMenu({
   const accessT=useTranslations('accessConfiguration');
   const navT=useTranslations('nav');
   const [open, setOpen] = useState(false);
+  const interactive = useClientReady();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
@@ -131,6 +133,7 @@ export function UserMenu({
       <button
         ref={trigger}
         type="button"
+        disabled={!interactive}
         onClick={() => setOpen(value => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
