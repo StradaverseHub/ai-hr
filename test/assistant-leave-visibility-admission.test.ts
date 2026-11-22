@@ -9,6 +9,7 @@ import {hireEmployee} from '../core/org';
 import {updateLeaveType} from '../core/admin';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {askAssistant} from '../core/assistant';
+import {eraseOwnAssistantHistory} from '../core/assistant-history-retention';
 import {withAssistantRead,withAssistantAdmissionReadsTx} from '../core/assistant-read-session';
 import {ASSISTANT_TOOLS,specsFor} from '../core/assistant-tools';
 import {loadAiWorkspace} from '../core/ai-workspace';
@@ -82,22 +83,54 @@ describe('actual Mine flags bind current provider input and historical source di
    and pg_get_constraintdef(oid) like '%focused_v1%'`);
   expect(constraint?.definition).toContain('focused_v1');
   const draft=readFileSync('docs/research/assistant-local-leave-candidate.draft.sql','utf8');
+  const activityDraft=readFileSync('docs/research/assistant-model-free-activity.draft.sql','utf8');
+  const activity=(actor:SessionContext)=>withTenant(actor,async tx=>{
+   const [row]=await tx.execute<{count:number}>(sql`select app.assistant_model_free_answer_activity()::int as count`);
+   return row.count;
+  },{readOnlySnapshot:true});
   await owner.db.transaction(async tx=>{
    const [original]=await tx.execute<{role:string}>(sql`select pg_get_userbyid(relowner) as role
     from pg_class where oid='public.ai_agent_candidate'::regclass`);
    // The hosted template was migrated by the fixture administrator. Recreate production
    // ownership for this exact DDL, then restore the fixture owner before any application call.
+   const [activityOwners]=await tx.execute<{schema:string;tenant:string;quota:string;principal:string}>(sql`
+    select pg_get_userbyid(nspowner) as schema,
+     (select pg_get_userbyid(relowner) from pg_class where oid='public.tenant'::regclass) as tenant,
+     (select pg_get_userbyid(relowner) from pg_class where oid='app.assistant_question_budget'::regclass) as quota,
+     (select pg_get_userbyid(proowner) from pg_proc where oid='app.principal_snapshot_current()'::regprocedure) as principal
+    from pg_namespace where nspname='app'`);
    await tx.execute(sql`alter table public.ai_agent_candidate owner to ai_hr_owner`);
+   await tx.execute(sql`alter schema app owner to ai_hr_owner`);
+   await tx.execute(sql`alter table public.tenant owner to ai_hr_owner`);
+   await tx.execute(sql`alter table app.assistant_question_budget owner to ai_hr_owner`);
    await tx.execute(sql`set local role ai_hr_owner`);
    const [role]=await tx.execute<{name:string;superuser:boolean;createrole:boolean;bypassrls:boolean}>(sql`
     select current_user as name,rolsuper as superuser,rolcreaterole as createrole,rolbypassrls as bypassrls
     from pg_roles where rolname=current_user`);
    expect(role).toEqual({name:'ai_hr_owner',superuser:false,createrole:false,bypassrls:false});
    await tx.execute(sql.raw(draft));
+   for(const statement of activityDraft.split('--> statement-breakpoint'))await tx.execute(sql.raw(statement));
    await tx.execute(sql`reset role`);
+   // Match the runtime owner of the existing principal proof in this migrated test database.
+   await tx.execute(sql`alter function app.assistant_model_free_answer_activity() owner to ${sql.identifier(activityOwners.principal)}`);
    await tx.execute(sql`alter table public.ai_agent_candidate owner to ${sql.identifier(original.role)}`);
+   await tx.execute(sql`alter table app.assistant_question_budget owner to ${sql.identifier(activityOwners.quota)}`);
+   await tx.execute(sql`alter table public.tenant owner to ${sql.identifier(activityOwners.tenant)}`);
+   await tx.execute(sql`alter schema app owner to ${sql.identifier(activityOwners.schema)}`);
   });
   try{
+   const [foreign]=await owner.db.insert(schema.tenant).values({workosOrgId:randomUUID(),name:'Other fictional tenant'}).returning({id:schema.tenant.id});
+   await owner.db.execute(sql`insert into app.assistant_model_free_answer_day (tenant_id,question_day,answer_count)
+    values (${foreign.id}::uuid,${todayInKualaLumpur()}::date,9),
+     (${base.tenantId}::uuid,${todayInKualaLumpur()}::date-30,7),
+     (${base.tenantId}::uuid,${todayInKualaLumpur()}::date+1,5)`);
+   expect(await activity(promoter)).toBe(0);
+   const companyHr={...promoter,grants:[{role:'hr_admin',companyId:base.companyId}]} satisfies SessionContext;
+   for(const actor of [employee,companyHr]){
+    await expect(activity(actor)).rejects.toMatchObject({cause:{code:'42501'}});
+   }
+   await expect(withTenant(promoter,tx=>tx.execute(sql`select * from app.assistant_model_free_answer_day`)))
+    .rejects.toMatchObject({cause:{code:'42501'}});
    expect((await review(ctx))?.localLeaveRegistrationAvailable).toBe(true);
    await expect(createConversationAgentCandidate(employee,nomination)).rejects.toThrow();
    await expect(createConversationAgentCandidate(ctx,{...nomination,signalIds:[randomUUID()]})).rejects.toThrow();
@@ -161,9 +194,17 @@ describe('actual Mine flags bind current provider input and historical source di
    const [exchange]=await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id,served.exchangeId));
    expect(exchange).toMatchObject({appUserId:authorId,provider:null,model:null,inputTokens:0,outputTokens:0});
    expect(await owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,base.tenantId))).toEqual([]);
-   const [quota]=await owner.db.execute(sql`select exchange_id::text,accounted_tokens::int,completed_at is not null as completed
+   const [quota]=await owner.db.execute<{root_id:string;exchange_id:string;accounted_tokens:number;completed:boolean}>(sql`
+    select root_id::text,exchange_id::text,accounted_tokens::int,completed_at is not null as completed
     from app.assistant_question_budget where tenant_id=${base.tenantId}::uuid and user_id=${authorId}::uuid`);
-   expect(quota).toEqual({exchange_id:served.exchangeId,accounted_tokens:0,completed:true});
+   expect(quota).toMatchObject({exchange_id:served.exchangeId,accounted_tokens:0,completed:true});
+   expect(await activity(promoter)).toBe(1);
+   const transcript=await withTenant(promoter,tx=>tx.select({id:schema.assistantExchange.id}).from(schema.assistantExchange)
+    .where(eq(schema.assistantExchange.id,served.exchangeId)));
+   expect(transcript).toEqual([]);
+   await withTenant(ctx,tx=>tx.execute(sql`
+    select app.assistant_question_budget_complete(${quota.root_id}::uuid,${served.exchangeId}::uuid)`));
+   expect(await activity(promoter)).toBe(1);
    expect(await trial(promoter)).toMatchObject({state:'windowOpen',
     promotion:{id:promotion.promotionId,used:1,maximum:4,retired:false,ownOutcomes:null}});
    expect((await review(promoter))?.conversationPromotions).toEqual([]);
@@ -218,12 +259,23 @@ describe('actual Mine flags bind current provider input and historical source di
    await expect(ask()).resolves.toMatchObject({turns:1});
    expect(transport).toHaveBeenCalledTimes(3);
    expect((await trial(ctx))?.promotion?.ownOutcomes).toEqual({retainedExchanges:2,modelFreeAnswers:1,modelResponses:1});
+   await expect(askAssistant(ctx,{question:'Hello'})).resolves.toMatchObject({turns:0});
+   expect(await activity(promoter)).toBe(1);
+   const erased=await eraseOwnAssistantHistory(ctx);
+   expect(erased.retired).toBeGreaterThan(0);
+   expect(await activity(promoter)).toBe(1);
    await eraseOwnConversationStrategyMetadata(ctx);
    expect((await trial(ctx))?.promotion?.ownOutcomes).toEqual({retainedExchanges:0,modelFreeAnswers:0,modelResponses:0});
    const [used]=await owner.db.execute(sql`select used_jobs::int as used from public.ai_agent_promotion where id=${promotion.promotionId}::uuid`);
    expect(used).toEqual({used:3});
   }finally{
-   // Vitest can reuse this worker's database. Remove the local candidate and restore the exact original CHECK.
+   // Vitest can reuse this worker's database. Remove both drafts and restore the exact original CHECK.
+   await owner.db.transaction(async tx=>{
+    await tx.execute(sql`drop trigger assistant_record_model_free_answer on app.assistant_question_budget`);
+    await tx.execute(sql`drop function app._record_assistant_model_free_answer()`);
+    await tx.execute(sql`drop function app.assistant_model_free_answer_activity()`);
+    await tx.execute(sql`drop table app.assistant_model_free_answer_day`);
+   });
    await resetDb();
    await owner.db.transaction(async tx=>{
     const name=sql.identifier(constraint.name);
