@@ -206,18 +206,23 @@ it('keeps Rewards upload choices and their order for group and company HR on a g
   Array.from({length:69},(_,index)=>({tenantId:b.tenantId,legalName:'Fictional company '+String(index).padStart(2,'0')})),
  ).returning({id:schema.company.id});
  const companyIds=[b.companyId,...companies.map(company=>company.id)];
- await owner.db.execute(sql`
+ const workforce=await owner.db.execute<{id:string}>(sql`
   with workforce as materialized (
-   select gen_random_uuid() as person_id,n, (${companyIds}::uuid[])[1+(n-1)%70] as company_id
+   select gen_random_uuid() as person_id,n,
+    (array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}])[1+(n-1)%70] as company_id
    from generate_series(1,1000) as source(n)
   ), people as (
-   insert into person (id,tenant_id,full_name)
-   select person_id,${b.tenantId}::uuid,'Fictional upload worker '||n from workforce returning id
+   insert into person (id,tenant_id,full_name,primary_email)
+   select person_id,${b.tenantId}::uuid,'Fictional upload worker '||n,
+    'rewards-upload-fixture-'||n||'@example.invalid' from workforce returning id
   )
   insert into employment (tenant_id,person_id,company_id,employee_code,hired_on)
   select ${b.tenantId}::uuid,people.id,workforce.company_id,'UP-'||workforce.n,date '2024-01-01'
   from people join workforce on workforce.person_id=people.id
+  returning id
  `);
+ expect(companyIds).toHaveLength(70);
+ expect(workforce).toHaveLength(1000);
  await owner.db.insert(schema.businessUnit).values([
   ...companyIds.map((companyId,index)=>({tenantId:b.tenantId,companyId,code:'U'+String(index).padStart(2,'0'),
    name:'Fictional company unit',label:index===0?' Home unit ':''})),
