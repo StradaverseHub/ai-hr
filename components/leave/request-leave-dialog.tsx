@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Plus } from 'lucide-react';
 import { Button, Field, btnPrimary, inputCls } from '../ui';
+import { useClientReady } from '../use-client-ready';
 import { LeaveDurationFields, type LeaveTypeOption } from '../leave-duration-fields';
 
 type Action = (fd: FormData, inlineErrors?: boolean) => void | Promise<void | {error?:string;redirectTo?:string}>;
@@ -52,6 +53,7 @@ export function RequestLeaveDialog({
   summaryAction: SummaryAction;
 }) {
   const t = useTranslations('leave');
+  const interactive = useClientReady();
   const [open, setOpen] = useState(false);
   const [error,setError]=useState('');
   const [zeroDays,setZeroDays]=useState(false);
@@ -88,7 +90,7 @@ export function RequestLeaveDialog({
   return (
     <Dialog.Root open={open} onOpenChange={next=>{if(!pending){setOpen(next);if(!next)setError('');}}}>
       <Dialog.Trigger asChild>
-        <button type="button" className={btnPrimary} data-tour="leave-request">
+        <button type="button" className={btnPrimary} data-tour="leave-request" disabled={!interactive}>
           <Plus className="size-4" />
           {t('requestLeave')}
         </button>

@@ -1,5 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {renderToStaticMarkup} from 'react-dom/server';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -76,6 +77,18 @@ describe('audit picker recovery',()=>{
 });
 
 describe('leave submission retains correction context',()=>{
+ it('enables Request Leave when its dialog handlers are available',async()=>{
+  const request=<RequestLeaveDialog types={[{id:'annual',label:'Annual leave',durations:null}]}
+   ownEmploymentId="own" submitAction={async()=>{}} previewAction={async()=>null} summaryAction={async()=>null}/>;
+  const server=document.createElement('div');
+  server.innerHTML=renderToStaticMarkup(<NextIntlClientProvider locale="en" messages={en}>{request}</NextIntlClientProvider>);
+  expect(server.querySelector('button[data-tour="leave-request"]')).toBeDisabled();
+  mount(request);
+  const trigger=screen.getByRole('button',{name:en.leave.requestLeave});
+  expect(trigger).toBeEnabled();
+  await userEvent.click(trigger);
+  expect(screen.getByRole('dialog',{name:en.leave.requestLeave})).toBeVisible();
+ });
  it('keeps the reason and file on a server rejection, then closes on confirmed success',async()=>{
   const submit=vi.fn().mockResolvedValueOnce({error:'No entitlement is configured.'}).mockResolvedValueOnce({redirectTo:'/leave?toast=Saved'});
   mount(<RequestLeaveDialog types={[{id:'annual',label:'Annual leave',durations:null}]} startDefault="2026-11-09" ownEmploymentId="own" previewAction={async()=>null} submitAction={submit} summaryAction={async()=>null}/>);
