@@ -68,6 +68,24 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_RECRUITMENT_RECORDS==='true'){
+  const {addApplication,createJob,createRequisition}=await source('packs/recruitment/service.ts');
+  const [grade]=await owner.client`insert into job_grade(tenant_id,code,name,rank)
+   values (${group.tenantId}::uuid,'PERF-RECRUIT','Fictional recruitment grade',1) returning id`;
+  const reqTitle='Fictional recruitment requisition';
+  const jobTitle='Fictional operations analyst';
+  const candidateName='Fictional operations applicant';
+  const common={companyId:company.companyId,workLocation:'Kuala Lumpur',employmentType:'full_time',
+   recruitmentType:'budgeted',jobGradeIds:[grade.id]};
+  const {id:reqId,reqNumber}=await createRequisition(ctx,{...common,title:reqTitle,vacancies:'2'});
+  const {id:jobId,jobNumber}=await createJob(ctx,{...common,requisitionId:reqId,title:jobTitle});
+  const {applicationId,candidateId,receipt}=await addApplication(ctx,{
+   jobId,fullName:candidateName,email:'fictional-operations-applicant@example.invalid',sendReceipt:false,
+  });
+  assert.equal(receipt,undefined);
+  fixture.recruitmentRecords={reqId,reqNumber,reqTitle,jobId,jobNumber,jobTitle,applicationId,candidateId,candidateName};
+ }
+
  if(env.PERF_SAVED_REPORT_RECORDS==='true'){
   const {saveCustomReport}=await source('core/custom-reports.ts');
   const employee=fixture.users[4];

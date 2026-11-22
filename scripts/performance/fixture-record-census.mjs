@@ -620,6 +620,50 @@ async function loanRecordRoutes(db, fixture) {
   ]);
 }
 
+async function recruitmentRecordRoutes(db, fixture) {
+  const [group,company] = fixture.users;
+  const record=fixture.recruitmentRecords;
+  assert(record && group.companyId===company.companyId);
+  const [stored]=await db`
+    select q.req_number,q.title as req_title,j.job_number,j.title as job_title,c.full_name,s.name as arrival_stage
+    from recruitment_requisition q
+    join recruitment_requisition_job qj on qj.requisition_id=q.id and qj.tenant_id=q.tenant_id
+    join recruitment_job_opening j on j.id=qj.job_id and j.tenant_id=q.tenant_id
+    join recruitment_application a on a.job_id=j.id and a.tenant_id=q.tenant_id
+    join recruitment_candidate c on c.id=a.candidate_id and c.tenant_id=q.tenant_id
+    join recruitment_application_event e on e.application_id=a.id and e.tenant_id=q.tenant_id and e.kind='applied'
+    join recruitment_stage s on s.id=e.to_stage_id and s.tenant_id=q.tenant_id
+    where q.tenant_id=${group.tenantId}::uuid and q.company_id=${company.companyId}::uuid and q.id=${record.reqId}::uuid
+      and j.id=${record.jobId}::uuid and a.id=${record.applicationId}::uuid
+      and c.id=${record.candidateId}::uuid and a.state='active'
+  `;
+  assert(stored?.arrival_stage);
+  assert.deepEqual(stored,{
+    req_number:record.reqNumber,req_title:record.reqTitle,job_number:record.jobNumber,
+    job_title:record.jobTitle,full_name:record.candidateName,arrival_stage:stored.arrival_stage,
+  });
+  const requisition='/recruitment/requisitions/'+record.reqId, job='/recruitment/positions/'+record.jobId;
+  const application='/recruitment/applications/'+record.applicationId;
+  return [group,company].flatMap(actor=>[
+    {actor,template:'/recruitment/requisitions/[id]',path:requisition,exactHeading:record.reqTitle,
+      witness:`a[href="${job}"]`},
+    {actor,template:'/recruitment/positions/[id]',path:job,exactHeading:record.jobTitle,
+      witness:`a[href="${requisition}"]`},
+    {actor,template:'/recruitment/applications/[id]',path:application,exactHeading:record.candidateName,
+      content:record.jobTitle,applicationHistory:'Applied, starting at '+stored.arrival_stage},
+  ]);
+}
+
+async function verifyRecruitmentHistory(page, main, entry, row, remaining) {
+  const started=performance.now();
+  const historyPath=entry.path+'?tab=history';
+  await main.locator(`nav a[href="${historyPath}"]`).click({timeout:remaining()});
+  await page.waitForURL(url=>url.pathname===entry.path&&url.searchParams.get('tab')==='history',{timeout:remaining()});
+  await main.getByText(entry.applicationHistory,{exact:true}).waitFor({state:'visible',timeout:remaining()});
+  assert.equal(await main.locator(`nav a[href="${historyPath}"]`).getAttribute('aria-current'),'page');
+  row.recruitmentHistoryMs=Math.round(performance.now()-started);
+}
+
 async function savedReportRecordRoutes(db, fixture) {
   const [group, company, , , employee] = fixture.users;
   const record = fixture.savedReportRecord;
@@ -1072,7 +1116,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, recruitmentRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1085,6 +1129,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
     : loanRecords ? await loanRecordRoutes(db, fixture)
     : savedReportRecords ? await savedReportRecordRoutes(db, fixture)
+    : recruitmentRecords ? await recruitmentRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -1171,6 +1216,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             row.savedReportPageReadyMs=Math.round(performance.now()-started);
             row.step='saved-report-preview';
             await verifySavedReportPreview(page,main,entry,row,remaining);
+          }
+          if (entry.applicationHistory && pass === 'first') {
+            row.recruitmentApplicationPageReadyMs = Math.round(performance.now()-started);
+            row.step = 'recruitment-application-history';
+            await verifyRecruitmentHistory(page,main,entry,row,remaining);
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);
