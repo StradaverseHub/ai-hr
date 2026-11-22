@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { UploadCloud } from 'lucide-react';
 import { Button, inputCls } from '@/components/ui';
+import { useClientReady } from '@/components/use-client-ready';
 import { FormRow, SectionCard, noteCls, typeHelpCls } from '@/components/ui/section-card';
 import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh, stackedSplitNoteCls, stackedSplitWordCls } from '@/components/ui/stacked-table';
 import { StatCells } from '@/components/ui/stat-cells';
@@ -34,6 +35,7 @@ const fmtSize = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(
 
 export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }) {
   const t = useTranslations('clockingFile');
+  const interactive = useClientReady();
   const router = useRouter();
   const [mappingId, setMappingId] = useState(mappings[0]?.id ?? '');
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
@@ -187,6 +189,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
             id={`${uid}-mapping`}
             className={inputCls}
             value={mappingId}
+            disabled={!interactive}
             onChange={(e) => {
               setMappingId(e.target.value);
               reset();
@@ -211,6 +214,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
             type="file"
             accept=".csv,.txt,text/csv,text/plain"
             className="hidden"
+            disabled={!interactive}
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) void loadFile(f);
@@ -223,40 +227,35 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
                 <strong>{fileName}</strong>{' '}
                 <span className="text-muted-foreground monolith:text-mid">· {t('import.fileInfo', { size: fmtSize(bytes.length), lines: lineCount })}</span>
               </span>
-              <button type="button" className="text-primary underline underline-offset-2 monolith:text-ink" onClick={() => fileRef.current?.click()}>
+              <button type="button" disabled={!interactive} className="text-primary underline underline-offset-2 monolith:text-ink" onClick={() => fileRef.current?.click()}>
                 {t('import.replaceFile')}
               </button>
             </div>
           ) : (
-            <div
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
+              disabled={!interactive}
               onClick={() => fileRef.current?.click()}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  fileRef.current?.click();
-                }
-              }}
               onDragOver={(e) => {
                 e.preventDefault();
-                setDragging(true);
+                if (interactive) setDragging(true);
               }}
               onDragLeave={() => setDragging(false)}
               onDrop={(e) => {
                 e.preventDefault();
+                if (!interactive) return;
                 setDragging(false);
                 const f = e.dataTransfer.files?.[0];
                 if (f) void loadFile(f);
               }}
-              className={`flex cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors monolith:rounded-none monolith:border monolith:border-ink ${
+              className={`flex w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors disabled:cursor-default monolith:rounded-none monolith:border monolith:border-ink ${
                 dragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-muted/40'
               }`}
             >
               <UploadCloud className="h-5 w-5 text-muted-foreground" aria-hidden />
-              <div className="text-sm font-medium">{t('import.dropFile')}</div>
-              <p className={typeHelpCls}>{t('import.dropFileHint')}</p>
-            </div>
+              <span className="text-sm font-medium">{t('import.dropFile')}</span>
+              <span className={typeHelpCls}>{t('import.dropFileHint')}</span>
+            </button>
           )}
         </FormRow>
         {!preview && (
