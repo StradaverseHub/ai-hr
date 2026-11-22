@@ -1389,9 +1389,9 @@ async function measureOrganisationReviewEntry(fixture){
     const response=await page.goto(origin+path+'/organisation-tagging',{waitUntil:'commit',timeout:15000});
     assert.equal(response?.status(),200);
     await page.waitForURL(origin+path,{timeout:15000});
-    const company=fixture.tenants[0].companies[0];
-    await page.locator(`main table a[href="${path}/${company.companyId}"]`).first()
-     .waitFor({state:'visible',timeout:15000});
+    const companyLink=page.locator(`main table a[href^="${path}/"]`).first();
+    await companyLink.waitFor({state:'visible',timeout:15000});
+    assert.match(await companyLink.getAttribute('href'),/^\/admin\/organization\/[a-f0-9-]{36}$/i);
     await assertContentAvailable(page);
     row.workspaceReadyMs=Math.round(performance.now()-started);
     row.status='observed';
