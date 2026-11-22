@@ -1,8 +1,12 @@
 import {randomUUID} from 'node:crypto';
+import {eq} from 'drizzle-orm';
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {claimRequest} from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {createClaimType, pendingClaimTaskSummary, listClaimHistoryPage, listPendingClaims, listPendingClaimsPage, listPendingClaimSelection, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
+import {currencyOfEmployment} from '../core/mobile-claims';
+import {readClaimsPageData} from '../app/claims/page-data';
+import {observeStatements} from './helpers/statement-observer';
+import {claimRecordFacts, createClaimType, getEmployeeClaimTypes, pendingClaimTaskSummary, listClaimHistoryPage, listPendingClaims, listPendingClaimsPage, listPendingClaimSelection, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
 import {adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
 import {ALL_ROW_CEILING} from '../lib/pagination';
 let base: Base;
@@ -33,6 +37,36 @@ describe('claims history database pagination', () => {
     expect(third.state).toMatchObject({total: 60, from: 51, to: 60, hasNext: false});
     expect((await listClaimDraftsForEmployment(ctx, subject.employmentId)).map(row => row.id)).toEqual([ids[60]]);
     expect((await listClaimsForEmployment(ctx, subject.employmentId, {claimId: ids[30]})).map(row => row.id)).toEqual([ids[30]]);
+  });
+  it('composes the employee page in one read snapshot with the same result and scope', async () => {
+    const {subject, ids} = await fixture();
+    await owner.db.update(claimRequest).set({status:'rejected'}).where(eq(claimRequest.id, ids[0]));
+    const userId = await createAppUser(base.tenantId, subject.personId, 'employee');
+    const session = {tenantId:base.tenantId,userId,personId:subject.personId,roles:['employee']};
+    const employmentId = subject.employmentId;
+    const separate = await observeStatements(async () => {
+      const [types, drafts, {rows:claimPage,state:pgState}, currency] = await Promise.all([
+        getEmployeeClaimTypes(session, employmentId),
+        listClaimDraftsForEmployment(session, employmentId),
+        listClaimHistoryPage(session, employmentId),
+        currencyOfEmployment(session, employmentId),
+      ]);
+      const rejectReasons = await claimRecordFacts(session, claimPage.filter(claim => claim.status === 'rejected').map(claim => claim.id));
+      return {types, drafts, claimPage, pgState, currency, rejectReasons};
+    });
+    const shared = await observeStatements(() => readClaimsPageData(session, employmentId, {}));
+    expect(separate.transactions).toBe(5);
+    expect(shared.transactions).toBe(1);
+    expect(shared.result).toEqual(separate.result);
+    expect(shared.result.types).not.toHaveLength(0);
+    expect(shared.result.claimPage.map(claim => claim.id)).toEqual(ids.slice(0, 25));
+    expect(shared.result.drafts.map(draft => draft.id)).toEqual([ids[60]]);
+    expect(shared.result.rejectReasons.has(ids[0])).toBe(true);
+    const other = await seedBase();
+    const foreign = await readClaimsPageData(adminCtx(other), employmentId, {});
+    expect(foreign.claimPage).toEqual([]);
+    expect(foreign.drafts).toEqual([]);
+    expect(foreign.rejectReasons.size).toBe(0);
   });
   it('caps All and invalid sizes and returns an honest empty out-of-range page', async () => {
     const {ctx, subject} = await fixture();

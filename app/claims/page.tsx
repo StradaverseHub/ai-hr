@@ -4,9 +4,8 @@ import {notFound} from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { requireModule } from '@/lib/authz';
 import {ownClaimSubject} from './subject';
-import { claimRecordFacts, getEmployeeClaimTypes, listClaimDraftsForEmployment, listClaimHistoryPage } from '@/packs/claims/service';
+import { readClaimsPageData } from './page-data';
 import { ClaimLimitWhy } from '@/components/why/sections';
-import { currencyOfEmployment } from '@/core/mobile-claims';
 
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ClaimForm, type ClaimDraftPrefill, type ClaimFormType } from '@/components/claim-form';
@@ -66,15 +65,7 @@ export default async function ClaimsPage({
     );
   }
 
-  const [types, drafts, {rows: claimPage, state: pgState}, currency] = await Promise.all([
-    getEmployeeClaimTypes(s, me.employmentId),
-    listClaimDraftsForEmployment(s, me.employmentId),
-    listClaimHistoryPage(s, me.employmentId, sp),
-    currencyOfEmployment(s, me.employmentId).catch(() => null),
-
-  ]);
-  // Only displayed rejections need detail facts; older history stays in the database.
-  const rejectReasons = await claimRecordFacts(s, claimPage.filter(c => c.status === 'rejected').map(c => c.id));
+  const {types, drafts, claimPage, pgState, currency, rejectReasons} = await readClaimsPageData(s, me.employmentId, sp);
   const editing = sp.draft ? drafts.find((d) => d.id === sp.draft) : undefined;
   if(selectedQuery.employmentId&&sp.draft!==undefined&&!editing)notFound();
   const draftPrefill: ClaimDraftPrefill | undefined = editing
