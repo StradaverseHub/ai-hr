@@ -73,6 +73,7 @@ const freshGroupBuilds=new Set([
  detachedShellBuild,'0ba883e0aa294bb0f15dcfe2433deedb52d11996','57fac422707b3a6174a290722ea0bb53da89f7c0',
  '52d2d170710fcfb14219abe2f9d0abc84e536748','5e34835d73183b2754c9b3e4ccdbfc31111917a8',
  clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,
+ '072f2eb4dc4ceba2450a8ff2e25b3b346ae4e855',
 ]);
 const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD))&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
