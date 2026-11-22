@@ -51,9 +51,9 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
     throw e;
   }
   const soft = async <T,>(work: Promise<T>): Promise<T | null> => work.catch((e) => { if (e instanceof RecruitmentError) return null; throw e; });
-  const [offer, history, hire, options, profile, referral, careers, agency, screening, checks, review, pools, waiting, emails] = await Promise.all([
+  const [offer, history, hire, profile, referral, careers, agency, screening, checks, review, pools, waiting, emails] = await Promise.all([
     soft(applicationOffer(s, id)), soft(applicationHistory(s, id)), soft(applicationHire(s, id)),
-    interviews.canSchedule ? soft(interviewFormOptions(s, id)) : Promise.resolve(null), soft(candidateProfile(s, id)), soft(applicationReferral(s, id)),
+    soft(candidateProfile(s, id)), soft(applicationReferral(s, id)),
     soft(applicationCareers(s, id)), soft(applicationAgency(s, id)),
     // Screening never takes the page down: a refusal or any database failure leaves the page without the Screening tab.
     applicationScreening(s, id).catch((e) => {
@@ -80,23 +80,26 @@ export default async function RecruitmentApplicationPage({ params, searchParams 
       return null;
     }),
   ]);
-  // Slice 20: the invitation the schedule form offers, the cancellation e-mail of each open interview, and the offer e-mail. Each only
-  // while the company's candidate e-mail is on; a failure leaves the page without that e-mail, never takes it down.
-  const quiet = <T,>(what: string, work: Promise<T>, fallback: T): Promise<T> => work.catch((e) => {
-    if (!(e instanceof RecruitmentError)) console.error(`recruitment ${what} failed`, e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
-    return fallback;
-  });
-  const [invitation, cancellations, offerEmail, matchOffered] = await Promise.all([
-    options ? quiet('invitation offer', invitationOffer(s, id), null) : Promise.resolve(null),
-    interviews.canSchedule ? quiet('cancellation previews', interviewCancellationPreviews(s, id), {} as Record<string, CancellationEmailPreview>) : Promise.resolve({} as Record<string, CancellationEmailPreview>),
-    offer?.can.markSent ? quiet('offer e-mail preview', offerEmailPreview(s, id), null) : Promise.resolve(null),
-    // Slice 24: the AI match summary button (the job's reviewers, the company's switch on and the owner's provider approval recorded).
-    profile ? quiet('match summary offer', matchSummaryOffered(s, id), false) : Promise.resolve(false),
-  ]);
   const reviewer = !!offer;
   const tab: Tab = sp.tab === 'offer' && reviewer ? 'offer' : sp.tab === 'history' && history ? 'history' : sp.tab === 'screening' && screening ? 'screening'
     : sp.tab === 'checks' && checks ? 'checks' : sp.tab === 'emails' && emails ? 'emails'
     : sp.tab === 'interviews' || !profile ? 'interviews' : 'candidate';
+
+  const quiet = <T,>(what: string, work: Promise<T>, fallback: T): Promise<T> => work.catch((e) => {
+    if (!(e instanceof RecruitmentError)) console.error(`recruitment ${what} failed`, e instanceof Error ? e.name : typeof e, pgSqlState(e) ?? '');
+    return fallback;
+  });
+  // These controls are rendered only in the selected tab. Keep each owner's access check on its read.
+  const interviewTab = tab === 'interviews' && interviews.canSchedule;
+  const optionsRead = interviewTab ? soft(interviewFormOptions(s, id)) : Promise.resolve(null);
+  const noCancellations: Record<string, CancellationEmailPreview> = {};
+  const [options, invitation, cancellations, offerEmail, matchOffered] = await Promise.all([
+    optionsRead,
+    optionsRead.then(value => value ? quiet('invitation offer', invitationOffer(s, id), null) : null),
+    interviewTab ? quiet('cancellation previews', interviewCancellationPreviews(s, id), noCancellations) : noCancellations,
+    tab === 'offer' && offer?.can.markSent ? quiet('offer e-mail preview', offerEmailPreview(s, id), null) : null,
+    tab === 'candidate' && profile ? quiet('match summary offer', matchSummaryOffered(s, id), false) : false,
+  ]);
   const [t, locale, te] = await Promise.all([getTranslations('recruitment'), getLocale(), getTranslations('recruitment.candidateEmail')]);
   const here = `/recruitment/applications/${id}?tab=${tab}`;
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
