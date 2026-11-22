@@ -39,12 +39,13 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
-const shellPermissionVariant=env.AIHR_BROWSER_SHELL_PERMISSION_VARIANT??'none';
+const mixedVariant=env.AIHR_BROWSER_SHELL_PERMISSION_VARIANT??'none';
+const clockingTenantQueue=mixedVariant==='contract-optimized-clocking-queue';
+const shellPermissionVariant=clockingTenantQueue?'contract-optimized':mixedVariant;
 assert(['none','contract-control','contract-optimized'].includes(shellPermissionVariant));
 const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 assert(['direct','transaction-pool'].includes(databaseTopology));
 const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
-const clockingTenantQueue=env.AIHR_BROWSER_MIXED_CLOCKING_TENANT_QUEUE==='true';
 const clockingOutcomeSource='a1d4cbb7bef482f7a6c8b75ab7fbec7611976857';
 const combinedGroupArtifacts=new Map([
  ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],

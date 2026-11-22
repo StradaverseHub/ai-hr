@@ -81,10 +81,10 @@ on:
         default: false
         type: boolean
       mixed_shell_permission_variant:
-        description: Compare the original and scoped Contract navigation routines on the pinned 70-company fixture
+        description: Compare Contract navigation and optionally exercise the serial clocking queue on the pinned fixture
         type: choice
         default: none
-        options: [none, contract-control, contract-optimized]
+        options: [none, contract-control, contract-optimized, contract-optimized-clocking-queue]
       mixed_database_topology:
         description: Compare direct web connections with transaction pooling on the pinned fictional workload
         type: choice
@@ -92,10 +92,6 @@ on:
         options: [direct, transaction-pool]
       mixed_group_scale:
         description: Add the existing 70-company group fixture without changing the 500 traffic actors
-        default: false
-        type: boolean
-      mixed_clocking_tenant_queue:
-        description: Exercise the existing serial tenant queue in the disposable clocking fixture
         default: false
         type: boolean
       model_eval:
@@ -156,6 +152,11 @@ jobs:
       - name: Validate bounded manifest
         id: selection
         run: |
+          clocking_tenant_queue=false
+          if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-clocking-queue ]]; then
+            clocking_tenant_queue=true
+            SHELL_PERMISSION_VARIANT=contract-optimized
+          fi
           if [[ "$BROWSER_MIXED_LOAD" == true && "$BROWSER_ROUTE_BASELINE" != true ]]; then
             exit 2
           fi
@@ -189,7 +190,7 @@ jobs:
                 "$SHELL_PERMISSION_VARIANT" == contract-optimized ]]; then
             combined_group_build=true
           fi
-          if [[ "$CLOCKING_TENANT_QUEUE" == true ]]; then
+          if [[ "$clocking_tenant_queue" == true ]]; then
             [[ "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 &&
                 "$combined_group_build" == true && "$BROWSER_ROUTE_BASELINE" == true &&
                 "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" == true ]] || exit 2
@@ -232,7 +233,6 @@ jobs:
           SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
           MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
           MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}
-          CLOCKING_TENANT_QUEUE: ${{ inputs.mixed_clocking_tenant_queue }}
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
@@ -433,7 +433,6 @@ jobs:
           AIHR_BROWSER_SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
           AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
           AIHR_BROWSER_MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}
-          AIHR_BROWSER_MIXED_CLOCKING_TENANT_QUEUE: ${{ inputs.mixed_clocking_tenant_queue }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
