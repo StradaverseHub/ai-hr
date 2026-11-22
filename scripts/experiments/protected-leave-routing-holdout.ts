@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { adjudicateAssistantAnswerPlan } from '../../lib/ai/assistant-answer-plan';
 import { presentGroundedToolOutcome } from '../../lib/ai/grounded-tool-presentation';
@@ -215,6 +216,64 @@ export function scoreLeaveRoutingSuccessor(bytes: Buffer, holdoutDigest: string,
     meetsThreshold: comparison.successorCorrectDirect === result.expectedDirect &&
       comparison.successorCorrectDeferrals === result.cases - result.expectedDirect &&
       comparison.regressions === 0 && comparison.additionalCorrectAnswers >= minimumAdditionalAnswers,
+  };
+}
+
+export function scoreLeavePredecessorTrial(bytes: Buffer, holdoutDigest: string, predecessorSha: string) {
+  const parsed = holdout.parse(readFrozenHoldoutJson(bytes, holdoutDigest));
+  if (parsed.candidateSha !== predecessorSha) throw Error('Invalid frozen predecessor leave suite.');
+  return {
+    evidence: 'offline_leave_predecessor_trial', candidateSha: predecessorSha, holdoutDigest,
+    ...scoreCases(parsed.cases, true).result, releaseAuthorized: false,
+  };
+}
+
+const predecessorCount = z.number().int().min(0).max(32);
+const predecessorReport = z.object({
+  evidence: z.literal('offline_leave_predecessor_trial'),
+  candidateSha: sha,
+  holdoutDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  cases: predecessorCount,
+  expectedDirect: predecessorCount,
+  correctDirect: predecessorCount,
+  correctDeferrals: predecessorCount,
+  missedDirect: predecessorCount,
+  wrongDirect: predecessorCount,
+  unexpectedDirect: predecessorCount,
+  meetsThreshold: z.boolean(),
+  releaseAuthorized: z.literal(false),
+}).strict();
+
+/** Reframe the very same private cases for the original evaluator in the predecessor checkout. */
+export function prepareLeavePredecessorHoldout(bytes: Buffer, holdoutDigest: string, candidateSha: string, predecessorSha: string) {
+  const parsed = successorHoldout.parse(readFrozenHoldoutJson(bytes, holdoutDigest));
+  if (parsed.candidateSha !== candidateSha || !sha.safeParse(predecessorSha).success || candidateSha === predecessorSha)
+    throw Error('Use distinct frozen predecessor and successor sources.');
+  const predecessorBytes = Buffer.from(JSON.stringify({ version: 1, candidateSha: predecessorSha, cases: parsed.cases }));
+  return { bytes: predecessorBytes, digest: createHash('sha256').update(predecessorBytes).digest('hex') };
+}
+
+export function compareLeavePredecessor(bytes: Buffer, holdoutDigest: string, candidateSha: string, predecessorSha: string,
+  supplied: unknown) {
+  const expected = prepareLeavePredecessorHoldout(bytes, holdoutDigest, candidateSha, predecessorSha);
+  const predecessor = predecessorReport.parse(supplied);
+  const successor = scoreLeaveRoutingSuccessor(bytes, holdoutDigest, candidateSha);
+  if (predecessor.candidateSha !== predecessorSha || predecessor.holdoutDigest !== expected.digest ||
+      predecessor.cases !== successor.cases || predecessor.expectedDirect !== successor.expectedDirect ||
+      predecessor.correctDirect + predecessor.missedDirect + predecessor.wrongDirect !== predecessor.expectedDirect ||
+      predecessor.correctDeferrals + predecessor.unexpectedDirect !== predecessor.cases - predecessor.expectedDirect ||
+      predecessor.meetsThreshold !== (predecessor.correctDirect + predecessor.correctDeferrals === predecessor.cases))
+    throw Error('Predecessor report does not match the frozen comparison.');
+  const additionalCorrectAnswers = successor.successorCorrectDirect - predecessor.correctDirect;
+  return {
+    evidence: 'offline_leave_predecessor_replay', candidateSha, predecessorSha, holdoutDigest,
+    predecessorHoldoutDigest: expected.digest, caseSetDigest: successor.caseSetDigest, cases: successor.cases,
+    predecessorCorrectDirect: predecessor.correctDirect, predecessorCorrectDeferrals: predecessor.correctDeferrals,
+    successorCorrectDirect: successor.successorCorrectDirect, successorCorrectDeferrals: successor.successorCorrectDeferrals,
+    additionalCorrectAnswers, minimumAdditionalAnswers: successor.minimumAdditionalAnswers, releaseAuthorized: false,
+    meetsThreshold: successor.successorCorrectDirect === successor.expectedDirect &&
+      successor.successorCorrectDeferrals === successor.cases - successor.expectedDirect &&
+      additionalCorrectAnswers >= successor.minimumAdditionalAnswers,
   };
 }
 

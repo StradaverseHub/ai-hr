@@ -353,6 +353,14 @@ A successor development comparison measures direct coverage against the proposed
 node --import tsx scripts/experiments/protected-leave-routing-holdout-cli.ts CASES.json CASES_SHA256 --compare-successor
 ```
 
+The development command runs both selectors in the successor checkout. To compare recorded behavior across frozen source revisions, use the following three-step replay. The accepted predecessor must already include the single-employment scoring entry point. The successor checkout checks that the pinned predecessor is an ancestor. The evaluator keeps the case files and report outside both checkouts.
+
+1. From the successor checkout, run `node --import tsx scripts/experiments/protected-leave-routing-holdout-cli.ts CASES.json CASES_SHA256 --prepare-predecessor PREDECESSOR_SHA /PRIVATE/PREDECESSOR.json`. This writes the same case contents to a new owner-only file and prints the predecessor suite digest.
+2. From the clean checkout at the predecessor SHA, run `node --import tsx scripts/experiments/protected-leave-routing-holdout-cli.ts /PRIVATE/PREDECESSOR.json PREDECESSOR_SUITE_SHA256 --score-predecessor`. Save its aggregate output to an evaluator-held report.
+3. From the successor checkout, run `node --import tsx scripts/experiments/protected-leave-routing-holdout-cli.ts CASES.json CASES_SHA256 --compare-predecessor PREDECESSOR_SHA /PRIVATE/PREDECESSOR_REPORT.json`. This reconciles the exact case bytes and both source identities, then calculates the direct-answer gain against the predecessor's aggregate result.
+
+The replay is diagnostic. The coordinator still needs to verify the predecessor's actual acceptance and independent custody of the reports before a successor may advance.
+
 The development suite covers a selected second or third employment, duplicate company labels, an unknown company, a withheld count, multiple leave types and a named coworker. The comparison uses the serving projection and answer-selection functions on fictional source results. A serving successor would need to recheck the chosen employment and replay its canonical facts before retaining an answer. Independent evaluation and trial results are separate.
 
 A frozen 12-case development suite at `e991d8f52149c83ff95fbec60e24ca5bdef1f04b` required four additional answers before execution. The single-employment route answered 3 of 7 eligible cases. The successor answered 7 of 7, adding correct selections across two, three and four fictional own employments. Both routes deferred all 5 cases that required deferral. The report recorded zero regressions and no model calls. The author froze and ran the fictional cases for development. The comparison measures direct-answer coverage. The fallback's eventual answers and requests to a provider were outside this experiment.

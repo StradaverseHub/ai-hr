@@ -2,7 +2,7 @@ import { createHash, generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { runProtectedLeaveComparison, runProtectedLeaveRouting } from '../scripts/experiments/protected-leave-comparison';
 import { selectProtectedLeaveCount } from '../lib/ai/assistant-leave-count';
-import { describePairedLeaveRoutingCases, describeSuccessorLeaveRoutingCases, scoreLeaveRoutingSuccessor, scorePairedLeaveRoutingHoldout, scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
+import { compareLeavePredecessor, prepareLeavePredecessorHoldout, scoreLeavePredecessorTrial, describePairedLeaveRoutingCases, describeSuccessorLeaveRoutingCases, scoreLeaveRoutingSuccessor, scorePairedLeaveRoutingHoldout, scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
 import { signLeaveSuccessorEvidence, verifyLeaveSuccessorEvidence } from '../scripts/experiments/protected-leave-successor-evidence';
 import { signPairedLeaveEvaluation, verifyPairedLeaveEvaluations } from '../lib/ai/assistant-leave-evaluation-receipt';
 import { installedLocalLeaveEvidence } from '../core/assistant-local-leave-evidence';
@@ -758,6 +758,26 @@ describe('evaluator-owned leave routing suite', () => {
       parentCorrectDeferrals: 6, successorCorrectDeferrals: 6, additionalCorrectAnswers: 3, regressions: 0,
       wrongDirect: 0, unexpectedDirect: 0, modelCalls: 0, meetsThreshold: true, releaseAuthorized: false });
     expect(JSON.stringify(score)).not.toMatch(/Fictional|17\.25|leave balance/);
+  });
+
+  it('reconciles a predecessor trial report against the identical frozen successor cases', () => {
+    const { bytes, digest } = frozenSuccessor();
+    const predecessor = 'b'.repeat(40);
+    const prepared = prepareLeavePredecessorHoldout(bytes, digest, candidateSha, predecessor);
+    const report = scoreLeavePredecessorTrial(prepared.bytes, prepared.digest, predecessor);
+    expect(compareLeavePredecessor(bytes, digest, candidateSha, predecessor, report)).toMatchObject({
+      predecessorSha: predecessor, predecessorCorrectDirect: 3, successorCorrectDirect: 6,
+      predecessorCorrectDeferrals: 6, successorCorrectDeferrals: 6, additionalCorrectAnswers: 3, meetsThreshold: true,
+      releaseAuthorized: false,
+    });
+    expect(() => scoreLeavePredecessorTrial(prepared.bytes, prepared.digest, candidateSha)).toThrow('predecessor leave suite');
+    expect(() => prepareLeavePredecessorHoldout(bytes, digest, candidateSha, candidateSha)).toThrow('distinct frozen');
+    for (const altered of [{ holdoutDigest: 'c'.repeat(64) }, { missedDirect: 1 }, { candidateSha }]) {
+      expect(() => compareLeavePredecessor(bytes, digest, candidateSha, predecessor, { ...report, ...altered }))
+        .toThrow('does not match the frozen comparison');
+    }
+    const generalScore = scoreProtectedLeaveRoutingHoldout(prepared.bytes, prepared.digest, predecessor);
+    expect(() => compareLeavePredecessor(bytes, digest, candidateSha, predecessor, generalScore)).toThrow();
   });
 
   it('keeps a shared company name ambiguous even if one own employment has no visible balance', () => {
