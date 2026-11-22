@@ -329,7 +329,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
                 </time>
               </Link>}
             </dd>
-            <dd><Link href="/admin/scheduled-actions" className={btnGhost}>{tc('workers.systemJobsLink')}</Link></dd>
+            <dd><Link href="/admin/scheduled-actions?view=ai" prefetch={false} className={btnGhost}>{tc('workers.systemJobsLink')}</Link></dd>
             {workerActivity && workerActivity.length > 0 && <dd className="min-w-0 sm:col-start-2">
               <details className="border-t border-border">
                 <summary className="min-h-11 cursor-pointer py-3 font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

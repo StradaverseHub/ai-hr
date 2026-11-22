@@ -6,11 +6,11 @@ import {RUNNERS,type RunnerSnapshot} from '@/lib/runner-control-model';
 import {isLocale} from '@/i18n/config';
 import {RunnerControls,RefreshRunnerStatus} from './runner-controls';
 import cronMessages from './runner-cron-messages.json';
-export async function RunnerInventory({snapshot,canControl}:{snapshot:RunnerSnapshot|null;canControl:boolean}) {
+export async function RunnerInventory({snapshot,canControl,runnerIds}:{snapshot:RunnerSnapshot|null;canControl:boolean;runnerIds?:readonly string[]}) {
  const [t,locale]=await Promise.all([getTranslations('runnerControl'),getLocale()]);
  const cron=cronMessages[isLocale(locale)?locale:'en'];
  const date=new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'});
- const ordered=[...RUNNERS].sort((a,b)=>{const attention=(id:string)=>['failed','stale','stopped'].includes(snapshot?.runners.find(row=>row.id===id)?.health??'')?0:1;return attention(a.id)-attention(b.id);});
+ const ordered=RUNNERS.filter(row=>!runnerIds||runnerIds.includes(row.id)).sort((a,b)=>{const attention=(id:string)=>['failed','stale','stopped'].includes(snapshot?.runners.find(row=>row.id===id)?.health??'')?0:1;return attention(a.id)-attention(b.id);});
  return <section aria-labelledby="runner-control-title" className="space-y-3">
   <div><h2 id="runner-control-title" className="text-lg font-semibold">{t('title')}</h2><p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('description')}</p></div>
   <Card className="p-4">

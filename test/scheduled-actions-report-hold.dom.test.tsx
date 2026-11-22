@@ -5,10 +5,11 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import {createTranslator} from 'next-intl';
 import type {JobRunRow} from '../core/job-run';
+import {withAiCentre} from './helpers/ai-centre-messages';
 
-const state=vi.hoisted(()=>({locale:'en',session:vi.fn(),runs:vi.fn()}));
+const state=vi.hoisted(()=>({locale:'en',session:vi.fn(),runs:vi.fn(),inventory:vi.fn((_props:unknown)=>null)}));
 vi.mock('../lib/runner-control',()=>({runnerControlSnapshot:async()=>null}));
-vi.mock('../app/admin/scheduled-actions/runner-inventory',()=>({RunnerInventory:()=>null}));
+vi.mock('../app/admin/scheduled-actions/runner-inventory',()=>({RunnerInventory:state.inventory}));
 vi.mock('../lib/session',()=>({getSession:state.session}));
 // Use the real permission predicate without importing unrelated entitlement readers.
 vi.mock('../lib/authz',()=>import('../lib/authz-model'));
@@ -16,15 +17,16 @@ vi.mock('../db/client',()=>({withTenant:vi.fn(),createDb:vi.fn()}));
 vi.mock('../core/job-run',async importOriginal=>({
  ...await importOriginal<typeof import('../core/job-run')>(),listRecentJobRuns:state.runs,
 }));
+vi.mock('next/link',()=>({default:({children,href}:{children:React.ReactNode;href:string})=><a href={href}>{children}</a>}));
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('REDIRECT '+path);}}));
 vi.mock('next-intl/server',()=>({
  getLocale:async()=>state.locale,
- getTranslations:async(namespace:string)=>createTranslator({locale:state.locale,namespace,messages:JSON.parse(readFileSync(join(process.cwd(),'messages',`${state.locale}.json`),'utf8')),onError:error=>{throw error;}}),
+ getTranslations:async(namespace:string)=>createTranslator({locale:state.locale,namespace,messages:catalog(state.locale),onError:error=>{throw error;}}),
 }));
 import Page from '../app/admin/scheduled-actions/page';
 import {JOBS} from '../core/job-run';
 
-const catalog=(locale:string)=>JSON.parse(readFileSync(join(process.cwd(),'messages',`${locale}.json`),'utf8'));
+const catalog=(locale:string)=>withAiCentre(locale,JSON.parse(readFileSync(join(process.cwd(),'messages',`${locale}.json`),'utf8')));
 const reportJob=JOBS.find(job=>job.key==='reports.employee-master.deliver')!;
 const admin={tenantId:'fictional-tenant',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
 const historicalRun:JobRunRow={id:'fictional-run',jobKey:reportJob.key,ranAt:new Date(Date.now()-3600_000),durationMs:1500,outcome:'success',tenantsProcessed:1,tenantsFailed:0,result:{sent:2},error:null};
@@ -83,8 +85,29 @@ describe('Scheduled Actions respects the report email release hold',()=>{
   expect(screen.queryByText(catalog('en').scheduledActions.neverRun)).toBeNull();
   expect(document.getElementById('recent-run-history')).toBeNull();
  });
+ it.each(['en','ms','zh','ta','th','vi'])('focuses the AI Centre entry on its runners and recorded history in %s',async locale=>{
+  state.locale=locale;
+  const messages=catalog(locale);
+  const review=JOBS.find(job=>job.key==='review.sweep')!;
+  const alerts=JOBS.find(job=>job.key==='ai.alerts')!;
+  state.runs.mockResolvedValue([
+   historicalRun,
+   {...historicalRun,id:'review-run',jobKey:review.key},
+   {...historicalRun,id:'alerts-run',jobKey:alerts.key,outcome:'failed'},
+  ]);
+  render(await Page({searchParams:Promise.resolve({view:'ai'})}));
+  expect(screen.getByRole('heading',{name:`${messages.nav.aiCentre} · ${messages.scheduledActions.title}`})).toBeInTheDocument();
+  expect(screen.getByRole('link',{name:messages.scheduledActions.title})).toHaveAttribute('href','/admin/scheduled-actions');
+  expect(state.inventory.mock.calls[0]?.[0]).toEqual({snapshot:null,canControl:false,runnerIds:['reviews','payroll-loops','ai-alerts','ai-retention']});
+  const history=document.getElementById('recent-run-history')!;
+  expect(history.querySelectorAll('details')).toHaveLength(2);
+  expect(within(history).getByText(messages.scheduledActions.jobs[review.i18nKey].name)).toBeInTheDocument();
+  expect(within(history).getByText(messages.scheduledActions.jobs[alerts.i18nKey].name)).toBeInTheDocument();
+  expect(within(history).queryByText(messages.scheduledActions.jobs[reportJob.i18nKey].name)).toBeNull();
+ });
  it('retains the group-admin page gate before reading job history',async()=>{
   state.session.mockResolvedValue({...admin,grants:[{role:'hr_admin',companyId:'fictional-company'}]});
-  await expect(Page()).rejects.toThrow('REDIRECT /');expect(state.runs).not.toHaveBeenCalled();
+  await expect(Page({searchParams:Promise.resolve({view:'ai'})})).rejects.toThrow('REDIRECT /');
+  expect(state.runs).not.toHaveBeenCalled();expect(state.inventory).not.toHaveBeenCalled();
  });
 });
