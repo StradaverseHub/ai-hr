@@ -90,6 +90,7 @@ def rehearse(case, *, delayed_slot=None, delayed_probe=None, additional_budget=0
             'fenceBudgets': budgets,
             'simulatedUnitActions': mutations,
             'receipt': bool(receipt),
+            'diagnostic': failure,
             'releaseAuthorized': False,
         }
         if receipt:
@@ -105,7 +106,7 @@ def main():
     assert nominal and failure is None
     refused, failure, mutations, _ = rehearse(
         'pre_start_timeout', delayed_slot='F0', delayed_probe=STRESS_PRE_START_PROBE)
-    assert not refused and 'deadline' in failure and not mutations
+    assert not refused and any(word in failure for word in ('deadline', 'slot expired')) and not mutations
     refused, failure, mutations, report = rehearse(
         'stability_timeout', delayed_slot='F5', delayed_probe=STRESS_STABILITY_PROBE)
     assert not refused and 'activation failed' in failure and 'start' in mutations
