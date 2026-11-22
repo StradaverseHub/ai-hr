@@ -1586,7 +1586,7 @@ try{
   const locationPath=join(privateDir,'record-fixture-failure-location');
   if(existsSync(locationPath)){
    const location=readFileSync(locationPath,'utf8');
-   if(/^(?:core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts|scripts\/(?:performance\/(?:joiners-browser-fixture|reward-draft-fixture)\.mjs|fixtures\/reward-approved\.ts)|packs\/rewards\/plan-configuration\.ts|test\/rewards-shared-policy-fixture\.ts):\d+$/.test(location)){
+   if(/^(?:core\/[a-z0-9/_-]+\.ts|db\/[a-z0-9/_-]+\.ts|packs\/(?:performance|rewards|job-architecture)\/[a-z0-9/_-]+\.ts|scripts\/(?:performance|fixtures)\/[a-z0-9/_-]+\.(?:js|mjs|ts)|test\/rewards-shared-policy-fixture\.ts):\d+$/i.test(location)){
     report.recordFixtureFailureLocation=location;
    }
   }

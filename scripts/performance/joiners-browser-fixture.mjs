@@ -23,7 +23,7 @@ function recordFailure(error){
   if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code))category=code;
   else if(category==='unclassified'&&knownKinds.has(current.name))category=current.name;
   const frames=String(current.stack??'').split('\n').filter(line=>/^\s+at\b/.test(line));
-  source??=frames.map(line=>line.match(/\/(core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts|scripts\/(?:performance\/(?:joiners-browser-fixture|reward-draft-fixture)\.mjs|fixtures\/reward-approved\.ts)|packs\/rewards\/plan-configuration\.ts|test\/rewards-shared-policy-fixture\.ts):(\d+):\d+\)?$/))
+  source??=frames.map(line=>line.match(/\/(core\/[a-z0-9/_-]+\.ts|db\/[a-z0-9/_-]+\.ts|packs\/(?:performance|rewards|job-architecture)\/[a-z0-9/_-]+\.ts|scripts\/(?:performance|fixtures)\/[a-z0-9/_-]+\.(?:js|mjs|ts)|test\/rewards-shared-policy-fixture\.ts):(\d+):\d+\b/i))
    .find(Boolean)?.slice(1).join(':')??null;
   current=Object.getOwnPropertyDescriptor(current,'cause')?.value;
  }
@@ -73,6 +73,8 @@ try{
   const [schema,{prepareRewardDraftFixture},{createRewardPlanReviews,previewRewardPlanCreation}]=await Promise.all([
    source('db/schema.ts'),source('scripts/performance/reward-draft-fixture.mjs'),source('packs/rewards/plan-configuration.ts'),
   ]);
+  assert.equal(typeof prepareRewardDraftFixture,'function');
+  assert(schema.businessUnit,'Rewards fixture requires the native business unit schema');
   setStage('rewards-roster');
   const tenant=fixture.tenants[0],companies=tenant.companies,target=companies[2];
   const expectedCompanyEmploymentIds=fixture.users.filter(actor=>actor.tenant===0&&actor.companyId===target.companyId)
