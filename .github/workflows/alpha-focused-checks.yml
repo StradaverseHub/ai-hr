@@ -152,7 +152,7 @@ jobs:
             exit 2
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
-            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|leave-balances|roster|content-readiness|shell-content|approvals-content|command-delegation|tp3-catalogue|tp3-catalogue-network)$ ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|leave-balances|roster|content-readiness|shell-content|approvals-content|command-delegation|tp3-catalogue|tp3-catalogue-network|payroll-catalogue)$ ]] ||
             [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true
                || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]] ||
             [[ "$BROWSER_SURFACE_PROBE" != actions && -n "$BROWSER_STATIC_SHARD" ]];
@@ -162,7 +162,7 @@ jobs:
           if [[ "$REUSE_ACTION_BUILD" == true ]]; then
             [[ "$BROWSER_BASELINE" == true && "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" != true ]] || exit 2
             case "$BROWSER_SURFACE_PROBE" in
-              actions|attendance|rewards|leave-balances|roster|content-readiness|shell-content|approvals-content|command-delegation|tp3-catalogue|tp3-catalogue-network) ;;
+              actions|attendance|rewards|leave-balances|roster|content-readiness|shell-content|approvals-content|command-delegation|tp3-catalogue|tp3-catalogue-network|payroll-catalogue) ;;
               '') [[ "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || exit 2 ;;
               *) exit 2 ;;
             esac
