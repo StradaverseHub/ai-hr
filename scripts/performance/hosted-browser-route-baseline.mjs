@@ -34,7 +34,8 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','shell-content','approvals-content','command-delegation','tp3-catalogue','tp3-catalogue-network','payroll-catalogue'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','rewards-bonus','actions','leave-inbox','leave-balances','roster','content-readiness','shell-content','approvals-content','command-delegation','tp3-catalogue','tp3-catalogue-network','payroll-catalogue'].includes(surfaceProbe),'Unknown browser surface');
+const rewardsProbe=['rewards','rewards-bonus'].includes(surfaceProbe);
 const tp3CatalogueProbe=['tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe);
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
@@ -90,7 +91,7 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
  AUTH_PUBLIC_ORIGIN:origin,AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',SHARE_PASSWORD:'',DEV_USER_ID:'',
  AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',
- AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:surfaceProbe==='rewards'?'whole-system':'browser-route-baseline',PERF_ATTENDANCE_DAYS:'180',
+ AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:rewardsProbe?'whole-system':'browser-route-baseline',PERF_ATTENDANCE_DAYS:'180',
  PERF_ATTENDANCE_REJECTION_BROWSER:surfaceProbe==='attendance'?'1':'0',
  PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:fixtureEvidenceDir,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
@@ -927,12 +928,15 @@ async function measureAttendanceWorkflowEditor(fixture){
  assert(visits.length===6&&visits.every(row=>row.status==='observed'),'The workflow editor or approver interaction did not become usable on every visit');
 }
 
-const focusedSurfaces={
- 'rewards-salary':{path:'/admin/rewards/salary-structures',actorIndexes:[0],witnesses:{
+const rewardsLibrary=(path,libraryTitle)=>({path,libraryTitle,actorIndexes:[0],witnesses:{
   heading:'main h1',
-  salaryVersion:'main table a[href*="&version="]',
+  libraryVersion:'main table a[href*="&version="]',
   libraryFilter:'main input[type="number"][name="year"]',
- }},
+ }});
+
+const focusedSurfaces={
+ 'rewards-salary':rewardsLibrary('/admin/rewards/salary-structures','Salary Structures'),
+ 'rewards-bonus':rewardsLibrary('/admin/rewards/bonus-matrices','Bonus Matrices'),
  'rewards-uploaded':{path:'/admin/rewards/uploaded',actorIndexes:[0],witnesses:{
   heading:'main h1',
   companyChoices:'main form select[name="companyId"]',
@@ -965,9 +969,9 @@ const focusedSurfaces={
 async function measureSurfaceProbe(fixture,surface){
  const require=createRequire(join(process.cwd(),'package.json'));
  browser??=await require('playwright').chromium.launch();
- const {path:route,witnesses,actorIndexes=[0,1]}=focusedSurfaces[surface];
+ const {path:route,witnesses,libraryTitle,actorIndexes=[0,1]}=focusedSurfaces[surface];
  const rewardSurface=surface.startsWith('rewards-');
- const path=surface==='rewards-salary'?route+'?year='+fixture.tenants[0].rewardDraft.year:route;
+ const path=libraryTitle?route+'?year='+fixture.tenants[0].rewardDraft.year:route;
  report.surfaceProbes??={};
  const visits=[];
  report.surfaceProbes[surface]=visits;
@@ -1017,9 +1021,9 @@ async function measureSurfaceProbe(fixture,surface){
       assert.equal(await options.count(),row.initialUserChoices);
       row.searchAndClearMs=Math.round(performance.now()-selectionStarted);
      }
-     if(surface==='rewards-salary'){
-      assert(await page.getByRole('heading',{name:'Salary Structures',exact:true}).isVisible());
-      const version=page.locator(witnesses.salaryVersion).first();
+     if(libraryTitle){
+      assert(await page.getByRole('heading',{name:libraryTitle,exact:true}).isVisible());
+      const version=page.locator(witnesses.libraryVersion).first();
       const href=await version.getAttribute('href');
       assert(href?.startsWith(path+'&version='));
       const versionStarted=performance.now();
@@ -2562,7 +2566,7 @@ try{
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{retainSeedPhases();}
  // The isolated Rewards probe uses the whole-system fixture for its approved plan.
- const seedJoiners=surfaceProbe!=='rewards';
+ const seedJoiners=!rewardsProbe;
  if(seedJoiners)await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],dbEnv);
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
@@ -2600,7 +2604,7 @@ try{
   assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
   report.fixture.joinersSeeded=true;
  }
- if(surfaceProbe==='rewards'){
+ if(rewardsProbe){
   const rewards=fixture.tenants[0].rewardDraft;
   assert(rewards?.planVersionId&&Number.isInteger(rewards.year),'Missing fictional approved Rewards plan');
   report.fixture.rewardsDraftSeeded=true;
@@ -2650,7 +2654,7 @@ try{
    const requested=surfaceProbe==='both'?['insights','recruitment']
     :surfaceProbe==='rewards'?['rewards-salary','rewards-uploaded']:[surfaceProbe];
    for(const surface of requested)await measureSurfaceProbe(fixture,surface);
-   if(surfaceProbe==='rewards')assert(requested.every(surface=>
+   if(rewardsProbe)assert(requested.every(surface=>
     report.surfaceProbes[surface].length===3&&report.surfaceProbes[surface].every(row=>row.status==='observed')),
    'The authorized Rewards setup controls were not usable on each visit');
   }
