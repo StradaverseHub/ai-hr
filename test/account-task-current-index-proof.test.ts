@@ -6,7 +6,8 @@ import {afterAll,expect,it} from 'vitest';
 import {accountTaskCallerSql,accountTaskStatement,accountTaskStatementSections} from '../core/account-task-bundle';
 import {withSharedReadSnapshot,withTenant,type SessionContext,type Tx} from '../db/client';
 import {leaveType} from '../db/schema';
-import {addHrDays,todayInKualaLumpur} from '../lib/hr-date';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {addHrDays} from '../lib/today/audience';
 import {buildScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 
