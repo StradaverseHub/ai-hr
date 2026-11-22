@@ -47,7 +47,8 @@ const shellPermissionVariant=clockingTenantQueue||rewardsNavigation?'contract-op
 assert(['none','contract-control','contract-optimized'].includes(shellPermissionVariant));
 const topologyVariant=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 const largerPool=topologyVariant==='transaction-pool-12';
-const databaseTopology=largerPool?'transaction-pool':topologyVariant;
+const splitWeb=topologyVariant==='transaction-pool-2web';
+const databaseTopology=largerPool||splitWeb?'transaction-pool':topologyVariant;
 assert(['direct','transaction-pool'].includes(databaseTopology));
 const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
 const clockingOutcomeSource='a1d4cbb7bef482f7a6c8b75ab7fbec7611976857';
@@ -95,7 +96,13 @@ assert(!largerPool||(env.AIHR_CI_HEAD===clockingOutcomeSource&&mixedLoad&&combin
  !fixtureOnly&&reusedBuild&&!clockingTenantQueue));
 assert(shellPermissionVariant==='none'||(groupScale&&databaseTopology==='transaction-pool'));
 assert(!env.DATABASE_POOLED_URL?.trim(),'The benchmark owns its web database topology');
+if(splitWeb)assert(env.AIHR_CI_HEAD===nextResponseCloseWithPayrollBoundary&&mixedLoad&&combinedGroupBuild&&
+ !fixtureOnly&&reusedBuild&&shellPermissionVariant==='contract-optimized'&&!clockingTenantQueue&&!rewardsNavigation);
 const webDatabaseConnections=largerPool?12:8;
+const webApplicationWorkers=splitWeb?2:1;
+const webPorts=Array.from({length:webApplicationWorkers},(_,index)=>appPort+index);
+const webPoolPerWorker=webDatabaseConnections/webApplicationWorkers;
+const webRequests=webPorts.map(()=>0);
 const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
 assert(['','absent','present'].includes(replacementCatalogue));
 assert(!replacementCatalogue||(establishedAttendance&&!fixtureOnly));
@@ -123,7 +130,8 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const transactionTimingPath=join(privateDir,'application-transaction-timing.json');
+const transactionTimingPaths=webPorts.map((_,index)=>join(privateDir,
+ index===0?'application-transaction-timing.json':'application-transaction-timing-2.json'));
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
@@ -135,7 +143,8 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
-if(mixedLoad)report.mixedDatabaseTopology={mode:databaseTopology,webConnections:webDatabaseConnections,workerMode:'direct'};
+if(mixedLoad)report.mixedDatabaseTopology={mode:databaseTopology,webConnections:webDatabaseConnections,workerMode:'direct',
+ ...(splitWeb&&{webProcesses:webApplicationWorkers,connectionsPerWebProcess:webPoolPerWorker})};
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
 const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
@@ -194,7 +203,8 @@ function retainSeedPhases(){
  save();
 }
 
-let server,app,browser,mixedWorker,webPooler,databaseStarted=false;
+let server,browser,mixedWorker,webPooler,databaseStarted=false;
+const webApps=[];
 async function stopProcess(child){
  if(!child||child.exitCode!==null||child.signalCode!==null)return;
  const closed=once(child,'close');
@@ -236,8 +246,12 @@ async function proxy(){
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,
   '-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost'],env);
  const certificate=readFileSync(cert);
+ let nextWorker=0;
  server=createServer({key:readFileSync(key),cert:certificate},(incoming,outgoing)=>{
-  const upstream=request({hostname:'127.0.0.1',port:appPort,path:incoming.url,method:incoming.method,
+  const worker=nextWorker;
+  nextWorker=(nextWorker+1)%webPorts.length;
+  webRequests[worker]++;
+  const upstream=request({hostname:'127.0.0.1',port:webPorts[worker],path:incoming.url,method:incoming.method,
    headers:{...incoming.headers,host:'localhost:3443','x-forwarded-proto':'https'}},response=>{
     outgoing.writeHead(response.statusCode,response.headers);
     response.pipe(outgoing);
@@ -286,9 +300,9 @@ async function verifyMixedProxy(certificate){
   }
  }
 }
-function applicationStatus(path,method,deadlineMs){
+function applicationStatus(path,method,deadlineMs,port){
  return new Promise(resolve=>{
-  const probe=request({hostname:'127.0.0.1',port:appPort,path,method,agent:false,
+  const probe=request({hostname:'127.0.0.1',port,path,method,agent:false,
    headers:{host:'localhost:3443','x-forwarded-proto':'https'}},response=>{
     finish(response.statusCode??null);
     response.destroy();
@@ -300,25 +314,25 @@ function applicationStatus(path,method,deadlineMs){
  });
 }
 
-async function waitForApp(){
+async function waitForApp(proc,worker){
  const expires=performance.now()+90000;
- report.applicationStartup=[];
+ report.applicationStartup??=[];
  for(const [phase,path,method] of [['health',healthPath,'HEAD'],['login-response','/login','GET']]){
   const started=performance.now();
   console.info('Fictional application readiness started',phase);
   let status=null,requests=0;
   try{
    while(performance.now()<expires){
-    assert(app.exitCode===null&&app.signalCode===null,'Application stopped during startup');
+    assert(proc.exitCode===null&&proc.signalCode===null,'Application stopped during startup');
     const budget=Math.max(1,Math.min(2000,Math.floor(expires-performance.now())));
     requests++;
-    status=await applicationStatus(path,method,budget);
+    status=await applicationStatus(path,method,budget,webPorts[worker]);
     if(status===200)break;
     await pause(300);
    }
    assert.equal(status,200,'Application readiness deadline exceeded for '+phase);
   }finally{
-   const row={phase,status,requests,elapsedMs:Math.round(performance.now()-started)};
+   const row={phase,status,requests,elapsedMs:Math.round(performance.now()-started),...(splitWeb&&{worker:worker+1})};
    report.applicationStartup.push(row);
    console.info('Fictional application readiness finished',phase,status??'no-response',row.elapsedMs);
    save();
@@ -553,7 +567,7 @@ function captureAccessServerLog({containerId,dockerConfig,driverEvidence,fixture
  }catch{return {state:'collection-unavailable'};}
 }
 
-function captureApplicationAdmission(driverEvidence){
+function captureApplicationAdmission(driverEvidence,transactionTimingPath){
  const scope='Application timing windows contained in the loaded lock-observer interval. Start delay includes admission, a connection checkout, BEGIN and callback scheduling. Raw pool wait measures application admission before checkout. After-entry timing includes downstream checkout and work.';
  try{
   const bounds=loadedObservationBounds(driverEvidence);
@@ -861,7 +875,9 @@ async function measureMixedLoad(command,fixture){
   await run('measure-500-user-mixed-load',command,['--import','tsx','scripts/performance/system-load.mjs'],{
    ...dbEnv,AIHR_CI_UNIT:pgEnv.AIHR_CI_UNIT,PERF_EVIDENCE_DIR:driverEvidence,PERF_HTTP_THINK_MS:'1000',
    PERF_DRIVER_STAGE_RECEIPT:'1',
-   PERF_HTTP_HOLD_MS:'300000',PERF_APP_WORKERS:'1',PERF_APP_PID:String(app.pid),PERF_PROXY_PID:String(process.pid),
+   PERF_HTTP_HOLD_MS:'300000',PERF_APP_WORKERS:String(webApplicationWorkers),
+   ...(splitWeb?{PERF_APP_PIDS:webApps.map(child=>child.pid).join(',')}:{PERF_APP_PID:String(webApps[0].pid)}),
+   PERF_PROXY_PID:String(process.pid),
    PERF_CLOCK_TICKS:clockTicks,PERF_POSTGRES_CONTAINER:name,PERF_POSTGRES_CONTAINER_ID:containerId,
   },1800000);
  }finally{
@@ -884,7 +900,11 @@ async function measureMixedLoad(command,fixture){
    // Failure or startup snapshots before that reset would mix in preflight work.
    if(Number.isFinite(data.measurementWindow?.startPerformanceMs)){
     report.mixedDatabaseProfile.loadedStatements=retainMixedStatementSummary(driverEvidence);
-    if(databaseTopology==='transaction-pool')report.applicationAdmission=captureApplicationAdmission(driverEvidence);
+    if(databaseTopology==='transaction-pool'){
+     const admissions=transactionTimingPaths.map(path=>captureApplicationAdmission(driverEvidence,path));
+     if(splitWeb)report.applicationAdmissionByWorker=admissions;
+     else [report.applicationAdmission]=admissions;
+    }
     report.mixedDatabaseProfile.accessServerLog=captureAccessServerLog({containerId,dockerConfig,driverEvidence,fixture});
     if(data.trafficSettled===true)report.mixedDatabaseProfile.applicationRootStatements=readMixedRootStatements(name,dockerConfig);
    }
@@ -1177,7 +1197,7 @@ async function measureMixedLoad(command,fixture){
     };
    }
    report.mixedLoad={
-    expectedUsers:500,steadyHoldMs:300000,applicationWorkers:1,fixtureVerified:report.fixtureVerified,
+    expectedUsers:500,steadyHoldMs:300000,applicationWorkers:webApplicationWorkers,fixtureVerified:report.fixtureVerified,
     latencyTargetMet:data.latencyTargetMet===true,trafficSettled:data.trafficSettled===true,
     functionalAccountingComplete:data.functionalAccountingComplete===true,
     functionalErrors:Array.isArray(data.functionalErrors)?data.functionalErrors.length:null,
@@ -2154,23 +2174,31 @@ try{
    report.mixedDatabaseTopology.poolerServerConnections=webPooler.serverConnections;
    save();
   }
-  const serverArgs=shellLifetimeEnabled
-   ? ['--import','tsx','scripts/performance/http-lifetime-next-server.mjs',String(appPort)]
-   : ['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(appPort)];
-  app=start('application',process.execPath,serverArgs,{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(webDatabaseConnections),
+  for(const [worker,port] of webPorts.entries()){
+   const serverArgs=shellLifetimeEnabled
+    ? ['--import','tsx','scripts/performance/http-lifetime-next-server.mjs',String(port)]
+    : ['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)];
+   webApps.push(start(worker===0?'application':'application-2',process.execPath,serverArgs,{
+    ...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(webPoolPerWorker),
+    ...(splitWeb&&{AIHR_APP_WORKERS:String(webApplicationWorkers),AIHR_DB_TOTAL_CONNECTIONS:String(webDatabaseConnections)}),
     ...(shellLifetimeEnabled&&{PERF_HTTP_SUITE:'browser-route-baseline',PERF_SHELL_HTTP_LIFETIME:'true'}),
     ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web')}),
     ...(webPooler&&{
      DATABASE_POOLED_URL:namedDatabase(webPooler.appUrl,'aihr-fixture-mixed-web'),
      AIHR_DB_POOLER_SERVER_CONNECTIONS:String(webPooler.serverConnections),
-     PERF_TX_TIMING_PATH:transactionTimingPath,
+     PERF_TX_TIMING_PATH:transactionTimingPaths[worker],
      NODE_OPTIONS:[dbEnv.NODE_OPTIONS,`--import=${new URL('./transaction-timing.mjs',import.meta.url).href}`].filter(Boolean).join(' '),
-    })});
+    })}));
+  }
+  let startupLog='application';
   try{
-   await waitForApp();
+   for(const [worker,proc] of webApps.entries()){
+    startupLog=worker===0?'application':'application-2';
+    await waitForApp(proc,worker);
+   }
    await proxy();
   }catch(error){
-   if(driverCommand)retainMixedStartupFailure('application');
+   if(driverCommand)retainMixedStartupFailure(startupLog);
    throw error;
   }
  }
@@ -2198,6 +2226,10 @@ try{
    if(clockingShared)assert(report.mixedClockingWorker.observed,'No established shared clocking chunk observed');
    if(webPooler)assert(report.mixedDatabaseTopology.poolerWork.available,'Could not verify app transactions passed through PgBouncer');
    assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
+   if(splitWeb){
+    assert(webApps.every(proc=>proc.exitCode===null&&proc.signalCode===null),'A web application process exited under load');
+    assert(webRequests.every(count=>count>0),'The proxy did not exercise both web workers');
+   }
   });
  }
  else if(!fixtureOnly){
@@ -2219,10 +2251,11 @@ try{
  finally{
   try{
    if(server?.listening){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
-   await Promise.all([stopProcess(app),stopProcess(mixedWorker)]);
-   const appLog=join(privateDir,'application.log');
-   if(existsSync(appLog)){
-    const log=readFileSync(appLog,'utf8');
+   await Promise.all([...webApps.map(stopProcess),stopProcess(mixedWorker)]);
+   if(splitWeb)report.mixedDatabaseTopology.webProcessRequests=webRequests;
+   const appLogs=['application.log',...(splitWeb?['application-2.log']:[])].map(name=>join(privateDir,name)).filter(existsSync);
+   if(appLogs.length){
+    const log=appLogs.map(path=>readFileSync(path,'utf8')).join('\n');
     if(mixedLoad)report.serverAdmissionFailureMarkers=admissionFailureMarkers(log);
     const counts={};
     for(const [,code] of log.matchAll(/(?:^|\n)\s*code: ['"]([0-9A-Z]{5})['"]/g)){
