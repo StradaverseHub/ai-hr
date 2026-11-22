@@ -45,6 +45,31 @@ describe('shared Personnel/ESS tab accessibility and retained behavior',()=>{
    expect(proceed).toBeTypeOf('function');act(()=>proceed!());expect(screen.getByRole('tabpanel',{name:'Family'})).toBeVisible();expect(new URL(window.location.href).searchParams.get('tab')).toBe('family');
   }finally{unregister();}
  });
+ it('requests a missing Family panel after the dirty guard and reuses the loaded panel',()=>{
+  const requestPanel=vi.fn();
+  const view=(loaded:boolean)=><ClientTabs tabs={[{key:'profile',label:'Profile'},{key:'family',label:'Family'}]}
+   panels={{profile:<input aria-label="Preferred name" defaultValue="Recorded name"/>,
+    ...(loaded&&{family:<p>Fictional dependant</p>})}}
+   emptyLabel="No records" deferredTabs={['family']} requestPanel={requestPanel}/>;
+  const {rerender}=render(view(false));
+  const profileInput=screen.getByRole('textbox',{name:'Preferred name'});
+  fireEvent.change(profileInput,{target:{value:'Unsaved retained name'}});
+  let proceed:(()=>void)|undefined;
+  const unregister=registerUnsavedGuard({isDirty:()=>true,prompt:next=>{proceed=next;}});
+  fireEvent.click(screen.getByRole('tab',{name:'Family'}));
+  expect(requestPanel).not.toHaveBeenCalled();
+  expect(profileInput).toBeVisible();
+  unregister();
+  act(()=>proceed!());
+  expect(requestPanel).toHaveBeenCalledExactlyOnceWith('family');
+  rerender(view(true));
+  expect(screen.getByText('Fictional dependant')).toBeVisible();
+  fireEvent.click(screen.getByRole('tab',{name:'Profile'}));
+  expect(profileInput).toHaveValue('Unsaved retained name');
+  fireEvent.click(screen.getByRole('tab',{name:'Family'}));
+  expect(screen.getByText('Fictional dependant')).toBeVisible();
+  expect(requestPanel).toHaveBeenCalledTimes(1);
+ });
  it('retains active-tab form tracking after switching',()=>{
   render(shell('Own Profile'));fireEvent.click(screen.getByRole('tab',{name:'Family'}));
   const form=screen.getByRole('form',{name:'Own Profile form'});fireEvent.submit(form);
