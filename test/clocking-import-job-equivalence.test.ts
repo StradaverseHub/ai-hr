@@ -9,6 +9,7 @@
  * against a clocking made while it runs, leave out one employee whose card changed, refuse a mapping deactivated
  * while it waited, and hold the tenant locks one short chunk at a time.
  */
+import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -19,6 +20,7 @@ import { checkIn } from '../core/attendance';
 import { commitClockingImport, setClockingMappingActive, type ClockingImportOutcome } from '../core/attendance-clocking-import';
 import { CLOCKING_NOT_IMPORTED, ClockingImportJobRefused, clockingImportJobHandler, getClockingImportJob, startClockingImportJob } from '../core/attendance-clocking-import-job';
 import { runBulkJobTick } from '../core/bulk-job-worker';
+import { hireEmployee } from '../core/org';
 import { attendanceSnapshot, buildAttendanceFixture, fixtureDate, normalizeIds, type AttendanceFixture } from './helpers/attendance-bulk-fixture';
 
 let b: Base;
@@ -126,10 +128,30 @@ it('refuses a job whose mapping was deactivated while it waited (no run is logge
   void sql;
 }, 300_000);
 
-it('admits a second clocking file to the existing tenant queue and completes it after the first', async () => {
+it('queues imports from separate company HR users and preserves company scope when they run', async () => {
   await resetDb();
   const base = await seedBase();
-  const fixture = await buildAttendanceFixture(base, { employees: 8 });
+  const [otherCompany] = await owner.db.insert(schema.company)
+    .values({ tenantId: base.tenantId, legalName: 'Clocking Queue Second Company', country: 'MY' })
+    .returning({ id: schema.company.id });
+  const [otherDepartment] = await owner.db.insert(schema.department)
+    .values({ tenantId: base.tenantId, companyId: otherCompany.id, name: 'Operations' })
+    .returning({ id: schema.department.id });
+  const createImporter = async (companyId: string, departmentId: string, employeeCode: string) => {
+    const [user] = await owner.db.insert(schema.appUser)
+      .values({ tenantId: base.tenantId, workosUserId: `user_${randomUUID()}` })
+      .returning({ id: schema.appUser.id });
+    const grant = { role: 'hr_admin' as const, companyId };
+    await owner.db.insert(schema.roleAssignment).values({ tenantId: base.tenantId, appUserId: user.id, ...grant });
+    const { employmentId } = await hireEmployee(adminCtx(base), {
+      person: { fullName: employeeCode, primaryEmail: `${employeeCode.toLowerCase()}@fixture.invalid` },
+      companyId, departmentId, employmentType: 'full_time', hiredOn: '2020-01-01', employeeCode,
+    });
+    const ctx: SessionContext = { ...adminCtx(base), userId: user.id, grants: [grant] };
+    return { ctx, employmentId };
+  };
+  const firstImporter = await createImporter(base.companyId, base.deptA, 'QUEUE-A');
+  const secondImporter = await createImporter(otherCompany.id, otherDepartment.id, 'QUEUE-B');
   const [kind] = await owner.client<{ exclusive: string }[]>`
     select exclusive from bulk_job_kind where kind='clocking_import'`;
   expect(kind.exclusive).toBe('tenant');
@@ -138,33 +160,45 @@ it('admits a second clocking file to the existing tenant queue and completes it 
   // catalogue, RLS, attendance writer and migration ledger remain unchanged.
   await owner.client`update bulk_job_kind set exclusive='tenant_queue' where kind='clocking_import'`;
   try {
-    const start = (mappingId: string, text: string, fileName: string, operationKey: string) =>
-      startClockingImportJob(fixture.ctx, {
-        mappingId, text, fileName, operationKey, fileBytes: Buffer.byteLength(text),
+    const start = (ctx: SessionContext, text: string, fileName: string, operationKey: string) =>
+      startClockingImportJob(ctx, {
+        mappingId: BUILTIN_MAPPING_ID, text, fileName, operationKey, fileBytes: Buffer.byteLength(text),
       });
-    const first = await start(BUILTIN_MAPPING_ID, fixture.uncodedFile, 'first-queued.csv',
+    const first = await start(firstImporter.ctx, 'staff,time\nQUEUE-A,2026-09-07 08:00\nQUEUE-B,2026-09-07 08:15', 'first-queued.csv',
       '00000000-0000-4000-8000-000000000001');
-    const enqueueSecond = () => start(fixture.codedMappingId, fixture.codedFile, 'second-queued.csv',
+    const enqueueSecond = () => start(secondImporter.ctx, 'staff,time\nQUEUE-B,2026-09-08 08:00\nQUEUE-A,2026-09-08 08:15', 'second-queued.csv',
       '00000000-0000-4000-8000-000000000002');
     const second = await enqueueSecond();
     expect(first.job.state).toBe('queued');
     expect(second.job.state).toBe('queued');
     expect(second.job.id).not.toBe(first.job.id);
     expect(await enqueueSecond()).toMatchObject({ existing: true, job: { id: second.job.id } });
+    await expect(getClockingImportJob(firstImporter.ctx, second.job.id)).rejects.toMatchObject({ status: 404 });
 
     expect(await tick()).toBe(true);
-    expect((await getClockingImportJob(fixture.ctx, second.job.id)).state).toBe('queued');
+    expect((await getClockingImportJob(secondImporter.ctx, second.job.id)).state).toBe('queued');
     expect(await runJob(first.job.id, state => state === 'completed')).toBe('completed');
-    expect((await getClockingImportJob(fixture.ctx, second.job.id)).state).toBe('queued');
+    expect((await getClockingImportJob(secondImporter.ctx, second.job.id)).state).toBe('queued');
     expect(await runJob(second.job.id)).toBe('completed');
 
     const [firstResult, secondResult] = await Promise.all([
-      getClockingImportJob(fixture.ctx, first.job.id),
-      getClockingImportJob(fixture.ctx, second.job.id),
+      getClockingImportJob(firstImporter.ctx, first.job.id),
+      getClockingImportJob(secondImporter.ctx, second.job.id),
     ]);
-    expect(firstResult.result?.imported).toBeGreaterThan(0);
-    expect(secondResult.result?.imported).toBeGreaterThan(0);
+    expect(firstResult.result).toMatchObject({ imported: 1, counts: { unmatchedCard: 1 } });
+    expect(secondResult.result).toMatchObject({ imported: 1, counts: { unmatchedCard: 1 } });
     expect(firstResult.result?.runId).not.toBe(secondResult.result?.runId);
+    const punches = await owner.db.select({
+      employmentId: schema.attendancePunch.employmentId,
+      attendanceDate: schema.attendancePunch.attendanceDate,
+    }).from(schema.attendancePunch).where(and(
+      eq(schema.attendancePunch.tenantId, base.tenantId),
+      eq(schema.attendancePunch.method, 'import'),
+    )).orderBy(schema.attendancePunch.attendanceDate);
+    expect(punches).toEqual([
+      { employmentId: firstImporter.employmentId, attendanceDate: '2026-09-07' },
+      { employmentId: secondImporter.employmentId, attendanceDate: '2026-09-08' },
+    ]);
     const logs = await owner.client<{ file_name: string; failure_reason: string | null }[]>`
       select file_name, failure_reason from clocking_import_run
       where tenant_id=${base.tenantId}::uuid order by created_at,id`;
