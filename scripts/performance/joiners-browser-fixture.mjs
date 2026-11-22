@@ -20,7 +20,7 @@ function recordFailure(error){
  let category='unclassified',source=null;
  for(let current=error,depth=0;current instanceof Error&&depth<4;depth++){
   const code=Object.getOwnPropertyDescriptor(current,'code')?.value;
-  if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code))category=code;
+  if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION|required|invalid|forbidden|not_found|conflict)$/.test(code))category=code;
   else if(category==='unclassified'&&knownKinds.has(current.name))category=current.name;
   const frames=String(current.stack??'').split('\n').filter(line=>/^\s+at\b/.test(line));
   source??=frames.map(line=>line.match(/\/(core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):(\d+):\d+\)?$/))
@@ -66,9 +66,16 @@ try{
  const drafts=[];
  for(const [index,organization] of fixture.tenants[0].companies.slice(0,2).entries()){
   const name='Fictional Browser Joiner '+(index+1);
+  const placement={};
+  if(index===0&&env.PERF_LIFECYCLE_REQUISITION_RECORDS==='true'){
+   const [position]=await owner.client`select id from position where tenant_id=${group.tenantId}::uuid
+    and company_id=${organization.companyId}::uuid order by id limit 1`;
+   assert(position?.id&&organization.departmentId,'Expected the seeded Personnel placement');
+   Object.assign(placement,{positionId:position.id,departmentId:organization.departmentId});
+  }
   const {id}=await saveEmployeeDraft(ctx,{currentStep:1,data:{
    profile:{fullName:name,primaryEmail:'browser-joiner-'+(index+1)+'@example.invalid'},
-   employment:{companyId:organization.companyId,employmentType:'full_time',hiredOn:fixture.today},
+   employment:{companyId:organization.companyId,employmentType:'full_time',hiredOn:fixture.today,...placement},
   }});
   drafts.push({id,name});
  }
@@ -86,7 +93,9 @@ try{
   await onboardingCommand(ctx,joiner.case.id,joiner.revision,{type:'save',
    patch:{hiring:'new_hire',local:{supervisor:'Fictional supervisor'},selected:['perf-browser-account']}});
   const saved=await onboardingDetail(ctx,joiner.case.id);
+  setStage('onboarding-requisition-submit');
   await onboardingCommand(ctx,joiner.case.id,saved.revision,{type:'submit'});
+  setStage('onboarding-requisition-read');
   const detail=await onboardingDetail(ctx,joiner.case.id,'requisition');
   const requisition=detail.case.requisitions.find(entry=>!entry.cancelledAt&&entry.items.some(item=>item.catalogueId==='perf-browser-account'));
   assert(requisition?.number,'Expected the native onboarding requisition');

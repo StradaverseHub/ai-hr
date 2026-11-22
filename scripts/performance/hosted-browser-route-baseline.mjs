@@ -1580,7 +1580,8 @@ try{
   if(existsSync(stagePath)){
    const stage=readFileSync(stagePath,'utf8');
    if(['fixture','onboarding-config','draft-joiners','employee-master-report','payroll-comparison-history','payroll-comparison-report',
-    'lifecycle-defaults','legacy-onboarding','legacy-offboarding','onboarding-requisition','offboarding-requisition',
+    'lifecycle-defaults','legacy-onboarding','legacy-offboarding','onboarding-requisition',
+    'onboarding-requisition-submit','onboarding-requisition-read','offboarding-requisition',
     'lifecycle-asset','lifecycle-asset-request','system-testing-session','system-testing-workspace-import','system-testing-draft',
     'system-testing-publish','system-testing-assign','system-testing-begin','system-testing-save','system-testing-complete','performance-cycle-grades','performance-cycle-create',
     'performance-cycle-participants','performance-cycle-open','performance-team-review',
@@ -1591,7 +1592,7 @@ try{
   const failurePath=join(privateDir,'record-fixture-failure');
   if(existsSync(failurePath)){
    const failure=readFileSync(failurePath,'utf8');
-   if(/^(?:[0-9A-Z]{5}|ERR_ASSERTION|SERVER_ONLY|AssertionError|TestingRefusal|DrizzleQueryError|PostgresError|PerfError|ZodError|TypeError|unclassified)$/.test(failure)){
+   if(/^(?:[0-9A-Z]{5}|ERR_ASSERTION|SERVER_ONLY|AssertionError|TestingRefusal|DrizzleQueryError|PostgresError|PerfError|ZodError|TypeError|unclassified|required|invalid|forbidden|not_found|conflict)$/.test(failure)){
     report.recordFixtureFailure=failure;
    }
   }
