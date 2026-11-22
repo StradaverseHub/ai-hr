@@ -70,8 +70,10 @@ try{
   if(index===0&&env.PERF_LIFECYCLE_REQUISITION_RECORDS==='true'){
    const [position]=await owner.client`select id from position where tenant_id=${group.tenantId}::uuid
     and company_id=${organization.companyId}::uuid order by id limit 1`;
-   assert(position?.id&&organization.departmentId,'Expected the seeded Personnel placement');
-   Object.assign(placement,{positionId:position.id,departmentId:organization.departmentId});
+   const manager=fixture.users.find(actor=>actor.role==='manager'&&actor.companyId===organization.companyId);
+   assert(position?.id&&organization.departmentId&&manager,'Expected the seeded Personnel placement and supervisor');
+   Object.assign(placement,{positionId:position.id,departmentId:organization.departmentId,
+    reportingManagerEmploymentId:manager.employmentId});
   }
   const {id}=await saveEmployeeDraft(ctx,{currentStep:1,data:{
    profile:{fullName:name,primaryEmail:'browser-joiner-'+(index+1)+'@example.invalid'},
@@ -91,7 +93,7 @@ try{
   assert(joiner?.case.id);
   const itemName='Fictional requisition account';
   await onboardingCommand(ctx,joiner.case.id,joiner.revision,{type:'save',
-   patch:{hiring:'new_hire',local:{supervisor:'Fictional supervisor'},selected:['perf-browser-account']}});
+   patch:{hiring:'new_hire',selected:['perf-browser-account']}});
   const saved=await onboardingDetail(ctx,joiner.case.id);
   setStage('onboarding-requisition-submit');
   await onboardingCommand(ctx,joiner.case.id,saved.revision,{type:'submit'});
