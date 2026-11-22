@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { cleanup,fireEvent,render,screen,waitFor,within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
+import { renderToStaticMarkup } from 'react-dom/server';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
@@ -23,6 +24,19 @@ function wrap(node:React.ReactNode,locale:keyof typeof catalogues='en') {return 
 function editor() {return wrap(<TestingInstructionEditor initial={testingInstructionDraftFrom(null)} caseId={null} versionId={null} draftRevision={0} modules={[{code:'ess',name:'Fictional ESS'}]} screens={[{screenKey:'dashboard',label:'Fictional Home'}]}/>);}
 function payload() {return parseInstructionDraft(JSON.parse((document.querySelector('input[name="definition"]') as HTMLInputElement).value));}
 describe('versioned testing controls',()=>{
+  it('enables the observation controls when their submit handler is ready',()=> {
+    const view=<TestingObservationForm executionId={id} assignmentId={id} versionId={id} revision={3}
+      current={{status:'failed',actualResult:'Fictional result',comments:'',defectNotes:'',improvementNotes:''}}/>;
+    const server=document.createElement('div');
+    server.innerHTML=renderToStaticMarkup(<NextIntlClientProvider locale="en" messages={en}>{view}</NextIntlClientProvider>);
+    expect(within(server).getByRole('textbox',{name:en.systemTestingWorkspace.actualResult})).toBeDisabled();
+    expect(within(server).getByRole('button',{name:en.systemTestingWorkspace.saveObservation})).toBeDisabled();
+
+    wrap(view);
+    expect(screen.getByRole('textbox',{name:en.systemTestingWorkspace.actualResult})).toBeEnabled();
+    expect(screen.getByRole('button',{name:en.systemTestingWorkspace.saveObservation})).toBeEnabled();
+  });
+
   it('keeps action/expected pairs and stable step identity through actual add/reorder/remove controls',()=>{
     editor(); fireEvent.change(screen.getByLabelText(en.systemTestingWorkspace.action),{target:{value:'First action'}});fireEvent.change(screen.getByLabelText(en.systemTestingWorkspace.expected),{target:{value:'First expected'}});
     fireEvent.click(screen.getByRole('button',{name:en.systemTestingWorkspace.addStep}));
