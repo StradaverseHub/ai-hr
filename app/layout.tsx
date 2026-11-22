@@ -61,6 +61,7 @@ import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
+import {PAYROLL_READINESS_HREF} from '@/lib/pre-salary/items';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
@@ -268,8 +269,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
   // The passive badge and task preview stream separately from navigation. Reserve
   // interactive database capacity for the active page and the user's explicit actions.
-  // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
-  // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
+  // Only Home and Payroll Readiness consume the Home preamble carried by this request scope.
+  const homeReadScope = pathname === '/' || pathname === PAYROLL_READINESS_HREF ? requestReadScope() : undefined;
   const approvalFacts:Promise<ShellApprovalResult> = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
@@ -280,7 +281,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
     recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
     probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
-  }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
+  }, { deferClaimPreview: true }),undefined,homeReadScope)).then((approvalSummary):ShellApprovalResult=>({
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,

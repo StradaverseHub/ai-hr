@@ -1,13 +1,16 @@
 import React, {isValidElement} from 'react';
 import {currentDatabaseWorkload} from '../db/workload';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),requestScope:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
 
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers({'x-pathname':m.pathname}),cookies:async()=>({get:()=>undefined})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en'}));
 vi.mock('../lib/session',()=>({getSession:m.session}));
+vi.mock('../lib/request-read-scope',async importOriginal=>({
+ ...(await importOriginal<typeof import('../lib/request-read-scope')>()),requestReadScope:m.requestScope,
+}));
 vi.mock('../lib/identity/email-settings',()=>({canConfigureIdentityEmail:m.operator}));
 vi.mock('../lib/viewer',()=>({viewerIdentity:async()=>({name:'Fixture',employeeCode:null,employed:false})}));
 vi.mock('../lib/principals',()=>({listPrincipals:async()=>[]}));
@@ -59,6 +62,18 @@ function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|und
 const bellElement=async(tree:React.ReactNode)=>ShellNotificationCenter(propsOf(tree,ShellNotificationCenter) as Parameters<typeof ShellNotificationCenter>[0]);
 const sidebarProps=(node:React.ReactNode)=>propsOf(node,Sidebar);
 const approvalSource=(node:React.ReactNode)=>propsOf(node,ShellApprovalFactsProvider)!.source as Promise<ShellApprovalResult>;
+
+it.each([['/',true],['/me/payroll-readiness',true],['/claims',false],['/admin/personnel',false],['/tasks',false]] as const)(
+ 'uses the Home request scope only where the page consumes it (%s)',async(pathname,usesHomeScope)=>{
+  m.pathname=pathname;
+  m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});
+  m.operator.mockResolvedValue(false);
+  m.requestScope.mockReset().mockReturnValue({});
+  const tree=await Layout({children:null});
+  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:0});
+  expect(m.requestScope).toHaveBeenCalledTimes(usesHomeScope?1:0);
+ },
+);
 
 describe('root layout admin document entry',()=>{
  beforeEach(()=>{
