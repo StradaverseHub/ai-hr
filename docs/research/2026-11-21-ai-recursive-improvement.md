@@ -359,6 +359,8 @@ A frozen 12-case development suite at `e991d8f52149c83ff95fbec60e24ca5bdef1f04b`
 
 Case file SHA-256 `83f7599c4011fce90cf85e34e8c10171c45d9e94bbbc0f1a2b2e1f3575bd4d67`. Case set digest `448ca83464233e3fc3028179249781961027fdd228de4b88ff59ff7e39fd956f`. Aggregate report SHA-256 `e9b27bc27929b05f865cb70c270cdb297934d68ecbc37c1bcfce2985d22efbcb`.
 
+The native Assistant rehearsal created two current employments for one fictional person through the HR owners. The Assistant asked for an employment choice before any provider call. The continuation cited the selected company's exact available count, and its protected provider request included only ordinal references. Historical replay withheld the answer after either the chosen or unchosen employment's balance changed. The receipt binds the complete own leave source. The provider transport and returned selection were simulated. This tests selection and historical replay through the existing Assistant path. Pre-retention authorization for the wider model-free successor remains a separate check. [Hosted database rehearsal](https://github.com/StradaverseHub/ai-hr/actions/runs/44980196613/job/137078906805)
+
 Candidate reviews shows the admission limit separately from the owner's observed trial exchanges and model responses. The model-free count comes from completed own exchanges with a retained canonical answer and zero model turns or tokens. Clearing Assistant history or strategy metadata can remove the underlying evidence. These counts measure recorded use and give no accuracy or savings estimate by themselves.
 
 ### Paired development comparison on the integrated leave candidate
