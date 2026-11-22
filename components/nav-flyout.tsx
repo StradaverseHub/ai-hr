@@ -7,6 +7,7 @@ import { ChevronRight, X, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ApprovalCountBadge } from '@/components/approval-count-badge';
 import { NavigationSubmenus } from '@/components/navigation-submenus';
+import { useClientReady } from '@/components/use-client-ready';
 
 /**
  * Flyout navigation for modules with sub-items (fdc20776 — replaces the accordion in
@@ -136,11 +137,13 @@ export function NavFlyout({
 }) {
   const t = useTranslations('nav');
   const label = t(labelKey);
+  const interactive = useClientReady();
   return (
     <button
       ref={triggerRef}
       data-tour={tour}
       type="button"
+      disabled={!interactive}
       onClick={onOpen ?? onToggle}
       onPointerEnter={event => { if (event.pointerType === 'mouse') onOpen?.(); }}
       aria-haspopup="true"
