@@ -54,6 +54,7 @@ const combinedGroupArtifacts=new Map([
  ['57fac422707b3a6174a290722ea0bb53da89f7c0',{runId:44952743961,artifactId:14726742052}],
  ['52d2d170710fcfb14219abe2f9d0abc84e536748',{runId:44957287061,artifactId:14727733410}],
  ['5e34835d73183b2754c9b3e4ccdbfc31111917a8',{runId:44965918804,artifactId:14731843499}],
+ [clockingOutcomeSource,{runId:44972189937,artifactId:14734303205}],
 ]);
 const combinedGroupArtifact=combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
 const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
@@ -692,7 +693,15 @@ async function withMixedContractNavigationComparison(work){
     report.mixedContractNavigation.replacementInstalled=true;
    }
    save();
-   if(!clockingTenantQueue)return await work();
+   if(!clockingTenantQueue){
+    if(sha===clockingOutcomeSource){
+     const rows=await owner`select exclusive from bulk_job_kind where kind='clocking_import'`;
+     assert.deepEqual([...rows],[{exclusive:'tenant'}]);
+     report.mixedClockingQueuePolicy={policy:'tenant'};
+     save();
+    }
+    return await work();
+   }
    await owner.begin(async tx=>{
     const changed=await tx`update bulk_job_kind set exclusive='tenant_queue'
       where kind='clocking_import' and exclusive='tenant' returning exclusive`;
