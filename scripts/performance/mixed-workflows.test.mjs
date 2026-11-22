@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {attendanceCorrectionOutcome,readAttendanceCorrectionForm} from './mixed-workflows.mjs';
+import {attendanceCorrectionOutcome,isNativeAttendanceApprovalPost,readAttendanceCorrectionForm} from './mixed-workflows.mjs';
 
 const actionId='a'.repeat(42),fingerprint='b'.repeat(64),date='2026-11-10';
 const employmentId='afc2ab62-b20c-4ebb-867d-c4269da2bb21';
@@ -14,6 +14,21 @@ const ownerForm=`<form action="" encType="multipart/form-data" method="POST">
  <fieldset><input type="time" name="checkIn"><input type="time" name="checkOut">
  <input name="reason" required><button type="submit">Submit correction</button></fieldset>
 </form>`;
+
+test('recognizes the witnessed native Attendance approval without capturing unrelated POSTs',()=>{
+ const expected='https://localhost:3443/attendance/application-history/fictional-correction';
+ const native={method:()=> 'POST',url:()=>expected,isNavigationRequest:()=>true,resourceType:()=> 'document',
+  headers:()=>({'content-type':'multipart/form-data; boundary=fictional'}),
+  postDataBuffer:()=>Buffer.from('PERF_ATTENDANCE_BROWSER_APPROVAL')};
+ assert.equal(isNativeAttendanceApprovalPost(native,expected),true);
+ for(const other of [
+  {url:()=>expected+'?different=1'},
+  {isNavigationRequest:()=>false},
+  {headers:()=>({'content-type':'text/plain'})},
+  {postDataBuffer:()=>Buffer.from('dismiss onboarding')},
+  {postDataBuffer:()=>null},
+ ])assert.equal(isNativeAttendanceApprovalPost({...native,...other},expected),false);
+});
 
 test('takes the fresh fingerprint only from the exact native scoped action form',()=>{
  const html=`<main><form><input name="workflowFingerprint" value="${'c'.repeat(64)}"></form></main>

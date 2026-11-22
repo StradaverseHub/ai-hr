@@ -15,7 +15,10 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
  const cohort=wholeSystemOrgRoster(fixture,user.tenant);
  const known=new Map(cohort.map(actor=>[actor.employmentId,actor]));
  const rewardMember=cohort.find(actor=>actor.role==='reward-fixture');
- const companyIds=fixture.tenants[user.tenant].companies.map(company=>company.companyId).sort();
+ const companyIds=[...new Set([
+  ...fixture.tenants[user.tenant].companies.map(company=>company.companyId),
+  ...cohort.map(person=>person.companyId),
+ ])].sort();
  const catalog=locale=>JSON.parse(readFileSync(new URL(`../../messages/${locale}.json`,import.meta.url),'utf8'));
  const results=[];let stage='navigation',locale='en';
  const explorer=()=>page.locator('[data-org-explorer]');

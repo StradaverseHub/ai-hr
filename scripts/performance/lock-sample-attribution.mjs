@@ -69,7 +69,7 @@ export function firstAppLockWaitCategories(activity,waitingAppBackends){
 }
 
 /** Pair only rows from the retained native query and its own pg_blocking_pids result. */
-export function originalAdvisoryAttribution(locks,labels){
+export function originalAdvisoryAttribution(locks,labels,describeBlocker){
  try{
   const waiters=[],edges=[];
   for(const waiter of locks){
@@ -87,6 +87,7 @@ export function originalAdvisoryAttribution(locks,labels){
     if(!blocker)continue;
     edges.push({source:'original-sample',family,waiterMode:waiter.mode,blockerMode:blocker.mode,
      blockerState:blocker.granted?'granted':'queued',waiterCategory,
+     ...describeBlocker?.(blocker),
      blockerCategory:family==='audit-chain'?originalAuditQueryCategory(blocker.category):'unknown'});
    }
   }
