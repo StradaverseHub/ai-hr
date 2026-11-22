@@ -559,6 +559,43 @@ async function attendanceConfigurationRoutes(db, fixture) {
   ]);
 }
 
+async function attendanceHistoryRoutes(db, fixture) {
+  const [group, company, , , employee] = fixture.users;
+  const records = fixture.attendanceHistoryRecords;
+  assert(records&&employee.companyId===company.companyId);
+  const [correction] = await db`
+    select reason,status from attendance_correction
+    where id=${records.correctionId}::uuid and tenant_id=${employee.tenantId}::uuid
+      and employment_id=${employee.employmentId}::uuid
+  `;
+  assert.deepEqual(correction,{reason:records.reason,status:'pending'});
+  const [imported] = await db`
+    select count(*)::int as lines, count(distinct e.id)::int as employees
+    from clocking_import_run r join clocking_import_line l on l.run_id=r.id and l.tenant_id=r.tenant_id
+    join employment e on e.id=l.employment_id and e.tenant_id=l.tenant_id
+    where r.id=${records.clockingRunId}::uuid and r.tenant_id=${company.tenantId}::uuid
+      and r.file_name=${records.fileName} and r.imported_lines=100 and r.total_lines=100
+      and l.result='imported' and e.company_id=${company.companyId}::uuid
+  `;
+  assert.deepEqual(imported,{lines:100,employees:50});
+  const importPath = '/attendance/import/logs/' + records.clockingRunId;
+  return [group,company].flatMap(actor=>[
+    {actor,template:'/attendance/application-history/[id]',path:'/attendance/application-history/' + records.correctionId,
+     exactHeading:'Application ' + records.correctionId.slice(0,8).toUpperCase(),content:records.reason,exactContent:true},
+    {actor,template:'/attendance/import/logs/[runId]',path:importPath,exactHeading:records.fileName,
+     witness:`a[href="${importPath}?tab=imported"]`,clockingLogEmployee:employee.name},
+  ]);
+}
+
+async function verifyImportedClockingTab(page, main, entry, row, remaining) {
+  const started = performance.now();
+  const path = entry.path + '?tab=imported';
+  await main.getByRole('link',{name:'Imported 100',exact:true}).click({timeout:remaining()});
+  await page.waitForURL(url=>url.pathname+url.search===path,{timeout:remaining()});
+  await main.getByText(entry.clockingLogEmployee,{exact:true}).first().waitFor({state:'visible',timeout:remaining()});
+  row.clockingImportedTabMs = Math.round(performance.now()-started);
+}
+
 async function payrollCorrectionRoutes(db, fixture) {
   const [group, company] = fixture.users;
   const subject = fixture.users[4];
@@ -965,7 +1002,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -975,6 +1012,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : jobDescriptionRecords ? await jobDescriptionRecordRoutes(db, fixture)
     : noticeRecords ? await noticeRecordRoutes(db, fixture)
     : attendanceConfigurationRecords ? await attendanceConfigurationRoutes(db, fixture)
+    : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -1051,6 +1089,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             row.noticePageReadyMs = Math.round(performance.now()-started);
             row.step = 'notice-acknowledgement';
             await verifyNoticeAcknowledgement(page,main,db,entry,row,pass,remaining());
+          }
+          if (entry.clockingLogEmployee && pass === 'first') {
+            row.clockingLogPageReadyMs = Math.round(performance.now()-started);
+            row.step = 'clocking-imported-tab';
+            await verifyImportedClockingTab(page,main,entry,row,remaining);
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);

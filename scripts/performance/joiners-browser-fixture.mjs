@@ -4,6 +4,7 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {clockingFixtureText,performanceFixtureCalendar} from './fixture-workload.mjs';
 
 const env=process.env;
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
@@ -67,6 +68,31 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_ATTENDANCE_HISTORY_RECORDS==='true'){
+  const [{requestAttendanceCorrection},{commitClockingImport}]=await Promise.all([
+   source('core/attendance.ts'),source('core/attendance-clocking-import.ts'),
+  ]);
+  const employee=fixture.users[4];
+  assert(employee.role==='employee'&&employee.companyId===company.companyId);
+  const [principal]=await owner.client`select tenant_id,grants from app.principal(${employee.userId}::uuid)`;
+  assert(principal?.tenant_id===group.tenantId&&Array.isArray(principal.grants));
+  const self={tenantId:employee.tenantId,userId:employee.userId,personId:employee.personId,grants:principal.grants,
+   roles:[...new Set(principal.grants.map(grant=>grant.role))],entitlements:ctx.entitlements};
+  const reason='Fictional attendance shift correction';
+  const {correctionId}=await requestAttendanceCorrection(self,{
+   employmentId:employee.employmentId,date:fixture.today,checkIn:'09:15',checkOut:'18:15',reason,
+  });
+  const date=performanceFixtureCalendar(fixture.today).importDate(2);
+  const text=clockingFixtureText(fixture.users,company.tenant,company.company,date);
+  const fileName='PERF_CLOCKING_HISTORY.csv';
+  const imported=await commitClockingImport(ctx,{
+   mappingId:fixture.tenants[company.tenant].clockingMappingId,companyId:company.companyId,
+   fileName,text,fileBytes:Buffer.byteLength(text),
+  });
+  assert(imported.runId&&imported.imported===100&&!imported.failureReason);
+  fixture.attendanceHistoryRecords={correctionId,reason,clockingRunId:imported.runId,fileName};
+ }
+
  if(env.PERF_ATTENDANCE_CONFIGURATION_RECORDS==='true'){
   const [{createHolidayGroup},{ensureStandardRule},{seedPayComponentCatalog},{createAllowancePolicy}]=await Promise.all([
    source('core/admin.ts'),source('core/attendance-rule.ts'),source('core/pay-components.ts'),source('core/attendance-allowance.ts'),
