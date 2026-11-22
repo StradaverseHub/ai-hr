@@ -242,6 +242,7 @@ export function NavFlyoutPanel({
               <Fragment key={child.href}>
               {!child.submenuKey && child.sectionKey && child.sectionKey!==items[i-1]?.sectionKey && (layout === 'atelier' ? <h3 className="atelier-subheading">{t(child.sectionKey)}</h3> : <p className="mb-0 mt-3 px-3 text-xs font-medium text-muted-foreground">{t(child.sectionKey)}</p>)}
               <Link
+                prefetchOnIntentOnly
                 key={child.href}
                 ref={i === 0 ? firstLinkRef : undefined}
                 href={child.navigationHref ?? child.href}
