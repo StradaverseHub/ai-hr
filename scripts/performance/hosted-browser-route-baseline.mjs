@@ -89,12 +89,14 @@ const freshGroupBuilds=new Set([
  clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,homeScopeMainCandidate,shellLifetimeCandidate,
  nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,indexedAccountTaskCaller,
 ]);
-const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD)||env.AIHR_CI_HEAD===currentMainFixture)&&groupScale&&establishedAttendance
- &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
+const currentMainLifetimeContract=reusedBuild&&env.AIHR_CI_HEAD===currentMainLifetimeCandidate&&shellPermissionVariant==='contract-optimized';
+const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD)
+ ||env.AIHR_CI_HEAD===currentMainFixture||currentMainLifetimeContract)&&groupScale&&establishedAttendance
+ &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
 const currentMainLifetimeBuild=[currentMainLifetimeCandidate,currentMainIndexedCandidate].includes(env.AIHR_CI_HEAD);
 if(currentMainLifetimeBuild)assert(mixedLoad&&groupScale&&establishedAttendance&&databaseTopology==='transaction-pool'
- &&shellPermissionVariant==='none'&&!fixtureOnly);
+ &&(shellPermissionVariant==='none'||currentMainLifetimeContract)&&!fixtureOnly);
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild||currentMainLifetimeBuild)&&!fixtureOnly));
 assert(!groupScale||(mixedLoad&&(reusedBuild||combinedGroupBuild||currentMainLifetimeBuild)&&!fixtureOnly));
 if(clockingShared)assert(env.AIHR_CI_HEAD===indexedAccountTaskCaller&&reusedBuild);
