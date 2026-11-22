@@ -210,16 +210,22 @@ jobs:
             combined_group_build=true
           fi
           if [[ "$clocking_tenant_queue" == true ]]; then
-            [[ "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 &&
-                "$combined_group_build" == true && "$BROWSER_ROUTE_BASELINE" == true &&
-                "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" == true ]] || exit 2
+            [[ "$combined_group_build" == true && "$BROWSER_ROUTE_BASELINE" == true &&
+                "$BROWSER_FIXTURE_ONLY" != true ]] || exit 2
+            case "$EXPECTED_SHA" in
+              a1d4cbb7bef482f7a6c8b75ab7fbec7611976857)
+                [[ "$RUN_BUILD" == true && "$REUSE_BUILD" != true ]] || exit 2 ;;
+              b582a3d30f2f8d22d56e46da881f405ce7095834)
+                [[ "$RUN_BUILD" != true && "$REUSE_BUILD" == true ]] || exit 2 ;;
+              *) exit 2 ;;
+            esac
           fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
               false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:cddd7cebf757d0392ed06bead78300732fd54256) ;;
               true:5175d387846c18fcc83ef96091cb1b4e1b538241|true:71e0dceb1a393817f3040518e82dc845a27700b0|true:0ba883e0aa294bb0f15dcfe2433deedb52d11996|true:57fac422707b3a6174a290722ea0bb53da89f7c0|true:52d2d170710fcfb14219abe2f9d0abc84e536748|true:5e34835d73183b2754c9b3e4ccdbfc31111917a8|true:a1d4cbb7bef482f7a6c8b75ab7fbec7611976857)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
-              true:84bad4f960c5f81475cdc4f71462bb452852fa9a|true:d855add8ba13ab3329b2b9aee35f4aed338193d0|true:a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778)
+              true:84bad4f960c5f81475cdc4f71462bb452852fa9a|true:d855add8ba13ab3329b2b9aee35f4aed338193d0|true:a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778|true:b582a3d30f2f8d22d56e46da881f405ce7095834)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
               *) exit 2 ;;
             esac
@@ -355,6 +361,13 @@ jobs:
               .run_id == 45026626109 and .head_sha == "d8ce042be7e1de0472ea7702027039796e4d4e83"' | grep -qx true
             gh api repos/StradaverseHub/ai-hr/actions/artifacts/14756157969/zip > "$archive"
             digest=388af87699794d4edff5b1853d8c7e0aafce047bf98304d2767fd4c6e20c4532
+          elif [[ "$AIHR_CI_HEAD" == b582a3d30f2f8d22d56e46da881f405ce7095834 ]]; then
+            test "$MIXED_GROUP_SCALE" = true
+            gh api repos/StradaverseHub/ai-hr/actions/jobs/137228606779 --jq '
+              .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+              .run_id == 45029090809 and .head_sha == "c0e112dc0b7504cc89e8cf27b46fe72e6df94c1f"' | grep -qx true
+            gh api repos/StradaverseHub/ai-hr/actions/artifacts/14757710637/zip > "$archive"
+            digest=ed9ba0c2f6cc151f31a1a2f99cd17e8bb86b0eea627f69d38bcf78d4555bbc5e
           elif [[ "$AIHR_CI_HEAD" == d855add8ba13ab3329b2b9aee35f4aed338193d0 ]]; then
             test "$MIXED_GROUP_SCALE" = true
             test "$(git rev-parse HEAD^)" = ef953a158bf1fde5073ca43557268add5ff0883e
@@ -466,6 +479,7 @@ jobs:
             expected_build_source=34acbbea020f09217a44711f615b750b0a139302
           elif [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" != 5175d387846c18fcc83ef96091cb1b4e1b538241 &&
                 "$AIHR_CI_HEAD" != a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778 &&
+                "$AIHR_CI_HEAD" != b582a3d30f2f8d22d56e46da881f405ce7095834 &&
                 "$AIHR_CI_HEAD" != 71e0dceb1a393817f3040518e82dc845a27700b0 &&
                 "$AIHR_CI_HEAD" != 0ba883e0aa294bb0f15dcfe2433deedb52d11996 &&
                 "$AIHR_CI_HEAD" != 57fac422707b3a6174a290722ea0bb53da89f7c0 &&

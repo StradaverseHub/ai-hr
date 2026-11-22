@@ -69,6 +69,7 @@ const combinedGroupArtifacts=new Map([
  [browserIntegrationNativePreflight,{runId:44979719093,artifactId:14737796395,sourceSha:browserIntegrationSource}],
  [browserIntegrationNativeControl,{runId:44981038272,artifactId:14737468790,sourceSha:browserIntegrationControl}],
  [nextResponseCloseCandidate,{runId:45026626109,artifactId:14756157969,sourceSha:nextResponseCloseCandidate}],
+ [nextResponseCloseWithPayrollBoundary,{runId:45029090809,artifactId:14757710637,sourceSha:nextResponseCloseWithPayrollBoundary}],
 ]);
 const combinedGroupArtifact=combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
 const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
@@ -83,7 +84,11 @@ const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(e
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
 assert(!groupScale||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
-assert(!clockingTenantQueue||(env.AIHR_CI_HEAD===clockingOutcomeSource&&mixedLoad&&combinedGroupBuild&&!fixtureOnly&&!reusedBuild));
+if(clockingTenantQueue){
+ assert(mixedLoad&&combinedGroupBuild&&!fixtureOnly);
+ assert((env.AIHR_CI_HEAD===clockingOutcomeSource&&!reusedBuild)||
+  (env.AIHR_CI_HEAD===nextResponseCloseWithPayrollBoundary&&reusedBuild&&combinedGroupArtifact));
+}
 assert(!largerPool||(env.AIHR_CI_HEAD===clockingOutcomeSource&&mixedLoad&&combinedGroupBuild&&
  !fixtureOnly&&reusedBuild&&!clockingTenantQueue));
 assert(shellPermissionVariant==='none'||(groupScale&&databaseTopology==='transaction-pool'));
