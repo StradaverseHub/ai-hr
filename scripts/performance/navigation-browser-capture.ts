@@ -24,6 +24,10 @@ const legacyFailures=new WeakMap<Error,Readonly<{scenarioId:string;checkId:strin
 export function legacyNavigationFailureFacts(error:unknown){
  return error instanceof Error?legacyFailures.get(error)??null:null;
 }
+const legacyLinkFailureCounts=new WeakMap<Error,Readonly<{total:number;visible:number|null}>>();
+export function legacyNavigationLinkFailureCounts(error:unknown){
+ return error instanceof Error?legacyLinkFailureCounts.get(error)??null:null;
+}
 type LegacyFailureCounts=Readonly<{busy:number;unavailable:number;alerts:number;http500:number;pageErrors:number}>;
 const legacyFailureCounts=new WeakMap<Error,LegacyFailureCounts>();
 /** The scenario's own failure census at the moment it refused: numbers only. */
@@ -378,6 +382,7 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
  page.on('response',response);page.on('pageerror',pageError);page.on('console',consoleError);
  let denial:Awaited<ReturnType<typeof installLegacyDenialObserver>>|undefined;
  let checkId:string|null=null;
+ let linkFailureCounts:{total:number;visible:number|null}|undefined;
  try{
   if(scenario.outcome==='denied')denial=await installLegacyDenialObserver(page,scenario.href);
   else await installFailureObserver(page);
@@ -391,9 +396,12 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   }
   if(scenario.outcome==='usable'&&entry.kind==='shell-menu')await clickNativeShellDestination(page,scenario.href,remaining);
   if(scenario.outcome==='usable'&&entry.selector){
-   const anchor=page.locator(entry.selector);
+   const matches=page.locator(entry.selector);
+   const anchor=matches.filter({visible:true});
    await anchor.first().waitFor({state:'visible',timeout:remaining()});
-   assert(await anchor.count()===1,'Canonical native destination link missing or ambiguous');
+   const visible=await anchor.count();
+   if(visible!==1)linkFailureCounts={total:await matches.count(),visible};
+   assert.equal(visible,1,'Canonical visible destination link missing or ambiguous');
    assert(await anchor.getAttribute('href')===scenario.href,'Native destination address differs from reviewed scenario');
    assert(await anchor.isVisible()&&await anchor.isEnabled(),'Native destination is not actionable');
    await anchor.click({timeout:remaining()});
@@ -403,8 +411,9 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   await page.locator('main').waitFor({state:'visible',timeout:remaining()});
   // Workforce content can contain many actors' names. Only the unique native
   // signed-in account trigger can bind the session to this exact fixture actor.
-  const account=page.locator('button[data-tour="account"]');
-  await account.first().waitFor({state:'visible',timeout:remaining()});
+  const accountButton='button[data-tour="account"]';
+  const account=page.locator(accountButton);
+  await page.locator(accountButton+':enabled').first().waitFor({state:'visible',timeout:remaining()});
   assert(await account.count()===1&&await account.isEnabled({timeout:remaining()}),'Native signed-in account control missing or ambiguous');
   const signedInName=account.getByText(actor.name,{exact:true});
   await signedInName.first().waitFor({state:'visible',timeout:remaining()});
@@ -461,7 +470,11 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
    status:200,finalPath:target.pathname,internalSessionObserved:true,fixtureIdentityObserved:true,elapsedMs:performance.now()-started,checks,failures,
    ...(startedWith?{startedWith}:{}),...(usableWith?{usableWith}:{})};
  }catch(error){
-  if(error instanceof Error){legacyFailures.set(error,Object.freeze({scenarioId:scenario.id,checkId}));legacyFailureCounts.set(error,Object.freeze({...failures}));}
+  if(error instanceof Error){
+   legacyFailures.set(error,Object.freeze({scenarioId:scenario.id,checkId}));
+   legacyFailureCounts.set(error,Object.freeze({...failures}));
+   if(linkFailureCounts)legacyLinkFailureCounts.set(error,Object.freeze(linkFailureCounts));
+  }
   throw error;
  }finally{
   page.off('response',response);page.off('pageerror',pageError);page.off('console',consoleError);
