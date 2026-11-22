@@ -2481,6 +2481,12 @@ async function measureActions(fixture){
    };
    try{
     const page=await context.newPage();
+    if(actionLane==='approvals'){
+     row.translationErrors=0;
+     page.on('console',message=>{
+      if(message.type()==='error'&&/MISSING_MESSAGE|IntlError/.test(message.text()))row.translationErrors++;
+     });
+    }
     page.on('request',observeRequest);
     page.on('response',observeResponse);
     page.on('requestfinished',request=>{
@@ -2488,6 +2494,7 @@ async function measureActions(fixture){
      if(handler)handler.completionMs=Math.round(performance.now()-handler.started);
     });
     await action.run({base:origin,user,page,fixture,report:result,save:retain,phase:'baseline',db,evidenceDirectory:fixtureEvidenceDir});
+    if(actionLane==='approvals')assert.equal(row.translationErrors,0,'An Approvals interaction emitted a missing translation');
     if(action.name==='saved-report-draft')assert.equal(result.browserSavedReportJourneys?.[0]?.persisted,true);
     row.status='observed';
     const successful=new Set();
