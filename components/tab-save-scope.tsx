@@ -154,6 +154,7 @@ export function TabSaveScope({
   tabKey,
   identity,
   saveAction,
+  actionRevalidates = false,
   covers,
   sectionLabels,
   screenActions,
@@ -177,6 +178,8 @@ export function TabSaveScope({
   identity: Record<string, string>;
   /** The consolidated server action, handed down by the RSC page (the established RSC→client pattern). */
   saveAction: (formData: FormData) => Promise<TabSaveResult>;
+  /** The action supplies refreshed route markup for any section it commits. */
+  actionRevalidates?: boolean;
   /**
    * THE NAMES OF THE CARDS THIS SAVE OWNS, already translated by the page, printed on the bar itself.
    *
@@ -256,8 +259,9 @@ export function TabSaveScope({
 
   // THE REFRESH WINDOW (r257) — all of it is explained over `discard`. Declared up here because the save
   // path arms the first of them and the bar's buttons read the third.
-  /** A save has committed and its `router.refresh()` has not come back: `children` is behind the record. */
+  /** A save has committed and the refreshed route markup has not come back. */
   const staleUntilRefreshRef = useRef(false);
+  const committedChildrenRef = useRef(children);
   /** A Discard pressed inside that window, armed and waiting for the payload it needs. */
   const discardWaitingRef = useRef(false);
   const [discardWaiting, setDiscardWaiting] = useState(false);
@@ -390,6 +394,7 @@ export function TabSaveScope({
         if (!form.reportValidity()) return;
       }
       const payload = buildTabPayload(root, dirtySections, { ...identityRef.current, tab: tabKey });
+      const submittedChildren = committedChildrenRef.current;
       setError(null);
       startTransition(async () => {
         const result = await saveAction(payload);
@@ -399,8 +404,12 @@ export function TabSaveScope({
         if (result.saved.length > 0) {
           // From here until the payload comes back, the server markup this scope would restore from is
           // one round trip behind the record. See `discard`.
-          staleUntilRefreshRef.current = true;
-          router.refresh();
+          if (actionRevalidates) {
+            staleUntilRefreshRef.current = committedChildrenRef.current === submittedChildren;
+          } else {
+            staleUntilRefreshRef.current = true;
+            router.refresh();
+          }
         }
         if (!result.ok) {
           setError(result.error ?? t('saveFailed'));
@@ -411,7 +420,7 @@ export function TabSaveScope({
         onDone?.();
       });
     },
-    [blankLabel, rebaselineSections, router, saveAction, t, tabKey],
+    [actionRevalidates, blankLabel, rebaselineSections, router, saveAction, t, tabKey],
   );
 
   const endDiscardWait = useCallback(() => {
@@ -536,6 +545,7 @@ export function TabSaveScope({
    * armed in the window is waiting for — see `discard`.
    */
   useEffect(() => {
+    committedChildrenRef.current = children;
     staleUntilRefreshRef.current = false;
     const armed = discardWaitingRef.current;
     const rearmed = remountOnFreshRef.current;

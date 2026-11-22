@@ -1090,6 +1090,7 @@ export default async function EmployeePage({
         tabKey="profile"
         identity={{ employmentId: emp.employmentId }}
         saveAction={saveProfileTabAction}
+        actionRevalidates
         covers={tabSaveCovers.profile}
       >
       {/* Item e3ce0d4d — IdentityProvider lifts the live Nationality selection so the identity block below can
@@ -4706,6 +4707,7 @@ export default async function EmployeePage({
             tabKey="job"
             identity={{ employmentId: emp.employmentId }}
             saveAction={saveJobTabAction}
+            actionRevalidates
             covers={tabSaveCovers.job}
           >
             {employmentInfoCard}
@@ -4741,6 +4743,7 @@ export default async function EmployeePage({
             tabKey="attendance"
             identity={{ employmentId: emp.employmentId }}
             saveAction={saveAttendanceTabAction}
+            actionRevalidates
             covers={tabSaveCovers.attendance}
           >
             {/* f513ec02 — the Schedule Group assignment, directly under the Holiday Group it is modelled
@@ -4775,6 +4778,7 @@ export default async function EmployeePage({
             tabKey="bankStatutory"
             identity={{ employmentId: emp.employmentId }}
             saveAction={saveBankStatutoryTabAction}
+            actionRevalidates
             covers={tabSaveCovers.bankStatutory}
           >
             {bankCard}
@@ -4829,6 +4833,7 @@ export default async function EmployeePage({
             tabKey="payroll"
             identity={{ employmentId: emp.employmentId }}
             saveAction={savePayrollTabAction}
+            actionRevalidates
             covers={tabSaveCovers.payroll}
           >
             {compensationCard}

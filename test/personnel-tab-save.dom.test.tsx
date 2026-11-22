@@ -76,15 +76,17 @@ const NATIONALITIES = [
  */
 function Screen({
   save,
+  actionRevalidates,
   revision = async () => undefined,
 }: {
   save: (fd: FormData) => Promise<TabSaveResult>;
+  actionRevalidates?: boolean;
   /** The bucket (b) card's OWN server action, as a real React 19 form action — see §12. */
   revision?: (fd: FormData) => Promise<void>;
 }) {
   return (
     <NextIntlClientProvider locale="en" messages={messages}>
-      <TabSaveScope tabKey="profile" identity={{ employmentId: EMPLOYMENT_ID }} saveAction={save} covers={['Personal Details']}>
+      <TabSaveScope tabKey="profile" identity={{ employmentId: EMPLOYMENT_ID }} saveAction={save} actionRevalidates={actionRevalidates} covers={['Personal Details']}>
         <form data-save-section="person">
           <input type="hidden" name="employmentId" defaultValue={EMPLOYMENT_ID} />
           <input type="hidden" name="personId" defaultValue={PERSON_ID} />
@@ -315,6 +317,23 @@ describe('§3 the payload — each card still posts its OWN fields, with live ca
     // Re-baselined in place: a remount here would race router.refresh() and show the PRE-save value.
     expect(name.value).toBe('Ali bin Hassan');
     expect(name).not.toHaveAttribute('data-edited');
+  });
+
+  it('allows successive saves without requesting a second refresh when the action revalidates the record', async () => {
+    const user = userEvent.setup();
+    const save = saveMock(async () => ok(['person']));
+    render(<Screen save={save} actionRevalidates />);
+    const { name } = fields();
+
+    for (const value of ['Ali bin Hassan', 'Hassan bin Ali']) {
+      await user.clear(name);
+      await user.type(name, value);
+      await user.click(screen.getByRole('button', { name: 'Save Changes' }));
+      await waitFor(() => expect(screen.getByText('No unsaved changes')).toBeInTheDocument());
+    }
+    expect(save.mock.calls.map(([payload]) => payload.get('section.person.fullName')))
+      .toEqual(['Ali bin Hassan', 'Hassan bin Ali']);
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it('a per-section failure keeps the section that did not commit marked, and says which one broke', async () => {
