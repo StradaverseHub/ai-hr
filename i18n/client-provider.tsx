@@ -14,6 +14,7 @@ export function CatalogClientProvider({locale,children,signedIn=false}:{locale:s
  let scope:ClientCatalogueScope='full';
  if(pathname==='/me/tp3')scope='tp3';
  if(signedIn&&pathname==='/')scope='home';
+ if(signedIn&&pathname==='/approvals')scope='approvals';
  const messages=use(messagesForClient(selected,scope));
  return <NextIntlClientProvider locale={selected} messages={messages}>{children}</NextIntlClientProvider>;
 }

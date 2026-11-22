@@ -11,9 +11,11 @@ it('writes the canonical catalogue and smaller signed-in route catalogues for ev
   try {
     await prepareClientCatalogues(output);
     const localeFiles = locales.map(locale => locale + '.json').sort();
-    expect((await readdir(output)).sort()).toEqual([...localeFiles, 'home', 'tp3'].sort());
-    expect((await readdir(join(output, 'home'))).sort()).toEqual(localeFiles);
-    expect((await readdir(join(output, 'tp3'))).sort()).toEqual(localeFiles);
+    const scopes = ['home', 'tp3', 'approvals'];
+    expect((await readdir(output)).sort()).toEqual([...localeFiles, ...scopes].sort());
+    for (const scope of scopes) {
+      expect((await readdir(join(output, scope))).sort()).toEqual(localeFiles);
+    }
     for (const locale of locales) {
       const generated = await readFile(join(output, locale + '.json'), 'utf8');
       const canonical = await messagesForLocale(locale);
@@ -30,6 +32,19 @@ it('writes the canonical catalogue and smaller signed-in route catalogues for ev
       expect(JSON.parse(home)).toEqual(shared);
       expect(shared.common.actionFeedback).toEqual(canonical.common.actionFeedback);
       expect(Buffer.byteLength(home)).toBeLessThan(Buffer.byteLength(generated) / 4);
+      const approvals = await readFile(join(output, 'approvals', locale + '.json'), 'utf8');
+      const approvalMessages = JSON.parse(approvals);
+      expect(approvalMessages.approvals).toEqual(canonical.approvals);
+      expect(approvalMessages.review).toEqual(canonical.review);
+      expect(approvalMessages.resignationJourney).toEqual(canonical.resignationJourney);
+      expect(approvalMessages.resignationCommunications).toEqual(canonical.resignationCommunications);
+      expect(approvalMessages.replacementRequest.formulaReview).toEqual(canonical.replacementRequest.formulaReview);
+      expect(approvalMessages.components.plannedAbsences).toEqual(canonical.components.plannedAbsences);
+      expect(approvalMessages.components.timelineNav).toEqual(canonical.components.timelineNav);
+      expect(approvalMessages.leave).toEqual(canonical.leave);
+      expect(approvalMessages.letters.reports).toEqual(canonical.letters.reports);
+      expect(approvalMessages.labelExcelRoundTrip).toEqual(canonical.labelExcelRoundTrip);
+      expect(Buffer.byteLength(approvals)).toBeLessThan(Buffer.byteLength(generated) / 2);
     }
   } finally {
     await rm(output, { recursive: true, force: true });
