@@ -86,6 +86,8 @@ export default async function AnomaliesPage({
   // requireAdmin resolves the session itself and redirects a non-admin away; verdicts are
   // payroll-admin-only by RLS, so the route gate and the row gate agree.
   const s = await requireAdmin();
+  const batch = await batchHeader(s, batchId).catch(() => null);
+  if (!batch) notFound();
   const t = await getTranslations('anomaly');
   // AI Centre restructure (owner decision 28): an open exception is resolved on Exceptions only; this run's page lists
   // its rows, keeps its explanations and the auto-cleared list where a missed issue is raised, and links there.
@@ -102,9 +104,6 @@ export default async function AnomaliesPage({
   // `/payroll`, and the operator's filter selection was gone two screens down the chain. `undefined`
   // when there is nothing to carry, so an unfiltered visit posts no field at all.
   const carry = carried === '/payroll' ? undefined : carried;
-
-  const batch = await batchHeader(s, batchId).catch(() => null);
-  if (!batch) notFound();
 
   const [rows, metrics, swing, provenance, evidence] = await Promise.all([
     anomalyQueue(s, { batchId }),
