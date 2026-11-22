@@ -1,6 +1,7 @@
 'use client';
 
 import Link from '@/components/intent-link';
+import { useClientReady } from '@/components/use-client-ready';
 import { Fragment, useEffect, useRef, type Ref } from 'react';
 import { useTranslations } from 'next-intl';
 import { ChevronRight, X, type LucideIcon } from 'lucide-react';
@@ -136,11 +137,13 @@ export function NavFlyout({
 }) {
   const t = useTranslations('nav');
   const label = t(labelKey);
+  const interactive = useClientReady();
   return (
     <button
       ref={triggerRef}
       data-tour={tour}
       type="button"
+      disabled={!interactive}
       onClick={onOpen ?? onToggle}
       onPointerEnter={event => { if (event.pointerType === 'mouse') onOpen?.(); }}
       aria-haspopup="true"
