@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { SQL, sql } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { afterAll, expect, it } from 'vitest';
@@ -22,6 +24,43 @@ function statements(tx: Tx, session: SessionContext, read: AccountTaskRead) {
   const legacyCaller = sql`task_caller as materialized (select ${callerOwnEmploymentIdsSql(session)} as own_ids)`;
   const legacy = new SQL(current.queryChunks.map(chunk => chunk === matches[0] ? legacyCaller : chunk));
   return { current, legacy, legacyCaller };
+}
+
+type Timing = { 'Planning Time': number; 'Execution Time': number };
+
+async function measureStatement(tx: Tx, statement: SQL) {
+  const [row] = await tx.execute<{ 'QUERY PLAN': Timing[] }>(
+    sql`explain (analyze, timing off, summary, format json) ${statement}`,
+  );
+  const [timing] = row['QUERY PLAN'];
+  return { planningMs: timing['Planning Time'], executionMs: timing['Execution Time'] };
+}
+
+async function measureSections(
+  tx: Tx, session: SessionContext, read: AccountTaskRead,
+) {
+  const sections = accountTaskStatementSections(tx, session, modules, read);
+  const { current, legacy } = statements(tx, session, read);
+  const caller = accountTaskCallerSql(session);
+  const comparisons = [];
+  for (let pass = 0; pass < 3; pass++) {
+    const first = pass % 2 === 0 ? 'current' : 'legacy';
+    const queries = { current, legacy };
+    const second = first === 'current' ? 'legacy' : 'current';
+    const firstTiming = await measureStatement(tx, queries[first]);
+    const secondTiming = await measureStatement(tx, queries[second]);
+    comparisons.push({
+      [first]: firstTiming, [second]: secondTiming,
+    });
+  }
+  const isolated = [];
+  for (const [name, section] of sections) {
+    const query = sql`with ${caller} select ${section} as section`;
+    const samples = [];
+    for (let pass = 0; pass < 3; pass++) samples.push(await measureStatement(tx, query));
+    isolated.push({ name, samples });
+  }
+  return { comparisons, isolated };
 }
 
 it('preserves the shared task query across scoped principals and uses the existing person index', async () => {
@@ -87,6 +126,34 @@ it('preserves the shared task query across scoped principals and uses the existi
       expect(actual).toHaveLength(1);
       if (principal !== undefined) expect(actual[0]?.principal).toBe(principal);
     }, { readOnlySnapshot: true });
+  }
+
+  const evidenceDir = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+  if (process.env.GITHUB_ACTIONS === 'true' && evidenceDir) {
+    const actors = [
+      { label: 'group HR', session: fixture.personas.group, companyIds: undefined, personal: true },
+      { label: 'multi-company HR', session: fixture.personas.multi, companyIds: fixture.companyIds, personal: false },
+      { label: 'company HR', session: fixture.personas.single, companyIds: [fixture.singleCompanyId], personal: false },
+      { label: 'employee', session: self, companyIds: [employee.company_id], personal: true },
+    ];
+    const measurements = [];
+    await owner.client`analyze public.employment, public.leave_request, public.leave_approval_step`;
+    for (const { label, session, companyIds, personal } of actors) {
+      const timings = await withTenant(session, async tx => {
+        await tx.execute(sql`set local jit=off`);
+        return measureSections(tx, session, { companyIds, personal, notices: true });
+      }, { readOnlySnapshot: true });
+      measurements.push({ label, selectedCompanies: companyIds?.length ?? null, ...timings });
+    }
+    writeFileSync(join(evidenceDir, 'account-task-scale-sections.json'), JSON.stringify({
+      kind: 'ACCOUNT_TASK_SCALE_SECTION_TIMINGS',
+      releaseEligible: false,
+      staffedCompanies: fixture.companyIds.length,
+      employments: fixture.employmentIds.length,
+      pendingLeave: pending.requests,
+      modules,
+      measurements,
+    }, null, 2));
   }
 
   await withTenant(self, async tx => {
