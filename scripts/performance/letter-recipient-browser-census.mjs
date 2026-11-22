@@ -84,6 +84,32 @@ export async function measureLetterRecipients({db,fixture,origin,compiledPages,s
    if(!entry.owns || !report.fixtureRecordVisits.slice(-2).every(row=>row.status==='observed'))continue;
    const actions={status:'failed',step:'download'};
    report.letterRecipientActions=actions;
+   const trace=actions.downloadProtocol={requests:[],responses:[]};
+   const requestHeaders=[];
+   const isDocumentRequest=request=>{
+    const target=new URL(request.url());
+    return target.origin===origin&&target.pathname===entry.path+'/document';
+   };
+   const recordRequest=request=>{
+    if(!isDocumentRequest(request)||trace.requests.length>=4)return;
+    const row={method:request.method(),navigation:request.isNavigationRequest()};
+    trace.requests.push(row);
+    requestHeaders.push(request.allHeaders().then(headers=>{
+     row.origin=headers.origin===origin?'same':headers.origin==='null'?'opaque':headers.origin?'other':'absent';
+     row.site=['same-origin','same-site','cross-site','none'].includes(headers['sec-fetch-site'])
+      ?headers['sec-fetch-site']:'absent';
+     row.mode=['navigate','cors','no-cors','same-origin'].includes(headers['sec-fetch-mode'])
+      ?headers['sec-fetch-mode']:'absent';
+     row.destination=headers['sec-fetch-dest']==='document'?'document':'other';
+    }).catch(()=>{row.headersUnavailable=true;}));
+   };
+   const recordResponse=response=>{
+    if(isDocumentRequest(response.request())&&trace.responses.length<4){
+     trace.responses.push({method:response.request().method(),status:response.status()});
+    }
+   };
+   page.on('request',recordRequest);
+   page.on('response',recordResponse);
    try{
     const downloadStart=performance.now();
     const [download]=await Promise.all([
@@ -119,7 +145,12 @@ export async function measureLetterRecipients({db,fixture,origin,compiledPages,s
     delete actions.step;
    }catch(error){
     actions.failure=error.name==='TimeoutError'?'timeout':error.code==='ERR_ASSERTION'?'assertion':'browser';
-   }finally{save();}
+   }finally{
+    page.off('request',recordRequest);
+    page.off('response',recordResponse);
+    await Promise.all(requestHeaders);
+    save();
+   }
   }finally{await context.close();}
  }
  const deniedContext=await signedInContext(other);
