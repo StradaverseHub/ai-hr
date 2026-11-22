@@ -1,5 +1,6 @@
 'use client';
 import { ActionButton } from '@/components/ui/action-button';
+import { useClientReady } from '@/components/use-client-ready';
 import {useTranslations} from 'next-intl';
 import {ProtectedInputHelp} from '@/components/assistant/protected-input-help';
 
@@ -72,6 +73,7 @@ export function ReportBuilder({
   toast?: string;
   labels: Labels;
 }) {
+  const interactive = useClientReady();
   const privacyText=useTranslations('assistant')('err_protected_input');
   const L0 = initialSpec.layout ?? {};
   const [name, setName] = useState(initialName);
@@ -416,7 +418,7 @@ export function ReportBuilder({
               <ActionButton aria-busy={pending}
                 type="button"
                 onClick={runPreview}
-                disabled={pending || columns.length === 0}
+                disabled={!interactive || pending || columns.length === 0}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50"
               >
                 {labels.refreshPreview}
