@@ -56,6 +56,7 @@ const browserIntegrationControl='ef953a158bf1fde5073ca43557268add5ff0883e';
 const browserIntegrationNativeControl='d855add8ba13ab3329b2b9aee35f4aed338193d0';
 const homeScopeMainCandidate='d552f70c13b8a46cf19fdd973ecbe2f80c7ccf79';
 const shellLifetimeCandidate='24e0b499be5f009c409e539c1e78add85d7f3b03';
+const nextResponseCloseCandidate='a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778';
 const combinedGroupArtifacts=new Map([
  ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],
  ['71e0dceb1a393817f3040518e82dc845a27700b0',{runId:44927404845,artifactId:14716484117}],
@@ -72,7 +73,7 @@ const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
 const freshGroupBuilds=new Set([
  detachedShellBuild,'0ba883e0aa294bb0f15dcfe2433deedb52d11996','57fac422707b3a6174a290722ea0bb53da89f7c0',
  '52d2d170710fcfb14219abe2f9d0abc84e536748','5e34835d73183b2754c9b3e4ccdbfc31111917a8',
- clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,homeScopeMainCandidate,shellLifetimeCandidate,
+ clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,homeScopeMainCandidate,shellLifetimeCandidate,nextResponseCloseCandidate,
 ]);
 const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD))&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
@@ -117,6 +118,7 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(shellLifetimeEnabled&&{shellHttpLifetime:'node-response-close'}),
+ ...(sha===nextResponseCloseCandidate&&{shellHttpLifetime:'next-after'}),
  ...(reusedBuild&&{buildArtifact:combinedGroupBuild
   ? {sourceSha:sha,...combinedGroupArtifact}
   : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
@@ -754,7 +756,7 @@ async function withMixedContractNavigationComparison(work){
    }
    save();
    if(!clockingTenantQueue){
-    if([clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,browserIntegrationNativePreflight,browserIntegrationNativeControl,homeScopeMainCandidate,shellLifetimeCandidate].includes(sha)){
+    if([clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,browserIntegrationNativePreflight,browserIntegrationNativeControl,homeScopeMainCandidate,shellLifetimeCandidate,nextResponseCloseCandidate].includes(sha)){
      const rows=await owner`select exclusive from bulk_job_kind where kind='clocking_import'`;
      assert.deepEqual([...rows],[{exclusive:'tenant'}]);
      report.mixedClockingQueuePolicy={policy:'tenant'};
