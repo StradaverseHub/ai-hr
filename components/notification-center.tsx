@@ -2,7 +2,7 @@
 
 import { ActionButton } from '@/components/ui/action-button';
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {parseBulkJobNoticeKey} from '@/lib/bulk-job';
@@ -245,7 +245,7 @@ export function NotificationCenter({
     return (
       <li key={`n-${n.id}`} className={n.readAt ? '' : 'bg-primary/5'}>
         {n.linkPath ? (
-          <Link href={n.linkPath} onClick={onClick} className="block hover:bg-accent">
+          <Link prefetchOnIntentOnly href={n.linkPath} onClick={onClick} className="block hover:bg-accent">
             {inner}
           </Link>
         ) : (
@@ -259,7 +259,7 @@ export function NotificationCenter({
 
   const taskQueueRow = (task: NotificationTaskItem) => (
     <li key={`t-${task.id}`}>
-      <Link href={task.linkPath} onClick={() => setOpen(false)} className="block hover:bg-accent">
+      <Link prefetchOnIntentOnly href={task.linkPath} onClick={() => setOpen(false)} className="block hover:bg-accent">
         <div className="flex gap-2.5 px-4 py-2.5">
           <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
           <div className="min-w-0 flex-1">
@@ -412,11 +412,11 @@ export function NotificationCenter({
                 </ul>
               ))}
 
-            {tab==='tasks'&&taskQueueLinks.length>0&&<nav aria-label={t('ownerQueues')} className="border-t border-border px-4 py-3 space-y-2">{taskQueueLinks.map(queue=><Link key={queue.href} href={queue.href} onClick={()=>setOpen(false)} className="flex items-center justify-between gap-3 text-xs font-medium text-primary hover:underline"><span>{queue.label}</span><span className="tabular-nums">{queue.count}</span></Link>)}</nav>}
+            {tab==='tasks'&&taskQueueLinks.length>0&&<nav aria-label={t('ownerQueues')} className="border-t border-border px-4 py-3 space-y-2">{taskQueueLinks.map(queue=><Link prefetchOnIntentOnly key={queue.href} href={queue.href} onClick={()=>setOpen(false)} className="flex items-center justify-between gap-3 text-xs font-medium text-primary hover:underline"><span>{queue.label}</span><span className="tabular-nums">{queue.count}</span></Link>)}</nav>}
 
             {tab==='tasks'&&tasksKnown&&availableClaimCount>shownClaimCount&&(
               <div className="border-t border-border px-4 py-2.5 text-center">
-                <Link href="/approvals?category=claim" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">
+                <Link prefetchOnIntentOnly href="/approvals?category=claim" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">
                   {tApprovals('claims')} ({availableClaimCount})
                 </Link>
               </div>
@@ -452,7 +452,7 @@ export function NotificationCenter({
                 )}
                 {canApprove && (
                   <div className="border-t border-border px-4 py-2.5 text-center">
-                    <Link
+                    <Link prefetchOnIntentOnly
                       href="/approvals/history"
                       onClick={() => setOpen(false)}
                       className="text-xs font-medium text-primary hover:underline"
@@ -463,7 +463,7 @@ export function NotificationCenter({
                 )}
               </>
             )}
-            <div className="border-t border-border px-4 py-2.5 text-center"><Link href="/me/notifications" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">{t('emailPreferences')}</Link></div>
+            <div className="border-t border-border px-4 py-2.5 text-center"><Link prefetchOnIntentOnly href="/me/notifications" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">{t('emailPreferences')}</Link></div>
           </div>
         </>
       )}
