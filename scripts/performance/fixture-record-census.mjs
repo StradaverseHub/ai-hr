@@ -620,6 +620,43 @@ async function loanRecordRoutes(db, fixture) {
   ]);
 }
 
+async function rewardsRecordRoutes(db, fixture) {
+  const [actor]=fixture.users;
+  const record=fixture.rewardsRecord;
+  assert(record && actor.role==='groupHR');
+  const [unit]=await db`
+    select u.status,u.kind,c.name
+    from reward_unit u join reward_cycle c on c.id=u.cycle_id and c.tenant_id=u.tenant_id
+    where u.id=${record.unitId}::uuid and u.tenant_id=${actor.tenantId}::uuid and u.company_id=${record.companyId}::uuid
+      and u.posted_batch_id is null
+  `;
+  assert.deepEqual(unit,{status:'draft',kind:'annual',name:record.planName});
+  const entries=await db`
+    select r.id,r.employment_id,p.full_name from reward_entry r
+    join employment e on e.id=r.employment_id and e.tenant_id=r.tenant_id and e.company_id=${record.companyId}::uuid
+    join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
+    where r.unit_id=${record.unitId}::uuid and r.tenant_id=${actor.tenantId}::uuid
+  `;
+  assert.deepEqual(entries.map(entry=>entry.employment_id).sort(),[...record.expectedEmploymentIds].sort());
+  const person=entries.find(entry=>entry.employment_id===record.employmentId);
+  assert(person?.full_name);
+  const review='/rewards/'+record.unitId,setup='/admin/rewards/review-setup/'+record.unitId;
+  const check=review+'/data-check';
+  return [
+    {actor,template:'/admin/rewards/[unitId]',path:'/admin/rewards/'+record.unitId+'?mode=view',
+      content:record.planName,witness:'#applied-setup'},
+    {actor,template:'/admin/rewards/review-setup/[unitId]',path:setup+'?step=data',
+      content:record.planName,witness:`a[href="${check}"]`},
+    {actor,template:'/rewards/[unitId]/setup',path:review+'/setup',redirectTo:setup,
+      content:record.planName,witness:`nav a[href="${setup}?step=data"]`},
+    {actor,template:'/rewards/[unitId]/data-check',path:check,content:person.full_name,witness:'table tbody tr'},
+    {actor,template:'/rewards/[unitId]',path:review+'?'+new URLSearchParams({q:person.full_name}),
+      content:record.planName,witness:'#people'},
+    {actor,template:'/rewards/[unitId]/people/[entryId]',path:review+'/people/'+person.id,
+      exactHeading:person.full_name,witness:'h2'},
+  ];
+}
+
 async function savedReportRecordRoutes(db, fixture) {
   const [group, company, , , employee] = fixture.users;
   const record = fixture.savedReportRecord;
@@ -1072,7 +1109,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, rewardsRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1085,6 +1122,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
     : loanRecords ? await loanRecordRoutes(db, fixture)
     : savedReportRecords ? await savedReportRecordRoutes(db, fixture)
+    : rewardsRecords ? await rewardsRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),

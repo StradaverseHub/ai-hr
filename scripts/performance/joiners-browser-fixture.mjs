@@ -68,6 +68,25 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_REWARDS_RECORDS==='true'){
+  const [schema,{prepareRewardDraftFixture},{createRewardPlanReviews,previewRewardPlanCreation}]=await Promise.all([
+   source('db/schema.ts'),source('scripts/performance/reward-draft-fixture.mjs'),source('packs/rewards/plan-configuration.ts'),
+  ]);
+  const tenant=fixture.tenants[0],companies=tenant.companies,target=companies[2];
+  const expectedCompanyEmploymentIds=fixture.users.filter(actor=>actor.tenant===0&&actor.companyId===target.companyId)
+   .map(actor=>actor.employmentId);
+  assert.equal(expectedCompanyEmploymentIds.length,50);
+  const reward=await prepareRewardDraftFixture({owner,schema,ctx,tenant,companies,company:target,today:fixture.today,
+   actor:group,includeOrgExplorerMember:true,expectedCompanyEmploymentIds});
+  const preview=await previewRewardPlanCreation(ctx,reward.planVersionId);
+  assert.equal(preview.rows.length,1);
+  const {created,skipped}=await createRewardPlanReviews(ctx,reward.planVersionId,preview.digest);
+  assert.equal(created.length,1);
+  assert.equal(skipped.length,0);
+  fixture.rewardsRecord={unitId:created[0],companyId:reward.companyId,employmentId:reward.employmentId,
+   planName:reward.planName,expectedEmploymentIds:reward.expectedEmploymentIds};
+ }
+
  if(env.PERF_SAVED_REPORT_RECORDS==='true'){
   const {saveCustomReport}=await source('core/custom-reports.ts');
   const employee=fixture.users[4];

@@ -9,7 +9,11 @@ import {REWARDS_ORG_FIXTURE_NAME} from './fixture-workload.mjs';
 
 export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,companies,company,today,actor,includeOrgExplorerMember,expectedCompanyEmploymentIds}){
  const suite=process.env.PERF_HTTP_SUITE;
- assert(suite==='workflow-preflight'||suite==='whole-system','Rewards fixture requires an isolated browser workload');
+ const rewardsBrowserRecords=suite==='browser-route-baseline'&&process.env.PERF_REWARDS_RECORDS==='true'
+  &&process.env.CI==='true'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
+  &&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&process.env.GITHUB_EVENT_NAME==='workflow_dispatch'
+  &&process.env.GITHUB_WORKFLOW==='alpha-focused-checks'&&process.env.GITHUB_JOB==='selected-tests';
+ assert(suite==='workflow-preflight'||suite==='whole-system'||rewardsBrowserRecords,'Rewards fixture requires an isolated browser workload');
  assert.equal(process.env.GITHUB_ACTIONS,'true');
  assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_dev');
  assert.equal(ctx.tenantId,tenant.tenantId);
