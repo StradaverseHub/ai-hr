@@ -24,7 +24,7 @@ function recordFailure(error){
   else if(category==='unclassified'&&knownKinds.has(current.name))category=current.name;
   if(current instanceof TypeError&&typeProblem===null){
    const safeName=new Set(['businessUnit','departmentId','entries','db','insert','map','rows','client','tenantId','slice','today','companyId','personId','year','person','length','groups','query','feature']);
-   const match=current.message.match(/(?:reading '([A-Za-z0-9_]+)'|([A-Za-z0-9_.]+) is not a function)$/);
+   const match=current.message.match(/(?:reading '([A-Za-z0-9_]+)'\)|([A-Za-z0-9_.]+) is not a function)$/);
    const name=match?.[1]??match?.[2]?.split('.').at(-1);
    if(name&&safeName.has(name))typeProblem=(match[1]?'missing-property:':'not-callable:')+name;
   }
