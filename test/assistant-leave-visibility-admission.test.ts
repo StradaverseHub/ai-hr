@@ -77,6 +77,17 @@ async function fixture(role: 'employee'|'hr_admin'='employee'){const admin=admin
  const ctx:SessionContext={...await entitledCtx(base,[role]),userId,personId:mine.personId,roles:[role],grants:[{role,companyId:null}]};
  await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:mine.employmentId,leaveTypeId:base.annualLeaveTypeId,
   entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});return {admin,ctx,userId,employmentId:mine.employmentId};}
+async function multiEmploymentFixture(){
+ const {admin,ctx,userId,employmentId}=await fixture();
+ const companyName='Fictional Second Leave Company';
+ const company=await createCompany(admin,{legalName:companyName,country:'MY',currency:'MYR'});
+ const department=await createDepartment(admin,{companyId:company.id,name:'Fictional Second Leave Department'});
+ const selected=await hireEmployee(admin,{person:{id:ctx.personId!},companyId:company.id,departmentId:department.id,
+  employmentType:'full_time',hiredOn:'2020-01-01'});
+ await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:selected.employmentId,
+  leaveTypeId:base.annualLeaveTypeId,entryType:'accrual',days:'47.25',effectiveOn:todayInKualaLumpur()});
+ return {admin,ctx,userId,companyName,employmentId,selectedEmploymentId:selected.employmentId};
+}
 const response:ConverseResult={text:'Fictional response',stop:'end',toolCalls:[],usageReported:true,usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0}};
 describe('actual Mine flags bind current provider input and historical source disclosure',()=>{
  it('registers, promotes, serves and rolls back the local leave candidate through native owners',async()=>{
@@ -427,15 +438,7 @@ describe('actual Mine flags bind current provider input and historical source di
  });
 
  it.each(['selected','sibling'] as const)('replays the own employment choice and withdraws it after a %s balance change',async change=>{
-  const {admin,ctx,employmentId}=await fixture();
-  const companyName='Fictional Second Leave Company';
-  const company=await createCompany(admin,{legalName:companyName,country:'MY',currency:'MYR'});
-  const department=await createDepartment(admin,{companyId:company.id,name:'Fictional Second Leave Department'});
-  const selected=await hireEmployee(admin,{person:{id:ctx.personId!},companyId:company.id,departmentId:department.id,
-   employmentType:'full_time',hiredOn:'2020-01-01'});
-  await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:selected.employmentId,
-   leaveTypeId:base.annualLeaveTypeId,entryType:'accrual',days:'47.25',effectiveOn:todayInKualaLumpur()});
-
+  const {admin,ctx,companyName,employmentId,selectedEmploymentId}=await multiEmploymentFixture();
   const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_configuration,args)=>{
    expect(args.tools).toEqual([]);
    const turn=args.turns[0];
@@ -474,10 +477,39 @@ describe('actual Mine flags bind current provider input and historical source di
 
   // The historical receipt binds the whole canonical roster, including the unselected sibling.
   await applyLeaveAdjustmentBatch(admin,{leaveTypeIds:[base.annualLeaveTypeId],
-   employmentIds:[change==='selected'?selected.employmentId:employmentId],targetMode:'individual',
+   employmentIds:[change==='selected'?selectedEmploymentId:employmentId],targetMode:'individual',
    effectiveOn:todayInKualaLumpur(),days:5,reason:'Fictional employment balance correction'});
   expect(await history(answered.exchangeId)).toMatchObject({answer:null,grounded:{mode:'unavailable'}});
   expect(transport).toHaveBeenCalledOnce();
+ });
+
+ it.each(['selected','sibling'] as const)('retires uncommitted multi-employment content after a %s change and preserves accounting',async change=>{
+  const {admin,ctx,userId,companyName,employmentId,selectedEmploymentId}=await multiEmploymentFixture();
+  const transport=vi.spyOn(openaiAdapter,'converse').mockImplementationOnce(async(_configuration,args)=>{
+   const turn=args.turns[0];
+   if(turn?.role!=='user')throw Error('Expected the closed leave catalogue.');
+   const selection=selectProtectedLeaveCount(capturePrivateAssistantTask(JSON.parse(turn.content)).local);
+   if(!selection)throw Error('Expected the explicitly chosen leave fact.');
+   await applyLeaveAdjustmentBatch(admin,{leaveTypeIds:[base.annualLeaveTypeId],
+    employmentIds:[change==='selected'?selectedEmploymentId:employmentId],targetMode:'individual',
+    effectiveOn:todayInKualaLumpur(),days:5,reason:'Fictional in-flight employment correction'});
+   return {...response,text:JSON.stringify({version:1,mode:'answer',blocks:[selection]}),
+    usage:{inputTokens:7,outputTokens:5,cachedInputTokens:0}};
+  });
+
+  const prompt=await askAssistant(ctx,{question:'My leave balance'});
+  expect(prompt.turns).toBe(0);
+  await expect(askAssistant(ctx,{question:companyName,clarificationExchangeId:prompt.exchangeId}))
+   .rejects.toMatchObject({code:'provider_error'});
+  expect(transport).toHaveBeenCalledOnce();
+  const exchanges=await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.appUserId,userId));
+  expect(exchanges).toHaveLength(2);
+  const retired=exchanges.find(row=>row.id!==prompt.exchangeId);
+  expect(retired).toMatchObject({question:'',answer:null,disclosureReceipt:null,toolCalls:[],inputTokens:7,outputTokens:5});
+  expect(retired?.contentRetiredAt).toBeInstanceOf(Date);
+  const [quota]=await owner.db.execute(sql`select accounted_tokens::int,completed_at is not null as completed
+   from app.assistant_question_budget where tenant_id=${base.tenantId}::uuid and exchange_id=${retired?.id}::uuid`);
+  expect(quota).toEqual({accounted_tokens:12,completed:true});
  });
 
  it('evaluates the leave-count candidate on actual Assistant catalogues and declines a newly hidden value',async()=>{
