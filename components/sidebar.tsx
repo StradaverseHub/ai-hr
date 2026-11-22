@@ -40,6 +40,7 @@ import {SECURITY_CENTER,isSecurityDestination} from '@/lib/security-center-navig
 import { openCommandBar } from '@/lib/command-bar-events';
 import { V9_SHARED_NAVIGATION } from '@/lib/lifecycle-v9-navigation';
 import { NavigationSubmenus } from '@/components/navigation-submenus';
+import { useClientReady } from '@/components/use-client-ready';
 
 import { isCollapsible, type ChildItem, type CollapsibleGroupItem, type Row, type Group } from '@/lib/navigation/shell-inventory';
 import { resolveShellNavigation, type ShellNavigationFacts } from '@/lib/navigation/shell-resolver';
@@ -138,6 +139,7 @@ export function Sidebar({
   const monolith = useIsMonolith();
   const [workspaceChoice, setWorkspaceChoice] = useState<NavigationWorkspace | null>(null);
   const atelier = useUiTheme() === 'atelier';
+  const interactive = useClientReady();
   const tBar = useTranslations('commandBar');
   const locale = useLocale();
   // r398 — Monolith shows a module's children INLINE (no flyout panel). An explicit open/close per module
@@ -411,6 +413,7 @@ export function Sidebar({
             <button
               type="button"
               aria-label={label}
+              disabled={!interactive}
               aria-expanded={expanded}
               aria-controls={kidsId}
               onClick={() => toggleKids(item.labelKey, expanded)}
@@ -422,6 +425,7 @@ export function Sidebar({
         ) : (
           <button
             type="button"
+            disabled={!interactive}
             aria-expanded={expanded}
             aria-controls={kidsId}
             onClick={() => toggleKids(item.labelKey, expanded)}
@@ -563,19 +567,19 @@ export function Sidebar({
       // Collapsed (b953a339), a module is its icon: it opens the floating sub-menu, which lists every page
       // the module has — including a landing page, which is always one of its children.
       return (
-        <div key={item.labelKey} data-atelier-module={item.labelKey} onPointerEnter={event => { if (item.labelKey === 'securityCenter' && event.pointerType === 'mouse') setOpenKey(item.labelKey); }}>
+        <div key={item.labelKey} data-atelier-module={item.labelKey} onPointerEnter={event => { if (interactive && item.labelKey === 'securityCenter' && event.pointerType === 'mouse') setOpenKey(item.labelKey); }}>
           {item.defaultHref && !collapsed ? (
             <div className={cn('atelier-row pr-0', active&&'bg-accent font-medium text-foreground')}>
               <Link prefetchOnIntentOnly href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
                 <Icon aria-hidden /><span className="truncate">{label}</span>
               </Link>
-              <button ref={register} type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
+              <button ref={register} type="button" aria-label={label} disabled={!interactive} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
                 className="atelier-row atelier-module-toggle">
                 <ChevronDown aria-hidden className="atelier-chevron" />
               </button>
             </div>
           ) : (
-            <button ref={register} type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} title={collapsed ? label : undefined} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
+            <button ref={register} type="button" disabled={!interactive} aria-expanded={expanded} aria-controls={kidsId} onClick={flip} title={collapsed ? label : undefined} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
               <Icon aria-hidden /><span className="atelier-label truncate">{label}</span>
               <ChevronDown aria-hidden className="atelier-chevron" />
             </button>
@@ -789,7 +793,7 @@ export function Sidebar({
                     return <div key={item.labelKey}>
                       <div className={cn(rowBase, 'w-full gap-1 px-3 py-1', active && 'bg-accent')}>
                         <Link prefetchOnIntentOnly href={item.defaultHref} className="flex min-h-11 min-w-0 flex-1 items-center gap-3"><Icon className="size-5 shrink-0" aria-hidden /><span className="text-sm">{t(item.labelKey)}</span></Link>
-                        <button type="button" aria-label={t(item.labelKey)} aria-expanded={expanded} aria-controls={`inline-${item.labelKey}`} className="flex size-11 shrink-0 items-center justify-center" onClick={() => setInlineOpen(old=>({...old,[item.labelKey]:!expanded}))}><ChevronDown className={cn('size-4', !expanded && '-rotate-90')} aria-hidden /></button>
+                        <button type="button" aria-label={t(item.labelKey)} disabled={!interactive} aria-expanded={expanded} aria-controls={`inline-${item.labelKey}`} className="flex size-11 shrink-0 items-center justify-center" onClick={() => setInlineOpen(old=>({...old,[item.labelKey]:!expanded}))}><ChevronDown className={cn('size-4', !expanded && '-rotate-90')} aria-hidden /></button>
                       </div>
                       {expanded && <nav id={`inline-${item.labelKey}`} aria-label={t(item.labelKey)} className="ml-7 flex flex-col gap-1">{children.map((child) => <Link prefetchOnIntentOnly key={child.href} href={child.href} aria-current={isRowActive(child) ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm', isRowActive(child) ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent')}>{childCaption(child)}</Link>)}</nav>}
                     </div>;
