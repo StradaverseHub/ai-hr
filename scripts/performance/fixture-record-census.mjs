@@ -528,6 +528,37 @@ async function verifyNoticeAcknowledgement(page, main, db, entry, row, pass, tim
   row.noticeAcknowledgementPersisted = true;
 }
 
+async function attendanceConfigurationRoutes(db, fixture) {
+  const [group, company] = fixture.users;
+  const records = fixture.attendanceConfigurationRecords;
+  assert(records);
+  const [source] = await db`
+    select h.name as calendar, r.name as rule, a.name as allowance, a.code
+    from holiday_group h
+    join attendance_rule r on r.id=${records.ruleId}::uuid and r.tenant_id=h.tenant_id and r.is_default
+    join attendance_allowance_policy a on a.id=${records.allowanceId}::uuid
+      and a.tenant_id=h.tenant_id and a.company_id=${company.companyId}::uuid and a.amount=125
+    where h.id=${records.calendarId}::uuid and h.tenant_id=${company.tenantId}::uuid and h.active
+  `;
+  assert.deepEqual({ ...source }, {
+    calendar:records.calendarName, rule:'Standard', allowance:records.allowanceName, code:records.allowanceCode,
+  });
+  const rule = '/admin/attendance/schedule/' + records.ruleId;
+  const allowance = '/admin/attendance-allowance/' + records.allowanceId;
+  return [group, company].flatMap(actor => [
+    { actor, template:'/admin/holidays/groups/[id]', path:'/admin/holidays/groups/' + records.calendarId,
+      exactHeading:'Edit holiday group', witness:`input[name="name"][value="${records.calendarName}"]` },
+    { actor, template:'/admin/attendance-policy/rules/[ruleId]', path:'/admin/attendance-policy/rules/' + records.ruleId,
+      redirectTo:rule + '/edit', exactHeading:'Edit Schedule Group', content:'Standard', exactContent:true,
+      witness:`a[href="${rule}"]` },
+    { actor, template:'/admin/attendance/settings/formula-builder/[id]',
+      path:'/admin/attendance/settings/formula-builder/' + records.ruleId,
+      redirectTo:'/admin/attendance/settings', witness:'[data-tour="attendance-configuration"] a[href="/admin/attendance-allowance"]' },
+    { actor, template:'/admin/attendance-allowance/[policyId]', path:allowance,
+      exactHeading:records.allowanceCode + ' · ' + records.allowanceName, witness:`a[href="${allowance}?edit=1"]` },
+  ]);
+}
+
 async function payrollCorrectionRoutes(db, fixture) {
   const [group, company] = fixture.users;
   const subject = fixture.users[4];
@@ -934,7 +965,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -943,6 +974,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : performanceReportRecords ? await performanceReportRecordRoutes(db, fixture)
     : jobDescriptionRecords ? await jobDescriptionRecordRoutes(db, fixture)
     : noticeRecords ? await noticeRecordRoutes(db, fixture)
+    : attendanceConfigurationRecords ? await attendanceConfigurationRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),

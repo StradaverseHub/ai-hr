@@ -40,8 +40,9 @@ const censusImportHistory=shardInput==='import-history';
 const censusPerformanceReportRecords=shardInput==='performance-report-records';
 const censusJobDescriptionRecords=shardInput==='job-description-records';
 const censusNoticeRecords=shardInput==='notice-records';
+const censusAttendanceConfigurationRecords=shardInput==='attendance-configuration-records';
 const censusFullFixtureRecords=shardInput==='fixture-records';
-const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusAttendanceRecords||censusPerformanceReportRecords||censusJobDescriptionRecords||censusNoticeRecords;
+const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusAttendanceRecords||censusPerformanceReportRecords||censusJobDescriptionRecords||censusNoticeRecords||censusAttendanceConfigurationRecords;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1554,6 +1555,7 @@ try{
     PERF_PERFORMANCE_REPORT_RECORDS:String(censusPerformanceReportRecords),
     PERF_JOB_DESCRIPTION_RECORDS:String(censusJobDescriptionRecords),
     PERF_NOTICE_RECORDS:String(censusNoticeRecords),
+    PERF_ATTENDANCE_CONFIGURATION_RECORDS:String(censusAttendanceConfigurationRecords),
    });
  }finally{
   const stagePath=join(privateDir,'record-fixture-stage');
@@ -1705,7 +1707,7 @@ try{
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
      importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords,
      performanceReportRecords:censusPerformanceReportRecords,jobDescriptionRecords:censusJobDescriptionRecords,
-     noticeRecords:censusNoticeRecords});
+     noticeRecords:censusNoticeRecords,attendanceConfigurationRecords:censusAttendanceConfigurationRecords});
     if(censusFullFixtureRecords){
      await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
      assert(fixture.performanceRecords,'The full record plan requires a populated Performance assessment cycle');

@@ -67,6 +67,28 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_ATTENDANCE_CONFIGURATION_RECORDS==='true'){
+  const [{createHolidayGroup},{ensureStandardRule},{seedPayComponentCatalog},{createAllowancePolicy}]=await Promise.all([
+   source('core/admin.ts'),source('core/attendance-rule.ts'),source('core/pay-components.ts'),source('core/attendance-allowance.ts'),
+  ]);
+  const calendarName='Fictional Selangor Warehouse Calendar';
+  const calendar=await createHolidayGroup(ctx,{name:calendarName,states:['Selangor'],code:'PERF-SGR'});
+  const rule=await ensureStandardRule(ctx);
+  await seedPayComponentCatalog(ctx);
+  const [component]=await owner.client`select id from pay_component
+   where tenant_id=${group.tenantId}::uuid and code='ATTENDANCE'`;
+  assert(component,'Expected the supported Attendance payroll component');
+  const allowanceName='Fictional Monthly Attendance Allowance';
+  const allowanceCode='PERF-ATT-ALLOW';
+  const allowance=await createAllowancePolicy(ctx,{
+   companyId:company.companyId,name:allowanceName,code:allowanceCode,method:'monthly',amount:125,
+   payComponentId:component.id,effectiveFrom:fixture.today.slice(0,7)+'-01',criteria:{maxAbsentDays:0},
+  });
+  fixture.attendanceConfigurationRecords={
+   calendarId:calendar.id,calendarName,ruleId:rule.id,allowanceId:allowance.id,allowanceName,allowanceCode,
+  };
+ }
+
  if(env.PERF_NOTICE_RECORDS==='true'){
   const employee=fixture.users[4];
   assert(employee.role==='employee'&&employee.companyId===company.companyId);
