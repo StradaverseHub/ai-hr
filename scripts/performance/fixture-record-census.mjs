@@ -401,6 +401,43 @@ async function performanceRoutes(db, fixture) {
   ];
 }
 
+async function performanceReportRecordRoutes(db, fixture) {
+  const [group, company] = fixture.users;
+  const employee = fixture.users[6];
+  const performance = fixture.performanceRecords;
+  assert(performance && employee.role === 'employee' && employee.companyId === company.companyId);
+  const [rating] = await db`
+    select rr.last_event, rr.snapshot->>'name' as name
+    from performance_assessment_rating_record rr
+    join performance_review r on r.id=rr.review_id and r.tenant_id=rr.tenant_id
+    where r.id=${performance.teamReviewId}::uuid and r.cycle_id=${performance.cycleId}::uuid
+      and r.employment_id=${employee.employmentId}::uuid and r.tenant_id=${employee.tenantId}::uuid
+  `;
+  assert.equal(rating?.last_event, 'pm_self_submit', 'Expected a rating from the native submission');
+  assert.equal(rating.name, employee.name);
+  const cycle = '/performance/' + performance.cycleId;
+  const report = cycle + '/reports';
+  const query = 'kind=participants&groupBy=person&status=all';
+  return [group, company].flatMap(actor => [
+    {
+      actor, template: '/performance/[cycleId]/records', path: cycle + '/records',
+      exactHeading: 'Rating records', content: performance.name, exactContent: true,
+      witness: `tbody a[href="/performance/review/${performance.teamReviewId}"]:text-is(${JSON.stringify(employee.name)})`,
+    },
+    {
+      actor, template: '/performance/[cycleId]/reports', path: report + '?' + query,
+      exactHeading: 'Who takes part',
+      witness: `tbody tr:has(td:text-is(${JSON.stringify(employee.name)})) td:text-is("Yes")`,
+      download: {
+        href: report + '/export?' + query + '&format=xlsx',
+        filename: 'performance-report.xlsx',
+        step: 'performance-report-download',
+        measurement: 'performanceReportWorkbookMs',
+      },
+    },
+  ]);
+}
+
 async function payrollCorrectionRoutes(db, fixture) {
   const [group, company] = fixture.users;
   const subject = fixture.users[4];
@@ -670,7 +707,7 @@ function individualImportRoutes(actor, job, base) {
 }
 
 async function verifyWorkbookDownload(page, main, expected, row) {
-  row.step = expected.hash ? 'import-original-download' : 'import-error-download';
+  row.step = expected.step ?? (expected.hash ? 'import-original-download' : 'import-error-download');
   const timeout = 15000;
   const started = performance.now();
   const pending = page.waitForEvent('download', { timeout }).catch(() => null);
@@ -684,7 +721,7 @@ async function verifyWorkbookDownload(page, main, expected, row) {
   const workbook = Buffer.concat(chunks);
   assert.equal(workbook.subarray(0, 4).toString('hex'), '504b0304');
   if (expected.hash) assert.equal(createHash('sha256').update(workbook).digest('hex'), expected.hash);
-  row[expected.hash ? 'originalWorkbookMs' : 'errorWorkbookMs'] = Math.round(performance.now() - started);
+  row[expected.measurement ?? (expected.hash ? 'originalWorkbookMs' : 'errorWorkbookMs')] = Math.round(performance.now() - started);
 }
 
 async function verifyPersonnelTabs(page, main, row, remaining) {
@@ -806,12 +843,13 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
     : importHistory ? importHistoryRoutes(fixture)
     : attendanceRecords ? await attendanceRecordRoutes(db, fixture)
+    : performanceReportRecords ? await performanceReportRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -869,7 +907,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             await verifyFormulaSample(page, main, entry.formulaSample.source, entry.formulaSample.value, row);
           }
           if (entry.download && pass === 'first') {
-            row.importPageReadyMs = Math.round(performance.now() - started);
+            row[entry.download.measurement ? 'reportPageReadyMs' : 'importPageReadyMs'] = Math.round(performance.now() - started);
             await verifyWorkbookDownload(page, main, entry.download, row);
           }
           if (entry.personnelTabs && pass === 'first') {

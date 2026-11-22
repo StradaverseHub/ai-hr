@@ -37,8 +37,9 @@ const censusPersonnelMovement=shardInput==='personnel-movement';
 const censusAttendanceRecords=shardInput==='attendance-records';
 const censusPayrollFormulaEvaluation=shardInput==='payroll-formula-evaluation';
 const censusImportHistory=shardInput==='import-history';
+const censusPerformanceReportRecords=shardInput==='performance-report-records';
 const censusFullFixtureRecords=shardInput==='fixture-records';
-const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusAttendanceRecords;
+const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusAttendanceRecords||censusPerformanceReportRecords;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1548,6 +1549,7 @@ try{
   await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
    '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
     ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFullFixtureRecords),
+    PERF_PERFORMANCE_REPORT_RECORDS:String(censusPerformanceReportRecords),
    });
  }finally{
   const stagePath=join(privateDir,'record-fixture-stage');
@@ -1697,7 +1699,8 @@ try{
    try{
     await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
-     importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords});
+     importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords,
+     performanceReportRecords:censusPerformanceReportRecords});
     if(censusFullFixtureRecords){
      await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
      assert(fixture.performanceRecords,'The full record plan requires a populated Performance assessment cycle');

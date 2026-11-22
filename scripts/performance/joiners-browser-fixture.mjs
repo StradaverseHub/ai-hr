@@ -93,7 +93,7 @@ try{
   const request=await lifecycle.createAssetRequest(ctx,{companyId,catalogueId:catalogue.id,justification});
   fixture.lifecycleRecords={onboarding,offboarding,asset,request,joiner,leaver,model,justification};
  }
- if(env.PERF_LIFECYCLE_RECORDS==='true')try{
+ if(env.PERF_LIFECYCLE_RECORDS==='true'||env.PERF_PERFORMANCE_REPORT_RECORDS==='true')try{
   setStage('performance-cycle-grades');
   const [{createJobGrade},{setEmploymentGrade}]=await Promise.all([source('core/admin.ts'),source('core/org.ts')]);
   const [existingGrade]=await owner.client`select id from job_grade where tenant_id=${group.tenantId}::uuid
