@@ -30,6 +30,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { readFileSync } from 'node:fs';
@@ -76,6 +77,7 @@ vi.mock('../app/admin/personnel/new/actions', () => ({
 }));
 
 const { CreateEmployeeDialog } = await import('../app/admin/personnel/create-employee-dialog');
+const { CreateEmployeeFields } = await import('../app/admin/personnel/new/create-form');
 
 const rule = (over: Partial<EmployeeIdRule> = {}): EmployeeIdRule => ({
   hasConfig: true,
@@ -110,6 +112,23 @@ const wrap = () =>
   );
 
 const w = messages.people.wizard;
+
+it('enables the company selection after client handlers attach', async () => {
+  const form = (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <CreateEmployeeFields companies={COMPANIES} employeeIdRules={{}} onCreated={vi.fn()} />
+    </NextIntlClientProvider>
+  );
+  const server = document.createElement('div');
+  server.innerHTML = renderToStaticMarkup(form);
+  expect(within(server).getByRole('combobox')).toBeDisabled();
+
+  render(form);
+  const company = screen.getByRole('combobox');
+  expect(company).toBeEnabled();
+  await userEvent.setup().selectOptions(company, 'co-1');
+  expect(document.querySelector('input[data-personnel-field="profile.personal_details.employeecode"]')).toBeEnabled();
+});
 
 /** Open the prompt and choose a company. Returns the user-event instance for further interaction. */
 async function openWith(companyLabel: string) {

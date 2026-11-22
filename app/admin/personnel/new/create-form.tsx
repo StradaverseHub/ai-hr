@@ -39,6 +39,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, Card, inputCls } from '@/components/ui';
 import { PersonnelField } from '@/components/personnel-field';
+import { useClientReady } from '@/components/use-client-ready';
 import { personnelInput, personnelControl, personnelDisplay } from '@/lib/personnel-form-contract';
 import { missingToCreate } from '@/lib/employee-draft-schema';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '@/lib/employee-id-mode';
@@ -80,6 +81,7 @@ export function CreateEmployeeFields({
   recruitmentApplicationId?: string;
 }) {
   const t = useTranslations('people.wizard');
+  const interactive = useClientReady();
   const [companyId, setCompanyId] = useState(initial?.companyId ?? '');
   const [employeeIdMode, setEmployeeIdMode] = useState<string | undefined>(undefined);
   const [employeeCode, setEmployeeCode] = useState('');
@@ -160,7 +162,7 @@ export function CreateEmployeeFields({
     });
 
   const fields = (
-    <>
+    <fieldset disabled={!interactive} className="min-w-0 space-y-4">
       <PersonnelField fieldId="employment.organisation_assignment.companyname" mode="create" context={{selectCompany:true}}  >
         <select {...personnelControl('employment.organisation_assignment.companyname', 'draft')} className={inputCls} value={companyId} onChange={(e) => chooseCompany(e.target.value)}>
           <option value="">{t('selectPrompt')}</option>
@@ -306,7 +308,7 @@ export function CreateEmployeeFields({
           />
         </PersonnelField>
       </div>
-    </>
+    </fieldset>
   );
 
   return (
@@ -320,11 +322,11 @@ export function CreateEmployeeFields({
       {framed ? <Card className="space-y-4 p-5">{fields}</Card> : <div className="space-y-4">{fields}</div>}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button aria-busy={pending} onClick={create} disabled={pending || outstanding.length > 0}>
+        <Button aria-busy={pending} onClick={create} disabled={!interactive || pending || outstanding.length > 0}>
           {pending ? t('creating') : t('createDraft')}
         </Button>
         {onCancel && (
-          <Button aria-busy={pending} type="button" variant="outline" onClick={onCancel} disabled={pending}>
+          <Button aria-busy={pending} type="button" variant="outline" onClick={onCancel} disabled={!interactive || pending}>
             {t('cancel')}
           </Button>
         )}
