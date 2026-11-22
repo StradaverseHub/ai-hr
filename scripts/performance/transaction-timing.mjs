@@ -2,10 +2,12 @@
 import {renameSync,writeFileSync} from 'node:fs';
 import {createHistogram,monitorEventLoopDelay,performance} from 'node:perf_hooks';
 import {observeHomeRequests} from './home-request-timing.mjs';
+import {observePassiveRequestLifetime} from './passive-request-lifetime.mjs';
 
 const path=process.env.PERF_TX_TIMING_PATH;
 if(process.env.GITHUB_ACTIONS==='true'&&path){
  const homeRequests=observeHomeRequests();
+ const passiveRequestLifetime=observePassiveRequestLifetime();
  const eventLoop=monitorEventLoopDelay({resolution:20});eventLoop.enable();
  const startDelay=createHistogram(),held=createHistogram();
  const approvalWait=createHistogram(),approvalWork=createHistogram();
@@ -74,10 +76,11 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
  };
  globalThis.__aihrPerfBeginBackgroundRead=()=>{
   const requested=performance.now();let entered;
+  const httpLifetime=passiveRequestLifetime.begin();
   peakPassivePending=Math.max(peakPassivePending,++passivePending);
   return {
-   acquired(){entered=performance.now();passivePending--;passiveRunning++;record(passiveWait,entered-requested);},
-   finished(){if(entered===undefined){passivePending--;passiveFailedBeforeRead++;}else{passiveRunning--;record(passiveWork,performance.now()-entered);}},
+   acquired(){httpLifetime?.acquired();entered=performance.now();passivePending--;passiveRunning++;record(passiveWait,entered-requested);},
+   finished(){httpLifetime?.finished();if(entered===undefined){passivePending--;passiveFailedBeforeRead++;}else{passiveRunning--;record(passiveWork,performance.now()-entered);}},
   };
  };
  globalThis.__aihrPerfBeginPoolWork=poolMax=>{
@@ -102,7 +105,8 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
      rawPool:rawFailedBeforeWork-previousRawExits,
     },
     eventLoopDelay:{samples:eventLoop.count,p95Ms:eventLoop.count?eventLoop.percentile(95)/1e6:null,maxMs:eventLoop.count?eventLoop.max/1e6:null},
-    passiveRead:{pending:passivePending,running:passiveRunning,queueWait:describe(passiveWait),afterAdmission:describe(passiveWork)},
+    passiveRead:{pending:passivePending,running:passiveRunning,queueWait:describe(passiveWait),afterAdmission:describe(passiveWork),
+     responseLifetime:passiveRequestLifetime.drain()},
     rawPoolWork:{pending:rawPending,running:rawRunning,queueWait:describe(rawWait),afterAdmission:describe(rawWork)},
     attendanceApproval:{pending:approvalPending,running:approvalRunning,queueWait:describe(approvalWait),afterAdmission:describe(approvalWork)},
     attendanceExclusiveAdmission});

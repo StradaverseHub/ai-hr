@@ -561,6 +561,12 @@ function captureApplicationAdmission(driverEvidence){
    return counts.every(value=>Number.isSafeInteger(value)&&value>=0)
     ?counts.reduce((sum,value)=>sum+value,0):null;
   }
+  const lifetimeFields=['attached','unattached','pendingAtAbort','runningAtAbort','requestedAfterAbort',
+   'enteredAfterAbort','exitedBeforeEntryAfterAbort','finishedAfterAbort'];
+  const responseLifetime=Object.fromEntries(lifetimeFields.map(field=>{
+   const counts=windows.map(row=>row.passiveRead?.responseLifetime?.[field]);
+   return [field,counts.every(value=>Number.isSafeInteger(value)&&value>=0)?counts.reduce((sum,value)=>sum+value,0):null];
+  }));
   return {available:true,scope,windows:windows.length,coveredMs:windows.reduce((sum,row)=>sum+row.to-row.from,0),
    transactionStart:summarize(row=>row.startDelay),transactionHold:summarize(row=>row.held),
    observedMaxPendingTransactions:observedMax(row=>row.pending),
@@ -570,6 +576,7 @@ function captureApplicationAdmission(driverEvidence){
     ...summarize(row=>row.passiveRead?.queueWait),
     afterEntry:summarize(row=>row.passiveRead?.afterAdmission),
     observedMaxPending:observedMax(row=>row.passiveRead?.pending),
+    responseLifetime:{scope:'Counts work transitions, not unique requests. Abort is a Node HTTP close before the response finished. The events for one operation may fall in different windows.',...responseLifetime},
    },
    rawPoolAdmission:{
     ...summarize(row=>row.rawPoolWork?.queueWait),

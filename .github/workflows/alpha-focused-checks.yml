@@ -467,6 +467,9 @@ jobs:
           chmod 700 "$PWD"
           python3 ../automation/.github/ci/build-bundle.py unpack \
             "$packet/build-bundle.tar.gz" "$packet/build-bundle-files.json" .next "$PWD"
+      - name: Verify passive read lifetime observation
+        if: ${{ inputs.browser_mixed_load && inputs.mixed_database_topology == 'transaction-pool' }}
+        run: node --test ../automation/scripts/performance/passive-request-lifetime.test.mjs
       - name: Measure the fictional production build in Chromium
         if: ${{ inputs.browser_route_baseline }}
         run: node --import tsx ../automation/scripts/performance/hosted-browser-route-baseline.mjs
