@@ -60,6 +60,7 @@ const nextResponseCloseCandidate='a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778';
 const nextResponseCloseWithPayrollBoundary='b582a3d30f2f8d22d56e46da881f405ce7095834';
 const sharedEmployeeClaimsRead='4340a82c73b11541daa8811aaf7b534debb81ce3';
 const sharedEmployeeClaimsObserver='681ddc918ef99f9f632c3067d8f0624aaa5f8b21';
+const indexedAccountTaskCaller='8729365591aed6efc1d0c3b72ec346dcc16d6829';
 const combinedGroupArtifacts=new Map([
  [sharedEmployeeClaimsObserver,{runId:45040634196,artifactId:14761723496,sourceSha:sharedEmployeeClaimsRead}],
  ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],
@@ -80,7 +81,7 @@ const freshGroupBuilds=new Set([
  detachedShellBuild,'0ba883e0aa294bb0f15dcfe2433deedb52d11996','57fac422707b3a6174a290722ea0bb53da89f7c0',
  '52d2d170710fcfb14219abe2f9d0abc84e536748','5e34835d73183b2754c9b3e4ccdbfc31111917a8',
  clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,homeScopeMainCandidate,shellLifetimeCandidate,
- nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,
+ nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,indexedAccountTaskCaller,
 ]);
 const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD))&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
@@ -129,7 +130,7 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(shellLifetimeEnabled&&{shellHttpLifetime:'node-response-close'}),
- ...([nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,sharedEmployeeClaimsObserver].includes(sha)&&{shellHttpLifetime:'next-after'}),
+ ...([nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,sharedEmployeeClaimsObserver,indexedAccountTaskCaller].includes(sha)&&{shellHttpLifetime:'next-after'}),
  ...(reusedBuild&&{buildArtifact:combinedGroupBuild
   ? {sourceSha:sha,...combinedGroupArtifact}
   : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
@@ -767,7 +768,7 @@ async function withMixedContractNavigationComparison(work){
    }
    save();
    if(!clockingTenantQueue){
-    if([clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,browserIntegrationNativePreflight,browserIntegrationNativeControl,homeScopeMainCandidate,shellLifetimeCandidate,nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,sharedEmployeeClaimsObserver].includes(sha)){
+    if([clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,browserIntegrationNativePreflight,browserIntegrationNativeControl,homeScopeMainCandidate,shellLifetimeCandidate,nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,sharedEmployeeClaimsObserver,indexedAccountTaskCaller].includes(sha)){
      const rows=await owner`select exclusive from bulk_job_kind where kind='clocking_import'`;
      assert.deepEqual([...rows],[{exclusive:'tenant'}]);
      report.mixedClockingQueuePolicy={policy:'tenant'};
