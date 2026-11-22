@@ -41,7 +41,8 @@ const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
 const mixedVariant=env.AIHR_BROWSER_SHELL_PERMISSION_VARIANT??'none';
 const clockingTenantQueue=mixedVariant==='contract-optimized-clocking-queue';
-const shellPermissionVariant=clockingTenantQueue?'contract-optimized':mixedVariant;
+const rewardsNavigation=mixedVariant==='contract-optimized-rewards-navigation';
+const shellPermissionVariant=clockingTenantQueue||rewardsNavigation?'contract-optimized':mixedVariant;
 assert(['none','contract-control','contract-optimized'].includes(shellPermissionVariant));
 const topologyVariant=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 const largerPool=topologyVariant==='transaction-pool-12';
@@ -79,6 +80,8 @@ const webDatabaseConnections=largerPool?12:8;
 const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
 assert(['','absent','present'].includes(replacementCatalogue));
 assert(!replacementCatalogue||(establishedAttendance&&!fixtureOnly));
+assert(!rewardsNavigation||(env.AIHR_CI_HEAD===clockingOutcomeSource&&mixedLoad&&combinedGroupBuild&&
+ !fixtureOnly&&reusedBuild&&!largerPool&&replacementCatalogue==='present'));
 assert(!establishedAttendance||mixedLoad,'Established Attendance comparison requires mixed traffic');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
@@ -641,6 +644,41 @@ async function calibrateAccessServerLog({containerId,dockerConfig,fixture}){
  }
 }
 
+async function withRewardsNavigationComparison(owner,work){
+ const readFunction=async sql=>{
+  const [row]=await sql`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
+   pg_get_userbyid(p.proowner) as owner,pg_get_functiondef(p.oid) as definition,
+   encode(sha256(convert_to(p.prosrc,'UTF8')),'hex') as "bodyHash"
+   from pg_proc p where p.oid='app.reward_current_group_roles()'::regprocedure`;
+  assert(row,'The fictional Rewards role function must exist');
+  const {definition,bodyHash,...boundary}=row;
+  return {definition,bodyHash,boundary};
+ };
+ const original=await readFunction(owner);
+ assert(['postgres','ai_hr_owner'].includes(original.boundary.owner));
+ assert.equal(original.bodyHash,'a5b0666ffec7b7519f53e0f18f6717080f9d815417220d6269ff3efb175ba3af');
+ const proof=readFileSync(new URL('../../test/fixtures/rewards-navigation-group-grant.sql',import.meta.url),'utf8');
+ const proofSha256=createHash('sha256').update(proof).digest('hex');
+ assert.equal(proofSha256,'6fcabdf602ac102d2407d7acf1914cec74611e10eba1792119728745be85a0e3');
+ const replace=(statement,verify)=>owner.begin(async tx=>{
+  if(original.boundary.owner==='ai_hr_owner')await tx.unsafe('set local role ai_hr_owner');
+  await tx.unsafe(statement);
+  const current=await readFunction(tx);
+  assert.deepEqual(current.boundary,original.boundary);
+  verify(current);
+ });
+ await replace(proof,current=>assert.notEqual(current.bodyHash,original.bodyHash));
+ report.mixedRewardsNavigation={replacementInstalled:true,proofSha256,restored:false};
+ try{
+  save();
+  return await work();
+ }finally{
+  await replace(original.definition,current=>assert.deepEqual(current,original));
+  report.mixedRewardsNavigation.restored=true;
+  save();
+ }
+}
+
 async function withMixedContractNavigationComparison(work){
  if(shellPermissionVariant==='none')return work();
  assert(sha==='cddd7cebf757d0392ed06bead78300732fd54256'||combinedGroupBuild);
@@ -704,6 +742,7 @@ async function withMixedContractNavigationComparison(work){
      report.mixedClockingQueuePolicy={policy:'tenant'};
      save();
     }
+    if(rewardsNavigation)return await withRewardsNavigationComparison(owner,work);
     return await work();
    }
    await owner.begin(async tx=>{

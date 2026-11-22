@@ -81,10 +81,10 @@ on:
         default: false
         type: boolean
       mixed_shell_permission_variant:
-        description: Compare Contract navigation and optionally exercise the serial clocking queue on the pinned fixture
+        description: Compare a specific navigation or clocking variant on the pinned fixture
         type: choice
         default: none
-        options: [none, contract-control, contract-optimized, contract-optimized-clocking-queue]
+        options: [none, contract-control, contract-optimized, contract-optimized-clocking-queue, contract-optimized-rewards-navigation]
       mixed_database_topology:
         description: Compare direct web connections and bounded pool sizes on the pinned fictional workload
         type: choice
@@ -160,6 +160,12 @@ jobs:
           clocking_tenant_queue=false
           if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-clocking-queue ]]; then
             clocking_tenant_queue=true
+            SHELL_PERMISSION_VARIANT=contract-optimized
+          fi
+          if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-rewards-navigation ]]; then
+            [[ "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 && "$REUSE_BUILD" == true &&
+              "$MIXED_DATABASE_TOPOLOGY" == transaction-pool && "$REPLACEMENT_CATALOGUE" == present &&
+              "$ESTABLISHED_ATTENDANCE" == true && "$MIXED_GROUP_SCALE" == true && "$BROWSER_MIXED_LOAD" == true ]] || exit 2
             SHELL_PERMISSION_VARIANT=contract-optimized
           fi
           if [[ "$BROWSER_MIXED_LOAD" == true && "$BROWSER_ROUTE_BASELINE" != true ]]; then
