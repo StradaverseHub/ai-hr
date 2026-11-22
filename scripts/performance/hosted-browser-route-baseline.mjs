@@ -2321,9 +2321,12 @@ async function measureEmployeePicker(fixture){
     assert(row.searchOfferedDepartment,'The native options must offer the scoped employee department');
     const details=main.locator('details').filter({has:page.getByText('More filters',{exact:true})});
     await details.locator('summary').click({timeout:15000});
-    const department=details.getByLabel('Department',{exact:true});
+    row.filtersOpened=await details.evaluate(node=>node.open);
+    assert(row.filtersOpened,'More filters must stay open');
+    const department=details.locator('label')
+     .filter({has:page.getByText('Department',{exact:true})}).locator('select');
+    assert.equal(await department.count(),1,'The open filters must contain one Department select');
     await department.waitFor({state:'visible',timeout:5000});
-    assert(await details.evaluate(node=>node.open),'More filters must stay open');
     assert(await department.isEnabled(),'Department must be enabled');
     const options=await department.locator('option').evaluateAll(nodes=>nodes.map(node=>node.value));
     row.renderedDepartmentCount=options.length;
