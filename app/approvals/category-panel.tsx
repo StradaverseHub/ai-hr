@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { IntentLink } from '@/components/intent-link';
 import { getTranslations } from 'next-intl/server';
 import {
   CalendarDays,
@@ -25,7 +25,7 @@ import {
 } from '@/lib/approvals-categories';
 
 /**
- * Internal approval-task navigation panel (feedback 2dec6406). A SERVER component: plain Links to
+ * Internal approval-task navigation panel (feedback 2dec6406). A server component with links to
  * /approvals?category=X (preserving the current ?sort=), so switching categories is ordinary navigation —
  * no client state, no change to the main system sidebar. Every count here is handed down from the SAME
  * in-memory pending lists the page sections render, so a panel badge always equals its section heading.
@@ -111,9 +111,11 @@ export async function CategoryPanel({
   const item = (cat: ApprovalCategory, label: string, count: number, Icon: LucideIcon) => {
     const selected = category === cat;
     return (
-      <Link
+      <IntentLink
         key={cat}
         href={itemHref(cat, sort)}
+        prefetchOnIntentOnly
+        prefetch={selected ? false : undefined}
         aria-current={selected ? 'page' : undefined}
         className={cn(
           'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors',
@@ -129,7 +131,7 @@ export async function CategoryPanel({
         <span className={cn('shrink-0 text-xs tabular-nums', selected ? 'text-primary' : 'text-muted-foreground')}>
           {count}
         </span>
-      </Link>
+      </IntentLink>
     );
   };
 
@@ -165,13 +167,14 @@ export async function CategoryPanel({
             /approvals, and app/approvals/history has its own guard, so the link cannot grant access it
             would otherwise refuse. */}
         {!attendanceOnly && <div className="border-t pt-2">
-          <Link
+          <IntentLink
             href="/approvals/history"
+            prefetchOnIntentOnly
             className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <History className="size-4 shrink-0" aria-hidden />
             <span className="min-w-0 flex-1 truncate">{t('approvalHistory')}</span>
-          </Link>
+          </IntentLink>
         </div>}
       </nav>
     </Card>
