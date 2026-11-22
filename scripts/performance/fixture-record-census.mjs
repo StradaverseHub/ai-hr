@@ -507,15 +507,20 @@ async function verifyNoticeAcknowledgement(page, main, db, entry, row, pass, tim
   if (pass === 'first') {
     assert.equal((await receipts()).length, 0, 'Opening the notice must not record consent');
     const started = performance.now();
+    const expected = new URL(page.url());
     const reply = page.waitForResponse(response => {
       const request = response.request();
-      return request.method() === 'POST' && Boolean(request.headers()['next-action'])
-        && new URL(response.url()).pathname === '/notices/' + acknowledgeNotice;
+      const url = new URL(request.url());
+      return request.method() === 'POST' && url.origin === expected.origin && url.pathname === expected.pathname
+        && (Boolean(request.headers()['next-action']) || request.isNavigationRequest());
     }, { timeout });
     const clicked = main.getByRole('button',{name:'Acknowledge this version',exact:true}).click({timeout});
     const [response] = await Promise.all([reply,clicked]);
-    assert.equal(response.status(),200);
+    const native = response.request().isNavigationRequest();
+    assert(native ? [200,303].includes(response.status()) : response.status() === 200);
     await status.waitFor({state:'visible',timeout});
+    assert.equal(new URL(page.url()).pathname,expected.pathname);
+    row.noticeAcknowledgementTransport = native ? 'native-form' : 'next-action';
     row.noticeAcknowledgementMs = Math.round(performance.now()-started);
   } else {
     await status.waitFor({state:'visible',timeout});
