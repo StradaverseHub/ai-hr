@@ -654,6 +654,10 @@ async function assertContentAvailable(page){
 }
 
 async function measureShellLinks(fixture){
+ const pageFor=serverActionPageMatcher(
+  JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8')),
+  JSON.parse(readFileSync('.next/routes-manifest.json','utf8')),
+ );
  const actor=fixture.users[0],context=await signedInContext(actor);
  try{
   const page=await context.newPage();
@@ -662,14 +666,23 @@ async function measureShellLinks(fixture){
    report.journeys.push(row);
    let clickStart,documentRequests=0,stage='initial-document';
    const beforeClick={routeRequests:0,destinationRequests:0};
+   const trafficByPage=new Map();
    const observe=request=>{
     if(request.resourceType()==='document'&&request.frame()===page.mainFrame())documentRequests++;
     if(clickStart!==undefined||request.method()!=='GET')return;
     const url=new URL(request.url());
+    const headers=request.headers();
     if(url.origin!==origin||url.pathname.startsWith('/api/')||
-     !(url.searchParams.has('_rsc')||request.headers().rsc==='1'))return;
+     !(url.searchParams.has('_rsc')||headers.rsc==='1'))return;
     beforeClick.routeRequests++;
     if(url.pathname===path)beforeClick.destinationRequests++;
+    const page=pageFor(url.pathname)??'unmatched';
+    const counts=trafficByPage.get(page)??{page,segmentPrefetch:0,routePrefetch:0,otherRsc:0,total:0};
+    if(headers['next-router-segment-prefetch']!==undefined)counts.segmentPrefetch++;
+    else if(headers['next-router-prefetch']!==undefined)counts.routePrefetch++;
+    else counts.otherRsc++;
+    counts.total++;
+    trafficByPage.set(page,counts);
    };
    try{
     await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:15000});
@@ -698,7 +711,13 @@ async function measureShellLinks(fixture){
     row.failedStep=stage;
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
    }
-   finally{page.off('request',observe);row.documentRequests=documentRequests;row.beforeClick=beforeClick;save();}
+   finally{
+    page.off('request',observe);
+    const pages=[...trafficByPage.values()].sort((a,b)=>b.total-a.total||a.page.localeCompare(b.page));
+    row.documentRequests=documentRequests;
+    row.beforeClick={...beforeClick,pages:pages.slice(0,12),omittedPages:Math.max(0,pages.length-12)};
+    save();
+   }
   }
  }finally{await context.close();}
 }
