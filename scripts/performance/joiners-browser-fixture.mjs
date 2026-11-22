@@ -86,7 +86,8 @@ try{
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
  if(env.PERF_LIFECYCLE_REQUISITION_RECORDS==='true'){
-  const {onboardingCommand,onboardingDetail,v9CreateOffboarding,v9Command,offboardingRequisition}=await source('packs/lifecycle/service.ts');
+  const {onboardingCommand,onboardingDetail,v9CreateOffboarding,v9Command,offboardingRequisition,
+   submitResignationJourney,resignationCase}=await source('packs/lifecycle/service.ts');
   const {addCalendarMonths}=await source('lib/hr-date.ts');
   setStage('onboarding-requisition');
   const joiner=rows.find(row=>row.case.sourceDraftId===drafts[0].id);
@@ -110,8 +111,23 @@ try{
   await v9Command(ctx,exitId,1,{type:'submit'});
   const exit=await offboardingRequisition(ctx,exitId);
   assert(exit.id===exitId&&exit.state==='submitted'&&exit.fullView&&exit.name===employee.name&&exit.lastDay===lastDay);
+
+  setStage('resignation-case');
+  const employeeActor=fixture.users[5];
+  assert(employeeActor.role==='employee'&&employeeActor.companyId===company.companyId&&employeeActor.userId!==employee.userId);
+  const [principal]=await owner.client`select tenant_id,grants from app.principal(${employeeActor.userId}::uuid)`;
+  assert(principal?.tenant_id===group.tenantId&&Array.isArray(principal.grants));
+  const employeeContext={...ctx,userId:employeeActor.userId,personId:employeeActor.personId,grants:principal.grants,
+   roles:[...new Set(principal.grants.map(grant=>grant.role))]};
+  const resignationLastDay=addCalendarMonths(fixture.today,3);
+  const resignation=await submitResignationJourney(employeeContext,{employmentId:employeeActor.employmentId,lastWorkingDay:resignationLastDay,
+   reason:'Fictional browser resignation'});
+  assert(resignation?.id&&resignation.stage==='decision'&&resignation.lastWorkingDay===resignationLastDay);
+  const adminView=await resignationCase(ctx,resignation.id);
+  assert(adminView.number===resignation.number&&adminView.employeeName===employeeActor.name);
   fixture.lifecycleRequisitions={onboardingId:joiner.case.id,onboardingNumber:requisition.number,itemName,
-   offboardingId:exitId,offboardingNumber:exit.number,employeeName:employee.name,lastDay};
+   offboardingId:exitId,offboardingNumber:exit.number,employeeName:employee.name,lastDay,
+   resignationId:resignation.id,resignationNumber:resignation.number,resigningEmployeeIndex:employeeActor.index};
  }
  if(env.PERF_LETTER_CATALOG_RECORDS==='true'){
   const {saveLetterField,saveLetterTemplate}=await source('core/letters.ts');

@@ -1581,7 +1581,7 @@ try{
    const stage=readFileSync(stagePath,'utf8');
    if(['fixture','onboarding-config','draft-joiners','employee-master-report','payroll-comparison-history','payroll-comparison-report',
     'lifecycle-defaults','legacy-onboarding','legacy-offboarding','onboarding-requisition',
-    'onboarding-requisition-submit','onboarding-requisition-read','offboarding-requisition',
+    'onboarding-requisition-submit','onboarding-requisition-read','offboarding-requisition','resignation-case',
     'lifecycle-asset','lifecycle-asset-request','system-testing-session','system-testing-workspace-import','system-testing-draft',
     'system-testing-publish','system-testing-assign','system-testing-begin','system-testing-save','system-testing-complete','performance-cycle-grades','performance-cycle-create',
     'performance-cycle-participants','performance-cycle-open','performance-team-review',

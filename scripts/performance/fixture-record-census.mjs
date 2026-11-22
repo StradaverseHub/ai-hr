@@ -404,8 +404,9 @@ async function performanceRoutes(db, fixture) {
 function lifecycleRequisitionRoutes(fixture){
   const [group,company]=fixture.users;
   const records=fixture.lifecycleRequisitions;
-  assert(records?.onboardingId&&records?.offboardingId,'Missing populated Lifecycle requisitions');
-  return [group,company].flatMap(actor=>[
+  const employee=fixture.users.find(actor=>actor.index===records?.resigningEmployeeIndex);
+  assert(records?.onboardingId&&records?.offboardingId&&records?.resignationId&&employee,'Missing populated Lifecycle records');
+  const requisitions=[group,company].flatMap(actor=>[
     {actor,template:'/lifecycle/requisitions/onboarding/[id]',
       path:'/lifecycle/requisitions/onboarding/'+records.onboardingId,
       exactHeading:records.onboardingNumber,content:records.itemName,exactContent:true},
@@ -414,6 +415,12 @@ function lifecycleRequisitionRoutes(fixture){
       exactHeading:records.offboardingNumber,content:records.employeeName,
       witness:`strong:text-is(${JSON.stringify(records.lastDay)})`},
   ]);
+  const resignations=[group,employee].map(actor=>({
+    actor,template:'/lifecycle/resignations/[id]',path:'/lifecycle/resignations/'+records.resignationId,
+    exactHeading:'Resignation',content:records.resignationNumber,exactContent:true,
+    witness:`[data-resignation-case="${records.resignationId}"]`,
+  }));
+  return [...requisitions,...resignations];
 }
 
 async function performanceReportRecordRoutes(db, fixture) {
