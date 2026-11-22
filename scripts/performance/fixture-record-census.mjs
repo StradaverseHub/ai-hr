@@ -620,6 +620,48 @@ async function loanRecordRoutes(db, fixture) {
   ]);
 }
 
+async function greetingRecordRoutes(db, fixture) {
+  const [, , , , sender, recipient, unrelated] = fixture.users;
+  const record = fixture.greetingRecord;
+  assert(record && unrelated.role==='employee' && unrelated.companyId===sender.companyId);
+  const [message] = await db`
+    select c.message,exists(
+      select 1 from notification n where n.tenant_id=g.tenant_id and n.source_event_id=g.source_event_id
+        and n.kind='employee-home.greeting' and n.link_path=${'/me/greetings/'+record.id}
+        and n.recipient_employment_id=g.recipient_employment_id and n.body='employeeHome.greetingNotification.body'
+    ) as notified
+    from app.home_greeting g join app.home_greeting_content c on c.greeting_id=g.id and c.tenant_id=g.tenant_id
+    where g.tenant_id=${sender.tenantId}::uuid and g.id=${record.id}::uuid
+      and g.sender_employment_id=${sender.employmentId}::uuid
+      and g.recipient_employment_id=${recipient.employmentId}::uuid and g.occurrence_date=${fixture.today}::date
+  `;
+  assert.deepEqual(message,{message:record.message,notified:true});
+  const template='/me/greetings/[id]',path='/me/greetings/'+record.id;
+  const witness=`time[datetime="${fixture.today}"]`;
+  return [
+    {actor:sender,template,path,exactHeading:'Greeting',content:record.message,exactContent:true,witness,
+      greetingView:{message:record.message,roleText:'You sent this greeting.'}},
+    {actor:recipient,template,path,exactHeading:'Greeting',content:record.message,exactContent:true,witness,
+      greetingView:{message:record.message,roleText:'This greeting was sent to you.'}},
+    {actor:unrelated,template,path,exactHeading:'Greeting',witness:'[role="alert"]',
+      greetingView:{message:record.message,denied:true}},
+  ];
+}
+
+async function verifyGreetingView(main, entry, row, remaining) {
+  const {message,roleText,denied}=entry.greetingView;
+  if (denied) {
+    assert.equal(await main.locator(entry.witness).innerText({timeout:remaining()}),'This greeting is unavailable for this employment.');
+    assert.equal(await main.getByText(message,{exact:true}).count(),0);
+    row.greetingDenied = true;
+    return;
+  }
+  const label=await main.locator(entry.witness).locator('..').innerText({timeout:remaining()});
+  assert(label.startsWith(roleText+' '),'Expected the participant-specific greeting label');
+  assert.equal(await main.getByText(message,{exact:true}).locator('b').count(),0);
+  row.greetingParticipantVerified = true;
+}
+
 async function savedReportRecordRoutes(db, fixture) {
   const [group, company, , , employee] = fixture.users;
   const record = fixture.savedReportRecord;
@@ -1088,7 +1130,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, greetingRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1101,6 +1143,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
     : loanRecords ? await loanRecordRoutes(db, fixture)
     : savedReportRecords ? await savedReportRecordRoutes(db, fixture)
+    : greetingRecords ? await greetingRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -1187,6 +1230,9 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             row.savedReportPageReadyMs=Math.round(performance.now()-started);
             row.step='saved-report-preview';
             await verifySavedReportPreview(page,main,entry,row,remaining);
+          }
+          if (entry.greetingView) {
+            await verifyGreetingView(main,entry,row,remaining);
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);

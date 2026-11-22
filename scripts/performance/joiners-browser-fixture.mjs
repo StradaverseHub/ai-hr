@@ -68,6 +68,33 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_GREETING_RECORDS==='true'){
+  const [{saveEmployeeHomeConfiguration},{sendHomeGreeting},{defaultEmployeeHomeConfiguration}]=await Promise.all([
+   source('core/employee-home-configuration.ts'),source('core/employee-home-greetings.ts'),source('lib/employee-home-defaults.ts'),
+  ]);
+  const sender=fixture.users[4],recipient=fixture.users[5];
+  assert(sender.role==='employee'&&recipient.role==='employee'&&sender.companyId===company.companyId&&recipient.companyId===company.companyId);
+  const [principal]=await owner.client`select tenant_id,grants from app.principal(${sender.userId}::uuid)`;
+  assert(principal?.tenant_id===group.tenantId&&Array.isArray(principal.grants));
+  const self={tenantId:sender.tenantId,userId:sender.userId,personId:sender.personId,grants:principal.grants,
+   roles:[...new Set(principal.grants.map(grant=>grant.role))],entitlements:ctx.entitlements};
+  const configuration=defaultEmployeeHomeConfiguration();
+  configuration.celebrations={enabled:true,scope:'department'};
+  await saveEmployeeHomeConfiguration(ctx,{companyId:company.companyId,audienceRole:'employee',configuration,
+   expectedOrdinal:0,reason:'Fictional browser verification of the employee greeting'});
+  const birthDate='2000'+fixture.today.slice(4);
+  const updated=await owner.client`update person set date_of_birth=${birthDate}::date
+   where tenant_id=${group.tenantId}::uuid and id=${recipient.personId}::uuid returning id`;
+  assert.equal(updated.length,1);
+  const message='Fictional birthday greeting <b>kept as plain text</b>.';
+  const {greetingId,state}=await sendHomeGreeting(self,{
+   version:1,employmentId:sender.employmentId,recipientEmploymentId:recipient.employmentId,
+   kind:'birthday',occurrenceDate:fixture.today,nonce:randomUUID(),message,
+  });
+  assert.equal(state,'sent');
+  fixture.greetingRecord={id:greetingId,message};
+ }
+
  if(env.PERF_SAVED_REPORT_RECORDS==='true'){
   const {saveCustomReport}=await source('core/custom-reports.ts');
   const employee=fixture.users[4];
