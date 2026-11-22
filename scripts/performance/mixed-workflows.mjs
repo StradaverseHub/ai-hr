@@ -1,13 +1,44 @@
 /** Real built browser actions, replayed over HTTPS; owner DB access is a read-only oracle. */
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import {JSDOM} from 'jsdom';
 import {driverErrorFact} from './driver-shutdown.mjs';
 import {setTimeout as pause} from 'node:timers/promises';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
 import {attendanceCorrectionForm} from './attendance-rejection-browser.mjs';
 import {exerciseConcurrentPayrollClose} from './payroll-close-concurrency.mjs';
+import {readRouteForMeasurement} from './system-route-manifest.mjs';
+import {isClockingLoadActor} from './route-scheduling.mjs';
+
+// The Server Action transports typed business refusals in successful HTTP responses.
+export function clockingImportOutcome(content, stage) {
+ const outcomes=[];
+ for(const line of content.split('\n')){
+  const match=/^[0-9a-f]+:(\{.*\})$/.exec(line);
+  if(!match)continue;
+  let value;
+  try{value=JSON.parse(match[1]);}catch{continue;}
+  if(value?.ok===true&&(stage==='validate'?value.preview:value.job))outcomes.push('accepted');
+  if(value?.ok===false&&typeof value.error==='string')outcomes.push(value.error==='alreadyRunning'?'alreadyRunning':'refused');
+ }
+ assert.equal(outcomes.length,1,'Clocking Import typed outcome missing or ambiguous');
+ return outcomes[0];
+}
 
 const attendanceFingerprint=/^[a-f0-9]{64}$/;
+const attendanceApprovalMarker='PERF_ATTENDANCE_BROWSER_APPROVAL';
+const attendanceCorrectionMarker='PERF_ATTENDANCE_BROWSER';
+const nativeActionName=/^\$ACTION_ID_([a-f0-9]{42})$/;
+
+function isNativeAttendanceFormPost(request,url,marker){
+ return request.method()==='POST'&&request.url()===url&&request.isNavigationRequest()
+  &&request.resourceType()==='document'&&!request.headers()['next-action']
+  &&/^multipart\/form-data\b/i.test(request.headers()['content-type']??'')
+  &&Boolean(request.postDataBuffer()?.includes(Buffer.from(marker)));
+}
+
+export const isNativeAttendanceApprovalPost=(request,url)=>isNativeAttendanceFormPost(request,url,attendanceApprovalMarker);
+export const isNativeAttendanceCorrectionPost=(request,url)=>isNativeAttendanceFormPost(request,url,`\r\n${attendanceCorrectionMarker}\r\n`);
 
 export function readAttendanceCorrectionForm(html,{actionId,date,employmentId}){
  assert(typeof actionId==='string'&&/^[a-f0-9]{42}$/.test(actionId),'Missing captured Attendance action identity');
@@ -56,17 +87,33 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  const failedAttendanceActions=[];
  async function capture(page,click,kind){
   report.mixedWorkflows.currentStage=kind;save();
-  const marker={attendanceCreate:'PERF_ATTENDANCE_BROWSER',leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
+  const marker={attendanceCreate:attendanceCorrectionMarker,attendanceApprove:attendanceApprovalMarker,leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
+  const currentUrl=page.url();
   // Bind to a request initiated after arming this click, never an advisory response already in flight.
   // Capture needs transport metadata only. Redirect/toast navigation can cancel the original stream;
   // the surrounding workflow still verifies UI readiness and independent committed native state.
-  const waiting=page.waitForRequest(req=>req.method()==='POST'&&Boolean(req.headers()['next-action'])&&(!marker||req.postDataBuffer()?.includes(Buffer.from(marker))),{timeout:90000});
+  let posts=0,actionPosts=0;
+  const waiting=page.waitForRequest(req=>{
+   if(req.method()!=='POST')return false;
+   posts++;
+   if(!req.headers()['next-action'])return (kind==='attendanceApprove'&&isNativeAttendanceApprovalPost(req,currentUrl))
+    ||(kind==='attendanceCreate'&&isNativeAttendanceCorrectionPost(req,currentUrl));
+   actionPosts++;
+   return !marker||req.postDataBuffer()?.includes(Buffer.from(marker));
+  },{timeout:90000});
   let response,req,timer;
   try{
    [req]=await Promise.all([waiting,click()]);
    response=await Promise.race([req.response(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Mutation response headers exceeded90 seconds')),90000);})]);
    assert(response,'Mutation request failed before response headers');assert(response.status()<400,'Browser mutation returned an HTTP error');
-  }catch(error){notePrimary(error);noteEvidence(()=>{report.mixedWorkflows.error={stage:kind,message:driverErrorFact(error).kind};save();});throw error;}
+  }catch(error){
+   notePrimary(error);
+   noteEvidence(()=>{
+    report.mixedWorkflows.error={stage:kind,message:driverErrorFact(error).kind,posts,actionPosts};
+    save();
+   });
+   throw error;
+  }
   finally{clearTimeout(timer);}
   const headers={};
   for(const key of ['accept','next-action','next-router-state-tree'])if(req.headers()[key])headers[key]=req.headers()[key];
@@ -77,10 +124,25 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const pairs=[...form].filter(([,v])=>typeof v==='string');fieldOrder=pairs.map(([k])=>k);
    assert.equal(new Set(fieldOrder).size,fieldOrder.length,'fixture replay does not support repeated string fields');fields=Object.fromEntries(pairs);
   }
+  if(kind==='attendanceApprove'&&!headers['next-action']){
+   assert([200,303].includes(response.status())&&fields.action==='approved'&&fields.reason===attendanceApprovalMarker,
+    'Native Attendance approval did not submit the witnessed form');
+   assert.equal(fieldOrder.filter(name=>/^\$ACTION_ID_[a-f0-9]{42}$/.test(name)).length,1,
+    'Native Attendance approval did not carry its named server action');
+  }
+  let formActionId=headers['next-action'];
+  if(kind==='attendanceCreate'&&!formActionId){
+   const names=fieldOrder.filter(name=>name.startsWith('$ACTION_'));
+   const actionName=names.length===1?nativeActionName.exec(names[0]):null;
+   assert(actionName&&fields.reason===attendanceCorrectionMarker&&response.status()===303,
+    'Native Attendance correction did not submit the witnessed form');
+   assert.equal(attendanceCorrectionOutcome({headers:response.headers()},new URL(currentUrl)),'corrected');
+   formActionId=actionName[1];
+  }
   const redirect=response.headers()['x-action-redirect']??response.headers().location;
   const actionUrl=new URL(req.url());
-  const template={kind,path:actionUrl.pathname+actionUrl.search,fields,fieldOrder,headers,status:response.status()};
-  report.mixedWorkflows.capturedTransport.push({stage:kind,path:actionUrl.pathname,status:response.status(),encoding:Array.isArray(fields)?'typed JSON':'FormData',shape:Array.isArray(fields)?fields.map(value=>value&&typeof value==='object'?Object.keys(value).sort():typeof value):fieldOrder});save();
+  const template={kind,path:actionUrl.pathname+actionUrl.search,fields,fieldOrder,headers,status:response.status(),formActionId};
+  report.mixedWorkflows.capturedTransport.push({stage:kind,path:actionUrl.pathname,status:response.status(),encoding:Array.isArray(fields)?'typed JSON':headers['next-action']?'FormData':'native FormData',shape:Array.isArray(fields)?fields.map(value=>value&&typeof value==='object'?Object.keys(value).sort():typeof value):fieldOrder});save();
   if(redirect){const target=new URL(String(redirect).split(';')[0],base);if(target.searchParams.has('error')){report.mixedWorkflows.error={stage:kind,message:target.searchParams.get('error')};save();throw Error('Browser mutation refused: '+target.searchParams.get('error'));}}
   templates[kind]=template;return template;
  }
@@ -181,11 +243,27 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  // A real correction workflow and Payroll processing/export, not page-render timing.
  const approverFor=user=>fixture.users.find(actor=>actor.tenant===user.tenant&&actor.company===user.company&&['companyHR','groupHR'].includes(actor.role));
  async function assertProcessed(batchId){
-  const [batch]=await db`select status,employee_count from payroll_batch where id=${batchId}::uuid`;
-  assert.equal(batch.status,'processed');assert.equal(batch.employee_count,50);
+  const started=performance.now();
+  const [ack]=await db`select job.id from bulk_job job join payroll_batch batch on batch.tenant_id=job.tenant_id
+   where batch.id=${batchId}::uuid and job.kind='payroll_process' and job.input->>'batchId'=batch.id::text
+   order by job.created_at desc,job.id desc limit 1`;
+  assert(ack,'Payroll processing did not acknowledge a durable job');
+  let batch;
+  while(performance.now()-started<90000){
+   const [observed]=await db`select batch.status,batch.employee_count,job.state
+    from payroll_batch batch join bulk_job job on job.tenant_id=batch.tenant_id
+    where batch.id=${batchId}::uuid and job.id=${ack.id}::uuid`;
+   assert(observed&&!['failed','cancelled','discarding'].includes(observed.state),'Payroll processing job did not succeed');
+   if(observed.status==='processed'&&observed.state==='completed'){batch=observed;break;}
+   await pause(250);
+  }
+  assert(batch,'Payroll processing did not finish within the workflow budget');
+  const completionObservedMs=Math.round(performance.now()-started);
+  assert.equal(batch.employee_count,50);
   const rows=await db`select employment_id,basic_salary,gross_pay,total_deductions,net_pay from payslip where batch_id=${batchId}::uuid`;
   assert.equal(rows.length,50);assert.equal(new Set(rows.map(row=>row.employment_id)).size,50);
   for(const row of rows){assert.equal(Number(row.basic_salary),5000);assert(Number.isFinite(Number(row.net_pay)));assert.equal(Math.round(Number(row.gross_pay)*100)-Math.round(Number(row.total_deductions)*100),Math.round(Number(row.net_pay)*100));}
+  return completionObservedMs;
  }
  async function exportPayroll(user,batchId,company){
   const response=await request(user,`/payroll/${batchId}/export?format=csv`,undefined,200,true);
@@ -203,23 +281,25 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const form=attendanceCorrectionForm(page);
    await form.locator('input[type="time"][name="checkIn"]').fill('09:15');
    await form.locator('input[type="time"][name="checkOut"]').fill('18:15');
-   await form.locator('input[name="reason"]').fill('PERF_ATTENDANCE_BROWSER');
+   await form.locator('input[name="reason"]').fill(attendanceCorrectionMarker);
    const captured=await capture(page,()=>form.getByRole('button',{name:'Submit correction',exact:true}).click(),'attendanceCreate');
    // React FormData actions encode controls under a wire prefix. Capture the
    // selector field in the browser so replay cannot append an unbound root field.
    const selectors=Object.entries(captured.fields).filter(([key])=>key==='employmentId'||key.endsWith('_employmentId'));
    assert(selectors.length===1&&selectors[0][1]===employee.employmentId,'Missing encoded Attendance subject selector');
    await page.waitForLoadState('networkidle');
-   [correction]=await db`select id,status from attendance_correction where employment_id=${employee.employmentId}::uuid and reason='PERF_ATTENDANCE_BROWSER'`;
+   [correction]=await db`select id,status from attendance_correction where employment_id=${employee.employmentId}::uuid and reason=${attendanceCorrectionMarker}`;
    assert(correction&&correction.status==='pending');
   });
   const approver=approverFor(employee),reviewCtx=await context(approver);
   await withContext(reviewCtx,async()=>{
    const review=await reviewCtx.newPage();
    await visit(review,approver,'/attendance/application-history/'+correction.id);
-   const approve=review.locator('form:visible').filter({has:review.locator('input[name="action"][value="approved"]')}).getByRole('button',{name:'Approve current stage',exact:true});
+   const approvalForm=review.locator('form:visible').filter({has:review.locator('input[name="action"][value="approved"]')});
+   const approve=approvalForm.getByRole('button',{name:'Approve current stage',exact:true});
    await approve.waitFor({state:'visible',timeout:90000});
    assert.equal(await approve.count(),1,'Expected one visible Attendance approval control');
+   await approvalForm.locator('textarea[name="reason"]').fill(attendanceApprovalMarker);
    await capture(review,()=>approve.click(),'attendanceApprove');await review.waitForLoadState('networkidle');
    const [row]=await db`select status from attendance_correction where id=${correction.id}::uuid`;assert.equal(row.status,'approved');
    const [day]=await db`select check_in_at,check_out_at from attendance where employment_id=${employee.employmentId}::uuid and attendance_date=${fixture.today}::date`;assert.equal(day.check_in_at,'09:15:00');assert.equal(day.check_out_at,'18:15:00');
@@ -281,9 +361,9 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const page=await ctx.newPage();
    await visit(page,actor,'/payroll/'+batchId);
    await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
-   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess');await page.waitForLoadState('networkidle');
-   await assertProcessed(batchId);await exportPayroll(actor,batchId,1);
-   evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50});save();
+   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess');
+   const completionObservedMs=await assertProcessed(batchId);await exportPayroll(actor,batchId,1);
+   evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50,completionObservedMs});save();
   });
  }
  // Publish a separate completed past-month run; current-month mutations retain their open period.
@@ -296,7 +376,7 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const page=await ctx.newPage();
    await visit(page,actor,'/payroll/'+batchId);
    await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
-   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollPublicationProcess');await page.waitForLoadState('networkidle');
+   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollPublicationProcess');
    await assertProcessed(batchId);
    const [slip]=await db`select id from payslip where batch_id=${batchId}::uuid and employment_id=${employee.employmentId}::uuid`;assert(slip);slipId=slip.id;
    await request(employee,'/me/payslip/'+slipId+'/pdf',undefined,404,false);
@@ -320,6 +400,22 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  if(report.suite==='workflow-preflight')await exerciseConcurrentPayrollClose({context,closeContext,notePrimary,noteEvidence,visit,fixture,db,request,capture,assertProcessed,report,save,withLockWorkload});
  const {importDate}=performanceFixtureCalendar(fixture.today);
  const importText=(user,date)=>clockingFixtureText(fixture.users,user.tenant,user.company,date);
+ async function waitForClockingImport(user,fileName,operationKey){
+  const started=performance.now();
+  const [ack]=await db`select id from bulk_job where tenant_id=${user.tenantId}::uuid and created_by=${user.userId}::uuid
+   and kind='clocking_import' and operation_key=${operationKey}::uuid and source_name=${fileName}`;
+  assert(ack,'Clocking Import did not acknowledge a durable job');
+  while(performance.now()-started<90000){
+   const [job]=await db`select state,result->>'runId' as run_id from bulk_job where id=${ack.id}::uuid`;
+   assert(job&&!['failed','cancelled','discarding'].includes(job.state),'Clocking Import job did not succeed');
+   if(job.state==='completed'){
+    assert(job.run_id,'Completed Clocking Import job has no run');
+    return {runId:job.run_id,completionObservedMs:Math.round(performance.now()-started)};
+   }
+   await pause(250);
+  }
+  throw Error('Clocking Import did not finish within the workflow budget');
+ }
  async function assertImported(user,fileName,date){
   const rows=await db`select id,total_lines,imported_lines,failure_reason from clocking_import_run where tenant_id=${fixture.tenants[user.tenant].tenantId}::uuid and file_name=${fileName}`;
   assert.equal(rows.length,1);const row=rows[0];assert.equal(row.failure_reason,null);assert.equal(row.total_lines,100);assert.equal(row.imported_lines,100);
@@ -328,19 +424,26 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   for(const line of lines){assert(expected.has(line.employment_id),'import line crossed company/tenant scope');assert.equal(line.result,'imported');}
   const punches=await db`select p.employment_id,p.punch_at::text as punch_at from attendance_punch p join attendance a on a.id=p.attendance_id where a.employment_id=any(${[...expected]}::uuid[])and a.attendance_date=${date}::date and p.method='import' and p.voided_at is null`;
   assert.equal(punches.length,100);for(const id of expected)assert.equal(punches.filter(punch=>punch.employment_id===id).length,2);
+  return row.id;
  }
  {
   const ctx=await context(hr);
   await withContext(ctx,async()=>{
    const page=await ctx.newPage(),date=importDate(2),text=importText(hr,date),fileName='PERF_IMPORT_BROWSER.csv';
    await visit(page,hr,'/attendance/import');await page.locator('main select').selectOption(fixture.tenants[hr.tenant].clockingMappingId);
-   await page.locator('input[type="file"]').setInputFiles({name:fileName,mimeType:'text/csv',buffer:Buffer.from(text)});
+   await page.locator('main input[type="file"]:enabled').setInputFiles({name:fileName,mimeType:'text/csv',buffer:Buffer.from(text)});
+   await page.getByText(fileName,{exact:true}).waitFor({state:'visible'});
    const before=await db`select count(*)::int as count from clocking_import_run`;
    await capture(page,()=>page.getByRole('button',{name:'Validate',exact:true}).click(),'importValidate');await page.waitForLoadState('networkidle');
    assert.equal((await db`select count(*)::int as count from clocking_import_run`)[0].count,before[0].count,'import preview wrote a run');
-   await capture(page,()=>page.getByRole('button',{name:'Import 100 valid records',exact:true}).click(),'importCommit');
-   await page.waitForURL(url=>url.pathname.startsWith('/attendance/import/logs/'),{timeout:90000});await assertImported(hr,fileName,date);
-   evidence.push({workflow:'clocking file validate/import',persisted:true,lines:100,employees:50});save();
+   const commit=await capture(page,()=>page.getByRole('button',{name:'Import 100 valid records',exact:true}).click(),'importCommit');
+   assert(Array.isArray(commit.fields)&&commit.fields.length===5,'Clocking Import job transport changed');
+   const operationKey=commit.fields[4];
+   assert(typeof operationKey==='string'&&/^[0-9a-f-]{36}$/.test(operationKey),'Clocking Import job operation key missing');
+   const {runId,completionObservedMs}=await waitForClockingImport(hr,fileName,operationKey);
+   await page.waitForURL(url=>url.pathname==='/attendance/import/logs/'+runId,{timeout:90000});
+   assert.equal(await assertImported(hr,fileName,date),runId);
+   evidence.push({workflow:'clocking file validate/import',persisted:true,lines:100,employees:50,completionObservedMs});save();
   });
  }
  async function sendAttendance(user,template,fields,effect){
@@ -356,7 +459,7 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   const page=await request(user,template.path,undefined,200,true,{},[],'attendanceForm');
   assert(/^text\/html\b/i.test(page.headers['content-type']??''),'Attendance form owner did not return HTML');
   const fingerprint=readAttendanceCorrectionForm(page.content,{
-   actionId:template.headers['next-action'],date:fixture.today,employmentId:user.employmentId,
+   actionId:template.formActionId,date:fixture.today,employmentId:user.employmentId,
   });
   return {template,fingerprint};
  }
@@ -411,13 +514,6 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    await send(user,{...templates.personnelEdit,path:'/admin/personnel/new?draft='+row.id},editArgs);const [edited]=await db`select label from employee_draft where id=${row.id}::uuid`;assert.equal(edited.label,marker+'_EDITED');
    await pause(thinkTimeMs);await send(user,{...templates.personnelDelete,path:'/admin/personnel/new?draft='+row.id},[row.id]);assert.equal((await db`select id from employee_draft where id=${row.id}::uuid`).length,0);
    report.mixedWorkflows.completed.personnel++;
-   // One company owner per cohort avoids submitting the same file twice concurrently.
-   if(user.index%50===1){
-    const date=importDate(3+iteration),text=importText(user,date),fileName=marker+'.csv';
-    await pause(thinkTimeMs);await send(user,templates.importValidate,[fixture.tenants[user.tenant].clockingMappingId,text]);
-    await pause(thinkTimeMs);await send(user,templates.importCommit,[fixture.tenants[user.tenant].clockingMappingId,text,fileName,Buffer.byteLength(text)]);
-    await assertImported(user,fileName,date);report.mixedWorkflows.completed.clockingImport++;
-   }
    return true;
   }
   if(user.role==='employee'&&user.index%2===0){
@@ -431,5 +527,48 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   }
   return false;
  }
- return {run,verifyFailedAttendanceActions};
+ async function runClockingImport(user,sequence,record) {
+  assert(isClockingLoadActor(user),'Clocking Import requires the designated Company HR owner');
+  const date=importDate(3+sequence),text=importText(user,date),fileName='PERF_MIXED_CLOCKING_'+user.index+'_'+sequence+'.csv';
+  const mappingId=fixture.tenants[user.tenant].clockingMappingId,operationKey=randomUUID();
+  const validation=await send(user,templates.importValidate,[mappingId,text]);
+  const validationOutcome=clockingImportOutcome(validation.content,'validate');
+  if(validationOutcome!=='accepted')record.validationRefused++;
+  assert.equal(validationOutcome,'accepted','Clocking Import validation returned a typed refusal');
+  record.validated++;
+  await pause(thinkTimeMs);
+  const submission=await send(user,templates.importCommit,[mappingId,text,fileName,Buffer.byteLength(text),operationKey]);
+  record.submitted++;
+  const submissionOutcome=clockingImportOutcome(submission.content,'commit');
+  if(submissionOutcome==='alreadyRunning')record.alreadyRunning++;
+  if(submissionOutcome==='refused')record.otherSubmissionRefused++;
+  assert.equal(submissionOutcome,'accepted','Clocking Import submission returned a typed refusal');
+  record.accepted++;
+  const {runId}=await waitForClockingImport(user,fileName,operationKey);
+  assert.equal(await assertImported(user,fileName,date),runId);
+  report.mixedWorkflows.completed.clockingImport++;
+ }
+ function plannedWrites() {
+  const cases=new Map();
+  const add=(role,action,path=templates[action].path)=>{
+   const route=readRouteForMeasurement(path);
+   cases.set(JSON.stringify([role,action,route]),{role,action,route});
+  };
+  for(const user of fixture.users){
+   if(user.role==='employee'){
+    if(user.index%2===1){
+     add(user.role,'attendanceCreate','/attendance/my-records/[date]');
+     const approver=approverFor(user);assert(approver,'missing planned Attendance approval actor');
+     add(approver.role,'attendanceApprove','/attendance/application-history/[id]');
+    }else for(const action of ['leaveCreate','leaveEdit','leaveCancel'])add(user.role,action);
+   }else if(user.role==='companyHR'||user.role==='groupHR'){
+    if(user.role==='groupHR')add(user.role,'payrollProcess','/payroll/[batchId]');
+    add(user.role,'personnelCreate');
+    for(const action of ['personnelEdit','personnelDelete'])add(user.role,action,'/admin/personnel/new');
+    if(isClockingLoadActor(user))for(const action of ['importValidate','importCommit'])add(user.role,action);
+   }
+  }
+  return [...cases.values()];
+ }
+ return {run,runClockingImport,verifyFailedAttendanceActions,plannedWrites};
 }
