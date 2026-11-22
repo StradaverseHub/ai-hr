@@ -163,7 +163,7 @@ jobs:
             [[ "$BROWSER_BASELINE" == true && "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" != true ]] || exit 2
             case "$BROWSER_SURFACE_PROBE" in
               actions|attendance|rewards|leave-balances|content-readiness|shell-content|approvals-content|command-delegation|tp3-catalogue|tp3-catalogue-network) ;;
-              '') [[ "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || exit 2 ;;
+              '') [[ "$BROWSER_MOBILE_TASK_TRACE" == true || "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || exit 2 ;;
               *) exit 2 ;;
             esac
             jq -e --arg source "$EXPECTED_SHA" 'has($source)' scripts/performance/browser-action-builds.json > /dev/null
