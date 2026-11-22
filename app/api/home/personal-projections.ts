@@ -1,7 +1,7 @@
 import type {EmployeeHomeGreeting} from '@/core/employee-home-greeting';
 import type {EmployeeHomeTasks} from '@/lib/employee-home-tasks';
 import type {readEmployeeHomeToday} from '@/core/employee-home-today';
-import type {readEmployeeHomeCalendar} from '@/core/employee-home-calendar';
+import type {EmployeeHomeCalendar} from '@/lib/employee-home-calendar';
 import {validateHomeTeamCalendar} from '@/lib/employee-home-sharing';
 
 export function todayProjection(value:Awaited<ReturnType<typeof readEmployeeHomeToday>>){
@@ -14,7 +14,7 @@ export function todayProjection(value:Awaited<ReturnType<typeof readEmployeeHome
   payday:value.payday?{date:value.payday.date,daysAway:value.payday.daysAway}:null};
 }
 
-export function calendarProjection(value:Awaited<ReturnType<typeof readEmployeeHomeCalendar>>){
+export function calendarProjection(value:EmployeeHomeCalendar):EmployeeHomeCalendar{
  return {version:1,employmentId:value.employmentId,month:value.month,today:value.today,
   weekStartsOn:value.weekStartsOn,payrollEnabled:value.payrollEnabled,
   team:validateHomeTeamCalendar(value.team,value.days[0].date,value.days[value.days.length-1].date),days:value.days.map(day=>({date:day.date,canRequestLeave:day.canRequestLeave,
