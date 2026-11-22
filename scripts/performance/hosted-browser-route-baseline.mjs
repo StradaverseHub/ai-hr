@@ -58,7 +58,7 @@ const homeScopeMainCandidate='d552f70c13b8a46cf19fdd973ecbe2f80c7ccf79';
 const shellLifetimeCandidate='24e0b499be5f009c409e539c1e78add85d7f3b03';
 const nextResponseCloseCandidate='a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778';
 const nextResponseCloseWithPayrollBoundary='b582a3d30f2f8d22d56e46da881f405ce7095834';
-const sharedEmployeeClaimsRead='3f7137136fa2b3b188f9af7d287d3d1ef8d1f79a';
+const sharedEmployeeClaimsRead='4340a82c73b11541daa8811aaf7b534debb81ce3';
 const combinedGroupArtifacts=new Map([
  ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],
  ['71e0dceb1a393817f3040518e82dc845a27700b0',{runId:44927404845,artifactId:14716484117}],
