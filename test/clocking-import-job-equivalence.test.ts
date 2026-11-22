@@ -125,3 +125,54 @@ it('refuses a job whose mapping was deactivated while it waited (no run is logge
   expect(row).toEqual({ source: false, steps: 0 });
   void sql;
 }, 300_000);
+
+it('admits a second clocking file to the existing tenant queue and completes it after the first', async () => {
+  await resetDb();
+  const base = await seedBase();
+  const fixture = await buildAttendanceFixture(base, { employees: 8 });
+  const [kind] = await owner.client<{ exclusive: string }[]>`
+    select exclusive from bulk_job_kind where kind='clocking_import'`;
+  expect(kind.exclusive).toBe('tenant');
+
+  // Exercise an existing kernel policy in the disposable database. The production
+  // catalogue, RLS, attendance writer and migration ledger remain unchanged.
+  await owner.client`update bulk_job_kind set exclusive='tenant_queue' where kind='clocking_import'`;
+  try {
+    const start = (mappingId: string, text: string, fileName: string, operationKey: string) =>
+      startClockingImportJob(fixture.ctx, {
+        mappingId, text, fileName, operationKey, fileBytes: Buffer.byteLength(text),
+      });
+    const first = await start(BUILTIN_MAPPING_ID, fixture.uncodedFile, 'first-queued.csv',
+      '00000000-0000-4000-8000-000000000001');
+    const enqueueSecond = () => start(fixture.codedMappingId, fixture.codedFile, 'second-queued.csv',
+      '00000000-0000-4000-8000-000000000002');
+    const second = await enqueueSecond();
+    expect(first.job.state).toBe('queued');
+    expect(second.job.state).toBe('queued');
+    expect(second.job.id).not.toBe(first.job.id);
+    expect(await enqueueSecond()).toMatchObject({ existing: true, job: { id: second.job.id } });
+
+    expect(await tick()).toBe(true);
+    expect((await getClockingImportJob(fixture.ctx, second.job.id)).state).toBe('queued');
+    expect(await runJob(first.job.id, state => state === 'completed')).toBe('completed');
+    expect((await getClockingImportJob(fixture.ctx, second.job.id)).state).toBe('queued');
+    expect(await runJob(second.job.id)).toBe('completed');
+
+    const [firstResult, secondResult] = await Promise.all([
+      getClockingImportJob(fixture.ctx, first.job.id),
+      getClockingImportJob(fixture.ctx, second.job.id),
+    ]);
+    expect(firstResult.result?.imported).toBeGreaterThan(0);
+    expect(secondResult.result?.imported).toBeGreaterThan(0);
+    expect(firstResult.result?.runId).not.toBe(secondResult.result?.runId);
+    const logs = await owner.client<{ file_name: string; failure_reason: string | null }[]>`
+      select file_name, failure_reason from clocking_import_run
+      where tenant_id=${base.tenantId}::uuid order by created_at,id`;
+    expect(logs).toEqual([
+      { file_name: 'first-queued.csv', failure_reason: null },
+      { file_name: 'second-queued.csv', failure_reason: null },
+    ]);
+  } finally {
+    await owner.client`update bulk_job_kind set exclusive=${kind.exclusive} where kind='clocking_import'`;
+  }
+}, 300_000);
