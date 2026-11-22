@@ -1,38 +1,17 @@
 /** Compare scoped approver reads in one disposable fixture transaction. */
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
+import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
-const probe = `
-CREATE FUNCTION app.performance_approver_options_probe(wanted_companies uuid[])
-RETURNS TABLE(id uuid,name text,employee_code text)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=on AS $$
- WITH request AS MATERIALIZED (
-  SELECT DISTINCT company_id FROM unnest(wanted_companies) AS wanted(company_id)
- ), valid_scope AS MATERIALIZED (
-  SELECT first_company.company_id
-  FROM request first_company
-  WHERE app.principal_snapshot_current()
-   AND NOT EXISTS (
-    SELECT 1
-    FROM request r
-    LEFT JOIN public.company c ON c.id=r.company_id AND c.tenant_id=app.current_tenant_id()
-    WHERE c.id IS NULL OR NOT app.is_admin_for(c.id)
-   )
-  ORDER BY first_company.company_id
-  LIMIT 1
- )
- SELECT e.id,p.full_name,e.employee_code FROM valid_scope s
- JOIN public.employment e ON e.tenant_id=app.current_tenant_id()
- JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
- WHERE app.access_workforce_employment_permitted(
-   e.tenant_id,e.company_id,e.voided_at,e.import_pending_attempt_id,
-   (SELECT app.access_workforce_permitted_companies('workforce.view'))
-  )
-  AND app.attendance_selected_approver_eligible(s.company_id,e.id)
- ORDER BY p.full_name,e.employee_code,e.id
-$$;
+const replacement = readFileSync(new URL('../../test/fixtures/attendance-approver-options-replacement.sql',import.meta.url),'utf8');
+const statementBoundary = '--> statement-breakpoint\n';
+const prototype = replacement.split(statementBoundary)[1].replace(
+ 'CREATE OR REPLACE FUNCTION app.attendance_workflow_v3_approver_options',
+ 'CREATE FUNCTION app.performance_approver_options_probe',
+);
+const probe = prototype + `
 REVOKE ALL ON FUNCTION app.performance_approver_options_probe(uuid[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.performance_approver_options_probe(uuid[]) TO ai_hr_app;
 `;
@@ -216,11 +195,7 @@ export async function installApproverOptionsBrowserPrototype(dbEnv) {
    assert.equal(prior.owner,'ai_hr_owner');
    const [identity] = await tx`select session_user as login`;
    assert.equal(identity.login,prior.owner);
-   const definition = probe.split('REVOKE ALL')[0].replace(
-    'CREATE FUNCTION app.performance_approver_options_probe',
-    'CREATE OR REPLACE FUNCTION app.attendance_workflow_v3_approver_options',
-   );
-   await tx.unsafe(definition).simple();
+   await tx.unsafe(replacement).simple();
    const installed = await readControl(tx);
    assert.notEqual(installed.body, prior.body);
    assert.equal(installed.acl, prior.acl);
