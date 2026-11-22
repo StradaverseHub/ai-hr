@@ -158,7 +158,7 @@ jobs:
               b582a3d30f2f8d22d56e46da881f405ce7095834)
                 [[ "$REUSE_BUILD" == true && "$RUN_BUILD" != true ]] || exit 2 ;;
               1c2fe8b6770c4dc1d0a7a9952f2088f9f7c6faa0)
-                [[ "$RUN_BUILD" == true && "$REUSE_BUILD" != true ]] || exit 2 ;;
+                [[ "$RUN_BUILD" != "$REUSE_BUILD" ]] || exit 2 ;;
               *) exit 2 ;;
             esac
             MIXED_DATABASE_TOPOLOGY=transaction-pool
@@ -241,7 +241,7 @@ jobs:
               false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:cddd7cebf757d0392ed06bead78300732fd54256) ;;
               true:5175d387846c18fcc83ef96091cb1b4e1b538241|true:71e0dceb1a393817f3040518e82dc845a27700b0|true:0ba883e0aa294bb0f15dcfe2433deedb52d11996|true:57fac422707b3a6174a290722ea0bb53da89f7c0|true:52d2d170710fcfb14219abe2f9d0abc84e536748|true:5e34835d73183b2754c9b3e4ccdbfc31111917a8|true:a1d4cbb7bef482f7a6c8b75ab7fbec7611976857)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
-              true:84bad4f960c5f81475cdc4f71462bb452852fa9a|true:d855add8ba13ab3329b2b9aee35f4aed338193d0|true:a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778|true:b582a3d30f2f8d22d56e46da881f405ce7095834)
+              true:84bad4f960c5f81475cdc4f71462bb452852fa9a|true:d855add8ba13ab3329b2b9aee35f4aed338193d0|true:a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778|true:b582a3d30f2f8d22d56e46da881f405ce7095834|true:1c2fe8b6770c4dc1d0a7a9952f2088f9f7c6faa0)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
               *) exit 2 ;;
             esac
@@ -384,6 +384,13 @@ jobs:
               .run_id == 45029090809 and .head_sha == "c0e112dc0b7504cc89e8cf27b46fe72e6df94c1f"' | grep -qx true
             gh api repos/StradaverseHub/ai-hr/actions/artifacts/14757710637/zip > "$archive"
             digest=ed9ba0c2f6cc151f31a1a2f99cd17e8bb86b0eea627f69d38bcf78d4555bbc5e
+          elif [[ "$AIHR_CI_HEAD" == 1c2fe8b6770c4dc1d0a7a9952f2088f9f7c6faa0 ]]; then
+            test "$MIXED_GROUP_SCALE" = true
+            gh api repos/StradaverseHub/ai-hr/actions/jobs/137257660308 --jq '
+              .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+              .run_id == 45038521926 and .head_sha == "0ed39a7c040c40d8a595fb5c3b3a731a6fb62ae2"' | grep -qx true
+            gh api repos/StradaverseHub/ai-hr/actions/artifacts/14760114821/zip > "$archive"
+            digest=33be84383ebdda902c21a4ba4039bb36316704743f3ee71a6d8e9d9c91d2b0ea
           elif [[ "$AIHR_CI_HEAD" == d855add8ba13ab3329b2b9aee35f4aed338193d0 ]]; then
             test "$MIXED_GROUP_SCALE" = true
             test "$(git rev-parse HEAD^)" = ef953a158bf1fde5073ca43557268add5ff0883e
@@ -496,6 +503,7 @@ jobs:
           elif [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" != 5175d387846c18fcc83ef96091cb1b4e1b538241 &&
                 "$AIHR_CI_HEAD" != a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778 &&
                 "$AIHR_CI_HEAD" != b582a3d30f2f8d22d56e46da881f405ce7095834 &&
+                "$AIHR_CI_HEAD" != 1c2fe8b6770c4dc1d0a7a9952f2088f9f7c6faa0 &&
                 "$AIHR_CI_HEAD" != 71e0dceb1a393817f3040518e82dc845a27700b0 &&
                 "$AIHR_CI_HEAD" != 0ba883e0aa294bb0f15dcfe2433deedb52d11996 &&
                 "$AIHR_CI_HEAD" != 57fac422707b3a6174a290722ea0bb53da89f7c0 &&

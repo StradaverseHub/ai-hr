@@ -73,6 +73,7 @@ const combinedGroupArtifacts=new Map([
  [browserIntegrationNativeControl,{runId:44981038272,artifactId:14737468790,sourceSha:browserIntegrationControl}],
  [nextResponseCloseCandidate,{runId:45026626109,artifactId:14756157969,sourceSha:nextResponseCloseCandidate}],
  [nextResponseCloseWithPayrollBoundary,{runId:45029090809,artifactId:14757710637,sourceSha:nextResponseCloseWithPayrollBoundary}],
+ [payrollRegisterBoundary,{runId:45038521926,artifactId:14760114821,sourceSha:payrollRegisterBoundary}],
 ]);
 const combinedGroupArtifact=combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
 const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
@@ -100,7 +101,7 @@ assert(!env.DATABASE_POOLED_URL?.trim(),'The benchmark owns its web database top
 if(splitWeb){
  assert(mixedLoad&&combinedGroupBuild&&!fixtureOnly&&shellPermissionVariant==='contract-optimized'&&!clockingTenantQueue&&!rewardsNavigation);
  assert((env.AIHR_CI_HEAD===nextResponseCloseWithPayrollBoundary&&reusedBuild)||
-  (env.AIHR_CI_HEAD===payrollRegisterBoundary&&!reusedBuild));
+  env.AIHR_CI_HEAD===payrollRegisterBoundary);
 }
 const webDatabaseConnections=largerPool?12:8;
 const webApplicationWorkers=splitWeb?2:1;
