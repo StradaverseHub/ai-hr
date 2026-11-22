@@ -1,13 +1,14 @@
 /** Run real Lifecycle commands against the record census's disposable fixtures. */
 import assert from 'node:assert/strict';
 
-export async function measureLifecycleRecordActions({ db, fixture, origin, signedInContext, report, save }) {
+export async function measureLifecycleRecordActions({ db, fixture, origin, signedInContext, report, save, observeAction }) {
   const [group, company] = fixture.users;
   const { asset, model, offboarding, request } = fixture.lifecycleRecords;
   const updatedModel = model + ' updated';
   const actions = [
     {
       name: 'edit asset model', actor: group, path: '/lifecycle/assets/' + asset.code,
+      template: '/lifecycle/assets/[code]',
       id: asset.id, refType: 'asset', history: 'asset.edited',
       before: model, after: updatedModel,
       async read() {
@@ -25,6 +26,7 @@ export async function measureLifecycleRecordActions({ db, fixture, origin, signe
     },
     {
       name: 'record offboarding outcome', actor: company, path: '/lifecycle/offboarding/' + offboarding.number,
+      template: '/lifecycle/offboarding/[number]',
       id: offboarding.id, refType: 'case', history: 'outcome.set',
       before: 'pending', after: 'rejected',
       async read() {
@@ -38,6 +40,7 @@ export async function measureLifecycleRecordActions({ db, fixture, origin, signe
     },
     {
       name: 'assign asset request handler', actor: company, path: '/lifecycle/asset-requests/' + request.number,
+      template: '/lifecycle/asset-requests/[number]',
       id: request.id, refType: 'asset_request', history: 'request.handler',
       before: null, after: company.userId,
       async read() {
@@ -80,14 +83,16 @@ export async function measureLifecycleRecordActions({ db, fixture, origin, signe
 
       result.step = 'submit';
       const started = performance.now();
-      await button.click();
-      await action.ready(page).waitFor({ state: 'visible', timeout: Math.max(1, 15000 - (performance.now() - started)) });
-      result.usableMs = Math.round(performance.now() - started);
-      assert.equal(page.url(), url);
+      await observeAction(page, action.path, action.template, result, async () => {
+        await button.click();
+        await action.ready(page).waitFor({ state: 'visible', timeout: Math.max(1, 15000 - (performance.now() - started)) });
+        result.usableMs = Math.round(performance.now() - started);
+        assert.equal(page.url(), url);
 
-      result.step = 'verify';
-      assert.equal(await action.read(), action.after);
-      assert.deepEqual((await history()).map(row => row.actor_user_id), [action.actor.userId]);
+        result.step = 'verify';
+        assert.equal(await action.read(), action.after);
+        assert.deepEqual((await history()).map(row => row.actor_user_id), [action.actor.userId]);
+      });
       result.outcome = 'observed';
     } catch (error) {
       result.outcome = error.name === 'TimeoutError' ? 'timeout'

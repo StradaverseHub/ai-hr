@@ -705,7 +705,7 @@ async function verifyPersonnelTabs(page, main, row, remaining) {
   }
 }
 
-async function verifyPersonnelContactSave(page, db, entry, report, save) {
+async function verifyPersonnelContactSave(page, db, entry, report, save, actions) {
   const { actor, subject } = entry;
   assert.equal(subject.tenantId, actor.tenantId);
   assert.equal(subject.companyId, actor.companyId);
@@ -753,13 +753,17 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
     page.on('response', responded);
     page.on('requestfinished', completed);
     try {
-      await button.click({ timeout });
-      timings.clickReturnedMs = elapsed();
-      await dirty.waitFor({ state: 'hidden', timeout });
-      timings.dirtyClearedMs = elapsed();
-      assert.equal(await profile.getByRole('alert').count(), 0, 'Personnel Save showed an error');
-      assert.equal(await readContact(), value, 'Personnel Save did not persist through its owner');
-      result.steps.push({ name, persistedMs: elapsed(), timings });
+      const step = { name, timings };
+      await actions.observe(page, pathname, entry.template, step, async () => {
+        await button.click({ timeout });
+        timings.clickReturnedMs = elapsed();
+        await dirty.waitFor({ state: 'hidden', timeout });
+        timings.dirtyClearedMs = elapsed();
+        assert.equal(await profile.getByRole('alert').count(), 0, 'Personnel Save showed an error');
+        assert.equal(await readContact(), value, 'Personnel Save did not persist through its owner');
+        step.persistedMs = elapsed();
+      });
+      result.steps.push(step);
       save();
     } finally {
       page.off('request', requested);
@@ -793,7 +797,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, actions, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -873,7 +877,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
         }
       }
       if (entry.personnelTabs && rows.at(-1).outcome === 'usable-content') {
-        await verifyPersonnelContactSave(page, db, entry, report, save);
+        await verifyPersonnelContactSave(page, db, entry, report, save, actions);
       }
       if (entry.workflowPreviewLineage && rows.at(-1).outcome === 'usable-content') {
         await verifyAttendanceWorkflowPreview(page, db, entry, report, save);

@@ -1,3 +1,4 @@
+import {recordActionEvidence} from './record-action-evidence.mjs';
 import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
 import {measureFixtureRecordCensus,seedFixedTransactionRecord,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
@@ -1692,14 +1693,17 @@ try{
    const require=createRequire(join(process.cwd(),'package.json'));
    browser=await require('playwright').chromium.launch();
    const routes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
+   const references=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
+   const actions=recordActionEvidence(serverActionRegistry(routes,references),origin);
+   report.serverActionCensus=actions.identity;
    const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
    try{
-    await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
+    await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,actions,
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
      importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords});
     if(censusFullFixtureRecords){
-     await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
+     await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save,observeAction:actions.observe});
      assert(fixture.performanceRecords,'The full record plan requires a populated Performance assessment cycle');
     }
    }
