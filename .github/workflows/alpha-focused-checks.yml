@@ -233,13 +233,14 @@ jobs:
                 "$ESTABLISHED_ATTENDANCE" == true && "$REPLACEMENT_CATALOGUE" == present &&
                 "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
                 ( "$SHELL_PERMISSION_VARIANT" == none || ( "$SHELL_PERMISSION_VARIANT" == contract-optimized &&
-                    "$EXPECTED_SHA" == 2d0a60f552e42f4dff934bb5f32e091d322f2734 && "$REUSE_BUILD" == true ) ) &&
+                    ( "$EXPECTED_SHA" == 2d0a60f552e42f4dff934bb5f32e091d322f2734 || "$EXPECTED_SHA" == 0f6f8e3a92c6f322f4e9539ad8fedeffbc0c900e ) &&
+                    "$REUSE_BUILD" == true ) ) &&
                 "$BROWSER_FIXTURE_ONLY" != true && "$REUSE_BUILD" != "$RUN_BUILD" ]] || exit 2
             combined_group_build=true
           fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
-              true:2d0a60f552e42f4dff934bb5f32e091d322f2734)
+              true:2d0a60f552e42f4dff934bb5f32e091d322f2734|true:0f6f8e3a92c6f322f4e9539ad8fedeffbc0c900e)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
               true:a84ddf3812fa6ecd60c1a54802ab5f205e2ba212)
                 [[ "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
@@ -396,6 +397,12 @@ jobs:
             chmod 700 "$PWD"
             node ../automation/scripts/performance/unpack-capacity-build.mjs "$packet" "$producer" "$application_source"
             exit 0
+          elif [[ "$AIHR_CI_HEAD" == 0f6f8e3a92c6f322f4e9539ad8fedeffbc0c900e ]]; then
+            gh api repos/StradaverseHub/ai-hr/actions/jobs/137376428598 --jq '
+              .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+              .run_id == 45076976231 and .head_sha == "f3e62911b5e971d745216ad6c88e7b025b3314bb"' | grep -qx true
+            gh api repos/StradaverseHub/ai-hr/actions/artifacts/14775359882/zip > "$archive"
+            digest=35b968a24dfd3e9547b61db390824942477195deb55ddb0c3b846c6c34b4268f
           elif [[ "$AIHR_CI_HEAD" == 2d0a60f552e42f4dff934bb5f32e091d322f2734 ]]; then
             gh api repos/StradaverseHub/ai-hr/actions/jobs/137354258138 --jq '
               .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
@@ -565,6 +572,7 @@ jobs:
             expected_build_source=34acbbea020f09217a44711f615b750b0a139302
           elif [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" != 5175d387846c18fcc83ef96091cb1b4e1b538241 &&
                 "$AIHR_CI_HEAD" != 2d0a60f552e42f4dff934bb5f32e091d322f2734 &&
+                "$AIHR_CI_HEAD" != 0f6f8e3a92c6f322f4e9539ad8fedeffbc0c900e &&
                 "$AIHR_CI_HEAD" != a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778 &&
                 "$AIHR_CI_HEAD" != b582a3d30f2f8d22d56e46da881f405ce7095834 &&
                 "$AIHR_CI_HEAD" != 8729365591aed6efc1d0c3b72ec346dcc16d6829 &&

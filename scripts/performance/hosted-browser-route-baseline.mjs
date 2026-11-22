@@ -91,7 +91,8 @@ const freshGroupBuilds=new Set([
  nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,indexedAccountTaskCaller,
 ]);
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
-const currentMainLifetimeContract=reusedBuild&&env.AIHR_CI_HEAD===currentMainLifetimeCandidate&&shellPermissionVariant==='contract-optimized';
+const currentMainLifetimeContract=reusedBuild&&[currentMainLifetimeCandidate,currentMainIndexedPayrollBoundary].includes(env.AIHR_CI_HEAD)
+ &&shellPermissionVariant==='contract-optimized';
 const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD)
  ||env.AIHR_CI_HEAD===currentMainFixture||currentMainLifetimeContract)&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
@@ -145,6 +146,7 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
  ...(shellLifetimeEnabled&&{shellHttpLifetime:'node-response-close'}),
  ...(([nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,sharedEmployeeClaimsObserver,indexedAccountTaskCaller].includes(sha)||currentMainLifetimeBuild)&&{shellHttpLifetime:'next-after'}),
  ...(reusedBuild&&{buildArtifact:sha===currentMainLifetimeCandidate ? {sourceSha:sha,runId:45069834758,artifactId:14773296405}
+  : sha===currentMainIndexedPayrollBoundary ? {sourceSha:sha,runId:45076976231,artifactId:14775359882}
   : sha===currentMainFixture ? currentMainArtifact : combinedGroupBuild
   ? {sourceSha:sha,...combinedGroupArtifact}
   : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
