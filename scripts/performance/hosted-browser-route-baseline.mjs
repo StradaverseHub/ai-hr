@@ -1664,7 +1664,13 @@ try{
     }
     else if(censusLetterRecipients)await measureLetterRecipients(options);
     else if(censusLetters)await measureLetterRecords(options);
-    else if(censusRecruitment)await measureRecruitmentRecords(options);
+    else if(censusRecruitment){
+     await measureRecruitmentRecords(options);
+     await run('recruitment-requisition-owner-profile',process.execPath,['--conditions=react-server','--import','tsx',
+      '../automation/scripts/performance/recruitment-requisition-owner-profile.mjs'],dbEnv);
+     report.recruitmentRequisitionOwnerProfile=JSON.parse(readFileSync(join(privateDir,'recruitment-requisition-owner-profile.json'),'utf8'));
+     save();
+    }
     else await measureFixtureRecordCensus({...options,payrollCorrections:censusPayrollCorrections});
     if(censusLifecycle)await measureLifecycleRecordActions(options);
    }
