@@ -1929,7 +1929,8 @@ async function main(){
  const plannedReads=plannedWrites.filter(row=>row.action==='attendanceCreate').map(row=>({...row,action:'attendanceForm'}));
  report.steady.routeLatency=routeLatency({samples:loaded,requestErrors:report.requestErrors,pageInteractions,routePools:measuredRoutePools,
   homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],plannedReads,plannedWrites,steadyStart,steadyUntil});
- report.latencyTargetMet=(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
+ const clockingImportsPersisted=clockingImportLoad.persistedAtSteady500===clockingImportLoad.planned;
+ report.latencyTargetMet=clockingImportsPersisted&&(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  await Promise.all([lockDrain,progressDrain]);
  if(measureDevelopment)loadedCadenceClosed=loadedWindowReached;
  recordLockSampling();
