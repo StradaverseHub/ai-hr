@@ -440,7 +440,7 @@ async function payrollCorrectionRoutes(db, fixture) {
 }
 
 async function personnelMovementRoutes(db, fixture) {
-  return Promise.all(['groupHR', 'companyHR'].map(async role => {
+  const byRole = await Promise.all(['groupHR', 'companyHR'].map(async role => {
     const actor = fixture.users.find(user => user.role === role && user.tenant === 0);
     const subject = actor && fixture.users.find(user =>
       user.role === 'employee' && user.tenant === actor.tenant && user.company === actor.company);
@@ -449,12 +449,21 @@ async function personnelMovementRoutes(db, fixture) {
       where tenant_id=${actor.tenantId}::uuid and subject_employment_id=${subject.employmentId}::uuid
         and event_type='employment.hired'`;
     assert.equal(events.length, 1, 'Expected one native hire event for the fixture employment');
-    return {
-      actor, template: '/admin/personnel/[employmentId]/movement/[mode]/[movementId]',
-      path: `/admin/personnel/${subject.employmentId}/movement/view/${events[0].id}`,
-      content: subject.name, witness: '#section-movement-detail dd:text-is("Hired")',
-    };
+    const profile = '/admin/personnel/' + subject.employmentId;
+    const movement = profile + '/movement';
+    const hired = movement + '/view/' + events[0].id;
+    return [
+      { actor, template: '/admin/personnel/[employmentId]', path: profile, exactHeading: subject.name,
+        witness: '#section-personal-details form[data-save-section="person"]' },
+      { actor, template: '/personnel/[employmentId]', path: '/personnel/' + subject.employmentId,
+        exactHeading: subject.name, witness: 'dl dd' },
+      { actor, template: '/admin/personnel/[employmentId]/movement/[mode]', path: movement + '/history',
+        content: subject.name, witness: `#section-assignment-history a[href^="${hired}"]` },
+      { actor, template: '/admin/personnel/[employmentId]/movement/[mode]/[movementId]', path: hired,
+        content: subject.name, witness: '#section-movement-detail dd:text-is("Hired")' },
+    ];
   }));
+  return byRole.flat();
 }
 
 function payrollFormulaEvaluationRoutes(fixture) {
