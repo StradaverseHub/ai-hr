@@ -1,4 +1,5 @@
 import {measureLetterRecords} from './letter-record-census.mjs';
+import {measureLetterRecipients} from './letter-recipient-browser-census.mjs';
 import {measureRecruitmentRecords} from './recruitment-record-census.mjs';
 import {measureRewardsRecords} from './rewards-record-census.mjs';
 import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
@@ -38,7 +39,8 @@ const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
 const censusRewards=shardInput==='rewards-records';
 const censusLifecycle=shardInput==='fixture-records';
-const censusLetters=shardInput==='letter-records';
+const censusLetterRecipients=shardInput==='letter-recipient-records';
+const censusLetters=shardInput==='letter-records'||censusLetterRecipients;
 const censusRecruitment=shardInput==='recruitment-records';
 const censusFixtureRecords=censusLifecycle||censusPayrollCorrections||censusRewards||censusLetters||censusRecruitment;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
@@ -1566,6 +1568,8 @@ try{
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
    ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusLifecycle),
   });
+ if(censusLetterRecipients)await run('seed-letter-recipients',process.execPath,['--conditions=react-server','--import','tsx',
+  '../automation/scripts/performance/letter-recipient-browser-fixture.mjs'],dbEnv);
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
@@ -1658,6 +1662,7 @@ try{
      report.rewardsSetupOwnerProfile=JSON.parse(readFileSync(join(privateDir,'rewards-setup-owner-profile.json'),'utf8'));
      save();
     }
+    else if(censusLetterRecipients)await measureLetterRecipients(options);
     else if(censusLetters)await measureLetterRecords(options);
     else if(censusRecruitment)await measureRecruitmentRecords(options);
     else await measureFixtureRecordCensus({...options,payrollCorrections:censusPayrollCorrections});
