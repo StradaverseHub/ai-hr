@@ -2286,6 +2286,14 @@ async function measureEmployeePicker(fixture){
     const search=main.getByRole('searchbox',{name:'Search employee',exact:true});
     await search.waitFor({state:'visible',timeout:15000});
     row.pickerVisibleMs=Math.round(performance.now()-started);
+    await page.waitForLoadState('load',{timeout:15000});
+    await page.locator('[data-app-sidebar] button[aria-controls]:enabled:visible').first()
+     .waitFor({state:'visible',timeout:15000});
+    row.hydratedByMs=Math.round(performance.now()-started);
+    row.choiceRequests=0;
+    page.on('request',request=>{
+     if(request.method()==='POST'&&request.url()===origin+'/api/employee-choices')row.choiceRequests++;
+    });
     const choiceResponse=departmentId=>page.waitForResponse(response=>{
      const request=response.request();
      if(response.url()!==origin+'/api/employee-choices'||request.method()!=='POST')return false;
