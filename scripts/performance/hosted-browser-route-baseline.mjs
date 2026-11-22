@@ -1321,10 +1321,14 @@ async function measureMobileTaskTrace(fixture){
  report.mobileTaskVisits=[];
  try{
   const page=await context.newPage();
-  for(const view of ['builder','live']){
+  const visits=[
+   {view:'builder',pass:'first'},{view:'live',pass:'first'},
+   {view:'builder',pass:'repeat'},{view:'live',pass:'repeat'},
+  ];
+  for(const {view,pass} of visits){
    const started=performance.now(),url=origin+'/mobile-preview'+(view==='live'?'?live=1':'');
    const elapsed=()=>Math.round(performance.now()-started);
-   const row={view,status:'incomplete'};
+   const row={view,pass,status:'incomplete'};
    report.mobileTaskVisits.push(row);
    try{
     row.step='document';
@@ -1349,7 +1353,7 @@ async function measureMobileTaskTrace(fixture){
     await taskSection.waitFor({state:'visible',timeout:5000});
     row.tasksPendingWhenPhoneVisible=await pending.isVisible();
     save();
-    if(view==='live'&&row.tasksPendingWhenPhoneVisible){
+    if(view==='live'){
      row.step='personal-requests';
      await navigation.getByRole('button',{name:'Requests',exact:true}).click({timeout:10000});
      await phone.getByRole('heading',{name:'Leave Request Status',exact:true}).waitFor({state:'visible',timeout:10000});
@@ -1363,6 +1367,33 @@ async function measureMobileTaskTrace(fixture){
     assert.equal(await taskSection.getByText('Unable to load this section. Refresh to try again.',
      {exact:true}).count(),0,'Assigned-task data was unavailable');
     row.tasksMs=elapsed();
+    row.status='observed';
+   }finally{save();}
+  }
+ }finally{await context.close();}
+}
+
+async function measureOrganisationReviewEntry(fixture){
+ const actor=fixture.users[0];
+ assert.equal(actor.role,'groupHR');
+ const context=await signedInContext(actor);
+ const path='/admin/organization';
+ report.organisationReviewEntry=[];
+ try{
+  const page=await context.newPage();
+  for(const pass of ['first','repeat']){
+   const started=performance.now();
+   const row={pass,status:'incomplete'};
+   report.organisationReviewEntry.push(row);
+   try{
+    const response=await page.goto(origin+path+'/organisation-tagging',{waitUntil:'commit',timeout:15000});
+    assert.equal(response?.status(),200);
+    await page.waitForURL(origin+path,{timeout:15000});
+    const company=fixture.tenants[0].companies[0];
+    await page.locator(`main table a[href="${path}/${company.companyId}"]`).first()
+     .waitFor({state:'visible',timeout:15000});
+    await assertContentAvailable(page);
+    row.workspaceReadyMs=Math.round(performance.now()-started);
     row.status='observed';
    }finally{save();}
   }
@@ -2646,7 +2677,10 @@ try{
     report.surfaceProbes[surface].length===3&&report.surfaceProbes[surface].every(row=>row.status==='observed')),
    'The authorized Rewards setup controls were not usable on each visit');
   }
-  else if(mobileTaskTrace)await measureMobileTaskTrace(fixture);
+  else if(mobileTaskTrace){
+   await measureMobileTaskTrace(fixture);
+   await measureOrganisationReviewEntry(fixture);
+  }
   else if(payrollReadTrace)await measurePayrollReadTrace(fixture);
   else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
   else{
