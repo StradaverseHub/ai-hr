@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {performance} from 'node:perf_hooks';
+import {browserPreflightErrorFingerprint} from './browser-failure.ts';
 
 const english=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -36,14 +37,29 @@ export async function exercisePayrollBrowser({base,page,user,fixture,report,save
  const action=(id,name)=>batchForms(id).getByRole('button',{name,exact:true});
  async function check(surface,path,verify){
   const start=performance.now(),loadAtStart=loadState?.();
+  const renderErrors=surface==='anomalies'?[]:null;
+  const observeRenderError=error=>{
+   const reactCode=String(error.message).match(/^Minified React error #(\d{2,3});/)?.[1];
+   if(renderErrors.length<8)renderErrors.push(reactCode?'react-minified-'+reactCode:browserPreflightErrorFingerprint(error.message));
+  };
+  if(renderErrors)page.on('pageerror',observeRenderError);
   const remaining=()=>{const ms=Math.ceil(timeout-(performance.now()-start));assert(ms>0,'Payroll readiness exceeded the existing browser budget');return ms;};
   try{
    const response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:remaining()});
    assert(response&&new URL(page.url()).origin===base&&!new URL(page.url()).pathname.startsWith('/login'),'Payroll browser lost its authenticated context');
    await verify(response.status(),remaining);
    const elapsedMs=performance.now()-start;remaining();
-   data.push({phase,role:user.role,surface,elapsedMs,loadAtStart,loadAtReady:loadState?.(),status:response.status(),usable:user.role==='groupHR',scopeDenied:user.role==='companyHR',mutations:0,...(resumeTrace?{trace:resumeTrace}:{})});save();
-  }catch(error){data.push({phase,role:user.role,surface,elapsedMs:performance.now()-start,loadAtStart,loadAtFailure:loadState?.(),usable:false,failed:true,errorType:error.name,...(resumeTrace?{trace:resumeTrace}:{})});save();throw error;}
+   if(renderErrors){
+    await page.waitForLoadState('load',{timeout:remaining()});
+    assert.equal(await response.finished(),null,'Payroll Anomalies document did not finish');
+    assert.deepEqual(renderErrors,[],'Payroll Anomalies emitted a browser render error');
+   }
+   data.push({phase,role:user.role,surface,elapsedMs,loadAtStart,loadAtReady:loadState?.(),status:response.status(),usable:user.role==='groupHR',scopeDenied:user.role==='companyHR',mutations:0,...(renderErrors?{renderErrors}:{}),...(resumeTrace?{trace:resumeTrace}:{})});save();
+  }catch(error){
+   data.push({phase,role:user.role,surface,elapsedMs:performance.now()-start,loadAtStart,loadAtFailure:loadState?.(),
+    usable:false,failed:true,errorType:error.name,...(renderErrors?{renderErrors}:{}),...(resumeTrace?{trace:resumeTrace}:{})});
+   save();throw error;
+  }finally{if(renderErrors)page.off('pageerror',observeRenderError);}
  }
  if(user.role==='groupHR'){
   if(surface===undefined||surface==='resume'){

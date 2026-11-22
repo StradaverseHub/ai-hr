@@ -2401,6 +2401,7 @@ async function measureActions(fixture){
   },timings:result=>result.personnelSwitcherBrowser?.map(row=>({step:row.step,elapsedMs:row.elapsedMs,usable:row.usable}))},
   {name:'payroll-wizard',actorIndex:0,run:exercisePayrollBrowser,
    timings:result=>result.browserPayrollReadiness?.map(row=>({step:row.surface,elapsedMs:row.elapsedMs,usable:row.usable,
+    ...(row.renderErrors&&{renderErrors:row.renderErrors}),
     ...(Number.isFinite(row.trace?.expectedEmployeeVisibleMs)&&{continueToReadyMs:row.trace.expectedEmployeeVisibleMs-row.trace.continueStartedMs})}))},
   {name:'payroll-register-pager',actorIndex:0,run:exercisePayrollRegister,
    timings:result=>result.browserPayrollRegister?.map(({kind,elapsedMs,visibleRows,exactTotalRows,totalsMatch})=>
@@ -2409,7 +2410,8 @@ async function measureActions(fixture){
    await verifyPayrollRegisterBoundary({...options,actor:options.user,owner:options.fixture.users[0]});
   },timings:result=>result.browserPayrollRegister?.map(({kind,scope,status,denied})=>({step:kind,scope,status,denied}))})),
   {name:'payroll-scope-denial',actorIndex:1,run:exercisePayrollBrowser,
-   timings:result=>result.browserPayrollReadiness?.map(row=>({step:row.surface,elapsedMs:row.elapsedMs,scopeDenied:row.scopeDenied}))},
+   timings:result=>result.browserPayrollReadiness?.map(row=>({step:row.surface,elapsedMs:row.elapsedMs,scopeDenied:row.scopeDenied,
+    ...(row.renderErrors&&{renderErrors:row.renderErrors})}))},
   {name:'org-explorer',actorIndex:250,run:exerciseOrgExplorer,timings:result=>result.orgExplorerJourneys?.[0]?.steps
    .map(row=>({step:row.action,elapsedMs:row.elapsedMs}))},
   {name:'saved-report-draft',actorIndex:0,run:exerciseSavedReport,timings:result=>result.browserSavedReportJourneys?.[0]?.timings
