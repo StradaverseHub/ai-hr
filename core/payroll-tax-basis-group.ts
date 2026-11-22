@@ -3,23 +3,23 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {assertModuleGate} from './module-gate';
 import {bulkJobProgress,bulkJobTx,enqueueBulkJobTx} from './bulk-job';
 import type {BulkJobHandler} from './bulk-job-worker';
-import {confirmTaxBasisRecalculation,continueTaxBasisBatch,previewTaxBasisRecalculation} from './payroll-tax-basis';
-import {PayrollTaxBasisError,type TaxBasisEmployee,type TaxBasisPreview,type TaxBasisSelection} from '../lib/payroll-tax-basis';
+import {confirmTaxBasisRecalculation,continueTaxBasisBatch,planTaxBasisPreviewTx,previewTaxBasisRecalculation} from './payroll-tax-basis';
+import {PayrollTaxBasisError,TAX_BASIS_PREVIEW_CHUNK_SIZE,type TaxBasisEmployee,type TaxBasisPreview,type TaxBasisSelection} from '../lib/payroll-tax-basis';
 
 const KIND='payroll_tax_basis_group';
 const validId=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
 const ids=(values:readonly string[])=>sql`array[${sql.join(values.map(value=>sql`${value}::uuid`),sql`,`)}]::uuid[]`;
 const unavailable=()=>new PayrollTaxBasisError('The selected companies or recalculation preview are unavailable.');
-type PreviewRef={companyId:string;previewId:string;previewHash:string};
+type PreviewRef={companyId:string;previewId:string;previewHash:string;selectionMode?:TaxBasisPreview['selection']};
 export const TAX_BASIS_GROUP_PAGE_SIZE=30;
 type BatchRef={companyId:string;id:string|null};
 type GroupResult={phase:'preview';refs:PreviewRef[]}|{phase:'confirmation';outcomes:(BatchRef&{error:string|null})[]};
 type CompanyProgress={companyId:string;name:string;state:'pending'|'processing'|'completed'|'failed'};
 type Input={selections:TaxBasisSelection[]}|{previewJobId:string};
-type Step=TaxBasisSelection|PreviewRef;
+type Step=(TaxBasisSelection&{selectionMode?:TaxBasisPreview['selection']})|PreviewRef;
 
 function validateSelections(selections:TaxBasisSelection[]){
- if(!Array.isArray(selections)||selections.length<2||selections.length>500)throw unavailable();
+ if(!Array.isArray(selections)||selections.length<1||selections.length>500)throw unavailable();
  const first=selections[0];
  if(selections.some(s=>!s||!validId(s.companyId)||!Number.isInteger(s.year)||s.year<1900||s.year>2999||
   !Number.isInteger(s.upToMonth)||s.upToMonth<1||s.upToMonth>12||s.year!==first.year||s.upToMonth!==first.upToMonth||
@@ -46,14 +46,22 @@ async function reviewedTx(tx:Tx,ctx:SessionContext,id:string){
  const result=job.result as GroupResult|null;
  if(job.state!=='completed'||result?.phase!=='preview'||job.counters.failed)throw unavailable();
  const rows=await tx.execute<{preview:Omit<TaxBasisPreview,'employees'>;count:number}>(sql`
-  select p.preview-'employees' as preview,jsonb_array_length(p.preview->'employees') as count
+  select (p.preview-'employees')||jsonb_build_object('selection',
+    coalesce(r.ref->>'selectionMode',p.preview->>'selection')) as preview,jsonb_array_length(p.preview->'employees') as count
    from jsonb_array_elements(${JSON.stringify(result.refs)}::jsonb) with ordinality r(ref,ord)
    join payroll_tax_basis_preview p on p.id=(r.ref->>'previewId')::uuid
      and p.preview_hash=r.ref->>'previewHash' and p.company_id=(r.ref->>'companyId')::uuid
    where p.tenant_id=${ctx.tenantId}::uuid and p.created_by=${ctx.userId??null}::uuid
      and p.company_id=any(${ids(job.company_ids)})
    order by r.ord`);
- if(rows.length!==job.company_ids.length)throw unavailable();
+ const settings=new Map<string,string>();
+ for(const {preview} of rows){
+  const previous=settings.get(preview.companyId);
+  if(previous&&previous!==preview.settingsHash)throw new PayrollTaxBasisError('Pay Item settings changed while the preview was running. Generate a fresh preview.');
+  settings.set(preview.companyId,preview.settingsHash);
+ }
+ if(rows.length!==result.refs.length||new Set(result.refs.map(ref=>ref.previewId)).size!==rows.length||
+    settings.size!==job.company_ids.length)throw unavailable();
  const expiresAt=new Date(new Date(job.finished_at??job.updated_at).getTime()+15*60_000);
  return {job,rows,expiresAt};
 }
@@ -92,14 +100,18 @@ export async function readTaxBasisGroupProgress(ctx:SessionContext,id:string,off
    if(job.state==='failed'||job.state==='cancelled')return {progress};
    const companies=await tx.execute<CompanyProgress>(sql`
     select c.id as "companyId",c.legal_name as name,case
-     when s.state='failed' then 'failed'
-     when s.state='applied' and (s.result->>'id' is null or exists(
-      select 1 from payroll_tax_basis_event e where e.batch_id=(s.result->>'id')::uuid
-       and e.kind in ('completed','completed_with_errors','failed')
-     )) then 'completed'
-     when s.state='applied' then 'processing'
+     when progress.failed then 'failed'
+     when progress.done then 'completed'
+     when progress.started then 'processing'
      else 'pending' end as state
-    from company c left join bulk_job_step s on s.job_id=${id}::uuid and (s.payload->>'companyId')::uuid=c.id
+    from company c cross join lateral (
+     select bool_or(s.state='failed') as failed,
+      bool_and(s.state='applied' and (s.result->>'id' is null or exists(
+       select 1 from payroll_tax_basis_event e where e.batch_id=(s.result->>'id')::uuid
+        and e.kind in ('completed','completed_with_errors','failed')
+      ))) as done, bool_or(s.state='applied') as started
+     from bulk_job_step s where s.job_id=${id}::uuid and (s.payload->>'companyId')::uuid=c.id
+    ) progress
     where c.tenant_id=${ctx.tenantId}::uuid and c.id=any(${ids(job.company_ids)})
     order by c.legal_name,c.id`);
    return {progress,companies:[...companies]};
@@ -149,7 +161,13 @@ export const taxBasisGroupJobHandler:BulkJobHandler<Step>={
    if('selections' in input){
     validateSelections(input.selections);
     if(input.selections.length!==job.company_ids.length||input.selections.some(s=>!job.company_ids.includes(s.companyId)))throw unavailable();
-    return {steps:input.selections.map(selection=>({kind:'preview',payload:selection}))};
+    const steps:{kind:'preview';payload:Step}[]=[];
+    for(const selection of input.selections){
+     const chunks=await planTaxBasisPreviewTx(tx,selection,TAX_BASIS_PREVIEW_CHUNK_SIZE);
+     const selectionMode=selection.employmentIds===null?'all':'selected';
+     for(const chunk of chunks)steps.push({kind:'preview',payload:{...chunk,selectionMode}});
+    }
+    return {steps};
    }
    if(!validId(input.previewJobId)||job.operation_key!==input.previewJobId)throw unavailable();
    const {rows,job:previewJob,expiresAt}=await reviewedTx(tx,ctx,input.previewJobId);
@@ -163,8 +181,9 @@ export const taxBasisGroupJobHandler:BulkJobHandler<Step>={
  async applyStepTx(_tx,ctx,_job,step){
   const selection=step.payload;
   if(step.kind==='preview'&&'year' in selection){
-   const preview=await previewTaxBasisRecalculation(ctx,selection,{allowEmptySelection:true});
-   return {result:{companyId:preview.companyId,previewId:preview.previewId,previewHash:preview.previewHash} satisfies PreviewRef};
+   const {selectionMode,...criteria}=selection;
+   const preview=await previewTaxBasisRecalculation(ctx,criteria,{allowEmptySelection:true});
+   return {result:{companyId:preview.companyId,previewId:preview.previewId,previewHash:preview.previewHash,selectionMode} satisfies PreviewRef};
   }
   if(step.kind!=='confirm'||!('previewId' in selection))throw unavailable();
   const result=await confirmTaxBasisRecalculation(ctx,selection,{defer:true,groupReviewed:true});

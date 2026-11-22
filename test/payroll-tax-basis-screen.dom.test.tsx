@@ -31,25 +31,33 @@ function preview():TaxBasisPreview{return {previewId:'preview-a',previewHash:'ha
 function batch():TaxBasisBatch{return {id:batchId,reference:'TAX-2026-0001',companyId:'company-a',companyName:'Example Company',year:2026,upToMonth:3,selection:'selected',status:'completed_with_errors',createdAt:'2026-10-30T08:00:00Z',completedAt:'2026-10-30T08:05:00Z',actorName:'Payroll Admin',employeeCount:2,recordCount:1,completedCount:1,failedCount:1,employees:[employee({status:'completed'}),employee({id:'employee-b',employeeNo:'E002',name:'Daniel',status:'failed',reason:'Source changed.',recordCount:0,months:[]})]};}
 function wrap(child:ReactNode,locale:keyof typeof catalogs='en'){return <NextIntlClientProvider locale={locale} messages={catalogs[locale]} timeZone="Asia/Kuala_Lumpur">{child}</NextIntlClientProvider>;}
 function show(locale:keyof typeof catalogs='en',props:{options?:TaxBasisOptions;initialSelection?:TaxBasisSelection}={}){render(wrap(<TaxBasisWorkflow options={props.options??options} initialSelection={props.initialSelection}/>,locale));return catalogs[locale].payrollTaxBasis;}
+function queuePreview(p=preview()){
+  mocks.groupPreview.mockResolvedValue('preview-job');
+  mocks.groupConfirm.mockResolvedValue('confirm-job');
+  mocks.groupProgress.mockImplementation(async(id:string)=>id==='preview-job'
+    ?{progress:{state:'completed',stepsDone:1,stepsTotal:1},previews:[p],employees:p.employees,totalEmployees:p.employees.length}
+    :{progress:{state:'completed',stepsDone:1,stepsTotal:1},batches:[{companyId:p.companyId,companyName:p.companyName,id:batchId,error:null}]});
+}
 afterEach(()=>{cleanup();vi.resetAllMocks();});
 
 describe('historical income tax basis review and confirmation',()=>{
   it.each(Object.keys(catalogs) as (keyof typeof catalogs)[])('requires consent and names the exact eligible subset in %s',async locale=>{
-    const user=userEvent.setup();mocks.preview.mockResolvedValue({ok:true,preview:preview()});mocks.confirm.mockResolvedValue({ok:true,result:{id:batchId}});
+    const user=userEvent.setup();queuePreview();
     const t=show(locale);await user.click(screen.getByRole('button',{name:t.previewAction}));
     await user.click(await screen.findByRole('button',{name:createTranslator({locale,messages:catalogs[locale],namespace:'payrollTaxBasis'})('recalculateAction',{count:1})}));
     const dialog=screen.getByRole('alertdialog');
     expect(within(dialog).getByText('E001 · Aina')).toBeVisible();
     expect(within(dialog).queryByText('E002 · Daniel')).toBeNull();
     const confirm=within(dialog).getByRole('button',{name:t.confirmAction});expect(confirm).toBeDisabled();
-    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.groupConfirm).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole('checkbox',{name:t.acknowledge}));
     await user.click(confirm);
-    expect(mocks.confirm).toHaveBeenCalledExactlyOnceWith({previewId:'preview-a',previewHash:'hash-a'});
-    expect(mocks.push).toHaveBeenCalledWith('/payroll/income-tax-recalculation/'+batchId);
+    expect(mocks.groupPreview).toHaveBeenCalledExactlyOnceWith([{companyId:'company-a',year:2026,upToMonth:12,employmentIds:null}],expect.any(String));
+    expect(mocks.groupConfirm).toHaveBeenCalledExactlyOnceWith('preview-job');
+    expect(await screen.findByRole('link',{name:t.viewDetails})).toHaveAttribute('href','/payroll/income-tax-recalculation/'+batchId);
   });
   it('invalidates reviewed results on period, company, selection and employee changes',async()=>{
-    const user=userEvent.setup();mocks.preview.mockResolvedValue({ok:true,preview:preview()});show();
+    const user=userEvent.setup();queuePreview();show();
     async function generate(){await user.click(screen.getByRole('button',{name:en.payrollTaxBasis.previewAction}));await screen.findByRole('heading',{name:en.payrollTaxBasis.summary});}
     const absent=()=>expect(screen.queryByRole('button',{name:'Recalculate 1 eligible employee'})).toBeNull();
     await generate();await user.selectOptions(screen.getByLabelText('Calculate up to month'),'2');absent();
@@ -61,7 +69,7 @@ describe('historical income tax basis review and confirmation',()=>{
     await generate();await user.click(screen.getByRole('button',{name:/^Company/}));await user.click(screen.getByRole('checkbox',{name:'Example Company'}));await user.click(screen.getByRole('checkbox',{name:'Other Company'}));absent();
     expect(screen.queryByRole('checkbox',{name:'E001 · Aina'})).toBeNull();
     expect(screen.getByRole('checkbox',{name:'X001 · Outside company'})).toBeVisible();
-    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.groupConfirm).not.toHaveBeenCalled();
   });
   it('preserves selected employees across companies and confirms the combined preview once',async()=>{
     const user=userEvent.setup();
@@ -98,7 +106,7 @@ describe('historical income tax basis review and confirmation',()=>{
     await user.click(within(dialog).getByRole('checkbox',{name:en.payrollTaxBasis.acknowledge}));
     await user.click(within(dialog).getByRole('button',{name:en.payrollTaxBasis.confirmAction}));
     expect(mocks.groupConfirm).toHaveBeenCalledExactlyOnceWith('preview-job');
-    expect(await screen.findByText(en.payrollTaxBasis.companyFailed)).toBeVisible();
+    expect(await screen.findByText('Changed')).toBeVisible();
   });
   it('does not allow a view-only user to request a preview or a write',async()=>{
     const user=userEvent.setup();show('en',{options:{...options,canRecalculate:false}});
@@ -127,13 +135,13 @@ describe('historical income tax basis review and confirmation',()=>{
     expect(within(details).getByText('Taxable',{exact:true})).toBeVisible();
   });
   it('clears stale confirmation after service refusal and requires a fresh preview and acknowledgement',async()=>{
-    const user=userEvent.setup();mocks.preview.mockResolvedValue({ok:true,preview:preview()});mocks.confirm.mockResolvedValueOnce({ok:false,error:'Pay Item settings changed; preview again.'});show();
+    const user=userEvent.setup();queuePreview();mocks.groupConfirm.mockRejectedValueOnce(new Error('Pay Item settings changed'));show();
     await user.click(screen.getByRole('button',{name:'Preview Recalculation'}));await user.click(await screen.findByRole('button',{name:'Recalculate 1 eligible employee'}));
     await user.click(screen.getByRole('checkbox',{name:en.payrollTaxBasis.acknowledge}));await user.click(screen.getByRole('button',{name:'Yes — Recalculate'}));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Pay Item settings changed');
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.payrollTaxBasis.confirmationUnavailable);
     expect(screen.queryByRole('alertdialog')).toBeNull();expect(screen.queryByRole('heading',{name:'Recalculation summary'})).toBeNull();
     expect(mocks.push).not.toHaveBeenCalled();
-    mocks.preview.mockResolvedValue({ok:true,preview:{...preview(),previewId:'preview-b',previewHash:'hash-b'}});
+    queuePreview({...preview(),previewId:'preview-b',previewHash:'hash-b'});
     await user.click(screen.getByRole('button',{name:'Preview Recalculation'}));await user.click(await screen.findByRole('button',{name:'Recalculate 1 eligible employee'}));
     expect(screen.getByRole('checkbox',{name:en.payrollTaxBasis.acknowledge})).not.toBeChecked();
     expect(screen.getByRole('button',{name:'Yes — Recalculate'})).toBeDisabled();
@@ -144,15 +152,15 @@ describe('historical income tax basis review and confirmation',()=>{
     expect(screen.getByRole('status')).toHaveTextContent('Completed with errors');
     expect(screen.getByRole('link',{name:'Preview failed employees again'})).toHaveAttribute('href','/payroll/income-tax-recalculation?retry='+batchId);
     expect(screen.getByText(en.payrollTaxBasis.partialHint)).toBeVisible();cleanup();
-    mocks.preview.mockResolvedValue({ok:true,preview:preview()});
+    queuePreview();
     render(wrap(await TaxBasisPage({searchParams:Promise.resolve({retry:batchId})})));
     expect(screen.getByRole('radio',{name:'Selected employees'})).toBeChecked();
     expect(screen.getByRole('checkbox',{name:'E002 · Daniel'})).toBeChecked();
     expect(screen.getByRole('checkbox',{name:'E001 · Aina'})).not.toBeChecked();
     expect(screen.queryByRole('button',{name:'Yes — Recalculate'})).toBeNull();
     await user.click(screen.getByRole('button',{name:'Preview Recalculation'}));
-    expect(mocks.preview).toHaveBeenCalledExactlyOnceWith({companyId:'company-a',year:2026,upToMonth:3,employmentIds:['employee-b']});
-    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.groupPreview).toHaveBeenCalledExactlyOnceWith([{companyId:'company-a',year:2026,upToMonth:3,employmentIds:['employee-b']}],expect.any(String));
+    expect(mocks.groupConfirm).not.toHaveBeenCalled();
   });
 });
 
@@ -176,7 +184,7 @@ describe('bounded continuation and interrupted batch recovery',()=>{
     expect(mocks.recover).not.toHaveBeenCalled();await user.click(within(dialog).getByRole('button',{name:t.recoverAction}));
     expect(mocks.recover).toHaveBeenCalledExactlyOnceWith({batchId});
     expect(mocks.push).toHaveBeenCalledWith('/payroll/income-tax-recalculation?retry='+batchId);
-    expect(mocks.confirm).not.toHaveBeenCalled();expect(mocks.preview).not.toHaveBeenCalled();
+    expect(mocks.groupConfirm).not.toHaveBeenCalled();expect(mocks.preview).not.toHaveBeenCalled();
   });
   it('offers only refresh to view-only operators and never invokes a continuation or recovery',async()=>{
     const user=userEvent.setup();render(wrap(<TaxBasisProgress batchId={batchId} recoverable canRecalculate={false}/>));
@@ -201,6 +209,7 @@ describe('bounded continuation and interrupted batch recovery',()=>{
   it('uses the server heartbeat decision on the batch detail and omits controls for terminal batches',async()=>{
     mocks.options.mockResolvedValue(options);mocks.get.mockResolvedValue({...batch(),status:'processing',recoverable:true});
     render(wrap(await TaxBasisBatchPage({params:Promise.resolve({id:batchId})})));
+    expect(screen.getByRole('status')).toHaveTextContent(en.payrollTaxBasis.interruptedStatus);
     expect(screen.getByRole('button',{name:'Review unfinished employees'})).toBeVisible();
     expect(screen.queryByRole('button',{name:'Continue recalculation'})).toBeNull();
     expect(screen.queryByRole('link',{name:'Preview failed employees again'})).toBeNull();cleanup();

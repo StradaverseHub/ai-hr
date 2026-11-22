@@ -110,6 +110,45 @@ describe('authorized immutable historical income tax corrections',()=>{
   expect(await requestTaxBasisGroupConfirmation(ctx,previewId)).toBe(job);
   expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(3);
  });
+ it('previews one full company across worker steps and completes its reviewed corrections in the worker',async()=>{
+  const imported=[];
+  for(let index=0;index<21;index++){
+   const code='Q'+String(index).padStart(3,'0');
+   await hireEmployee(ctx,{person:{fullName:'Fictional employee '+code,primaryEmail:code+'@example.test'},companyId:b.companyId,
+    departmentId:b.deptA,employmentType:'full_time',employeeCode:code,hiredOn:'2025-01-01'});
+   imported.push(...rows(code).slice(0,6));
+  }
+  const draft=await previewPayrollHistoryUpload(ctx,{name:'company.csv',operationKey:randomUUID(),
+   content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...imported]))});
+  expect(draft.plan.counts.invalid).toBe(0);
+  await confirmPayrollHistoryUpload(ctx,{attemptId:draft.attemptId,previewHash:draft.plan.previewHash,confirmReplacement:true});
+  await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));
+  const previewJob=await requestTaxBasisGroupPreview(ctx,[{...selection(),employmentIds:null}],randomUUID());
+  async function finish(id:string){
+   for(let attempt=0;attempt<20;attempt++){
+    await runBulkJobTick(owner.client,{handlers:[taxBasisGroupJobHandler]});
+    const result=await readTaxBasisGroupProgress(ctx,id);
+    if(result.progress.state==='completed')return result;
+    expect(result.progress.state,JSON.stringify(result.progress)).not.toBe('failed');
+   }
+   throw Error('Full-company tax correction did not finish.');
+  }
+  const result=await finish(previewJob);
+  expect(result.previews).toHaveLength(2);
+  expect(result.previews?.every(preview=>preview.selection==='all')).toBe(true);
+  expect(result.totalEmployees).toBe(22);
+  expect(new Set(result.employees?.map(row=>row.id)).size).toBe(22);
+  expect(result.previews?.reduce((count,preview)=>count+preview.eligibleCount,0)).toBe(21);
+  const confirmation=await requestTaxBasisGroupConfirmation(ctx,previewJob);
+  const outcomes=await finish(confirmation);
+  expect(outcomes.batches).toHaveLength(2);
+  for(const row of outcomes.batches??[]){
+   expect(row.error).toBeNull();
+   expect(row.id).toBeTruthy();
+   if(row.id)expect((await getTaxBasisBatch(ctx,row.id))?.status).toBe('completed');
+  }
+  expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(21);
+ },90000);
  it('feeds the corrected prefix into a real future run while preserving prior issued money',async()=>{
   const original=await owner.db.select().from(schema.payslip),p=await previewTaxBasisRecalculation(ctx,selection());await confirm(p);
   const [subject]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee));

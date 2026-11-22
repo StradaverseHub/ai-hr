@@ -479,7 +479,7 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '7110_payroll_draft_tax_readiness':'73aaea6e033964c596bc76e96beb1b5b5a2d5205270399fe865b41d2d0b64260',
+ '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',
  '7100_payroll_run_company_review':'558adf2530aa3961163841b6df000b3dbcc9af30d21e309258e3b2a72f2b5ec6',
  '7080_job_run_deterministic_order':'7f7b01ba1053bd6a39e8c5f04f50ae429e6553c04fb420d79318b0ba80bad736',
  '7090_report_delivery_history_order':'f185674e4bbc196afed478ad0941425cc994cdfed329de5f2bfb629cda20c356',

@@ -8,7 +8,7 @@ import {useFormatter,useTranslations} from 'next-intl';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import {formatMoney} from '@/lib/money';
 import type {TaxBasisEmployee,TaxBasisPreview,TaxBasisSelection} from '@/lib/payroll-tax-basis';
-import {previewTaxBasisAction,confirmTaxBasisAction,queueTaxBasisGroupPreviewAction,queueTaxBasisGroupConfirmationAction,taxBasisGroupProgressAction,searchCurrentTaxBasisEmployeesAction} from './actions';
+import {queueTaxBasisGroupPreviewAction,queueTaxBasisGroupConfirmationAction,taxBasisGroupProgressAction,searchCurrentTaxBasisEmployeesAction} from './actions';
 import {TaxBasisResults} from './results';
 
 export type TaxBasisOptions={companies:{id:string;name:string;canRecalculate?:boolean}[];employees:{id:string;companyId:string;employeeNo:string;name:string}[];years:number[];canRecalculate:boolean};
@@ -22,7 +22,7 @@ function combinePreviews(previews:CompanyPreview[],employees:TaxBasisEmployee[])
   const sum=(key:keyof TaxBasisPreview['totals'])=>previews.some(preview=>preview.totals[key]===null)
     ?null:Math.round(previews.reduce((value,preview)=>value+preview.totals[key]!,0)*100)/100;
   return {
-    ...previews[0],companyName:previews.map(preview=>preview.companyName).join(', '),
+    ...previews[0],companyName:[...new Set(previews.map(preview=>preview.companyName))].join(', '),
     expiresAt:previews.map(preview=>preview.expiresAt).sort()[0],
     eligibleCount:previews.reduce((n,preview)=>n+preview.eligibleCount,0),
     unchangedCount:previews.reduce((n,preview)=>n+preview.unchangedCount,0),
@@ -32,6 +32,15 @@ function combinePreviews(previews:CompanyPreview[],employees:TaxBasisEmployee[])
     totals:{beforeTaxable:sum('beforeTaxable'),taxable:sum('taxable'),difference:sum('difference'),beforeExempt:sum('beforeExempt'),exempt:sum('exempt')},
     employees,
   };
+}
+function companySummaries(previews:CompanyPreview[]):CompanyPreview[]{
+  const byCompany=new Map<string,CompanyPreview[]>();
+  for(const preview of previews){
+    const slices=byCompany.get(preview.companyId)??[];
+    slices.push(preview);
+    byCompany.set(preview.companyId,slices);
+  }
+  return [...byCompany.values()].map(slices=>combinePreviews(slices,[]));
 }
 const employeeKey=(employee:{id:string;companyId?:string})=>`${employee.companyId??''}:${employee.id}`;
 
@@ -110,15 +119,16 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
         if(progress.state==='completed'){
           if(job.phase==='preview'&&result.previews?.length){
             setPreview(combinePreviews(result.previews,result.employees));
-            setPreviewCompanies(result.previews);
-            setCompanyIds(result.previews.map(company=>company.companyId));
+            const summaries=companySummaries(result.previews);
+            setPreviewCompanies(summaries);
+            setCompanyIds(summaries.map(company=>company.companyId));
             setPreviewJobId(job.id);
             setResultOffset(0);
             setTotalResultEmployees(result.totalEmployees);
           }else if(job.phase==='confirm'&&result.batches){
             setCompanyOutcomes(result.batches);refresh();
-          }else setError(t('unexpectedError'));
-        }else if(progress.state==='failed'||progress.state==='cancelled')setError(t('unexpectedError'));
+          }else setError(progress.error??progress.errors?.[0]?.message??t('unexpectedError'));
+        }else if(progress.state==='failed'||progress.state==='cancelled')setError(progress.error??t('unexpectedError'));
         else {timer=setTimeout(poll,1500);return;}
       }catch{
         if(cancelled)return;
@@ -159,32 +169,22 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
       const selections=companyIds.map(companyId=>({companyId,year,upToMonth,
         employmentIds:all?null:includedEmployees.filter(employee=>employee.companyId===companyId).map(employee=>employee.id),
       }));
-      if(selections.length>1){
-        const id=await queueTaxBasisGroupPreviewAction(selections,crypto.randomUUID());
-        const queued={id,phase:'preview' as const};
-        updateGroupProgressLink(queued);setJob(queued);
-        return;
-      }
-      const result=await previewTaxBasisAction(selections[0]);
-      if(result.ok)setPreview(result.preview);else setError(result.error??t('unexpectedError'));
-    }catch{setError(t('unexpectedError'));}
-    setBusy(null);
+      const id=await queueTaxBasisGroupPreviewAction(selections,crypto.randomUUID());
+      const queued={id,phase:'preview' as const};
+      updateGroupProgressLink(queued);setJob(queued);
+    }catch{setError(t('unexpectedError'));setBusy(null);}
   }
   async function confirm(){
-    if(!preview||!acknowledged||busy)return;
+    if(!previewJobId||!preview||!acknowledged||busy)return;
     setBusy('confirm');setError(null);
     try{
-      if(previewJobId){
-        const id=await queueTaxBasisGroupConfirmationAction(previewJobId);
-        const queued={id,phase:'confirm' as const};
-        updateGroupProgressLink(queued);setJob(queued);setConfirmOpen(false);setPreview(null);setAcknowledged(false);
-        return;
-      }
-      const result=await confirmTaxBasisAction({previewId:preview.previewId,previewHash:preview.previewHash});
-      if(result.ok){setConfirmOpen(false);setPreview(null);router.push('/payroll/income-tax-recalculation/'+result.result.id);router.refresh();}
-      else{setError(result.error??t('unexpectedError'));setPreview(null);setConfirmOpen(false);}
-    }catch{setError(t('unexpectedError'));setConfirmOpen(false);setPreview(null);}
-    setBusy(null);setAcknowledged(false);
+      const id=await queueTaxBasisGroupConfirmationAction(previewJobId);
+      const queued={id,phase:'confirm' as const};
+      updateGroupProgressLink(queued);setJob(queued);setConfirmOpen(false);setPreview(null);
+    }catch{
+      setError(t('confirmationUnavailable'));
+      setConfirmOpen(false);setPreview(null);setBusy(null);
+    }finally{setAcknowledged(false);}
   }
   const money=(value:number|null)=>value===null?t('unavailable'):formatMoney(value,'MYR');
   if(options.companies.length===0||options.years.length===0)return <section className="rounded-xl border border-border p-6"><p className="text-sm text-muted-foreground">{t('noHistoryAvailable')}</p></section>;
@@ -235,9 +235,10 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
         <div className="flex justify-end"><ActionButton guardNavigation={false} aria-busy={busy==='preview'} actionKind="generating" type="button" className={button} onClick={generatePreview} disabled={!canRecalculate||!year||(!all&&includedEmployees.length===0)}>{t(busy==='preview'?'previewing':'previewAction')}</ActionButton></div>
       </fieldset>
     </section>
-    {jobProgress&&<div className="space-y-2 rounded-lg border border-border p-4 text-sm">
-      <p role="status">{t('companyProgress',{done:jobProgress.done,total:jobProgress.total||companyIds.length})}</p>
-      {jobProgress.companies.length>0&&<ul className="max-h-60 divide-y divide-border overflow-y-auto">
+    {job&&<div className="space-y-2 rounded-lg border border-border p-4 text-sm">
+      <p role="status">{t(job.phase==='preview'?'previewInBackground':'recalculationInBackground')}</p>
+      {job.phase==='preview'&&!!jobProgress?.total&&<p>{t('previewGroupProgress',{done:jobProgress.done,total:jobProgress.total})}</p>}
+      {!!jobProgress?.companies.length&&<ul className="max-h-60 divide-y divide-border overflow-y-auto">
         {jobProgress.companies.map(company=><li key={company.companyId} className="flex justify-between gap-3 py-2">
           <span>{company.name}</span><span>{t(`batchStates.${company.state}`)}</span>
         </li>)}
@@ -245,9 +246,9 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
     </div>}
     {companyOutcomes.length>0&&<section className="space-y-3 rounded-xl border border-border p-5">
       <h2 className="font-semibold">{t('outcomes')}</h2>
-      <ul className="divide-y divide-border">{companyOutcomes.map(company=><li key={company.companyId} className="flex flex-wrap justify-between gap-3 py-2 text-sm">
+      <ul className="divide-y divide-border">{companyOutcomes.map((company,index)=><li key={company.id??company.companyId+':'+index} className="flex flex-wrap justify-between gap-3 py-2 text-sm">
         <span>{company.companyName}</span>
-        {company.id?<Link className="text-primary underline" href={'/payroll/income-tax-recalculation/'+company.id}>{t('viewDetails')}</Link>:<span>{company.error?t('companyFailed'):t('noCompanyChanges')}</span>}
+        {company.id?<Link className="text-primary underline" href={'/payroll/income-tax-recalculation/'+company.id}>{t('viewDetails')}</Link>:<span>{company.error?company.error:t('noCompanyChanges')}</span>}
       </li>)}</ul>
     </section>}
     {error&&<p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p>}
@@ -269,7 +270,7 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
           <AlertDialog.Portal><AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/45"/><AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-popover p-6 text-popover-foreground shadow-xl">
             <AlertDialog.Title className="text-lg font-semibold">{t('confirmTitle')}</AlertDialog.Title>
             <AlertDialog.Description className="mt-3 text-sm text-muted-foreground">{t('confirmDescription',{company:preview.companyName,year:preview.year,month:t(`months.${preview.upToMonth}`),count:preview.eligibleCount,records:preview.recordCount})}</AlertDialog.Description>
-            <ul className="my-4 max-h-44 overflow-y-auto rounded-lg border border-border p-3 text-sm">{previewJobId?previewCompanies.map(company=><li key={company.companyId} className="py-1">{company.companyName} · {t('previewCounts',{eligible:company.eligibleCount,unchanged:company.unchangedCount,skipped:company.skippedCount??0,blocked:company.blockedCount,records:company.recordCount})}</li>):eligible.map(employee=><li key={employeeKey(employee)} className="py-1">{employee.employeeNo} · {employee.name}{employee.companyName&&' · '+employee.companyName}</li>)}</ul>
+            <ul className="my-4 max-h-44 overflow-y-auto rounded-lg border border-border p-3 text-sm">{totalResultEmployees>PAGE_SIZE||previewCompanies.length>1?previewCompanies.map(company=><li key={company.companyId} className="py-1">{company.companyName} · {t('previewCounts',{eligible:company.eligibleCount,unchanged:company.unchangedCount,skipped:company.skippedCount??0,blocked:company.blockedCount,records:company.recordCount})}</li>):eligible.map(employee=><li key={employeeKey(employee)} className="py-1">{employee.employeeNo} · {employee.name}{previewCompanies.length>1&&employee.companyName&&' · '+employee.companyName}</li>)}</ul>
             <p className="text-xs text-muted-foreground">{t('excludedHint',{blocked:preview.blockedCount,skipped:preview.skippedCount??0,unchanged:preview.unchangedCount})}</p><p className="mt-3 text-xs text-muted-foreground">{t('preserved')}</p>
             <label className="mt-4 flex items-start gap-3 text-sm"><input className="mt-1" type="checkbox" checked={acknowledged} disabled={busy!==null} onChange={event=>setAcknowledged(event.target.checked)}/><span>{t('acknowledge')}</span></label>
             <div className="mt-6 flex flex-wrap justify-end gap-3"><AlertDialog.Cancel asChild><ActionButton aria-busy={busy==='confirm'} type="button" className={button} disabled={busy!==null}>{t('cancel')}</ActionButton></AlertDialog.Cancel><ActionButton guardNavigation aria-busy={busy==='confirm'} type="button" className={primary} onClick={confirm} disabled={busy!==null||!acknowledged}>{t(busy==='confirm'?'processing':'confirmAction')}</ActionButton></div>

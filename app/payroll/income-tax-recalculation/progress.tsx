@@ -11,11 +11,11 @@ const button='inline-flex items-center justify-center rounded-lg border border-b
 const primary=button+' border-primary bg-primary text-primary-foreground hover:bg-primary/90';
 
 /** The server owns heartbeat eligibility, authorization and the next bounded employee group. */
-export function TaxBasisProgress({batchId,recoverable,canRecalculate}:{batchId:string;recoverable:boolean;canRecalculate:boolean}){
+export function TaxBasisProgress({batchId,recoverable,workerManaged=false,canRecalculate}:{batchId:string;recoverable:boolean;workerManaged?:boolean;canRecalculate:boolean}){
   const t=useTranslations('payrollTaxBasis'),router=useRouter();
   const [busy,setBusy]=useState(false),[open,setOpen]=useState(false),[error,setError]=useState<string|null>(null);
   async function proceed(kind:'continue'|'recover'){
-    if(busy||!canRecalculate||(kind==='recover'&&!recoverable))return;
+    if(busy||workerManaged||!canRecalculate||(kind==='recover'&&!recoverable))return;
     setBusy(true);setError(null);
     try{
       const result=kind==='recover'?await recoverTaxBasisAction({batchId}):await continueTaxBasisAction({batchId});
@@ -27,11 +27,11 @@ export function TaxBasisProgress({batchId,recoverable,canRecalculate}:{batchId:s
   }
   return <div className="space-y-3 rounded-lg border border-border p-4">
     <div className="flex flex-wrap items-center justify-between gap-4">
-      <p className="max-w-3xl text-sm text-muted-foreground">{t(recoverable?'interruptedHint':'continueHint')}</p>
+      <p className="max-w-3xl text-sm text-muted-foreground">{t(workerManaged?'recalculationInBackground':recoverable?'interruptedHint':'continueHint')}</p>
       <div className="flex flex-wrap gap-3">
         <ActionButton guardNavigation={false} aria-busy={busy} type="button" className={button} onClick={()=>router.refresh()} disabled={busy}>{t('refresh')}</ActionButton>
-        {!recoverable&&canRecalculate&&<ActionButton guardNavigation aria-busy={busy} type="button" className={primary} onClick={()=>proceed('continue')} disabled={busy}>{t(busy?'processing':'continueAction')}</ActionButton>}
-        {recoverable&&canRecalculate&&<AlertDialog.Root open={open} onOpenChange={value=>{if(!busy)setOpen(value);}}>
+        {!workerManaged&&!recoverable&&canRecalculate&&<ActionButton guardNavigation aria-busy={busy} type="button" className={primary} onClick={()=>proceed('continue')} disabled={busy}>{t(busy?'processing':'continueAction')}</ActionButton>}
+        {!workerManaged&&recoverable&&canRecalculate&&<AlertDialog.Root open={open} onOpenChange={value=>{if(!busy)setOpen(value);}}>
           <AlertDialog.Trigger asChild><ActionButton aria-busy={busy} type="button" className={button} disabled={busy}>{t('reviewUnfinished')}</ActionButton></AlertDialog.Trigger>
           <AlertDialog.Portal><AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/45"/><AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] overflow-y-auto w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-popover p-6 text-popover-foreground shadow-xl">
             <AlertDialog.Title className="text-lg font-semibold">{t('recoverTitle')}</AlertDialog.Title>

@@ -245,7 +245,7 @@ export async function replayChangedPayrollHistoryTx(
  return new Map(replay.months.map(month=>[month.payslipId,month.basis]));
 }
 
-async function taxBasisSubjectsTx(tx:Tx,selection:TaxBasisSelection){
+async function taxBasisSubjectsTx(tx:Tx,selection:TaxBasisSelection,limit:number|null=1001){
  const {companyId,year,upToMonth,employmentIds}=selection;
  const current=employmentIds===null?sql``:sql`
   union select e.id,coalesce(e.employee_code,''),p.full_name from employment e
@@ -256,7 +256,18 @@ async function taxBasisSubjectsTx(tx:Tx,selection:TaxBasisSelection){
  return tx.execute<{id:string;employeeNo:string;name:string}>(sql`
   select id,"employeeNo",name from app.payroll_tax_basis_subjects(${companyId}::uuid,${employmentIds===null?year:null},${upToMonth})
   ${employmentIds===null?sql``:sql`where id=any(${uuidArray(employmentIds)})`}
-  ${current} order by "employeeNo",id limit 1001`);
+  ${current} order by "employeeNo",id limit ${limit}`);
+}
+export async function planTaxBasisPreviewTx(tx:Tx,selection:TaxBasisSelection,chunkSize:number):Promise<TaxBasisSelection[]>{
+ const subjects=await taxBasisSubjectsTx(tx,selection,null);
+ if(selection.employmentIds!==null&&subjects.length!==selection.employmentIds.length){
+  fail('An employee is unavailable or belongs to another company.');
+ }
+ const chunks:TaxBasisSelection[]=[];
+ for(let i=0;i<subjects.length;i+=chunkSize){
+  chunks.push({...selection,employmentIds:subjects.slice(i,i+chunkSize).map(subject=>subject.id)});
+ }
+ return chunks.length?chunks:[{...selection,employmentIds:[]}];
 }
 async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):Promise<Omit<TaxBasisPreview,'previewId'|'previewHash'|'createdAt'|'expiresAt'>>{
  await permission(tx,ctx,selection.companyId);
@@ -292,7 +303,7 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
  cache.effective=null;
  try{cache.effective=await sourceRead.readEffective();}catch(error){if(!(error instanceof PayrollTaxBasisError)||!error.message.startsWith('Saved payroll changed')&&!error.message.startsWith('Imported wage inputs require review'))throw error;}
  cache.superseded=await supersededTaxBasisRowsTx(tx,allSlips.map(slip=>slip.id));
- for(const who of employees){if(Date.now()-started>25000)fail('This preview is too large. Select a smaller employee group and preview again.');results.push(await employeeTx(tx,ctx,selection,who,settings,settingsHash,cache));}
+ for(const who of employees){if(Date.now()-started>25000)fail('The preview timed out while reviewing saved payroll. Generate a fresh preview. If it happens again, contact support.');results.push(await employeeTx(tx,ctx,selection,who,settings,settingsHash,cache));}
  const ready=results.filter(r=>r.status==='ready');
  const sum=(key:'beforeTaxable'|'taxable'|'beforeExempt'|'exempt')=>ready.some(r=>r[key]===null)?null:round(ready.reduce((n,r)=>n+r[key]!,0));
  const beforeTaxable=sum('beforeTaxable'),taxable=sum('taxable');
@@ -438,10 +449,47 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
  }
  await withTenant(ctx,async tx=>{await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await permission(tx,ctx,opened.selection.companyId,true);const terminal=await tx.execute(sql`select id from payroll_tax_basis_event where batch_id=${opened.id}::uuid and kind in ('completed','completed_with_errors','failed')`);if(terminal.length)return;const [counts]=await tx.execute<{ok:number}>(sql`select count(distinct employment_id)::integer as ok from payroll_tax_basis_event where batch_id=${opened.id}::uuid and kind='employee_completed'`);const total=opened.preview.eligibleCount;const [processed]=await tx.execute<{count:number}>(sql`select count(distinct employment_id)::integer as count from payroll_tax_basis_event where batch_id=${opened.id}::uuid and kind in ('employee_completed','employee_failed')`);if(processed.count<total)return;await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,counts.ok===total?'completed':counts.ok?'completed_with_errors':'failed');});return {id:opened.id};
 }
-export async function listTaxBasisBatches(ctx:SessionContext,requestedId?:string):Promise<TaxBasisBatch[]>{return withTenant(ctx,async tx=>{
- const rows=await tx.execute<{id:string;companyId:string;preview:TaxBasisPreview;createdAt:string;actorName:string}>(sql`select b.id,b.company_id as "companyId",p.preview,b.created_at::text as "createdAt",coalesce(actor.full_name,b.created_by::text) as "actorName" from payroll_tax_basis_batch b join payroll_tax_basis_preview p on p.id=b.preview_id left join app_user u on u.id=b.created_by left join person actor on actor.id=u.person_id ${requestedId?sql`where b.id=${requestedId}::uuid`:sql``} order by b.created_at desc,b.id desc limit 100`);
- const result:TaxBasisBatch[]=[];for(const row of rows){if(!await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.view',row.companyId))continue;await permission(tx,ctx,row.companyId);const events=await tx.execute<{kind:string;employmentId:string|null;detail:TaxBasisEmployee;createdAt:string}>(sql`select kind,employment_id as "employmentId",detail,created_at::text as "createdAt" from payroll_tax_basis_event where batch_id=${row.id}::uuid order by created_at,id`);const outcomes=new Map<string,TaxBasisEmployee>();for(const e of events)if(e.employmentId)outcomes.set(e.employmentId,{...e.detail,status:e.kind==='employee_completed'?'completed':'failed'});const employees=row.preview.employees.map(e=>outcomes.get(e.id)??e),completedCount=employees.filter(e=>e.status==='completed').length,failedCount=employees.filter(e=>e.status==='failed').length;const final=[...events].reverse().find(e=>['completed','completed_with_errors','failed'].includes(e.kind));result.push({id:row.id,reference:'TAX-'+row.id.toUpperCase(),companyId:row.companyId,companyName:row.preview.companyName,year:row.preview.year,upToMonth:row.preview.upToMonth,selection:row.preview.selection,status:final?final.kind as TaxBasisBatch['status']:events.some(e=>e.kind==='processing')?'processing':'pending',createdAt:row.createdAt,completedAt:final?.createdAt??null,actorName:row.actorName,employeeCount:row.preview.eligibleCount,recordCount:row.preview.recordCount,completedCount,failedCount,employees,recoverable:!final&&Date.now()-new Date(events.at(-1)?.createdAt??row.createdAt).getTime()>300000});}return result;
- });}
+export async function listTaxBasisBatches(ctx:SessionContext,requestedId?:string):Promise<TaxBasisBatch[]>{
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string;companyId:string;preview:TaxBasisPreview;createdAt:string;actorName:string}>(sql`
+   select b.id,b.company_id as "companyId",p.preview,b.created_at::text as "createdAt",
+    coalesce(actor.full_name,b.created_by::text) as "actorName"
+   from payroll_tax_basis_batch b join payroll_tax_basis_preview p on p.id=b.preview_id
+   left join app_user u on u.id=b.created_by left join person actor on actor.id=u.person_id
+   ${requestedId?sql`where b.id=${requestedId}::uuid`:sql``} order by b.created_at desc,b.id desc limit 100`);
+  const result:TaxBasisBatch[]=[];
+  for(const row of rows){
+   if(!await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.view',row.companyId))continue;
+   await permission(tx,ctx,row.companyId);
+   const events=await tx.execute<{kind:string;employmentId:string|null;detail:TaxBasisEmployee;createdAt:string}>(sql`
+    select kind,employment_id as "employmentId",detail,created_at::text as "createdAt"
+    from payroll_tax_basis_event where batch_id=${row.id}::uuid order by created_at,id`);
+   const outcomes=new Map<string,TaxBasisEmployee>();
+   for(const event of events)if(event.employmentId)outcomes.set(event.employmentId,{
+    ...event.detail,status:event.kind==='employee_completed'?'completed':'failed',
+   });
+   const employees=row.preview.employees.map(employee=>outcomes.get(employee.id)??employee);
+   const completedCount=employees.filter(employee=>employee.status==='completed').length;
+   const failedCount=employees.filter(employee=>employee.status==='failed').length;
+   const final=events.findLast(event=>['completed','completed_with_errors','failed'].includes(event.kind));
+   const lastProgressAt=events.at(-1)?.createdAt??row.createdAt;
+   const workerManaged=!final&&await taxBasisWorkerManagedTx(tx,row.id);
+   result.push({
+    id:row.id,reference:'TAX-'+row.id.toUpperCase(),companyId:row.companyId,companyName:row.preview.companyName,
+    year:row.preview.year,upToMonth:row.preview.upToMonth,selection:row.preview.selection,
+    status:final?final.kind as TaxBasisBatch['status']:events.some(event=>event.kind==='processing')?'processing':'pending',
+    createdAt:row.createdAt,completedAt:final?.createdAt??null,actorName:row.actorName,employeeCount:row.preview.eligibleCount,
+    recordCount:row.preview.recordCount,completedCount,failedCount,employees,lastProgressAt,workerManaged,
+    recoverable:!final&&!workerManaged&&Date.now()-new Date(lastProgressAt).getTime()>300000,
+   });
+  }
+  return result;
+ });
+}
+async function taxBasisWorkerManagedTx(tx:Tx,batchId:string){
+ const [row]=await tx.execute<{active:boolean}>(sql`select app.payroll_tax_basis_worker_managed(${batchId}::uuid) as active`);
+ return row.active;
+}
 export async function getTaxBasisBatch(ctx:SessionContext,id:string):Promise<TaxBasisBatch|null>{if(!uuid.test(id))return null;return (await listTaxBasisBatches(ctx,id)).find(b=>b.id===id)??null;}
 /** Explicitly close an interrupted batch; every unfinished employee must get a fresh preview. */
 export async function recoverTaxBasisBatch(ctx:SessionContext,id:string):Promise<{id:string}>{
@@ -452,9 +500,10 @@ export async function recoverTaxBasisBatch(ctx:SessionContext,id:string):Promise
   await permission(tx,ctx,batch.companyId,true);
   const events=await tx.execute<{kind:string;employmentId:string|null;recent:boolean}>(sql`select kind,employment_id as "employmentId",created_at>now()-interval '5 minutes' as recent from payroll_tax_basis_event where batch_id=${id}::uuid order by created_at,id`);
   if(events.some(e=>['completed','completed_with_errors','failed'].includes(e.kind)))return {id};
-  if(events.some(e=>e.recent))fail('This recalculation may still be active. Refresh its progress before reviewing unfinished employees.');
+  if(events.some(e=>e.recent)||await taxBasisWorkerManagedTx(tx,id))fail('This recalculation may still be active. Refresh its progress before reviewing unfinished employees.');
   const completed=new Set(events.filter(e=>e.kind==='employee_completed').map(e=>e.employmentId));
-  for(const reviewed of batch.preview.employees.filter(e=>e.status==='ready'&&!completed.has(e.id)))await recordEventTx(tx,ctx,id,batch.companyId,'employee_failed',{...reviewed,status:'failed',reason:'Processing was interrupted. Review a fresh preview before retrying.'},reviewed.id);
+  const finished=new Set(events.filter(e=>e.kind==='employee_completed'||e.kind==='employee_failed').map(e=>e.employmentId));
+  for(const reviewed of batch.preview.employees.filter(e=>e.status==='ready'&&!finished.has(e.id)))await recordEventTx(tx,ctx,id,batch.companyId,'employee_failed',{...reviewed,status:'failed',reason:'Processing was interrupted. Review a fresh preview before retrying.'},reviewed.id);
   await recordEventTx(tx,ctx,id,batch.companyId,completed.size?'completed_with_errors':'failed');
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-tax-basis',aggregateId:id,eventType:'payroll.tax-basis.interruption-reviewed',actor:actorOf(ctx),payload:{companyId:batch.companyId,preservedEmployees:completed.size}});return {id};
  });
