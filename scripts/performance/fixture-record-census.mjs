@@ -575,12 +575,23 @@ async function personnelDocumentWork(page) {
     const panels = Array.from(main?.querySelectorAll('[data-tabpanel]') ?? []);
     const hidden = panels.filter(panel => panel.hasAttribute('hidden'));
     const controls = panel => panel.querySelectorAll('input:not([type="hidden"]), select, textarea, button').length;
+    const knownTabs = new Set(['profile', 'family', 'job', 'careerMovement', 'attendance',
+      'bankStatutory', 'payroll', 'leave', 'documents', 'qualification']);
+    const encoder = new TextEncoder();
     const navigation = performance.getEntriesByType('navigation')[0];
     return {
       mainElements: main?.querySelectorAll('*').length ?? 0,
       visiblePanelControls: panels.filter(panel => !panel.hasAttribute('hidden')).reduce((total, panel) => total + controls(panel), 0),
       hiddenPanels: hidden.length,
       hiddenPanelControls: hidden.reduce((total, panel) => total + controls(panel), 0),
+      hiddenPanelDom: hidden.flatMap(panel => {
+        const key = panel.getAttribute('data-tabpanel');
+        return knownTabs.has(key) ? [{
+          tab: key,
+          controls: controls(panel),
+          markupBytes: encoder.encode(panel.outerHTML).byteLength,
+        }] : [];
+      }),
       decodedBodyBytes: navigation?.responseEnd > 0 && navigation.decodedBodySize > 0 ? navigation.decodedBodySize : null,
       encodedBodyBytes: navigation?.responseEnd > 0 && navigation.encodedBodySize > 0 ? navigation.encodedBodySize : null,
     };
