@@ -5,10 +5,10 @@ import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {inspectCiBuildPacket} from '../../.github/ci/build-artifact.mjs';
 
-const [packet, jobJson] = process.argv.slice(2);
+const [packet, jobJson, applicationSource] = process.argv.slice(2);
 const job = JSON.parse(jobJson);
 const build = inspectCiBuildPacket(packet, {
-  candidate: process.env.AIHR_CI_HEAD,
+  candidate: applicationSource,
   controller: job.head_sha,
   runId: job.run_id,
   controllerBranch: job.head_branch,
