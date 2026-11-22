@@ -735,6 +735,25 @@ async function verifyLetterCatalogPreview(page, main, db, entry, row, remaining)
   assert.equal(await draftCount(),0,'Preview must not issue a letter');
 }
 
+async function payrollReportRecordRoutes(db,fixture){
+  const [group,company]=fixture.users;
+  const {masterId,masterName,comparisonId,comparisonName,historicalMonth,employeeCode}=fixture.payrollReportRecords;
+  const saved=await db`
+    select id,name from custom_report where tenant_id=${group.tenantId}::uuid
+    and created_by_user_id=${group.userId}::uuid and id in (${masterId}::uuid,${comparisonId}::uuid)
+  `;
+  assert.deepEqual(new Map(saved.map(row=>[row.id,row.name])),new Map([[masterId,masterName],[comparisonId,comparisonName]]));
+  const witness='tbody td:text-is("'+employeeCode+'")';
+  const filters=new URLSearchParams({companyId:company.companyId,currentPeriod:historicalMonth,
+    employeeSearch:employeeCode,onlyVariances:'0'});
+  return [
+    ...[group,company].map(actor=>({actor,template:'/reports/employee-master/[id]',
+      path:'/reports/employee-master/'+masterId,exactHeading:masterName,witness})),
+    {actor:group,template:'/reports/payroll-comparison/[id]',path:'/reports/payroll-comparison/'+comparisonId+'?'+filters,
+      exactHeading:comparisonName,witness},
+  ];
+}
+
 async function savedReportRecordRoutes(db, fixture) {
   const [group, company, , , employee] = fixture.users;
   const record = fixture.savedReportRecord;
@@ -1187,7 +1206,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, letterCatalogRecords, systemTestingRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, letterCatalogRecords, systemTestingRecords, payrollReportRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1199,6 +1218,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceConfigurationRecords ? await attendanceConfigurationRoutes(db, fixture)
     : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
     : loanRecords ? await loanRecordRoutes(db, fixture)
+    : payrollReportRecords ? await payrollReportRecordRoutes(db, fixture)
     : savedReportRecords ? await savedReportRecordRoutes(db, fixture)
     : letterCatalogRecords ? await letterCatalogRecordRoutes(db, fixture)
     : systemTestingRecords ? await systemTestingRecordRoutes(db, fixture)
@@ -1340,4 +1360,17 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
   }
   assert.equal(rows.length, cases.length * 2);
   assert(rows.every(row => row.outcome === 'usable-content'), 'One or more fictional record screens missed their readiness witness');
+  if(payrollReportRecords){
+    const [actor]=fixture.users;
+    const {comparisonId}=fixture.payrollReportRecords;
+    const audits=await db`
+      select kind,outcome,row_count from custom_report_run where tenant_id=${actor.tenantId}::uuid
+        and report_id=${comparisonId}::uuid and actor_user_id=${actor.userId}::uuid
+    `;
+    assert.equal(audits.length,2);
+    assert(audits.every(row=>row.kind==='run'&&row.outcome==='success'&&row.row_count===1));
+    report.payrollReportAudit={persistedRuns:audits.length,expectedRowsPerRun:1};
+    save();
+  }
+
 }

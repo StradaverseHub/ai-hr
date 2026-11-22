@@ -84,6 +84,33 @@ try{
   fixture.letterCatalogRecord={versionId,fieldId:field.id,fieldLabel,code,name,salutation,key};
  }
 
+ if(env.PERF_PAYROLL_REPORT_RECORDS==='true'){
+  const [{saveEmployeeMasterReport},{defaultMasterColumn},{PERSONNEL_FIELDS},{saveCustomReport},
+   {DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_DATASET}]=await Promise.all([
+   source('core/employee-master-reports.ts'),source('lib/employee-master-report.ts'),
+   source('lib/personnel-field-registry.ts'),source('core/custom-reports.ts'),source('lib/payroll-period-comparison.ts'),
+  ]);
+  const employee=fixture.users[4];
+  assert(employee.role==='employee'&&employee.companyId===company.companyId);
+  const employeeCode='PERF'+String(employee.index).padStart(4,'0');
+  const code=PERSONNEL_FIELDS.find(field=>field.owner==='employment'&&field.ownerField==='employeeCode');
+  assert(code);
+  const companyIds=[company.companyId];
+  const masterName='Fictional saved Employee Master';
+  const master=await saveEmployeeMasterReport(ctx,companyIds,{name:masterName,description:'Fictional browser report',sharedRoleIds:['hr_admin'],
+   spec:{v:2,asAt:fixture.today,companyIds,includeDrafts:false,columns:[defaultMasterColumn(code)],
+    expression:{id:'root',type:'group',logic:'and',children:[{id:'employee',type:'condition',field:code.id,operator:'eq',value:employeeCode}]},
+    sorts:[],groups:[],pdf:{paper:'A4',orientation:'landscape',margins:'normal',logo:false,pageBreakGroups:false}},
+  });
+  const comparisonName='Fictional saved Payroll Comparison';
+  const historicalMonth=performanceFixtureCalendar(fixture.today).historicalMonth;
+  const comparison=await saveCustomReport(ctx,{name:comparisonName,companyIds,shared:false,datasetId:PAYROLL_COMPARISON_DATASET,
+   spec:{datasetId:PAYROLL_COMPARISON_DATASET,columns:['employeeCode','employeeName','previous','current'],
+    payrollComparison:{...DEFAULT_PAYROLL_COMPARISON,columns:['employeeCode','employeeName'],onlyVariances:false}},
+  });
+  fixture.payrollReportRecords={masterId:master.id,masterName,comparisonId:comparison.id,comparisonName,historicalMonth,employeeCode};
+ }
+
  if(env.PERF_SAVED_REPORT_RECORDS==='true'){
   const {saveCustomReport}=await source('core/custom-reports.ts');
   const employee=fixture.users[4];
