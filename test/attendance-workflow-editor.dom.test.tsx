@@ -40,6 +40,31 @@ describe('company workflow editor outcomes', () => {
     fireEvent.click(screen.getByRole('button',{name:'Business Unit'}));
     expect(screen.getByRole('checkbox',{name:'Operations'})).toBeVisible();
     expect(loadAssignmentOptions).toHaveBeenCalledTimes(2);
+    expect(loadAssignmentOptions).toHaveBeenNthCalledWith(1,[companyId]);
+    expect(loadAssignmentOptions).toHaveBeenNthCalledWith(2,[companyId]);
+  });
+  it('reuses the saved company catalogue and requests choices only after the company selection changes', async () => {
+    const secondCompany = '00000000-0000-0000-0000-000000000002';
+    const expanded = { ...options, companies: [...options.companies, { id: secondCompany, name: 'Company B' }] };
+    loadAssignmentOptions.mockResolvedValueOnce({
+      ...expanded,
+      departments: [...options.departments, { id: 'd3', name: 'Company B Support' }],
+    });
+    render(<NextIntlClientProvider locale="en" messages={en}>
+      <WorkflowForm context={{ companyId, applicationType: 'self_overtime' }} initial={{ ...initial(), companyIds: [companyId] }}
+        lineageId="lineage" options={expanded} deferAssignmentOptions assignmentOptionsCompanyIds={[companyId]} />
+    </NextIntlClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Department' }));
+    expect(screen.getByRole('checkbox', { name: 'Finance' })).toBeVisible();
+    expect(loadAssignmentOptions).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByPlaceholderText(en.admin.leave.adjustmentsSearchPlaceholder), { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: 'Company' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Company B' }));
+    fireEvent.keyDown(screen.getByPlaceholderText(en.attendanceWorkflow.searchCompanies), { key: 'Escape' });
+    expect(loadAssignmentOptions).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Department' }));
+    expect(await screen.findByRole('checkbox', { name: 'Company B Support' })).toBeVisible();
+    expect(loadAssignmentOptions).toHaveBeenCalledExactlyOnceWith([companyId, secondCompany]);
   });
   it('fixes company/type for creation and saves all four multi-valued criteria without losing values when searching', async () => {
     form(null);

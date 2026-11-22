@@ -78,9 +78,12 @@ export async function searchAttendanceApproversAction(input:{companyIds:string[]
  }catch(error){return {ok:false as const,error:await publicError(error)};}
 }
 
-export async function loadAttendanceAssignmentOptionsAction() {
+export async function loadAttendanceAssignmentOptionsAction(companyIds: string[]) {
  const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
- const {departments,businessUnits,grades,divisions,positions,profileFields,employees}=await attendanceApplicationFilterOptions(s,allowedCompanyIds??scopeIds);
+ const allowed=new Set(allowedCompanyIds??scopeIds);
+ if(!Array.isArray(companyIds)||!companyIds.length||companyIds.length>allowed.size
+  ||companyIds.some(id=>!allowed.has(id)))throw new AttendanceWorkflowError('scope','Select companies in your permitted scope.');
+ const {departments,businessUnits,grades,divisions,positions,profileFields,employees}=await attendanceApplicationFilterOptions(s,[...new Set(companyIds)]);
  return {departments,businessUnits,grades,divisions,positions,profileFields,
   employees:employees.map(({id,name,employeeCode})=>({id,name,employeeCode}))
  } satisfies Omit<AttendanceWorkflowOptions,'companies'>;

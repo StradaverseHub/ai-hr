@@ -26,5 +26,5 @@ export default async function EditAttendanceWorkflowPage({ params }: {
         attendanceApplicationFilterOptions(s, deferAssignmentOptions ? assigned : allowed, attendanceWorkflowSelectedEmployees(row.stages)),
         deferAssignmentOptions ? attendanceWorkflowCompanyOptions(s, allowed) : undefined,
     ]);
-    return <div className={pageWideCls}><PageHeader title={t('editTitle', { name: row.name })} description={t('newVersionHelp')} back={{ href: `/admin/attendance/approval-workflow/${lineageId}`, label: t('back') }}/><WorkflowForm key={lineageId} context={{ companyId: row.companyId, applicationType: row.applicationType }} initial={attendanceWorkflowConfiguration(row)} lineageId={lineageId} options={{ ...options, ...companyOptions }} deferAssignmentOptions={deferAssignmentOptions}/></div>;
+    return <div className={pageWideCls}><PageHeader title={t('editTitle', { name: row.name })} description={t('newVersionHelp')} back={{ href: `/admin/attendance/approval-workflow/${lineageId}`, label: t('back') }}/><WorkflowForm key={lineageId} context={{ companyId: row.companyId, applicationType: row.applicationType }} initial={attendanceWorkflowConfiguration(row)} lineageId={lineageId} options={{ ...options, ...companyOptions }} deferAssignmentOptions={deferAssignmentOptions} assignmentOptionsCompanyIds={deferAssignmentOptions ? assigned : undefined}/></div>;
 }
