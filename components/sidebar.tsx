@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useIsMonolith, useUiTheme } from './ui-theme-context';
+import { useClientReady } from './use-client-ready';
 import {
   Command,
   ListChecks,
@@ -131,6 +132,7 @@ export function Sidebar({
   // nav.appName, which does not exist — and a MISSING_MESSAGE passes tsc, the suite and `next build`
   // alike, so nothing would have told us until the screen rendered.
   const tCommon = useTranslations('common');
+  const interactive = useClientReady();
   const [collapsedPref, setCollapsed] = useState(defaultCollapsed);
   // r398 — Monolith's rail is always open on desktop (README §3: "the boards assume the rail is always open
   // on desktop"), so it offers no collapse and ignores the preference. Classic reads it exactly as before;
@@ -410,6 +412,7 @@ export function Sidebar({
             </Link>
             <button
               type="button"
+              disabled={!interactive}
               aria-label={label}
               aria-expanded={expanded}
               aria-controls={kidsId}
@@ -422,6 +425,8 @@ export function Sidebar({
         ) : (
           <button
             type="button"
+            disabled={!interactive}
+            aria-label={label}
             aria-expanded={expanded}
             aria-controls={kidsId}
             onClick={() => toggleKids(item.labelKey, expanded)}
@@ -569,13 +574,13 @@ export function Sidebar({
               <Link prefetchOnIntentOnly href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
                 <Icon aria-hidden /><span className="truncate">{label}</span>
               </Link>
-              <button ref={register} type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
+              <button ref={register} type="button" disabled={!interactive} aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
                 className="atelier-row atelier-module-toggle">
                 <ChevronDown aria-hidden className="atelier-chevron" />
               </button>
             </div>
           ) : (
-            <button ref={register} type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} title={collapsed ? label : undefined} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
+            <button ref={register} type="button" disabled={!interactive} aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip} title={collapsed ? label : undefined} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
               <Icon aria-hidden /><span className="atelier-label truncate">{label}</span>
               <ChevronDown aria-hidden className="atelier-chevron" />
             </button>
@@ -789,7 +794,7 @@ export function Sidebar({
                     return <div key={item.labelKey}>
                       <div className={cn(rowBase, 'w-full gap-1 px-3 py-1', active && 'bg-accent')}>
                         <Link prefetchOnIntentOnly href={item.defaultHref} className="flex min-h-11 min-w-0 flex-1 items-center gap-3"><Icon className="size-5 shrink-0" aria-hidden /><span className="text-sm">{t(item.labelKey)}</span></Link>
-                        <button type="button" aria-label={t(item.labelKey)} aria-expanded={expanded} aria-controls={`inline-${item.labelKey}`} className="flex size-11 shrink-0 items-center justify-center" onClick={() => setInlineOpen(old=>({...old,[item.labelKey]:!expanded}))}><ChevronDown className={cn('size-4', !expanded && '-rotate-90')} aria-hidden /></button>
+                        <button type="button" disabled={!interactive} aria-label={t(item.labelKey)} aria-expanded={expanded} aria-controls={`inline-${item.labelKey}`} className="flex size-11 shrink-0 items-center justify-center" onClick={() => setInlineOpen(old=>({...old,[item.labelKey]:!expanded}))}><ChevronDown className={cn('size-4', !expanded && '-rotate-90')} aria-hidden /></button>
                       </div>
                       {expanded && <nav id={`inline-${item.labelKey}`} aria-label={t(item.labelKey)} className="ml-7 flex flex-col gap-1">{children.map((child) => <Link prefetchOnIntentOnly key={child.href} href={child.href} aria-current={isRowActive(child) ? 'page' : undefined} className={cn('flex min-h-11 items-center rounded-xl px-3 text-sm', isRowActive(child) ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent')}>{childCaption(child)}</Link>)}</nav>}
                     </div>;
