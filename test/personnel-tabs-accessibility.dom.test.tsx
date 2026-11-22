@@ -45,6 +45,32 @@ describe('shared Personnel/ESS tab accessibility and retained behavior',()=>{
    expect(proceed).toBeTypeOf('function');act(()=>proceed!());expect(screen.getByRole('tabpanel',{name:'Family'})).toBeVisible();expect(new URL(window.location.href).searchParams.get('tab')).toBe('family');
   }finally{unregister();}
  });
+ it('mounts the directly linked panel first and keeps inputs mounted after their first visit',()=>{
+  render(<ClientTabs
+   tabs={[{key:'profile',label:'Profile'},{key:'family',label:'Family'},{key:'payroll',label:'Payroll'}]}
+   panels={{
+    profile:<input aria-label="Preferred name" defaultValue="Recorded name"/>,
+    family:<input aria-label="Contact name" defaultValue="Recorded contact"/>,
+    payroll:<input aria-label="Payroll reference" defaultValue="Recorded reference"/>,
+   }}
+   defaultTab="family"
+   emptyLabel="No records"
+   deferUnvisitedPanels
+  />);
+  expect(screen.getByRole('tabpanel',{name:'Family'})).toBeVisible();
+  expect(screen.queryByLabelText('Preferred name')).toBeNull();
+  expect(screen.queryByLabelText('Payroll reference')).toBeNull();
+
+  const contact=screen.getByLabelText('Contact name');
+  fireEvent.change(contact,{target:{value:'Unsaved contact'}});
+  fireEvent.click(screen.getByRole('tab',{name:'Profile'}));
+  expect(screen.getByLabelText('Preferred name')).toBeVisible();
+  expect(contact).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab',{name:'Family'}));
+  expect(contact).toBeVisible();
+  expect(contact).toHaveValue('Unsaved contact');
+  expect(screen.queryByLabelText('Payroll reference')).toBeNull();
+ });
  it('retains active-tab form tracking after switching',()=>{
   render(shell('Own Profile'));fireEvent.click(screen.getByRole('tab',{name:'Family'}));
   const form=screen.getByRole('form',{name:'Own Profile form'});fireEvent.submit(form);
