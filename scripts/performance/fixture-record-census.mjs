@@ -620,6 +620,32 @@ async function loanRecordRoutes(db, fixture) {
   ]);
 }
 
+async function systemTestingRecordRoutes(db, fixture) {
+  const [group,,,,employee] = fixture.users;
+  const record = fixture.systemTestingRecord;
+  assert(record && group.tenantId === employee.tenantId);
+  const [saved] = await db`
+    select c.title,c.case_no,e.tester_user_id,r.actual_result,r.execution_status
+    from test_execution e
+    join test_run r on r.id=e.current_run_id and r.tenant_id=e.tenant_id
+    join test_case c on c.id=r.test_case_id and c.tenant_id=r.tenant_id
+    where e.id=${record.executionId}::uuid and e.tenant_id=${group.tenantId}::uuid
+      and c.id=${record.caseId}::uuid and c.current_version_id=${record.versionId}::uuid
+  `;
+  assert.deepEqual(saved,{title:record.title,case_no:record.caseNo,tester_user_id:employee.userId,
+    actual_result:record.actualResult,execution_status:'passed'});
+  const heading = 'TC-'+String(record.caseNo).padStart(4,'0')+' · '+record.title;
+  const versionQuery = '?versionId='+record.versionId;
+  return [
+    {actor:group,template:'/admin/system-testing/[id]',path:'/admin/system-testing/'+record.caseId,
+      exactHeading:heading,witness:'a[href="'+versionQuery+'"]',testingVersion:{query:versionQuery,ordinal:record.ordinal}},
+    {actor:group,template:'/admin/system-testing/executions/[id]',path:'/admin/system-testing/executions/'+record.executionId,
+      exactHeading:heading,content:record.actualResult,exactContent:true},
+    {actor:employee,template:'/system-testing/executions/[id]',path:'/system-testing/executions/'+record.executionId,
+      exactHeading:heading,content:record.actualResult,exactContent:true},
+  ];
+}
+
 async function letterCatalogRecordRoutes(db, fixture) {
   const [group,company,,,employee] = fixture.users;
   const record=fixture.letterCatalogRecord;
@@ -1134,7 +1160,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, letterCatalogRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, letterCatalogRecords, systemTestingRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1148,6 +1174,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : loanRecords ? await loanRecordRoutes(db, fixture)
     : savedReportRecords ? await savedReportRecordRoutes(db, fixture)
     : letterCatalogRecords ? await letterCatalogRecordRoutes(db, fixture)
+    : systemTestingRecords ? await systemTestingRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -1234,6 +1261,17 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             row.savedReportPageReadyMs=Math.round(performance.now()-started);
             row.step='saved-report-preview';
             await verifySavedReportPreview(page,main,entry,row,remaining);
+          }
+          if (entry.testingVersion && pass === 'first') {
+            row.testingPageReadyMs = Math.round(performance.now() - started);
+            row.step = 'testing-version-history';
+            const { query, ordinal } = entry.testingVersion;
+            const actionStart = performance.now();
+            await main.locator('a[href="'+query+'"]').click({ timeout: remaining() });
+            await page.waitForURL(origin + entry.path + query, { timeout: remaining() });
+            await main.getByRole('heading',{name:'Version history · '+ordinal,exact:true})
+              .waitFor({state:'visible',timeout:remaining()});
+            row.testingVersionHistoryMs = Math.round(performance.now() - actionStart);
           }
           if (entry.letterCatalogPreview && pass === 'first') {
             row.letterPageReadyMs = Math.round(performance.now()-started);

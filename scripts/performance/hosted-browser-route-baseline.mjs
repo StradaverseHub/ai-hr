@@ -45,8 +45,9 @@ const censusAttendanceHistoryRecords=shardInput==='attendance-history-records';
 const censusLoanRecords=shardInput==='loan-records';
 const censusSavedReportRecords=shardInput==='saved-report-records';
 const censusLetterCatalogRecords=shardInput==='letter-catalog-records';
+const censusSystemTestingRecords=shardInput==='system-testing-records';
 const censusFullFixtureRecords=shardInput==='fixture-records';
-const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusAttendanceRecords||censusPerformanceReportRecords||censusJobDescriptionRecords||censusNoticeRecords||censusAttendanceConfigurationRecords||censusAttendanceHistoryRecords||censusLoanRecords||censusSavedReportRecords||censusLetterCatalogRecords;
+const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusAttendanceRecords||censusPerformanceReportRecords||censusJobDescriptionRecords||censusNoticeRecords||censusAttendanceConfigurationRecords||censusAttendanceHistoryRecords||censusLoanRecords||censusSavedReportRecords||censusLetterCatalogRecords||censusSystemTestingRecords;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1564,13 +1565,14 @@ try{
     PERF_LOAN_RECORDS:String(censusLoanRecords),
     PERF_SAVED_REPORT_RECORDS:String(censusSavedReportRecords),
     PERF_LETTER_CATALOG_RECORDS:String(censusLetterCatalogRecords),
+    PERF_SYSTEM_TESTING_RECORDS:String(censusSystemTestingRecords),
    });
  }finally{
   const stagePath=join(privateDir,'record-fixture-stage');
   if(existsSync(stagePath)){
    const stage=readFileSync(stagePath,'utf8');
    if(['fixture','onboarding-config','draft-joiners','lifecycle-defaults','legacy-onboarding','legacy-offboarding',
-    'lifecycle-asset','lifecycle-asset-request','performance-cycle-grades','performance-cycle-create',
+    'lifecycle-asset','lifecycle-asset-request','system-testing-records','performance-cycle-grades','performance-cycle-create',
     'performance-cycle-participants','performance-cycle-open','performance-team-review','complete'].includes(stage)){
     report.recordFixtureStage=stage;
    }
@@ -1715,7 +1717,7 @@ try{
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
      importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords,
      performanceReportRecords:censusPerformanceReportRecords,jobDescriptionRecords:censusJobDescriptionRecords,
-     noticeRecords:censusNoticeRecords,attendanceConfigurationRecords:censusAttendanceConfigurationRecords,attendanceHistoryRecords:censusAttendanceHistoryRecords,loanRecords:censusLoanRecords,savedReportRecords:censusSavedReportRecords,letterCatalogRecords:censusLetterCatalogRecords});
+     noticeRecords:censusNoticeRecords,attendanceConfigurationRecords:censusAttendanceConfigurationRecords,attendanceHistoryRecords:censusAttendanceHistoryRecords,loanRecords:censusLoanRecords,savedReportRecords:censusSavedReportRecords,letterCatalogRecords:censusLetterCatalogRecords,systemTestingRecords:censusSystemTestingRecords});
     if(censusFullFixtureRecords){
      await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
      assert(fixture.performanceRecords,'The full record plan requires a populated Performance assessment cycle');

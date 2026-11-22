@@ -68,6 +68,34 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_SYSTEM_TESTING_RECORDS==='true'){
+  setStage('system-testing-records');
+  const {saveTestInstructionDraft,publishTestInstruction,assignTestingCase,beginTestingExecution,saveTestingExecution}=
+   await source('core/system-testing.ts');
+  const employee=fixture.users[4];
+  assert(employee.role==='employee'&&employee.companyId===company.companyId);
+  const tester={tenantId:ctx.tenantId,userId:employee.userId,personId:employee.personId,roles:['employee'],
+   grants:[{role:'employee',companyId:employee.companyId}],entitlements:ctx.entitlements};
+  const title='Fictional Personnel save and reopen';
+  const draft=await saveTestInstructionDraft(ctx,{caseId:null,expectedRevision:0,definition:{
+   format:1,title,objective:'Check a saved preferred name.',functionKey:'personnel.profile',
+   area:'personnel',moduleCode:'employees',category:'functional',priority:'high',active:true,
+   prerequisites:['Use the assigned fictional employee and company HR authority.'],testData:['A fictional preferred name.'],
+   steps:[{id:'save',action:'Save the fictional preferred name.',expected:'The profile saves the name.'}],
+   expectedBehavior:'The saved name remains visible.',expectedFunction:'Personnel profile write and read.',
+   permissions:['Company HR access to the fictional employee.'],jurisdiction:null,configuration:null,screenKeys:['personnelAdmin'],
+  }});
+  const version=await publishTestInstruction(ctx,{caseId:draft.caseId,expectedDraftRevision:draft.revision,expectedVersionId:null});
+  const assignment=await assignTestingCase(ctx,{caseId:draft.caseId,testerUserId:tester.userId,expectedVersionId:version.versionId,
+   active:true,expectedRevision:null});
+  const execution=await beginTestingExecution(tester,{assignmentId:assignment.assignmentId,expectedVersionId:version.versionId,newAttempt:false});
+  const actualResult='The fictional preferred name was retained.';
+  await saveTestingExecution(tester,{executionId:execution.executionId,assignmentId:assignment.assignmentId,versionId:version.versionId,
+   expectedRevision:execution.revision,status:'passed',actualResult,comments:'Fictional browser timing fixture',defectNotes:'',improvementNotes:''});
+  fixture.systemTestingRecord={caseId:draft.caseId,caseNo:draft.caseNo,versionId:version.versionId,
+   ordinal:version.ordinal,executionId:execution.executionId,title,actualResult};
+ }
+
  if(env.PERF_LETTER_CATALOG_RECORDS==='true'){
   const {saveLetterField,saveLetterTemplate}=await source('core/letters.ts');
   const companyId=company.companyId,key='performanceEmployeeName',fieldLabel='Fictional employee name';
