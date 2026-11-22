@@ -8,6 +8,7 @@ import { Avatar } from '@/components/ui';
 import { LogoutButton } from '@/components/logout-button';
 import { TourLauncher } from '@/components/tour-launcher';
 import { UiThemeSwitcher } from '@/components/ui-theme-switcher';
+import { useClientReady } from '@/components/use-client-ready';
 import { cn } from '@/lib/utils';
 
 /**
@@ -93,6 +94,7 @@ export function UserMenu({
   const t = useTranslations('topbar');
   const accessT=useTranslations('accessConfiguration');
   const navT=useTranslations('nav');
+  const interactive = useClientReady();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -131,6 +133,7 @@ export function UserMenu({
       <button
         ref={trigger}
         type="button"
+        disabled={!interactive}
         onClick={() => setOpen(value => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
