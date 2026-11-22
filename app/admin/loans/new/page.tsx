@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listEmployees } from '@/core/read';
+import { readSelectedEmployeeHeader } from '@/core/employee-choice';
 import { Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { LoanNewForm } from '@/components/loan-new-form';
 
@@ -14,7 +14,7 @@ import { LoanNewForm } from '@/components/loan-new-form';
  * first alphabetically — and simply LOOKING at a person's loans presented a form to create one.
  *
  * THE EMPLOYEE IS FIXED FROM THE URL AND SCOPE-GUARDED HERE. `?employmentId=` is resolved against this
- * admin's own employee list before anything renders; an id that does not resolve is a 404, not an empty
+ * admin's visible employment records before anything renders; an id that does not resolve is a 404, not an empty
  * form. That is the refusal `requireAdmin()` alone cannot give: the gate says "an admin", the guard says
  * "an employee this admin can already see". The gate itself is UNCHANGED — `requireAdmin()`, exactly as the
  * loans screen has always used, deliberately not swapped for `scopedAdmin()` during a UI redesign.
@@ -33,8 +33,7 @@ export default async function NewLoanPage({
   const t = await getTranslations('loans');
   const { employmentId, error } = await searchParams;
 
-  const employees = await listEmployees(s);
-  const emp = employmentId ? (employees.find((e) => e.employmentId === employmentId) ?? null) : null;
+  const emp = await readSelectedEmployeeHeader(s, employmentId);
   if (!emp) notFound();
   // A loan may only be opened for someone still employed — a terminated employment has no future payroll
   // run to deduct an instalment from. Reading a terminated person's EXISTING loans stays possible (the list

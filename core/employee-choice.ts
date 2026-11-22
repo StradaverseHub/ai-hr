@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {employment,person,company,assignment,department,businessUnit} from '../db/schema';
+import {employment,person,company,assignment,department,businessUnit,position} from '../db/schema';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {organisationFilterChoices} from '../lib/organisation-choice-label';
 import {isAdmin} from '../lib/authz-model';
@@ -20,12 +20,40 @@ const nonAscii=(value:SQL)=>sql`(${value} collate "C") ~ '[^ -~]'`;
 function employeeIdentityFrom(tenantId:string){return sql`from ${employment}
  join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
  join ${company} on ${company.id}=${employment.companyId} and ${company.tenantId}=${tenantId}::uuid`;}
-function employeeChoiceFrom(tenantId:string){return sql`${employeeIdentityFrom(tenantId)}
- left join lateral (select ${assignment.id},${assignment.departmentId},${assignment.businessUnitId}
+function employeeWithAssignmentFrom(tenantId:string,assignmentColumns:SQL){return sql`${employeeIdentityFrom(tenantId)}
+ left join lateral (select ${assignmentColumns}
   from ${assignment} where ${assignment.employmentId}=${employment.id} and ${assignment.validTo} is null
    and ${assignment.supersededAt} is null and ${assignment.tenantId}=${tenantId}::uuid offset 0) as ${sql.identifier('assignment')} on true
- left join ${department} on ${department.id}=${assignment.departmentId} and ${department.tenantId}=${tenantId}::uuid
+ left join ${department} on ${department.id}=${assignment.departmentId} and ${department.tenantId}=${tenantId}::uuid`;}
+function employeeChoiceFrom(tenantId:string){return sql`
+ ${employeeWithAssignmentFrom(tenantId,sql`${assignment.id},${assignment.departmentId},${assignment.businessUnitId}`)}
  left join ${businessUnit} on ${businessUnit.id}=${assignment.businessUnitId} and ${businessUnit.tenantId}=${tenantId}::uuid`;}
+
+type SelectedEmployeeHeader = {
+ employmentId: string;
+ name: string;
+ employeeCode: string | null;
+ company: string;
+ department: string | null;
+ position: string | null;
+ terminatedOn: string | null;
+};
+
+/** Resolve the selected employment with the same visible identity and current assignment as the roster. */
+export async function readSelectedEmployeeHeader(ctx:SessionContext,employmentId:string|undefined):Promise<SelectedEmployeeHeader|null>{
+ if(typeof employmentId!=='string'||!uuid.test(employmentId))return null;
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.execute<SelectedEmployeeHeader>(sql`
+   select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode",
+    ${company.legalName} as company,${department.name} as department,${position.title} as position,
+    ${employment.terminatedOn}::text as "terminatedOn"
+   ${employeeWithAssignmentFrom(ctx.tenantId,sql`${assignment.departmentId},${assignment.positionId}`)}
+   left join ${position} on ${position.id}=${assignment.positionId} and ${position.tenantId}=${ctx.tenantId}::uuid
+   where ${employment.tenantId}=${ctx.tenantId}::uuid and ${employment.id}=${employmentId}::uuid limit 1
+  `);
+  return row??null;
+ });
+}
 const normalizeId=(value:string|undefined)=>{
  if(value&&!uuid.test(value))throw new EmployeeChoiceInputError('Invalid employee filter');return value??'';
 };

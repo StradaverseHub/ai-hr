@@ -5,7 +5,7 @@ import {availableParallelism,cpus,totalmem} from 'node:os';
 import {eq,sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
-import {readEmployeeChoices,readEmployeeChoicesTx} from '../core/employee-choice';
+import {readEmployeeChoices,readEmployeeChoicesTx,readSelectedEmployeeHeader} from '../core/employee-choice';
 import {isEmployeeChoicePage,type EmployeeChoice,type EmployeeChoicePage} from '../lib/employee-choice';
 import {listEmployees} from '../core/read';
 import {rosterPopulationReview,rosterWindowPage} from '../core/roster-presentation';
@@ -30,9 +30,17 @@ it('preserves native scope, exact JavaScript Unicode search, facets and independ
   const id=randomUUID(),pid=randomUUID();ids.push(id);
   await owner.db.insert(person).values({id:pid,tenantId:b.tenantId,fullName:name,primaryEmail:pid+'@example.invalid'});
   await owner.db.insert(employment).values({id,tenantId:b.tenantId,personId:pid,companyId:b.companyId,employeeCode:i===8?'KELVIN-CODE':'CODE-'+String(i).padStart(3,'0'),hiredOn:'2020-01-01',terminatedOn:i===1?'2024-01-01':null});
-  await owner.db.insert(assignment).values({tenantId:b.tenantId,employmentId:id,companyId:b.companyId,departmentId:i===1?b.deptB:b.deptA,employmentType:'full_time',validFrom:'2020-01-01'});
+  await owner.db.insert(assignment).values({tenantId:b.tenantId,employmentId:id,companyId:b.companyId,departmentId:i===1?b.deptB:b.deptA,positionId:i===0?b.positionId:null,employmentType:'full_time',validFrom:'2020-01-01'});
  }
  const legacy=await listEmployees(ctx,[b.companyId]);expect(legacy).toHaveLength(names.length);
+ for(const employmentId of ids.slice(0,2)){
+  const record=legacy.find(row=>row.employmentId===employmentId)!;
+  const {name,employeeCode,company,department,position,terminatedOn}=record;
+  expect(await readSelectedEmployeeHeader(ctx,employmentId)).toEqual({
+   employmentId,name,employeeCode,company,department,position,terminatedOn,
+  });
+ }
+ expect(await readSelectedEmployeeHeader(ctx,'invalid-employment')).toBeNull();
  const first=await readEmployeeChoices(ctx,{companyIds:[b.companyId],limit:25,selectedId:ids.at(-1)});
  expect(isEmployeeChoicePage(JSON.parse(JSON.stringify(first)))).toBe(true);expect(first.total).toBe(names.length);expect(first.rows.map(row=>row.employmentId)).toEqual(legacy.slice(0,25).map(row=>row.employmentId));
  expect(first.selected?.employmentId).toBe(ids.at(-1));expect(first.rows).toHaveLength(25);
@@ -52,6 +60,7 @@ it('preserves native scope, exact JavaScript Unicode search, facets and independ
  expect(noMatch.total).toBe(0);expect(noMatch.selected?.employmentId).toBe(ids.at(-1));
  const foreign=await seedBase(),outsider=await hireEmployee(adminCtx(foreign),{person:{fullName:'Foreign choice',primaryEmail:'foreign-choice@example.invalid'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  expect((await readEmployeeChoices(ctx,{companyIds:[],selectedId:outsider.employmentId})).selected).toBeNull();
+ expect(await readSelectedEmployeeHeader(ctx,outsider.employmentId)).toBeNull();
  expect((await readEmployeeChoices(ctx,{companyIds:[foreign.companyId],selectedId:ids[0]})).total).toBe(0);
  await expect(readEmployeeChoices({...ctx,personId:randomUUID()},{companyIds:[]})).rejects.toThrow('calling authority');
  const employeeUser=await createAppUser(b.tenantId,legacy.find(row=>row.employmentId===ids[0])!.personId,'employee');

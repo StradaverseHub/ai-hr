@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listEmployees } from '@/core/read';
+import { readSelectedEmployeeHeader } from '@/core/employee-choice';
 import { getLoanWithSchedule } from '@/core/loans';
 import { Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -23,7 +23,7 @@ import {
  * states its own consequence beside its own button, and the schedule is a table rather than a fold.
  *
  * THE READ IS MATCHED ON BOTH THE ID AND THE RESOLVED EMPLOYMENT. `?employmentId=` is scope-guarded against
- * this admin's own employee list, and the loan is then checked to belong to that employment — so a tampered
+ * this admin's visible employment, and the loan is then checked to belong to that employment — so a tampered
  * id 404s instead of quietly resolving onto somebody else's loan. RLS scopes the tenant; it does not decide
  * which employee a URL is allowed to name.
  *
@@ -49,8 +49,7 @@ export default async function LoanDetailPage({
   const { id } = await params;
   const { employmentId, error } = await searchParams;
 
-  const employees = await listEmployees(s);
-  const emp = employmentId ? (employees.find((e) => e.employmentId === employmentId) ?? null) : null;
+  const emp = await readSelectedEmployeeHeader(s, employmentId);
   if (!emp) notFound();
 
   const found = await getLoanWithSchedule(s, id);
