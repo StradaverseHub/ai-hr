@@ -760,6 +760,17 @@ describe('evaluator-owned leave routing suite', () => {
     expect(JSON.stringify(score)).not.toMatch(/Fictional|17\.25|leave balance/);
   });
 
+  it('keeps a shared company name ambiguous even if one own employment has no visible balance', () => {
+    const withHiddenSibling = [...successorCases, {
+      scenario: { question, employments: [company, { ...otherCompany, company: company.company, balances: [] }],
+        clarification: employmentChoice(company.company) }, expected: defer,
+    }];
+    const {bytes,digest}=frozenSuccessor(withHiddenSibling);
+    expect(scoreLeaveRoutingSuccessor(bytes,digest,candidateSha)).toMatchObject({
+      cases:13, additionalCorrectAnswers:3, successorCorrectDeferrals:7, unexpectedDirect:0, meetsThreshold:true,
+    });
+  });
+
   it('refuses a widened successor evaluation and detects a deferral regression', () => {
     const { bytes, digest } = frozenSuccessor();
     expect(() => scoreLeaveRoutingSuccessor(bytes, digest, 'b'.repeat(40))).toThrow('Invalid frozen successor leave suite');

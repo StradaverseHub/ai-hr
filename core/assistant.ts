@@ -47,7 +47,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveEntitlementsTx} from './entitlements';
 import {withAssistantAdmissionReadsTx} from './assistant-read-session';
 import {assistantSourceReplay} from './assistant-disclosure-read';
-import {selectProtectedLeaveCount} from '../lib/ai/assistant-leave-count';
+import {selectTrialLeaveCount,type LeaveTrialEmployment} from '../lib/ai/assistant-leave-count';
 import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from './leave-dependency-lock';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,readGovernedSpecialistToolResultTx,type AssistantConversationStrategyCapability} from './module-agent-releases';
 import { adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
@@ -242,7 +242,7 @@ async function askAssistantActivity(
   let answer = '';
   let answerPlan: AssistantAnswerPlan | undefined;
   let answeredLeaveLocally = false;
-  let ownLeaveEmployments: readonly string[] | undefined;
+  let ownLeaveRoster: readonly LeaveTrialEmployment[] | undefined;
   const answerReads: AssistantAnswerRead[] = [];
   let stop: AiStop = 'other';
   let turnCount = 0;
@@ -273,10 +273,11 @@ async function askAssistantActivity(
         // Identity grouping remains local and comes from this exact successful own-subject source.
         // Multiple own employments with the same company label remain ambiguous, never merged.
         if(result.name==='my_leave_balances'&&Array.isArray(outcome.employments)){
-          const subjects:unknown[]=outcome.employments.map((employment:{employmentId?:unknown}|null)=>employment?.employmentId);
-          if(subjects.length && subjects.every((subject):subject is string=>
-            typeof subject==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(subject)) &&
-            new Set(subjects).size===subjects.length)ownLeaveEmployments=Object.freeze(subjects);
+          const roster:readonly {employmentId?:unknown;company?:unknown}[]=outcome.employments;
+          if(roster.length && roster.every((item):item is LeaveTrialEmployment=>
+            typeof item?.employmentId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(item.employmentId)&&
+            typeof item.company==='string') &&
+            new Set(roster.map(item=>item.employmentId)).size===roster.length)ownLeaveRoster=roster;
           let card=0;for(const employment of outcome.employments){if(!employment||typeof employment!=='object'||!Array.isArray(employment.balances))continue;for(const _balance of employment.balances){if(card<presentation.cards.length&&typeof employment.employmentId==='string'&&typeof employment.company==='string')localEmployments.push({read,card,key:employment.employmentId,labels:[employment.company]});card++;}}
         }
       }}catch{/* No unsupported source acquires answer authority. */}}
@@ -284,8 +285,9 @@ async function askAssistantActivity(
       const selectedCards=selectPrivateAssistantCards(intent.intent,answerReads,clarification,localEmployments);
       const catalogue=privateAssistantCatalogue(intent.intent,answerReads,conversationStrategy.variant,selectedCards.selection);
       const hasReferences=catalogue.operation==='conversation'&&catalogue.reads.some(read=>read.explanations.length||read.cards.some(card=>card.facts.some(fact=>fact.available)));
-      const localLeave=conversationStrategy.localLeave && ownLeaveEmployments?.length===1 && !selectedCards.slot &&
-        sourceReads.length===1 && sourceReads[0].name==='my_leave_balances' ? selectProtectedLeaveCount(catalogue) : null;
+      const localLeave=conversationStrategy.localLeave && ownLeaveRoster && !selectedCards.slot &&
+        sourceReads.length===1 && sourceReads[0].name==='my_leave_balances'
+        ? selectTrialLeaveCount(catalogue,'single_employment',ownLeaveRoster,localEmployments,clarification) : null;
       if(selectedCards.slot){answerPlan={version:1,mode:'clarify',slot:selectedCards.slot};stop='end';answer=JSON.stringify(answerPlan);}
       else if(!hasReferences){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'insufficient',code:'no_verified_facts'},answerReads,{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
       else if(localLeave){
@@ -365,7 +367,7 @@ async function askAssistantActivity(
     error: failure,
     sourceReads: sourcesComplete ? sourceReads : undefined,
     answerPlan,
-    ownLeaveEmployments,
+    ownLeaveEmployments: ownLeaveRoster?.map(row=>row.employmentId),
   });
   // Content withdrawn mid-flight (history cleared, erasure, access change): accounting was recorded, the
   // answer was not. The caller sees the generic, warm failure and nothing that confirms what was erased.

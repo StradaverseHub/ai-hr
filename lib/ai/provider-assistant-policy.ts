@@ -67,6 +67,7 @@ export function adjudicatePrivateAssistantReadPlan(text:string,local:unknown):Re
  if(plan.modules.some(module=>!source.modules.includes(module)))return fail();return plan;
 }
 const normalize=(value:string)=>value.normalize('NFC').trim().toLocaleLowerCase('en').replace(/[.!?。！？]+$/u,'').replace(/\s+/g,' ');
+export {normalize as normalizePrivateAssistantSelectionLabel};
 const aliases:Readonly<Partial<Record<PrivateAssistantIntent,readonly string[]>>>=Object.freeze({
  module_overview:['what can you do','what can you help me with','what can you help me do in this application','how many agents are turned on and where do i activate the rest','show assistant capabilities'],
  leave_available:['my leave balance','show my leave balance','how much leave do i have','how much leave do i have left','how much leave is left','what is my leave balance','my leave'],

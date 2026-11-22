@@ -7,7 +7,7 @@ import {
   adjudicatePrivateAssistantTerminal, privateAssistantCatalogue, resolvePrivateAssistantClarifiedIntent,
   resolvePrivateAssistantContextualIntent, resolvePrivateAssistantProposal, selectPrivateAssistantCards, type PrivateAssistantClarification,
 } from '../../lib/ai/provider-assistant-policy';
-import { selectProtectedLeaveCount } from '../../lib/ai/assistant-leave-count';
+import { selectProtectedLeaveCount, selectTrialLeaveCount, type LeaveTrialScope } from '../../lib/ai/assistant-leave-count';
 import { readFrozenHoldoutJson } from './protected-work-summary-holdout';
 import { evaluateProtectedAnswer } from './protected-answer-comparison';
 import type { PilotModel } from '../teras/leave-improvement';
@@ -25,7 +25,7 @@ const leave = z.object({
 const scenario = z.object({
   question: wording,
   clarification: z.object({ slot: z.enum(['employment', 'leave_type']), answer: wording }).strict().optional(),
-  employments: z.array(z.object({ company: label, balances: z.array(leave).min(1).max(6) }).strict()).max(4),
+  employments: z.array(z.object({ company: label, balances: z.array(leave).max(6) }).strict()).max(4),
 }).strict();
 const expected = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('direct'), employment: z.number().int().min(0).max(3),
@@ -125,17 +125,19 @@ function project(input: z.infer<typeof scenario>) {
   })));
   if (presentation.cards.length !== cards.length) throw Error('Unexpected canonical fixture projection.');
   const reads = [{ read: 0, presentation, explanations: [] }];
-  const selection = selectPrivateAssistantCards(intent, reads, clarification, cards.map((row, card) => ({ ...row, read: 0, card })));
+  const cardEmployments = cards.map((row, card) => ({ ...row, read: 0, card }));
+  const selection = selectPrivateAssistantCards(intent, reads, clarification, cardEmployments);
   if (selection.slot) return null;
   const catalogue = privateAssistantCatalogue(intent, reads, 'baseline_v1', selection.selection);
-  return { intent, reads, selected: selection, catalogue, cards, presentation };
+  return { intent, reads, selected: selection, catalogue, cards, presentation, employments, cardEmployments, clarification };
 }
 
-function observe(source: ReturnType<typeof project>): z.infer<typeof expected> {
+function observe(source: ReturnType<typeof project>, scope?: LeaveTrialScope): z.infer<typeof expected> {
   const defer = { kind: 'defer' } as const;
   if (!source) return defer;
   const { catalogue, reads, cards, presentation } = source;
-  const block = selectProtectedLeaveCount(catalogue);
+  const block = scope ? selectTrialLeaveCount(catalogue, scope, source.employments, source.cardEmployments, source.clarification)
+    : selectProtectedLeaveCount(catalogue);
   if (!block) return defer;
   adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(JSON.stringify({
     version: 1, mode: 'answer', blocks: [block],
@@ -155,7 +157,7 @@ function scoreCases(cases: z.infer<typeof casesSchema>, requireOneEmployment = f
   const scores = { correctDirect: 0, correctDeferrals: 0, wrongDirect: 0, unexpectedDirect: 0, missedDirect: 0 };
   const paired = cases.map(item => {
     const source = project(item.scenario);
-    const observed = observe(requireOneEmployment && item.scenario.employments.length !== 1 ? null : source);
+    const observed = observe(source, requireOneEmployment ? 'single_employment' : undefined);
     const correct = routingDigest(item.expected) === routingDigest(observed);
     if (item.expected.kind === 'defer') {
       if (observed.kind === 'defer') scores.correctDeferrals++;
@@ -191,9 +193,8 @@ export function scoreLeaveRoutingSuccessor(bytes: Buffer, holdoutDigest: string,
   const { paired, fingerprints, result } = scoreCases(cases, true);
   const comparison = { parentCorrectDirect: 0, parentCorrectDeferrals: 0, successorCorrectDirect: 0,
     successorCorrectDeferrals: 0, additionalCorrectAnswers: 0, regressions: 0, wrongDirect: 0, unexpectedDirect: 0 };
-  for (const { scenario, expected, source, observed: parent, correct: parentCorrect } of paired) {
-    const successor = scenario.employments.length > 1 && scenario.clarification?.slot === 'employment'
-      ? observe(source) : parent;
+  for (const { expected, source, observed: parent, correct: parentCorrect } of paired) {
+    const successor = observe(source, 'explicit_employment');
     const successorCorrect = routingDigest(successor) === routingDigest(expected);
     if (expected.kind === 'direct') {
       if (parentCorrect) comparison.parentCorrectDirect++;

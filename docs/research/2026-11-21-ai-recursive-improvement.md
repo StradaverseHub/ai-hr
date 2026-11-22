@@ -373,6 +373,8 @@ node --import tsx scripts/experiments/protected-leave-routing-receipt-cli.ts ver
 
 The verifier checks the archived parent signatures at their recorded verification time, the separate successor signatures, actor separation, exact source and report digests, and scenario reuse across rounds. It requires a correct result for every successor case, an exact improvement over the parent and the frozen minimum of added correct answers. The acceptance time and build in the archive are coordinator attestations. The verifier validates their commitment and order. It does not query an installation, issue a promotion or let first-trial receipts activate the successor.
 
+The evaluator and the Assistant now use the same direct-answer selector. It matches an explicit company choice against the complete own employment roster, then checks that the single selected balance card belongs to that employment. Two employments with the same company name remain ambiguous even if only one has a visible balance. The Assistant still invokes its single-employment profile. The explicit-employment profile is used by the offline successor evaluator pending native admission.
+
 Candidate reviews shows the admission limit separately from the owner's observed trial exchanges and model responses. The model-free count comes from completed own exchanges with a retained canonical answer and zero model turns or tokens. Clearing Assistant history or strategy metadata can remove the underlying evidence. These counts measure recorded use and give no accuracy or savings estimate by themselves.
 
 ### Paired development comparison on the integrated leave candidate
