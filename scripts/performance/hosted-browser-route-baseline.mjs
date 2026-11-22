@@ -34,11 +34,12 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','command-delegation','tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','shell-content','command-delegation','tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe),'Unknown browser surface');
 const tp3CatalogueProbe=['tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe);
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
 ]);
+const shellContentRoutes=new Set(['/','/admin/personnel','/payroll','/approvals','/me/cases']);
 const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const actionLane=surfaceProbe==='actions'?laneInput:null;
 assert(actionLane===null||['shell','workforce','payroll','approvals'].includes(actionLane),'Unknown action lane');
@@ -50,7 +51,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(!(tp3CatalogueProbe||['leave-inbox','leave-balances','roster'].includes(surfaceProbe))||groupShape,'The selected comparison requires group scale');
+assert(!(tp3CatalogueProbe||['leave-inbox','leave-balances','roster','shell-content'].includes(surfaceProbe))||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -2583,8 +2584,8 @@ try{
   else if(surfaceProbe==='leave-balances')await measureLeaveBalanceWindows(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
-  else if(surfaceProbe==='content-readiness'){
-   await measureRoutes(fixture,readinessRoutes);
+  else if(surfaceProbe==='content-readiness'||surfaceProbe==='shell-content'){
+   await measureRoutes(fixture,surfaceProbe==='shell-content'?shellContentRoutes:readinessRoutes);
    assert.equal(report.observations.length,2*report.plannedRoleRoutes);
    assert(report.observations.every(row=>row.status==='observed'&&row.readiness==='usable-content'),
     'A selected route missed its usable-content check');
