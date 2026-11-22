@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import { cleanup,fireEvent,render,screen,waitFor,within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
@@ -33,6 +34,19 @@ describe('versioned testing controls',()=>{
     expect(payload().steps).toEqual([original[1],original[0]]);
     fireEvent.click(screen.getAllByRole('button',{name:en.systemTestingWorkspace.remove})[1]);
     expect(payload().steps).toEqual([original[1]]); expect(actions.save).not.toHaveBeenCalled();
+  });
+  it('enables observation editing and save when the client handler is ready',()=>{
+    const form=<TestingObservationForm executionId={id} assignmentId={id} versionId={id} revision={3}
+      current={{status:'in_progress',actualResult:'Original',comments:'',defectNotes:'',improvementNotes:''}}/>;
+    const server=document.createElement('div');
+    server.innerHTML=renderToStaticMarkup(
+      <NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">{form}</NextIntlClientProvider>
+    );
+    expect(within(server).getByRole('button',{name:en.systemTestingWorkspace.saveObservation})).toBeDisabled();
+    expect(within(server).getByLabelText(en.systemTestingWorkspace.actualResult)).toBeDisabled();
+    wrap(form);
+    expect(screen.getByRole('button',{name:en.systemTestingWorkspace.saveObservation})).toBeEnabled();
+    expect(screen.getByLabelText(en.systemTestingWorkspace.actualResult)).toBeEnabled();
   });
   it('retains typed content and the opened revision when an unrelated refresh supplies a newer observation',()=>{
     const props={executionId:id,assignmentId:id,versionId:id,revision:3,current:{status:'in_progress' as const,actualResult:'Original',comments:'',defectNotes:'',improvementNotes:''}};
