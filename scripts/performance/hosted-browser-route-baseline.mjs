@@ -2325,17 +2325,35 @@ async function measurePersonnelCreation(fixture){
   assert(created?.code,'Personnel draft did not reserve an employee ID');
   row.createPersistedMs=Math.round(performance.now()-creating);
   row.stage='save';
-  await name.fill('Fictional create readiness edited');
+  const saveDraft=page.getByRole('button',{name:'Save draft',exact:true});
+  await saveDraft.and(page.locator('button:enabled')).waitFor({state:'visible',timeout:15000});
+  await page.locator('input[data-personnel-field="profile.personal_details.fullname"]')
+   .and(page.locator('input[value="Fictional create readiness"]')).waitFor({state:'visible',timeout:15000});
+  const editedName='Fictional create readiness edited';
+  await name.fill(editedName);
+  assert.equal(await name.inputValue(),editedName);
+  const isDraftAction=request=>new URL(request.url()).pathname==='/admin/personnel/new'&&
+   request.method()==='POST'&&Boolean(request.headers()['next-action']);
+  row.saveRequests=[];
+  page.on('request',request=>{
+   if(!isDraftAction(request))return;
+   const body=request.postData()??'';
+   row.saveRequests.push({matchesDraft:body.includes(draft),matchesEdit:body.includes(editedName)});
+  });
   const saving=performance.now();
-  await Promise.all([
-   page.waitForResponse(reply=>new URL(reply.url()).pathname==='/admin/personnel/new'&&
-    reply.request().method()==='POST'&&Boolean(reply.request().headers()['next-action']),{timeout:15000}).then(async reply=>{
-     assert.equal(reply.status(),200);
-     await reply.finished();
-    }),
-   page.getByRole('button',{name:'Save draft',exact:true}).click({timeout:15000}),
+  const [saved]=await Promise.all([
+   page.waitForResponse(reply=>{
+    const request=reply.request();
+    if(!isDraftAction(request))return false;
+    const body=request.postData()??'';
+    return body.includes(draft)&&body.includes(editedName);
+   },{timeout:15000}),
+   saveDraft.click({timeout:15000}),
   ]);
-  assert.deepEqual(await readDraft(),{...created,label:'Fictional create readiness edited'});
+  assert.equal(saved.status(),200);
+  assert.equal(await saved.finished(),null);
+  await page.getByText('Draft saved',{exact:true}).waitFor({state:'visible',timeout:15000});
+  assert.deepEqual(await readDraft(),{...created,label:editedName});
   row.savePersistedMs=Math.round(performance.now()-saving);
   row.stage='discard';
   await page.getByRole('button',{name:'Delete Record',exact:true}).click({timeout:15000});
