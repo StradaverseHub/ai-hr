@@ -36,7 +36,7 @@ const [group,company]=fixture.users;
 assert(fixture.users.length===500&&fixture.tenants.length===2&&group.tenant===0&&company.tenant===0);
 assert(group.role==='groupHR'&&company.role==='companyHR'&&group.companyId===company.companyId);
 const source=file=>import(pathToFileURL(resolve(process.cwd(),file)).href);
-const [{client,createDb,withTenant},{resolveEntitlementsTx}]=await Promise.all([
+const [{client,createDb,withTenant},{resolveEntitlementsTx,getSettingOrFallback}]=await Promise.all([
  source('db/client.ts'),source('core/entitlements.ts'),
 ]);
 const owner=createDb(env.MIGRATION_DATABASE_URL,{max:1});
@@ -72,7 +72,7 @@ try{
   const [{createArticle},{submitFeedback}]=await Promise.all([
    source('core/knowledge-base.ts'),source('core/feedback.ts'),
   ]);
-  assert.equal(ctx.entitlements.settings['feedback.menu_enabled'],true);
+  assert.equal(getSettingOrFallback(ctx,'feedback.menu_enabled',false),true);
   const employee=fixture.users[4];
   assert(employee.role==='employee'&&employee.companyId===company.companyId);
   const [principal]=await owner.client`select tenant_id,grants from app.principal(${employee.userId}::uuid)`;
