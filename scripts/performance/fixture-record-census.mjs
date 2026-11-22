@@ -730,14 +730,41 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
 
   async function submit(name, value) {
     const started = performance.now();
+    const elapsed = () => Math.round(performance.now() - started);
     await phone.fill(value ?? '', { timeout });
     await dirty.waitFor({ state: 'visible', timeout });
-    await button.click({ timeout });
-    await dirty.waitFor({ state: 'hidden', timeout });
-    assert.equal(await profile.getByRole('alert').count(), 0, 'Personnel Save showed an error');
-    assert.equal(await readContact(), value, 'Personnel Save did not persist through its owner');
-    result.steps.push({ name, persistedMs: Math.round(performance.now() - started) });
-    save();
+    const timings = { dirtyVisibleMs: elapsed() };
+    const pathname = new URL(page.url()).pathname;
+    let actionRequest;
+    const requested = request => {
+      if (actionRequest || request.method() !== 'POST' || !request.headers()['next-action'] ||
+          new URL(request.url()).pathname !== pathname) return;
+      actionRequest = request;
+      timings.actionRequestMs = elapsed();
+    };
+    const responded = response => {
+      if (actionRequest && response.request() === actionRequest) timings.actionHeadersMs = elapsed();
+    };
+    const completed = request => {
+      if (actionRequest && request === actionRequest) timings.actionBodyMs = elapsed();
+    };
+    page.on('request', requested);
+    page.on('response', responded);
+    page.on('requestfinished', completed);
+    try {
+      await button.click({ timeout });
+      timings.clickReturnedMs = elapsed();
+      await dirty.waitFor({ state: 'hidden', timeout });
+      timings.dirtyClearedMs = elapsed();
+      assert.equal(await profile.getByRole('alert').count(), 0, 'Personnel Save showed an error');
+      assert.equal(await readContact(), value, 'Personnel Save did not persist through its owner');
+      result.steps.push({ name, persistedMs: elapsed(), timings });
+      save();
+    } finally {
+      page.off('request', requested);
+      page.off('response', responded);
+      page.off('requestfinished', completed);
+    }
   }
 
   try {
