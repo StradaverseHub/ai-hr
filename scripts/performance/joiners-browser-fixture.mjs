@@ -68,6 +68,19 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_SAVED_REPORT_RECORDS==='true'){
+  const {saveCustomReport}=await source('core/custom-reports.ts');
+  const employee=fixture.users[4];
+  assert(employee.role==='employee'&&employee.companyId===company.companyId);
+  const name='Fictional saved Daily Attendance report';
+  const datasetId='attendance_daily';
+  const {id}=await saveCustomReport(ctx,{name,datasetId,shared:true,spec:{
+   datasetId,columns:['employeeCode','name','attendanceDate'],sort:null,groupBy:null,
+   filters:{month:fixture.today.slice(0,7),name:employee.name},layout:{orientation:'landscape'},
+  }});
+  fixture.savedReportRecord={id,name,datasetId};
+ }
+
  if(env.PERF_LOAN_RECORDS==='true'){
   const {createLoan}=await source('core/loans.ts');
   const employee=fixture.users[4];

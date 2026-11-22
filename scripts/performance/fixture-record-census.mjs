@@ -620,6 +620,43 @@ async function loanRecordRoutes(db, fixture) {
   ]);
 }
 
+async function savedReportRecordRoutes(db, fixture) {
+  const [group, company, , , employee] = fixture.users;
+  const record = fixture.savedReportRecord;
+  assert(record&&employee.companyId===company.companyId);
+  const [saved] = await db`
+    select r.name,r.dataset_id,r.shared,exists(
+      select 1 from attendance a where a.tenant_id=r.tenant_id and a.employment_id=${employee.employmentId}::uuid
+        and a.attendance_date=${fixture.today}::date
+    ) as has_attendance
+    from custom_report r where r.id=${record.id}::uuid and r.tenant_id=${group.tenantId}::uuid
+      and r.created_by_user_id=${group.userId}::uuid
+  `;
+  assert.deepEqual(saved,{name:record.name,dataset_id:record.datasetId,shared:true,has_attendance:true});
+  return [group,company].map(actor=>({
+    actor,template:'/reports/builder/[id]',path:'/reports/builder/'+record.id,exactHeading:'Edit report',
+    witness:`input:not([type="hidden"])[value="${record.name}"]`,
+    savedReportPreview:{employeeName:employee.name,employeeCode:'PERF'+String(employee.index).padStart(4,'0')},
+  }));
+}
+
+async function verifySavedReportPreview(page, main, entry, row, remaining) {
+  const started = performance.now();
+  const reply = page.waitForResponse(response => response.request().method()==='POST'
+    && Boolean(response.request().headers()['next-action']) && new URL(response.url()).pathname===entry.path,
+  {timeout:remaining()});
+  const clicked = main.getByRole('button',{name:'Refresh preview',exact:true}).click({timeout:remaining()});
+  const [response] = await Promise.all([reply,clicked]);
+  assert.equal(response.status(),200);
+  const match = main.getByRole('row').filter({
+    has:page.getByRole('cell',{name:entry.savedReportPreview.employeeCode,exact:true}),
+  });
+  await match.first().getByRole('cell',{name:entry.savedReportPreview.employeeName,exact:true}).waitFor({
+    state:'visible',timeout:remaining(),
+  });
+  row.savedReportPreviewMs=Math.round(performance.now()-started);
+}
+
 async function payrollCorrectionRoutes(db, fixture) {
   const [group, company] = fixture.users;
   const subject = fixture.users[4];
@@ -1026,7 +1063,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1038,6 +1075,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceConfigurationRecords ? await attendanceConfigurationRoutes(db, fixture)
     : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
     : loanRecords ? await loanRecordRoutes(db, fixture)
+    : savedReportRecords ? await savedReportRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -1119,6 +1157,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             row.clockingLogPageReadyMs = Math.round(performance.now()-started);
             row.step = 'clocking-imported-tab';
             await verifyImportedClockingTab(page,main,entry,row,remaining);
+          }
+          if (entry.savedReportPreview&&pass==='first') {
+            row.savedReportPageReadyMs=Math.round(performance.now()-started);
+            row.step='saved-report-preview';
+            await verifySavedReportPreview(page,main,entry,row,remaining);
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);
