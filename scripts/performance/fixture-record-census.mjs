@@ -641,20 +641,45 @@ async function savedReportRecordRoutes(db, fixture) {
 }
 
 async function verifySavedReportPreview(page, main, entry, row, remaining) {
+  const reportName = main.getByRole('textbox',{name:'Report name',exact:true});
+  const submittedName = main.locator('form input[type="hidden"][name="name"]').first();
+  const original = await reportName.inputValue({timeout:remaining()});
+  const probe = original + ' probe';
+  const readinessStarted = performance.now();
+  row.step = 'saved-report-hydration';
+  while (remaining() > 1) {
+    await reportName.fill('',{timeout:remaining()});
+    await reportName.fill(probe,{timeout:remaining()});
+    if (await submittedName.inputValue({timeout:remaining()}) === probe) break;
+  }
+  assert.equal(await submittedName.inputValue({timeout:remaining()}),probe);
+  await reportName.fill(original,{timeout:remaining()});
+  assert.equal(await submittedName.inputValue({timeout:remaining()}),original);
+  row.savedReportHydrationMs = Math.round(performance.now()-readinessStarted);
+
+  const previewAction = request => request.method()==='POST' && Boolean(request.headers()['next-action'])
+    && new URL(request.url()).pathname===entry.path;
   const started = performance.now();
-  const reply = page.waitForResponse(response => response.request().method()==='POST'
-    && Boolean(response.request().headers()['next-action']) && new URL(response.url()).pathname===entry.path,
-  {timeout:remaining()});
-  const clicked = main.getByRole('button',{name:'Refresh preview',exact:true}).click({timeout:remaining()});
-  const [response] = await Promise.all([reply,clicked]);
+  row.step = 'saved-report-preview-dispatch';
+  const issued = page.waitForRequest(previewAction,{timeout:remaining()});
+  const replied = page.waitForResponse(response=>previewAction(response.request()),{timeout:remaining()});
+  // Attach a rejection handler immediately while awaiting the earlier dispatch milestone.
+  replied.catch(()=>{});
+  await Promise.all([issued,main.getByRole('button',{name:'Refresh preview',exact:true}).click({timeout:remaining()})]);
+  row.savedReportPreviewDispatchedMs = Math.round(performance.now()-started);
+  row.step = 'saved-report-preview-response';
+  const response = await replied;
+  row.savedReportPreviewResponseMs = Math.round(performance.now()-started);
+  row.savedReportPreviewStatus = response.status();
   assert.equal(response.status(),200);
+  row.step = 'saved-report-preview-render';
   const match = main.getByRole('row').filter({
     has:page.getByRole('cell',{name:entry.savedReportPreview.employeeCode,exact:true}),
   });
   await match.first().getByRole('cell',{name:entry.savedReportPreview.employeeName,exact:true}).waitFor({
     state:'visible',timeout:remaining(),
   });
-  row.savedReportPreviewMs=Math.round(performance.now()-started);
+  row.savedReportPreviewMs = Math.round(performance.now()-started);
 }
 
 async function payrollCorrectionRoutes(db, fixture) {
