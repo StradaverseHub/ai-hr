@@ -375,6 +375,8 @@ The verifier checks the archived parent signatures at their recorded verificatio
 
 The evaluator and the Assistant now use the same direct-answer selector. It matches an explicit company choice against the complete own employment roster, then checks that the single selected balance card belongs to that employment. Two employments with the same company name remain ambiguous even if only one has a visible balance. The Assistant still invokes its single-employment profile. The explicit-employment profile is used by the offline successor evaluator pending native admission.
 
+The shared-selector check at `6b38e2cc2f86ba7bb7684ceb2601f08bb7de15a6` reran the 12 fictional development cases and added a duplicate company name with an empty balance list on one employment. The successor answered all 7 eligible cases, compared with 3 for the first route, deferred all 6 remaining cases and recorded no regressions or model calls. The expanded development file SHA-256 was `8ee95f0ba03a0e2ad0fddaa118ee65878e8efc47f529fe28437e6eecacb452df`. The aggregate report SHA-256 was `dda4955f840284238b852e18fdcaaca1dffcf600bea850e7b218580c4d9dbcdb`.
+
 Candidate reviews shows the admission limit separately from the owner's observed trial exchanges and model responses. The model-free count comes from completed own exchanges with a retained canonical answer and zero model turns or tokens. Clearing Assistant history or strategy metadata can remove the underlying evidence. These counts measure recorded use and give no accuracy or savings estimate by themselves.
 
 ### Paired development comparison on the integrated leave candidate
