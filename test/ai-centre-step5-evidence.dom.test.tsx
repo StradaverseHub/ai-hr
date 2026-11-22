@@ -118,7 +118,7 @@ describe('AI centre step 5, rendered per role', () => {
     expect(preSalary).toHaveAttribute('href', '/control-tower/loops/loop_payroll_inputs#loop-recent-runs');
     expect(preSalary.querySelector('time')).toHaveAttribute('datetime', '2026-11-03T01:30:00.000Z');
     expect(preSalary).toHaveTextContent(/9:30 AM/);
-    expect(within(overview).getByRole('link', { name: 'Open scheduled actions' })).toHaveAttribute('href', '/admin/scheduled-actions');
+    expect(within(overview).getByRole('link', { name: 'Open scheduled actions' })).toHaveAttribute('href', '/admin/scheduled-actions?view=ai');
     expect(within(overview).getByText('1 of 4 allowed by worker controls · 1 with a recorded run')).toBeInTheDocument();
     const scheduled = within(overview).getByText('Show scheduled workers').closest('details')!;
     expect(scheduled).not.toHaveAttribute('open');

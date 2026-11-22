@@ -12,7 +12,7 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(n
 vi.mock('../app/admin/scheduled-actions/actions',()=>({configureRunnerAction:vi.fn(async()=>({ok:true,error:null}))}));
 import {RunnerInventory} from '../app/admin/scheduled-actions/runner-inventory';
 const snapshot=(environment:'staging'|'production'='staging'):RunnerSnapshot=>({environment,checkedAt:'2026-11-01T15:00:00Z',runners:RUNNERS.map(row=>({id:row.id,managed:true,installed:true,hold:environment==='production'&&['backups','replacement-holidays'].includes(row.id),note:'Synthetic acceptance fixture',enabled:row.id!=='reviews',running:false,health:row.id==='reviews'?'failed':'success',lastRun:'Sun 2026-11-01 03:00:00 +08',nextRun:'Mon 2026-11-02 03:00:00 +08',schedule:row.frequency==='interval'?'5min after completion':row.frequency==='continuous'?null:row.frequency==='monthly'?'*-*-01 02:00:00 Asia/Kuala_Lumpur':row.frequency==='yearly'?'*-04-01 03:00:00 Asia/Kuala_Lumpur':'*-*-* 03:00:00 Asia/Kuala_Lumpur',revision:'a'.repeat(64)}))});
-async function view(value:RunnerSnapshot|null,canControl:boolean){const element=await RunnerInventory({snapshot:value,canControl});return render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);}
+async function view(value:RunnerSnapshot|null,canControl:boolean,runnerIds?:readonly string[]){const element=await RunnerInventory({snapshot:value,canControl,runnerIds});return render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);}
 afterEach(cleanup);
 describe('runner control inventory',()=>{
  it('shows all purposes and result destinations while keeping configured activation separate from health',async()=>{
@@ -52,6 +52,16 @@ describe('runner control inventory',()=>{
   const value=snapshot();value.runners[0].managed=false;
   await view(value,true);
   expect(screen.getByText('Enabled · systemd')).toBeInTheDocument();expect(screen.getByText('Not managed here')).toBeInTheDocument();
+ });
+ it('keeps scheduler health visible for just the AI Centre runners',async()=>{
+  const ids=['reviews','payroll-loops','ai-alerts','ai-retention'];
+  const {container}=await view(snapshot(),false,ids);
+  expect([...container.querySelectorAll('[id^="runner-"]')].map(row=>row.id).filter(id=>id!=='runner-control-title').sort())
+   .toEqual(ids.map(id=>`runner-${id}`).sort());
+  const reviews=within(container.querySelector('#runner-reviews')!);
+  expect(reviews.getByText('Disabled')).toBeInTheDocument();
+  expect(reviews.getByText('Failed')).toBeInTheDocument();
+  expect(screen.queryByText('Configure runner')).toBeNull();
  });
  it('reports an unavailable controller without pretending runners are disabled',async()=>{
   await view(null,true);

@@ -1,27 +1,35 @@
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { isGroupAdmin, isOperator } from '@/lib/authz';
 import { getSession } from '@/lib/session';
 import { employeeMasterScheduledEmailEnabled } from '@/lib/employee-master-scheduled-email';
-import { JOBS, listRecentJobRuns, type JobRunRow } from '@/core/job-run';
-import { Card, PageHeader, SectionHeader } from '@/components/ui';
+import { JOBS, listRecentJobRuns, type JobKey, type JobRunRow } from '@/core/job-run';
+import { Card, PageHeader, SectionHeader, btnGhost } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
 import { runnerControlSnapshot } from '@/lib/runner-control';
 import { RunnerInventory } from './runner-inventory';
 
 /** How many past runs a job's expanded panel shows. */
 const RECENT = 10;
+const AI_RUNNER_IDS = ['reviews', 'payroll-loops', 'ai-alerts', 'ai-retention'];
+const AI_HISTORY_KEYS: readonly JobKey[] = ['review.sweep', 'ai.alerts'];
 
 /** Installation controls are operator-only through a narrow local scheduler port.
  * Customer administrators keep read-only aggregate run history. No owner database URL enters Next. */
-export default async function ScheduledActionsPage() {
+export default async function ScheduledActionsPage({ searchParams }: {
+  searchParams?: Promise<{ view?: string | string[] }>;
+} = {}) {
   const s = await getSession();
   if (!isGroupAdmin(s) && !isOperator(s)) redirect('/');
+  const aiView = (await searchParams)?.view === 'ai';
   const snapshot = await runnerControlSnapshot(s);
 
   const t = await getTranslations('scheduledActions');
   const locale = await getLocale();
+  const nav = aiView ? await getTranslations('nav') : null;
+  const jobs = aiView ? JOBS.filter(job => AI_HISTORY_KEYS.includes(job.key)) : JOBS;
   const reportEmailEnabled = employeeMasterScheduledEmailEnabled();
   const reportSchedule = await getTranslations('employeeMasterReports.schedule');
   const runs = isGroupAdmin(s) ? await listRecentJobRuns(s, RECENT) : [];
@@ -72,14 +80,15 @@ export default async function ScheduledActionsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={nav ? `${nav('aiCentre')} · ${t('title')}` : t('title')} description={nav ? undefined : t('description')} />
+      {nav && <Link href="/admin/scheduled-actions" prefetch={false} className={btnGhost}>{t('title')}</Link>}
 
-      <RunnerInventory snapshot={snapshot} canControl={isOperator(s)} />
+      <RunnerInventory snapshot={snapshot} canControl={isOperator(s)} runnerIds={aiView ? AI_RUNNER_IDS : undefined} />
       {isGroupAdmin(s) && <section id="recent-run-history" className="space-y-3">
       <SectionHeader title={t('historyTitle')} />
 
       <div className="space-y-3">
-        {JOBS.map((job) => {
+        {jobs.map((job) => {
           const history = runs.filter((r) => r.jobKey === job.key).slice(0, RECENT);
           const last: JobRunRow | undefined = history[0];
           return (
