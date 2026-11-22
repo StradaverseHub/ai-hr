@@ -66,6 +66,7 @@ const combinedGroupArtifacts=new Map([
  [clockingOutcomeSource,{runId:44972189937,artifactId:14734303205}],
  [browserIntegrationNativePreflight,{runId:44979719093,artifactId:14737796395,sourceSha:browserIntegrationSource}],
  [browserIntegrationNativeControl,{runId:44981038272,artifactId:14737468790,sourceSha:browserIntegrationControl}],
+ [shellLifetimeCandidate,{runId:45024304412,artifactId:14754813084}],
 ]);
 const combinedGroupArtifact=combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
 const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
@@ -98,8 +99,9 @@ assert(!env.AIHR_EVAL_MODEL&&!env.AIHR_EVAL_OPENROUTER_KEY,'Browser fixtures can
 assert(!Object.keys(env).some(key=>key.startsWith('WORKOS_')&&env[key]),'External auth configuration refused');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');
-const shellLifetimeEnabled=sha===shellLifetimeCandidate;
-assert(!shellLifetimeEnabled||(mixedLoad&&combinedGroupBuild&&!fixtureOnly&&!reusedBuild));
+const shellLifetimePrototype=sha===shellLifetimeCandidate;
+const shellLifetimeEnabled=shellLifetimePrototype&&!reusedBuild;
+assert(!shellLifetimePrototype||(mixedLoad&&combinedGroupBuild&&!fixtureOnly));
 assert(sha===env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD??''));
 assert.equal(git('status','--porcelain'),'');
 
@@ -116,7 +118,7 @@ const transactionTimingPath=join(privateDir,'application-transaction-timing.json
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(shellLifetimeEnabled&&{shellHttpLifetime:'node-response-close'}),
+ ...(shellLifetimePrototype&&{shellHttpLifetime:shellLifetimeEnabled?'node-response-close':'wrapper-only'}),
  ...(reusedBuild&&{buildArtifact:combinedGroupBuild
   ? {sourceSha:sha,...combinedGroupArtifact}
   : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
@@ -2123,11 +2125,11 @@ try{
    report.mixedDatabaseTopology.poolerServerConnections=webPooler.serverConnections;
    save();
   }
-  const serverArgs=shellLifetimeEnabled
+  const serverArgs=shellLifetimePrototype
    ? ['--import','tsx','scripts/performance/http-lifetime-next-server.mjs',String(appPort)]
    : ['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(appPort)];
   app=start('application',process.execPath,serverArgs,{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(webDatabaseConnections),
-    ...(shellLifetimeEnabled&&{PERF_HTTP_SUITE:'browser-route-baseline',PERF_SHELL_HTTP_LIFETIME:'true'}),
+    ...(shellLifetimePrototype&&{PERF_HTTP_SUITE:'browser-route-baseline',PERF_SHELL_HTTP_LIFETIME:String(shellLifetimeEnabled)}),
     ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web')}),
     ...(webPooler&&{
      DATABASE_POOLED_URL:namedDatabase(webPooler.appUrl,'aihr-fixture-mixed-web'),

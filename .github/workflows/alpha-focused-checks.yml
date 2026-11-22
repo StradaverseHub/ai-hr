@@ -113,7 +113,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-shell-permissions-${{ inputs.candidate_ref }}-${{ inputs.mixed_shell_permission_variant }}-${{ inputs.mixed_database_topology }}-${{ inputs.mixed_group_scale }}
+  group: alpha-focused-shell-permissions-${{ inputs.candidate_ref }}-${{ inputs.mixed_shell_permission_variant }}-${{ inputs.mixed_database_topology }}-${{ inputs.mixed_group_scale }}${{ inputs.reuse_first_use_build && inputs.expected_sha == '24e0b499be5f009c409e539c1e78add85d7f3b03' && '-lifetime-control' || '' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -217,7 +217,7 @@ jobs:
               false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:cddd7cebf757d0392ed06bead78300732fd54256) ;;
               true:5175d387846c18fcc83ef96091cb1b4e1b538241|true:71e0dceb1a393817f3040518e82dc845a27700b0|true:0ba883e0aa294bb0f15dcfe2433deedb52d11996|true:57fac422707b3a6174a290722ea0bb53da89f7c0|true:52d2d170710fcfb14219abe2f9d0abc84e536748|true:5e34835d73183b2754c9b3e4ccdbfc31111917a8|true:a1d4cbb7bef482f7a6c8b75ab7fbec7611976857)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
-              true:84bad4f960c5f81475cdc4f71462bb452852fa9a|true:d855add8ba13ab3329b2b9aee35f4aed338193d0)
+              true:84bad4f960c5f81475cdc4f71462bb452852fa9a|true:d855add8ba13ab3329b2b9aee35f4aed338193d0|true:24e0b499be5f009c409e539c1e78add85d7f3b03)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
               *) exit 2 ;;
             esac
@@ -346,7 +346,14 @@ jobs:
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          if [[ "$AIHR_CI_HEAD" == d855add8ba13ab3329b2b9aee35f4aed338193d0 ]]; then
+          if [[ "$AIHR_CI_HEAD" == 24e0b499be5f009c409e539c1e78add85d7f3b03 ]]; then
+            test "$MIXED_GROUP_SCALE" = true
+            gh api repos/StradaverseHub/ai-hr/actions/jobs/137213939616 --jq '
+              .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+              .run_id == 45024304412 and .head_sha == "539f4359618c61e72c91743916b3b599ca3ee71f"' | grep -qx true
+            gh api repos/StradaverseHub/ai-hr/actions/artifacts/14754813084/zip > "$archive"
+            digest=d46bf6a95f6dc3aa6d71e1a36e50a69708afa56c8ebf5e14766e234e9ad953d6
+          elif [[ "$AIHR_CI_HEAD" == d855add8ba13ab3329b2b9aee35f4aed338193d0 ]]; then
             test "$MIXED_GROUP_SCALE" = true
             test "$(git rev-parse HEAD^)" = ef953a158bf1fde5073ca43557268add5ff0883e
             test "$(git diff --name-status HEAD^ HEAD)" = "$(printf 'M\tscripts/performance/system-load-owner.mjs')"
@@ -456,6 +463,7 @@ jobs:
           elif [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" == 84bad4f960c5f81475cdc4f71462bb452852fa9a ]]; then
             expected_build_source=34acbbea020f09217a44711f615b750b0a139302
           elif [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" != 5175d387846c18fcc83ef96091cb1b4e1b538241 &&
+                "$AIHR_CI_HEAD" != 24e0b499be5f009c409e539c1e78add85d7f3b03 &&
                 "$AIHR_CI_HEAD" != 71e0dceb1a393817f3040518e82dc845a27700b0 &&
                 "$AIHR_CI_HEAD" != 0ba883e0aa294bb0f15dcfe2433deedb52d11996 &&
                 "$AIHR_CI_HEAD" != 57fac422707b3a6174a290722ea0bb53da89f7c0 &&
