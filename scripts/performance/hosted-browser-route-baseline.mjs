@@ -459,24 +459,32 @@ function readMixedRootStatements(name,dockerConfig){
  // Run after the driver settles so this probe consumes no measured capacity.
  // Include only the application role's direct statements to avoid counting
  // their nested SQL a second time.
- const query=`select jsonb_build_object(
+ const query=`with application_statements as materialized (
+  select * from pg_stat_statements
+  where dbid=(select oid from pg_database where datname=current_database())
+    and userid=(select oid from pg_roles where rolname='ai_hr_app') and toplevel
+ ) select jsonb_build_object(
   'routines',(select coalesce(jsonb_agg(distinct p.proname),'[]'::jsonb) from pg_proc p
     join pg_namespace n on n.oid=p.pronamespace where n.nspname='app'),
   'relations',(select coalesce(jsonb_agg(distinct c.relname),'[]'::jsonb) from pg_class c
     join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('app','public') and c.relkind in ('r','p','v','m')),
+  'accountTaskPlanning',(select jsonb_build_object(
+    'statementShapes',count(*),'calls',coalesce(sum(calls),0),'plans',coalesce(sum(plans),0),
+    'planningMs',coalesce(round(sum(total_plan_time)),0),'executionMs',coalesce(round(sum(total_exec_time)),0),
+    'statisticsEvictions',(select dealloc from pg_stat_statements_info)
+   ) from application_statements
+   where query ~* '(^|[^a-z0-9_])task_caller[[:space:]]+as[[:space:]]+materialized([[:space:]]|[(])'),
   'statements',(select coalesce(jsonb_agg(to_jsonb(sample)),'[]'::jsonb)
    from (select calls,plans,total_exec_time,total_plan_time,shared_blks_read,temp_blks_written,
      jit_generation_time,jit_inlining_time,jit_optimization_time,jit_emission_time,left(query,8000) as normalized_query
-     from pg_stat_statements
-     where dbid=(select oid from pg_database where datname=current_database())
-       and userid=(select oid from pg_roles where rolname='ai_hr_app') and toplevel
+     from application_statements
      order by total_exec_time+total_plan_time desc limit 35) sample))`;
  try{
   const result=execFileSync('/usr/bin/docker',[
    '--config',dockerConfig,'--host','unix:///var/run/docker.sock','exec',name,'psql','-X','-U','postgres','-p','5433',
    '-d','ai_hr_dev','-Atq','-v','ON_ERROR_STOP=1','-c',query,
   ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:10000,maxBuffer:2*1024*1024,stdio:['ignore','pipe','pipe']});
-  const {statements,routines,relations}=JSON.parse(result);
+  const {statements,routines,relations,accountTaskPlanning}=JSON.parse(result);
   // Keep the category comparison on the same prefix as the earlier run.
   const categories=summarizeMixedStatements(statements.map(statement=>({
    ...statement,normalized_query:statement.normalized_query.slice(0,1800),
@@ -484,6 +492,7 @@ function readMixedRootStatements(name,dockerConfig){
   return categories?{
    scope:'up to 35 top-level statements executed under the application role',
    categories, rankedWork:projectMixedRootStatementWork(statements,{routines,relations}),
+   accountTaskPlanning,
   }:null;
  }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
 }
