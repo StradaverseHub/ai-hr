@@ -84,7 +84,7 @@ on:
         description: Compare Contract navigation and optionally exercise the serial clocking queue on the pinned fixture
         type: choice
         default: none
-        options: [none, contract-control, contract-optimized, contract-optimized-clocking-queue]
+        options: [none, contract-control, contract-optimized, contract-optimized-clocking-queue, contract-optimized-clocking-shared]
       mixed_database_topology:
         description: Compare direct web connections with transaction pooling on the pinned fictional workload
         type: choice
@@ -153,7 +153,11 @@ jobs:
         id: selection
         run: |
           clocking_tenant_queue=false
-          if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-clocking-queue ]]; then
+          clocking_shared=false
+          if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-clocking-shared ]]; then
+            clocking_shared=true
+          fi
+          if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-clocking-queue || "$clocking_shared" == true ]]; then
             clocking_tenant_queue=true
             SHELL_PERMISSION_VARIANT=contract-optimized
           fi
@@ -193,7 +197,12 @@ jobs:
           if [[ "$clocking_tenant_queue" == true ]]; then
             [[ "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 &&
                 "$combined_group_build" == true && "$BROWSER_ROUTE_BASELINE" == true &&
-                "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" == true ]] || exit 2
+                "$BROWSER_FIXTURE_ONLY" != true ]] || exit 2
+            if [[ "$clocking_shared" == true ]]; then
+              [[ "$REUSE_BUILD" == true ]] || exit 2
+            else
+              [[ "$RUN_BUILD" == true ]] || exit 2
+            fi
           fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
