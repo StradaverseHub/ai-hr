@@ -39,6 +39,7 @@ try{
  const requisition=await recruitment.createRequisition(ctx,{...shared,title:reqTitle,vacancies:'2'});
  mark('position');
  const job=await recruitment.createJob(ctx,{...shared,title,jobGradeIds:[grade.id]});
+ await recruitment.setJobReferralPortal(ctx,job.id,true);
  mark('application');
  const {applicationId,candidateId}=await recruitment.addApplication(ctx,{
   jobId:job.id,fullName:applicant,email:'fictional-recruitment@example.invalid',source:'Referral',sendReceipt:false,

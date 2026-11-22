@@ -34,6 +34,79 @@ async function verifyFeedbackSave({db,data,interviewer,page,origin,result}){
  result.stage='complete';
 }
 
+async function verifyEmployeeReferral({db,data,fixture,origin,signedInContext,compiledPages,report,save}){
+ const template='/me/referrals/jobs/[jobId]',path='/me/referrals/jobs/'+data.jobId;
+ assert(compiledPages.has(template),'Missing compiled employee referral route');
+ const employee=fixture.users.find(user=>user.role==='employee'&&user.tenant===0&&user.companyId===data.companyId);
+ const otherTenant=fixture.users.find(user=>user.role==='employee'&&user.tenant===1);
+ assert(employee&&otherTenant,'Missing employee referral scope witnesses');
+ const result=report.employeeReferral={stage:'visits',status:'failed'};
+ const timeout=15000;
+ for(const [access,actor,allowed] of [['eligible-employee',employee,true],['other-tenant',otherTenant,false]]){
+  const context=await signedInContext(actor);
+  try{
+   const page=await context.newPage();
+   for(const visit of allowed?['first','repeat']:['first']){
+    const row={surface:'employee-referral',template,role:actor.role,access,visit,status:'failed'};
+    report.fixtureRecordVisits.push(row);
+    const started=performance.now();
+    try{
+     const response=await page.goto(origin+path,{waitUntil:'commit',timeout});
+     row.responseMs=Math.round(performance.now()-started);
+     assert.equal(page.url(),origin+path);
+     row.statusCode=response?.status()??null;
+     assert.equal(row.statusCode,200);
+     const main=page.locator('main:visible').first();
+     const form=main.locator('form:has(input[name="jobId"])');
+     if(allowed){
+      await main.getByRole('heading',{name:data.title,level:1,exact:true}).waitFor({state:'visible',timeout});
+      await form.locator('button[type="submit"]:enabled').waitFor({state:'visible',timeout});
+      assert.equal(await form.locator('input[name="jobId"]').inputValue(),data.jobId);
+     }else{
+      await main.getByRole('note').waitFor({state:'visible',timeout});
+      assert.equal(await main.getByText(data.title,{exact:true}).count(),0);
+      assert.equal(await form.count(),0);
+     }
+     row.readyMs=Math.round(performance.now()-started);
+     row.status=allowed?'observed':'scope-denied';
+    }finally{save();}
+   }
+   if(!allowed)continue;
+   const form=page.locator('main:visible').first().locator('form:has(input[name="jobId"])');
+   const fullName='Fictional employee referral candidate';
+   const reason='Fictional candidate matches the published analyst role';
+   result.stage='form';
+   await form.locator('[name="fullName"]').fill(fullName);
+   await form.locator('[name="email"]').fill('employee-referral-fixture@example.invalid');
+   await form.locator('[name="reason"]').fill(reason);
+   await form.locator('[name="confirmed"]').check();
+   result.stage='first-click';
+   const started=performance.now();
+   const posted=page.waitForResponse(response=>response.url()===origin+path&&
+    response.request().method()==='POST'&&Boolean(response.request().headers()['next-action']),{timeout});
+   const [response]=await Promise.all([posted,form.locator('button[type="submit"]:enabled').click({timeout})]);
+   result.responseMs=Math.round(performance.now()-started);
+   result.httpStatus=response.status();
+   assert([200,303].includes(response.status()),'Native referral submission must succeed');
+   result.stage='receipt';
+   await page.waitForURL(url=>url.pathname==='/me/referrals/mine'&&url.searchParams.get('notice')==='sent',{timeout});
+   await page.locator('main:visible').first().getByRole('cell',{name:fullName,exact:true}).waitFor({state:'visible',timeout});
+   result.readyMs=Math.round(performance.now()-started);
+   result.stage='persistence';
+   const rows=await db`
+    select referrer_person_id,reason,confirmed_at is not null as confirmed from recruitment_referral
+    where tenant_id=${employee.tenantId}::uuid and company_id=${data.companyId}::uuid
+     and job_id=${data.jobId}::uuid and referrer_user_id=${employee.userId}::uuid
+   `;
+   assert.deepEqual(rows.map(row=>({...row})),[{referrer_person_id:employee.personId,reason,confirmed:true}]);
+   result.persisted=true;
+  }finally{await context.close();save();}
+ }
+ result.status='observed';
+ result.stage='complete';
+ save();
+}
+
 export async function measureRecruitmentRecords({db,fixture,origin,compiledPages,signedInContext,report,save}){
  const data=fixture.recruitmentRecords;
  assert(data?.applicationId,'Missing fictional Recruitment record fixtures');
@@ -119,6 +192,7 @@ export async function measureRecruitmentRecords({db,fixture,origin,compiledPages
  assert.equal(report.fixtureRecordVisits.filter(row=>row.status==='observed').length,4*cases.length+2);
  assert.equal(report.fixtureRecordVisits.filter(row=>row.status==='scope-denied').length,2*cases.length+1);
  assert.equal(report.recruitmentFeedbackSave?.status,'observed','The first feedback save must persist');
+ await verifyEmployeeReferral({db,data,fixture,origin,signedInContext,compiledPages,report,save});
  report.complete=true;
  save();
 }
