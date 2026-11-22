@@ -438,6 +438,35 @@ async function performanceReportRecordRoutes(db, fixture) {
   ]);
 }
 
+async function jobDescriptionRecordRoutes(db, fixture) {
+  const [group, company] = fixture.users;
+  const record = fixture.jobDescriptionRecord;
+  assert(record && group.companyId === company.companyId);
+  const [saved] = await db`
+    select j.job_code, r.title, r.answers->'purpose'->0->>'purpose' as purpose, r.status
+    from job_document j
+    join job_document_revision r on r.job_id=j.id and r.tenant_id=j.tenant_id
+    where j.tenant_id=${company.tenantId}::uuid and j.company_id=${company.companyId}::uuid
+      and j.id=${record.jobId}::uuid and r.id=${record.revisionId}::uuid
+  `;
+  assert.deepEqual({ ...saved }, { job_code: record.code, title: record.title, purpose: record.purpose, status: 'draft' });
+  const base = '/admin/job-descriptions/' + record.jobId;
+  const query = '?revision=' + record.revisionId;
+  return [group, company].flatMap(actor => [
+    {
+      actor, template: '/admin/job-descriptions/[id]', path: base + query + '&view=document',
+      exactHeading: record.title, content: record.purpose, exactContent: true,
+      witness: `a[href="${base}/print${query}"]`,
+      download: { href: base + '/export' + query, filename: record.code + '-v1.txt',
+        step: 'job-description-export', measurement: 'jobDescriptionExportMs', text: record.purpose },
+    },
+    {
+      actor, template: '/admin/job-descriptions/[id]/print', path: base + '/print' + query,
+      exactHeading: record.title, content: record.purpose, exactContent: true, print: true,
+    },
+  ]);
+}
+
 async function payrollCorrectionRoutes(db, fixture) {
   const [group, company] = fixture.users;
   const subject = fixture.users[4];
@@ -706,7 +735,7 @@ function individualImportRoutes(actor, job, base) {
   ];
 }
 
-async function verifyWorkbookDownload(page, main, expected, row) {
+async function verifyRecordDownload(page, main, expected, row) {
   row.step = expected.step ?? (expected.hash ? 'import-original-download' : 'import-error-download');
   const timeout = 15000;
   const started = performance.now();
@@ -715,12 +744,13 @@ async function verifyWorkbookDownload(page, main, expected, row) {
   const download = await pending;
   assert.equal(download?.suggestedFilename(), expected.filename);
   const response = await download.createReadStream();
-  assert(response, 'Expected a workbook download');
+  assert(response, 'Expected a record download');
   const chunks = [];
   for await (const chunk of response) chunks.push(chunk);
-  const workbook = Buffer.concat(chunks);
-  assert.equal(workbook.subarray(0, 4).toString('hex'), '504b0304');
-  if (expected.hash) assert.equal(createHash('sha256').update(workbook).digest('hex'), expected.hash);
+  const contents = Buffer.concat(chunks);
+  if (expected.text) assert(contents.toString('utf8').includes(expected.text), 'Exported text is missing the expected record');
+  else assert.equal(contents.subarray(0, 4).toString('hex'), '504b0304');
+  if (expected.hash) assert.equal(createHash('sha256').update(contents).digest('hex'), expected.hash);
   row[expected.measurement ?? (expected.hash ? 'originalWorkbookMs' : 'errorWorkbookMs')] = Math.round(performance.now() - started);
 }
 
@@ -843,13 +873,14 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
     : importHistory ? importHistoryRoutes(fixture)
     : attendanceRecords ? await attendanceRecordRoutes(db, fixture)
     : performanceReportRecords ? await performanceReportRecordRoutes(db, fixture)
+    : jobDescriptionRecords ? await jobDescriptionRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -866,6 +897,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     const context = await signedInContext(entry.actor);
     try {
       const page = await context.newPage();
+      if (entry.print) {
+        await page.addInitScript(() => {
+          window.print = () => document.documentElement.setAttribute('data-fixture-printed', 'true');
+        });
+      }
       for (const pass of ['first', 'repeat']) {
         const row = { template: entry.template, role: entry.actor.role, pass, outcome: 'browser-failure', step: 'response' };
         rows.push(row);
@@ -908,7 +944,14 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           }
           if (entry.download && pass === 'first') {
             row[entry.download.measurement ? 'reportPageReadyMs' : 'importPageReadyMs'] = Math.round(performance.now() - started);
-            await verifyWorkbookDownload(page, main, entry.download, row);
+            await verifyRecordDownload(page, main, entry.download, row);
+          }
+          if (entry.print && pass === 'first') {
+            row.step = 'job-description-print';
+            const printStarted = performance.now();
+            await main.getByRole('button', { name: 'Print / Save as PDF', exact: true }).click({ timeout: remaining() });
+            await page.locator('html[data-fixture-printed="true"]').waitFor({ state: 'attached', timeout: remaining() });
+            row.printMs = Math.round(performance.now() - printStarted);
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);

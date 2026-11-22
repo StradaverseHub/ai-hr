@@ -67,6 +67,20 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_JOB_DESCRIPTION_RECORDS==='true'){
+  const {saveJobDraft}=await source('packs/job-descriptions/service.ts');
+  const title='Fictional Warehouse Coordinator';
+  const code='PERF-WAREHOUSE-COORD';
+  const purpose='Verify stock handovers and shift records';
+  const record=await saveJobDraft(ctx,{
+   companyId:company.companyId,jobCode:code,title,owner:'Fictional warehouse team',
+   org:{department:fixture.tenants[company.tenant].companies[company.company].departmentId},
+   answers:{purpose:[{purpose}]},effectiveOn:fixture.today,reviewOn:fixture.today,
+   reason:'New fictional warehouse role',reviewerIds:[],approverId:company.userId,
+  });
+  fixture.jobDescriptionRecord={...record,title,code,purpose};
+ }
+
  if(env.PERF_LIFECYCLE_RECORDS==='true'){
   const lifecycle=await source('packs/lifecycle/service.ts');
   const companyId=company.companyId;
