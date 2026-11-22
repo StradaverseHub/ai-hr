@@ -66,16 +66,16 @@ it('keeps legacy, pending, transferred, and inaccessible Rewards roster candidat
     [inDestination.employmentId, moves.employmentId], [ready(inDestination.employmentId, destination.id), ready(moves.employmentId, destination.id)]);
 
   const today = todayInKualaLumpur();
-  const prepared = await prepareCompanyOrganisationRun(group, {
+  const runId = await prepareCompanyOrganisationRun(group, {
     kind: 'mapping', companyIds: [base.companyId], effectiveOn: today,
     changes: [{ companyId: base.companyId, businessUnitId: originUnit.id, parentCompanyId: null }],
   });
   const checker = { ...group, userId: await createAppUser(base.tenantId, null, 'hr_admin') };
-  const { run } = await companyOrganisationRunReport(checker, prepared.id);
-  await decideCompanyOrganisationRun(checker, { id: prepared.id, digest: run.digest, approve: true, reason: 'Reviewed fictional origin company mapping' });
-  let result = await processCompanyOrganisationRun(group, prepared.id);
+  const { run } = await companyOrganisationRunReport(checker, runId);
+  await decideCompanyOrganisationRun(checker, { id: runId, digest: run.digest, approve: true, reason: 'Reviewed fictional origin company mapping' });
+  let result = await processCompanyOrganisationRun(group, runId);
   for (let attempts=0; result.state==='staging' && attempts<20; attempts++) {
-    result = await processCompanyOrganisationRun(group, prepared.id);
+    result = await processCompanyOrganisationRun(group, runId);
   }
   expect(result.state).toBe('published');
 
