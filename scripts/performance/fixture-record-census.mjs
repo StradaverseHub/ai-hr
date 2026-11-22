@@ -477,7 +477,7 @@ async function attendanceRecordRoutes(db, fixture) {
   const mappingId = fixture.tenants[group.tenant].clockingMappingId;
   assert.match(mappingId, /^[0-9a-f-]{36}$/i);
   const mapping = '/admin/attendance/file-mappings/' + mappingId;
-  return [group, company].flatMap(actor => {
+  const routes = [group, company].flatMap(actor => {
     const subject = fixture.users.find(user => user.role === 'employee' &&
       user.tenantId === actor.tenantId && user.companyId === actor.companyId);
     assert(subject, 'Expected a fictional employee in the selected company');
@@ -491,8 +491,20 @@ async function attendanceRecordRoutes(db, fixture) {
       { actor, template: '/admin/attendance/schedule-assignment/[employmentId]',
         path: '/admin/attendance/schedule-assignment/' + subject.employmentId,
         content: subject.name, witness: 'dl dd' },
+      { actor, template: '/attendance/individual/[date]',
+        path: '/attendance/individual/' + fixture.today + '?emp=' + subject.employmentId,
+        exactHeading: 'Attendance detail', content: subject.name, witness: ':text-is("09:00")' },
     ];
   });
+  const employee = fixture.users.find(user => user.role === 'employee' &&
+    user.tenantId === company.tenantId && user.companyId === company.companyId);
+  assert(employee, 'Expected a signed-in employee with historical Attendance rows');
+  routes.push({
+    actor: employee, template: '/attendance/my-records/[date]',
+    path: '/attendance/my-records/' + fixture.today + '?employmentId=' + employee.employmentId,
+    exactHeading: 'Attendance detail', content: employee.name, witness: 'input[name="checkIn"][value="09:00"]',
+  });
+  return routes;
 }
 
 function payrollFormulaEvaluationRoutes(fixture) {
