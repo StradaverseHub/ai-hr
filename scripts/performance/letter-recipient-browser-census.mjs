@@ -5,6 +5,34 @@ import {performance} from 'node:perf_hooks';
 
 const timeout=15000;
 
+async function acknowledge(page,main,origin,path){
+ const observation={status:'failed',step:'checkbox',posts:0,postStatuses:[],samePageAtStart:page.url()===origin+path};
+ const isSave=request=>request.method()==='POST'&&new URL(request.url()).pathname===path;
+ const posted=request=>{if(isSave(request))observation.posts++;};
+ const responded=response=>{if(isSave(response.request()))observation.postStatuses.push(response.status());};
+ page.on('request',posted);
+ page.on('response',responded);
+ try{
+  await main.locator('input[name="confirm"]').check({timeout});
+  observation.step='submit';
+  const started=performance.now();
+  await main.getByRole('button',{name:'Acknowledge',exact:true}).click({timeout});
+  observation.step='confirmation';
+  await main.getByText('Your confirmation has been recorded.',{exact:true}).waitFor({state:'visible',timeout});
+  observation.elapsedMs=Math.round(performance.now()-started);
+  observation.status='observed';
+  delete observation.step;
+ }catch(error){
+  observation.failure=error.name==='TimeoutError'?'timeout':error.code==='ERR_ASSERTION'?'assertion':'browser';
+ }finally{
+  page.off('request',posted);
+  page.off('response',responded);
+ }
+ const query=new URL(page.url()).searchParams;
+ observation.result=query.has('error')?'refused':query.has('notice')?'notice':'same-form';
+ return observation;
+}
+
 export async function measureLetterRecipients({db,fixture,origin,compiledPages,signedInContext,report,save}){
  const seed=fixture.letterRecipientRecords,templateName=fixture.tenants[0].letterDraft?.name;
  assert(seed&&templateName,'Missing persisted fictional issuance and submission');
@@ -68,19 +96,24 @@ export async function measureLetterRecipients({db,fixture,origin,compiledPages,s
     actions.downloadMs=Math.round(performance.now()-downloadStart);
     actions.downloadedArtifactVerified=true;
     actions.step='acknowledgement';
-    await main.locator('input[name="confirm"]').check({timeout});
-    const acknowledgeStart=performance.now();
-    await main.getByRole('button',{name:'Acknowledge',exact:true}).click({timeout});
-    await main.getByRole('status').filter({hasText:'Your confirmation has been recorded.'})
-     .waitFor({state:'visible',timeout});
-    actions.acknowledgementMs=Math.round(performance.now()-acknowledgeStart);
-    const rows=await db`
+    const recipientFacts=async()=>Array.from(await db`
      select kind,actor_id,content_hash from letter_recipient_event
      where tenant_id=${recipient.tenantId}::uuid and letter_id=${seed.issued.id}::uuid
-       and artifact_id=${seed.issued.artifactId}::uuid order by kind`;
-    assert.deepEqual(rows,['acknowledged','viewed'].map(kind=>({
+       and artifact_id=${seed.issued.artifactId}::uuid order by kind`);
+    actions.afterDownload=await acknowledge(page,main,origin,entry.path);
+    const firstFacts=await recipientFacts();
+    actions.afterDownload.persisted=firstFacts.some(row=>row.kind==='acknowledged');
+    if(actions.afterDownload.status!=='observed'&&!actions.afterDownload.persisted){
+     const refreshed=await page.goto(origin+entry.path,{waitUntil:'domcontentloaded',timeout});
+     assert.equal(refreshed?.status(),200);
+     actions.afterReload=await acknowledge(page,main,origin,entry.path);
+     actions.afterReload.persisted=(await recipientFacts()).some(row=>row.kind==='acknowledged');
+    }
+    assert.equal(actions.afterDownload.status,'observed','The direct post-download acknowledgement did not complete');
+    assert.deepEqual(await recipientFacts(),['acknowledged','viewed'].map(kind=>({
      kind,actor_id:recipient.userId,content_hash:artifact.content_hash,
     })));
+    actions.acknowledgementMs=actions.afterDownload.elapsedMs;
     actions.persisted=true;
     actions.status='observed';
     delete actions.step;
