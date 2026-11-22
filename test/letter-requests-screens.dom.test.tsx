@@ -20,7 +20,7 @@ vi.mock('../core/letters',()=>({listMyLetters:svc.letters,letterCompanyAccess:sv
  getLetterTemplate:svc.template,getStaffLetter:vi.fn(),listLetterPolicies:svc.policies,listLetterSettingAssets:svc.assets}));
 vi.mock('../core/letter-requests',()=>({LETTER_REQUEST_LIMITS:{purposeChars:300,reasonChars:500,messageChars:500,list:50,options:200},listMyLetterRequests:svc.mine,
  listRequestableLetterTypes:svc.requestable,listLetterRequestsForStaff:svc.staff,getLetterRequestForStaff:svc.one,listLetterRequestOptions:svc.options}));
-vi.mock('../app/me/letters/actions',()=>({openMyLetter:vi.fn(),confirmMyLetter:vi.fn(),requestLetterAction:vi.fn()}));
+vi.mock('../app/me/letters/actions',()=>({confirmMyLetter:vi.fn(),requestLetterAction:vi.fn()}));
 vi.mock('../app/letters/generate/actions',()=>({createGeneration:vi.fn(),updateGeneration:vi.fn(),declineLetterRequestAction:vi.fn()}));
 vi.mock('../app/letters/settings/actions',()=>({savePolicySettings:vi.fn(),uploadLetterAsset:vi.fn()}));
 vi.mock('../app/letters/settings/request-actions',()=>({saveLetterRequestOptionsAction:vi.fn()}));

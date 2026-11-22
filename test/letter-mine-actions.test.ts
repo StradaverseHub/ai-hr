@@ -7,20 +7,39 @@ vi.mock('../core/letters',()=>({createMyLetterAccess:mocks.access,acknowledgeMyL
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('REDIRECT:'+url);}}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>'Localised '+key)}));
-import {openMyLetter,confirmMyLetter} from '../app/me/letters/actions';
-import {GET} from '../app/me/letters/[letterId]/document/route';
+import {confirmMyLetter} from '../app/me/letters/actions';
+import {GET,POST} from '../app/me/letters/[letterId]/document/route';
 const id='00000000-0000-4000-8000-000000000001',hash='a'.repeat(64),token='B'.repeat(43),ctx={tenantId:'fixture',userId:'verified-user'};
 function form(){const data=new FormData();data.set('letterId',id);data.set('artifactHash',hash);data.set('action','acknowledge');data.set('confirm','yes');return data;}
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue(ctx);});
-it('creates a sensitive link only after an authenticated open action and delegates ownership to the owner',async()=>{
- mocks.access.mockResolvedValue({token,expiresAt:new Date(),artifactHash:hash});await expect(openMyLetter(form())).rejects.toThrow(`REDIRECT:/me/letters/${id}/document?token=${token}&inline=1`);expect(mocks.access).toHaveBeenCalledExactlyOnceWith(ctx,id);
+const params={params:Promise.resolve({letterId:id})};
+const documentPath='/me/letters/'+id+'/document';
+const post=(inline=false,origin='https://fixture.test',site='same-origin')=>new Request('https://fixture.test'+documentPath+(inline?'?inline=1':''),{
+ method:'POST',headers:{origin,'sec-fetch-site':site},
+});
+it.each([false,true])('creates a private document redirect through a native POST (inline %s)',async inline=>{
+ mocks.access.mockResolvedValue({token,expiresAt:new Date(),artifactHash:hash});
+ const response=await POST(post(inline),params);
+ expect(response.status).toBe(303);
+ expect(response.headers.get('location')).toBe(documentPath+'?token='+token+'&inline='+(inline?'1':'0'));
+ expect(response.headers.get('cache-control')).toBe('private, no-store');
+ expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+ expect(mocks.access).toHaveBeenCalledExactlyOnceWith(ctx,id);
+});
+it('refuses cross-origin and unauthenticated document POST requests before creating access',async()=>{
+ expect((await POST(post(false,'https://elsewhere.test'),params)).status).toBe(403);
+ expect((await POST(post(false,'https://fixture.test','cross-site'),params)).status).toBe(403);
+ expect(mocks.session).not.toHaveBeenCalled();
+ mocks.session.mockRejectedValue(new AuthRequiredError());
+ expect((await POST(post(),params)).status).toBe(401);
+ expect(mocks.access).not.toHaveBeenCalled();
 });
 it('requires an explicit confirmation and binds its localized intent and exact artifact hash',async()=>{
  const unchecked=form();unchecked.delete('confirm');await expect(confirmMyLetter(unchecked)).rejects.toThrow('error=invalid');expect(mocks.confirm).not.toHaveBeenCalled();
  mocks.confirm.mockResolvedValue({at:new Date(),alreadyRecorded:false});const confirmed=form();confirmed.set('intent','Forged form text');await expect(confirmMyLetter(confirmed)).rejects.toThrow('notice=recorded');expect(mocks.confirm).toHaveBeenCalledExactlyOnceWith(ctx,{letterId:id,expectedArtifactHash:hash,action:'acknowledge',intent:'Localised acknowledgementIntent'});
 });
 it('preserves the distinction between a retry and a new confirmation and never discloses internal errors',async()=>{
- mocks.confirm.mockResolvedValue({at:new Date(),alreadyRecorded:true});await expect(confirmMyLetter(form())).rejects.toThrow('notice=alreadyRecorded');mocks.access.mockRejectedValue(new Error('private SQL diagnostic'));await expect(openMyLetter(form())).rejects.toThrow('error=unavailable');
+ mocks.confirm.mockResolvedValue({at:new Date(),alreadyRecorded:true});await expect(confirmMyLetter(form())).rejects.toThrow('notice=alreadyRecorded');mocks.access.mockRejectedValue(new Error('private SQL diagnostic'));expect((await POST(post(),params)).headers.get('location')).toBe('/me/letters/'+id+'?error=unavailable');
  mocks.confirm.mockRejectedValue(new LetterWorkflowError('stale'));await expect(confirmMyLetter(form())).rejects.toThrow('error=stale');
 });
 it('serves only the freshly authorised exact bytes with private no-store headers',async()=>{
