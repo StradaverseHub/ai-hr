@@ -475,7 +475,7 @@ async function noticeRecordRoutes(db, fixture) {
     select nr.employment_id, n.content_version, nr.first_viewed_at
     from notice_recipient nr join notice n on n.id=nr.notice_id and n.tenant_id=nr.tenant_id
     where n.id=${record.id}::uuid and n.tenant_id=${company.tenantId}::uuid
-      and n.company_id=${company.companyId}::uuid and n.published_at is not null
+      and n.owner_company_id=${company.companyId}::uuid and n.published_at is not null
     order by nr.employment_id
   `;
   assert.deepEqual([...recipients], [{ employment_id: employee.employmentId, content_version: 1, first_viewed_at: null }]);
