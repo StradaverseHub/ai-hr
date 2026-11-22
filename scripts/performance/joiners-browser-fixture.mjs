@@ -68,6 +68,23 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_PRIVATE_CASE_RECORDS==='true'){
+  const {designateCaseHandler,openPrivateCase}=await source('core/private-cases.ts');
+  const employee=fixture.users[4];
+  assert(employee.role==='employee'&&employee.companyId===company.companyId);
+  const [principal]=await owner.client`select tenant_id,grants from app.principal(${employee.userId}::uuid)`;
+  assert(principal?.tenant_id===group.tenantId&&Array.isArray(principal.grants));
+  const author={tenantId:employee.tenantId,userId:employee.userId,personId:employee.personId,grants:principal.grants,
+   roles:[...new Set(principal.grants.map(grant=>grant.role))],entitlements:ctx.entitlements};
+  await designateCaseHandler(ctx,{companyId:company.companyId,appUserId:company.userId});
+  const text='Fictional private case to verify the browser workflow.';
+  const {caseId,reachable}=await openPrivateCase(author,{
+   companyId:company.companyId,category:'grievance',text,shownHandlerIds:[company.userId],
+  });
+  assert(reachable,'The fixture must reach its designated company handler');
+  fixture.privateCaseRecord={id:caseId,text};
+ }
+
  if(env.PERF_SAVED_REPORT_RECORDS==='true'){
   const {saveCustomReport}=await source('core/custom-reports.ts');
   const employee=fixture.users[4];

@@ -620,6 +620,68 @@ async function loanRecordRoutes(db, fixture) {
   ]);
 }
 
+async function privateCaseRecordRoutes(db, fixture) {
+  const [, handler, , , author] = fixture.users;
+  const record = fixture.privateCaseRecord;
+  assert(record && author.companyId === handler.companyId);
+  const [stored] = await db`
+    select category, route, handler_user_ids = array[${handler.userId}::uuid] as bound_handler,
+      body_ciphertext <> ${record.text} as encrypted
+    from private_case where tenant_id = ${author.tenantId}::uuid and company_id = ${author.companyId}::uuid
+      and id = ${record.id}::uuid and author_user_id = ${author.userId}::uuid
+  `;
+  assert.deepEqual(stored, {category:'grievance',route:'handlers',bound_handler:true,encrypted:true});
+  const note = 'Fictional note visible to the designated handler.';
+  return [
+    {actor:handler,template:'/cases/[caseId]',path:'/cases/'+record.id,exactHeading:'Grievance',
+      witness:'[data-private-case-text]',privateCase:{...record,note,canSaveNote:true}},
+    {actor:author,template:'/me/cases/[caseId]',path:'/me/cases/'+record.id,exactHeading:'Grievance',
+      witness:'[data-private-case-text]',privateCase:{...record,note,canSaveNote:false}},
+  ];
+}
+
+async function verifyPrivateCase(page, main, db, entry, row, pass, remaining) {
+  const {actor, privateCase: record} = entry;
+  assert.equal(await main.locator(entry.witness).innerText({timeout:remaining()}), record.text);
+  const [audit] = await db`
+    select count(*)::int as reads from private_case_event
+    where tenant_id = ${actor.tenantId}::uuid and case_id = ${record.id}::uuid
+      and actor_user_id = ${actor.userId}::uuid and kind = 'read'
+  `;
+  assert(audit.reads >= (pass === 'first' ? 1 : 2), 'Opening the private case must record the reader');
+  const note = main.getByText(record.note,{exact:true});
+  if (!record.canSaveNote) {
+    assert.equal(await note.count(),0,'The author must never receive the handler note');
+    assert.equal(await main.locator('textarea[name="text"]').count(),0);
+    row.privateCaseNoteHidden = true;
+    return;
+  }
+  if (pass === 'first') {
+    await main.locator('textarea[name="text"]').fill(record.note,{timeout:remaining()});
+    const started = performance.now();
+    const posted = page.waitForResponse(response => {
+      const request = response.request();
+      return request.method() === 'POST' && new URL(response.url()).pathname === entry.path
+        && (Boolean(request.headers()['next-action']) || request.isNavigationRequest());
+    }, {timeout:remaining()});
+    const clicked = main.getByRole('button',{name:'Save note',exact:true}).click({timeout:remaining()});
+    const [response] = await Promise.all([posted,clicked]);
+    assert([200,303].includes(response.status()));
+    await main.getByRole('status').filter({hasText:'Note saved.'}).waitFor({state:'visible',timeout:remaining()});
+    await note.waitFor({state:'visible',timeout:remaining()});
+    row.privateCaseNoteSaveMs = Math.round(performance.now()-started);
+  } else {
+    await note.waitFor({state:'visible',timeout:remaining()});
+  }
+  const notes = await db`
+    select body_ciphertext <> ${record.note} as encrypted from private_case_note
+    where tenant_id = ${actor.tenantId}::uuid and case_id = ${record.id}::uuid
+      and author_user_id = ${actor.userId}::uuid
+  `;
+  assert.deepEqual([...notes],[{encrypted:true}]);
+  row.privateCaseNotePersisted = true;
+}
+
 async function savedReportRecordRoutes(db, fixture) {
   const [group, company, , , employee] = fixture.users;
   const record = fixture.savedReportRecord;
@@ -1063,7 +1125,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, privateCaseRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1076,6 +1138,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
     : loanRecords ? await loanRecordRoutes(db, fixture)
     : savedReportRecords ? await savedReportRecordRoutes(db, fixture)
+    : privateCaseRecords ? await privateCaseRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -1162,6 +1225,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             row.savedReportPageReadyMs=Math.round(performance.now()-started);
             row.step='saved-report-preview';
             await verifySavedReportPreview(page,main,entry,row,remaining);
+          }
+          if (entry.privateCase) {
+            row.privateCasePageReadyMs = Math.round(performance.now()-started);
+            row.step = 'private-case-record';
+            await verifyPrivateCase(page,main,db,entry,row,pass,remaining);
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);
