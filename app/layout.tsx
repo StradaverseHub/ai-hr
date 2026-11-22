@@ -307,7 +307,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       suppressHydrationWarning
     >
       <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4 monolith:bg-background! monolith:p-0!">
-        <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}>
+        <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale} signedIn>
         <Providers>
         {/* r398 — the theme the shell's structural branches render on the server (components/ui-theme-context.tsx);
             on the client they follow <html data-ui-theme> itself. */}
