@@ -8,6 +8,7 @@ import {request} from 'node:http';
 import {once} from 'node:events';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher,serverActionRegistry,serverActionCoverage,serverActionPageMatcher} from './system-route-manifest.mjs';
 import {actionCensusIdentity} from './browser-action-census.mjs';
@@ -34,7 +35,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','shell-content','approvals-content','command-delegation','tp3-catalogue','tp3-catalogue-network','payroll-catalogue'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','shell-content','approvals-content','command-delegation','tp3-catalogue','tp3-catalogue-network','payroll-catalogue','assistant-catalogue'].includes(surfaceProbe),'Unknown browser surface');
 const tp3CatalogueProbe=['tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe);
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
@@ -1814,6 +1815,47 @@ async function measureSavedAssistantHistory({page,user,fixture,report,save}){
  });
 }
 
+async function measureAssistantCatalogue(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
+ const {messagesForLocale}=await import(pathToFileURL(join(process.cwd(),'i18n/catalogs.ts')).href);
+ const locales=['en','ms','zh','ta','th','vi'];
+ const cases=locales.map(locale=>({locale,user:fixture.users[4]}));
+ cases.push({locale:'en',user:fixture.users[1]});
+ report.assistantCatalogue=[];
+ for(const {locale,user} of cases){
+  const row={locale,role:user.role,status:'incomplete',translationErrors:0,pageErrors:0};
+  report.assistantCatalogue.push(row);
+  const context=await signedInContext(user);
+  try{
+   await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:origin}]);
+   const page=await context.newPage();
+   page.on('pageerror',()=>row.pageErrors++);
+   page.on('console',message=>{if(/MISSING_MESSAGE|IntlError/.test(message.text()))row.translationErrors++;});
+   row.step='saved-history';
+   await measureSavedAssistantHistory({page,user,fixture,report:row,save});
+   row.step='localized-controls';
+   const messages=await messagesForLocale(locale);
+   assert.equal(await page.locator('html').getAttribute('lang'),locale);
+   await page.getByPlaceholder(messages.assistant.placeholder,{exact:true}).waitFor({state:'visible',timeout:15000});
+   await page.getByPlaceholder(messages.aiAsk.search,{exact:true}).waitFor({state:'visible',timeout:15000});
+   row.step='how-it-works';
+   const how=page.locator('[data-ai-centre-tabs] a[href="/assistant?view=how"][data-ai-centre-link-ready="true"]');
+   const start=performance.now();
+   await how.click({timeout:15000});
+   await page.locator('[data-how-controls]').waitFor({state:'visible',timeout:15000});
+   row.howVisibleMs=Math.round(performance.now()-start);
+   row.step='translation';
+   assert.equal(row.translationErrors,0);
+   assert.equal(row.pageErrors,0);
+   row.status='observed';
+  }catch(error){
+   row.status=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser-failure';
+  }finally{await context.close();save();}
+ }
+ assert(report.assistantCatalogue.every(row=>row.status==='observed'),'Assistant catalogue or localized browser check missed');
+}
+
 async function measureJobDescriptionEditor({page,user,report,save}){
  const list='/admin/job-descriptions',create=list+'/new';
  report.actionStage='job-description-list-open';
@@ -2644,6 +2686,7 @@ try{
   }
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='command-delegation')await measureCommandDelegation(fixture);
+  else if(surfaceProbe==='assistant-catalogue')await measureAssistantCatalogue(fixture);
   else if(tp3CatalogueProbe)await measureTp3Catalogue(fixture);
   else if(surfaceProbe==='payroll-catalogue'){
    const require=createRequire(join(process.cwd(),'package.json'));
