@@ -603,7 +603,7 @@ async function measurePersonnelJobSelection(page, origin, path, row) {
   const job = main.locator('[data-tabpanel="job"] #section-employment-info [data-ui-section-header]').first();
   const profile = main.locator('[data-tabpanel="profile"]');
   const destination = new URL(path, origin);
-  const jobTab = main.getByRole('tab', { name: 'Job', exact: true });
+  const jobTab = main.getByRole('tab', { name: 'Employment', exact: true });
   row.jobControlsOnProfile = await job.count();
   for (const pass of ['first', 'repeat']) {
     const started = performance.now();
