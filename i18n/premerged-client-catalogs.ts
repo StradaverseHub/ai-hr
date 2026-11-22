@@ -10,9 +10,11 @@ export function messagesForClient(locale: Locale, scope: ClientCatalogueScope): 
   const cached = bundles.get(key);
   if (cached) return cached;
 
-  const asset = scope === 'tp3'
-    ? import(`./client-assets/tp3/${locale}.json`)
-    : import(`./client-assets/${locale}.json`);
+  const asset = {
+    full: () => import(`./client-assets/${locale}.json`),
+    home: () => import(`./client-assets/home/${locale}.json`),
+    tp3: () => import(`./client-assets/tp3/${locale}.json`),
+  }[scope]();
   const requested = asset.then(bundle => bundle.default as AbstractIntlMessages)
     .catch(error => {
       bundles.delete(key);
