@@ -1,11 +1,14 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { AuthRequiredError } from '../lib/auth-errors';
+import { createDatabaseAdmission } from '../db/admission';
+import { databaseReadSignal } from '../db/workload';
 
 const fixtures = vi.hoisted(() => ({ getSession: vi.fn(), listHistory: vi.fn() }));
 vi.mock('../lib/session', () => ({ getSession: fixtures.getSession }));
 vi.mock('../core/read', () => ({ listApprovalHistory: fixtures.listHistory }));
 
 import { GET } from '../app/api/notifications/approval-history/route';
+const request = (signal?: AbortSignal) => new Request('https://example.invalid/api/notifications/approval-history', { signal });
 
 beforeEach(() => vi.resetAllMocks());
 
@@ -19,7 +22,7 @@ it('opens only the authenticated manager or admin history with a bounded private
   for (const role of ['manager', 'hr_admin']) {
     const session = { tenantId: 'tenant', userId: 'actor', roles: [role] };
     fixtures.getSession.mockResolvedValue(session);
-    const response = await GET();
+    const response = await GET(request());
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('private, no-store');
     expect(fixtures.listHistory).toHaveBeenLastCalledWith(session, {
@@ -33,8 +36,32 @@ it('opens only the authenticated manager or admin history with a bounded private
 
 it('refuses unauthenticated and employee callers without reading history', async () => {
   fixtures.getSession.mockRejectedValueOnce(new AuthRequiredError());
-  expect((await GET()).status).toBe(401);
+  expect((await GET(request())).status).toBe(401);
   fixtures.getSession.mockResolvedValue({ tenantId: 'tenant', userId: 'actor', roles: ['employee'] });
-  expect((await GET()).status).toBe(403);
+  expect((await GET(request())).status).toBe(403);
   expect(fixtures.listHistory).not.toHaveBeenCalled();
+});
+
+it('removes a disconnected history request from database admission', async () => {
+  const admission = createDatabaseAdmission({ capacity: 1, backgroundCapacity: 1, maxWaiting: 2, waitMs: 10_000 });
+  const release = await admission.acquire('tenant', 'interactive');
+  const controller = new AbortController();
+  const incoming = request(controller.signal);
+  fixtures.getSession.mockResolvedValue({ tenantId: 'tenant', userId: 'actor', roles: ['manager'] });
+  fixtures.listHistory.mockImplementation(async () => {
+    expect(databaseReadSignal()).toBe(incoming.signal);
+    const releaseHistory = await admission.acquire('tenant', 'interactive', databaseReadSignal());
+    releaseHistory();
+    return [];
+  });
+
+  const response = GET(incoming);
+  try {
+    await vi.waitFor(() => expect(admission.snapshot().waiting).toBe(1));
+    controller.abort();
+    expect((await response).status).toBe(503);
+    expect(admission.snapshot()).toMatchObject({ active: 1, waiting: 0 });
+  } finally {
+    release();
+  }
 });
