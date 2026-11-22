@@ -1627,3 +1627,5 @@ The repository owner approved the revised exact staging fingerprint `cae18ae5ede
 ## Payroll tax worker database admission, 23 November 2026
 
 The repository owner approved carrying forward the same 28 provider approvals to source fingerprint `eee00d413d961b8687f91c415030af5fde88451f2e7df0938aa5b6a97527e74e`. Payroll preview and confirmation now release the worker database slot between their read and write transactions. Provider data fields, purposes, endpoints and transports are unchanged.
+
+The repository owner approved the revised exact fingerprint `4759bfd71e0bb4fdd028591b3d960dc9f4449c376b001034cf11a4d32b801928` after restoring the public TypeScript contract of ordinary job handlers. The three corrected type declarations emit identical worker JavaScript. The same 28 provider approvals retain their data fields, purposes, endpoints and transports.
