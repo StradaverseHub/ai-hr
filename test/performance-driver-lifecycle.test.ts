@@ -460,18 +460,19 @@ it('projects a closed worker failure without exporting a raw error, route, SQL o
 });
 
 it('aggregates only closed loaded traffic cohorts, Home phases and real sampled advisory families',async()=>{
- const {createWorkerLoadedDiagnostics,projectWorkerDriverFailure,validateWorkerDriverFailure}
+ const {createLoadedAdvisoryDiagnostics,createWorkerLoadedDiagnostics,projectWorkerDriverFailure,validateWorkerDriverFailure}
   =await import('../scripts/performance/worker-comparison-failure.mjs');
- const diagnostics=createWorkerLoadedDiagnostics();
+ const advisory=createLoadedAdvisoryDiagnostics();
+ const diagnostics=createWorkerLoadedDiagnostics(advisory);
  const sensitive='/admin/personnel/fictional-person-private-id?q=select';
  const http={name:'AssertionError',actual:503,message:'Unexpected HTTP status for '+sensitive};
  for(let n=0;n<12;n++)diagnostics.traffic('groupHR','navigation',sensitive,http);
  diagnostics.traffic('employee','claims-create','/claims?draft=secret',{name:'Error',code:'55P03'});
  diagnostics.traffic('manager','home-read','/',{name:'TimeoutError',message:sensitive});
  diagnostics.traffic('employee','mixed-workflow',undefined,{name:'Error',code:'WORKFLOW_ROUTE_CHANGED',message:sensitive});
- diagnostics.lock(2,['audit-chain','audit-chain','leave-dependency-employment',sensitive]);
- diagnostics.lock(1,[]);
- diagnostics.lock(0,['access-configuration']);
+ advisory.observe(2,['audit-chain','audit-chain','leave-dependency-employment',sensitive]);
+ advisory.observe(1,[]);
+ advisory.observe(0,['access-configuration']);
  const report={measurementWindow:{},homeCardFailures:[{role:'employee',phase:'loaded',messages:[sensitive]},
   {role:'employee',phase:'loaded',messages:[sensitive]},{role:'manager',phase:'baseline',messages:[sensitive]},
   {role:sensitive,phase:'loaded',messages:[sensitive]}]};
