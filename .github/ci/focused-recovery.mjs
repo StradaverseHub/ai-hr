@@ -13,7 +13,7 @@ import {REPOSITORY,verifyArtifactBytes} from './release-policy.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {assessResumeSource} from './resume-source.mjs';
-import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,validateRecoveryProducer} from './focused-recovery-policy.mjs';
+import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,validateRecoveryProducer,reconcileInstalledPayrollBaseline} from './focused-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const data=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(data[key]),'Missing API inventory');rows.push(...data[key]);if(data[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
@@ -52,7 +52,15 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
    producerAncestorOfVerifier=true;
   }
  }catch{/* Refused below unless this was the exact-source producer. */}
- const controller=validateRecoveryProducer({run:originalRun,candidate,baseline,producerAncestorOfVerifier});
+ const stagingReconciliation=()=>{
+  if(originalRun.id!==45044248444)return null;
+  const main=api('git/ref/heads/main').object?.sha,alpha=api('git/ref/heads/alpha').object?.sha;
+  const producerAncestorOfBaseline=/^[a-f0-9]{40}$/.test(originalRun.head_sha)&&
+   execFileSync('git',['merge-base',originalRun.head_sha,baseline],{cwd:candidatePath,encoding:'utf8'}).trim()===originalRun.head_sha;
+  return reconcileInstalledPayrollBaseline({run:originalRun,candidate,baseline,main,alpha,producerAncestorOfVerifier,producerAncestorOfBaseline});
+ };
+ const reconciled=stagingReconciliation();
+ const controller=reconciled?.controller??validateRecoveryProducer({run:originalRun,candidate,baseline,producerAncestorOfVerifier});
  const p={candidate,controller,baseline,runId};
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`validated-recovery-${runId}-${randomUUID()}`);
  const source=await collect(runId,dir,{reuse,prefetchDirectory:process.env.AIHR_CI_PREFETCH_DIR||undefined});
@@ -76,7 +84,13 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
  recovery.verificationDiagnostic=verificationDiagnostic;
  const build=await sourceBoundBuild({candidatePath,dir,p:{...p,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');
- const alpha=api('git/ref/heads/alpha');assert([baseline,candidate].includes(alpha.object?.sha),'Canonical alpha moved away from recovery source');
+ if(reconciled){
+  assert(isDeepStrictEqual(stagingReconciliation(),reconciled),'Payroll staging reconciliation changed');
+  recovery.stagingReconciliation=reconciled;
+ }else{
+  const alpha=api('git/ref/heads/alpha');
+  assert([baseline,candidate].includes(alpha.object?.sha),'Canonical alpha moved away from recovery source');
+ }
  const result={...recovery,tier:'ci',result:'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);
  return result;

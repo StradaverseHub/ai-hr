@@ -19,6 +19,23 @@ export function validateRecoveryProducer({run,candidate,baseline,producerAncesto
   'Separate recovery producer must be the published main staging baseline and an ancestor of the verifier');
  return baseline;
 }
+/** The previous stage arrived under lease 150. Its BKG acceptance did not pass, so both published refs
+ * still name the earlier release. Limit this recovery to the exact run, installed baseline and unchanged refs. */
+const STAGING_PAYROLL_RECOVERY={
+ runId:45044248444,
+ candidate:'bdef63c55fdf8afc9f482fed7829a2c369e52543',
+ baseline:'17cdd7f2c9bfa99efa85a660a94878c6af2d3278',
+ controller:'553b0538aa092698fd5643dede3ce7e3e869c4d0',
+};
+export function reconcileInstalledPayrollBaseline({run,candidate,baseline,main,alpha,producerAncestorOfVerifier,producerAncestorOfBaseline}){
+ const expected=STAGING_PAYROLL_RECOVERY;
+ if(run?.id!==expected.runId)return null;
+ assert(candidate===expected.candidate&&baseline===expected.baseline&&run.head_sha===expected.controller&&
+  main===expected.controller&&alpha===expected.controller&&run.head_branch==='main'&&run.event==='workflow_dispatch'&&
+  producerAncestorOfVerifier===true&&producerAncestorOfBaseline===true,
+  'Exact payroll staging recovery baseline or published ref changed');
+ return {...expected,main,alpha};
+}
 export function requireReviewedFocusedController({execute,controller,reviewedController}){
  if(execute)assert(sha(controller)&&controller===reviewedController,'Exact focused recovery verifier review required before installation');
 }

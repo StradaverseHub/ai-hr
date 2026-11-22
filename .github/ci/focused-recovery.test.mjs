@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController} from './focused-recovery-policy.mjs';
+import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController,reconcileInstalledPayrollBaseline} from './focused-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 
@@ -91,4 +91,17 @@ test('Installation requires an exact reviewed focused recovery controller',()=>{
  assert.doesNotThrow(()=>requireReviewedFocusedController({execute:true,controller,reviewedController:controller}));
  assert.throws(()=>requireReviewedFocusedController({execute:true,controller}));
  assert.throws(()=>requireReviewedFocusedController({execute:true,controller,reviewedController:'b'.repeat(40)}));
+});
+
+test('Allows only the exact installed payroll baseline while the published refs retain the prior release',()=>{
+ const controller='553b0538aa092698fd5643dede3ce7e3e869c4d0';
+ const input={run:{id:45044248444,head_sha:controller,head_branch:'main',event:'workflow_dispatch'},
+  candidate:'bdef63c55fdf8afc9f482fed7829a2c369e52543',baseline:'17cdd7f2c9bfa99efa85a660a94878c6af2d3278',
+  main:controller,alpha:controller,producerAncestorOfVerifier:true,producerAncestorOfBaseline:true};
+ assert.equal(reconcileInstalledPayrollBaseline(input).controller,controller);
+ for(const field of ['candidate','baseline','main','alpha','producerAncestorOfVerifier','producerAncestorOfBaseline']){
+  assert.throws(()=>reconcileInstalledPayrollBaseline({...input,[field]:null}),/Exact payroll staging recovery baseline/);
+ }
+ assert.throws(()=>reconcileInstalledPayrollBaseline({...input,run:{...input.run,head_branch:'alpha'}}));
+ assert.equal(reconcileInstalledPayrollBaseline({...input,run:{...input.run,id:45044248445}}),null);
 });
