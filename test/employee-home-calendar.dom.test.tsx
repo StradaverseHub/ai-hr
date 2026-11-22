@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {renderToStaticMarkup} from 'react-dom/server';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
@@ -20,13 +21,36 @@ function data(month='2024-02',employmentId='own'):EmployeeHomeCalendar{
   team:{scope:'off',from:dates[0],to:dates[dates.length-1],days:dates.map(date=>({date,available:false,totalPeople:null,items:[],nextCursor:null}))},
   days:homeCalendarGrid(month,1).map(date=>({date,canRequestLeave:date==='2024-02-14',entries:date==='2024-02-12'?[{kind:'leave',date,status:'pending',duration:'part_day'}]:[]}))};
 }
-function view(employmentId='own',full=false,locale:keyof typeof catalogues='en'){return <NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur" onError={error=>{throw error;}}><HomeCalendarCard employmentId={employmentId} initialMonth="2024-02" full={full}/></NextIntlClientProvider>;}
+function view(employmentId='own',full=false,locale:keyof typeof catalogues='en',initialCalendar?:React.ComponentProps<typeof HomeCalendarCard>['initialCalendar']){return <NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur" onError={error=>{throw error;}}><HomeCalendarCard employmentId={employmentId} initialMonth="2024-02" full={full} initialCalendar={initialCalendar}/></NextIntlClientProvider>;}
 beforeEach(()=>{fetcher.mockReset();vi.stubGlobal('fetch',fetcher);fetcher.mockImplementation(async(url:string)=>{
  const query=new URL(url,'http://localhost').searchParams;
  return {ok:true,json:async()=>data(query.get('month')!,query.get('employmentId')!)};
 });});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();window.history.replaceState(null,'','/');});
 describe('personal Home calendar interactions',()=>{
+ it('renders the authorized first month and fetches fresh data when returning to it',async()=>{
+  const calendar=view('own',true,'en',{state:'ready',value:data()});
+  const server=document.createElement('div');
+  server.innerHTML=renderToStaticMarkup(calendar);
+  expect(server.querySelector('button[aria-current="date"]')).toBeDisabled();
+  render(calendar);
+  expect(screen.getByRole('heading',{name:'February 2024'})).toBeVisible();
+  expect(fetcher).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Next'}));
+  await screen.findByRole('heading',{name:'March 2024'});
+  fireEvent.click(screen.getByRole('button',{name:'Previous'}));
+  await screen.findByRole('heading',{name:'February 2024'});
+  expect(fetcher.mock.calls.map(([url])=>new URL(url,'http://localhost').searchParams.get('month')))
+   .toEqual(['2024-03','2024-02']);
+ });
+ it('allows an explicit retry after the server month fails',async()=>{
+  render(view('own',true,'en',{state:'failed',reason:'timeout'}));
+  expect(screen.getByRole('alert')).toBeVisible();
+  expect(fetcher).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Retry: My Calendar'}));
+  expect(await screen.findByRole('heading',{name:'February 2024'})).toBeVisible();
+  expect(fetcher).toHaveBeenCalledTimes(1);
+ });
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('%s resolves compact labels and full day details from the real catalogue',async locale=>{
   render(view('own',false,locale));
   const title=new Intl.DateTimeFormat(locale,{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'UTC'}).format(new Date('2024-02-12T00:00:00Z'));

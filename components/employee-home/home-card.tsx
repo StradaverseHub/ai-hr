@@ -3,6 +3,7 @@
 import * as React from 'react';
 import {Button} from '@/components/ui';
 import {Card,CardContent,CardHeader} from '@/components/ui/card';
+import {useClientReady} from '@/components/use-client-ready';
 import type {EmployeeHomeCard} from '@/lib/employee-home';
 import {createHomeCardRefreshGate,deliverHomeCard,type HomeCardDelivery,type HomeCardReadActivity,type HomeCardReader} from '@/lib/employee-home-delivery';
 
@@ -47,23 +48,28 @@ export function useHomeCardRefresh(intervalMs:number){
  * unserializable function through a Server Component. Empty/unavailable facts belong to that owner's
  * typed result; a failed transport must never be reinterpreted as an empty list or a calm summary.
  */
-export function IndependentHomeCard<T>({card,title,labels,requestKey,read,children,className,regionRef,footer,initialRead,activity}:{
+export function IndependentHomeCard<T>({card,title,labels,requestKey,read,children,className,regionRef,footer,initialRead,initialResult,activity}:{
   card:EmployeeHomeCard;title:string;labels:Labels;requestKey:string;read:HomeCardReader<T>;
   children:(value:T)=>React.ReactNode;className?:string;
   regionRef?:React.Ref<HTMLDivElement>;
   footer?:React.ReactNode;
   initialRead?:HomeCardReader<T>;
+  initialResult?:Exclude<HomeCardDelivery<T>,{state:'cancelled'}>;
   /** Told when each read starts and settles, so an automatic refresh never cancels one in flight. */
   activity?:HomeCardReadActivity;
 }){
   const titleId=React.useId();
+  const interactive=useClientReady();
   const [attempt,setAttempt]=React.useState(0);
   const key=JSON.stringify([requestKey,attempt]);
-  const [view,setView]=React.useState<View<T>>({key,result:{state:'loading'}});
+  const initialKey=React.useRef(initialResult?key:null);
+  const [view,setView]=React.useState<View<T>>({key,result:initialResult??{state:'loading'}});
   const result=view.key===key?view.result:{state:'loading' as const};
   const loading=result.state==='loading';
   const failed=result.state==='failed';
   React.useEffect(()=>{
+    if(key===initialKey.current)return;
+    initialKey.current=null;
     const controller=new AbortController();
     let current=true;
     setView({key,result:{state:'loading'}});
@@ -81,7 +87,7 @@ export function IndependentHomeCard<T>({card,title,labels,requestKey,read,childr
   return <Card ref={regionRef} tabIndex={regionRef?-1:undefined} role="region" aria-labelledby={titleId} aria-busy={loading} data-home-card={card} className={className}>
     <CardHeader className="gap-3">
       <h2 id={titleId} className="min-w-0 text-base font-semibold">{title}</h2>
-      <Button type="button" variant="outline" className="h-11 shrink-0 px-3" disabled={loading}
+      <Button type="button" variant="outline" className="h-11 shrink-0 px-3" disabled={loading||!interactive}
         aria-label={`${failed?labels.retry:labels.refresh}: ${title}`} onClick={()=>setAttempt(value=>value+1)}>
         {loading?labels.loading:failed?labels.retry:labels.refresh}
       </Button>
