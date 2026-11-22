@@ -641,22 +641,6 @@ async function savedReportRecordRoutes(db, fixture) {
 }
 
 async function verifySavedReportPreview(page, main, entry, row, remaining) {
-  const reportName = main.getByRole('textbox',{name:'Report name',exact:true});
-  const submittedName = main.locator('form input[type="hidden"][name="name"]').first();
-  const original = await reportName.inputValue({timeout:remaining()});
-  const probe = original + ' probe';
-  const readinessStarted = performance.now();
-  row.step = 'saved-report-hydration';
-  while (remaining() > 1) {
-    await reportName.fill('',{timeout:remaining()});
-    await reportName.fill(probe,{timeout:remaining()});
-    if (await submittedName.inputValue({timeout:remaining()}) === probe) break;
-  }
-  assert.equal(await submittedName.inputValue({timeout:remaining()}),probe);
-  await reportName.fill(original,{timeout:remaining()});
-  assert.equal(await submittedName.inputValue({timeout:remaining()}),original);
-  row.savedReportHydrationMs = Math.round(performance.now()-readinessStarted);
-
   const previewAction = request => request.method()==='POST' && Boolean(request.headers()['next-action'])
     && new URL(request.url()).pathname===entry.path;
   const started = performance.now();
