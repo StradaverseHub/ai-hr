@@ -12,7 +12,7 @@ it('writes the canonical catalogue and smaller signed-in route catalogues for ev
   try {
     await prepareClientCatalogues(output);
     const localeFiles = locales.map(locale => locale + '.json').sort();
-    const scopes = ['home', 'tp3', 'approvals', 'payroll-dashboard'];
+    const scopes = ['home', 'tp3', 'approvals', 'payroll-dashboard', 'assistant'];
     expect((await readdir(output)).sort()).toEqual([...localeFiles, ...scopes].sort());
     for (const scope of scopes) {
       expect((await readdir(join(output, scope))).sort()).toEqual(localeFiles);
@@ -58,6 +58,16 @@ it('writes the canonical catalogue and smaller signed-in route catalogues for ev
         components: {...shared.components, confirmSubmit: canonical.components.confirmSubmit},
       });
       expect(Buffer.byteLength(payroll)).toBeLessThan(Buffer.byteLength(generated) / 4);
+      const assistant = await readFile(join(output, 'assistant', locale + '.json'), 'utf8');
+      const assistantMessages = mergeClientCatalogues(shared, JSON.parse(assistant));
+      expect(assistantMessages.assistant).toEqual(canonical.assistant);
+      expect(assistantMessages.aiAsk).toEqual(canonical.aiAsk);
+      expect(assistantMessages.aiCentre).toEqual(canonical.aiCentre);
+      expect(assistantMessages.chatImport).toEqual(canonical.chatImport);
+      expect(assistantMessages.employeeHome.calendar).toEqual(canonical.employeeHome.calendar);
+      expect(assistantMessages.employeeHome.tasks).toEqual(canonical.employeeHome.tasks);
+      expect(assistantMessages.components.drawer).toEqual(canonical.components.drawer);
+      expect(Buffer.byteLength(assistant)).toBeLessThan(Buffer.byteLength(generated) / 4);
     }
   } finally {
     await rm(output, { recursive: true, force: true });
