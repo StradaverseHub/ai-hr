@@ -20,6 +20,7 @@ import {requestLeave} from '../core/leave';
 import {addEmergencyContact} from '../core/emergency-contacts';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {observeDatabaseLockCore} from '../scripts/performance/measured-lock-observer.mjs';
 
 const barrier=()=>{let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};};
 const pause=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -46,6 +47,20 @@ const asTenant=(tx:postgres.TransactionSql,tenantId:string,strict=false)=>tx.uns
 const admin=()=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});
 
 describe('E1: reader/writer fairness on the Access key',()=>{
+ it('attributes a clocking worker’s loaded Access lock even while its current query is generic',async()=>{
+  await raw.begin(async tx=>{
+   await tx`select set_config('application_name','aihr-bulk:clocking_import:chunk',true)`;
+   await tx`select pg_advisory_xact_lock(hashtextextended(${'access-configuration:'+b.tenantId},0))`;
+   const [held]=await tx`select pid,concat(classid,':',objid,':',objsubid) as key from pg_locks
+    where pid=pg_backend_pid() and locktype='advisory' and granted and mode='ExclusiveLock'`;
+   expect(held?.key).toBeTruthy();
+   const {locks}=await observeDatabaseLockCore(raw,'loaded',[held.key],true);
+   expect(locks.find(row=>row.pid===held.pid)).toMatchObject({
+    mode:'ExclusiveLock',granted:true,access_backend:'worker',access_statement:'clocking import',
+   });
+  });
+ });
+
  it('overlaps readers, queues the editor behind them, and queues later readers behind the editor',async()=>{
   const key=lockKey(b.tenantId),held=barrier(),release=barrier();
   const holder=raw.begin(async tx=>{await tx.unsafe(`select pg_advisory_xact_lock_shared(${key})`);held.resolve();await release.promise;});

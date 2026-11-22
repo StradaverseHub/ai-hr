@@ -47,13 +47,16 @@ export async function observeDatabaseLockCore(sql,phase,accessLocks,categorized)
      from pg_stat_activity where datname=current_database() and backend_type='client backend' group by 1,2`;
  const activityCompletedMs=performance.now();
  const advisoryStartedMs=performance.now();
- // Fixed categories from the same native observation. Neither SQL text nor backend identity is exported.
+ // Worker transactions use their job label until commit. Preserve that source
+ // when the observed SQL is a generic attendance write or the transaction end.
+ // Neither SQL text nor connection labels leave the native observation.
  const accessBlockerContext=phase==='loaded'?sql`,
-     case a.application_name
-      when 'aihr-fixture-mixed-worker' then 'worker'
-      when 'aihr-fixture-mixed-web' then 'web'
+     case
+      when a.application_name='aihr-fixture-mixed-worker' or starts_with(a.application_name,'aihr-bulk:') then 'worker'
+      when a.application_name='aihr-fixture-mixed-web' then 'web'
       else 'unclassified' end as access_backend,
      case
+      when starts_with(a.application_name,'aihr-bulk:clocking_import:') then 'clocking import'
       when lower(left(a.query,400)) like '%clocking_import%' then 'clocking import'
       when lower(left(a.query,400)) like '%attendance%' then 'attendance'
       when lower(left(a.query,400)) like '%leave_request%' then 'leave'
