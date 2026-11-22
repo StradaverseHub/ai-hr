@@ -121,6 +121,8 @@ export function projectMixedPreflightLockWaits(rows){
    waitKinds:waitCounts?Object.fromEntries(waitKinds.map(kind=>[kind,count(waitCounts[kind])])):null,
    ...(Array.isArray(row.preflightRequestOverlap)&&{requestOverlap:row.preflightRequestOverlap.slice(0,12)
     .map(request=>lockRequestCategory({...request,path:request?.route})).filter(Boolean)}),
+   ...(Array.isArray(observation?.waiters)&&{advisoryWaiterFamilies:[...new Set(observation.waiters
+    .slice(0,maxEdges).map(waiter=>waiter?.family).filter(family=>families.has(family)))]}),
    advisoryEdges:edges.filter(edge=>edge?.source==='original-sample'&&families.has(edge.family)
     &&modes.has(edge.waiterMode)&&modes.has(edge.blockerMode)&&states.has(edge.blockerState))
     .slice(0,maxEdges).map(edge=>({family:edge.family,waiterMode:edge.waiterMode,

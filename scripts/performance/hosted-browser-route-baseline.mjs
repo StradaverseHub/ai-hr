@@ -59,7 +59,9 @@ const shellLifetimeCandidate='24e0b499be5f009c409e539c1e78add85d7f3b03';
 const nextResponseCloseCandidate='a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778';
 const nextResponseCloseWithPayrollBoundary='b582a3d30f2f8d22d56e46da881f405ce7095834';
 const sharedEmployeeClaimsRead='4340a82c73b11541daa8811aaf7b534debb81ce3';
+const sharedEmployeeClaimsObserver='681ddc918ef99f9f632c3067d8f0624aaa5f8b21';
 const combinedGroupArtifacts=new Map([
+ [sharedEmployeeClaimsObserver,{runId:45040634196,artifactId:14761723496,sourceSha:sharedEmployeeClaimsRead}],
  ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],
  ['71e0dceb1a393817f3040518e82dc845a27700b0',{runId:44927404845,artifactId:14716484117}],
  ['0ba883e0aa294bb0f15dcfe2433deedb52d11996',{runId:44935634462,artifactId:14719437695}],
@@ -127,7 +129,7 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(shellLifetimeEnabled&&{shellHttpLifetime:'node-response-close'}),
- ...([nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead].includes(sha)&&{shellHttpLifetime:'next-after'}),
+ ...([nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,sharedEmployeeClaimsObserver].includes(sha)&&{shellHttpLifetime:'next-after'}),
  ...(reusedBuild&&{buildArtifact:combinedGroupBuild
   ? {sourceSha:sha,...combinedGroupArtifact}
   : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
@@ -765,7 +767,7 @@ async function withMixedContractNavigationComparison(work){
    }
    save();
    if(!clockingTenantQueue){
-    if([clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,browserIntegrationNativePreflight,browserIntegrationNativeControl,homeScopeMainCandidate,shellLifetimeCandidate,nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead].includes(sha)){
+    if([clockingOutcomeSource,browserIntegrationSource,browserIntegrationControl,browserIntegrationNativePreflight,browserIntegrationNativeControl,homeScopeMainCandidate,shellLifetimeCandidate,nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,sharedEmployeeClaimsObserver].includes(sha)){
      const rows=await owner`select exclusive from bulk_job_kind where kind='clocking_import'`;
      assert.deepEqual([...rows],[{exclusive:'tenant'}]);
      report.mixedClockingQueuePolicy={policy:'tenant'};

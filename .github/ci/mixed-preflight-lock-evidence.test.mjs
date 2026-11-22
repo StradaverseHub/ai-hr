@@ -35,6 +35,15 @@ test('bounds the artifact and omits unknown labels while preserving a native wai
  assert.equal(projectMixedPreflightLockWaits(null),null);
 });
 
+test('retains the observed lock family when its blocker is absent from the sample',()=>{
+ const [projected]=projectMixedPreflightLockWaits([{...wait,appAdvisoryAttribution:{
+  phase:'browser-workflows',waiters:[{family:'access-configuration',pid:12345},
+   {family:'private'},{family:'access-configuration'}],
+ }}]);
+ assert.deepEqual(projected.advisoryWaiterFamilies,['access-configuration']);
+ assert.deepEqual(projected.advisoryEdges,[]);
+});
+
 test('retains recognized Access statements and rejects labels from another lock family',()=>{
  const key={classid:'1',objid:'2',objsubid:1};
  const locks=[
