@@ -34,7 +34,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','shell-content','approvals-content','command-delegation','tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','personnel-create','content-readiness','shell-content','approvals-content','command-delegation','tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe),'Unknown browser surface');
 const tp3CatalogueProbe=['tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe);
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
@@ -2264,6 +2264,90 @@ async function measureFocusedRoster(fixture){
  assert.equal(report.rosterStartup.length,6);
 }
 
+async function measurePersonnelCreation(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
+ const actor=fixture.users[1];
+ assert.equal(actor.role,'companyHR');
+ const context=await signedInContext(actor);
+ const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
+ const row={status:'incomplete',stage:'open'};
+ report.personnelCreation=row;
+ let releaseScripts=()=>{};
+ try{
+  const page=await context.newPage();
+  const scripts=new Promise(resolve=>{releaseScripts=resolve;});
+  let delayedScripts=0;
+  await page.route(url=>url.origin===origin&&url.pathname.startsWith('/_next/static/')&&url.pathname.endsWith('.js'),async route=>{
+   delayedScripts++;
+   await scripts;
+   await route.continue();
+  });
+  const started=performance.now();
+  const response=await page.goto(origin+'/admin/personnel/new',{waitUntil:'commit',timeout:15000});
+  assert.equal(response?.status(),200);
+  const company=page.locator('select[data-personnel-field="employment.organisation_assignment.companyname"]');
+  const code=page.locator('input[data-personnel-field="profile.personal_details.employeecode"]:not([readonly])');
+  const automaticCode=page.locator('input[data-auto-employee-id]');
+  const name=page.locator('input[data-personnel-field="profile.personal_details.fullname"]');
+  await company.waitFor({state:'visible',timeout:15000});
+  row.formVisibleMs=Math.round(performance.now()-started);
+  row.companyEnabledBeforeScripts=await company.isEnabled();
+  if(sha==='14e060fcf30f958668dedf1a816ef7a6018675b7'){
+   assert.equal(row.companyEnabledBeforeScripts,false,'The Personnel company selector enabled before its handler');
+  }
+  if(row.companyEnabledBeforeScripts)await company.selectOption(actor.companyId,{timeout:15000});
+  assert.equal(await code.or(automaticCode).count(),0,'The fixture saw an employee ID before the company handler ran');
+  releaseScripts();
+  await page.waitForLoadState('load',{timeout:15000});
+  assert(delayedScripts>0,'The browser probe did not hold application scripts');
+  row.stage='company-selection';
+  await company.selectOption('',{timeout:15000});
+  const selected=performance.now();
+  await company.selectOption(actor.companyId,{timeout:15000});
+  await code.or(automaticCode).waitFor({state:'visible',timeout:15000});
+  row.companyToIdControlMs=Math.round(performance.now()-selected);
+  if(await code.isVisible())await code.fill('PFD-READY-BROWSER');
+  await name.fill('Fictional create readiness');
+  await page.locator('input[data-personnel-field="profile.contact_and_permanent_address.primaryemail"]').fill('perf-created@example.invalid');
+  row.stage='create';
+  const creating=performance.now();
+  await page.getByRole('button',{name:'Create employee',exact:true}).click({timeout:15000});
+  await page.waitForURL(url=>url.pathname==='/admin/personnel/new'&&url.searchParams.has('draft'),{timeout:15000});
+  const draft=new URL(page.url()).searchParams.get('draft');
+  assert(/^[a-f0-9-]{36}$/.test(draft??''));
+  const readDraft=async()=>(await db`
+   select label,reserved_employee_code as code from employee_draft
+   where id=${draft}::uuid and tenant_id=${actor.tenantId}::uuid and company_id=${actor.companyId}::uuid
+  `)[0];
+  const created=await readDraft();
+  assert.equal(created?.label,'Fictional create readiness');
+  assert(created?.code,'Personnel draft did not reserve an employee ID');
+  row.createPersistedMs=Math.round(performance.now()-creating);
+  row.stage='save';
+  await name.fill('Fictional create readiness edited');
+  const saving=performance.now();
+  await Promise.all([
+   page.waitForResponse(reply=>new URL(reply.url()).pathname==='/admin/personnel/new'&&
+    reply.request().method()==='POST'&&Boolean(reply.request().headers()['next-action']),{timeout:15000}).then(async reply=>{
+     assert.equal(reply.status(),200);
+     await reply.finished();
+    }),
+   page.getByRole('button',{name:'Save draft',exact:true}).click({timeout:15000}),
+  ]);
+  assert.deepEqual(await readDraft(),{...created,label:'Fictional create readiness edited'});
+  row.savePersistedMs=Math.round(performance.now()-saving);
+  row.stage='discard';
+  await page.getByRole('button',{name:'Delete Record',exact:true}).click({timeout:15000});
+  const discarding=performance.now();
+  await page.getByRole('alertdialog').getByRole('button',{name:'Yes, Delete',exact:true}).click({timeout:15000});
+  await page.waitForURL(url=>url.pathname==='/admin/personnel',{timeout:15000});
+  assert.equal(await readDraft(),undefined);
+  row.discardPersistedMs=Math.round(performance.now()-discarding);
+  row.status='observed';
+ }finally{releaseScripts();save();await context.close();await db.end({timeout:5});}
+}
+
 async function measureCalendarMonth({page,user,fixture,report,save}){
  const path='/me/calendar';
  const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
@@ -2627,6 +2711,7 @@ try{
   else if(surfaceProbe==='leave-balances')await measureLeaveBalanceWindows(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
+  else if(surfaceProbe==='personnel-create')await measurePersonnelCreation(fixture);
   else if(contentProbeRoutes.has(surfaceProbe)){
    await measureRoutes(fixture,contentProbeRoutes.get(surfaceProbe));
    assert.equal(report.observations.length,2*report.plannedRoleRoutes);
