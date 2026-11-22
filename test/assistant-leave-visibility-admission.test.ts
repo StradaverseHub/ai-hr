@@ -460,8 +460,14 @@ describe('actual Mine flags bind current provider input and historical source di
   expect(transport).toHaveBeenCalledOnce();
   const visible=await history(answered.exchangeId);
   expect(visible?.grounded?.mode).toBe('grounded');
-  expect(JSON.stringify(visible?.grounded)).toContain('47.25');
-  expect(JSON.stringify(visible?.grounded)).not.toContain('113.75');
+  const facts=visible?.grounded?.conversation?.facts;
+  expect(facts).toHaveLength(1);
+  const selectedFact=facts?.[0];
+  if(!selectedFact || !('fact' in selectedFact) || selectedFact.view.state!=='ready')
+   throw Error('Expected a resolved answer reference.');
+  const selectedCard=selectedFact.view.presentation.cards[selectedFact.card];
+  expect(selectedCard.facts).toContainEqual(expect.objectContaining({field:'company',value:companyName}));
+  expect(selectedCard.facts[selectedFact.fact]).toMatchObject({field:'available',value:47.25});
   const [stored]=await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id,answered.exchangeId));
   expect(stored.continuesExchangeId).toBe(prompt.exchangeId);
   expect(stored.disclosureReceipt).toBeTruthy();
