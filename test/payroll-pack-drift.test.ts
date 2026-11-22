@@ -80,6 +80,7 @@ const BOUNDARIES = [
   'core/payroll-tax-basis-read',
   'core/payroll-tax-basis',
   'core/payroll-tax-basis-group',
+  'core/payroll-draft-tax-readiness',
   'core/payroll-permissions-admin',
   'core/pay-components',
   'core/pay-formula',
@@ -131,6 +132,7 @@ const ALWAYS_ALLOWED = [
   'core/payroll-history-job.ts',
   'core/payroll-reprocess-job.ts',
   'core/payroll-tax-basis-group.ts',
+  'core/payroll-draft-tax-readiness.ts',
   'core/payroll-permissions-admin.ts',
   'core/pay-components.ts',
   'core/pay-formula.ts',
@@ -167,7 +169,7 @@ describe('ADR-0080 D9: payroll pack import ratchet (rung 7 — the money path)',
       boundary,
       // The shared registry wires this exact worker entry point. It has no access to the tax calculation owner.
       allowedImporters: rel => isPackImporter(rel) ||
-        (boundary === 'core/payroll-tax-basis-group' && rel === 'core/bulk-job-handlers.ts'),
+        (['core/payroll-tax-basis-group','core/payroll-draft-tax-readiness'].includes(boundary) && rel === 'core/bulk-job-handlers.ts'),
       allowlist,
     }),
   );

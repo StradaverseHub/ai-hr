@@ -1,7 +1,7 @@
 'use server';
 
 import {requirePayrollAccess} from '@/lib/authz';
-import {readDraftTaxReadiness, requestDraftTaxReadiness} from '@/core/payroll-draft-tax-readiness';
+import {readDraftTaxReadiness, requestDraftTaxReadiness} from '@/packs/payroll/service';
 
 export async function startDraftTaxCheck(batchId: string, operationKey: string) {
   const ctx = await requirePayrollAccess();

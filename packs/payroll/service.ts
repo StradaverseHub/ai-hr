@@ -110,3 +110,5 @@ export type {PayrollHistoryUploadMaintenance,PayrollHistoryMaintenanceRecord,Pay
 
 /** Correction-aware read contract for country report producers; callers retain their tenant transaction. */
 export {readEffectiveTaxBasesTx,type TaxBasisCorrectionRef} from '../../core/payroll-tax-basis-read';
+
+export {readDraftTaxReadiness,requestDraftTaxReadiness} from '../../core/payroll-draft-tax-readiness';

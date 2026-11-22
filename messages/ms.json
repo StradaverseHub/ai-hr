@@ -35577,7 +35577,33 @@
       "apply": "Gunakan pada draf ini"
     }
   },
+  "draftPayrollTaxReadiness": {
+    "title": "Kesediaan cukai pendapatan terdahulu",
+    "intro": "Semak sejarah cukai yang disimpan bagi draf ini sebelum memproses gaji.",
+    "checking": "Sedang menyemak sejarah cukai pendapatan yang disimpan bagi draf ini…",
+    "waiting": "Menunggu pemproses gaji menyemak sejarah cukai yang disimpan.",
+    "failed": "Semakan sejarah cukai pendapatan tidak dapat diselesaikan. Jalankan semakan sekali lagi untuk melihat perkara yang menghalang pemprosesan.",
+    "clear": "Semakan tidak menemui sebarang halangan berkaitan sejarah cukai pendapatan bagi draf ini.",
+    "blocked": "{count} pekerja memerlukan semakan sejarah cukai sebelum gaji boleh diproses.",
+    "check": "Semak sejarah cukai",
+    "again": "Semak sekali lagi",
+    "employee": "Pekerja",
+    "month": "Bulan terjejas",
+    "nextStep": "Tindakan yang perlu diambil",
+    "importedHistory": "Pratonton sejarah gaji yang diimport bagi pekerja ini. Lengkapkan bukti sumber yang tiada dan gunakan pembetulan cukai yang disahkan, kemudian semak draf ini sekali lagi.",
+    "savedHistory": "Semak sumber gaji yang disimpan dan pembetulan cukai bagi bulan ini, kemudian semak draf ini sekali lagi.",
+    "review": "Buka pratonton cukai pekerja",
+    "askAdmin": "Minta pentadbir cukai gaji menyemak pekerja ini.",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya"
+  },
   "payrollTaxBasis": {
+    "previewGroupProgress": "{done} daripada {total} kumpulan pekerja telah disemak.",
+    "previewInBackground": "Pratonton cukai sedang disediakan di latar belakang. Anda boleh muat semula halaman ini untuk menyemak kemajuan.",
+    "recalculationInBackground": "Sejarah cukai pendapatan sedang dikira semula di latar belakang. Anda boleh muat semula halaman ini untuk menyemak kemajuan.",
+    "confirmationUnavailable": "Pratonton yang disemak tidak dapat dimasukkan dalam giliran. Jana pratonton baharu, kemudian semak dan sahkan sekali lagi.",
+    "interruptedStatus": "Tergendala — semak pekerja yang belum selesai",
+    "lastProgress": "Kemajuan terakhir",
     "title": "Kira Semula Nilai Cukai Pendapatan",
     "description": "Semak pendapatan bercukai terdahulu menggunakan tetapan cukai Item Gaji terkini yang disimpan.",
     "backSettings": "Tetapan Gaji",

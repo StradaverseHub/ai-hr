@@ -35577,7 +35577,33 @@
       "apply": "Áp dụng vào bản nháp"
     }
   },
+  "draftPayrollTaxReadiness": {
+    "title": "Kiểm tra điều kiện về thuế thu nhập trước đây",
+    "intro": "Xem lại lịch sử thuế đã lưu của bản nháp này trước khi xử lý bảng lương.",
+    "checking": "Đang kiểm tra lịch sử thuế thu nhập đã lưu của bản nháp bảng lương này…",
+    "waiting": "Đang chờ hệ thống xử lý lương kiểm tra lịch sử thuế đã lưu.",
+    "failed": "Không thể hoàn tất kiểm tra lịch sử thuế thu nhập. Hãy kiểm tra lại để xem các vấn đề đang cản trở việc xử lý.",
+    "clear": "Không phát hiện vấn đề về lịch sử thuế thu nhập cản trở việc xử lý bản nháp này.",
+    "blocked": "Cần xem lại lịch sử thuế của {count} nhân viên trước khi xử lý bảng lương.",
+    "check": "Kiểm tra lịch sử thuế",
+    "again": "Kiểm tra lại",
+    "employee": "Nhân viên",
+    "month": "Tháng bị ảnh hưởng",
+    "nextStep": "Việc cần làm",
+    "importedHistory": "Xem trước lịch sử bảng lương đã nhập của nhân viên này. Bổ sung chứng từ gốc còn thiếu và áp dụng điều chỉnh thuế đã xác minh, sau đó kiểm tra lại bản nháp.",
+    "savedHistory": "Xem lại nguồn dữ liệu bảng lương đã lưu và điều chỉnh thuế của tháng này, sau đó kiểm tra lại bản nháp.",
+    "review": "Mở bản xem trước thuế của nhân viên",
+    "askAdmin": "Yêu cầu quản trị viên thuế tiền lương xem xét nhân viên này.",
+    "previous": "Trước",
+    "next": "Tiếp"
+  },
   "payrollTaxBasis": {
+    "previewGroupProgress": "Đã xem xét {done} trên {total} nhóm nhân viên.",
+    "previewInBackground": "Đang chuẩn bị bản xem trước thuế trong nền. Bạn có thể tải lại trang để xem tiến độ.",
+    "recalculationInBackground": "Đang tính lại lịch sử thuế thu nhập trong nền. Bạn có thể tải lại trang để xem tiến độ.",
+    "confirmationUnavailable": "Không thể đưa bản xem trước đã xem xét vào hàng đợi. Hãy tạo bản xem trước mới, sau đó xem xét và xác nhận lại.",
+    "interruptedStatus": "Đã gián đoạn — xem xét những nhân viên chưa xử lý xong",
+    "lastProgress": "Tiến độ gần nhất",
     "title": "Tính lại giá trị thu nhập chịu thuế",
     "description": "Xem lại thu nhập chịu thuế trước đây theo thiết lập thuế khoản lương đã lưu mới nhất.",
     "backSettings": "Thiết lập bảng lương",

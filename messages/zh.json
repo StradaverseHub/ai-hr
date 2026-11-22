@@ -35577,7 +35577,33 @@
       "apply": "应用到此草稿"
     }
   },
+  "draftPayrollTaxReadiness": {
+    "title": "历史所得税就绪检查",
+    "intro": "处理薪资前，请核查此草稿对应的已保存税务历史。",
+    "checking": "正在核查此薪资草稿的已保存所得税历史…",
+    "waiting": "正在等待薪资后台服务核查已保存的税务历史。",
+    "failed": "历史所得税检查未能完成。请重新检查，以查看阻碍处理的问题。",
+    "clear": "此草稿的历史所得税检查未发现阻碍处理的问题。",
+    "blocked": "处理薪资前，有 {count} 名员工需要核查历史税务记录。",
+    "check": "检查税务历史",
+    "again": "重新检查",
+    "employee": "员工",
+    "month": "受影响月份",
+    "nextStep": "处理方法",
+    "importedHistory": "预览该员工导入的薪资历史。补齐缺失的原始凭证并应用已核实的税务更正，然后重新检查此草稿。",
+    "savedHistory": "核查该月已保存的薪资来源与税务更正，然后重新检查此草稿。",
+    "review": "打开员工税务预览",
+    "askAdmin": "请薪资税务管理员核查该员工。",
+    "previous": "上一页",
+    "next": "下一页"
+  },
   "payrollTaxBasis": {
+    "previewGroupProgress": "已核查 {done} 组员工，共 {total} 组。",
+    "previewInBackground": "正在后台准备税务预览。您可以刷新此页面查看进度。",
+    "recalculationInBackground": "正在后台重新计算历史所得税。您可以刷新此页面查看进度。",
+    "confirmationUnavailable": "无法将已核查的预览加入处理队列。请生成新的预览，然后再次核查并确认。",
+    "interruptedStatus": "已中断 — 核查尚未处理完毕的员工",
+    "lastProgress": "最近进度",
     "title": "重新计算所得税基数",
     "description": "使用最新保存的薪资项目税务设置，审核历史应税收入。",
     "backSettings": "薪资设置",
