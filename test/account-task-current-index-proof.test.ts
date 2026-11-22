@@ -1,7 +1,8 @@
 /** Compare the unchanged native shell statement around a disposable expression index. */
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {sql} from 'drizzle-orm';
+import {SQL,sql} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,expect,it} from 'vitest';
 import {accountTaskCallerSql,accountTaskStatement,accountTaskStatementSections} from '../core/account-task-bundle';
 import {withSharedReadSnapshot,withTenant,type SessionContext,type Tx} from '../db/client';
@@ -14,11 +15,20 @@ import {closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} f
 afterAll(closeAll);
 const indexName='fixture_employment_person_text_idx';
 const modules={attendance:true,claims:false,performance:true,rewards:true,lifecycle:false};
+const dialect=new PgDialect();
 
-function fullStatement(tx:Tx,session:SessionContext,companyIds:readonly string[]){
- return accountTaskStatement(accountTaskStatementSections(tx,session,modules,{
+function fullStatement(tx:Tx,session:SessionContext,companyIds:readonly string[],typed:boolean){
+ const statement=accountTaskStatement(accountTaskStatementSections(tx,session,modules,{
   companyIds,personal:false,notices:true,
  }),session);
+ if(!typed||!session.personId)return statement;
+ const original=dialect.sqlToQuery(accountTaskCallerSql(session)).sql;
+ const matching=statement.queryChunks.filter(chunk=>chunk instanceof SQL&&dialect.sqlToQuery(chunk).sql===original);
+ expect(matching).toHaveLength(1);
+ const caller=sql`task_caller as materialized (
+  select array(select e.id from public.employment e where e.person_id=${session.personId}::uuid) as own_ids
+ )`;
+ return new SQL(statement.queryChunks.map(chunk=>chunk===matching[0]?caller:chunk));
 }
 
 function percentile(values:number[],fraction:number){
@@ -81,12 +91,12 @@ it('measures the unchanged shared task query before, with, and after a disposabl
     {role:'company HR',session:fixture.personas.single,companyIds:[fixture.singleCompanyId]},
     {role:'employee',session:employeeContext,companyIds:[employee.company_id]},
   ];
-  const read=(actor:typeof actors[number])=>withSharedReadSnapshot(actor.session,()=>
+  const read=(actor:typeof actors[number],typed=false)=>withSharedReadSnapshot(actor.session,()=>
    withTenant(actor.session,async tx=>{
     await tx.execute(sql`set local jit=off`);
-    return Array.from(await tx.execute(fullStatement(tx,actor.session,actor.companyIds)));
+    return Array.from(await tx.execute(fullStatement(tx,actor.session,actor.companyIds,typed)));
    },{readOnlySnapshot:true}));
-  const baseline=await Promise.all(actors.map(read));
+  const baseline=await Promise.all(actors.map(actor=>read(actor)));
   for(const rows of baseline){expect(rows).toHaveLength(1);expect(rows[0]?.principal).toBe(true);}
 
   const report:{
@@ -128,8 +138,28 @@ it('measures the unchanged shared task query before, with, and after a disposabl
   await measure('after-removal');
   const [restored]=await owner.client`select to_regclass('public.fixture_employment_person_text_idx') is null as passed`;
   expect(restored.passed).toBe(true);
+  const predicate=[];
+  for(const [index,actor] of actors.entries()){
+   const timings={current:[] as number[],typed:[] as number[]};
+   for(const modes of [[false,true],[true,false],[false,true],[true,false]]){
+    for(const typed of modes){
+     const durations=await Promise.all(Array.from({length:8},async()=>{
+      const start=performance.now();
+      const rows=await read(actor,typed);
+      const elapsed=performance.now()-start;
+      expect(rows).toEqual(baseline[index]);
+      return elapsed;
+     }));
+     timings[typed?'typed':'current'].push(...durations);
+    }
+   }
+   predicate.push({role:actor.role,selectedCompanies:actor.companyIds.length,
+    timings:Object.fromEntries(Object.entries(timings).map(([mode,values])=>[mode,{
+     samples:values.length,p50Ms:percentile(values,.5),p95Ms:percentile(values,.95),
+    }]))});
+  }
   const evidence={releaseEligible:false,source:process.env.AIHR_CI_HEAD,companies:fixture.companyIds.length,
-   employments:fixture.employmentIds.length,indexBytes,indexRestored:restored.passed,results:report};
+   employments:fixture.employmentIds.length,indexBytes,indexRestored:restored.passed,results:report,typedPredicate:predicate};
   console.info('ACCOUNT_TASK_EXPRESSION_INDEX '+JSON.stringify(evidence));
   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR){
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'account-task-expression-index.json'),JSON.stringify(evidence,null,2));
