@@ -4,6 +4,7 @@ import { Fragment, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { paginateRows } from '@/lib/pagination';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
+import { useClientReady } from '@/components/use-client-ready';
 
 import { useTranslations } from 'next-intl';
 import { tableAmountCls, tableDateCls, Badge, EmployeeName } from '@/components/ui';
@@ -158,6 +159,7 @@ export function HistoryTable({
       : d.unit === 'days'
         ? `${d.qty} ${tSlip(d.qty === 1 ? 'dayUnit' : 'daysUnit')}`
         : `${d.qty}`;
+  const interactive = useClientReady();
   const [open, setOpen] = useState<Set<string>>(new Set());
   const q = useClientPageQuery();
   const { rows: pageRows, state } = paginateRows(rows, q);
@@ -207,10 +209,12 @@ export function HistoryTable({
             const segment = payslipSegmentOf(r, r.payPeriod);
             return (
               <Fragment key={r.id}>
-                <tr data-state={isOpen ? 'expanded' : undefined} className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => toggle(r.id)}>
+                <tr data-state={isOpen ? 'expanded' : undefined} className={interactive ? 'cursor-pointer transition-colors hover:bg-muted/30' : undefined}
+                  onClick={interactive ? () => toggle(r.id) : undefined}>
                   <td data-table-control className="px-2 py-2.5 text-center align-middle">
                     <button
                       type="button"
+                      disabled={!interactive}
                       onClick={(e) => {
                         e.stopPropagation();
                         toggle(r.id);

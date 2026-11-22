@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
+import { renderToStaticMarkup } from 'react-dom/server';
 import messages from '../messages/en.json';
 import { HistoryTable } from '../app/payroll/transaction-view/history-table';
 import type { ProcessedPayslipViewRow } from '../core/payroll-view';
@@ -61,6 +62,23 @@ async function renderExpanded() {
   // The breakdown only exists once the row is opened — no server-side check can reach it.
   await userEvent.click(screen.getByRole('button', { name: /show/i }));
 }
+
+it('enables the payroll breakdown disclosure when it can open', async () => {
+  const view = (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <HistoryTable rows={[row]} hrdfRegisteredCompanyIds={[row.companyId]} />
+    </NextIntlClientProvider>
+  );
+  const server = document.createElement('div');
+  server.innerHTML = renderToStaticMarkup(view);
+  expect(server.querySelector('button[data-table-disclosure]')).toBeDisabled();
+
+  render(view);
+  const toggle = screen.getByRole('button', { name: messages.payroll.transactions.view.history.showBreakdown });
+  expect(toggle).toBeEnabled();
+  await userEvent.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+});
 
 const SLIP = messages.me.payslip;
 const IP = messages.payroll.individualPayslip;
