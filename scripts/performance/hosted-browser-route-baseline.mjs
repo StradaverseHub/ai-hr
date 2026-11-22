@@ -1004,6 +1004,13 @@ async function measureMixedLoad(command,fixture){
     report.mixedOrgExplorerPreflight={passed:orgJourney.status==='passed',
      failureStage:stages.includes(orgJourney.failure?.stage)?orgJourney.failure.stage:null};
    }
+   const browserCheckpoints=[
+    'claims-open','claims-create-fields','claims-create-response','claims-create-confirmed',
+    'claims-edit-open','claims-edit-confirmed','claims-delete-menu','claims-delete-response',
+    'claims-delete-confirmed','claims-http-replay','claims-scope-boundary','mixed-mutations',
+   ];
+   if(!data.measurementWindow&&browserCheckpoints.includes(data.mixedBrowserCheckpoint))
+    report.mixedBrowserCheckpoint=data.mixedBrowserCheckpoint;
    const mutation=data.mixedWorkflows?.error;
    const mutationStages=['leaveCreate','leaveEdit','leaveCancel','personnelCreate','personnelEdit','personnelDelete',
     'attendanceCreate','attendanceApprove','payrollProcess','payrollPublicationProcess','payrollClose','importValidate','importCommit'];
