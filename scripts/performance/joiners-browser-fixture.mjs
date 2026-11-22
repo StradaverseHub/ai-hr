@@ -85,10 +85,12 @@ try{
  }
 
  if(env.PERF_PAYROLL_REPORT_RECORDS==='true'){
+  setStage('employee-master-report');
   const [{saveEmployeeMasterReport},{defaultMasterColumn},{PERSONNEL_FIELDS},{saveCustomReport},
-   {DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_DATASET}]=await Promise.all([
+   {DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_DATASET},{payrollComparisonSpec}]=await Promise.all([
    source('core/employee-master-reports.ts'),source('lib/employee-master-report.ts'),
    source('lib/personnel-field-registry.ts'),source('core/custom-reports.ts'),source('lib/payroll-period-comparison.ts'),
+   source('core/report-payroll-comparison.ts'),
   ]);
   const employee=fixture.users[4];
   assert(employee.role==='employee'&&employee.companyId===company.companyId);
@@ -104,9 +106,9 @@ try{
   });
   const comparisonName='Fictional saved Payroll Comparison';
   const historicalMonth=performanceFixtureCalendar(fixture.today).historicalMonth;
+  setStage('payroll-comparison-report');
   const comparison=await saveCustomReport(ctx,{name:comparisonName,companyIds,shared:false,datasetId:PAYROLL_COMPARISON_DATASET,
-   spec:{datasetId:PAYROLL_COMPARISON_DATASET,columns:['employeeCode','employeeName','previous','current'],
-    payrollComparison:{...DEFAULT_PAYROLL_COMPARISON,columns:['employeeCode','employeeName'],onlyVariances:false}},
+   spec:payrollComparisonSpec({...DEFAULT_PAYROLL_COMPARISON,columns:['employeeCode','employeeName'],onlyVariances:false}),
   });
   fixture.payrollReportRecords={masterId:master.id,masterName,comparisonId:comparison.id,comparisonName,historicalMonth,employeeCode};
  }
