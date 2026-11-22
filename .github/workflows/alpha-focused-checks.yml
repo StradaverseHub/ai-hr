@@ -80,6 +80,10 @@ on:
         description: Reuse the exact verified application build for the lock-attribution diagnostic
         default: false
         type: boolean
+      mixed_shell_response_cancellation:
+        description: Enable response-close cancellation on the pinned fictional shell prototype
+        default: false
+        type: boolean
       mixed_shell_permission_variant:
         description: Compare a specific navigation or clocking variant on the pinned fixture
         type: choice
@@ -113,7 +117,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-shell-permissions-${{ inputs.candidate_ref }}-${{ inputs.mixed_shell_permission_variant }}-${{ inputs.mixed_database_topology }}-${{ inputs.mixed_group_scale }}${{ inputs.reuse_first_use_build && inputs.expected_sha == '24e0b499be5f009c409e539c1e78add85d7f3b03' && '-lifetime-control' || '' }}
+  group: alpha-focused-shell-permissions-${{ inputs.candidate_ref }}-${{ inputs.mixed_shell_permission_variant }}-${{ inputs.mixed_database_topology }}-${{ inputs.mixed_group_scale }}${{ inputs.expected_sha == '24e0b499be5f009c409e539c1e78add85d7f3b03' && format('-lifetime-diagnostic-{0}', inputs.mixed_shell_response_cancellation) || '' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -207,6 +211,11 @@ jobs:
                 "$SHELL_PERMISSION_VARIANT" == contract-optimized ]]; then
             combined_group_build=true
           fi
+          if [[ "$SHELL_RESPONSE_CANCELLATION" == true ]]; then
+            [[ "$EXPECTED_SHA" == 24e0b499be5f009c409e539c1e78add85d7f3b03 &&
+               "$combined_group_build" == true && "$REUSE_BUILD" == true &&
+               "$BROWSER_ROUTE_BASELINE" == true && "$BROWSER_FIXTURE_ONLY" != true ]] || exit 2
+          fi
           if [[ "$clocking_tenant_queue" == true ]]; then
             [[ "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 &&
                 "$combined_group_build" == true && "$BROWSER_ROUTE_BASELINE" == true &&
@@ -249,6 +258,7 @@ jobs:
           LOCK_LOG_SHORT_WINDOW: ${{ inputs.browser_lock_log_short_window }}
           REPLACEMENT_CATALOGUE: ${{ inputs.browser_replacement_catalogue }}
           REUSE_BUILD: ${{ inputs.reuse_first_use_build }}
+          SHELL_RESPONSE_CANCELLATION: ${{ inputs.mixed_shell_response_cancellation }}
           SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
           MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
           MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}
@@ -490,6 +500,7 @@ jobs:
           AIHR_BROWSER_LOCK_LOG_SHORT_WINDOW: ${{ inputs.browser_lock_log_short_window }}
           AIHR_BROWSER_REPLACEMENT_CATALOGUE: ${{ inputs.browser_replacement_catalogue }}
           AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_first_use_build }}
+          AIHR_BROWSER_SHELL_RESPONSE_CANCELLATION: ${{ inputs.mixed_shell_response_cancellation }}
           AIHR_BROWSER_SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
           AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
           AIHR_BROWSER_MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}

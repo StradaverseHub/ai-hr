@@ -100,8 +100,9 @@ assert(!Object.keys(env).some(key=>key.startsWith('WORKOS_')&&env[key]),'Externa
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');
 const shellLifetimePrototype=sha===shellLifetimeCandidate;
-const shellLifetimeEnabled=shellLifetimePrototype&&!reusedBuild;
-assert(!shellLifetimePrototype||(mixedLoad&&combinedGroupBuild&&!fixtureOnly));
+const shellLifetimeEnabled=env.AIHR_BROWSER_SHELL_RESPONSE_CANCELLATION==='true';
+assert(!shellLifetimePrototype||(mixedLoad&&combinedGroupBuild&&!fixtureOnly&&reusedBuild));
+assert(!shellLifetimeEnabled||(shellLifetimePrototype&&reusedBuild));
 assert(sha===env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD??''));
 assert.equal(git('status','--porcelain'),'');
 
@@ -185,6 +186,15 @@ function retainSeedPhases(){
 }
 
 let server,app,browser,mixedWorker,webPooler,databaseStarted=false;
+const upstreamErrorCodes=new Set(['ECONNRESET','ECONNREFUSED','EPIPE','ETIMEDOUT','ECONNABORTED','ERR_STREAM_PREMATURE_CLOSE']);
+let appStartedAt, appExit, proxyFailures, memoryBefore, memoryAfter;
+function readMemoryKillCount(){
+ try{
+  const memoryEvents=readFileSync('/sys/fs/cgroup/memory.events','utf8');
+  const count=Number(/^oom_kill (\d+)$/m.exec(memoryEvents)?.[1]);
+  return Number.isSafeInteger(count)&&count>=0?count:null;
+ }catch{return null;}
+}
 async function stopProcess(child){
  if(!child||child.exitCode!==null||child.signalCode!==null)return;
  const closed=once(child,'close');
@@ -229,7 +239,14 @@ async function proxy(){
     outgoing.writeHead(response.statusCode,response.headers);
     response.pipe(outgoing);
    });
-  upstream.on('error',()=>{if(!outgoing.headersSent)outgoing.writeHead(502);outgoing.end();});
+  upstream.on('error',error=>{
+   if(proxyFailures&&!outgoing.destroyed&&!outgoing.headersSent){
+    const code=upstreamErrorCodes.has(error.code)?error.code:'other';
+    proxyFailures[code]=(proxyFailures[code]??0)+1;
+   }
+   if(!outgoing.headersSent)outgoing.writeHead(502);
+   outgoing.end();
+  });
   outgoing.on('close',()=>upstream.destroy());
   incoming.pipe(upstream);
  });
@@ -2128,6 +2145,11 @@ try{
   const serverArgs=shellLifetimePrototype
    ? ['--import','tsx','scripts/performance/http-lifetime-next-server.mjs',String(appPort)]
    : ['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(appPort)];
+  if(shellLifetimePrototype){
+   appStartedAt=performance.now();
+   memoryBefore=readMemoryKillCount();
+   proxyFailures={};
+  }
   app=start('application',process.execPath,serverArgs,{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(webDatabaseConnections),
     ...(shellLifetimePrototype&&{PERF_HTTP_SUITE:'browser-route-baseline',PERF_SHELL_HTTP_LIFETIME:String(shellLifetimeEnabled)}),
     ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web')}),
@@ -2137,6 +2159,11 @@ try{
      PERF_TX_TIMING_PATH:transactionTimingPath,
      NODE_OPTIONS:[dbEnv.NODE_OPTIONS,`--import=${new URL('./transaction-timing.mjs',import.meta.url).href}`].filter(Boolean).join(' '),
     })});
+  if(shellLifetimePrototype){
+   app.once('exit',(code,signal)=>{
+    appExit={code,signal,elapsedMs:Math.round(performance.now()-appStartedAt)};
+   });
+  }
   try{
    await waitForApp();
    await proxy();
@@ -2182,11 +2209,25 @@ try{
  try{await browser?.close();}
  finally{
   try{
+   const unexpectedExit=appExit??null;
+   if(appStartedAt!==undefined)memoryAfter=readMemoryKillCount();
    if(server?.listening){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
    await Promise.all([stopProcess(app),stopProcess(mixedWorker)]);
    const appLog=join(privateDir,'application.log');
    if(existsSync(appLog)){
     const log=readFileSync(appLog,'utf8');
+    if(appStartedAt!==undefined){
+     const nextRequestErrorCounts={};
+     for(const [,name] of log.matchAll(/^Hosted Next request failed (TypeError|Error|RangeError|AbortError|unknown)$/gm)){
+      nextRequestErrorCounts[name]=(nextRequestErrorCounts[name]??0)+1;
+     }
+     report.shellApplicationDiagnostics={
+      unexpectedExit,proxyFailures,
+      runnerOomKills:memoryBefore===null||memoryAfter===null?null:Math.max(0,memoryAfter-memoryBefore),
+      v8HeapExhausted:/^FATAL ERROR: .*heap out of memory/im.test(log),
+      nextRequestErrorCounts,
+     };
+    }
     if(mixedLoad)report.serverAdmissionFailureMarkers=admissionFailureMarkers(log);
     const counts={};
     for(const [,code] of log.matchAll(/(?:^|\n)\s*code: ['"]([0-9A-Z]{5})['"]/g)){
