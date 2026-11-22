@@ -349,6 +349,19 @@ The first leave trial measures model calls saved on eligible requests. Its candi
 
 Candidate reviews shows the admission limit separately from the owner's observed trial exchanges and model responses. The model-free count comes from completed own exchanges with a retained canonical answer and zero model turns or tokens. Clearing Assistant history or strategy metadata can remove the underlying evidence. These counts measure recorded use and give no accuracy or savings estimate by themselves.
 
+### Paired development comparison on the integrated leave candidate
+
+The candidate author froze 18 fictional cases on the integrated source before calling a model. Nine eligible cases covered available, taken and pending counts, zero, negative and fractional values, and one explicitly selected leave type. Nine deferral cases covered missing values, ambiguous or multiple employments, missing records and unsupported wording. The threshold was seven avoided calls with zero paired regressions. Both local models received the same closed reference catalogue through the same evaluator. [Integrated candidate](https://github.com/StradaverseHub/ai-hr/commit/9d45263adc1b63fd3da3494110a9e8be73502753)
+
+| Reference model | Correct reference answers | Correct candidate answers | Correct candidate deferrals | Model calls avoided on eligible cases | Regressions |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Granite 3.3 2B | 0/9 | 9/9 | 9/9 | 9 | 0 |
+| Qwen3 4B Instruct | 1/9 | 9/9 | 9/9 | 9 | 0 |
+
+Granite rejected six eligible replies and Qwen rejected three. The baseline used 8,874 input and 252 output tokens on Granite, and 8,352 input and 449 output tokens on Qwen. These are same-author development cases. The evaluator scores local deferrals and leaves their baseline response quality and cost outside the comparison. Two models evaluated the same case set, so this is one exposed case set for independent evaluation purposes. The signed trial still needs separate evaluator-owned cases and the release review.
+
+Case set SHA-256 `b3c130aac2e1984a1bbdf58eece615587ac9ccb2cb16fd60e81ea6c8d9cc893c`. Granite suite `5372b801ae879c937e67327d0b27ded925fee73c0f357fd444c1686411fa59bd` and report `bc30f45bc9a726b80380dd3ee5a2ef8a8c0654ae9e496e9d99db692f5b2a677b`. Qwen suite `666f43b9d975b6e8a4e3e1f348a137c44053ff898f09fdd7a73e868bd9d3d78e` and report `8933dccf9c6e4fc39215c60261dbc93f452090d92862703e2ff9ade2aebf0dea`.
+
 ### Group activity for grounded answers without a model
 
 An unallocated database draft increments a tenant-day count when the existing question settlement commits a grounded, retained answer with zero model turns and zero tokens. The draft stores the tenant, Malaysia question date and count. Group administrators get one total across the last 30 Malaysia calendar days through the scoped reader. Transcript and daily table access stay closed to this reader's callers. Completion retries leave the total unchanged. Erasing a transcript removes the history and leaves the previously recorded aggregate. Historical answers are outside collection.
