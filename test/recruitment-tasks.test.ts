@@ -8,9 +8,12 @@
  * person and value is fictional; S9SENTINEL marks values that must never appear in a to-do or an update.
  */
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type postgres from 'postgres';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import * as moduleGate from '../core/module-gate';
 import { appUser, company, employment, jobGrade, person, roleAssignment } from '../db/schema';
 import { pgSqlState } from '../lib/db-error';
 import { addCalendarMonths, timeInKualaLumpur, todayInKualaLumpur } from '../lib/hr-date';
@@ -163,6 +166,105 @@ async function world() {
     interview, first,
   };
 }
+
+it('reuses personal task plans across concurrent native Recruitment transactions', async () => {
+  expect(process.env.GITHUB_ACTIONS).toBe('true');
+  expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
+  expect(process.env.GITHUB_REPOSITORY).toBe('StradaverseHub/ai-hr');
+  const fixture = await world();
+  const dialect = new PgDialect();
+  const nativeGate = moduleGate.withRecruitmentTenant;
+  const now = new Date();
+  const samples = [];
+  const concurrency = 8;
+  const waves = 4;
+  const timing = (values: number[]) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    return {
+      samples: sorted.length,
+      p50Ms: Math.round(sorted[Math.ceil(sorted.length * .5) - 1] * 100) / 100,
+      p95Ms: Math.round(sorted[Math.ceil(sorted.length * .95) - 1] * 100) / 100,
+    };
+  };
+  for (const [role, actor, scope, expected] of [
+    ['interviewer', fixture.i1, [base.companyId], [`feedback:${fixture.iv3}`]],
+    ['bystander', fixture.bystander, [base.companyId], []],
+    ['outside selected company', fixture.i1, [otherCompanyId], []],
+    ['explicitly empty selection', fixture.i1, [], []],
+    ['group HR', admin, undefined, []],
+  ] as const) {
+    const statements: ReturnType<PgDialect['sqlToQuery']>[] = [];
+    const gateSpy = vi.spyOn(moduleGate, 'withRecruitmentTenant').mockImplementation(
+      <T>(ctx: SessionContext, read: (tx: Tx) => Promise<T>, options?: Parameters<typeof nativeGate>[2]) =>
+        nativeGate(ctx, async tx => {
+          const execute = tx.execute.bind(tx);
+          const executeSpy = vi.spyOn(tx, 'execute').mockImplementation(query => {
+            if (typeof query !== 'string') {
+              const compiled = dialect.sqlToQuery(query.getSQL());
+              if (compiled.sql.includes('from recruitment_background_check') && compiled.sql.includes('from recruitment_requisition')) statements.push(compiled);
+            }
+            return execute(query);
+          });
+          try { return await read(tx); }
+          finally { executeSpy.mockRestore(); }
+        }, options),
+    );
+    try {
+      expect(todoKeys(await recruitmentTodos(actor, scope, { now }))).toEqual(expected);
+    } finally {
+      gateSpy.mockRestore();
+    }
+    expect(statements).toHaveLength(1);
+    const [statement] = statements;
+    const preparedQuery = '/*recruitment-personal-concurrent-proof*/' + statement.sql;
+    const parameters = statement.params as postgres.ParameterOrJSON<never>[];
+    const read = (prepare: boolean) => nativeGate(actor, async tx => {
+      const { session } = tx as unknown as { session: { client: postgres.TransactionSql } };
+      const connection = session.client;
+      await tx.execute(sql`set local jit=off`);
+      const [backend] = await connection<{ pid: number }[]>`select pg_backend_pid() as pid`;
+      const counters = () => connection<{ generic: number; custom: number }[]>`
+        select coalesce(sum(generic_plans),0)::int as generic,
+          coalesce(sum(custom_plans),0)::int as custom
+        from pg_prepared_statements where statement = ${preparedQuery}`;
+      if (prepare) await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
+      const before = prepare ? (await counters())[0] : null;
+      const started = performance.now();
+      const rows = Array.from(await connection.unsafe(prepare ? preparedQuery : statement.sql, parameters, { prepare }));
+      const ms = performance.now() - started;
+      if (before) {
+        const [after] = await counters();
+        expect(after.generic - before.generic).toBe(1);
+        expect(after.custom - before.custom).toBe(0);
+      }
+      return { pid: backend.pid, reused: (before?.generic ?? 0) > 0, rows, ms };
+    }, { readOnlySnapshot: true });
+    const control = await read(false);
+    const measurements = { unnamed: [] as number[], prepared: [] as number[], warmPrepared: [] as number[] };
+    const backends = new Set<number>();
+    for (let wave = 0; wave < waves; wave++) {
+      for (const prepare of wave % 2 === 0 ? [false, true] : [true, false]) {
+        const results = await Promise.all(Array.from({ length: concurrency }, () => read(prepare)));
+        for (const result of results) {
+          expect(result.rows).toEqual(control.rows);
+          backends.add(result.pid);
+          measurements[prepare ? 'prepared' : 'unnamed'].push(result.ms);
+          if (result.reused) measurements.warmPrepared.push(result.ms);
+        }
+      }
+    }
+    expect(backends.size).toBeGreaterThan(1);
+    expect(measurements.warmPrepared.length).toBeGreaterThan(concurrency);
+    samples.push({
+      role,
+      distinctBackends: backends.size,
+      unnamed: timing(measurements.unnamed),
+      prepared: timing(measurements.prepared),
+      warmPrepared: timing(measurements.warmPrepared),
+    });
+  }
+  console.info('RECRUITMENT_TASK_CONCURRENT_PLANNING '+JSON.stringify({ concurrency, waves, samples }));
+}, 120_000);
 
 describe('case 59 — the to-do list is exactly the viewer\'s pending work, and follows the action and access', () => {
   it('lists approval steps, due feedback and per-job counts against independent sets; items leave after the action and with the job', async () => {
