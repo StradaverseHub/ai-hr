@@ -1734,6 +1734,12 @@ try{
      importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords,
      performanceReportRecords:censusPerformanceReportRecords,jobDescriptionRecords:censusJobDescriptionRecords,
      noticeRecords:censusNoticeRecords,attendanceConfigurationRecords:censusAttendanceConfigurationRecords,attendanceHistoryRecords:censusAttendanceHistoryRecords,loanRecords:censusLoanRecords,savedReportRecords:censusSavedReportRecords,letterCatalogRecords:censusLetterCatalogRecords,systemTestingRecords:censusSystemTestingRecords,payrollReportRecords:censusPayrollReportRecords,lifecycleRequisitions:censusLifecycleRequisitions});
+    if(censusPayrollCorrections){
+     const {measurePayrollRemoval}=await import('./payroll-correction-action-browser.mjs');
+     const referenceManifest=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
+     const registrations=serverActionRegistry(routes,referenceManifest);
+     await measurePayrollRemoval({db,fixture,origin,signedInContext,registrations,report,save});
+    }
     if(censusAttendanceConfigurationRecords){
      const {measureAttendanceScheduleSave}=await import('./attendance-schedule-browser.mjs');
      const referenceManifest=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
