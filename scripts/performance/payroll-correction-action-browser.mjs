@@ -79,14 +79,25 @@ export async function measurePayrollRemoval({db,fixture,origin,signedInContext,r
     await main.getByText('1 employee payroll removed. '+remaining.length+' remain on this run.').waitFor({state:'visible'});
     row.usableMs=Math.round(performance.now()-started);
 
-    row.step='verify';
+    row.step='read-stored-results';
     const [after,unchangedHistory,removals,currentStatus]=await Promise.all([
       readPayslips(batchId),readPayslips(historicalBatchId),audit(),readBatch(),
     ]);
+    row.step='verify-run-state';
     assert.equal(currentStatus,'processed');
-    assert.deepEqual(after,remaining);
-    assert.deepEqual(unchangedHistory,history);
-    assert.deepEqual([...removals],[{actor_id:actor.userId,reason,employmentIds:[subject.employmentId],payslipsRemoved:1}]);
+    row.step='verify-selected-removal';
+    assert.equal(after.length,remaining.length);
+    assert(!after.some(slip=>slip.employment_id===subject.employmentId));
+    row.step='verify-other-payslips';
+    assert.deepEqual([...after],[...remaining]);
+    row.step='verify-closed-month';
+    assert.deepEqual([...unchangedHistory],[...history]);
+    row.step='verify-audit-count';
+    assert.equal(removals.length,1);
+    row.step='verify-audit-actor';
+    assert.equal(removals[0].actor_id,actor.userId);
+    row.step='verify-audit-payload';
+    assert.deepEqual(removals[0],{actor_id:actor.userId,reason,employmentIds:[subject.employmentId],payslipsRemoved:1});
     exercised.add(saved.request().headers()['next-action']);
     row.outcome='observed';
   }catch(error){
