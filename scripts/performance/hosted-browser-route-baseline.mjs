@@ -2566,7 +2566,12 @@ try{
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
-  const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1});
+  const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connect_timeout:10,connection:{
+   statement_timeout:'120s',lock_timeout:'10s',idle_in_transaction_session_timeout:'60s',
+  }});
+  const started=performance.now();
+  report.groupFixtureSetup={status:'running'};
+  save();
   try{
    const {counts,company}=await seedBrowserGroupShape(owner,fixture);
    fixture.scaleCompany=company;
@@ -2577,7 +2582,14 @@ try{
     report.fixture.approvalsLeave={requests,companyRequests,dates};
    }
    if(tp3CatalogueProbe)await seedEditableTp3Actor(owner,fixture);
+   report.groupFixtureSetup={status:'passed',elapsedMs:Math.round(performance.now()-started)};
    save();
+  }catch(error){
+   const code=error?.code;
+   report.groupFixtureSetup={status:'failed',elapsedMs:Math.round(performance.now()-started),
+    code:typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_[A-Z_]{1,40}|CONNECT_TIMEOUT)$/.test(code)?code:null};
+   save();
+   throw error;
   }finally{await owner.end({timeout:5});}
  }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
