@@ -1581,7 +1581,8 @@ try{
     'lifecycle-defaults','legacy-onboarding','legacy-offboarding',
     'lifecycle-asset','lifecycle-asset-request','system-testing-session','system-testing-workspace-import','system-testing-draft',
     'system-testing-publish','system-testing-assign','system-testing-begin','system-testing-save','system-testing-complete','performance-cycle-grades','performance-cycle-create',
-    'performance-cycle-participants','performance-cycle-open','performance-team-review','complete'].includes(stage)){
+    'performance-cycle-participants','performance-cycle-open','performance-team-review',
+    'performance-feedback-request','performance-calibration-session','complete'].includes(stage)){
     report.recordFixtureStage=stage;
    }
   }

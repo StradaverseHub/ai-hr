@@ -256,7 +256,8 @@ try{
    for(const member of members)await setEmploymentGrade(ctx,{employmentId:member.employmentId,gradeId:grade.id},tx);
   });
   const {createCycle,openCycle,previewEligibleCount,getOnehrReview,saveOnehrKpis,
-   approveOnehrScorecard,submitOnehrResults,performanceTabAccess}=await source('packs/performance/service.ts');
+   approveOnehrScorecard,submitOnehrResults,performanceTabAccess,assignOnehrPanel,getOnehrFeedback,
+   createOnehrCalibration,getOnehrCalibration}=await source('packs/performance/service.ts');
   const year=fixture.today.slice(0,4);
   const name='Fictional Browser Performance Cycle';
   setStage('performance-cycle-create');
@@ -293,6 +294,25 @@ try{
   await submitOnehrResults(viewer,review.id,await revision(viewer),[{id,actual:100,note:'Verified work'}],'Completed the agreed work.');
   assert((await performanceTabAccess(reviewer,'pm.team')).mayOpen,'Expected assigned moderation to admit Team PM');
   fixture.performanceRecords={cycleId,name,teamReviewId:review.id,objective};
+  if(env.PERF_PERFORMANCE_REPORT_RECORDS==='true'){
+   setStage('performance-feedback-request');
+   const peers=members.filter(actor=>actor.role==='employee'&&actor.index>employee.index).slice(0,4);
+   assert.equal(peers.length,4);
+   await assignOnehrPanel(ctx,review.id,await revision(ctx),peers.map(peer=>({employmentId:peer.employmentId,relationship:'peer'})));
+   const peer=peers[0];
+   const [request]=await owner.client`select id from peer_feedback_request where tenant_id=${group.tenantId}::uuid
+    and review_id=${review.id}::uuid and peer_employment_id=${peer.employmentId}::uuid and status='pending'`;
+   assert(request?.id);
+   assert.equal((await getOnehrFeedback(await sessionFor(peer),request.id)).subject,employee.name);
+   setStage('performance-calibration-session');
+   const calibrationName='Fictional assessment calibration';
+   const calibrationId=await createOnehrCalibration(ctx,cycleId,{name:calibrationName,companyId:company.companyId,
+    tier:'bu',reviewerUserIds:[manager.userId],reviewIds:[review.id],pbtAchievement:100,mode:'after'});
+   const calibration=await getOnehrCalibration(ctx,calibrationId);
+   assert.equal(calibration.session.name,calibrationName);
+   assert(calibration.rows.some(row=>row.entry.reviewId===review.id&&row.name===employee.name));
+   Object.assign(fixture.performanceRecords,{peerIndex:peer.index,feedbackRequestId:request.id,calibrationId,calibrationName});
+  }
  }catch(error){
   recordFailure(error);
   fixture.performanceRecordsUnavailable=true;

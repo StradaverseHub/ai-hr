@@ -418,7 +418,22 @@ async function performanceReportRecordRoutes(db, fixture) {
   const cycle = '/performance/' + performance.cycleId;
   const report = cycle + '/reports';
   const query = 'kind=participants&groupBy=person&status=all';
-  return [group, company].flatMap(actor => [
+  const peer=fixture.users.find(actor=>actor.index===performance.peerIndex);
+  const {feedbackRequestId,calibrationId,calibrationName}=performance;
+  assert(peer?.role==='employee'&&peer.companyId===company.companyId&&feedbackRequestId&&calibrationId);
+  const assessmentRoutes=[
+    {part:'feedback',key:'requestId',id:feedbackRequestId,actor:peer,
+      exactHeading:'360 feedback · '+employee.name,witness:'textarea[name="remark"]:not([readonly])'},
+    {part:'calibration',key:'sessionId',id:calibrationId,actor:group,
+      exactHeading:calibrationName+' · '+performance.name,content:'Only locked tiers affect final results.'},
+  ].flatMap(({part,key,id,...entry})=>{
+    const path='/performance/assessment/'+part+'/'+id;
+    return [
+      {...entry,template:'/performance/assessment/'+part+'/['+key+']',path},
+      {...entry,template:'/performance/onehr/'+part+'/['+key+']',path:'/performance/onehr/'+part+'/'+id,redirectTo:path},
+    ];
+  });
+  return [...[group, company].flatMap(actor => [
     {
       actor, template: '/performance/[cycleId]/records', path: cycle + '/records',
       exactHeading: 'Rating records', content: performance.name, exactContent: true,
@@ -435,7 +450,7 @@ async function performanceReportRecordRoutes(db, fixture) {
         measurement: 'performanceReportWorkbookMs',
       },
     },
-  ]);
+  ]),...assessmentRoutes];
 }
 
 async function jobDescriptionRecordRoutes(db, fixture) {
