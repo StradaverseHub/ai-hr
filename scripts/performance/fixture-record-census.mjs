@@ -466,6 +466,35 @@ async function personnelMovementRoutes(db, fixture) {
   return byRole.flat();
 }
 
+async function attendanceRecordRoutes(db, fixture) {
+  const [group, company] = fixture.users;
+  assert.equal(group.role, 'groupHR');
+  assert.equal(company.role, 'companyHR');
+  assert.equal(group.tenantId, company.tenantId);
+  const shifts = await db`select id from shift where tenant_id=${group.tenantId}::uuid
+    and company_id is null and code='PERF-DAY' and archived_at is null`;
+  assert.equal(shifts.length, 1);
+  const mappingId = fixture.tenants[group.tenant].clockingMappingId;
+  assert.match(mappingId, /^[0-9a-f-]{36}$/i);
+  const mapping = '/admin/attendance/file-mappings/' + mappingId;
+  return [group, company].flatMap(actor => {
+    const subject = fixture.users.find(user => user.role === 'employee' &&
+      user.tenantId === actor.tenantId && user.companyId === actor.companyId);
+    assert(subject, 'Expected a fictional employee in the selected company');
+    return [
+      { actor, template: '/admin/attendance/[shiftId]', path: '/admin/attendance/' + shifts[0].id,
+        exactHeading: 'Edit shift', witness: '#shift-form input[name="code"][value="PERF-DAY"]' },
+      { actor, template: '/admin/attendance/file-mappings/[mappingId]', path: mapping,
+        exactHeading: 'PERF coded clocking CSV', witness: `a[href="${mapping}/edit"]` },
+      { actor, template: '/admin/attendance/file-mappings/[mappingId]/edit', path: mapping + '/edit',
+        witness: 'input[id$="-name"][value="PERF coded clocking CSV"]' },
+      { actor, template: '/admin/attendance/schedule-assignment/[employmentId]',
+        path: '/admin/attendance/schedule-assignment/' + subject.employmentId,
+        content: subject.name, witness: 'dl dd' },
+    ];
+  });
+}
+
 function payrollFormulaEvaluationRoutes(fixture) {
   const [group, company] = fixture.users;
   const evaluation = fixture.payrollFormulaEvaluation;
@@ -592,11 +621,12 @@ async function verifyWorkbookDownload(page, main, expected, row) {
   row[expected.hash ? 'originalWorkbookMs' : 'errorWorkbookMs'] = Math.round(performance.now() - started);
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
     : importHistory ? importHistoryRoutes(fixture)
+    : attendanceRecords ? await attendanceRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
