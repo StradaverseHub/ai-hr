@@ -17,6 +17,9 @@ const documentPath='/me/letters/'+id+'/document';
 const post=(inline=false,origin='https://fixture.test',site='same-origin')=>new Request('https://fixture.test'+documentPath+(inline?'?inline=1':''),{
  method:'POST',headers:{origin,'sec-fetch-site':site},
 });
+const privateForm=(metadata:HeadersInit)=>new Request('https://fixture.test'+documentPath,{
+ method:'POST',headers:metadata,
+});
 it.each([false,true])('creates a private document redirect through a native POST (inline %s)',async inline=>{
  mocks.access.mockResolvedValue({token,expiresAt:new Date(),artifactHash:hash});
  const response=await POST(post(inline),params);
@@ -24,6 +27,18 @@ it.each([false,true])('creates a private document redirect through a native POST
  expect(response.headers.get('location')).toBe(documentPath+'?token='+token+'&inline='+(inline?'1':'0'));
  expect(response.headers.get('cache-control')).toBe('private, no-store');
  expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+ expect(mocks.access).toHaveBeenCalledExactlyOnceWith(ctx,id);
+});
+it('accepts a no-referrer form only as a browser-confirmed same-origin document navigation',async()=>{
+ const navigation={origin:'null','sec-fetch-site':'same-origin','sec-fetch-mode':'navigate','sec-fetch-dest':'document'};
+ mocks.access.mockResolvedValue({token,expiresAt:new Date(),artifactHash:hash});
+ expect((await POST(privateForm(navigation),params)).status).toBe(303);
+ expect((await POST(privateForm({...navigation,'sec-fetch-site':'same-site'}),params)).status).toBe(403);
+ expect((await POST(privateForm({...navigation,'sec-fetch-site':'cross-site'}),params)).status).toBe(403);
+ expect((await POST(privateForm({...navigation,'sec-fetch-mode':'cors'}),params)).status).toBe(403);
+ expect((await POST(privateForm({...navigation,'sec-fetch-dest':'iframe'}),params)).status).toBe(403);
+ expect((await POST(privateForm({'sec-fetch-site':'same-origin','sec-fetch-mode':'navigate','sec-fetch-dest':'document'}),params)).status).toBe(403);
+ expect((await POST(privateForm({...navigation,origin:'https://elsewhere.test'}),params)).status).toBe(403);
  expect(mocks.access).toHaveBeenCalledExactlyOnceWith(ctx,id);
 });
 it('refuses cross-origin and unauthenticated document POST requests before creating access',async()=>{

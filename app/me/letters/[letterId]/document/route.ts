@@ -13,7 +13,13 @@ export async function GET(request:Request,context:{params:Promise<{letterId:stri
 // Keep PDF navigation outside the page's Server Action queue. Both requests still check ownership.
 export async function POST(request:Request,context:{params:Promise<{letterId:string}>}){
  const site=request.headers.get('sec-fetch-site');
- if(!isSameOriginBrowserRequest(request)||(site!==null&&site!=='same-origin'))return new Response(null,{status:403,headers});
+ // The Letter page's no-referrer policy serializes a native form's Origin as null.
+ // Only accept that form when the browser confirms a same-origin document navigation.
+ const privateNavigation=request.headers.get('origin')==='null'&&site==='same-origin'
+  &&request.headers.get('sec-fetch-mode')==='navigate'&&request.headers.get('sec-fetch-dest')==='document';
+ if((site!==null&&site!=='same-origin')||(!privateNavigation&&!isSameOriginBrowserRequest(request))){
+  return new Response(null,{status:403,headers});
+ }
  const {letterId}=await context.params;
  const redirect=(location:string)=>new Response(null,{status:303,headers:{...headers,location}});
  if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(letterId)){
