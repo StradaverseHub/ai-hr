@@ -426,7 +426,7 @@ async function performanceReportRecordRoutes(db, fixture) {
     },
     {
       actor, template: '/performance/[cycleId]/reports', path: report + '?' + query,
-      exactHeading: 'Who takes part',
+      exactHeading: 'Who takes part, person by person · ' + performance.name,
       witness: `tbody tr:has(td:text-is(${JSON.stringify(employee.name)})) td:text-is("Yes")`,
       download: {
         href: report + '/export?' + query + '&format=xlsx',
