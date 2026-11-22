@@ -1,4 +1,5 @@
 'use client';
+import { useClientReady } from '@/components/use-client-ready';
 import { ActionButton } from '@/components/ui/action-button';
 import {useTranslations} from 'next-intl';
 import {ProtectedInputHelp} from '@/components/assistant/protected-input-help';
@@ -100,6 +101,7 @@ export function ReportBuilder({
   const [widths, setWidths] = useState<Record<string, number>>(L0.widths ?? {});
   const [permissions, setPermissions] = useState<Record<string, string[]>>(L0.permissions ?? {});
   const [search, setSearch] = useState('');
+  const interactive=useClientReady();
   const [preview, setPreview] = useState<ReportData | null>(null);
   const [aiText, setAiText] = useState('');
   const [aiMsg, setAiMsg] = useState<string | null>(null);
@@ -416,7 +418,7 @@ export function ReportBuilder({
               <ActionButton aria-busy={pending}
                 type="button"
                 onClick={runPreview}
-                disabled={pending || columns.length === 0}
+                disabled={!interactive || pending || columns.length === 0}
                 className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-accent/60 disabled:opacity-50"
               >
                 {labels.refreshPreview}
