@@ -47,7 +47,7 @@ describe('Native Contract builder preview authority and source values',()=>{
   await saveContractSharedRole(admin,{id:roleId,name:'One company template reviewer',permissions:['view','templates'],expectedRevision:0});await saveContractSharedMember(admin,{id:randomUUID(),roleId,userId:editor.userId,companyId,businessGroupId:null,validFrom:'2020-01-01',validTo:null,revoked:false});
   const scoped=await contractSharedPage(editor,{limit:20}),selected=await contractTemplatePreviewCases(editor);expect(selected.map(row=>row.id)).toEqual(scoped.rows.map(row=>row.id));expect(selected).toHaveLength(15);
   await expect(contractTemplatePreviewValues(editor,native.rows[1].id)).rejects.toMatchObject({code:'forbidden'});
- });
+ },110_000); // The 1,000-case fixture took 34.1s in hosted gate 44984683978.
  it('requires separate template and actual case-view authority, with no writes or false identity',async()=>{
   admin={...await entitledCtx(b),personId:admin.personId};const cases=await contractSharedPage(admin,{limit:1}),editor=await ordinary(),roleId=randomUUID();
   await saveContractSharedRole(admin,{id:roleId,name:'Template editor only',permissions:['templates'],expectedRevision:0});await saveContractSharedMember(admin,{id:randomUUID(),roleId,userId:editor.userId,companyId:cases.rows[0].companyId,businessGroupId:null,validFrom:'2020-01-01',validTo:null,revoked:false});
