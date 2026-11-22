@@ -80,7 +80,9 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
    items.push({code:setting.code,name:setting.name,amount,previousTreatment:line.previousTreatment??null,latestTreatment,taxable,exempt:itemExempt});
   }
   if(earned!==money(slip.expectedGross,'Original gross')||deducted!==money(slip.expectedOtherDeductions,'Original deductions'))fail(`${slip.period}: source Pay Item amounts do not reconcile to original payroll totals.`);
-  if(pcbDeduct>normal)fail(`${slip.period}: taxable deductions exceed supported normal remuneration.`);normal=round(normal-pcbDeduct);
+  // Match statutory payroll: wage deductions can reduce cash normal remuneration to zero.
+  // Additional remuneration and noncash benefits retain their own tax treatment.
+  normal=Math.max(0,round(normal-pcbDeduct));
   let preservedLp=money(slip.statutory.lp??0,'Original relief');
   if(preservedLp>0){const detail=slip.statutory.lpDetail;if(!obj(detail)||typeof detail.tp1!=='number')fail(`${slip.period}: the original relief and Pay Item deduction split is unavailable.`);preservedLp=money(detail.tp1,'Saved TP1 relief');}
   const savedNonCash=readPcbNonCash(nc);
