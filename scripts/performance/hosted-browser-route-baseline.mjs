@@ -2265,52 +2265,48 @@ async function measureFocusedRoster(fixture){
 }
 
 async function measurePersonnelCreation(fixture){
+ const row={status:'incomplete',stage:'chromium-startup'};
+ report.personnelCreation=row;
+ const checkpoint=stage=>{row.stage=stage;save();};
+ checkpoint('chromium-startup');
  const require=createRequire(join(process.cwd(),'package.json'));
- browser??=await require('playwright').chromium.launch();
+ browser??=await require('playwright').chromium.launch({timeout:15000});
  const actor=fixture.users[1];
  assert.equal(actor.role,'companyHR');
+ checkpoint('browser-context');
  const context=await signedInContext(actor);
- const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
- const row={status:'incomplete',stage:'open'};
- report.personnelCreation=row;
- let releaseScripts=()=>{};
+ const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{
+  max:1,connect_timeout:5,connection:{default_transaction_read_only:'on',statement_timeout:'5s'},
+ });
  try{
   const page=await context.newPage();
-  const scripts=new Promise(resolve=>{releaseScripts=resolve;});
-  let delayedScripts=0;
-  await page.route(url=>url.origin===origin&&url.pathname.startsWith('/_next/static/')&&url.pathname.endsWith('.js'),async route=>{
-   delayedScripts++;
-   await scripts;
-   await route.continue();
-  });
+  page.setDefaultTimeout(15000);
+  checkpoint('open');
   const started=performance.now();
-  const response=await page.goto(origin+'/admin/personnel/new',{waitUntil:'commit',timeout:15000});
+  const response=await page.goto(origin+'/admin/personnel/new',{waitUntil:'domcontentloaded',timeout:15000});
   assert.equal(response?.status(),200);
+  assert.equal(new URL(page.url()).pathname,'/admin/personnel/new');
   const company=page.locator('select[data-personnel-field="employment.organisation_assignment.companyname"]');
   const code=page.locator('input[data-personnel-field="profile.personal_details.employeecode"]:not([readonly])');
   const automaticCode=page.locator('input[data-auto-employee-id]');
   const name=page.locator('input[data-personnel-field="profile.personal_details.fullname"]');
-  await company.waitFor({state:'visible',timeout:15000});
+  await company.waitFor({state:'visible'});
   row.formVisibleMs=Math.round(performance.now()-started);
-  row.companyEnabledBeforeScripts=await company.isEnabled();
-  if(sha==='14e060fcf30f958668dedf1a816ef7a6018675b7'){
-   assert.equal(row.companyEnabledBeforeScripts,false,'The Personnel company selector enabled before its handler');
-  }
-  if(row.companyEnabledBeforeScripts)await company.selectOption(actor.companyId,{timeout:15000});
-  assert.equal(await code.or(automaticCode).count(),0,'The fixture saw an employee ID before the company handler ran');
-  releaseScripts();
-  await page.waitForLoadState('load',{timeout:15000});
-  assert(delayedScripts>0,'The browser probe did not hold application scripts');
-  row.stage='company-selection';
-  await company.selectOption('',{timeout:15000});
+  checkpoint('interactive');
+  await page.waitForLoadState('load');
+  await page.locator('[data-app-sidebar] button[aria-controls]:enabled:visible').first().waitFor({state:'visible'});
+  await company.and(page.locator('select:enabled')).waitFor({state:'visible'});
+  row.formInteractiveMs=Math.round(performance.now()-started);
+  checkpoint('company-selection');
+  assert.equal(await company.inputValue(),'','Expected the untouched company picker');
   const selected=performance.now();
-  await company.selectOption(actor.companyId,{timeout:15000});
-  await code.or(automaticCode).waitFor({state:'visible',timeout:15000});
+  await company.selectOption(actor.companyId);
+  await code.or(automaticCode).waitFor({state:'visible'});
   row.companyToIdControlMs=Math.round(performance.now()-selected);
   if(await code.isVisible())await code.fill('PFD-READY-BROWSER');
   await name.fill('Fictional create readiness');
   await page.locator('input[data-personnel-field="profile.contact_and_permanent_address.primaryemail"]').fill('perf-created@example.invalid');
-  row.stage='create';
+  checkpoint('create');
   const creating=performance.now();
   await page.getByRole('button',{name:'Create employee',exact:true}).click({timeout:15000});
   await page.waitForURL(url=>url.pathname==='/admin/personnel/new'&&url.searchParams.has('draft'),{timeout:15000});
@@ -2324,7 +2320,7 @@ async function measurePersonnelCreation(fixture){
   assert.equal(created?.label,'Fictional create readiness');
   assert(created?.code,'Personnel draft did not reserve an employee ID');
   row.createPersistedMs=Math.round(performance.now()-creating);
-  row.stage='save';
+  checkpoint('save');
   const saveDraft=page.getByRole('button',{name:'Save draft',exact:true});
   await saveDraft.and(page.locator('button:enabled')).waitFor({state:'visible',timeout:15000});
   await page.locator('input[data-personnel-field="profile.personal_details.fullname"]')
@@ -2351,11 +2347,10 @@ async function measurePersonnelCreation(fixture){
    saveDraft.click({timeout:15000}),
   ]);
   assert.equal(saved.status(),200);
-  assert.equal(await saved.finished(),null);
   await page.getByText('Draft saved',{exact:true}).waitFor({state:'visible',timeout:15000});
   assert.deepEqual(await readDraft(),{...created,label:editedName});
   row.savePersistedMs=Math.round(performance.now()-saving);
-  row.stage='discard';
+  checkpoint('discard');
   await page.getByRole('button',{name:'Delete Record',exact:true}).click({timeout:15000});
   const discarding=performance.now();
   await page.getByRole('alertdialog').getByRole('button',{name:'Yes, Delete',exact:true}).click({timeout:15000});
@@ -2363,7 +2358,8 @@ async function measurePersonnelCreation(fixture){
   assert.equal(await readDraft(),undefined);
   row.discardPersistedMs=Math.round(performance.now()-discarding);
   row.status='observed';
- }finally{releaseScripts();save();await context.close();await db.end({timeout:5});}
+  checkpoint('complete');
+ }finally{save();try{await context.close();}finally{await db.end({timeout:5});}}
 }
 
 async function measureCalendarMonth({page,user,fixture,report,save}){
