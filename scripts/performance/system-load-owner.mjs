@@ -1,15 +1,18 @@
+import {createLoadedAccessBlockerDiagnostics} from './loaded-access-blockers.mjs';
 /** Real HTTPS requests + Chromium against the isolated production server; no auth/test route bypass. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
+import {waitForTodayBrowserReadiness} from './today-browser-readiness.mjs';
 import {browserFailureLocation,browserPreflightClickObstruction,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from './browser-failure.ts';
-import {routeLatency} from './route-latency.mjs';
+import {mixedActionRoute,routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
-import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
+import {clockingImportsPerActor,createSteadyRouteScheduler,isClockingLoadActor,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,writeDevelopmentRenderedRouteUnion,
- installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,legacyNavigationFailureCounts,legacyNavigationFailureFacts} from './navigation-browser-capture.ts';
+ installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,legacyNavigationFailureCounts,legacyNavigationFailureFacts,legacyNavigationLinkFailureCounts} from './navigation-browser-capture.ts';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
 import {NATIVE_HIDDEN_SHELL_CASES} from './navigation-protocol.ts';
+import {clickNativeShellDestination,waitForNativeShellHandlers} from './navigation-shell-browser.ts';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
@@ -43,7 +46,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
 import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
-import {createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile,workerRequestFailureFact,workerStageFailureFact} from './worker-comparison-failure.mjs';
+import {createLoadedAdvisoryDiagnostics,createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile,workerRequestFailureFact,workerStageFailureFact} from './worker-comparison-failure.mjs';
 import {isWorkerComparisonCourse} from './worker-comparison.mjs';
 import {readMeasuredClockCs,readMeasuredClockIdentity} from './measured-lock-clock.mjs';
 import {createMeasuredPreflightObserver,measuredLockSampleLimit,observeDatabaseLockCore,observeMeasuredLockConnection} from './measured-lock-observer.mjs';
@@ -137,6 +140,16 @@ if(nativePreflight){
  nativePreflightRoutePlan();
 }
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
+const fixtureWorkforce=[...fixture.users,...(fixture.groupScaleWorkforce??[]),
+ ...fixture.tenants.flatMap((tenant,index)=>tenant.rewardDraft
+  ? [{tenant:index,companyId:tenant.rewardDraft.companyId,employmentId:tenant.rewardDraft.employmentId}]
+  : [])];
+assert.equal(new Set(fixtureWorkforce.map(row=>row.employmentId)).size,fixtureWorkforce.length,
+ 'Fictional workforce contains duplicate employments');
+
+function scopedFixtureWorkforce(user){
+ return fixtureWorkforce.filter(row=>row.tenant===user.tenant&&(user.role==='groupHR'||row.companyId===user.companyId));
+}
 let db,measuredLockDb,agent,browser,ownedBrowser,chromiumEnv,nativeAuditClient;
 const acquired={observer:'absent',agent:'absent',browser:'absent',audit:'absent'};
 const failures=createDriverFailures(),contexts=createDriverContexts(failures),sockets=createDriverSockets(failures);
@@ -193,7 +206,7 @@ const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/cl
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationProtocol:suite==='whole-system'?navigationProtocol:'unchanged-claims-cycle',navigationScheduling:'shared per-role pending/inflight/completed steady obligations; minimum seven, maximum twelve group-HR reads per cycle; three other reads; same complete mutations and activity pauses; higher read share lowers write iteration frequency; compare only identical frozen v2 protocols',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationProtocol:suite==='whole-system'?navigationProtocol:'unchanged-claims-cycle',navigationScheduling:'shared per-role pending/inflight/completed steady obligations; minimum seven, maximum twelve group-HR reads per cycle; three other reads; same complete mutations and activity pauses; higher read share lowers write iteration frequency; Company HR clocking imports have independent steady-load lanes; compare only identical frozen protocols',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],browserMutations:suite==='claims-heavy'?[]:['Generic Reports saved-definition create/edit/delete (group HR, baseline'+(suite==='whole-system'?' and loaded':'')+')','Service Movement Secondment (group HR, '+(suite==='whole-system'?'loaded':'preflight')+')'],preflightOnly:suite==='workflow-preflight'?['Active Personnel contact edit/restore','E-Letter draft create/edit/withdraw','Concurrent Payroll close/publish','Performance review-cycle draft creation','Rewards annual unit draft creation']:[],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['Navigation destinations outside the reviewed scenario plan',...(suite==='workflow-preflight'?[]:['concurrent Payroll close/publish','active Personnel contact edit/restore','E-Letter draft mutations']),'Lifecycle mutations',...(suite==='workflow-preflight'?['Performance and Rewards mutations beyond draft creation']:['Performance mutations','Rewards mutations']),'large Personnel imports',...(suite==='claims-heavy'?['report-definition CRUD']:['Employee Master and Payroll Comparison definition CRUD','500-principal Reports write mix']),'long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
@@ -201,7 +214,9 @@ const nativeBrowserFailures=nativePreflight?createNativeBrowserFailureObservatio
 const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
 // Serial and parallel comparison cells share the same driver diagnostics.
 const serialComparison=measureDevelopment&&isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE);
-const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics():null;
+const loadedAdvisoryDiagnostics=measureDevelopment?createLoadedAdvisoryDiagnostics():null;
+const loadedAccessBlockers=measureDevelopment?createLoadedAccessBlockerDiagnostics():null;
+const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics(loadedAdvisoryDiagnostics):null;
 let comparisonStage='driver-initialization',comparisonWorkload=null;
 function markComparisonStage(stage){comparisonStage=stage;comparisonWorkload=null;}
 
@@ -273,14 +288,16 @@ function rejectBusyPage(user,path,channel){
 }
 
 const claimRestorationKey=Symbol('owned claim restoration');
-const homeHttp=createHomeHttpReplay({base,request,report});
+const useTodayHome=suite==='whole-system';
+const personalCalendarPath='/me/calendar';
+const homeHttp=createHomeHttpReplay({base,request,report,browserRoute:useTodayHome?personalCalendarPath:'/'});
 function request(...args){requireNativeBusiness();return requests.run(()=>requestBody(...args));}
 function readRoute(user,route){return readManifestRoute(route,(path,status)=>request(user,path,undefined,status));}
 // Private request facts keyed by the error an owned request threw. Only the primary failure's facts are
 // projected, through the closed workerRequestFailureFact, so a failure names its route but never its path.
 const ownedRequestFailures=new WeakMap();
 async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,claimAttempt){
- const attempt={stage:comparisonStage,role:user?.role??null,route:readRouteForMeasurement(path),method:fields?'POST':'GET',
+ const attempt={stage:comparisonStage,role:user?.role??null,route:mixedActionRoute(readRouteForMeasurement(path),action),method:fields?'POST':'GET',
   startedMs:performance.now(),deadlineMs:null,deadline:null,headers:null};
  try{return await sendRequestBody(attempt,user,path,fields,expectedStatus,record,actionHeaders,fieldOrder,action,claimAttempt);}
  catch(error){
@@ -317,11 +334,11 @@ async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,ac
  });
  transports.run(()=>transport.terminal);
  const response=await transport.result.catch(error=>{
-  noteEvidence(()=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,startedMs:started,elapsedMs:performance.now()-started,responseHeaders:responseHeaders??null,error:errorLabel(error)});});
+  noteEvidence(()=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:attempt.route,method:attempt.method,action,startedMs:started,timed:record===true,elapsedMs:performance.now()-started,responseHeaders:responseHeaders??null,error:errorLabel(error)});});
   throw error;
  });
  response.durationMs=performance.now()-started;
- if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
+ if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:attempt.route,method:attempt.method,action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
  const ownPayslipPdf=/^\/me\/payslip\/[0-9a-f-]{36}\/pdf$/.test(path.split('?')[0]);
  if(!fields&&expectedStatus===200&&ownPayslipPdf){
@@ -421,7 +438,11 @@ function recordLockSampling(){
  };
  report.lockSampling={strict:samplingRequired,scope:'Sampled application heavyweight lock waits, including advisory waits. Unobserved waits are outside this evidence.',
   preflight:measureDevelopment?qualified('preflight',preflight,preflightCadenceClosed):preflight,
-  loaded:measureDevelopment?qualified('loaded',loaded,loadedCadenceClosed):loaded,
+  loaded:measureDevelopment?{
+   ...qualified('loaded',loaded,loadedCadenceClosed),
+   advisoryDiagnostics:loadedAdvisoryDiagnostics.facts(),
+   accessBlockers:loadedAccessBlockers.facts(),
+  }:loaded,
   ...(measureDevelopment?{
    privatePreflightTiming:measuredPreflightLockTiming(measuredPreflightLockWitnesses(preflight.samples,preflight.window)??[],preflight.window),
    privatePreflightClientCadence:developmentMeasuredPreflightLockWindowEvidence(preflight.samples,preflight.window,preflightCadenceClosed),
@@ -483,12 +504,12 @@ async function prepareDatabaseLockScope(){
  const lockKeys=[];
  for(const [index,tenant]of fixture.tenants.entries()){
   for(const [kind,key]of [['access-configuration','access-configuration:'+tenant.tenantId],['payroll-history','payroll-history:'+tenant.tenantId],['pay-component-catalog',tenant.tenantId+':pay-component-catalog']])lockKeys.push({label:kind+':fixture-tenant-'+index,key});
-  if(serialComparison)lockKeys.push({label:'leave-dependency-configuration:fixture-tenant-'+index,key:'leave-dependency-configuration:'+tenant.tenantId});
+  if(measureDevelopment)lockKeys.push({label:'leave-dependency-configuration:fixture-tenant-'+index,key:'leave-dependency-configuration:'+tenant.tenantId});
  }
  for(const user of fixture.users){
   const key=fixture.tenants[user.tenant].tenantId+':'+user.employmentId;
   lockKeys.push({label:'employment:fixture-user-'+user.index,key});
-  if(serialComparison)lockKeys.push({label:'leave-dependency-employment:fixture-user-'+user.index,key:'leave-dependency-employment:'+key});
+  if(measureDevelopment)lockKeys.push({label:'leave-dependency-employment:fixture-user-'+user.index,key:'leave-dependency-employment:'+key});
  }
  const hashedLocks=await db`select k,((hashtextextended(k,0)>>32)&4294967295)::text as classid,(hashtextextended(k,0)&4294967295)::text as objid, (select oid::text from pg_database where datname=current_database()) as dbid from unnest(${lockKeys.map(row=>row.key)}::text[])k`;
  const labelsByKey=new Map(lockKeys.map(row=>[row.key,row.label])),lockLabels=new Map(hashedLocks.map(row=>[row.classid+':'+row.objid+':1',labelsByKey.get(row.k)]));
@@ -577,9 +598,10 @@ function sampleDatabaseLocks({lockLabels,accessLocks,auditLocks},phase,interval)
    const withinDiagnosticCensus=samples.length<measuredLockSampleLimit;
    retain(row);
    coreComplete=true;
-   if(workerLoadedDiagnostics&&phase==='loaded'&&withinDiagnosticCensus)try{
-    workerLoadedDiagnostics.lock(appConnections.waitingOnLock,queuedLocks.filter(row=>row.app_session)
+   if(loadedAdvisoryDiagnostics&&phase==='loaded'&&withinDiagnosticCensus)try{
+    loadedAdvisoryDiagnostics.observe(appConnections.waitingOnLock,queuedLocks.filter(row=>row.app_session)
      .map(row=>lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)?.split(':',1)[0]));
+    if(blockingAppSessions>0)loadedAccessBlockers.observe(locks,lockLabels);
    }catch{/* Attribution cannot alter the retained native sample. */}
    let attribution;
    if(wait&&probe&&fullDevelopmentRoutes&&blockingAppSessions>0&&attributedSamples<6){
@@ -873,9 +895,7 @@ async function main(){
     assert((key==='turnoverRate'?/^-?\d+(?:\.\d+)?%$/:/^\d+$/).test(observed[key]),'Analytics '+key+' must display a usable value');
    }
    assert.deepEqual(await metrics.evaluateAll(rows=>rows.map(row=>row.getAttribute('data-analytics-metric')).sort()),[...metricKeys].sort(),'Analytics metric inventory incomplete');
-   const rewardDraft=fixture.tenants[user.tenant].rewardDraft;
-   const rewardEmployee=rewardDraft&&(user.role==='groupHR'||rewardDraft.companyId===user.companyId)?1:0;
-   const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length+rewardEmployee;
+   const expected=scopedFixtureWorkforce(user).length;
    assert.equal(observed.activeHeadcount,String(expected),'Analytics headcount must match the independently seeded company/tenant population');
    await page.locator('main form[method="get"] select[name="companyId"]').waitFor({state:'visible',timeout:timeout()});
    assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Analytics rendered an unavailable state');
@@ -889,13 +909,11 @@ async function main(){
    const rendered=await rows.evaluateAll(elements=>elements.map(row=>({id:row.getAttribute('data-roster-employment-id'),text:row.textContent??''})));
    assert(rendered.length>0&&rendered.length<=25,'default Roster must render a bounded nonempty employee page');
    assert.equal(new Set(rendered.map(row=>row.id)).size,rendered.length,'Roster employee rows must be unique');
-   const allowed=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId));
-   const reward=fixture.tenants[user.tenant].rewardDraft;
+   const allowed=new Map(scopedFixtureWorkforce(user).map(row=>[row.employmentId,row]));
    for(const row of rendered){
-    const actor=allowed.find(actor=>actor.employmentId===row.id);
-    const rewardAllowed=reward&&row.id===reward.employmentId&&(user.role==='groupHR'||reward.companyId===user.companyId);
-    assert(actor||rewardAllowed,'Roster rendered an employee outside its independently seeded company/tenant scope');
-    if(actor)assert(row.text.includes(actor.name),'Roster row omitted the expected employee name');
+    const employment=allowed.get(row.id);
+    assert(employment,'Roster rendered an employee outside its independently seeded company/tenant scope');
+    if(employment.name)assert(row.text.includes(employment.name),'Roster row omitted the expected employee name');
    }
    assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Roster rendered an unavailable state');
    witness='roster-scoped-employments';
@@ -922,7 +940,25 @@ async function main(){
   }
   let homeCards=null,homeCardIds=[],todaySectionIds=[],cardFailures=0;
   visitStage='home-cards';
-  if(path==='/'||(path==='/me/calendar'&&['employee','manager'].includes(user.role))){
+  if(path==='/'&&useTodayHome){
+   const today=await waitForTodayBrowserReadiness(page,user.role,timeout);
+   homeCardIds=today.panels;
+   todaySectionIds=today.required;
+   homeCards=homeCardIds.length;
+   const failureNodes=await page.locator('main [role="alert"], main [data-today-page-unavailable], main [data-today-unavailable], main [data-read-unavailable]').evaluateAll(nodes=>nodes.map(node=>({
+    card:null,
+    marker:node.hasAttribute('data-read-unavailable')?'read-unavailable':node.hasAttribute('role')&&node.getAttribute('role')==='alert'?'alert':'today-unavailable',
+    section:node.closest('[data-today-panel]')?.getAttribute('data-today-panel')??null,
+    text:node.textContent??'',
+   })));
+   cardFailures=failureNodes.length;
+   if(cardFailures)report.homeCardFailures.push({role:user.role,phase,cards:homeCardFailureFacts(failureNodes,homeFailureMessages)});
+   if(signIn){
+    const baseline=report.browser.find(row=>row.phase==='baseline'&&row.role===user.role&&row.path==='/');
+    assert.deepEqual(todaySectionIds,baseline?.todaySectionIds,'The required Today panels changed during sign-in');
+   }
+   if(cardFailures===0)witness='home-card-inventory';
+  }else if(path==='/'||(path===personalCalendarPath&&['employee','manager'].includes(user.role))){
    const personal=['employee','manager'].includes(user.role),attribute=personal?'data-home-card':'data-dashboard-card';
    const cards=page.locator('main ['+attribute+']');
    await cards.first().waitFor({timeout:timeout()});
@@ -948,9 +984,7 @@ async function main(){
     if(cardFailures===0)witness='home-card-inventory';
    }
    if(!personal){
-    const rewardDraft=fixture.tenants[user.tenant].rewardDraft;
-    const extraRewardEmployee=rewardDraft&&(user.role==='groupHR'||rewardDraft.companyId===user.companyId)?1:0;
-    const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length+extraRewardEmployee;
+    const expected=scopedFixtureWorkforce(user).length;
     assert(await page.locator('[data-dashboard-card="headcount"]').getByText(String(expected),{exact:true}).count()>0,'HR dashboard headcount must match its actual fixture scope');
    }
    homeCards=homeCardIds.length;assert(homeCards>0,'expected fictional Home cards');
@@ -1099,6 +1133,9 @@ async function main(){
   await withContext(ctx,async()=>{const page=await ctx.newPage();
   const routes=strictRenderedPreflight&&primaryActors.includes(user)?['/']:suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'];
   for(const route of routes)await visit(page,user,route);
+  if(useTodayHome&&['employee','manager'].includes(user.role)&&!routes.includes(personalCalendarPath)){
+   await visit(page,user,personalCalendarPath);
+  }
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});
   });
  },failures));
@@ -1241,6 +1278,12 @@ async function main(){
     }
    }catch(reason){
     notePrimary(reason);
+    if(process.env.PERF_DRIVER_STAGE_RECEIPT==='1'&&stage==='legacy-navigation-capture'&&failures.primary().reason===reason){
+     noteEvidence(()=>{
+      const scenario=legacyNavigationFailureFacts(reason);
+      if(scenario)report.mixedNavigationPreflightFailure={role:user.role,scenario:scenario.scenarioId,linkMatches:legacyNavigationLinkFailureCounts(reason)};
+     });
+    }
     noteWorkerStageFailure(reason,stage,user,null);
     notePreflightStageFailure(reason,stage,user,page);
     throw reason;
@@ -1348,9 +1391,13 @@ async function main(){
  {
   const ctx=await context(employee);
   await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,employee,'/leave');
+  await waitForNativeShellHandlers(page,15000);
   const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
   requireNativeBusiness();
-  await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:90000}),page.locator('a[href="/claims"]:visible').first().click()]);
+  const deadline=performance.now()+90000;
+  const remaining=()=>Math.max(1,Math.ceil(deadline-performance.now()));
+  await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:remaining()}),
+   clickNativeShellDestination(page,'/claims',remaining)]);
   const catalog=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
   const heading=page.getByRole('heading',{level:1,name:catalog.claims.title,exact:true});
   const main=page.locator('main:visible').filter({has:heading});
@@ -1396,21 +1443,38 @@ async function main(){
   const attempt=custody?{beforeDispatch:()=>custody.begin(stage,user.index)}:undefined;
   return request(user,'/claims',fields,template.status,false,template.headers,template.fieldOrder,undefined,attempt);
  }
+ function mixedBrowserCheckpoint(step){
+  if(process.env.PERF_DRIVER_STAGE_RECEIPT!=='1')return;
+  report.mixedBrowserCheckpoint=step;
+  noteEvidence(save);
+ }
  async function browserClaimJourney(page,user,description,phase){
-  await visit(page,user,'/claims',phase);const timings=[],form=claimDraftForm(page);
-  const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000});
+  const checkpoint=step=>{if(phase==='baseline')mixedBrowserCheckpoint(step);};
+  checkpoint('claims-open');
+  await visit(page,user,'/claims',phase);
+  const timings=[],form=claimDraftForm(page).and(page.locator('[data-claim-form-ready="true"]'));
+  await form.waitFor({state:'visible',timeout:90000});
+  const browserAction=stage=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000})
+   .catch(reason=>{
+    if(process.env.PERF_DRIVER_STAGE_RECEIPT==='1')noteEvidence(()=>{report.mixedClaimBrowserFailure??={stage,phase,role:user.role};});
+    throw reason;
+   });
+  checkpoint('claims-create-fields');
   await form.locator('[name="claimTypeId"]:visible').selectOption(user.claimTypeId);await form.locator('[name="amount"]:visible').fill('1');await form.locator('[name="incurredOn"]:visible').fill(fixture.today);
   await form.locator('textarea[name="description"]:visible').fill(description);
   let started,draft,deleteTemplate;
   const requireRestore=()=>requireNativeClaimRestoration(user,draft.id);
   async function deleteDraft(custody){
    requireRestore();
+   checkpoint('claims-delete-menu');
    await page.locator('main form:visible').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).getByRole('button').click();started=performance.now();
    requireRestore();
    custody?.begin('delete');
    if(custody)requireRestore();
-   const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
+   checkpoint('claims-delete-response');
+   const [deleteResponse]=await Promise.all([browserAction('delete-response'),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
    deleteTemplate=await capturedAction(deleteResponse);
+   checkpoint('claims-delete-confirmed');
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted',{timeout:90000});timings.push({operation:'delete',visibleByMs:performance.now()-started});
    assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
    custody?.verify('delete');
@@ -1420,7 +1484,9 @@ async function main(){
    requireNativeBusiness();
    custody?.begin('create');
    if(custody)requireNativeBusiness();
-   const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
+   checkpoint('claims-create-response');
+   const [createResponse]=await Promise.all([browserAction('create-response'),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
+   checkpoint('claims-create-confirmed');
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'create',visibleByMs:performance.now()-started});
    const drafts=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description}`;
    [draft]=drafts;assert(draft,'browser create did not persist');
@@ -1428,10 +1494,12 @@ async function main(){
    custody?.verify('create',draft.id);
    if(phase==='loaded')await pause(thinkTimeMs);
    requireNativeBusiness();
+   checkpoint('claims-edit-open');
    await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await form.locator('[name="amount"]:visible').fill('2');started=performance.now();
    requireNativeBusiness();
    custody?.begin('edit');
    if(custody)requireNativeBusiness();
+   checkpoint('claims-edit-confirmed');
    await form.locator('button[name="intent"][value="draft"]:visible').click();await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'edit',visibleByMs:performance.now()-started});
    const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
    custody?.verify('edit');
@@ -1467,6 +1535,7 @@ async function main(){
  report.actionProtocol={create:actionProtocol(createTemplate),delete:actionProtocol(deleteTemplate)};save();
  // Prove the captured browser protocol can be replayed before exercising another actor or load.
  {
+  mixedBrowserCheckpoint('claims-http-replay');
   const description='PERF_HTTP_PREFLIGHT',fields={...createTemplate.fields};
   for(const [key,value]of Object.entries({employmentId:employee.employmentId,claimTypeId:employee.claimTypeId,amount:'1',incurredOn:fixture.today,description,intent:'draft'}))fields[createTemplate.prefix+key]=value;
   delete fields[createTemplate.prefix+'draftId'];
@@ -1486,6 +1555,7 @@ async function main(){
  // Real server actions must reject another employee's draft even for broadly visible HR actors.
  // Provision and clean up through the owner's HTTP action; the independent DB oracle only reads.
  for(const [actor,victim]of [[employee,fixture.users[5]],[hr,fixture.users[54]],[group,fixture.users[254]]]){
+  mixedBrowserCheckpoint('claims-scope-boundary');
   const description='PERF_BOUNDARY_'+actor.index,fields={...createTemplate.fields};
   for(const [key,value]of Object.entries({employmentId:victim.employmentId,claimTypeId:victim.claimTypeId,amount:'7',incurredOn:fixture.today,description,intent:'draft'}))fields[createTemplate.prefix+key]=value;
   delete fields[createTemplate.prefix+'draftId'];
@@ -1513,6 +1583,7 @@ async function main(){
  }
  if(suite!=='claims-heavy'){
   requireNativeBusiness();
+  mixedBrowserCheckpoint('mixed-mutations');
   mixedWorkflows=await withLockWorkload('mixed-workflows',()=>prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload}));
  }
  requireCleanDriver();
@@ -1617,6 +1688,17 @@ async function main(){
  markComparisonStage('preflight-lock-gate');
  await finishPreflightLockSampling();
  markComparisonStage('loaded-setup');
+ const replacementCatalogue=process.env.AIHR_BROWSER_REPLACEMENT_CATALOGUE;
+ if(replacementCatalogue){
+  assert(['present','absent'].includes(replacementCatalogue)&&fixture.tenants.length===2);
+  const [catalogue]=await db`select count(distinct tenant_id)::int as present from leave_type
+   where tenant_id=any(${fixture.tenants.map(tenant=>tenant.tenantId)}::uuid[])
+     and archived_at is null and (role='replacement' or (coalesce(role,'')='' and lower(code)='replacement'))`;
+  const presentTenants=catalogue.present;
+  report.replacementCatalogueAtLoadStart={presentTenants,tenants:2};
+  noteEvidence(save);
+  assert.equal(presentTenants,replacementCatalogue==='present'?2:0,'Replacement Leave catalogue arm drifted during browser preflight');
+ }
  await db`select pg_stat_statements_reset()`;
  if(measureDevelopment){
   measuredLockDb=postgres(process.env.MIGRATION_DATABASE_URL,{max:1,connect_timeout:2,
@@ -1734,6 +1816,24 @@ async function main(){
     loadState,waitForFirstWrite:waitForSteadyUsers});
   });
  }):null;
+ const clockingActors=mixedWorkflows?fixture.users.filter(isClockingLoadActor):[];
+ const clockingImportLoad={planned:clockingActors.length*clockingImportsPerActor,
+  started:0,validated:0,validationRefused:0,submitted:0,accepted:0,alreadyRunning:0,otherSubmissionRefused:0,
+  persisted:0,persistedAtSteady500:0,failedLanes:0};
+ report.clockingImportLoad=clockingImportLoad;
+ const clockingLoad=runLanes(clockingActors,async user=>{
+  await waitForSteadyUsers();
+  for(let sequence=0;sequence<clockingImportsPerActor;sequence++){
+   const state=loadState();
+   assert(state.active===500&&state.inSteadyWindow,'Clocking Import did not reach steady 500-user load');
+   clockingImportLoad.started++;
+   await mixedWorkflows.runClockingImport(user,sequence,clockingImportLoad);
+   const completed=loadState();
+   clockingImportLoad.persisted++;
+   if(completed.active===500&&completed.inSteadyWindow)clockingImportLoad.persistedAtSteady500++;
+   await pause(thinkTimeMs);
+  }
+ });
  const results=await runLanes(fixture.users.map((user,i)=>({user,i})),async({user,i})=>{
   await pause(i*20);progress.launched++;progress.active++;progress.peakActive=Math.max(progress.peakActive,progress.active);
   if(progress.active===500)fullConcurrencyAt??=performance.now();
@@ -1785,6 +1885,8 @@ async function main(){
    progress.active--;
   }
  });
+ const clockingResults=await clockingLoad;
+ clockingImportLoad.failedLanes=clockingResults.filter(result=>result.status==='rejected').length;
  const browserResults=await browserLoad;
  const payrollBrowserResults=await payrollBrowserLoad;
  if(payrollBrowserResults){
@@ -1843,8 +1945,14 @@ async function main(){
   write:summary(steady.filter(v=>v.role===role&&v.method==='POST').map(v=>v.durationMs)),
  }]))};
  report.steady.navigationCoverage=navigationScheduler?.snapshot()??null;
- report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],steadyStart,steadyUntil});
- report.latencyTargetMet=(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
+ const claimWriteRoles=mixedWorkflows?['manager']:Object.keys(measuredRoutePools);
+ const plannedWrites=claimWriteRoles.flatMap(role=>['claimsCreate','claimsEdit','claimsDelete']
+  .map(action=>({role,route:'/claims',action}))).concat(mixedWorkflows?.plannedWrites()??[]);
+ const plannedReads=plannedWrites.filter(row=>row.action==='attendanceCreate').map(row=>({...row,action:'attendanceForm'}));
+ report.steady.routeLatency=routeLatency({samples:loaded,requestErrors:report.requestErrors,pageInteractions,routePools:measuredRoutePools,
+  homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],plannedReads,plannedWrites,steadyStart,steadyUntil});
+ const clockingImportsPersisted=clockingImportLoad.persistedAtSteady500===clockingImportLoad.planned;
+ report.latencyTargetMet=clockingImportsPersisted&&(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  await Promise.all([lockDrain,progressDrain]);
  if(measureDevelopment)loadedCadenceClosed=loadedWindowReached;
  recordLockSampling();
@@ -1877,6 +1985,8 @@ async function main(){
   assert(surfaces.every(surface=>startedAtSteady500.includes(surface)&&readyAtSteady500.includes(surface)),
    'all Payroll readiness surfaces must start and finish during steady 500-user load');
  }
+ if(clockingImportLoad.planned)assert.equal(clockingImportLoad.persistedAtSteady500,clockingImportLoad.planned,
+  'each scheduled Clocking Import must persist during steady 500-user load');
  if(savedReportResults?.[0].status==='rejected')throw savedReportResults[0].reason;
  if(suite==='whole-system'){
   const savedReports=report.browserSavedReportJourneys;

@@ -47,8 +47,26 @@ export async function observeDatabaseLockCore(sql,phase,accessLocks,categorized)
      from pg_stat_activity where datname=current_database() and backend_type='client backend' group by 1,2`;
  const activityCompletedMs=performance.now();
  const advisoryStartedMs=performance.now();
+ // Fixed categories from the same native observation. Neither SQL text nor backend identity is exported.
+ const accessBlockerContext=phase==='loaded'?sql`,
+     case a.application_name
+      when 'aihr-fixture-mixed-worker' then 'worker'
+      when 'aihr-fixture-mixed-web' then 'web'
+      else 'unclassified' end as access_backend,
+     case
+      when lower(left(a.query,400)) like '%clocking_import%' then 'clocking import'
+      when lower(left(a.query,400)) like '%attendance%' then 'attendance'
+      when lower(left(a.query,400)) like '%leave_request%' then 'leave'
+      when lower(left(a.query,400)) like '%payroll%' then 'payroll'
+      when lower(left(a.query,400)) like '%bulk_job%' then 'bulk job'
+      when lower(left(a.query,400)) like '%employee_draft%' then 'personnel draft'
+      when lower(left(a.query,400)) like '%role_assignment%' then 'role assignment'
+      when lower(left(a.query,400)) like '%access_configuration%' then 'access configuration'
+      when lower(left(a.query,400)) like '%pg_advisory_xact_lock%' then 'advisory lock'
+      when lower(btrim(left(a.query,32))) in ('commit','rollback') then 'transaction end'
+      else 'unclassified' end as access_statement`:sql``;
  const locks=await sql`select a.pid,case when not l.granted then pg_blocking_pids(a.pid) end as blockers,l.mode,l.granted,l.classid::text,l.objid::text,l.objsubid,
-     a.usename='ai_hr_app' as app_session from pg_locks l join pg_stat_activity a on a.pid=l.pid
+     a.usename='ai_hr_app' as app_session${accessBlockerContext} from pg_locks l join pg_stat_activity a on a.pid=l.pid
      where a.datname=current_database()and l.database=(select oid from pg_database where datname=current_database())
        and l.locktype='advisory' and (not l.granted or (
        concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[])
