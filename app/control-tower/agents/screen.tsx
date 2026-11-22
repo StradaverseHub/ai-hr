@@ -330,6 +330,29 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
               </Link>}
             </dd>
             <dd><Link href="/admin/scheduled-actions" className={btnGhost}>{tc('workers.systemJobsLink')}</Link></dd>
+            {workerActivity && workerActivity.length > 0 && <dd className="min-w-0 sm:col-start-2">
+              <details className="border-t border-border">
+                <summary className="min-h-11 cursor-pointer py-3 font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {workerOverview('showScheduledWorkers')}
+                </summary>
+                <ul className="divide-y divide-border">
+                  {workerActivity.map(row => {
+                    const nameKey = `registry.workers.${row.id}`;
+                    const name = tc.has(nameKey) ? tc(nameKey) : row.label;
+                    return <li key={row.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
+                      <Link href={`${aiManagementHref('features')}?worker=${encodeURIComponent(row.id)}#worker-detail`}
+                        prefetch={false} className={featureLinkClass}>{name}</Link>
+                      <span className="flex flex-wrap items-baseline gap-x-3 text-xs text-muted-foreground">
+                        <span>{tc(`registry.${row.stopped ? 'stopped' : row.switch.on ? 'on' : 'off'}`)}</span>
+                        {row.lastRunAt ? <span>{tc('registry.columns.lastRun')} · <time dateTime={row.lastRunAt.toISOString()}>
+                          {f.dateTime(row.lastRunAt,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}
+                        </time></span> : <span>{workerOverview('noScheduledRunRecorded')}</span>}
+                      </span>
+                    </li>;
+                  })}
+                </ul>
+              </details>
+            </dd>}
           </div>
         </>}
         <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
