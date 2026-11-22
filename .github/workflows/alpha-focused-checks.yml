@@ -153,8 +153,14 @@ jobs:
         id: selection
         run: |
           if [[ "$MIXED_DATABASE_TOPOLOGY" == transaction-pool-2web ]]; then
-            [[ "$EXPECTED_SHA" == b582a3d30f2f8d22d56e46da881f405ce7095834 &&
-              "$SHELL_PERMISSION_VARIANT" == contract-optimized && "$REUSE_BUILD" == true ]] || exit 2
+            [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized ]] || exit 2
+            case "$EXPECTED_SHA" in
+              b582a3d30f2f8d22d56e46da881f405ce7095834)
+                [[ "$REUSE_BUILD" == true && "$RUN_BUILD" != true ]] || exit 2 ;;
+              1c2fe8b6770c4dc1d0a7a9952f2088f9f7c6faa0)
+                [[ "$RUN_BUILD" == true && "$REUSE_BUILD" != true ]] || exit 2 ;;
+              *) exit 2 ;;
+            esac
             MIXED_DATABASE_TOPOLOGY=transaction-pool
           fi
           if [[ "$MIXED_DATABASE_TOPOLOGY" == transaction-pool-12 ]]; then
@@ -212,6 +218,7 @@ jobs:
                   "$EXPECTED_SHA" == 24e0b499be5f009c409e539c1e78add85d7f3b03 ||
                   "$EXPECTED_SHA" == a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778 ||
                   "$EXPECTED_SHA" == b582a3d30f2f8d22d56e46da881f405ce7095834 ||
+                  "$EXPECTED_SHA" == 1c2fe8b6770c4dc1d0a7a9952f2088f9f7c6faa0 ||
                   "$EXPECTED_SHA" == ef953a158bf1fde5073ca43557268add5ff0883e ) && "$MIXED_GROUP_SCALE" == true &&
                 "$BROWSER_MIXED_LOAD" == true && "$ESTABLISHED_ATTENDANCE" == true &&
                 "$REPLACEMENT_CATALOGUE" == present && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
