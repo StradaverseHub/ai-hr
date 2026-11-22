@@ -78,6 +78,12 @@ async function traverseNativeShellDestination(page:Page,href:string,remaining:()
  if(mode==='hidden')await assertHidden('Denied destination appeared before native shell observation completed');
  if(mode==='click')throw Error('Reviewed destination is absent from the actual native shell');
 }
+/** These native disclosure buttons are disabled in server HTML and enabled when sidebar handlers attach. */
+export async function waitForNativeShellHandlers(page:Page,timeout:number){
+ await page.waitForLoadState('load',{timeout});
+ await page.locator('aside[data-app-sidebar] button[aria-controls]:enabled:visible').first()
+  .waitFor({state:'visible',timeout});
+}
 export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number){
  await traverseNativeShellDestination(page,href,remaining,'click');
 }
