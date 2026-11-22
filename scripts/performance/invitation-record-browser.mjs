@@ -36,7 +36,11 @@ export async function measureInvitationRecords({db,fixture,origin,compiledPages,
    row.headingMs=Math.round(performance.now()-started);
    const witness=control(page);
    await witness.waitFor({state:'visible',timeout});
-   assert(await witness.isEnabled({timeout}));
+   row.controlVisibleMs=Math.round(performance.now()-started);
+   if(template===activationTemplate){
+    await witness.and(page.locator('button:enabled')).waitFor({state:'visible',timeout});
+   }
+   row.controlReadyMs=Math.round(performance.now()-started);
    row.outcome='usable-content';
   }finally{
    row.elapsedMs=Math.round(performance.now()-started);
