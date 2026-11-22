@@ -64,7 +64,9 @@ it('preserves the shared task query across scoped principals and uses the existi
   });
   const self = await makeActor('employee');
   const manager = await makeActor('manager');
-  const [other] = await owner.db.insert(person).values({ tenantId: foreign.tenantId, fullName: 'Fictional other tenant' }).returning({ id: person.id });
+  const [other] = await owner.db.insert(person).values({
+    tenantId: foreign.tenantId, fullName: 'Fictional other tenant', primaryEmail: 'other-tenant@fixture.test',
+  }).returning({ id: person.id });
   const cases = [
     { session: fixture.personas.group, companyIds: undefined, personal: true, principal: true },
     { session: fixture.personas.multi, companyIds: fixture.companyIds, personal: false, principal: true },
