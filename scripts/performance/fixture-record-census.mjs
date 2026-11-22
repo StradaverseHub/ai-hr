@@ -806,6 +806,38 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
+// Attribute bounded SQL time by query owner without retaining query text or IDs.
+async function attendanceEditorStatementSnapshot(db) {
+  const rows = await db`
+    select case
+      when query ~* 'attendance_workflow_v3_approver_options[(]' then 'approver-options'
+      when query ~* 'from employment e join person p' and query ~* 'left join lateral'
+        and query ~* 'terminatedOn' then 'employee-population'
+      when query ~* 'attendance_workflow_approver_availability[(]' then 'approver-availability'
+      when query ~* 'visible_label_ids|system_label_assignment' then 'organisation-options'
+      else 'other' end as category,
+      sum(calls)::float8 as calls, sum(total_plan_time)::float8 as "planningMs",
+      sum(total_exec_time)::float8 as "executionMs"
+    from pg_stat_statements where toplevel
+      and dbid=(select oid from pg_database where datname=current_database())
+      and userid=(select oid from pg_roles where rolname='ai_hr_app')
+    group by category
+  `;
+  return new Map(rows.map(row => [row.category, row]));
+}
+
+function attendanceEditorStatementDelta(before, after) {
+  const counters = ['calls', 'planningMs', 'executionMs'];
+  const result = [...after].flatMap(([category, total]) => {
+    const delta = Object.fromEntries(counters.map(counter => [
+      counter, Math.round(total[counter] - (before.get(category)?.[counter] ?? 0)),
+    ]));
+    assert(Object.values(delta).every(value => Number.isFinite(value) && value >= 0), 'Statement counters moved backwards');
+    return delta.calls > 0 ? [{ category, ...delta }] : [];
+  });
+  return result.sort((a, b) => b.executionMs - a.executionMs);
+}
+
 export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
@@ -831,6 +863,8 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
       for (const pass of ['first', 'repeat']) {
         const row = { template: entry.template, role: entry.actor.role, pass, outcome: 'browser-failure', step: 'response' };
         rows.push(row);
+        const statementBefore = attendanceRecords && entry.template === '/admin/attendance/approval-workflow/[lineageId]/edit'
+          ? await attendanceEditorStatementSnapshot(db) : null;
         const started = performance.now();
         const remaining = () => Math.max(1, Math.floor(15000 - (performance.now() - started)));
         const pdfResponse = entry.inlinePdf && page.waitForResponse(response => {
@@ -882,6 +916,9 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           row.outcome = error.name === 'TimeoutError' ? 'timeout' : error.code === 'ERR_ASSERTION' ? 'assertion' : 'browser-failure';
         } finally {
           row.elapsedMs = Math.round(performance.now() - started);
+          if (statementBefore) {
+            row.databaseWork = attendanceEditorStatementDelta(statementBefore, await attendanceEditorStatementSnapshot(db));
+          }
           save();
         }
       }

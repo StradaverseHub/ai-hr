@@ -80,7 +80,8 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',
  TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test',NEXT_TELEMETRY_DISABLED:'1'};
-const pgEnv={...env,AIHR_CI_UNIT:'db-1'};
+const pgEnv={...env,AIHR_CI_UNIT:'db-1',
+ ...(censusAttendanceRecords&&{AIHR_CI_PG_STATEMENTS:'1',AIHR_CI_PG_STATEMENTS_OWNER:'attendance-sql-profile'})};
 
 function start(label,command,args,childEnv) {
  const fd=openSync(join(privateDir,label+'.log'),'wx',0o600);
@@ -1534,6 +1535,12 @@ try{
  databaseStarted=true;
  await run('postgres-setup','bash',['../automation/.github/ci/postgres.sh','reset'],pgEnv);
  await run('migrate-fictional-database','pnpm',['db:migrate'],dbEnv,300000);
+ if(censusAttendanceRecords){
+  const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
+  const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connect_timeout:5});
+  try{await owner`create extension if not exists pg_stat_statements`;}
+  finally{await owner.end({timeout:5});}
+ }
  await step('verify-organisation-admission','scripts/provision-organisation-admission.ts');
  // The task, approvals, and profile reads use the installed Resignation verifier.
  await step('provision-resignation-runtime','scripts/provision-resignation-runtime.ts');
