@@ -17,17 +17,23 @@ const indexName='fixture_employment_person_text_idx';
 const modules={attendance:true,claims:false,performance:true,rewards:true,lifecycle:false};
 const dialect=new PgDialect();
 
+const canonicalPersonId=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+function typedCaller(session:SessionContext):SQL|null{
+ const personId=session.personId;
+ if(!personId||!canonicalPersonId.test(personId))return null;
+ return sql`task_caller as materialized (
+  select array(select e.id from public.employment e where e.person_id=${personId}::uuid) as own_ids
+ )`;
+}
 function fullStatement(tx:Tx,session:SessionContext,companyIds:readonly string[],typed:boolean){
  const statement=accountTaskStatement(accountTaskStatementSections(tx,session,modules,{
   companyIds,personal:false,notices:true,
  }),session);
- if(!typed||!session.personId)return statement;
+ const caller=typed?typedCaller(session):null;
+ if(!caller)return statement;
  const original=dialect.sqlToQuery(accountTaskCallerSql(session)).sql;
  const matching=statement.queryChunks.filter(chunk=>chunk instanceof SQL&&dialect.sqlToQuery(chunk).sql===original);
  expect(matching).toHaveLength(1);
- const caller=sql`task_caller as materialized (
-  select array(select e.id from public.employment e where e.person_id=${session.personId}::uuid) as own_ids
- )`;
  return new SQL(statement.queryChunks.map(chunk=>chunk===matching[0]?caller:chunk));
 }
 
@@ -138,6 +144,22 @@ it('measures the unchanged shared task query before, with, and after a disposabl
   await measure('after-removal');
   const [restored]=await owner.client`select to_regclass('public.fixture_employment_person_text_idx') is null as passed`;
   expect(restored.passed).toBe(true);
+  const uppercase={...employeeContext,personId:employee.person_id.toUpperCase()};
+  const withoutPerson={...employeeContext,personId:null};
+  expect(typedCaller(uppercase)).toBeNull();
+  expect(typedCaller(withoutPerson)).toBeNull();
+  for(const session of [uppercase,withoutPerson]){
+   const actor={...actors[2],session};
+   expect(await read(actor,true)).toEqual(await read(actor));
+  }
+  const [other]=await owner.client`
+   select person_id from public.employment where tenant_id=${base.tenantId}::uuid
+    and person_id<>${employee.person_id}::uuid order by id limit 1
+  `;
+  const mismatch={...actors[2],session:{...employeeContext,personId:other.person_id}};
+  const mismatches=await Promise.all([read(mismatch),read(mismatch,true)]);
+  expect(mismatches.map(rows=>rows[0]?.principal)).toEqual([false,false]);
+
   const predicate=[];
   for(const [index,actor] of actors.entries()){
    const timings={current:[] as number[],typed:[] as number[]};
@@ -153,13 +175,23 @@ it('measures the unchanged shared task query before, with, and after a disposabl
      timings[typed?'typed':'current'].push(...durations);
     }
    }
-   predicate.push({role:actor.role,selectedCompanies:actor.companyIds.length,
+   const plan=async(caller:SQL)=>withTenant(actor.session,tx=>tx.execute(sql`
+    explain (format json) with ${caller} select own_ids from task_caller
+   `),{readOnlySnapshot:true});
+   const currentPlan=await plan(accountTaskCallerSql(actor.session));
+   const caller=typedCaller(actor.session);
+   expect(caller).not.toBeNull();
+   const typedPlan=await plan(caller!);
+   predicate.push({role:actor.role,selectedCompanies:actor.companyIds.length,existingPersonIndex:{
+     current:JSON.stringify(currentPlan).includes('employment_person_idx'),
+     typed:JSON.stringify(typedPlan).includes('employment_person_idx'),
+    },
     timings:Object.fromEntries(Object.entries(timings).map(([mode,values])=>[mode,{
      samples:values.length,p50Ms:percentile(values,.5),p95Ms:percentile(values,.95),
     }]))});
   }
   const evidence={releaseEligible:false,source:process.env.AIHR_CI_HEAD,companies:fixture.companyIds.length,
-   employments:fixture.employmentIds.length,indexBytes,indexRestored:restored.passed,results:report,typedPredicate:predicate};
+   employments:fixture.employmentIds.length,indexBytes,indexRestored:restored.passed,results:report,typedPredicate:predicate,identityBoundaries:{nonCanonicalFallback:true,noPersonFallback:true,unmatchedPersonDenied:true}};
   console.info('ACCOUNT_TASK_EXPRESSION_INDEX '+JSON.stringify(evidence));
   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR){
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'account-task-expression-index.json'),JSON.stringify(evidence,null,2));
