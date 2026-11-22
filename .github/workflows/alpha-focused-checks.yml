@@ -152,17 +152,21 @@ jobs:
             exit 2
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
-            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|leave-balances|roster|content-readiness|shell-content|approvals-content|command-delegation|tp3-catalogue|tp3-catalogue-network)$ ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|leave-balances|roster|offboarding-shell|content-readiness|shell-content|approvals-content|command-delegation|tp3-catalogue|tp3-catalogue-network)$ ]] ||
             [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true
                || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]] ||
             [[ "$BROWSER_SURFACE_PROBE" != actions && -n "$BROWSER_STATIC_SHARD" ]];
           }; then
             exit 2
           fi
+          if [[ "$BROWSER_SURFACE_PROBE" == offboarding-shell ]]; then
+            [[ "$REUSE_ACTION_BUILD" == true && "$BROWSER_GROUP_SHAPE" == true &&
+               "$EXPECTED_SHA" == 5752bf523a7d79121c4ed70e1cb25c6037e87a72 ]] || exit 2
+          fi
           if [[ "$REUSE_ACTION_BUILD" == true ]]; then
             [[ "$BROWSER_BASELINE" == true && "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" != true ]] || exit 2
             case "$BROWSER_SURFACE_PROBE" in
-              actions|attendance|rewards|leave-balances|roster|content-readiness|shell-content|approvals-content|command-delegation|tp3-catalogue|tp3-catalogue-network) ;;
+              actions|attendance|rewards|leave-balances|roster|offboarding-shell|content-readiness|shell-content|approvals-content|command-delegation|tp3-catalogue|tp3-catalogue-network) ;;
               '') [[ "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || exit 2 ;;
               *) exit 2 ;;
             esac
