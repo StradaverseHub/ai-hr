@@ -11,6 +11,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
@@ -89,6 +90,24 @@ it('leaves every attendance table, the import log, the pay-run marks and the aud
 }, 900_000);
 
 it('keeps clocking import results identical with shared chunk locks on an established tenant', async () => {
+  const probeConfigurationLocks = async (tenantId: string, shared: boolean) => {
+    const observer = postgres(process.env.TEST_MIGRATION_DATABASE_URL!, { max: 1 });
+    try {
+      return await observer.begin(async tx => {
+        const rows = await tx<{ acquired: boolean }[]>`
+          select case when ${shared}::boolean
+            then pg_try_advisory_xact_lock_shared(hashtextextended(key, 0))
+            else pg_try_advisory_xact_lock(hashtextextended(key, 0))
+          end as acquired
+          from (values (${'access-configuration:' + tenantId}::text),
+                       (${'leave-dependency-configuration:' + tenantId}::text)) as keys(key)
+        `;
+        return rows.map(row => row.acquired);
+      });
+    } finally {
+      await observer.end({ timeout: 5 });
+    }
+  };
   let sharedChunks = 0;
   const sharedHandler: typeof clockingImportJobHandler = {
     ...clockingImportJobHandler,
@@ -98,6 +117,10 @@ it('keeps clocking import results identical with shared chunk locks on an establ
       await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
       expect(await findReplacementLeaveTypeIdTx(tx, ctx.tenantId)).not.toBeNull();
       expect(await accessLockModeHeldTx(tx, ctx.tenantId)).toBe('S');
+      if (sharedChunks === 0) {
+        expect(await probeConfigurationLocks(ctx.tenantId, true)).toEqual([true, true]);
+        expect(await probeConfigurationLocks(ctx.tenantId, false)).toEqual([false, false]);
+      }
       sharedChunks++;
     },
   };
@@ -111,12 +134,14 @@ it('keeps clocking import results identical with shared chunk locks on an establ
     const outcomes = await importBoth(fixture, params => viaJob(fixture.ctx, params, runTick));
     expect(outcomes[0].imported).toBeGreaterThan(0);
     return {
+      tenantId: base.tenantId,
       outcomes: normalizeIds(outcomes, await runLabels(base.tenantId)),
       snapshot: await attendanceSnapshot(base.tenantId),
     };
   };
   const control = await run(tick);
   const shared = await run(() => runBulkJobTick(owner.client, { handlers: [sharedHandler] }));
+  expect(await probeConfigurationLocks(shared.tenantId, false)).toEqual([true, true]);
   expect(sharedChunks).toBeGreaterThan(1);
   expect(shared.outcomes).toEqual(control.outcomes);
   for (const table of Object.keys(control.snapshot)) {
