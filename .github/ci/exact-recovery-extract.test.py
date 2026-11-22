@@ -36,6 +36,21 @@ class ExactExtraction(unittest.TestCase):
     def test_selected_source_diagnostic(self):
         value={'kind':'CLAIMS_APPROVAL_QUEUE_SCALE_V1'}
         self.assertEqual(self.invoke(True,files=['test/claims-approval-queue-scale.test.ts'],extra=[('claims-approval-queue-100k.json',json.dumps(value))]),(0,['db.vitest.json','focused.json']))
+    def test_workers_diagnostics_stay_in_the_source_archive(self):
+        diagnostics = [
+            ('ai-management-section-projection.json','test/ai-management-section-projection.test.ts','NATIVE_AI_MANAGEMENT_SECTION_COMPONENT_NOT_BROWSER_OR_RELEASE'),
+            ('assistant-chat-list-root-batch.json','test/assistant-chat-list-root-batch.test.ts','NATIVE_CHAT_ROOT_READ_COUNT_COMPONENT_ONLY'),
+            ('visibility-plan-cache.json','test/performance/visible-employment-plan-cache.test.ts','COMPONENT_ONLY'),
+        ]
+        for name,source,kind in diagnostics:
+            with self.subTest(name=name):
+                payload = [(name,json.dumps({'kind':kind}))]
+                self.assertEqual(self.invoke(True,files=[source],extra=payload),(0,['db.vitest.json','focused.json']))
+                self.assertNotEqual(self.invoke(True,extra=payload)[0],0)
+                self.assertNotEqual(self.invoke(files=[source],extra=payload)[0],0)
+                self.assertNotEqual(self.invoke(True,files=[source],extra=[(name,'{"kind":"foreign"}')])[0],0)
+                oversized = json.dumps({'kind':kind,'diagnostic':'x'*65536})
+                self.assertNotEqual(self.invoke(True,files=[source],extra=[(name,oversized)])[0],0)
     def test_undeclared_source_diagnostic(self):self.assertNotEqual(self.invoke(True,extra=[('claims-approval-queue-100k.json','{}')])[0],0)
     def test_source_diagnostic_wrong_kind(self):self.assertNotEqual(self.invoke(True,files=['test/personnel-page-projection.test.ts'],extra=[('personnel-page-projection.json','{}')])[0],0)
     def test_nodb(self):self.assertEqual(self.invoke(),(0,['focused.json','nodb.vitest.json']))

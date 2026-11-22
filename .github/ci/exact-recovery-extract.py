@@ -2,7 +2,13 @@
 import json,pathlib,re,stat,sys,zipfile
 archive,destination=map(pathlib.Path,sys.argv[1:])
 prerequisites={'personnel-draft-discard-premigration-role-prerequisites.json':'PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES','personnel-draft-discard-role-prerequisites.json':'PERSONNEL_DRAFT_DISCARD_DISPOSABLE_ROLE_PREREQUISITES'}
-source_diagnostics={'claims-approval-queue-100k.json':('test/claims-approval-queue-scale.test.ts','CLAIMS_APPROVAL_QUEUE_SCALE_V1'),'personnel-page-projection.json':('test/personnel-page-projection.test.ts','NATIVE_PERSONNEL_PROJECTION_COUNT_NOT_SYSTEM_CAPACITY')}
+source_diagnostics={
+    'ai-management-section-projection.json':('test/ai-management-section-projection.test.ts','NATIVE_AI_MANAGEMENT_SECTION_COMPONENT_NOT_BROWSER_OR_RELEASE'),
+    'assistant-chat-list-root-batch.json':('test/assistant-chat-list-root-batch.test.ts','NATIVE_CHAT_ROOT_READ_COUNT_COMPONENT_ONLY'),
+    'claims-approval-queue-100k.json':('test/claims-approval-queue-scale.test.ts','CLAIMS_APPROVAL_QUEUE_SCALE_V1'),
+    'personnel-page-projection.json':('test/personnel-page-projection.test.ts','NATIVE_PERSONNEL_PROJECTION_COUNT_NOT_SYSTEM_CAPACITY'),
+    'visibility-plan-cache.json':('test/performance/visible-employment-plan-cache.test.ts','COMPONENT_ONLY'),
+}
 with zipfile.ZipFile(archive) as z:
     entries=z.infolist()
     if len(entries)>128 or sum(i.file_size for i in entries)>128*1024*1024:
