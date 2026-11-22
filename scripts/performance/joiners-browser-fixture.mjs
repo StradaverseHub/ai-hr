@@ -105,7 +105,13 @@ try{
     sorts:[],groups:[],pdf:{paper:'A4',orientation:'landscape',margins:'normal',logo:false,pageBreakGroups:false}},
   });
   const comparisonName='Fictional saved Payroll Comparison';
-  const historicalMonth=performanceFixtureCalendar(fixture.today).historicalMonth;
+  const {historicalMonth,publicationMonth}=performanceFixtureCalendar(fixture.today);
+  // The comparison requires a complete saved run in both months for this company.
+  setStage('payroll-comparison-history');
+  const {createBatch,generatePayslips,closeBatch}=await source('packs/payroll/service.ts');
+  const {batchId}=await createBatch(ctx,{companyId:company.companyId,payPeriod:publicationMonth});
+  await generatePayslips(ctx,{batchId});
+  await closeBatch(ctx,{batchId});
   setStage('payroll-comparison-report');
   const comparison=await saveCustomReport(ctx,{name:comparisonName,companyIds,shared:false,datasetId:PAYROLL_COMPARISON_DATASET,
    spec:payrollComparisonSpec({...DEFAULT_PAYROLL_COMPARISON,columns:['employeeCode','employeeName'],onlyVariances:false}),
