@@ -57,6 +57,7 @@ it('compares native and batched report grants on a populated group', async () =>
   const people = await owner.db.insert(schema.person).values(
     Array.from({ length: 1000 }, (_, index) => ({
       tenantId: base.tenantId, fullName: `Fictional report employee ${index}`,
+      primaryEmail: `report-employee-${index}@example.invalid`,
     })),
   ).returning({ id: schema.person.id });
   const employments = await owner.db.insert(schema.employment).values(
