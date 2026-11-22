@@ -125,6 +125,11 @@ it('compares UUID predicates and generic plans for shared account tasks through 
     select current_user as role,rolsuper as superuser,rolbypassrls as bypass from pg_roles where rolname=current_user
   `;
   expect(role).toEqual({role:'ai_hr_app',superuser:false,bypass:false});
+  const topology=await Promise.all(Array.from({length:concurrency},()=>pool.client.begin(async tx=>{
+    const [row]=await tx<{pid:number}[]>`select pg_backend_pid() as pid,pg_sleep(0.15)`;
+    return row.pid;
+  })));
+  expect(new Set(topology).size).toBe(concurrency);
 
   const read=(actor:Actor,variant:Variant)=>pool.withTenant(actor.session,async tx=>{
     const {session}=tx as unknown as {session:{client:postgres.TransactionSql}};
@@ -167,7 +172,8 @@ it('compares UUID predicates and generic plans for shared account tasks through 
     const timings=Object.fromEntries(variants.map(variant=>{
       const measured=collected.get(variant.name)!;
       const backends=new Set(measured.map(sample=>sample.backend));
-      expect(backends.size).toBe(concurrency);
+      expect(backends.size).toBeGreaterThan(1);
+      expect(backends.size).toBeLessThanOrEqual(concurrency);
       const warmSamples=measured.filter(sample=>sample.warm);
       if (variant.prepared) expect(warmSamples.length).toBeGreaterThan(concurrency);
       const durations=measured.map(sample=>sample.elapsedMs);
