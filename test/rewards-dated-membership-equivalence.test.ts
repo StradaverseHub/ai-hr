@@ -30,6 +30,7 @@ it('keeps legacy, pending, transferred, and inaccessible Rewards roster candidat
   const base = await seedBase();
   await setModule(base.tenantId, 'rewards', 'active');
   const group = await entitledCtx(base);
+  const checker = { ...group, userId: await createAppUser(base.tenantId, null, 'hr_admin') };
   const [destination] = await owner.db.insert(company).values({
     tenantId: base.tenantId, legalName: 'Fictional destination company', country: 'MY', currency: 'MYR',
   }).returning();
@@ -70,9 +71,9 @@ it('keeps legacy, pending, transferred, and inaccessible Rewards roster candidat
     kind: 'mapping', companyIds: [base.companyId], effectiveOn: today,
     changes: [{ companyId: base.companyId, businessUnitId: originUnit.id, parentCompanyId: null }],
   });
-  const checker = { ...group, userId: await createAppUser(base.tenantId, null, 'hr_admin') };
   const { run } = await companyOrganisationRunReport(checker, runId);
   await decideCompanyOrganisationRun(checker, { id: runId, digest: run.digest, approve: true, reason: 'Reviewed fictional origin company mapping' });
+  expect((await companyOrganisationRunReport(group, runId)).run.state).toBe('approved');
   let result = await processCompanyOrganisationRun(group, runId);
   for (let attempts=0; result.state==='staging' && attempts<20; attempts++) {
     result = await processCompanyOrganisationRun(group, runId);
