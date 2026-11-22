@@ -1722,6 +1722,12 @@ try{
      importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords,
      performanceReportRecords:censusPerformanceReportRecords,jobDescriptionRecords:censusJobDescriptionRecords,
      noticeRecords:censusNoticeRecords,attendanceConfigurationRecords:censusAttendanceConfigurationRecords,attendanceHistoryRecords:censusAttendanceHistoryRecords,loanRecords:censusLoanRecords,savedReportRecords:censusSavedReportRecords,letterCatalogRecords:censusLetterCatalogRecords,systemTestingRecords:censusSystemTestingRecords});
+    if(censusAttendanceConfigurationRecords){
+     await run('attendance-setup-owner-profile',process.execPath,['--conditions=react-server','--import','tsx',
+      '../automation/scripts/performance/attendance-setup-owner-profile.mjs'],dbEnv);
+     report.attendanceSetupOwnerProfile=JSON.parse(readFileSync(join(privateDir,'attendance-setup-owner-profile.json'),'utf8'));
+     save();
+    }
     if(censusFullFixtureRecords){
      await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
      assert(fixture.performanceRecords,'The full record plan requires a populated Performance assessment cycle');
