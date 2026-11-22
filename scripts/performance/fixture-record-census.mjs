@@ -654,14 +654,24 @@ async function recruitmentRecordRoutes(db, fixture) {
   ]);
 }
 
-async function verifyRecruitmentHistory(page, main, entry, row, remaining) {
-  const started=performance.now();
-  const historyPath=entry.path+'?tab=history';
-  await main.locator(`nav a[href="${historyPath}"]`).click({timeout:remaining()});
-  await page.waitForURL(url=>url.pathname===entry.path&&url.searchParams.get('tab')==='history',{timeout:remaining()});
-  await main.getByText(entry.applicationHistory,{exact:true}).waitFor({state:'visible',timeout:remaining()});
-  assert.equal(await main.locator(`nav a[href="${historyPath}"]`).getAttribute('aria-current'),'page');
-  row.recruitmentHistoryMs=Math.round(performance.now()-started);
+async function verifyRecruitmentTabs(page, main, entry, row, remaining) {
+  const steps=[
+    {tab:'history',ready:main.getByText(entry.applicationHistory,{exact:true})},
+    {tab:'interviews',ready:main.getByRole('button',{name:'Schedule interview',exact:true})},
+    {tab:'offer',ready:main.getByRole('heading',{name:'Offer details',exact:true})},
+  ];
+  row.recruitmentTabs=[];
+  for (const {tab,ready} of steps) {
+    row.step='recruitment-application-'+tab;
+    const started=performance.now();
+    const href=entry.path+'?tab='+tab;
+    const link=main.locator(`nav a[href="${href}"]`);
+    await link.click({timeout:remaining()});
+    await page.waitForURL(url=>url.pathname===entry.path&&url.searchParams.get('tab')===tab,{timeout:remaining()});
+    await ready.waitFor({state:'visible',timeout:remaining()});
+    assert.equal(await link.getAttribute('aria-current'),'page');
+    row.recruitmentTabs.push({tab,readyMs:Math.round(performance.now()-started)});
+  }
 }
 
 async function savedReportRecordRoutes(db, fixture) {
@@ -1219,8 +1229,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           }
           if (entry.applicationHistory && pass === 'first') {
             row.recruitmentApplicationPageReadyMs = Math.round(performance.now()-started);
-            row.step = 'recruitment-application-history';
-            await verifyRecruitmentHistory(page,main,entry,row,remaining);
+            await verifyRecruitmentTabs(page,main,entry,row,remaining);
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);
