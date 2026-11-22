@@ -6,17 +6,22 @@ import Link from 'next/link';
 import {useSearchParams} from 'next/navigation';
 import {useLocale,useTranslations} from 'next-intl';
 import {Button} from '@/components/ui';
+import {useClientReady} from '@/components/use-client-ready';
 import {IndependentHomeCard} from './home-card';
 import {useHomeInitialSharing} from './sharing-cohort';
 import {HomeTeamCard} from './team-card';
 import {addMonths} from '@/lib/roster-month';
 import {homeCalendarMonth,validateHomeCalendar,type EmployeeHomeCalendar,type HomeCalendarEntry} from '@/lib/employee-home-calendar';
+import type {HomeCardDelivery} from '@/lib/employee-home-delivery';
 
 type View='month'|'week'|'list';
 const tones={leave:'border-primary/50 bg-primary/10 text-foreground',holiday:'border-amber-600/50 bg-amber-500/10 text-foreground',payday:'border-emerald-600/50 bg-emerald-500/10 text-foreground'};
 
-export function HomeCalendarCard({employmentId,initialMonth,full=false}:{employmentId:string;initialMonth:string;full?:boolean}){
+export function HomeCalendarCard({employmentId,initialMonth,full=false,initialCalendar}:{
+ employmentId:string;initialMonth:string;full?:boolean;initialCalendar?:Exclude<HomeCardDelivery<EmployeeHomeCalendar>,{state:'cancelled'}>;
+}){
  const t=useTranslations('employeeHome.calendar'),locale=useLocale();
+ const interactive=useClientReady();
  const subscribe=useHomeInitialSharing();
  const [localMonth,setMonth]=React.useState(initialMonth),[view,setView]=React.useState<View>('month');
  const search=useSearchParams(),month=full?(search?.get('month')??localMonth):localMonth;
@@ -33,8 +38,13 @@ export function HomeCalendarCard({employmentId,initialMonth,full=false}:{employm
  const initialRead=React.useCallback(async(signal:AbortSignal)=>subscribe
   ?validateHomeCalendar(await subscribe('calendar',signal,()=>read(signal)) as EmployeeHomeCalendar,employmentId,month):read(signal),[subscribe,read,employmentId,month]);
  const monthLabel=new Intl.DateTimeFormat(locale,{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(month+'-01T00:00:00Z'));
+ const cachedMonth=initialCalendar&&month===initialMonth&&
+  (initialCalendar.state==='failed'||(initialCalendar.value.employmentId===employmentId&&initialCalendar.value.month===month))
+  ?initialCalendar:undefined;
  return <IndependentHomeCard card="calendar" title={t('title')} labels={{loading:t('loading'),failed:t('failed'),timeout:t('timeout'),retry:t('retry'),refresh:t('refresh')}}
-  requestKey={`${employmentId}:${month}:${locale}`} read={read} initialRead={!full&&month===initialMonth?initialRead:undefined}>{value=><div className="space-y-4">
+  requestKey={`${employmentId}:${month}:${locale}`} read={read}
+  initialResult={cachedMonth}
+  initialRead={!full&&month===initialMonth?initialRead:undefined}>{value=><fieldset disabled={!interactive} className="min-w-0 space-y-4">
    <div className="flex flex-wrap items-center justify-between gap-2">
     <h3 aria-live="polite" className="font-semibold">{monthLabel}</h3>
     <div className="flex flex-wrap gap-1">
@@ -57,7 +67,7 @@ export function HomeCalendarCard({employmentId,initialMonth,full=false}:{employm
    {value.team.scope!=='off'&&value.team.days.some(day=>!day.available)&&<p className="text-xs leading-relaxed text-muted-foreground">{t('teamUnavailableMonth')}</p>}
    {value.payrollEnabled&&<p className="text-xs leading-relaxed text-muted-foreground">{t('paymentNote')}</p>}
    {!full&&<Link className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline underline-offset-4 focus-visible:ring-2 focus-visible:ring-ring" href={'/me/calendar?'+new URLSearchParams({employmentId,month})}>{t('full')}</Link>}
-  </div>}</IndependentHomeCard>;
+  </fieldset>}</IndependentHomeCard>;
 }
 
 function CalendarDays({value,view}:{value:EmployeeHomeCalendar;view:View}){
