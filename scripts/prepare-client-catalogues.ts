@@ -26,6 +26,9 @@ const scopedClientNamespaces = {
     'labelExcelRoundTrip', 'leave', 'letters.reports', 'replacementRequest.formulaReview',
     'resignationCommunications', 'resignationJourney', 'review',
   ],
+  // Dashboard filter and row-menu copy is passed by the server. The confirmation
+  // dialog resolves its own copy when an administrator opens a draft action.
+  'payroll-dashboard': [...shellClientNamespaces, 'components.confirmSubmit'],
 };
 
 function projectCatalogue(messages: AbstractIntlMessages, namespaces: readonly string[]): AbstractIntlMessages {
