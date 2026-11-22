@@ -104,6 +104,11 @@ export function describePairedLeaveRoutingCases(bytes: Buffer, holdoutDigest: st
   return { holdoutDigest, caseDigests: caseDigests(parsed.cases) };
 }
 
+export function describeSuccessorLeaveRoutingCases(bytes: Buffer, holdoutDigest: string) {
+  const parsed = successorHoldout.parse(readFrozenHoldoutJson(bytes, holdoutDigest));
+  return { holdoutDigest, caseDigests: caseDigests(parsed.cases), minimumAdditionalAnswers: parsed.minimumAdditionalAnswers };
+}
+
 function project(input: z.infer<typeof scenario>) {
   const clarification: PrivateAssistantClarification | null = input.clarification
     ? { ...input.clarification, originalQuestion: input.question, earlier: [] } : null;

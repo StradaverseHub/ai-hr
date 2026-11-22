@@ -2,7 +2,8 @@ import { createHash, generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { runProtectedLeaveComparison, runProtectedLeaveRouting } from '../scripts/experiments/protected-leave-comparison';
 import { selectProtectedLeaveCount } from '../lib/ai/assistant-leave-count';
-import { describePairedLeaveRoutingCases, scoreLeaveRoutingSuccessor, scorePairedLeaveRoutingHoldout, scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
+import { describePairedLeaveRoutingCases, describeSuccessorLeaveRoutingCases, scoreLeaveRoutingSuccessor, scorePairedLeaveRoutingHoldout, scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
+import { signLeaveSuccessorEvidence, verifyLeaveSuccessorEvidence } from '../scripts/experiments/protected-leave-successor-evidence';
 import { signPairedLeaveEvaluation, verifyPairedLeaveEvaluations } from '../lib/ai/assistant-leave-evaluation-receipt';
 import { installedLocalLeaveEvidence } from '../core/assistant-local-leave-evidence';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
@@ -875,6 +876,44 @@ describe('evaluator-owned leave routing suite', () => {
       reports[0], keys[0].privateKey, now)).toThrow(refused);
     const replay = freezePlan({ ...plan, tenantId:id('8') });
     expect(() => verifyPairedLeaveEvaluations(replay.bytes, replay.digest, receipts, now)).toThrow(refused);
+
+    const archive = freezePlan({ plan:committed.bytes.toString('base64url'), planDigest:committed.digest, receipts,
+      verifiedAt:now.toISOString(), acceptedAt:'2026-11-21T07:00:00Z', promotionId:id('9'), acceptedBuild:'fictional-build' });
+    const successorSha='e'.repeat(40);
+    const successorInputs=[0,1].map(arm=>freezePlan({version:3,candidateSha:successorSha,minimumAdditionalAnswers:3,
+      cases:successorCases.map(item=>({...item,scenario:{...item.scenario,employments:item.scenario.employments.map(employment=>({
+        ...employment, balances:employment.balances.map(row=>item.expected.kind==='direct' && 'field' in item.expected &&
+          item.expected.field!=='available' ? {...row,available:arm===0?0:8} : {...row,pending:arm===0?-0.5:-1}),
+      }))}}))}));
+    const successorMembers=successorInputs.map((input,index)=>({
+      id:plan.evaluators[index].id, publicKey:plan.evaluators[index].publicKey,
+      ...describeSuccessorLeaveRoutingCases(input.bytes,input.digest),
+    }));
+    const successorPlan={version:3,trialId:id('10'),tenantId:plan.tenantId,authorId:plan.authorId,approverId:plan.approverId,
+      candidateSha:successorSha,candidateDigest:'1'.repeat(64),sourceDigest:'2'.repeat(64),parentArchiveDigest:archive.digest,
+      committedAt:'2026-11-22T02:00:00Z',expiresAt:'2026-11-23T00:00:00Z',evaluators:successorMembers};
+    const succession=freezePlan(successorPlan), later=new Date('2026-11-22T06:00:00Z');
+    const successorReports=successorInputs.map(input=>scoreLeaveRoutingSuccessor(input.bytes,input.digest,successorSha));
+    const signed=successorReports.map((report,index)=>signLeaveSuccessorEvidence(succession.bytes,succession.digest,archive.bytes,
+      successorMembers[index].id,report,keys[index].privateKey,later));
+    const check=(signedReports:readonly unknown[]=signed,parent=archive.bytes)=>
+      verifyLeaveSuccessorEvidence(succession.bytes,succession.digest,parent,signedReports,later);
+    expect(check()).toMatchObject({candidateSha:successorSha,parentCandidateSha:candidateSha,
+      parentCandidateDigest:plan.candidateDigest,parentPromotionId:id('9'),additionalCorrectAnswers:6,evaluatorCount:2,releaseAuthorized:false});
+    expect(JSON.stringify(signed)).not.toContain('Fictional');
+    expect(()=>check(receipts)).toThrow();
+    expect(()=>check([signed[0],signed[0]])).toThrow();
+    expect(()=>check([{...signed[0],report:{...signed[0].report,additionalCorrectAnswers:0}},signed[1]])).toThrow();
+    expect(()=>check(signed,Buffer.concat([archive.bytes,Buffer.from(' ')]))).toThrow();
+    expect(()=>check(signed,freezePlan({...JSON.parse(archive.bytes.toString()),acceptedAt:later.toISOString()}).bytes)).toThrow();
+    const reused=freezePlan({...successorPlan,evaluators:[successorMembers[0],{
+      ...successorMembers[1],caseDigests:[...successorMembers[1].caseDigests.slice(1),plan.evaluators[0].caseDigests[0]],
+    }]});
+    expect(()=>signLeaveSuccessorEvidence(reused.bytes,reused.digest,archive.bytes,successorMembers[0].id,
+      successorReports[0],keys[0].privateKey,later)).toThrow();
+    const swappedAuthor=freezePlan({...successorPlan,authorId:successorMembers[0].id});
+    expect(()=>signLeaveSuccessorEvidence(swappedAuthor.bytes,swappedAuthor.digest,archive.bytes,successorMembers[0].id,
+      successorReports[0],keys[0].privateKey,later)).toThrow();
 
     const binding = { tenantId:plan.tenantId, authorId:plan.authorId, candidateDigest:plan.candidateDigest,
       baselineDigest:plan.baselineDigest, sourceDigest:plan.sourceDigest };
