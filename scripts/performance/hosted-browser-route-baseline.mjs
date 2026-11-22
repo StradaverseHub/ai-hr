@@ -35,14 +35,16 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','shell-content','approvals-content','command-delegation','tp3-catalogue','tp3-catalogue-network','payroll-catalogue','assistant-catalogue'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness','shell-content','approvals-content','slow-route-content','command-delegation','tp3-catalogue','tp3-catalogue-network','payroll-catalogue','assistant-catalogue'].includes(surfaceProbe),'Unknown browser surface');
 const tp3CatalogueProbe=['tp3-catalogue','tp3-catalogue-network'].includes(surfaceProbe);
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
 ]);
 const shellContentRoutes=new Set(['/','/admin/personnel','/payroll','/approvals','/me/cases']);
+const slowRouteRoles=new Map([['/admin/personnel','companyHR'],['/approvals/history','manager']]);
 const contentProbeRoutes=new Map([
  ['content-readiness',readinessRoutes],['shell-content',shellContentRoutes],['approvals-content',new Set(['/approvals'])],
+ ['slow-route-content',new Set(slowRouteRoles.keys())],
 ]);
 const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const actionLane=surfaceProbe==='actions'?laneInput:null;
@@ -55,7 +57,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(!(tp3CatalogueProbe||['leave-inbox','leave-balances','roster','shell-content','approvals-content','payroll-catalogue'].includes(surfaceProbe))||groupShape,'The selected comparison requires group scale');
+assert(!(tp3CatalogueProbe||['leave-inbox','leave-balances','roster','shell-content','approvals-content','slow-route-content','payroll-catalogue'].includes(surfaceProbe))||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -568,8 +570,9 @@ async function documentTiming(page){
  }).catch(()=>null);
 }
 
-async function visit(page,actor,route,pass,fixture) {
+async function visit(page,actor,route,pass,fixture,sample) {
  const observation={role:route.role,route:route.requested,pass,status:'failed'};
+ if(sample!==undefined)observation.sample=sample;
  const started=performance.now(),deadline=started+15000;
  const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
  const watchTranslation=(surfaceProbe==='shell-content'&&route.requested==='/')||surfaceProbe==='approvals-content';
@@ -722,7 +725,7 @@ async function measureShellLinks(fixture){
   }
  }finally{await context.close();}
 }
-async function measureRoutes(fixture,paths){
+async function measureRoutes(fixture,paths,sample){
  let plan=[...nativePreflightRoutePlan()];
  for(const [role,actorIndex] of [['companyHR',1],['groupHR',0]]){
   for(const path of [payrollHistoryPath,'/recruitment','/lifecycle/v9','/approvals']){
@@ -730,6 +733,9 @@ async function measureRoutes(fixture,paths){
   }
  }
  plan.push({role:'employee',actorIndex:4,requested:'/me/cases',final:'/me/cases'});
+ if(surfaceProbe==='slow-route-content'){
+  plan=plan.filter(route=>slowRouteRoles.get(route.final)===route.role&&route.requested===route.final);
+ }
  if(paths){
   plan=plan.filter(route=>paths.has(route.final));
   assert.equal(new Set(plan.map(route=>route.final)).size,paths.size,'A requested content check is missing from the route plan');
@@ -740,20 +746,26 @@ async function measureRoutes(fixture,paths){
  save();
  const require=createRequire(join(process.cwd(),'package.json'));
  const {chromium}=require('playwright');
- browser=await chromium.launch();
- const lanes=await Promise.allSettled([...new Set(plan.map(route=>route.actorIndex))].map(async actorIndex=>{
+ browser??=await chromium.launch();
+ const actorIndexes=[...new Set(plan.map(route=>route.actorIndex))];
+ const measureLane=async actorIndex=>{
   const actor=fixture.users[actorIndex],routes=plan.filter(route=>route.actorIndex===actorIndex);
   assert(actor&&routes.every(route=>route.role===actor.role),'Fixture role differs from the route inventory');
   const context=await signedInContext(actor);
   try{
    const page=await context.newPage();
    await page.addInitScript(observeStartup);
-   for(const pass of ['first','repeat'])for(const route of routes)await visit(page,actor,route,pass,fixture);
+   for(const pass of ['first','repeat'])for(const route of routes)await visit(page,actor,route,pass,fixture,sample);
   }finally{await context.close();}
- }));
+ };
+ if(surfaceProbe==='slow-route-content'){
+  for(const actorIndex of actorIndexes)await measureLane(actorIndex);
+ }else{
+  const lanes=await Promise.allSettled(actorIndexes.map(measureLane));
+  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
+ }
  report.builtPageCoverage=builtPageCoverage(appPathRoutes,plan,report.observations);
  save();
- assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
 }
 
 async function measureAttendanceHistory({page,user,fixture,report,save}){
@@ -2720,8 +2732,10 @@ try{
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
   else if(contentProbeRoutes.has(surfaceProbe)){
-   await measureRoutes(fixture,contentProbeRoutes.get(surfaceProbe));
-   assert.equal(report.observations.length,2*report.plannedRoleRoutes);
+   const paths=contentProbeRoutes.get(surfaceProbe);
+   const samples=surfaceProbe==='slow-route-content'?3:1;
+   for(let sample=1;sample<=samples;sample++)await measureRoutes(fixture,paths,samples>1?sample:undefined);
+   assert.equal(report.observations.length,2*samples*report.plannedRoleRoutes);
    assert(report.observations.every(row=>row.status==='observed'&&row.readiness==='usable-content'),
     'A selected route missed its usable-content check');
   }
