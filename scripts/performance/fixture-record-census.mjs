@@ -477,6 +477,12 @@ async function attendanceRecordRoutes(db, fixture) {
   const mappingId = fixture.tenants[group.tenant].clockingMappingId;
   assert.match(mappingId, /^[0-9a-f-]{36}$/i);
   const mapping = '/admin/attendance/file-mappings/' + mappingId;
+  const workflows = await db`select lineage_id from attendance_workflow_template
+    where tenant_id=${company.tenantId}::uuid and company_id=${company.companyId}::uuid
+      and code='PERF' and version=1 and superseded_at is null`;
+  assert.equal(workflows.length, 1, 'Expected the seeded company Attendance approval workflow');
+  const workflowName = 'Fictional performance approval';
+  const workflow = '/admin/attendance/approval-workflow/' + workflows[0].lineage_id;
   const routes = [group, company].flatMap(actor => {
     const subject = fixture.users.find(user => user.role === 'employee' &&
       user.tenantId === actor.tenantId && user.companyId === actor.companyId);
@@ -494,6 +500,13 @@ async function attendanceRecordRoutes(db, fixture) {
       { actor, template: '/attendance/individual/[date]',
         path: '/attendance/individual/' + fixture.today + '?emp=' + subject.employmentId,
         exactHeading: 'Attendance detail', content: subject.name, witness: ':text-is("09:00")' },
+      { actor, template: '/admin/attendance/approval-workflow/[lineageId]', path: workflow,
+        exactHeading: workflowName, witness: `a[href="${workflow}/edit"]` },
+      { actor, template: '/admin/attendance/approval-workflow/[lineageId]/edit', path: workflow + '/edit',
+        exactHeading: 'Edit ' + workflowName, witness: '#attendance-workflow-form input[name="code"][value="PERF"]' },
+      { actor, template: '/admin/attendance/approval-workflow/[lineageId]/previews', path: workflow + '/previews',
+        exactHeading: 'Preview History', content: workflowName, witness: 'button:text-is("Generate new preview")',
+        ...(actor.role === 'companyHR' && { workflowPreviewLineage: workflows[0].lineage_id }) },
     ];
   });
   const employee = fixture.users.find(user => user.role === 'employee' &&
@@ -505,6 +518,34 @@ async function attendanceRecordRoutes(db, fixture) {
     exactHeading: 'Attendance detail', content: employee.name, witness: 'input[name="checkIn"][value="09:00"]',
   });
   return routes;
+}
+
+async function verifyAttendanceWorkflowPreview(page, db, entry, report, save) {
+  const result = { role: entry.actor.role, status: 'failed' };
+  report.attendanceWorkflowPreviewAction = result;
+  const timeout = 15000;
+  const main = page.locator('main:visible').first();
+  const started = performance.now();
+  try {
+    await main.getByRole('button', { name: 'Generate new preview', exact: true }).click({ timeout });
+    await page.waitForURL(url => url.pathname === entry.path && url.searchParams.has('id'), { timeout });
+    await main.locator('dl dd').first().waitFor({ state: 'visible', timeout });
+    const id = new URL(page.url()).searchParams.get('id');
+    assert.match(id, /^[0-9a-f-]{36}$/i);
+    const rows = await db`select company_ids, total_matching, template_version
+      from attendance_workflow_preview
+      where id=${id}::uuid and tenant_id=${entry.actor.tenantId}::uuid
+        and lineage_id=${entry.workflowPreviewLineage}::uuid
+        and generated_by_user_id=${entry.actor.userId}::uuid`;
+    assert.equal(rows.length, 1);
+    assert.deepEqual(rows[0].company_ids, [entry.actor.companyId]);
+    assert.equal(rows[0].template_version, 1);
+    assert(rows[0].total_matching > 0, 'Expected the preview to include the seeded employee cohort');
+    result.status = 'passed';
+  } finally {
+    result.elapsedMs = Math.round(performance.now() - started);
+    save();
+  }
 }
 
 function payrollFormulaEvaluationRoutes(fixture) {
@@ -796,6 +837,9 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
       }
       if (entry.personnelTabs && rows.at(-1).outcome === 'usable-content') {
         await verifyPersonnelContactSave(page, db, entry, report, save);
+      }
+      if (entry.workflowPreviewLineage && rows.at(-1).outcome === 'usable-content') {
+        await verifyAttendanceWorkflowPreview(page, db, entry, report, save);
       }
     } finally {
       await context.close();
