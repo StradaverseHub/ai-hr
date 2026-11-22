@@ -2372,6 +2372,7 @@ async function measureLifecycleMenu({page,user,fixture,report,save}){
   report.lifecycleMenuSteps.push({step,elapsedMs:Math.round(performance.now()-started)});
   save();
  };
+ report.actionStage='lifecycle-personnel-open';
  const response=await page.goto(origin+path,{waitUntil:'commit',timeout:timeout()});
  assert.equal(response?.status(),200);
  assert.equal(page.url(),origin+path);
@@ -2384,11 +2385,32 @@ async function measureLifecycleMenu({page,user,fixture,report,save}){
   menu.waitFor({state:'visible',timeout:timeout()}).then(()=>measure('lifecycle-trigger-visible')),
  ]);
  const clicked=performance.now();
- await menu.click({timeout:timeout()});
- const access=page.getByRole('link',{name:'Module Access',exact:true});
- await access.waitFor({state:'visible',timeout:timeout()});
- assert.equal(await access.getAttribute('href'),'/lifecycle/v9?view=access');
- measure('authorized-lifecycle-flyout',clicked);
+ try{
+  report.actionStage='lifecycle-menu-click';
+  await menu.click({timeout:timeout()});
+  measure('lifecycle-menu-click-settled',clicked);
+  report.actionStage='lifecycle-panel-open';
+  await menu.and(page.locator('[aria-expanded="true"]')).waitFor({state:'visible',timeout:timeout()});
+  measure('lifecycle-menu-expanded',clicked);
+  report.actionStage='lifecycle-access-link';
+  const access=page.getByRole('link',{name:'Module Access',exact:true});
+  await access.waitFor({state:'visible',timeout:timeout()});
+  assert.equal(await access.getAttribute('href'),'/lifecycle/v9?view=access');
+  measure('authorized-lifecycle-flyout',clicked);
+ }catch(error){
+  report.failureLandmarks=await page.evaluate(()=>{
+   const trigger=document.querySelector('button[aria-label="On/Off Boarding"][aria-controls]');
+   const panel=document.getElementById(trigger?.getAttribute('aria-controls')??'');
+   const access=panel?.querySelector('a[href="/lifecycle/v9?view=access"]');
+   const rect=trigger?.getBoundingClientRect();
+   const hit=rect&&document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+   return {triggerPresent:!!trigger,triggerEnabled:!!trigger&&!trigger.matches(':disabled'),
+    triggerExpanded:trigger?.getAttribute('aria-expanded')==='true',triggerReceivesPointer:!!hit&&trigger.contains(hit),
+    panelMounted:!!panel,accessMounted:!!access,accessVisible:!!access?.getClientRects().length,
+    modalVisible:[...document.querySelectorAll('[aria-modal="true"]')].some(dialog=>dialog.getClientRects().length>0)};
+  }).catch(()=>undefined);
+  throw error;
+ }
 }
 
 const actionLaneByJourney={
