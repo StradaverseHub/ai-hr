@@ -46,8 +46,9 @@ const censusLoanRecords=shardInput==='loan-records';
 const censusSavedReportRecords=shardInput==='saved-report-records';
 const censusLetterCatalogRecords=shardInput==='letter-catalog-records';
 const censusSystemTestingRecords=shardInput==='system-testing-records';
+const censusInvitationRecords=shardInput==='invitation-records';
 const censusFullFixtureRecords=shardInput==='fixture-records';
-const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusAttendanceRecords||censusPerformanceReportRecords||censusJobDescriptionRecords||censusNoticeRecords||censusAttendanceConfigurationRecords||censusAttendanceHistoryRecords||censusLoanRecords||censusSavedReportRecords||censusLetterCatalogRecords||censusSystemTestingRecords;
+const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusAttendanceRecords||censusPerformanceReportRecords||censusJobDescriptionRecords||censusNoticeRecords||censusAttendanceConfigurationRecords||censusAttendanceHistoryRecords||censusLoanRecords||censusSavedReportRecords||censusLetterCatalogRecords||censusSystemTestingRecords||censusInvitationRecords;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1597,6 +1598,7 @@ try{
   }
   save();
  }
+ if(censusInvitationRecords)await step('seed-invitation-record','../automation/scripts/performance/invitation-browser-fixture.mjs');
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
@@ -1717,7 +1719,10 @@ try{
    const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
    try{
-    await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
+    if(censusInvitationRecords){
+     const {measureInvitationRecords}=await import('./invitation-record-browser.mjs');
+     await measureInvitationRecords({db,fixture,origin,compiledPages,signedInContext,report,save});
+    }else await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
      importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords,
      performanceReportRecords:censusPerformanceReportRecords,jobDescriptionRecords:censusJobDescriptionRecords,
