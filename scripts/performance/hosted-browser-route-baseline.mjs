@@ -62,6 +62,7 @@ const nextResponseCloseWithPayrollBoundary='b582a3d30f2f8d22d56e46da881f405ce709
 const sharedEmployeeClaimsRead='4340a82c73b11541daa8811aaf7b534debb81ce3';
 const sharedEmployeeClaimsObserver='681ddc918ef99f9f632c3067d8f0624aaa5f8b21';
 const indexedAccountTaskCaller='8729365591aed6efc1d0c3b72ec346dcc16d6829';
+const currentMainArtifact={sourceSha:'b0c603e0eea4bc0963b8673c0a034fa4403cb835',runId:45058259548,artifactId:14768518621};
 const combinedGroupArtifacts=new Map([
  [sharedEmployeeClaimsObserver,{runId:45040634196,artifactId:14761723496,sourceSha:sharedEmployeeClaimsRead}],
  ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],
@@ -134,7 +135,7 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(shellLifetimeEnabled&&{shellHttpLifetime:'node-response-close'}),
  ...([nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,sharedEmployeeClaimsObserver,indexedAccountTaskCaller].includes(sha)&&{shellHttpLifetime:'next-after'}),
- ...(reusedBuild&&{buildArtifact:combinedGroupBuild
+ ...(reusedBuild&&{buildArtifact:sha===currentMainArtifact.sourceSha ? currentMainArtifact : combinedGroupBuild
   ? {sourceSha:sha,...combinedGroupArtifact}
   : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,

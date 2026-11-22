@@ -229,6 +229,8 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
+              true:b0c603e0eea4bc0963b8673c0a034fa4403cb835)
+                [[ "$MIXED_DATABASE_TOPOLOGY" == transaction-pool && "$SHELL_PERMISSION_VARIANT" == none ]] || exit 2 ;;
               false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:cddd7cebf757d0392ed06bead78300732fd54256) ;;
               true:5175d387846c18fcc83ef96091cb1b4e1b538241|true:71e0dceb1a393817f3040518e82dc845a27700b0|true:0ba883e0aa294bb0f15dcfe2433deedb52d11996|true:57fac422707b3a6174a290722ea0bb53da89f7c0|true:52d2d170710fcfb14219abe2f9d0abc84e536748|true:5e34835d73183b2754c9b3e4ccdbfc31111917a8|true:a1d4cbb7bef482f7a6c8b75ab7fbec7611976857)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
@@ -318,7 +320,7 @@ jobs:
         run: printf 'exec-path=%s\n' "$(command -v node)" >> "$GITHUB_OUTPUT"
       - uses: ./automation/.github/actions/setup-alpha
         with:
-          node: ${{ inputs.browser_route_baseline && '20' || '22.23.3' }}
+          node: ${{ inputs.browser_route_baseline && needs.resolve.outputs.sha != 'b0c603e0eea4bc0963b8673c0a034fa4403cb835' && '20' || '22.23.3' }}
           capacity_profile: ${{ !inputs.browser_route_baseline && github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}
           mobile: ${{ !inputs.browser_route_baseline }}
       - name: Provision multilingual fonts for AI review screenshots
@@ -361,7 +363,21 @@ jobs:
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          if [[ "$AIHR_CI_HEAD" == a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778 ]]; then
+          if [[ "$AIHR_CI_HEAD" == b0c603e0eea4bc0963b8673c0a034fa4403cb835 ]]; then
+            test "$MIXED_GROUP_SCALE" = true
+            packet="$RUNNER_TEMP/fictional-browser-build"
+            producer="$(gh api repos/StradaverseHub/ai-hr/actions/jobs/137318442678)"
+            jq -e --arg sha "$AIHR_CI_HEAD" '
+              .conclusion == "success" and .run_attempt == 1 and .name == "build" and
+              .run_id == 45058259548 and .head_sha == $sha and .head_branch == "alpha"
+            ' <<< "$producer" > /dev/null
+            gh api repos/StradaverseHub/ai-hr/actions/artifacts/14768518621/zip > "$archive"
+            python3 .github/ci/build-transport-extract.py "$archive" "$packet" \
+              408198d14de58e5be1dd4cecb2d778585e4a95889a191d364ad4475dbcf1c79f
+            chmod 700 "$PWD"
+            node ../automation/scripts/performance/unpack-capacity-build.mjs "$packet" "$producer"
+            exit 0
+          elif [[ "$AIHR_CI_HEAD" == a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778 ]]; then
             test "$MIXED_GROUP_SCALE" = true
             gh api repos/StradaverseHub/ai-hr/actions/jobs/137221081335 --jq '
               .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
@@ -496,6 +512,10 @@ jobs:
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
+          if [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" == b0c603e0eea4bc0963b8673c0a034fa4403cb835 ]]; then
+            test "$(cat .next/BUILD_ID)" = "$(jq -er .nextBuildId "$packet/build-provenance.json")"
+            exit 0
+          fi
           if [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" == 681ddc918ef99f9f632c3067d8f0624aaa5f8b21 ]]; then
             expected_build_source=4340a82c73b11541daa8811aaf7b534debb81ce3
           elif [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" == d855add8ba13ab3329b2b9aee35f4aed338193d0 ]]; then
