@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { inspect } from 'node:util';
-import { mixedDriverPrimaryOrigin, projectMixedNavigationPreflightFailure } from '../../scripts/performance/mixed-driver-primary-origin.mjs';
+import { mixedDriverPrimaryOrigin, projectMixedNavigationPreflightFailure, projectMixedPayrollPreflight } from '../../scripts/performance/mixed-driver-primary-origin.mjs';
 
 test('retains only allowlisted source coordinates from the primary mixed driver failure', () => {
   const reason = new Error('Fictional private failure contents');
@@ -53,4 +53,17 @@ test('retains a reviewed scenario and bounded link counts without publishing pag
   assert.equal(projectMixedNavigationPreflightFailure({scenario: 'invented', role: 'companyHR'}), null);
   assert.deepEqual(projectMixedNavigationPreflightFailure({scenario, role: 'companyHR', linkMatches: {total: 1001}}),
     {scenario, role: 'companyHR', linkMatches: null});
+});
+
+test('publishes the failing Payroll preflight surface without private browser data', () => {
+  assert.deepEqual(projectMixedPayrollPreflight([
+    {phase:'baseline',role:'companyHR',surface:'resume',status:200,scopeDenied:true,elapsedMs:871.5},
+    {phase:'baseline',role:'companyHR',surface:'anomalies',failed:true,elapsedMs:90002,
+      errorType:'TimeoutError',url:'/payroll/private-id/anomalies',body:'fictional HR record'},
+    {phase:'loaded',role:'groupHR',surface:'resume',usable:true},
+    {phase:'baseline',role:'other',surface:'private-id'},
+  ]), [
+    {role:'companyHR',surface:'resume',outcome:'scope-denied',elapsedMs:872,responseStatus:200,errorType:null},
+    {role:'companyHR',surface:'anomalies',outcome:'failed',elapsedMs:90002,responseStatus:null,errorType:'TimeoutError'},
+  ]);
 });

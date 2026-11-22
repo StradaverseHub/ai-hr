@@ -14,6 +14,25 @@ export function projectMixedNavigationPreflightFailure(fact) {
   };
 }
 
+const payrollSurfaces = new Set(['resume','anomalies','draft-adjustments']);
+const payrollRoles = new Set(['companyHR','groupHR']);
+const payrollErrors = new Set(['TimeoutError','AssertionError','Error']);
+
+export function projectMixedPayrollPreflight(facts) {
+  if (!Array.isArray(facts)) return [];
+  return facts.filter(fact => fact?.phase === 'baseline' &&
+    payrollSurfaces.has(fact.surface) && payrollRoles.has(fact.role)).slice(0, 12).map(fact => ({
+    role: fact.role,
+    surface: fact.surface,
+    outcome: fact.failed === true ? 'failed' :
+      fact.scopeDenied === true ? 'scope-denied' : fact.usable === true ? 'usable-content' : 'unverified',
+    elapsedMs: Number.isFinite(fact.elapsedMs) && fact.elapsedMs >= 0 && fact.elapsedMs <= 120000
+      ? Math.round(fact.elapsedMs) : null,
+    responseStatus: [200,404].includes(fact.status) ? fact.status : null,
+    errorType: payrollErrors.has(fact.errorType) ? fact.errorType : null,
+  }));
+}
+
 // Project only the location of the primary failure from the private inspect output.
 // Paths, exception messages, and all secondary failures stay in the runner's private directory.
 const frame = /^\s+at (?:[^\r\n(]+ \()?(?:file:\/\/)?[^\s()]*\/scripts\/performance\/(system-load-owner\.mjs|mixed-workflows\.mjs|navigation-browser-capture\.ts|navigation-shell-browser\.ts|org-explorer-browser\.mjs|home-http\.mjs|today-browser-readiness\.mjs|payroll-browser\.mjs|personnel-switcher-browser\.mjs):(\d{1,6}):(\d{1,5})\)?$/m;

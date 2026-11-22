@@ -18,7 +18,7 @@ import {builtPageCoverage,nativePreflightRoutePlan,routePools} from './system-ro
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {projectLoadedAdvisoryDiagnostics,projectMixedBrowserVisitFailure} from './worker-comparison-failure.mjs';
 import {summarizeMixedErrorStatuses,summarizeMixedResponsePhases} from './mixed-response-phases.mjs';
-import {mixedDriverPrimaryOrigin,projectMixedNavigationPreflightFailure} from './mixed-driver-primary-origin.mjs';
+import {mixedDriverPrimaryOrigin,projectMixedNavigationPreflightFailure,projectMixedPayrollPreflight} from './mixed-driver-primary-origin.mjs';
 import {projectMixedPreflightLockWaits} from './lock-sample-attribution.mjs';
 import {browserPreflightErrorFingerprint} from './browser-failure.ts';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
@@ -67,6 +67,7 @@ const combinedGroupArtifacts=new Map([
  [clockingOutcomeSource,{runId:44972189937,artifactId:14734303205}],
  [browserIntegrationNativePreflight,{runId:44979719093,artifactId:14737796395,sourceSha:browserIntegrationSource}],
  [browserIntegrationNativeControl,{runId:44981038272,artifactId:14737468790,sourceSha:browserIntegrationControl}],
+ [nextResponseCloseCandidate,{runId:45026626109,artifactId:14756157969,sourceSha:nextResponseCloseCandidate}],
 ]);
 const combinedGroupArtifact=combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
 const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
@@ -998,6 +999,8 @@ async function measureMixedLoad(command,fixture){
      targetMet:row.targetMet===true,sparseSample:row.sparseSample===true}));
    const navigationFailure=projectMixedNavigationPreflightFailure(data.mixedNavigationPreflightFailure);
    if(navigationFailure)report.mixedNavigationPreflightFailure=navigationFailure;
+   const payrollPreflight=projectMixedPayrollPreflight(data.browserPayrollReadiness);
+   if(payrollPreflight.length)report.mixedPayrollPreflight=payrollPreflight;
    const orgJourney=data.orgExplorerJourneys?.find(row=>row.phase==='baseline'&&row.role==='groupHR');
    if(orgJourney){
     const stages=['navigation','open-explorer','all-people-first-page','all-people-next-page','focus-and-reports',
