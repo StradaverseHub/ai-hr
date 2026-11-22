@@ -68,7 +68,7 @@ it.each([1000,5000])('models actual 500 actor offsets and first-cycle priorities
   expect(plan.kind).toBe('PLANNING_ONLY');expect(plan.feasible,JSON.stringify(plan.rows)).toBe(true);
   for(const row of plan.rows){expect(row.completed).toBe(routePools[row.role as keyof typeof routePools].length);expect(row.pending).toEqual([]);expect(row.inflight).toEqual([]);}
   expect(plan.steps.payrollProcess).toBe(2);expect(plan.steps.payrollExport).toBe(2);
-  expect(plan.steps.ordinaryMutations).toBeGreaterThan(0);expect(plan.steps.clockingActions).toBeGreaterThan(0);expect(plan.iterations.groupHR).toBeGreaterThan(2);
+  expect(plan.steps.ordinaryMutations).toBeGreaterThan(0);expect(plan.steps.clockingActions).toBe(40);expect(plan.iterations.groupHR).toBeGreaterThan(2);
  }
 });
 it('handles future route cardinality through a bounded explicit revision or refuses, never drops required routes',()=>{

@@ -8,6 +8,7 @@ import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload
 import {attendanceCorrectionForm} from './attendance-rejection-browser.mjs';
 import {exerciseConcurrentPayrollClose} from './payroll-close-concurrency.mjs';
 import {readRouteForMeasurement} from './system-route-manifest.mjs';
+import {isClockingLoadActor} from './route-scheduling.mjs';
 
 const attendanceFingerprint=/^[a-f0-9]{64}$/;
 const attendanceApprovalMarker='PERF_ATTENDANCE_BROWSER_APPROVAL';
@@ -498,15 +499,6 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    await send(user,{...templates.personnelEdit,path:'/admin/personnel/new?draft='+row.id},editArgs);const [edited]=await db`select label from employee_draft where id=${row.id}::uuid`;assert.equal(edited.label,marker+'_EDITED');
    await pause(thinkTimeMs);await send(user,{...templates.personnelDelete,path:'/admin/personnel/new?draft='+row.id},[row.id]);assert.equal((await db`select id from employee_draft where id=${row.id}::uuid`).length,0);
    report.mixedWorkflows.completed.personnel++;
-   // One company owner per cohort avoids submitting the same file twice concurrently.
-   if(user.index%50===1){
-    const date=importDate(3+iteration),text=importText(user,date),fileName=marker+'.csv';
-    await pause(thinkTimeMs);await send(user,templates.importValidate,[fixture.tenants[user.tenant].clockingMappingId,text]);
-    const operationKey=randomUUID();
-    await pause(thinkTimeMs);await send(user,templates.importCommit,[fixture.tenants[user.tenant].clockingMappingId,text,fileName,Buffer.byteLength(text),operationKey]);
-    const {runId}=await waitForClockingImport(user,fileName,operationKey);
-    assert.equal(await assertImported(user,fileName,date),runId);report.mixedWorkflows.completed.clockingImport++;
-   }
    return true;
   }
   if(user.role==='employee'&&user.index%2===0){
@@ -519,6 +511,19 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const [cancelled]=await db`select status from leave_request where id=${rows[0].id}::uuid`;assert.equal(cancelled.status,'cancelled');report.mixedWorkflows.completed.leave++;return true;
   }
   return false;
+ }
+ async function runClockingImport(user,sequence,record) {
+  assert(isClockingLoadActor(user),'Clocking Import requires the designated Company HR owner');
+  const date=importDate(3+sequence),text=importText(user,date),fileName='PERF_MIXED_CLOCKING_'+user.index+'_'+sequence+'.csv';
+  const mappingId=fixture.tenants[user.tenant].clockingMappingId,operationKey=randomUUID();
+  await send(user,templates.importValidate,[mappingId,text]);
+  record.validated++;
+  await pause(thinkTimeMs);
+  await send(user,templates.importCommit,[mappingId,text,fileName,Buffer.byteLength(text),operationKey]);
+  record.submitted++;
+  const {runId}=await waitForClockingImport(user,fileName,operationKey);
+  assert.equal(await assertImported(user,fileName,date),runId);
+  report.mixedWorkflows.completed.clockingImport++;
  }
  function plannedWrites() {
   const cases=new Map();
@@ -537,10 +542,10 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
     if(user.role==='groupHR')add(user.role,'payrollProcess','/payroll/[batchId]');
     add(user.role,'personnelCreate');
     for(const action of ['personnelEdit','personnelDelete'])add(user.role,action,'/admin/personnel/new');
-    if(user.index%50===1)for(const action of ['importValidate','importCommit'])add(user.role,action);
+    if(isClockingLoadActor(user))for(const action of ['importValidate','importCommit'])add(user.role,action);
    }
   }
   return [...cases.values()];
  }
- return {run,verifyFailedAttendanceActions,plannedWrites};
+ return {run,runClockingImport,verifyFailedAttendanceActions,plannedWrites};
 }

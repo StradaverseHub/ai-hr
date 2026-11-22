@@ -7,7 +7,7 @@ import {waitForTodayBrowserReadiness} from './today-browser-readiness.mjs';
 import {browserFailureLocation,browserPreflightClickObstruction,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from './browser-failure.ts';
 import {mixedActionRoute,routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
-import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
+import {clockingImportsPerActor,createSteadyRouteScheduler,isClockingLoadActor,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,writeDevelopmentRenderedRouteUnion,
  installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,legacyNavigationFailureCounts,legacyNavigationFailureFacts,legacyNavigationLinkFailureCounts} from './navigation-browser-capture.ts';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
@@ -205,7 +205,7 @@ const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/cl
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationProtocol:suite==='whole-system'?navigationProtocol:'unchanged-claims-cycle',navigationScheduling:'shared per-role pending/inflight/completed steady obligations; minimum seven, maximum twelve group-HR reads per cycle; three other reads; same complete mutations and activity pauses; higher read share lowers write iteration frequency; compare only identical frozen v2 protocols',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationProtocol:suite==='whole-system'?navigationProtocol:'unchanged-claims-cycle',navigationScheduling:'shared per-role pending/inflight/completed steady obligations; minimum seven, maximum twelve group-HR reads per cycle; three other reads; same complete mutations and activity pauses; higher read share lowers write iteration frequency; Company HR clocking imports have independent steady-load lanes; compare only identical frozen protocols',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],browserMutations:suite==='claims-heavy'?[]:['Generic Reports saved-definition create/edit/delete (group HR, baseline'+(suite==='whole-system'?' and loaded':'')+')','Service Movement Secondment (group HR, '+(suite==='whole-system'?'loaded':'preflight')+')'],preflightOnly:suite==='workflow-preflight'?['Active Personnel contact edit/restore','E-Letter draft create/edit/withdraw','Concurrent Payroll close/publish','Performance review-cycle draft creation','Rewards annual unit draft creation']:[],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['Navigation destinations outside the reviewed scenario plan',...(suite==='workflow-preflight'?[]:['concurrent Payroll close/publish','active Personnel contact edit/restore','E-Letter draft mutations']),'Lifecycle mutations',...(suite==='workflow-preflight'?['Performance and Rewards mutations beyond draft creation']:['Performance mutations','Rewards mutations']),'large Personnel imports',...(suite==='claims-heavy'?['report-definition CRUD']:['Employee Master and Payroll Comparison definition CRUD','500-principal Reports write mix']),'long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
@@ -1795,6 +1795,23 @@ async function main(){
     loadState,waitForFirstWrite:waitForSteadyUsers});
   });
  }):null;
+ const clockingActors=mixedWorkflows?fixture.users.filter(isClockingLoadActor):[];
+ const clockingImportLoad={planned:clockingActors.length*clockingImportsPerActor,
+  started:0,validated:0,submitted:0,persisted:0,persistedAtSteady500:0,failedLanes:0};
+ report.clockingImportLoad=clockingImportLoad;
+ const clockingLoad=runLanes(clockingActors,async user=>{
+  await waitForSteadyUsers();
+  for(let sequence=0;sequence<clockingImportsPerActor;sequence++){
+   const state=loadState();
+   assert(state.active===500&&state.inSteadyWindow,'Clocking Import did not reach steady 500-user load');
+   clockingImportLoad.started++;
+   await mixedWorkflows.runClockingImport(user,sequence,clockingImportLoad);
+   const completed=loadState();
+   clockingImportLoad.persisted++;
+   if(completed.active===500&&completed.inSteadyWindow)clockingImportLoad.persistedAtSteady500++;
+   await pause(thinkTimeMs);
+  }
+ });
  const results=await runLanes(fixture.users.map((user,i)=>({user,i})),async({user,i})=>{
   await pause(i*20);progress.launched++;progress.active++;progress.peakActive=Math.max(progress.peakActive,progress.active);
   if(progress.active===500)fullConcurrencyAt??=performance.now();
@@ -1846,6 +1863,8 @@ async function main(){
    progress.active--;
   }
  });
+ const clockingResults=await clockingLoad;
+ clockingImportLoad.failedLanes=clockingResults.filter(result=>result.status==='rejected').length;
  const browserResults=await browserLoad;
  const payrollBrowserResults=await payrollBrowserLoad;
  if(payrollBrowserResults){
@@ -1943,6 +1962,8 @@ async function main(){
   assert(surfaces.every(surface=>startedAtSteady500.includes(surface)&&readyAtSteady500.includes(surface)),
    'all Payroll readiness surfaces must start and finish during steady 500-user load');
  }
+ if(clockingImportLoad.planned)assert.equal(clockingImportLoad.persistedAtSteady500,clockingImportLoad.planned,
+  'each scheduled Clocking Import must persist during steady 500-user load');
  if(savedReportResults?.[0].status==='rejected')throw savedReportResults[0].reason;
  if(suite==='whole-system'){
   const savedReports=report.browserSavedReportJourneys;
