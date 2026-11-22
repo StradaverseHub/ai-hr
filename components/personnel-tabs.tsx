@@ -40,6 +40,7 @@ export function ClientTabs<K extends string>({
   selectRef,
   onTabChange,
   monolithTxt = false,
+  deferUnvisitedPanels = false,
 }: {
   tabs: { key: K; label: string }[];
   panels: Partial<Record<K, ReactNode>>;
@@ -74,10 +75,16 @@ export function ClientTabs<K extends string>({
    * keep today's strip in both themes until their own step-4 slice.
    */
   monolithTxt?: boolean;
+  /** Mount each panel the first time it opens and retain it for the rest of the visit.
+   * Screens using this option must have no tour targets inside panels that have yet to open. */
+  deferUnvisitedPanels?: boolean;
 }) {
   const tabShellId = useId();
   const initial = defaultTab && tabs.some((tab) => tab.key === defaultTab) ? defaultTab : tabs[0]?.key;
   const [active, setActive] = useState<K | undefined>(initial);
+  const [visited, setVisited] = useState<ReadonlySet<K>>(
+    () => new Set(initial === undefined ? [] : [initial]),
+  );
 
   // Tab retention across save→redirect→reload (feedback bd2f0bb2). Every per-section Save on this page is a
   // server-action <form> that finishes with redirect(`.../${employmentId}?toast=Saved`) — a tab-less URL that
@@ -95,6 +102,9 @@ export function ClientTabs<K extends string>({
 
   const commitTab = (key: K) => {
     setActive(key);
+    if (deferUnvisitedPanels) {
+      setVisited(previous => previous.has(key) ? previous : new Set([...previous, key]));
+    }
     onTabChange?.(key);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -223,12 +233,8 @@ export function ClientTabs<K extends string>({
 
       {tabs.map((tab) => {
         const panel = panels[tab.key];
-        // Panels stay mounted (hidden, not unmounted) so the DOM state of the UNCONTROLLED inputs inside
-        // a server-rendered panel — this page's per-section forms, and their server-action targets —
-        // survives a tab switch, and so returning to a tab costs no re-render. Note what this does NOT
-        // mean: a caller that holds its own state ABOVE this shell and renders controlled inputs from it
-        // (the draft record, app/admin/personnel/new/wizard.tsx) does not depend on staying mounted at
-        // all — its values would survive an unmount. Do not credit this line for that.
+        // Retaining an opened panel preserves the uncontrolled inputs in its forms.
+        const mounted = !deferUnvisitedPanels || active === tab.key || visited.has(tab.key);
         const hasContent = panel != null && (!Array.isArray(panel) || panel.length > 0);
         return (
           <div
@@ -240,13 +246,13 @@ export function ClientTabs<K extends string>({
             hidden={active !== tab.key}
             className={active === tab.key ? 'space-y-6' : undefined}
           >
-            {hasContent ? (
+            {mounted && (hasContent ? (
               panel
             ) : (
               <div className="rounded-[1.25rem] border border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-[var(--shadow-card)]">
                 {emptyLabel}
               </div>
-            )}
+            ))}
           </div>
         );
       })}
