@@ -20,7 +20,11 @@ import { checkIn } from '../core/attendance';
 import { commitClockingImport, setClockingMappingActive, type ClockingImportOutcome } from '../core/attendance-clocking-import';
 import { CLOCKING_NOT_IMPORTED, ClockingImportJobRefused, clockingImportJobHandler, getClockingImportJob, startClockingImportJob } from '../core/attendance-clocking-import-job';
 import { runBulkJobTick } from '../core/bulk-job-worker';
+import { accessLockModeHeldTx, lockAccessConfigurationTx } from '../core/access-configuration-lock';
+import { lockLeaveDependencyReadConfigurationTx } from '../core/leave-dependency-lock';
+import { assertModuleGate } from '../core/module-gate';
 import { hireEmployee } from '../core/org';
+import { findReplacementLeaveTypeIdTx } from '../core/toil';
 import { attendanceSnapshot, buildAttendanceFixture, fixtureDate, normalizeIds, type AttendanceFixture } from './helpers/attendance-bulk-fixture';
 
 let b: Base;
@@ -28,19 +32,19 @@ beforeAll(async () => { await migrateTestDb(); });
 afterAll(async () => { await closeAll(); });
 
 const tick = () => runBulkJobTick(owner.client, { handlers: [clockingImportJobHandler] });
-async function runJob(id: string, until?: (state: string) => boolean) {
+async function runJob(id: string, until?: (state: string) => boolean, runTick = tick) {
   for (let i = 0; i < 20000; i++) {
     const [row] = await owner.client<{ state: string; notified: boolean }[]>`select state,notified_at is not null as notified from bulk_job where id=${id}::uuid`;
     if (until?.(row.state)) return row.state;
     if (['completed', 'failed', 'cancelled'].includes(row.state) && row.notified) return row.state;
-    if (!await tick()) await new Promise((resolve) => setTimeout(resolve, 20));
+    if (!await runTick()) await new Promise((resolve) => setTimeout(resolve, 20));
   }
   throw new Error('clocking import job did not finish');
 }
-async function viaJob(ctx: SessionContext, p: { mappingId: string; text: string; fileName: string }) {
+async function viaJob(ctx: SessionContext, p: { mappingId: string; text: string; fileName: string }, runTick = tick) {
   const { job } = await startClockingImportJob(ctx, { ...p, fileBytes: Buffer.byteLength(p.text) });
   expect(job.state).toBe('queued');
-  expect(await runJob(job.id)).toBe('completed');
+  expect(await runJob(job.id, undefined, runTick)).toBe('completed');
   return (await getClockingImportJob(ctx, job.id)).result!;
 }
 async function runLabels(tenantId: string) {
@@ -83,6 +87,42 @@ it('leaves every attendance table, the import log, the pay-run marks and the aud
   expect(Number(job.metrics.chunks)).toBeGreaterThan(1);
   expect(Number(job.metrics.chunkHoldMs)).toBeGreaterThan(0);
 }, 900_000);
+
+it('keeps clocking import results identical with shared chunk locks on an established tenant', async () => {
+  let sharedChunks = 0;
+  const sharedHandler: typeof clockingImportJobHandler = {
+    ...clockingImportJobHandler,
+    async beginChunkTx(tx, ctx) {
+      assertModuleGate(ctx, 'attendance');
+      await lockAccessConfigurationTx(tx, ctx.tenantId);
+      await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
+      expect(await findReplacementLeaveTypeIdTx(tx, ctx.tenantId)).not.toBeNull();
+      expect(await accessLockModeHeldTx(tx, ctx.tenantId)).toBe('S');
+      sharedChunks++;
+    },
+  };
+  const run = async (runTick: typeof tick) => {
+    await resetDb();
+    const base = await seedBase();
+    await owner.db.insert(schema.leaveType).values({
+      tenantId: base.tenantId, code: 'REPLACEMENT', name: 'Replacement Leave', paid: true,
+    });
+    const fixture = await buildAttendanceFixture(base, { employees: 8 });
+    const outcomes = await importBoth(fixture, params => viaJob(fixture.ctx, params, runTick));
+    expect(outcomes[0].imported).toBeGreaterThan(0);
+    return {
+      outcomes: normalizeIds(outcomes, await runLabels(base.tenantId)),
+      snapshot: await attendanceSnapshot(base.tenantId),
+    };
+  };
+  const control = await run(tick);
+  const shared = await run(() => runBulkJobTick(owner.client, { handlers: [sharedHandler] }));
+  expect(sharedChunks).toBeGreaterThan(1);
+  expect(shared.outcomes).toEqual(control.outcomes);
+  for (const table of Object.keys(control.snapshot)) {
+    expect(shared.snapshot[table], table).toEqual(control.snapshot[table]);
+  }
+}, 300_000);
 
 it('decides each employee against their day as it stands when the step runs, and leaves out an employee whose card changed', async () => {
   await resetDb(); b = await seedBase();
