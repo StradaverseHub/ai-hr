@@ -1,5 +1,85 @@
 /** Run real Lifecycle commands against the record census's disposable fixtures. */
 import assert from 'node:assert/strict';
+import {serverActionCoverage} from './system-route-manifest.mjs';
+
+export async function measureOffboardingRequisitionSave({db,fixture,origin,signedInContext,registrations,report,save}) {
+  const [group,company]=fixture.users;
+  const {offboardingId,offboardingItemId,itemName,offboardingNumber}=fixture.lifecycleRequisitions;
+  const template='/lifecycle/requisitions/offboarding/[id]';
+  const url=origin+'/lifecycle/requisitions/offboarding/'+offboardingId;
+  const reason='Fictional account revocation started';
+  const result={action:'save offboarding requisition item',template,role:group.role,outcome:'missing',step:'before'};
+  report.lifecycleRequisitionAction=result;
+  const exercised=new Set();
+  const read=async()=>{
+    const [state]=await db`
+      select c.revision, item->>'status' as status, item->>'reason' as reason,
+        coalesce((select jsonb_agg(entry->'actor'->>'id')
+          from jsonb_array_elements(coalesce(c.data->'requisitionActivity','[]'::jsonb)) entry
+          where entry->>'itemId'=${offboardingItemId} and entry->>'action'='requisition.itemUpdated'
+            and entry->>'itemStatus'='progress'), '[]'::jsonb) as actors
+      from lc_v9_case c cross join lateral jsonb_array_elements(c.data->'items') item
+      where c.id=${offboardingId}::uuid and c.tenant_id=${group.tenantId}::uuid
+        and c.company_id=${company.companyId}::uuid and c.module='off' and item->>'id'=${offboardingItemId}
+    `;
+    return state;
+  };
+  const timeout=15000;
+  let context;
+  try {
+    const before=await read();
+    assert.equal(before?.status,'todo');
+    assert.deepEqual(before.actors,[]);
+    result.step='open';
+    context=await signedInContext(group);
+    const page=await context.newPage();
+    page.setDefaultTimeout(timeout);
+    assert.equal((await page.goto(url,{waitUntil:'load',timeout}))?.status(),200);
+    assert.equal(page.url(),url);
+    await page.getByRole('heading',{name:offboardingNumber,exact:true}).waitFor();
+
+    result.step='prepare';
+    const article=page.locator('article').filter({has:page.getByRole('heading',{name:itemName,exact:true})});
+    await article.locator('strong').filter({hasText:/^To do$/}).waitFor();
+    await article.locator('select[name="status"]').selectOption('progress');
+    await article.locator('input[name="reason"]').fill(reason);
+    const button=article.getByRole('button',{name:'Save item',exact:true});
+    await button.click({trial:true});
+
+    result.step='submit';
+    const started=performance.now();
+    const [response]=await Promise.all([
+      page.waitForResponse(candidate=>candidate.url()===url&&candidate.request().method()==='POST'&&
+        registrations.get(candidate.request().headers()['next-action'])?.has(template),{timeout}),
+      button.click(),
+    ]);
+    result.responseMs=Math.round(performance.now()-started);
+    result.httpStatus=response.status();
+    assert.equal(response.status(),200);
+    await article.locator('strong').filter({hasText:/^In progress$/}).waitFor({
+      timeout:Math.max(1,timeout-(performance.now()-started)),
+    });
+    await article.getByText(reason,{exact:true}).waitFor({
+      timeout:Math.max(1,timeout-(performance.now()-started)),
+    });
+    result.usableMs=Math.round(performance.now()-started);
+    assert.equal(page.url(),url);
+
+    result.step='verify';
+    const after=await read();
+    assert.deepEqual(after,{revision:before.revision+1,status:'progress',reason,actors:[group.userId]});
+    exercised.add(response.request().headers()['next-action']);
+    result.outcome='observed';
+  } catch(error) {
+    result.outcome=error.name==='TimeoutError'?'timeout':
+      error.code==='ERR_ASSERTION'?'assertion':'browser-failure';
+  } finally {
+    report.serverActionInventory=serverActionCoverage(registrations,exercised);
+    if(context)await context.close();
+    save();
+  }
+  assert.equal(result.outcome,'observed','The offboarding requisition save missed its visible or committed outcome');
+}
 
 export async function measureLifecycleRecordActions({ db, fixture, origin, signedInContext, report, save }) {
   const [group, company] = fixture.users;

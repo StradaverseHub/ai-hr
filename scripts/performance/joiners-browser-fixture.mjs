@@ -108,9 +108,15 @@ try{
   assert(employee.role==='employee'&&employee.companyId===company.companyId);
   const lastDay=addCalendarMonths(fixture.today,1);
   const exitId=await v9CreateOffboarding(ctx,{employmentId:employee.employmentId,type:'Resignation',noticeDate:fixture.today,lastDay});
-  await v9Command(ctx,exitId,1,{type:'submit'});
+  await v9Command(ctx,exitId,1,{type:'returnSelections',ids:['perf-browser-account']});
+  const [pendingExit]=await owner.client`select revision from lc_v9_case
+   where id=${exitId}::uuid and tenant_id=${group.tenantId}::uuid and company_id=${company.companyId}::uuid`;
+  assert.equal(pendingExit?.revision,2);
+  await v9Command(ctx,exitId,pendingExit.revision,{type:'submit'});
   const exit=await offboardingRequisition(ctx,exitId);
   assert(exit.id===exitId&&exit.state==='submitted'&&exit.fullView&&exit.name===employee.name&&exit.lastDay===lastDay);
+  const exitItem=exit.items.find(item=>item.name===itemName);
+  assert(exitItem?.id&&exitItem.canAct&&exitItem.status==='todo');
 
   setStage('resignation-case');
   const employeeActor=fixture.users[5];
@@ -126,7 +132,7 @@ try{
   const adminView=await resignationCase(ctx,resignation.id);
   assert(adminView.number===resignation.number&&adminView.employeeName===employeeActor.name);
   fixture.lifecycleRequisitions={onboardingId:joiner.case.id,onboardingNumber:requisition.number,itemName,
-   offboardingId:exitId,offboardingNumber:exit.number,employeeName:employee.name,lastDay,
+   offboardingId:exitId,offboardingNumber:exit.number,offboardingItemId:exitItem.id,employeeName:employee.name,lastDay,
    resignationId:resignation.id,resignationNumber:resignation.number,resigningEmployeeIndex:employeeActor.index};
  }
  if(env.PERF_LETTER_CATALOG_RECORDS==='true'){

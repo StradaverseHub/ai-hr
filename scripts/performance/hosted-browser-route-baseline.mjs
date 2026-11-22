@@ -1,4 +1,4 @@
-import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
+import {measureLifecycleRecordActions,measureOffboardingRequisitionSave} from './lifecycle-record-actions.mjs';
 import {measureFixtureRecordCensus,seedFixedTransactionRecord,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
@@ -1734,6 +1734,11 @@ try{
      importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords,
      performanceReportRecords:censusPerformanceReportRecords,jobDescriptionRecords:censusJobDescriptionRecords,
      noticeRecords:censusNoticeRecords,attendanceConfigurationRecords:censusAttendanceConfigurationRecords,attendanceHistoryRecords:censusAttendanceHistoryRecords,loanRecords:censusLoanRecords,savedReportRecords:censusSavedReportRecords,letterCatalogRecords:censusLetterCatalogRecords,systemTestingRecords:censusSystemTestingRecords,payrollReportRecords:censusPayrollReportRecords,lifecycleRequisitions:censusLifecycleRequisitions});
+    if(censusLifecycleRequisitions){
+     const referenceManifest=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
+     const registrations=serverActionRegistry(routes,referenceManifest);
+     await measureOffboardingRequisitionSave({db,fixture,origin,signedInContext,registrations,report,save});
+    }
     if(censusFullFixtureRecords){
      await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
      assert(fixture.performanceRecords,'The full record plan requires a populated Performance assessment cycle');
