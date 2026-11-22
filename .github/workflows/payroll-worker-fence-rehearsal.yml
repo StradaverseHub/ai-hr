@@ -59,3 +59,25 @@ jobs:
           name: fence-capacity-not-release
           path: ${{ runner.temp }}/fence-capacity.jsonl
           if-no-files-found: warn
+  guarded-clock-graph:
+    if: github.repository == 'StradaverseHub/ai-hr'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-alpha
+        with:
+          path: .
+          mobile: 'false'
+      - name: Model full prepared activation and deadline refusals using staging observations
+        run: |
+          set -o pipefail
+          python3 -I -B test/fixtures/bank-import-worker-staging-clock-rehearsal.py | tee "$RUNNER_TEMP/guarded-clock-graph.jsonl"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: prepared-graph-clock-simulation-not-release
+          path: ${{ runner.temp }}/guarded-clock-graph.jsonl
+          if-no-files-found: warn
