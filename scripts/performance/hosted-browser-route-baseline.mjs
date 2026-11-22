@@ -2630,7 +2630,7 @@ try{
    const require=createRequire(join(process.cwd(),'package.json'));
    browser??=await require('playwright').chromium.launch();
    const {measurePayrollCatalogue}=await import('./payroll-catalogue-browser.mjs');
-   await measurePayrollCatalogue({origin,fixture,signedInContext,observeStartup,documentTiming,report,save});
+   await measurePayrollCatalogue({origin,fixture,signedInContext,observeStartup,documentTiming,readyContent,report,save});
   }
   else if(surfaceProbe==='leave-balances')await measureLeaveBalanceWindows(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);

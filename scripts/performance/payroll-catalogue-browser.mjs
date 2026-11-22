@@ -5,7 +5,7 @@ import {join} from 'node:path';
 const timeout=30000;
 const messages=locale=>JSON.parse(readFileSync(join(process.cwd(),'messages',locale+'.json'),'utf8'));
 
-export async function measurePayrollCatalogue({origin,fixture,signedInContext,observeStartup,documentTiming,report,save}){
+export async function measurePayrollCatalogue({origin,fixture,signedInContext,observeStartup,documentTiming,readyContent,report,save}){
   const [group,company]=fixture.users;
   assert.equal(group.role,'groupHR');
   assert.equal(company.role,'companyHR');
@@ -65,6 +65,23 @@ export async function measurePayrollCatalogue({origin,fixture,signedInContext,ob
       if(actor===group&&locale==='en'){
         row.step='client-navigation';
         await page.evaluate(()=>{window.__aihrPayrollCatalogueDocument=true;});
+        const beforeHome=(await documentTiming(page)).appScripts;
+        const openedHome=performance.now();
+        await page.locator('[data-app-sidebar] a[href="/"]:visible').first().click();
+        await page.waitForURL(url=>url.pathname==='/');
+        assert.equal(await readyContent(page,actor,'/',()=>timeout,undefined,fixture),'usable-content');
+        assert.equal(await page.evaluate(()=>window.__aihrPayrollCatalogueDocument),true);
+        const homeMs=Math.round(performance.now()-openedHome);
+        const afterHome=(await documentTiming(page)).appScripts;
+        row.scopedNavigation={
+          homeMs,
+          scriptTransferBytes:afterHome.transferBytes-beforeHome.transferBytes,
+          scriptDecodedBytes:afterHome.decodedBodyBytes-beforeHome.decodedBodyBytes,
+        };
+        await page.goBack({waitUntil:'commit',timeout});
+        await page.waitForURL(url=>url.pathname==='/payroll');
+        await trigger.waitFor({state:'visible'});
+        assert.equal(await page.evaluate(()=>window.__aihrPayrollCatalogueDocument),true);
         const next=main.getByRole('link',{name:label('newRun'),exact:true});
         const selected=performance.now();
         await next.click();
