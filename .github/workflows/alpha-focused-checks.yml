@@ -192,6 +192,7 @@ jobs:
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           BROWSER_BASELINE: ${{ inputs.browser_route_baseline }}
+          BROWSER_GROUP_SHAPE: ${{ inputs.browser_group_shape }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
       - name: Resolve frozen same-repository candidate
         id: candidate
