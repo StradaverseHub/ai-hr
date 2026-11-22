@@ -84,7 +84,7 @@ on:
         description: Compare a specific navigation or clocking variant on the pinned fixture
         type: choice
         default: none
-        options: [none, contract-control, contract-optimized, contract-optimized-clocking-queue, contract-optimized-rewards-navigation]
+        options: [none, contract-control, contract-optimized, contract-optimized-clocking-queue, contract-optimized-clocking-shared, contract-optimized-rewards-navigation]
       mixed_database_topology:
         description: Compare direct web connections and bounded pool sizes on the pinned fictional workload
         type: choice
@@ -158,7 +158,11 @@ jobs:
             MIXED_DATABASE_TOPOLOGY=transaction-pool
           fi
           clocking_tenant_queue=false
-          if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-clocking-queue ]]; then
+          if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-clocking-shared ]]; then
+            [[ "$EXPECTED_SHA" == 8729365591aed6efc1d0c3b72ec346dcc16d6829 ]] || exit 2
+          fi
+          if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-clocking-queue ||
+                "$SHELL_PERMISSION_VARIANT" == contract-optimized-clocking-shared ]]; then
             clocking_tenant_queue=true
             SHELL_PERMISSION_VARIANT=contract-optimized
           fi

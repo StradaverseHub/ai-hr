@@ -40,7 +40,8 @@ const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
 const mixedVariant=env.AIHR_BROWSER_SHELL_PERMISSION_VARIANT??'none';
-const clockingTenantQueue=mixedVariant==='contract-optimized-clocking-queue';
+const clockingShared=mixedVariant==='contract-optimized-clocking-shared';
+const clockingTenantQueue=mixedVariant==='contract-optimized-clocking-queue'||clockingShared;
 const rewardsNavigation=mixedVariant==='contract-optimized-rewards-navigation';
 const shellPermissionVariant=clockingTenantQueue||rewardsNavigation?'contract-optimized':mixedVariant;
 assert(['none','contract-control','contract-optimized'].includes(shellPermissionVariant));
@@ -89,6 +90,7 @@ const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(e
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
 assert(!groupScale||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
+if(clockingShared)assert(env.AIHR_CI_HEAD===indexedAccountTaskCaller&&reusedBuild);
 if(clockingTenantQueue){
  assert(mixedLoad&&combinedGroupBuild&&!fixtureOnly);
  assert((env.AIHR_CI_HEAD===clockingOutcomeSource&&!reusedBuild)||
@@ -211,7 +213,10 @@ function namedDatabase(url,name){
  return connection.href;
 }
 async function startMixedWorker(command){
- mixedWorker=start('bulk-job-worker',command,['--import','tsx','scripts/bank-import-runner.ts'],
+ const entry=clockingShared
+  ? new URL('./fixture-shared-clocking-worker.mjs',import.meta.url).pathname
+  : 'scripts/bank-import-runner.ts';
+ mixedWorker=start('bulk-job-worker',command,['--import','tsx',entry],
   {...dbEnv,NODE_ENV:'production',AIHR_DB_PROCESS_ROLE:'worker',AIHR_DB_POOL_MAX:'2',
    DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-worker'),
    MIGRATION_DATABASE_URL:namedDatabase(dbEnv.MIGRATION_DATABASE_URL,'aihr-fixture-mixed-worker')});
@@ -2180,6 +2185,12 @@ try{
    const poolerBefore=webPooler?await readWebPoolerWork(webPooler,'ai_hr_dev').catch(()=>null):null;
    try{await measureMixedLoad(driverCommand,fixture);}
    finally{
+    if(clockingShared){
+     const marker=join(privateDir,'shared-clocking-chunk-observed');
+     report.mixedClockingWorker={mode:'shared-established',
+      observed:existsSync(marker)&&readFileSync(marker,'utf8')==='shared'};
+     save();
+    }
     if(webPooler){
      const poolerAfter=await readWebPoolerWork(webPooler,'ai_hr_dev').catch(()=>null);
      report.mixedDatabaseTopology.poolerWork=poolerAfter?.transactions>0
@@ -2189,6 +2200,7 @@ try{
      save();
     }
    }
+   if(clockingShared)assert(report.mixedClockingWorker.observed,'No established shared clocking chunk observed');
    if(webPooler)assert(report.mixedDatabaseTopology.poolerWork.available,'Could not verify app transactions passed through PgBouncer');
    assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
   });
