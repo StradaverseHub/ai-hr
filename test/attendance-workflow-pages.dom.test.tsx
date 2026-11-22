@@ -9,7 +9,7 @@ vi.mock('../lib/scope', () => ({ scopedAdmin: scope }));
 vi.mock('../packs/attendance/service', () => service);
 vi.mock('../app/admin/attendance/approval-workflow/company-labels', () => ({
   attendanceWorkflowCompanyLabels: companyLabels,
-  attendanceWorkflowCreationCompanies: async (session: unknown, ids: string[]) => ({companies:await companyLabels(session,ids),canManageAllCompanies:false}),
+  attendanceWorkflowCompanyOptions: async (session: unknown, ids: string[]) => ({companies:await companyLabels(session,ids),canManageAllCompanies:false}),
 }));
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as 'attendanceWorkflow' }), getFormatter:async()=>createFormatter({locale:'en'}) }));
 vi.mock('next/navigation', () => ({ useRouter:()=>({push:vi.fn(),refresh:vi.fn()}), notFound: () => { throw new Error('NOT_FOUND'); }, redirect: (href: string) => { throw new Error(`REDIRECT ${href}`); } }));
@@ -71,9 +71,23 @@ describe('workflow company navigation and scope', () => {
   it('keeps lineage view/edit links scoped to the actual stored company and type', async () => {
     show(await ViewPage({ params: Promise.resolve({ lineageId }) }));
     expect(screen.getByRole('link', { name: /Back to workflows/ })).toHaveAttribute('href', `/admin/attendance/approval-workflow?companyId=${companyId}&applicationType=irregularity`);
-    cleanup(); show(await EditPage({ params: Promise.resolve({ lineageId }) }));
-    expect(service.attendanceApplicationFilterOptions).toHaveBeenCalledWith(expect.anything(), [companyId,other],[]);
-    expect(form).toHaveBeenCalledWith(expect.objectContaining({ context: { companyId, applicationType: 'irregularity' } }));
+    cleanup();
+    service.attendanceApplicationFilterOptions.mockClear();
+    show(await EditPage({ params: Promise.resolve({ lineageId }) }));
+    expect(service.attendanceApplicationFilterOptions).toHaveBeenCalledExactlyOnceWith(expect.anything(), [companyId], []);
+    expect(companyLabels).toHaveBeenCalledExactlyOnceWith(expect.anything(), [companyId, other]);
+    expect(form).toHaveBeenCalledWith(expect.objectContaining({
+      context: { companyId, applicationType: 'irregularity' },
+      deferAssignmentOptions: true,
+      options: expect.objectContaining({ companies: options.companies, departments: options.departments }),
+    }));
+  });
+  it('initializes an all-company workflow with the full authorized assignment catalogue', async () => {
+    service.getAttendanceWorkflow.mockResolvedValue({ ...row, allCompanies: true, companyIds: [companyId, other] });
+    show(await EditPage({ params: Promise.resolve({ lineageId }) }));
+    expect(service.attendanceApplicationFilterOptions).toHaveBeenCalledExactlyOnceWith(expect.anything(), [companyId, other], []);
+    expect(companyLabels).not.toHaveBeenCalled();
+    expect(form).toHaveBeenCalledWith(expect.objectContaining({ deferAssignmentOptions: false }));
   });
   it('rejects malformed lineage before SQL and absent/unscoped lineages before loading options', async () => {
     for (const page of [ViewPage, EditPage]) await expect(page({ params: Promise.resolve({ lineageId: 'invalid' }) })).rejects.toThrow('NOT_FOUND');

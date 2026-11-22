@@ -14,8 +14,8 @@ export function attendanceWorkflowCompanyLabels(session: SessionContext, company
   return withTenant(session, async tx => selectCompanyLabels(tx, companyIds), { readOnlySnapshot: true });
 }
 
-/** The blank editor needs its company choices and the existing all-company authority. */
-export function attendanceWorkflowCreationCompanies(session: SessionContext, companyIds: string[]) {
+/** Workflow forms need their company choices and the existing all-company authority. */
+export function attendanceWorkflowCompanyOptions(session: SessionContext, companyIds: string[]) {
   if (!companyIds.length) return Promise.resolve({ companies: [], canManageAllCompanies: false });
   return withTenant(session, async tx => {
     const companies = await selectCompanyLabels(tx, companyIds);
