@@ -94,6 +94,10 @@ on:
         description: Add the existing 70-company group fixture without changing the 500 traffic actors
         default: false
         type: boolean
+      mixed_clocking_tenant_queue:
+        description: Exercise the existing serial tenant queue in the disposable clocking fixture
+        default: false
+        type: boolean
       model_eval:
         description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
         required: false
@@ -178,11 +182,17 @@ jobs:
                   "$EXPECTED_SHA" == 0ba883e0aa294bb0f15dcfe2433deedb52d11996 ||
                   "$EXPECTED_SHA" == 57fac422707b3a6174a290722ea0bb53da89f7c0 ||
                   "$EXPECTED_SHA" == 52d2d170710fcfb14219abe2f9d0abc84e536748 ||
-                  "$EXPECTED_SHA" == 5e34835d73183b2754c9b3e4ccdbfc31111917a8 ) && "$MIXED_GROUP_SCALE" == true &&
+                  "$EXPECTED_SHA" == 5e34835d73183b2754c9b3e4ccdbfc31111917a8 ||
+                  "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 ) && "$MIXED_GROUP_SCALE" == true &&
                 "$BROWSER_MIXED_LOAD" == true && "$ESTABLISHED_ATTENDANCE" == true &&
                 "$REPLACEMENT_CATALOGUE" == present && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
                 "$SHELL_PERMISSION_VARIANT" == contract-optimized ]]; then
             combined_group_build=true
+          fi
+          if [[ "$CLOCKING_TENANT_QUEUE" == true ]]; then
+            [[ "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 &&
+                "$combined_group_build" == true && "$BROWSER_ROUTE_BASELINE" == true &&
+                "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" == true ]] || exit 2
           fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
@@ -222,6 +232,7 @@ jobs:
           SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
           MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
           MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}
+          CLOCKING_TENANT_QUEUE: ${{ inputs.mixed_clocking_tenant_queue }}
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
@@ -422,6 +433,7 @@ jobs:
           AIHR_BROWSER_SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
           AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
           AIHR_BROWSER_MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}
+          AIHR_BROWSER_MIXED_CLOCKING_TENANT_QUEUE: ${{ inputs.mixed_clocking_tenant_queue }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443

@@ -44,6 +44,8 @@ assert(['none','contract-control','contract-optimized'].includes(shellPermission
 const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 assert(['direct','transaction-pool'].includes(databaseTopology));
 const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
+const clockingTenantQueue=env.AIHR_BROWSER_MIXED_CLOCKING_TENANT_QUEUE==='true';
+const clockingOutcomeSource='a1d4cbb7bef482f7a6c8b75ab7fbec7611976857';
 const combinedGroupArtifacts=new Map([
  ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],
  ['71e0dceb1a393817f3040518e82dc845a27700b0',{runId:44927404845,artifactId:14716484117}],
@@ -57,12 +59,14 @@ const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
 const freshGroupBuilds=new Set([
  detachedShellBuild,'0ba883e0aa294bb0f15dcfe2433deedb52d11996','57fac422707b3a6174a290722ea0bb53da89f7c0',
  '52d2d170710fcfb14219abe2f9d0abc84e536748','5e34835d73183b2754c9b3e4ccdbfc31111917a8',
+ clockingOutcomeSource,
 ]);
 const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD))&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
 assert(!groupScale||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
+assert(!clockingTenantQueue||(env.AIHR_CI_HEAD===clockingOutcomeSource&&mixedLoad&&combinedGroupBuild&&!fixtureOnly&&!reusedBuild));
 assert(shellPermissionVariant==='none'||(groupScale&&databaseTopology==='transaction-pool'));
 assert(!env.DATABASE_POOLED_URL?.trim(),'The benchmark owns its web database topology');
 const webDatabaseConnections=8;
@@ -687,7 +691,25 @@ async function withMixedContractNavigationComparison(work){
     report.mixedContractNavigation.replacementInstalled=true;
    }
    save();
-   return await work();
+   if(!clockingTenantQueue)return await work();
+   await owner.begin(async tx=>{
+    const changed=await tx`update bulk_job_kind set exclusive='tenant_queue'
+      where kind='clocking_import' and exclusive='tenant' returning exclusive`;
+    assert.deepEqual([...changed],[{exclusive:'tenant_queue'}]);
+   });
+   report.mixedClockingQueuePolicy={policy:'tenant_queue',restored:false};
+   try{
+    save();
+    return await work();
+   }finally{
+    await owner.begin(async tx=>{
+     const restored=await tx`update bulk_job_kind set exclusive='tenant'
+       where kind='clocking_import' and exclusive='tenant_queue' returning exclusive`;
+     assert.deepEqual([...restored],[{exclusive:'tenant'}]);
+    });
+    report.mixedClockingQueuePolicy.restored=true;
+    save();
+   }
   }finally{
    if(report.mixedContractNavigation.replacementInstalled){
     await install(original.map(row=>row.definition),true);
