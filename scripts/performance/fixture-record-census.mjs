@@ -454,7 +454,7 @@ async function personnelMovementRoutes(db, fixture) {
     const hired = movement + '/view/' + events[0].id;
     return [
       { actor, template: '/admin/personnel/[employmentId]', path: profile, exactHeading: subject.name,
-        witness: '#section-personal-details form[data-save-section="person"]' },
+        witness: '#section-personal-details form[data-save-section="person"]', personnelTabs: true },
       { actor, template: '/personnel/[employmentId]', path: '/personnel/' + subject.employmentId,
         exactHeading: subject.name, witness: 'dl dd' },
       { actor, template: '/admin/personnel/[employmentId]/movement/[mode]', path: movement + '/history',
@@ -621,6 +621,37 @@ async function verifyWorkbookDownload(page, main, expected, row) {
   row[expected.hash ? 'originalWorkbookMs' : 'errorWorkbookMs'] = Math.round(performance.now() - started);
 }
 
+async function verifyPersonnelTabs(page, main, row, remaining) {
+  await page.waitForLoadState('domcontentloaded', { timeout: remaining() });
+  const navigation = await page.evaluate(() => {
+    const [entry] = performance.getEntriesByType('navigation');
+    return entry ? { encodedBytes: entry.encodedBodySize, decodedBytes: entry.decodedBodySize } : null;
+  });
+  assert(navigation?.decodedBytes > 0, 'The Personnel document payload was not measured');
+  const tabs = [
+    ['family', '#section-family'],
+    ['attendance', '#section-clocking-location'],
+    ['payroll', '#section-compensation'],
+    ['profile', '#section-personal-details'],
+  ];
+  row.personnelTabs = { document: navigation, initiallyHiddenPanels: [], switches: [] };
+  for (const [tab, witness] of tabs.slice(0, -1)) {
+    const hiddenPanel = main.locator(`[data-tabpanel="${tab}"][hidden]`).locator(witness);
+    if (await hiddenPanel.count()) row.personnelTabs.initiallyHiddenPanels.push(tab);
+  }
+  for (const [tab, witness] of tabs) {
+    row.step = 'personnel-tab-' + tab;
+    const button = main.locator(`[role="tab"][aria-controls$="-panel-${tab}"]`);
+    const panel = main.locator(`[data-tabpanel="${tab}"]`).locator(witness);
+    const started = performance.now();
+    await button.click({ timeout: remaining() });
+    await panel.waitFor({ state: 'visible', timeout: remaining() });
+    assert.equal(await button.getAttribute('aria-selected', { timeout: remaining() }), 'true');
+    assert.equal(new URL(page.url()).searchParams.get('tab'), tab);
+    row.personnelTabs.switches.push({ tab, elapsedMs: Math.round(performance.now() - started) });
+  }
+}
+
 export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
@@ -686,6 +717,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           if (entry.download && pass === 'first') {
             row.importPageReadyMs = Math.round(performance.now() - started);
             await verifyWorkbookDownload(page, main, entry.download, row);
+          }
+          if (entry.personnelTabs && pass === 'first') {
+            row.personnelPageReadyMs = Math.round(performance.now() - started);
+            row.step = 'personnel-document-payload';
+            await verifyPersonnelTabs(page, main, row, remaining);
           }
           row.outcome = 'usable-content';
         } catch (error) {
