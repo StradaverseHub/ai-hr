@@ -17,25 +17,18 @@ const path=resolve(env.PERF_PRIVATE_DIR,'fixture.json');
 const setStage=stage=>writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-stage'),stage,{mode:0o600});
 function recordFailure(error){
  const knownKinds=new Set(['DrizzleQueryError','PostgresError','PerfError','ZodError','TypeError']);
- let category='unclassified',source=null,typeProblem=null;
+ let category='unclassified',source=null;
  for(let current=error,depth=0;current instanceof Error&&depth<4;depth++){
   const code=Object.getOwnPropertyDescriptor(current,'code')?.value;
   if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code))category=code;
   else if(category==='unclassified'&&knownKinds.has(current.name))category=current.name;
-  if(current instanceof TypeError&&typeProblem===null){
-   const safeName=new Set(['businessUnit','departmentId','entries','db','insert','map','rows','client','tenantId','slice','today','companyId','personId','year','person','length','groups','query','feature']);
-   const match=current.message.match(/(?:reading '([A-Za-z0-9_]+)'\)|([A-Za-z0-9_.]+) is not a function)$/);
-   const name=match?.[1]??match?.[2]?.split('.').at(-1);
-   if(name&&safeName.has(name))typeProblem=(match[1]?'missing-property:':'not-callable:')+name;
-  }
   const frames=String(current.stack??'').split('\n').filter(line=>/^\s+at\b/.test(line));
-  source??=frames.map(line=>line.match(/\/(core\/[a-z0-9/_-]+\.ts|db\/[a-z0-9/_-]+\.ts|packs\/(?:performance|rewards|job-architecture)\/[a-z0-9/_-]+\.ts|scripts\/(?:performance|fixtures)\/[a-z0-9/_-]+\.(?:js|mjs|ts)|test\/rewards-shared-policy-fixture\.ts):(\d+):\d+\b/i))
+  source??=frames.map(line=>line.match(/\/(core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):(\d+):\d+\)?$/))
    .find(Boolean)?.slice(1).join(':')??null;
   current=Object.getOwnPropertyDescriptor(current,'cause')?.value;
  }
  writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-failure'),category,{mode:0o600});
  if(source)writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-failure-location'),source,{mode:0o600});
- if(typeProblem)writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-type-problem'),typeProblem,{mode:0o600});
 }
 setStage('fixture');
 const fixture=JSON.parse(readFileSync(path,'utf8'));
@@ -75,32 +68,6 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
- if(env.PERF_REWARDS_RECORDS==='true'){
-  setStage('rewards-owner-imports');
-  const [schema,{prepareRewardDraftFixture},{createRewardPlanReviews,previewRewardPlanCreation}]=await Promise.all([
-   source('db/schema.ts'),source('scripts/performance/reward-draft-fixture.mjs'),source('packs/rewards/plan-configuration.ts'),
-  ]);
-  assert.equal(typeof prepareRewardDraftFixture,'function');
-  assert(schema.businessUnit,'Rewards fixture requires the native business unit schema');
-  setStage('rewards-roster');
-  const tenant=fixture.tenants[0],companies=tenant.companies,target=companies[2];
-  const expectedCompanyEmploymentIds=fixture.users.filter(actor=>actor.tenant===0&&actor.companyId===target.companyId)
-   .map(actor=>actor.employmentId);
-  assert.equal(expectedCompanyEmploymentIds.length,50);
-  setStage('rewards-approved-plan');
-  const reward=await prepareRewardDraftFixture({owner,schema,ctx,tenant,companies,company:target,today:fixture.today,
-   actor:group,includeOrgExplorerMember:true,expectedCompanyEmploymentIds});
-  setStage('rewards-plan-preview');
-  const preview=await previewRewardPlanCreation(ctx,reward.planVersionId);
-  assert.equal(preview.rows.length,1);
-  setStage('rewards-draft-creation');
-  const {created,skipped}=await createRewardPlanReviews(ctx,reward.planVersionId,preview.digest);
-  assert.equal(created.length,1);
-  assert.equal(skipped.length,0);
-  fixture.rewardsRecord={unitId:created[0],companyId:reward.companyId,employmentId:reward.employmentId,
-   planName:reward.planName,expectedEmploymentIds:reward.expectedEmploymentIds};
- }
-
  if(env.PERF_SAVED_REPORT_RECORDS==='true'){
   const {saveCustomReport}=await source('core/custom-reports.ts');
   const employee=fixture.users[4];

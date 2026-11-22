@@ -622,8 +622,8 @@ async function loanRecordRoutes(db, fixture) {
 
 async function rewardsRecordRoutes(db, fixture) {
   const [actor]=fixture.users;
-  const record=fixture.rewardsRecord;
-  assert(record && actor.role==='groupHR');
+  const record=fixture.tenants[0].rewardDraft;
+  assert(record?.unitId && actor.role==='groupHR');
   const [unit]=await db`
     select u.status,u.kind,c.name
     from reward_unit u join reward_cycle c on c.id=u.cycle_id and c.tenant_id=u.tenant_id

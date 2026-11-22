@@ -17,6 +17,7 @@ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
 const auditRequested=process.env.AUDIT_HASH_CHAIN_ENABLED==='true';
 assert(auditRequested,'the production workload requires audit chaining');
 const fullDevelopmentRoutes=fullDevelopmentBrowserRouteCourse(process.env);
+const rewardsRecords=process.env.PERF_HTTP_SUITE==='browser-route-baseline'&&process.env.PERF_REWARDS_RECORDS==='true';
 const includeOrgExplorerMember=fullDevelopmentRoutes||process.env.PERF_HTTP_SUITE==='whole-system';
 const establishedAttendance=fullDevelopmentRoutes||(isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE)
  &&['whole-system','workflow-preflight'].includes(process.env.PERF_HTTP_SUITE));
@@ -216,14 +217,26 @@ try{
    await fixturePhase(t,'historical-payroll-close',()=>closeBatch(ctx,{batchId:company.historicalBatchId}));
    operationTimings.payrollClose50.push(performance.now()-started);
   }
-  if(t===0&&['workflow-preflight','whole-system'].includes(process.env.PERF_HTTP_SUITE)){
+  if(t===0&&(rewardsRecords||['workflow-preflight','whole-system'].includes(process.env.PERF_HTTP_SUITE))){
    // Company 2's historical register is already closed. Leave the active
    // processing and publication rosters in companies 1, 3 and 4 intact.
-   tenants[t].rewardDraft=await fixturePhase(t,'rewards-draft-prerequisites',async()=>{
+   const actor=cohort.find(u=>u.role==='groupHR');
+   assert(actor);
+   const reward=await fixturePhase(t,'rewards-draft-prerequisites',async()=>{
     const {prepareRewardDraftFixture}=await fixturePhase(t,'rewards-draft-import',()=>import('./reward-draft-fixture.mjs'));
     return prepareRewardDraftFixture({owner,schema:s,ctx,tenant:tenants[t],companies,company:companies[2],today,
-     actor:cohort.find(u=>u.role==='groupHR'),includeOrgExplorerMember,
+     actor,includeOrgExplorerMember:includeOrgExplorerMember||rewardsRecords,
      expectedCompanyEmploymentIds:cohort.filter(u=>u.companyId===companies[2].companyId).map(u=>u.employmentId)});
+   });
+   tenants[t].rewardDraft=reward;
+   if(rewardsRecords)await fixturePhase(t,'rewards-catalog-record',async()=>{
+    const {createRewardPlanReviews,previewRewardPlanCreation}=await import('../../packs/rewards/plan-configuration.ts');
+    const maker={...ctx,userId:actor.userId,personId:actor.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+    const preview=await previewRewardPlanCreation(maker,reward.planVersionId);
+    assert(preview.mayCreate&&preview.rows.length===1&&preview.rows[0].status==='ready');
+    const {created,skipped}=await createRewardPlanReviews(maker,reward.planVersionId,preview.digest);
+    assert(created.length===1&&skipped.length===0);
+    reward.unitId=created[0];
    });
    // Check the actual drafts used by the browser. Earlier periods retain legacy
    // grouping while the current period uses the approved mapping.

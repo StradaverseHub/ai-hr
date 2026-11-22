@@ -1549,6 +1549,7 @@ try{
  try{
   await run('seed-system-fixture',process.execPath,['--import','tsx',
    'scripts/performance/system-fixture.mjs'],{...dbEnv,
+    PERF_REWARDS_RECORDS:String(censusRewardsRecords),
     NODE_OPTIONS:'--conditions=react-server',
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{retainSeedPhases();}
@@ -1563,7 +1564,6 @@ try{
     PERF_ATTENDANCE_HISTORY_RECORDS:String(censusAttendanceHistoryRecords),
     PERF_LOAN_RECORDS:String(censusLoanRecords),
     PERF_SAVED_REPORT_RECORDS:String(censusSavedReportRecords),
-    PERF_REWARDS_RECORDS:String(censusRewardsRecords),
    });
  }finally{
   const stagePath=join(privateDir,'record-fixture-stage');
@@ -1571,8 +1571,7 @@ try{
    const stage=readFileSync(stagePath,'utf8');
    if(['fixture','onboarding-config','draft-joiners','lifecycle-defaults','legacy-onboarding','legacy-offboarding',
     'lifecycle-asset','lifecycle-asset-request','performance-cycle-grades','performance-cycle-create',
-    'performance-cycle-participants','performance-cycle-open','performance-team-review',
-    'rewards-owner-imports','rewards-roster','rewards-approved-plan','rewards-plan-preview','rewards-draft-creation','complete'].includes(stage)){
+    'performance-cycle-participants','performance-cycle-open','performance-team-review','complete'].includes(stage)){
     report.recordFixtureStage=stage;
    }
   }
@@ -1583,17 +1582,10 @@ try{
     report.recordFixtureFailure=failure;
    }
   }
-  const typeProblemPath=join(privateDir,'record-fixture-type-problem');
-  if(censusRewardsRecords&&existsSync(typeProblemPath)){
-   const problem=readFileSync(typeProblemPath,'utf8');
-   if(/^(?:missing-property|not-callable):(?:businessUnit|departmentId|entries|db|insert|map|rows|client|tenantId|slice|today|companyId|personId|year|person|length|groups|query|feature)$/.test(problem)){
-    report.rewardsFixtureTypeProblem=problem;
-   }
-  }
   const locationPath=join(privateDir,'record-fixture-failure-location');
   if(existsSync(locationPath)){
    const location=readFileSync(locationPath,'utf8');
-   if(/^(?:core\/[a-z0-9/_-]+\.ts|db\/[a-z0-9/_-]+\.ts|packs\/(?:performance|rewards|job-architecture)\/[a-z0-9/_-]+\.ts|scripts\/(?:performance|fixtures)\/[a-z0-9/_-]+\.(?:js|mjs|ts)|test\/rewards-shared-policy-fixture\.ts):\d+$/i.test(location)){
+   if(/^(?:core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):\d+$/.test(location)){
     report.recordFixtureFailureLocation=location;
    }
   }
