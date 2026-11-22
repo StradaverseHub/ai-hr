@@ -5069,6 +5069,7 @@ export default async function EmployeePage({
         panels={panels}
         emptyLabel={t('tabs.empty')}
         defaultTab={tab as PersonnelTabKey | undefined}
+        deferUnvisitedPanels
       />
     </div>
   );
