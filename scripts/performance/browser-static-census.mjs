@@ -7,6 +7,7 @@ import {STATIC_CENSUS_SHARDS,staticPageCensusPlan} from './system-route-manifest
 const roles=new Set(['public','employee','manager','companyHR','groupHR']);
 const outcomes=new Set(['heading-visible','redirect','http-error','render-error','read-unavailable',
  'external-destination','timeout','browser-failure']);
+const contentOutcomes=new Set(['usable-content','heading','witness-timeout','witness-failure']);
 function discoveryKey(role,path,pass){
  return JSON.stringify([role,path,pass]);
 }
@@ -78,7 +79,13 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
    assert(missing.delete(row.path+' '+row.pass),'Unexpected static visit');
    assert(roles.has(row.role)&&outcomes.has(row.outcome));
    assert(Number.isSafeInteger(row.elapsedMs)&&row.elapsedMs>=0);
-   observations.push({path:row.path,pass:row.pass,role:row.role,outcome:row.outcome,...visitTiming(row)});
+   if(row.contentReadiness!==undefined)assert(contentOutcomes.has(row.contentReadiness));
+   if(row.contentReadiness==='usable-content')assert(row.outcome==='heading-visible'&&Number.isSafeInteger(row.headingMs)
+    &&Number.isSafeInteger(row.contentWitnessVisibleMs)&&row.contentWitnessVisibleMs>=row.headingMs
+    &&row.contentWitnessVisibleMs<=row.elapsedMs,'Invalid content witness timing');
+   observations.push({path:row.path,pass:row.pass,role:row.role,outcome:row.outcome,...visitTiming(row),
+    ...(row.contentReadiness&&{contentReadiness:row.contentReadiness}),
+    ...(row.contentReadiness==='usable-content'&&{contentWitnessVisibleMs:row.contentWitnessVisibleMs})});
   }
   assert.equal(missing.size,0,'Missing static visit');
   const templates=new Set(census.dynamic.templates);
@@ -124,6 +131,9 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
  return {kind:'FICTIONAL_COMPILED_BROWSER_CENSUS',releaseEligible:false,sourceSha,controllerSha,buildId:first.buildId,
   ...(artifact&&{verifiedBuildArtifact:artifact}),
   compiledStaticPages:staticPaths.size,staticAttempts:observations.length,staticPagesWithTwoHeadings,byOutcome,
+  contentChecks:Object.fromEntries([...contentOutcomes].map(outcome=>[
+   outcome,observations.filter(row=>row.contentReadiness===outcome).length,
+  ])),
   staticObservations:observations.sort((a,b)=>a.path.localeCompare(b.path)||a.pass.localeCompare(b.pass)),
   compiledDynamicTemplates:reference.dynamicTemplateCount,dynamicTemplatesWithHeading:dynamicObserved.size,
   dynamicTemplatesWithoutHeading:reference.dynamic.templates.filter(template=>!dynamicObserved.has(template)),

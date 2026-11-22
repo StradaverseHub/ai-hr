@@ -56,6 +56,21 @@ test('rejects mixed source builds, incomplete visits, and duplicate shards',()=>
  assert.throws(()=>reconcileStaticPageCensus(duplicate,identity),/Duplicate census shard/);
 });
 
+test('keeps successful content witnesses and content timeouts distinct from headings',()=>{
+ const reports=fixture();
+ const home=reports.find(r=>r.staticPageCensus.paths.includes('/')).staticPageCensus.outcomes;
+ const first=home.find(row=>row.path==='/'&&row.pass==='first');
+ const repeat=home.find(row=>row.path==='/'&&row.pass==='repeat');
+ Object.assign(first,{contentReadiness:'usable-content',contentWitnessVisibleMs:349});
+ repeat.contentReadiness='witness-timeout';
+ const report=reconcileStaticPageCensus(reports,identity);
+ assert.equal(report.staticPagesWithTwoHeadings,1);
+ assert.deepEqual(report.contentChecks,{'usable-content':1,heading:0,'witness-timeout':1,'witness-failure':0});
+ assert.equal(report.staticObservations.find(row=>row.path==='/'&&row.pass==='first').contentWitnessVisibleMs,349);
+ first.contentWitnessVisibleMs=344;
+ assert.throws(()=>reconcileStaticPageCensus(reports,identity),/Invalid content witness timing/);
+});
+
 test('requires both visits and an opened parent at the preceding link depth',()=>{
  const incomplete=fixture();
  incomplete.find(r=>r.staticPageCensus.paths.includes('/')).staticPageCensus.dynamic.outcomes.pop();

@@ -1376,7 +1376,7 @@ const censusPanelTitles={
  '/assistant/rewards/return':'Return annual Rewards review',
 };
 
-async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
+async function measureCensusVisit(page,url,role,pass,label,compiledPaths,contentCheck){
  const row={path:label,pass,role,outcome:'browser-failure'};
  const path=url.pathname;
  const start=performance.now(),remaining=()=>Math.max(1,Math.floor(start+15000-performance.now()));
@@ -1419,6 +1419,14 @@ async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
       row.editorControlsVisibleMs=Math.round(performance.now()-start);
       await builder.locator('[data-appearance]').waitFor({state:'visible',timeout:remaining()});
       row.contentWitnessVisibleMs=Math.round(performance.now()-start);
+      row.contentReadiness='usable-content';
+     }else if(contentCheck&&row.outcome==='heading-visible'){
+      try{
+       row.contentReadiness=await readyContent(page,contentCheck.actor,path,remaining,undefined,contentCheck.fixture);
+       if(row.contentReadiness==='usable-content')row.contentWitnessVisibleMs=Math.round(performance.now()-start);
+      }catch(error){
+       row.contentReadiness=error?.name==='TimeoutError'?'witness-timeout':'witness-failure';
+      }
      }
     }
    }
@@ -1488,6 +1496,8 @@ async function measureStaticPageCensus(fixture,shard){
    const page=await context.newPage();
    await page.addInitScript(observeStartup);
    const role=actor?.role??'public';
+   const contentPaths=new Set(curated.filter(route=>route.actorIndex===actorIndex&&route.requested===route.final)
+    .map(route=>route.requested));
    const discovered=new Map();
    let discoveryLimited=false;
    async function discover(sourcePath,depth,parentTemplate){
@@ -1496,7 +1506,8 @@ async function measureStaticPageCensus(fixture,shard){
     }catch{census.dynamic.discoveryFailures++;}
    }
    for(const pass of ['first','repeat'])for(const path of paths){
-    const row=await measureCensusVisit(page,new URL(origin+path),role,pass,path,compiledPaths);
+    const row=await measureCensusVisit(page,new URL(origin+path),role,pass,path,compiledPaths,
+     actor&&contentPaths.has(path)?{actor,fixture}:undefined);
     if(actor&&pass==='first'&&row.outcome==='heading-visible'){
      await discover(path,1);
     }
