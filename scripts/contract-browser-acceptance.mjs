@@ -50,7 +50,7 @@ export function assertDeniedContractResponse(facts,privateEvidence){
 }
 export async function exerciseContractBrowser({base,browser,fixture,observe,tick,report,out,gate,sha}){
  const contexts=new Map(),messages=JSON.parse(readFileSync('messages/en.json','utf8')),sign=messages.contractManagement,automation=messages.automation;
- report.screenshots=[];report.journeys=[];let actorKey;
+ report.screenshots=[];report.journeys=[];report.fixtureRecordVisits=[];let actorKey;
  const save=()=>writeFileSync(join(out,'screenshots-manifest.json'),JSON.stringify({kind:'ACTUAL_RENDERED_SYNTHETIC_CONTRACT_JOURNEY',sha,releaseEligible:false,required:REQUIRED_CONTRACT_CAPTURES,mockups:CONTRACT_MOCKUP_CAPTURE_MAP,captures:report.screenshots},null,2)+'\n',{mode:0o600});
  async function login(key){actorKey=key;if(contexts.has(key))return contexts.get(key).page;const actor=fixture.actors.find(a=>a.key===key);assert(actor);
   const context=await browser.newContext({httpCredentials:{username:'ci',password:gate},locale:'en-US',colorScheme:'light',reducedMotion:'reduce',viewport:{width:1440,height:1000}});await context.addInitScript(()=>localStorage.setItem('theme','light'));const page=await context.newPage();page.setDefaultTimeout(30000);
@@ -60,6 +60,21 @@ export async function exerciseContractBrowser({base,browser,fixture,observe,tick
   contexts.set(key,{context,page});return page;
  }
  async function visit(page,path){const response=await page.goto(base+path,{waitUntil:'load'});assert(response&&response.status()<500,'Actual route failed');return response;}
+ async function visitRecordPair(page,template,path,witness){
+  for(const visit of ['first','repeat']){
+   const started=performance.now();
+   const row={template,visit,role:actorKey,status:'failed'};
+   report.fixtureRecordVisits.push(row);
+   const response=await page.goto(base+path,{waitUntil:'commit'});
+   row.statusCode=response?.status()??null;
+   row.documentMs=Math.round(performance.now()-started);
+   assert.equal(row.statusCode,200,'The populated Contract document must respond normally');
+   await witness.waitFor({state:'visible'});
+   assert.equal(new URL(page.url()).pathname,path,'The native read must reach the requested Contract record');
+   row.readyMs=Math.round(performance.now()-started);
+   row.status='observed';
+  }
+ }
  async function capture(page,id,mobile=false,targetLocator){
   await page.setViewportSize(mobile?{width:390,height:844}:{width:1440,height:1000});await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(100);
   let target,targetAfter,locator;
@@ -100,16 +115,27 @@ export async function exerciseContractBrowser({base,browser,fixture,observe,tick
   await page.waitForURL(url=>url.pathname==='/lifecycle/contracts');
   assert.equal(observe().cases.length,0,'Opening the actual Contract navigation leaf must not create a case');
   await page.getByText('Fictional Contract employee',{exact:true}).waitFor();await capture(page,'tracker');
-  await visit(page,'/lifecycle/contracts/periods/'+fixture.employmentId);await page.getByRole('button',{name:'Start contract case',exact:true}).waitFor();await capture(page,'period');
+  await visitRecordPair(page,'/lifecycle/contracts/periods/[employmentId]','/lifecycle/contracts/periods/'+fixture.employmentId,
+   page.getByRole('button',{name:'Start contract case',exact:true}));
+  await capture(page,'period');
   await page.getByRole('button',{name:'Start contract case',exact:true}).click();await page.waitForURL(url=>/^\/lifecycle\/contracts\/[a-f0-9-]{36}$/.test(url.pathname));caseId=new URL(page.url()).pathname.split('/').at(-1);assert(caseId);
   await page.getByRole('button',{name:'Renew',exact:true}).click();await page.getByLabel('Renewal term (months)',{exact:true}).fill('6');await page.getByLabel('New start date',{exact:true}).fill(fixture.newStartOn);await page.getByLabel('New end date',{exact:true}).fill(fixture.newEndOn);
   await page.getByRole('checkbox',{name:'Pay changes',exact:true}).check();await page.getByLabel('Proposed basic salary (RM)',{exact:true}).fill(fixture.agreedSalary);await page.getByLabel('Reason for decision',{exact:true}).fill('Retain the agreed fictional specialist role.');await capture(page,'renew-decision');
   await page.getByRole('button',{name:'Preview decision',exact:true}).click();await advance(async()=>page.getByRole('button',{name:'Submit decision',exact:true}).isEnabled().catch(()=>false),'preview');await capture(page,'decision-preview');
   await page.getByRole('button',{name:'Submit decision',exact:true}).click();let state=await advance(s=>s.approvals.length===1,'CEO approval');assert.equal(state.facts.salary,fixture.initialSalary);assert.equal(state.facts.contract_number,4);
-  page=await login('proposer');await visit(page,'/lifecycle/contracts/'+caseId);await page.getByText('CEO approval',{exact:false}).first().waitFor();await capture(page,'case-in-progress');await capture(page,'case-progress-mobile',true);await capture(page,'case-progress-rail-mobile',true,()=>page.getByRole('heading',{name:'Workflow progress',exact:true}).locator('..').locator(':scope > section').filter({has:page.locator('ol.contract-rail')}));
-  page=await login('ceo');await visit(page,'/approvals?category=contracts');await page.locator('a[href="/lifecycle/contracts/approvals/'+state.approvals[0].id+'"]').waitFor();await capture(page,'approval-items');await visit(page,'/lifecycle/contracts/approvals/'+state.approvals[0].id);await page.getByRole('button',{name:'Approve',exact:true}).waitFor();await capture(page,'ceo-approval');await page.getByRole('button',{name:'Approve',exact:true}).click();
+  page=await login('proposer');
+  await visitRecordPair(page,'/lifecycle/contracts/[caseId]','/lifecycle/contracts/'+caseId,
+   page.getByText('CEO approval',{exact:false}).first());
+  await capture(page,'case-in-progress');await capture(page,'case-progress-mobile',true);await capture(page,'case-progress-rail-mobile',true,()=>page.getByRole('heading',{name:'Workflow progress',exact:true}).locator('..').locator(':scope > section').filter({has:page.locator('ol.contract-rail')}));
+  page=await login('ceo');await visit(page,'/approvals?category=contracts');await page.locator('a[href="/lifecycle/contracts/approvals/'+state.approvals[0].id+'"]').waitFor();await capture(page,'approval-items');
+  await visitRecordPair(page,'/lifecycle/contracts/approvals/[approvalId]','/lifecycle/contracts/approvals/'+state.approvals[0].id,
+   page.getByRole('button',{name:'Approve',exact:true}));
+  await capture(page,'ceo-approval');await page.getByRole('button',{name:'Approve',exact:true}).click();
   state=await advance(s=>s.letters.length===1,'letter review');const letterId=state.letters[0].id;
-  page=await login('peopleOps');await visit(page,'/lifecycle/contracts/letters/'+letterId);await page.getByRole('button',{name:'Complete review',exact:true}).waitFor();await capture(page,'people-ops-review');await page.getByRole('button',{name:'Edit wording for this case',exact:true}).click();const wording=page.getByLabel('Letter text',{exact:true});await wording.fill((await wording.inputValue())+'\nThank you for your continued contribution.');await capture(page,'case-letter-edit');await page.getByRole('button',{name:'Complete review and save wording',exact:true}).click();await page.getByRole('button',{name:'Complete review',exact:true}).waitFor({state:'hidden'});tick();
+  page=await login('peopleOps');
+  await visitRecordPair(page,'/lifecycle/contracts/letters/[letterId]','/lifecycle/contracts/letters/'+letterId,
+   page.getByRole('button',{name:'Complete review',exact:true}));
+  await capture(page,'people-ops-review');await page.getByRole('button',{name:'Edit wording for this case',exact:true}).click();const wording=page.getByLabel('Letter text',{exact:true});await wording.fill((await wording.inputValue())+'\nThank you for your continued contribution.');await capture(page,'case-letter-edit');await page.getByRole('button',{name:'Complete review and save wording',exact:true}).click();await page.getByRole('button',{name:'Complete review',exact:true}).waitFor({state:'hidden'});tick();
   page=await login('bp');await visit(page,'/lifecycle/contracts/letters/'+letterId);await page.getByRole('button',{name:'Sign letter',exact:true}).waitFor();await page.getByLabel('Comment / reason for sending back',{exact:true}).fill('Please confirm the revised wording with the owner before I sign.');await capture(page,'letter-send-back');await page.getByRole('button',{name:'Send back to owner',exact:true}).click();await advance(s=>s.letters[0].history.some(h=>h.action==='returned'),'actual letter send-back');
   page=await login('peopleOps');await visit(page,'/lifecycle/contracts/letters/'+letterId);await page.getByRole('button',{name:'Resend letter',exact:true}).waitFor();await capture(page,'letter-owner-resend');await page.getByRole('button',{name:'Resend letter',exact:true}).click();await advance(s=>s.letters[0].history.some(h=>h.action==='resent'),'actual owner resend');
   // Resend starts a new native routing round: every earlier Review/Sign is cleared.
