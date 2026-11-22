@@ -596,6 +596,30 @@ async function verifyImportedClockingTab(page, main, entry, row, remaining) {
   row.clockingImportedTabMs = Math.round(performance.now()-started);
 }
 
+async function loanRecordRoutes(db, fixture) {
+  const [group, company, , , employee] = fixture.users;
+  const record = fixture.loanRecord;
+  assert(record&&employee.companyId===company.companyId);
+  const repayments = await db`
+    select r.sequence_no, r.due_amount::numeric as amount, r.status
+    from employee_loan l join loan_repayment r on r.loan_id=l.id and r.tenant_id=l.tenant_id
+    where l.id=${record.id}::uuid and l.tenant_id=${company.tenantId}::uuid
+      and l.employment_id=${employee.employmentId}::uuid and l.principal=1200
+    order by r.sequence_no
+  `;
+  assert.deepEqual(repayments.map(r=>[r.sequence_no,Number(r.amount),r.status]),[
+    [1,300,'scheduled'],[2,300,'scheduled'],[3,300,'scheduled'],[4,300,'scheduled'],
+  ]);
+  const base = '/admin/loans';
+  const query = '?employmentId=' + employee.employmentId;
+  return [group,company].flatMap(actor=>[
+    {actor,template:base+'/[id]',path:base+'/'+record.id+query,exactHeading:'Personal · RM 1,200.00',
+     content:employee.name,witness:'tbody tr:has(td:text-is("4")) td:text-is("RM 300.00")'},
+    {actor,template:base+'/new',path:base+'/new'+query,exactHeading:'New loan',
+     content:employee.name,witness:`form:has(input[name="employmentId"][value="${employee.employmentId}"])`},
+  ]);
+}
+
 async function payrollCorrectionRoutes(db, fixture) {
   const [group, company] = fixture.users;
   const subject = fixture.users[4];
@@ -1002,7 +1026,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1013,6 +1037,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : noticeRecords ? await noticeRecordRoutes(db, fixture)
     : attendanceConfigurationRecords ? await attendanceConfigurationRoutes(db, fixture)
     : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
+    : loanRecords ? await loanRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),

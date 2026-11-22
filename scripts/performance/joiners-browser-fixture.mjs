@@ -68,6 +68,17 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_LOAN_RECORDS==='true'){
+  const {createLoan}=await source('core/loans.ts');
+  const employee=fixture.users[4];
+  assert(employee.role==='employee'&&employee.companyId===company.companyId);
+  const {id}=await createLoan(ctx,{
+   employmentId:employee.employmentId,loanType:'personal',principal:1200,interestRate:0,
+   interestMethod:'flat',durationMonths:4,startDate:fixture.today.slice(0,7)+'-01',
+  });
+  fixture.loanRecord={id};
+ }
+
  if(env.PERF_ATTENDANCE_HISTORY_RECORDS==='true'){
   const [{requestAttendanceCorrection},{commitClockingImport}]=await Promise.all([
    source('core/attendance.ts'),source('core/attendance-clocking-import.ts'),
