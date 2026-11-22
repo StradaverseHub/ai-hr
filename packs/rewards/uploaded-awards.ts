@@ -12,6 +12,7 @@ import {defaultPolicy,isoDateSchema,visibleEntry,canEditStage,emptyRecommendatio
 import {assertRewardWritableTx,rewardSetupAuthorityTx,assertRewardCapabilityTx} from './access-policy';
 import {validateUploadedAwards,uploadedAwardSchema,uploadedAwardsFromCells,type UploadedAward} from './uploaded-awards-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
+import {RewardSetupError} from './setup-model';
 const hash=(x:unknown)=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 function readUploadedInput(raw:unknown){if(Array.isArray(raw)){const content=JSON.stringify(raw);if(Buffer.byteLength(content,'utf8')>5_000_000)throw Error('Use an award file up to 5 MB.');return{rows:raw,rowNumbers:undefined,content,name:null};}const p=z.object({csv:z.string().max(5_000_000),name:z.string().trim().min(1).max(200)}).strict().parse(raw);if(Buffer.byteLength(p.csv,'utf8')>5_000_000)throw Error('Use an award file up to 5 MB.');const source=parseCsvWithLineNumbers(p.csv,true);return{...uploadedAwardsFromCells(source.map(row=>row.cells),source.map(row=>row.line)),content:p.csv,name:p.name};}
 async function gradesTx(tx:Tx){return(await tx.execute<{code:string}>(sql`select app.architecture_grade(code) as code from job_grade where tenant_id=app.current_tenant_id() and app.architecture_grade_assignable(id) and app.architecture_grade(code) is not null group by app.architecture_grade(code) having count(*)=1 order by code`)).map(g=>g.code);}
@@ -73,7 +74,7 @@ export function uploadedRewardChoices(ctx:SessionContext){
    ),'[]'::jsonb) as cycles,
    coalesce(app.reward_setup_allowed(null::uuid,'manage'),false) as "canCreateCycle"
   `);
-  if(!choices?.companies.length)throw Error('Group Rewards upload creation authority is required.');
+  if(!choices?.companies.length)throw new RewardSetupError('forbidden','Group Rewards upload creation authority is required.');
   return choices;
  });
 }

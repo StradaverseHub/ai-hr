@@ -253,5 +253,7 @@ it('keeps Rewards upload choices and their order for group and company HR on a g
   expect(choices.units[0]?.name).toBe('Home unit');
   expect(choices.canCreateCycle).toBe(actor===group);
  }
- await expect(uploadedRewardChoices(unrelated)).rejects.toThrow('Group Rewards upload creation authority is required.');
+ await expect(uploadedRewardChoices(unrelated)).rejects.toMatchObject({
+  code:'forbidden',message:'Group Rewards upload creation authority is required.',
+ });
 });
