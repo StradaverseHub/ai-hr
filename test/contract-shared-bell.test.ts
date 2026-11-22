@@ -2,6 +2,7 @@ import {beforeEach,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
 const source=vi.hoisted(()=>({legacy:vi.fn(),work:vi.fn(),postings:vi.fn(),holds:vi.fn()}));
 vi.mock('server-only',()=>({}));
+vi.mock('../db/client',()=>({withSharedReadSnapshot:(_session:SessionContext, work:()=>Promise<unknown>)=>work()}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key)}));
 vi.mock('../packs/contracts/service',()=>({contractInbox:source.legacy,contractSharedWorkPage:source.work,contractSharedPostingWorkPage:source.postings}));
 vi.mock('../packs/lifecycle/service',()=>({v9EmailHoldInbox:source.holds}));

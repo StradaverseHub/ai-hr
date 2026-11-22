@@ -1,4 +1,7 @@
 import { eq } from 'drizzle-orm';
+import { lifecycleModuleInbox } from '../app/lifecycle/module-inbox';
+import { lifecycleModuleNavigation } from '../app/lifecycle/workflow-availability';
+import { withRequestReadScope } from '../lib/request-read-scope';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { withIndependentTransactions, type SessionContext } from '../db/client';
 import type { SharedReadStats } from '../db/shared-read';
@@ -7,6 +10,12 @@ import { readShellNavigationContext, readSignedInShellNavigation } from '../lib/
 import { readShellFeatureNavigation } from '../lib/shell-feature-navigation';
 import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule } from './harness';
 import { buildScaleFixture, type ScaleFixture } from './helpers/ai-centre-scale-fixture';
+
+vi.mock('server-only', () => ({}));
+vi.mock('next-intl/server', async (importOriginal) => ({
+  ...await importOriginal<typeof import('next-intl/server')>(),
+  getTranslations: async () => (key: string) => key,
+}));
 
 const browser = vi.hoisted(() => ({ companyScope: undefined as string | undefined }));
 vi.mock('next/headers', () => ({
@@ -24,7 +33,7 @@ beforeAll(async () => {
   await migrateTestDb();
   await resetDb();
   const base = await seedBase();
-  for (const module of ['assistant', 'rewards', 'recruitment']) await setModule(base.tenantId, module, 'active');
+  for (const module of ['assistant', 'rewards', 'recruitment', 'lifecycle']) await setModule(base.tenantId, module, 'active');
   group = await buildScaleFixture(base, { employments: 1000, events: 0 });
   const [staff] = await owner.db
     .select({ personId: employment.personId, companyId: employment.companyId })
@@ -81,5 +90,29 @@ it('keeps shell identity, scope and features equivalent on one connection at gro
   } finally {
     browser.companyScope = undefined;
     hooks.__aihrPerfSharedRead = oldHook;
+  }
+});
+
+it('retains native Lifecycle inbox results while sharing compatible reads at group scale', async () => {
+  const hooks = globalThis as {
+    __aihrPerfBeginTransaction?: () => { acquired: () => void; finished: () => void };
+  };
+  const previousHook = hooks.__aihrPerfBeginTransaction;
+  let opened = 0;
+  hooks.__aihrPerfBeginTransaction = () => ({ acquired: () => { opened++; }, finished: () => {} });
+  try {
+    for (const session of [group.personas.group, group.personas.single, employee]) {
+      const navigation = await lifecycleModuleNavigation(session);
+      opened = 0;
+      const independent = await withIndependentTransactions(() => lifecycleModuleInbox(session, navigation));
+      const separateTransactions = opened;
+      opened = 0;
+      const shared = await withRequestReadScope({}, () => lifecycleModuleInbox(session, navigation));
+      expect(shared).toEqual(independent);
+      expect(opened).toBeGreaterThanOrEqual(2);
+      expect(opened).toBeLessThan(separateTransactions);
+    }
+  } finally {
+    hooks.__aihrPerfBeginTransaction = previousHook;
   }
 });
