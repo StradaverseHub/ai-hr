@@ -36,10 +36,17 @@ try {
   const ctx = {tenantId:user.tenantId,userId:user.userId,personId:user.personId,
     grants:grants.map(({role,companyId})=>({role,companyId})),roles:[...new Set(grants.map(grant=>grant.role))],
     entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,user.tenantId))};
+  const [unit] = await owner.client`
+    select revision,snapshot_date::text as date from reward_unit
+    where tenant_id=${tenant.tenantId}::uuid and id=${unitId}::uuid
+  `;
+  assert(unit && Number.isSafeInteger(unit.revision) && /^\d{4}-\d{2}-\d{2}$/.test(unit.date));
   const owners = [
     ['preparationStatus',()=>rewards.getRewardPreparationStatus(ctx,unitId),value=>value.setupVisible&&value.isGr],
     ['preparationChecklist',()=>rewards.getRewardPreparationChecklist(ctx,unitId),
       value=>value.unitId===unitId&&value.access.setupVisible&&value.access.isGr&&Boolean(value.checks)],
+    ['sourceRefreshPreview',()=>rewards.previewRewardSourceRefresh(ctx,unitId,unit.revision,unit.date),
+      value=>value.unitId===unitId&&value.revision===unit.revision&&value.asOf===unit.date&&/^[a-f0-9]{64}$/.test(value.digest)],
     ['fullReview',()=>rewards.getRewardUnit(ctx,unitId),value=>value.unit.id===unitId&&value.rows.length>0],
     ['unitGovernance',()=>rewards.getRewardUnitGovernance(ctx,unitId),value=>value.unitId===unitId&&value.available&&value.isGr],
     ['seniorMembership',()=>rewards.getRewardSeniorMembership(ctx,unitId),value=>value.unitId===unitId&&value.canEdit],
