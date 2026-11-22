@@ -42,7 +42,8 @@ const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
 const mixedVariant=env.AIHR_BROWSER_SHELL_PERMISSION_VARIANT??'none';
 const clockingTenantQueue=mixedVariant==='contract-optimized-clocking-queue';
 const rewardsNavigation=mixedVariant==='contract-optimized-rewards-navigation';
-const shellPermissionVariant=clockingTenantQueue||rewardsNavigation?'contract-optimized':mixedVariant;
+const shellLifetimeEnabled=mixedVariant==='contract-optimized-response-cancellation';
+const shellPermissionVariant=clockingTenantQueue||rewardsNavigation||shellLifetimeEnabled?'contract-optimized':mixedVariant;
 assert(['none','contract-control','contract-optimized'].includes(shellPermissionVariant));
 const topologyVariant=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 const largerPool=topologyVariant==='transaction-pool-12';
@@ -100,7 +101,6 @@ assert(!Object.keys(env).some(key=>key.startsWith('WORKOS_')&&env[key]),'Externa
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');
 const shellLifetimePrototype=sha===shellLifetimeCandidate;
-const shellLifetimeEnabled=env.AIHR_BROWSER_SHELL_RESPONSE_CANCELLATION==='true';
 assert(!shellLifetimePrototype||(mixedLoad&&combinedGroupBuild&&!fixtureOnly&&reusedBuild));
 assert(!shellLifetimeEnabled||(shellLifetimePrototype&&reusedBuild));
 assert(sha===env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD??''));

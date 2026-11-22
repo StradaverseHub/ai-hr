@@ -80,15 +80,11 @@ on:
         description: Reuse the exact verified application build for the lock-attribution diagnostic
         default: false
         type: boolean
-      mixed_shell_response_cancellation:
-        description: Enable response-close cancellation on the pinned fictional shell prototype
-        default: false
-        type: boolean
       mixed_shell_permission_variant:
-        description: Compare a specific navigation or clocking variant on the pinned fixture
+        description: Compare a specific navigation, clocking or response cancellation variant on the pinned fixture
         type: choice
         default: none
-        options: [none, contract-control, contract-optimized, contract-optimized-clocking-queue, contract-optimized-rewards-navigation]
+        options: [none, contract-control, contract-optimized, contract-optimized-clocking-queue, contract-optimized-rewards-navigation, contract-optimized-response-cancellation]
       mixed_database_topology:
         description: Compare direct web connections and bounded pool sizes on the pinned fictional workload
         type: choice
@@ -117,7 +113,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-shell-permissions-${{ inputs.candidate_ref }}-${{ inputs.mixed_shell_permission_variant }}-${{ inputs.mixed_database_topology }}-${{ inputs.mixed_group_scale }}${{ inputs.expected_sha == '24e0b499be5f009c409e539c1e78add85d7f3b03' && format('-lifetime-diagnostic-{0}', inputs.mixed_shell_response_cancellation) || '' }}
+  group: alpha-focused-shell-permissions-${{ inputs.candidate_ref }}-${{ inputs.mixed_shell_permission_variant }}-${{ inputs.mixed_database_topology }}-${{ inputs.mixed_group_scale }}${{ inputs.expected_sha == '24e0b499be5f009c409e539c1e78add85d7f3b03' && '-lifetime-diagnostic' || '' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -172,6 +168,11 @@ jobs:
               "$ESTABLISHED_ATTENDANCE" == true && "$MIXED_GROUP_SCALE" == true && "$BROWSER_MIXED_LOAD" == true ]] || exit 2
             SHELL_PERMISSION_VARIANT=contract-optimized
           fi
+          shell_response_cancellation=false
+          if [[ "$SHELL_PERMISSION_VARIANT" == contract-optimized-response-cancellation ]]; then
+            shell_response_cancellation=true
+            SHELL_PERMISSION_VARIANT=contract-optimized
+          fi
           if [[ "$BROWSER_MIXED_LOAD" == true && "$BROWSER_ROUTE_BASELINE" != true ]]; then
             exit 2
           fi
@@ -211,7 +212,7 @@ jobs:
                 "$SHELL_PERMISSION_VARIANT" == contract-optimized ]]; then
             combined_group_build=true
           fi
-          if [[ "$SHELL_RESPONSE_CANCELLATION" == true ]]; then
+          if [[ "$shell_response_cancellation" == true ]]; then
             [[ "$EXPECTED_SHA" == 24e0b499be5f009c409e539c1e78add85d7f3b03 &&
                "$combined_group_build" == true && "$REUSE_BUILD" == true &&
                "$BROWSER_ROUTE_BASELINE" == true && "$BROWSER_FIXTURE_ONLY" != true ]] || exit 2
@@ -258,7 +259,6 @@ jobs:
           LOCK_LOG_SHORT_WINDOW: ${{ inputs.browser_lock_log_short_window }}
           REPLACEMENT_CATALOGUE: ${{ inputs.browser_replacement_catalogue }}
           REUSE_BUILD: ${{ inputs.reuse_first_use_build }}
-          SHELL_RESPONSE_CANCELLATION: ${{ inputs.mixed_shell_response_cancellation }}
           SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
           MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
           MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}
@@ -500,7 +500,6 @@ jobs:
           AIHR_BROWSER_LOCK_LOG_SHORT_WINDOW: ${{ inputs.browser_lock_log_short_window }}
           AIHR_BROWSER_REPLACEMENT_CATALOGUE: ${{ inputs.browser_replacement_catalogue }}
           AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_first_use_build }}
-          AIHR_BROWSER_SHELL_RESPONSE_CANCELLATION: ${{ inputs.mixed_shell_response_cancellation }}
           AIHR_BROWSER_SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
           AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
           AIHR_BROWSER_MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}
