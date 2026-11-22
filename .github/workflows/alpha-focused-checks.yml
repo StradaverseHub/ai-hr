@@ -211,9 +211,11 @@ jobs:
             combined_group_build=true
           fi
           if [[ "$clocking_tenant_queue" == true ]]; then
-            [[ "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 &&
-                "$combined_group_build" == true && "$BROWSER_ROUTE_BASELINE" == true &&
-                "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" == true ]] || exit 2
+            [[ "$combined_group_build" == true && "$BROWSER_ROUTE_BASELINE" == true &&
+                "$BROWSER_FIXTURE_ONLY" != true ]] || exit 2
+            [[ ( "$EXPECTED_SHA" == a1d4cbb7bef482f7a6c8b75ab7fbec7611976857 && "$RUN_BUILD" == true ) ||
+               ( "$EXPECTED_SHA" == c8223046a4a225e5eb617e7c7f3d12edb51a783d &&
+                 "$shell_archive_pin" == true && "$REUSE_BUILD" == true ) ]] || exit 2
           fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in

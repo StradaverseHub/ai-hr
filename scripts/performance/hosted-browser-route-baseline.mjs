@@ -79,7 +79,10 @@ const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(e
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
 assert(!groupScale||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
-assert(!clockingTenantQueue||(env.AIHR_CI_HEAD===clockingOutcomeSource&&mixedLoad&&combinedGroupBuild&&!fixtureOnly&&!reusedBuild));
+const matchedClockingSource='c8223046a4a225e5eb617e7c7f3d12edb51a783d';
+const validClockingComparison=env.AIHR_CI_HEAD===clockingOutcomeSource&&!reusedBuild
+ ||env.AIHR_CI_HEAD===matchedClockingSource&&reusedBuild&&shellComparisonPin?.sourceSha==='8f767482d9796ad601e1702f1ee5868b4cc118c4';
+assert(!clockingTenantQueue||(validClockingComparison&&mixedLoad&&combinedGroupBuild&&!fixtureOnly));
 assert(!largerPool||(env.AIHR_CI_HEAD===clockingOutcomeSource&&mixedLoad&&combinedGroupBuild&&
  !fixtureOnly&&reusedBuild&&!clockingTenantQueue));
 assert(shellPermissionVariant==='none'||(groupScale&&databaseTopology==='transaction-pool'));
