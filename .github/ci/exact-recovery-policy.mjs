@@ -12,6 +12,27 @@ const positive=x=>Number.isSafeInteger(x)&&x>0;
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const jobName=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
 const focusedJobs=['resolve','selected-tests','typecheck','linux-build','native-typecheck','native-swift-models','native-bundle'];
+export const PAYROLL_UPLOAD_LOSS=Object.freeze({
+ originalRun:44987817353,jobId:137102395727,unit:'db-64641770f87b62fe',
+ candidate:'17cdd7f2c9bfa99efa85a660a94878c6af2d3278',
+ priorRun:44984683978,priorSource:'25d63d3a7996ff47d078d2521017ed1410f8a772',
+ changedTests:Object.freeze(['test/contract-builder-preview-db.test.ts','test/tenant-company-fk-upgrade.test.ts']),
+ tests:284,files:24,
+});
+export function validatePayrollUploadLoss({run,plan,job,observation,log}){
+ const pin=PAYROLL_UPLOAD_LOSS,unit=plan.units.find(u=>u.id===pin.unit);
+ assert(run.id===pin.originalRun&&plan.sha===pin.candidate&&job?.id===pin.jobId&&job.name===jobName(unit)&&job.conclusion==='failure'&&
+  observation?.id===pin.unit&&observation.jobId===job.id&&observation.artifact===null&&unit.kind==='db'&&unit.files.length===pin.files,
+  'Exact payroll upload-loss unit required');
+ const test=job.steps?.find(step=>step.name.includes('run-unit.mjs'));
+ const upload=job.steps?.find(step=>step.name.startsWith('Run actions/upload-artifact@'));
+ assert(test?.conclusion==='success'&&upload?.conclusion==='failure'&&Date.parse(test.completed_at)<=Date.parse(upload.started_at),
+  'The complete original test process must pass before its failed upload');
+ const output=log.replace(/\x1b\[[0-9;]*m/g,'');
+ assert(/Test Files\s+24 passed\s+\(24\)/.test(output)&&/Tests\s+284 passed\s+\(284\)/.test(output)&&
+  output.includes('Failed to CreateArtifact')&&output.includes('ArtifactService/CreateArtifact'),'The original job must report the exact passing counts and upload timeout');
+ return {unitId:unit.id,jobId:job.id,logSha256:hash(log),failure:'ARTIFACT_UPLOAD_TIMEOUT_AFTER_TEST_SUCCESS'};
+}
 function cases(result,files,cwd){
  assert(result?.success===true&&result.numFailedTests===0&&result.numFailedTestSuites===0&&[result.numPendingTests??0,result.numPendingTestSuites??0,result.numTodoTests??0].every(n=>n===0),'Focused result contains errors/skips');
  assert(Array.isArray(result.testResults)&&result.testResults.length===files.length,'Focused result file count differs');
@@ -25,7 +46,7 @@ function cases(result,files,cwd){
  assert(positive(count)&&result.numTotalTests===count&&result.numPassedTests===count,'Focused assertion totals differ');return found;
 }
 /** All metadata and archives must first be authenticated by the API/byte adapter. */
-export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,classifierHash,verificationController,canonicalAdvance=exactCanonicalRefs({originalController:plan.controller,baseline:plan.migrationBase,candidate:plan.sha})}){
+export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,classifierHash,verificationController,uploadLoss=null,canonicalAdvance=exactCanonicalRefs({originalController:plan.controller,baseline:plan.migrationBase,candidate:plan.sha})}){
  assert(sha(verificationController)&&assessment.sourceRun?.id===run.id&&assessment.sha===plan.sha&&assessment.controller===plan.controller&&assessment.baseline===plan.migrationBase&&assessment.fingerprint===plan.fingerprint,'Recovery source identity differs');
  validateCanonicalContext(canonicalAdvance,{originalController:plan.controller,baseline:plan.migrationBase,candidate:plan.sha});
  const focusedController=canonicalAdvance.focusedController;
@@ -40,7 +61,17 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,cl
   if(unit&&failed.has(unit.id)){assert(['nodb','db'].includes(unit.kind)&&j.conclusion==='failure','Only complete failed Node/DB units are recoverable');continue;}
   assert(j.conclusion==='success','A failed build/compiler/migration/controller/browser prerequisite cannot be recovered by focused tests');
  }
- assert(Array.isArray(reports)&&reports.length===plan.units.length&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete original report inventory required');
+ const lostUnit=uploadLoss?.proof?.unitId;
+ if(uploadLoss){
+  assert(run.id===PAYROLL_UPLOAD_LOSS.originalRun&&plan.sha===PAYROLL_UPLOAD_LOSS.candidate&&lostUnit===PAYROLL_UPLOAD_LOSS.unit&&
+   failed.has(lostUnit)&&assessment.observations.some(row=>row.id===lostUnit&&row.artifact===null)&&
+   uploadLoss.plan.sha===PAYROLL_UPLOAD_LOSS.priorSource&&uploadLoss.report.id===lostUnit,'Unreviewed missing original test evidence');
+  same(uploadLoss.plan.units.find(unit=>unit.id===lostUnit),plan.units.find(unit=>unit.id===lostUnit),'Prior unit membership changed');
+  for(const key of ['runtime','execution'])same(uploadLoss.plan[key],plan[key],'Prior test runtime changed');
+  assert(verifyUnitReport(uploadLoss.plan,uploadLoss.report).tests===PAYROLL_UPLOAD_LOSS.tests,'Prior case inventory count differs');
+ }
+ assert(Array.isArray(reports)&&reports.length===plan.units.length-(uploadLoss?1:0)&&
+  !reports.some(r=>r.id===lostUnit)&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete original report inventory required');
  const replacements=new Map(),focusedSources=[];
  for(const f of focused){
   const r=f.report;
@@ -58,7 +89,7 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,cl
   assert(r.batches?.length===1&&r.batches[0].kind===kind&&r.batches[0].exitCode===0&&r.batches[0].processExitCode===0&&r.batches[0].signal===null,'Focused process did not pass');
   if(database){
    validatePostgresEvidence(r.databaseTerminalEvidence,plan.execution);
-   const e=r.databaseTerminalEvidence,original=reports.find(x=>x.id===unit.id)?.databaseTerminalEvidence;
+   const e=r.databaseTerminalEvidence,original=(unit.id===lostUnit?uploadLoss.report:reports.find(x=>x.id===unit.id))?.databaseTerminalEvidence;
    const times=[r.startedAt,r.batches[0].startedAt,r.batches[0].endedAt,e.capturedAt,r.endedAt,f.producer.completed_at].map(Date.parse);
    assert(times.every(Number.isFinite)&&times.every((t,i)=>i===0||t>=times[i-1]),'DB evidence must be captured after the entire batch and before report/job completion');
    assert(e.name===`aihr-ci-${f.run.id}-1-db-1`&&e.settings.serverVersionNum===original?.settings?.serverVersionNum,'Fresh DB ownership/runtime differs');
@@ -81,18 +112,25 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,cl
    const result=verifyUnitReport(plan,report),source=assessment.reusable.find(r=>r.id===unit.id);
    assert(source?.reportHash===hash(report),'Retained report changed');tests+=result.tests;units.push({id:unit.id,kind:'retained',files:result.files,tests:result.tests,reportHash:hash(report),source:source.source});continue;
   }
-  assert(report.sha===plan.sha&&report.fingerprint===plan.fingerprint&&report.exitCode!==0,'Failed original unit identity differs');same(report.files,unit.files,'Original failed coverage differs');
+  const original=unit.id===lostUnit?uploadLoss.report:report;
+  if(unit.id!==lostUnit){
+   assert(original.sha===plan.sha&&original.fingerprint===plan.fingerprint&&original.exitCode!==0,'Failed original unit identity differs');
+   same(original.files,unit.files,'Original failed coverage differs');
+  }
   // Recover the complete failed process, never infer passes from a process with an unhandled error.
   const originalCases=new Map();
-  for(const batch of report.batches??[])for(const file of batch.result?.testResults??[]){
-   const path=relative(report.cwd,file.name).split('\\').join('/');assert(unit.files.includes(path)&&!originalCases.has(path),'Foreign/duplicate original failed-unit file');
+  for(const batch of original.batches??[])for(const file of batch.result?.testResults??[]){
+   const path=relative(original.cwd,file.name).split('\\').join('/');assert(unit.files.includes(path)&&!originalCases.has(path),'Foreign/duplicate original failed-unit file');
    assert(file.assertionResults?.length>0&&file.assertionResults.every(a=>typeof a.fullName==='string'&&a.fullName.length>0),'Original case inventory unavailable');
    originalCases.set(path,file.assertionResults.map(a=>a.fullName).sort());
   }
   assert(originalCases.size===unit.files.length,'Original failed process did not enumerate every file');
   let count=0;const files=[];
   for(const path of unit.files){const replacement=replacements.get(path);assert(replacement,'Failed unit lacks focused recovery: '+path);same(replacement.cases,originalCases.get(path),'Recovery dropped/changed assertions');count+=replacement.tests;files.push({path,...replacement});}
-  tests+=count;units.push({id:unit.id,kind:'focused-recovery',originalReportHash:hash(report),tests:count,files});
+  tests+=count;units.push({
+   id:unit.id,kind:'focused-recovery',tests:count,files,
+   ...(unit.id===lostUnit?{missingOriginalReport:uploadLoss.proof,priorCaseInventoryReportHash:hash(original)}:{originalReportHash:hash(original)}),
+  });
  }
  assert(replacements.size===plan.units.filter(u=>failed.has(u.id)).reduce((n,u)=>n+u.files.length,0),'Recovery coverage is incomplete');
  return {kind:'AUTHENTICATED_EXACT_SOURCE_RECOVERY',recoveryPolicy:EXACT_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,focusedController,canonicalAdvance,baseline:plan.migrationBase,runId:run.id,sourceFingerprint:plan.fingerprint,originalConclusion:run.conclusion,originalFailureObservations:assessment.observations,focusedSources:focusedSources.sort((a,b)=>a.runId-b.runId),units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};

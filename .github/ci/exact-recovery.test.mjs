@@ -9,7 +9,7 @@ import {exactCanonicalRefs} from './canonical-docs-advance.mjs';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {buildUnits,hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {verifyExactRecovery,validateExactRecoveryGrantEvidence,validateExactRecoveryHistory,requireReviewedExactController} from './exact-recovery-policy.mjs';
+import {verifyExactRecovery,validateExactRecoveryGrantEvidence,validateExactRecoveryHistory,requireReviewedExactController,PAYROLL_UPLOAD_LOSS,validatePayrollUploadLoss} from './exact-recovery-policy.mjs';
 import {validateFocusedMetadata,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
 import {operatorRelease} from './operator-release.mjs';
 import {validateExactControllerDelta} from './exact-recovery.mjs';
@@ -177,4 +177,25 @@ test('Recovery controller scope refuses application, receiver-runtime or coverag
  assert.equal(validateExactControllerDelta(paths),true);
  for(const extra of ['core/analytics.ts','.github/ci/postgres-evidence.mjs','.github/ci/policy-version.mjs','test/analytics-carry-searched-native-scale.test.ts'])assert.throws(()=>validateExactControllerDelta([...paths,extra]));
  assert.throws(()=>validateExactControllerDelta(paths.slice(1)));assert.throws(()=>validateExactControllerDelta([...paths,paths[0]]));
+});
+
+test('One reviewed lost upload requires the pinned completed process and both exact result counts',()=>{
+ const pin=PAYROLL_UPLOAD_LOSS;
+ const input={
+  run:{id:pin.originalRun},plan:{sha:pin.candidate,units:[{id:pin.unit,kind:'db',files:Array(pin.files).fill('fixture')}]},
+  job:{id:pin.jobId,name:`test (${pin.unit})`,conclusion:'failure',steps:[
+   {name:'Run run-unit.mjs',conclusion:'success',completed_at:time(4)},
+   {name:'Run actions/upload-artifact@fixture',conclusion:'failure',started_at:time(3)},
+  ]},
+  observation:{id:pin.unit,jobId:pin.jobId,artifact:null},
+  log:'Test Files 24 passed (24)\nTests 284 passed (284)\nFailed to CreateArtifact: ArtifactService/CreateArtifact',
+ };
+ assert.equal(validatePayrollUploadLoss(input).failure,'ARTIFACT_UPLOAD_TIMEOUT_AFTER_TEST_SUCCESS');
+ for(const mutate of [
+  x=>x.run.id++,x=>x.plan.sha='a'.repeat(40),x=>x.job.id++,x=>x.job.steps[0].conclusion='failure',
+  x=>x.job.steps[1].conclusion='success',x=>x.observation.artifact={id:1},
+  x=>x.log=x.log.replace('284 passed','283 passed'),x=>x.log=x.log.replace('Failed to CreateArtifact','other error'),
+ ]){
+  const bad=structuredClone(input);mutate(bad);assert.throws(()=>validatePayrollUploadLoss(bad));
+ }
 });

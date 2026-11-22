@@ -54,3 +54,14 @@ cleanup checks remain mandatory. Failed or unsupported recovery remains blocked.
 Focused archives retain bounded declared PostgreSQL, setup, timing and native Carry diagnostics inside their
 authenticated original ZIP. Only the two core JSON result/identity members are extracted as accounting inputs.
 Diagnostics do not replace assertions or enlarge any runtime/dataset/deadline allowance.
+
+## Pinned GitHub upload loss for payroll, 22 November 2026
+
+Original gate 44987817353 completed 284 assertions in 24 files for
+`db-64641770f87b62fe`, but GitHub rejected the artifact upload. This path
+requires the exact original run and job, matching successful process/failed
+upload steps and passing counts in GitHub job logs, and the absent artifact.
+The prior authenticated report from 44984683978 supplies case names only.
+Its application and unit inputs must be identical across the two sources.
+The entire unit still runs again on the exact built source and must pass.
+The certificate records the original upload failure and both artifact lineages.

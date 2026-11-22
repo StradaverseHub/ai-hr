@@ -3,18 +3,20 @@
  */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {readFileSync,writeFileSync,existsSync} from 'node:fs';
+import {readFileSync,writeFileSync,existsSync,mkdirSync} from 'node:fs';
 import {join,resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {downloadCiArchives} from './archive-downloads.mjs';
 import {randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {createPlan,hash} from './plan.mjs';
 import {cleanHead,controllerRoot,sourceBoundBuild} from './release-ci.mjs';
-import {REPOSITORY} from './release-policy.mjs';
+import {REPOSITORY,REPOSITORY_ID,verifyArtifactBytes} from './release-policy.mjs';
 import {proveCanonicalRefs} from './canonical-docs-advance.mjs';
 import {assessResumeSource} from './resume-source.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {validateFocusedMetadata,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
-import {verifyExactRecovery,requireReviewedExactController,validateExactRecoveryHistory,exactRecoveryBranch} from './exact-recovery-policy.mjs';
+import {verifyExactRecovery,requireReviewedExactController,validateExactRecoveryHistory,exactRecoveryBranch,PAYROLL_UPLOAD_LOSS,validatePayrollUploadLoss} from './exact-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const d=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(d[key]),'Missing API inventory');rows.push(...d[key]);if(d[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
@@ -29,6 +31,50 @@ export function validateExactControllerDelta(paths){
   &&isDeepStrictEqual(paths.slice().sort(),allowed.sort()),'Exact independently reviewed recovery-only controller delta required');
  return true;
 }
+async function readPayrollUploadLoss({source,plan,assessment,candidatePath,dir,reuse}){
+ const pin=PAYROLL_UPLOAD_LOSS,observation=assessment.observations.find(o=>o.id===pin.unit);
+ if(source.run.id!==pin.originalRun||observation?.artifact!==null)return null;
+ assert(plan.sha===pin.candidate,'Exact reviewed upload-loss application source required');
+ const delta=git(candidatePath,'diff','--name-status','--no-renames',pin.priorSource,pin.candidate);
+ assert(delta===pin.changedTests.map(path=>'M\t'+path).join('\n')&&!plan.units.find(u=>u.id===pin.unit).files.some(file=>pin.changedTests.includes(file)),
+  'Earlier case inventory differs beyond the two reviewed out-of-unit test files');
+ const job=source.jobs.find(j=>j.id===pin.jobId);
+ const log=execFileSync('gh',['api',`repos/${REPOSITORY}/actions/jobs/${pin.jobId}/logs`],{encoding:'utf8',timeout:60000,maxBuffer:32*1024**2});
+ const proof=validatePayrollUploadLoss({run:source.run,plan,job,observation,log});
+ const prior=api(`actions/runs/${pin.priorRun}`);
+ assert(prior.id===pin.priorRun&&prior.repository?.id===REPOSITORY_ID&&prior.head_repository?.id===REPOSITORY_ID&&
+  prior.head_sha===plan.controller&&prior.head_branch===source.run.head_branch&&prior.workflow_id===source.run.workflow_id&&prior.path===source.run.path&&
+  prior.event==='workflow_dispatch'&&prior.status==='completed'&&prior.run_attempt===1&&Date.parse(prior.created_at)<Date.parse(source.run.created_at),
+  'Preceding complete case-inventory run differs');
+ const priorJobs=pages(`actions/runs/${prior.id}/jobs?filter=all`,'jobs');
+ const names=['gate-plan','unit-'+pin.unit];
+ const artifacts=pages(`actions/runs/${prior.id}/artifacts`,'artifacts').filter(a=>names.includes(a.name));
+ assert(artifacts.length===2&&new Set(artifacts.map(a=>a.name)).size===2,'Prior case-inventory artifacts missing or duplicate');
+ const sub=join(dir,'prior-case-inventory');
+ if(!reuse){mkdirSync(sub,{mode:0o700});await downloadCiArchives(artifacts,sub);writeFileSync(join(sub,'original-upload-loss.log'),log,{flag:'wx',mode:0o600});}
+ const meta=[];
+ const read=(name,jobName,filename)=>{
+  const artifact=artifacts.find(a=>a.name===name),w=artifact.workflow_run;
+  const producing=priorJobs.filter(j=>j.name===jobName);
+  assert(producing.length===1,'Prior evidence producing job not unique');
+  const entry=producing[0];
+  assert(entry.status==='completed'&&entry.conclusion==='success'&&entry.run_id===prior.id&&entry.run_attempt===1&&
+   entry.head_sha===prior.head_sha&&artifact.expired===false&&w?.id===prior.id&&w.head_sha===prior.head_sha&&w.head_branch===prior.head_branch&&
+   w.repository_id===REPOSITORY_ID&&w.head_repository_id===REPOSITORY_ID&&Date.parse(artifact.created_at)>=Date.parse(entry.started_at)&&
+   Date.parse(artifact.created_at)<=Date.parse(entry.completed_at),'Prior case-inventory artifact provenance differs');
+  const archive=join(sub,name+'.zip');
+  verifyArtifactBytes(artifact,readFileSync(archive));
+  const destination=join(sub,name);
+  if(!reuse)execFileSync('python3',[fileURLToPath(new URL('./extract-artifact.py',import.meta.url)),archive,destination],{timeout:60000,stdio:'pipe'});
+  meta.push({id:artifact.id,name,digest:artifact.digest,jobId:entry.id});
+  return JSON.parse(readFileSync(join(destination,filename),'utf8'));
+ };
+ const priorPlan=read('gate-plan','plan','ci-plan.json');
+ const unitArtifact='unit-'+pin.unit;
+ const report=read(unitArtifact,`test (${pin.unit})`,unitArtifact+'.json');
+ return {plan:priorPlan,report,proof:{...proof,priorRunId:prior.id,priorSource:priorPlan.sha,priorArtifacts:meta,expectedCasesOnly:true}};
+}
+
 export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focusedRunIds,evidenceDirectory,reuse=false}){
  candidatePath=resolve(candidatePath);runId=Number(runId);
  assert(Number.isSafeInteger(runId)&&runId>0&&/^[a-f0-9]{40}$/.test(baseline??''),'Exact recovery source required');
@@ -79,8 +125,12 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
   assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json',resultName].sort()),'Exact homogeneous focused packet members required');
   focused.push({...f,producer,artifact,report,result:packet.get(resultName)});
  }
- const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyExactRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,canonicalAdvance});
+ const uploadLoss=await readPayrollUploadLoss({source,plan,assessment,candidatePath,dir,reuse});
+ const reports=plan.units.flatMap(u=>{
+  const report=source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`);
+  return !report&&u.id===uploadLoss?.proof.unitId?[]:[report];
+ });
+ const recovery=verifyExactRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,uploadLoss,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,canonicalAdvance});
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
  const rows=[...pages(`actions/workflows/${source.run.workflow_id}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${workflow.id}/runs?${query}`,'workflow_runs')];
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[source.run.workflow_id,workflow.id].includes(r.workflow_id)));
