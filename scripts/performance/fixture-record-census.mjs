@@ -923,6 +923,12 @@ async function attendanceRecordRoutes(db, fixture) {
     where tenant_id=${company.tenantId}::uuid and company_id=${company.companyId}::uuid
       and code='PERF' and version=1 and superseded_at is null`;
   assert.equal(workflows.length, 1, 'Expected the seeded company Attendance approval workflow');
+  const departments = await db`select company_id,name from department
+    where tenant_id=${company.tenantId}::uuid
+      and (id=${fixture.tenants[0].companies[0].departmentId}::uuid or company_id=${fixture.scaleCompany.id}::uuid)`;
+  const originalDepartment = departments.find(row => row.company_id === company.companyId)?.name;
+  const extraDepartment = departments.find(row => row.company_id === fixture.scaleCompany.id)?.name;
+  assert(originalDepartment && extraDepartment && originalDepartment !== extraDepartment);
   const workflowName = 'Fictional performance approval';
   const workflow = '/admin/attendance/approval-workflow/' + workflows[0].lineage_id;
   const routes = [group, company].flatMap(actor => {
@@ -945,7 +951,10 @@ async function attendanceRecordRoutes(db, fixture) {
       { actor, template: '/admin/attendance/approval-workflow/[lineageId]', path: workflow,
         exactHeading: workflowName, witness: `a[href="${workflow}/edit"]` },
       { actor, template: '/admin/attendance/approval-workflow/[lineageId]/edit', path: workflow + '/edit',
-        exactHeading: 'Edit ' + workflowName, witness: '#attendance-workflow-form input[name="code"][value="PERF"]' },
+        exactHeading: 'Edit ' + workflowName, witness: '#attendance-workflow-form input[name="code"][value="PERF"]',
+        assignmentPicker: {originalDepartment, ...(actor.role === 'groupHR' && {
+          expandedCompany: fixture.scaleCompany.name, extraDepartment,
+        })} },
       { actor, template: '/admin/attendance/approval-workflow/[lineageId]/previews', path: workflow + '/previews',
         exactHeading: 'Preview History', content: workflowName, witness: 'button:text-is("Generate new preview")',
         ...(actor.role === 'companyHR' && { workflowPreviewLineage: workflows[0].lineage_id }) },
@@ -960,6 +969,51 @@ async function attendanceRecordRoutes(db, fixture) {
     exactHeading: 'Attendance detail', content: employee.name, witness: 'input[name="checkIn"][value="09:00"]',
   });
   return routes;
+}
+
+async function verifyAttendanceAssignmentPicker(page, entry, report, save) {
+  const result = {role:entry.actor.role,status:'failed',step:'existing-company'};
+  (report.attendanceAssignmentPicker ??= []).push(result);
+  const timeout = 15000;
+  const form = page.locator('#attendance-workflow-form');
+  const department = form.getByRole('button',{name:'Department',exact:true});
+  const choice = name => form.getByRole('checkbox',{name,exact:true});
+  const isAction = request => request.method() === 'POST' && Boolean(request.headers()['next-action'])
+    && new URL(request.url()).pathname === entry.path;
+  let posts = 0;
+  const observe = request => { if (isAction(request)) posts++; };
+  page.on('request', observe);
+  try {
+    const opened = performance.now();
+    await department.click({timeout});
+    await choice(entry.assignmentPicker.originalDepartment).waitFor({state:'visible',timeout});
+    result.initialPickerMs = Math.round(performance.now() - opened);
+    result.initialPosts = posts;
+    assert.equal(posts, 0, 'Opening the saved company picker should reuse its loaded choices');
+    if (entry.assignmentPicker.expandedCompany) {
+      result.step = 'expanded-company';
+      await page.keyboard.press('Escape');
+      await form.getByRole('button',{name:'Company',exact:true}).click({timeout});
+      await choice(entry.assignmentPicker.expandedCompany).click({timeout});
+      await page.keyboard.press('Escape');
+      const expanded = performance.now();
+      const [response] = await Promise.all([
+        page.waitForResponse(reply => isAction(reply.request()),{timeout}),
+        department.click({timeout}),
+      ]);
+      assert.equal(response.status(),200);
+      await choice(entry.assignmentPicker.extraDepartment).waitFor({state:'visible',timeout});
+      result.expandedPickerMs = Math.round(performance.now() - expanded);
+      result.expandedPosts = posts;
+      assert.equal(posts, 1, 'Only the new selected company set should request choices');
+    }
+    result.status = 'observed';
+  } catch (error) {
+    result.failure = error.name === 'TimeoutError' ? 'timeout' : error.code === 'ERR_ASSERTION' ? 'assertion' : 'browser-failure';
+  } finally {
+    page.off('request',observe);
+    save();
+  }
 }
 
 async function verifyAttendanceWorkflowPreview(page, db, entry, report, save) {
@@ -1393,9 +1447,17 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
       if (entry.workflowPreviewLineage && rows.at(-1).outcome === 'usable-content') {
         await verifyAttendanceWorkflowPreview(page, db, entry, report, save);
       }
+      if (entry.assignmentPicker && rows.at(-1).outcome === 'usable-content') {
+        await verifyAttendanceAssignmentPicker(page, entry, report, save);
+      }
     } finally {
       await context.close();
     }
+  }
+  if (attendanceRecords) {
+    assert.equal(report.attendanceAssignmentPicker?.length,2);
+    assert(report.attendanceAssignmentPicker.every(row => row.status === 'observed'),
+      'Both saved workflow assignment pickers must be usable');
   }
   if (before) {
     assert.deepEqual(await payrollCorrectionState(db, fixture), before, 'Opening correction forms must preserve the run');
