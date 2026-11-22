@@ -17,6 +17,7 @@ export function messagesForClient(locale: Locale, scope: ClientCatalogueScope): 
     tp3: () => import(`./client-assets/tp3/${locale}.json`),
     approvals: () => import(`./client-assets/approvals/${locale}.json`),
     'payroll-dashboard': () => import(`./client-assets/payroll-dashboard/${locale}.json`),
+    assistant: () => import(`./client-assets/assistant/${locale}.json`),
   }[scope];
   const asset = loadAsset().then(bundle => bundle.default as AbstractIntlMessages);
   const messages = scope === 'full' || scope === 'home'

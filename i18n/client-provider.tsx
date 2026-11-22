@@ -16,6 +16,7 @@ export function CatalogClientProvider({locale,children,signedIn=false}:{locale:s
  if(signedIn&&pathname==='/')scope='home';
  if(signedIn&&pathname==='/approvals')scope='approvals';
  if(signedIn&&pathname==='/payroll')scope='payroll-dashboard';
+ if(signedIn&&pathname==='/assistant')scope='assistant';
  const messages=use(messagesForClient(selected,scope));
  return <NextIntlClientProvider locale={selected} messages={messages}>{children}</NextIntlClientProvider>;
 }

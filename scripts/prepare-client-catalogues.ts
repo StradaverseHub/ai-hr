@@ -29,6 +29,13 @@ const scopedClientNamespaces = {
   // Dashboard filter and row-menu copy is passed by the server. The confirmation
   // dialog resolves its own copy when an administrator opens a draft action.
   'payroll-dashboard': ['components.confirmSubmit'],
+  // The workspace retains the same client catalogue when changing tabs or selecting saved chats.
+  // Native review pages under /assistant/* continue to select their own catalogue.
+  assistant: [
+    'aiAsk', 'assistant', 'chatImport', 'components.confirmSubmit', 'components.drawer',
+    'employeeHome.calendar', 'employeeHome.taskNames', 'employeeHome.tasks', 'employeeHome.team',
+    'labelExcelRoundTrip', 'letters.reports',
+  ],
 };
 
 function projectCatalogue(messages: AbstractIntlMessages, namespaces: readonly string[]): AbstractIntlMessages {
