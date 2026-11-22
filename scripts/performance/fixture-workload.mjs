@@ -22,13 +22,18 @@ export function wholeSystemOrgRoster(fixture,tenantIndex){
  assert.equal(cohort.length,250,'Unexpected fictional traffic population');
  assert(cohort.every(actor=>actor.tenantId===tenant.tenantId),'Fictional traffic crossed the organisation tenant');
  const people=cohort.map(({employmentId,companyId,name,role})=>({employmentId,companyId,name,role}));
+ for(const worker of fixture.groupScaleWorkforce??[]){
+  if(worker.tenant===tenantIndex)people.push({
+   employmentId:worker.employmentId,companyId:worker.companyId,name:worker.name,role:'scale-fixture',
+  });
+ }
  const reward=tenant.rewardDraft;
  if(tenantIndex===0){
   const member=reward?.organisationMember;
   assert(member&&typeof member.employmentId==='string'&&member.employmentId===reward.employmentId&&
    member.companyId===reward.companyId&&member.companyId===tenant.companies[2].companyId&&
    member.name===REWARDS_ORG_FIXTURE_NAME,'Missing or invalid fictional Rewards organisation member');
-  assert(!fixture.users.some(actor=>actor.employmentId===member.employmentId),'Fictional Rewards member duplicates a traffic actor');
+  assert(!people.some(actor=>actor.employmentId===member.employmentId),'Fictional Rewards member duplicates a seeded employment');
   people.push({employmentId:member.employmentId,companyId:member.companyId,name:member.name,role:'reward-fixture'});
  }else{
   assert.equal(reward,undefined,'Fictional Rewards member crossed the organisation tenant');
