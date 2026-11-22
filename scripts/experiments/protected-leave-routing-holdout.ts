@@ -41,15 +41,54 @@ const pairedHoldout = z.object({
 
 const normalizedText = (value: string) => value.normalize('NFKC').toLowerCase().trim().replace(/\s+/gu, ' ');
 
+function countShape(value: number | null) {
+  if (value === null) return 'unavailable';
+  if (value === 0) return 'zero';
+  return [Math.sign(value), Number.isInteger(value)];
+}
+
+/** Preserve label equality and references while removing fictional names and numeric magnitudes. */
+function scenarioShape(input: z.infer<typeof scenario>) {
+  const labels = new Map<string, number>();
+  const labelRef = (value: string) => {
+    const key = normalizedText(value);
+    const existing = labels.get(key);
+    if (existing !== undefined) return existing;
+    const ref = labels.size;
+    labels.set(key, ref);
+    return ref;
+  };
+  const employments = input.employments.map(({ company, balances }) => [
+    labelRef(company),
+    balances.map(row => [labelRef(row.leaveType), countShape(row.available), countShape(row.taken),
+      countShape(row.pending), row.withheld]),
+  ]);
+  const matches = [...labels.keys()].filter(Boolean).sort((a, b) => b.length - a.length)
+    .map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const pattern = matches ? new RegExp(`(?<![\\p{L}\\p{N}])(?:${matches})(?![\\p{L}\\p{N}])`, 'gu') : null;
+  const mask = (value: string) => {
+    const text = normalizedText(value);
+    if (!pattern) return [text];
+    // Keep source references typed so literal input cannot impersonate an ordinal marker.
+    const parts: (number | string)[] = [];
+    let end = 0;
+    for (const match of text.matchAll(pattern)) {
+      const start = match.index!;
+      parts.push(text.slice(end, start), labels.get(match[0])!);
+      end = start + match[0].length;
+    }
+    return [...parts, text.slice(end)];
+  };
+  return {
+    question: mask(input.question),
+    clarification: input.clarification ? [input.clarification.slot, mask(input.clarification.answer)] : null,
+    employments,
+  };
+}
+
 function caseDigests(cases: z.infer<typeof casesSchema>) {
-  const digests = cases.map(({ scenario: input }) => routingDigest(['aihr.assistant.leave-evaluation-case.v1', {
-    question: normalizedText(input.question),
-    clarification: input.clarification ? [input.clarification.slot, normalizedText(input.clarification.answer)] : null,
-    employments: input.employments.map(({ company, balances }) => [
-      normalizedText(company),
-      balances.map(row => [normalizedText(row.leaveType), row.available, row.taken, row.pending, row.withheld]),
-    ]),
-  }])).sort();
+  const digests = cases.map(({ scenario: input }) =>
+    routingDigest(['aihr.assistant.leave-evaluation-case.v2', scenarioShape(input)])).sort();
   if (new Set(digests).size !== cases.length) throw Error('Use distinct fictional scenarios covering direct answers and deferrals.');
   return digests;
 }

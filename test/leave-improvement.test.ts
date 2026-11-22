@@ -749,7 +749,9 @@ describe('evaluator-owned leave routing suite', () => {
     const id = (suffix: string) => `11111111-1111-4111-8111-${suffix.padStart(12, '0')}`;
     const keys = [generateKeyPairSync('ed25519'), generateKeyPairSync('ed25519')];
     const secondCases = trialCases.map(item => ({ ...item, scenario: { ...item.scenario,
-      employments: item.scenario.employments.map(employment => ({ ...employment, company: employment.company + ' East' })),
+      employments: item.scenario.employments.map(employment => ({ ...employment,
+        balances: employment.balances.map(row => ({ ...row, pending: 0 })),
+      })),
     } }));
     const inputs = [pair(), pair(secondCases)];
     const fingerprints = inputs.map(input => describePairedLeaveRoutingCases(input.bytes, input.digest));
@@ -759,6 +761,19 @@ describe('evaluator-owned leave routing suite', () => {
     } })));
     expect(reflowed.digest).not.toBe(inputs[0].digest);
     expect(describePairedLeaveRoutingCases(reflowed.bytes, reflowed.digest).caseDigests).toEqual(fingerprints[0].caseDigests);
+    // Changing fictional labels and the count magnitudes does not create fresh scenario coverage.
+    const renamed = pair(trialCases.map(item => ({ ...item, scenario: { ...item.scenario,
+      clarification: item.scenario.clarification ? { ...item.scenario.clarification,
+        answer: item.scenario.clarification.answer + ' (East)' } : undefined,
+      employments: item.scenario.employments.map(employment => ({ ...employment, company: employment.company + ' (East)',
+        balances: employment.balances.map(row => ({ ...row, leaveType: row.leaveType + ' * special',
+          available: row.available === null ? null : row.available - 1, taken: row.taken + 10, pending: row.pending + 2 })),
+      })),
+    } })));
+    const renamedFingerprint = describePairedLeaveRoutingCases(renamed.bytes, renamed.digest);
+    expect(renamed.digest).not.toBe(inputs[0].digest);
+    expect(renamedFingerprint.caseDigests).toEqual(fingerprints[0].caseDigests);
+    expect(fingerprints[1].caseDigests.some(digest => renamedFingerprint.caseDigests.includes(digest))).toBe(false);
     const generationOptions = { temperature: 0, seed: 42, num_predict: 512 };
     const answerFormatDigest = routingDigest('json');
     const plan = {
@@ -796,10 +811,10 @@ describe('evaluator-owned leave routing suite', () => {
       { ...reports[0], regressions:1 }, keys[0].privateKey, now)).toThrow(refused);
     expect(() => signPairedLeaveEvaluation(committed.bytes, committed.digest, plan.evaluators[0].id,
       { ...reports[0], caseSetDigest: '0'.repeat(64) }, keys[0].privateKey, now)).toThrow(refused);
-    const shared = describePairedLeaveRoutingCases(reflowed.bytes, reflowed.digest);
+    const shared = renamedFingerprint;
     for (const caseDigests of [shared.caseDigests, [...fingerprints[1].caseDigests.slice(1), shared.caseDigests[0]]]) {
       const overlapping = freezePlan({ ...plan, evaluators: [plan.evaluators[0], {
-        ...plan.evaluators[1], holdoutDigest: reflowed.digest, caseDigests,
+        ...plan.evaluators[1], holdoutDigest: renamed.digest, caseDigests,
       }] });
       expect(() => signPairedLeaveEvaluation(overlapping.bytes, overlapping.digest, plan.evaluators[0].id,
         reports[0], keys[0].privateKey, now)).toThrow(refused);
