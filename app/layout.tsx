@@ -5,6 +5,7 @@ import { canConfigureIdentityEmail } from '@/lib/identity/email-settings';
 import { Plus_Jakarta_Sans, Geist_Mono, DM_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
 import { cookies, headers } from 'next/headers';
+import { after } from 'next/server';
 import {NextIntlClientProvider} from 'next-intl';
 import {CatalogClientProvider} from '@/i18n/client-provider';
 import { getLocale } from 'next-intl/server';
@@ -270,6 +271,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // interactive database capacity for the active page and the user's explicit actions.
   // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
   // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
+  // Once the response closes, passive reads still waiting for admission can no longer feed this render.
+  const approvalReadLifetime = new AbortController();
+  after(() => approvalReadLifetime.abort());
   const approvalFacts:Promise<ShellApprovalResult> = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
@@ -280,7 +284,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
     recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
     probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
-  }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
+  }, { deferClaimPreview: true }),undefined,requestReadScope()),approvalReadLifetime.signal).then((approvalSummary):ShellApprovalResult=>({
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,
@@ -289,8 +293,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
     hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
     hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycleInbox.approvalCount)>0,
-  }),():ShellApprovalResult=>{
-    console.error('Shared shell approval facts unavailable');
+  }), (error:unknown):ShellApprovalResult=>{
+    if (!approvalReadLifetime.signal.aborted || error !== approvalReadLifetime.signal.reason) {
+      console.error('Shared shell approval facts unavailable');
+    }
     return {state:'unavailable'};
   });
   return (
