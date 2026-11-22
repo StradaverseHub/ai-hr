@@ -9,7 +9,7 @@ import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vit
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
-import {updateLeaveType} from '../core/admin';
+import {createCompany,createDepartment,updateLeaveType} from '../core/admin';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {askAssistant} from '../core/assistant';
 import {eraseOwnAssistantHistory} from '../core/assistant-history-retention';
@@ -424,6 +424,54 @@ describe('actual Mine flags bind current provider input and historical source di
    .toEqual([{id:visible,answer:null,mode:'unavailable'}]);
   const [usage]=await owner.db.select().from(schema.assistantUsage).where(eq(schema.assistantUsage.tenantId,base.tenantId));
   expect(usage).toMatchObject({exchangeCount:1,inputTokens:0,outputTokens:0,cachedInputTokens:0});
+ });
+
+ it.each(['selected','sibling'] as const)('replays the own employment choice and withdraws it after a %s balance change',async change=>{
+  const {admin,ctx,employmentId}=await fixture();
+  const companyName='Fictional Second Leave Company';
+  const company=await createCompany(admin,{legalName:companyName,country:'MY',currency:'MYR'});
+  const department=await createDepartment(admin,{companyId:company.id,name:'Fictional Second Leave Department'});
+  const selected=await hireEmployee(admin,{person:{id:ctx.personId!},companyId:company.id,departmentId:department.id,
+   employmentType:'full_time',hiredOn:'2020-01-01'});
+  await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:selected.employmentId,
+   leaveTypeId:base.annualLeaveTypeId,entryType:'accrual',days:'47.25',effectiveOn:todayInKualaLumpur()});
+
+  const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_configuration,args)=>{
+   expect(args.tools).toEqual([]);
+   const turn=args.turns[0];
+   if(turn?.role!=='user')throw Error('Expected the closed leave catalogue.');
+   expect(turn.content).not.toMatch(/Fictional|113\.75|47\.25/);
+   const {local}=capturePrivateAssistantTask(JSON.parse(turn.content));
+   const fact=selectProtectedLeaveCount(local);
+   if(!fact)throw Error('Expected exactly one selected leave balance.');
+   return {...response,text:JSON.stringify({version:1,mode:'answer',blocks:[fact]})};
+  });
+  const history=async(exchangeId:string)=>{
+   const workspace=await loadAiWorkspace(ctx,{selectedExchangeId:exchangeId,includeGovernance:false});
+   return workspace.history.find(row=>row.id===exchangeId);
+  };
+  const prompt=await askAssistant(ctx,{question:'My leave balance'});
+  expect(prompt.turns).toBe(0);
+  expect((await history(prompt.exchangeId))?.grounded?.conversation?.plan).toEqual({version:1,mode:'clarify',slot:'employment'});
+  expect(transport).not.toHaveBeenCalled();
+
+  const answered=await askAssistant(ctx,{question:companyName,clarificationExchangeId:prompt.exchangeId});
+  expect(answered.turns).toBe(1);
+  expect(transport).toHaveBeenCalledOnce();
+  const visible=await history(answered.exchangeId);
+  expect(visible?.grounded?.mode).toBe('grounded');
+  expect(JSON.stringify(visible?.grounded)).toContain('47.25');
+  expect(JSON.stringify(visible?.grounded)).not.toContain('113.75');
+  const [stored]=await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id,answered.exchangeId));
+  expect(stored.continuesExchangeId).toBe(prompt.exchangeId);
+  expect(stored.disclosureReceipt).toBeTruthy();
+
+  // The historical receipt binds the whole canonical roster, including the unselected sibling.
+  await applyLeaveAdjustmentBatch(admin,{leaveTypeIds:[base.annualLeaveTypeId],
+   employmentIds:[change==='selected'?selected.employmentId:employmentId],targetMode:'individual',
+   effectiveOn:todayInKualaLumpur(),days:5,reason:'Fictional employment balance correction'});
+  expect(await history(answered.exchangeId)).toMatchObject({answer:null,grounded:{mode:'unavailable'}});
+  expect(transport).toHaveBeenCalledOnce();
  });
 
  it('evaluates the leave-count candidate on actual Assistant catalogues and declines a newly hidden value',async()=>{
