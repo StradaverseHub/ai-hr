@@ -620,6 +620,68 @@ async function loanRecordRoutes(db, fixture) {
   ]);
 }
 
+async function letterCatalogRecordRoutes(db, fixture) {
+  const [group,company,,,employee] = fixture.users;
+  const record=fixture.letterCatalogRecord;
+  assert(record && group.companyId===company.companyId && employee.companyId===company.companyId);
+  const [saved]=await db`
+    select v.name,v.status,t.code,f.key,f.definition->>'label' as label
+    from letter_template_version v
+    join letter_template t on t.id=v.template_id and t.tenant_id=v.tenant_id
+    join letter_template_field b on b.template_version_id=v.id and b.tenant_id=v.tenant_id
+    join letter_merge_field_version f on f.id=b.field_version_id and f.tenant_id=v.tenant_id
+    where v.id=${record.versionId}::uuid and v.tenant_id=${group.tenantId}::uuid
+      and v.company_id=${company.companyId}::uuid and f.id=${record.fieldId}::uuid
+  `;
+  assert.deepEqual(saved,{name:record.name,status:'draft',code:record.code,key:record.key,label:record.fieldLabel});
+  const templatePath='/letters/templates/'+record.versionId,fieldPath='/letters/fields/'+record.fieldId;
+  return [group,company].flatMap(actor=>[
+    {actor,template:'/letters/templates/[versionId]',path:templatePath,exactHeading:record.name,
+      witness:`a[href="${fieldPath}"]`,letterCatalogPreview:{employeeName:employee.name,employmentId:employee.employmentId,
+       text:record.salutation+employee.name,versionId:record.versionId}},
+    {actor,template:'/letters/templates/[versionId]/edit',path:templatePath+'/edit',
+      content:record.name,witness:`input[name="code"][value="${record.code}"]`},
+    {actor,template:'/letters/fields/[fieldId]',path:fieldPath,exactHeading:record.fieldLabel,
+      content:record.name+' ·'},
+  ]);
+}
+
+async function verifyLetterCatalogPreview(page, main, db, entry, row, remaining) {
+  const preview=entry.letterCatalogPreview;
+  const region=main.getByRole('region',{name:'Employee preview',exact:true});
+  const query=region.getByRole('textbox',{name:'Search choices',exact:true});
+  await query.fill(preview.employeeName,{timeout:remaining()});
+  const searchStarted=performance.now();
+  const options=page.waitForResponse(reply=>{
+    const url=new URL(reply.url());
+    return reply.request().method()==='GET' && url.pathname==='/letters/templates/options'
+      && url.searchParams.get('kind')==='employee' && url.searchParams.get('q')===preview.employeeName;
+  },{timeout:remaining()});
+  const [result]=await Promise.all([options,region.getByRole('button',{name:'Find',exact:true}).click({timeout:remaining()})]);
+  assert(result.ok());
+  const [chosen]= (await result.json()).rows.filter(item=>item.id===preview.employmentId);
+  assert(chosen);
+  await region.getByRole('button',{name:'Choose: '+chosen.label,exact:true}).click({timeout:remaining()});
+  row.letterEmployeeChoiceMs=Math.round(performance.now()-searchStarted);
+  const draftCount=async()=>{
+    const [result]=await db`select count(*)::int as total from letter_record l
+      join letter_generation_batch b on b.id=l.batch_id and b.tenant_id=l.tenant_id
+      where b.template_version_id=${preview.versionId}::uuid and l.tenant_id=${entry.actor.tenantId}::uuid`;
+    return result.total;
+  };
+  assert.equal(await draftCount(),0);
+  const started=performance.now();
+  const posted=page.waitForResponse(reply=>{
+    const request=reply.request();
+    return request.method()==='POST' && new URL(reply.url()).pathname===entry.path && Boolean(request.headers()['next-action']);
+  },{timeout:remaining()});
+  const [response]=await Promise.all([posted,region.getByRole('button',{name:'Preview saved version',exact:true}).click({timeout:remaining()})]);
+  assert.equal(response.status(),200);
+  await region.getByText(preview.text,{exact:true}).waitFor({state:'visible',timeout:remaining()});
+  row.letterPreviewMs=Math.round(performance.now()-started);
+  assert.equal(await draftCount(),0,'Preview must not issue a letter');
+}
+
 async function savedReportRecordRoutes(db, fixture) {
   const [group, company, , , employee] = fixture.users;
   const record = fixture.savedReportRecord;
@@ -1072,7 +1134,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, letterCatalogRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1085,6 +1147,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
     : loanRecords ? await loanRecordRoutes(db, fixture)
     : savedReportRecords ? await savedReportRecordRoutes(db, fixture)
+    : letterCatalogRecords ? await letterCatalogRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -1171,6 +1234,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             row.savedReportPageReadyMs=Math.round(performance.now()-started);
             row.step='saved-report-preview';
             await verifySavedReportPreview(page,main,entry,row,remaining);
+          }
+          if (entry.letterCatalogPreview && pass === 'first') {
+            row.letterPageReadyMs = Math.round(performance.now()-started);
+            row.step = 'letter-catalog-preview';
+            await verifyLetterCatalogPreview(page,main,db,entry,row,remaining);
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);

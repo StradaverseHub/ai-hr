@@ -68,6 +68,22 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_LETTER_CATALOG_RECORDS==='true'){
+  const {saveLetterField,saveLetterTemplate}=await source('core/letters.ts');
+  const companyId=company.companyId,key='performanceEmployeeName',fieldLabel='Fictional employee name';
+  const field=await saveLetterField(ctx,{companyId,active:true,definition:{
+   key,label:fieldLabel,description:'Name for the fictional preview',kind:'text',source:'employee.name',
+   required:true,editable:false,sensitive:false,
+  }});
+  const code='PERF-CATALOG-CHECK',name='Fictional confirmation template',salutation='Fictional confirmation for ';
+  const {versionId}=await saveLetterTemplate(ctx,{
+   companyId,code,name,category:'confirmation',effectiveFrom:fixture.today,
+   document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:salutation},{type:'field',key}]}]},
+   fieldVersionIds:[field.id],
+  });
+  fixture.letterCatalogRecord={versionId,fieldId:field.id,fieldLabel,code,name,salutation,key};
+ }
+
  if(env.PERF_SAVED_REPORT_RECORDS==='true'){
   const {saveCustomReport}=await source('core/custom-reports.ts');
   const employee=fixture.users[4];
