@@ -996,6 +996,8 @@ async function measureSurfaceProbe(fixture,surface){
      assert(milestones.every(result=>result.status==='fulfilled'),'A focused browser milestone did not become visible');
      await assertContentAvailable(page);
      if(surface==='workflow-list'){
+      await page.getByRole('cell',{name:'Fictional performance approval',exact:true}).first().waitFor({state:'visible',timeout:5000});
+      row.milestones.populatedRow=elapsed();
       const overtimePath=path+'?applicationType=self_overtime';
       const overtime=page.locator(`main a[href="${overtimePath}"]`);
       const tabStarted=performance.now();
@@ -2629,7 +2631,12 @@ try{
   else if(surfaceProbe==='command-delegation')await measureCommandDelegation(fixture);
   else if(tp3CatalogueProbe)await measureTp3Catalogue(fixture);
   else if(surfaceProbe==='leave-balances')await measureLeaveBalanceWindows(fixture);
-  else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
+  else if(surfaceProbe==='workflow'){
+   await measureAttendanceWorkflowEditor(fixture);
+   await measureSurfaceProbe(fixture,'workflow-list');
+   const visits=report.surfaceProbes['workflow-list'];
+   assert(visits.length===6&&visits.every(row=>row.status==='observed'),'The populated Attendance Workflow list or overtime tab did not open');
+  }
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
   else if(contentProbeRoutes.has(surfaceProbe)){
    await measureRoutes(fixture,contentProbeRoutes.get(surfaceProbe));
