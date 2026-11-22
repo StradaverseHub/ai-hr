@@ -2,7 +2,6 @@ import 'server-only';
 import { getTranslations } from 'next-intl/server';
 import { withSharedReadSnapshot, type SessionContext } from '@/db/client';
 import type { LifecycleTaskItem } from '@/lib/lifecycle-task-item';
-import { requestReadScope } from '@/lib/request-read-scope';
 import { settleReadGroup } from '@/lib/settle-read-group';
 import { contractInbox, contractSharedWorkPage, contractSharedPostingWorkPage } from '@/packs/contracts/service';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -16,7 +15,7 @@ import { v9EmailHoldInbox } from '@/packs/lifecycle/service';
 export async function lifecycleModuleInbox(
   ctx: SessionContext,
   navigation: Awaited<ReturnType<typeof lifecycleModuleNavigation>>,
-  options: { includeShared?: boolean } = {},
+  options: { includeShared?: boolean; readScope?: object } = {},
 ) {
   // Held On/Off Boarding emails: rechecked against Full case view and company access on every read.
   const sharedEnabled =
@@ -27,7 +26,7 @@ export async function lifecycleModuleInbox(
       () => navigation.contractStaff.page ? contractInbox(ctx) : { count: 0, items: [] },
       () => v9EmailHoldInbox(ctx).catch(() => ({ count: 0, items: [] })),
       () => sharedEnabled ? contractSharedPostingWorkPage(ctx, { limit: 20 }) : { items: [], total: 0 },
-    ]), undefined, requestReadScope()),
+    ]), undefined, options.readScope),
     // The assigned Contract queue takes the shared Access lock in its own bounded transaction.
     () => sharedEnabled
       ? contractSharedWorkPage(ctx, { limit: 20 })

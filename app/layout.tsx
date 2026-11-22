@@ -58,6 +58,7 @@ import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
+import {PAYROLL_READINESS_HREF} from '@/lib/pre-salary/items';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
 import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
@@ -241,7 +242,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
   ]);
   const onboardingAccess=onboardingNav.module;
-  const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
+  // Only Home and the personal payroll checklist use the Home data loaded by this scope.
+  const homeReadScope = pathname === '/' || pathname === PAYROLL_READINESS_HREF ? requestReadScope() : undefined;
+  const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation,{readScope:homeReadScope});
   const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
   const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
   const lifecycleMyTasksCount=onboardingQueue.length+lifecycleInbox.myTasksCount;
@@ -250,8 +253,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
   // The passive badge and task preview stream separately from navigation. Reserve
   // interactive database capacity for the active page and the user's explicit actions.
-  // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
-  // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
+  // Home and Payroll Readiness share their render snapshot. Other pages use a plain authorized snapshot.
   const approvalFacts:Promise<ShellApprovalResult> = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
@@ -262,7 +264,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
     recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
     probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
-  }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
+  }, { deferClaimPreview: true }),undefined,homeReadScope)).then((approvalSummary):ShellApprovalResult=>({
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,
