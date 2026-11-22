@@ -11,7 +11,8 @@
  * readiness within STATEMENT_BOUND statements (test/ai-centre-scale-equivalence.test.ts pins the per-company and per-month
  * reads that no longer grow). The populated Workers check pins the reminder count, the pre-existing
  * inventory projection and the scoped views for the same three personas. It does not time session resolution, React rendering, serialisation or the network. */
-import {mkdirSync,writeFileSync} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {sql} from 'drizzle-orm';
 import {join} from 'node:path';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 vi.mock('next/headers',()=>({cookies:async()=>({get:()=>undefined}),headers:async()=>new Headers()}));
@@ -85,9 +86,10 @@ type Inventory=Awaited<ReturnType<typeof aiInventoryView>>;
 const PERSONAS=['group','single','multi'] as const satisfies readonly Persona[];
 const REMINDER_ACTION='attendance.missing_clock.remind';
 const REMINDER_COUNT=500;
-function withoutReminderCounts(inventory:Inventory){
+function withoutNewActivity(inventory:Inventory){
  if(inventory.scope==='registry')return inventory;
- return {...inventory,rows:inventory.rows.map(row=>{
+ const {modelFreeAnswers30:_,...inventoryWithoutCount}=inventory;
+ return {...inventoryWithoutCount,rows:inventory.rows.map(row=>{
   const {reminders30:_,...runtime}=row.runtime;
   return {...row,runtime};
  })};
@@ -120,13 +122,24 @@ const agents:Page[]=[screen('overview'),screen('runs'),screen('allowances'),scre
 ];
 const PAGES:readonly Page[]=[readiness,loops,...loopPages,exceptions,...agents];
 
-let fixture:ScaleFixture,firstInventory:Inventory[];
+let fixture:ScaleFixture,firstInventory:Inventory[],emptyInventory:Inventory;
+let activityInstalled=false;
 beforeAll(async()=>{
  await migrateTestDb();await resetDb();
  const b=await seedBase();
  for(const code of ['assistant','claims','notifications','attendance','lifecycle','payroll'])await setModule(b.tenantId,code,'active');
  fixture=await buildScaleFixture(b);
  firstInventory=await Promise.all(PERSONAS.map(persona=>inventoryFor(fixture.personas[persona])));
+ const draft=readFileSync('docs/research/assistant-model-free-activity.draft.sql','utf8');
+ await owner.db.transaction(async tx=>{
+  for(const statement of draft.split('--> statement-breakpoint'))await tx.execute(sql.raw(statement));
+ });
+ activityInstalled=true;
+ emptyInventory=await inventoryFor(fixture.personas.group);
+ await owner.db.execute(sql`insert into app.assistant_model_free_answer_day (tenant_id,question_day,answer_count)
+  values (${b.tenantId}::uuid,(now() at time zone 'Asia/Kuala_Lumpur')::date,23),
+  (${b.tenantId}::uuid,(now() at time zone 'Asia/Kuala_Lumpur')::date-29,17),
+  (${b.tenantId}::uuid,(now() at time zone 'Asia/Kuala_Lumpur')::date-30,99)`);
  const employments=fixture.activeEmploymentIds.slice(0,REMINDER_COUNT);
  if(employments.length!==REMINDER_COUNT)throw Error('Scale fixture has too few active employments');
  await owner.db.insert(domainEvent).values(employments.map(employmentId=>({
@@ -135,7 +148,16 @@ beforeAll(async()=>{
   payload:{action:REMINDER_ACTION,stage:'2026-01-05'},
  })));
 },300_000);
-afterAll(closeAll);
+afterAll(async()=>{
+ try{
+  if(activityInstalled)await owner.db.transaction(async tx=>{
+   await tx.execute(sql`drop trigger assistant_record_model_free_answer on app.assistant_question_budget`);
+   await tx.execute(sql`drop function app._record_assistant_model_free_answer()`);
+   await tx.execute(sql`drop function app.assistant_model_free_answer_activity()`);
+   await tx.execute(sql`drop table app.assistant_model_free_answer_day`);
+  });
+ }finally{await closeAll();}
+});
 
 const median=(values:readonly number[])=>{const s=[...values].sort((x,y)=>x-y),m=(s.length-1)/2;return Math.round(((s[Math.floor(m)]+s[Math.ceil(m)])/2)*10)/10;};
 
@@ -172,12 +194,15 @@ function write(report:Record<string,unknown>,failures:readonly string[]){
 }
 
 describe('AI Centre pages at group scale (71 companies, ~1,000 employments)',()=>{
- it('adds reminder activity to the group inventory and preserves the other projections',async()=>{
+ it('adds reminders and model-free answers to the group inventory and preserves the other projections',async()=>{
   const populated=await Promise.all(PERSONAS.map(persona=>inventoryFor(fixture.personas[persona])));
   expect(firstInventory.map(view=>view.scope)).toEqual(['full','registry','registry']);
   expect(reminderCount(firstInventory[0])).toBe(0);
   expect(reminderCount(populated[0])).toBe(REMINDER_COUNT);
-  expect(populated.map(withoutReminderCounts)).toEqual(firstInventory.map(withoutReminderCounts));
+  expect(firstInventory[0]).toMatchObject({scope:'full',modelFreeAnswers30:null});
+  expect(emptyInventory).toMatchObject({scope:'full',modelFreeAnswers30:0});
+  expect(populated[0]).toMatchObject({scope:'full',modelFreeAnswers30:40});
+  expect(populated.map(withoutNewActivity)).toEqual(firstInventory.map(withoutNewActivity));
  });
  it('times each page read, counts its statements and names the slowest statements',async()=>{
   const report:Record<string,unknown>={};const lines:string[]=[];const failures:string[]=[];

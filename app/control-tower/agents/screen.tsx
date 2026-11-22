@@ -92,6 +92,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     }
     return totals;
   }, {prepared: 0, completed: 0}) : null;
+  const modelFreeAnswers30 = inventory?.scope === 'full' ? inventory.modelFreeAnswers30 : null;
   const reminders30 = inventory?.scope === 'full'
     ? inventory.rows.reduce((total, row) => total + (row.runtime.reminders30 ?? 0), 0) : null;
   const workerActivity = registry?.rows.filter(row => row.trigger.kind === 'schedule');
@@ -301,7 +302,9 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
             <dt className="font-medium">{workerOverview('assistantActions')}</dt>
             <dd className="text-muted-foreground">{actionActivity
               ? workerOverview(actionActivity.prepared === 0 ? 'actionCountsEmpty' : 'actionCounts', actionActivity)
-              : workerOverview('unavailable')}</dd>
+              : workerOverview('unavailable')}
+              {modelFreeAnswers30 !== null && <p className="mt-1">{workerOverview('modelFreeAnswers', {count: modelFreeAnswers30})}</p>}
+            </dd>
             {actionActivity && <dd><a href="#ai-inventory-actions" className={btnGhost}>{workerOverview('actionDetails')}</a></dd>}
           </div>
           <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">

@@ -17,7 +17,7 @@ import {aiInventoryComponents,registryRow,AI_DATA_REGISTER} from '../lib/ai/ai-i
 import {AI_FEATURES} from '../lib/ai/features';
 import workerOverviewMessages from '../app/control-tower/agents/worker-overview-messages.json';
 const copies={en,ms,zh,vi:viCopy,th,ta};
-const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true,alertsUnavailable:false,inventoryUnavailable:false,noModelActivity:false,actionActivity:true,reminders30:3}));
+const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true,alertsUnavailable:false,inventoryUnavailable:false,noModelActivity:false,actionActivity:true,modelFreeAnswers30:4 as number|null,reminders30:3}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:withAiCentre(state.locale,copies[state.locale] as any),namespace}),getLocale: async () => state.locale, getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/control-tower/agents/inventory',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
@@ -43,7 +43,7 @@ vi.mock('../core/ai-inventory',async()=>{
  const {aiInventoryComponents,registryRow,AI_DATA_REGISTER}=await import('../lib/ai/ai-inventory');
  const {AI_FEATURES}=await import('../lib/ai/features');
  const at=new Date('2026-10-29T01:30:00Z');
- const full=()=>({scope:'full',provider:{provider:'openrouter',model:'fictional/model'},
+ const full=()=>({scope:'full',modelFreeAnswers30:state.modelFreeAnswers30,provider:{provider:'openrouter',model:'fictional/model'},
   alerts:[{kind:'failure_rate',level:'warning',count:4,detail:'40%'},{kind:'switch_drift',level:'warning',count:1,detail:'performance_pm'}],
   register:AI_FEATURES.map(f=>({featureId:f.id,entry:AI_DATA_REGISTER[f.id]})),
   rows:aiInventoryComponents().map(c=>({...c,runtime:{switch:{kind:c.outOfBand?'platform':c.featureId?'policy':'none',on:c.featureId?true:null,state:c.featureId?'ready':null},
@@ -68,7 +68,7 @@ vi.mock('../core/ai-inventory',async()=>{
  };
 });
 import {AiManagementScreen} from '../app/control-tower/agents/screen';
-afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;state.inventoryUnavailable=false;state.noModelActivity=false;state.actionActivity=true;state.reminders30=3;});
+afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;state.inventoryUnavailable=false;state.noModelActivity=false;state.actionActivity=true;state.modelFreeAnswers30=4;state.reminders30=3;});
 const session={tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never;
 const renderPage=async(locale:keyof typeof copies,section:'features'|'runs',searchParams={})=>{
  const workerControls=state.group&&section==='features'?{
@@ -186,6 +186,16 @@ describe('AI inventory in six rendered locales',()=>{
   expect(Boolean(row.queryByRole('link',{name:'View action outcomes'}))).toBe(!inventoryUnavailable);
  });
 
+ it.each([4,0,null])('shows model-free answers only when their count is available (%s)',async count=>{
+  state.locale='en';
+  state.modelFreeAnswers30=count;
+  await renderPage('en','features');
+  const row=within(screen.getByText('Assistant actions · Last 30 days').parentElement!);
+  expect(row.getByText('11 prepared · 7 completed')).toBeInTheDocument();
+  if(count===null)expect(row.queryByText(/grounded answers without a model/)).toBeNull();
+  else expect(row.getByText(count===0?'No grounded answers without a model recorded':'4 grounded answers without a model')).toBeInTheDocument();
+ });
+
  it.each([3,0,null])('reports scheduled reminder receipts separately from model requests (%s)',async count=>{
   state.locale='en';
   state.reminders30=count??0;
@@ -243,6 +253,7 @@ describe('AI inventory in six rendered locales',()=>{
   await renderPage(locale,'features');
   expect(screen.queryByText(workerOverviewMessages[locale].checkScheduler)).toBeNull();
   expect(screen.queryByText(workerOverviewMessages[locale].automaticReminders)).toBeNull();
+  expect(screen.queryByText(/grounded answers without a model/)).toBeNull();
   expect(screen.getByRole('note')).toHaveTextContent(inv.registryNotice);
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.queryByRole('button',{name:new RegExp(inv.pauseAction)})).toBeNull();

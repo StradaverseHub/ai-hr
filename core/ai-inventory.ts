@@ -60,12 +60,22 @@ export type AiInventoryRuntime=Readonly<{
 export type AiInventoryFullRow=AiInventoryComponent&{runtime:AiInventoryRuntime};
 export type AiInventoryView=
  | Readonly<{scope:'registry';rows:readonly (AiRegistryRow&{actionPaused:boolean|null})[]}>
- | Readonly<{scope:'full';rows:readonly AiInventoryFullRow[];alerts:readonly AiAlert[];
+ | Readonly<{scope:'full';rows:readonly AiInventoryFullRow[];alerts:readonly AiAlert[];modelFreeAnswers30:number|null;
    register:readonly {featureId:AiFeatureId;entry:(typeof AI_DATA_REGISTER)[AiFeatureId]}[];provider:{provider:string;model:string}|null}>;
 
 type FeatureUse={feature_id:string;runs:string;failed:string;blocked:string;tokens:string;credits:string|null};
 type Outcome={action_kind:string;prepared:number;completed:number;refused:number;discarded:number;expired:number;reversed:number|null};
 type AuditRow={key:string;count:string;latest:string|Date|null};
+
+/** Unknown until the optional daily activity reader is installed. The database owns the 30-day window and scope. */
+async function modelFreeAnswerCountTx(tx:Tx):Promise<number|null>{
+ const [capability]=await tx.execute<{available:boolean}>(sql`
+  select to_regprocedure('app.assistant_model_free_answer_activity()') is not null as available`);
+ if(!capability?.available)return null;
+ const [row]=await tx.execute<{count:string}>(sql`select app.assistant_model_free_answer_activity()::text as count`);
+ const count=Number(row?.count);
+ return Number.isSafeInteger(count)&&count>=0?count:null;
+}
 
 /** Alert metrics for one tenant session; shared shape with scripts/ai-alerts.ts (which reads them as the owner). */
 async function runAlertMetricsTx(tx:Tx){
@@ -145,7 +155,7 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
     audit:auditOwn??auditFeature??{count:0,latestAt:null},
    }};
   });
-  return {scope:'full',rows,alerts:aiAlertsFromView(view,metrics),
+  return {scope:'full',rows,alerts:aiAlertsFromView(view,metrics),modelFreeAnswers30:await modelFreeAnswerCountTx(tx),
    register:AI_FEATURES.map(f=>({featureId:f.id,entry:AI_DATA_REGISTER[f.id]})),provider:view.provider};
  },{readOnlySnapshot:true});
 }
