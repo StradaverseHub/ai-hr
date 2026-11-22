@@ -34,9 +34,14 @@ export default async function ReviewSetupDetail({ params, searchParams }: { para
   const { preparation, basis, checks, canEdit, access } = value;
   const released = !access.required || preparation.state === 'released';
   const editable = canEdit && !released;
-  const [review, governance, senior] = await Promise.all([getRewardUnit(s, unitId), getRewardUnitGovernance(s, unitId), access.isGr ? getRewardSeniorMembership(s, unitId).catch(() => null) : Promise.resolve(null)]);
-  const locale = await getLocale();
   const step: Step = sp.step === 'history' || (steps as readonly string[]).includes(sp.step ?? '') ? sp.step as Step : steps.find(x => preparation.steps[x]?.basis !== basis) ?? 'snapshot';
+  const needsGovernance = step === 'senior' || step === 'budget';
+  const [review, governance, senior] = await Promise.all([
+    getRewardUnit(s, unitId),
+    needsGovernance ? getRewardUnitGovernance(s, unitId) : null,
+    step === 'senior' && access.isGr && editable ? getRewardSeniorMembership(s, unitId).catch(() => null) : null,
+  ]);
+  const locale = await getLocale();
   const fields = (returnStep: Step) => <><input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={value.revision} /><input type="hidden" name="basis" value={basis} /><input type="hidden" name="returnStep" value={returnStep} /></>;
   const done = (x: RewardPreparationStep) => !access.required || (preparation.steps[x]?.basis === basis && (!checks || checks[x]));
   const state = (x: RewardPreparationStep) => !access.required ? 'beforeTracking' : done(x) ? 'done' : preparation.steps[x] || checks?.[x] ? 'pending' : 'notStarted';
@@ -65,8 +70,8 @@ export default async function ReviewSetupDetail({ params, searchParams }: { para
         <p className="text-sm">{t('window.dates', { from: day(value.exclusionWindow.from), to: day(value.exclusionWindow.to) })}</p>
         {value.exclusionWindow.outsideYear && <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">{t('window.outside', { year: value.year })} {access.isGr && <Link href={`/admin/rewards/${unitId}`} className="font-medium underline">{t('window.fix')}</Link>}</p>}
         <PayWindowExcluded unitId={unitId} revision={value.revision} canEdit={editable} window={{ from: review.unit.policy.blockedFrom, to: review.unit.policy.blockedTo }} rows={review.rows} kept={review.unit.policy.payWindowKeep ?? {}} /></div>}
-      {x === 'senior' && <div className="space-y-4">{senior && editable && <SeniorMembership key={senior.revision} value={senior} />}<UnitGovernance value={{ ...governance, canEdit: editable }} branch={value.branch} part="senior" /></div>}
-      {x === 'budget' && <div className="space-y-3 [&_button]:h-auto [&_button]:min-h-9 [&_button]:max-w-full [&_button]:whitespace-normal">
+      {x === 'senior' && governance && <div className="space-y-4">{senior && editable && <SeniorMembership key={senior.revision} value={senior} />}<UnitGovernance value={{ ...governance, canEdit: editable }} branch={value.branch} part="senior" /></div>}
+      {x === 'budget' && governance && <div className="space-y-3 [&_button]:h-auto [&_button]:min-h-9 [&_button]:max-w-full [&_button]:whitespace-normal">
         {!access.isGr && <p className="text-sm text-muted-foreground">{t('detail.patReadOnly')} <Link href="/admin/rewards/pat-inputs" className="text-primary hover:underline">{nav('rewardsPatInputs')}</Link></p>}
         {!access.isGr && value.budgetInputs && <dl className="grid gap-3 text-sm sm:grid-cols-2"><div><dt>{rt('governance.forecast')}</dt><dd>{money(value.budgetInputs.forecastCents)}</dd></div><div><dt>{rt('governance.actual')}</dt><dd>{money(value.budgetInputs.actualCents)}</dd></div><div><dt>{rt('governance.target')}</dt><dd>{money(value.budgetInputs.targetCents)}</dd></div><div><dt>{rt('governance.targetMonths')}</dt><dd>{(value.budgetInputs.targetMonthsBp / 10000).toLocaleString(locale)}</dd></div></dl>}
         <UnitGovernance value={{ ...governance, canEdit: editable }} branch={value.branch} part="budget" /></div>}
