@@ -18,9 +18,11 @@ const build = inspectCiBuildPacket(packet, {
 const hash = file => createHash('sha256').update(readFileSync(file)).digest('hex');
 assert.equal(hash('pnpm-lock.yaml'), build.lockSha256);
 assert.equal(hash('package.json'), build.packageSha256);
+const source = process.cwd();
+const moved = build.buildSourcePath !== source;
 execFileSync('python3', [
-  '.github/ci/build-bundle.py', 'unpack-with-origin',
+  '.github/ci/build-bundle.py', moved ? 'unpack-with-origin' : 'unpack',
   join(packet, 'bytes/build-bundle.tar.gz'), join(packet, 'bytes/build-bundle-files.json'),
-  '.next', process.cwd(), build.buildSourcePath,
+  '.next', source, ...(moved ? [build.buildSourcePath] : []),
 ], {stdio: 'inherit'});
 assert.equal(readFileSync('.next/BUILD_ID', 'utf8').trim(), build.nextBuildId);
