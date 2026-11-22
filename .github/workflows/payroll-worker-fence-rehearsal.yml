@@ -30,11 +30,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          archive="$RUNNER_TEMP/payroll-ci-build.zip"
+          private="$(mktemp -d "$RUNNER_TEMP/payroll-fence.XXXXXX")"
+          archive="$private/payroll-ci-build.zip"
           gh api repos/StradaverseHub/ai-hr/actions/artifacts/14742163181/zip > "$archive"
-          packet="$RUNNER_TEMP/payroll-ci-packet"
+          packet="$private/payroll-ci-packet"
           python3 automation/.github/ci/build-transport-extract.py "$archive" "$packet" 9cf9c07de406518baa8cab6ccadca0124e4fce374e70fe6376ad3aacdf38616f
           jq -e '.nextBuildId=="pDe2JKsQG-bY3fuGOGSVx"' "$packet/successful-build.json" >/dev/null
+          chmod 0700 "$PWD/source"
           python3 automation/.github/ci/build-bundle.py unpack-with-origin "$packet/bytes/build-bundle.tar.gz" "$packet/bytes/build-bundle-files.json" "$PWD/source/.next" "$PWD/source" /home/runner/work/ai-hr/ai-hr/source
       - name: Run actual four-root fences six times with a two-CPU limit and 4 GiB memory limit
         run: |
