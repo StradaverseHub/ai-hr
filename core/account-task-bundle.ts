@@ -110,11 +110,19 @@ export function accountTaskStatementSections(tx:Tx,ctx:SessionContext,modules:Ac
   ['onboarding',personal&&modules.lifecycle&&lifecycle?onboardingAssignedTasksBundleSql(ctx):none],
  ];
 }
-/** The caller's own employments (core/approvals.ts callerOwnEmploymentIdsSql), read once for every section that tests an
- * employment against the caller's person. */
 // A cast, not `= any(sub-select)`: the sub-select's one row is the array itself.
 const ACCOUNT_TASK_OWN=sql`cast((select task_caller.own_ids from task_caller) as uuid[])`;
-export const accountTaskCallerSql=(ctx:SessionContext)=>sql`task_caller as materialized (select ${callerOwnEmploymentIdsSql(ctx)} as own_ids)`;
+const canonicalPersonUuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+
+/** Resolve the caller's RLS-visible employments once for every task section. */
+export function accountTaskCallerSql(ctx:SessionContext):SQL{
+ const personId=ctx.personId;
+ // Canonical IDs can use the existing UUID index. Preserve the text comparison for other inputs.
+ const own=personId&&canonicalPersonUuid.test(personId)
+  ?sql`array(select e.id from public.employment e where e.person_id=${personId}::uuid)`
+  :callerOwnEmploymentIdsSql(ctx);
+ return sql`task_caller as materialized (select ${own} as own_ids)`;
+}
 /** The statement itself: the assigned-work principal proof, then every section. */
 export function accountTaskStatement(sections:readonly [string,SQL][],ctx:SessionContext):SQL{
  const person=ctx.personId??null;
