@@ -4,6 +4,7 @@ import {getLocale,getTranslations} from 'next-intl/server';
 import {Card,inputCls,btnPrimary} from '../ui';
 import type {agentReviewWorkspaceTx} from '../../core/module-agent-releases';
 import {PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_HOLDOUT_LOCALES} from '../../lib/ai/module-agent-prompt-candidate';
+import {ASSISTANT_LOCAL_LEAVE_VARIANT} from '../../lib/ai/assistant-conversation-candidate';
 import {AGENT_MODULE_CODES} from '../../lib/ai/module-agents';
 import {OwnClearForm} from './own-clear';
 import {createAgentCandidateAction,evaluateAgentCandidateAction,promoteAgentCandidateAction,rollbackAgentCandidateAction,tryAgentCandidateAction,createConversationCandidateAction,evaluateConversationCandidateAction,promoteConversationCandidateAction,eraseConversationMetadataAction} from '../../app/assistant/agent-review-actions';
@@ -78,6 +79,38 @@ async function ConversationCandidateReview({view}:{view:View}){
   {reviewable.length>0&&<><form action={evaluateConversationCandidateAction} className="space-y-2"><label className="block text-sm">{t('choose')}<select name="candidateId" className={`${inputCls} mt-1 min-h-11 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{t('record',{version:row.version})}</option>)}</select></label><label className="flex items-start gap-2 text-sm"><input type="checkbox" name="consented" value="yes" required className="mt-1"/>{t('consent')}</label><ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('evaluate')}</ActionButton></form>
    <form action={promoteConversationCandidateAction} className="space-y-2"><label className="block text-sm">{t('choose')}<select name="candidateId" className={`${inputCls} mt-1 min-h-11 w-full`}>{reviewable.map(row=><option key={row.id} value={row.id}>{t('record',{version:row.version})}</option>)}</select></label><div className="grid grid-cols-2 gap-3"><label>{shared('maxJobs')}<input className={inputCls} name="maxJobs" type="number" min={1} max={100} defaultValue={5} required/></label><label>{shared('hours')}<input className={inputCls} name="hours" type="number" min={1} max={24} defaultValue={1} required/></label></div><p className="text-xs text-muted-foreground">{t('condition')}</p><ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('promote')}</ActionButton></form></>}
   {promotions.map(row=><form key={row.id} action={rollbackAgentCandidateAction} className="flex flex-wrap items-center gap-2 text-sm"><input type="hidden" name="promotionId" value={row.id}/><span>{t('record',{version:row.version})} · {row.used}/{row.maximum}</span>{!row.retired&&<ActionButton type="submit" className="min-h-11 px-3 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{shared('rollback')}</ActionButton>}</form>)}
+  {(view.localLeaveRegistrationAvailable||view.localLeaveTrials.length>0)&&<section className="space-y-3 border-t pt-3" aria-label={t('leaveTrial.title')}>
+   <h4 className="font-medium">{t('leaveTrial.title')}</h4>
+   <p className="text-sm text-muted-foreground">{t('leaveTrial.scope')}</p>
+   {view.localLeaveRegistrationAvailable&&<form action={createConversationCandidateAction}>
+    <input type="hidden" name="version" value={view.nextVersion}/>
+    <input type="hidden" name="variant" value={ASSISTANT_LOCAL_LEAVE_VARIANT}/>
+    <ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('leaveTrial.register')}</ActionButton>
+   </form>}
+   <ul className="space-y-3">{view.localLeaveTrials.map(row=><li key={row.id} className="space-y-2 text-sm">
+    <p className="font-medium">{t('leaveTrial.record',{version:row.version})}</p>
+    <p>{t(`leaveTrial.${row.state}`)}</p>
+    {row.evaluationBinding&&<details className="text-xs">
+     <summary className="min-h-11 cursor-pointer py-3">{t('leaveTrial.binding')}</summary>
+     <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-all rounded-md border p-3">{JSON.stringify(row.evaluationBinding,null,2)}</pre>
+    </details>}
+    {row.state==='ready'&&<form action={promoteConversationCandidateAction} className="flex flex-wrap items-end gap-3">
+     <input type="hidden" name="candidateId" value={row.id}/>
+     <label>{shared('maxJobs')}<input className={inputCls} name="maxJobs" type="number" min={1} max={100} defaultValue={5} required/></label>
+     <label>{shared('hours')}<input className={inputCls} name="hours" type="number" min={1} max={24} defaultValue={1} required/></label>
+     <ActionButton type="submit" className={`${btnPrimary} min-h-11`}>{t('leaveTrial.start')}</ActionButton>
+    </form>}
+    {row.promotion&&<form action={rollbackAgentCandidateAction} className="flex flex-wrap items-center gap-2">
+     <input type="hidden" name="promotionId" value={row.promotion.id}/>
+     <span>{t('leaveTrial.usage',{used:row.promotion.used,maximum:row.promotion.maximum})}</span>
+     {!row.promotion.retired&&<ActionButton type="submit" className="min-h-11 px-3 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{shared('rollback')}</ActionButton>}
+    </form>}
+    {row.promotion?.ownOutcomes&&<div className="space-y-1 text-xs text-muted-foreground">
+     <p>{t('leaveTrial.outcomes',row.promotion.ownOutcomes)}</p>
+     <p>{t('leaveTrial.retention')}</p>
+    </div>}
+   </li>)}</ul>
+  </section>}
   <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('erase')} className="min-h-11 text-sm underline"/>
  </section>;
 }

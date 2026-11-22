@@ -10,7 +10,7 @@ import type {ConverseArgs} from '../lib/ai/types';
 import {captureAgentReadBatch} from '../lib/ai/agent-read-batch';
 import {routingDigest} from '../lib/ai/module-agent-routing';
 import {ASSISTANT_CONVERSATION_HOLDOUTS} from '../lib/ai/assistant-conversation-holdouts';
-import {ASSISTANT_CONVERSATION_BASELINE,assistantConversationCandidateSystem,captureAssistantConversationCandidate,nextAssistantConversationArms,scoreAssistantConversationTrial,type ConversationArm,type ConversationToolObservation,type ConversationCaseResult} from '../lib/ai/assistant-conversation-candidate';
+import {ASSISTANT_CONVERSATION_BASELINE,ASSISTANT_LOCAL_LEAVE_VARIANT,assistantConversationCandidateSystem,captureAssistantConversationCandidate,nextAssistantConversationArms,scoreAssistantConversationTrial,type ConversationArm,type ConversationToolObservation,type ConversationCaseResult} from '../lib/ai/assistant-conversation-candidate';
 import type {AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
 import {assistantProposalCatalogue,syntheticAssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
 // The actual product metadata is offered, but its executable tools are NEVER called here.
@@ -21,7 +21,9 @@ export type ConversationHarnessCheckpoint=Readonly<{arm:'baseline'|'candidate';c
 /** Checkpoint is a private source-owner closure, not an HTTP argument. Its storage write rechecks
  * actual actor/provider/candidate and independently seals this exact bounded arm before continuing. */
 export async function executeAssistantConversationHoldout(configuration:unknown,cfg:ResolvedAiConfig,binding:ConversationHarnessBinding,prior:readonly ConversationArm[],checkpoint:(value:ConversationHarnessCheckpoint)=>Promise<void>){
- const candidate=captureAssistantConversationCandidate(configuration),queue=nextAssistantConversationArms(ASSISTANT_CONVERSATION_HOLDOUTS,prior,binding);
+ const candidate=captureAssistantConversationCandidate(configuration);
+ if(candidate.variant===ASSISTANT_LOCAL_LEAVE_VARIANT)throw Error('Paired leave routing evaluation is required.');
+ const queue=nextAssistantConversationArms(ASSISTANT_CONVERSATION_HOLDOUTS,prior,binding);
  let calls=0,completed=0,unavailable=0;
  for(const request of queue){
   // Three actual round trips cover balance->explanation->terminal. Reserve remaining CALL capacity,

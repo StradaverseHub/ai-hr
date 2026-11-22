@@ -20865,7 +20865,29 @@
         "progress": "已完成 {completed}/{total} 组配对案例；已知 {failures} 个方案失败。",
         "unknown": "未知／尚未验证",
         "noCandidates": "暂无对话候选方案。",
-        "metrics": "正确 {correct}；安全失败 {security}。p50/p95 为 {p50}/{p95} 毫秒。输入／输出 {input}/{output} 个令牌。账号额度费用 {credits}。"
+        "metrics": "正确 {correct}；安全失败 {security}。p50/p95 为 {p50}/{p95} 毫秒。输入／输出 {input}/{output} 个令牌。账号额度费用 {credits}。",
+        "leaveTrial": {
+          "title": "休假余额试用",
+          "scope": "测试候选方案所有者在仅有一段在职记录时能否获得直接答案。启动试用需要两份独立签署的评估。",
+          "register": "登记休假余额试用候选方案",
+          "binding": "独立评估所需信息",
+          "record": "试用候选方案 v{version}",
+          "earlierBuild": "候选方案属于较早的构建版本。",
+          "needsEvidence": "正在等待已签署的评估证据。",
+          "needsApprover": "证据已核验。正在等待指定审批人。",
+          "providerUnavailable": "无法核验已配置的模型提供方。",
+          "ready": "证据已核验。您可以启动试用。",
+          "withdrawn": "试用证据不可用。新问题采用基准方案。",
+          "approvalUnavailable": "无法核验已记录的试用审批。",
+          "windowOpen": "候选方案所有者的试用期已开启。",
+          "expired": "试用已过期。",
+          "exhausted": "试用已达到问题数量上限。",
+          "rolledBack": "试用已回滚。",
+          "start": "启动休假余额试用",
+          "outcomes": "我的试用活动：保留 {retainedExchanges} 次对话 · {modelFreeAnswers} 条回答未使用模型 · {modelResponses} 次对话收到模型响应。",
+          "retention": "清除历史记录或试用元数据后，这些数字可能减少。",
+          "usage": "已受理 {used} 个试用问题，上限为 {maximum} 个"
+        }
       },
       "historyPrivacy": {
         "title": "你的聊天记录",

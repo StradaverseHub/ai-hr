@@ -1,5 +1,5 @@
-/** Authored UNRUN. Requires the normally installed coordinated conversation draft after0642.
- * Only provider transport is fictional; actual app principal, root/admission, custody and DB run.
+/** Requires the normally installed conversation migrations.
+ * Provider transport and disclosure review are fictional; principal, root/admission and custody are native.
  * Deliberately wrong mocked baseline output exercises promotion rules, NOT real model quality. */
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -7,12 +7,15 @@ import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vit
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {converse} from '../lib/ai';
 import {preparePrivateAiTask} from '../core/ai-governance';
+import {askAssistant} from '../core/assistant';
 import {ASSISTANT_PRIVATE_CONTRACT,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {resolveActiveAiConfig} from '../core/ai-config';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
 import {openaiAdapter} from '../lib/ai/providers/openai';
+import * as reviews from '../lib/ai/provider-data-reviews';
+import {AiPrivacyGateError} from '../lib/ai/provider-privacy-error';
 import {defaultModelFor} from '../lib/ai/registry';
 import {decryptSecret} from '../lib/ai/crypto';
 import * as spend from '../lib/ai/spend-allocation';
@@ -24,7 +27,11 @@ import {installSyntheticSpendCapability} from './ai-spend-fixture';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});afterEach(()=>vi.restoreAllMocks());
-beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-conversation-secret');vi.stubEnv('OPENAI_API_KEY','fictional-conversation-key');vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
+beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-conversation-secret');vi.stubEnv('OPENAI_API_KEY','fictional-conversation-key');vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');
+ vi.spyOn(reviews,'assertProviderDataContractReviewed').mockImplementation(contract=>{
+  if(contract!==ASSISTANT_PRIVATE_CONTRACT&&contract!=='synthetic_assistant_conversation_v1')throw new AiPrivacyGateError('unreviewed');
+ });
+ await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
 async function conversationActors(){const make=async(name:string)=>{const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}),userId=await createAppUser(base.tenantId,hired.personId,'hr_admin');await grantAssistant(adminCtx(base),{appUserId:userId});return{...await entitledCtx(base,['hr_admin']),userId,personId:hired.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}],employmentId:hired.employmentId} satisfies SessionContext&{employmentId:string};};return{author:await make('Fictional Conversation Author'),reviewer:await make('Fictional Conversation Reviewer'),second:await make('Fictional Conversation Second Reviewer'),promoter:await make('Fictional Conversation Independent Promoter')};}
 const consent=()=>({synthetic:true as const,maxRequests:12,sourceDigest:MODULE_AGENT_SOURCE_DIGEST});
 async function candidate(){const a=await conversationActors(),created=await createConversationAgentCandidate(a.author,{version:1,configuration:{kind:'assistant_answer_prompt_v1',variant:'focused_v1'}});return{...a,...created};}
@@ -44,14 +51,52 @@ async function dispatchMain(selected:Awaited<ReturnType<typeof prepare>>){
 async function persist(tx:Tx,ctx:SessionContext,capability:Parameters<typeof completeAssistantConversationStrategyTx>[2]){await recheckAssistantConversationStrategyTx(tx,ctx,capability);const id=randomUUID();await tx.execute(sql`insert into public.assistant_exchange(id,tenant_id,app_user_id,question,answer) values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,'fictional human question','fictional audit-only terminal')`);await completeAssistantConversationStrategyTx(tx,ctx,capability,id);return id;}
 async function finishEvaluation(ctx:SessionContext,id:string){for(let batch=0;batch<2*ASSISTANT_CONVERSATION_HOLDOUTS.length;batch++){const report=await evaluateConversationAgentCandidate(ctx,{candidateId:id,consent:consent()});if(report.state==='complete')return report;}throw Error('Incomplete synthetic lifecycle fixture');}
 describe('actual main conversation governance and inflight custody',()=>{
- it('uses a promoted strategy only while it was evaluated against the current AI source; a stale one falls back to the standard strategy',async()=>{const a=await candidate();await transport(a.author,true);await finishEvaluation(a.reviewer,a.candidateId);await finishEvaluation(a.second,a.candidateId);const promotion=await promoteConversationAgentCandidate(a.promoter,{candidateId:a.candidateId,maxJobs:2,hours:1});
+ it('falls back on stale source and after a quality rollback during an actual Assistant question',async()=>{
+  const a=await candidate(),sent=await transport(a.author,true);
+  await finishEvaluation(a.reviewer,a.candidateId);
+  await finishEvaluation(a.second,a.candidateId);
+  const promotion=await promoteConversationAgentCandidate(a.promoter,{candidateId:a.candidateId,maxJobs:3,hours:1});
   const current=await prepare(a.author);expect(current.provenance).toMatchObject({mode:'promoted',version:1});retireAssistantConversationStrategyCapability(current.capability);
   // The module-agent source digest moved after evaluation: the promotion is skipped, not refused, and no further job
   // is consumed (the one use is the current preparation above).
   await owner.db.execute(sql`update public.ai_agent_candidate set source_digest=${'0'.repeat(64)} where id=${a.candidateId}::uuid`);
   const stale=await prepare(a.author);expect(stale.provenance.mode).toBe('baseline');retireAssistantConversationStrategyCapability(stale.capability);
   const[row]=await owner.db.execute<{used:number}>(sql`select used_jobs::int as used from public.ai_agent_promotion where id=${promotion.promotionId}::uuid`);expect(row.used).toBe(1);
-  await rollbackAssistantPromotion(a.promoter,{promotionId:promotion.promotionId,reason:'human'});},300000);
+  await owner.db.execute(sql`update public.ai_agent_candidate set source_digest=${MODULE_AGENT_SOURCE_DIGEST} where id=${a.candidateId}::uuid`);
+
+  const variants:string[]=[];
+  sent.mockImplementation(async(_cfg,args)=>{
+   const first=args.turns[0];
+   if(first?.role!=='user')throw Error('Expected a protected catalogue');
+   const catalogue=JSON.parse(first.content) as {
+    strategy:string;reads:{read:number;cards:{card:number;facts:{fact:number;available:boolean}[]}[]}[];
+   };
+   for(const read of catalogue.reads)for(const card of read.cards){
+    const fact=card.facts.find(candidate=>candidate.available);
+    if(!fact)continue;
+    variants.push(catalogue.strategy);
+    if(variants.length===1)await rollbackAssistantPromotion(a.promoter,{promotionId:promotion.promotionId,reason:'quality_regression'});
+    return {text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:read.read,card:card.card,fact:fact.fact}]}),
+      stop:'end',toolCalls:[],usage:{inputTokens:5,outputTokens:7,cachedInputTokens:0},usageReported:true};
+   }
+   throw Error('Expected a nonempty native capability catalogue');
+  });
+  const ask=()=>askAssistant(a.author,{question:'show assistant capabilities'});
+  await expect(ask()).rejects.toMatchObject({code:'provider_error'});
+  expect(variants).toEqual(['focused_v1']);
+  const released=await owner.db.execute(sql`select e.question,e.answer,e.content_retired_at is not null as retired,
+    q.accounted_tokens::int as tokens
+    from public.assistant_exchange e join app.assistant_question_budget q on q.tenant_id=e.tenant_id and q.exchange_id=e.id
+    where e.tenant_id=${base.tenantId}::uuid and e.app_user_id=${a.author.userId}::uuid`);
+  expect([...released]).toEqual([{question:'',answer:null,retired:true,tokens:12}]);
+
+  await expect(ask()).resolves.toMatchObject({turns:1,stop:'end'});
+  expect(variants).toEqual(['focused_v1','baseline_v1']);
+  const recorded=await owner.db.execute(sql`select p.used_jobs::int as used,p.max_jobs::int as maximum,r.reason
+    from public.ai_agent_promotion p join public.ai_agent_rollback r on r.tenant_id=p.tenant_id and r.promotion_id=p.id
+    where p.id=${promotion.promotionId}::uuid`);
+  expect([...recorded]).toEqual([{used:2,maximum:3,reason:'quality_regression'}]);
+ },300000);
  it('requires explicit bounded consent and a different actual evaluator before any model call, then retains exact passing arms',async()=>{const a=await candidate(),sent=await transport(a.author);await expect(evaluateConversationAgentCandidate(a.author,{candidateId:a.candidateId,consent:consent()})).rejects.toThrow();await expect(evaluateConversationAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:{...consent(),maxRequests:24}})).rejects.toThrow();expect(sent).not.toHaveBeenCalled();const first=await evaluateConversationAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});expect(first.attemptedCalls).toBeLessThanOrEqual(12);expect(first.attemptedCalls).toBe(sent.mock.calls.length);expect(first.state).toBe('incomplete');const rows=await owner.db.execute<{id:string;receipt:string}>(sql`select id,receipt from public.ai_assistant_answer_evaluation_arm where passed order by id`);expect(rows.length).toBeGreaterThan(0);sent.mockClear();await evaluateConversationAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});for(const row of rows){const[current]=await owner.db.execute<{receipt:string}>(sql`select receipt from public.ai_assistant_answer_evaluation_arm where id=${row.id}::uuid`);expect(current.receipt).toBe(row.receipt);}expect(sent.mock.calls.length).toBeLessThanOrEqual(12);});
  it('checkpoints a rejected tool attempt as a closed marker without retaining model argument prose or returning per-arm payloads',async()=>{const a=await candidate(),sent=await transport(a.author);sent.mockImplementationOnce(async()=>({text:'',stop:'tool_use',toolCalls:[{id:'fictional-rejected',name:'my_module_work',input:{module:'employees',personId:'MODEL-PRIVATE-PROSE'}}],usage:{inputTokens:1,outputTokens:1,cachedInputTokens:0},usageReported:true}));const report=await evaluateConversationAgentCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});expect(report).not.toHaveProperty('changed');const rows=await owner.db.execute<{id:string;receipt:string}>(sql`select id,receipt from public.ai_assistant_answer_evaluation_arm where not passed`);expect(rows.length).toBeGreaterThan(0);const body=JSON.parse(decryptSecret(rows[0].receipt,JSON.stringify(['ai-hr.module-agent.v1','conversation-arm',base.tenantId,rows[0].id])));expect(body.result.securityFailure).toBe(true);expect(body.result.tools).toContainEqual({name:'unavailable_source',input:null});expect(JSON.stringify(body)).not.toContain('MODEL-PRIVATE-PROSE');});
  it('reaches the real missing certified monetary capability guard and records no network call or fabricated passing arm',async()=>{const a=await candidate();

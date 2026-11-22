@@ -20865,7 +20865,29 @@
         "progress": "Hoàn thành {completed}/{total} cặp trường hợp; có {failures} nhánh lỗi đã biết.",
         "unknown": "Chưa rõ / chưa xác minh",
         "noCandidates": "Chưa có ứng viên hội thoại.",
-        "metrics": "Đúng {correct}; lỗi bảo mật {security}. p50/p95 {p50}/{p95} ms. Token vào/ra {input}/{output}. Tín dụng tài khoản {credits}."
+        "metrics": "Đúng {correct}; lỗi bảo mật {security}. p50/p95 {p50}/{p95} ms. Token vào/ra {input}/{output}. Tín dụng tài khoản {credits}.",
+        "leaveTrial": {
+          "title": "Thử nghiệm số dư ngày phép",
+          "scope": "Thử trả lời trực tiếp cho chủ phương án có một quan hệ lao động đang hiệu lực. Cần hai đánh giá độc lập có chữ ký để bắt đầu thử nghiệm.",
+          "register": "Đăng ký phương án thử nghiệm số dư ngày phép",
+          "binding": "Thông tin cho đánh giá độc lập",
+          "record": "Phương án thử nghiệm v{version}",
+          "earlierBuild": "Phương án thuộc bản dựng trước.",
+          "needsEvidence": "Đang chờ bằng chứng đánh giá có chữ ký.",
+          "needsApprover": "Đã xác minh bằng chứng. Đang chờ người phê duyệt được chỉ định.",
+          "providerUnavailable": "Không thể xác minh nhà cung cấp mô hình đã cấu hình.",
+          "ready": "Đã xác minh bằng chứng. Bạn có thể bắt đầu thử nghiệm này.",
+          "withdrawn": "Không có bằng chứng thử nghiệm. Các câu hỏi mới dùng phương án cơ sở.",
+          "approvalUnavailable": "Không thể xác minh phê duyệt thử nghiệm đã ghi nhận.",
+          "windowOpen": "Thời gian thử nghiệm đang mở cho chủ phương án.",
+          "expired": "Thử nghiệm đã hết hạn.",
+          "exhausted": "Thử nghiệm đã đạt giới hạn câu hỏi.",
+          "rolledBack": "Thử nghiệm đã được hoàn tác.",
+          "start": "Bắt đầu thử nghiệm số dư ngày phép",
+          "outcomes": "Hoạt động thử nghiệm của tôi: {retainedExchanges} lượt trao đổi được lưu · {modelFreeAnswers} câu trả lời không dùng mô hình · {modelResponses} lượt trao đổi có phản hồi từ mô hình.",
+          "retention": "Các số liệu này có thể giảm sau khi xóa lịch sử hoặc siêu dữ liệu thử nghiệm.",
+          "usage": "Đã tiếp nhận {used} trong số {maximum} câu hỏi thử nghiệm"
+        }
       },
       "historyPrivacy": {
         "title": "Lịch sử trò chuyện của bạn",

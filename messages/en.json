@@ -20865,7 +20865,29 @@
         "progress": "{completed}/{total} paired cases complete; {failures} known arm failures.",
         "unknown": "Unknown / not verified",
         "noCandidates": "No conversation candidates yet.",
-        "metrics": "Correct {correct}; security failures {security}. p50/p95 {p50}/{p95} ms. Input/output {input}/{output} tokens. Account credits {credits}."
+        "metrics": "Correct {correct}; security failures {security}. p50/p95 {p50}/{p95} ms. Input/output {input}/{output} tokens. Account credits {credits}.",
+        "leaveTrial": {
+          "title": "Leave balance trial",
+          "scope": "Tests direct answers for the candidate owner’s single active employment. Starting a trial requires two independent signed evaluations.",
+          "register": "Register leave trial candidate",
+          "binding": "Details for independent evaluation",
+          "record": "Trial candidate v{version}",
+          "earlierBuild": "Candidate belongs to an earlier build.",
+          "needsEvidence": "Waiting for signed evaluation evidence.",
+          "needsApprover": "Evidence verified. Waiting for the designated approver.",
+          "providerUnavailable": "The configured model provider could not be verified.",
+          "ready": "Evidence verified. You can start this trial.",
+          "withdrawn": "Trial evidence is unavailable. New questions use the baseline.",
+          "approvalUnavailable": "The recorded trial approval could not be verified.",
+          "windowOpen": "Trial window open for the candidate owner.",
+          "expired": "Trial expired.",
+          "exhausted": "Trial reached its question limit.",
+          "rolledBack": "Trial rolled back.",
+          "start": "Start leave balance trial",
+          "outcomes": "My trial activity: {retainedExchanges} retained exchanges · {modelFreeAnswers} answers without a model · {modelResponses} exchanges with a model response.",
+          "retention": "These counts can decrease after history or trial metadata is cleared.",
+          "usage": "{used} of {maximum} trial questions admitted"
+        }
       },
       "historyPrivacy": {
         "title": "Your chat history",

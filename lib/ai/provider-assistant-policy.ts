@@ -5,7 +5,7 @@ import {types as nodeTypes} from 'node:util';
 import {z} from 'zod';
 import {adjudicatePromptReadPlan,promptCandidateSystem} from './module-agent-prompt-candidate';
 import {captureAssistantProposalHints,type AssistantProposableAction,type AssistantProposalHints} from './assistant-action-proposal-hints';
-import {assistantConversationCandidateSystem,type AssistantConversationCandidate} from './assistant-conversation-candidate';
+import {assistantConversationCandidateSystem,type AssistantConversationProviderVariant} from './assistant-conversation-candidate';
 import {isCalendarDate} from '../calendar-date';
 import {AiGatewayError,type ConverseArgs,type GenerateArgs} from './types';
 import {AGENT_MODULE_CODES,type AgentModuleCode} from './module-agents';
@@ -51,7 +51,7 @@ export function capturePrivateAssistantTask(value:unknown):{args:ConverseArgs|Ge
 }
 export function fingerprintPrivateAssistantTask(value:unknown):string{return createHash('sha256').update(JSON.stringify(capture(value))).digest('hex');}
 export type PrivateAssistantCardSelection=Readonly<{read:number;cards:readonly number[]}>;
-export function privateAssistantCatalogue(intent:PrivateAssistantIntent,reads:readonly AssistantAnswerRead[],strategy:AssistantConversationCandidate['variant']='baseline_v1',selection?:readonly PrivateAssistantCardSelection[]):PrivateAssistantPayload{
+export function privateAssistantCatalogue(intent:PrivateAssistantIntent,reads:readonly AssistantAnswerRead[],strategy:AssistantConversationProviderVariant='baseline_v1',selection?:readonly PrivateAssistantCardSelection[]):PrivateAssistantPayload{
  const allowed=(read:number,card:number)=>selection===undefined||selection.some(row=>row.read===read&&row.cards.includes(card));
  return capture({version:1,operation:'conversation',intent,strategy,reads:reads.map(source=>({read:source.read,module:source.presentation.module,cards:source.presentation.cards.slice(0,25).map((card,index)=>({card:index,facts:card.facts.map((fact,index)=>({fact:index,field:fact.field,available:(card.withheld!==true||source.presentation.module==='leave')&&fact.value!==null&&(typeof fact.value!=='string'||fact.value.trim().length>0)}))})).filter(card=>allowed(source.read,card.card)),explanations:source.explanations.filter(item=>item.card===null||allowed(source.read,item.card))}))});
 }
