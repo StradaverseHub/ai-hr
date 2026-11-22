@@ -509,12 +509,13 @@ async function verifyNoticeAcknowledgement(page, main, db, entry, row, pass, tim
     const started = performance.now();
     const reply = page.waitForResponse(response => {
       const request = response.request();
-      return request.method() === 'POST' && Boolean(request.headers()['next-action'])
+      return request.method() === 'POST' && (Boolean(request.headers()['next-action']) || request.isNavigationRequest())
         && new URL(response.url()).pathname === '/notices/' + acknowledgeNotice;
     }, { timeout });
     const clicked = main.getByRole('button',{name:'Acknowledge this version',exact:true}).click({timeout});
     const [response] = await Promise.all([reply,clicked]);
     assert.equal(response.status(),200);
+    row.noticeAcknowledgementTransport = response.request().headers()['next-action'] ? 'react-action' : 'native-form';
     await status.waitFor({state:'visible',timeout});
     row.noticeAcknowledgementMs = Math.round(performance.now()-started);
   } else {
