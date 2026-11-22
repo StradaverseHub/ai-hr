@@ -1565,15 +1565,18 @@ try{
     PERF_LOAN_RECORDS:String(censusLoanRecords),
     PERF_SAVED_REPORT_RECORDS:String(censusSavedReportRecords),
     PERF_LETTER_CATALOG_RECORDS:String(censusLetterCatalogRecords),
-    PERF_SYSTEM_TESTING_RECORDS:String(censusSystemTestingRecords),
    });
+  if(censusSystemTestingRecords){
+   // System Testing's native CLI fixture uses the normal Node React entry point.
+   await step('seed-system-testing-records','../automation/scripts/performance/system-testing-browser-fixture.mjs');
+  }
  }finally{
   const stagePath=join(privateDir,'record-fixture-stage');
   if(existsSync(stagePath)){
    const stage=readFileSync(stagePath,'utf8');
    if(['fixture','onboarding-config','draft-joiners','lifecycle-defaults','legacy-onboarding','legacy-offboarding',
-    'lifecycle-asset','lifecycle-asset-request','system-testing-workspace-import','system-testing-draft',
-    'system-testing-publish','system-testing-assign','system-testing-begin','system-testing-save','performance-cycle-grades','performance-cycle-create',
+    'lifecycle-asset','lifecycle-asset-request','system-testing-session','system-testing-workspace-import','system-testing-draft',
+    'system-testing-publish','system-testing-assign','system-testing-begin','system-testing-save','system-testing-complete','performance-cycle-grades','performance-cycle-create',
     'performance-cycle-participants','performance-cycle-open','performance-team-review','complete'].includes(stage)){
     report.recordFixtureStage=stage;
    }
@@ -1581,14 +1584,14 @@ try{
   const failurePath=join(privateDir,'record-fixture-failure');
   if(existsSync(failurePath)){
    const failure=readFileSync(failurePath,'utf8');
-   if(/^(?:[0-9A-Z]{5}|ERR_ASSERTION|DrizzleQueryError|PostgresError|PerfError|ZodError|TypeError|unclassified)$/.test(failure)){
+   if(/^(?:[0-9A-Z]{5}|ERR_ASSERTION|SERVER_ONLY|AssertionError|TestingRefusal|DrizzleQueryError|PostgresError|PerfError|ZodError|TypeError|unclassified)$/.test(failure)){
     report.recordFixtureFailure=failure;
    }
   }
   const locationPath=join(privateDir,'record-fixture-failure-location');
   if(existsSync(locationPath)){
    const location=readFileSync(locationPath,'utf8');
-   if(/^(?:core\/(?:performance|system-testing(?:-workspace)?)\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):\d+$/.test(location)){
+   if(/^(?:core\/(?:performance|system-testing(?:-workspace)?|feedback|ai-governance)\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):\d+$/.test(location)){
     report.recordFixtureFailureLocation=location;
    }
   }
