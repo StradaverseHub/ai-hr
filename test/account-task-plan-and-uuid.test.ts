@@ -1,4 +1,4 @@
-/** Compare bound UUIDs and reusable plans for native account tasks on a fictional group. */
+/** Verify bound UUIDs and reusable native account-task plans through PgBouncer. */
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {SQL,sql} from 'drizzle-orm';
@@ -6,14 +6,24 @@ import {PgDialect} from 'drizzle-orm/pg-core';
 import type postgres from 'postgres';
 import {afterAll,expect,it} from 'vitest';
 import {accountTaskCallerSql,accountTaskStatement,accountTaskStatementSections} from '../core/account-task-bundle';
-import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {createDb,type SessionContext,type Tx} from '../db/client';
 import {leaveType} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addHrDays} from '../lib/today/audience';
 import {buildScaleFixture} from './helpers/ai-centre-scale-fixture';
-import {closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
+import {poolerTarget,type PoolerTarget} from './helpers/pgbouncer-target';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 
-afterAll(closeAll);
+let pooler:PoolerTarget|null=null;
+let pooled:ReturnType<typeof createDb>|undefined;
+afterAll(async()=>{
+ try {
+  await pooled?.client.end({timeout:5});
+ } finally {
+  pooler?.stop();
+  await closeAll();
+ }
+});
 const modules={attendance:true,claims:false,performance:true,rewards:true,lifecycle:false};
 const dialect=new PgDialect();
 
@@ -42,7 +52,7 @@ function percentile(values:number[],fraction:number){
  return Math.round(sorted[Math.ceil(sorted.length*fraction)-1]*100)/100;
 }
 
-it('compares UUID predicates and generic plans for shared account tasks across eight overlapping transactions',async()=>{
+it('compares UUID predicates and generic plans for shared account tasks through eight PgBouncer server connections',async()=>{
   expect(process.env.GITHUB_ACTIONS).toBe('true');
   expect(process.env.RUNNER_ENVIRONMENT).toBe('github-hosted');
   expect(process.env.GITHUB_REPOSITORY).toBe('StradaverseHub/ai-hr');
@@ -106,7 +116,17 @@ it('compares UUID predicates and generic plans for shared account tasks across e
   type Actor=typeof actors[number];
   type Variant=typeof variants[number];
 
-  const read=(actor:Actor,variant:Variant)=>withTenant(actor.session,async tx=>{
+  const concurrency=8;
+  pooler=await poolerTarget({name:'main',serverConnections:concurrency,queryWaitTimeoutSeconds:60});
+  expect(pooler?.serverConnections).toBe(concurrency);
+  const pool=createDb(pooler!.appUrl,{max:concurrency});
+  pooled=pool;
+  const [role]=await pool.client<{role:string;superuser:boolean;bypass:boolean}[]>`
+    select current_user as role,rolsuper as superuser,rolbypassrls as bypass from pg_roles where rolname=current_user
+  `;
+  expect(role).toEqual({role:'ai_hr_app',superuser:false,bypass:false});
+
+  const read=(actor:Actor,variant:Variant)=>pool.withTenant(actor.session,async tx=>{
     const {session}=tx as unknown as {session:{client:postgres.TransactionSql}};
     const connection=session.client;
     await tx.execute(sql`set local jit=off`);
@@ -130,7 +150,6 @@ it('compares UUID predicates and generic plans for shared account tasks across e
     return {rows,elapsedMs,backend:backend.pid,warm:(before?.generic??0)>0};
   },{readOnlySnapshot:true});
 
-  const concurrency=8;
   const results=[];
   for (const actor of actors) {
     const control=await read(actor,variants[0]);
@@ -148,7 +167,7 @@ it('compares UUID predicates and generic plans for shared account tasks across e
     const timings=Object.fromEntries(variants.map(variant=>{
       const measured=collected.get(variant.name)!;
       const backends=new Set(measured.map(sample=>sample.backend));
-      expect(backends.size).toBeGreaterThan(1);
+      expect(backends.size).toBe(concurrency);
       const warmSamples=measured.filter(sample=>sample.warm);
       if (variant.prepared) expect(warmSamples.length).toBeGreaterThan(concurrency);
       const durations=measured.map(sample=>sample.elapsedMs);
@@ -171,10 +190,22 @@ it('compares UUID predicates and generic plans for shared account tasks across e
   `;
   const mismatch={...employeeActor,session:{...employeeActor.session,personId:other.person_id}};
   for (const variant of variants) expect((await read(mismatch,variant)).rows[0]?.principal).toBe(false);
-  const evidence={releaseEligible:false,source:process.env.AIHR_CI_HEAD,concurrency,
-    companies:fixture.companyIds.length,employments:fixture.employmentIds.length,results};
-  console.info('ACCOUNT_TASK_PLAN_AND_UUID '+JSON.stringify(evidence));
+  const foreignBase=await seedBase();
+  const foreign={role:'foreign tenant',session:adminCtx(foreignBase),companyIds:fixture.companyIds};
+  const foreignBaseline=await read(foreign,variants[0]);
+  expect(foreignBaseline.rows[0]?.principal).toBe(true);
+  const leave=foreignBaseline.rows[0]?.leave_decisions as {leave:{rows:unknown[]};cancellations:{rows:unknown[]}};
+  expect(leave.leave.rows).toEqual([]);
+  expect(leave.cancellations.rows).toEqual([]);
+  for (const variant of variants) {
+    expect((await read(foreign,variant)).rows).toEqual(foreignBaseline.rows);
+  }
+  // The same pool still serves the original principal after the foreign tenant used it.
+  expect((await read(employeeActor,variants[3])).rows).toEqual((await read(employeeActor,variants[0])).rows);
+  const evidence={releaseEligible:false,source:process.env.AIHR_CI_HEAD,concurrency,serverConnections:pooler!.serverConnections,
+    topology:'PgBouncer transaction pool',companies:fixture.companyIds.length,employments:fixture.employmentIds.length,results};
+  console.info('ACCOUNT_TASK_PLAN_AND_UUID_POOL '+JSON.stringify(evidence));
   if (process.env.AIHR_FOCUSED_EVIDENCE_DIR) {
-    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'account-task-plan-and-uuid.json'),JSON.stringify(evidence,null,2));
+    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'account-task-plan-and-uuid-pool.json'),JSON.stringify(evidence,null,2));
   }
 },240_000);
