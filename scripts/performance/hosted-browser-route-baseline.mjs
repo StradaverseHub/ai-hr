@@ -93,7 +93,7 @@ const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(e
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 const currentMainLifetimeBuild=env.AIHR_CI_HEAD===currentMainLifetimeCandidate;
 if(currentMainLifetimeBuild)assert(mixedLoad&&groupScale&&establishedAttendance&&databaseTopology==='transaction-pool'
- &&shellPermissionVariant==='none'&&!reusedBuild&&!fixtureOnly);
+ &&shellPermissionVariant==='none'&&!fixtureOnly);
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild||currentMainLifetimeBuild)&&!fixtureOnly));
 assert(!groupScale||(mixedLoad&&(reusedBuild||combinedGroupBuild||currentMainLifetimeBuild)&&!fixtureOnly));
 if(clockingShared)assert(env.AIHR_CI_HEAD===indexedAccountTaskCaller&&reusedBuild);
@@ -140,7 +140,8 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(shellLifetimeEnabled&&{shellHttpLifetime:'node-response-close'}),
  ...(([nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,sharedEmployeeClaimsObserver,indexedAccountTaskCaller].includes(sha)||currentMainLifetimeBuild)&&{shellHttpLifetime:'next-after'}),
- ...(reusedBuild&&{buildArtifact:sha===currentMainFixture ? currentMainArtifact : combinedGroupBuild
+ ...(reusedBuild&&{buildArtifact:currentMainLifetimeBuild ? {sourceSha:sha,runId:45069834758,artifactId:14773296405}
+  : sha===currentMainFixture ? currentMainArtifact : combinedGroupBuild
   ? {sourceSha:sha,...combinedGroupArtifact}
   : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
