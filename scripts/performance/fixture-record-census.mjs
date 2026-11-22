@@ -484,8 +484,13 @@ async function attendanceRecordRoutes(db, fixture, deferredPicker) {
   const workflowName = 'Fictional performance approval';
   const workflow = '/admin/attendance/approval-workflow/' + workflows[0].lineage_id;
   if (deferredPicker) {
-    const approver = fixture.users.find(user => user.tenantId === company.tenantId &&
-      user.companyId === company.companyId && ['groupHR', 'companyHR'].includes(user.role));
+    const [approver] = await db`select e.employee_code as "employeeCode",p.full_name as name
+      from attendance_workflow_template t
+      join employment e on e.tenant_id=t.tenant_id
+        and e.id=(t.stages->0->'sources'->0->'employmentIds'->>0)::uuid
+      join person p on p.tenant_id=e.tenant_id and p.id=e.person_id
+      where t.tenant_id=${company.tenantId}::uuid and t.company_id=${company.companyId}::uuid
+        and t.lineage_id=${workflows[0].lineage_id}::uuid and t.version=1`;
     assert(approver?.employeeCode);
     return [group, company].map(actor => ({
       actor, template: '/admin/attendance/approval-workflow/[lineageId]/edit', path: workflow + '/edit',
