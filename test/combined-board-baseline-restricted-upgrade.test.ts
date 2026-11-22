@@ -206,7 +206,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   expect(taxReprocessTail).toEqual([TAX_REPROCESS]);
   expect(taxBasisGroupTail).toEqual([TAX_BASIS_GROUP]);
   expect(reportingIndexTail).toEqual(REPORTING_INDEX_TAIL);
-  expect(payrollRunReviewTail).toEqual([PAYROLL_RUN_REVIEW]);
+  expect(payrollRunReviewTail).toEqual([PAYROLL_RUN_REVIEW,{idx:10510,version:'7',when:1795280007110,tag:'7110_payroll_draft_tax_readiness',breakpoints:true}]);
   expect(hotfixTail).toEqual([PAYROLL_HISTORY_HOTFIX,PAYROLL_TAX_PICKER]);
   expect(payrollAccessTail).toEqual([PAYROLL_ACCESS]);
   expect(workbookCompanyTail).toEqual([WORKBOOK_COMPANY]);

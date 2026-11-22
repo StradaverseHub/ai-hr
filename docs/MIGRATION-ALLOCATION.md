@@ -1,3 +1,12 @@
+# Draft payroll historical tax readiness, 22 November 2026
+
+Reserve `7110_payroll_draft_tax_readiness`, journal index `10510`, timestamp `1795280007110`,
+SQL SHA-256 `73aaea6e033964c596bc76e96beb1b5b5a2d5205270399fe865b41d2d0b64260`. Both installations reported 1,135 applied entries
+through `1795280007100` before allocation.
+
+Registers the read-only draft tax check with the existing bulk worker. Payroll
+records and grants are unchanged.
+
 # Company-scoped payroll run review, 22 November 2026
 
 Reserve `7100_payroll_run_company_review`, journal index `10500`, timestamp `1795280007100`,

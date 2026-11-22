@@ -35577,6 +35577,26 @@
       "apply": "Apply to this draft"
     }
   },
+  "draftPayrollTaxReadiness": {
+    "title": "Historical income tax readiness",
+    "intro": "Review the saved tax history for this draft before processing payroll.",
+    "checking": "Checking saved income tax history for this payroll draft…",
+    "waiting": "Waiting for the payroll worker to check saved tax history.",
+    "failed": "The historical income tax check could not finish. Run the check again to see any blockers.",
+    "clear": "The check found no historical income tax blockers for this draft.",
+    "blocked": "{count, plural, one {# employee needs a historical tax review} other {# employees need a historical tax review}} before payroll can run.",
+    "check": "Check tax history",
+    "again": "Check again",
+    "employee": "Employee",
+    "month": "Affected month",
+    "nextStep": "What to do",
+    "importedHistory": "Preview this employee’s imported payroll history. Resolve any missing source evidence and apply the verified tax correction, then check this draft again.",
+    "savedHistory": "Review the saved payroll source and tax correction for this month, then check this draft again.",
+    "review": "Open employee tax preview",
+    "askAdmin": "Ask a payroll tax administrator to review this employee.",
+    "previous": "Previous",
+    "next": "Next"
+  },
   "payrollTaxBasis": {
     "title": "Recalculate Income Tax Value",
     "description": "Review historical taxable income using the latest saved Pay Item tax settings.",

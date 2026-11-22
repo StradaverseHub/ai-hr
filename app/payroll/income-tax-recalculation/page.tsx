@@ -6,16 +6,16 @@ import type {TaxBasisSelection} from '@/lib/payroll-tax-basis';
 import {TaxBasisWorkflow,type TaxBasisGroupProgressLink} from './workflow';
 import {TaxBasisHistory} from './history';
 
-export default async function TaxBasisPage({searchParams}:{searchParams:Promise<{retry?:string;group?:string;phase?:string;company?:string;year?:string;month?:string}>}){
+export default async function TaxBasisPage({searchParams}:{searchParams:Promise<{retry?:string;group?:string;phase?:string;company?:string;year?:string;month?:string;employee?:string}>}){
   const ctx=await requirePayrollAccess(),t=await getTranslations('payrollTaxBasis');
-  const {retry,group,phase,company,year,month}=await searchParams;
+  const {retry,group,phase,company,year,month,employee}=await searchParams;
   const initialGroup:TaxBasisGroupProgressLink|undefined=group&&/^[\da-f-]{36}$/.test(group)&&(phase==='preview'||phase==='confirm')?{id:group,phase}:undefined;
   const [options,batches]=await Promise.all([taxBasisOptions(ctx),listTaxBasisBatches(ctx)]);
   const assessmentYear=Number(year),finalMonth=Number(month);
   let initialSelection:TaxBasisSelection|undefined =
     company && options.companies.some(row=>row.id===company) && options.years.includes(assessmentYear)
       && Number.isInteger(finalMonth) && finalMonth>=1 && finalMonth<=12
-      ? {companyId:company,year:assessmentYear,upToMonth:finalMonth,employmentIds:null}
+      ? {companyId:company,year:assessmentYear,upToMonth:finalMonth,employmentIds:employee && /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(employee) ? [employee] : null}
       : undefined;
   if(retry&&/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(retry)){
     const batch=await getTaxBasisBatch(ctx,retry);

@@ -5,6 +5,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {requestPayrollHistoryConfirm,payrollHistoryJobHandler} from '../core/payroll-history-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
+import {draftTaxReadinessJobHandler, readDraftTaxReadiness, requestDraftTaxReadiness} from '../core/payroll-draft-tax-readiness';
 import {createCompany} from '../core/admin';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -121,6 +122,31 @@ describe('authorized immutable historical income tax corrections',()=>{
   expect(Number(future.grossPay)).toBe(5000);expect(st.epfEmployee).toBe(550);
   const after=await owner.db.select().from(schema.payslip);for(const row of original)expect(after.find(s=>s.id===row.id)).toEqual(row);
  });
+ it('shows a draft tax blocker before processing and clears it after the historical inputs are corrected',async()=>{
+  await setCompensation(ctx,{employmentId:employee,basicSalary:5000,effectiveFrom:'2025-01-01'});
+  const {batchId}=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-11',scope:{employmentIds:[employee]}});
+  const runCheck=async()=>{
+   const jobId=await requestDraftTaxReadiness(ctx,batchId,randomUUID());
+   for(let attempt=0;attempt<15;attempt++){
+    await runBulkJobTick(owner.client,{handlers:[draftTaxReadinessJobHandler]});
+    const result=await readDraftTaxReadiness(ctx,batchId,jobId,0);
+    expect(result.state).not.toBe('failed');
+    if(result.state==='done')return {jobId,result};
+   }
+   throw Error('Draft tax check did not finish');
+  };
+  const before=await owner.db.select().from(schema.payslip);
+  const {jobId,result}=await runCheck();
+  expect(result).toMatchObject({state:'done',blockers:1,rows:[{
+   employmentId:employee,employeeCode:'0007',period:'2026-01',kind:'importedHistory',
+  }]});
+  await expect(readDraftTaxReadiness(ctx,randomUUID(),jobId,0)).rejects.toThrow(/unavailable/);
+  await expect(requestDraftTaxReadiness({...ctx,grants:[]},batchId,randomUUID())).rejects.toThrow(/unavailable/);
+  await confirm(await previewTaxBasisRecalculation(ctx,selection()));
+  expect((await runCheck()).result).toMatchObject({state:'done',blockers:0,rows:[]});
+  expect(await owner.db.select().from(schema.payslip)).toEqual(before);
+  expect((await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId)))[0].status).toBe('draft');
+ },90000);
  it('refuses stale settings and excludes nonselected employees and other assessment years',async()=>{
   const p=await previewTaxBasisRecalculation(ctx,selection());await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));
   await expect(confirm(p)).rejects.toThrow(/changed/);expect(await owner.db.select().from(schema.payrollTaxBasisBatch)).toHaveLength(0);

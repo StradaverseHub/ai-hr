@@ -10,6 +10,7 @@ import {rosterBulkJobHandler,scheduleGroupBulkJobHandler} from './roster-bulk-wo
 import {clockingImportJobHandler} from '../packs/attendance/service';
 import {attendanceRecomputeJobHandler,attendanceRecomputePreviewJobHandler} from './attendance-recompute-job';
 import {taxBasisGroupJobHandler} from './payroll-tax-basis-group';
+import {draftTaxReadinessJobHandler} from './payroll-draft-tax-readiness';
 import {payrollProcessJobHandler} from './payroll-processing-job';
 import {systemLabelImportJobHandler} from './system-label-import-worker';
 import {employeeImportRevertJobHandler} from './employee-import-revert-job';
@@ -31,6 +32,6 @@ import {transactionExportJobHandler} from './payroll-transaction-export';
 
 export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]= [lifecyclePersonnelCompletionPreviewHandler,lifecyclePersonnelCompletionRecoveryHandler,lifecycleManagerRecoveryHandler,rewardPlanReviewsJobHandler,employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,
  earnedAccrualJobHandler,rosterBulkJobHandler,scheduleGroupBulkJobHandler,clockingImportJobHandler,attendanceRecomputePreviewJobHandler,
- attendanceRecomputeJobHandler,payrollProcessJobHandler,taxBasisGroupJobHandler,systemLabelImportJobHandler,employeeImportRevertJobHandler,sectionImportJobHandler,fixedTransactionImportJobHandler,
+ attendanceRecomputeJobHandler,payrollProcessJobHandler,draftTaxReadinessJobHandler,taxBasisGroupJobHandler,systemLabelImportJobHandler,employeeImportRevertJobHandler,sectionImportJobHandler,fixedTransactionImportJobHandler,
  registerImportJobHandler,leaveRecalcJobHandler,leaveA2cJobHandler,toilExpiryJobHandler,toilYearCloseJobHandler,payrollHistoryJobHandler,
  payrollReprocessJobHandler,movementImportJobHandler,movementCheckJobHandler,movementImportRevertJobHandler,recruitmentCandidateImportJobHandler,rewardPersonHistoryJobHandler,contractPreviewJobHandler,contractAutomationJobHandler,contractSetupJobHandler,contractScheduleJobHandler,contractScheduledAutomationJobHandler,contractPostingApplyJobHandler,transactionExportJobHandler];

@@ -23,6 +23,7 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { closeAction, generateAction, resetAction, unlockAction } from '../actions';
 import { payrollProcessingStatus } from '@/core/payroll-processing-job';
 import { PayrollProcessingPanel } from './processing-progress';
+import {DraftTaxCheckScope, DraftTaxProcessControl, DraftTaxReadiness} from './draft-tax-readiness';
 // b372e923 — the payroll result destination, now spelled in ONE place because the Reprocess result table
 // links to it too and the reporter's requirement is that the two cannot be different screens.
 import { payrollResultHref } from '../payroll-result-href';
@@ -395,6 +396,7 @@ export default async function BatchPage({
   return (
     /* 65e2d5de — the View screen joins the one Payroll width standard (152fea7f). It was one of three
        under app/payroll/[batchId] the sweep missed, and it is the widest table in the module. */
+    <DraftTaxCheckScope key={batch.id} enabled={batch.status === 'draft' && !retiredFormulaInputs}>
     <div className={pageWideCls}>
       <PageHeader
         back={{ href: backHref, label: t('back') }}
@@ -444,7 +446,7 @@ export default async function BatchPage({
               </ExportDownloadLink>
             )}
             {batch.status === 'draft' && !retiredFormulaInputs && (
-              <form action={generateAction}>
+              <DraftTaxProcessControl><form action={generateAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
                 {/* r253 — THE SELECTION SURVIVES THE BUTTON, not just the Back link. This action
                     redirects to this same screen, and until now it redirected to a HARDCODED
@@ -473,7 +475,7 @@ export default async function BatchPage({
                 ) : (
                   <Button type="submit">{t('generatePayslips')}</Button>
                 )}
-              </form>
+              </form></DraftTaxProcessControl>
             )}
             {/* e440991b — REPROCESS, at the TOP of the run screen. It used to be a panel at the very
                 bottom of this page, below the Recalculation History card, on a screen this long; the
@@ -564,6 +566,7 @@ export default async function BatchPage({
       />
 
       <ErrorBanner message={error} />
+      {batch.status === 'draft' && !retiredFormulaInputs && <DraftTaxReadiness batchId={batch.id} companyId={batch.companyId} payPeriod={batch.payPeriod} />}
       {showProcessing && processingStatus && <PayrollProcessingPanel batchId={batch.id} initial={processingStatus} />}
       {retiredFormulaInputs && (
         <div className="space-y-3 rounded-lg border border-border bg-muted p-4 text-sm">
@@ -1372,5 +1375,6 @@ export default async function BatchPage({
           WHAT DID NOT MOVE, deliberately: the recalculation banner and the disabled Close above. Those
           are live controls, not history — dropping them lets a run close owing a recalculation. */}
     </div>
+    </DraftTaxCheckScope>
   );
 }

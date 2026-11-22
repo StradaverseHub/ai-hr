@@ -108,7 +108,12 @@ export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipId
 
 /** Run the same source checks while retaining the first tax failure for each affected employee. */
 export async function readTaxBasisFailuresTx(tx:Tx,ctx:SessionContext,payslipIds:string[],options:EffectiveReadOptions={}){
- const sources=await taxBasisSourceRowsTx(tx,payslipIds),failures=new Map<string,string>();
+ const failures=await readTaxBasisFailureDetailsTx(tx,ctx,payslipIds,options);
+ return new Map([...failures].map(([id,failure])=>[id,failure.reason]));
+}
+
+export async function readTaxBasisFailureDetailsTx(tx:Tx,ctx:SessionContext,payslipIds:string[],options:EffectiveReadOptions={}){
+ const sources=await taxBasisSourceRowsTx(tx,payslipIds),failures=new Map<string,{reason:string;period:string}>();
  await effectiveTaxBasesForSourcesTx(tx,ctx,payslipIds,sources,options,failures);
  return failures;
 }
@@ -137,15 +142,15 @@ async function sourceReadContextTx(tx:Tx,ctx:SessionContext,payslipIds:string[],
 }
 /** Preview-only strict selection: a missing/foreign source must not become a partial preview. */
 export async function createTaxBasisPreviewReadTx(tx:Tx,ctx:SessionContext,payslipIds:string[]){return sourceReadContextTx(tx,ctx,payslipIds,true);}
-async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds:string[],sources:TaxBasisSource[],options:EffectiveReadOptions,failures?:Map<string,string>):Promise<Map<string,EffectiveTaxBasis>>{
+async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds:string[],sources:TaxBasisSource[],options:EffectiveReadOptions,failures?:Map<string,{reason:string;period:string}>):Promise<Map<string,EffectiveTaxBasis>>{
  const out=new Map<string,EffectiveTaxBasis>();if(!sources.length)return out;
- const capture=(employmentId:string,error:unknown)=>{
+ const capture=(employmentId:string,period:string,error:unknown)=>{
   if(!failures||!(error instanceof PayrollTaxBasisError))throw error;
-  failures.set(employmentId,error.message);
+  failures.set(employmentId,{reason:error.message,period});
  };
  const keys=[...new Map(sources.map(s=>[`${s.companyId}:${s.employmentId}:${s.period}`,{companyId:s.companyId,employmentId:s.employmentId,period:s.period}])).values()];
- const corrections=await tx.execute<{id:string;batchId:string;payslipId:string;employmentId:string;sourceHash:string;basis:unknown}>(sql`
-  select r.id,r.batch_id as "batchId",r.payslip_id as "payslipId",r.employment_id as "employmentId",r.source_hash as "sourceHash",r.basis
+ const corrections=await tx.execute<{id:string;batchId:string;payslipId:string;employmentId:string;period:string;sourceHash:string;basis:unknown}>(sql`
+  select r.id,r.period,r.batch_id as "batchId",r.payslip_id as "payslipId",r.employment_id as "employmentId",r.source_hash as "sourceHash",r.basis
   from payroll_tax_basis_revision r join jsonb_to_recordset(${JSON.stringify(keys)}::jsonb) as k("companyId" uuid,"employmentId" uuid,period text)
    on r.company_id=k."companyId" and r.employment_id=k."employmentId" and r.period=k.period
   where r.tenant_id=${ctx.tenantId}::uuid order by r.payslip_id,r.ordinal desc`);
@@ -202,7 +207,7 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
    if(links.length)continue;
    const correction:TaxBasisCorrectionRef={id:row.id,batchId:row.batchId,sourceHash:row.sourceHash,basisVersion:1};
    if(requested.has(row.payslipId))out.set(row.payslipId,{statutory:overlayTaxBasis(original,basis,correction),correction,basis});
-  }catch(error){capture(row.employmentId,error);}
+  }catch(error){capture(row.employmentId,row.period,error);}
  }
  const mode=options.reprocess;
  if(changed.length&&mode?.kind==='history'){
@@ -219,7 +224,7 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
      if(basis.period!==source.period)throw new PayrollTaxBasisError('The reconstructed tax period does not match its source.');
      out.set(source.id,{statutory:overlayTaxBasis(source.source.statutory as Record<string,unknown>,basis,null),correction:null,basis,replayedSourceHash:hashTaxBasisSource(source)});
     }
-   }catch(error){capture(employmentId,error);}
+   }catch(error){capture(employmentId,changed.find(source=>source.employmentId===employmentId)!.period,error);}
   }
  }
  // New imported inputs are never silently replaced by the legacy gross-pay fallback. A reviewed
@@ -256,7 +261,7 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
    const basis=validatedTaxBasis(stamp.basis);
    if(!object(statutory.bases)||statutory.bases.pcb!==basis.pcb)unavailable();
    out.set(source.id,{correction:null,basis,statutory:{...statutory,bases:{...(object(statutory.bases)?statutory.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{})}});
-  }catch(error){capture(source.employmentId,error);}
+  }catch(error){capture(source.employmentId,source.period,error);}
  }
  if(options.includeImported){
   // Eligible consumers ask for their saved prefix. Recompose cumulative noncash snapshots from
@@ -277,7 +282,7 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
     let rebuilt:ReturnType<typeof builder>;
     try{rebuilt=builder({period:source.period,cashNormal:typeof effective?.basis.normal==='number'?effective.basis.normal:saved?.cashNormal??0,owned:saved?.ownedEntries??[],ownedEa:saved?.ownedEaEntries??[],original:saved,completeSource:saved!==null||object(stat.importedTaxBasis)});}catch{throw new PayrollTaxBasisError('Original month noncash source ownership is incomplete or duplicated. Review the complete month prefix.');}
     if(effective&&(saved||rebuilt.eaEntries.length))out.set(source.id,{...effective,basis:{...effective.basis,pcbNonCash:rebuilt},statutory:{...effective.statutory,pcbNonCash:rebuilt}});
-   }catch(error){capture(source.employmentId,error);}
+   }catch(error){capture(source.employmentId,source.period,error);}
   }
  }
  return out;
