@@ -105,8 +105,9 @@ describe('AI centre step 5, rendered per role', () => {
     const view = wrap(await AiManagementScreen({ session, section: 'features', searchParams: Promise.resolve({ worker: 'daily_digest' }), builtInChecks: [], registry: {
       rows: [...ROWS,
         worker('loop_payroll_inputs', { family: 'preparer', effect: 'prepare', lastRunAt: new Date('2026-11-03T01:30:00Z') }),
-        worker('loop_salary_payroll', { family: 'preparer', effect: 'prepare', stopped: true,
-          switch: { on: true, owner: 'worker_control', detail: 'on' }, gate: { run: false, reasons: ['stopped'] } }),
+        worker('team_absence_weekly_summary', { family: 'preparer', effect: 'prepare', stopped: true,
+          authority: { kind: 'mandate', jobType: 'team_absence_weekly_summary' },
+          switch: { on: true, owner: 'job_type', detail: 'on' }, gate: { run: false, reasons: ['stopped'] } }),
       ],
       summary: { tenantId: 'fictional', since: null, records: 128, byWorker: [], byFamily: { watcher: 40, chaser: 30, preparer: 18, decider: 0, explainer: 40 }, mandates: [] },
       detail: { worker: ROWS[3], recentRuns: [{ at: new Date('2026-11-02T00:30:00Z'), runId: 'r1', outcomeKind: 'prepared', humanInvolvement: 'none', decision: null, mandateId: 'm1' }],
@@ -127,7 +128,7 @@ describe('AI centre step 5, rendered per role', () => {
     const scheduledWorker = (id: string) => scheduledRows.find(row => row.querySelector(`a[href*="worker=${id}#"]`))!;
     expect(scheduledWorker('daily_digest')).toHaveTextContent(/On.*No recorded run/);
     expect(scheduledWorker('claims_triage')).toHaveTextContent(/Off.*No recorded run/);
-    expect(scheduledWorker('loop_salary_payroll')).toHaveTextContent(/Stopped by the company stop switch.*No recorded run/);
+    expect(scheduledWorker('team_absence_weekly_summary')).toHaveTextContent(/Stopped by the company stop switch.*No recorded run/);
     const payrollWorker = scheduledWorker('loop_payroll_inputs');
     expect(payrollWorker).toHaveTextContent(/Off.*Last run/);
     expect(payrollWorker.querySelector('time')).toHaveAttribute('datetime', '2026-11-03T01:30:00.000Z');
