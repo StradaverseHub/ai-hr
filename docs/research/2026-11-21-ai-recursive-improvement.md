@@ -347,6 +347,14 @@ Once the candidate registration migration is installed, a group administrator ca
 
 The first leave trial measures model calls saved on eligible requests. Its candidate makes zero model calls on that route. A follow-up leave trial needs a fresh objective, such as broader correct coverage, and a comparison against the first accepted strategy on that objective.
 
+A successor development comparison measures direct coverage against the proposed single-employment route on the same fictional cases. The experimental extension considers multiple own employments only after a typed employment clarification. The existing selector must resolve that choice and the existing adjudicators must confirm the exact count. The version 3 case file adds `minimumAdditionalAnswers` to the version 1 fields. The comparison requires correct answers and deferrals throughout the suite, preserves every correct parent decision and reports aggregate differences.
+
+```sh
+node --import tsx scripts/experiments/protected-leave-routing-holdout-cli.ts CASES.json CASES_SHA256 --compare-successor
+```
+
+The development suite covers a selected second or third employment, duplicate company labels, an unknown company, a withheld count, multiple leave types and a named coworker. The comparison uses the serving projection and answer-selection functions on fictional source results. A serving successor would need to recheck the chosen employment and replay its canonical facts before retaining an answer. Independent evaluation and trial results are separate.
+
 Candidate reviews shows the admission limit separately from the owner's observed trial exchanges and model responses. The model-free count comes from completed own exchanges with a retained canonical answer and zero model turns or tokens. Clearing Assistant history or strategy metadata can remove the underlying evidence. These counts measure recorded use and give no accuracy or savings estimate by themselves.
 
 ### Paired development comparison on the integrated leave candidate

@@ -39,6 +39,11 @@ const pairedHoldout = z.object({
   modelDigest: z.string().regex(/^[a-f0-9]{64}$/), minimumSavedCalls: z.number().int().min(1).max(32),
 }).strict();
 
+const successorHoldout = z.object({
+  version: z.literal(3), candidateSha: sha, cases: casesSchema,
+  minimumAdditionalAnswers: z.number().int().min(1).max(32),
+}).strict();
+
 const normalizedText = (value: string) => value.normalize('NFKC').toLowerCase().trim().replace(/\s+/gu, ' ');
 
 function countShape(value: number | null) {
@@ -164,6 +169,47 @@ export function scoreProtectedLeaveRoutingHoldout(bytes: Buffer, holdoutDigest: 
   if (!parsed.success || parsed.data.candidateSha !== candidateSha) throw Error('Invalid frozen leave routing suite.');
   return { evidence: 'offline_leave_routing_holdout', candidateSha, holdoutDigest,
     ...scoreCases(parsed.data.cases).result, releaseAuthorized: false };
+}
+
+/** Compare the single-employment rule and a proposed explicit-choice extension on the same fictional input.
+ * Both return a locally adjudicated answer or defer. The comparison measures direct coverage only.
+ * Serving authorization, retention and source replay are outside this evaluator. */
+export function scoreLeaveRoutingSuccessor(bytes: Buffer, holdoutDigest: string, candidateSha: string) {
+  const parsed = successorHoldout.safeParse(readFrozenHoldoutJson(bytes, holdoutDigest));
+  if (!parsed.success || parsed.data.candidateSha !== candidateSha) throw Error('Invalid frozen successor leave suite.');
+  const { cases, minimumAdditionalAnswers } = parsed.data;
+  const extensions = cases.filter(row => row.expected.kind === 'direct' && row.scenario.employments.length > 1);
+  if (extensions.length < minimumAdditionalAnswers || extensions.some(row => row.scenario.clarification?.slot !== 'employment') ||
+      !cases.some(row => row.expected.kind === 'direct' && row.scenario.employments.length === 1) ||
+      !cases.some(row => row.expected.kind === 'defer' && row.scenario.employments.length > 1))
+    throw Error('Include first-route answers, explicit employment choices and multi-employment deferrals.');
+  const { paired, fingerprints, result } = scoreCases(cases, true);
+  const comparison = { parentCorrectDirect: 0, parentCorrectDeferrals: 0, successorCorrectDirect: 0,
+    successorCorrectDeferrals: 0, additionalCorrectAnswers: 0, regressions: 0, wrongDirect: 0, unexpectedDirect: 0 };
+  for (const { scenario, expected, source, observed: parent, correct: parentCorrect } of paired) {
+    const successor = scenario.employments.length > 1 && scenario.clarification?.slot === 'employment'
+      ? observe(source) : parent;
+    const successorCorrect = routingDigest(successor) === routingDigest(expected);
+    if (expected.kind === 'direct') {
+      if (parentCorrect) comparison.parentCorrectDirect++;
+      if (successorCorrect) comparison.successorCorrectDirect++;
+      else if (successor.kind === 'direct') comparison.wrongDirect++;
+      if (parent.kind === 'defer' && successorCorrect) comparison.additionalCorrectAnswers++;
+    } else {
+      if (parentCorrect) comparison.parentCorrectDeferrals++;
+      if (successorCorrect) comparison.successorCorrectDeferrals++;
+      else comparison.unexpectedDirect++;
+    }
+    if (parentCorrect && !successorCorrect) comparison.regressions++;
+  }
+  return {
+    evidence: 'offline_leave_successor_comparison', candidateSha, holdoutDigest, cases: result.cases,
+    caseSetDigest: leaveEvaluationCaseSetDigest(fingerprints), minimumAdditionalAnswers, expectedDirect: result.expectedDirect,
+    ...comparison, modelCalls: 0, releaseAuthorized: false,
+    meetsThreshold: comparison.successorCorrectDirect === result.expectedDirect &&
+      comparison.successorCorrectDeferrals === result.cases - result.expectedDirect &&
+      comparison.regressions === 0 && comparison.additionalCorrectAnswers >= minimumAdditionalAnswers,
+  };
 }
 
 /** Compare actual masked baseline calls on direct cases. Deferral cases are evaluated locally and continue

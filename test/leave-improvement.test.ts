@@ -2,7 +2,7 @@ import { createHash, generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { runProtectedLeaveComparison, runProtectedLeaveRouting } from '../scripts/experiments/protected-leave-comparison';
 import { selectProtectedLeaveCount } from '../lib/ai/assistant-leave-count';
-import { describePairedLeaveRoutingCases, scorePairedLeaveRoutingHoldout, scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
+import { describePairedLeaveRoutingCases, scoreLeaveRoutingSuccessor, scorePairedLeaveRoutingHoldout, scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
 import { signPairedLeaveEvaluation, verifyPairedLeaveEvaluations } from '../lib/ai/assistant-leave-evaluation-receipt';
 import { installedLocalLeaveEvidence } from '../core/assistant-local-leave-evidence';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
@@ -718,6 +718,57 @@ describe('evaluator-owned leave routing suite', () => {
       return { text: JSON.stringify({ version: 1, mode: 'answer', blocks: [{ kind: 'fact', read: read.read, card: card.card, fact: fact.fact }] }), inputTokens: 9, outputTokens: 4 };
     };
   }
+
+  const pendingQuestion = 'How much leave is pending?';
+  const thirdCompany = { company: 'Fictional third company', balances: [{ ...balance, pending: 0 }] };
+  const employmentChoice = (answer: string) => ({ slot: 'employment', answer });
+  const successorCases = [
+    cases[0],
+    trialCases[1],
+    { scenario: { question: pendingQuestion, employments: [thirdCompany] },
+      expected: { kind: 'direct', employment: 0, balance: 0, field: 'pending', value: 0 } },
+    cases[1],
+    { scenario: { question: pendingQuestion, employments: [company, otherCompany, thirdCompany],
+      clarification: employmentChoice(thirdCompany.company) },
+      expected: { kind: 'direct', employment: 2, balance: 0, field: 'pending', value: 0 } },
+    { scenario: { question, employments: [company, otherCompany], clarification: employmentChoice(company.company) },
+      expected: { kind: 'direct', employment: 0, balance: 0, field: 'available', value: -0.75 } },
+    cases[2],
+    { scenario: { question, employments: [company, { ...otherCompany, company: company.company }],
+      clarification: employmentChoice(company.company) }, expected: defer },
+    { scenario: { question, employments: [company, otherCompany],
+      clarification: employmentChoice('Fictional unknown company') }, expected: defer },
+    { scenario: { question, employments: [company, { ...otherCompany,
+      balances: [{ ...balance, available: null, withheld: true }] }], clarification: employmentChoice(otherCompany.company) }, expected: defer },
+    { scenario: { question, employments: [{ ...company, balances: [balance, { ...balance, leaveType: 'Fictional medical leave' }] },
+      otherCompany], clarification: employmentChoice(company.company) }, expected: defer },
+    { scenario: { question: 'Show me Mina Fictional’s balance', employments: [company, otherCompany],
+      clarification: employmentChoice(otherCompany.company) }, expected: defer },
+  ];
+  function frozenSuccessor(rows: readonly unknown[] = successorCases, minimumAdditionalAnswers = 3) {
+    const bytes = Buffer.from(JSON.stringify({ version: 3, candidateSha, cases: rows, minimumAdditionalAnswers }));
+    return { bytes, digest: createHash('sha256').update(bytes).digest('hex') };
+  }
+
+  it('measures incremental direct coverage against the proposed first route on the same fictional suite', () => {
+    const { bytes, digest } = frozenSuccessor();
+    const score = scoreLeaveRoutingSuccessor(bytes, digest, candidateSha);
+    expect(score).toMatchObject({ cases: 12, expectedDirect: 6, parentCorrectDirect: 3, successorCorrectDirect: 6,
+      parentCorrectDeferrals: 6, successorCorrectDeferrals: 6, additionalCorrectAnswers: 3, regressions: 0,
+      wrongDirect: 0, unexpectedDirect: 0, modelCalls: 0, meetsThreshold: true, releaseAuthorized: false });
+    expect(JSON.stringify(score)).not.toMatch(/Fictional|17\.25|leave balance/);
+  });
+
+  it('refuses a widened successor evaluation and detects a deferral regression', () => {
+    const { bytes, digest } = frozenSuccessor();
+    expect(() => scoreLeaveRoutingSuccessor(bytes, digest, 'b'.repeat(40))).toThrow('Invalid frozen successor leave suite');
+    const overstated = frozenSuccessor(successorCases, 4);
+    expect(() => scoreLeaveRoutingSuccessor(overstated.bytes, overstated.digest, candidateSha)).toThrow('explicit employment choices');
+    const rows = successorCases.map((row, index) => index === 3 ? { ...row, expected: defer } : row);
+    const regressed = frozenSuccessor(rows, 2);
+    expect(scoreLeaveRoutingSuccessor(regressed.bytes, regressed.digest, candidateSha))
+      .toMatchObject({ regressions: 1, unexpectedDirect: 1, meetsThreshold: false });
+  });
 
   it('measures avoided model calls even when baseline quality is already perfect', async () => {
     const { bytes, digest } = pair();
