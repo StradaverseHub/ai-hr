@@ -454,7 +454,7 @@ async function personnelMovementRoutes(db, fixture) {
     const hired = movement + '/view/' + events[0].id;
     return [
       { actor, template: '/admin/personnel/[employmentId]', path: profile, exactHeading: subject.name,
-        witness: '#section-personal-details form[data-save-section="person"]', personnelTabs: true },
+        witness: '#section-personal-details form[data-save-section="person"]', personnelTabs: true, subject },
       { actor, template: '/personnel/[employmentId]', path: '/personnel/' + subject.employmentId,
         exactHeading: subject.name, witness: 'dl dd' },
       { actor, template: '/admin/personnel/[employmentId]/movement/[mode]', path: movement + '/history',
@@ -664,6 +664,57 @@ async function verifyPersonnelTabs(page, main, row, remaining) {
   }
 }
 
+async function verifyPersonnelContactSave(page, db, entry, report, save) {
+  const { actor, subject } = entry;
+  assert.equal(subject.tenantId, actor.tenantId);
+  assert.equal(subject.companyId, actor.companyId);
+  const readContact = async () => {
+    const [row] = await db`select p.home_phone from employment e
+      join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
+      where e.id=${subject.employmentId}::uuid and e.tenant_id=${actor.tenantId}::uuid
+        and e.company_id=${actor.companyId}::uuid and e.voided_at is null and e.terminated_on is null`;
+    assert(row, 'Expected the scoped fictional Personnel record');
+    return row.home_phone;
+  };
+  const original = await readContact();
+  const marker = '03-9000' + String(actor.index).padStart(4, '0');
+  assert.notEqual(original, marker);
+  const result = { role: actor.role, steps: [], outcome: 'failed' };
+  (report.personnelProfileActions ??= []).push(result);
+  const profile = page.locator('main [data-tab-save-scope="profile"]:visible');
+  const phone = profile.locator('form[data-save-section="contact"] input#perm-home-phone[name="homePhone"]');
+  const button = profile.getByRole('button', { name: 'Save Changes', exact: true });
+  const dirty = profile.locator('[data-tab-save-count]');
+  const timeout = 15000;
+
+  async function submit(name, value) {
+    const started = performance.now();
+    await phone.fill(value ?? '', { timeout });
+    await dirty.waitFor({ state: 'visible', timeout });
+    await button.click({ timeout });
+    await dirty.waitFor({ state: 'hidden', timeout });
+    assert.equal(await profile.getByRole('alert').count(), 0, 'Personnel Save showed an error');
+    assert.equal(await readContact(), value, 'Personnel Save did not persist through its owner');
+    result.steps.push({ name, persistedMs: Math.round(performance.now() - started) });
+    save();
+  }
+
+  try {
+    await page.waitForLoadState('load', { timeout });
+    assert.equal(await phone.inputValue({ timeout }), original ?? '');
+    try {
+      await submit('save', marker);
+    } finally {
+      if ((await readContact()) === marker) await submit('restore', original);
+    }
+    assert.equal(await readContact(), original);
+    assert.deepEqual(result.steps.map(step => step.name), ['save', 'restore']);
+    result.outcome = 'passed';
+  } finally {
+    save();
+  }
+}
+
 export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
@@ -742,6 +793,9 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           row.elapsedMs = Math.round(performance.now() - started);
           save();
         }
+      }
+      if (entry.personnelTabs && rows.at(-1).outcome === 'usable-content') {
+        await verifyPersonnelContactSave(page, db, entry, report, save);
       }
     } finally {
       await context.close();
