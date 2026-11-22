@@ -1613,3 +1613,7 @@ Exactly 28 approved digests move from `f5db9c3caab0bffe3368c66d40f96d695ec3f0951
 ### Company-scoped payroll run review, 22 November 2026 MYT
 
 The repository owner approved carrying the same 28 provider approvals to staging fingerprint `e376fb8ae81b6cabc78a9e71e87f208925f6933ca6a7305a09d700f12c7688e4`. The payroll review change projects saved outcomes using the current payroll grants. Provider fields, purposes, and endpoints keep their approved scope. Exactly 28 digest literals change from `77c730fdc7c2927ecf4be129b18cd0e5304e6fdd4ec1e48713c9e1139f85daa2`. Reversing the substitutions restores the previous approval registry byte for byte.
+
+## Draft payroll historical tax readiness, 22 November 2026
+
+The repository owner approved carrying forward all 28 existing provider approvals to exact source fingerprint `8485e11d956447ee57b7ec7f8732310c49ab2e5566edd63fb07553caa702fe71` for staging. The draft payroll check runs in the ordinary payroll worker and sends no provider requests. Provider fields, purposes, endpoints and transports are unchanged.
