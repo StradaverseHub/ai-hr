@@ -37,7 +37,7 @@ const rolledBack = new Error('Discard disposable approver prototype');
 const unknownCompany = '00000000-0000-0000-0000-000000000001';
 const contract = 'app.attendance_workflow_v3_approver_options(uuid[])';
 
-export async function measureApproverOptions(fixture, dbEnv, record) {
+function disposableOwner(dbEnv) {
  assert.equal(dbEnv.GITHUB_ACTIONS,'true');
  assert.equal(dbEnv.RUNNER_ENVIRONMENT,'github-hosted');
  assert.equal(dbEnv.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');
@@ -46,26 +46,41 @@ export async function measureApproverOptions(fixture, dbEnv, record) {
  assert.equal(dbEnv.PERF_HTTP_SUITE,'browser-route-baseline');
  assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
  const postgres = createRequire(join(process.cwd(),'package.json'))('postgres');
- const db = postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connect_timeout:5});
+ return postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connect_timeout:5});
+}
+
+async function readControl(tx) {
+ const [control] = await tx`
+  select pg_get_userbyid(p.proowner) as owner, p.proconfig as settings, md5(p.prosrc) as body,
+   p.prosecdef as definer, p.provolatile as volatility, coalesce(p.proacl::text,'') as acl,
+   pg_get_functiondef(p.oid) as definition
+  from pg_proc p where p.oid=to_regprocedure(${contract})
+ `;
+ return control;
+}
+
+async function requireControl(tx) {
+ const control = await readControl(tx);
+ assert(['postgres','ai_hr_owner'].includes(control.owner));
+ assert.deepEqual(control.settings,['search_path=pg_catalog, public, app','row_security=on']);
+ assert.equal(control.body,'db08941be2cb88ad411f77e2e89b0cd6');
+ assert(control.definer && control.volatility==='s');
+ const [eligibility] = await tx`
+  select md5(p.prosrc) as body
+  from pg_proc p where p.oid=to_regprocedure('app.attendance_selected_approver_eligible(uuid,uuid)')
+ `;
+ // The exact cross-company-pending body uses company only for tenant membership.
+ assert.equal(eligibility.body,'1e59af65efaf32491df7a36f443e3f6c');
+ return control;
+}
+
+export async function measureApproverOptions(fixture, dbEnv, record) {
+ const db = disposableOwner(dbEnv);
  const [group, company, , , employee] = fixture.users;
  const report = {measurements:[], rolledBack:false};
  try {
   await db.begin(async tx => {
-   const [control] = await tx`
-    select pg_get_userbyid(p.proowner) as owner, p.proconfig as settings, md5(p.prosrc) as body,
-     p.prosecdef as definer, p.provolatile as volatility
-    from pg_proc p where p.oid=to_regprocedure(${contract})
-   `;
-   assert(['postgres','ai_hr_owner'].includes(control.owner));
-   assert.deepEqual(control.settings,['search_path=pg_catalog, public, app','row_security=on']);
-   assert.equal(control.body,'db08941be2cb88ad411f77e2e89b0cd6');
-   assert(control.definer && control.volatility==='s');
-   const [eligibility] = await tx`
-    select md5(p.prosrc) as body
-    from pg_proc p where p.oid=to_regprocedure('app.attendance_selected_approver_eligible(uuid,uuid)')
-   `;
-   // The exact cross-company-pending body uses company only for tenant membership.
-   assert.equal(eligibility.body,'1e59af65efaf32491df7a36f443e3f6c');
+   const control = await requireControl(tx);
    await tx.unsafe(probe).simple();
    await tx.unsafe('ALTER FUNCTION app.performance_approver_options_probe(uuid[]) OWNER TO '+control.owner);
    const boundCases = await Promise.all([group,company,employee].map(async actor => {
@@ -132,6 +147,42 @@ export async function measureApproverOptions(fixture, dbEnv, record) {
   assert(cleanup.removed && cleanup.body==='db08941be2cb88ad411f77e2e89b0cd6');
   report.rolledBack=true;
   record(report);
+ } finally {
+  await db.end({timeout:5});
+ }
+}
+
+/** Let the exact browser build call the experiment inside the disposable runner. */
+export async function installApproverOptionsBrowserPrototype(dbEnv) {
+ const db = disposableOwner(dbEnv);
+ try {
+  const control = await db.begin(async tx => {
+   const prior = await requireControl(tx);
+   const definition = probe.split('REVOKE ALL')[0].replace(
+    'CREATE FUNCTION app.performance_approver_options_probe',
+    'CREATE OR REPLACE FUNCTION app.attendance_workflow_v3_approver_options',
+   );
+   await tx.unsafe(definition).simple();
+   const installed = await readControl(tx);
+   assert.notEqual(installed.body, prior.body);
+   assert.equal(installed.acl, prior.acl);
+   assert.equal(installed.owner, prior.owner);
+   assert.deepEqual(installed.settings, prior.settings);
+   assert.equal(installed.volatility, prior.volatility);
+   assert.equal(installed.definer, prior.definer);
+   return prior;
+  });
+  return async () => {
+   const restore = disposableOwner(dbEnv);
+   try {
+    await restore.begin(async tx => {
+     await tx.unsafe(control.definition).simple();
+     assert.deepEqual(await requireControl(tx), control);
+    });
+   } finally {
+    await restore.end({timeout:5});
+   }
+  };
  } finally {
   await db.end({timeout:5});
  }

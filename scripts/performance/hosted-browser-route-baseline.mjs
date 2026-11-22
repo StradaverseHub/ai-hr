@@ -1,4 +1,4 @@
-import {measureApproverOptions} from './attendance-approver-options-probe.mjs';
+import {installApproverOptionsBrowserPrototype,measureApproverOptions} from './attendance-approver-options-probe.mjs';
 import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
 import {measureFixtureRecordCensus,seedFixedTransactionRecord,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
@@ -125,7 +125,7 @@ function retainSeedPhases(){
  save();
 }
 
-let server,app,browser,databaseStarted=false;
+let server,app,browser,restoreAttendanceProbe,databaseStarted=false;
 async function stopApp(){
  if(!app||app.exitCode!==null||app.signalCode!==null)return;
  const closed=once(app,'close');
@@ -1604,6 +1604,10 @@ try{
    report.attendanceApproverPrototype=evidence;
    save();
   });
+  assert(report.attendanceApproverPrototype.rolledBack);
+  restoreAttendanceProbe=await installApproverOptionsBrowserPrototype(dbEnv);
+  report.attendanceBrowserPrototype={installed:true,restored:false};
+  save();
  }
  if(censusPayrollCorrections&&!report.verifiedBuildArtifact)report.verifiedBuildArtifact={runId:44749573012,artifactId:14634664620,sourceSha:report.sourceSha};
  if(censusPayrollCorrections){
@@ -1740,7 +1744,14 @@ try{
  finally{
   try{
    if(server?.listening){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
-   await stopApp();
+   try{await stopApp();}
+   finally{
+    if(restoreAttendanceProbe){
+     await restoreAttendanceProbe();
+     report.attendanceBrowserPrototype.restored=true;
+     save();
+    }
+   }
    const appLog=join(privateDir,'application.log');
    if(existsSync(appLog)){
     const log=readFileSync(appLog,'utf8');
