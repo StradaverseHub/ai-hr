@@ -365,7 +365,8 @@ jobs:
           trap 'rm -f "$archive"' EXIT
           if [[ "$AIHR_CI_HEAD" == b0c603e0eea4bc0963b8673c0a034fa4403cb835 ]]; then
             test "$MIXED_GROUP_SCALE" = true
-            packet="$RUNNER_TEMP/fictional-browser-build"
+            mkdir -m 700 "$RUNNER_TEMP/capacity-build-private"
+            packet="$RUNNER_TEMP/capacity-build-private/packet"
             producer="$(gh api repos/StradaverseHub/ai-hr/actions/jobs/137318442678)"
             jq -e --arg sha "$AIHR_CI_HEAD" '
               .conclusion == "success" and .run_attempt == 1 and .name == "build" and
@@ -513,7 +514,7 @@ jobs:
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
           if [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" == b0c603e0eea4bc0963b8673c0a034fa4403cb835 ]]; then
-            test "$(cat .next/BUILD_ID)" = "$(jq -er .nextBuildId "$packet/build-provenance.json")"
+            test "$(cat .next/BUILD_ID)" = "$(jq -er .nextBuildId "$RUNNER_TEMP/capacity-build-private/packet/build-provenance.json")"
             exit 0
           fi
           if [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" == 681ddc918ef99f9f632c3067d8f0624aaa5f8b21 ]]; then
