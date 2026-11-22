@@ -66,6 +66,7 @@ const currentMainArtifact={sourceSha:'b0c603e0eea4bc0963b8673c0a034fa4403cb835',
 const currentMainFixture='a84ddf3812fa6ecd60c1a54802ab5f205e2ba212';
 const currentMainLifetimeCandidate='2d0a60f552e42f4dff934bb5f32e091d322f2734';
 const currentMainIndexedCandidate='22506644c24956823c373c45401f5de485f8e3b0';
+const currentMainIndexedPayrollBoundary='0f6f8e3a92c6f322f4e9539ad8fedeffbc0c900e';
 const combinedGroupArtifacts=new Map([
  [sharedEmployeeClaimsObserver,{runId:45040634196,artifactId:14761723496,sourceSha:sharedEmployeeClaimsRead}],
  ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],
@@ -94,7 +95,7 @@ const currentMainLifetimeContract=reusedBuild&&env.AIHR_CI_HEAD===currentMainLif
 const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD)
  ||env.AIHR_CI_HEAD===currentMainFixture||currentMainLifetimeContract)&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
-const currentMainLifetimeBuild=[currentMainLifetimeCandidate,currentMainIndexedCandidate].includes(env.AIHR_CI_HEAD);
+const currentMainLifetimeBuild=[currentMainLifetimeCandidate,currentMainIndexedCandidate,currentMainIndexedPayrollBoundary].includes(env.AIHR_CI_HEAD);
 if(currentMainLifetimeBuild)assert(mixedLoad&&groupScale&&establishedAttendance&&databaseTopology==='transaction-pool'
  &&(shellPermissionVariant==='none'||currentMainLifetimeContract)&&!fixtureOnly);
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild||currentMainLifetimeBuild)&&!fixtureOnly));
