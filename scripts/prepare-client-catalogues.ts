@@ -21,6 +21,11 @@ const shellClientNamespaces = [
 const scopedClientNamespaces = {
   home: shellClientNamespaces,
   tp3: [...shellClientNamespaces, 'myTp3'],
+  approvals: [
+    ...shellClientNamespaces, 'components.plannedAbsences', 'components.timelineNav',
+    'labelExcelRoundTrip', 'leave', 'letters.reports', 'replacementRequest.formulaReview',
+    'resignationCommunications', 'resignationJourney', 'review',
+  ],
 };
 
 function projectCatalogue(messages: AbstractIntlMessages, namespaces: readonly string[]): AbstractIntlMessages {
