@@ -2652,7 +2652,7 @@ try{
   }
   else if(surfaceProbe){
    const requested=surfaceProbe==='both'?['insights','recruitment']
-    :surfaceProbe==='rewards'?['rewards-salary','rewards-uploaded']:[surfaceProbe];
+    :surfaceProbe==='rewards'?['rewards-salary','rewards-bonus','rewards-uploaded']:[surfaceProbe];
    for(const surface of requested)await measureSurfaceProbe(fixture,surface);
    if(rewardsProbe)assert(requested.every(surface=>
     report.surfaceProbes[surface].length===3&&report.surfaceProbes[surface].every(row=>row.status==='observed')),
