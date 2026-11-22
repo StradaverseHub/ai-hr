@@ -133,7 +133,7 @@ describe('e440991b — the way in: the payroll run screen', () => {
     // fd8156d4 — the run's actions stay gated on the run's own payslip count, never the searched page's.
     expect(RUN_PAGE).toContain('const slipCount = data.runPayslipCount;');
     expect(RUN_PAGE).toContain("batch.status !== 'closed' && await payrollHasRetiredAttendanceFormulaInputs(s, batch.id)");
-    expect(RUN_PAGE).toMatch(/\{batch\.status === 'draft' && !retiredFormulaInputs && \(\s*<form action=\{generateAction\}/);
+    expect(RUN_PAGE).toMatch(/\{batch\.status === 'draft' && !retiredFormulaInputs && \(\s*<DraftTaxProcessControl>\s*<form action=\{generateAction\}/);
     expect(RUN_PAGE).toMatch(/\{batch\.status === 'processed' && !retiredFormulaInputs &&\s*\(needsRecalc \? \([\s\S]*?\)\s*:\s*\(\s*<form action=\{closeAction\}/);
     expect(RUN_PAGE).toMatch(/\{!retiredFormulaInputs && multiCycleOn && slipCount > 0 && \(\s*<Link[^>]*>\s*\{t\('recalcBannerAction'\)\}/);
     expect(RUN_PAGE).toMatch(/retiredFormulaInputs && \([\s\S]*?batch\.status === 'draft'[\s\S]*?action=\{reverseRetiredAttendanceFormulaAction\}/);

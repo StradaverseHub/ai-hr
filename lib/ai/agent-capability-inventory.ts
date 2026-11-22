@@ -374,6 +374,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/notification-actions.ts":{"markAllNotificationsReadAction":"backlog:confirm","markNotificationReadAction":"backlog:confirm"},
  "app/onboarding-actions.ts":{"completeOnboardingAction":"internal:session_and_presentation"},
  "app/operator/actions.ts":{"changeCustomerModuleAction":"handoff:platform_operator","createCustomerAction":"handoff:platform_operator","renameCustomerAction":"handoff:platform_operator","requestReissueAction":"handoff:platform_operator","revealActivationUrlAction":"handoff:platform_operator","setCustomerFeedbackMenuAction":"handoff:platform_operator","submitCustomerAction":"handoff:platform_operator"},
+ "app/payroll/[batchId]/draft-tax-actions.ts":{"startDraftTaxCheck":"internal:session_and_presentation","getDraftTaxCheck":"internal:session_and_presentation"},
  "app/payroll/[batchId]/import-actions.ts":{"commitComponentImportAction":"backlog:approve","dryRunComponentImportAction":"backlog:approve"},
  "app/payroll/[batchId]/retired-attendance-formula-action.ts":{"reverseRetiredAttendanceFormulaAction":"handoff:payroll_reversal"},
  "app/payroll/[batchId]/leave-followup-actions.ts":{"resolveLeavePayrollExceptionAction":"backlog:approve"},
