@@ -1,7 +1,7 @@
-import {afterAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
-import {withTenant,type SessionContext} from '../db/client';
+import {client,withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {requestPayrollHistoryConfirm,payrollHistoryJobHandler} from '../core/payroll-history-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
@@ -22,6 +22,13 @@ import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock'
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule,createAppUser,type Base} from './harness';
+// Two connections leave exactly one background permit, as on the installed staging worker.
+vi.hoisted(()=>{
+ vi.stubEnv('AIHR_DB_PROCESS_ROLE','worker');
+ vi.stubEnv('AIHR_DB_POOL_MAX','2');
+});
+beforeAll(()=>vi.unstubAllEnvs());
+
 let b:Base,ctx:SessionContext,employee:string,travel:string;
 const rows=(employeeNo:string,amount='500')=>['01','02','03'].flatMap(month=>[
  [employeeNo,`2026-${month}`,'ME','BASIC','TAXCO','5000'],[employeeNo,`2026-${month}`,'ME','TRV','TAXCO',amount],
@@ -111,6 +118,7 @@ describe('authorized immutable historical income tax corrections',()=>{
   expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(3);
  });
  it('previews one full company across worker steps and completes its reviewed corrections in the worker',async()=>{
+  expect(client.options.max).toBe(2);
   const imported=[];
   for(let index=0;index<21;index++){
    const code='Q'+String(index).padStart(3,'0');

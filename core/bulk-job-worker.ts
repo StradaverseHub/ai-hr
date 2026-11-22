@@ -77,8 +77,6 @@ export type BulkJobHandler<P=any>={
  commitPrepareTx?(tx:Tx,ctx:SessionContext,job:BulkJobRow,prepared:BulkJobPrepared|BulkJobRefused):Promise<{attemptId?:string|null;plan?:unknown}|void>;
  /** Start of every chunk transaction, before steps are read: the kind's normal writer locks and session settings. */
  beginChunkTx?(tx:Tx,ctx:SessionContext,job:BulkJobRow):Promise<void>;
- /** Apply one step. Its write and the kernel's applied marker commit together, so a crash never repeats it. */
- applyStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<P>,cache:Map<string,unknown>):Promise<BulkJobStepOutcome>;
  /** Wall-clock work per chunk transaction before it commits (default 250 ms) and a step cap (default 64). */
  chunkBudgetMs?:number;maxStepsPerChunk?:number;
  /** 'per-step' only: after this many consecutive transient retries the step that keeps refusing is recorded as
@@ -113,7 +111,15 @@ export type BulkJobHandler<P=any>={
   *  owner handle: owner work runs in unit.ownerTx, one transaction attributed to the job (5014). App-role work that
   *  must commit together with a marker on the job fences its transaction (unit.fenceTx) and writes it with unit.set. */
  settle?(ctx:SessionContext|null,job:BulkJobRow,unit:BulkJobSettleUnit):Promise<void>;
-};
+} & ({
+ /** A step's write and its applied marker commit together. */
+ applyStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<P>,cache:Map<string,unknown>):Promise<BulkJobStepOutcome>;
+ prepareStep?:never;
+} | {
+ /** Read one sealed step outside the write transaction. Only the returned callback may write. */
+ prepareStep(ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<P>):Promise<(tx:Tx)=>Promise<BulkJobStepOutcome>>;
+ applyStepTx?:never;
+});
 /** A unit that cannot start until other work finishes (a tenant-serialised kind whose turn has not come): the kernel
  * runs it again after a short pause, without using the job's transient retry budget, so waiting never fails a job. */
 export class BulkJobWaiting extends Error{constructor(message='Waiting for another job of this kind to finish.'){super(message);this.name='BulkJobWaiting';}}
@@ -369,15 +375,24 @@ async function prepareUnit(connection:postgres.ReservedSql,handler:BulkJobHandle
 
 /** One chunk: about chunkBudgetMs of steps, each step's write and its applied marker in the same transaction. */
 async function chunkUnit(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,unit:BulkJobUnit,ctx:SessionContext){
- const job=c.job;const budget=handler.chunkBudgetMs??250;const max=handler.maxStepsPerChunk??64;
+ const job=c.job;const budget=handler.chunkBudgetMs??250;const max=handler.prepareStep?1:handler.maxStepsPerChunk??64;
  const cache=cacheOf(job.id);
+ const pendingSteps=(tx:Tx)=>tx.execute<BulkJobStep>(sql`select seq,kind,row_num,payload from app.bulk_job_pending_steps(${job.id}::uuid,${max})`);
+ let prepared:{step:BulkJobStep;apply:(tx:Tx)=>Promise<BulkJobStepOutcome>}|undefined;
+ if(handler.prepareStep){
+  const [step]=await jobTx(ctx,c,unit,'prepareStep',pendingSteps);
+  if(step){
+   const apply=await handler.prepareStep(ctx,job,step).catch(error=>()=>{throw error;});
+   prepared={step,apply};
+  }
+ }
  let lockedAt=0;
  const result=await jobTx(ctx,c,unit,'chunk',async tx=>{
   const started=performance.now();
   await handler.beginChunkTx?.(tx,ctx,job);
   lockedAt=performance.now(); // the kind's writer locks are held from here until COMMIT returns
   // The next pending steps, each verified against its seal before it is applied (the job row is locked by the fence).
-  const steps=await tx.execute<BulkJobStep>(sql`select seq,kind,row_num,payload from app.bulk_job_pending_steps(${job.id}::uuid,${max})`);
+  const steps=await pendingSteps(tx);
   if(!steps.length){
    await workerSet(tx,job.id,{state:handler.finalize?'finalizing':'completed',expectState:['running'],finished:!handler.finalize});
    return{count:0,done:true,ms:performance.now()-started};
@@ -386,15 +401,17 @@ async function chunkUnit(connection:postgres.ReservedSql,handler:BulkJobHandler,
   for(const step of steps){
    if(count>0&&performance.now()-started>=budget)break;
    kind=step.kind;
+   if(handler.prepareStep&&prepared?.step.seq!==step.seq)throw new BulkJobConfigurationError('The pending step changed during preparation.');
+   const apply=prepared?.apply??((writeTx:Tx)=>handler.applyStepTx!(writeTx,ctx,job,step,cache));
    if(handler.mode==='atomic'){
     let outcome:BulkJobStepOutcome;
-    try{outcome=await handler.applyStepTx(tx,ctx,job,step,cache);}
+    try{outcome=await apply(tx);}
     catch(error){if(isTransient(handler,error))throw error;throw new BulkJobStepRefused(step,error);}
     await stepSet(tx,job.id,step.seq,{state:'applied',result:outcome?.result??null});
     counters=merge(counters,outcome?.counters);
    }else{
     let outcome:BulkJobStepOutcome=undefined,refused:unknown=null,failed=false;
-    try{outcome=await tx.transaction(async savepoint=>handler.applyStepTx(savepoint,ctx,job,step,cache));}
+    try{outcome=await tx.transaction(apply);}
     catch(error){
      if(isTransient(handler,error)&&!(count===0&&handler.transientStepLimit!==undefined&&job.transient_retries>=handler.transientStepLimit))throw error;
      refused=error;failed=true;

@@ -347,14 +347,21 @@ export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,
  * the preview record is then saved, in a short transaction that rechecks the caller's authority on the primary.
  * Confirming still recomputes the selection under the history and Access write locks and refuses a preview whose
  * figures no longer match, so a change between the snapshot and the confirmation is never applied. */
-export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:TaxBasisSelection,options:{allowEmptySelection?:boolean}={}):Promise<TaxBasisPreview>{validateSelection(selection,options.allowEmptySelection);
+export async function calculateTaxBasisPreview(ctx:SessionContext,selection:TaxBasisSelection,options:{allowEmptySelection?:boolean}={}):Promise<TaxBasisPreview>{
+ validateSelection(selection,options.allowEmptySelection);
  const computed=await withTenant(ctx,async tx=>{await permission(tx,ctx,selection.companyId,true);return computeTx(tx,ctx,selection);},{readOnlySnapshot:true});
- const id=randomUUID(),createdAt=new Date().toISOString(),expiresAt=new Date(Date.now()+15*60000).toISOString();const previewHash=hash({selection,computed});
- const preview:TaxBasisPreview={...computed,previewId:id,previewHash,createdAt,expiresAt};
- return withTenant(ctx,async tx=>{
-  await permission(tx,ctx,selection.companyId,true);
-  await tx.execute(sql`insert into payroll_tax_basis_preview(id,tenant_id,company_id,created_by,preview,selection,preview_hash,expires_at) values(${id}::uuid,${ctx.tenantId}::uuid,${selection.companyId}::uuid,${ctx.userId!}::uuid,${JSON.stringify(preview)}::jsonb,${JSON.stringify(selection)}::jsonb,${previewHash},${expiresAt}::timestamptz)`);return preview;
- });}
+ const previewId=randomUUID(),createdAt=new Date().toISOString(),expiresAt=new Date(Date.now()+15*60000).toISOString();
+ return {...computed,previewId,previewHash:hash({selection,computed}),createdAt,expiresAt};
+}
+export async function saveTaxBasisPreviewTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,preview:TaxBasisPreview){
+ await permission(tx,ctx,selection.companyId,true);
+ await tx.execute(sql`insert into payroll_tax_basis_preview(id,tenant_id,company_id,created_by,preview,selection,preview_hash,expires_at) values(${preview.previewId}::uuid,${ctx.tenantId}::uuid,${selection.companyId}::uuid,${ctx.userId!}::uuid,${JSON.stringify(preview)}::jsonb,${JSON.stringify(selection)}::jsonb,${preview.previewHash},${preview.expiresAt}::timestamptz)`);
+ return preview;
+}
+export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:TaxBasisSelection,options:{allowEmptySelection?:boolean}={}):Promise<TaxBasisPreview>{
+ const preview=await calculateTaxBasisPreview(ctx,selection,options);
+ return withTenant(ctx,tx=>saveTaxBasisPreviewTx(tx,ctx,selection,preview));
+}
 /** Everything a selection's recomputation reads, as one digest: the Pay Item settings, the subjects, the company,
  * the assessment year's verified rules, and every payslip and run of the company in that year (row versions), with
  * the income-tax corrections and imported history snapshots and revisions on them. Read set-wise, under the caller's
@@ -379,43 +386,72 @@ async function taxBasisInputsDigestTx(tx:Tx,ctx:SessionContext,selection:TaxBasi
  return hash({settings,subjects:[...subjects],selectedSubjects:[...selectedSubjects],company:company?.row??null,rules,rows:rows?.d??null,noTp3Opening});
 }
 async function recordEventTx(tx:Tx,ctx:SessionContext,batchId:string,companyId:string,kind:string,detail:unknown={},employmentId:string|null=null){await tx.execute(sql`insert into payroll_tax_basis_event(tenant_id,company_id,batch_id,employment_id,actor_id,kind,detail) values(${ctx.tenantId}::uuid,${companyId}::uuid,${batchId}::uuid,${employmentId}::uuid,${ctx.userId!}::uuid,${kind},${JSON.stringify(detail)}::jsonb)`);}
-async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options:{resume?:boolean;defer?:boolean;budgetMs?:number;groupReviewed?:true}={}):Promise<{id:string|null}>{
- const {resume=false,defer=false,budgetMs=40000}=options;
+type PreviewInput={previewId:string;previewHash:string};
+type StoredPreview={preview:TaxBasisPreview;selection:TaxBasisSelection;previewHash:string;expired:boolean};
+type OpenedTaxBasisBatch=StoredPreview&{id:string;existing:boolean};
+const historyChanged='History, settings, rules or access changed. Preview the recalculation again.';
+
+async function loadTaxBasisPreviewTx(tx:Tx,ctx:SessionContext,input:PreviewInput,lock:boolean,groupReviewed:boolean){
+ const [stored]=await tx.execute<StoredPreview>(sql`select preview,selection,preview_hash as "previewHash",expires_at<now() as expired from payroll_tax_basis_preview where id=${input.previewId}::uuid and created_by=${ctx.userId??null}::uuid ${lock?sql`for update`:sql``}`);
+ if(!stored||stored.previewHash!==input.previewHash)fail('The recalculation preview is unavailable.');
+ await permission(tx,ctx,stored.selection.companyId,true);
+ const [existing]=await tx.execute<{id:string}>(sql`select id from payroll_tax_basis_batch where preview_id=${input.previewId}::uuid`);
+ if(!existing&&stored.expired&&!groupReviewed)fail('The preview expired. Preview the recalculation again.');
+ return {stored,existing:existing?.id??null};
+}
+
+async function calculateTaxBasisConfirmation(ctx:SessionContext,input:PreviewInput,groupReviewed:boolean){
  if(!uuid.test(input.previewId)||!/^[a-f0-9]{64}$/.test(input.previewHash))fail('Choose a valid recalculation preview.');
- type Stored={preview:TaxBasisPreview;selection:TaxBasisSelection;previewHash:string;expired:boolean};
- const storedTx=async(tx:Tx,lock:boolean)=>{
-  const [stored]=await tx.execute<Stored>(sql`select preview,selection,preview_hash as "previewHash",expires_at<now() as expired from payroll_tax_basis_preview where id=${input.previewId}::uuid and created_by=${ctx.userId??null}::uuid ${lock?sql`for update`:sql``}`);
-  if(!stored||stored.previewHash!==input.previewHash)fail('The recalculation preview is unavailable.');await permission(tx,ctx,stored.selection.companyId,true);
-  const [existing]=await tx.execute<{id:string}>(sql`select id from payroll_tax_basis_batch where preview_id=${input.previewId}::uuid`);
-  if(!existing&&stored.expired&&!options.groupReviewed)fail('The preview expired. Preview the recalculation again.');
-  return{stored,existing:existing?.id??null};
+ return withTenant(ctx,async tx=>{
+  const {stored,existing}=await loadTaxBasisPreviewTx(tx,ctx,input,false,groupReviewed);
+  if(existing)return {stored,existing,digest:''};
+  const fresh=await computeTx(tx,ctx,stored.selection);
+  if(hash({selection:stored.selection,computed:fresh})!==stored.previewHash)fail(historyChanged);
+  if(!stored.preview.eligibleCount){
+   if(groupReviewed)return {stored,existing:null,digest:null};
+   fail('There are no eligible changed employees to recalculate.');
+  }
+  return {stored,existing:null,digest:await taxBasisInputsDigestTx(tx,ctx,stored.selection)};
+ },{readOnlySnapshot:true});
+}
+
+async function openTaxBasisBatchTx(tx:Tx,ctx:SessionContext,input:PreviewInput,digest:string,groupReviewed:boolean):Promise<OpenedTaxBasisBatch|null>{
+ await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+ const {stored,existing}=await loadTaxBasisPreviewTx(tx,ctx,input,true,groupReviewed);
+ if(existing)return {...stored,id:existing,existing:true};
+ if(await taxBasisInputsDigestTx(tx,ctx,stored.selection)!==digest)return null;
+ const id=randomUUID();
+ await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by) values(${id}::uuid,${ctx.tenantId}::uuid,${stored.selection.companyId}::uuid,${input.previewId}::uuid,${ctx.userId!}::uuid)`);
+ await recordEventTx(tx,ctx,id,stored.selection.companyId,'pending');
+ return {...stored,id,existing:false};
+}
+
+export async function prepareReviewedTaxBasisConfirmation(ctx:SessionContext,input:PreviewInput){
+ const {digest}=await calculateTaxBasisConfirmation(ctx,input,true);
+ return async (tx:Tx):Promise<{id:string|null}>=>{
+  if(digest===null){
+   await loadTaxBasisPreviewTx(tx,ctx,input,false,true);
+   return {id:null};
+  }
+  const opened=await openTaxBasisBatchTx(tx,ctx,input,digest,true);
+  if(!opened)fail(historyChanged);
+  return {id:opened.id};
  };
- // The whole selection is recomputed in one read-only snapshot with no tenant-wide lock (up to 25 s), and refused
- // exactly as before when its figures no longer match the preview. The batch then opens in one short transaction
- // under the history and Access write locks, after proving with one set-wise digest that nothing the recomputation
- // read changed since its snapshot; if something did, the snapshot recomputation runs again. Each employee is still
- // recomputed and compared under the write locks before its own correction commits (below).
- let opened:Stored&{id:string;existing:boolean}|null=null;
+}
+
+async function executeTaxBasisRecalculation(ctx:SessionContext,input:PreviewInput,options:{resume?:boolean;budgetMs?:number}={}):Promise<{id:string}>{
+ const {resume=false,budgetMs=40000}=options;
+ // Recompute in a read-only snapshot. Under the writer locks, use the digest to check that its inputs still match.
+ let opened:OpenedTaxBasisBatch|null=null;
  for(let round=0;!opened;round++){
-  const snapshot=await withTenant(ctx,async tx=>{
-   const {stored,existing}=await storedTx(tx,false);
-   if(existing)return{stored,existing,digest:''};
-   const fresh=await computeTx(tx,ctx,stored.selection);if(hash({selection:stored.selection,computed:fresh})!==stored.previewHash)fail('History, settings, rules or access changed. Preview the recalculation again.');
-   if(!stored.preview.eligibleCount){if(defer)return {stored,existing:null,digest:null};fail('There are no eligible changed employees to recalculate.');}
-   return{stored,existing:null,digest:await taxBasisInputsDigestTx(tx,ctx,stored.selection)};
-  },{readOnlySnapshot:true});
-  if(snapshot.digest===null)return {id:null};
+  const snapshot=await calculateTaxBasisConfirmation(ctx,input,false);
   if(snapshot.existing){opened={...snapshot.stored,id:snapshot.existing,existing:true};break;}
-  opened=await withTenant(ctx,async tx=>{
-   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
-   const {stored,existing}=await storedTx(tx,true);
-   if(existing)return {...stored,id:existing,existing:true};
-   if(await taxBasisInputsDigestTx(tx,ctx,stored.selection)!==snapshot.digest)return null;
-   const id=randomUUID();await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by) values(${id}::uuid,${ctx.tenantId}::uuid,${stored.selection.companyId}::uuid,${input.previewId}::uuid,${ctx.userId!}::uuid)`);await recordEventTx(tx,ctx,id,stored.selection.companyId,'pending');return {...stored,id,existing:false};
-  });
-  if(!opened&&round>=2)fail('History, settings, rules or access changed. Preview the recalculation again.');
+  if(snapshot.digest===null)fail('There are no eligible changed employees to recalculate.');
+  const digest=snapshot.digest;
+  opened=await withTenant(ctx,tx=>openTaxBasisBatchTx(tx,ctx,input,digest,false));
+  if(!opened&&round>=2)fail(historyChanged);
  }
- if(defer||opened.existing&&!resume)return {id:opened.id};
+ if(opened.existing&&!resume)return {id:opened.id};
  const processed=await withTenant(ctx,async tx=>{await permission(tx,ctx,opened.selection.companyId,true);return tx.execute<{kind:string;employmentId:string|null}>(sql`select kind,employment_id as "employmentId" from payroll_tax_basis_event where batch_id=${opened.id}::uuid`);});
  if(processed.some(e=>['completed','completed_with_errors','failed'].includes(e.kind)))return {id:opened.id};
  const done=new Set(processed.filter(e=>e.employmentId).map(e=>e.employmentId));
@@ -509,9 +545,9 @@ export async function recoverTaxBasisBatch(ctx:SessionContext,id:string):Promise
  });
 }
 
-export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string}):Promise<{id:string}>;
-export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options:{defer:true;groupReviewed:true}):Promise<{id:string|null}>;
-export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options?:{defer:true;groupReviewed:true}){return executeTaxBasisRecalculation(ctx,input,options);}
+export function confirmTaxBasisRecalculation(ctx:SessionContext,input:PreviewInput){
+ return executeTaxBasisRecalculation(ctx,input);
+}
 /** Bounded continuation keeps the reviewed configuration and rechecks each remaining employee. */
 export async function continueTaxBasisBatch(ctx:SessionContext,id:string,options:{budgetMs?:number}={}):Promise<{id:string}>{
  if(!uuid.test(id))fail('Choose a valid recalculation batch.');

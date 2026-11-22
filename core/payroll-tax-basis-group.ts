@@ -3,7 +3,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {assertModuleGate} from './module-gate';
 import {bulkJobProgress,bulkJobTx,enqueueBulkJobTx} from './bulk-job';
 import type {BulkJobHandler} from './bulk-job-worker';
-import {confirmTaxBasisRecalculation,continueTaxBasisBatch,planTaxBasisPreviewTx,previewTaxBasisRecalculation} from './payroll-tax-basis';
+import {calculateTaxBasisPreview,continueTaxBasisBatch,planTaxBasisPreviewTx,prepareReviewedTaxBasisConfirmation,saveTaxBasisPreviewTx} from './payroll-tax-basis';
 import {PayrollTaxBasisError,TAX_BASIS_PREVIEW_CHUNK_SIZE,type TaxBasisEmployee,type TaxBasisPreview,type TaxBasisSelection} from '../lib/payroll-tax-basis';
 
 const KIND='payroll_tax_basis_group';
@@ -150,7 +150,6 @@ export async function readTaxBasisGroupProgress(ctx:SessionContext,id:string,off
 export const taxBasisGroupJobHandler:BulkJobHandler<Step>={
  kind:KIND,
  mode:'per-step',
- maxStepsPerChunk:1,
  quietNotice:()=>true,
  stepRef:step=>step.payload.companyId,
  async prepare(ctx,job){
@@ -178,16 +177,22 @@ export const taxBasisGroupJobHandler:BulkJobHandler<Step>={
    } satisfies PreviewRef}))};
   });
  },
- async applyStepTx(_tx,ctx,_job,step){
+ async prepareStep(ctx,_job,step){
   const selection=step.payload;
   if(step.kind==='preview'&&'year' in selection){
    const {selectionMode,...criteria}=selection;
-   const preview=await previewTaxBasisRecalculation(ctx,criteria,{allowEmptySelection:true});
-   return {result:{companyId:preview.companyId,previewId:preview.previewId,previewHash:preview.previewHash,selectionMode} satisfies PreviewRef};
+   const preview=await calculateTaxBasisPreview(ctx,criteria,{allowEmptySelection:true});
+   return async tx=>{
+    await saveTaxBasisPreviewTx(tx,ctx,criteria,preview);
+    return {result:{companyId:preview.companyId,previewId:preview.previewId,previewHash:preview.previewHash,selectionMode} satisfies PreviewRef};
+   };
   }
   if(step.kind!=='confirm'||!('previewId' in selection))throw unavailable();
-  const result=await confirmTaxBasisRecalculation(ctx,selection,{defer:true,groupReviewed:true});
-  return {result:{companyId:selection.companyId,id:result.id} satisfies BatchRef};
+  const confirm=await prepareReviewedTaxBasisConfirmation(ctx,selection);
+  return async tx=>{
+   const result=await confirm(tx);
+   return {result:{companyId:selection.companyId,id:result.id} satisfies BatchRef};
+  };
  },
  async finalize(ctx,job){
   const rows=await withTenant(ctx,async tx=>{
