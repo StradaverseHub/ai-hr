@@ -1651,7 +1651,13 @@ try{
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
    try{
     const options={db,fixture,origin,compiledPages,signedInContext,report,save};
-    if(censusRewards)await measureRewardsRecords(options);
+    if(censusRewards){
+     await measureRewardsRecords(options);
+     await run('rewards-setup-owner-profile',process.execPath,['--conditions=react-server','--import','tsx',
+      '../automation/scripts/performance/rewards-setup-owner-profile.mjs'],dbEnv);
+     report.rewardsSetupOwnerProfile=JSON.parse(readFileSync(join(privateDir,'rewards-setup-owner-profile.json'),'utf8'));
+     save();
+    }
     else if(censusLetters)await measureLetterRecords(options);
     else if(censusRecruitment)await measureRecruitmentRecords(options);
     else await measureFixtureRecordCensus({...options,payrollCorrections:censusPayrollCorrections});
