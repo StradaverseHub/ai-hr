@@ -78,8 +78,6 @@ export default async function BatchPage({
   }>;
 }) {
   const s = await requireAdmin();
-  const t = await getTranslations('payroll.batch');
-  const ta = await getTranslations('anomaly');
   const { batchId } = await params;
   if (!UUID_RE.test(batchId)) notFound(); // see UUID_RE — a non-uuid segment must 404, not 500
   const sp = await searchParams;
@@ -103,6 +101,7 @@ export default async function BatchPage({
   const searching = q.trim() !== '';
   const data = await payrollRunRegisterPage(s, batchId, parsePageQuery(sp), q);
   if (!data) notFound();
+  const [t, ta] = await Promise.all([getTranslations('payroll.batch'), getTranslations('anomaly')]);
   const { batch, closeCycleName, slipPage } = data;
   // The run's own payslip count, whatever is typed in the search: Close, Reprocess and Remove act on the run.
   const slipCount = data.runPayslipCount;
