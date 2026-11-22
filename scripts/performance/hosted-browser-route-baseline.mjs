@@ -822,7 +822,8 @@ async function measureMixedLoad(command,fixture){
    if(loadedAttendance)report.mixedAttendanceWork={
     persisted:counts(loadedAttendance,['attendance','clockingImport']),
     ...(data.clockingImportLoad&&{clockingLoad:counts(data.clockingImportLoad,
-      ['planned','started','validated','submitted','persisted','persistedAtSteady500','failedLanes'])}),
+      ['planned','started','validated','validationRefused','submitted','accepted','alreadyRunning','otherSubmissionRefused',
+       'persisted','persistedAtSteady500','failedLanes'])}),
    };
    report.mixedResponsePhases={available:false};
    try{
