@@ -6,7 +6,7 @@ import { attendanceApplicationFilterOptions, getAttendanceWorkflow, listAttendan
 import { attendanceWorkflowConfiguration, attendanceWorkflowSelectedEmployees } from '@/lib/attendance-workflow-config';
 import { PageHeader, pageWideCls } from '@/components/ui';
 import { WorkflowForm } from '../workflow-form';
-import { attendanceWorkflowCreationCompanies } from '../company-labels';
+import { attendanceWorkflowCompanyOptions } from '../company-labels';
 import { companyWorkflowHref, isWorkflowId, workflowContext, workflowRoot, type WorkflowQuery } from '../navigation';
 export default async function NewAttendanceWorkflowPage({ searchParams }: { searchParams: Promise<WorkflowQuery> }) {
   const { s, scopeIds,allowedCompanyIds } = await scopedAdmin(), t = await getTranslations('attendanceWorkflow');
@@ -19,7 +19,7 @@ export default async function NewAttendanceWorkflowPage({ searchParams }: { sear
   try { context = typeof query.companyId==='string'?workflowContext({...query,applicationType}, allowedCompanyIds??scopeIds):scopeIds[0]?{companyId:scopeIds[0],applicationType}:null; } catch { notFound(); }
   if (!context) redirect(workflowRoot);
   const [options, workflows] = await Promise.all([
-    attendanceWorkflowCreationCompanies(s, allowedCompanyIds??scopeIds),
+    attendanceWorkflowCompanyOptions(s, allowedCompanyIds??scopeIds),
     listAttendanceWorkflows(s, [context.companyId]),
   ]);
   const defaultPriority = nextAttendanceWorkflowPriority(workflows
