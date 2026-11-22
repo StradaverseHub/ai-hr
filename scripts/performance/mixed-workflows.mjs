@@ -10,6 +10,21 @@ import {exerciseConcurrentPayrollClose} from './payroll-close-concurrency.mjs';
 import {readRouteForMeasurement} from './system-route-manifest.mjs';
 import {isClockingLoadActor} from './route-scheduling.mjs';
 
+// The Server Action transports typed business refusals in successful HTTP responses.
+export function clockingImportOutcome(content, stage) {
+ const outcomes=[];
+ for(const line of content.split('\n')){
+  const match=/^[0-9a-f]+:(\{.*\})$/.exec(line);
+  if(!match)continue;
+  let value;
+  try{value=JSON.parse(match[1]);}catch{continue;}
+  if(value?.ok===true&&(stage==='validate'?value.preview:value.job))outcomes.push('accepted');
+  if(value?.ok===false&&typeof value.error==='string')outcomes.push(value.error==='alreadyRunning'?'alreadyRunning':'refused');
+ }
+ assert.equal(outcomes.length,1,'Clocking Import typed outcome missing or ambiguous');
+ return outcomes[0];
+}
+
 const attendanceFingerprint=/^[a-f0-9]{64}$/;
 const attendanceApprovalMarker='PERF_ATTENDANCE_BROWSER_APPROVAL';
 const attendanceCorrectionMarker='PERF_ATTENDANCE_BROWSER';
@@ -516,11 +531,19 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   assert(isClockingLoadActor(user),'Clocking Import requires the designated Company HR owner');
   const date=importDate(3+sequence),text=importText(user,date),fileName='PERF_MIXED_CLOCKING_'+user.index+'_'+sequence+'.csv';
   const mappingId=fixture.tenants[user.tenant].clockingMappingId,operationKey=randomUUID();
-  await send(user,templates.importValidate,[mappingId,text]);
+  const validation=await send(user,templates.importValidate,[mappingId,text]);
+  const validationOutcome=clockingImportOutcome(validation.content,'validate');
+  if(validationOutcome!=='accepted')record.validationRefused++;
+  assert.equal(validationOutcome,'accepted','Clocking Import validation returned a typed refusal');
   record.validated++;
   await pause(thinkTimeMs);
-  await send(user,templates.importCommit,[mappingId,text,fileName,Buffer.byteLength(text),operationKey]);
+  const submission=await send(user,templates.importCommit,[mappingId,text,fileName,Buffer.byteLength(text),operationKey]);
   record.submitted++;
+  const submissionOutcome=clockingImportOutcome(submission.content,'commit');
+  if(submissionOutcome==='alreadyRunning')record.alreadyRunning++;
+  if(submissionOutcome==='refused')record.otherSubmissionRefused++;
+  assert.equal(submissionOutcome,'accepted','Clocking Import submission returned a typed refusal');
+  record.accepted++;
   const {runId}=await waitForClockingImport(user,fileName,operationKey);
   assert.equal(await assertImported(user,fileName,date),runId);
   report.mixedWorkflows.completed.clockingImport++;

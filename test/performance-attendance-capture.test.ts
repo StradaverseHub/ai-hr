@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { isNativeAttendanceCorrectionPost } from '../scripts/performance/mixed-workflows.mjs';
+import { clockingImportOutcome, isNativeAttendanceCorrectionPost } from '../scripts/performance/mixed-workflows.mjs';
 
 it('captures the same-page native Attendance form and excludes unrelated browser POSTs', () => {
   const path = 'https://localhost:3443/attendance/my-records/2026-11-21?employmentId=fixture-subject';
@@ -23,4 +23,14 @@ it('captures the same-page native Attendance form and excludes unrelated browser
   ]) {
     expect(isNativeAttendanceCorrectionPost({ ...request, ...other }, path)).toBe(false);
   }
+});
+
+it('separates typed clocking admission and refusal from the HTTP status', () => {
+  const response = (result: object) => '0:{"a":"$1"}\n1:' + JSON.stringify(result);
+  expect(clockingImportOutcome(response({ ok: true, preview: { total: 100 } }), 'validate')).toBe('accepted');
+  expect(clockingImportOutcome(response({ ok: true, job: { state: 'queued' } }), 'commit')).toBe('accepted');
+  expect(clockingImportOutcome(response({ ok: false, error: 'alreadyRunning' }), 'commit')).toBe('alreadyRunning');
+  expect(clockingImportOutcome(response({ ok: false, error: 'mappingInactive' }), 'validate')).toBe('refused');
+  expect(() => clockingImportOutcome(response({ ok: true, preview: {} }), 'commit')).toThrow(/typed outcome/);
+  expect(() => clockingImportOutcome(response({ ok: true, job: {} }) + '\n2:{"ok":false,"error":"unavailable"}', 'commit')).toThrow(/typed outcome/);
 });

@@ -1797,7 +1797,8 @@ async function main(){
  }):null;
  const clockingActors=mixedWorkflows?fixture.users.filter(isClockingLoadActor):[];
  const clockingImportLoad={planned:clockingActors.length*clockingImportsPerActor,
-  started:0,validated:0,submitted:0,persisted:0,persistedAtSteady500:0,failedLanes:0};
+  started:0,validated:0,validationRefused:0,submitted:0,accepted:0,alreadyRunning:0,otherSubmissionRefused:0,
+  persisted:0,persistedAtSteady500:0,failedLanes:0};
  report.clockingImportLoad=clockingImportLoad;
  const clockingLoad=runLanes(clockingActors,async user=>{
   await waitForSteadyUsers();
