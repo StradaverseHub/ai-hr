@@ -7,7 +7,7 @@ import {currencyOfEmployment} from '../core/mobile-claims';
 import {readClaimsPageData} from '../app/claims/page-data';
 import {observeStatements} from './helpers/statement-observer';
 import {claimRecordFacts, createClaimType, getEmployeeClaimTypes, pendingClaimTaskSummary, listClaimHistoryPage, listPendingClaims, listPendingClaimsPage, listPendingClaimSelection, listClaimDraftsForEmployment, listClaimsForEmployment} from '../packs/claims/service';
-import {adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
+import {adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
 import {ALL_ROW_CEILING} from '../lib/pagination';
 let base: Base;
 beforeAll(() => migrateTestDb());
@@ -42,7 +42,7 @@ describe('claims history database pagination', () => {
     const {subject, ids} = await fixture();
     await owner.db.update(claimRequest).set({status:'rejected'}).where(eq(claimRequest.id, ids[0]));
     const userId = await createAppUser(base.tenantId, subject.personId, 'employee');
-    const session = {tenantId:base.tenantId,userId,personId:subject.personId,roles:['employee']};
+    const session = {...await entitledCtx(base, ['employee']), userId, personId:subject.personId};
     const employmentId = subject.employmentId;
     const separate = await observeStatements(async () => {
       const [types, drafts, {rows:claimPage,state:pgState}, currency] = await Promise.all([
