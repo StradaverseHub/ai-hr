@@ -80,6 +80,11 @@ try{
  assert(detail?.items.some(item=>item.code==='BASIC'&&Number(item.amount)===Number(amount)&&item.sourceAttemptId===preview.attemptId));
 
  mark('tax-basis-component');
+ // The 70-company fixture seeds a real BASIC Pay Item. Give it the explicit
+ // classification that the native tax-basis fixture's built-in BASIC has.
+ const basicRows=await owner.client`update pay_component set pcb_remuneration_type='normal'
+  where tenant_id=${group.tenantId}::uuid and code='BASIC' and included_in_pcb and archived_at is null returning id`;
+ assert.equal(basicRows.length,1);
  // Match the verified assessment-year rules used in payroll-tax-basis.test.ts.
  const year=2026;
  const taxPeriod=year+'-02';
