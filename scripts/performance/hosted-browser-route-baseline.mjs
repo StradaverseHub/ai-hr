@@ -1723,10 +1723,16 @@ try{
      performanceReportRecords:censusPerformanceReportRecords,jobDescriptionRecords:censusJobDescriptionRecords,
      noticeRecords:censusNoticeRecords,attendanceConfigurationRecords:censusAttendanceConfigurationRecords,attendanceHistoryRecords:censusAttendanceHistoryRecords,loanRecords:censusLoanRecords,savedReportRecords:censusSavedReportRecords,letterCatalogRecords:censusLetterCatalogRecords,systemTestingRecords:censusSystemTestingRecords});
     if(censusAttendanceConfigurationRecords){
-     await run('attendance-setup-owner-profile',process.execPath,['--conditions=react-server','--import','tsx',
-      '../automation/scripts/performance/attendance-setup-owner-profile.mjs'],dbEnv);
-     report.attendanceSetupOwnerProfile=JSON.parse(readFileSync(join(privateDir,'attendance-setup-owner-profile.json'),'utf8'));
-     save();
+     try{
+      await run('attendance-setup-owner-profile',process.execPath,['--conditions=react-server','--import','tsx',
+       '../automation/scripts/performance/attendance-setup-owner-profile.mjs'],dbEnv);
+     }finally{
+      const receipt=join(privateDir,'attendance-setup-owner-profile.json');
+      if(existsSync(receipt)){
+       report.attendanceSetupOwnerProfile=JSON.parse(readFileSync(receipt,'utf8'));
+       save();
+      }
+     }
     }
     if(censusFullFixtureRecords){
      await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
