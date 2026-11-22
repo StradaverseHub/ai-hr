@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { withTenant } from '../db/client';
-import { attendanceApplicationFilterOptions, countOfflineClaimsAwaitingReview, listAttendanceApplicationHistory } from '../packs/attendance/service';
+import { attendanceApplicationFilterOptions, countOfflineClaimsAwaitingReview, listAttendanceApplicationHistory, searchAttendanceApprovers } from '../packs/attendance/service';
 import { closeAll, migrateTestDb, resetDb, seedBase, setModule } from './harness';
 import { buildScaleFixture, type ScaleFixture } from './helpers/ai-centre-scale-fixture';
 
@@ -68,3 +68,36 @@ it('attributes empty-results History load to the browser page’s existing read 
     kind: 'FICTIONAL_ATTENDANCE_HISTORY_READ_TIMING', releaseEligible: false, samples,
   }, null, 2), { mode: 0o600 });
 }, 180_000);
+
+it('measures the editor’s on-demand picker with and without a search term', async () => {
+  expect(fixture.companyIds).toHaveLength(71);
+  expect(fixture.employmentIds).toHaveLength(1000);
+  const actor = fixture.personas.group;
+  const employeeCode = 'FX-GRP1';
+  const scopes = [
+    { name: 'groupHR-all', companyIds: [...fixture.companyIds] },
+    { name: 'groupHR-one', companyIds: [fixture.singleCompanyId] },
+  ];
+  const samples = [];
+  for (const { name, companyIds } of scopes) {
+    const empty = await timed(() => searchAttendanceApprovers(actor, { companyIds, query: '', page: 0 }));
+    expect(empty.value.rows).toHaveLength(50);
+    expect(empty.value.more).toBe(true);
+    const named = await timed(() => searchAttendanceApprovers(actor, { companyIds, query: employeeCode, page: 0 }));
+    expect(named.value.rows).toEqual([expect.objectContaining({ employeeCode, eligible: true })]);
+    const selectedId = named.value.rows[0].id;
+    const selected = await timed(() => searchAttendanceApprovers(actor, {
+      companyIds, query: 'PERF-NO-APPROVER-MATCH', page: 0, selectedIds: [selectedId],
+    }));
+    expect(selected.value.rows).toEqual([]);
+    expect(selected.value.selected).toEqual(named.value.rows);
+    samples.push({
+      scope: name, companies: companyIds.length,
+      firstPageMs: empty.elapsedMs, namedSearchMs: named.elapsedMs, selectedLabelMs: selected.elapsedMs,
+    });
+  }
+  const directory = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+  if (directory) writeFileSync(join(directory, 'attendance-editor-approver-search-timing.json'), JSON.stringify({
+    kind: 'FICTIONAL_ATTENDANCE_EDITOR_APPROVER_SEARCH_TIMING', releaseEligible: false, samples,
+  }, null, 2), { mode: 0o600 });
+}, 120_000);
