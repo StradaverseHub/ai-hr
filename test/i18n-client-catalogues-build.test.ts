@@ -11,7 +11,7 @@ it('writes the canonical catalogue and smaller signed-in route catalogues for ev
   try {
     await prepareClientCatalogues(output);
     const localeFiles = locales.map(locale => locale + '.json').sort();
-    const scopes = ['home', 'tp3', 'approvals'];
+    const scopes = ['home', 'tp3', 'approvals', 'payroll-dashboard'];
     expect((await readdir(output)).sort()).toEqual([...localeFiles, ...scopes].sort());
     for (const scope of scopes) {
       expect((await readdir(join(output, scope))).sort()).toEqual(localeFiles);
@@ -45,6 +45,12 @@ it('writes the canonical catalogue and smaller signed-in route catalogues for ev
       expect(approvalMessages.letters.reports).toEqual(canonical.letters.reports);
       expect(approvalMessages.labelExcelRoundTrip).toEqual(canonical.labelExcelRoundTrip);
       expect(Buffer.byteLength(approvals)).toBeLessThan(Buffer.byteLength(generated) / 2);
+      const payroll = await readFile(join(output, 'payroll-dashboard', locale + '.json'), 'utf8');
+      expect(JSON.parse(payroll)).toEqual({
+        ...shared,
+        components: {...shared.components, confirmSubmit: canonical.components.confirmSubmit},
+      });
+      expect(Buffer.byteLength(payroll)).toBeLessThan(Buffer.byteLength(generated) / 4);
     }
   } finally {
     await rm(output, { recursive: true, force: true });
