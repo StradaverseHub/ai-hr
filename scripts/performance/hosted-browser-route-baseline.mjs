@@ -899,9 +899,13 @@ async function measureAttendanceWorkflowEditor(fixture){
      await assertContentAvailable(page);
      await page.waitForLoadState('domcontentloaded',{timeout:5000});
      stage='approver-source';
-     await editor.locator('select:has(option[value="specific_employee"])').first().selectOption('specific_employee',{timeout:5000});
-     const trigger=editor.getByRole('button',{name:'Search Employee ID or name',exact:true}).first();
+     const source=editor.locator('select:has(option[value="specific_employee"])').first();
+     await source.selectOption('specific_employee',{timeout:5000});
+     stage='approver-picker';
+     const trigger=editor.locator('button[aria-expanded][aria-controls]')
+      .filter({hasText:'Search Employee ID or name'}).first();
      await trigger.waitFor({state:'visible',timeout:5000});
+     row.approverSourceInteractiveMs=Math.round(performance.now()-started);
      stage='approver-search';
      const actionStarted=performance.now();
      const reply=page.waitForResponse(response=>response.request().method()==='POST'
