@@ -1,5 +1,4 @@
-/** Real askAssistant/native own reads and sealed clarification; only provider transport is mocked.
- * Authored UNRUN: exact-SHA Actions must establish runtime evidence after integration. */
+/** Real Assistant invocation, own reads and sealed clarification with fictional provider review and transport. */
 import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -11,13 +10,24 @@ import {askAssistant} from '../core/assistant';
 import {assistantConversationScopeDigest} from '../core/assistant-conversation-context';
 import {ASSISTANT_TOOLS} from '../core/assistant-tools';
 import {sealAssistantDisclosure,openAssistantAnswerDisclosure} from '../lib/ai/assistant-disclosure';
-import {capturePrivateAssistantTask} from '../lib/ai/provider-assistant-policy';
+import {ASSISTANT_PRIVATE_CONTRACT,capturePrivateAssistantTask} from '../lib/ai/provider-assistant-policy';
+import * as providerReviews from '../lib/ai/provider-data-reviews';
+import {AiPrivacyGateError} from '../lib/ai/provider-privacy-error';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);
-beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-private-chat-receipt');vi.stubEnv('OPENAI_API_KEY','fictional-private-chat-transport');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
+beforeEach(async()=>{
+ vi.stubEnv('AI_CONFIG_SECRET','fictional-private-chat-receipt');
+ vi.stubEnv('OPENAI_API_KEY','fictional-private-chat-transport');
+ for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
+ vi.spyOn(providerReviews,'assertProviderDataContractReviewed').mockImplementation(contract=>{
+  if(contract!==ASSISTANT_PRIVATE_CONTRACT)throw new AiPrivacyGateError('unreviewed');
+ });
+ vi.spyOn(openaiAdapter,'converse').mockRejectedValue(Error('Unexpected provider call.'));
+ await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');
+});
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 async function fixture(){
  const admin=adminCtx(base);await seedEntitlement(admin,{leaveTypeId:base.annualLeaveTypeId,annualDays:113.75,validFrom:'2020-01-01'});
