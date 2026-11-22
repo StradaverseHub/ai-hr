@@ -5,7 +5,7 @@ import {mkdirSync,readFileSync,writeFileSync,readdirSync,mkdtempSync,rmSync,exis
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {createPlan,hash} from './plan.mjs';
 import {cleanHead,controllerRoot,sourceBoundBuild} from './release-ci.mjs';
@@ -13,7 +13,7 @@ import {REPOSITORY,verifyArtifactBytes} from './release-policy.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {assessResumeSource} from './resume-source.mjs';
-import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
+import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,validateRecoveryProducer} from './focused-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const data=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(data[key]),'Missing API inventory');rows.push(...data[key]);if(data[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
@@ -44,9 +44,16 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
  const verificationDiagnostic=validateRecoveryControllerDiagnostic({run:api(`actions/runs/${diagnosticId}`),jobs:pages(`actions/runs/${diagnosticId}/jobs?filter=all`,'jobs'),controller:verificationController});
  assert(git(candidatePath,'remote','get-url','origin').toLowerCase()==='https://github.com/stradaversehub/ai-hr.git','Unexpected repository');
  execFileSync('git',['merge-base','--is-ancestor',baseline,candidate],{cwd:candidatePath,stdio:'ignore'});
- // Exact-source v1: the build/test controller remains the original canonical candidate. The separately
- // frozen operator verification controller is recorded honestly, never relabelled as that producer.
- const controller=candidate,p={candidate,controller,baseline,runId};
+ const originalRun=api(`actions/runs/${runId}`);
+ let producerAncestorOfVerifier=false;
+ try{
+  if(/^[a-f0-9]{40}$/.test(originalRun.head_sha)){
+   execFileSync('git',['merge-base','--is-ancestor',originalRun.head_sha,verificationController],{cwd:controllerRoot,stdio:'ignore'});
+   producerAncestorOfVerifier=true;
+  }
+ }catch{/* Refused below unless this was the exact-source producer. */}
+ const controller=validateRecoveryProducer({run:originalRun,candidate,baseline,producerAncestorOfVerifier});
+ const p={candidate,controller,baseline,runId};
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`validated-recovery-${runId}-${randomUUID()}`);
  const source=await collect(runId,dir,{reuse,prefetchDirectory:process.env.AIHR_CI_PREFETCH_DIR||undefined});
  const plan=source.parsed.get('gate-plan')?.get('ci-plan.json'),local=createPlan(candidatePath);assert(plan,'Missing original archived plan');
@@ -65,7 +72,7 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
   focused.push({...f,producer,artifact,report:packet.get('focused.json'),result:packet.get('nodb.vitest.json')});
  }
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyFocusedRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController});
+ const recovery=verifyFocusedRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:createHash('sha256').update(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'))).digest('hex'),verificationController});
  recovery.verificationDiagnostic=verificationDiagnostic;
  const build=await sourceBoundBuild({candidatePath,dir,p:{...p,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');

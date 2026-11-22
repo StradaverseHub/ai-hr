@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
+import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController} from './focused-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 
@@ -71,4 +71,24 @@ test('The verification controller must have actual successful controller-only in
  const jobs=names.map((name,i)=>({name,id:100+i,run_id:500,head_sha:run.head_sha,run_attempt:1,status:'completed',conclusion:['resolve','deployment-hold'].includes(name)?'success':'skipped',steps:[{name:'CI integrity regression checks',conclusion:'success'}]}));
  const x={run,jobs,controller:f.verificationController,now};assert.equal(validateRecoveryControllerDiagnostic(x).runId,500);
  for(const change of [x=>x.run.head_sha='f'.repeat(40),x=>x.run.display_title='Alpha CI · all',x=>x.jobs[0].steps=[],x=>x.jobs[1].conclusion='success',x=>x.run.run_attempt=2]){const bad=structuredClone(x);change(bad);assert.throws(()=>validateRecoveryControllerDiagnostic(bad));}
+});
+
+test('Recovery recognizes only the original source or its exact published main staging baseline as producer',()=>{
+ const candidate='a'.repeat(40),baseline='b'.repeat(40);
+ const run={head_sha:baseline,head_branch:'main',event:'workflow_dispatch'};
+ const input={run,candidate,baseline,producerAncestorOfVerifier:true};
+ assert.equal(validateRecoveryProducer(input),baseline);
+ assert.equal(validateRecoveryProducer({...input,run:{...run,head_sha:candidate,head_branch:'alpha',event:'push'}}),candidate);
+ assert.throws(()=>validateRecoveryProducer({...input,producerAncestorOfVerifier:false}));
+ for(const other of [{head_sha:'c'.repeat(40)},{head_branch:'alpha'},{event:'pull_request'}]){
+  assert.throws(()=>validateRecoveryProducer({...input,run:{...run,...other}}));
+ }
+ assert.throws(()=>validateRecoveryProducer({...input,baseline:'c'.repeat(40)}));
+});
+test('Installation requires an exact reviewed focused recovery controller',()=>{
+ const controller='a'.repeat(40);
+ assert.doesNotThrow(()=>requireReviewedFocusedController({execute:false,controller}));
+ assert.doesNotThrow(()=>requireReviewedFocusedController({execute:true,controller,reviewedController:controller}));
+ assert.throws(()=>requireReviewedFocusedController({execute:true,controller}));
+ assert.throws(()=>requireReviewedFocusedController({execute:true,controller,reviewedController:'b'.repeat(40)}));
 });

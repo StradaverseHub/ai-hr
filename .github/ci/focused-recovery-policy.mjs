@@ -11,6 +11,17 @@ const positive=x=>Number.isSafeInteger(x)&&x>0;
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const jobName=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
 const focusedJobs=['resolve','selected-tests','typecheck','linux-build','native-typecheck','native-swift-models','native-bundle'];
+/** An unchanged application may use its authenticated staging baseline as the published main producer. */
+export function validateRecoveryProducer({run,candidate,baseline,producerAncestorOfVerifier}){
+ assert(sha(candidate)&&sha(baseline)&&sha(run?.head_sha),'Exact original producer identity required');
+ if(run.head_sha===candidate)return candidate;
+ assert(run.head_sha===baseline&&run.head_branch==='main'&&run.event==='workflow_dispatch'&&producerAncestorOfVerifier===true,
+  'Separate recovery producer must be the published main staging baseline and an ancestor of the verifier');
+ return baseline;
+}
+export function requireReviewedFocusedController({execute,controller,reviewedController}){
+ if(execute)assert(sha(controller)&&controller===reviewedController,'Exact focused recovery verifier review required before installation');
+}
 export function validateRecoveryControllerDiagnostic({run,jobs,controller,now=Date.now()}){
  assert(sha(controller)&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID&&positive(run.id),'Foreign verification-controller diagnostic');
  assert(run.workflow_id===WORKFLOW_ID&&run.path===WORKFLOW_PATH&&run.event==='workflow_dispatch'&&run.head_sha===controller&&run.status==='completed'&&run.conclusion==='success'&&run.run_attempt===1&&run.display_title?.startsWith('CI controller checks · '),'Exact successful controller-only diagnostic required');
