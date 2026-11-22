@@ -43,6 +43,43 @@ try{
  const {applicationId,candidateId}=await recruitment.addApplication(ctx,{
   jobId:job.id,fullName:applicant,email:'fictional-recruitment@example.invalid',source:'Referral',sendReceipt:false,
  });
+ mark('interview');
+ const interviewer=fixture.users[4];
+ assert(interviewer.role==='employee'&&interviewer.companyId===companyId);
+ const [interviewerPrincipal]=await owner.client`select tenant_id,grants from app.principal(${interviewer.userId}::uuid)`;
+ assert(interviewerPrincipal?.tenant_id===tenantId);
+ const interviewerContext={...ctx,userId:interviewer.userId,personId:interviewer.personId,grants:interviewerPrincipal.grants,
+  roles:[...new Set(interviewerPrincipal.grants.map(grant=>grant.role))]};
+ await recruitment.addJobMember(ctx,job.id,'interviewer',interviewer.userId);
+ const settings=await recruitment.recruitmentSettings(ctx,companyId);
+ const interviewStage=settings.stages.find(stage=>stage.name==='Interview');
+ assert(interviewStage,'Missing native Interview stage');
+ await recruitment.moveApplication(ctx,applicationId,interviewStage.id);
+ const {id:interviewId}=await recruitment.scheduleInterview(ctx,{applicationId,type:'video',
+  startsAt:new Date(Date.now()-3*86400000),durationMinutes:60,interviewerIds:[interviewer.userId]});
+ const form=await recruitment.scorecardForm(interviewerContext,interviewId);
+ const ratings=Object.fromEntries(form.definition.sections.flatMap(section=>section.criteria.map(criterion=>
+  [criterion.key,{rating:'4',notes:'Fictional browser scorecard note'}])));
+ assert(Object.keys(ratings).length>0);
+ const overview='Fictional scorecard browser witness';
+ await recruitment.submitScorecard(interviewerContext,interviewId,{ratings,result:'recommended',overview});
+ const [card]=await owner.client`select id from recruitment_scorecard
+  where tenant_id=${tenantId}::uuid and interview_id=${interviewId}::uuid and interviewer_user_id=${interviewer.userId}::uuid`;
+ assert(card?.id,'Missing persisted native scorecard');
+ mark('agency');
+ const {todayInKualaLumpur,addCalendarMonths}=await source('lib/hr-date.ts');
+ const today=todayInKualaLumpur();
+ const {id:agencyId}=await recruitment.saveAgency(ctx,{companyId,name:'Fictional browser agency'});
+ const contractName='Fictional browser agency agreement';
+ const {id:contractId}=await recruitment.saveAgencyContract(ctx,{agencyId,name:contractName,contractType:'headhunter',
+  feeRate:'5',startsOn:addCalendarMonths(today,-1),endsOn:addCalendarMonths(today,2),hrContactUserId:group.userId,access:'public'});
+ const {id:consultantId}=await recruitment.saveAgencyConsultant(ctx,{contractId,name:'Fictional browser consultant',
+  email:'fictional-consultant@example.invalid'});
+ await recruitment.assignAgencyContract(ctx,job.id,contractId);
+ const submissionName='Fictional agency browser candidate';
+ const {submissionId}=await recruitment.recordAgencySubmission(ctx,{jobId:job.id,contractId,consultantId,
+  fullName:submissionName,email:'fictional-agency-candidate@example.invalid'});
+ assert.equal((await recruitment.agencySubmissionReview(ctx,submissionId)).fullName,submissionName);
  mark('verify');
  const detail=await recruitment.applicationInterviews(ctx,applicationId);
  assert.equal(detail.candidateName,applicant);
@@ -50,7 +87,9 @@ try{
  const [binding]=await owner.client`select tenant_id,company_id,candidate_id,job_id from recruitment_application
   where id=${applicationId}::uuid`;
  assert.deepEqual({...binding},{tenant_id:tenantId,company_id:companyId,candidate_id:candidateId,job_id:job.id});
- fixture.recruitmentRecords={companyId,requisitionId:requisition.id,reqTitle,jobId:job.id,title,applicationId,applicant};
+ fixture.recruitmentRecords={companyId,requisitionId:requisition.id,reqTitle,jobId:job.id,title,applicationId,applicant,
+  interviewerIndex:interviewer.index,interviewerName:interviewer.name,interviewId,scorecardId:card.id,overview,
+  contractId,contractName,submissionId,submissionName};
  writeFileSync(fixturePath,JSON.stringify(fixture),{mode:0o600});
  mark('complete');
 }finally{

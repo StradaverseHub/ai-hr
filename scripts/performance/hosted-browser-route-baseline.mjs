@@ -1631,7 +1631,7 @@ try{
    const stageFile=join(privateDir,'recruitment-fixture-stage');
    if(existsSync(stageFile)){
     const stage=readFileSync(stageFile,'utf8');
-    if(['principal','requisition','position','application','verify','complete'].includes(stage))report.recruitmentFixtureStage=stage;
+    if(['principal','requisition','position','application','interview','agency','verify','complete'].includes(stage))report.recruitmentFixtureStage=stage;
    }
    save();
   }
