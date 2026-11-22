@@ -401,6 +401,21 @@ async function performanceRoutes(db, fixture) {
   ];
 }
 
+function lifecycleRequisitionRoutes(fixture){
+  const [group,company]=fixture.users;
+  const records=fixture.lifecycleRequisitions;
+  assert(records?.onboardingId&&records?.offboardingId,'Missing populated Lifecycle requisitions');
+  return [group,company].flatMap(actor=>[
+    {actor,template:'/lifecycle/requisitions/onboarding/[id]',
+      path:'/lifecycle/requisitions/onboarding/'+records.onboardingId,
+      exactHeading:records.onboardingNumber,content:records.itemName,exactContent:true},
+    {actor,template:'/lifecycle/requisitions/offboarding/[id]',
+      path:'/lifecycle/requisitions/offboarding/'+records.offboardingId,
+      exactHeading:records.offboardingNumber,content:records.employeeName,
+      witness:`strong:text-is(${JSON.stringify(records.lastDay)})`},
+  ]);
+}
+
 async function performanceReportRecordRoutes(db, fixture) {
   const [group, company] = fixture.users;
   const employee = fixture.users[6];
@@ -1221,7 +1236,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, letterCatalogRecords, systemTestingRecords, payrollReportRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, letterCatalogRecords, systemTestingRecords, payrollReportRecords, lifecycleRequisitions }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1234,6 +1249,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
     : loanRecords ? await loanRecordRoutes(db, fixture)
     : payrollReportRecords ? await payrollReportRecordRoutes(db, fixture)
+    : lifecycleRequisitions ? lifecycleRequisitionRoutes(fixture)
     : savedReportRecords ? await savedReportRecordRoutes(db, fixture)
     : letterCatalogRecords ? await letterCatalogRecordRoutes(db, fixture)
     : systemTestingRecords ? await systemTestingRecordRoutes(db, fixture)

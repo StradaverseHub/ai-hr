@@ -53,6 +53,14 @@ try{
  await v9Setup(ctx);
  const {config,revision}=await onboardingContext(ctx);
  config.access.onboarding=[...new Set([...config.access.onboarding,group.userId,company.userId])];
+ if(env.PERF_LIFECYCLE_REQUISITION_RECORDS==='true'){
+  config.access.offboarding=[...new Set([...config.access.offboarding,group.userId,company.userId])];
+  const team=config.groups.find(candidate=>candidate.id==='group-tech');
+  assert(team,'Expected the default Technology team');
+  team.members=[...new Set([...team.members,group.userId,company.userId])];
+  config.catalogue.push({id:'perf-browser-account',name:'Fictional requisition account',type:'system',
+   active:true,rules:{},workflow:null,team:team.id,card:false});
+ }
  await onboardingSaveConfig(ctx,revision,config);
  setStage('draft-joiners');
  const drafts=[];
@@ -68,6 +76,32 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_LIFECYCLE_REQUISITION_RECORDS==='true'){
+  const {onboardingCommand,onboardingDetail,v9CreateOffboarding,v9Command,offboardingRequisition}=await source('packs/lifecycle/service.ts');
+  const {addCalendarMonths}=await source('lib/hr-date.ts');
+  setStage('onboarding-requisition');
+  const joiner=rows.find(row=>row.case.sourceDraftId===drafts[0].id);
+  assert(joiner?.case.id);
+  const itemName='Fictional requisition account';
+  await onboardingCommand(ctx,joiner.case.id,joiner.revision,{type:'save',
+   patch:{hiring:'new_hire',local:{supervisor:'Fictional supervisor'},selected:['perf-browser-account']}});
+  const saved=await onboardingDetail(ctx,joiner.case.id);
+  await onboardingCommand(ctx,joiner.case.id,saved.revision,{type:'submit'});
+  const detail=await onboardingDetail(ctx,joiner.case.id,'requisition');
+  const requisition=detail.case.requisitions.find(entry=>!entry.cancelledAt&&entry.items.some(item=>item.catalogueId==='perf-browser-account'));
+  assert(requisition?.number,'Expected the native onboarding requisition');
+
+  setStage('offboarding-requisition');
+  const employee=fixture.users[4];
+  assert(employee.role==='employee'&&employee.companyId===company.companyId);
+  const lastDay=addCalendarMonths(fixture.today,1);
+  const exitId=await v9CreateOffboarding(ctx,{employmentId:employee.employmentId,type:'Resignation',noticeDate:fixture.today,lastDay});
+  await v9Command(ctx,exitId,1,{type:'submit'});
+  const exit=await offboardingRequisition(ctx,exitId);
+  assert(exit.id===exitId&&exit.state==='submitted'&&exit.fullView&&exit.name===employee.name&&exit.lastDay===lastDay);
+  fixture.lifecycleRequisitions={onboardingId:joiner.case.id,onboardingNumber:requisition.number,itemName,
+   offboardingId:exitId,offboardingNumber:exit.number,employeeName:employee.name,lastDay};
+ }
  if(env.PERF_LETTER_CATALOG_RECORDS==='true'){
   const {saveLetterField,saveLetterTemplate}=await source('core/letters.ts');
   const companyId=company.companyId,key='performanceEmployeeName',fieldLabel='Fictional employee name';

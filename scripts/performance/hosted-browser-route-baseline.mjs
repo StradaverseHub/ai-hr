@@ -48,8 +48,9 @@ const censusLetterCatalogRecords=shardInput==='letter-catalog-records';
 const censusSystemTestingRecords=shardInput==='system-testing-records';
 const censusInvitationRecords=shardInput==='invitation-records';
 const censusPayrollReportRecords=shardInput==='payroll-report-records';
+const censusLifecycleRequisitions=shardInput==='lifecycle-requisition-records';
 const censusFullFixtureRecords=shardInput==='fixture-records';
-const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusAttendanceRecords||censusPerformanceReportRecords||censusJobDescriptionRecords||censusNoticeRecords||censusAttendanceConfigurationRecords||censusAttendanceHistoryRecords||censusLoanRecords||censusSavedReportRecords||censusLetterCatalogRecords||censusSystemTestingRecords||censusInvitationRecords||censusPayrollReportRecords;
+const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusAttendanceRecords||censusPerformanceReportRecords||censusJobDescriptionRecords||censusNoticeRecords||censusAttendanceConfigurationRecords||censusAttendanceHistoryRecords||censusLoanRecords||censusSavedReportRecords||censusLetterCatalogRecords||censusSystemTestingRecords||censusInvitationRecords||censusPayrollReportRecords||censusLifecycleRequisitions;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1567,6 +1568,7 @@ try{
     PERF_LOAN_RECORDS:String(censusLoanRecords),
     PERF_SAVED_REPORT_RECORDS:String(censusSavedReportRecords),
     PERF_PAYROLL_REPORT_RECORDS:String(censusPayrollReportRecords),
+    PERF_LIFECYCLE_REQUISITION_RECORDS:String(censusLifecycleRequisitions),
     PERF_LETTER_CATALOG_RECORDS:String(censusLetterCatalogRecords),
    });
   if(censusSystemTestingRecords){
@@ -1578,7 +1580,7 @@ try{
   if(existsSync(stagePath)){
    const stage=readFileSync(stagePath,'utf8');
    if(['fixture','onboarding-config','draft-joiners','employee-master-report','payroll-comparison-history','payroll-comparison-report',
-    'lifecycle-defaults','legacy-onboarding','legacy-offboarding',
+    'lifecycle-defaults','legacy-onboarding','legacy-offboarding','onboarding-requisition','offboarding-requisition',
     'lifecycle-asset','lifecycle-asset-request','system-testing-session','system-testing-workspace-import','system-testing-draft',
     'system-testing-publish','system-testing-assign','system-testing-begin','system-testing-save','system-testing-complete','performance-cycle-grades','performance-cycle-create',
     'performance-cycle-participants','performance-cycle-open','performance-team-review',
@@ -1730,7 +1732,7 @@ try{
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
      importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords,
      performanceReportRecords:censusPerformanceReportRecords,jobDescriptionRecords:censusJobDescriptionRecords,
-     noticeRecords:censusNoticeRecords,attendanceConfigurationRecords:censusAttendanceConfigurationRecords,attendanceHistoryRecords:censusAttendanceHistoryRecords,loanRecords:censusLoanRecords,savedReportRecords:censusSavedReportRecords,letterCatalogRecords:censusLetterCatalogRecords,systemTestingRecords:censusSystemTestingRecords,payrollReportRecords:censusPayrollReportRecords});
+     noticeRecords:censusNoticeRecords,attendanceConfigurationRecords:censusAttendanceConfigurationRecords,attendanceHistoryRecords:censusAttendanceHistoryRecords,loanRecords:censusLoanRecords,savedReportRecords:censusSavedReportRecords,letterCatalogRecords:censusLetterCatalogRecords,systemTestingRecords:censusSystemTestingRecords,payrollReportRecords:censusPayrollReportRecords,lifecycleRequisitions:censusLifecycleRequisitions});
     if(censusFullFixtureRecords){
      await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
      assert(fixture.performanceRecords,'The full record plan requires a populated Performance assessment cycle');
