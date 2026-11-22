@@ -544,7 +544,8 @@ async function verifyDeferredAttendancePicker(page, entry, report, save) {
   try {
     await form.locator('ol').getByText(name, { exact: false }).first().waitFor({ state: 'visible', timeout });
     const started = performance.now();
-    await form.getByRole('button', { name: 'Search Employee ID or name', exact: true }).first().click({ timeout });
+    await form.locator('button[aria-expanded][aria-controls]')
+      .filter({ hasText: 'Search Employee ID or name' }).first().click({ timeout });
     const search = form.getByRole('searchbox').first();
     await search.waitFor({ state: 'visible', timeout });
     outcome.steps.pickerOpenedMs = Math.round(performance.now() - started);
