@@ -89,5 +89,12 @@
     "jobId": 137073203445,
     "artifactId": 14737137439,
     "sha256": "beae9c24d7947bd5693c76ed2200a6cc6ee752e045fc7061a776a02f05a3517a"
+  },
+  "ba329cbf9537bb5faee85e55122f423d0f917f8c": {
+    "controllerSha": "523efa4c8e7e53a2070ea2c5e3f2346f59437046",
+    "runId": 45041007108,
+    "jobId": 137265356477,
+    "artifactId": 14761319370,
+    "sha256": "60aa680f511d9cc9beb4c9695ab5f20581d36d7971d5d0a24fc0be70f3e6c1d3"
   }
 }
