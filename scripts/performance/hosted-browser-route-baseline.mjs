@@ -568,6 +568,11 @@ async function visit(page,actor,route,pass,fixture) {
  const observation={role:route.role,route:route.requested,pass,status:'failed'};
  const started=performance.now(),deadline=started+15000;
  const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
+ const watchTranslation=surfaceProbe==='shell-content'&&route.requested==='/';
+ const onConsole=message=>{
+  if(message.type()==='error'&&/MISSING_MESSAGE|IntlError/.test(message.text()))observation.translationErrors++;
+ };
+ if(watchTranslation){observation.translationErrors=0;page.on('console',onConsole);}
  try{
   const response=await page.goto(origin+route.requested,{waitUntil:'commit',timeout:timeout()});
   observation.responseCommittedMs=Math.round(performance.now()-started);
@@ -608,10 +613,15 @@ async function visit(page,actor,route,pass,fixture) {
   const documentFailure=await documentReady;
   if(documentFailure)throw documentFailure;
   await assertContentAvailable(page);
+  if(watchTranslation){
+   await page.waitForLoadState('load',{timeout:timeout()});
+   assert.equal(observation.translationErrors,0,'Signed-in Home emitted a missing translation');
+  }
   if(performance.now()>deadline)throw Object.assign(new Error('Readiness deadline exceeded'),{name:'TimeoutError'});
   observation.status='observed';
  }catch(error){observation.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';}
  finally{
+  if(watchTranslation)page.off('console',onConsole);
   observation.elapsedMs=Math.round(performance.now()-started);
   if(observation.destination==='expected'){
    if(observation.status==='failed'){
