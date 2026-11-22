@@ -68,6 +68,26 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_KNOWLEDGE_FEEDBACK_RECORDS==='true'){
+  const [{createArticle},{submitFeedback}]=await Promise.all([
+   source('core/knowledge-base.ts'),source('core/feedback.ts'),
+  ]);
+  assert.equal(ctx.entitlements.settings['feedback.menu_enabled'],true);
+  const employee=fixture.users[4];
+  assert(employee.role==='employee'&&employee.companyId===company.companyId);
+  const [principal]=await owner.client`select tenant_id,grants from app.principal(${employee.userId}::uuid)`;
+  assert(principal?.tenant_id===group.tenantId&&Array.isArray(principal.grants));
+  const reporter={tenantId:employee.tenantId,userId:employee.userId,personId:employee.personId,grants:principal.grants,
+   roles:[...new Set(principal.grants.map(grant=>grant.role))],entitlements:ctx.entitlements};
+  const articleTitle='Fictional payroll calendar guide';
+  const articleText='Fictional guidance for viewing the published payroll calendar.';
+  const {id:articleId}=await createArticle(ctx,{title:articleTitle,body:articleText,audience:'all'});
+  const feedbackTitle='Fictional feedback about the report calendar';
+  const description='Fictional browser feedback for the withdraw and restore workflow.';
+  const {id:feedbackId}=await submitFeedback(reporter,{title:feedbackTitle,description,category:'issue'});
+  fixture.knowledgeFeedbackRecords={articleId,articleTitle,articleText,feedbackId,feedbackTitle,description};
+ }
+
  if(env.PERF_SAVED_REPORT_RECORDS==='true'){
   const {saveCustomReport}=await source('core/custom-reports.ts');
   const employee=fixture.users[4];

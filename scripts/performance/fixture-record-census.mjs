@@ -620,6 +620,66 @@ async function loanRecordRoutes(db, fixture) {
   ]);
 }
 
+async function knowledgeFeedbackRecordRoutes(db, fixture) {
+  const [group, company, , , employee] = fixture.users;
+  const record = fixture.knowledgeFeedbackRecords;
+  assert(record && employee.tenantId === group.tenantId);
+  const [article] = await db`
+    select title,body,audience from kb_document
+    where id=${record.articleId}::uuid and tenant_id=${group.tenantId}::uuid
+      and created_by_user_id=${group.userId}::uuid and kind='article' and archived_at is null
+  `;
+  assert.deepEqual(article,{title:record.articleTitle,body:record.articleText,audience:'all'});
+  const [feedback] = await db`
+    select title,description,status from feedback_request
+    where id=${record.feedbackId}::uuid and tenant_id=${employee.tenantId}::uuid and reporter_user_id=${employee.userId}::uuid
+  `;
+  assert.deepEqual(feedback,{title:record.feedbackTitle,description:record.description,status:'open'});
+  const articlePath = '/knowledge-base/' + record.articleId;
+  return [
+    ...[group,company,employee].map(actor=>({
+      actor,template:'/knowledge-base/[id]',path:articlePath,exactHeading:record.articleTitle,
+      content:record.articleText,exactContent:true,
+      download:{href:articlePath+'/download',filename:record.articleTitle+'.md',text:record.articleText,
+        hash:createHash('sha256').update(record.articleText).digest('hex'),step:'knowledge-article-download',measurement:'knowledgeDownloadMs'},
+    })),
+    {actor:employee,template:'/feedback/[id]',path:'/feedback/'+record.feedbackId,exactHeading:record.feedbackTitle,
+      content:record.description,exactContent:true,feedbackRecordId:record.feedbackId},
+  ];
+}
+
+async function verifyFeedbackWithdrawal(page, main, db, entry, row, remaining) {
+  const readState = async () => {
+    const [value] = await db`
+      select status,status_before_cancel from feedback_request where id=${entry.feedbackRecordId}::uuid
+        and tenant_id=${entry.actor.tenantId}::uuid and reporter_user_id=${entry.actor.userId}::uuid
+    `;
+    return value;
+  };
+  const submit = async (label, path, toast) => {
+    const started = performance.now();
+    const response = page.waitForResponse(reply => {
+      const request = reply.request();
+      return request.method()==='POST' && new URL(reply.url()).pathname===entry.path
+        && (Boolean(request.headers()['next-action'])||request.isNavigationRequest());
+    },{timeout:remaining()});
+    const redirected = page.waitForURL(url=>url.pathname===path&&url.searchParams.get('toast')===toast,{timeout:remaining()});
+    const clicked = main.getByRole('button',{name:label,exact:true}).click({timeout:remaining()});
+    const [posted] = await Promise.all([response,redirected,clicked]);
+    assert([200,303].includes(posted.status()));
+    return Math.round(performance.now()-started);
+  };
+  row.step = 'feedback-withdrawal';
+  row.feedbackWithdrawalMs = await submit('Withdraw feedback','/feedback','Feedback withdrawn');
+  assert.deepEqual(await readState(),{status:'cancelled',status_before_cancel:'open'});
+  await page.goto(new URL(entry.path,page.url()).href,{waitUntil:'commit',timeout:remaining()});
+  row.step = 'feedback-restore';
+  row.feedbackRestoreMs = await submit('Restore',entry.path,'Feedback restored');
+  await main.getByRole('button',{name:'Withdraw feedback',exact:true}).waitFor({state:'visible',timeout:remaining()});
+  assert.deepEqual(await readState(),{status:'open',status_before_cancel:null});
+  row.feedbackRestored = true;
+}
+
 async function savedReportRecordRoutes(db, fixture) {
   const [group, company, , , employee] = fixture.users;
   const record = fixture.savedReportRecord;
@@ -1063,7 +1123,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, knowledgeFeedbackRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1076,6 +1136,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceHistoryRecords ? await attendanceHistoryRoutes(db, fixture)
     : loanRecords ? await loanRecordRoutes(db, fixture)
     : savedReportRecords ? await savedReportRecordRoutes(db, fixture)
+    : knowledgeFeedbackRecords ? await knowledgeFeedbackRecordRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -1162,6 +1223,10 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
             row.savedReportPageReadyMs=Math.round(performance.now()-started);
             row.step='saved-report-preview';
             await verifySavedReportPreview(page,main,entry,row,remaining);
+          }
+          if (entry.feedbackRecordId && pass === 'first') {
+            row.feedbackPageReadyMs = Math.round(performance.now()-started);
+            await verifyFeedbackWithdrawal(page,main,db,entry,row,remaining);
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);
