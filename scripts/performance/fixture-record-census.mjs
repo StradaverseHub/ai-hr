@@ -666,7 +666,8 @@ async function verifyTestingObservation(page, main, db, entry, row, remaining) {
       && new URL(reply.url()).pathname === entry.path;
   },{timeout:remaining()}).catch(() => null);
   await form.getByRole('button',{name:'Save observation',exact:true}).click({timeout:remaining()});
-  assert((await response)?.ok(),'The observation save returned no successful action response');
+  const reply = await response;
+  assert(reply?.ok(),'The observation save returned no successful action response');
   row.testingObservationResponseMs = Math.round(performance.now() - started);
   await main.getByText(text,{exact:true}).waitFor({state:'visible',timeout:remaining()});
   row.testingObservationReadyMs = Math.round(performance.now() - started);
@@ -679,6 +680,7 @@ async function verifyTestingObservation(page, main, db, entry, row, remaining) {
   `;
   assert.deepEqual(saved,{revision:2,actual_result:text,run_by_user_id:entry.actor.userId});
   row.testingObservationPersisted = true;
+  return reply;
 }
 
 async function letterCatalogRecordRoutes(db, fixture) {
@@ -741,6 +743,7 @@ async function verifyLetterCatalogPreview(page, main, db, entry, row, remaining)
   await region.getByText(preview.text,{exact:true}).waitFor({state:'visible',timeout:remaining()});
   row.letterPreviewMs=Math.round(performance.now()-started);
   assert.equal(await draftCount(),0,'Preview must not issue a letter');
+  return response;
 }
 
 async function savedReportRecordRoutes(db, fixture) {
@@ -787,6 +790,7 @@ async function verifySavedReportPreview(page, main, entry, row, remaining) {
     state:'visible',timeout:remaining(),
   });
   row.savedReportPreviewMs = Math.round(performance.now()-started);
+  return response;
 }
 
 async function payrollCorrectionRoutes(db, fixture) {
@@ -1001,6 +1005,7 @@ async function verifyFormulaSample(page, main, source, value, row) {
   await outcome.getByText('Test passed', { exact: true }).waitFor({ state: 'visible', timeout });
   await outcome.getByText(/^25(?:\.0+)?$/).waitFor({ state: 'visible', timeout });
   row.sampleCalculationMs = Math.round(performance.now() - started);
+  return result;
 }
 
 function importHistoryRoutes(fixture) {
@@ -1195,7 +1200,7 @@ async function verifyPersonnelContactSave(page, db, entry, report, save) {
   }
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, letterCatalogRecords, systemTestingRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, matchedAction, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, attendanceRecords, performanceReportRecords, jobDescriptionRecords, noticeRecords, attendanceConfigurationRecords, attendanceHistoryRecords, loanRecords, savedReportRecords, letterCatalogRecords, systemTestingRecords }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -1269,7 +1274,8 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           }
           if (entry.formulaSample && pass === 'first') {
             row.formulaPageReadyMs = Math.round(performance.now() - started);
-            await verifyFormulaSample(page, main, entry.formulaSample.source, entry.formulaSample.value, row);
+            const action = await verifyFormulaSample(page, main, entry.formulaSample.source, entry.formulaSample.value, row);
+            row.matchedAction = matchedAction(action, entry.path, entry.template);
           }
           if (entry.download && pass === 'first') {
             row[entry.download.measurement ? 'reportPageReadyMs' : 'importPageReadyMs'] = Math.round(performance.now() - started);
@@ -1295,7 +1301,8 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           if (entry.savedReportPreview&&pass==='first') {
             row.savedReportPageReadyMs=Math.round(performance.now()-started);
             row.step='saved-report-preview';
-            await verifySavedReportPreview(page,main,entry,row,remaining);
+            const action = await verifySavedReportPreview(page,main,entry,row,remaining);
+            row.matchedAction = matchedAction(action, entry.path, entry.template);
           }
           if (entry.testingVersion && pass === 'first') {
             row.testingPageReadyMs = Math.round(performance.now() - started);
@@ -1311,12 +1318,14 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           if (entry.testingObservation && pass === 'first') {
             row.testingPageReadyMs = Math.round(performance.now() - started);
             row.step = 'testing-observation-save';
-            await verifyTestingObservation(page,main,db,entry,row,remaining);
+            const action = await verifyTestingObservation(page,main,db,entry,row,remaining);
+            row.matchedAction = matchedAction(action, entry.path, entry.template);
           }
           if (entry.letterCatalogPreview && pass === 'first') {
             row.letterPageReadyMs = Math.round(performance.now()-started);
             row.step = 'letter-catalog-preview';
-            await verifyLetterCatalogPreview(page,main,db,entry,row,remaining);
+            const action = await verifyLetterCatalogPreview(page,main,db,entry,row,remaining);
+            row.matchedAction = matchedAction(action, entry.path, entry.template);
           }
           if (entry.personnelTabs && pass === 'first') {
             row.personnelPageReadyMs = Math.round(performance.now() - started);

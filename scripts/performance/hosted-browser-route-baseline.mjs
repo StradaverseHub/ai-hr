@@ -2,7 +2,7 @@ import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
 import {measureFixtureRecordCensus,seedFixedTransactionRecord,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
-import {randomBytes} from 'node:crypto';
+import {createHash,randomBytes} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,writeFileSync} from 'node:fs';
 import {createServer} from 'node:https';
@@ -1715,9 +1715,22 @@ try{
    browser=await require('playwright').chromium.launch();
    const routes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
    const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
+   const referenceManifest=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
+   const registrations=serverActionRegistry(routes,referenceManifest);
+   const entries=[...registrations.keys()].sort().map(id=>[id,[...registrations.get(id)].sort()]);
+   const ordinals=new Map(entries.map(([id],index)=>[id,index+1]));
+   report.serverActionCensus={registryDigest:createHash('sha256').update(JSON.stringify(entries)).digest('hex'),registered:entries.length};
+   const matchedAction=(response,path,template)=>{
+    const request=response.request(),url=new URL(request.url()),expected=new URL(path,origin);
+    const id=request.headers()['next-action'];
+    assert(response.ok()&&request.method()==='POST'&&url.origin===origin&&url.pathname===expected.pathname,
+     'Expected a successful action on the measured record');
+    assert(registrations.get(id)?.has(template),'The action is missing from the compiled record worker');
+    return {page:template,actionOrdinal:ordinals.get(id),status:response.status()};
+   };
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
    try{
-    await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
+    await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,matchedAction,
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
      importHistory:censusImportHistory,attendanceRecords:censusAttendanceRecords,
      performanceReportRecords:censusPerformanceReportRecords,jobDescriptionRecords:censusJobDescriptionRecords,
