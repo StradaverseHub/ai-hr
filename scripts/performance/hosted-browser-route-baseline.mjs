@@ -2290,13 +2290,17 @@ async function measureEmployeePicker(fixture){
     await page.locator('[data-app-sidebar] button[aria-controls]:enabled:visible').first()
      .waitFor({state:'visible',timeout:15000});
     row.hydratedByMs=Math.round(performance.now()-started);
-    row.choiceRequests=0;
+    const isChoiceRequest=request=>request.method()==='POST'
+     &&new URL(request.url()).pathname==='/api/employee-choices';
+    row.choiceRequests=[];
     page.on('request',request=>{
-     if(request.method()==='POST'&&request.url()===origin+'/api/employee-choices')row.choiceRequests++;
+     if(!isChoiceRequest(request))return;
+     const input=request.postDataJSON();
+     row.choiceRequests.push({matchesSearch:input.query===subject.name,hasDepartment:Boolean(input.departmentId)});
     });
     const choiceResponse=departmentId=>page.waitForResponse(response=>{
      const request=response.request();
-     if(response.url()!==origin+'/api/employee-choices'||request.method()!=='POST')return false;
+     if(!isChoiceRequest(request))return false;
      const input=request.postDataJSON();
      return input.query===subject.name&&input.departmentId===departmentId;
     },{timeout:15000});
@@ -2306,20 +2310,28 @@ async function measureEmployeePicker(fixture){
      const choices=await result.json();
      const employee=choices.rows.find(row=>row.employmentId===subject.employmentId);
      assert(employee?.departmentId,'Seeded employee must be visible with a department');
-     return employee;
+     return {employee,choices};
     };
     const searched=performance.now();
-    const [employee]=await Promise.all([readMatching(choiceResponse('')),search.fill(subject.name)]);
+    const [{employee,choices}]=await Promise.all([readMatching(choiceResponse('')),search.fill(subject.name)]);
     const pick=main.getByRole('button').filter({hasText:subject.name}).and(page.locator('button:enabled'));
     await pick.waitFor({state:'visible',timeout:15000});
     row.searchReadyMs=Math.round(performance.now()-searched);
+    row.searchOfferedDepartment=choices.departmentOptions.some(option=>option.id===employee.departmentId);
+    assert(row.searchOfferedDepartment,'The native options must offer the scoped employee department');
     const details=main.locator('details').filter({has:page.getByText('More filters',{exact:true})});
     await details.locator('summary').click({timeout:15000});
     const department=details.getByLabel('Department',{exact:true});
+    await department.waitFor({state:'visible',timeout:5000});
+    assert(await details.evaluate(node=>node.open),'More filters must stay open');
+    assert(await department.isEnabled(),'Department must be enabled');
+    const options=await department.locator('option').evaluateAll(nodes=>nodes.map(node=>node.value));
+    row.renderedDepartmentCount=options.length;
+    assert(options.includes(employee.departmentId),'The department returned by the native owner must be selectable');
     const filtered=performance.now();
     await Promise.all([
      readMatching(choiceResponse(employee.departmentId)),
-     department.selectOption(employee.departmentId,{timeout:15000}),
+     department.selectOption(employee.departmentId,{timeout:5000}),
     ]);
     await pick.waitFor({state:'visible',timeout:15000});
     row.filteredReadyMs=Math.round(performance.now()-filtered);
