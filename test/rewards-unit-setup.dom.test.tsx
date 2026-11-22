@@ -23,14 +23,15 @@ vi.mock('../packs/rewards/service',()=>({
   exclusionWindow:{from:state.outsideYear?'2025-10-01':'2026-10-01',to:state.outsideYear?'2025-12-31':'2026-12-31',outsideYear:state.outsideYear},
   preparation:{...emptyRewardPreparation(),expectedRelease:'2026-11-30',steps:state.steps},checks:state.isGr?{snapshot:state.checks,data:true,excluded:!state.outsideYear,senior:true,budget:true,applied:true}:null,
   access:{required:state.required,setupVisible:true,isGr:state.isGr,independentChecker:false,actorNames:{'person-doer':'Fictional Doer'},history:[{id:'h1',kind:'preparation-confirm',reason:'Group Rewards preparation confirm',actorName:'Fictional Doer',at:'2026-11-01T02:00:00Z'}],applied:{salary:{name:'Fictional salary structure',version:2,confirmed:true},bonus:{name:'Fictional bonus matrix',version:3,confirmed:true}},origin:{name:'Fictional shared configuration',revision:4}}}),
- getRewardUnitGovernance:async()=>({available:true,unitId:'unit',revision:8,isGr:state.isGr,canEdit:state.canEdit,canAmounts:true,inputs:{forecastCents:10000000,actualCents:11000000,targetCents:10000000,multiplierBp:10000,branchRatings:{},targetMonthsBp:20000},legacyInputs:null,pools:{standard:200000,h:50000},poolStatus:'final',branches:[],history:[],selection:{confirmedBy:null},exemption:null,senior:[],companyPatBound:false}),
- getRewardSeniorMembership:async()=>({unitId:'unit',revision:8,canEdit:true,mode:'named-members',rows:[]}),
+ getRewardUnitGovernance:vi.fn(async()=>({available:true,unitId:'unit',revision:8,isGr:state.isGr,canEdit:state.canEdit,canAmounts:true,inputs:{forecastCents:10000000,actualCents:11000000,targetCents:10000000,multiplierBp:10000,branchRatings:{},targetMonthsBp:20000},legacyInputs:null,pools:{standard:200000,h:50000},poolStatus:'final',branches:[],history:[],selection:{confirmedBy:null},exemption:null,senior:[],companyPatBound:false})),
+ getRewardSeniorMembership:vi.fn(async()=>({unitId:'unit',revision:8,canEdit:true,mode:'named-members',rows:[]})),
  // 60f1fdcd: the release preview is the server-computed "Review before saving" summary; only asked for once every step is done.
  previewRewardPreparationRelease:async()=>{state.previews++;return{summary:{area:'preparation',itemLabel:'Release to BU CEO · Fictional Company 2026',lines:[{key:'state',label:'Unit set-up',before:'Preparing',after:'Released to BU CEO'}],changedCount:1,affected:[{reviewId:'unit',label:'Fictional Company 2026',stage:'draft',consequence:'released-to-bu'}],highImpact:['release-review']},digest:'d'.repeat(64)};},
  getRewardUnit:async()=>({companyName:'Fictional Company',name:'Fictional Unit',cycle:{name:'2026 Annual Compensation Review'},unit:{policy:{blockedFrom:'2026-10-01',blockedTo:'2026-12-31',payWindowKeep:{}}},rows:[]}),
 }));
+import {getRewardSeniorMembership,getRewardUnitGovernance} from '../packs/rewards/service';
 import SetupPage from '../app/admin/rewards/review-setup/[unitId]/page';
-afterEach(()=>{cleanup();Object.assign(state,{locale:'en',canEdit:true,isGr:true,required:true,outsideYear:false,checks:true,steps:{},previews:0});});
+afterEach(()=>{cleanup();vi.clearAllMocks();Object.assign(state,{locale:'en',canEdit:true,isGr:true,required:true,outsideYear:false,checks:true,steps:{},previews:0});});
 async function show(searchParams:Record<string,string>={}){const tree=await resolveServerTree(await SetupPage({params:Promise.resolve({unitId:'unit'}),searchParams:Promise.resolve(searchParams)}));return render(<NextIntlClientProvider locale={state.locale} messages={copies[state.locale]} onError={error=>{throw error;}}>{tree}</NextIntlClientProvider>);}
 describe('Review Set-up detail (70d5e7c5)',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('lists six numbered steps and opens one at a time in %s',async locale=>{
@@ -87,6 +88,8 @@ describe('Review Set-up detail (70d5e7c5)',()=>{
  });
  it('keeps PAT read-only in Budget inputs with a link to PAT Inputs, and amounts in MYR',async()=>{
   await show({step:'budget'});
+  expect(getRewardUnitGovernance).toHaveBeenCalledTimes(1);
+  expect(getRewardSeniorMembership).toHaveBeenCalledTimes(0);
   expect(screen.getByRole('link',{name:en.nav.rewardsPatInputs}).getAttribute('href')).toBe('/admin/rewards/pat-inputs');
   for(const name of ['forecast','actual','target','targetMonths'])expect((document.querySelector(`input[name="${name}"]`) as HTMLInputElement).readOnly).toBe(true);
   expect((document.querySelector('input[name="multiplier"]') as HTMLInputElement).readOnly).toBe(false);
@@ -94,7 +97,15 @@ describe('Review Set-up detail (70d5e7c5)',()=>{
  });
  it('labels the Senior plan check "Confirm Senior plan selection"',async()=>{
   await show({step:'senior'});
+  expect(getRewardUnitGovernance).toHaveBeenCalledTimes(1);
+  expect(getRewardSeniorMembership).toHaveBeenCalledTimes(1);
   expect(screen.getByRole('button',{name:en.rewards.governance.confirmSenior})).toBeTruthy();
+ });
+ it('loads governance without Senior membership for a read-only Group Rewards viewer',async()=>{
+  state.canEdit=false;
+  await show({step:'senior'});
+  expect(getRewardUnitGovernance).toHaveBeenCalledTimes(1);
+  expect(getRewardSeniorMembership).not.toHaveBeenCalled();
  });
  it('renders CTRO/EC set-up as read-only without doer or release actions',async()=>{
   state.canEdit=false;state.isGr=false;await show();
@@ -110,6 +121,8 @@ describe('Review Set-up detail (70d5e7c5)',()=>{
  });
  it('opens the change log as its own step',async()=>{
   await show({step:'history'});
+  expect(getRewardUnitGovernance).toHaveBeenCalledTimes(0);
+  expect(getRewardSeniorMembership).toHaveBeenCalledTimes(0);
   expect(screen.getByRole('heading',{name:en.rewardsPreparation.changeLog})).toBeTruthy();
   expect(screen.getByText('Group Rewards preparation confirm')).toBeTruthy();
  });
