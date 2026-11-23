@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {and,asc,desc,eq,inArray,lt,or,sql} from 'drizzle-orm';
+import {INDIVIDUAL_IMPORT_MAX_CSV_BYTES} from '../lib/individual-import-job';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
@@ -58,7 +59,7 @@ async function stamp(tx:Tx,ctx:SessionContext,id:string,event:string,extra:Recor
 /** Persist the exact validated source. Repeated upload operation IDs cannot overwrite its meaning. */
 export async function validateIndividualImport(ctx:SessionContext,p:{operationId:string;sourceName:string;csv:string;method:IndividualImportMethod;scopeIds:string[];allowPreviousDaily?:boolean}):Promise<IndividualImportAttempt>{
  uuid.parse(p.operationId);if(p.method!=='monthly'&&p.method!=='daily')throw new IndividualImportError('templateMismatch');
- if(typeof p.csv!=='string'||new TextEncoder().encode(p.csv).byteLength>900000)throw new IndividualImportError('fileTooLarge');
+ if(typeof p.csv!=='string'||new TextEncoder().encode(p.csv).byteLength>INDIVIDUAL_IMPORT_MAX_CSV_BYTES)throw new IndividualImportError('contentTooLarge');
  const ids=await scope(ctx,p.scopeIds);
  const name=p.sourceName.trim();if(!name.toLowerCase().endsWith('.xlsx')||name.length>255)throw new IndividualImportError('invalidFormat');
  let records:Record<string,string>[]=[],fileError:string|undefined;

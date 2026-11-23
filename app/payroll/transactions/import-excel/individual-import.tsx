@@ -22,7 +22,8 @@ export function IndividualImportButtons({reference,cycles}:{reference:TxnTemplat
    setError('');
    try{
     if(!file.name.toLowerCase().endsWith('.xlsx'))throw new Error('invalidFormat');
-    if(file.size>INDIVIDUAL_IMPORT_MAX_BYTES)throw new Error('fileTooLarge');
+    // 0ec0ee00 — say how large the file is and what the limit is.
+    if(file.size>INDIVIDUAL_IMPORT_MAX_BYTES){setError(t('fileTooLargeSize',{size:(file.size/1048576).toFixed(1)}));return;}
     operation.current??=crypto.randomUUID();
     const form=new FormData();
     form.set('id',operation.current);

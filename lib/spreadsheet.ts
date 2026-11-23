@@ -97,7 +97,10 @@ export async function workbookToCsvTexts(
   allowedSheetNames?:readonly string[],
   captureSource=false,
   preparePersonnel=false,
-  bounds?:{maxRows:number;maxCells:number;literalCells?:boolean},
+  /** `sheet` (board 0ec0ee00): bound ONLY this worksheet (the import sheet; the first sheet when it is absent), by the
+   *  rows that hold a value, and decode it as `first`. Reference sheets in the same workbook are never measured or
+   *  decoded. A filled-row count above `maxRows` throws TOO_MANY_ROWS rather than FILE_TOO_LARGE. */
+  bounds?:{maxRows:number;maxCells:number;literalCells?:boolean;sheet?:string},
 ): Promise<{ first: string; extra: Record<string, string>; source?:PersonnelWorksheetSource;preparation?:PersonnelWorkbookSource }> {
   const XLSX = await import('xlsx');
   // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
@@ -106,7 +109,22 @@ export async function workbookToCsvTexts(
   // cellDates → real Date objects for date-formatted cells; we ISO-format them below so a spreadsheet
   // date lands as the engine's YYYY-MM-DD (DATE_RE) instead of an Excel serial number or locale string.
   const wb = XLSX.read(bytes, { type: 'array', cellDates: true,...bounds?{sheetRows:bounds.maxRows+1}:{} });
-  if(bounds){
+  const boundedSheet=bounds?.sheet===undefined?undefined
+    :wb.SheetNames.find(name=>name.trim().toLowerCase()===bounds.sheet!.trim().toLowerCase())??wb.SheetNames[0];
+  if(bounds&&bounds.sheet!==undefined){
+    // sheetRows already stopped the parser after maxRows+1 rows of every sheet, so memory is bounded however large the
+    // reference sheets or the import sheet's declared (formatted) range are. Measure what the import sheet holds.
+    const ws=boundedSheet?wb.Sheets[boundedSheet]:undefined,ref=ws?.['!ref'];
+    if(ws&&ref){
+      if(bounds.literalCells&&Object.entries(ws).some(([key,cell])=>!key.startsWith('!')&&(cell?.f||cell?.t==='e')))throw Error('NON_LITERAL_CELL');
+      // Rows and columns that hold a value; formatting Excel applied to whole rows or columns does not count.
+      const isFilled=(cell:unknown)=>cell!=null&&String(cell).trim()!=='';
+      const rows=(XLSX.utils.sheet_to_json(ws,{header:1,raw:true,blankrows:false}) as unknown[][]).filter(row=>row.some(isFilled));
+      const width=rows.reduce((w,row)=>{let last=row.length-1;while(last>=0&&!isFilled(row[last]))last--;return Math.max(w,last+1);},0);
+      if(rows.length>bounds.maxRows)throw Error('TOO_MANY_ROWS');
+      if(width>256||rows.length*width>bounds.maxCells)throw Error('FILE_TOO_LARGE');
+    }
+  }else if(bounds){
     let cells=0;if(wb.SheetNames.length>32)throw Error('FILE_TOO_LARGE');
     for(const name of wb.SheetNames){const ws=wb.Sheets[name],ref=ws?.['!fullref']??ws?.['!ref'];if(!ref)continue;
       const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
@@ -114,7 +132,7 @@ export async function workbookToCsvTexts(
       cells+=height*width;if(height>bounds.maxRows||width>256||cells>bounds.maxCells)throw Error('FILE_TOO_LARGE');
     }
   }
-  const firstName = wb.SheetNames[0];
+  const firstName = boundedSheet ?? wb.SheetNames[0];
   if (!firstName) throw new Error('EMPTY_SHEET');
   // The explicit preparation path checks every worksheet range before materializing any CSV rows.
   // Default recognized-file decoding keeps its established behavior and output contract.

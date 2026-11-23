@@ -1,8 +1,8 @@
 import {createHash} from 'node:crypto';
 import type postgres from 'postgres';
 import type {SessionContext} from '../db/client';
-import {readImportFile, ImportFileError} from '../lib/import-file';
-import {INDIVIDUAL_IMPORT_MAX_BYTES, type IndividualImportJob} from '../lib/individual-import-job';
+import {readIndividualImportWorkbook, IndividualImportReadFailure} from '../lib/individual-import-read';
+import type {IndividualImportJob} from '../lib/individual-import-job';
 import type {IndividualImportMethod} from '../lib/payroll-txn-import-schema';
 import {confirmIndividualImport, IndividualImportError, validateIndividualImport} from './individual-txn-import';
 import {readIndividualImportJob} from './individual-import-job';
@@ -37,9 +37,8 @@ export async function runIndividualImportTick(
           await connection`update payroll_individual_import_job set state = 'validating', started_at = coalesce(started_at, now()) where id = ${job.id}`;
           const [payload] = await connection<{source: Buffer}[]>`select source from payroll_individual_import_job where id = ${job.id}`;
           if (createHash('sha256').update(payload.source).digest('hex') !== job.source_hash) throw new IndividualImportError('fileReadError');
-          const {text} = await readImportFile(new File([new Uint8Array(payload.source)], job.source_name), {
-            maxFileBytes: INDIVIDUAL_IMPORT_MAX_BYTES, maxCsvBytes: 900_000, maxRows: 2002, maxCells: 100_000,
-          });
+          // 0ec0ee00 — only the transaction sheet is measured and read; the template's reference sheets are ignored.
+          const text = await readIndividualImportWorkbook(new Uint8Array(payload.source), job.source_name, job.method);
           const attempt = await validateIndividualImport(ctx, {
             operationId: job.id, sourceName: job.source_name, csv: text, method: job.method, scopeIds: job.company_ids,
             allowPreviousDaily: job.template_version === 1,
@@ -59,7 +58,7 @@ export async function runIndividualImportTick(
       } catch (error) {
         // Driver exceptions may contain payroll values. Persist only bounded application codes.
         const code = error instanceof IndividualImportError ? error.message
-          : error instanceof ImportFileError ? error.code === 'FILE_TOO_LARGE' ? 'fileTooLarge' : 'fileReadError'
+          : error instanceof IndividualImportReadFailure ? error.code
           : 'importFailed';
         await connection`update payroll_individual_import_job set state = 'failed', error = ${code}, finished_at = now() where id = ${job.id}`;
       }

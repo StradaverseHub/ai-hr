@@ -10699,9 +10699,9 @@
       "importAccessDenied": "Bản nhập này không thuộc phạm vi công ty hiện tại của bạn.",
       "operationChanged": "Nội dung tải lên đã thay đổi. Chọn lại tệp và kiểm tra như một lần nhập mới.",
       "templateMismatch": "Tiêu đề cột không khớp phương thức nhập. Dùng đúng mẫu và không sửa tiêu đề.",
-      "fileTooLarge": "Tệp quá lớn. Chia thành các tệp nhỏ hơn.",
+      "fileTooLarge": "Tệp này lớn hơn 10 MB, mức tối đa cho một lần tải lên. Hãy chia thành các tệp nhỏ hơn.",
       "emptyFile": "Trang dữ liệu không có dòng nào.",
-      "tooManyRows": "Mỗi tệp không quá 2.000 dòng.",
+      "tooManyRows": "Tệp này có hơn 2.000 giao dịch. Mỗi lần tải lên tối đa 2.000 giao dịch. Hãy chia thành các tệp nhỏ hơn.",
       "invalidFormat": "Chọn tệp Excel .xlsx.",
       "revertUnavailable": "Lô này không có bản ghi nhập hoàn tất để hoàn tác.",
       "importRowsChanged": "Bản ghi nhập đã thay đổi hoặc bị xóa. Không có bản ghi nào được đảo.",
@@ -10716,7 +10716,9 @@
         "reverted": "Đã hoàn tác nhập",
         "revert-refused": "Hoàn tác bị từ chối"
       },
-      "inputType": "Loại đầu vào"
+      "inputType": "Loại đầu vào",
+      "fileTooLargeSize": "Tệp này có dung lượng {size} MB. Mỗi lần tải lên tối đa 10 MB. Hãy chia thành các tệp nhỏ hơn.",
+      "contentTooLarge": "Trang tính giao dịch chứa nhiều văn bản hơn mức một lần tải lên có thể xử lý. Hãy xóa các cột không dùng hoặc ghi chú dài, hoặc chia thành các tệp nhỏ hơn."
     }
   },
   "admin": {

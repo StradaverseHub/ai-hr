@@ -1643,3 +1643,7 @@ The repository owner approved the revised exact fingerprint `2b84eb4ed17f7482108
 ## Payroll processing holds for income tax review (board 016276b7), 23 November 2026
 
 The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `60de9d4eed6ec08738aa6189c52c0a725431bec26dc9d7d205294362238d079f` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). Payroll processing now holds only the employees whose historical income tax inputs need review and processes the rest; their loan and claim reservations stay on the run, the run's processed event records them, and the existing selective reprocess adds them once corrected. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Individual Transaction import reads only the transaction sheet (board 0ec0ee00), 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `f02afb420e1c80b5ea1c9b980b283ab830cf2b847a5737395b405bc3c1ca16d7` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). The background Individual Transaction upload now measures and decodes only the transaction sheet by its filled rows, so the template's reference sheets cannot make a small file "too large", and each refusal keeps its own message. Combined with board 016276b7 for the same staging release. No provider transform, outbound field, purpose, endpoint or transport changed.

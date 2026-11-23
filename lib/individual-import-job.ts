@@ -1,5 +1,8 @@
 import type {ImportActor} from './import-reference';
 export const INDIVIDUAL_IMPORT_MAX_BYTES = 10 * 1024 * 1024;
+/** Board 0ec0ee00 — the Individual Transaction upload limits, in one place (the reader, worker, validation and parser). */
+export const INDIVIDUAL_IMPORT_MAX_RECORDS = 2000;
+export const INDIVIDUAL_IMPORT_MAX_CSV_BYTES = 900_000;
 
 export type IndividualImportJobState =
   | 'pending' | 'validating' | 'ready' | 'confirmed' | 'importing' | 'completed' | 'failed';

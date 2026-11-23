@@ -10699,9 +10699,9 @@
       "importAccessDenied": "This import is not available in your current company scope.",
       "operationChanged": "The upload changed. Select the file again and validate it as a new import.",
       "templateMismatch": "The column headings do not match the selected input method. Use its matching template without changing the headings.",
-      "fileTooLarge": "The file is too large. Split it into smaller uploads.",
+      "fileTooLarge": "This file is larger than 10 MB, the most one upload can be. Split it into smaller uploads.",
       "emptyFile": "The data worksheet contains no rows.",
-      "tooManyRows": "Use no more than 2,000 rows per file.",
+      "tooManyRows": "This file has more than 2,000 transactions. One upload can hold at most 2,000. Split it into smaller uploads.",
       "invalidFormat": "Choose an Excel .xlsx file.",
       "revertUnavailable": "This batch has no completed imported records to reverse.",
       "importRowsChanged": "An imported record changed or was removed. Nothing was reversed.",
@@ -10716,7 +10716,9 @@
         "reverted": "Import reverted",
         "revert-refused": "Reversal refused"
       },
-      "inputType": "Input type"
+      "inputType": "Input type",
+      "fileTooLargeSize": "This file is {size} MB. One upload can be at most 10 MB. Split it into smaller uploads.",
+      "contentTooLarge": "The transaction sheet holds more text than one upload can process. Remove unused columns or long remarks, or split it into smaller uploads."
     }
   },
   "admin": {

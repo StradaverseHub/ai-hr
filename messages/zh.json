@@ -10699,9 +10699,9 @@
       "importAccessDenied": "当前公司权限范围内无法访问此导入。",
       "operationChanged": "上传内容已变更，请重新选择文件并作为新导入进行验证。",
       "templateMismatch": "列标题与所选输入方式不符。请使用对应模板，且不要修改标题。",
-      "fileTooLarge": "文件过大，请拆分为较小的文件。",
+      "fileTooLarge": "此文件超过 10 MB，即单次上传的上限。请拆分为较小的文件分别上传。",
       "emptyFile": "数据工作表中没有数据行。",
-      "tooManyRows": "每个文件最多可包含 2,000 行。",
+      "tooManyRows": "此文件包含超过 2,000 笔交易。单次上传最多 2,000 笔。请拆分为较小的文件分别上传。",
       "invalidFormat": "请选择 Excel .xlsx 文件。",
       "revertUnavailable": "此批次没有可撤销的已完成导入记录。",
       "importRowsChanged": "导入记录已变更或删除，未撤销任何记录。",
@@ -10716,7 +10716,9 @@
         "reverted": "已撤销导入",
         "revert-refused": "撤销被拒绝"
       },
-      "inputType": "输入类型"
+      "inputType": "输入类型",
+      "fileTooLargeSize": "此文件大小为 {size} MB。单次上传最多 10 MB。请拆分为较小的文件分别上传。",
+      "contentTooLarge": "交易工作表中的文本超过单次上传可处理的量。请删除未使用的列或过长的备注，或拆分为较小的文件分别上传。"
     }
   },
   "admin": {
