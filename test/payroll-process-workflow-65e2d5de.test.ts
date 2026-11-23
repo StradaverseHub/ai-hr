@@ -208,11 +208,12 @@ describe('65e2d5de · D — the reprocess search cannot shrink the submitted set
       /\(review \? ready : picked\)\.map\(row\s*=>\s*<input key=\{row\.employmentId\} type="hidden" name="employmentIds" value=\{row\.employmentId\} \/>/,
     );
     expect(REPROCESS_FORM).toMatch(/held\.map\(row\s*=>\s*<input[^>]+name="heldEmploymentIds"/);
-    expect(REPROCESS_FORM).toContain('{picked.map((e) => (');
+    // 6aee208b — the review NAMES at most REVIEW_NAME_CAP people; the hidden inputs above still carry everyone.
+    expect(REPROCESS_FORM).toContain('{picked.slice(0, REVIEW_NAME_CAP).map((e) => (');
     expect(REPROCESS_FORM).not.toMatch(/type="checkbox"\s+name="employmentIds"/);
   });
 
-  it('both tables render the FILTERED rows, and Select all takes only what is on screen', () => {
+  it('both tables render the FILTERED rows, and Select this page ADDS only what is on screen (6aee208b)', () => {
     // c3258a72 — the additions table now renders in two groups, New / Pending and Skipped, both cut from the
     // FILTERED additions, so the search still narrows every row on screen.
     expect(REPROCESS_FORM).toContain('const visiblePending = visibleAdditions.filter((c) => !c.skip);');
@@ -220,7 +221,8 @@ describe('65e2d5de · D — the reprocess search cannot shrink the submitted set
     expect(REPROCESS_FORM).toContain('{visiblePending.map((c) => additionRow(c))}');
     expect(REPROCESS_FORM).toContain('{visibleSkipped.map((c) => additionRow(c))}');
     expect(REPROCESS_FORM).toContain('{visibleEmployees.map((e) => {');
-    expect(REPROCESS_FORM).toContain('setSelected(new Map(visibleEmployees.map((e) => [e.employmentId,e])))');
+    expect(REPROCESS_FORM).toContain('setSelected(prev=>new Map([...prev,...visibleEmployees.map((e) => [e.employmentId,e] as [string,Selected])]))');
+    expect(REPROCESS_FORM, 'Select this page replaces the selection again').not.toContain('setSelected(new Map(visibleEmployees');
   });
 
   it('the match is the SHARED employee-search rule, not a fourth hand-rolled copy of it', () => {
@@ -239,7 +241,11 @@ describe('65e2d5de · D — the reprocess search cannot shrink the submitted set
   });
 
   it('an empty run and an empty search result say different things', () => {
-    expect(REPROCESS_FORM).toContain("employees.length === 0 ? t('reprocessNoEmployees') : t('reprocessNoMatches')");
+    // 6aee208b — under server paging the rows are the filtered page, so the SEARCH TEXT decides; an empty tab
+    // names its own list rather than claiming the run is empty.
+    expect(REPROCESS_FORM).toContain("(paging ? paging.search.trim() !== '' : employees.length > 0)");
+    expect(REPROCESS_FORM).toContain("t('reprocessNoRequired')");
+    expect(REPROCESS_FORM).toContain("t('reprocessNoEmployees')");
   });
 
   it('Enter in the search box cannot reach the submit button — the guard is on the FORM', () => {
@@ -303,5 +309,47 @@ describe('65e2d5de · E — the new copy resolves in every catalogue', () => {
       // rather than degrading — it would take a dev server to notice.
       expect(value as string, `${loc} ${ns}.${key} carries an ICU placeholder`).not.toMatch(/\{/);
     }
+  });
+});
+
+/**
+ * 6aee208b — the Reprocess Required tabs, selection line and capped review. Every key resolves in all six
+ * catalogues and carries EXACTLY the placeholders English does (a translation that drops `{pages}` renders
+ * wrong; one that adds `{count}` throws at render). The tab is a `?tab=` on the same route — no new route,
+ * page folder, server action or permission.
+ */
+describe('6aee208b — Reprocess Required tabs and the all-pages selection', () => {
+  const KEYS = ['reprocessPageDefaultsNote','reprocessPagingNote','reprocessTabsLabel','reprocessTabRequired','reprocessTabUnchanged',
+    'reprocessStatusRequired','reprocessReasonRequired','reprocessStaleAllSelected','reprocessStalePartSelected','reprocessStaleOthers',
+    'reprocessStaleWithoutPayslip','reprocessStaleSelectAgain','reprocessClearSelection','reprocessNoRequired','reprocessNoUnchanged',
+    'reprocessReviewMore','reprocessReviewStaleLeftOut'] as const;
+  const read = (loc: string) => JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8')).payroll.batch as Record<string, unknown>;
+  const args = (v: string) => [...v.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+  const en = read('en');
+
+  it.each(KEYS)('payroll.batch.%s exists in all six locales with the English placeholders', (key) => {
+    expect(typeof en[key]).toBe('string');
+    for (const loc of ['ms', 'ta', 'th', 'vi', 'zh']) {
+      const value = read(loc)[key];
+      expect(typeof value, `${loc} missing ${key}`).toBe('string');
+      expect((value as string).trim().length, `${loc} blank ${key}`).toBeGreaterThan(0);
+      expect(args(value as string), `${loc} ${key} placeholders`).toEqual(args(en[key] as string));
+    }
+  });
+
+  it('every key is actually read by the screen, and the old first-page-only wording is gone', () => {
+    for (const key of KEYS) expect(REPROCESS_FORM, key).toContain(`t('${key}'`);
+    expect(en.reprocessPageDefaultsNote).not.toMatch(/Changing pages does not select more/);
+    // The Remove screen keeps its own replace-on-select note, untouched.
+    expect(code('app/payroll/[batchId]/remove/remove-form.tsx')).toContain("note={t('selectionPagingNote')}");
+  });
+
+  it('the tab rides the same route: links built on the server, page reset, search kept', () => {
+    expect(REPROCESS_PAGE).toContain("const tab = sp.tab === 'required' || sp.tab === 'unchanged' ? sp.tab : 'default';");
+    expect(REPROCESS_PAGE).toMatch(/payrollEmployeeSelectionPage\(s,\{batchId,kind:'reprocess',page:parsePageQuery\(sp\),search:sp\.q,tab\}\)/);
+    expect(REPROCESS_PAGE).toContain("!['page', 'tab', 'error'].includes(k)");
+    expect(REPROCESS_FORM).toMatch(/<Link key=\{key\} href=\{paging\.tabs!\.hrefs\[key\]\} replace scroll=\{false\}/);
+    // The form keeps its one mount per job, which is what keeps the ticks across a tab change.
+    expect(REPROCESS_PAGE).toContain("key={thisJob?.id ?? 'selection'}");
   });
 });

@@ -11376,36 +11376,102 @@ export function listRemovableEmployees(ctx: SessionContext, p: { batchId: string
 }
 
 
+/** 6aee208b — which Reprocess list a page reads: the run's stale payslips, or every other payslip. */
+export type PayrollSelectionTab='required'|'unchanged';
+
+/**
+ * 6aee208b — the employments the run itself says are stale, as one SQL fragment.
+ *
+ * The SAME rule as the Payroll Process count (app/payroll/dashboard-logic.ts `reprocessEmploymentIds`): only a
+ * PROCESSED run with `needs_recalc_at` set owes anything, so a leftover `recalc_employment_ids` on a cleared,
+ * closed or draft run names nobody. Elements match as their exact stored text, de-duplicated; a non-string
+ * element (the column is jsonb, so it holds whatever was written) is ignored, exactly as the count ignores it.
+ */
+const staleEmploymentIdsSql=(batchId:string)=>sql`select distinct elem #>> '{}' as id
+    from ${payrollBatch} cross join lateral jsonb_array_elements(case when ${payrollBatch.status}='processed'
+     and ${payrollBatch.needsRecalcAt} is not null and jsonb_typeof(${payrollBatch.recalcEmploymentIds})='array'
+     then ${payrollBatch.recalcEmploymentIds} else '[]'::jsonb end) elem
+    where ${payrollBatch.id}=${batchId}::uuid and jsonb_typeof(elem)='string' and length(elem #>> '{}')>0`;
+
 /** Native bounded selection population. Count/filter/page precede money, department and later-month hydration.
- * `runTotal` is deliberately independent of search: whole-run removal must never become a filtered-page test. */
-export function payrollEmployeeSelectionPage(ctx:SessionContext,p:{batchId:string;kind:'remove'|'reprocess';page:PageQuery;search?:string}) {
+ * `runTotal` is deliberately independent of search: whole-run removal must never become a filtered-page test.
+ *
+ * 6aee208b — kind 'reprocess' may be split into two tabs: `required` (payslips the run marked stale) and
+ * `unchanged` (every other payslip). `tab: 'default'` opens `required` when the run has any stale payslip and
+ * `unchanged` otherwise; omitted, the page spans both, exactly as before. The stale mark, both search-filtered
+ * tab counts, the page and its total come from this ONE statement, and the tab filters BEFORE the money join.
+ * `runTotal` stays independent of search and of the tab. Kind 'remove' never splits and never reads the mark. */
+export function payrollEmployeeSelectionPage(ctx:SessionContext,p:{batchId:string;kind:'remove'|'reprocess';page:PageQuery;search?:string;tab?:PayrollSelectionTab|'default'}) {
  const page=parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
+ const reprocess=p.kind==='reprocess';
+ const tabSql=!reprocess||p.tab===undefined?sql`'all'`:p.tab==='default'?sql`case when "requiredRunTotal">0 then 'required' else 'unchanged' end`
+  :p.tab==='required'?sql`'required'`:sql`'unchanged'`;
  return withTenant(ctx,async tx=>{
   const needle=(p.search??'').trim().toLowerCase(),folded=foldEmployeeCode(p.search??'');
   const matched=needle===''?sql`true`:sql`position(${needle} in lower(v.name))>0
    or position(${needle} in lower(coalesce(v."employeeCode",'')))>0
    or (${p.kind==='reprocess'} and ${folded}<>'' and position(${folded} in regexp_replace(lower(coalesce(v."employeeCode",'')),'[[:space:]._-]','','g'))>0)`;
-  const entries=await tx.execute<{runTotal:number;total:number;id:string|null;employmentId:string|null;name:string|null;employeeCode:string|null;gross:string|null;net:string|null;version:number|null;department:string|null;laterPeriods:string[]}>(sql`
-   with visible as materialized (
+  const entries=await tx.execute<{runTotal:number;total:number;requiredTotal:number;unchangedTotal:number;tab:'all'|PayrollSelectionTab;id:string|null;employmentId:string|null;name:string|null;employeeCode:string|null;gross:string|null;net:string|null;version:number|null;stale:boolean|null;department:string|null;laterPeriods:string[]}>(sql`
+   with ${reprocess?sql`stale_ids as materialized (${staleEmploymentIdsSql(p.batchId)}),`:sql``} visible as materialized (
     select ${payslip.id} as id,${payslip.employmentId} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"
     from ${payslip} join ${employment} on ${employment.id}=${payslip.employmentId}
      join ${person} on ${person.id}=${employment.personId} where ${payslip.batchId}=${p.batchId}::uuid
-   ), matched as materialized (select v.*,(${matched}) as matches from visible v),
-   totals as (select count(*)::int as "runTotal",count(*) filter(where matches)::int as total from matched),
-   selected_page as (select * from matched where matches order by name,id limit ${page.limit} offset ${Math.min(page.offset,Number.MAX_SAFE_INTEGER)})
-   select totals.*,v.id,v."employmentId",v.name,v."employeeCode",d.gross_pay as gross,d.net_pay as net,d.version,
+   ), matched as materialized (select v.*,(${matched}) as matches,
+    ${reprocess?sql`v."employmentId"::text in (select id from stale_ids)`:sql`false`} as stale from visible v),
+   totals as (select count(*)::int as "runTotal",count(*) filter(where matches)::int as "allTotal",
+    count(*) filter(where stale)::int as "requiredRunTotal",
+    count(*) filter(where matches and stale)::int as "requiredTotal",count(*) filter(where matches and not stale)::int as "unchangedTotal" from matched),
+   chosen as (select ${tabSql} as tab from totals),
+   selected_page as (select m.* from matched m cross join chosen c where m.matches and (c.tab='all' or m.stale=(c.tab='required'))
+    order by name,id limit ${page.limit} offset ${Math.min(page.offset,Number.MAX_SAFE_INTEGER)})
+   select totals."runTotal",totals."requiredTotal",totals."unchangedTotal",chosen.tab,
+    (case chosen.tab when 'required' then totals."requiredTotal" when 'unchanged' then totals."unchangedTotal" else totals."allTotal" end)::int as total,
+    v.id,v."employmentId",v.name,v."employeeCode",v.stale,d.gross_pay as gross,d.net_pay as net,d.version,
     ${p.kind==='remove'?sql`(select dept.name from ${assignment} a join ${department} dept on dept.id=a.department_id
      where a.employment_id=v."employmentId" and a.superseded_at is null order by a.valid_from desc,a.recorded_at desc limit 1)`:sql`null::text`} as department,
     ${p.kind==='remove'?sql`array(select distinct b.pay_period from ${payslip} later join ${payrollBatch} b on b.id=later.batch_id
      where later.employment_id=v."employmentId" and b.pay_period>(select pay_period from ${payrollBatch} where id=${p.batchId}::uuid)
       and b.status in ('processed','closed') order by b.pay_period)`:sql`'{}'::text[]`} as "laterPeriods"
-   from totals left join selected_page v on true left join ${payslip} d on d.id=v.id order by v.name,v.id`);
+   from totals cross join chosen left join selected_page v on true left join ${payslip} d on d.id=v.id order by v.name,v.id`);
   const rows=entries.flatMap(row=>row.id===null||row.employmentId===null||row.name===null||row.gross===null||row.net===null?[]:[{
    id:row.id,employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode,gross:row.gross,net:row.net,
-   version:row.version??1,department:row.department,laterPeriods:row.laterPeriods,
+   version:row.version??1,stale:row.stale===true,department:row.department,laterPeriods:row.laterPeriods,
   }]);
-  return {rows,state:pageState(page,entries[0].total,rows.length),runTotal:entries[0].runTotal};
+  const head=entries[0];
+  return {rows,state:pageState(page,head.total,rows.length),runTotal:head.runTotal,tab:head.tab,
+   tabCounts:{required:head.requiredTotal,unchanged:head.unchangedTotal}};
  });
+}
+
+/** 6aee208b — one stale employee as the Reprocess screen names them: identity only, no money. */
+export type ReprocessStaleRow={employmentId:string;employeeCode:string|null;name:string};
+
+/**
+ * 6aee208b — EVERY employee the run marked stale, for the Reprocess screen to tick on arrival on every page.
+ *
+ * One read-only statement, bounded by the run's headcount: the stale employments that have a payslip on this
+ * run (ordered name, then payslip id — the list's own order), plus how many stale employments the list cannot
+ * show because they have no visible payslip on the run (the screen points those at New / Pending, so its total
+ * reconciles with the Payroll Process count, which is the raw stored set). Identity only: no money, department
+ * or later-month hydration. A run that is not processed, or whose mark is cleared, returns nothing.
+ * REPEATABLE READ / READ ONLY snapshot under the payroll gate's shared history barrier: no Access lock, no row lock.
+ */
+export function reprocessStaleSelection(ctx:SessionContext,batchId:string):Promise<{rows:ReprocessStaleRow[];withoutPayslip:number}>{
+ return withTenant(ctx,async tx=>{
+  const entries=await tx.execute<{staleTotal:number;onRun:number;employmentId:string|null;employeeCode:string|null;name:string|null}>(sql`
+   with stale_ids as materialized (${staleEmploymentIdsSql(batchId)}),
+   on_run as materialized (
+    select ${payslip.id} as id,${payslip.employmentId} as "employmentId",${employment.employeeCode} as "employeeCode",${person.fullName} as name
+    from ${payslip} join ${employment} on ${employment.id}=${payslip.employmentId}
+     join ${person} on ${person.id}=${employment.personId}
+    where ${payslip.batchId}=${batchId}::uuid and ${payslip.employmentId}::text in (select id from stale_ids))
+   select (select count(*) from stale_ids)::int as "staleTotal",(select count(*) from on_run)::int as "onRun",
+    o."employmentId",o."employeeCode",o.name
+   from (select 1) one left join on_run o on true order by o.name,o.id`);
+  const head=entries[0];
+  const rows=entries.flatMap(row=>row.employmentId===null||row.name===null?[]:[{employmentId:row.employmentId,employeeCode:row.employeeCode,name:row.name}]);
+  return {rows,withoutPayslip:Math.max(0,head.staleTotal-head.onRun)};
+ },{readOnlySnapshot:true});
 }
 
 /** Result-link identities for the explicitly recorded job selection, without loading discarded money detail. */
