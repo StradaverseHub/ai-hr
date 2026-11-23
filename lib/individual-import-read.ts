@@ -23,6 +23,8 @@ export class IndividualImportReadFailure extends Error {
 export async function readIndividualImportWorkbook(bytes: Uint8Array, name: string, method: IndividualImportMethod): Promise<string> {
   if (!name.trim().toLowerCase().endsWith('.xlsx')) throw new IndividualImportReadFailure('invalidFormat');
   if (bytes.byteLength > INDIVIDUAL_IMPORT_MAX_BYTES) throw new IndividualImportReadFailure('fileTooLarge');
+  // An .xlsx is a ZIP archive. Anything else (a renamed CSV, random bytes) would be read by SheetJS as loose text.
+  if (bytes.byteLength < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b || bytes[2] !== 0x03 || bytes[3] !== 0x04) throw new IndividualImportReadFailure('fileReadError');
   const {workbookToCsvTexts} = await import('./spreadsheet');
   let text: string;
   try {
