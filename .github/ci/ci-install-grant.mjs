@@ -6,9 +6,18 @@ import {CI_POLICY} from './policy-version.mjs';
 import {BUILD_ARTIFACT,BUILD_ARCHIVE_MAX} from './build-artifact.mjs';
 import {STAGING_BUILD_RUNTIME,assertBuildCapacityProfile} from './build-production.mjs';
 import {validateBrowserRecoveryGrantEvidence,BROWSER_RECOVERY_POLICY} from './browser-recovery-policy.mjs';
-import {validateRecoveryGrantEvidence} from './focused-recovery-policy.mjs';
+import {validateRecoveryGrantEvidence,RECOVERY_POLICY} from './focused-recovery-policy.mjs';
 import {validateRepairGrantEvidence,REPAIR_RECOVERY_POLICY} from './repair-recovery-policy.mjs';
 import {validateDbUnitGrantEvidence,DB_UNIT_RECOVERY_POLICY} from './db-unit-recovery-policy.mjs';
+import {validateBuildRecoveryGrantEvidence,BUILD_RECOVERY_POLICY} from './build-recovery-policy.mjs';
+/** One validator per explicitly versioned recovery policy, and the run the grant must bind: repair and build-capacity
+ * recovery bind their fresh successful build-only run; the other routes bind the original failed gate. Unknown refuses. */
+const RECOVERY_GRANT_ROUTES=new Map([
+ [RECOVERY_POLICY,{validate:validateRecoveryGrantEvidence,runConclusion:'failure'}],
+ [BROWSER_RECOVERY_POLICY,{validate:validateBrowserRecoveryGrantEvidence,runConclusion:'failure'}],
+ [DB_UNIT_RECOVERY_POLICY,{validate:validateDbUnitGrantEvidence,runConclusion:'failure'}],
+ [REPAIR_RECOVERY_POLICY,{validate:validateRepairGrantEvidence,runConclusion:'success'}],
+ [BUILD_RECOVERY_POLICY,{validate:validateBuildRecoveryGrantEvidence,runConclusion:'success'}]]);
 export const installHash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export function installJson(value){
  if(Array.isArray(value))return '['+value.map(installJson).join(',')+']';
@@ -44,9 +53,10 @@ export function createInstallGrant({evidence,run,producer,baselineBuildId,enviro
  assert(evidence.policyVersion===CI_POLICY&&evidence.result==='PASS'&&evidence.tier==='ci'&&evidence.build?.canonicalCandidateInputsVerified===true
   &&evidence.build.source===evidence.sha&&evidence.build.controller===evidence.controller&&evidence.build.runId===evidence.runId,'Complete authenticated current CI evidence required');
  const recovered=evidence.recovery!==undefined;
- const repaired=evidence.recovery?.recoveryPolicy===REPAIR_RECOVERY_POLICY;
- if(recovered)(repaired?validateRepairGrantEvidence:evidence.recovery?.recoveryPolicy===DB_UNIT_RECOVERY_POLICY?validateDbUnitGrantEvidence:evidence.recovery?.recoveryPolicy===BROWSER_RECOVERY_POLICY?validateBrowserRecoveryGrantEvidence:validateRecoveryGrantEvidence)(evidence,run);
- assert(run.id===evidence.runId&&run.head_sha===evidence.controller&&run.status==='completed'&&run.conclusion===(recovered&&!repaired?'failure':'success')&&run.run_attempt===1
+ const route=recovered?RECOVERY_GRANT_ROUTES.get(evidence.recovery?.recoveryPolicy):null;
+ assert(!recovered||route,'Unknown recovery policy');
+ if(route)route.validate(evidence,run);
+ assert(run.id===evidence.runId&&run.head_sha===evidence.controller&&run.status==='completed'&&run.conclusion===(route?route.runConclusion:'success')&&run.run_attempt===1
   &&run.repository?.id===1333414856&&run.head_repository?.id===1333414856
   &&producer.name==='build'&&producer.run_id===run.id&&producer.run_attempt===1&&producer.head_sha===run.head_sha&&producer.conclusion==='success','Original authenticated successful run/build required');
  const artifacts=evidence.artifacts.filter(a=>a.name===BUILD_ARTIFACT);assert(artifacts.length===1,'Unique authenticated build artifact required');
