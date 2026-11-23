@@ -306,6 +306,22 @@
       "busy": "Hệ thống đang bận. Hãy tải lại để kiểm tra trạng thái thao tác rồi thử lại nếu cần. Mã tham chiếu {ref}.",
       "nricDuplicate": "Hồ sơ nhân viên khác đã dùng số NRIC này. Hãy kiểm tra số và tìm hồ sơ hiện có trước khi thử lại. Mã tham chiếu {ref}."
     },
+    "databaseErrorReason": {
+      "dateOrder": "Các ngày đã nhập sẽ khiến một bản ghi kết thúc trước khi bắt đầu nên không có gì được lưu. Hãy kiểm tra để ngày hiệu lực không sớm hơn ngày bắt đầu của bản ghi bị thay đổi, chẳng hạn lương, chức vụ hoặc phân công hiện tại. Mã tham chiếu {ref}.",
+      "required": "Một trường bắt buộc đang để trống nên không có gì được lưu. Hãy điền tất cả các trường bắt buộc và thử lại. Mã tham chiếu {ref}.",
+      "textTooLong": "Một nội dung văn bản dài hơn mức trường này cho phép nên không có gì được lưu. Hãy rút ngắn và thử lại. Mã tham chiếu {ref}.",
+      "numberOutOfRange": "Một trong các số đã nhập nằm ngoài phạm vi cho phép (ví dụ số âm hoặc quá lớn) nên không có gì được lưu. Hãy sửa lại và thử lại. Mã tham chiếu {ref}.",
+      "invalidDate": "Một trong các ngày không phải là ngày hợp lệ hoặc nằm ngoài phạm vi được hỗ trợ nên không có gì được lưu. Hãy kiểm tra các ngày và thử lại. Mã tham chiếu {ref}.",
+      "wrongFormat": "Một trong các giá trị sai định dạng, ví dụ chữ cái trong trường số, nên không có gì được lưu. Hãy kiểm tra dữ liệu nhập và thử lại. Mã tham chiếu {ref}.",
+      "choiceNotAllowed": "Một trong các lựa chọn không còn được chấp nhận nên không có gì được lưu. Hãy tải lại trang, chọn lại từ danh sách và thử lại. Mã tham chiếu {ref}.",
+      "overlap": "Thao tác này sẽ trùng thời gian với một bản ghi khác có cùng khoảng ngày nên không có gì được lưu. Hãy đổi ngày để không bị trùng, hoặc sửa bản ghi hiện có. Mã tham chiếu {ref}.",
+      "missingReference": "Một mục mà bản ghi này tham chiếu tới, chẳng hạn công ty, phòng ban, chức vụ hoặc nhân viên, không còn tồn tại. Không có gì được lưu. Hãy tải lại trang, chọn lại và thử lại. Mã tham chiếu {ref}.",
+      "inUse": "Bản ghi này vẫn đang được các bản ghi khác sử dụng nên không thể xóa. Hãy xóa hoặc thay đổi các bản ghi đó trước. Mã tham chiếu {ref}.",
+      "closedPayroll": "Bảng lương của kỳ này đã đóng nên không thể thay đổi các bản ghi đã được trả. Không có gì được lưu. Hãy dùng ngày sau tháng lương đã đóng gần nhất, hoặc đề nghị bộ phận lương mở lại. Mã tham chiếu {ref}.",
+      "locked": "Bản ghi này đã bị khóa và không thể thay đổi nữa nên không có gì được lưu. Hãy tạo mục mới thay vì sửa mục này. Mã tham chiếu {ref}.",
+      "changedMeanwhile": "Bản ghi này đã được người khác thay đổi trong lúc bạn đang làm việc nên không có gì được lưu. Hãy tải lại trang và thực hiện lại thay đổi. Mã tham chiếu {ref}.",
+      "outsideScope": "Bản ghi này thuộc một công ty hoặc phạm vi mà bạn không được phép thay đổi nên không có gì được lưu. Hãy liên hệ quản trị viên nếu bạn cần quyền truy cập. Mã tham chiếu {ref}."
+    },
     "degraded": {
       "title": "Quá trình này mất nhiều thời gian hơn bình thường",
       "body": "Trang chưa thể tải xong vì hệ thống đang chịu tải cao. Hệ thống sẽ tự động thử lại sau giây lát.",
@@ -1675,6 +1691,7 @@
       "salaryRemarkRequiredError": "Bản ghi lương này không có số tiền lương cơ bản, vì vậy Ghi chú phải nêu lý do — ví dụ, được trả thù lao thành viên hội đồng theo quý. Bộ phận tính lương sẽ bỏ nhân viên này ra khỏi bất kỳ tháng nào không có khoản nào phải trả.",
       "salaryNegativeError": "Lương cơ bản không thể là số âm. Hãy để trống hoặc nhập 0 đối với nhân viên không có lương cơ bản.",
       "salaryNotANumberError": "Lương cơ bản phải là một số. Hãy để trống hoặc nhập 0 đối với nhân viên không có lương cơ bản.",
+      "salaryBeforeCurrentRecordError": "Ngày hiệu lực sớm hơn ngày bắt đầu mức lương hiện tại của nhân viên này ({date}) nên không có gì được lưu. Hãy dùng ngày {date} hoặc sau đó, hoặc sửa lịch sử lương ở thẻ Lương.",
       "paymentMethod": "Phương thức thanh toán",
       "salaryRecording": {
         "title": "Ghi nhận thay đổi lương",
