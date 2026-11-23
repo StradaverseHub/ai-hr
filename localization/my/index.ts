@@ -1,5 +1,5 @@
 import {MY_DOCUMENT_MERGE_KEYS} from './document-merge';
-import {replayMyTaxBasis} from './tax-basis-replay';
+import {replayMyTaxBasis,boundMyTaxBasis} from './tax-basis-replay';
 import {ocbcBankPaymentFiles} from './ocbc-payment';
 import {childReliefTableHeadCount} from './statutory-tables';
 import {getTaxSelectionMY,getTaxSelectionsMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
@@ -166,6 +166,7 @@ export const myPack: CountryPack = {
   holidays: MY_HOLIDAYS_2026,
   payroll: {
     replayTaxBasis: replayMyTaxBasis,
+    boundTaxBasis: boundMyTaxBasis,
     statutory,
     resolveTaxScheme:resolveTaxSelectionMY,
     // r356 — ONE replay of the prior months' PCB accumulators, for the kernel AND for the multicycle

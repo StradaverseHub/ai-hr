@@ -35617,6 +35617,34 @@
     "next": "Seterusnya"
   },
   "payrollTaxBasis": {
+    "exemptionLimitsTitle": "Had pengecualian tahunan",
+    "exemptionType": "Jenis pengecualian",
+    "annualLimit": "Had tahunan",
+    "previousEmployerUsed": "Digunakan majikan terdahulu",
+    "thisCompanyEligible": "Syarikat ini",
+    "remainingLimit": "Baki",
+    "taxableExcess": "Lebihan bercukai",
+    "openingSources": {
+      "saved_payslip": "Daripada rekod slip gaji yang disimpan",
+      "accepted_tp3": "Daripada TP3 diterima dalam fail",
+      "no_accepted_tp3": "RM0 - tiada TP3 diterima dalam fail"
+    },
+    "previousEmployerDeclaredWarning": "Pekerja ini menyatakan mereka mempunyai majikan terdahulu tahun ini, tetapi tiada TP3 diterima dalam fail. RM0 digunakan. Dapatkan dan terima TP3 mereka, kemudian jalankan pengiraan semula sekali lagi.",
+    "monthByMonth": "{code}, bulan demi bulan",
+    "usedBeforeMonth": "Digunakan sebelum bulan ini (termasuk majikan terdahulu)",
+    "remainingBefore": "Baki sebelum",
+    "exemptionLimitsNotRecorded": "Butiran had pengecualian tahunan tidak direkodkan untuk keputusan ini.",
+    "holdReasons": {
+      "saved_evidence_conflict": "Rekod slip gaji yang disimpan bercanggah tentang jumlah had pengecualian tahunan yang digunakan oleh majikan terdahulu. Semak rekod yang disimpan, kemudian pratonton semula.",
+      "access_insufficient": "Anda tidak dibenarkan melihat butiran cukai pekerja ini, jadi penggunaan pengecualian majikan terdahulu tidak dapat disemak. Minta pentadbir gaji pekerja ini menjalankannya."
+    },
+    "boundsTitle": "Angka yang pasti",
+    "boundsHelp": "Dipaparkan untuk semakan sahaja. Julat ini tidak disimpan dan tidak boleh disahkan.",
+    "exemptUpTo": "Dikecualikan sehingga",
+    "taxableAtLeast": "Bercukai sekurang-kurangnya",
+    "exactValue": "{value} (tepat)",
+    "pcbComparisonInsufficient": "Tidak tersedia - data sejarah tidak mencukupi",
+    "pcbComparisonNeverStops": "Ini tidak pernah menghentikan pengiraan semula.",
     "previewGroupProgress": "{done} daripada {total} kumpulan pekerja telah disemak.",
     "previewInBackground": "Pratonton cukai sedang disediakan di latar belakang. Anda boleh muat semula halaman ini untuk menyemak kemajuan.",
     "recalculationInBackground": "Sejarah cukai pendapatan sedang dikira semula di latar belakang. Anda boleh muat semula halaman ini untuk menyemak kemajuan.",
