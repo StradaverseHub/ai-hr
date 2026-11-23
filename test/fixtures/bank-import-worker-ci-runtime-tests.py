@@ -249,18 +249,6 @@ class Fixture(old.UpgradeFlowFixture):
     @contextlib.contextmanager
     def ports(self):
         original_fstat=os.fstat;original_monotonic=time.monotonic
-        # Deterministic fixture clock. Real CPU time must not consume the simulated 30 s initial, 45 s mutation or
-        # 20 s F4 slots: on a loaded hosted runner it did, and an unscripted deadline aborted the cutover before the
-        # scripted fault (gates 45133716099, 45137133532, 45152559407, 45169731141). Time advances only by the
-        # scripted monotonic_offset jumps plus 0.1 ms per reading, so polling loops still terminate. The whole-package
-        # capacity run (--package) keeps the real clock because measuring real elapsed time is its purpose.
-        if not hasattr(self,'virtual_monotonic'):start=original_monotonic();self.virtual_monotonic=[start,0,start]
-        def fixture_monotonic():
-            clock=self.virtual_monotonic
-            if getattr(self,'whole_package',False):value=original_monotonic()
-            else:clock[1]+=1;value=clock[0]+clock[1]*1e-4
-            # The package flag is set after the first drain, so never step backwards when the clock source switches.
-            clock[2]=max(clock[2],value);return clock[2]+self.monotonic_offset
         root_files={self.authorization,self.leasefile,self.firstfile,self.root/'install.lock'}|getattr(self,'additional_root_private_files',set())
         def protected_stat(fd):
             info=original_fstat(fd)
@@ -274,7 +262,7 @@ class Fixture(old.UpgradeFlowFixture):
             for name,value in [('SOURCE',self.webroot),('STATE',self.state),('COORDINATOR',self.coordinator),('BOOT_ID',self.boot),('PROCESS_ROOT',self.proc),('RUNTIME_ROOT',self.runtime_root),('FENCES',fences)]:s.enter_context(patch.object(ci,name,value))
             s.enter_context(patch.object(guard,'QUEUE',self.queue));s.enter_context(patch.object(guard,'LOCK',self.queue_lock))
             s.enter_context(patch.object(ci,'child',side_effect=self.native));s.enter_context(patch.object(ci.pwd,'getpwuid',return_value=self.owner));s.enter_context(patch.object(ci.pwd,'getpwnam',return_value=self.owner))
-            s.enter_context(patch.object(ci.time,'time',side_effect=lambda:self.clock));s.enter_context(patch.object(ci.time,'monotonic',side_effect=fixture_monotonic))
+            s.enter_context(patch.object(ci.time,'time',side_effect=lambda:self.clock));s.enter_context(patch.object(ci.time,'monotonic',side_effect=lambda:original_monotonic()+self.monotonic_offset))
             s.enter_context(patch.object(update.time,'sleep',side_effect=self.sleep_port))
             s.enter_context(patch.object(sys,'argv',[str(self.helper)]))
             s.enter_context(patch.object(update.os,'geteuid',return_value=0));s.enter_context(patch.object(update.os,'fstat',side_effect=protected_stat))
