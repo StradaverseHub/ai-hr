@@ -11,6 +11,7 @@ import {createPlan,hash} from './plan.mjs';
 import {cleanHead,controllerRoot,sourceBoundBuild} from './release-ci.mjs';
 import {REPOSITORY,verifyArtifactBytes} from './release-policy.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
+import {NEXT_APPLICATION_FAILURE} from './next-application-cache-protocol.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {assessResumeSource} from './resume-source.mjs';
 import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
@@ -18,7 +19,7 @@ const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const data=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(data[key]),'Missing API inventory');rows.push(...data[key]);if(data[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
 const save=(dir,name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
-async function collect(runId,dir,{reuse=false,prefetchDirectory,includeRaw=false,repairPackets=false}={}){
+async function collect(runId,dir,{reuse=false,prefetchDirectory,includeRaw=false,repairPackets=false,buildFailure=false}={}){
  const run=api(`actions/runs/${runId}`),jobs=pages(`actions/runs/${runId}/jobs?filter=all`,'jobs'),artifacts=pages(`actions/runs/${runId}/artifacts`,'artifacts');
  assert(run.id===runId&&run.status==='completed'&&run.run_attempt===1&&['success','failure'].includes(run.conclusion),'Incomplete/foreign/rerun recovery input');
  if(!reuse){mkdirSync(dir,{recursive:true,mode:0o700});save(dir,'run.json',run);save(dir,'jobs.json',jobs);save(dir,'artifacts.json',artifacts);save(dir,'archive-downloads.json',await downloadCiArchives(artifacts,dir,{prefetchDirectory}));}
@@ -26,9 +27,11 @@ async function collect(runId,dir,{reuse=false,prefetchDirectory,includeRaw=false
  try{for(const a of artifacts){
   const path=join(dir,a.name+'.zip'),bytes=readCiArchive(a,path);verifyArtifactBytes(a,bytes);archives.set(a.name,bytes);
   const binary=a.name===BUILD_ARTIFACT,destination=join(temporary??dir,a.name);
-  const extractor=binary?'./build-transport-extract.py':a.name==='focused-development-evidence'?(repairPackets?'./repair-recovery-extract.py':'./focused-recovery-extract.py'):'./extract-artifact.py';
+  // Opt-in only (build capacity recovery): the failed build's exact comparison.json + GNU time logs namespace.
+  const failureLogs=buildFailure&&a.name===NEXT_APPLICATION_FAILURE;
+  const extractor=binary?'./build-transport-extract.py':failureLogs?'./build-failure-extract.py':a.name==='focused-development-evidence'?(repairPackets?'./repair-recovery-extract.py':'./focused-recovery-extract.py'):'./extract-artifact.py';
   if(!reuse||!binary)execFileSync('python3',[fileURLToPath(new URL(extractor,import.meta.url)),path,destination,...(binary?[a.digest.slice(7)]:[])],{timeout:60000,stdio:'pipe'});
-  if(!binary){const raw=new Map(readdirSync(destination).map(name=>[name,readFileSync(join(destination,name))]));parsed.set(a.name,new Map([...raw].map(([name,bytes])=>[name,JSON.parse(bytes)])));if(includeRaw)rawParsed.set(a.name,raw);}
+  if(!binary){const raw=new Map(readdirSync(destination).map(name=>[name,readFileSync(join(destination,name))]));parsed.set(a.name,new Map([...raw].map(([name,bytes])=>[name,failureLogs&&name.endsWith('.log')?bytes.toString('utf8'):JSON.parse(bytes)])));if(includeRaw)rawParsed.set(a.name,raw);}
  }}finally{if(temporary)rmSync(temporary,{recursive:true,force:true});}
  return {run,jobs,artifacts,archives,parsed,...(includeRaw?{rawParsed}: {})};
 }

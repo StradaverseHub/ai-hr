@@ -90,6 +90,61 @@ node --import tsx /ABSOLUTE/CONTROLLER/.github/ci/operator-release.mjs resume-ar
 
 The route grants no acceptance, alpha, board or production authority. Policy or controller repairs need a fresh whole run on the final controller commit, so dispatch the next release gate from the main that contains this route.
 
+### Build-only recovery after a memory-floor build failure — `aihr-build-capacity-recovery/v1`
+
+Use this only when a whole `alpha-staging.yml` gate completed with exactly one failed prerequisite, `build`, and that build failed only on the reviewed sampled-memory floor (`Canonical next build sampled available memory missing or below reviewed floor`, available verdict `fail`). Every other job passed. `verify` failed only because a prerequisite failed. Instead of a new whole gate (about an hour of shared runners), dispatch one `build_only` run of `alpha-staging.yml` from the same controller ref, with the same candidate branch and expected SHA. Its run name is `Canonical build only · <candidate branch>`. That run replaces only the failed build. Do not use `gh run rerun`: rerun attempts are refused.
+
+```sh
+gh workflow run alpha-staging.yml --repo StradaverseHub/ai-hr --ref main \
+  -f candidate_ref=CANDIDATE_BRANCH -f expected_sha=CANDIDATE_SHA -f build_only=true
+```
+
+The dispatch ref must still point at the original gate's controller commit, so `--ref` is `main` or `alpha`, matching the original run's branch. If that branch has moved, the replacement runs on a different controller and the route refuses.
+
+From the clean checkout of the **original gate's controller commit** (the same commit that is the replacement run's `head_sha`), with the unchanged candidate in its own checkout:
+
+```sh
+node --import tsx /ABSOLUTE/CONTROLLER/.github/ci/operator-release.mjs verify-build-recovery \
+  /ABSOLUTE/CANDIDATE ORIGINAL_GATE_RUN_ID '{"buildRunId":BUILD_ONLY_RUN_ID,"candidateBranch":"CANDIDATE_BRANCH"}'
+```
+
+Use `deploy-build-recovery` with the same arguments only under staging deployment authority and the held lease. It then runs the normal transfer, installation, arrival and cleanup path with the replacement build packet.
+
+**Admission** (`build-recovery.mjs`, `build-recovery-policy.mjs`). Every check below must pass, or the route refuses.
+
+- **Identity.**
+  - The verifying controller equals the original gate's `head_sha` and the replacement build's `head_sha`, on the same `main`/`alpha` branch.
+  - The candidate checkout, the candidate branch ref, the archived plan, the failure diagnostic and the replacement packet all name the same candidate SHA. Any source change refuses.
+  - Alpha must still be the baseline or the candidate.
+  - Both runs are completed first attempts. The original concluded failure, the replacement succeeded, and the replacement was created after the original completed.
+- **Original jobs.** These are the full required job inventory plus a skipped `runner-diagnostics`. Only `build` and `verify` failed.
+  - In `build`, the only failed step is `Canonical System Testing production build and byte bundle`, and `Preserve failed canonical build diagnostics` succeeded.
+  - In `verify`, the only failed step is `Every prerequisite succeeded`. Everything after it was skipped, so `verify-shards` never ran.
+  - Any other failed, cancelled or rerun job refuses.
+- **Original evidence.** Every unit report and the archived plan go through the normal verifier's `validateProof`. The receipt that the dependent verifier never wrote is rebuilt with the same `verifyReports`. The shared resume assessor must show zero units to rerun. The original run must carry no build packet, receipt or application state.
+- **Memory-floor proof.** The proof comes from the digest-authenticated `next-application-build-failure` artifact. That artifact must hold exactly `comparison.json`, `canonical-build.log` and `application-typegen.log`; the new `build-failure-extract.py` refuses any other member. The policy then checks all of the following:
+  - The report identity (candidate, controller, run, attempt 1) and the exact floor assertion text.
+  - The reviewed 8192 heap profile, floor and RSS budget.
+  - A recomputed `buildMemoryVerdict` gives available `fail` but RSS not `fail`.
+  - Both commands exited 0, without a signal or timeout.
+  - Cleanup and disk headroom are intact.
+  - The compiler log checks that the wrapper skipped after the floor assertion fired: `Compiled successfully`, `Finished TypeScript`, no `error TS`, no skipped type validation, GNU time `Exit status: 0`, and a log peak RSS equal to the report.
+
+  A compile error, an RSS breach, disk exhaustion, a failed cleanup or any other cause refuses.
+- **Replacement.** The run must have the exact build-only job shape (resolve, build and deployment-hold succeeded; everything else skipped). Its artifacts are only `production-build-v1` and the optional `next-application-state-v1`. The packet is bound to the candidate by `sourceBoundBuild`.
+- **Complete history.** This covers every `alpha-staging`, focused-checks and browser-tooling run for the candidate branch that is active or overlaps or follows the original. The replacement build must be the only such run. Any other run refuses, whether pending, superseding, failed or merely unaccounted.
+
+**Evidence and grant.** The original failed run, its failed build job and its failure diagnostic stay failed. They are retained under the evidence directory's `original/` folder. The `AUTHENTICATED_BUILD_CAPACITY_RECOVERY` certificate binds the original run, every retained unit's report hash and source, the memory-floor proof, the history and the replacement build run. The installation grant binds the replacement build run and packet, as the repair route does, with its witness fingerprint set to the certificate. Immediately before transfer, `deploy-build-recovery` reauthenticates everything and requires an identical certificate, build and artifacts.
+
+**Limits.**
+
+- Exact source only. A changed candidate needs a new whole gate or the separate repair route.
+- Only the memory floor qualifies. Any other build failure, and any other failed job, refuses.
+- The controller branch must not have moved. A replacement dispatched after `main` or `alpha` advanced has a different `head_sha` and is refused.
+- One replacement build per original gate. A failed replacement is not retried by this route, because it becomes unaccounted history.
+- The route grants no acceptance, alpha, board or production authority.
+- This is a controller change. It works only for gates whose controller already contains it. Before first use, it needs independent review, explicit owner approval, a merge to main, and a fresh whole gate on that main controller. Earlier gates cannot use it: the verifier must be their exact controller.
+
 ## Change control
 
 The final controller is frozen before the fresh whole pilot. A repair to verification or orchestration requires a new reviewed controller and whole validation witness; successful phases from older runs are not substituted. Changes to the policy's acceptance guarantees require an explicit version change. Candidate application source remains unchanged by CI setup or the operator adapter. Automatic staging and main deployment switches remain false throughout this pilot.

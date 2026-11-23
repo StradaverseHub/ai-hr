@@ -15,6 +15,7 @@ import {verifyRepairedCi,revalidateRepairedCi} from './repair-recovery.mjs';
 import {requireReviewedRepairController} from './repair-recovery-policy.mjs';
 import {requireReviewedBrowserController} from './browser-recovery-policy.mjs';
 import {verifyBrowserRecoveredCi,revalidateBrowserRecoveredCi} from './browser-recovery.mjs';
+import {verifyBuildRecoveredCi,revalidateBuildRecoveredCi} from './build-recovery.mjs';
 import {probeStagingProfile} from './staging-preflight.mjs';
 import {readLease,guardCommand,guardedRsync,leasePhase,leaseAssert,redactLeaseError} from '../../scripts/staging/lease.mjs';
 import {resumeArrival,findResumeEvidenceDirectory,readResumeEvidence,splitDeployFollow,IMPORT_WORKER_CHECK_COMMAND,SERVICE_HEALTH_COMMAND,DEPLOY_FINISH_COMMAND} from './resume-arrival.mjs';
@@ -34,9 +35,10 @@ export function requireSuccessfulBuild(official,status,sha){
  return status;
 }
 export async function operatorRelease(options){try{return await leasedOperatorRelease(options);}catch(error){throw redactLeaseError(error);}}
-async function leasedOperatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[],repair=null,browserRecovery=null}){
+async function leasedOperatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[],repair=null,browserRecovery=null,buildRecovery=null}){
  candidatePath=resolve(candidatePath);bindStaging(process.env);
  if(browserRecovery&&(repair||recoveryRunIds.length))throw Error('Choose one explicitly versioned browser recovery route');
+ if(buildRecovery&&(browserRecovery||repair||recoveryRunIds.length))throw Error('Choose one explicitly versioned build recovery route');
  if(browserRecovery)requireReviewedBrowserController({execute,controller:cleanHead(controllerRoot),reviewedController:process.env.AIHR_BROWSER_REVIEWED_CONTROLLER});
  if(execute&&repair)requireReviewedRepairController({execute,repair,controller:cleanHead(controllerRoot),reviewedController:process.env.AIHR_REPAIR_REVIEWED_CONTROLLER});
  const packetTransport=execute?assertRsyncPacketCapability():null;
@@ -57,12 +59,12 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  const baselineLedger=verifyBaselineMigrationPreflight({candidatePath,baseline,ssh});
  const recovering=recoveryRunIds.length>0;
  if(repair&&recovering)throw Error('Choose one explicitly versioned recovery route');
- const evidence=browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});
+ const evidence=buildRecovery?await verifyBuildRecoveredCi({...buildRecovery,candidatePath,runId,baseline}):browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});
  const save=(name,data)=>writeFileSync(join(evidence.evidenceDirectory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
  save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,profilePreflight,execute,packetTransport});
  if(!execute)return evidence;
  const frozen=()=>{if(cleanHead(candidatePath)!==evidence.sha||cleanHead(controllerRoot)!==(evidence.verificationController??evidence.controller))throw Error('Verified source changed');};
- const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await (browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
+ const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await (buildRecovery?revalidateBuildRecoveredCi(evidence):browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
   if(!announced){const actual=JSON.parse(ssh(stagingLedgerProbeCommand(),{input:LEDGER_QUERY,timeout:20000,maxBuffer:4*1024**2}));const fresh=validateMigrationLedgerRows(expectedBaseline,actual);if(fresh.actualSha256!==baselineLedger.actualSha256)throw Error('Applied migration history changed before source transfer');}
  };
  frozen();await revalidate();
@@ -150,14 +152,19 @@ async function leasedResumeArrival({candidatePath,runId,execute=false}){
   arrive:status=>completeVerifiedArrival({official,ssh,sshRaw,lease,transport,candidatePath,evidence:verified,grant,status,baseline:grant.baseline,save,frozen,recordReleaseLearning,installerStatusMode:'resume-status',ownedCleanup:false}),
  }});
 }
+/** `verify-build-recovery`/`deploy-build-recovery` take exactly {"buildRunId":N,"candidateBranch":"..."}. */
+export function buildRecoveryOptions(options){
+ if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).sort().join(',')!=='buildRunId,candidateBranch'||!Number.isSafeInteger(options.buildRunId)||options.buildRunId<1||typeof options.candidateBranch!=='string')throw Error('Build recovery options must be exactly {"buildRunId":N,"candidateBranch":"BRANCH"}');
+ return {buildRunId:options.buildRunId,candidateBranch:options.candidateBranch};
+}
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const [mode,candidatePath,runId,focused]=process.argv.slice(2),recovering=['verify-recovery','deploy-recovery'].includes(mode),repairing=['verify-repair','deploy-repair'].includes(mode);
+ const [mode,candidatePath,runId,focused]=process.argv.slice(2),recovering=['verify-recovery','deploy-recovery'].includes(mode),repairing=['verify-repair','deploy-repair'].includes(mode),browsing=['verify-browser-recovery','deploy-browser-recovery'].includes(mode),rebuilding=['verify-build-recovery','deploy-build-recovery'].includes(mode);
  const done=promise=>promise.then(result=>{console.log(JSON.stringify(result,null,2));process.exit(0);}).catch(error=>{console.error(error);process.exit(1);});
  if(['verify-resume-arrival','resume-arrival'].includes(mode)){
   if(!candidatePath||!/^\d+$/.test(runId??'')||focused!==undefined)throw Error('Usage: node --import tsx operator-release.mjs <verify-resume-arrival|resume-arrival> <candidate-worktree> <original-run-id>');
   done(resumeArrivalRelease({candidatePath,runId,execute:mode==='resume-arrival'}));
  }else{
- if(!['verify','deploy','verify-recovery','deploy-recovery','verify-repair','deploy-repair','verify-browser-recovery','deploy-browser-recovery'].includes(mode)||!candidatePath||!/^\d+$/.test(runId??'')||((recovering||repairing||['verify-browser-recovery','deploy-browser-recovery'].includes(mode))?!focused:focused!==undefined))throw Error('Usage: node --import tsx operator-release.mjs <verify|deploy|verify-recovery|deploy-recovery|verify-repair|deploy-repair|verify-browser-recovery|deploy-browser-recovery> <candidate-worktree> <original-run-id> [JSON-focused-run-ids|JSON-repair-options|JSON-browser-recovery-options]');
- done(operatorRelease({candidatePath,runId,execute:mode.startsWith('deploy'),recoveryRunIds:recovering?JSON.parse(focused):[],repair:repairing?JSON.parse(focused):null,browserRecovery:['verify-browser-recovery','deploy-browser-recovery'].includes(mode)?JSON.parse(focused):null}));
+ if(!['verify','deploy','verify-recovery','deploy-recovery','verify-repair','deploy-repair','verify-browser-recovery','deploy-browser-recovery','verify-build-recovery','deploy-build-recovery'].includes(mode)||!candidatePath||!/^\d+$/.test(runId??'')||((recovering||repairing||browsing||rebuilding)?!focused:focused!==undefined))throw Error('Usage: node --import tsx operator-release.mjs <verify|deploy|verify-recovery|deploy-recovery|verify-repair|deploy-repair|verify-browser-recovery|deploy-browser-recovery|verify-build-recovery|deploy-build-recovery> <candidate-worktree> <original-run-id> [JSON-focused-run-ids|JSON-repair-options|JSON-browser-recovery-options|JSON-build-recovery-options]');
+ done(operatorRelease({candidatePath,runId,execute:mode.startsWith('deploy'),recoveryRunIds:recovering?JSON.parse(focused):[],repair:repairing?JSON.parse(focused):null,browserRecovery:browsing?JSON.parse(focused):null,buildRecovery:rebuilding?buildRecoveryOptions(JSON.parse(focused)):null}));
  }
 }
