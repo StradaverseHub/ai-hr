@@ -34,7 +34,8 @@ beforeAll(async()=>{
    const id=randomUUID(),createdAt=start+(ci*4+ri*3+part)*MINUTE,runKey=run.grouped?run.key:id;
    const assigned=people.filter((_,i)=>i%run.parts===part&&(ri===0||i<5));
    const failedIds=new Set(assigned.filter((_,i)=>i%7===3)),notIncluded=1+ci%3;
-   const pattern=ri===1?'completed':(['open','completed','mixed','failed'] as const)[ci%4];
+   // The single-company persona's grouped run is still moving, so its view holds a live (not interrupted) row.
+   const pattern=ri===1?'completed':companyId===f.singleCompanyId?'open':(['open','completed','mixed','failed'] as const)[ci%4];
    const last=part===run.parts-1;
    const final:Final=pattern==='open'&&last?null:pattern==='failed'?'failed':pattern==='mixed'&&last?'completed_with_errors':'completed';
    // The newest company has a batch still moving within the last five minutes; every other unfinished one is stale.
@@ -107,7 +108,8 @@ describe('Recalculation history at group scale',()=>{
   const {all}=await everyPage(f.personas.single);
   expect(all.length).toBeGreaterThan(0);
   expect(all.map(comparable)).toEqual(want);
-  expect(all[0]).toMatchObject({status:'processing',interrupted:false});
+  expect(all.filter(row=>row.status==='processing').map(row=>row.interrupted)).toEqual([false]);
+  expect(all.find(row=>row.status==='processing')!.processedCount).toBeLessThan(all.find(row=>row.status==='processing')!.employeeCount);
   // Equivalence with the per-batch reader: same batches, outcome counts, final states and recovery decision.
   const legacy=await listTaxBasisBatches(f.personas.single);
   for(const row of all){
