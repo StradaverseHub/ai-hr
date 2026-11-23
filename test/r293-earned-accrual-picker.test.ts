@@ -200,8 +200,10 @@ describe('§2 the screen derives the facts — it does not restate them', () => 
     expect(popover).toContain('optionNote?: (option: MultiSelectPopoverOption) => MultiSelectOptionNote | null | undefined;');
     expect(popover).toContain('optionDisabled?: (option: MultiSelectPopoverOption) => boolean;');
     expect(popover).toContain('const note = optionNote?.(o);');
-    // Select all must not tick a disabled row.
-    expect(popover).toContain('const selectAll = () => onChange(new Set([...selected, ...selectableVisibleIds]));');
+    // Select all must not tick a disabled row. It acts on the visible rows unless a caller opts into every
+    // enabled option (a16382b4, income tax recalculation); the default stays 'visible' for every other call site.
+    expect(popover).toContain("selectAllScope = 'visible',");
+    expect(popover).toContain("...(selectAllScope === 'all' ? options.filter((o) => !optionDisabled?.(o)).map((o) => o.id) : selectableVisibleIds),");
     // Presentation-only, as the component has always been: the tag arrives already translated.
     expect(popover).not.toMatch(/useTranslations|next-intl/);
     const callSites = ['app/payroll/dashboard-filters.tsx', 'components/attendance/location-assignment.tsx',

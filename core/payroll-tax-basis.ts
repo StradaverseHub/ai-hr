@@ -14,7 +14,7 @@ import {appendEvent,actorOf} from '../db/events';
 import {requirePackFor} from '../localization/registry';
 import type {StatutoryRuleset} from '../localization/country-pack';
 import {readHistoryField} from '../lib/payroll-history-import-schema';
-import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type TaxBasisEmployee,type TaxBasisMonth,type TaxBasisValue,type TaxBasisBatch} from '../lib/payroll-tax-basis';
+import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type TaxBasisEmployee,type TaxBasisMonth,type TaxBasisValue,type TaxBasisBatch,type TaxBasisHistoryRow,type TaxBasisHistoryCursor,type TaxBasisProgressState,TAX_BASIS_HISTORY_PAGE_SIZE} from '../lib/payroll-tax-basis';
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
@@ -333,7 +333,7 @@ export async function searchCurrentTaxBasisEmployees(ctx:SessionContext,companyI
 export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
  await lockPayrollHistoryReadTx(tx,ctx.tenantId);
  assertModuleGate(ctx,'payroll');
- const companies=await tx.execute<{id:string;name:string;canRecalculate:boolean}>(sql`select id,legal_name as name,app.payroll_tax_basis_permission(id,'payroll.tax-basis.recalculate') as "canRecalculate" from company where archived_at is null and app.payroll_tax_basis_permission(id,'payroll.tax-basis.view') order by legal_name,id`);
+ const companies=await tx.execute<{id:string;name:string;code:string|null;canRecalculate:boolean}>(sql`select id,legal_name as name,nullif(btrim(company_label),'') as code,app.payroll_tax_basis_permission(id,'payroll.tax-basis.recalculate') as "canRecalculate" from company where archived_at is null and app.payroll_tax_basis_permission(id,'payroll.tax-basis.view') order by legal_name,id`);
  const canRecalculate=companies.some(company=>company.canRecalculate),ids=companies.map(company=>company.id);if(!ids.length)fail('Income-tax recalculation access is unavailable.');
  const employees:{id:string;companyId:string;employeeNo:string;name:string}[]=[];
  for(let offset=0;;offset+=500){
@@ -416,7 +416,7 @@ async function calculateTaxBasisConfirmation(ctx:SessionContext,input:PreviewInp
  },{readOnlySnapshot:true});
 }
 
-async function openTaxBasisBatchTx(tx:Tx,ctx:SessionContext,input:PreviewInput,digest:string,groupReviewed:boolean):Promise<OpenedTaxBasisBatch|null>{
+async function openTaxBasisBatchTx(tx:Tx,ctx:SessionContext,input:PreviewInput,digest:string,groupReviewed:boolean,runId:string|null=null):Promise<OpenedTaxBasisBatch|null>{
  const laps:TaxBasisLaps={},started=performance.now();let lockedAt=started,outcome='opened';
  try{
   await lap(laps,'historyLockWait',()=>lockPayrollHistoryWriteTx(tx,ctx.tenantId));
@@ -426,21 +426,24 @@ async function openTaxBasisBatchTx(tx:Tx,ctx:SessionContext,input:PreviewInput,d
   if(existing){outcome='existing';return {...stored,id:existing,existing:true};}
   if(await taxBasisInputsDigestTx(tx,ctx,stored.selection,laps)!==digest){outcome='changed';return null;}
   const id=randomUUID();
-  await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by) values(${id}::uuid,${ctx.tenantId}::uuid,${stored.selection.companyId}::uuid,${input.previewId}::uuid,${ctx.userId!}::uuid)`);
+  await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by,run_id) values(${id}::uuid,${ctx.tenantId}::uuid,${stored.selection.companyId}::uuid,${input.previewId}::uuid,${ctx.userId!}::uuid,${runId}::uuid)`);
   await recordEventTx(tx,ctx,id,stored.selection.companyId,'pending');
   return {...stored,id,existing:false};
  }catch(error){outcome='refused';throw error;}
  finally{reportSlowTaxBasisOpening(input.previewId,outcome,Math.round(performance.now()-lockedAt),Math.round(performance.now()-started),laps);}
 }
 
-export async function prepareReviewedTaxBasisConfirmation(ctx:SessionContext,input:PreviewInput){
+/** `runId` is the grouped confirmation bulk job: it only groups this run's employee-group batches per company on the
+ * Recalculation history page (a16382b4, migration 7120). It grants nothing and is never read for authority. */
+export async function prepareReviewedTaxBasisConfirmation(ctx:SessionContext,input:PreviewInput,runId:string|null=null){
+ if(runId!==null&&!uuid.test(runId))fail('Choose a valid recalculation batch.');
  const {digest}=await calculateTaxBasisConfirmation(ctx,input,true);
  return async (tx:Tx):Promise<{id:string|null}>=>{
   if(digest===null){
    await loadTaxBasisPreviewTx(tx,ctx,input,false,true);
    return {id:null};
   }
-  const opened=await openTaxBasisBatchTx(tx,ctx,input,digest,true);
+  const opened=await openTaxBasisBatchTx(tx,ctx,input,digest,true,runId);
   if(!opened)fail(historyChanged);
   return {id:opened.id};
  };
@@ -528,6 +531,88 @@ export async function listTaxBasisBatches(ctx:SessionContext,requestedId?:string
   }
   return result;
  });
+}
+/** a16382b4 — the Recalculation history page. One row per company per recalculation run: batches stamped with the
+ * same run_id (7120) are one run; an older or single-preview batch (run_id null) is its own run. Visibility,
+ * grouping, ordering, keyset paging and every count are one set-based statement — no per-row permission or event
+ * reads (docs/SCALE-AND-RELEASE-RULES.md §2). Authority is the same database owner the per-batch reader and the
+ * company picker use (app.payroll_tax_basis_permission, which also requires can_admin_payroll_for). */
+export async function listTaxBasisHistory(ctx:SessionContext,options:{cursor?:TaxBasisHistoryCursor|null;limit?:number}={}):Promise<{rows:TaxBasisHistoryRow[];next:TaxBasisHistoryCursor|null}>{
+ const limit=Math.min(Math.max(Math.trunc(options.limit??TAX_BASIS_HISTORY_PAGE_SIZE),1),100),cursor=options.cursor??null;
+ if(cursor&&(!/^\d{4}-\d{2}-\d{2}[ T][\d:.]+(?:Z|[+-]\d{2}(?::?\d{2})?)?$/.test(cursor.createdAt)||!/^[\da-f-]{36}:[\da-f-]{36}$/i.test(cursor.id)))fail('Choose a valid history page.');
+ assertModuleGate(ctx,'payroll');
+ if(!ctx.userId)return {rows:[],next:null};
+ return withTenant(ctx,async tx=>{
+  const [principal]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);
+  if(!principal?.ok)fail('Your payroll authority changed. Sign in again.');
+  const rows=await tx.execute<{key:string;companyId:string;startedAt:string;batchIds:string[];createdBy:string;actorName:string;companyName:string|null;year:number|null;upToMonth:number|null;employeeCount:number;notIncluded:number;completed:number;failed:number;finals:number;completedFinals:number;failedFinals:number;finalAt:string|null;processing:boolean;interrupted:boolean}>(sql`
+   with permitted as materialized (
+    select c.id from company c where c.tenant_id=${ctx.tenantId}::uuid and app.payroll_tax_basis_permission(c.id,'payroll.tax-basis.view')
+   ), runs as (
+    select b.company_id,coalesce(b.run_id,b.id) as run_key,min(b.created_at) as started_at,
+     array_agg(b.id order by b.created_at,b.id) as batch_ids,(array_agg(b.created_by order by b.created_at,b.id))[1] as created_by
+    from payroll_tax_basis_batch b join permitted on permitted.id=b.company_id
+    where b.tenant_id=${ctx.tenantId}::uuid group by b.company_id,coalesce(b.run_id,b.id)
+   ), page as (
+    select r.*,(r.run_key::text||':'||r.company_id::text) collate "C" as key from runs r
+    ${cursor?sql`where (r.started_at,(r.run_key::text||':'||r.company_id::text) collate "C")<(${cursor.createdAt}::timestamptz,${cursor.id}::text collate "C")`:sql``}
+    order by r.started_at desc,key desc limit ${limit+1}
+   )
+   select page.key,page.company_id as "companyId",page.started_at::text as "startedAt",page.batch_ids::text[] as "batchIds",
+    coalesce(actor.full_name,page.created_by::text) as "actorName",agg.company_name as "companyName",agg.year,agg.up_to_month as "upToMonth",
+    agg.employee_count::integer as "employeeCount",agg.not_included::integer as "notIncluded",
+    coalesce(outcome.completed,0)::integer as completed,coalesce(outcome.failed,0)::integer as failed,
+    coalesce(fin.finals,0)::integer as finals,coalesce(fin.completed_finals,0)::integer as "completedFinals",coalesce(fin.failed_finals,0)::integer as "failedFinals",
+    fin.final_at::text as "finalAt",coalesce(pr.processing,false) as processing,
+    (coalesce(fin.finals,0)<cardinality(page.batch_ids) and not coalesce(wm.worker_managed,false) and pr.last_at<now()-interval '5 minutes') as interrupted
+   from page
+   left join app_user u on u.id=page.created_by left join person actor on actor.id=u.person_id
+   cross join lateral (
+    select (array_agg(pv.preview->>'companyName' order by b.created_at,b.id))[1] as company_name,
+     min((pv.preview->>'year')::integer) as year,min((pv.preview->>'upToMonth')::integer) as up_to_month,
+     coalesce(sum((pv.preview->>'eligibleCount')::integer),0) as employee_count,
+     coalesce(sum(coalesce((pv.preview->>'skippedCount')::integer,0)+coalesce((pv.preview->>'blockedCount')::integer,0)+coalesce((pv.preview->>'unchangedCount')::integer,0)),0) as not_included
+    from payroll_tax_basis_batch b join payroll_tax_basis_preview pv on pv.id=b.preview_id where b.id=any(page.batch_ids)
+   ) agg
+   left join lateral (
+    select count(*) filter (where o.kind='employee_completed') as completed,count(*) filter (where o.kind='employee_failed') as failed
+    from (select distinct on (e.batch_id,e.employment_id) e.kind from payroll_tax_basis_event e
+     where e.batch_id=any(page.batch_ids) and e.kind in ('employee_completed','employee_failed')
+     order by e.batch_id,e.employment_id,e.created_at desc,e.id desc) o
+   ) outcome on true
+   left join lateral (
+    select count(*) as finals,count(*) filter (where f.kind='completed') as completed_finals,count(*) filter (where f.kind='failed') as failed_finals,max(f.created_at) as final_at
+    from (select distinct on (e.batch_id) e.kind,e.created_at from payroll_tax_basis_event e
+     where e.batch_id=any(page.batch_ids) and e.kind in ('completed','completed_with_errors','failed')
+     order by e.batch_id,e.created_at desc,e.id desc) f
+   ) fin on true
+   left join lateral (
+    select exists(select 1 from payroll_tax_basis_event e where e.batch_id=any(page.batch_ids) and e.kind='processing') as processing,
+     coalesce((select max(e.created_at) from payroll_tax_basis_event e where e.batch_id=any(page.batch_ids)),page.started_at) as last_at
+   ) pr on true
+   -- Interrupted, exactly as the per-batch reader decides it: unfinished, no worker owns it, no progress for 5 minutes.
+   -- Evaluated only for this page's unfinished rows (at most the page size).
+   left join lateral (
+    select bool_or(app.payroll_tax_basis_worker_managed(x.id)) as worker_managed from unnest(page.batch_ids) x(id)
+    where coalesce(fin.finals,0)<cardinality(page.batch_ids)
+   ) wm on true
+   order by page.started_at desc,page.key desc`);
+  const more=rows.length>limit,visible=rows.slice(0,limit);
+  const result=visible.map(row=>{
+   const count=row.batchIds.length,finished=row.finals===count;
+   const status:TaxBasisProgressState=finished
+    ?(row.completedFinals===count?'completed':row.failedFinals===count?'failed':'completed_with_errors')
+    :row.finals>0||row.processing?'processing':'pending';
+   return {
+    id:row.key,kind:'batch' as const,reference:'TAX-'+row.batchIds[0].toUpperCase(),companyId:row.companyId,companyName:row.companyName??'',
+    year:row.year,upToMonth:row.upToMonth,status,createdAt:row.startedAt,completedAt:finished?row.finalAt:null,actorName:row.actorName,
+    employeeCount:row.employeeCount,processedCount:row.completed+row.failed,completedCount:row.completed,failedCount:row.failed,
+    notIncludedCount:row.notIncluded,interrupted:row.interrupted===true,batches:row.batchIds.map(id=>({id,reference:'TAX-'+id.toUpperCase()})),
+   };
+  });
+  const last=visible.at(-1);
+  return {rows:result,next:more&&last?{createdAt:last.startedAt,id:last.key}:null};
+ },{readOnlySnapshot:true});
 }
 async function taxBasisWorkerManagedTx(tx:Tx,batchId:string){
  const [row]=await tx.execute<{active:boolean}>(sql`select app.payroll_tax_basis_worker_managed(${batchId}::uuid) as active`);

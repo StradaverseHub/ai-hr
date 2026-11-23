@@ -1,6 +1,7 @@
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {client,withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {requestPayrollHistoryConfirm,payrollHistoryJobHandler} from '../core/payroll-history-job';
@@ -14,8 +15,8 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {createBatch,generatePayslips} from '../core/payroll';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
-import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,taxBasisOptions,getTaxBasisBatch,listTaxBasisBatches,continueTaxBasisBatch,recoverTaxBasisBatch} from '../core/payroll-tax-basis';
-import {requestTaxBasisGroupPreview,requestTaxBasisGroupConfirmation,readTaxBasisGroupProgress,taxBasisGroupJobHandler} from '../core/payroll-tax-basis-group';
+import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,taxBasisOptions,getTaxBasisBatch,listTaxBasisBatches,listTaxBasisHistory,continueTaxBasisBatch,recoverTaxBasisBatch} from '../core/payroll-tax-basis';
+import {requestTaxBasisGroupPreview,requestTaxBasisGroupConfirmation,readTaxBasisGroupProgress,listQueuedTaxBasisRuns,taxBasisGroupJobHandler} from '../core/payroll-tax-basis-group';
 import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx} from '../core/payroll-tax-basis-read';
 import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
 import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
@@ -111,7 +112,16 @@ describe('authorized immutable historical income tax corrections',()=>{
   await expect(requestTaxBasisGroupConfirmation(singleCompany,previewId)).rejects.toThrow(/unavailable|access/);
   const job=await requestTaxBasisGroupConfirmation(ctx,previewId);
   expect(await requestTaxBasisGroupConfirmation(ctx,previewId)).toBe(job);
+  // a16382b4 — before the worker reaches it, only the submitter sees the company queued; the company with no
+  // eligible employee never gets a batch and is not listed. Another payroll administrator sees nothing yet.
+  expect(await listQueuedTaxBasisRuns(ctx)).toEqual([expect.objectContaining({id:'queued:'+job+':'+b.companyId,kind:'queued',reference:null,
+   companyId:b.companyId,status:'pending',year:2026,upToMonth:3,employeeCount:1,processedCount:0,batches:[]})]);
+  const colleague=await createAppUser(b.tenantId,null,'hr_admin');
+  expect(await listQueuedTaxBasisRuns({...ctx,userId:colleague})).toEqual([]);
+  expect((await listTaxBasisHistory(ctx)).rows).toEqual([]);
   const after=await finish(job);
+  expect(await listQueuedTaxBasisRuns(ctx)).toEqual([]);
+  expect((await listTaxBasisHistory(ctx)).rows.map(row=>[row.id,row.status,row.processedCount])).toEqual([[job+':'+b.companyId,'completed',1]]);
   expect(after.batches).toEqual([expect.objectContaining({companyId:b.companyId,id:expect.any(String),error:null}),
     expect.objectContaining({companyId:other.id,id:null,error:null})]);
   expect(await requestTaxBasisGroupConfirmation(ctx,previewId)).toBe(job);
@@ -132,16 +142,26 @@ describe('authorized immutable historical income tax corrections',()=>{
   await confirmPayrollHistoryUpload(ctx,{attemptId:draft.attemptId,previewHash:draft.plan.previewHash,confirmReplacement:true});
   await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));
   const previewJob=await requestTaxBasisGroupPreview(ctx,[{...selection(),employmentIds:null}],randomUUID());
+  // a16382b4 — every running read reports employee counts from recorded work: never above the total, never backwards.
+  const seen:{processed:number;total:number;failures:number}[]=[];
   async function finish(id:string){
+   seen.length=0;
    for(let attempt=0;attempt<20;attempt++){
     await runBulkJobTick(owner.client,{handlers:[taxBasisGroupJobHandler]});
     const result=await readTaxBasisGroupProgress(ctx,id);
+    if(result.counts){
+     expect(result.counts.processed).toBeLessThanOrEqual(result.counts.total);
+     expect(result.counts.processed).toBeGreaterThanOrEqual(seen.at(-1)?.processed??0);
+     expect(result.companies?.reduce((n,company)=>n+company.total,0)).toBe(result.counts.total);
+     seen.push(result.counts);
+    }
     if(result.progress.state==='completed')return result;
     expect(result.progress.state,JSON.stringify(result.progress)).not.toBe('failed');
    }
    throw Error('Full-company tax correction did not finish.');
   }
   const result=await finish(previewJob);
+  expect(seen.filter(counts=>counts.total>0).map(counts=>counts.total)).toContain(22);
   expect(result.previews).toHaveLength(2);
   expect(result.previews?.every(preview=>preview.selection==='all')).toBe(true);
   expect(result.totalEmployees).toBe(22);
@@ -155,8 +175,39 @@ describe('authorized immutable historical income tax corrections',()=>{
    expect(row.id).toBeTruthy();
    if(row.id)expect((await getTaxBasisBatch(ctx,row.id))?.status).toBe('completed');
   }
+  expect(seen.filter(counts=>counts.total>0).every(counts=>counts.total===21)).toBe(true);
   expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(21);
+  // Both employee groups carry the confirmation job as their run, and history shows them as one company row.
+  const stamped=await owner.db.select({id:schema.payrollTaxBasisBatch.id,runId:schema.payrollTaxBasisBatch.runId}).from(schema.payrollTaxBasisBatch);
+  expect(stamped.map(row=>row.runId)).toEqual([confirmation,confirmation]);
+  const history=await listTaxBasisHistory(ctx);
+  expect(history).toEqual({next:null,rows:[expect.objectContaining({id:confirmation+':'+b.companyId,kind:'batch',companyId:b.companyId,status:'completed',
+   employeeCount:21,processedCount:21,completedCount:21,failedCount:0,notIncludedCount:1,interrupted:false,completedAt:expect.any(String),
+   batches:expect.arrayContaining(stamped.map(row=>({id:row.id,reference:'TAX-'+row.id.toUpperCase()})))})]});
+  expect(history.rows[0].batches).toHaveLength(2);
+  expect(await listQueuedTaxBasisRuns(ctx)).toEqual([]);
  },90000);
+ it('adds the run link to populated batches without changing them and keeps a single-preview batch its own run (7120)',async()=>{
+  const p=await previewTaxBasisRecalculation(ctx,selection());const {id}=await confirm(p);
+  expect((await owner.db.select({runId:schema.payrollTaxBasisBatch.runId}).from(schema.payrollTaxBasisBatch))).toEqual([{runId:null}]);
+  const rolledBack=Symbol('rollback');
+  await expect(owner.client.begin(async tx=>{
+   const before=await tx`select to_jsonb(b)-'run_id' as row from payroll_tax_basis_batch b order by id`;
+   const [{owner:tableOwner}]=await tx`select tableowner as owner from pg_tables where schemaname='public' and tablename='payroll_tax_basis_batch'`;
+   await tx.unsafe('alter table public.payroll_tax_basis_batch drop column run_id');
+   // Apply the exact migration bytes as the table's owner, statement by statement, as the migrator does.
+   await tx.unsafe(`set local role ${tableOwner}`);
+   for(const statement of readFileSync('db/migrations/7120_payroll_tax_basis_run.sql','utf8').split('--> statement-breakpoint'))await tx.unsafe(statement);
+   await tx.unsafe('reset role');
+   const after=await tx`select to_jsonb(b) as row from payroll_tax_basis_batch b order by id`;
+   expect(after).toHaveLength(1);
+   expect(after.map(r=>Object.hasOwn(r.row,'run_id')&&r.row.run_id===null)).toEqual([true]);
+   expect(after.map(r=>{const {run_id:_,...rest}=r.row;return rest;})).toEqual(before.map(r=>r.row));
+   expect(await tx`select indexname from pg_indexes where tablename='payroll_tax_basis_batch' and indexname='payroll_tax_basis_batch_run'`).toHaveLength(1);
+   throw rolledBack;
+  })).rejects.toBe(rolledBack);
+  expect((await listTaxBasisHistory(ctx)).rows.map(row=>[row.id,row.batches.map(batch=>batch.id)])).toEqual([[id+':'+b.companyId,[id]]]);
+ });
  it('feeds the corrected prefix into a real future run while preserving prior issued money',async()=>{
   const original=await owner.db.select().from(schema.payslip),p=await previewTaxBasisRecalculation(ctx,selection());await confirm(p);
   const [subject]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee));

@@ -1,3 +1,28 @@
+# Contract account lookup, Person first, 23 November 2026
+
+Reserve `7130_contract_users_person_first`, journal index `10530`, timestamp `1795280007130`,
+SQL SHA-256 `f365166f4b483dbeaacc03552e97d022c4ede42b35f6b66babbda1f1fdac71e8`. Staging had applied 1,136 entries
+through `1795280007110`, and `7120` is reserved above it for the same combined candidate. The reservation scan
+covered the 300 most recently committed remote branch heads and every registered worktree journal; none held an
+entry above `7120`. The production watermark was not read from this session; recheck it before admission.
+
+Replaces the body of `app.contract_users_for_employment(uuid)` only: the Person's accounts are matched before the
+per-account active and verified checks run. The signature, owner, the 0950 EXECUTE grant to `ai_hr_app`, and the
+returned accounts are unchanged; it is guarded by the exact original body hash. Measured cause: one Contract decision
+preview made about 35,000 per-account checks when a tenant held 5,000 unrelated accounts.
+
+# Recalculation history run link, 23 November 2026
+
+Reserve `7120_payroll_tax_basis_run`, journal index `10520`, timestamp `1795280007120`,
+SQL SHA-256 `e5aab381a4d81892cdf95d32d6cd9c857976662135c5f6bb188aec7876c8cc2a`. Staging reported 1,136 applied
+entries through `1795280007110` before allocation. The production watermark was not read from this session; recheck
+it and competing reservations before admission. The reservation scan covered the 300 most recently committed remote
+and local branch heads and every registered worktree journal; none held an entry above `7110`.
+
+Adds a nullable `run_id` to `payroll_tax_basis_batch` and a partial index on it (board a16382b4). The grouped
+confirmation worker step is the only writer. Existing batches keep NULL; rows, triggers, grants and row policies are
+unchanged.
+
 # Draft payroll historical tax readiness, 22 November 2026
 
 Reserve `7110_payroll_draft_tax_readiness`, journal index `10510`, timestamp `1795280007110`,

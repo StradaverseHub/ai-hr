@@ -4,7 +4,7 @@ import {assertModuleGate} from './module-gate';
 import {bulkJobProgress,bulkJobTx,enqueueBulkJobTx} from './bulk-job';
 import type {BulkJobPreparedStepHandler} from './bulk-job-worker';
 import {calculateTaxBasisPreview,continueTaxBasisBatch,planTaxBasisPreviewTx,prepareReviewedTaxBasisConfirmation,saveTaxBasisPreviewTx} from './payroll-tax-basis';
-import {PayrollTaxBasisError,TAX_BASIS_PREVIEW_CHUNK_SIZE,type TaxBasisEmployee,type TaxBasisPreview,type TaxBasisSelection} from '../lib/payroll-tax-basis';
+import {PayrollTaxBasisError,TAX_BASIS_PREVIEW_CHUNK_SIZE,type TaxBasisEmployee,type TaxBasisHistoryRow,type TaxBasisPreview,type TaxBasisSelection} from '../lib/payroll-tax-basis';
 
 const KIND='payroll_tax_basis_group';
 const validId=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
@@ -14,7 +14,7 @@ type PreviewRef={companyId:string;previewId:string;previewHash:string;selectionM
 export const TAX_BASIS_GROUP_PAGE_SIZE=30;
 type BatchRef={companyId:string;id:string|null};
 type GroupResult={phase:'preview';refs:PreviewRef[]}|{phase:'confirmation';outcomes:(BatchRef&{error:string|null})[]};
-type CompanyProgress={companyId:string;name:string;state:'pending'|'processing'|'completed'|'failed'};
+type CompanyProgress={companyId:string;name:string;state:'pending'|'processing'|'completed'|'failed';total:number;processed:number;failures:number};
 type Input={selections:TaxBasisSelection[]}|{previewJobId:string};
 type Step=(TaxBasisSelection&{selectionMode?:TaxBasisPreview['selection']})|PreviewRef;
 
@@ -98,23 +98,42 @@ export async function readTaxBasisGroupProgress(ctx:SessionContext,id:string,off
   const progress={...bulkJobProgress(job),result:null};
   if(job.state!=='completed'){
    if(job.state==='failed'||job.state==='cancelled')return {progress};
+   // a16382b4 — employee-level counts from the work actually recorded, never an estimate. A preview step owns
+   // its employee chunk (planTaxBasisPreviewTx) and is done once applied; a confirmation step owns the reviewed
+   // preview's eligible employees, each done once its batch records employee_completed or employee_failed.
+   // One set-based statement over this job's steps; bounded by the job's companies (at most 500).
    const companies=await tx.execute<CompanyProgress>(sql`
     select c.id as "companyId",c.legal_name as name,case
      when progress.failed then 'failed'
      when progress.done then 'completed'
      when progress.started then 'processing'
-     else 'pending' end as state
+     else 'pending' end as state,
+     coalesce(progress.total,0)::integer as total,coalesce(progress.processed,0)::integer as processed,
+     coalesce(progress.failures,0)::integer as failures
     from company c cross join lateral (
      select bool_or(s.state='failed') as failed,
       bool_and(s.state='applied' and (s.result->>'id' is null or exists(
        select 1 from payroll_tax_basis_event e where e.batch_id=(s.result->>'id')::uuid
         and e.kind in ('completed','completed_with_errors','failed')
-      ))) as done, bool_or(s.state='applied') as started
-     from bulk_job_step s where s.job_id=${id}::uuid and (s.payload->>'companyId')::uuid=c.id
+      ))) as done, bool_or(s.state='applied') as started,
+      sum(case when s.kind='preview' then jsonb_array_length(coalesce(s.payload->'employmentIds','[]'::jsonb))
+       else coalesce((select (p.preview->>'eligibleCount')::integer from payroll_tax_basis_preview p
+        where p.id=(s.payload->>'previewId')::uuid and p.company_id=c.id),0) end) as total,
+      sum(case when s.kind='preview' then case when s.state='applied' then jsonb_array_length(coalesce(s.payload->'employmentIds','[]'::jsonb)) else 0 end
+       else coalesce(outcome.processed,0) end) as processed,
+      sum(coalesce(outcome.failures,0)) as failures
+     from bulk_job_step s left join lateral (
+      select count(distinct e.employment_id) as processed,
+       count(distinct e.employment_id) filter (where e.kind='employee_failed') as failures
+      from payroll_tax_basis_event e
+      where s.kind='confirm' and e.batch_id=(s.result->>'id')::uuid and e.kind in ('employee_completed','employee_failed')
+     ) outcome on true
+     where s.job_id=${id}::uuid and (s.payload->>'companyId')::uuid=c.id
     ) progress
     where c.tenant_id=${ctx.tenantId}::uuid and c.id=any(${ids(job.company_ids)})
     order by c.legal_name,c.id`);
-   return {progress,companies:[...companies]};
+   const total=companies.reduce((n,c)=>n+c.total,0),processed=companies.reduce((n,c)=>n+c.processed,0),failures=companies.reduce((n,c)=>n+c.failures,0);
+   return {progress,companies:[...companies],counts:{processed,total,failures}};
   }
   const result=job.result as GroupResult|null;
   if(result?.phase==='preview'){
@@ -147,6 +166,43 @@ export async function readTaxBasisGroupProgress(ctx:SessionContext,id:string,off
  });
 }
 
+/** a16382b4 — companies of the caller's own active grouped confirmations that the worker has not reached yet. Bulk
+ * jobs are readable only by their submitter (bulk_job_read), so other operators see the run once its first batch for a
+ * company exists. Companies whose reviewed previews have no eligible employee never get a batch and are not listed.
+ * One set-based statement, bounded to 500 rows. */
+export async function listQueuedTaxBasisRuns(ctx:SessionContext):Promise<TaxBasisHistoryRow[]>{
+ assertModuleGate(ctx,'payroll');
+ if(!ctx.userId)return [];
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{runId:string;companyId:string;companyName:string;createdAt:string;actorName:string;year:number|null;upToMonth:number|null;employeeCount:number;notIncluded:number}>(sql`
+   select j.id as "runId",c.id as "companyId",c.legal_name as "companyName",j.created_at::text as "createdAt",
+    coalesce(actor.full_name,j.created_by::text) as "actorName",pv.year,pv.up_to_month as "upToMonth",
+    pv.employee_count::integer as "employeeCount",pv.not_included::integer as "notIncluded"
+   from bulk_job j
+   cross join lateral unnest(j.company_ids) as jc(company_id)
+   join company c on c.id=jc.company_id and c.tenant_id=j.tenant_id
+   join bulk_job pj on pj.id=(j.input->>'previewJobId')::uuid and pj.kind=${KIND}
+   cross join lateral (
+    select min((p.preview->>'year')::integer) as year,min((p.preview->>'upToMonth')::integer) as up_to_month,
+     coalesce(sum((p.preview->>'eligibleCount')::integer),0) as employee_count,
+     coalesce(sum(coalesce((p.preview->>'skippedCount')::integer,0)+coalesce((p.preview->>'blockedCount')::integer,0)+coalesce((p.preview->>'unchangedCount')::integer,0)),0) as not_included
+    from jsonb_array_elements(coalesce(pj.result->'refs','[]'::jsonb)) r(ref)
+    join payroll_tax_basis_preview p on p.id=(r.ref->>'previewId')::uuid and p.company_id=c.id and p.tenant_id=j.tenant_id
+   ) pv
+   left join app_user u on u.id=j.created_by left join person actor on actor.id=u.person_id
+   where j.tenant_id=${ctx.tenantId}::uuid and j.created_by=${ctx.userId}::uuid and j.kind=${KIND} and j.input->>'previewJobId' is not null
+    and j.state in ('queued','preparing','running','finalizing') and pv.employee_count>0
+    and app.payroll_tax_basis_permission(c.id,'payroll.tax-basis.view')
+    and not exists(select 1 from payroll_tax_basis_batch b where b.tenant_id=j.tenant_id and b.run_id=j.id and b.company_id=c.id)
+   order by j.created_at desc,c.legal_name,c.id limit 500`);
+  return rows.map(row=>({
+   id:'queued:'+row.runId+':'+row.companyId,kind:'queued' as const,reference:null,companyId:row.companyId,companyName:row.companyName,
+   year:row.year,upToMonth:row.upToMonth,status:'pending' as const,createdAt:row.createdAt,completedAt:null,actorName:row.actorName,
+   employeeCount:row.employeeCount,processedCount:0,completedCount:0,failedCount:0,notIncludedCount:row.notIncluded,interrupted:false,batches:[],
+  }));
+ },{readOnlySnapshot:true});
+}
+
 export const taxBasisGroupJobHandler:BulkJobPreparedStepHandler<Step>={
  kind:KIND,
  mode:'per-step',
@@ -177,7 +233,7 @@ export const taxBasisGroupJobHandler:BulkJobPreparedStepHandler<Step>={
    } satisfies PreviewRef}))};
   });
  },
- async prepareStep(ctx,_job,step){
+ async prepareStep(ctx,job,step){
   const selection=step.payload;
   if(step.kind==='preview'&&'year' in selection){
    const {selectionMode,...criteria}=selection;
@@ -188,7 +244,7 @@ export const taxBasisGroupJobHandler:BulkJobPreparedStepHandler<Step>={
    };
   }
   if(step.kind!=='confirm'||!('previewId' in selection))throw unavailable();
-  const confirm=await prepareReviewedTaxBasisConfirmation(ctx,selection);
+  const confirm=await prepareReviewedTaxBasisConfirmation(ctx,selection,job.id);
   return async tx=>{
    const result=await confirm(tx);
    return {result:{companyId:selection.companyId,id:result.id} satisfies BatchRef};

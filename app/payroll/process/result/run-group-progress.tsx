@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {Card} from '@/components/ui';
 import {bulkJobActive,bulkJobPercent} from '@/lib/bulk-job';
 import type {RunGroupView} from '@/core/payroll-run-group-store';
+import {readPayrollProgressPoll} from '@/lib/payroll-progress-poll';
 
 const pollMs=2000;
 type Progress=Pick<RunGroupView,'done'|'companies'|'worker'>;
@@ -24,13 +25,14 @@ export function RunGroupProgressPanel({groupId,initial}:{groupId:string;initial:
   const poll=async()=>{
    let again=true;
    try{
-    const response=await fetch(`/payroll/process/result/status?g=${encodeURIComponent(groupId)}`,{cache:'no-store'});
-    // 503: the server is busy (another payroll task holds the lock); the run is fine, so keep the last progress.
-    if(response.status===503){if(alive){setBusy(true);setError('');}return;}
-    const payload=await response.json().catch(()=>null);
-    if(!response.ok||!payload)throw new Error(payload?.error??'');
-    if(alive){setProgress(payload);setError('');setBusy(false);setCheckedAt(Date.now());again=!payload.done;}
-   }catch(e){if(alive){setBusy(false);setError((e as Error).message||'');}}
+    // A busy read keeps the last progress and polls again (lib/payroll-progress-poll.ts); only a refusal (the group
+    // is not visible) is an error. A dropped request is retried the same way.
+    const answer=await readPayrollProgressPoll<Progress>(await fetch(`/payroll/process/result/status?g=${encodeURIComponent(groupId)}`,{cache:'no-store'}));
+    if(!alive)return;
+    if(answer.kind==='progress'){setProgress(answer.payload);setError('');setBusy(false);setCheckedAt(Date.now());again=!answer.payload.done;}
+    else if(answer.kind==='busy'){setBusy(true);setError('');}
+    else{setBusy(false);setError(answer.message);}
+   }catch{if(alive)setBusy(true);}
    finally{if(alive&&again)timer=setTimeout(poll,pollMs);}
   };
   void poll();return()=>{alive=false;clearTimeout(timer);};

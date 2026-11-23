@@ -7,6 +7,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { randomUUID } from 'node:crypto';
 import { createDb, client as appClient, type SessionContext } from '../db/client';
+import { openImportWorkerOwner } from '../db/worker-connection';
 import * as schema from '../db/schema';
 import { legacyEnabledModulesIn, legacyEnabledSettingsIn } from '../packs/catalog';
 import { resolveEntitlementsTx } from '../core/entitlements';
@@ -15,6 +16,12 @@ import { isFixtureResetLockError } from './harness-reset-errors';
 
 // Owner connection (postgres) — bypasses RLS, used only for setup/seed/reset.
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
+// The worker's own queue-owner client, exactly as scripts/bank-import-runner.ts opens it. drizzle() rewrites the codecs
+// of the client it wraps (json/jsonb parameters pass through as written), so a job driven on `owner.client` can pass
+// where the production worker silently differs: a `${JSON.stringify(x)}::jsonb` parameter is encoded a second time
+// into a JSON string on this client. Drive worker ticks here when the test is about what the worker writes.
+let plainWorkerOwner: ReturnType<typeof openImportWorkerOwner> | null = null;
+export const workerOwner = () => (plainWorkerOwner ??= openImportWorkerOwner(process.env.TEST_MIGRATION_DATABASE_URL!));
 
 const ALL_TABLES = [
   'reward_offcycle_year',
@@ -319,6 +326,9 @@ export async function closeAll() { return profileTestPhase('close', closeAllImpl
 async function closeAllImpl() {
   await appClient.end({ timeout: 5 });
   await owner.client.end({ timeout: 5 });
+  const worker = plainWorkerOwner;
+  plainWorkerOwner = null;
+  await worker?.end({ timeout: 5 });
 }
 
 export type Base = {
