@@ -2417,7 +2417,7 @@ async function measureActions(fixture){
     await main.getByRole('checkbox',{name:'All my companies',exact:true}).waitFor({state:'visible',timeout:remaining()});
     await main.getByText(fixture.scaleCompany.name,{exact:true}).first().waitFor({state:'visible',timeout:remaining()});
     await main.locator('input[type="month"]').waitFor({state:'visible',timeout:remaining()});
-    await main.getByRole('combobox',{name:'Payroll Cycle',exact:false}).waitFor({state:'visible',timeout:remaining()});
+    await main.getByRole('combobox',{name:'Payroll cycle',exact:true}).waitFor({state:'visible',timeout:remaining()});
     await main.locator('a').filter({hasText:'Back'}).and(main.locator('a[href="'+from+'"]')).waitFor({state:'visible',timeout:remaining()});
     report.payrollProcessFresh.push({step:pass,elapsedMs:Math.round(performance.now()-started)});
     save();
