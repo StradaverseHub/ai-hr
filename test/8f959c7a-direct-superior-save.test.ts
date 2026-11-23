@@ -202,8 +202,13 @@ describe('Direct Superior periods, backdating, Delete and audit (8f959c7a)', () 
     const [change] = (await superiorChanges(ADMIN, employee)).filter(row => !row.reversed);
     expect(change.superiorPeriod).toEqual({ from: '2026-07-01', to: null });
 
-    const [set] = await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId, base.tenantId),
+    // The employee has two reporting-line.set events (the 1 Feb administrative line and this change), and the
+    // database returns them in no fixed order, so pick the change by its new superior rather than by position.
+    const sets = await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId, base.tenantId),
       eq(schema.domainEvent.subjectEmploymentId, employee), eq(schema.domainEvent.eventType, 'reporting-line.set')));
+    const toSecond = sets.filter(event => (event.payload as { managerEmploymentId?: string } | null)?.managerEmploymentId === second);
+    expect(toSecond).toHaveLength(1);
+    const [set] = toSecond;
     expect(set.actorId).toBe(base.adminUserId);
     expect(set.payload).toMatchObject({ managerEmploymentId: second, previousManagerEmploymentId: first, validFrom: '2026-07-01' });
 
