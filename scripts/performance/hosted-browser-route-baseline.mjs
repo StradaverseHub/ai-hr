@@ -2413,12 +2413,18 @@ async function measureActions(fixture){
     const response=await page.goto(origin+path,{waitUntil:'commit',timeout:remaining()});
     assert.equal(response?.status(),200);
     assert.equal(new URL(page.url()).pathname,'/payroll/process');
-    await main.getByRole('heading',{name:'Payroll Process',exact:true,level:1}).waitFor({state:'visible',timeout:remaining()});
-    await main.getByRole('checkbox',{name:'All my companies',exact:true}).waitFor({state:'visible',timeout:remaining()});
-    await main.getByText(fixture.scaleCompany.name,{exact:true}).first().waitFor({state:'visible',timeout:remaining()});
-    await main.locator('input[type="month"]').waitFor({state:'visible',timeout:remaining()});
-    await main.getByRole('combobox',{name:'Payroll cycle',exact:true}).waitFor({state:'visible',timeout:remaining()});
-    await main.locator('a').filter({hasText:'Back'}).and(main.locator('a[href="'+from+'"]')).waitFor({state:'visible',timeout:remaining()});
+    const witnesses=[
+     ['heading',main.getByRole('heading',{name:'Payroll Process',exact:true,level:1})],
+     ['company-toggle',main.getByRole('checkbox',{name:'All my companies',exact:true})],
+     ['scoped-company',main.getByText(fixture.scaleCompany.name,{exact:true}).first()],
+     ['month',main.locator('input[type="month"]')],
+     ['cycle',main.getByRole('combobox',{name:/^Payroll cycle/})],
+     ['back-link',main.locator('a[href="'+from+'"]').filter({hasText:'Back'})],
+    ];
+    for(const [name,locator] of witnesses){
+     report.actionStage='payroll-process-'+pass+'-'+name;
+     await locator.waitFor({state:'visible',timeout:remaining()});
+    }
     report.payrollProcessFresh.push({step:pass,elapsedMs:Math.round(performance.now()-started)});
     save();
    }
