@@ -18,6 +18,7 @@ import {appendEvent,actorOf} from '../db/events';
 import {pgSqlState} from '../lib/db-error';
 import {publicErrorMessage} from '../lib/public-error';
 import {BULK_JOB_FINISHED_EVENT,type BulkJobRowError,type BulkJobState} from '../lib/bulk-job';
+import {recordUnitTiming} from '../lib/bulk-job-timing';
 import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {freshImportContext} from './bank-import-worker';
 import type {BulkJobRow} from './bulk-job';
@@ -204,7 +205,11 @@ export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOpt
   try{
    // Bind a fresh capability to this lease: only this worker can now write the job through the definers.
    const [bound]=await connection<{ok:boolean}[]>`select app.bulk_job_lease_capability(${job.id}::uuid,${token}::uuid,${claimed.capability}) as ok`;
-   if(bound?.ok)await withBackgroundDatabaseWork(()=>processClaimed(connection,handlers.get(job.kind)!,claimed));
+   if(bound?.ok){
+    const unitStarted=performance.now();
+    try{await withBackgroundDatabaseWork(()=>processClaimed(connection,handlers.get(job.kind)!,claimed));}
+    finally{recordUnitTiming(job,claimed.metrics,performance.now()-unitStarted);}
+   }
   }finally{
    await connection`update app.bulk_job_seal set lease_token=null,capability_digest=null where job_id=${job.id}::uuid and lease_token=${token}::uuid`;
    // updated_at moves on every unit, so the least recently touched job is always next (fair across tenants).
