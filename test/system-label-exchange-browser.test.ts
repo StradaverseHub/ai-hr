@@ -186,7 +186,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
    const row={source:process.env.AIHR_CI_HEAD,phase,elapsedMs:Math.round(performance.now()-capacityStarted),
     memTotalBytes:field('MemTotal'),memAvailableBytes:available,swapTotalBytes:field('SwapTotal'),swapFreeBytes:field('SwapFree'),
     vitestPid:process.pid,vitestRssBytes:process.memoryUsage.rss(),nextPid:server?.pid??null,nextLeaderStartTicks:serverStartTicks??null,
-    webpackParallelism:1,lowHeadroomDiagnostic:available<1.5*1024**3,releaseAuthorized:false};
+    bundler:'turbopack',lowHeadroomDiagnostic:available<1.5*1024**3,releaseAuthorized:false};
    // A diagnostic flag is never a capacity/test PASS. Keep actual per-PID heap and DB cgroup evidence too.
    appendFileSync(join(evidence,'system-label-capacity-phases.jsonl'),JSON.stringify(row)+'\n');
    console.info('SYSTEM_LABEL_CAPACITY '+JSON.stringify(row));
@@ -216,7 +216,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   // available memory under system-label-dev-server-heap/ in its evidence.
   const memory=totalmem(),heapMiB=memory>=15*1024**3?12288:memory>=12*1024**3?8192:4096;
   const heapEvidence=join(evidence,'system-label-dev-server-heap');mkdirSync(heapEvidence,{recursive:true});
-  writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,webpackParallelism:1,runner:process.env.RUNNER_ENVIRONMENT??'local'}));
+  writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,bundler:'turbopack',runner:process.env.RUNNER_ENVIRONMENT??'local'}));
   const labelsPath='/admin/settings/system-labels',profilePath='/admin/settings/system-labels/profile-options';
   type LabelsPath=typeof labelsPath|typeof profilePath;
   function importTrigger(target:Page,messages:typeof en){
@@ -356,11 +356,12 @@ describe('System Labels authenticated Excel browser journey',()=>{
   // No production credentials or identity provider. Recycle only this owned detached server:
   // the first combined capture exhausted runner headroom after the six-language loop (44573956115).
   // Fresh processes retain the isolated database and sessions while releasing compiled dev-route graphs.
+  // Turbopack, like `next dev` and `next build` for this app; webpack dev compiles were the bulk of this test's ~800 s.
   async function startOwnedNext(){
    signal.throwIfAborted();
    serverClosed=false;serverSpawnFailed=false;serverStartTicks=undefined;
-   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
-    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NEXT_WEBPACK_PARALLELISM:'1',NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
+   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','--port',String(port)],{
+    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
    sampleCapacity?.('next-spawned');
    const nextChild=server;
    nextChild.once('spawn',()=>{if(server===nextChild)serverStartTicks=detachedLeaderStart(nextChild);});
