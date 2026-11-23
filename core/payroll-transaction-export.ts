@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Transform } from 'node:stream';
@@ -14,9 +14,14 @@ import { transactionXlsxStream, type TransactionCell } from '../lib/transaction-
 import { bulkJobTx, BulkJobError, enqueueBulkJobTx } from './bulk-job';
 import { BulkJobAuthorityLost, type BulkJobHandler } from './bulk-job-worker';
 import {
-  INDIVIDUAL_TXN_STATUS_FILTERS, readTransactionExport, TXN_KINDS,
+  INDIVIDUAL_TXN_STATUS_FILTERS, listPayComponents, readProcessedPayslipsForExport, readTransactionExport, TXN_KINDS,
   type FixedTransactionViewRow, type IndividualTxnViewRow, type TransactionExportQuery,
 } from '../packs/payroll/service';
+import { packFor } from '../localization/registry';
+import { toXlsxReport } from '../lib/report-export';
+// The History sheet's pure, i18n-free builder (no React, no DB). It lives beside the screen it mirrors so the screen,
+// the panel and this file share one column rule; the worker only calls it.
+import { buildHistoryExport } from '../app/payroll/transaction-view/history-export';
 
 export const TRANSACTION_EXPORT_KIND = 'payroll_transaction_export';
 const partBytes = 256 * 1024;
@@ -32,6 +37,33 @@ const individualHeaders = [
 const guid = z.guid();
 const calendarDate = z.string().refine(isCalendarDate);
 const scope = z.object({ companyIds: z.array(guid).min(1), employmentId: guid.optional() });
+const caption = (max: number) => z.string().max(max);
+/**
+ * Production 2026-11-23 — Transaction View › History "Export to Excel". Both choices ("This view" and "All processed
+ * payroll") run here instead of in the web request, because "All processed payroll" reads every processed payslip
+ * the caller may see: in production that passed the 5,000 retained-document ceiling and every download failed.
+ * The captions are translated by the page when the job is queued, so the worker stays i18n-free like the builder.
+ */
+// `exportScope` and `sheet` ride INSIDE `filters`: the job kind's database-declared input shape (migration 6980,
+// checked by app.bulk_job_enqueue) admits only the top-level keys kind, filters and asOf.
+const historyWorkbook = z.object({
+  kind: z.literal('history'),
+  filters: scope.extend({
+    year: z.number().int().min(2000).max(2100).optional(), month: z.number().int().min(1).max(12).optional(),
+    cycle: z.enum(['regular', 'off_cycle', 'bonus', 'adjustment']).optional(), payrollCycleId: guid.optional(),
+    exportScope: z.enum(['current', 'all']),
+    sheet: z.object({
+      title: caption(120).min(1), filename: z.string().regex(/^[a-z0-9-]{1,80}$/),
+      filterCaption: caption(600), filterDescription: caption(1200), detailNote: caption(2000),
+      cycleLabels: z.object({
+        regular: caption(120), off_cycle: caption(120), bonus: caption(120), adjustment: caption(120),
+      }).strict(),
+      statusLabels: z.object({ draft: caption(120), processed: caption(120), closed: caption(120) }).strict(),
+    }).strict(),
+  }).strict(),
+}).strict();
+export type HistoryWorkbookQuery = z.infer<typeof historyWorkbook>;
+export type TransactionWorkbookQuery = TransactionExportQuery | HistoryWorkbookQuery;
 const exportQuery = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('fixed'), asOf: calendarDate,
@@ -46,9 +78,10 @@ const exportQuery = z.discriminatedUnion('kind', [
       createdFrom: calendarDate.optional(), createdTo: calendarDate.optional(),
     }).strict(),
   }).strict(),
+  historyWorkbook,
 ]);
 
-function exportJobQuery(job: {input: unknown; company_ids: string[]}): TransactionExportQuery {
+function exportJobQuery(job: {input: unknown; company_ids: string[]}): TransactionWorkbookQuery {
   const query = exportQuery.parse(job.input);
   const allowed = new Set(job.company_ids);
   if (allowed.size !== new Set(query.filters.companyIds).size ||
@@ -59,12 +92,14 @@ function exportJobQuery(job: {input: unknown; company_ids: string[]}): Transacti
 const dateCell = (date: string | null) => date ? { date } : null;
 
 type TransactionWorkbookReceipt = {
-  kind: TransactionExportQuery['kind'];
+  kind: TransactionWorkbookQuery['kind'];
   employmentId?: string;
   rows: number;
   bytes: number;
   fileSha256: string;
   parts: number;
+  /** History only: the builder's filename stem; its file is the SpreadsheetML `.xls` the History export has always been. */
+  filename?: string;
 };
 
 function fixedCells(row: FixedTransactionViewRow, asOf: string): TransactionCell[] {
@@ -100,7 +135,7 @@ async function assertCompanyAccess(tx: Tx, companyIds: readonly string[], employ
   if (!row?.allowed) throw new BulkJobAuthorityLost();
 }
 
-export function enqueueTransactionExport(ctx: SessionContext, query: TransactionExportQuery) {
+export function enqueueTransactionExport(ctx: SessionContext, query: TransactionWorkbookQuery) {
   query = exportQuery.parse(query);
   return withTenant(ctx, async (tx) => {
     await assertCompanyAccess(tx, query.filters.companyIds, query.filters.employmentId);
@@ -110,6 +145,41 @@ export function enqueueTransactionExport(ctx: SessionContext, query: Transaction
       input: query,
     });
   });
+}
+
+/**
+ * Every processed payslip the query covers, through the period-sliced reader (never clipped, never refused for the
+ * scope's size), folded by the same builder the History screen's columns follow. Written to a private temporary file;
+ * the caller stores it in parts exactly like the Fixed and Individual workbooks.
+ */
+async function writeHistoryWorkbook(ctx: SessionContext, query: HistoryWorkbookQuery, path: string): Promise<TransactionWorkbookReceipt> {
+  const f = query.filters;
+  const rows = await readProcessedPayslipsForExport(ctx, {
+    companyIds: f.companyIds, year: f.year, month: f.month, employmentId: f.employmentId,
+    cycle: f.cycle, payrollCycleId: f.payrollCycleId,
+  });
+  const hrdfRegisteredCompanyIds = ((await packFor('MY')?.companyStatutory.list(ctx)) ?? [])
+    .filter((row) => row.hrdfStatus !== 'not_registered').map((row) => row.companyId);
+  // 417d4937 — the same catalogue read the screen does, archived items included, so a column is named as on screen.
+  const payItemNames: Record<string, string> = Object.fromEntries(
+    (await listPayComponents(ctx, { includeArchived: true })).map((c) => [c.code, c.name]),
+  );
+  const sheet = f.sheet;
+  const data = buildHistoryExport({
+    rows, hrdfRegisteredCompanyIds, payItemNames,
+    cycleLabels: sheet.cycleLabels, statusLabels: sheet.statusLabels,
+    title: sheet.title, filename: sheet.filename,
+    filterCaption: sheet.filterCaption, filterDescription: sheet.filterDescription,
+    detailNote: sheet.detailNote,
+  });
+  const file = toXlsxReport(data);
+  await writeFile(path, file.bytes, { mode: 0o600 });
+  const bytes = file.bytes.byteLength;
+  return {
+    kind: 'history', employmentId: f.employmentId, rows: rows.length, bytes,
+    fileSha256: createHash('sha256').update(file.bytes).digest('hex'), parts: Math.ceil(bytes / partBytes),
+    filename: data.filename,
+  };
 }
 
 export const transactionExportJobHandler: BulkJobHandler = {
@@ -128,7 +198,7 @@ export const transactionExportJobHandler: BulkJobHandler = {
     const directory = await mkdtemp(join(tmpdir(), 'aihr-transaction-export-'));
     const path = join(directory, 'transactions.xlsx');
     try {
-      const receipt = await readTransactionExport(ctx, query, async (total, rows) => {
+      const receipt = query.kind === 'history' ? await writeHistoryWorkbook(ctx, query, path) : await readTransactionExport(ctx, query, async (total, rows) => {
         const hash = createHash('sha256');
         let bytes = 0;
         const digest = new Transform({
@@ -182,12 +252,20 @@ export function readTransactionExportJob(ctx: SessionContext, id: string) {
 
 export function transactionWorkbookReceipt(result: unknown): TransactionWorkbookReceipt {
   const receipt = result as TransactionWorkbookReceipt | null;
-  if (!receipt || (receipt.kind !== 'fixed' && receipt.kind !== 'individual') ||
+  if (!receipt || (receipt.kind !== 'fixed' && receipt.kind !== 'individual' && receipt.kind !== 'history') ||
+      (receipt.kind === 'history' && !/^[a-z0-9-]{1,80}$/.test(receipt.filename ?? '')) ||
       !Number.isSafeInteger(receipt.bytes) || receipt.bytes < 1 || !Number.isSafeInteger(receipt.parts) ||
       receipt.parts !== Math.ceil(receipt.bytes / partBytes) || !/^[a-f0-9]{64}$/.test(receipt.fileSha256)) {
     throw new BulkJobError('Workbook unavailable.', 404);
   }
   return receipt;
+}
+
+/** The download's name and type. History keeps the SpreadsheetML `.xls` its in-request export always produced. */
+export function transactionWorkbookFile(receipt: TransactionWorkbookReceipt): { name: string; contentType: string } {
+  return receipt.kind === 'history'
+    ? { name: `${receipt.filename}.xls`, contentType: 'application/vnd.ms-excel; charset=utf-8' }
+    : { name: `${receipt.kind}-transactions.xlsx`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
 }
 
 export async function readTransactionWorkbookPart(ctx: SessionContext, id: string, part: number) {
