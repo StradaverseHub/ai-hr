@@ -213,7 +213,9 @@ describe('3244584c reprocess eligibility after employee changes', () => {
     expect(await listRecalcChangeCategories(ctx, { batchId })).toEqual({ [a.employmentId]: ['compensation'] });
     const events = await owner.db.select().from(schema.domainEvent)
       .where(and(eq(schema.domainEvent.aggregateId, batchId), eq(schema.domainEvent.eventType, 'payroll-batch.recalc-required')));
-    // A category, never a value (ADR-0030 Layer 0).
-    expect(JSON.stringify(events.map((e) => e.payload))).not.toContain('3200');
+    // A category, never a value (ADR-0030 Layer 0). The employment id is random and may itself contain the digits
+    // (gate 45225413207 drew one ending ...033200), so ids are removed before looking for the salary.
+    expect(events.length).toBeGreaterThan(0);
+    expect(JSON.stringify(events.map((e) => e.payload)).replaceAll(a.employmentId, '<employment>')).not.toContain('3200');
   });
 });
