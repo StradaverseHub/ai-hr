@@ -77,7 +77,7 @@ export function createActionNamer(manifestPath = join(process.cwd(), '.next', 's
   const load = () => {
     names = new Map();
     try {
-      const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<string, Record<string, {filename?: string; exportedName?: string}> | undefined>;
+      const manifest = JSON.parse(readFileSync(/*turbopackIgnore: true*/ manifestPath, 'utf8')) as Record<string, Record<string, {filename?: string; exportedName?: string}> | undefined>;
       for (const layer of ['node', 'edge']) {
         for (const [id, entry] of Object.entries(manifest[layer] ?? {})) {
           if (!entry?.filename) continue;
