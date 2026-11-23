@@ -61,7 +61,7 @@ on:
         default: false
         type: boolean
       browser_static_shard:
-        description: Static census shard (0–7), all, split:N to recover shard N, retry-timeouts, fixture-records for seeded dynamic routes, payroll-corrections, personnel-movement, payroll-formula-evaluation, import-history, personnel-directory, attendance-records, payroll-register-records, personnel-roster-records, or personnel-profile-cost
+        description: Static census shard (0–7), all, split:N to recover shard N, retry-timeouts, fixture-records for seeded dynamic routes, payroll-corrections, personnel-movement, payroll-formula-evaluation, import-history, personnel-directory, attendance-records, payroll-register-records, personnel-roster-records, personnel-profile-cost, or job-description-editor
         default: ''
         type: string
       reuse_combined_census_build:
@@ -125,10 +125,10 @@ jobs:
       - name: Validate bounded manifest
         id: selection
         run: |
-          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all|split:[0-7]|retry-timeouts|fixture-records|payroll-corrections|personnel-movement|payroll-formula-evaluation|import-history|personnel-directory|attendance-records|payroll-register-records|personnel-roster-records|personnel-profile-cost)$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
+          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all|split:[0-7]|retry-timeouts|fixture-records|payroll-corrections|personnel-movement|payroll-formula-evaluation|import-history|personnel-directory|attendance-records|payroll-register-records|personnel-roster-records|personnel-profile-cost|job-description-editor)$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
             exit 2
           fi
-          if [[ "$BROWSER_STATIC_SHARD" =~ ^(retry-timeouts|fixture-records|payroll-corrections|personnel-movement|payroll-formula-evaluation|import-history|personnel-directory|attendance-records|payroll-register-records|personnel-roster-records|personnel-profile-cost)$ && "$BROWSER_GROUP_SHAPE" != true ]]; then
+          if [[ "$BROWSER_STATIC_SHARD" =~ ^(retry-timeouts|fixture-records|payroll-corrections|personnel-movement|payroll-formula-evaluation|import-history|personnel-directory|attendance-records|payroll-register-records|personnel-roster-records|personnel-profile-cost|job-description-editor)$ && "$BROWSER_GROUP_SHAPE" != true ]]; then
             echo 'The selected browser shard requires the group-scale fixture.'
             exit 2
           fi
@@ -137,7 +137,7 @@ jobs:
             exit 2
           fi
           if [[ "$REUSE_CENSUS_BUILD" == true ]]; then
-            [[ "$BROWSER_STATIC_SHARD" =~ ^(fixture-records|payroll-corrections|personnel-movement|payroll-formula-evaluation|import-history|personnel-directory|attendance-records|payroll-register-records|personnel-roster-records|personnel-profile-cost)$ && "$RUN_BUILD" != true ]]
+            [[ "$BROWSER_STATIC_SHARD" =~ ^(fixture-records|payroll-corrections|personnel-movement|payroll-formula-evaluation|import-history|personnel-directory|attendance-records|payroll-register-records|personnel-roster-records|personnel-profile-cost|job-description-editor)$ && "$RUN_BUILD" != true ]]
             jq -e --arg source "$EXPECTED_SHA" 'has($source)' scripts/performance/fixture-record-builds.json > /dev/null
           fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then

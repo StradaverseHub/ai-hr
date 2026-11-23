@@ -41,10 +41,11 @@ const censusAttendanceRecords=shardInput==='attendance-records';
 const censusPayrollRegisterRecords=shardInput==='payroll-register-records';
 const censusPersonnelRosterRecords=shardInput==='personnel-roster-records';
 const censusPersonnelProfileCost=shardInput==='personnel-profile-cost';
+const jobDescriptionEditorOnly=shardInput==='job-description-editor';
 const censusFullFixtureRecords=shardInput==='fixture-records';
 const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusPersonnelDirectory||censusAttendanceRecords||censusPayrollRegisterRecords||censusPersonnelRosterRecords||censusPersonnelProfileCost;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
-assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
+assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords||jobDescriptionEditorOnly)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
 const staticPart=shardMatch?.[2]===undefined?undefined:Number(shardMatch[2]);
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
@@ -63,7 +64,7 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:censusFixtureRecords?'FICTIONAL_FIXTURE_RECORD_CENSUS':retryCensusTimeouts?'FICTIONAL_CENSUS_TIMEOUT_FOLLOWUP':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:jobDescriptionEditorOnly?'FICTIONAL_JOB_DESCRIPTION_BROWSER_ACTION':censusFixtureRecords?'FICTIONAL_FIXTURE_RECORD_CENSUS':retryCensusTimeouts?'FICTIONAL_CENSUS_TIMEOUT_FOLLOWUP':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -1066,11 +1067,15 @@ async function measureSavedAssistantHistory({page,user,fixture,report,save}){
  });
 }
 
-async function measureJobDescriptionEditor({page,user,report,save}){
+async function measureJobDescriptionEditor({page,user,report,save,db}){
  const list='/admin/job-descriptions',create=list+'/new';
+ const listStarted=performance.now();
+ if(jobDescriptionEditorOnly)report.actionStage='open-directory';
  const response=await page.goto(origin+list,{waitUntil:'commit',timeout:15000});
  assert.equal(response?.status(),200);
  await readyContent(page,user,list,()=>15000);
+ const listReadyMs=Math.round(performance.now()-listStarted);
+ if(jobDescriptionEditorOnly)report.actionStage='open-company-picker';
  const main=page.locator('main:visible').first();
  const picker=main.locator('form select[name="company"]');
  const started=performance.now();
@@ -1080,6 +1085,10 @@ async function measureJobDescriptionEditor({page,user,report,save}){
  const label=await picker.locator(`option[value="${user.companyId}"]`).textContent();
  assert(label?.trim());
  report.jobEditorSteps=[{step:'open-company-picker',elapsedMs:Math.round(performance.now()-started)}];
+ if(jobDescriptionEditorOnly){
+  report.jobEditorSteps.unshift({step:'open-directory',elapsedMs:listReadyMs});
+  report.actionStage='open-company-editor';
+ }
  save();
  await picker.selectOption(user.companyId);
  const editorStarted=performance.now();
@@ -1094,6 +1103,35 @@ async function measureJobDescriptionEditor({page,user,report,save}){
  assert(await main.getByRole('button',{name:'Save draft',exact:true}).isEnabled());
  await assertContentAvailable(page);
  report.jobEditorSteps.push({step:'open-company-editor',elapsedMs:Math.round(performance.now()-editorStarted)});
+ if(!jobDescriptionEditorOnly)return;
+ report.actionStage='prepare-draft';
+ const code='PERF-DRAFT-'+user.role;
+ const title='Fictional employment document for '+user.role;
+ await main.getByRole('textbox',{name:'Common Job ID / Position ID',exact:true}).fill(code);
+ await main.getByRole('textbox',{name:'Job title',exact:true}).fill(title);
+ await page.waitForFunction(({code,title})=>{
+  const input=document.querySelector('main input[name="payload"]');
+  if(!input?.value)return false;
+  const payload=JSON.parse(input.value);
+  return payload.jobCode===code&&payload.title===title;
+ },{code,title},{timeout:15000});
+ report.actionStage='save-draft';
+ save();
+ const savedStarted=performance.now();
+ await main.getByRole('button',{name:'Save draft',exact:true}).click({timeout:15000});
+ await page.waitForURL(url=>url.pathname.startsWith(list+'/')&&url.pathname!==create&&url.searchParams.get('saved')==='1',{timeout:15000});
+ await main.getByText('Changes saved',{exact:true}).waitFor({state:'visible',timeout:15000});
+ await main.getByRole('heading',{name:title,exact:true,level:1}).waitFor({state:'visible',timeout:15000});
+ report.jobEditorSteps.push({step:'save-draft-visible',elapsedMs:Math.round(performance.now()-savedStarted)});
+ report.actionStage='verify-persisted-draft';
+ const id=new URL(page.url()).pathname.split('/').at(-1);
+ const stored=await db`select j.job_code,r.title,r.status,r.prepared_by::text as actor
+  from job_document j join job_document_revision r on r.job_id=j.id and r.tenant_id=j.tenant_id
+  where j.tenant_id=${user.tenantId}::uuid and j.company_id=${user.companyId}::uuid and j.id=${id}::uuid`;
+ assert.deepEqual(stored.map(row=>({...row})),[{job_code:code,title,status:'draft',actor:user.userId}]);
+ const events=await db`select action,actor_id::text as actor from job_document_audit
+  where tenant_id=${user.tenantId}::uuid and job_id=${id}::uuid`;
+ assert.deepEqual(events.map(row=>({...row})),[{action:'created',actor:user.userId}]);
 }
 
 async function measureDailyAttendanceFilters({page,user,fixture,report,save}){
@@ -1479,7 +1517,7 @@ async function measureActions(fixture){
   },timings:result=>result.joinerSteps},
  ];
  try{
-  for(const action of actions){
+  for(const action of actions.filter(action=>!jobDescriptionEditorOnly||action.name==='job-description-editor-open')){
    const user=fixture.users[action.actorIndex],context=await signedInContext(user),result={};
    const row={journey:action.name,role:user.role,status:'incomplete',timings:[]};
    report.journeys.push(row);
@@ -1623,12 +1661,18 @@ try{
  report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords)await seedNotificationReads(fixture);
+  if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords&&!jobDescriptionEditorOnly)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
   await waitForApp();
   await proxy();
-  if(censusFixtureRecords){
+  if(jobDescriptionEditorOnly){
+   const require=createRequire(join(process.cwd(),'package.json'));
+   browser=await require('playwright').chromium.launch();
+   await measureActions(fixture);
+   assert(report.journeys.length===2&&report.journeys.every(row=>row.status==='observed'&&row.serverActionsSeen===1),
+    'Both HR roles must save one Job Description draft using its registered action');
+  }else if(censusFixtureRecords){
    const require=createRequire(join(process.cwd(),'package.json'));
    browser=await require('playwright').chromium.launch();
    const routes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
