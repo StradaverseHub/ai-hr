@@ -45,16 +45,15 @@ export async function verifyBuildRecoveredCi({candidatePath,runId,baseline,build
  assert(originalMetadata.run.status==='completed'&&originalMetadata.run.conclusion==='failure'&&originalMetadata.run.run_attempt===1,'Original gate must be a completed failed first attempt');
  assert(originalMetadata.run.head_sha===controller,'Verify from the exact original gate controller checkout');
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`validated-build-recovery-${runId}-${randomUUID()}`),sourceDir=join(dir,'original');
- const source=await collectRecoveryEvidence(runId,sourceDir,{reuse,buildFailure:true,prefetchDirectory:process.env.AIHR_BUILD_RECOVERY_ORIGINAL_PREFETCH_DIR||undefined});
+ const source=await collectRecoveryEvidence(runId,sourceDir,{reuse,prefetchDirectory:process.env.AIHR_BUILD_RECOVERY_ORIGINAL_PREFETCH_DIR||undefined});
  assert(isDeepStrictEqual(originalMetadata,facts(source)),'Original metadata changed during download');
  const plan=source.parsed.get('gate-plan')?.get('ci-plan.json');assert(plan,'Original archived plan missing');
  // Same expected plan as the normal verifier: the candidate's own classifier, this controller, this baseline.
  const local=createPlan(candidatePath),{fingerprint:unused,...body}={...local,controller,migrationBase:baseline,runtime:plan.runtime},expectedPlan={...body,fingerprint:hash(body)};
  const failureArtifact=source.artifacts.find(a=>a.name===NEXT_APPLICATION_FAILURE),failureFiles=source.parsed.get(NEXT_APPLICATION_FAILURE);
  assert(failureArtifact&&failureFiles&&isDeepStrictEqual([...failureFiles.keys()].sort(),BUILD_FAILURE_MEMBERS),'Exact original build failure diagnostic required');
- // The shared assessor admits only a JSON-only failure diagnostic; the policy authenticates this namespace itself.
- const assessed=source.artifacts.filter(a=>a!==failureArtifact),archives=new Map([...source.archives].filter(([name])=>name!==NEXT_APPLICATION_FAILURE));
- const assessment=assessResumeSource({...source,artifacts:assessed,archives,expectedPlan,expected:p});
+ // The shared assessor now reads the bounded log members too (fix 2026-11-24), so it also checks this diagnostic.
+ const assessment=assessResumeSource({...source,expectedPlan,expected:p});
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
  const bm=metadata(buildRunId);
  validateRepairArchiveInventory(bm,new Set([BUILD_ARTIFACT,NEXT_APPLICATION_STATE]),()=>'build');assert(bm.artifacts.some(a=>a.name===BUILD_ARTIFACT),'Mandatory replacement canonical build packet missing');

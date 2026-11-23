@@ -106,3 +106,17 @@ test('failed-build diagnostic stays non-authoritative and cannot prevent retaini
  const result=assessResumeSource(f);assert.equal(result.reusable.length,5);assert(result.freshPrerequisites.includes('build'));assert.equal(result.releaseAuthorized,false);
  job.conclusion='success';assert.throws(()=>assessResumeSource(f),/failure diagnostic attached/);
 });
+
+test('a real failed-build upload with its bounded GNU time logs is read; unknown, nested or missing-report members refuse',()=>{
+ // Shape of next-application-build-failure on gate 45187793223: comparison.json plus canonical-build.log and application-typegen.log.
+ const f=fixture(),job=f.jobs.find(j=>j.name==='build');job.conclusion='failure';
+ const diagnostic={kind:'CANONICAL_CI_APPLICATION_COMPILER_STATE_NOT_RELEASE',releaseAuthorized:false,source:f.expected.candidate,controller:f.expected.controller,runId:String(f.run.id),attempt:'1',exitCode:1};
+ const logs={'canonical-build.log':'Compiled successfully\n\tExit status: 0\n','application-typegen.log':'\tExit status: 0\n'};
+ put(f,'next-application-build-failure','comparison.json',diagnostic,logs);
+ assert.equal(assessResumeSource(f).reusable.length,5);
+ put(f,'next-application-build-failure','comparison.json',diagnostic,{'canonical-build.log':logs['canonical-build.log']});assert.equal(assessResumeSource(f).reusable.length,5);
+ for(const extra of [{...logs,'other.log':'x'},{...logs,'payload.sh':'x'},{'nested/canonical-build.log':'x'},{'../application-typegen.log':'x'},{'comparison.txt':'x'}]){
+  put(f,'next-application-build-failure','comparison.json',diagnostic,extra);assert.throws(()=>assessResumeSource(f),undefined,JSON.stringify(Object.keys(extra)));
+ }
+ put(f,'next-application-build-failure','comparison.json',{...diagnostic,source:'d'.repeat(40)},logs);assert.throws(()=>assessResumeSource(f),/identity differs/);
+});

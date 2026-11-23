@@ -8,6 +8,10 @@ import {fileURLToPath} from 'node:url';
 import {fixture,put,now,time} from './resume-test-fixtures.mjs';
 import {assessResumeSource} from './resume-source.mjs';
 import {hash} from './manifest.mjs';
+import {RECOVERY_POLICY} from './focused-recovery-policy.mjs';
+import {BROWSER_RECOVERY_POLICY} from './browser-recovery-policy.mjs';
+import {REPAIR_RECOVERY_POLICY} from './repair-recovery-policy.mjs';
+import {DB_UNIT_RECOVERY_POLICY} from './db-unit-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {NEXT_APPLICATION_FAILURE} from './next-application-cache-protocol.mjs';
@@ -38,8 +42,8 @@ function input(){
  f.jobs.push({id:1999,name:'runner-diagnostics',run_id:100,run_attempt:1,head_sha:e.controller,head_branch:'main',status:'completed',conclusion:'skipped'});
  const report=failureReport(e);
  put(f,NEXT_APPLICATION_FAILURE,'comparison.json',report,{'canonical-build.log':buildLog(),'application-typegen.log':typegenLog});
- const assessed=f.artifacts.filter(a=>a.name!==NEXT_APPLICATION_FAILURE),archives=new Map([...f.archives].filter(([n])=>n!==NEXT_APPLICATION_FAILURE));
- const assessment=assessResumeSource({expectedPlan:f.expectedPlan,expected:e,run:f.run,jobs:f.jobs,artifacts:assessed,archives,now});
+ // The shared assessor reads the real failure upload, logs included (fix 2026-11-24).
+ const assessment=assessResumeSource({expectedPlan:f.expectedPlan,expected:e,run:f.run,jobs:f.jobs,artifacts:f.artifacts,archives:f.archives,now});
  const buildRun={...f.run,id:500,conclusion:'success',created_at:time(4),updated_at:time(1),display_title:'Canonical build only · '+BRANCH,html_url:'https://example.invalid/500'};
  const buildJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'].map((name,i)=>({id:600+i,name,run_id:500,head_sha:buildRun.head_sha,head_branch:buildRun.head_branch,run_attempt:1,status:'completed',conclusion:['resolve','build','deployment-hold'].includes(name)?'success':'skipped',started_at:time(3.5),completed_at:time(1.5)}));
  const rows=[{id:500,workflow_id:buildRun.workflow_id,display_title:buildRun.display_title,head_sha:e.controller,status:'completed',conclusion:'success',run_attempt:1,created_at:time(4),updated_at:time(1)},
@@ -69,6 +73,7 @@ const refusals=[
  ['typegen process exit',f=>f.failure.typegenLog=typegenLog.replace('Exit status: 0','Exit status: 2')],
  ['peak RSS budget breach',f=>{const m=f.failure.report.memory;m.peakRssKiB=13200000;m.rssVerdict='fail';f.failure.report.phases[1].peakRssKiB=13200000;f.failure.report.actualCanonicalBuild.peakRssKiB=13200000;f.failure.buildLog=f.failure.buildLog.replace(String(PEAK),'13200000');}],
  ['available memory actually above floor',f=>f.failure.report.memory.minMemAvailableKiB=2000000],
+ ['missing typegen log',f=>f.failure.typegenLog=undefined],['missing build log',f=>f.failure.buildLog=undefined],
  ['missing available-memory sample',f=>f.failure.report.memory.minMemAvailableKiB=null],['non-integer available-memory sample',f=>f.failure.report.memory.minMemAvailableKiB=1154660.5],
  ['forged verdict',f=>f.failure.report.memory.rssVerdict='within'],
  ['log peak differs',f=>f.failure.buildLog=f.failure.buildLog.replace(String(PEAK),'1234')],
@@ -155,18 +160,25 @@ test('Grant binds the replacement build run and the certificate keeps the origin
   const bad=structuredClone(e);change(bad);bad.fingerprint=hash(bad.recovery);assert.throws(()=>createInstallGrant({...g,evidence:bad,run,producer}));
  }
  const unsigned=structuredClone(e);unsigned.recovery.tests++;assert.throws(()=>validateBuildRecoveryGrantEvidence(unsigned,run),/certificate/);
+ // Review 2026-11-24: a build-capacity certificate cannot reach another policy's grant validator, nor an unknown one.
+ for(const policy of [RECOVERY_POLICY,BROWSER_RECOVERY_POLICY,REPAIR_RECOVERY_POLICY,DB_UNIT_RECOVERY_POLICY,'aihr-build-capacity-recovery/v2',null]){
+  const relabelled=structuredClone(e);relabelled.recovery.recoveryPolicy=policy;relabelled.fingerprint=hash(relabelled.recovery);
+  for(const conclusion of ['failure','success'])assert.throws(()=>createInstallGrant({...g,evidence:relabelled,run:{...run,conclusion},producer}),undefined,String(policy));
+ }
 });
 test('Operator options are exactly the replacement build run and candidate branch',()=>{
  assert.deepEqual(buildRecoveryOptions({buildRunId:5,candidateBranch:BRANCH}),{buildRunId:5,candidateBranch:BRANCH});
  for(const bad of [null,[],{buildRunId:5},{buildRunId:'5',candidateBranch:BRANCH},{buildRunId:0,candidateBranch:BRANCH},{buildRunId:5,candidateBranch:BRANCH,focusedRunIds:[1]}])assert.throws(()=>buildRecoveryOptions(bad));
 });
-test('The original failure diagnostic namespace is extracted exactly and nothing else',()=>{
+test('The failure diagnostic namespace is comparison.json plus optional bounded logs, and nothing else',()=>{
  const root=mkdtempSync(join(tmpdir(),'aihr-build-failure-extract-')),extractor=fileURLToPath(new URL('./build-failure-extract.py',import.meta.url));
  const zip=(name,entries)=>{const path=join(root,name+'.zip');writeFileSync(path,execFileSync('python3',['-c','import io,json,sys,zipfile; b=io.BytesIO(); z=zipfile.ZipFile(b,"w"); [(z.writestr(k,v)) for k,v in json.load(sys.stdin).items()]; z.close(); sys.stdout.buffer.write(b.getvalue())'],{input:JSON.stringify(entries)}));return path;};
  const good={'comparison.json':'{}','canonical-build.log':buildLog(),'application-typegen.log':typegenLog};
  try{
   execFileSync('python3',[extractor,zip('good',good),join(root,'good')],{stdio:'pipe'});assert.deepEqual(readdirSync(join(root,'good')).sort(),['application-typegen.log','canonical-build.log','comparison.json']);
-  for(const [name,entries] of [['missing',{'comparison.json':'{}','canonical-build.log':'x'}],['extra',{...good,'other.log':'x'}],['nested',{'comparison.json':'{}','canonical-build.log':'x','sub/application-typegen.log':'x'}],['renamed',{'comparison.json':'{}','canonical-build.log':'x','application-typegen.txt':'x'}]])
+  // A partial upload is extractable; the memory-floor proof itself still requires both logs.
+  execFileSync('python3',[extractor,zip('partial',{'comparison.json':'{}','canonical-build.log':'x'}),join(root,'partial')],{stdio:'pipe'});assert.deepEqual(readdirSync(join(root,'partial')).sort(),['canonical-build.log','comparison.json']);
+  for(const [name,entries] of [['no report',{'canonical-build.log':'x','application-typegen.log':'x'}],['extra',{...good,'other.log':'x'}],['nested',{'comparison.json':'{}','canonical-build.log':'x','sub/application-typegen.log':'x'}],['renamed',{'comparison.json':'{}','canonical-build.log':'x','application-typegen.txt':'x'}],['traversal',{'comparison.json':'{}','../canonical-build.log':'x'}],['script',{'comparison.json':'{}','run.sh':'x'}]])
    assert.throws(()=>execFileSync('python3',[extractor,zip(name,entries),join(root,name)],{stdio:'pipe'}),name);
  }finally{rmSync(root,{recursive:true,force:true});}
 });

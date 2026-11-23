@@ -14,7 +14,9 @@ test('real collector authenticates API/ZIP bytes, separates failure diagnostics,
  const f=fixture(),unit=f.expectedPlan.units.find(u=>u.kind==='nodb'),report=f.reports.find(r=>r.id===unit.id);
  report.exitCode=1;report.batches[0].exitCode=1;report.batches[0].result.success=false;put(f,'unit-'+unit.id,'unit-'+unit.id+'.json',report);
  f.jobs.find(j=>j.name===`test (${unit.id})`).conclusion='failure';f.jobs.find(j=>j.name==='typecheck').conclusion='failure';f.jobs.find(j=>j.name==='build').conclusion='failure';
- put(f,'next-application-build-failure','comparison.json',{kind:'CANONICAL_CI_APPLICATION_COMPILER_STATE_NOT_RELEASE',releaseAuthorized:false,source:f.expected.candidate,controller:f.expected.controller,runId:String(f.run.id),attempt:'1'});
+ put(f,'next-application-build-failure','comparison.json',{kind:'CANONICAL_CI_APPLICATION_COMPILER_STATE_NOT_RELEASE',releaseAuthorized:false,source:f.expected.candidate,controller:f.expected.controller,runId:String(f.run.id),attempt:'1'},
+  // Fix 2026-11-24: the real upload (e.g. gate 45187793223) also carries the two bounded GNU time logs.
+  {'canonical-build.log':'Compiled successfully in 2.4min\n\tExit status: 0\n','application-typegen.log':'\tExit status: 0\n'});
  const stateFile=join(responses,'state.json'),state=()=>writeFileSync(stateFile,JSON.stringify({run:f.run,jobs:f.jobs,artifacts:f.artifacts}));state();
  for(const a of f.artifacts)writeFileSync(join(responses,String(a.id)+'.zip'),f.archives.get(a.name));
  writeFileSync(join(bin,'gh'),'#!'+process.execPath+'\n'+
@@ -25,6 +27,7 @@ test('real collector authenticates API/ZIP bytes, separates failure diagnostics,
  try{
   const source=await collectRecoveryEvidence(f.run.id,directory,{includeRaw:true});validateRepairArchiveInventory(source,new Set(f.artifacts.map(a=>a.name)),producer,now);const checked=assess(source);
   assert.equal(checked.reusable.length,4);assert.equal(checked.rerun.length,1);assert.equal(source.run.conclusion,'failure');assert.equal(source.jobs.find(j=>j.name==='typecheck').conclusion,'failure');assert.equal(source.parsed.get('next-application-build-failure').get('comparison.json').releaseAuthorized,false);
+  assert.deepEqual([...source.parsed.get('next-application-build-failure').keys()].sort(),['application-typegen.log','canonical-build.log','comparison.json']);assert.match(source.parsed.get('next-application-build-failure').get('canonical-build.log'),/Exit status: 0/);
   const fresh=await collectRecoveryEvidence(f.run.id,directory,{reuse:true});assert.deepEqual(assess(fresh),checked);
   const path=join(directory,'gate-plan.zip'),original=readFileSync(path);writeFileSync(path,Buffer.alloc(original.length,1));await assert.rejects(collectRecoveryEvidence(f.run.id,directory,{reuse:true}),/digest/);writeFileSync(path,original);
   f.run.run_attempt=2;state();await assert.rejects(collectRecoveryEvidence(f.run.id,directory,{reuse:true}),/rerun/);f.run.run_attempt=1;state();
