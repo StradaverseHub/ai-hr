@@ -91,12 +91,16 @@ const freshGroupBuilds=new Set([
  nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,indexedAccountTaskCaller,
 ]);
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
-const currentMainLifetimeContract=reusedBuild&&[currentMainLifetimeCandidate,currentMainIndexedPayrollBoundary].includes(env.AIHR_CI_HEAD)
- &&shellPermissionVariant==='contract-optimized';
+const currentMainScopedJobReviewer='162aea78851d2ec44d601e51a8f2a3750c1c9bf1';
+const currentMainLifetimeContract=shellPermissionVariant==='contract-optimized'&&(
+ reusedBuild ? [currentMainLifetimeCandidate,currentMainIndexedPayrollBoundary].includes(env.AIHR_CI_HEAD)
+ : env.AIHR_CI_HEAD===currentMainScopedJobReviewer
+);
 const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD)
  ||env.AIHR_CI_HEAD===currentMainFixture||currentMainLifetimeContract)&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
-const currentMainLifetimeBuild=[currentMainLifetimeCandidate,currentMainIndexedCandidate,currentMainIndexedPayrollBoundary].includes(env.AIHR_CI_HEAD);
+const currentMainLifetimeBuild=[currentMainLifetimeCandidate,currentMainIndexedCandidate,currentMainIndexedPayrollBoundary,
+ currentMainScopedJobReviewer].includes(env.AIHR_CI_HEAD);
 if(currentMainLifetimeBuild)assert(mixedLoad&&groupScale&&establishedAttendance&&databaseTopology==='transaction-pool'
  &&(shellPermissionVariant==='none'||currentMainLifetimeContract)&&!fixtureOnly);
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild||currentMainLifetimeBuild)&&!fixtureOnly));

@@ -238,6 +238,13 @@ jobs:
                 "$BROWSER_FIXTURE_ONLY" != true && "$REUSE_BUILD" != "$RUN_BUILD" ]] || exit 2
             combined_group_build=true
           fi
+          if [[ "$EXPECTED_SHA" == 162aea78851d2ec44d601e51a8f2a3750c1c9bf1 && "$BROWSER_ROUTE_BASELINE" == true ]]; then
+            [[ "$MIXED_GROUP_SCALE" == true && "$BROWSER_MIXED_LOAD" == true &&
+               "$ESTABLISHED_ATTENDANCE" == true && "$REPLACEMENT_CATALOGUE" == present &&
+               "$MIXED_DATABASE_TOPOLOGY" == transaction-pool && "$SHELL_PERMISSION_VARIANT" == contract-optimized &&
+               "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" == true && "$REUSE_BUILD" != true ]] || exit 2
+            combined_group_build=true
+          fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
               true:2d0a60f552e42f4dff934bb5f32e091d322f2734|true:0f6f8e3a92c6f322f4e9539ad8fedeffbc0c900e)
