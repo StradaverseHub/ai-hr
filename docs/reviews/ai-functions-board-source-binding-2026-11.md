@@ -1644,6 +1644,16 @@ The repository owner approved the revised exact fingerprint `2b84eb4ed17f7482108
 
 The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `5fc9d14959635ae9504b42805c7e6ec855a40fbdb481f1368dd40f7eb3970be9` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"; staging release of this change requested 23 November 2026). The only covered file that changed is `core/payroll-run-group-store.ts`: the worker's run-group settlement passes its JSON parameters as text cast to jsonb so its plain database client no longer encodes them twice, and a repaired group ends at its last job's finish time. The payroll progress polls share one busy classifier. No provider transform, outbound field, purpose, endpoint or transport changed.
 
-## Recalculation history, company search and progress, 23 November 2026
+## Recalculation history, company search and progress with payroll run-group settlement, 23 November 2026
 
-The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `bc2c6d52c68efbab45232fc1d37ef4a8d5a757c8a60389a7e0513054fbe1f77a` across 1,836 files. The re-binding standing approval was given on 12 November 2026, and on 23 November 2026 the owner asked for this work to join the tax recalculation release. Board item a16382b4 adds three things: a Recalculation history page grouped per company per run (migration 7120 adds a nullable run link), company search in the picker, and employee-level progress counts. The candidate is built on the staged combined release `4e385f7ce`. Exactly 28 digest literals change from `2b84eb4ed17f74821083720aee6e1a3891866a8c773bac10bdb7dc601d7b6bc5`. Reversing the substitutions restores the previous registry byte for byte. The derived module-agent fingerprint is `7586741aa8b16a8d3b4114ae3d117c3291384bf548d5333c0b7bf2559a916280` across 497 files. No provider transform, outbound field, purpose, endpoint or transport changed.
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `70ccab7c6433083be9280a351483f02eb920bdc30723432ea5d2a3b5a9d8e407` across 1,836 files. The standing re-binding approval dates from 12 November 2026. On 23 November 2026 the owner asked for board item a16382b4 and the PR 269 payroll run-group settlement fix to be released together on top of the staged combined release `4e385f7ce`.
+
+Board item a16382b4 adds three things:
+
+- a Recalculation history page grouped per company per run (migration 7120 adds a nullable run link);
+- company search in the picker;
+- employee-level progress counts.
+
+PR 269 changes one covered file, `core/payroll-run-group-store.ts`, so that the worker's run-group settlement no longer double-encodes JSON parameters.
+
+This fingerprint supersedes the intermediate fingerprints `bc2c6d52c68efbab45232fc1d37ef4a8d5a757c8a60389a7e0513054fbe1f77a` and `5fc9d14959635ae9504b42805c7e6ec855a40fbdb481f1368dd40f7eb3970be9`, neither of which was installed. Exactly 28 digest literals change from `2b84eb4ed17f74821083720aee6e1a3891866a8c773bac10bdb7dc601d7b6bc5`, the fingerprint currently on staging, and reversing those substitutions restores that registry byte for byte. The derived module-agent fingerprint is `e078c2b00ee0df4ce451a5415bb4241151d5b1a4f60c5f9225ca4b4886da9475` across 497 files. No provider transform, outbound field, purpose, endpoint or transport changed.
