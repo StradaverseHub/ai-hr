@@ -6,6 +6,10 @@ import {assessResumeCoverage} from './resume-assessment.mjs';
 import {WORKFLOW_ID} from './release-policy.mjs';
 import {verifyDbUnitRecovery,validateDbFocusedMetadata,validateDbUnitHistory,validateDbUnitGrantEvidence,validateDbUnitOwnerDecision,dbUnitOwnerDecision,DB_UNIT_OWNER_DECISION,DB_UNIT_RECOVERY_POLICY,DB_UNIT_RECORDED_APPROVAL} from './db-unit-recovery-policy.mjs';
 import {dbUnitRecoveryOptions,requireOneRecoveryRoute} from './operator-release.mjs';
+import {RECOVERY_POLICY} from './focused-recovery-policy.mjs';
+import {BROWSER_RECOVERY_POLICY} from './browser-recovery-policy.mjs';
+import {REPAIR_RECOVERY_POLICY} from './repair-recovery-policy.mjs';
+import {BUILD_RECOVERY_POLICY} from './build-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {execFileSync} from 'node:child_process';
@@ -123,6 +127,11 @@ test('A distinct DB-unit certificate grants the original successful build withou
   const altered=structuredClone(e);change(altered);altered.fingerprint=hash(altered.recovery);assert.throws(()=>createInstallGrant({...g,evidence:altered,run,producer}));
  }
  assert.throws(()=>createInstallGrant({...g,evidence:e,run:{...run,conclusion:'success'},producer}));
+ // Review 2026-11-24: a DB-unit certificate cannot reach another policy's grant validator, nor an unknown one.
+ for(const policy of [RECOVERY_POLICY,BROWSER_RECOVERY_POLICY,REPAIR_RECOVERY_POLICY,BUILD_RECOVERY_POLICY,'aihr-db-unit-recovery/v2',undefined]){
+  const relabelled=structuredClone(e);relabelled.recovery.recoveryPolicy=policy;relabelled.fingerprint=hash(relabelled.recovery);
+  for(const conclusion of ['failure','success'])assert.throws(()=>createInstallGrant({...g,evidence:relabelled,run:{...run,conclusion},producer}),undefined,String(policy));
+ }
 });
 function extract(entries){
  const dir=mkdtempSync(join(tmpdir(),'aihr-db-unit-extract-')),zip=join(dir,'p.zip'),out=join(dir,'out');
