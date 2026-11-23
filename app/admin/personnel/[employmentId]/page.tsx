@@ -4506,7 +4506,7 @@ export default async function EmployeePage({
         </div>
         {!emp.terminatedOn && others.length > 0 && (
           <DirectSuperiorChangeForm action={setDirectSuperiorAction}
-            employmentId={emp.employmentId} currentLineId={currentSuperior?.id ?? null} hiredOn={emp.hiredOn}
+            employmentId={emp.employmentId} currentLineId={currentSuperior?.id ?? null}
             historyHref={`/admin/personnel/${emp.employmentId}?tab=careerMovement`}
             labels={{ title: t('directSuperiorChangeTitle'), amendment: t('directSuperiorAmend'),
               movement: t('directSuperiorMovement'), effectiveDate: t('movement.columns.effectiveDate'),

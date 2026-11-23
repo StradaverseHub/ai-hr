@@ -33,13 +33,12 @@ export const DIRECT_SUPERIOR_CONFIRM_WITHIN_MS = 20_000;
  * unanswered async transition entangles every later transition in React (router.refresh and the Link to
  * Employment History included) until it settles, which would freeze the very way out this card offers.
  */
-export function DirectSuperiorChangeForm({ action, children, employmentId, currentLineId, hiredOn, historyHref, labels,
+export function DirectSuperiorChangeForm({ action, children, employmentId, currentLineId, historyHref, labels,
   confirmWithinMs = DIRECT_SUPERIOR_CONFIRM_WITHIN_MS }: {
   action: (previous: DirectSuperiorSaveOutcome, data: FormData) => Promise<DirectSuperiorSaveOutcome>;
   children: ReactNode;
   employmentId: string;
   currentLineId: string | null;
-  hiredOn?: string | null;
   historyHref: string;
   labels: Record<'title' | 'amendment' | 'movement' | 'effectiveDate' | 'reason' | 'cancel' | 'save'
     | 'uncertain' | 'checkHistory' | 'current' | 'none', string>;
@@ -122,8 +121,7 @@ export function DirectSuperiorChangeForm({ action, children, employmentId, curre
             </div>
             {mode === 'movement' && <label className="block max-w-48 text-sm">
               {labels.effectiveDate}
-              <input className={inputCls} {...personnelWorkflowInput('employment_history.event_information.effectivefrom', 'movement', 'record')}
-                min={hiredOn ?? undefined} />
+              <input className={inputCls} {...personnelWorkflowInput('employment_history.event_information.effectivefrom', 'movement', 'record')} />
             </label>}
             {!!mode && <label className="block text-sm">
               {labels.reason}

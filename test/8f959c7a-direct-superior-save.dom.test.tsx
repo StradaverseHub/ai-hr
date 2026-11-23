@@ -25,7 +25,7 @@ const HISTORY = '/admin/personnel/emp-fictional?tab=careerMovement';
 type Action = (previous: DirectSuperiorSaveOutcome, data: FormData) => Promise<DirectSuperiorSaveOutcome>;
 function renderForm(action: Action, confirmWithinMs?: number) {
   return render(
-    <DirectSuperiorChangeForm action={action} employmentId="emp-fictional" currentLineId="line-1" hiredOn="2026-01-01"
+    <DirectSuperiorChangeForm action={action} employmentId="emp-fictional" currentLineId="line-1"
       historyHref={HISTORY} labels={labels} confirmWithinMs={confirmWithinMs}>
       <input type="hidden" name="superiorEmploymentId" value="boss-fictional" />
     </DirectSuperiorChangeForm>,
@@ -50,7 +50,6 @@ describe('Direct Superior save outcome on the card (8f959c7a)', () => {
       message: 'The selected Direct Superior must be active on the Effective Date.' }));
     renderForm(action);
     const { date, reason, submit } = fillMovement();
-    expect(date.min).toBe('2026-01-01');
     submit();
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('The selected Direct Superior must be active on the Effective Date.');
