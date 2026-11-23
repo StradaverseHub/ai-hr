@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { ActionButton } from '@/components/ui/action-button';
+import { DatabaseErrorText } from '@/components/database-error-text';
+import { parseDatabaseErrorRef } from '@/lib/database-error-token';
 import { isActionRedirect } from '@/lib/action-feedback-result';
 import { personnelWorkflowInput } from '@/lib/personnel-form-contract';
 import type { DirectSuperiorSaveOutcome } from './actions';
@@ -135,7 +137,10 @@ export function DirectSuperiorChangeForm({ action, children, employmentId, curre
         )}
       </form>
       {shown?.status === 'refused' && (
-        <p role="alert" data-direct-superior-outcome="refused" className="text-sm font-medium text-destructive">{shown.message}</p>
+        <p role="alert" data-direct-superior-outcome="refused" className="text-sm font-medium text-destructive">
+          {/* PR 224 — a database refusal carries a DB- reference: the shared explanation, in the viewer's language. */}
+          {parseDatabaseErrorRef(shown.message) ? <DatabaseErrorText message={shown.message} /> : shown.message}
+        </p>
       )}
       {shown?.status === 'uncertain' && (
         <div role="alert" data-direct-superior-outcome="uncertain" className="rounded-md border border-amber-500/50 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">

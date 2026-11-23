@@ -262,8 +262,8 @@ describe('30325fc1 — an untagged edit is not a movement', () => {
     fd.set('superiorChangeMode', 'movement');
     fd.set('effectiveDate', todayInKualaLumpur());
     fd.set('reason', 'Official reassignment');
-    await expect(setDirectSuperiorAction(fd)).rejects.toThrow('NEXT_REDIRECT');
-    expect(LAST_REDIRECT).toContain('toast=Saved');
+    // 8f959c7a — the action returns its outcome to the card instead of redirecting.
+    await expect(setDirectSuperiorAction({ status: 'idle' }, fd)).resolves.toMatchObject({ status: 'saved' });
 
     expect(await kinds(hire.employmentId)).toEqual(['hired', 'reportingLineChange']);
 
