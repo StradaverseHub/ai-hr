@@ -22,7 +22,7 @@ const running:Progress={done:false,worker:'running',companies:[
  {companyId:'c',companyName:'Fictional Gamma Sdn Bhd',status:'failed',job:null},
 ]};
 const respond=(progress:Progress)=>Promise.resolve(new Response(JSON.stringify(progress),{status:200,headers:{'content-type':'application/json'}}));
-type Copy={payroll:{batch:{processingJob:{state:Record<string,string>;backgroundHelp:string;statusRetrying:string}};process:{companyFailed:string}}};
+type Copy={payroll:{batch:{processingJob:{state:Record<string,string>;backgroundHelp:string;busy:string}};process:{companyFailed:string}}};
 const json=(body:unknown,status:number)=>Promise.resolve(new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}}));
 const harness=(messages:unknown,locale:string,initial:Progress)=>render(<NextIntlClientProvider locale={locale} messages={messages as never}><RunGroupProgressPanel groupId={groupId} initial={initial}/></NextIntlClientProvider>);
 
@@ -45,19 +45,37 @@ describe('RunGroupProgressPanel',()=>{
   expect(refresh).not.toHaveBeenCalled();
  });
 
- it('keeps the last progress and says it is still checking when a poll cannot be read, never “unavailable”',async()=>{
-  // November 2026: the status read timed out on the Access lock and the panel printed the route's
-  // 404 "Payroll run unavailable." under a run that was saved and processing. A 503 retry (or a dropped request) is
-  // not a refusal: the rows stay, a neutral status line appears, polling continues and the next answer clears it.
-  const answers:(()=>Promise<Response>)[]=[()=>json({retry:true},503),()=>Promise.reject(new TypeError('Failed to fetch'))];
+ it('keeps the last progress and polling, with a calm note and no error, while the server answers busy',async()=>{
+  // Production, 23 November 2026: a tax-basis recalculation held the Access lock and every poll for ~25 s failed.
+  const busy=()=>Promise.resolve(new Response(JSON.stringify({busy:true}),{status:503,headers:{'content-type':'application/json'}}));
+  const fetch=vi.fn().mockImplementationOnce(busy).mockImplementation(()=>respond(running));vi.stubGlobal('fetch',fetch);
+  vi.useFakeTimers({shouldAdvanceTime:true});
+  try{
+   harness(en,'en',running);
+   const copy=(en as unknown as {payroll:{batch:{processingJob:{busy:string;state:Record<string,string>;backgroundHelp:string}}}}).payroll.batch.processingJob;
+   expect(copy.busy.length).toBeGreaterThan(0);
+   await waitFor(()=>expect(screen.getByText(copy.busy)).toBeInTheDocument());
+   expect(screen.queryByRole('alert')).toBeNull();
+   expect(within(screen.getAllByRole('listitem')[1]).getByRole('status')).toHaveTextContent(copy.state.running);
+   await vi.advanceTimersByTimeAsync(2500);
+   await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2));
+   await waitFor(()=>expect(screen.getByText(copy.backgroundHelp)).toBeInTheDocument());
+   expect(screen.queryByText(copy.busy)).toBeNull();
+  }finally{vi.useRealTimers();}
+ });
+
+ it('treats a dropped request like a busy read, never “unavailable”',async()=>{
+  // November 2026: the status read timed out on the Access lock and the panel printed the route's 404 "Payroll run
+  // unavailable." under a run that was saved and processing. A request that never answers is not a refusal either.
+  const answers:(()=>Promise<Response>)[]=[()=>Promise.reject(new TypeError('Failed to fetch'))];
   const fetch=vi.fn(()=>(answers.shift()??(()=>respond(running)))());vi.stubGlobal('fetch',fetch);
   harness(en,'en',running);
   const copy=(en as unknown as Copy).payroll.batch.processingJob;
-  await waitFor(()=>expect(screen.getByText(copy.statusRetrying)).toBeInTheDocument());
+  await waitFor(()=>expect(screen.getByText(copy.busy)).toBeInTheDocument());
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getAllByRole('listitem')).toHaveLength(3);
-  await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(3),{timeout:6000});
-  await waitFor(()=>expect(screen.queryByText(copy.statusRetrying)).toBeNull());
+  await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2),{timeout:6000});
+  await waitFor(()=>expect(screen.queryByText(copy.busy)).toBeNull());
   expect(screen.queryByRole('alert')).toBeNull();
   expect(refresh).not.toHaveBeenCalled();
  },10_000);
@@ -66,7 +84,7 @@ describe('RunGroupProgressPanel',()=>{
   vi.stubGlobal('fetch',vi.fn(()=>json({error:'Payroll run unavailable.'},404)));
   harness(en,'en',running);
   await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('Payroll run unavailable.'));
-  expect(screen.queryByText((en as unknown as Copy).payroll.batch.processingJob.statusRetrying)).toBeNull();
+  expect(screen.queryByText((en as unknown as Copy).payroll.batch.processingJob.busy)).toBeNull();
  });
 
  it('refreshes to the outcomes once every company’s run has finished',async()=>{

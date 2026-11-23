@@ -306,6 +306,22 @@
       "busy": "Sistem sedang sibuk. Muat semula untuk menyemak status tindakan, kemudian cuba semula jika perlu. Rujukan {ref}.",
       "nricDuplicate": "Rekod pekerja lain sudah menggunakan nombor NRIC ini. Semak nombor itu dan cari rekod pekerja sedia ada sebelum mencuba semula. Rujukan {ref}."
     },
+    "databaseErrorReason": {
+      "dateOrder": "Tarikh yang dimasukkan akan menyebabkan rekod tamat sebelum ia bermula, jadi tiada apa-apa disimpan. Pastikan tarikh berkuat kuasa tidak lebih awal daripada permulaan rekod yang diubah, seperti gaji, jawatan atau penempatan semasa. Rujukan {ref}.",
+      "required": "Medan wajib dibiarkan kosong, jadi tiada apa-apa disimpan. Isi semua medan wajib dan cuba lagi. Rujukan {ref}.",
+      "textTooLong": "Salah satu teks yang dimasukkan lebih panjang daripada yang dibenarkan, jadi tiada apa-apa disimpan. Pendekkan teks itu dan cuba lagi. Rujukan {ref}.",
+      "numberOutOfRange": "Salah satu nombor yang dimasukkan di luar julat yang dibenarkan (contohnya negatif atau terlalu besar), jadi tiada apa-apa disimpan. Betulkan dan cuba lagi. Rujukan {ref}.",
+      "invalidDate": "Salah satu tarikh bukan tarikh kalendar yang sah atau di luar julat yang disokong, jadi tiada apa-apa disimpan. Semak tarikh dan cuba lagi. Rujukan {ref}.",
+      "wrongFormat": "Salah satu nilai dalam format yang salah, contohnya huruf dalam medan nombor, jadi tiada apa-apa disimpan. Semak entri dan cuba lagi. Rujukan {ref}.",
+      "choiceNotAllowed": "Salah satu pilihan tidak lagi diterima, jadi tiada apa-apa disimpan. Muat semula halaman, pilih semula daripada senarai dan cuba lagi. Rujukan {ref}.",
+      "overlap": "Ini akan bertindih dengan rekod lain bagi tarikh yang sama, jadi tiada apa-apa disimpan. Ubah tarikh supaya tidak bertindih, atau sunting rekod sedia ada. Rujukan {ref}.",
+      "missingReference": "Sesuatu yang dirujuk oleh rekod ini, seperti syarikat, jabatan, jawatan atau pekerja, tidak lagi wujud. Tiada apa-apa disimpan. Muat semula halaman, pilih semula dan cuba lagi. Rujukan {ref}.",
+      "inUse": "Rekod ini masih digunakan oleh rekod lain, jadi ia tidak boleh dikeluarkan. Keluarkan atau ubah rekod tersebut dahulu. Rujukan {ref}.",
+      "closedPayroll": "Gaji bagi tempoh ini sudah ditutup, jadi rekod yang telah dibayar tidak boleh diubah. Tiada apa-apa disimpan. Gunakan tarikh selepas bulan gaji terakhir yang ditutup, atau minta pihak gaji membukanya semula. Rujukan {ref}.",
+      "locked": "Rekod ini dikunci dan tidak boleh diubah lagi, jadi tiada apa-apa disimpan. Cipta entri baharu dan bukannya menyunting entri ini. Rujukan {ref}.",
+      "changedMeanwhile": "Rekod ini telah diubah oleh orang lain semasa anda mengusahakannya, jadi tiada apa-apa disimpan. Muat semula halaman dan buat perubahan anda sekali lagi. Rujukan {ref}.",
+      "outsideScope": "Rekod ini milik syarikat atau bahagian yang anda tidak dibenarkan ubah, jadi tiada apa-apa disimpan. Minta akses daripada pentadbir anda jika perlu. Rujukan {ref}."
+    },
     "degraded": {
       "title": "Ini mengambil masa lebih lama daripada biasa",
       "body": "Halaman tidak dapat dimuatkan sepenuhnya kerana sistem sedang menerima permintaan yang tinggi. Halaman akan dicuba semula secara automatik sebentar lagi.",
@@ -1676,6 +1692,7 @@
       "salaryRemarkRequiredError": "Rekod gaji ini tiada jumlah gaji asas, jadi Catatan mesti menyatakan sebabnya — contohnya, dibayar melalui fi pengarah setiap suku tahun. Penggajian akan mengecualikan pekerja ini daripada mana-mana bulan yang tiada apa-apa untuk dibayar.",
       "salaryNegativeError": "Gaji asas tidak boleh menjadi jumlah negatif. Biarkan kosong atau masukkan 0 bagi pekerja yang tiada gaji asas.",
       "salaryNotANumberError": "Gaji asas mesti satu nombor. Biarkan kosong atau masukkan 0 bagi pekerja yang tiada gaji asas.",
+      "salaryBeforeCurrentRecordError": "Tarikh berkuat kuasa adalah sebelum gaji semasa pekerja ini bermula pada {date}, jadi tiada apa-apa disimpan. Gunakan tarikh pada atau selepas {date}, atau betulkan sejarah gaji di tab Gaji.",
       "salaryRecording": {
         "title": "Rekod perubahan gaji",
         "choice": "Bagaimanakah perubahan ini direkodkan?",
@@ -7504,7 +7521,7 @@
         "backgroundHelp": "Anda boleh tinggalkan halaman ini. Pekerja tidak melihat apa-apa sehingga larian ditutup, dan anda menerima notis apabila pemprosesan selesai.",
         "waiting": "Menunggu perkhidmatan pemprosesan gaji. Kemajuan disimpan; jangan proses larian ini sekali lagi.",
         "workerUnavailable": "Perkhidmatan pemprosesan gaji belum berjalan. Larian telah disimpan dan bermula secara automatik sebaik sahaja perkhidmatan berjalan.",
-        "statusRetrying": "Semakan kemajuan mengambil masa lebih lama daripada biasa. Larian telah disimpan; halaman ini terus menyemak."
+        "busy": "Pelayan sedang sibuk dengan tugas gaji lain. Kemajuan disimpan dan panel ini terus menyemak."
       },
       "reprocessJob": {
         "title": "Memproses semula di latar belakang",
@@ -8088,6 +8105,7 @@
           "empty": "Belum ada buku kerja.",
           "fixed": "Transaksi Tetap",
           "individual": "Transaksi Individu",
+          "history": "Sejarah Transaksi",
           "workbook": "Buku kerja transaksi",
           "failed": "Buku kerja tidak dapat disediakan.",
           "download": "Muat turun Excel",

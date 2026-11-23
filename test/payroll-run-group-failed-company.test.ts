@@ -46,6 +46,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
 import ResultPage from '../app/payroll/process/result/page';
 import { GET as resultStatus } from '../app/payroll/process/result/status/route';
+import { DATABASE_RETRY_AFTER_SECONDS } from '../lib/database-capacity';
 
 const tick = () => runBulkJobTick(workerOwner(), { handlers: [payrollProcessJobHandler] });
 /** The result page exactly as the browser asks for it after the wizard's redirect (`?g=<group>`). */
@@ -250,18 +251,18 @@ describe('a company job that fails inside a wizard run group renders as its reas
     expect(await withTenant(peer, tx => tx.execute(sql`select id from payroll_run_group where id=${groupId}::uuid`))).toHaveLength(0);
     scope.s = a;
     // A read that cannot finish is not a missing run: while an Access edit holds the
-    // tenant's lock past the read's bounded 5 s wait, the poll answers 503 retry, never 404 "Payroll run unavailable.".
+    // tenant's lock past the read's bounded 5 s wait, the poll answers 503 busy, never 404 "Payroll run unavailable.".
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     try {
       await owner.db.transaction(async (tx) => {
         await lockAccessConfigurationWriteTx(tx, base.tenantId);
         const blocked = await resultStatus(statusRequest(groupId));
         expect(blocked.status).toBe(503);
-        expect(blocked.headers.get('Retry-After')).toBe('2');
+        expect(blocked.headers.get('Retry-After')).toBe(String(DATABASE_RETRY_AFTER_SECONDS));
         expect(blocked.headers.get('Cache-Control')).toBe('private, no-store');
-        expect(await blocked.json()).toEqual({ retry: true });
+        expect(await blocked.json()).toEqual({ busy: true });
       });
-      expect(errors).toHaveBeenCalledWith('[payroll run group status] progress read failed', '55P03');
+      expect(errors).toHaveBeenCalledWith('[payroll run group status] progress read busy', '55P03');
     } finally { errors.mockRestore(); }
     const unblocked = await resultStatus(statusRequest(groupId));
     expect(unblocked.status).toBe(200);
