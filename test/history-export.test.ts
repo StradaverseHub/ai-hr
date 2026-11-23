@@ -26,6 +26,7 @@ import {
   buildHistoryExport,
 } from '../app/payroll/transaction-view/history-export';
 import { toXlsxReport } from '../lib/report-export';
+import { historyWorkbookQuery, type HistoryWorkbookStrings } from '../app/payroll/transaction-view/history-workbook';
 import en from '../messages/en.json';
 
 let seq = 0;
@@ -512,60 +513,88 @@ describe('417d4937 — the Recorded: columns carry the same repaired label the p
     expect(build([stale()]).columns).toContain(`${RECORDED_ITEM_PREFIX}A0020 - DIRECTOR FEE`);
   });
 
-  it('the ROUTE reads the catalogue and passes it — the builder alone is inert', () => {
-    const route = readFileSync(
-      resolve(__dirname, '..', 'app/payroll/transaction-view/history-export/route.ts'),
-      'utf8',
-    );
+  it('the WORKBOOK JOB reads the catalogue and passes it — the builder alone is inert', () => {
+    // Production 2026-11-23: the History file is prepared by the background workbook job, not a web route.
+    const job = readFileSync(resolve(__dirname, '..', 'core/payroll-transaction-export.ts'), 'utf8');
     // Archived included, exactly as the screen and the Grid export read it: a retired code must still head
     // its column with words.
-    expect(route).toContain("listPayComponents(s, { includeArchived: true })");
+    expect(job).toContain('listPayComponents(ctx, { includeArchived: true })');
     // THE ARGUMENT LIST, NOT THE FILE — asserting the file merely contains the name is satisfied by the
     // `const payItemNames = …` that builds it, which is how the Grid export drifted while looking covered.
-    const at = route.indexOf('buildHistoryExport({');
+    const at = job.indexOf('buildHistoryExport({');
     expect(at, 'buildHistoryExport call not found').toBeGreaterThan(-1);
-    expect(route.slice(at, route.indexOf('});', at))).toContain('payItemNames');
+    expect(job.slice(at, job.indexOf('});', at))).toContain('payItemNames');
   });
 });
 
 describe('0fcb2557 — the download can never contain a company the caller may not see', () => {
-  // Source-level, the house convention test/back-pay-company-scope.test.ts set for export routes: the
-  // hole these guard against is an omission in the route, and an omission is exactly what a happy-path
-  // integration test does not notice. "Even if someone edits the link by hand" is the reporter-facing
-  // promise, so both the fence and the re-guard are pinned here.
-  const src = readFileSync(
-    resolve(__dirname, '..', 'app/payroll/transaction-view/history-export/route.ts'),
-    'utf8',
-  );
+  // Production 2026-11-23 moved both choices to the background workbook job. The fence is now (1) the queued
+  // request, built from the session's companies, (2) the page's server action, and (3) the job's own database
+  // check when it is queued and when it runs (test/payroll-inquiry-pages.test.ts runs that end to end).
+  const strings: HistoryWorkbookStrings = {
+    title: 'Payroll Transaction History', exportCurrent: 'This view', exportAll: 'All processed payroll',
+    detailNote: 'note', all: 'All', company: 'Company', employee: 'Employee', year: 'Year', month: 'Month',
+    cycle: 'Payroll cycle',
+    cycleLabels: { regular: 'Regular', off_cycle: 'Off-cycle', bonus: 'Bonus', adjustment: 'Adjustment' },
+    statusLabels: { draft: 'Draft', processed: 'Processed', closed: 'Closed' },
+  };
+  const allowed = ['c-1', 'c-2'];
+  const view = {
+    companyId: 'c-1', companyName: 'Affluent Fixture Sdn Bhd', employmentId: 'e-1',
+    employee: { code: 'E001', name: 'Fixture Person', company: 'Affluent Fixture Sdn Bhd' },
+    year: 2026, month: 11, cycle: 'regular',
+  };
 
-  it('the route is scopedAdmin() and re-guards the company id rather than trusting the link', () => {
-    expect(src, 'export route must use scopedAdmin, not a bare isAdmin').toContain('scopedAdmin()');
-    expect(src, 'a hand-edited companyId must be checked against the caller’s scope').toMatch(
-      /scopeIds\.includes\(rawCompany\)/,
+  /** What the request selects, without its scope flag and sheet captions. */
+  const selection = (q: ReturnType<typeof historyWorkbookQuery>) =>
+    Object.fromEntries(Object.entries(q.filters).filter(([key]) => key !== 'exportScope' && key !== 'sheet'));
+
+  it('"All processed payroll" takes the caller’s OWN companies, drops every filter and says so on the sheet', () => {
+    const q = historyWorkbookQuery('all', allowed, view, strings);
+    expect(q.filters.exportScope).toBe('all');
+    expect(selection(q)).toEqual({ companyIds: ['c-1', 'c-2'] });
+    expect(q.filters.sheet.filename).toBe('payroll-transaction-history-all');
+    expect(q.filters.sheet.filterCaption).toBe('All processed payroll');
+    expect(q.filters.sheet.filterDescription).toBe(
+      'Company: All  ·  Employee: All  ·  Year: All  ·  Month: All  ·  Payroll cycle: All',
     );
-    // …and the employee too: an out-of-scope employmentId resolves to "no selection", never to a read.
-    expect(src).toMatch(/employees\.find\(\(e\) => e\.employmentId === rawEmployment\)/);
   });
 
-  it('scope=all widens to the caller’s OWN companies and never past them', () => {
-    expect(src, 'scope=all must fall back to scopeIds, not to every company').toMatch(/companyIds:\s*scopeIds/);
-    expect(src, 'anything but the explicit opt-out must mean "this view"').toMatch(
-      /sp\.get\('scope'\) === 'all' \? 'all' : 'current'/,
+  it('"This view" keeps the screen’s filters and names them', () => {
+    const q = historyWorkbookQuery('current', allowed, view, strings);
+    expect(q.filters.exportScope).toBe('current');
+    expect(selection(q)).toEqual({ companyIds: ['c-1'], employmentId: 'e-1', year: 2026, month: 11, cycle: 'regular' });
+    expect(q.filters.sheet.filename).toBe('payroll-transaction-history-2026-11');
+    expect(q.filters.sheet.filterCaption).toBe('This view — E001 · Fixture Person · Affluent Fixture Sdn Bhd');
+    expect(q.filters.sheet.filterDescription).toBe(
+      'Company: Affluent Fixture Sdn Bhd  ·  Employee: E001 · Fixture Person  ·  Year: 2026  ·  Month: 11  ·  Payroll cycle: Regular',
     );
   });
 
-  it('the file is NOT clipped to the screen’s row cap', () => {
-    // `limit` is optional on `listProcessedPayslipsAcross` precisely so an export is never truncated. A
-    // silently short spreadsheet is the worst failure a reconciliation file can have.
-    const call = src.slice(src.indexOf('listProcessedPayslipsAcross(s, {'));
+  it('a company outside the caller’s scope is never carried into the request', () => {
+    const q = historyWorkbookQuery('current', ['c-2'], view, strings);
+    expect(q.filters.companyIds).toEqual(['c-2']);
+  });
+
+  it('the page queues through scopedAdmin() and refuses a "This view" company that left the caller’s scope', () => {
+    const page = readFileSync(resolve(__dirname, '..', 'app/payroll/transaction-view/page.tsx'), 'utf8');
+    const at = page.indexOf('async function startHistoryWorkbookExport(');
+    expect(at, 'History workbook action not found').toBeGreaterThan(-1);
+    const action = page.slice(at, page.indexOf('\n  }\n', at));
+    expect(action).toContain('await scopedAdmin()');
+    expect(action).toMatch(/!allowed\.includes\(historyWorkbookView\.companyId\)/);
+    expect(action).toContain('historyWorkbookQuery(exportScope, allowed,');
+    // The old in-request download, which failed at production size, is gone.
+    expect(page).not.toContain('/payroll/transaction-view/history-export?');
+  });
+
+  it('the file is NOT clipped and NOT refused for its size', () => {
+    // The period-sliced reader, never `listProcessedPayslipsAcross` with a limit: a silently short spreadsheet is the
+    // worst failure a reconciliation file can have, and an uncapped single read refuses past 5,000 retained documents.
+    const job = readFileSync(resolve(__dirname, '..', 'core/payroll-transaction-export.ts'), 'utf8');
+    const call = job.slice(job.indexOf('readProcessedPayslipsForExport(ctx, {'));
+    expect(call.length).toBeGreaterThan(0);
     expect(call.slice(0, call.indexOf('});'))).not.toMatch(/\blimit\s*:/);
-  });
-
-  it('Content-Disposition goes through the RFC 5987 helper', () => {
-    // A raw non-Latin-1 filename makes the Response constructor THROW and the download 500s — this repo
-    // has hit it. The helper emits an ASCII fallback plus a UTF-8 `filename*`.
-    expect(src).toContain("filename*=UTF-8''");
-    expect(src).toMatch(/'Content-Disposition': contentDisposition\(/);
   });
 });
 

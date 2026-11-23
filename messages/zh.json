@@ -8087,6 +8087,7 @@
           "empty": "暂无工作簿。",
           "fixed": "固定交易",
           "individual": "个人交易",
+          "history": "交易历史",
           "workbook": "交易工作簿",
           "failed": "无法生成工作簿。",
           "download": "下载 Excel",
