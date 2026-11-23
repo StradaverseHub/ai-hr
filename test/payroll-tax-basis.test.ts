@@ -309,8 +309,8 @@ it('replays capped imported items with zero when no accepted TP3 exists and save
  expect([...values.values()].map(row=>row.basis.openingExemptionSource)).toEqual(Array(3).fill('no_accepted_tp3'));
  // The month-by-month ledger and opening provenance are persisted on the append-only revision.
  const revisions=await owner.db.select().from(schema.payrollTaxBasisRevision).orderBy(schema.payrollTaxBasisRevision.period);
- expect(revisions.map(row=>(row.basis as {exemptionLedger:{entries:{usedBefore:number;exempt:number;itemName:string}[]}}).exemptionLedger.entries.map(entry=>[entry.usedBefore,entry.exempt,entry.itemName]))).toEqual([[[0,500,'Travel allowance']],[[500,500,'Travel allowance']],[[1000,500,'Travel allowance']]]);
- expect(revisions.every(row=>(row.basis as {openingExemption:{source:string}}).openingExemption.source==='no_accepted_tp3')).toBe(true);
+ expect(revisions.map(row=>(row.basis as unknown as {exemptionLedger:{entries:{usedBefore:number;exempt:number;itemName:string}[]}}).exemptionLedger.entries.map(entry=>[entry.usedBefore,entry.exempt,entry.itemName]))).toEqual([[[0,500,'Travel allowance']],[[500,500,'Travel allowance']],[[1000,500,'Travel allowance']]]);
+ expect(revisions.every(row=>(row.basis as unknown as {openingExemption:{source:string}}).openingExemption.source==='no_accepted_tp3')).toBe(true);
  expect(await owner.db.select().from(schema.payslip).orderBy(schema.payslip.id)).toEqual(original);
  const repeated=await previewTaxBasisRecalculation(ctx,selection());
  expect(repeated.unchangedCount).toBe(1);
@@ -493,7 +493,7 @@ describe('accepted TP3 prior-employer exemption opening',()=>{
   expect(travelSplit(fresh.employees[0])).toEqual([[0,800],[0,800],[0,800]]);
   const done=await confirm(fresh);expect((await getTaxBasisBatch(ctx,done.id))?.status).toBe('completed');
   const revisions=await owner.db.select().from(schema.payrollTaxBasisRevision);
-  expect(revisions.map(row=>(row.basis as {openingExemption:{source:string;tp3:{id:string}}}).openingExemption)).toEqual(Array(3).fill(expect.objectContaining({source:'accepted_tp3',tp3:expect.objectContaining({kind:'form',id:tp3.id})})));
+  expect(revisions.map(row=>(row.basis as unknown as {openingExemption:{source:string;tp3:{id:string}}}).openingExemption)).toEqual(Array(3).fill(expect.objectContaining({source:'accepted_tp3',tp3:expect.objectContaining({kind:'form',id:tp3.id})})));
  });
 
  it('never reads a draft or unsubmitted TP3',async()=>{
@@ -512,7 +512,7 @@ describe('accepted TP3 prior-employer exemption opening',()=>{
   expect(who).toMatchObject({status:'ready',exempt:1500,openingExemptionSource:'no_accepted_tp3',openingExemption:{source:'no_accepted_tp3',used:{},previousEmployerDeclared:true}});
   expect(who.exemptionLedger?.[0]).toMatchObject({openingUsed:0,openingSource:'no_accepted_tp3',remaining:4500});
   await confirm(preview);
-  expect((await owner.db.select().from(schema.payrollTaxBasisRevision)).every(row=>(row.basis as {openingExemption:{previousEmployerDeclared:boolean}}).openingExemption.previousEmployerDeclared)).toBe(true);
+  expect((await owner.db.select().from(schema.payrollTaxBasisRevision)).every(row=>(row.basis as unknown as {openingExemption:{previousEmployerDeclared:boolean}}).openingExemption.previousEmployerDeclared)).toBe(true);
  });
 
  it('keeps saved payslip opening evidence ahead of an accepted TP3',async()=>{
