@@ -2,6 +2,7 @@
 import {createHash,randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
+import {validatePayrollReplayGrant,POLICY as PAYROLL_REPLAY_POLICY} from './payroll-replay-recovery-policy.mjs';
 import {CI_POLICY} from './policy-version.mjs';
 import {BUILD_ARTIFACT,BUILD_ARCHIVE_MAX} from './build-artifact.mjs';
 import {STAGING_BUILD_RUNTIME,assertBuildCapacityProfile} from './build-production.mjs';
@@ -44,8 +45,10 @@ export function createInstallGrant({evidence,run,producer,baselineBuildId,enviro
   &&evidence.build.source===evidence.sha&&evidence.build.controller===evidence.controller&&evidence.build.runId===evidence.runId,'Complete authenticated current CI evidence required');
  const recovered=evidence.recovery!==undefined;
  const repaired=evidence.recovery?.recoveryPolicy===REPAIR_RECOVERY_POLICY;
- if(recovered)(repaired?validateRepairGrantEvidence:evidence.recovery?.recoveryPolicy===BROWSER_RECOVERY_POLICY?validateBrowserRecoveryGrantEvidence:validateRecoveryGrantEvidence)(evidence,run);
- assert(run.id===evidence.runId&&run.head_sha===evidence.controller&&run.status==='completed'&&run.conclusion===(recovered&&!repaired?'failure':'success')&&run.run_attempt===1
+ const payrollReplay=evidence.recovery?.recoveryPolicy===PAYROLL_REPLAY_POLICY;
+ if(payrollReplay)validatePayrollReplayGrant(evidence,run);
+ else if(recovered)(repaired?validateRepairGrantEvidence:evidence.recovery?.recoveryPolicy===BROWSER_RECOVERY_POLICY?validateBrowserRecoveryGrantEvidence:validateRecoveryGrantEvidence)(evidence,run);
+ assert(run.id===evidence.runId&&run.head_sha===evidence.controller&&run.status==='completed'&&run.conclusion===(recovered&&!repaired&&!payrollReplay?'failure':'success')&&run.run_attempt===1
   &&run.repository?.id===1333414856&&run.head_repository?.id===1333414856
   &&producer.name==='build'&&producer.run_id===run.id&&producer.run_attempt===1&&producer.head_sha===run.head_sha&&producer.conclusion==='success','Original authenticated successful run/build required');
  const artifacts=evidence.artifacts.filter(a=>a.name===BUILD_ARTIFACT);assert(artifacts.length===1,'Unique authenticated build artifact required');
