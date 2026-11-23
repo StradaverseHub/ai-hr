@@ -20,7 +20,7 @@ import { startMultiCompanyPayroll, type RunGroupResult } from '../core/payroll-r
 import { readRunGroup, recordRunGroup, settleRunGroupsForJob } from '../core/payroll-run-group-store';
 import { runBulkJobTick } from '../core/bulk-job-worker';
 import { payrollProcessJobHandler } from '../core/payroll-processing-job';
-import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, workerOwner, type Base } from './harness';
 import { drainRunGroup } from './payroll-run-group-helpers';
 
 let scope: { s: SessionContext; scopeIds: string[] };
@@ -45,7 +45,7 @@ import messages from '../messages/en.json';
 import ResultPage from '../app/payroll/process/result/page';
 import { GET as resultStatus } from '../app/payroll/process/result/status/route';
 
-const tick = () => runBulkJobTick(owner.client, { handlers: [payrollProcessJobHandler] });
+const tick = () => runBulkJobTick(workerOwner(), { handlers: [payrollProcessJobHandler] });
 /** The result page exactly as the browser asks for it after the wizard's redirect (`?g=<group>`). */
 async function renderResult(groupId: string) {
   const page = await ResultPage({ searchParams: Promise.resolve({ g: groupId }) });
@@ -188,10 +188,12 @@ describe('a company job that fails inside a wizard run group renders as its reas
       // The settle runs in the kernel's owner transaction (unit.ownerTx), so the event carries the job that settled
       // the group: the last company's (migration 5014).
       expect((events[0].payload as { bulkJob?: unknown }).bulkJob).toEqual({ id: lastJob, kind: 'payroll_process' });
-      const [group] = await owner.client<{ event_id: string }[]>`select event_id from payroll_run_group where id=${groupId}::uuid`;
-      expect(group.event_id).toBe(events[0].id);
+      const [group] = await owner.client<{ event_id: string; result_type: string; payload_type: string }[]>`select g.event_id,jsonb_typeof(g.result) as result_type,
+        jsonb_typeof(e.payload) as payload_type from payroll_run_group g join domain_event e on e.id=g.event_id where g.id=${groupId}::uuid`;
+      // Written by the worker's plain client: the stored result and the event payload are JSON objects, not JSON strings.
+      expect(group).toEqual({ event_id: events[0].id, result_type: 'object', payload_type: 'object' });
       // Idempotent: settling the same job again changes nothing.
-      const reserved = await owner.client.reserve();
+      const reserved = await workerOwner().reserve();
       try { await settleRunGroupsForJob(reserved, { id: lastJob, tenant_id: base.tenantId, created_by: base.adminUserId }); } finally { reserved.release(); }
       expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType, 'payroll-run-group.completed'))).toHaveLength(1);
       expect((await readRunGroup(a, groupId))?.result).toEqual(result);
