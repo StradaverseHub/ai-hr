@@ -181,6 +181,51 @@ describe('protected Contract decision preview and submission',()=>{
   await owner.db.execute(sql`update employment set last_working_date=current_date-1 where tenant_id=${f.b.tenantId}::uuid and person_id=${f.proposer.personId}::uuid`);await compare('Login blocks after the last day');
   await compare('No selected case still hashes the exact configuration-only source',randomUUID());
  });
+ it('matches the original 0950 Contract account source through account states and checks only the Person accounts (7130)',async()=>{
+  const migration=readFileSync(new URL('../db/migrations/0950_contract_management.sql',import.meta.url),'utf8');
+  const head='CREATE FUNCTION app.contract_users_for_employment(wanted_employment uuid) RETURNS SETOF uuid';
+  const originalBody=migration.slice(migration.indexOf(head)).split('AS $$')[1].split('$$;')[0].trim().replace(/;$/,'').replace(/\bwanted_employment\b/g,()=>'$1::uuid');
+  if(!originalBody.startsWith('SELECT u.id FROM public.employment e'))throw Error('The original 0950 Contract account oracle changed');
+  const[managerEmployment]=await owner.db.execute<{id:string}>(sql`select id from employment where tenant_id=${f.b.tenantId}::uuid and person_id=${f.proposer.personId}::uuid`);
+  const employmentIds=[managerEmployment.id,f.employee.employmentId,randomUUID()];
+  const compare=async(label:string)=>owner.client.begin(async connection=>{
+   await connection`select set_config('app.tenant_id',${f.b.tenantId},true),set_config('app.user_id','',true),set_config('jit','off',true),set_config('statement_timeout','8000',true)`;
+   const accounts:string[][]=[];
+   for(const employmentId of employmentIds){
+    const before=(await connection.unsafe<{id:string}[]>('select id::text from ('+originalBody+') original(id) order by id',[employmentId])).map(row=>row.id);
+    const after=(await connection<{id:string}[]>`select id::text from app.contract_users_for_employment(${employmentId}::uuid) live(id) order by id`).map(row=>row.id);
+    expect(after,label+' '+employmentId).toEqual(before);accounts.push(after);
+   }
+   return accounts;
+  });
+  expect(await compare('Original source and published dependencies')).toEqual([[f.proposer.userId],[],[]]);
+  const employeeUser=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+  expect((await compare('A linked employee account'))[1]).toEqual([employeeUser]);
+  const otherTenant=await seedBase();await createAppUser(otherTenant.tenantId,f.proposer.personId!,'employee');
+  expect((await compare('Same Person account in another tenant does not affect tenant-scoped uniqueness'))[0]).toEqual([f.proposer.userId]);
+  const duplicate=await createAppUser(f.b.tenantId,f.proposer.personId!,'employee');
+  expect((await compare('Two active same-Person accounts are not unique'))[0]).toEqual([]);
+  await owner.db.execute(sql`update app_user set archived_at=now() where id=${duplicate}::uuid`);
+  expect((await compare('An archived duplicate restores the unique account'))[0]).toEqual([f.proposer.userId]);
+  const[manager]=await owner.db.execute<{name:string}>(sql`select full_name as name from person where id=${f.proposer.personId}::uuid`);
+  await owner.db.execute(sql`update person set full_name='   ' where id=${f.proposer.personId}::uuid`);
+  expect((await compare('A blank name is unverified'))[0]).toEqual([]);
+  await owner.db.execute(sql`update person set full_name=${manager.name} where id=${f.proposer.personId}::uuid`);
+  await owner.db.execute(sql`update employment set blacklisted_at=now() where tenant_id=${f.b.tenantId}::uuid and person_id=${f.proposer.personId}::uuid`);
+  expect((await compare('A blacklisted employment has no Contract account'))[0]).toEqual([]);
+  await owner.db.execute(sql`update employment set blacklisted_at=null,last_working_date=current_date where tenant_id=${f.b.tenantId}::uuid and person_id=${f.proposer.personId}::uuid`);
+  expect((await compare('The last working day has ended the Contract participant'))[0]).toEqual([]);
+  await owner.db.execute(sql`update employment set last_working_date=null where tenant_id=${f.b.tenantId}::uuid and person_id=${f.proposer.personId}::uuid`);
+  await owner.db.execute(sql`insert into app_user(tenant_id,workos_user_id) select ${f.b.tenantId}::uuid,'unrelated-account-fixture-'||gen_random_uuid()::text from generate_series(1,500)`);
+  expect(await compare('Unrelated accounts without a Person change nothing')).toEqual([[f.proposer.userId],[employeeUser],[]]);
+  // The per-account checks run on the Person's own accounts, not on every tenant account (machine-speed independent).
+  const calls=await owner.client.begin(async connection=>{
+   await connection`select set_config('app.tenant_id',${f.b.tenantId},true),set_config('app.user_id','',true),set_config('track_functions','all',true)`;
+   const count=async()=>(await connection<{calls:number}[]>`select coalesce(sum(calls),0)::int as calls from pg_stat_xact_user_functions where schemaname='app' and funcname in('contract_active_user','contract_verified_human')`)[0].calls;
+   const before=await count();await connection`select app.contract_users_for_employment(${managerEmployment.id}::uuid)`;return (await count())-before;
+  });
+  expect(calls).toBeLessThanOrEqual(6);
+ });
  it('does not hydrate unrelated tenant groups into a case-specific decision preview',async()=>{
   await owner.db.execute(sql`with unrelated as(insert into app_user(tenant_id,workos_user_id) select ${f.b.tenantId}::uuid,'unrelated-contract-fixture-'||gen_random_uuid()::text from generate_series(1,5001) returning id)
    update lc_v9_config set data=jsonb_set(data,'{groups}',(data->'groups')||jsonb_build_array(jsonb_build_object('id','unrelated-large-group','name','Unrelated configuration','limit',0,'members',(select jsonb_agg(id) from unrelated)))),revision=revision+1 where tenant_id=${f.b.tenantId}::uuid`);
