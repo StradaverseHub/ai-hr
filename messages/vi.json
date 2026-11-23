@@ -35617,6 +35617,34 @@
     "next": "Tiếp"
   },
   "payrollTaxBasis": {
+    "exemptionLimitsTitle": "Hạn mức miễn thuế hằng năm",
+    "exemptionType": "Loại miễn thuế",
+    "annualLimit": "Hạn mức năm",
+    "previousEmployerUsed": "Chủ lao động trước đã dùng",
+    "thisCompanyEligible": "Công ty này",
+    "remainingLimit": "Còn lại",
+    "taxableExcess": "Phần vượt chịu thuế",
+    "openingSources": {
+      "saved_payslip": "Từ hồ sơ phiếu lương đã lưu",
+      "accepted_tp3": "Từ TP3 đã được chấp nhận trong hồ sơ",
+      "no_accepted_tp3": "RM0 - không có TP3 được chấp nhận trong hồ sơ"
+    },
+    "previousEmployerDeclaredWarning": "Nhân viên này cho biết đã có chủ lao động trước trong năm nay, nhưng không có TP3 được chấp nhận trong hồ sơ. Đã dùng RM0. Hãy thu thập và chấp nhận TP3 của họ, rồi chạy lại việc tính toán.",
+    "monthByMonth": "{code}, theo từng tháng",
+    "usedBeforeMonth": "Đã dùng trước tháng này (gồm chủ lao động trước)",
+    "remainingBefore": "Còn lại trước đó",
+    "exemptionLimitsNotRecorded": "Chi tiết hạn mức miễn thuế hằng năm không được ghi lại cho kết quả này.",
+    "holdReasons": {
+      "saved_evidence_conflict": "Các hồ sơ phiếu lương đã lưu mâu thuẫn về mức hạn mức miễn thuế hằng năm mà chủ lao động trước đã dùng. Hãy kiểm tra hồ sơ đã lưu rồi xem trước lại.",
+      "access_insufficient": "Bạn không được phép xem thông tin thuế của nhân viên này nên không thể kiểm tra mức miễn thuế chủ lao động trước đã dùng. Hãy nhờ người quản trị lương của nhân viên này thực hiện."
+    },
+    "boundsTitle": "Các số liệu chắc chắn",
+    "boundsHelp": "Chỉ để xem xét. Các khoảng này không được lưu và không thể xác nhận.",
+    "exemptUpTo": "Miễn thuế tối đa",
+    "taxableAtLeast": "Chịu thuế tối thiểu",
+    "exactValue": "{value} (chính xác)",
+    "pcbComparisonInsufficient": "Không có - dữ liệu lịch sử không đủ",
+    "pcbComparisonNeverStops": "Điều này không bao giờ dừng việc tính toán lại.",
     "previewGroupProgress": "Đã xem xét {done} trên {total} nhóm nhân viên.",
     "previewInBackground": "Đang chuẩn bị bản xem trước thuế trong nền. Bạn có thể tải lại trang để xem tiến độ.",
     "recalculationInBackground": "Đang tính lại lịch sử thuế thu nhập trong nền. Bạn có thể tải lại trang để xem tiến độ.",

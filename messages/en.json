@@ -35617,6 +35617,34 @@
     "next": "Next"
   },
   "payrollTaxBasis": {
+    "exemptionLimitsTitle": "Annual exemption limits",
+    "exemptionType": "Exemption type",
+    "annualLimit": "Annual limit",
+    "previousEmployerUsed": "Previous employer used",
+    "thisCompanyEligible": "This company",
+    "remainingLimit": "Remaining",
+    "taxableExcess": "Taxable excess",
+    "openingSources": {
+      "saved_payslip": "From saved payslip records",
+      "accepted_tp3": "From accepted TP3 on file",
+      "no_accepted_tp3": "RM0 - no accepted TP3 on file"
+    },
+    "previousEmployerDeclaredWarning": "This employee said they had a previous employer this year, but no accepted TP3 is on file. RM0 was used. Collect and accept their TP3, then run the recalculation again.",
+    "monthByMonth": "{code}, month by month",
+    "usedBeforeMonth": "Used before this month (incl. previous employer)",
+    "remainingBefore": "Remaining before",
+    "exemptionLimitsNotRecorded": "Annual exemption limit detail was not recorded for this result.",
+    "holdReasons": {
+      "saved_evidence_conflict": "The saved payslip records disagree about how much of the annual exemption limits a previous employer used. Review the saved records, then preview again.",
+      "access_insufficient": "You are not allowed to see this employee's tax details, so the previous employer's exemption use cannot be checked. Ask someone who administers this employee's payroll to run it."
+    },
+    "boundsTitle": "Figures that are certain",
+    "boundsHelp": "Shown for review only. These ranges are not saved and cannot be confirmed.",
+    "exemptUpTo": "Exempt up to",
+    "taxableAtLeast": "Taxable at least",
+    "exactValue": "{value} (exact)",
+    "pcbComparisonInsufficient": "Unavailable - insufficient historical data",
+    "pcbComparisonNeverStops": "This never stops the recalculation.",
     "title": "Recalculate Income Tax Value",
     "description": "Review historical taxable income using the latest saved Pay Item tax settings.",
     "backSettings": "Payroll Settings",

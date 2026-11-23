@@ -35617,6 +35617,34 @@
     "next": "下一页"
   },
   "payrollTaxBasis": {
+    "exemptionLimitsTitle": "年度免税限额",
+    "exemptionType": "免税类型",
+    "annualLimit": "年度限额",
+    "previousEmployerUsed": "前雇主已用",
+    "thisCompanyEligible": "本公司",
+    "remainingLimit": "剩余",
+    "taxableExcess": "应税超额",
+    "openingSources": {
+      "saved_payslip": "来自已保存的工资单记录",
+      "accepted_tp3": "来自已接受的 TP3",
+      "no_accepted_tp3": "RM0 - 没有已接受的 TP3"
+    },
+    "previousEmployerDeclaredWarning": "该员工表示今年有前雇主，但没有已接受的 TP3。已使用 RM0。请收集并接受其 TP3，然后再次运行重新计算。",
+    "monthByMonth": "{code}，逐月明细",
+    "usedBeforeMonth": "本月之前已用（含前雇主）",
+    "remainingBefore": "本月之前剩余",
+    "exemptionLimitsNotRecorded": "此结果未记录年度免税限额明细。",
+    "holdReasons": {
+      "saved_evidence_conflict": "已保存的工资单记录对前雇主使用了多少年度免税限额的说法不一致。请核对已保存的记录，然后重新预览。",
+      "access_insufficient": "您无权查看该员工的税务详情，因此无法核对前雇主的免税使用情况。请由负责该员工薪资的管理员运行。"
+    },
+    "boundsTitle": "可以确定的数字",
+    "boundsHelp": "仅供审阅。这些范围不会保存，也无法确认。",
+    "exemptUpTo": "最多免税",
+    "taxableAtLeast": "至少应税",
+    "exactValue": "{value}（确定）",
+    "pcbComparisonInsufficient": "不可用 - 历史数据不足",
+    "pcbComparisonNeverStops": "这不会阻止重新计算。",
     "previewGroupProgress": "已核查 {done} 组员工，共 {total} 组。",
     "previewInBackground": "正在后台准备税务预览。您可以刷新此页面查看进度。",
     "recalculationInBackground": "正在后台重新计算历史所得税。您可以刷新此页面查看进度。",

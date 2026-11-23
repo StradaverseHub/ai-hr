@@ -531,6 +531,8 @@ export interface CountryPack {
      */
     foldPriorSlipIntoAccumulators: MyPayrollModule['foldPriorSlipIntoAccumulators'];
     replayTaxBasis: typeof import('./my/tax-basis-replay').replayMyTaxBasis;
+    /** Board item 0af23331: review-only ranges while a prior-employer exemption opening is held. Optional per pack. */
+    boundTaxBasis?: typeof import('./my/tax-basis-replay').boundMyTaxBasis;
     /** r356 — its twin: the year's opening balances from a previous employer's TP3, on the seam for the
      *  same reason. */
     openingAccumulatorsFromTp3: MyPayrollModule['openingAccumulatorsFromTp3'];

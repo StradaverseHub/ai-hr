@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
-import {replayMyTaxBasis,type TaxBasisReplayInput,type TaxBasisItemSetting} from '../localization/my/tax-basis-replay';
+import {replayMyTaxBasis,boundMyTaxBasis,type TaxBasisReplayInput,type TaxBasisItemSetting} from '../localization/my/tax-basis-replay';
+import type {TaxBasisLedgerEntry} from '../lib/payroll-tax-basis';
 import {statutory,foldPriorSlipIntoAccumulators,openingAccumulatorsFromTp3} from '../localization/my/payroll';
 import {DEFAULT_MY_STATUTORY} from '../localization/my/statutory-tables';
 const basic:TaxBasisItemSetting={id:'basic',code:'BASIC',name:'Basic salary',kind:'earning',includedInPcb:true,pcbRemunerationType:'normal',pcbExemptionCode:null,isNonPayable:false,epfBonus2012:false};
@@ -54,3 +55,48 @@ describe('corrected PCB input seam',()=>{
   expect(()=>statutory(5000,undefined,0,0,undefined,{pcbAdditionalOverride:NaN})).toThrow(/Invalid reviewed/);
  });
 });
+
+// Board item 0af23331 (fictional fixtures). Expected figures are derived from the RM6,000 / RM3,000 2026 limits by hand.
+describe('annual exemption ledger and held-opening bounds',()=>{
+ const months=(count:number)=>Array.from({length:count},(_,i)=>String(i+1).padStart(2,'0'));
+ function travelInput(count:number,amount:number):TaxBasisReplayInput{const p=input();p.upToMonth=count;p.settings[1]={...travel,pcbExemptionCode:'PCB_TRA_BUSINESS'};
+  p.rulesByPeriod=Object.fromEntries(months(count).map(m=>[`2026-${m}`,{rules:DEFAULT_MY_STATUTORY,hash:`verified-${m}`}]));
+  p.slips=months(count).map(m=>({id:`slip-${m}`,period:`2026-${m}`,runOrder:1,sourceLines:[{code:'BASIC',amount:5000,direction:'earning' as const},{code:'TRAVEL',amount,direction:'earning' as const}],statutory:{pcb:10,lp:0},expectedGross:5000+amount,expectedOtherDeductions:0}));return p;}
+ const entries=(row:{basis:Record<string,unknown>})=>(row.basis.exemptionLedger as {entries:TaxBasisLedgerEntry[]}).entries;
+ it('applies an accepted RM5,500 opening to an RM800 Travel Allowance as RM500 exempt and RM300 taxable',()=>{
+  const p=travelInput(1,800);p.openingExemptionUsed={PCB_TRA_BUSINESS:5500};p.ledger=true;
+  const [row]=replayMyTaxBasis(p);
+  expect(row.basis.items.find(item=>item.code==='TRAVEL')).toMatchObject({amount:800,exempt:500,taxable:300});
+  expect(entries(row)).toEqual([{payslipId:'slip-01',period:'2026-01',itemCode:'TRAVEL',itemName:'Travel allowance',code:'PCB_TRA_BUSINESS',cap:6000,usedBefore:5500,remainingBefore:500,eligible:800,exempt:500,excess:300,usedAfter:6000,remainingAfter:0}]);
+  expect(row.basis.pcb).toBe(5300);
+ });
+ it('returns identical money with or without the ledger and omits it unless requested',()=>{
+  const p=travelInput(3,2500),plain=replayMyTaxBasis(p),withLedger=replayMyTaxBasis({...p,ledger:true});
+  expect(plain.every(row=>row.basis.exemptionLedger===undefined)).toBe(true);
+  expect(withLedger.map(({basis:{exemptionLedger,...rest}})=>rest)).toEqual(plain.map(row=>row.basis));
+  expect(withLedger.flatMap(entries).map(entry=>[entry.usedBefore,entry.exempt,entry.excess])).toEqual([[0,2500,0],[2500,2500,0],[5000,1000,1500]]);
+ });
+ it('bounds eight RM800 months against the RM6,000 cap with a certain RM400 excess and exact uncapped items',()=>{
+  const bounds=boundMyTaxBasis(travelInput(8,800));
+  expect(bounds.codes).toEqual([{code:'PCB_TRA_BUSINESS',cap:6000,eligible:6400,exemptMax:6000,certainExcess:400}]);
+  expect(bounds.months.map(month=>month.items.find(item=>item.code==='TRAVEL')!.exemptMax)).toEqual([800,800,800,800,800,800,800,400]);
+  expect(bounds.months[7].items.find(item=>item.code==='TRAVEL')).toMatchObject({exact:false,taxableMin:400,exemptionCode:'PCB_TRA_BUSINESS'});
+  expect(bounds.months[0].items.find(item=>item.code==='BASIC')).toMatchObject({exact:true,taxableMin:5000,exemptMax:0,exemptionCode:null});
+  expect(bounds.months[7].taxableMin).toBe(5400);
+ });
+ it('keeps independent codes on independent annual ledgers',()=>{
+  const p=travelInput(2,4000);p.settings.push({...travel,id:'holiday',code:'HOLIDAY',name:'Holiday travel',pcbExemptionCode:'PCB_TRA_HOLIDAY'});
+  for(const slip of p.slips){slip.sourceLines.push({code:'HOLIDAY',amount:2000,direction:'earning'});slip.expectedGross+=2000;}
+  p.openingExemptionUsed={PCB_TRA_HOLIDAY:500};p.ledger=true;
+  const rows=replayMyTaxBasis(p);
+  expect(rows.flatMap(entries).map(entry=>[entry.code,entry.usedBefore,entry.exempt,entry.excess])).toEqual([
+   ['PCB_TRA_BUSINESS',0,4000,0],['PCB_TRA_HOLIDAY',500,2000,0],['PCB_TRA_BUSINESS',4000,2000,2000],['PCB_TRA_HOLIDAY',2500,500,1500]]);
+  expect(boundMyTaxBasis(p).codes).toEqual([{code:'PCB_TRA_BUSINESS',cap:6000,eligible:8000,exemptMax:6000,certainExcess:2000},{code:'PCB_TRA_HOLIDAY',cap:3000,eligible:4000,exemptMax:3000,certainExcess:1000}]);
+ });
+ it('records no ledger entry for unlimited or fully taxable codes and refuses the same invalid input as the replay',()=>{
+  const p=travelInput(1,800);p.settings[1]={...travel,pcbExemptionCode:'PCB_TAXABLE'};p.ledger=true;
+  expect(entries(replayMyTaxBasis(p)[0])).toEqual([]);
+  const bad=travelInput(1,800);bad.slips[0].expectedGross=1;expect(()=>boundMyTaxBasis(bad)).toThrow(/reconcile/);
+ });
+});
+
