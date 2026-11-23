@@ -91,7 +91,6 @@ export function historyWorkbookQuery(
 
   return {
     kind: 'history',
-    scope,
     filters: {
       companyIds: companyId ? [companyId] : [...allowedCompanyIds],
       ...(employmentId ? { employmentId } : {}),
@@ -99,15 +98,16 @@ export function historyWorkbookQuery(
       ...(month != null ? { month } : {}),
       ...(cycle ? { cycle } : {}),
       ...(payrollCycleId ? { payrollCycleId } : {}),
-    },
-    labels: {
-      title: s.title,
-      filename,
-      filterCaption: caption.join(' — '),
-      filterDescription: description,
-      detailNote: s.detailNote,
-      cycleLabels: s.cycleLabels,
-      statusLabels: s.statusLabels,
+      exportScope: scope,
+      sheet: {
+        title: s.title,
+        filename,
+        filterCaption: caption.join(' — '),
+        filterDescription: description,
+        detailNote: s.detailNote,
+        cycleLabels: s.cycleLabels,
+        statusLabels: s.statusLabels,
+      },
     },
   };
 }

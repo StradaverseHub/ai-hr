@@ -545,22 +545,28 @@ describe('0fcb2557 — the download can never contain a company the caller may n
     year: 2026, month: 11, cycle: 'regular',
   };
 
+  /** What the request selects, without its scope flag and sheet captions. */
+  const selection = (q: ReturnType<typeof historyWorkbookQuery>) =>
+    Object.fromEntries(Object.entries(q.filters).filter(([key]) => key !== 'exportScope' && key !== 'sheet'));
+
   it('"All processed payroll" takes the caller’s OWN companies, drops every filter and says so on the sheet', () => {
     const q = historyWorkbookQuery('all', allowed, view, strings);
-    expect(q.filters).toEqual({ companyIds: ['c-1', 'c-2'] });
-    expect(q.labels.filename).toBe('payroll-transaction-history-all');
-    expect(q.labels.filterCaption).toBe('All processed payroll');
-    expect(q.labels.filterDescription).toBe(
+    expect(q.filters.exportScope).toBe('all');
+    expect(selection(q)).toEqual({ companyIds: ['c-1', 'c-2'] });
+    expect(q.filters.sheet.filename).toBe('payroll-transaction-history-all');
+    expect(q.filters.sheet.filterCaption).toBe('All processed payroll');
+    expect(q.filters.sheet.filterDescription).toBe(
       'Company: All  ·  Employee: All  ·  Year: All  ·  Month: All  ·  Payroll cycle: All',
     );
   });
 
   it('"This view" keeps the screen’s filters and names them', () => {
     const q = historyWorkbookQuery('current', allowed, view, strings);
-    expect(q.filters).toEqual({ companyIds: ['c-1'], employmentId: 'e-1', year: 2026, month: 11, cycle: 'regular' });
-    expect(q.labels.filename).toBe('payroll-transaction-history-2026-11');
-    expect(q.labels.filterCaption).toBe('This view — E001 · Fixture Person · Affluent Fixture Sdn Bhd');
-    expect(q.labels.filterDescription).toBe(
+    expect(q.filters.exportScope).toBe('current');
+    expect(selection(q)).toEqual({ companyIds: ['c-1'], employmentId: 'e-1', year: 2026, month: 11, cycle: 'regular' });
+    expect(q.filters.sheet.filename).toBe('payroll-transaction-history-2026-11');
+    expect(q.filters.sheet.filterCaption).toBe('This view — E001 · Fixture Person · Affluent Fixture Sdn Bhd');
+    expect(q.filters.sheet.filterDescription).toBe(
       'Company: Affluent Fixture Sdn Bhd  ·  Employee: E001 · Fixture Person  ·  Year: 2026  ·  Month: 11  ·  Payroll cycle: Regular',
     );
   });

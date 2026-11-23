@@ -44,20 +44,22 @@ const caption = (max: number) => z.string().max(max);
  * the caller may see: in production that passed the 5,000 retained-document ceiling and every download failed.
  * The captions are translated by the page when the job is queued, so the worker stays i18n-free like the builder.
  */
+// `exportScope` and `sheet` ride INSIDE `filters`: the job kind's database-declared input shape (migration 6980,
+// checked by app.bulk_job_enqueue) admits only the top-level keys kind, filters and asOf.
 const historyWorkbook = z.object({
   kind: z.literal('history'),
-  scope: z.enum(['current', 'all']),
   filters: scope.extend({
     year: z.number().int().min(2000).max(2100).optional(), month: z.number().int().min(1).max(12).optional(),
     cycle: z.enum(['regular', 'off_cycle', 'bonus', 'adjustment']).optional(), payrollCycleId: guid.optional(),
-  }).strict(),
-  labels: z.object({
-    title: caption(120).min(1), filename: z.string().regex(/^[a-z0-9-]{1,80}$/),
-    filterCaption: caption(600), filterDescription: caption(1200), detailNote: caption(2000),
-    cycleLabels: z.object({
-      regular: caption(120), off_cycle: caption(120), bonus: caption(120), adjustment: caption(120),
+    exportScope: z.enum(['current', 'all']),
+    sheet: z.object({
+      title: caption(120).min(1), filename: z.string().regex(/^[a-z0-9-]{1,80}$/),
+      filterCaption: caption(600), filterDescription: caption(1200), detailNote: caption(2000),
+      cycleLabels: z.object({
+        regular: caption(120), off_cycle: caption(120), bonus: caption(120), adjustment: caption(120),
+      }).strict(),
+      statusLabels: z.object({ draft: caption(120), processed: caption(120), closed: caption(120) }).strict(),
     }).strict(),
-    statusLabels: z.object({ draft: caption(120), processed: caption(120), closed: caption(120) }).strict(),
   }).strict(),
 }).strict();
 export type HistoryWorkbookQuery = z.infer<typeof historyWorkbook>;
@@ -162,12 +164,13 @@ async function writeHistoryWorkbook(ctx: SessionContext, query: HistoryWorkbookQ
   const payItemNames: Record<string, string> = Object.fromEntries(
     (await listPayComponents(ctx, { includeArchived: true })).map((c) => [c.code, c.name]),
   );
+  const sheet = f.sheet;
   const data = buildHistoryExport({
     rows, hrdfRegisteredCompanyIds, payItemNames,
-    cycleLabels: query.labels.cycleLabels, statusLabels: query.labels.statusLabels,
-    title: query.labels.title, filename: query.labels.filename,
-    filterCaption: query.labels.filterCaption, filterDescription: query.labels.filterDescription,
-    detailNote: query.labels.detailNote,
+    cycleLabels: sheet.cycleLabels, statusLabels: sheet.statusLabels,
+    title: sheet.title, filename: sheet.filename,
+    filterCaption: sheet.filterCaption, filterDescription: sheet.filterDescription,
+    detailNote: sheet.detailNote,
   });
   const file = toXlsxReport(data);
   await writeFile(path, file.bytes, { mode: 0o600 });

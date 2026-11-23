@@ -201,11 +201,11 @@ it('prepares the Transaction History workbook in the background for "All process
  const batch=await createBatch(actor,{companyId:b.companyId,payPeriod:'2026-05'});
  await generatePayslips(actor,{batchId:batch.batchId});
  const status={draft:'Draft',processed:'Processed',closed:'Closed'};
- const {row:{id}}=await enqueueTransactionExport(actor,{kind:'history',scope:'all',filters:{companyIds:[b.companyId]},labels:{
+ const {row:{id}}=await enqueueTransactionExport(actor,{kind:'history',filters:{companyIds:[b.companyId],exportScope:'all',sheet:{
   title:'Payroll Transaction History',filename:'payroll-transaction-history-all',filterCaption:'All processed payroll',
   filterDescription:'Company: All',detailNote:'',statusLabels:status,
   cycleLabels:{regular:'Regular',off_cycle:'Off-cycle',bonus:'Bonus',adjustment:'Adjustment'},
- }});
+ }}});
  let job=await readTransactionExportJob(actor,id);
  for(let i=0;i<20&&!['completed','failed'].includes(job.state);i++){
   await runBulkJobTick(owner.client,{handlers:[transactionExportJobHandler]});
@@ -224,10 +224,10 @@ it('prepares the Transaction History workbook in the background for "All process
  const stranger={...actor,userId:randomUUID()};
  await expect(readTransactionWorkbookPart(stranger,id,0)).rejects.toThrow('Workbook unavailable.');
  // A tampered request naming a company it does not hold is refused before it is queued.
- await expect(enqueueTransactionExport(actor,{kind:'history',scope:'all',filters:{companyIds:[randomUUID()]},labels:{
+ await expect(enqueueTransactionExport(actor,{kind:'history',filters:{companyIds:[randomUUID()],exportScope:'all',sheet:{
   title:'x',filename:'x',filterCaption:'',filterDescription:'',detailNote:'',statusLabels:status,
   cycleLabels:{regular:'',off_cycle:'',bonus:'',adjustment:''},
- }})).rejects.toThrow();
+ }}})).rejects.toThrow();
 });
 
 it('publishes a typed private workbook from the background job and scopes each download', async()=>{
