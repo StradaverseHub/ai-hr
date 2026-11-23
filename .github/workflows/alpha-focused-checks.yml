@@ -242,12 +242,12 @@ jobs:
             [[ "$MIXED_GROUP_SCALE" == true && "$BROWSER_MIXED_LOAD" == true &&
                "$ESTABLISHED_ATTENDANCE" == true && "$REPLACEMENT_CATALOGUE" == present &&
                "$MIXED_DATABASE_TOPOLOGY" == transaction-pool && "$SHELL_PERMISSION_VARIANT" == contract-optimized &&
-               "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" == true && "$REUSE_BUILD" != true ]] || exit 2
+               "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" != "$REUSE_BUILD" ]] || exit 2
             combined_group_build=true
           fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
-              true:2d0a60f552e42f4dff934bb5f32e091d322f2734|true:0f6f8e3a92c6f322f4e9539ad8fedeffbc0c900e)
+              true:2d0a60f552e42f4dff934bb5f32e091d322f2734|true:0f6f8e3a92c6f322f4e9539ad8fedeffbc0c900e|true:162aea78851d2ec44d601e51a8f2a3750c1c9bf1)
                 [[ "$combined_group_build" == true ]] || exit 2 ;;
               true:a84ddf3812fa6ecd60c1a54802ab5f205e2ba212)
                 [[ "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
@@ -404,6 +404,12 @@ jobs:
             chmod 700 "$PWD"
             node ../automation/scripts/performance/unpack-capacity-build.mjs "$packet" "$producer" "$application_source"
             exit 0
+          elif [[ "$AIHR_CI_HEAD" == 162aea78851d2ec44d601e51a8f2a3750c1c9bf1 ]]; then
+            gh api repos/StradaverseHub/ai-hr/actions/jobs/137409928152 --jq '
+              .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+              .run_id == 45087647290 and .head_sha == "d1620bd83276caeb0c62a65faace62b9cc711357"' | grep -qx true
+            gh api repos/StradaverseHub/ai-hr/actions/artifacts/14780168176/zip > "$archive"
+            digest=99a213c55e0f7498fe024a009c2d5a2dcf22c6da8b96b14770e3cd236516652b
           elif [[ "$AIHR_CI_HEAD" == 0f6f8e3a92c6f322f4e9539ad8fedeffbc0c900e ]]; then
             gh api repos/StradaverseHub/ai-hr/actions/jobs/137376428598 --jq '
               .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
@@ -580,6 +586,7 @@ jobs:
           elif [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" != 5175d387846c18fcc83ef96091cb1b4e1b538241 &&
                 "$AIHR_CI_HEAD" != 2d0a60f552e42f4dff934bb5f32e091d322f2734 &&
                 "$AIHR_CI_HEAD" != 0f6f8e3a92c6f322f4e9539ad8fedeffbc0c900e &&
+                "$AIHR_CI_HEAD" != 162aea78851d2ec44d601e51a8f2a3750c1c9bf1 &&
                 "$AIHR_CI_HEAD" != a9fd4c3c1b927cc5ed5adc8d4033dd3f124b3778 &&
                 "$AIHR_CI_HEAD" != b582a3d30f2f8d22d56e46da881f405ce7095834 &&
                 "$AIHR_CI_HEAD" != 8729365591aed6efc1d0c3b72ec346dcc16d6829 &&

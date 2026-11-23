@@ -93,7 +93,7 @@ const freshGroupBuilds=new Set([
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 const currentMainScopedJobReviewer='162aea78851d2ec44d601e51a8f2a3750c1c9bf1';
 const currentMainLifetimeContract=shellPermissionVariant==='contract-optimized'&&(
- reusedBuild ? [currentMainLifetimeCandidate,currentMainIndexedPayrollBoundary].includes(env.AIHR_CI_HEAD)
+ reusedBuild ? [currentMainLifetimeCandidate,currentMainIndexedPayrollBoundary,currentMainScopedJobReviewer].includes(env.AIHR_CI_HEAD)
  : env.AIHR_CI_HEAD===currentMainScopedJobReviewer
 );
 const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD)
@@ -151,6 +151,7 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
  ...(([nextResponseCloseCandidate,nextResponseCloseWithPayrollBoundary,sharedEmployeeClaimsRead,sharedEmployeeClaimsObserver,indexedAccountTaskCaller].includes(sha)||currentMainLifetimeBuild)&&{shellHttpLifetime:'next-after'}),
  ...(reusedBuild&&{buildArtifact:sha===currentMainLifetimeCandidate ? {sourceSha:sha,runId:45069834758,artifactId:14773296405}
   : sha===currentMainIndexedPayrollBoundary ? {sourceSha:sha,runId:45076976231,artifactId:14775359882}
+  : sha===currentMainScopedJobReviewer ? {sourceSha:sha,runId:45087647290,artifactId:14780168176}
   : sha===currentMainFixture ? currentMainArtifact : combinedGroupBuild
   ? {sourceSha:sha,...combinedGroupArtifact}
   : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
