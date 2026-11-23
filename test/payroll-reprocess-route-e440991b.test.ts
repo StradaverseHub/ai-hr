@@ -186,9 +186,14 @@ describe('e440991b — the new screen refuses before it offers', () => {
     expect(REPROCESS_PAGE).toMatch(/if \(refusal\) \{/);
   });
 
-  it('carries the pre-ticked stale employments through to the new screen (49e7e0a2)', () => {
-    expect(REPROCESS_PAGE).toContain('batch.recalcEmploymentIds');
-    expect(REPROCESS_PAGE).toContain('preselectedIds={preselectedIds}');
+  it('carries the pre-ticked stale employments through to the new screen (49e7e0a2), from every page (6aee208b)', () => {
+    // The whole stale set is read by its own bounded reader and handed to the form — not the raw column,
+    // and not filtered to the rows of the page on screen.
+    expect(REPROCESS_PAGE).toContain('await reprocessStaleSelection(s, batchId)');
+    expect(REPROCESS_PAGE).toContain('stale={stale}');
+    expect(REPROCESS_PAGE).not.toContain('preselectedIds');
+    expect(REPROCESS_FORM).toContain('...staleRows.map(e=>[e.employmentId,e] as [string,Selected]),');
+    expect(REPROCESS_FORM).not.toMatch(/employees\.filter\([^)]*preselected/);
   });
 });
 

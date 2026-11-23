@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchSummary, payrollEmployeeSelectionPage, payrollReprocessResultIdentities, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility } from '@/core/payroll';
+import { batchSummary, payrollEmployeeSelectionPage, payrollReprocessResultIdentities, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility, reprocessStaleSelection } from '@/core/payroll';
 import { payslipLessEligibleWithSkipPage, listRecomputeDisclosure } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -91,7 +91,7 @@ export default async function ReprocessPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; job?: string; from?: string;page?:string;size?:string;newPage?:string;newSize?:string;q?:string }>;
+  searchParams: Promise<{ error?: string; job?: string; from?: string;page?:string;size?:string;newPage?:string;newSize?:string;q?:string;tab?:string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
@@ -190,12 +190,17 @@ export default async function ReprocessPage({
     );
   }
 
-  // 49e7e0a2 — the employments the run itself marked stale, ticked on arrival.
-  const preselectedIds = Array.isArray(batch.recalcEmploymentIds)
-    ? batch.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
-    : [];
+  // 49e7e0a2 / 6aee208b — EVERY employment the run itself marked stale, ticked on arrival on every page, not
+  // just the ones the first page happens to show. One bounded identity read (no money), from the same stored
+  // mark the Payroll Process count prints; the stale people with no payslip here are counted separately so
+  // the screen's total reconciles with that count.
+  const stale = await reprocessStaleSelection(s, batchId);
 
-  const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'reprocess',page:parsePageQuery(sp),search:sp.q});
+  // 6aee208b — two tabs over the run's payslips: Reprocess Required (the stale ones) and Processed / No
+  // Change (everyone else). A URL parameter on this same page, so changing tab is a router replace that keeps
+  // the form (and its selection) mounted. No `tab` ⇒ the reader opens Reprocess Required when it has anyone.
+  const tab = sp.tab === 'required' || sp.tab === 'unchanged' ? sp.tab : 'default';
+  const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'reprocess',page:parsePageQuery(sp),search:sp.q,tab});
   const candidates: ReprocessCandidate[] = selection.rows.map((sl) => ({
     employmentId: sl.employmentId,
     employeeCode: sl.employeeCode,
@@ -205,7 +210,15 @@ export default async function ReprocessPage({
     // version 1 = as first generated, so the number of prior recalculations is version - 1. Already on
     // the native page projection: no extra read and therefore no Department column here.
     reprocessedTimes: Math.max(0, (sl.version ?? 1) - 1),
+    stale: sl.stale,
   }));
+  /** The same screen on the other tab: page back to 1, every other parameter (search, sizes, from) kept. */
+  const tabHref = (to: 'required' | 'unchanged') => {
+    const next = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) if (typeof v === 'string' && v !== '' && !['page', 'tab', 'error'].includes(k)) next.set(k, v);
+    next.set('tab', to);
+    return `/payroll/${batchId}/reprocess?${next.toString()}`;
+  };
 
   // fbcf706d — everyone eligible for this month with NO payslip on this run. Until now nothing on any
   // screen said these people existed, and the only way to pay them was Reset, which throws away the
@@ -332,13 +345,15 @@ export default async function ReprocessPage({
             batchId={batchId}
             employees={candidates}
             newCandidates={newCandidates}
-            preselectedIds={preselectedIds}
+            stale={stale}
             pendingIds={pendingIds}
             previousJobId={thisJob?.id}
             jobRunning={thisJob?.status==='queued' || thisJob?.status==='running'}
             currency={currency}
             from={listFrom ?? null}
-            paging={{existing:selection.state,additions:additions.state,runTotal:selection.runTotal+additions.runTotal,existingTotal:selection.runTotal,search:sp.q??''}}
+            paging={{existing:selection.state,additions:additions.state,runTotal:selection.runTotal+additions.runTotal,existingTotal:selection.runTotal,search:sp.q??'',
+              tabs:selection.tab==='all'?undefined:{current:selection.tab,counts:selection.tabCounts,
+                hrefs:{required:tabHref('required'),unchanged:tabHref('unchanged')}}}}
           />
         </div>
       </Card>
