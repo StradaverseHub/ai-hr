@@ -81,6 +81,8 @@ const BOUNDARIES = [
   'core/payroll-tax-basis',
   'core/payroll-tax-basis-group',
   'core/payroll-draft-tax-readiness',
+  // 016276b7 — the processing chunk's income-tax holds and their durable read; payroll implementation.
+  'core/payroll-tax-holds',
   'core/payroll-permissions-admin',
   'core/pay-components',
   'core/pay-formula',
@@ -133,6 +135,7 @@ const ALWAYS_ALLOWED = [
   'core/payroll-reprocess-job.ts',
   'core/payroll-tax-basis-group.ts',
   'core/payroll-draft-tax-readiness.ts',
+  'core/payroll-tax-holds.ts',
   'core/payroll-permissions-admin.ts',
   'core/pay-components.ts',
   'core/pay-formula.ts',
