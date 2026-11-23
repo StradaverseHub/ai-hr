@@ -12,7 +12,6 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { amendDirectSuperior } from '@/core/information-correction';
 import { DirectSuperiorAlreadySavedError, DirectSuperiorUnchangedError, ReportingCycleError } from '@/core/org';
 import { reportingLinesFor } from '@/core/read';
-import { formatDmy } from '@/lib/date-display';
 import { isCalendarDate } from '@/lib/calendar-date';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
