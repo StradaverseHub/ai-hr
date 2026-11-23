@@ -46,6 +46,7 @@ import { assistantShellFor } from '@/core/assistant-launcher';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import { observeShellAdmission } from '@/lib/performance-admission-trace';
 import {AssistantImportHandoffProvider} from '@/components/assistant/import-handoff';
 import {personnelImportBrowserKey} from '@/lib/personnel-import-browser-key';
 import { viewerIdentity } from '@/lib/viewer';
@@ -151,7 +152,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // the WorkOS path) redirects to /login rather than 500-ing the whole app.
   let session;
   try {
-    session = await getSession();
+    session = await observeShellAdmission('session', getSession());
   } catch (e) {
     if (e instanceof AuthRequiredError) redirect('/login');
     throw e;
@@ -165,7 +166,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     await requireAdmin(session);
   }
   // ADR-0171: the shell shows the idle limit only where the embedded sign-in service enforces it.
-  const idleTimeoutSeconds = internalSelected() ? await idleTimeoutMinutesFor(session.tenantId) * 60 : null;
+  const idleTimeoutSeconds = internalSelected() ? await observeShellAdmission('idle-policy', idleTimeoutMinutesFor(session.tenantId)) * 60 : null;
   const idleSessionChannel = idleTimeoutSeconds ? webSessionChannel((await cookies()).get(INTERNAL_SESSION_COOKIE)?.value) : undefined;
   if (usesOperatorShell) {
     if (pathname !== '/operator' && !pathname.startsWith('/operator/') && pathname !== '/admin/scheduled-actions') redirect('/operator');
@@ -181,10 +182,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </body>
     </html>;
   }
-  const principals = await listPrincipals();
+  const principals = await observeShellAdmission('principals', listPrincipals());
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();
-  const { allowed, scopeIds } = await companyContextForPage(session);
+  const { allowed, scopeIds } = await observeShellAdmission('company-scope', companyContextForPage(session));
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
   // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
@@ -197,10 +198,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
   const [viewer,{accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}]=await Promise.all([
-    viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
+    observeShellAdmission('viewer', viewerIdentity(session)),
+    observeShellAdmission('navigation-access', readShellNavigationAccess(session,!isAdmin(session),isAdmin(session))),
   ]);
   const letterDestinations=isModuleEnabledOrFalse(session,'employees')
-    ? await letterNavigation(session,scopeIds) : [];
+    ? await observeShellAdmission('letters', letterNavigation(session,scopeIds)) : [];
   const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')
     ? await import('@/packs/rewards/service').then(({ rewardNavigation }) =>
       rewardNavigation(session),
@@ -241,13 +243,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
   const [onboardingNav,onboardingQueue,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
-    lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
-    lifecycleModuleNavigation(session),
+    lifecycleEnabled?observeShellAdmission('onboarding-navigation', onboardingNavigation(session)):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
+    lifecycleEnabled?observeShellAdmission('onboarding-tasks', onboardingTasks(session)):Promise.resolve([]),
+    observeShellAdmission('lifecycle-navigation', lifecycleModuleNavigation(session)),
     lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
   ]);
   const onboardingAccess=onboardingNav.module;
-  const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
+  const lifecycleInbox=await observeShellAdmission('lifecycle-inbox', lifecycleModuleInbox(session,scopedLifecycleNavigation));
   const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
   const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
   const lifecycleMyTasksCount=onboardingQueue.length+lifecycleInbox.myTasksCount;
@@ -257,7 +259,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Recruitment slice 7 — "Refer a candidate" shows for a person with an active employment in a company with Recruitment
   // (a tenant-wide grant, as for every HR screen; the service gate refuses a tenant without one before any SQL). Failure hides it.
   const [{launcher,allowed:assistantAccess},privateCaseHandler,recruitmentTeam,referralPortal] = await Promise.all([
-    assistantShellFor(session),
+    observeShellAdmission('assistant', assistantShellFor(session)),
     handlesPrivateCases(session).catch(() => false),
     isModuleEnabledOrFalse(session, 'recruitment') && !canAdminRecruitment(session)
       ? recruitmentTeamPresence(session).catch((e) => { console.error('recruitment team presence failed', e); return false; })
@@ -266,7 +268,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   ]);
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
-  const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
+  const [identityEmailAvailable,performanceAdminPath]=await Promise.all([observeShellAdmission('identity-email', canConfigureIdentityEmail(session)),performanceAdminHref]);
   // The passive badge and task preview stream separately from navigation. Reserve
   // interactive database capacity for the active page and the user's explicit actions.
   // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
