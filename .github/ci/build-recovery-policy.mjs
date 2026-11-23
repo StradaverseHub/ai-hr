@@ -71,7 +71,8 @@ export function validateMemoryFloorFailure({report,buildLog,typegenLog,expected}
  const m=report.memory;
  assert(m?.heapMb===BUILD_HEAP_CEILING_MB&&m.heapProfile===BUILD_HEAP_PROFILE&&m.minMemAvailableBudgetKiB===BUILD_MEM_AVAILABLE_MIN_KIB,'Original build heap/floor profile differs');
  same(m.rssBudgetKiB,{warn:BUILD_RSS_WARN_KIB,fail:BUILD_RSS_FAIL_KIB},'Original RSS budget differs');
- assert(Number.isSafeInteger(m.peakRssKiB)&&m.peakRssKiB>0&&(m.minMemAvailableKiB===null||(Number.isSafeInteger(m.minMemAvailableKiB)&&m.minMemAvailableKiB>=0&&m.minMemAvailableKiB<BUILD_MEM_AVAILABLE_MIN_KIB)),'Memory telemetry does not show the floor breach');
+ // Review 2026-11-24: a missing sample is a telemetry failure, not a proven floor breach; it needs a fresh whole gate.
+ assert(Number.isSafeInteger(m.peakRssKiB)&&m.peakRssKiB>0&&Number.isSafeInteger(m.minMemAvailableKiB)&&m.minMemAvailableKiB>=0&&m.minMemAvailableKiB<BUILD_MEM_AVAILABLE_MIN_KIB,'Memory telemetry does not show a sampled floor breach');
  const recomputed=buildMemoryVerdict(m.heapMb,m.peakRssKiB,m.minMemAvailableKiB);
  assert(recomputed.availableMemoryVerdict==='fail'&&recomputed.rssVerdict!=='fail'&&m.availableMemoryVerdict==='fail'&&m.verdict==='fail'&&m.rssVerdict===recomputed.rssVerdict,'Peak RSS also failed or the recorded verdict differs');
  assert(Array.isArray(report.phases)&&report.phases.length===2&&report.phases[0].name==='application-typegen'&&report.phases[1].name==='canonical-build','Original build phases differ');

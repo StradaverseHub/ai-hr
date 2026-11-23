@@ -13,7 +13,8 @@ import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {assessResumeSource} from './resume-source.mjs';
 import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
-import {validateDbFocusedMetadata,validateDbUnitHistory,verifyDbUnitRecovery,DB_UNIT_OWNER_DECISION} from './db-unit-recovery-policy.mjs';
+import {BROWSER_WORKFLOW_ID} from './browser-recovery-policy.mjs';
+import {validateDbFocusedMetadata,validateDbUnitHistory,verifyDbUnitRecovery,dbUnitOwnerDecision} from './db-unit-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let p=1;p<=10;p++){const r=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${p}`);assert(Array.isArray(r[key]),'Missing API inventory');rows.push(...r[key]);if(r[key].length<100)return rows;}throw Error('API inventory exceeds bounded recovery');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2,timeout:60000}).trim();
@@ -21,12 +22,6 @@ const metadata=n=>({run:api(`actions/runs/${n}`),jobs:pages(`actions/runs/${n}/j
 const facts=m=>({run:m.run,jobs:m.jobs,artifacts:m.artifacts});
 const save=(dir,name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
 const positive=n=>Number.isSafeInteger(n)&&n>0;
-const ALLOWED_CONTROLLER_DELTA=new Set(['.github/ci/db-unit-recovery.mjs','.github/ci/db-unit-recovery-extract.py','.github/ci/db-unit-recovery-policy.mjs','.github/ci/db-unit-recovery.test.mjs','.github/ci/operator-release.mjs','.github/ci/ci-install-grant.mjs','.github/ci/staging-preflight.test.mjs','.github/workflows/alpha-staging.yml','docs/CI-STAGING-VERIFICATION-POLICY.md']);
-/** The verifier may differ from the original gate controller only by this route's own controls. */
-export function validateDbUnitControllerDelta(paths){
- assert(paths.every(p=>ALLOWED_CONTROLLER_DELTA.has(p)),'Verification controller changed application, runner or unrelated controls');
- if(paths.length)for(const p of ['.github/ci/db-unit-recovery.mjs','.github/ci/db-unit-recovery-extract.py','.github/ci/db-unit-recovery-policy.mjs','.github/ci/db-unit-recovery.test.mjs'])assert(paths.includes(p),'Incomplete DB-unit recovery controller');
-}
 function planAt(path,{controller,baseline,runtime}){
  const previous=process.env.AIHR_CI_CLASSIFIER_RUNTIME;process.env.AIHR_CI_CLASSIFIER_RUNTIME='native';
  try{const local=createPlan(path),{fingerprint,...body}={...local,controller,migrationBase:baseline,runtime};return {...body,fingerprint:hash(body)};}
@@ -41,15 +36,17 @@ async function authenticatedMembers(artifact,sub,reuse,extractor,members){
  assert(isDeepStrictEqual(readdirSync(out).sort(),members),'Unexpected extracted members: '+artifact.name);
  return new Map(members.map(name=>[name,JSON.parse(readFileSync(join(out,name),'utf8'))]));
 }
-/** Only the digest-authenticated gate-plan of a later same-branch gate, to prove its source SHA. */
+/** The digest-authenticated gate-plan of a later same-branch gate (its source SHA) and its complete job conclusions. */
 async function laterGatePlan(row,dir,reuse){
+ const jobs=pages(`actions/runs/${row.id}/jobs?filter=all`,'jobs').map(j=>({name:j.name,status:j.status,conclusion:j.conclusion,attempt:j.run_attempt,runId:j.run_id}));
+ assert(jobs.every(j=>j.runId===row.id),'Foreign later gate job');
  const artifacts=pages(`actions/runs/${row.id}/artifacts`,'artifacts').filter(a=>a.name==='gate-plan');
  assert(artifacts.length===1,'Later gate has no unique gate-plan to prove its source: '+row.id);
  const a=artifacts[0],w=a.workflow_run;assert(w?.id===row.id&&w.repository_id===REPOSITORY_ID&&w.head_repository_id===REPOSITORY_ID&&w.head_sha===row.head_sha&&/^sha256:[a-f0-9]{64}$/.test(a.digest),'Foreign later gate-plan artifact');
  const plan=(await authenticatedMembers(a,join(dir,'later-gate-'+row.id),reuse,'./extract-artifact.py',['ci-plan.json'])).get('ci-plan.json');
- return {sha:plan.sha,controller:plan.controller,migrationBase:plan.migrationBase,fingerprint:plan.fingerprint,artifactId:a.id,digest:a.digest};
+ return {sha:plan.sha,controller:plan.controller,migrationBase:plan.migrationBase,fingerprint:plan.fingerprint,artifactId:a.id,digest:a.digest,jobs};
 }
-export async function verifyDbUnitRecoveredCi({candidatePath,runId,baseline,focusedRunIds,candidateBranch,evidenceDirectory,reuse=false}){
+export async function verifyDbUnitRecoveredCi({candidatePath,runId,baseline,focusedRunIds,candidateBranch,ownerApproval,evidenceDirectory,reuse=false}){
  candidatePath=resolve(candidatePath);runId=Number(runId);
  assert(positive(runId)&&/^[a-f0-9]{40}$/.test(baseline??''),'Exact original run and baseline required');
  assert(Array.isArray(focusedRunIds)&&focusedRunIds.length>0&&focusedRunIds.length<=16&&focusedRunIds.every(n=>positive(n)&&n!==runId)&&new Set(focusedRunIds).size===focusedRunIds.length,'Distinct bounded focused run inventory required');
@@ -66,8 +63,9 @@ export async function verifyDbUnitRecoveredCi({candidatePath,runId,baseline,focu
  const verificationDiagnostic=validateRecoveryControllerDiagnostic({...metadata(diagnosticId),controller:verificationController});
  const originalMetadata=metadata(runId),controller=originalMetadata.run.head_sha;
  assert(originalMetadata.run.status==='completed'&&originalMetadata.run.conclusion==='failure'&&originalMetadata.run.run_attempt===1,'Original gate must be a completed failed first attempt');
- execFileSync('git',['merge-base','--is-ancestor',controller,verificationController],{cwd:controllerRoot,stdio:'ignore'});
- validateDbUnitControllerDelta(git(controllerRoot,'diff','--name-only',controller,verificationController).split('\n').filter(Boolean));
+ // Review 2026-11-24: the former path allowlist admitted unreviewed edits to operator-release, the grant and the workflow.
+ assert(controller===verificationController,'Verify from the exact original gate controller checkout');
+ const ownerDecision=dbUnitOwnerDecision({approval:ownerApproval,runId,candidate});
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`validated-db-unit-recovery-${runId}-${randomUUID()}`);
  const source=await collectRecoveryEvidence(runId,dir,{reuse,prefetchDirectory:process.env.AIHR_CI_PREFETCH_DIR||undefined});
  assert(isDeepStrictEqual(originalMetadata,facts(source)),'Original metadata changed during collection');
@@ -83,22 +81,23 @@ export async function verifyDbUnitRecoveredCi({candidatePath,runId,baseline,focu
   focusedMetadata.set(n,m);focused.push({...facts(m),producer,artifact,report:packet.get('focused.json'),result:packet.get('db.vitest.json')});
  }
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
- const rows=[...pages(`actions/workflows/${WORKFLOW_ID}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${workflow.id}/runs?${query}`,'workflow_runs')];
- for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[WORKFLOW_ID,workflow.id].includes(r.workflow_id)));
+ // Review 2026-11-24: include the browser-tooling workflow, whose `Tooling transport only` title the history already names.
+ const workflows=[WORKFLOW_ID,workflow.id,BROWSER_WORKFLOW_ID],rows=workflows.flatMap(w=>pages(`actions/workflows/${w}/runs?${query}`,'workflow_runs'));
+ for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>workflows.includes(r.workflow_id)));
  const laterGatePlans=new Map();
  for(const r of rows)if(r.display_title===`Alpha CI · ${candidateBranch}`&&r.id!==runId&&r.status==='completed'&&r.conclusion==='cancelled'&&Date.parse(r.updated_at)>=Date.parse(source.run.updated_at)&&!laterGatePlans.has(r.id))laterGatePlans.set(r.id,await laterGatePlan(r,dir,reuse));
  const history=validateDbUnitHistory({source,rows,candidate,candidateBranch,focusedRunIds,laterGatePlans});
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyDbUnitRecovery({plan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,history,ownerDecision:DB_UNIT_OWNER_DECISION});
+ const recovery=verifyDbUnitRecovery({plan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,history,ownerDecision});
  const build=await sourceBoundBuild({candidatePath,dir,p:{candidate,controller,baseline,runId,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(isDeepStrictEqual(originalMetadata,metadata(runId))&&[...focusedMetadata].every(([n,m])=>isDeepStrictEqual(m,metadata(n))),'Recovery API evidence changed before admission');
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');checkRefs();
- const result={...recovery,tier:'ci',result:'PASS',resultKind:'OWNER_APPROVED_DB_UNIT_RECOVERY_EXCEPTION',recovery,fingerprint:hash(recovery),build,candidatePath,candidateBranch,controllerBranch:source.run.head_branch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
+ const result={...recovery,tier:'ci',result:'PASS',resultKind:'OWNER_APPROVED_DB_UNIT_RECOVERY_EXCEPTION',recovery,fingerprint:hash(recovery),build,candidatePath,candidateBranch,...(ownerApproval===undefined?{}:{ownerApproval}),controllerBranch:source.run.head_branch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);return result;
 }
 export async function revalidateDbUnitRecoveredCi(evidence){
  assert(evidence.verificationController===cleanHead(controllerRoot),'DB-unit recovery verification controller changed');
  assert(existsSync(evidence.evidenceDirectory),'Recovery evidence directory missing');
- const current=await verifyDbUnitRecoveredCi({candidatePath:evidence.candidatePath,runId:evidence.runId,baseline:evidence.baseline,focusedRunIds:evidence.focusedRunIds,candidateBranch:evidence.candidateBranch,evidenceDirectory:evidence.evidenceDirectory,reuse:true});
+ const current=await verifyDbUnitRecoveredCi({candidatePath:evidence.candidatePath,runId:evidence.runId,baseline:evidence.baseline,focusedRunIds:evidence.focusedRunIds,candidateBranch:evidence.candidateBranch,ownerApproval:evidence.ownerApproval,evidenceDirectory:evidence.evidenceDirectory,reuse:true});
  assert(isDeepStrictEqual(current.recovery,evidence.recovery)&&isDeepStrictEqual(current.build,evidence.build)&&isDeepStrictEqual(current.artifacts,evidence.artifacts),'DB-unit recovery evidence changed before installation');return true;
 }

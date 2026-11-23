@@ -4,8 +4,8 @@ import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
 import {WORKFLOW_ID} from './release-policy.mjs';
-import {verifyDbUnitRecovery,validateDbFocusedMetadata,validateDbUnitHistory,validateDbUnitGrantEvidence,DB_UNIT_OWNER_DECISION,DB_UNIT_RECOVERY_POLICY} from './db-unit-recovery-policy.mjs';
-import {validateDbUnitControllerDelta} from './db-unit-recovery.mjs';
+import {verifyDbUnitRecovery,validateDbFocusedMetadata,validateDbUnitHistory,validateDbUnitGrantEvidence,validateDbUnitOwnerDecision,dbUnitOwnerDecision,DB_UNIT_OWNER_DECISION,DB_UNIT_RECOVERY_POLICY,DB_UNIT_RECORDED_APPROVAL} from './db-unit-recovery-policy.mjs';
+import {dbUnitRecoveryOptions,requireOneRecoveryRoute} from './operator-release.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {execFileSync} from 'node:child_process';
@@ -30,14 +30,14 @@ function input(){
  const report={kind:'FOCUSED_ONLY',releaseEligible:false,schemaVersion:1,sha:plan.sha,controller:plan.controller,runId:String(run.id),attempt:'1',runtime:plan.runtime,files:unit.files,groups:{NODB:[],DB:unit.files},manifestHash:hash(JSON.stringify(unit.files)),classifierHash:'classifier',startedAt:time(2.9),endedAt:time(2.1),exitCode:0,healthBefore:{ok:true},healthAfter:{ok:true},
   batches:[{kind:'DB',files:unit.files,exitCode:0,processExitCode:0,signal:null,assertions:1,startedAt:time(2.9)}],databaseTerminalEvidence:{...structuredClone(failed.databaseTerminalEvidence),name:'aihr-ci-200-1-db-1',capturedAt:time(2.2)}};
  const result={success:true,numTotalTests:1,numPassedTests:1,numFailedTests:0,numFailedTestSuites:0,testResults:[{name:'/home/runner/work/ai-hr/ai-hr/source/'+unit.files[0],status:'passed',assertionResults:[{status:'passed',fullName:'original behavioral case: /candidate/'+unit.files[0]}]}]};
- const verificationController='e'.repeat(40);
- return {plan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,focused:[{run,jobs,artifact,producer:jobs[1],report,result}],classifierHash:'classifier',verificationController,verificationDiagnostic:{runId:501,controller:verificationController},history:{kind:'AUTHENTICATED_COMPLETE_DB_UNIT_RECOVERY_HISTORY',sourceRunId:f.run.id},ownerDecision:DB_UNIT_OWNER_DECISION};
+ const verificationController=plan.controller,approval={date:'2026-11-24',quotes:['Fixture owner approval for this gate only']};
+ return {plan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,focused:[{run,jobs,artifact,producer:jobs[1],report,result}],classifierHash:'classifier',verificationController,verificationDiagnostic:{runId:501,controller:verificationController},history:{kind:'AUTHENTICATED_COMPLETE_DB_UNIT_RECOVERY_HISTORY',sourceRunId:f.run.id},ownerDecision:dbUnitOwnerDecision({approval,runId:f.run.id,candidate:plan.sha})};
 }
 test('DB-unit recovery retains every other unit, preserves the original failure and is labelled as an owner exception',()=>{
  const f=input(),before=structuredClone(f.reports),c=verifyDbUnitRecovery(f);
  assert.deepEqual(f.reports,before);assert.equal(f.run.conclusion,'failure');assert.equal(c.recoveryPolicy,DB_UNIT_RECOVERY_POLICY);assert.equal(c.fullGatePass,false);assert.equal(c.originalConclusion,'failure');
  assert.equal(c.units.filter(u=>u.kind==='db-unit-recovery').length,1);assert.equal(c.units.length,f.plan.units.length);assert.notEqual(c.sha,c.controller);assert.equal(c.focusedSources[0].controller,c.controller);
- assert.deepEqual(c.ownerDecision.quotes.length,3);
+ assert.equal(c.ownerDecision.provenance,DB_UNIT_RECORDED_APPROVAL);assert.equal(c.ownerDecision.originalRunId,f.run.id);assert.equal(c.verificationController,c.controller);
 });
 for(const [name,mutate] of [
  ['missing focused coverage',f=>f.focused=[]],['duplicate focused coverage',f=>f.focused.push(structuredClone(f.focused[0]))],
@@ -63,6 +63,11 @@ for(const [name,mutate] of [
  ['PDF tooling unit',f=>f.plan.units.find(u=>u.kind==='db').pdfTools=true],
  ['missing verifier diagnostic',f=>f.verificationDiagnostic=null],['other verifier',f=>f.verificationDiagnostic.controller='d'.repeat(40)],
  ['missing history',f=>f.history=null],['altered owner decision',f=>f.ownerDecision={...DB_UNIT_OWNER_DECISION,quotes:['approve']}],
+ // Review 2026-11-24 refusals.
+ ['23 November decision reused for another gate',f=>f.ownerDecision=DB_UNIT_OWNER_DECISION],['approval recorded for another gate',f=>f.ownerDecision.originalRunId=45191515984],
+ ['approval for another candidate',f=>f.ownerDecision.candidate='d'.repeat(40)],['approval without words',f=>f.ownerDecision.quotes=[]],['approval relabelled as bound source',f=>f.ownerDecision.provenance='OWNER_WORDS_BOUND_IN_REVIEWED_SOURCE_FOR_ONE_GATE'],
+ ['missing owner decision',f=>f.ownerDecision=undefined],
+ ['verifier differs from the original gate controller',f=>{f.verificationController='e'.repeat(40);f.verificationDiagnostic.controller='e'.repeat(40);}],
 ])test('DB-unit recovery refuses '+name,()=>{const f=input();mutate(f);assert.throws(()=>verifyDbUnitRecovery(f));});
 function metadata(){const f=input(),a=f.focused[0];return {run:a.run,jobs:a.jobs,artifacts:[a.artifact],expected:{runId:a.run.id,controller:f.plan.controller,controllerBranch:'main',workflowId:999,candidateBranch:branch,after:time(5)},now};}
 test('Focused metadata accepts a run dispatched with --ref main on the original gate controller',()=>assert.equal(validateDbFocusedMetadata(metadata()).name,'selected-tests'));
@@ -76,7 +81,7 @@ for(const [name,mutate] of [
 function history(){
  const f=input(),c='c'.repeat(40),row=(id,title,extra)=>({id,workflow_id:WORKFLOW_ID,display_title:title,head_sha:c,status:'completed',conclusion:'success',run_attempt:1,created_at:time(4),updated_at:time(1),...extra});
  return {source:{run:f.run},candidate:'a'.repeat(40),candidateBranch:branch,focusedRunIds:[200],rows:[row(200,`Focused only · ${branch}`,{workflow_id:999}),row(300,`Alpha CI · ${branch}`,{conclusion:'cancelled'}),row(90,`Alpha CI · ${branch}`,{conclusion:'failure',created_at:time(30),updated_at:time(10)})],
-  laterGatePlans:new Map([[300,{sha:'a'.repeat(40),controller:c,fingerprint:'x'}]])};
+  laterGatePlans:new Map([[300,{sha:'a'.repeat(40),controller:c,fingerprint:'x',jobs:[{name:'resolve',status:'completed',conclusion:'success',attempt:1},{name:'test (db-1)',status:'completed',conclusion:'cancelled',attempt:1},{name:'verify',status:'completed',conclusion:'failure',attempt:1}]}]])};
 }
 test('History records the later same-source cancelled gate and an overlapping earlier gate honestly',()=>{
  const h=validateDbUnitHistory(history());assert.deepEqual(h.executions.map(e=>[e.id,e.disposition]),[[200,'FOCUSED_DB_UNIT_RECOVERY'],[300,'LATER_SAME_SOURCE_GATE_CANCELLED_BY_OWNER_NOT_EVIDENCE']]);assert.deepEqual(h.overlapping.map(e=>e.id),[90]);
@@ -87,18 +92,34 @@ for(const [name,change] of [
  ['later gate still running',f=>f.rows[1].status='in_progress'],['later gate failed',f=>f.rows[1].conclusion='failure'],['later gate succeeded unaccounted',f=>f.rows[1].conclusion='success'],
  ['later gate on another controller',f=>f.rows[1].head_sha='d'.repeat(40)],['unaccounted later focused run',f=>f.rows.push({...f.rows[0],id:201})],['unaccounted build-only run',f=>f.rows.push({...f.rows[0],id:202,display_title:`Canonical build only · ${branch}`})],
  ['conflicting snapshots',f=>f.rows.push({...f.rows[0],conclusion:'failure'})],['other source branch title',f=>f.source.run.display_title='Alpha CI · other'],
+ // Review 2026-11-24: contrary evidence on the identical source, and the browser-tooling workflow.
+ ['later same-source gate with a failed unit',f=>f.laterGatePlans.get(300).jobs[1].conclusion='failure'],['later same-source gate timed out',f=>f.laterGatePlans.get(300).jobs[1].conclusion='timed_out'],
+ ['later same-source gate with a failed build',f=>f.laterGatePlans.get(300).jobs.push({name:'build',status:'completed',conclusion:'failure',attempt:1})],
+ ['later same-source gate job inventory missing',f=>f.laterGatePlans.get(300).jobs=[]],['later same-source gate job rerun',f=>f.laterGatePlans.get(300).jobs[0].attempt=2],
+ ['later browser-tooling run',f=>f.rows.push({...f.rows[0],id:203,workflow_id:395862646,display_title:`Tooling transport only · ${branch}`})],
 ])test('History refuses '+name,()=>{const f=history();change(f);assert.throws(()=>validateDbUnitHistory(f));});
-test('Controller delta is limited to this route',()=>{
- const own=['.github/ci/db-unit-recovery.mjs','.github/ci/db-unit-recovery-extract.py','.github/ci/db-unit-recovery-policy.mjs','.github/ci/db-unit-recovery.test.mjs','.github/ci/operator-release.mjs','.github/ci/ci-install-grant.mjs'];
- validateDbUnitControllerDelta(own);validateDbUnitControllerDelta([]);
- for(const p of ['.github/ci/run-unit.mjs','.github/ci/focused-checks.mjs','.github/ci/manifest.mjs','app/page.tsx','pnpm-lock.yaml'])assert.throws(()=>validateDbUnitControllerDelta([...own,p]));
- assert.throws(()=>validateDbUnitControllerDelta(own.slice(1)));
+test('The 23 November decision binds only its own gate; any other gate needs a recorded per-gate approval',()=>{
+ const own={runId:45191515984,candidate:'9336682460ff8bad3c6b745d7cf8029c2b7e918f'};
+ assert.equal(dbUnitOwnerDecision(own),DB_UNIT_OWNER_DECISION);validateDbUnitOwnerDecision(DB_UNIT_OWNER_DECISION,own);
+ assert.throws(()=>dbUnitOwnerDecision({...own,candidate:'d'.repeat(40)}));assert.throws(()=>dbUnitOwnerDecision({...own,approval:{date:'2026-11-24',quotes:['x']}}));
+ assert.throws(()=>validateDbUnitOwnerDecision(DB_UNIT_OWNER_DECISION,{runId:1,candidate:own.candidate}));
+ assert.throws(()=>dbUnitOwnerDecision({runId:1,candidate:'a'.repeat(40)}),/per-gate owner approval/);
+ for(const approval of [{date:'2026-11-24',quotes:[]},{date:'yesterday',quotes:['x']},{date:'2026-11-24',quotes:['  ']},{date:'2026-11-24',quotes:['x'],runId:1},['x']])assert.throws(()=>dbUnitOwnerDecision({approval,runId:1,candidate:'a'.repeat(40)}));
+ const recorded=dbUnitOwnerDecision({approval:{date:'2026-11-24',quotes:['Approve this gate']},runId:1,candidate:'a'.repeat(40)});
+ assert.equal(recorded.provenance,DB_UNIT_RECORDED_APPROVAL);validateDbUnitOwnerDecision(recorded,{runId:1,candidate:'a'.repeat(40)});assert.throws(()=>validateDbUnitOwnerDecision(recorded,{runId:2,candidate:'a'.repeat(40)}));
+});
+test('Operator options are exactly the focused runs, candidate branch and optional per-gate approval; one route per invocation',()=>{
+ assert.deepEqual(dbUnitRecoveryOptions({focusedRunIds:[5],candidateBranch:branch}),{focusedRunIds:[5],candidateBranch:branch});
+ assert.deepEqual(dbUnitRecoveryOptions({focusedRunIds:[5],candidateBranch:branch,ownerApproval:{date:'2026-11-24',quotes:['x']}}).ownerApproval.quotes,['x']);
+ for(const bad of [null,[],{focusedRunIds:[5]},{focusedRunIds:[5],candidateBranch:branch,reuse:true},{focusedRunIds:[5],candidateBranch:branch,evidenceDirectory:'/tmp/x'},{focusedRunIds:['5'],candidateBranch:branch},{focusedRunIds:5,candidateBranch:branch}])assert.throws(()=>dbUnitRecoveryOptions(bad));
+ requireOneRecoveryRoute({dbUnitRecovery:{}});requireOneRecoveryRoute({buildRecovery:{}});requireOneRecoveryRoute({});
+ for(const mixed of [{dbUnitRecovery:{},buildRecovery:{}},{dbUnitRecovery:{},browserRecovery:{}},{dbUnitRecovery:{},repair:{}},{dbUnitRecovery:{},recoveryRunIds:[1]},{buildRecovery:{},recoveryRunIds:[1]},{browserRecovery:{},repair:{}}])assert.throws(()=>requireOneRecoveryRoute(mixed),/one explicitly versioned/);
 });
 test('A distinct DB-unit certificate grants the original successful build without relabelling the failed run',()=>{
  const f=input(),c=verifyDbUnitRecovery(f),g=installationFixture(),e={...g.evidence,...c,recovery:c,fingerprint:hash(c),build:{...g.evidence.build,source:c.sha,controller:c.controller,runId:c.runId}};
  const run={...g.run,id:c.runId,head_sha:c.controller,conclusion:'failure'},producer={...g.producer,run_id:c.runId,head_sha:c.controller};
  assert.equal(validateDbUnitGrantEvidence(e,run),true);const grant=createInstallGrant({...g,evidence:e,run,producer});assert.equal(grant.runId,c.runId);assert.equal(grant.controller,c.controller);assert.equal(grant.witnessFingerprint,hash(c));
- for(const change of [x=>x.recovery.tests++,x=>x.recovery.fullGatePass=true,x=>x.recovery.ownerDecision={date:'x',quotes:[]},x=>delete x.recovery.verificationDiagnostic,x=>x.recovery.originalConclusion='success',x=>x.recovery.focusedSources[0].controller='a'.repeat(40),x=>delete x.recovery.history]){
+ for(const change of [x=>x.recovery.tests++,x=>x.recovery.fullGatePass=true,x=>x.recovery.ownerDecision={date:'x',quotes:[]},x=>x.recovery.ownerDecision=DB_UNIT_OWNER_DECISION,x=>x.recovery.verificationController='e'.repeat(40),x=>delete x.recovery.verificationDiagnostic,x=>x.recovery.originalConclusion='success',x=>x.recovery.focusedSources[0].controller='a'.repeat(40),x=>delete x.recovery.history]){
   const altered=structuredClone(e);change(altered);altered.fingerprint=hash(altered.recovery);assert.throws(()=>createInstallGrant({...g,evidence:altered,run,producer}));
  }
  assert.throws(()=>createInstallGrant({...g,evidence:e,run:{...run,conclusion:'success'},producer}));

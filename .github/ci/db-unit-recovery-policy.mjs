@@ -9,8 +9,11 @@ import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID} from './release-policy.mjs';
 export const DB_UNIT_RECOVERY_POLICY='aihr-db-unit-recovery/v1';
 export const DB_UNIT_RECOVERY_KIND='AUTHENTICATED_OWNER_APPROVED_DB_UNIT_RECOVERY';
 export const DB_UNIT_RECOVERY_EXCEPTION='OWNER_APPROVED_DB_UNIT_RECOVERY_NOT_A_FULL_GATE_PASS';
-// Owner's own words to the session, 23 November 2026. Bound into every certificate; changing them changes the fingerprint.
-export const DB_UNIT_OWNER_DECISION=Object.freeze({date:'2026-11-23',quotes:Object.freeze([
+// Owner's own words to the session, 23 November 2026, approving ONE original gate. Review 2026-11-24: they are bound only
+// to that gate and candidate and are never presented as approval for any other gate.
+export const DB_UNIT_BOUND_DECISION='OWNER_WORDS_BOUND_IN_REVIEWED_SOURCE_FOR_ONE_GATE';
+export const DB_UNIT_RECORDED_APPROVAL='OPERATOR_RECORDED_OWNER_APPROVAL_NOT_AUTHENTICATED';
+export const DB_UNIT_OWNER_DECISION=Object.freeze({provenance:DB_UNIT_BOUND_DECISION,originalRunId:45191515984,candidate:'9336682460ff8bad3c6b745d7cf8029c2b7e918f',date:'2026-11-23',quotes:Object.freeze([
  'For the browser test that fails, lets run the test specifically for it, dont have to run a new full gate, once the test pass, we can release',
  'No need to check, i allow and approve it, go ahead',
  'Just use gate 4, re test the failed one and go with hand installed exception'])});
@@ -21,6 +24,18 @@ const id=x=>Number.isSafeInteger(x)&&x>0;
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const unitJob=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
 const rel=(cwd,name)=>relative(cwd,name).split('\\').join('/');
+const quotesOk=q=>Array.isArray(q)&&q.length>0&&q.length<=8&&q.every(x=>typeof x==='string'&&x.trim().length>0&&x.length<=1000);
+/** The decision a certificate binds: the reviewed 23 November words for their own gate, otherwise a per-gate approval
+ * that the operator records verbatim ({date,quotes}) and that is labelled as unauthenticated operator testimony. */
+export function dbUnitOwnerDecision({approval,runId,candidate}){
+ if(runId===DB_UNIT_OWNER_DECISION.originalRunId){assert(approval===undefined&&candidate===DB_UNIT_OWNER_DECISION.candidate,'The bound 23 November decision covers only its own gate and candidate');return DB_UNIT_OWNER_DECISION;}
+ assert(approval&&typeof approval==='object'&&!Array.isArray(approval)&&Object.keys(approval).sort().join(',')==='date,quotes'&&/^\d{4}-\d{2}-\d{2}$/.test(approval.date)&&quotesOk(approval.quotes),'A per-gate owner approval {"date","quotes"} is required; the 23 November decision approved another gate');
+ return {provenance:DB_UNIT_RECORDED_APPROVAL,originalRunId:runId,candidate,date:approval.date,quotes:approval.quotes.slice()};
+}
+export function validateDbUnitOwnerDecision(decision,{runId,candidate}){
+ if(decision?.provenance===DB_UNIT_BOUND_DECISION){same(decision,DB_UNIT_OWNER_DECISION,'Owner decision must be bound verbatim');assert(runId===decision.originalRunId&&candidate===decision.candidate,'Owner decision approved another gate or candidate');return;}
+ assert(decision?.provenance===DB_UNIT_RECORDED_APPROVAL&&Object.keys(decision).sort().join(',')==='candidate,date,originalRunId,provenance,quotes'&&decision.originalRunId===runId&&decision.candidate===candidate&&/^\d{4}-\d{2}-\d{2}$/.test(decision.date)&&quotesOk(decision.quotes),'Per-gate owner approval missing, altered or for another gate');
+}
 /** Focused runs dispatched with `--ref main|alpha`: head_sha is the ORIGINAL gate's controller, never the candidate. */
 export function validateDbFocusedMetadata({run,jobs,artifacts,expected,now=Date.now()}){
  assert(id(expected.runId)&&run.id===expected.runId&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID,'Foreign focused run');
@@ -68,7 +83,9 @@ export function validateDbUnitHistory({source,rows,candidate,candidateBranch,foc
   // A later full gate on the identical source is not superseding. Refuse only a different source or controller.
   assert(r.title===`Alpha CI · ${candidateBranch}`&&r.workflowId===WORKFLOW_ID&&r.status==='completed'&&r.conclusion==='cancelled'&&r.attempt===1&&r.controller===source.run.head_sha,'Unaccounted, pending, failed or superseding execution: '+r.id);
   assert(plan&&plan.sha===candidate&&plan.controller===source.run.head_sha,'Later gate source differs or is unproven: '+r.id);
-  executions.push({...r,disposition:'LATER_SAME_SOURCE_GATE_CANCELLED_BY_OWNER_NOT_EVIDENCE',sourceSha:plan.sha,planFingerprint:plan.fingerprint});
+  // Review 2026-11-24: a cancelled gate on the identical source may still hold completed failures (contrary evidence).
+  assert(Array.isArray(plan.jobs)&&plan.jobs.length>0&&plan.jobs.every(j=>j.status==='completed'&&j.attempt===1&&(['success','skipped','cancelled'].includes(j.conclusion)||(j.name==='verify'&&j.conclusion==='failure'))),'Later same-source gate holds a failed, timed-out or incomplete job: '+r.id);
+  executions.push({...r,disposition:'LATER_SAME_SOURCE_GATE_CANCELLED_BY_OWNER_NOT_EVIDENCE',sourceSha:plan.sha,planFingerprint:plan.fingerprint,jobConclusions:Object.fromEntries(['success','skipped','cancelled','failure'].map(c=>[c,plan.jobs.filter(j=>j.conclusion===c).length]))});
  }
  for(const n of focusedRunIds)assert(executions.some(e=>e.id===n&&e.disposition==='FOCUSED_DB_UNIT_RECOVERY'),'Declared focused run missing from history: '+n);
  return {kind:'AUTHENTICATED_COMPLETE_DB_UNIT_RECOVERY_HISTORY',sourceRunId:source.run.id,after:source.run.updated_at,executions,overlapping,metadataFingerprint:hash({executions,overlapping})};
@@ -98,7 +115,9 @@ function originalFailedCases(unit,report){
 /** All metadata and archives must first be authenticated by the API/byte adapter. */
 export function verifyDbUnitRecovery({plan,assessment,run,jobs,reports,focused,classifierHash,verificationController,verificationDiagnostic,history,ownerDecision}){
  assert(sha(verificationController)&&verificationDiagnostic?.controller===verificationController&&id(verificationDiagnostic.runId),'Hosted verifier controller diagnostic required');
- same(ownerDecision,DB_UNIT_OWNER_DECISION,'Owner decision must be bound verbatim');
+ // Review 2026-11-24: verify from the exact original gate controller; no unreviewed controller delta is admitted.
+ assert(verificationController===plan.controller&&verificationController===run.head_sha,'Verify from the exact original gate controller checkout');
+ validateDbUnitOwnerDecision(ownerDecision,{runId:run.id,candidate:plan.sha});
  assert(assessment.sourceRun?.id===run.id&&assessment.sha===plan.sha&&assessment.controller===plan.controller&&assessment.baseline===plan.migrationBase&&assessment.fingerprint===plan.fingerprint&&plan.controller===run.head_sha,'Recovery source identity differs');
  assert(run.conclusion==='failure'&&run.status==='completed'&&run.run_attempt===1,'Original failed first attempt must remain failed');
  assert(history?.kind==='AUTHENTICATED_COMPLETE_DB_UNIT_RECOVERY_HISTORY'&&history.sourceRunId===run.id,'Complete branch history required');
@@ -155,9 +174,9 @@ export function verifyDbUnitRecovery({plan,assessment,run,jobs,reports,focused,c
 export function validateDbUnitGrantEvidence(evidence,run){
  const c=evidence.recovery;
  assert(c?.kind===DB_UNIT_RECOVERY_KIND&&c.recoveryPolicy===DB_UNIT_RECOVERY_POLICY&&c.exception===DB_UNIT_RECOVERY_EXCEPTION&&c.fullGatePass===false&&c.originalConclusion==='failure'&&evidence.fingerprint===hash(c),'Authenticated DB-unit recovery certificate required');
- same(c.ownerDecision,DB_UNIT_OWNER_DECISION,'Owner decision missing or altered');
+ validateDbUnitOwnerDecision(c.ownerDecision,{runId:c.runId,candidate:c.sha});
  for(const key of ['sha','controller','verificationController','baseline','runId','policyVersion','suiteFiles','browserFiles','tests'])same(evidence[key],c[key],'Recovery grant identity differs: '+key);
- assert(sha(c.verificationController)&&c.runId===run.id&&c.controller===run.head_sha&&run.conclusion==='failure'&&run.status==='completed'&&run.run_attempt===1&&c.focusedSources?.length>0&&c.focusedSources.every(s=>s.controller===c.controller)&&c.units?.some(u=>u.kind==='db-unit-recovery'),'Original failure/recovery provenance required');
+ assert(sha(c.verificationController)&&c.verificationController===c.controller&&c.runId===run.id&&c.controller===run.head_sha&&run.conclusion==='failure'&&run.status==='completed'&&run.run_attempt===1&&c.focusedSources?.length>0&&c.focusedSources.every(s=>s.controller===c.controller)&&c.units?.some(u=>u.kind==='db-unit-recovery'),'Original failure/recovery provenance required');
  assert(c.verificationDiagnostic?.controller===c.verificationController&&id(c.verificationDiagnostic.runId)&&c.history?.sourceRunId===c.runId,'Verification controller/history missing');
  return true;
 }

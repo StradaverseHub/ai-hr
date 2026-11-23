@@ -157,10 +157,12 @@ async function leasedResumeArrival({candidatePath,runId,execute=false}){
 export function requireOneRecoveryRoute({recoveryRunIds=[],repair=null,browserRecovery=null,dbUnitRecovery=null,buildRecovery=null}){
  if([recoveryRunIds.length>0,repair,browserRecovery,dbUnitRecovery,buildRecovery].filter(Boolean).length>1)throw Error('Choose one explicitly versioned recovery route');
 }
-/** `verify-db-unit-recovery`/`deploy-db-unit-recovery` take exactly {"focusedRunIds":[N,...],"candidateBranch":"..."}; no reuse/evidence-directory injection. */
+/** `verify-db-unit-recovery`/`deploy-db-unit-recovery` take exactly {"focusedRunIds":[N,...],"candidateBranch":"...",
+ * optional "ownerApproval":{"date","quotes"}}; no reuse/evidence-directory injection (review 2026-11-24). */
 export function dbUnitRecoveryOptions(options){
- if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).sort().join(',')!=='candidateBranch,focusedRunIds'||!Array.isArray(options.focusedRunIds)||!options.focusedRunIds.every(n=>Number.isSafeInteger(n)&&n>0)||typeof options.candidateBranch!=='string')throw Error('DB-unit recovery options must be exactly {"focusedRunIds":[N],"candidateBranch":"BRANCH"}');
- return {focusedRunIds:options.focusedRunIds.slice(),candidateBranch:options.candidateBranch};
+ const keys=options&&typeof options==='object'&&!Array.isArray(options)?Object.keys(options).sort().join(','):'';
+ if(!['candidateBranch,focusedRunIds','candidateBranch,focusedRunIds,ownerApproval'].includes(keys)||!Array.isArray(options.focusedRunIds)||!options.focusedRunIds.every(n=>Number.isSafeInteger(n)&&n>0)||typeof options.candidateBranch!=='string')throw Error('DB-unit recovery options must be exactly {"focusedRunIds":[N],"candidateBranch":"BRANCH"} plus an optional "ownerApproval":{"date","quotes"}');
+ return {focusedRunIds:options.focusedRunIds.slice(),candidateBranch:options.candidateBranch,...(keys.endsWith('ownerApproval')?{ownerApproval:options.ownerApproval}:{})};
 }
 export function buildRecoveryOptions(options){
  if(!options||typeof options!=='object'||Array.isArray(options)||Object.keys(options).sort().join(',')!=='buildRunId,candidateBranch'||!Number.isSafeInteger(options.buildRunId)||options.buildRunId<1||typeof options.candidateBranch!=='string')throw Error('Build recovery options must be exactly {"buildRunId":N,"candidateBranch":"BRANCH"}');

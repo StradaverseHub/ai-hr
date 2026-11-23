@@ -69,6 +69,7 @@ const refusals=[
  ['typegen process exit',f=>f.failure.typegenLog=typegenLog.replace('Exit status: 0','Exit status: 2')],
  ['peak RSS budget breach',f=>{const m=f.failure.report.memory;m.peakRssKiB=13200000;m.rssVerdict='fail';f.failure.report.phases[1].peakRssKiB=13200000;f.failure.report.actualCanonicalBuild.peakRssKiB=13200000;f.failure.buildLog=f.failure.buildLog.replace(String(PEAK),'13200000');}],
  ['available memory actually above floor',f=>f.failure.report.memory.minMemAvailableKiB=2000000],
+ ['missing available-memory sample',f=>f.failure.report.memory.minMemAvailableKiB=null],['non-integer available-memory sample',f=>f.failure.report.memory.minMemAvailableKiB=1154660.5],
  ['forged verdict',f=>f.failure.report.memory.rssVerdict='within'],
  ['log peak differs',f=>f.failure.buildLog=f.failure.buildLog.replace(String(PEAK),'1234')],
  ['default heap profile',f=>f.failure.report.memory.heapMb=6144],
@@ -140,7 +141,8 @@ test('The memory floor is proven from the diagnostic, independent of the rest of
  const f=input(),proof=validateMemoryFloorFailure({...f.failure,expected:{candidate:f.p.candidate,controller:f.p.controller,runId:100}});
  assert.equal(proof.error,MEMORY_FLOOR_ERROR);assert.equal(proof.floorKiB,1572864);assert.equal(proof.peakRssKiB,PEAK);assert.match(proof.buildLogSha256,/^[a-f0-9]{64}$/);
  const missing=structuredClone(f.failure);missing.report.memory.minMemAvailableKiB=null;
- assert.equal(validateMemoryFloorFailure({...missing,expected:{candidate:f.p.candidate,controller:f.p.controller,runId:100}}).minMemAvailableKiB,null,'Missing sampled memory is the same reviewed floor failure');
+ // Review 2026-11-24: a missing sample is a telemetry failure, not a proven floor breach.
+ assert.throws(()=>validateMemoryFloorFailure({...missing,expected:{candidate:f.p.candidate,controller:f.p.controller,runId:100}}),/sampled floor breach/);
 });
 test('Grant binds the replacement build run and the certificate keeps the original failed gate',()=>{
  const f=input(),c=compose(f),g=installationFixture(),e={...g.evidence,...c,recovery:c,fingerprint:hash(c),build:{...g.evidence.build,...f.build}};
