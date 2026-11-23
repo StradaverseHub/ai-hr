@@ -139,6 +139,23 @@ export class EmploymentAlreadyInCompanyError extends Error {
   }
 }
 
+/** Board 8f959c7a — a resubmit of a Direct Superior change that is already committed (for example after a
+ * save whose answer never reached the browser). Refused in plain words so nothing is recorded twice. */
+export class DirectSuperiorAlreadySavedError extends Error {
+  constructor(public readonly effectiveDate: string) {
+    super(`This change is already saved: the selected person is already the Direct Superior from ${effectiveDate}. Check Employment History before trying again.`);
+    this.name = 'DirectSuperiorAlreadySavedError';
+  }
+}
+
+/** Board 8f959c7a — the chosen superior already applies on that date (no change to record). */
+export class DirectSuperiorUnchangedError extends Error {
+  constructor() {
+    super('The selected person is already the Direct Superior on that date, so there is nothing to save.');
+    this.name = 'DirectSuperiorUnchangedError';
+  }
+}
+
 export class ReportingCycleError extends Error {
   constructor() {
     super('Reporting line rejected: would create an administrative cycle');
@@ -1560,11 +1577,18 @@ export async function writeDirectSuperiorTx(tx: Tx, ctx: SessionContext, input: 
     or(isNull(reportingLine.validTo), gt(reportingLine.validTo, date)))).limit(2);
   if (current.length > 1) throw new Error('More than one Direct Superior is recorded for this date. Review the reporting history first.');
   const prior = current[0];
+  // A repeat of an amendment that already committed finds its own replacement line in force.
+  if (amendment && prior && prior.id !== input.expectedLineId && prior.managerEmploymentId === managerEmploymentId) {
+    throw new DirectSuperiorAlreadySavedError(prior.validFrom);
+  }
   if (amendment && (prior?.id ?? null) !== input.expectedLineId) {
     throw new Error('The Direct Superior changed after this page opened. Reload and review the assignment.');
   }
   const previousManagerEmploymentId = prior?.managerEmploymentId ?? null;
-  if (managerEmploymentId === previousManagerEmploymentId) throw new Error('Select a different Direct Superior.');
+  if (managerEmploymentId === previousManagerEmploymentId) {
+    if (!amendment && prior && prior.validFrom === date) throw new DirectSuperiorAlreadySavedError(date);
+    throw new DirectSuperiorUnchangedError();
+  }
 
   const [next] = await tx.select({ date: reportingLine.validFrom }).from(reportingLine)
     .where(and(lines, gt(reportingLine.validFrom, date))).orderBy(reportingLine.validFrom).limit(1);

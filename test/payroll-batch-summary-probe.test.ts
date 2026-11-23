@@ -99,7 +99,9 @@ it('reads the exact effective header and visible slip count without exporting di
   expect(actual.state).toEqual(expected.state);expect(actual.runTotal).toBe(1000);
   expect(actual.rows.map(row=>({id:row.id,employmentId:row.employmentId,gross:row.gross,net:row.net,version:row.version})))
    .toEqual(expected.rows.map(row=>({id:row.id,employmentId:row.employmentId,gross:row.gross,net:row.net,version:row.version})));
-  if(kind==='remove')expect(actual.rows.map(({id:_id,version:_v,...row})=>row)).toEqual(expected.rows.map(row=>removeBy.get(row.employmentId)));
+  if(kind==='remove')expect(actual.rows.map(({id:_id,version:_v,stale:_s,...row})=>row)).toEqual(expected.rows.map(row=>removeBy.get(row.employmentId)));
+  // 6aee208b — without a tab the population is the whole run, as before; a cleared run marks nobody stale.
+  expect(actual.tab).toBe('all');expect(actual.rows.every(row=>row.stale===false)).toBe(true);
  }
  for(const q of ['Fictional duplicate','not present','%','_']){
   const actual=await payrollEmployeeSelectionPage(root,{batchId,kind:'reprocess',page:parsePageQuery(),search:q});

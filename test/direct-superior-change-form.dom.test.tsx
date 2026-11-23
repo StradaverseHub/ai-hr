@@ -4,6 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { DirectSuperiorChangeForm } from '../app/admin/personnel/[employmentId]/direct-superior-change-form';
 import messages from '../messages/en.json';
+import type { DirectSuperiorSaveOutcome } from '../app/admin/personnel/[employmentId]/actions';
+
+// 8f959c7a — the card refreshes the page itself after a confirmed save.
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const copy = messages.people.detail;
 const labels = {
@@ -14,13 +18,17 @@ const labels = {
   effectiveDate: copy.movement.columns.effectiveDate,
   cancel: copy.directSuperiorCancel,
   save: copy.directSuperiorSave,
+  uncertain: copy.directSuperiorUncertain,
+  checkHistory: copy.directSuperiorCheckHistory,
+  current: copy.directSuperiorCurrent,
+  none: copy.directSuperiorNone,
 };
 
 function renderForm() {
-  const action = vi.fn(async (_data: FormData) => {});
+  const action = vi.fn(async (_previous: DirectSuperiorSaveOutcome, _data: FormData): Promise<DirectSuperiorSaveOutcome> => ({ status: 'idle' }));
   const rendered = render(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <DirectSuperiorChangeForm action={action} employmentId="employee" currentLineId="line" labels={labels}>
+      <DirectSuperiorChangeForm action={action} employmentId="employee" currentLineId="line" historyHref="/admin/personnel/employee?tab=careerMovement" labels={labels}>
         <input type="hidden" name="superiorEmploymentId" value="new-superior" />
       </DirectSuperiorChangeForm>
     </NextIntlClientProvider>,

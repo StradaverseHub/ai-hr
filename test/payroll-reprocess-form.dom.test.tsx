@@ -66,6 +66,15 @@ const PEOPLE: ReprocessCandidate[] = [
   emp({ employmentId: 'e3', employeeCode: 'T100003', name: 'Raj Kumar', gross: '6250.00', net: '5014.20', reprocessedTimes: 2 }),
 ];
 
+/** 6aee208b — the stale set as `reprocessStaleSelection` returns it: identities, in list order. */
+const staleOf = (ids: string[], withoutPayslip = 0) => ({
+  rows: ids.map((id) => {
+    const p = PEOPLE.find((x) => x.employmentId === id);
+    return { employmentId: id, employeeCode: p?.employeeCode ?? null, name: p?.name ?? 'Off-page ' + id };
+  }),
+  withoutPayslip,
+});
+
 const form = (over: Partial<Parameters<typeof ReprocessForm>[0]> = {}) =>
   wrap(<ReprocessForm batchId="b1" employees={PEOPLE} currency="MYR" {...over} />);
 
@@ -99,7 +108,7 @@ describe('e440991b — the selection screen renders', () => {
   it('arrives with the employments the run marked STALE already ticked (49e7e0a2)', () => {
     // Editing a one-off transaction on a processed run is what produces that list. Making the operator
     // re-derive by hand which people they just changed is how the wrong subset gets reprocessed.
-    form({ preselectedIds: ['e2'] });
+    form({ stale: staleOf(['e2']) });
     const [a, b, c] = boxes();
     expect(a.checked).toBe(false);
     expect(b.checked, 'the stale employment arrived unticked').toBe(true);
@@ -155,7 +164,7 @@ describe('e440991b — the review step restates what will and will not happen', 
 
 describe('e440991b — what the form posts', () => {
   it('posts the ticked employments, the batch and ONE idempotency token', () => {
-    const { container } = form({ preselectedIds: ['e1', 'e3'] });
+    const { container } = form({ stale: staleOf(['e1', 'e3']) });
     const el = container.querySelector('form') as HTMLFormElement;
     const data = new FormData(el);
     expect(data.getAll('employmentIds')).toEqual(['e1', 'e3']);
@@ -285,7 +294,7 @@ describe('fbcf706d — people eligible for the month with no payslip on the run'
   });
 
   it('posts the additions alongside the recalculations, in one id list', () => {
-    const { container } = form({ newCandidates: [add({ employmentId: 'n1' })], preselectedIds: ['e3'] });
+    const { container } = form({ newCandidates: [add({ employmentId: 'n1' })], stale: staleOf(['e3']) });
     const data = new FormData(container.querySelector('form') as HTMLFormElement);
     expect(data.getAll('employmentIds').sort()).toEqual(['e3', 'n1']);
   });
@@ -494,9 +503,9 @@ describe('65e2d5de — Enter cannot submit this form', () => {
 
   it('the search box is inside the reprocess form and the submit becomes live after review', async () => {
     // Both halves matter. Outside the form, Enter would be harmless; with an empty selection the button
-    // would be disabled and the click would do nothing. Neither is true here — `preselectedIds` are the
+    // would be disabled and the click would do nothing. Neither is true here — the `stale` rows are the
     // employments the run itself marked stale, and they arrive ticked.
-    const { container } = form({ preselectedIds: ['e1', 'e3'] });
+    const { container } = form({ stale: staleOf(['e1', 'e3']) });
     expect(screen.getByRole('searchbox').closest('form')).toBe(container.querySelector('form'));
     await checkReady(userEvent.setup());
     expect(submit()).toBeEnabled();
@@ -505,7 +514,7 @@ describe('65e2d5de — Enter cannot submit this form', () => {
   it('typing a name and pressing Enter filters the list and submits NOTHING', async () => {
     const user = userEvent.setup();
     vi.mocked(reprocessSelectedAction).mockClear();
-    const { container } = form({ preselectedIds: ['e1', 'e3'], newCandidates: [add({ employmentId: 'n1' })] });
+    const { container } = form({ stale: staleOf(['e1', 'e3']), newCandidates: [add({ employmentId: 'n1' })] });
     const spy = submitSpy(container);
     await checkReady(user);
 
@@ -522,7 +531,7 @@ describe('65e2d5de — Enter cannot submit this form', () => {
 
   it('Enter on a ticked checkbox does not submit either — the guard is on the form, not the box', async () => {
     const user = userEvent.setup();
-    const { container } = form({ preselectedIds: ['e1'] });
+    const { container } = form({ stale: staleOf(['e1']) });
     const spy = submitSpy(container);
     await checkReady(user);
     const box = boxes()[0]!;
@@ -533,7 +542,7 @@ describe('65e2d5de — Enter cannot submit this form', () => {
 
   it('CONTROL — clicking the submit button still submits, so the cases above are not vacuous', async () => {
     const user = userEvent.setup();
-    const { container } = form({ preselectedIds: ['e1'] });
+    const { container } = form({ stale: staleOf(['e1']) });
     const spy = submitSpy(container);
     await checkReady(user);
     await user.click(submit());
@@ -642,42 +651,158 @@ describe('c3258a72 — the Skipped group', () => {
 });
 
 
-describe('server-paged Reprocess defaults and selection', () => {
-  it('defaults only the initial visible ready rows and preserves exact selection and idempotency on navigation', async () => {
+/**
+ * 6aee208b — "Reprocess Required" selection across pages. The reporter approved: everybody the run marked
+ * stale arrives ticked on EVERY page (this settles the 17 November open assumption that only the first page
+ * was ticked); ready New / Pending keep the first-page rule; Processed / No Change rows are never seeded;
+ * Select this page ADDS; Clear empties; the ticks survive page, size, search and tab changes (all of which
+ * are re-renders of this same mounted form); the review names at most 20 people, then "and N more".
+ */
+describe('6aee208b — server-paged Reprocess defaults and selection', () => {
+  const addition=(id:string):ReprocessAddCandidate=>({employmentId:id,employeeCode:id,name:'New '+id,hiredOn:'2026-01-01',outsideScope:false,blockers:[],warnings:[]});
+  /** A fictional run of 30 payslips: the first 27 (s00..s26) are stale, the last 3 (u0..u2) did not change. */
+  const STALE=Array.from({length:27},(_,i)=>emp({employmentId:'s'+String(i).padStart(2,'0'),employeeCode:'S'+String(i).padStart(4,'0'),name:'Stale person '+String(i).padStart(2,'0'),stale:true}));
+  const UNCHANGED=Array.from({length:3},(_,i)=>emp({employmentId:'u'+i,employeeCode:'U000'+i,name:'Unchanged person '+i}));
+  const staleSet={rows:STALE.map(({employmentId,employeeCode,name})=>({employmentId,employeeCode,name})),withoutPayslip:0};
+  type View={rows:ReprocessCandidate[];total:number;page:number;size?:string;tab:'required'|'unchanged';search?:string;newCandidates?:ReprocessAddCandidate[];stale?:typeof staleSet};
+  const view=(v:View)=>(
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <ReprocessForm key="selection" batchId="b1" employees={v.rows} newCandidates={v.newCandidates??[]} currency="MYR" stale={v.stale??staleSet}
+        paging={{existing:pageState(parsePageQuery({page:String(v.page),size:v.size}),v.total,v.rows.length),
+          additions:pageState(parsePageQuery(),(v.newCandidates??[]).length,(v.newCandidates??[]).length),
+          runTotal:30+(v.newCandidates??[]).length,existingTotal:30,search:v.search??'',
+          tabs:{current:v.tab,counts:{required:27,unchanged:3},hrefs:{required:'/payroll/b1/reprocess?tab=required',unchanged:'/payroll/b1/reprocess?tab=unchanged'}}}} />
+    </NextIntlClientProvider>
+  );
+  const firstPage:View={rows:STALE.slice(0,25),total:27,page:0,tab:'required'};
+  const key=(container:HTMLElement)=>new FormData(container.querySelector('form')!).get('idempotencyKey');
+
+  it('posts every stale employee on arrival — including the two on page 2 — and seeds nobody else', () => {
+    const {container}=render(view({...firstPage,newCandidates:[addition('n1'),{...addition('blocked'),blockers:['missingCompensation']},{...addition('skipped'),skip:'NOTHING_PAYABLE_THIS_PERIOD'}]}));
+    const ids=posted(container);
+    expect(ids).toHaveLength(28);
+    expect(new Set(ids).size,'an employee was posted twice').toBe(28);
+    expect(ids.sort()).toEqual([...STALE.map(e=>e.employmentId),'n1'].sort());
+    // The two stale people beyond the first page are in the submitted set although no row for them is mounted.
+    expect(ids).toContain('s25');expect(ids).toContain('s26');
+    expect(container.querySelector('input[type="checkbox"][value="s26"]')).toBeNull();
+    // Processed / No Change, Skipped and not-ready additions are never ticked for you.
+    for(const id of ['u0','u1','u2','blocked','skipped'])expect(ids).not.toContain(id);
+    expect(screen.getByRole('status').textContent).toContain('All 27 employee(s) needing reprocess are selected, across 2 page(s).');
+    expect(screen.getByRole('status').textContent).toContain('1 other employee(s) are also ticked.');
+  });
+
+  it('the tabs carry their own counts and addresses, and the current one is marked', () => {
+    render(view(firstPage));
+    const tabs=screen.getByRole('navigation',{name:'Employees on this run'});
+    const required=within(tabs).getByRole('link',{name:/Reprocess Required/});
+    const unchanged=within(tabs).getByRole('link',{name:/Processed \/ No Change/});
+    expect(required.textContent).toContain('27');expect(unchanged.textContent).toContain('3');
+    expect(required.getAttribute('aria-current')).toBe('page');expect(unchanged.getAttribute('aria-current')).toBeNull();
+    expect(unchanged.getAttribute('href')).toBe('/payroll/b1/reprocess?tab=unchanged');
+    // Rows on the Reprocess Required tab say so in Status and Reason.
+    const row=document.body.querySelector('tbody tr')!;
+    expect(row.textContent).toContain('Reprocess Required');
+    expect(row.textContent).toContain('changed after the run was processed');
+  });
+
+  it('an untick survives page, rows-per-page, tab and search changes; the token never changes', async () => {
     const user=userEvent.setup();
-    const addition=(id:string):ReprocessAddCandidate=>({employmentId:id,employeeCode:id,name:'New '+id,hiredOn:'2026-01-01',outsideScope:false,blockers:[],warnings:[]});
-    const view=(employees:ReprocessCandidate[],newCandidates:ReprocessAddCandidate[],page:number)=>(
-      <NextIntlClientProvider locale="en" messages={messages}>
-        <ReprocessForm batchId="b1" employees={employees} newCandidates={newCandidates} currency="MYR"
-          preselectedIds={['e1','e3']} paging={{existing:pageState(parsePageQuery({page:String(page)}),3,employees.length),
-          additions:pageState(parsePageQuery({page:String(page)}),3,newCandidates.length),runTotal:6,existingTotal:3,search:''}} />
-      </NextIntlClientProvider>
-    );
-    const {container,rerender}=render(view(PEOPLE.slice(0,1),[addition('n1'),{...addition('blocked'),blockers:['missingCompensation']},{...addition('skipped'),skip:'NOTHING_PAYABLE_THIS_PERIOD'}],0));
-    expect(posted(container).sort()).toEqual(['e1','n1']);
-    const key=()=>new FormData(container.querySelector('form')!).get('idempotencyKey');
-    const initialKey=key();expect(initialKey).toBeTruthy();
-    rerender(view(PEOPLE.slice(1),[addition('n2')],1));
-    expect(screen.getByRole('navigation',{name:'payroll-reprocess-existing'})).toBeInTheDocument();
-    expect(screen.getByRole('navigation',{name:'payroll-reprocess-new'})).toBeInTheDocument();
-    expect(posted(container).sort()).toEqual(['e1','n1']);
-    expect(key()).toBe(initialKey);
-    expect(screen.getByText('2 of 6 selected')).toBeInTheDocument();
-    expect(screen.getByText(/Before you submit/).closest('div')?.textContent).toContain('New n1');
-    // Neither ready arrivals nor an off-page stale id silently join the original reviewed set.
-    expect(boxes().some(b=>b.checked)).toBe(false);
+    const {container,rerender}=render(view(firstPage));
+    const initialKey=key(container);expect(initialKey).toBeTruthy();
+    await user.click(container.querySelector<HTMLInputElement>('input[type="checkbox"][value="s03"]')!);
+    expect(posted(container)).not.toContain('s03');
+    expect(screen.getByRole('status').textContent).toContain('26 of 27 employee(s) needing reprocess are selected, across 2 page(s).');
+    // Page 2 of the same tab.
+    rerender(view({rows:STALE.slice(25),total:27,page:1,tab:'required'}));
+    expect(posted(container)).toHaveLength(26);expect(posted(container)).not.toContain('s03');
+    // 50 rows per page: one page.
+    rerender(view({rows:STALE,total:27,page:0,size:'50',tab:'required'}));
+    expect(container.querySelector<HTMLInputElement>('input[type="checkbox"][value="s03"]')!.checked).toBe(false);
+    expect(screen.getByRole('status').textContent).toContain('across 1 page(s)');
+    // The other tab: its rows arrive unticked, and the stale ticks are still posted.
+    rerender(view({rows:UNCHANGED,total:3,page:0,tab:'unchanged'}));
+    expect(boxes().every(b=>!b.checked)).toBe(true);
+    expect(posted(container)).toHaveLength(26);
+    // A search inside the tab.
+    rerender(view({rows:STALE.slice(3,4),total:1,page:0,tab:'required',search:'Stale person 03'}));
+    expect(boxes()[0]!.checked).toBe(false);
+    expect(posted(container)).toHaveLength(26);
+    expect(key(container)).toBe(initialKey);
+  });
+
+  it('Select this page ADDS the rows shown; Select all again restores the stale set; Clear empties everything', async () => {
+    const user=userEvent.setup();
+    const {container,rerender}=render(view(firstPage));
+    await user.click(screen.getByRole('button',{name:'Clear selection'}));
+    expect(posted(container)).toEqual([]);
+    await user.click(screen.getByRole('button',{name:'Select all 27 again'}));
+    expect(posted(container)).toHaveLength(27);
+    // Untick one, then add the Processed / No Change page by hand: everything already ticked stays.
+    await user.click(container.querySelector<HTMLInputElement>('input[type="checkbox"][value="s00"]')!);
+    rerender(view({rows:UNCHANGED,total:3,page:0,tab:'unchanged'}));
     await user.click(screen.getByRole('button',{name:'Select this page'}));
-    expect(posted(container).sort()).toEqual(['e2','e3']);
-    expect(key()).toBe(initialKey);
+    const ids=posted(container);
+    expect(ids).toHaveLength(29);
+    expect(ids).not.toContain('s00');
+    for(const id of ['u0','u1','u2','s01','s25','s26'])expect(ids).toContain(id);
+    expect(screen.getByRole('status').textContent).toContain('26 of 27');
+    expect(screen.getByRole('status').textContent).toContain('3 other employee(s) are also ticked.');
     await user.click(screen.getByRole('button',{name:'Clear'}));
     expect(posted(container)).toEqual([]);
+    expect(screen.queryByRole('button',{name:'Clear selection'})).not.toBeInTheDocument();
+  });
+
+  it('the review is capped at 20 names, then "and N more", and names who was left out', async () => {
+    const user=userEvent.setup();
+    const {container}=render(view(firstPage));
+    await user.click(container.querySelector<HTMLInputElement>('input[type="checkbox"][value="s03"]')!);
+    const review=screen.getByText(/Before you submit/).closest('div') as HTMLElement;
+    expect(review.textContent).toContain('you are about to reprocess 26 of 30 employee(s)');
+    expect(within(review).getAllByText(/^Stale person \d\d$/)).toHaveLength(20);
+    expect(review.textContent).toContain('and 6 more');
+    expect(review.textContent).toContain('The other 4 payslip(s) are not touched');
+    expect(review.textContent).toContain('1 employee(s) needing reprocess are not ticked');
+    // The tax check and the submit still cover everyone ticked, not just the names shown.
+    await checkReady(user);
+    expect(reviewReprocessTaxAction).toHaveBeenLastCalledWith('b1',expect.arrayContaining(['s26','s25']));
+    expect(posted(container)).toHaveLength(26);
+    expect(submit().textContent).toContain('26');
+  });
+
+  it('a stale person with no payslip is stated separately, so the total reconciles with Payroll Process', () => {
+    render(view({...firstPage,stale:{...staleSet,withoutPayslip:2}}));
+    const line=screen.getByRole('status').textContent!;
+    expect(line).toContain('All 27 employee(s) needing reprocess are selected');
+    expect(line).toContain('2 more employee(s) needing reprocess have no payslip on this run yet; they are listed under New / Pending.');
+  });
+
+  it('a person who becomes stale after arrival is counted, never silently ticked', () => {
+    const {container,rerender}=render(view(firstPage));
+    const later={employmentId:'late',employeeCode:'L0001',name:'Late change'};
+    rerender(view({...firstPage,stale:{rows:[...staleSet.rows,later],withoutPayslip:0}}));
+    expect(posted(container)).not.toContain('late');
+    expect(screen.getByRole('status').textContent).toContain('27 of 28 employee(s) needing reprocess are selected');
+  });
+
+  it('an empty Reprocess Required tab says so instead of claiming the run is empty', () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <ReprocessForm batchId="b1" employees={[]} currency="MYR" stale={{rows:[],withoutPayslip:0}}
+          paging={{existing:pageState(parsePageQuery(),0,0),additions:pageState(parsePageQuery(),0,0),runTotal:3,existingTotal:3,search:'',
+            tabs:{current:'required',counts:{required:0,unchanged:3},hrefs:{required:'?tab=required',unchanged:'?tab=unchanged'}}}} />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText('Nobody on this run needs reprocessing.')).toBeInTheDocument();
+    expect(screen.queryByText('No employees on this run.')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 });
 
 describe('tax readiness review',()=>{
   it('posts only ready employees and keeps the others pending with their specific reasons',async ()=>{
     const user=userEvent.setup();
-    const {container}=form({preselectedIds:['e1','e2','e3']});
+    const {container}=form({stale:staleOf(['e1','e2','e3'])});
     vi.mocked(reviewReprocessTaxAction).mockResolvedValueOnce({ok:true,review:{
       taxReviewHref:'/payroll/income-tax-recalculation',
       employees:[

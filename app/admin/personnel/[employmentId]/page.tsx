@@ -59,6 +59,7 @@ import { PhotoLightbox } from './photo-lightbox';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DateField } from '@/components/ui/date-field';
 import { formatDmy, formatDmyTime } from '@/lib/date-display';
+import { inclusiveSuperiorEnd } from '@/lib/direct-superior-period';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
 // 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Create New Employee wizard.
 import { PersonDetailsFields } from '@/components/person-details-fields';
@@ -3279,6 +3280,10 @@ export default async function EmployeePage({
                 {m.superiorChange && <dl className="mt-1 space-y-1 text-xs font-normal text-muted-foreground">
                   <div><dt className="inline">{t('directSuperiorPrevious')} </dt><dd className="inline">{superiorFactLabel(m.superiorChange.before)}</dd></div>
                   <div><dt className="inline">{t('directSuperiorNext')} </dt><dd className="inline">{superiorFactLabel(m.superiorChange.after)}</dd></div>
+                  {m.superiorPeriod && <div data-superior-period="">
+                    <dt className="inline">{t('directSuperiorPeriodFrom')} </dt><dd className="inline tabular-nums">{formatDmy(m.superiorPeriod.from)}</dd>
+                    {' · '}<dt className="inline">{t('directSuperiorPeriodTo')} </dt><dd className="inline tabular-nums">{m.superiorPeriod.to ? formatDmy(m.superiorPeriod.to) : t('directSuperiorPeriodCurrent')}</dd>
+                  </div>}
                 </dl>}
                 {m.history && (
                   <span className="ml-2 rounded border border-sky-500/50 px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-sky-700 dark:text-sky-400">
@@ -3594,6 +3599,12 @@ export default async function EmployeePage({
           <dd className="font-medium">{superiorFactLabel(movementDetailData.superiorChange.before)}</dd></div>
         <div><dt className="text-muted-foreground">{t('directSuperiorNext')}</dt>
           <dd className="font-medium">{superiorFactLabel(movementDetailData.superiorChange.after)}</dd></div>
+        {movementDetailData.superiorPeriod && <>
+          <div data-superior-period=""><dt className="text-muted-foreground">{t('directSuperiorPeriodFrom')}</dt>
+            <dd className="font-medium tabular-nums">{formatDmy(movementDetailData.superiorPeriod.from)}</dd></div>
+          <div><dt className="text-muted-foreground">{t('directSuperiorPeriodTo')}</dt>
+            <dd className="font-medium tabular-nums">{movementDetailData.superiorPeriod.to ? formatDmy(movementDetailData.superiorPeriod.to) : t('directSuperiorPeriodCurrent')}</dd></div>
+        </>}
       </dl>}
       {movementDetailData.pendingIntent ? (
         <section className="border-t border-border" aria-label={t('movement.detail.scheduledValues')}>
@@ -4494,11 +4505,14 @@ export default async function EmployeePage({
           )}
         </div>
         {!emp.terminatedOn && others.length > 0 && (
-          <DirectSuperiorChangeForm key={currentSuperior?.id ?? 'unassigned'} action={setDirectSuperiorAction}
+          <DirectSuperiorChangeForm action={setDirectSuperiorAction}
             employmentId={emp.employmentId} currentLineId={currentSuperior?.id ?? null}
+            historyHref={`/admin/personnel/${emp.employmentId}?tab=careerMovement`}
             labels={{ title: t('directSuperiorChangeTitle'), amendment: t('directSuperiorAmend'),
               movement: t('directSuperiorMovement'), effectiveDate: t('movement.columns.effectiveDate'),
-              reason: t('directSuperiorReason'), cancel: t('directSuperiorCancel'), save: t('directSuperiorSave') }}>
+              reason: t('directSuperiorReason'), cancel: t('directSuperiorCancel'), save: t('directSuperiorSave'),
+              uncertain: t('directSuperiorUncertain'), checkHistory: t('directSuperiorCheckHistory'),
+              current: t('directSuperiorCurrent'), none: t('directSuperiorNone') }}>
             <div className="sm:col-span-2">
               <PersonnelField fieldId="employment.direct_superior_and_history.superioremploymentid" mode="record">
                 <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'record')}
@@ -4526,7 +4540,8 @@ export default async function EmployeePage({
                     {superiorLabel(h.employeeCode, h.name)}
                   </Link>
                   <span className="text-xs tabular-nums text-muted-foreground">
-                    {formatDmy(h.validFrom)} → {formatDmy(h.validTo)}
+                    {/* 8f959c7a — valid_to is exclusive (the next superior's first day); show the last day served. */}
+                    {formatDmy(h.validFrom)} → {formatDmy(inclusiveSuperiorEnd(h.validTo))}
                   </span>
                 </li>
               ))}
