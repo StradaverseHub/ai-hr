@@ -1104,11 +1104,13 @@ async function measureJobDescriptionEditor({page,user,report,save,db}){
  await assertContentAvailable(page);
  report.jobEditorSteps.push({step:'open-company-editor',elapsedMs:Math.round(performance.now()-editorStarted)});
  if(!jobDescriptionEditorOnly)return;
- report.actionStage='prepare-draft';
  const code='PERF-DRAFT-'+user.role;
  const title='Fictional employment document for '+user.role;
- await main.getByRole('textbox',{name:'Common Job ID / Position ID',exact:true}).fill(code);
- await main.getByRole('textbox',{name:'Job title',exact:true}).fill(title);
+ report.actionStage='fill-job-code';
+ await main.getByRole('textbox',{name:/^Common Job ID \/ Position ID\s*\*?$/}).fill(code,{timeout:15000});
+ report.actionStage='fill-title';
+ await main.getByRole('textbox',{name:/^Job title\s*\*?$/}).fill(title,{timeout:15000});
+ report.actionStage='verify-draft-payload';
  await page.waitForFunction(({code,title})=>{
   const input=document.querySelector('main input[name="payload"]');
   if(!input?.value)return false;
