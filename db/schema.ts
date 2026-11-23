@@ -11853,6 +11853,7 @@ export const payrollTaxBasisPreview=pgTable('payroll_tax_basis_preview',{
 });
 export const payrollTaxBasisBatch=pgTable('payroll_tax_basis_batch',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),previewId:uuid('preview_id').notNull().references(()=>payrollTaxBasisPreview.id),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+ runId:uuid('run_id'),
 },t=>[uniqueIndex('payroll_tax_basis_batch_preview_id_key').on(t.previewId)]);
 export const payrollTaxBasisEvent=pgTable('payroll_tax_basis_event',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),batchId:uuid('batch_id').notNull().references(()=>payrollTaxBasisBatch.id),employmentId:uuid('employment_id').references(()=>employment.id),actorId:uuid('actor_id').notNull().references(()=>appUser.id),kind:text('kind').notNull(),detail:jsonb('detail').notNull(),createdAt:createdAt(),

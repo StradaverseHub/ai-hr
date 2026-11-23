@@ -7,11 +7,13 @@ import {useRouter} from 'next/navigation';
 import {useFormatter,useTranslations} from 'next-intl';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import {formatMoney} from '@/lib/money';
-import type {TaxBasisEmployee,TaxBasisPreview,TaxBasisSelection} from '@/lib/payroll-tax-basis';
+import {taxBasisProgressPercent,type TaxBasisEmployee,type TaxBasisPreview,type TaxBasisSelection} from '@/lib/payroll-tax-basis';
+import {TaxProgressBar,TaxStatePill} from './progress-bar';
 import {queueTaxBasisGroupPreviewAction,queueTaxBasisGroupConfirmationAction,taxBasisGroupProgressAction,searchCurrentTaxBasisEmployeesAction} from './actions';
 import {TaxBasisResults} from './results';
+import {MultiSelectPopover} from '@/components/ui/multi-select-popover';
 
-export type TaxBasisOptions={companies:{id:string;name:string;canRecalculate?:boolean}[];employees:{id:string;companyId:string;employeeNo:string;name:string}[];years:number[];canRecalculate:boolean};
+export type TaxBasisOptions={companies:{id:string;name:string;code?:string|null;canRecalculate?:boolean}[];employees:{id:string;companyId:string;employeeNo:string;name:string}[];years:number[];canRecalculate:boolean};
 const input='mt-1 block w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50';
 const button='inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const primary=button+' border-primary bg-primary text-primary-foreground hover:bg-primary/90';
@@ -56,14 +58,13 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
   const t=useTranslations('payrollTaxBasis'),format=useFormatter(),router=useRouter();
   const refresh=router.refresh;
   const [companyIds,setCompanyIds]=useState(()=>[initialSelection?.companyId??options.companies[0]?.id].filter((id):id is string=>!!id));
-  const [companiesOpen,setCompaniesOpen]=useState(false);
   const [previewJobId,setPreviewJobId]=useState<string|null>(null);
   const [previewCompanies,setPreviewCompanies]=useState<CompanyPreview[]>([]);
   const [resultOffset,setResultOffset]=useState(0);
   const [totalResultEmployees,setTotalResultEmployees]=useState(0);
   const [loadingResultPage,setLoadingResultPage]=useState(false);
   const [job,setJob]=useState<TaxBasisGroupProgressLink|null>(initialGroup??null);
-  const [jobProgress,setJobProgress]=useState<{done:number;total:number;companies:{companyId:string;name:string;state:'pending'|'processing'|'completed'|'failed'}[]}|null>(null);
+  const [jobProgress,setJobProgress]=useState<{active:'pending'|'processing';done:number;total:number;counts:{processed:number;total:number;failures:number}|null;companies:{companyId:string;name:string;state:'pending'|'processing'|'completed'|'failed';processed:number;total:number;failures:number}[]}|null>(null);
   const [companyOutcomes,setCompanyOutcomes]=useState<{companyId:string;companyName:string;id:string|null;error:string|null}[]>([]);
   const [year,setYear]=useState(initialSelection?.year??options.years[0]??0);
   const [upToMonth,setUpToMonth]=useState(initialSelection?.upToMonth??12);
@@ -80,6 +81,8 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
   const [employeePage,setEmployeePage]=useState(0);
   const permittedCompanies=options.companies.filter(company=>company.canRecalculate??options.canRecalculate);
   const namedCompanies=new Map(options.companies.map(company=>[company.id,company.name]));
+  const byId=new Map(options.companies.map(company=>[company.id,company]));
+  const permittedIds=new Set(permittedCompanies.map(company=>company.id));
   const companySet=new Set(companyIds);
   const canRecalculate=companyIds.length>0&&companyIds.every(id=>permittedCompanies.some(company=>company.id===id));
   const employees=[...new Map([...options.employees,...selectedCurrent,...currentMatches]
@@ -115,7 +118,7 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
         if(cancelled)return;
         failures=0;
         const {progress}=result;
-        setJobProgress({done:progress.stepsDone,total:progress.stepsTotal,companies:result.companies??[]});
+        setJobProgress({active:progress.state==='queued'||progress.state==='preparing'?'pending':'processing',done:progress.stepsDone,total:progress.stepsTotal,counts:result.counts??null,companies:result.companies??[]});
         if(progress.state==='completed'){
           if(job.phase==='preview'&&result.previews?.length){
             setPreview(combinePreviews(result.previews,result.employees));
@@ -195,28 +198,14 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
       <fieldset disabled={busy!==null||loadingResultPage} className="space-y-5 disabled:opacity-70">
         <legend id="tax-basis-period-title" className="font-semibold">{t('recalculationPeriod')}</legend>
         <div className="grid gap-4 md:grid-cols-3">
-          <div className="relative text-sm" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setCompaniesOpen(false);}}>
-            <span id="tax-company-label" className="font-medium">{t('company')}</span>
-            <button type="button" aria-labelledby="tax-company-label tax-company-value" aria-expanded={companiesOpen}
-              aria-controls="tax-company-options" className={input+' flex items-center justify-between gap-2 text-left'}
-              onClick={()=>setCompaniesOpen(open=>!open)} onKeyDown={event=>{if(event.key==='Escape')setCompaniesOpen(false);}}>
-              <span id="tax-company-value" className="truncate">{companyIds.map(id=>namedCompanies.get(id)).join(', ')||t('selectCompanies')}</span>
-              <span aria-hidden="true">⌄</span>
-            </button>
-            {companiesOpen&&<div id="tax-company-options" onKeyDown={event=>{if(event.key==='Escape')setCompaniesOpen(false);}}
-              className="absolute inset-x-0 top-full z-10 mt-1 space-y-2 rounded-lg border border-border bg-popover p-3 shadow-md">
-              <div className="flex flex-wrap justify-between gap-2">
-                <button type="button" className="font-medium underline" onClick={()=>changeCompanies(permittedCompanies.map(company=>company.id))} disabled={!permittedCompanies.length}>{t('selectAllCompanies')}</button>
-                <button type="button" className="text-primary underline" onClick={()=>changeCompanies([])}>{t('clearCompanies')}</button>
-              </div>
-              <div className="max-h-52 space-y-1 overflow-y-auto">
-                {options.companies.map(company=><label key={company.id} className="flex items-center gap-2 rounded px-1 py-1.5">
-                  <input type="checkbox" checked={companySet.has(company.id)} disabled={!companySet.has(company.id)&&!permittedCompanies.includes(company)}
-                    onChange={()=>changeCompanies(companySet.has(company.id)?companyIds.filter(id=>id!==company.id):[...companyIds,company.id])}/>
-                  {company.name}
-                </label>)}
-              </div>
-            </div>}
+          <div className="text-sm">
+            <MultiSelectPopover label={t('company')} allLabel={t('selectCompanies')}
+              options={options.companies.map(company=>({id:company.id,name:company.code?company.code+' · '+company.name:company.name}))}
+              selected={companySet} onChange={next=>changeCompanies([...next])}
+              searchPlaceholder={t('searchCompanies')} selectAllLabel={t('selectAllCompanies')} clearAllLabel={t('clearCompanies')}
+              selectedCount={count=>t('companiesSelected',{count})} emptyLabelFor={query=>t('noCompanyMatches',{query})}
+              matchOption={(option,query)=>{const company=byId.get(option.id),q=query.toLocaleLowerCase();return !!company&&(company.name.toLocaleLowerCase().includes(q)||!!company.code?.toLocaleLowerCase().includes(q));}}
+              optionDisabled={option=>!companySet.has(option.id)&&!permittedIds.has(option.id)} selectAllScope="all"/>
           </div>
           <label className="text-sm font-medium" htmlFor="tax-year">{t('year')}<select id="tax-year" disabled={!canRecalculate} className={input} value={year} onChange={event=>{invalidate();setYear(Number(event.target.value));}}>{options.years.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
           <label className="text-sm font-medium" htmlFor="tax-month">{t('upToMonth')}<select id="tax-month" disabled={!canRecalculate} className={input} value={upToMonth} onChange={event=>{invalidate();setUpToMonth(Number(event.target.value));}}>{Array.from({length:12},(_,index)=><option key={index+1} value={index+1}>{t(`months.${index+1}`)}</option>)}</select></label>
@@ -235,15 +224,24 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
         <div className="flex justify-end"><ActionButton guardNavigation={false} aria-busy={busy==='preview'} actionKind="generating" type="button" className={button} onClick={generatePreview} disabled={!canRecalculate||!year||(!all&&includedEmployees.length===0)}>{t(busy==='preview'?'previewing':'previewAction')}</ActionButton></div>
       </fieldset>
     </section>
-    {job&&<div className="space-y-2 rounded-lg border border-border p-4 text-sm">
-      <p role="status">{t(job.phase==='preview'?'previewInBackground':'recalculationInBackground')}</p>
-      {job.phase==='preview'&&!!jobProgress?.total&&<p>{t('previewGroupProgress',{done:jobProgress.done,total:jobProgress.total})}</p>}
-      {!!jobProgress?.companies.length&&<ul className="max-h-60 divide-y divide-border overflow-y-auto">
-        {jobProgress.companies.map(company=><li key={company.companyId} className="flex justify-between gap-3 py-2">
-          <span>{company.name}</span><span>{t(`batchStates.${company.state}`)}</span>
-        </li>)}
-      </ul>}
-    </div>}
+    {job&&<section aria-labelledby="tax-job-title" className="space-y-3 rounded-xl border border-border p-5 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 id="tax-job-title" className="font-semibold">{t(job.phase==='preview'?'previewProgressTitle':'recalculationProgressTitle')}</h2>
+        <TaxStatePill state={jobProgress?.active??'pending'} label={t(`batchStates.${jobProgress?.active??'pending'}`)}/>
+      </div>
+      <TaxProgressBar percent={taxBasisProgressPercent(jobProgress?.counts?.processed??0,jobProgress?.counts?.total??0,false)} state={jobProgress?.active??'pending'} label={t('progressLabel')}/>
+      {!!jobProgress?.counts?.total&&<p>{t('employeesProcessed',{processed:jobProgress.counts.processed,total:jobProgress.counts.total})}{jobProgress.counts.failures>0&&' · '+t('employeesFailedSoFar',{count:jobProgress.counts.failures})}</p>}
+      <p role="status" className="text-xs text-muted-foreground">{t(job.phase==='preview'?'previewInBackground':'recalculationInBackground')}</p>
+      {!!jobProgress?.companies.length&&<div className="max-h-72 overflow-y-auto rounded-lg border border-border"><table className="w-full text-left text-sm">
+        <thead className="bg-muted/50"><tr><th className="p-3 font-medium">{t('company')}</th><th className="p-3 font-medium">{t('employeesColumn')}</th><th className="w-1/3 p-3 font-medium">{t('progressLabel')}</th><th className="p-3 font-medium">{t('status')}</th></tr></thead>
+        <tbody>{jobProgress.companies.map(company=><tr key={company.companyId} className="border-t border-border">
+          <td className="p-3">{company.name}</td>
+          <td className="p-3 tabular-nums">{t('processedOfTotal',{processed:company.processed,total:company.total})}{company.failures>0&&' · '+t('failedCount',{count:company.failures})}</td>
+          <td className="p-3"><TaxProgressBar percent={taxBasisProgressPercent(company.processed,company.total,company.state==='completed')} state={company.state} label={t('companyProgressFor',{company:company.name})}/></td>
+          <td className="p-3"><TaxStatePill state={company.state} label={t(`batchStates.${company.state}`)}/></td>
+        </tr>)}</tbody>
+      </table></div>}
+    </section>}
     {companyOutcomes.length>0&&<section className="space-y-3 rounded-xl border border-border p-5">
       <h2 className="font-semibold">{t('outcomes')}</h2>
       <ul className="divide-y divide-border">{companyOutcomes.map((company,index)=><li key={company.id??company.companyId+':'+index} className="flex flex-wrap justify-between gap-3 py-2 text-sm">
