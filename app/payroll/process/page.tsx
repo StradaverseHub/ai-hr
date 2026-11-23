@@ -7,7 +7,7 @@ import { batchHeader, listBatches } from '@/core/payroll';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
 import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listPayrollConfigs } from '@/core/payroll-config';
-import { listPayrollCycles } from '@/core/payroll-cycle';
+import { listPayrollCyclesForCompanies } from '@/packs/payroll/service';
 import { Wizard, type ResumeBatch } from './wizard';
 // 7076f8af — the draft adjustment panel, rendered HERE (on the server) and handed to the client wizard as
 // a node. See app/payroll/adjustments-panel.tsx for why the panel moved and why it was not deleted.
@@ -107,17 +107,15 @@ export default async function PayrollProcessPage({
 
   const payDayByCompany = Object.fromEntries(payrollConfigs.map((c) => [c.companyId, c.payDay]));
 
-  // ADR-0069: the "Payroll Cycle" dropdown now reads its options from the per-company payroll_cycle
-  // catalog (active only) instead of a hardcoded list. Fetch per scoped company and build a map the
-  // client filters by the selected company. The multiCycle flag still gates non-regular visibility in
-  // step-period.tsx (an admin can pre-configure custom cycles on a flag-off company without risk).
-  // A resumed draft only uses its own cycle options. Keep the original active-scope fence.
+  // Load active cycle options in one scoped read. Preserve the selected-company catalogue
+  // for fresh runs and the draft's company catalogue for resumes.
   const cycleCompanyIds = resumeError ? [] : resumeBatch ? scopeIds.filter(id => id === resumeBatch.companyId) : scopeIds;
-  const cycleLists = await Promise.all(cycleCompanyIds.map((id) => listPayrollCycles(s, id, { activeOnly: true })));
-  const cyclesByCompany: Record<string, CycleOption[]> = {};
-  cycleCompanyIds.forEach((id, i) => {
-    cyclesByCompany[id] = cycleLists[i].map((c) => ({ id: c.id, name: c.name, runType: c.runType, remarks: c.remarks, description: c.description }));
-  });
+  const cyclesByCompany: Record<string, CycleOption[]> = Object.fromEntries(
+    cycleCompanyIds.map(id => [id, []]),
+  );
+  for (const { companyId, id, name, runType, remarks, description } of await listPayrollCyclesForCompanies(s, cycleCompanyIds, { activeOnly: true })) {
+    cyclesByCompany[companyId].push({ id, name, runType, remarks, description });
+  }
 
   // Organization Module (361e3b15): each company's SAVED default cycle name, so the wizard's Step-1 pre-select
   // for the single/primary company loads the stored default (matched by name against the active options) —

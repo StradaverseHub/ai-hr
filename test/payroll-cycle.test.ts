@@ -42,6 +42,7 @@ import {
   deletePayrollCycle,
   getActivePayrollCycle,
   listPayrollCycles,
+  listPayrollCyclesForCompanies,
   seedPayrollCycleCatalog,
   setPayrollCycleActive,
   upsertPayrollCycle,
@@ -410,6 +411,30 @@ describe('payroll cycle master (ADR-0069)', () => {
     await expect(copyPayrollCycleToCompanies(adminA, { id: src, companyIds: [coX.id] })).rejects.toThrow();
     // Nothing was written into the un-administered company.
     expect(await owner.db.select().from(schema.payrollCycle).where(eq(schema.payrollCycle.companyId, coX.id))).toHaveLength(0);
+  });
+
+  it('returns the same ordered active cycles when payroll opens for multiple companies', async () => {
+    const admin = adminCtx(b);
+    const { id: secondCompany } = await createCompany(admin, { legalName: 'Second payroll company' });
+    const { id: outsideCompany } = await createCompany(admin, { legalName: 'Outside the selected payroll scope' });
+    for (const companyId of [b.companyId, secondCompany, outsideCompany]) {
+      await seedPayrollCycleCatalog(admin, companyId);
+    }
+    const { id: archivedId } = await upsertPayrollCycle(admin, {
+      companyId: secondCompany, name: 'Archived bonus', runType: 'bonus',
+    });
+    await setPayrollCycleActive(admin, { id: archivedId, active: false });
+
+    const options = { activeOnly: true };
+    const selectedCompanies = [secondCompany, b.companyId];
+    const batched = await listPayrollCyclesForCompanies(admin, selectedCompanies, options);
+    for (const companyId of selectedCompanies) {
+      expect(batched.filter(row => row.companyId === companyId))
+        .toEqual(await listPayrollCycles(admin, companyId, options));
+    }
+    expect(batched).toHaveLength(DEFAULT_PAYROLL_CYCLES.length * 2);
+    expect(batched.some(row => row.companyId === outsideCompany || row.id === archivedId)).toBe(false);
+    expect(await listPayrollCyclesForCompanies(admin, [], options)).toEqual([]);
   });
 
   it('wizard flag-filter: with multi_cycle_payroll off, only regular-mapped cycles are exposed even when non-regular are active', async () => {
