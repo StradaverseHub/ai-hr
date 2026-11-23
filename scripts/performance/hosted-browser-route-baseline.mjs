@@ -2335,7 +2335,7 @@ const actionLaneByJourney={
  'shell-preview-payroll':'shell','shell-preview-personnel':'shell','shell-preview-claims':'shell','welcome-tour':'shell','assistant-saved-history':'shell','notification-read':'shell',
  'group-company-scope':'workforce','group-lifecycle-menu':'workforce','roster-exceptions':'workforce','daily-attendance-filters':'workforce',
  'job-description-editor-open':'workforce','personnel-switcher':'workforce','org-explorer':'workforce','personnel-movement':'workforce','new-joiners-search':'workforce',
- 'own-released-payslip-detail':'payroll','payroll-history-breakdown':'payroll','payroll-wizard':'payroll','payroll-register-pager':'payroll','payroll-register-boundary':'payroll','payroll-scope-denial':'payroll',
+ 'payroll-process-fresh-open':'payroll','own-released-payslip-detail':'payroll','payroll-history-breakdown':'payroll','payroll-wizard':'payroll','payroll-register-pager':'payroll','payroll-register-boundary':'payroll','payroll-scope-denial':'payroll',
  'approvals-summary-readiness':'approvals','approvals-categories':'approvals','claim-approval':'approvals','saved-report-draft':'approvals',
 };
 
@@ -2399,6 +2399,30 @@ async function measureActions(fixture){
    await options.page.goto(origin+'/admin/personnel',{waitUntil:'domcontentloaded',timeout:15000});
    await exercisePersonnelSwitcher(options);
   },timings:result=>result.personnelSwitcherBrowser?.map(row=>({step:row.step,elapsedMs:row.elapsedMs,usable:row.usable}))},
+  {name:'payroll-process-fresh-open',actorIndex:0,run:async ({page,user,fixture,report,save})=>{
+   assert.equal(user.role,'groupHR');
+   assert(fixture.scaleCompany,'The fresh wizard probe needs the populated group');
+   const from='/payroll?year=2026&m=11';
+   const path='/payroll/process?from='+encodeURIComponent(from);
+   const main=page.locator('main:visible').first();
+   report.payrollProcessFresh=[];
+   for(const pass of ['first','repeat']){
+    report.actionStage='payroll-process-'+pass;
+    const started=performance.now();
+    const remaining=()=>Math.max(1,Math.floor(15000-(performance.now()-started)));
+    const response=await page.goto(origin+path,{waitUntil:'commit',timeout:remaining()});
+    assert.equal(response?.status(),200);
+    assert.equal(new URL(page.url()).pathname,'/payroll/process');
+    await main.getByRole('heading',{name:'Payroll Process',exact:true,level:1}).waitFor({state:'visible',timeout:remaining()});
+    await main.getByRole('checkbox',{name:'All my companies',exact:true}).waitFor({state:'visible',timeout:remaining()});
+    await main.getByText(fixture.scaleCompany.name,{exact:true}).first().waitFor({state:'visible',timeout:remaining()});
+    await main.locator('input[type="month"]').waitFor({state:'visible',timeout:remaining()});
+    await main.getByRole('combobox',{name:'Payroll Cycle',exact:false}).waitFor({state:'visible',timeout:remaining()});
+    await main.locator('a').filter({hasText:'Back'}).and(main.locator('a[href="'+from+'"]')).waitFor({state:'visible',timeout:remaining()});
+    report.payrollProcessFresh.push({step:pass,elapsedMs:Math.round(performance.now()-started)});
+    save();
+   }
+  },timings:result=>result.payrollProcessFresh},
   {name:'payroll-wizard',actorIndex:0,run:exercisePayrollBrowser,
    timings:result=>result.browserPayrollReadiness?.map(row=>({step:row.surface,elapsedMs:row.elapsedMs,usable:row.usable,
     ...(Number.isFinite(row.trace?.expectedEmployeeVisibleMs)&&{continueToReadyMs:row.trace.expectedEmployeeVisibleMs-row.trace.continueStartedMs})}))},
