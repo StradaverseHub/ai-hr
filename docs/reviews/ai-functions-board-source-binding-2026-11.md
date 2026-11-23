@@ -1633,3 +1633,7 @@ The repository owner approved the revised exact fingerprint `4759bfd71e0bb4fdd02
 ## Historical payroll tax replay, 23 November 2026
 
 The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `8e6bae2f57e5285aefa1c85171c29ff4f0d6bee62fa4ce8aa25c6862ca78d3c1`. Historical PCB replay now applies the same zero floor to normal taxable remuneration as live payroll. The provider contracts and their data fields, purposes, endpoints and transports retain their approved scope.
+
+## Transaction View History export and payroll progress busy state, 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `d59277753c90442a37f723340300a0bd29a498abc95f39abbfc32994a743420b` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). The Transaction View History export now prepares its workbook in the background period by period; the payroll run progress panel answers a busy read as retryable instead of unavailable; the locked tax-basis batch opening logs its own durations to the worker journal. No provider transform, outbound field, purpose, endpoint or transport changed.
