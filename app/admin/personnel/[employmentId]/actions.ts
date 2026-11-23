@@ -10,6 +10,9 @@ import { movementImportIssueText } from '@/lib/movement-import-issues';
 import {setEmploymentBlacklist,setEmploymentInfo,setReportingLine} from '@/core/workforce-commands';
 import { publicErrorMessage } from '@/lib/public-error';
 import { amendDirectSuperior } from '@/core/information-correction';
+import { DirectSuperiorAlreadySavedError, DirectSuperiorUnchangedError, ReportingCycleError } from '@/core/org';
+import { reportingLinesFor } from '@/core/read';
+import { formatDmy } from '@/lib/date-display';
 import { isCalendarDate } from '@/lib/calendar-date';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
@@ -768,37 +771,65 @@ export async function correctHireDetailsAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
+/** Board 8f959c7a — the Direct Superior card's typed save outcome. The card renders it beside Save; the
+ * action never redirects, so a confirmed save does not wait on a re-render of the whole personnel page. */
+export type DirectSuperiorSaveOutcome =
+  | { status: 'idle' }
+  | { status: 'saved' | 'refused'; message: string; submissionId: string;
+      current?: { employmentId: string; label: string } | null };
+
 /** Employment delegates dated reassignment and correction to their canonical owners. */
-export async function setDirectSuperiorAction(formData: FormData) {
+export async function setDirectSuperiorAction(_previous: DirectSuperiorSaveOutcome, formData: FormData): Promise<DirectSuperiorSaveOutcome> {
   const session = await requireAdmin();
   const employmentId = String(formData.get('employmentId') ?? '');
-  const href = `/admin/personnel/${encodeURIComponent(employmentId)}?tab=job`;
+  const submissionId = String(formData.get('submissionId') ?? '');
   const mode = formData.get('superiorChangeMode');
   const superior = formData.get('superiorEmploymentId');
   const reason = String(formData.get('reason') ?? '').trim();
   const t = await getTranslations('people.detail');
+  const managerEmploymentId = typeof superior === 'string' ? superior.trim() || null : null;
+  const effectiveDate = String(formData.get('effectiveDate') ?? '').trim();
   try {
     if (typeof superior !== 'string' || (mode !== 'amend' && mode !== 'movement')) {
-      throw new Error(t('directSuperiorChangeTitle'));
+      throw new DirectSuperiorFormRefusal(t('directSuperiorChooseMode'));
     }
-    if (!reason || reason.length > 200) throw new Error(t('directSuperiorReasonRequired'));
-    const managerEmploymentId = superior.trim() || null;
+    if (!reason || reason.length > 200) throw new DirectSuperiorFormRefusal(t('directSuperiorReasonRequired'));
     if (mode === 'amend') {
       await amendDirectSuperior(session, {
         employmentId, managerEmploymentId, reason,
         expectedLineId: String(formData.get('currentLineId') ?? '').trim() || null,
       });
     } else {
-      const effectiveDate = String(formData.get('effectiveDate') ?? '').trim();
-      if (!isCalendarDate(effectiveDate)) throw new Error(t('directSuperiorDateRequired'));
+      if (!isCalendarDate(effectiveDate)) throw new DirectSuperiorFormRefusal(t('directSuperiorDateRequired'));
       await createMovementEvent(session, { employmentId, managerEmploymentId, effectiveDate, remarks: reason,
         kind: 'reportingLineChange' });
     }
   } catch (error) {
-    redirect(`${href}&error=${encodeURIComponent(publicErrorMessage(error))}`);
+    unstable_rethrow(error);
+    return { status: 'refused', submissionId, message: directSuperiorRefusalText(error, t, managerEmploymentId === employmentId) };
   }
-  revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`${href}&toast=Saved`);
+  // The write is committed. Everything below only describes it; a failed read must not turn a saved
+  // change into "failed" (which would invite a second save), so it degrades to the plain confirmation.
+  let current: { employmentId: string; label: string } | null | undefined;
+  try {
+    const line = (await reportingLinesFor(session, employmentId)).managers.find(m => m.lineType === 'administrative');
+    current = line ? { employmentId: line.employmentId, label: line.employeeCode ? `${line.employeeCode} – ${line.name}` : line.name } : null;
+  } catch { current = undefined; }
+  const message = mode === 'movement'
+    ? t('directSuperiorSavedFrom', { date: formatDmy(effectiveDate) })
+    : t('directSuperiorSavedAmend');
+  return { status: 'saved', submissionId, message, ...(current !== undefined ? { current } : {}) };
+}
+
+class DirectSuperiorFormRefusal extends Error {}
+
+/** Plain sentences for the refusals HR can act on; database errors keep their reference sentence. */
+function directSuperiorRefusalText(error: unknown, t: (key: string, values?: Record<string, string>) => string, self: boolean): string {
+  if (error instanceof DirectSuperiorFormRefusal) return error.message;
+  if (error instanceof DirectSuperiorAlreadySavedError) return t('directSuperiorAlreadySaved', { date: formatDmy(error.effectiveDate) });
+  if (error instanceof DirectSuperiorUnchangedError || error instanceof MovementNoChangeError) return t('directSuperiorAlreadyCurrent');
+  if (error instanceof ReportingCycleError) return t(self ? 'directSuperiorSelf' : 'directSuperiorCycle');
+  return publicErrorMessage(error);
 }
 
 /** Hierarchy Management (ADR-0052): create an approval delegation FROM this employment (the delegator
