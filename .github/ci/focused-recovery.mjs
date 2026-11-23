@@ -14,7 +14,7 @@ import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {NEXT_APPLICATION_FAILURE} from './next-application-cache-protocol.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {assessResumeSource} from './resume-source.mjs';
-import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
+import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,focusedRecoveryIdentity} from './focused-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const data=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(data[key]),'Missing API inventory');rows.push(...data[key]);if(data[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
@@ -47,11 +47,13 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
  const verificationDiagnostic=validateRecoveryControllerDiagnostic({run:api(`actions/runs/${diagnosticId}`),jobs:pages(`actions/runs/${diagnosticId}/jobs?filter=all`,'jobs'),controller:verificationController});
  assert(git(candidatePath,'remote','get-url','origin').toLowerCase()==='https://github.com/stradaversehub/ai-hr.git','Unexpected repository');
  execFileSync('git',['merge-base','--is-ancestor',baseline,candidate],{cwd:candidatePath,stdio:'ignore'});
- // Exact-source v1: the build/test controller remains the original canonical candidate. The separately
- // frozen operator verification controller is recorded honestly, never relabelled as that producer.
- const controller=candidate,p={candidate,controller,baseline,runId};
+ // Exact-source v1: candidate and original gate controller are bound separately (fix 2026-11-24; v1 formerly set
+ // controller=candidate and so refused focused runs dispatched with --ref main). The separately frozen operator
+ // verification controller is recorded honestly, never relabelled as that producer.
+ const identity=focusedRecoveryIdentity({candidate,baseline,run:api(`actions/runs/${runId}`)}),{controller,controllerBranch}=identity,p={candidate,controller,baseline,runId};
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`validated-recovery-${runId}-${randomUUID()}`);
  const source=await collect(runId,dir,{reuse,prefetchDirectory:process.env.AIHR_CI_PREFETCH_DIR||undefined});
+ assert(source.run.head_sha===controller&&source.run.head_branch===controllerBranch,'Original gate controller changed during collection');
  const plan=source.parsed.get('gate-plan')?.get('ci-plan.json'),local=createPlan(candidatePath);assert(plan,'Missing original archived plan');
  const {fingerprint:unused,...body}={...local,controller,migrationBase:baseline,runtime:plan.runtime};
  const expectedPlan={...body,fingerprint:hash(body)};
@@ -62,7 +64,7 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
   const sub=join(dir,`focused-${id}`),prefetch=process.env.AIHR_CI_PREFETCH_DIR?join(process.env.AIHR_CI_PREFETCH_DIR,`focused-${id}`):null;
   const f=await collect(id,sub,{reuse,prefetchDirectory:prefetch&&existsSync(prefetch)?prefetch:undefined});
-  const producer=validateFocusedMetadata({...f,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
+  const producer=validateFocusedMetadata({...f,expected:{runId:id,controller,controllerBranch,workflowId:workflow.id,after:source.run.updated_at}});
   const artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json','nodb.vitest.json']),'Exact focused no-DB packet members required');
   focused.push({...f,producer,artifact,report:packet.get('focused.json'),result:packet.get('nodb.vitest.json')});
