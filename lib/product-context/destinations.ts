@@ -317,7 +317,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/payroll/configuration/skbbk','admin','payroll'],['/payroll/configuration/socso','admin','payroll'],['/payroll/control-tower','admin','payroll'],
  ['/payroll/cp39/preview','admin','payroll'],['/payroll/cp8d/preview','admin','payroll'],['/payroll/formula-builder','admin','payroll'],
  ['/payroll/formula-builder/new','admin','payroll'],['/payroll/history-import','admin','payroll'],['/payroll/history-import/logs','admin','payroll'],['/payroll/history-import/records','admin','payroll'],
- ['/payroll/income-tax-recalculation','admin','payroll'],['/payroll/individual-payslip','admin','payroll'],
+ ['/payroll/income-tax-recalculation','admin','payroll'],['/payroll/income-tax-recalculation/history','admin','payroll'],['/payroll/individual-payslip','admin','payroll'],
  ['/payroll/multi-cycle-worksheet','admin','payroll'],['/payroll/payment-submission','admin','payroll'],
  ['/payroll/payslip-information','admin','payroll'],['/payroll/pcb-detail','admin','payroll'],['/payroll/process','admin','payroll'],
  ['/payroll/process/result','admin','payroll'],['/payroll/reconciliation','admin','payroll'],['/payroll/setup','admin','payroll'],['/payroll/setup/correction-controls','admin','payroll'],
