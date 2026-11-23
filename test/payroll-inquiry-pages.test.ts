@@ -6,7 +6,7 @@ import {performance} from 'node:perf_hooks';
 import * as XLSX from 'xlsx';
 import {withTenant} from '../db/client';
 import {runBulkJobTick} from '../core/bulk-job-worker';
-import {enqueueTransactionExport,readTransactionExportJob,readTransactionWorkbookPart,transactionExportJobHandler,transactionWorkbookReceipt} from '../core/payroll-transaction-export';
+import {enqueueTransactionExport,readTransactionExportJob,readTransactionWorkbookPart,transactionExportJobHandler,transactionWorkbookFile,transactionWorkbookReceipt} from '../core/payroll-transaction-export';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import type {SessionContext,Tx} from '../db/client';
@@ -190,6 +190,44 @@ it('filters Processed and Pending reprocessing before LIMIT using the native pay
  expect(processed.total).toBe(1);expect(processed.rows.map(row=>[row.id,row.reprocessRequired])).toEqual([[before.id,false]]);
  expect(reprocess.total).toBe(1);expect(reprocess.rows.map(row=>[row.id,row.reprocessRequired])).toEqual([[after.id,true]]);
  const legacy=await listIndividualTxnsAcross(a,p);expect(new Map(legacy.map(row=>[row.id,row.reprocessRequired]))).toEqual(new Map([[before.id,false],[after.id,true]]));
+});
+
+it('prepares the Transaction History workbook in the background for "All processed payroll"', async()=>{
+ // Production 2026-11-23: this download ran in the web request and failed once the scope passed 5,000 retained
+ // documents. It is now a background workbook with the same sheet.
+ const actor=adminCtx(b),employee=await hire('Fictional History employee');
+ await setCompensation(actor,{employmentId:employee.employmentId,basicSalary:4200,monthlyAllowance:0,effectiveFrom:'2026-01-01'});
+ await setStatutoryProfileMY(actor,{personId:employee.personId,icNumber:'900101011234'});
+ const batch=await createBatch(actor,{companyId:b.companyId,payPeriod:'2026-05'});
+ await generatePayslips(actor,{batchId:batch.batchId});
+ const status={draft:'Draft',processed:'Processed',closed:'Closed'};
+ const {row:{id}}=await enqueueTransactionExport(actor,{kind:'history',scope:'all',filters:{companyIds:[b.companyId]},labels:{
+  title:'Payroll Transaction History',filename:'payroll-transaction-history-all',filterCaption:'All processed payroll',
+  filterDescription:'Company: All',detailNote:'',statusLabels:status,
+  cycleLabels:{regular:'Regular',off_cycle:'Off-cycle',bonus:'Bonus',adjustment:'Adjustment'},
+ }});
+ let job=await readTransactionExportJob(actor,id);
+ for(let i=0;i<20&&!['completed','failed'].includes(job.state);i++){
+  await runBulkJobTick(owner.client,{handlers:[transactionExportJobHandler]});
+  job=await readTransactionExportJob(actor,id);
+ }
+ expect(job.state,job.error ?? '').toBe('completed');
+ const receipt=transactionWorkbookReceipt(job.result);
+ expect(receipt).toMatchObject({kind:'history',rows:1,parts:1,filename:'payroll-transaction-history-all'});
+ expect(transactionWorkbookFile(receipt)).toEqual({name:'payroll-transaction-history-all.xls',contentType:'application/vnd.ms-excel; charset=utf-8'});
+ const content=(await readTransactionWorkbookPart(actor,id,0)).toString('utf8');
+ expect(content.length).toBeGreaterThan(0);
+ expect(content).toContain('Fictional History employee');
+ expect(content).toContain('All processed payroll');
+ expect(content).toContain('>2026-05<');
+ expect(content).toContain('x:num="4200.00"');
+ const stranger={...actor,userId:randomUUID()};
+ await expect(readTransactionWorkbookPart(stranger,id,0)).rejects.toThrow('Workbook unavailable.');
+ // A tampered request naming a company it does not hold is refused before it is queued.
+ await expect(enqueueTransactionExport(actor,{kind:'history',scope:'all',filters:{companyIds:[randomUUID()]},labels:{
+  title:'x',filename:'x',filterCaption:'',filterDescription:'',detailNote:'',statusLabels:status,
+  cycleLabels:{regular:'',off_cycle:'',bonus:'',adjustment:''},
+ }})).rejects.toThrow();
 });
 
 it('publishes a typed private workbook from the background job and scopes each download', async()=>{

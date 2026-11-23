@@ -6,6 +6,9 @@ import { redirect } from 'next/navigation';
 import { BulkJobAuthorityLost } from '@/core/bulk-job-worker';
 import { BulkJobError, BULK_JOB_ALREADY_RUNNING } from '@/core/bulk-job';
 import { enqueueTransactionExport } from '@/core/payroll-transaction-export';
+import {
+  historyWorkbookQuery, type HistoryWorkbookScope, type HistoryWorkbookStrings, type HistoryWorkbookView,
+} from './history-workbook';
 import { isCalendarDate } from '@/lib/calendar-date';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -554,16 +557,63 @@ export default async function TransactionViewPage({
             // own `gridPanelPreserve` above, because its `months` ride as one comma-joined value.
             { tab: 'outstanding', ...periodPreserve };
 
-  // 0fcb2557 — the History tab's Export to Excel. The already scope-guarded filters ride on the "this
-  // view" link; the route re-guards every one of them anyway, so a hand-edited link can never widen the
-  // download past the caller's own companies.
-  const historyExportParams: Record<string, string> = {
-    ...(companyId ? { companyId } : {}),
-    ...(employmentId ? { employmentId } : {}),
-    ...(historyYear != null ? { year: String(historyYear) } : {}),
-    ...(historyMonth != null ? { month: String(historyMonth) } : {}),
-    ...cycleParams,
+  // 0fcb2557 — the History tab's Export to Excel. Production 2026-11-23: both choices are now prepared by the
+  // background workbook job (history-workbook.ts says why). "This view" carries this page's already scope-guarded
+  // filters; "All processed payroll" carries none and takes the companies from the session when it is queued.
+  const historyWorkbookView: HistoryWorkbookView = {
+    companyId,
+    companyName: companyId ? companyNames.get(companyId) ?? null : null,
+    employmentId,
+    employee: selectedEmployee
+      ? { code: selectedEmployee.employeeCode, name: selectedEmployee.name, company: selectedEmployee.company }
+      : null,
+    year: historyYear ?? undefined,
+    month: historyMonth ?? undefined,
+    cycle,
+    payrollCycleId,
+    payrollCycleName: payrollCycleId ? cycles.find((option) => option.id === payrollCycleId)?.name ?? null : null,
   };
+  const historyWorkbookStrings: HistoryWorkbookStrings = {
+    title: t('view.history.exportTitle'),
+    exportCurrent: t('view.history.exportCurrent'),
+    exportAll: t('view.history.exportAll'),
+    detailNote: t('view.history.exportDetailNote'),
+    all: t('view.filters.all'),
+    company: t('view.filters.company'),
+    employee: t('view.filters.employee'),
+    year: t('view.filters.year'),
+    month: t('view.filters.month'),
+    cycle: t('view.filters.cycle'),
+    cycleLabels: {
+      regular: cycleLabels.regular, off_cycle: cycleLabels.off_cycle,
+      bonus: cycleLabels.bonus, adjustment: cycleLabels.adjustment,
+    },
+    statusLabels: { draft: tList('status.draft'), processed: tList('status.processed'), closed: tList('status.closed') },
+  };
+  const historyWorkbooksHref = '/payroll/transaction-view/workbooks?tab=history';
+  async function startHistoryWorkbookExport(formData: FormData) {
+    'use server';
+    const { s: actor, scopeIds: allowed } = await scopedAdmin();
+    const exportScope: HistoryWorkbookScope = formData.get('scope') === 'all' ? 'all' : 'current';
+    // "This view" must not quietly become a wider file: a company that left the caller's scope since the page
+    // rendered refuses rather than falling back to every company.
+    if (!allowed.length ||
+        (exportScope === 'current' && historyWorkbookView.companyId && !allowed.includes(historyWorkbookView.companyId))) {
+      redirect(`${historyWorkbooksHref}&unavailable=1`);
+    }
+    let jobId: string;
+    try {
+      const { row } = await enqueueTransactionExport(
+        actor, historyWorkbookQuery(exportScope, allowed, historyWorkbookView, historyWorkbookStrings),
+      );
+      jobId = row.id;
+    } catch (error) {
+      if (error instanceof BulkJobAuthorityLost) redirect(`${historyWorkbooksHref}&unavailable=1`);
+      if (error instanceof BulkJobError && error.message === BULK_JOB_ALREADY_RUNNING) redirect(historyWorkbooksHref);
+      throw error;
+    }
+    redirect(`${historyWorkbooksHref}&job=${jobId}`);
+  }
   const historyExportChoices: { scope: 'current' | 'all'; label: string; hint: string }[] = [
     { scope: 'current', label: t('view.history.exportCurrent'), hint: t('view.history.exportCurrentHint') },
     { scope: 'all', label: t('view.history.exportAll'), hint: t('view.history.exportAllHint') },
@@ -964,18 +1014,14 @@ export default async function TransactionViewPage({
                   {/* Opens down and to the LEFT (end-0), so a wide panel never pushes the page sideways. */}
                   <div className="absolute end-0 top-full z-20 mt-1 w-80 rounded-md border border-border bg-background p-1 shadow-lg">
                     {historyExportChoices.map((choice) => (
-                      <ExportDownloadLink
-                        key={choice.scope}
-                        href={`/payroll/transaction-view/history-export?${new URLSearchParams(
-                          // "All processed payroll" carries NO filters — the link says what the file is, so a
-                          // saved or shared one cannot quietly turn back into a filtered download.
-                          choice.scope === 'all' ? { scope: 'all' } : { ...historyExportParams, scope: 'current' },
-                        ).toString()}`}
-                        className="block rounded px-3 py-2 transition-colors hover:bg-muted"
-                      >
-                        <span className="block text-sm font-medium text-foreground">{choice.label}</span>
-                        <span className="block text-xs text-muted-foreground">{choice.hint}</span>
-                      </ExportDownloadLink>
+                      // Queues the workbook and opens the Transaction workbooks list, where it downloads when ready.
+                      <form key={choice.scope} action={startHistoryWorkbookExport}>
+                        <input type="hidden" name="scope" value={choice.scope} />
+                        <button type="submit" className="block w-full rounded px-3 py-2 text-start transition-colors hover:bg-muted">
+                          <span className="block text-sm font-medium text-foreground">{choice.label}</span>
+                          <span className="block text-xs text-muted-foreground">{choice.hint}</span>
+                        </button>
+                      </form>
                     ))}
                   </div>
                 </details>

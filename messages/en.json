@@ -8087,6 +8087,7 @@
           "empty": "No workbooks yet.",
           "fixed": "Fixed Transaction",
           "individual": "Individual Transaction",
+          "history": "Transaction History",
           "workbook": "Transaction workbook",
           "failed": "The workbook could not be prepared.",
           "download": "Download Excel",
