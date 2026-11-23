@@ -35624,7 +35624,7 @@
     "waiting": "Menunggu pemproses gaji menyemak sejarah cukai yang disimpan.",
     "failed": "Semakan sejarah cukai pendapatan tidak dapat diselesaikan. Jalankan semakan sekali lagi untuk melihat perkara yang menghalang pemprosesan.",
     "clear": "Semakan tidak menemui sebarang halangan berkaitan sejarah cukai pendapatan bagi draf ini.",
-    "blocked": "{count} pekerja memerlukan semakan sejarah cukai sebelum gaji boleh diproses.",
+    "blocked": "{count, plural, other {# pekerja perlu semakan sejarah cukai}}. Jika anda memproses sekarang, mereka akan ditahan untuk semakan cukai pendapatan dan semua pekerja lain akan diproses.",
     "check": "Semak sejarah cukai",
     "again": "Semak sekali lagi",
     "employee": "Pekerja",

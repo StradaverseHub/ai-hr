@@ -35624,7 +35624,7 @@
     "waiting": "Waiting for the payroll worker to check saved tax history.",
     "failed": "The historical income tax check could not finish. Run the check again to see any blockers.",
     "clear": "The check found no historical income tax blockers for this draft.",
-    "blocked": "{count, plural, one {# employee needs a historical tax review} other {# employees need a historical tax review}} before payroll can run.",
+    "blocked": "{count, plural, one {# employee needs a historical tax review} other {# employees need a historical tax review}}. If you process now, they are held for income tax review and everyone else is processed.",
     "check": "Check tax history",
     "again": "Check again",
     "employee": "Employee",

@@ -35624,7 +35624,7 @@
     "waiting": "Đang chờ hệ thống xử lý lương kiểm tra lịch sử thuế đã lưu.",
     "failed": "Không thể hoàn tất kiểm tra lịch sử thuế thu nhập. Hãy kiểm tra lại để xem các vấn đề đang cản trở việc xử lý.",
     "clear": "Không phát hiện vấn đề về lịch sử thuế thu nhập cản trở việc xử lý bản nháp này.",
-    "blocked": "Cần xem lại lịch sử thuế của {count} nhân viên trước khi xử lý bảng lương.",
+    "blocked": "{count, plural, other {# nhân viên cần xem xét lịch sử thuế}}. Nếu xử lý ngay, họ sẽ bị tạm giữ để xem xét thuế thu nhập và mọi nhân viên khác vẫn được xử lý.",
     "check": "Kiểm tra lịch sử thuế",
     "again": "Kiểm tra lại",
     "employee": "Nhân viên",
