@@ -40,6 +40,11 @@ export async function informationPayslipDocument(tx:Tx,id:string):Promise<Histor
 /** Safety ceiling for an UNCAPPED read (exports, one employee's runs). The database function returns at most one row
  * more than this per company chunk. */
 export const RETAINED_DOCUMENT_CEILING=5000;
+/** The uncapped read's refusal, typed so a slicing caller (the History workbook job) can narrow and retry instead of
+ * matching message text. The message is unchanged. */
+export class RetainedDocumentCeilingError extends Error{
+ constructor(){super('Narrow the payroll period to view retained documents.');this.name='RetainedDocumentCeilingError';}
+}
 /**
  * `limit` — a capped caller (Transaction View's History landing tab) wants only the newest `limit` documents, the
  * same cap its live rows already have. Each company chunk then returns at most `limit` rows in the function's
@@ -56,7 +61,7 @@ export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];y
     ${p.payrollCycleId ? sql`where d.document->'batch'->>'payroll_cycle_id' = ${p.payrollCycleId}` : sql``}
     order by d.ordinal${limit?sql` limit ${limit}`:sql``}`);
   documents.push(...rows.map(r=>r.document));
-  if(!limit&&documents.length>RETAINED_DOCUMENT_CEILING)throw new Error('Narrow the payroll period to view retained documents.');
+  if(!limit&&documents.length>RETAINED_DOCUMENT_CEILING)throw new RetainedDocumentCeilingError();
  }
  return documents;
 }

@@ -306,6 +306,22 @@
       "busy": "The system was busy. Refresh to check the action’s status, then retry if needed. Reference {ref}.",
       "nricDuplicate": "Another employee record already uses this NRIC. Check the number and search for the existing employee record before retrying. Reference {ref}."
     },
+    "databaseErrorReason": {
+      "dateOrder": "The dates entered would make a record end before it starts, so nothing was saved. Check that the effective date is not earlier than the start of the record it changes, such as the current salary, position or assignment. Reference {ref}.",
+      "required": "A required field was left empty, so nothing was saved. Fill in every required field and try again. Reference {ref}.",
+      "textTooLong": "One of the text entries is longer than this field allows, so nothing was saved. Shorten it and try again. Reference {ref}.",
+      "numberOutOfRange": "One of the numbers entered is outside the allowed range (for example negative, or too large), so nothing was saved. Correct it and try again. Reference {ref}.",
+      "invalidDate": "One of the dates is not a real calendar date or is outside the supported range, so nothing was saved. Check the dates and try again. Reference {ref}.",
+      "wrongFormat": "One of the values is in the wrong format, for example letters in a number field, so nothing was saved. Check the entries and try again. Reference {ref}.",
+      "choiceNotAllowed": "One of the options chosen is no longer accepted, so nothing was saved. Reload the page, choose again from the list and try again. Reference {ref}.",
+      "overlap": "This would overlap another record that covers the same dates, so nothing was saved. Change the dates so they do not overlap, or edit the existing record instead. Reference {ref}.",
+      "missingReference": "Something this record points to, such as a company, department, position or employee, no longer exists. Nothing was saved. Reload the page, choose it again and try again. Reference {ref}.",
+      "inUse": "This record is still used by other records, so it cannot be removed. Remove or change those records first. Reference {ref}.",
+      "closedPayroll": "Payroll for this period is already closed, so the records it paid cannot be changed. Nothing was saved. Use a date after the last closed payroll month, or ask payroll to reopen it. Reference {ref}.",
+      "locked": "This record is locked and can no longer be changed, so nothing was saved. Create a new entry instead of editing this one. Reference {ref}.",
+      "changedMeanwhile": "This record was changed by someone else while you were working on it, so nothing was saved. Reload the page and make your change again. Reference {ref}.",
+      "outsideScope": "This record belongs to a company or area you are not allowed to change, so nothing was saved. Ask your administrator if you need access. Reference {ref}."
+    },
     "degraded": {
       "title": "This is taking longer than usual",
       "body": "The page could not finish loading because the system is under heavy demand. It will try again automatically in a moment.",
@@ -1676,6 +1692,7 @@
       "salaryRemarkRequiredError": "This salary record has no basic amount, so Remarks must say why — for example, paid by quarterly director's fees. Payroll will leave this employee out of any month with nothing to pay them.",
       "salaryNegativeError": "Basic salary cannot be a negative amount. Leave it blank or enter 0 for an employee with no basic salary.",
       "salaryNotANumberError": "Basic salary must be a number. Leave it blank or enter 0 for an employee with no basic salary.",
+      "salaryBeforeCurrentRecordError": "The effective date is before this employee's current salary starts on {date}, so nothing was saved. Use a date on or after {date}, or correct the salary history on the Salary tab.",
       "salaryRecording": {
         "title": "Record salary change",
         "choice": "How should this be recorded?",
@@ -6795,7 +6812,8 @@
         "progressCount": "{done} of {total} steps complete",
         "backgroundHelp": "You can leave this page. Employees see nothing until the run is closed, and you get a notice when processing finishes.",
         "waiting": "Waiting for the payroll processing service. Progress is saved; do not process the run again.",
-        "workerUnavailable": "The payroll processing service is not running yet. The run is saved and starts automatically as soon as it is."
+        "workerUnavailable": "The payroll processing service is not running yet. The run is saved and starts automatically as soon as it is.",
+        "busy": "The server is busy with another payroll task. Progress is saved and this panel keeps checking."
       },
       "reprocessJob": {
         "title": "Reprocessing in the background",
@@ -8103,6 +8121,7 @@
           "empty": "No workbooks yet.",
           "fixed": "Fixed Transaction",
           "individual": "Individual Transaction",
+          "history": "Transaction History",
           "workbook": "Transaction workbook",
           "failed": "The workbook could not be prepared.",
           "download": "Download Excel",
