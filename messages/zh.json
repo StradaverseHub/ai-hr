@@ -10642,7 +10642,10 @@
         "confirmed": "等待导入",
         "importing": "正在导入",
         "completed": "已完成",
-        "failed": "失败"
+        "failed": "失败",
+        "stopped": "已停止",
+        "reverting": "正在撤销",
+        "reverted": "已撤销"
       },
       "open": "导入 Excel",
       "log": "导入日志",
@@ -10701,7 +10704,7 @@
       "templateMismatch": "列标题与所选输入方式不符。请使用对应模板，且不要修改标题。",
       "fileTooLarge": "此文件超过 10 MB，即单次上传的上限。请拆分为较小的文件分别上传。",
       "emptyFile": "数据工作表中没有数据行。",
-      "tooManyRows": "此文件包含超过 2,000 笔交易。单次上传最多 2,000 笔。请拆分为较小的文件分别上传。",
+      "tooManyRows": "此文件包含超过 10,000 笔交易。单次上传最多 10,000 笔。请拆分为较小的文件分别上传。",
       "invalidFormat": "请选择 Excel .xlsx 文件。",
       "revertUnavailable": "此批次没有可撤销的已完成导入记录。",
       "importRowsChanged": "导入记录已变更或删除，未撤销任何记录。",
@@ -10714,11 +10717,31 @@
         "validated": "已验证",
         "confirmed": "已确认导入",
         "reverted": "已撤销导入",
-        "revert-refused": "撤销被拒绝"
+        "revert-refused": "撤销被拒绝",
+        "stopped": "导入已停止"
       },
       "inputType": "输入类型",
       "fileTooLargeSize": "此文件大小为 {size} MB。单次上传最多 10 MB。请拆分为较小的文件分别上传。",
-      "contentTooLarge": "交易工作表中的文本超过单次上传可处理的量。请删除未使用的列或过长的备注，或拆分为较小的文件分别上传。"
+      "contentTooLarge": "交易工作表中的文本超过单次上传可处理的量。请删除未使用的列或过长的备注，或拆分为较小的文件分别上传。",
+      "importing": "正在导入",
+      "stopped": "已停止",
+      "reverting": "正在撤销",
+      "rowsDone": "{percent}% · 已完成 {done} / {total} 行",
+      "rowsReverted": "{percent}% · 已移除 {done} / {total} 行已导入记录",
+      "totalRows": "总行数",
+      "importedRows": "已导入",
+      "failedRows": "失败",
+      "remainingRows": "剩余",
+      "leavePage": "您可以离开此页面。导入会继续运行，此日志会自动更新。",
+      "leavePageRevert": "您可以离开此页面。撤销会继续运行，此日志会自动更新。",
+      "stoppedNotice": "此导入在完成前已停止。已导入的 {written} 行保留在薪资中；其余行未导入。撤销可移除已导入的行。",
+      "importStopped": "导入在完成前已停止。已导入的行会保留在薪资中，直到您撤销。",
+      "revertQueued": "撤销已开始。您可以离开此页面；导入日志会显示进度。",
+      "revertPartial": "撤销停止前已移除 {written} 行中的 {reverted} 行。再次撤销可移除其余行。",
+      "pageRows": "第 {from}–{to} 行，共 {total} 行",
+      "previousPage": "上一页",
+      "nextPage": "下一页",
+      "pending": "尚未导入"
     }
   },
   "admin": {

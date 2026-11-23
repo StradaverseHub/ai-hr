@@ -7953,6 +7953,13 @@
       "when": 1795280007110,
       "tag": "7110_payroll_draft_tax_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 10540,
+      "version": "7",
+      "when": 1795280007140,
+      "tag": "7140_payroll_individual_import_steps",
+      "breakpoints": true
     }
   ]
 }

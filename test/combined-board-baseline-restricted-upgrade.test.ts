@@ -52,6 +52,7 @@ const TAX_BASIS_GROUP:Entry={idx:10470,version:'7',when:1795028007070,tag:'7070_
 const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10500,version:'7',when:1795280007100,tag:'7100_payroll_run_company_review',breakpoints:true},
  {idx:10510,version:'7',when:1795280007110,tag:'7110_payroll_draft_tax_readiness',breakpoints:true},
+ {idx:10540,version:'7',when:1795280007140,tag:'7140_payroll_individual_import_steps',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},

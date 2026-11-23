@@ -10642,7 +10642,10 @@
         "confirmed": "Pending import",
         "importing": "Importing",
         "completed": "Completed",
-        "failed": "Failed"
+        "failed": "Failed",
+        "stopped": "Stopped",
+        "reverting": "Reverting",
+        "reverted": "Reverted"
       },
       "open": "Import Excel",
       "log": "Import log",
@@ -10701,7 +10704,7 @@
       "templateMismatch": "The column headings do not match the selected input method. Use its matching template without changing the headings.",
       "fileTooLarge": "This file is larger than 10 MB, the most one upload can be. Split it into smaller uploads.",
       "emptyFile": "The data worksheet contains no rows.",
-      "tooManyRows": "This file has more than 2,000 transactions. One upload can hold at most 2,000. Split it into smaller uploads.",
+      "tooManyRows": "This file has more than 10,000 transactions. One upload can hold at most 10,000. Split it into smaller uploads.",
       "invalidFormat": "Choose an Excel .xlsx file.",
       "revertUnavailable": "This batch has no completed imported records to reverse.",
       "importRowsChanged": "An imported record changed or was removed. Nothing was reversed.",
@@ -10714,11 +10717,31 @@
         "validated": "Validated",
         "confirmed": "Import confirmed",
         "reverted": "Import reverted",
-        "revert-refused": "Reversal refused"
+        "revert-refused": "Reversal refused",
+        "stopped": "Import stopped"
       },
       "inputType": "Input type",
       "fileTooLargeSize": "This file is {size} MB. One upload can be at most 10 MB. Split it into smaller uploads.",
-      "contentTooLarge": "The transaction sheet holds more text than one upload can process. Remove unused columns or long remarks, or split it into smaller uploads."
+      "contentTooLarge": "The transaction sheet holds more text than one upload can process. Remove unused columns or long remarks, or split it into smaller uploads.",
+      "importing": "Importing",
+      "stopped": "Stopped",
+      "reverting": "Reverting",
+      "rowsDone": "{percent}% · {done} of {total} rows done",
+      "rowsReverted": "{percent}% · {done} of {total} imported rows removed",
+      "totalRows": "Total rows",
+      "importedRows": "Imported",
+      "failedRows": "Failed",
+      "remainingRows": "Remaining",
+      "leavePage": "You can leave this page. The import keeps running and this log updates.",
+      "leavePageRevert": "You can leave this page. The revert keeps running and this log updates.",
+      "stoppedNotice": "This import stopped before it finished. {written} rows were imported and stay in payroll; the rest were not imported. Revert removes the imported rows.",
+      "importStopped": "The import stopped before it finished. The rows already imported stay in payroll until you revert them.",
+      "revertQueued": "Revert started. You can leave this page; the Import Log shows its progress.",
+      "revertPartial": "{reverted} of {written} imported rows were removed before the revert stopped. Revert again to remove the rest.",
+      "pageRows": "Rows {from}–{to} of {total}",
+      "previousPage": "Previous",
+      "nextPage": "Next",
+      "pending": "Not yet imported"
     }
   },
   "admin": {

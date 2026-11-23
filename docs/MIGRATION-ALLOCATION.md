@@ -1,3 +1,18 @@
+# Individual Transaction import written in steps (board 0ec0ee00, stage 2), 23 November 2026
+
+Reserve `7140_payroll_individual_import_steps`, journal index `10540`, timestamp `1795280007140`,
+SQL SHA-256 `785f6779c0b12b0d61ae7119b337e5786a731b6a10a9b8f210c397701294d921`. `7120` and `7130` (idx `10520`–`10530`) are
+pending in another session's release (`origin/claude/combined-a16382b4-pr269-20261123-r4`); this branch skips those
+indexes and is reconciled with them at integration. The timestamp is above every entry on this branch's journal
+(`1795280007110`). Recheck both installations' watermarks and competing reservations before admission.
+
+Raises the Individual Transaction attempt and queue limits from 2,000 to 10,000 rows, adds the importing, stopped,
+reverting and reverted states with a replacement transition trigger, summary and revert-progress columns, the
+append-only `payroll_txn_import_outcome` table (RLS forced, `ai_hr_app` SELECT and INSERT only), the step-scoped
+`app.payroll_txn_import_lock_step_bindings` and the bounded `app.payroll_individual_import_request_revert`. Existing
+rows are not rewritten; the looser records CHECK is added NOT VALID and validated separately. The Fixed Transaction
+import does not use these tables.
+
 # Draft payroll historical tax readiness, 22 November 2026
 
 Reserve `7110_payroll_draft_tax_readiness`, journal index `10510`, timestamp `1795280007110`,

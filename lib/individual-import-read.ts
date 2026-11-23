@@ -12,7 +12,7 @@
  *   emptyFile        the transaction sheet has no rows
  *   fileReadError    anything else that stops the workbook being read
  */
-import {INDIVIDUAL_IMPORT_MAX_BYTES, INDIVIDUAL_IMPORT_MAX_CSV_BYTES, INDIVIDUAL_IMPORT_MAX_RECORDS} from './individual-import-job';
+import {INDIVIDUAL_IMPORT_MAX_BYTES, INDIVIDUAL_IMPORT_MAX_CELLS, INDIVIDUAL_IMPORT_MAX_CSV_BYTES, INDIVIDUAL_IMPORT_MAX_RECORDS} from './individual-import-job';
 import {INDIVIDUAL_IMPORT_SHEET, type IndividualImportMethod} from './payroll-txn-import-schema';
 
 export type IndividualImportReadError = 'fileTooLarge' | 'tooManyRows' | 'contentTooLarge' | 'emptyFile' | 'fileReadError' | 'invalidFormat';
@@ -30,7 +30,7 @@ export async function readIndividualImportWorkbook(bytes: Uint8Array, name: stri
   try {
     // Header row + the record limit, + 1 so one row over the limit is seen and refused as tooManyRows.
     ({first: text} = await workbookToCsvTexts(bytes, [], false, undefined, false, false,
-      {maxRows: INDIVIDUAL_IMPORT_MAX_RECORDS + 1, maxCells: 100_000, sheet: INDIVIDUAL_IMPORT_SHEET[method]}));
+      {maxRows: INDIVIDUAL_IMPORT_MAX_RECORDS + 1, maxCells: INDIVIDUAL_IMPORT_MAX_CELLS, sheet: INDIVIDUAL_IMPORT_SHEET[method]}));
   } catch (error) {
     const message = (error as Error)?.message;
     throw new IndividualImportReadFailure(message === 'TOO_MANY_ROWS' ? 'tooManyRows' : message === 'FILE_TOO_LARGE' ? 'contentTooLarge'

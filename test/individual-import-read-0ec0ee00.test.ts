@@ -53,7 +53,8 @@ describe('Individual Transaction upload reader (0ec0ee00)', () => {
   it('accepts exactly the record limit and refuses one more as too many rows, not too large', async () => {
     expect(await code(readIndividualImportWorkbook(await workbook(10, INDIVIDUAL_IMPORT_MAX_RECORDS), 't.xlsx', 'monthly'))).toBe('accepted');
     expect(await code(readIndividualImportWorkbook(await workbook(10, INDIVIDUAL_IMPORT_MAX_RECORDS + 1), 't.xlsx', 'monthly'))).toBe('tooManyRows');
-  });
+    // Stage 2 raised the limit to 10,000 rows: two full workbooks are built and read here (not yet measured on the gate).
+  }, 120_000);
 
   it('keeps a separate refusal for each cause', async () => {
     expect(await code(readIndividualImportWorkbook(new Uint8Array(INDIVIDUAL_IMPORT_MAX_BYTES + 1), 't.xlsx', 'monthly'))).toBe('fileTooLarge');
