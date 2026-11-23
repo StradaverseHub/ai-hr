@@ -1,0 +1,79 @@
+VERDICT: Not built yet   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+When HR presses Process for a company, the system checks every employee's income tax history first. If even one employee has an unresolved income tax issue, the whole company is marked Failed and nobody is processed. In your example, 2 employees out of 159 needed attention, so 157 employees with nothing wrong were stopped as well.
+
+WHAT WE'LL CHANGE
+
+- When you press Process, employees with an income tax issue are set aside ("held for income tax review") and everyone else is processed as normal.
+
+- The result screen will show three numbers for each company: processed, held for income tax review, and failed. If the only problem in a company is held employees, it is shown as Partly processed, not Failed.
+
+- Under the summary, a new list names each held employee: employee number, name, the month with the problem, and the reason in plain words, with a link straight to Recalculate Income Tax Value for that company and month.
+
+- The payroll run page will keep a clear notice ("2 employees held for income tax review - not yet in this payroll") until they are dealt with, so nobody forgets them.
+
+- After HR fixes and applies the corrections in Recalculate Income Tax Value, a Process held employees button on the run page opens the existing Reprocess screen with those employees already selected. Only they are calculated and added to the same payroll run. The 157 already processed are not touched, recalculated or duplicated.
+
+- If an employee is still not ready when you try again, they stay held and the reason is shown again.
+
+- Their approved claims and loan instalments wait for them. They are not pushed to next month or marked as deducted while the employee is held.
+
+- As today, the month cannot be closed while any employee in the run is still not processed. The close message will now say which employees are held for income tax review. If you decide an employee should not be paid in this run, the existing Remove employee action still works.
+
+WHAT YOU'LL GET
+
+One or two employees with an income tax problem no longer hold up the whole company. The others are paid on time, the held employees are clearly listed with the reason, and they can be added to the same payroll once their tax history is fixed.
+
+GOOD TO KNOW
+
+- We're not changing how income tax (PCB) is calculated, how history is checked, or what counts as a genuine issue. Missing tax information is still never treated as zero. Employees with real issues are still held; they're just no longer holding everyone else up.
+
+- Approval, validation and finalisation stay exactly as they are today.
+
+- This only covers income tax history issues. Other checks that stop a whole company today (for example an employee with no salary record) stay as they are. If you want those handled the same way, please raise it as a separate request.
+
+- The draft payroll screen already shows the employees with income tax issues before you press Process. That stays, so you can still fix them first if you prefer.
+
+- Each held employee is shown only to people who are already allowed to see that company's payroll. The tax details are only shown to people allowed to review income tax.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Today: the processing job (core/payroll-processing-job.ts) runs generatePayslipsTx per employee chunk. readEffectiveTaxBasesTx (core/payroll-tax-basis-read.ts) throws PayrollTaxBasisError ("Imported wage inputs require review for YYYY-MM...") for the first affected employee, the job fails and discards the whole run, and the run group records IMPORTED_TAX_HISTORY_REVIEW_REQUIRED for the company (core/payroll-run-group-result.ts, core/payroll-run-group-store.ts). The per-employee detector already exists: readTaxBasisFailureDetailsTx and the draft tax readiness job (core/payroll-draft-tax-readiness.ts, commit 75ffbf7dc). An adversarial code review shaped this plan; its verified findings are folded in below.
+
+Invariant: a held employee added later must get exactly the figures, claims, loans and one-off items they would have had if they had been in the original run. The employees already processed must stay unchanged.
+
+1. Hold-check steps. Add hold-check steps to the processing job, as their own bounded steps after begin, mirroring the draft readiness job: lockPayrollHistoryReadTx, about 24 employees per step, set-based reads. Do not put this inline in the single prepare transaction. Never take the exclusive Access lock (docs/SCALE-AND-RELEASE-RULES.md). Check the prior-month prefix (includeImported). When runType is not regular, runSeq > 1 or the employee has outstanding payments, also check the same-month earlier-cycle prefix, including employees taken from earlier runs. Remove held employments from the later employee steps. Record them in the plan as {employmentId, period, reason}. Only failures from the historical tax-basis reader qualify. Every other error keeps today's whole-run failure and discard.
+
+2. Make the chunk read employee-local. At core/payroll.ts about line 5395, the earlier-cycle tax read is narrowed to the chunk's employees only for subset. Narrow it to empIds for processing chunks too, so that one bad earlier-run payslip cannot fail every chunk. Prove the figures stay identical with a parity test. PayrollTaxBasisError has no employmentId and is thrown from about 25 sites. Only the readEffectiveTaxBasesTx history reads at about lines 5170 and 5395 are holdable. Sites such as 5416 and 5429 (outstanding-payment ownership) keep failing the run. A late hold found inside a chunk (history changed after the hold check) re-runs that chunk one employee at a time under savepoints and holds only the failing employee.
+
+3. Claims and loans. completeFullGenerationTx requeues claims of unpaid employees (about lines 9084-9093). applyLoansForBatch applies every reservation (about 9064; core/loans.ts about 498-514). Exclude held employees from both, so their claims and loan reservations stay attached to the run. Otherwise the later add throws ReprocessAddClaimUnreconciledError or ReprocessAddLoanUnreconciledError, which employeeReprocessValidation does not map, and the whole reprocess stops. One-off transactions are already fine: begin attaches them and only paid employees consume them. Overtime prefill: treat held employees like planned-but-not-yet-calculated employees, not like excluded ones, so the later add sees the same inputs. Check the excludeEmploymentIds handling at about line 1265.
+
+4. Durable record without a new column. Write the hold reasons on the payroll-batch.processed event only; it is immutable. The live held list is the event's held ids that are still period-eligible with no payslip (listPayslipLessEligibleTx, the same source close uses). That makes added or removed employees drop off the list with no extra writes. Do not reuse PayrollSkipReason or listSkippedEmployees: skip means nothing is owed. Totals and headcount cover processed employees only. No change to existing records.
+
+5. Run group result. Add employeesHeldForTax to CompanyOutcome and totalEmployeesHeldForTax to RunGroupResult. summarize counts held apart from failed, like r226 skipped. overallStatusOf returns partial when any company has held employees; the company status reads Partly processed. Keep old payloads decodable. app/payroll/process/result/page.tsx reads names from the event (as listSkippedEmployees does), never from the redirect (r227 size limit). Paged.
+
+6. Held list and permissions. Show employee code, name, period and plain-language reason. Reasons and the Recalculate Income Tax Value link (company, year, month) appear only with payroll.tax-basis.view. Other readers see the name and "income tax history needs review". Reuse historicalTaxForPeriod and openIncomeTaxRecalculation; add new keys in all six locales.
+
+7. Process held employees reuses Reprocess. The run-page banner on app/payroll/[batchId] deep-links to app/payroll/[batchId]/reprocess with the live held ids pre-selected in the existing New / Pending group (payslipLessEligibleWithSkipPage, reprocess-form.tsx). reviewReprocessTaxReadiness already re-checks each one and shows the reason and link. enqueueSelectiveReprocess already adds them (classification added, reprocessRunMembersTx accepts payslip-less eligible employees) and keeps heldEmploymentIds for those still blocked. Do not build a parallel flow.
+
+8. Module gate. The add path, the Reprocess page (notFound at about reprocess/page.tsx:122), reviewReprocessTaxReadiness (about 10743) and enqueueSelectiveReprocess (about 10823) all require multi_cycle_payroll. Without it, held employees would block close and could not be added, so the only way out would be a full reset. This exemption is mandatory. When the module is off, admit exactly the live held ids of a processed regular run (add only, behind payroll.reprocess.selective). All other gates are unchanged: processed status, period not closed, ADR-0085 filed guard, ReprocessAddBlockedError, PayrollCounterpartClosedError. Removing an employee keeps its current gate unless the same narrow exemption is needed for Remove employee on a held id; verify around line 11448.
+
+9. Close. closePendingEmployeesTx (core/payroll.ts about 9582) already refuses to close a regular run with eligible payslip-less employees (BatchHasPendingEmployeesError). Keep that. Add the held-for-tax reason to the blocking rows and the message. Additional runs skip this check by design (r226). For them, add the event's live held ids to the blocking set, so a held employee who is owed money cannot be closed past silently.
+
+10. Tests (focused, GitHub Actions alpha-focused-checks). Use fictional fixtures.
+- A 3-employee run where 1 employee has an unreviewed import source: 2 payslips, 1 held, no discard, company Partly processed. The held employee has no payslip; their claim and loan are still reserved.
+- Any other error type still discards the whole run.
+- An earlier-run payslip issue for a non-member no longer fails every chunk.
+- Fix the tax basis, then add through Reprocess: 3 payslips. The 2 originals keep identical versions and totals. The added payslip equals the payslip from a control run with no hold, including claim, loan and one-off lines.
+- Adding twice does not duplicate.
+- Close is refused while a held employee is outstanding, and allowed after the add or after Remove employee.
+- Module off: the exemption admits only held ids.
+- Permission split for reasons and links; old payloads still decode.
+- Add the inventory tests (capability, route-loading, nav catalogue) per the release-pitfalls note.
+- Rendered check of the result, run and Reprocess pages.
+
+11. Docs. Amend ADR-0167 and docs/architecture/HISTORICAL-TAX-BASIS-CORRECTIONS.md with a dated note: a historical-tax hold now isolates the employee from a processing run instead of failing the company. Hold criteria and statutory rules are unchanged.
