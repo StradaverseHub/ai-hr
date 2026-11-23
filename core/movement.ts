@@ -1,4 +1,4 @@
-import { assertDirectSuperiorCandidateTx, writeDirectSuperiorTx } from './org';
+import { assertDirectSuperiorCandidateTx, writeDirectSuperiorTx, DirectSuperiorAlreadySavedError, DirectSuperiorUnchangedError } from './org';
 import { alignedInformationDateSql, withAlignedInformationDate } from './information-correction-date';
 import {readMovementHistoryPayTx} from './movement-history-pay';
 import {movementGradeEvidence} from '../lib/movement-grade-evidence';
@@ -9,6 +9,7 @@ import {historyInformationField, isMovementHistoryDateField} from '../lib/moveme
 import type {HistoryDateFacts} from './movement-history';
 import {originalHireDecisionPreimage,movementInformationEvidence,type MovementInformationField,type MovementInformationFact} from '../lib/movement-information-evidence';
 import {conflictingMovementFields} from '../lib/movement-sequence-conflict';
+import {directSuperiorPeriodOf,type DirectSuperiorLine,type DirectSuperiorPeriod} from '../lib/direct-superior-period';
 import {employmentPaymentMethodOnTx} from './employment-payment-method';
 import {PAYMENT_METHODS,type PaymentMethod} from '../lib/payment-methods';
 import {assertMovementDeleteTx} from './movement-delete-access';
@@ -344,6 +345,8 @@ export type MovementHistoryRow = {
   /** Board 511aa74a — on a Rehired row only: the previous period it started from, as recorded on the event. */
   rehiredFrom?: { employmentId: string; employeeCode: string | null } | null;
   superiorChange?: SuperiorChange;
+  /** Board 8f959c7a — applied Direct Superior rows only: From and inclusive To (null = current). */
+  superiorPeriod?: DirectSuperiorPeriod;
 };
 
 /**
@@ -442,6 +445,7 @@ export type MovementDetail = {
   }[];
   row: MovementRowSummary;
   superiorChange?: SuperiorChange;
+  superiorPeriod?: DirectSuperiorPeriod;
   recordedResignation?:MovementRecordedResignation|null;
   /** Full name of the user who recorded the change; null for SYSTEM/import writes and the synthesized row. */
   actorName: string | null;
@@ -1290,6 +1294,14 @@ function reportingReferencesByEvent(events: RawEvent[]): Map<string, SuperiorRef
   return references;
 }
 
+/** Board 8f959c7a — the dated superior timeline (single owner) in one bounded per-employee read. */
+async function directSuperiorLinesTx(tx: Tx, tenantId: string, employmentId: string): Promise<DirectSuperiorLine[]> {
+  return tx.select({ validFrom: reportingLine.validFrom, validTo: reportingLine.validTo }).from(reportingLine)
+    .where(and(eq(reportingLine.tenantId, tenantId), eq(reportingLine.subordinateEmploymentId, employmentId),
+      eq(reportingLine.lineType, 'administrative'), isNull(reportingLine.supersededAt)))
+    .orderBy(asc(reportingLine.validFrom));
+}
+
 /** Resolve historic references in one scoped read. A restricted name is distinct from an absent assignment. */
 async function superiorChangeLabelsTx(tx: Tx, tenantId: string, references: SuperiorReferences[]) {
   const ids = [...new Set(references.flatMap(ref => [ref.before, ref.after])
@@ -1888,6 +1900,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       if (reference) superiorByRow.set(row.id, reference);
     }
     const superiorLabels = await superiorChangeLabelsTx(tx, ctx.tenantId, [...superiorByRow.values()]);
+    const superiorLines = superiorByRow.size ? await directSuperiorLinesTx(tx, ctx.tenantId, employmentId) : [];
     const movements: MovementHistoryRow[] = rows.map((r) => {
       const primaryEvent = eventsById.get(r.id);
       const g = r.groupId ? eventsByGroup.get(r.groupId) ?? [] : primaryEvent ? [primaryEvent] : [];
@@ -1928,7 +1941,8 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
         remarks: r.remarks,
         reversed: r.reversed,
         correctionKind:recordedMovementKind(r,g),
-        ...(superiorReference ? { superiorChange: superiorLabels(superiorReference) } : {}),
+        ...(superiorReference ? { superiorChange: superiorLabels(superiorReference),
+          ...(status === 'applied' && !r.reversed ? { superiorPeriod: directSuperiorPeriodOf(superiorLines, r.effectiveDate) } : {}) } : {}),
         ...(r.history?{history:true}:{}),
         canEdit: c.canEdit && !terminal,
         canReverse: c.canReverse && (!terminal||cancellableConflict),
@@ -2289,6 +2303,8 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
       ? reportingReferencesByEvent(events) : null;
     const reference = references && [...group].reverse().map(event => references.get(event.id)).find(Boolean);
     const superiorChange = reference ? (await superiorChangeLabelsTx(tx, ctx.tenantId, [reference]))(reference) : undefined;
+    const superiorPeriod = reference && statusOf(row) === 'applied' && !row.reversed
+      ? directSuperiorPeriodOf(await directSuperiorLinesTx(tx, ctx.tenantId, employmentId), row.effectiveDate) : undefined;
     const seqs = group.length ? group.map((e) => e.sequence) : [row.sequence];
     const afterBound = Math.max(...seqs);
     const beforeBound = Math.min(...seqs);
@@ -2385,6 +2401,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
       }))].sort()}}:{}),
       actorName,
       superiorChange,
+      ...(superiorPeriod ? { superiorPeriod } : {}),
       recordedResignation:ev?movementRecordedResignationOf(ev):null,
       occurredAt: row.occurredAt,
       before,
@@ -3724,6 +3741,9 @@ export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovemen
 export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,options?:{captureGradeBefore?:boolean}){
   rawInput = { ...rawInput };
   await assertWorkforceEmploymentTx(tx,ctx,rawInput.employmentId,'maintain');
+  // Board 8f959c7a — after authorization and before any replay planning: a resubmit of a committed
+  // Direct Superior change is refused in plain words, never recorded twice.
+  if (rawInput.kind === 'reportingLineChange') await refuseRepeatedDirectSuperiorChangeTx(tx, ctx, rawInput);
   // The tenant catalogue resolves custom codes to their actual effect. Own configuration before
   // that resolution and before current-state planning, not merely when the termination leg writes.
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
@@ -3734,6 +3754,7 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
     if(isComparisonKind(resolved.kind)){
       await lockMovementSubjectTx(tx,resolved.employmentId);
       const delta=movementDeltas(resolved,await currentStateTx(tx,resolved.employmentId,resolved.effectiveDate));
+      if(resolved.kind==='reportingLineChange'&&!delta.fields.includes('managerEmploymentId'))throw new DirectSuperiorUnchangedError();
       await assertMovementDateOrderTx(tx,ctx,resolved,delta.fields);
     }
   }
@@ -3746,6 +3767,31 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
     }
   }
   return dispatchMovementEventTx(tx,ctx,rawInput,undefined,undefined,options?.captureGradeBefore);
+}
+
+/** Board 8f959c7a — the same Direct Superior change, already recorded for the same Effective Date.
+ * Applied dates read the single dated owner (reporting_line); future dates read the pending ledger row. */
+async function refuseRepeatedDirectSuperiorChangeTx(tx:Tx,ctx:SessionContext,p:CreateMovementInput){
+  if(p.managerEmploymentId===undefined||!isCalendarDate(p.effectiveDate))return;
+  const manager=p.managerEmploymentId||null,date=p.effectiveDate;
+  if(date<=todayInKualaLumpur()){
+    const lines=await tx.select({managerEmploymentId:reportingLine.managerEmploymentId,validFrom:reportingLine.validFrom,validTo:reportingLine.validTo})
+      .from(reportingLine).where(and(eq(reportingLine.tenantId,ctx.tenantId),eq(reportingLine.subordinateEmploymentId,p.employmentId),
+        eq(reportingLine.lineType,'administrative'),isNull(reportingLine.supersededAt),
+        sql`(${reportingLine.validFrom}=${date} or ${reportingLine.validTo}=${date})`,
+        sql`(${reportingLine.validTo} is null or ${reportingLine.validTo} > ${reportingLine.validFrom})`));
+    const starting=lines.find(line=>line.validFrom===date);
+    if(manager?starting?.managerEmploymentId===manager:!starting&&lines.some(line=>line.validTo===date))throw new DirectSuperiorAlreadySavedError(date);
+    return;
+  }
+  const {events,rows,statusOf,resolvedTypes}=await projectRows(tx,ctx.tenantId,p.employmentId);
+  for(const row of rows){
+    if(!row.scheduled||row.effectiveDate!==date||statusOf(row)!=='pending')continue;
+    const group=groupEventsOf(events,row);
+    if(resolvedTypes.get(recordedMovementKind(row,group))?.behaviourKind!=='reportingLineChange')continue;
+    const intent=events.find(event=>event.id===row.id)?.payload as {input?:{managerEmploymentId?:string|null}}|undefined;
+    if(intent?.input&&Object.hasOwn(intent.input,'managerEmploymentId')&&(intent.input.managerEmploymentId||null)===manager)throw new DirectSuperiorAlreadySavedError(date);
+  }
 }
 
 /** Only an assignment/company input can require dated organisation normalization.
