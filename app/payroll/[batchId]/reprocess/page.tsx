@@ -6,7 +6,7 @@ import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchSummary, payrollEmployeeSelectionPage, payrollReprocessResultIdentities, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility } from '@/core/payroll';
-import { payslipLessEligibleWithSkipPage, listRecomputeDisclosure } from '@/core/payroll-view';
+import { payslipLessEligibleWithSkipPage, listRecomputeDisclosure, listTaxHeldEmployees } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, EmployeeCode, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -91,7 +91,7 @@ export default async function ReprocessPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; job?: string; from?: string;page?:string;size?:string;newPage?:string;newSize?:string;q?:string }>;
+  searchParams: Promise<{ error?: string; job?: string; from?: string;page?:string;size?:string;newPage?:string;newSize?:string;q?:string;held?:string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
@@ -119,7 +119,13 @@ export default async function ReprocessPage({
   // The same module gate the run screen puts on the panel: selective reprocessing produces an in-place
   // recompute of one run, which only makes sense where several runs a month are allowed at all. Off ⇒
   // the route does not exist, matching the absence of the button that leads here.
-  if (!isModuleEnabledOrFalse(s, 'multi_cycle_payroll')) notFound();
+  // 016276b7 — …except to add the employees this run held for income tax review, which the service admits without the
+  // module (only those). `?held=1` ("Process held employees" on the run screen) ticks exactly them on arrival.
+  const multiCycle = isModuleEnabledOrFalse(s, 'multi_cycle_payroll');
+  const taxHeldIds = multiCycle && sp.held !== '1' ? [] :
+    (await listTaxHeldEmployees(s, [batchId])).filter((r) => r.outstanding).map((r) => r.employmentId);
+  if (!multiCycle && taxHeldIds.length === 0) notFound();
+  const focusIds = sp.held === '1' || !multiCycle ? taxHeldIds : undefined;
 
   const eligibility = await reprocessEligibility(s, { batchId });
   if (!eligibility) notFound();
@@ -333,6 +339,7 @@ export default async function ReprocessPage({
             employees={candidates}
             newCandidates={newCandidates}
             preselectedIds={preselectedIds}
+            focusIds={focusIds}
             pendingIds={pendingIds}
             previousJobId={thisJob?.id}
             jobRunning={thisJob?.status==='queued' || thisJob?.status==='running'}

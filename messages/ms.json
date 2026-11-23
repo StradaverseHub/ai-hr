@@ -7535,7 +7535,16 @@
       "registerSearchSubmit": "Cari",
       "registerSearchClear": "Kosongkan carian",
       "registerSearchSummary": "{n} daripada {total} pekerja sepadan dengan “{q}”",
-      "registerSearchEmpty": "Tiada pekerja dalam larian ini yang sepadan dengan “{q}”."
+      "registerSearchEmpty": "Tiada pekerja dalam larian ini yang sepadan dengan “{q}”.",
+      "taxHeldTitle": "{n} pekerja ditahan untuk semakan cukai pendapatan — belum dalam penggajian ini",
+      "taxHeldBody": "Betulkan sejarah cukai pendapatan mereka di Kira Semula Nilai Cukai Pendapatan, kemudian tambah mereka di sini. Hanya pekerja ini akan dikira; sesiapa yang masih belum sedia akan terus ditahan.",
+      "taxHeldClosedBody": "Proses ini telah ditutup ketika pekerja ini masih ditahan untuk semakan cukai pendapatan. Mereka tiada slip gaji dalam proses ini.",
+      "taxHeldProcess": "Proses pekerja yang ditahan",
+      "taxHeldReason": "Sejarah cukai pendapatan bagi {period} perlu disemak: {reason}",
+      "taxHeldReasonGeneric": "Sejarah cukai pendapatan bagi {period} perlu disemak.",
+      "taxHeldOpenRecalculation": "Buka Kira Semula Cukai Pendapatan",
+      "taxHeldMore": "dan {n} lagi",
+      "closeBlockedTaxHeld": "Proses ini tidak boleh ditutup: {n} pekerja ditahan untuk semakan cukai pendapatan dan belum dalam penggajian ini: {names}. Betulkan sejarah cukai pendapatan mereka, kemudian tambah mereka dengan Proses pekerja yang ditahan (atau keluarkan mereka daripada proses ini), dan tutup semula."
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -8659,7 +8668,19 @@
       "outstandingOnly": "Bayaran tertunggak sahaja · tamat {date}",
       "registrationWarning": "{count} pekerja berada di syarikat dengan pendaftaran berkanun tidak lengkap dan tiada kadar pendaftaran HRD Corp. Levi tidak akan dikenakan untuk mereka.",
       "registrationOpenCompanies": "Semak syarikat",
-      "registrationCheckFailed": "Kesediaan pendaftaran syarikat tidak dapat disemak. Cuba lagi sebelum memproses gaji."
+      "registrationCheckFailed": "Kesediaan pendaftaran syarikat tidak dapat disemak. Cuba lagi sebelum memproses gaji.",
+      "totalEmployeesHeldForTax": "Ditahan untuk semakan cukai pendapatan",
+      "heldForTaxNotAFailure": "Belum dalam penggajian ini",
+      "colHeldForTax": "Ditahan",
+      "companyPartlyProcessed": "Diproses sebahagian",
+      "heldForTaxTitle": "Pekerja yang ditahan untuk semakan cukai pendapatan ({n})",
+      "heldForTaxNote": "Pekerja ini belum dimasukkan dalam penggajian ini. Semua pekerja lain telah diproses.",
+      "heldForTaxNext": "Betulkan sejarah cukai pendapatan mereka di Kira Semula Nilai Cukai Pendapatan, kemudian buka proses penggajian dan tekan Proses pekerja yang ditahan. Pekerja yang telah diproses tidak akan diubah.",
+      "heldForTaxNamesUnavailable": "{n} pekerja telah ditahan untuk semakan cukai pendapatan. Senarai nama tidak tersedia untuk akaun anda.",
+      "colHeldMonth": "Bulan",
+      "colHeldReason": "Sebab",
+      "heldForTaxReason": "Sejarah cukai pendapatan bagi {period} perlu disemak: {reason}",
+      "heldForTaxReasonGeneric": "Sejarah cukai pendapatan bagi {period} perlu disemak."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",

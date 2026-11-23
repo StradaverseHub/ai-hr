@@ -43,10 +43,13 @@ const TERMINAL=new Set(['completed','failed','cancelled']);
 function finishedOutcome(o:PendingCompanyOutcome,job:Pick<JobOutcomeRow,'state'|'result'|'plan'> & {error?:string|null;historicalTaxPeriod?:string|null} | null | undefined):CompanyOutcome|null{
  if(!job||!TERMINAL.has(job.state))return null;
  if(job.state==='completed'){
-  const result=(job.result??{}) as {payslips?:number;skipped?:number};
+  const result=(job.result??{}) as {payslips?:number;skipped?:number;taxHeld?:number};
   const payslips=typeof result.payslips==='number'?result.payslips:0,skipped=typeof result.skipped==='number'?result.skipped:0;
+  // 016276b7 — the held count reaches the settled outcome from the job's own result. A reader of a not-yet-settled group
+  // gets the narrowed projection without it; the result page then counts the held from the run's processed event.
+  const taxHeld=typeof result.taxHeld==='number'?result.taxHeld:0;
   return{companyId:o.companyId,companyName:o.companyName,status:'succeeded',batchId:o.batchId,employeesSelected:o.employeesSelected,employeesSucceeded:payslips,
-   ...(skipped>0?{employeesSkipped:skipped}:{})};
+   ...(skipped>0?{employeesSkipped:skipped}:{}),...(taxHeld>0?{employeesHeldForTax:taxHeld}:{})};
  }
  const transactionFailure=(job.plan as {transactionFailure?:PayrollTransactionFailure}|null)?.transactionFailure;
  const storedReason=(job.plan as {failureReason?:RunGroupReasonCode}|null)?.failureReason;

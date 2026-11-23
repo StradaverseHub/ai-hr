@@ -79,6 +79,13 @@ export type CompanyOutcome = {
    * `?r=` string never did.
    */
   employeesSkipped?: number;
+  /**
+   * 016276b7 — employees the run HELD FOR INCOME TAX REVIEW: their historical tax inputs could not be read, so they got
+   * no payslip while everyone else was processed. Neither processed nor failed, and NOT skipped (they are owed pay and
+   * are added to the same run once corrected). A count, like `employeesSkipped`; the names are read from the run's
+   * `payroll-batch.processed` event. Absent on every result written before this item.
+   */
+  employeesHeldForTax?: number;
   /** Set on a failed company. */
   reason?: RunGroupReasonCode;
   transactionFailure?: PayrollTransactionFailure;
@@ -96,6 +103,8 @@ export type RunGroupResult = {
   startedAt: string;
   endedAt: string;
   overallStatus: 'succeeded' | 'partial' | 'failed';
+  /** 016276b7 — absent on results written before this item. */
+  totalEmployeesHeldForTax?: number;
   totalCompanies: number;
   companiesSucceeded: number;
   companiesFailed: number;
@@ -142,7 +151,8 @@ export function reasonForPayrollError(error: unknown): RunGroupReasonCode {
 /** Derive the overall run status from the per-company outcomes (pure — unit-tested directly). */
 export function overallStatusOf(perCompany: readonly CompanyOutcome[]): RunGroupResult['overallStatus'] {
   const failed = perCompany.filter((c) => c.status === 'failed').length;
-  if (failed === 0) return 'succeeded';
+  // 016276b7 — a run that held employees for income tax review is only partly done, never a plain success.
+  if (failed === 0) return perCompany.some((c) => (c.employeesHeldForTax ?? 0) > 0) ? 'partial' : 'succeeded';
   if (failed === perCompany.length) return 'failed';
   return 'partial';
 }
@@ -158,6 +168,7 @@ export function summarize(
   const totalEmployeesSelected = perCompany.reduce((n, c) => n + c.employeesSelected, 0);
   const totalEmployeesSucceeded = perCompany.reduce((n, c) => n + c.employeesSucceeded, 0);
   const totalEmployeesSkipped = perCompany.reduce((n, c) => n + (c.employeesSkipped ?? 0), 0);
+  const totalEmployeesHeldForTax = perCompany.reduce((n, c) => n + (c.employeesHeldForTax ?? 0), 0);
   return {
     payPeriod,
     startedAt,
@@ -169,6 +180,7 @@ export function summarize(
     totalEmployeesSelected,
     totalEmployeesSucceeded,
     totalEmployeesSkipped,
+    ...(totalEmployeesHeldForTax > 0 ? { totalEmployeesHeldForTax } : {}),
     // Every selected employee in a wholesale-failed company counts as failed, plus any per-company gap
     // (comp-less hires the engine silently dropped) in a succeeded company.
     //
@@ -176,7 +188,8 @@ export function summarize(
     // every employee an additional run deliberately left out would land in this figure and render RED on
     // the result page as "Failed to process" — the system reporting its own correct decision as forty
     // failures. A run that skipped nobody subtracts 0 and is arithmetically unchanged.
-    totalEmployeesFailed: totalEmployeesSelected - totalEmployeesSucceeded - totalEmployeesSkipped,
+    // 016276b7 — and minus the held: they are listed in their own card, not as failures.
+    totalEmployeesFailed: totalEmployeesSelected - totalEmployeesSucceeded - totalEmployeesSkipped - totalEmployeesHeldForTax,
     perCompany,
   };
 }

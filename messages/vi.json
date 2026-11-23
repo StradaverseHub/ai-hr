@@ -7535,7 +7535,16 @@
       "registerSearchSubmit": "Tìm",
       "registerSearchClear": "Xóa tìm kiếm",
       "registerSearchSummary": "{n} trên {total} nhân viên khớp với “{q}”",
-      "registerSearchEmpty": "Không có nhân viên nào trong lần chạy này khớp với “{q}”."
+      "registerSearchEmpty": "Không có nhân viên nào trong lần chạy này khớp với “{q}”.",
+      "taxHeldTitle": "{n} nhân viên bị tạm giữ để xem xét thuế thu nhập — chưa có trong kỳ lương này",
+      "taxHeldBody": "Sửa lịch sử thuế thu nhập của họ trong Tính lại giá trị thuế thu nhập, rồi thêm họ tại đây. Chỉ những nhân viên này được tính; ai vẫn chưa sẵn sàng sẽ tiếp tục bị tạm giữ.",
+      "taxHeldClosedBody": "Lần chạy này đã đóng khi những nhân viên này vẫn bị tạm giữ để xem xét thuế thu nhập. Họ không có phiếu lương trong lần chạy này.",
+      "taxHeldProcess": "Xử lý nhân viên tạm giữ",
+      "taxHeldReason": "Lịch sử thuế thu nhập của {period} cần được xem xét: {reason}",
+      "taxHeldReasonGeneric": "Lịch sử thuế thu nhập của {period} cần được xem xét.",
+      "taxHeldOpenRecalculation": "Mở Tính lại thuế thu nhập",
+      "taxHeldMore": "và {n} người khác",
+      "closeBlockedTaxHeld": "Không thể đóng lần chạy này: {n} nhân viên bị tạm giữ để xem xét thuế thu nhập và chưa có trong kỳ lương này: {names}. Hãy sửa lịch sử thuế thu nhập, thêm họ bằng Xử lý nhân viên tạm giữ (hoặc xóa họ khỏi lần chạy này), rồi đóng lại."
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",
@@ -8659,7 +8668,19 @@
       "outstandingOnly": "Chỉ thanh toán còn nợ · nghỉ ngày {date}",
       "registrationWarning": "{count} nhân viên thuộc các công ty còn thiếu đăng ký theo luật và chưa có mức đăng ký HRD Corp. Khoản đóng góp này sẽ không được tính cho họ.",
       "registrationOpenCompanies": "Kiểm tra công ty",
-      "registrationCheckFailed": "Không thể kiểm tra đăng ký công ty. Hãy thử lại trước khi xử lý lương."
+      "registrationCheckFailed": "Không thể kiểm tra đăng ký công ty. Hãy thử lại trước khi xử lý lương.",
+      "totalEmployeesHeldForTax": "Tạm giữ để xem xét thuế thu nhập",
+      "heldForTaxNotAFailure": "Chưa có trong kỳ lương này",
+      "colHeldForTax": "Tạm giữ",
+      "companyPartlyProcessed": "Đã xử lý một phần",
+      "heldForTaxTitle": "Nhân viên tạm giữ để xem xét thuế thu nhập ({n})",
+      "heldForTaxNote": "Những nhân viên này chưa có trong kỳ lương này. Tất cả nhân viên khác đã được xử lý.",
+      "heldForTaxNext": "Sửa lịch sử thuế thu nhập của họ trong Tính lại giá trị thuế thu nhập, sau đó mở lần chạy lương và nhấn Xử lý nhân viên tạm giữ. Nhân viên đã xử lý sẽ không bị thay đổi.",
+      "heldForTaxNamesUnavailable": "{n} nhân viên đã bị tạm giữ để xem xét thuế thu nhập. Tài khoản của bạn không xem được danh sách tên.",
+      "colHeldMonth": "Tháng",
+      "colHeldReason": "Lý do",
+      "heldForTaxReason": "Lịch sử thuế thu nhập của {period} cần được xem xét: {reason}",
+      "heldForTaxReasonGeneric": "Lịch sử thuế thu nhập của {period} cần được xem xét."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",

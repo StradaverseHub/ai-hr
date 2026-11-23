@@ -7535,7 +7535,16 @@
       "registerSearchSubmit": "搜索",
       "registerSearchClear": "清除搜索",
       "registerSearchSummary": "{total} 名员工中有 {n} 名匹配“{q}”",
-      "registerSearchEmpty": "本次运行中没有与“{q}”匹配的员工。"
+      "registerSearchEmpty": "本次运行中没有与“{q}”匹配的员工。",
+      "taxHeldTitle": "{n} 名员工因所得税审核而暂缓 — 尚未计入本次薪资",
+      "taxHeldBody": "请在“重新计算所得税值”中更正其所得税历史，然后在此添加他们。只会计算这些员工；仍未就绪的员工将继续暂缓。",
+      "taxHeldClosedBody": "本次运行关闭时，这些员工仍因所得税审核而暂缓，因此在本次运行中没有工资单。",
+      "taxHeldProcess": "处理暂缓员工",
+      "taxHeldReason": "{period} 的所得税历史需要审核：{reason}",
+      "taxHeldReasonGeneric": "{period} 的所得税历史需要审核。",
+      "taxHeldOpenRecalculation": "打开所得税重新计算",
+      "taxHeldMore": "另有 {n} 名",
+      "closeBlockedTaxHeld": "无法关闭本次运行：{n} 名员工因所得税审核而暂缓，尚未计入本次薪资：{names}。请先更正其所得税历史，再通过“处理暂缓员工”添加他们（或将他们从本次运行中移除），然后再次关闭。"
     },
     "transactions": {
       "title": "交易录入",
@@ -8659,7 +8668,19 @@
       "outstandingOnly": "仅支付未付款项 · 离职日期 {date}",
       "registrationWarning": "{count} 名员工所属公司的法定登记不完整，且没有 HRD Corp 登记费率，因此不会计收相关征费。",
       "registrationOpenCompanies": "查看公司",
-      "registrationCheckFailed": "无法检查公司登记完整性。处理薪资前请重试。"
+      "registrationCheckFailed": "无法检查公司登记完整性。处理薪资前请重试。",
+      "totalEmployeesHeldForTax": "因所得税审核而暂缓",
+      "heldForTaxNotAFailure": "尚未计入本次薪资",
+      "colHeldForTax": "暂缓",
+      "companyPartlyProcessed": "部分已处理",
+      "heldForTaxTitle": "因所得税审核而暂缓的员工（{n}）",
+      "heldForTaxNote": "这些员工尚未计入本次薪资，其他员工均已处理。",
+      "heldForTaxNext": "请在“重新计算所得税值”中更正其所得税历史，然后打开该薪资运行并点击“处理暂缓员工”。已处理的员工不会被更改。",
+      "heldForTaxNamesUnavailable": "{n} 名员工因所得税审核而暂缓。您的账户无法查看姓名列表。",
+      "colHeldMonth": "月份",
+      "colHeldReason": "原因",
+      "heldForTaxReason": "{period} 的所得税历史需要审核：{reason}",
+      "heldForTaxReasonGeneric": "{period} 的所得税历史需要审核。"
     },
     "guide": {
       "title": "薪资工作流程指南",

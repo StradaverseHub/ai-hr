@@ -6811,7 +6811,16 @@
       "registerSearchSubmit": "Search",
       "registerSearchClear": "Clear search",
       "registerSearchSummary": "{n} of {total} employees match “{q}”",
-      "registerSearchEmpty": "No employee in this run matches “{q}”."
+      "registerSearchEmpty": "No employee in this run matches “{q}”.",
+      "taxHeldTitle": "{n} employee(s) held for income tax review — not yet in this payroll",
+      "taxHeldBody": "Correct their income tax history in Recalculate Income Tax Value, then add them here. Only these employees are calculated; anyone still not ready stays held.",
+      "taxHeldClosedBody": "This run was closed while these employees were still held for income tax review. They have no payslip on it.",
+      "taxHeldProcess": "Process held employees",
+      "taxHeldReason": "Income tax history for {period} needs review: {reason}",
+      "taxHeldReasonGeneric": "Income tax history for {period} needs review.",
+      "taxHeldOpenRecalculation": "Open Income Tax Recalculation",
+      "taxHeldMore": "and {n} more",
+      "closeBlockedTaxHeld": "This run cannot be closed: {n} employee(s) are held for income tax review and are not in this payroll yet: {names}. Correct their income tax history, then add them with Process held employees (or remove them from this run), then close again."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -8659,7 +8668,19 @@
       "outstandingOnly": "Outstanding payments only · left {date}",
       "registrationWarning": "{count} employees are in companies with missing statutory registration and no HRD Corp registration rate. The levy will not be charged for them.",
       "registrationOpenCompanies": "Review companies",
-      "registrationCheckFailed": "Company registration readiness could not be checked. Retry before processing payroll."
+      "registrationCheckFailed": "Company registration readiness could not be checked. Retry before processing payroll.",
+      "totalEmployeesHeldForTax": "Held for income tax review",
+      "heldForTaxNotAFailure": "Not in this payroll yet",
+      "colHeldForTax": "Held",
+      "companyPartlyProcessed": "Partly processed",
+      "heldForTaxTitle": "Employees held for income tax review ({n})",
+      "heldForTaxNote": "These employees are not in this payroll yet. Everyone else has been processed.",
+      "heldForTaxNext": "Correct their income tax history in Recalculate Income Tax Value, then open the payroll run and press Process held employees. Employees already processed will not be changed.",
+      "heldForTaxNamesUnavailable": "{n} employee(s) were held for income tax review. The list of names is not available to your account.",
+      "colHeldMonth": "Month",
+      "colHeldReason": "Reason",
+      "heldForTaxReason": "Income tax history for {period} needs review: {reason}",
+      "heldForTaxReasonGeneric": "Income tax history for {period} needs review."
     },
     "guide": {
       "title": "Payroll Workflow Guide",

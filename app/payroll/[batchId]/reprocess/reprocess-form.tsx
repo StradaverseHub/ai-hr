@@ -98,6 +98,7 @@ export function ReprocessForm({
   employees,
   newCandidates,
   preselectedIds,
+  focusIds,
   pendingIds = [],
   previousJobId,
   jobRunning = false,
@@ -128,6 +129,9 @@ export function ReprocessForm({
    * reprocessed. Plain data, resolved on the server; the ticks stay editable.
    */
   preselectedIds?: string[];
+  /** 016276b7 — "Process held employees": tick exactly these New / Pending employees (the run's employees held for
+   * income tax review) and nothing else on arrival. The ticks stay editable. */
+  focusIds?: string[];
   pendingIds?: string[];
   previousJobId?: string;
   jobRunning?: boolean;
@@ -151,7 +155,9 @@ export function ReprocessForm({
   const addable = pendingAdditions.filter((c) => c.blockers.length === 0);
   type Selected=ReprocessCandidate|ReprocessAddCandidate;
   // Page-local defaults are intentional (owner17Nov); navigation retains the exact already-picked records.
-  const [selected,setSelected]=useState<Map<string,Selected>>(()=>new Map([
+  const [selected,setSelected]=useState<Map<string,Selected>>(()=>new Map(focusIds
+   ? addable.filter(c=>focusIds.includes(c.employmentId)).map(c=>[c.employmentId,c] as [string,Selected])
+   : [
    ...employees.filter(e=>(preselectedIds??[]).includes(e.employmentId)).map(e=>[e.employmentId,e] as [string,Selected]),
    ...addable.filter(c=>!c.outsideScope).map(c=>[c.employmentId,c] as [string,Selected]),
   ]));
