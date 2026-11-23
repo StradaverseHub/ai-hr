@@ -5,7 +5,7 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { appUser, company, department, person, position, profileOption, roleAssignment } from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { DEFAULT_FORM, saveJobDraft, readJobDocument, listJobDocuments, transitionJob, configureJobForm, getJobForm, getJobMasters, attachJobDocument, downloadJobAttachment, removeJobAttachment, type JobInput } from '../packs/job-descriptions/service';
+import { DEFAULT_FORM, saveJobDraft, readJobDocument, listJobDocuments, transitionJob, configureJobForm, getJobForm, getJobMasters, getJobCompanyChoices, getJobDirectoryFilters, attachJobDocument, downloadJobAttachment, removeJobAttachment, type JobInput } from '../packs/job-descriptions/service';
 import { exportJobText } from '../packs/job-descriptions/export';
 let b: Base;
 let reviewer: SessionContext;
@@ -64,7 +64,10 @@ async function accessOverride(userId:string,capabilityId:'workforce.view'|'workf
 it('honors a live workforce-view denial for list, count, metadata, detail and attachment disclosure',async()=>{
  const saved=await saveJobDraft(adminCtx(b),input());const d=await readJobDocument(adminCtx(b),saved.jobId);const a=await attachJobDocument(adminCtx(b),{jobId:saved.jobId,revisionId:d.revision.id,lockVersion:d.revision.lock_version,name:'evidence.txt',type:'text/plain',bytes:new TextEncoder().encode('Restricted evidence')});
  await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"job-document-denial-test","operation":"read-write"}]'::jsonb where id in ('workforce.view','workforce.maintain')`);
- await accessOverride(b.adminUserId,'workforce.view','deny',b.companyId);expect(await listJobDocuments(adminCtx(b))).toEqual([]);const masters=await getJobMasters(adminCtx(b));for(const values of Object.values(masters))expect(values).toEqual([]);await expect(readJobDocument(adminCtx(b),saved.jobId)).rejects.toThrow(/not available/);await expect(downloadJobAttachment(adminCtx(b),a.id)).rejects.toThrow(/not available/);
+ await accessOverride(b.adminUserId,'workforce.view','deny',b.companyId);expect(await listJobDocuments(adminCtx(b))).toEqual([]);const masters=await getJobMasters(adminCtx(b));for(const values of Object.values(masters))expect(values).toEqual([]);
+ expect(await getJobCompanyChoices(adminCtx(b))).toEqual([]);
+ expect(await getJobDirectoryFilters(adminCtx(b))).toEqual({companies:[],businessUnit:[],department:[],grade:[],family:[]});
+ await expect(readJobDocument(adminCtx(b),saved.jobId)).rejects.toThrow(/not available/);await expect(downloadJobAttachment(adminCtx(b),a.id)).rejects.toThrow(/not available/);
 });
 it('refuses fresh maintain/configuration denials despite cached HR role membership',async()=>{
  const saved=await saveJobDraft(adminCtx(b),input());const d=await readJobDocument(adminCtx(b),saved.jobId);await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"job-document-denial-test","operation":"read-write"}]'::jsonb where id in ('workforce.view','workforce.maintain')`);await accessOverride(b.adminUserId,'workforce.maintain','deny',b.companyId);await expect(saveJobDraft(adminCtx(b),input(),{jobId:saved.jobId,revisionId:d.revision.id,lockVersion:d.revision.lock_version})).rejects.toThrow();expect((await readJobDocument(adminCtx(b),saved.jobId)).revision.title).toBe('Finance Analyst');
