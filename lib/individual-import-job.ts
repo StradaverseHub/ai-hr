@@ -7,8 +7,15 @@ export const INDIVIDUAL_IMPORT_MAX_RECORDS = 10_000;
 export const INDIVIDUAL_IMPORT_MAX_CSV_BYTES = 8_000_000;
 /** Filled cells of the transaction sheet (header + records × at most 20 columns); the template has 9 or 10. */
 export const INDIVIDUAL_IMPORT_MAX_CELLS = (INDIVIDUAL_IMPORT_MAX_RECORDS + 1) * 20;
-/** Stage 2 — rows written (or reverted) by one short transaction of the background worker. */
+/** Stage 2 — at most this many rows are prepared per worker tick and written (or reverted) by one transaction. */
 export const INDIVIDUAL_IMPORT_STEP_ROWS = 250;
+/** Each write or revert transaction holds payroll period locks; it is sized from measured cost to about this long
+ *  (as core/payroll-processing-job.ts sizes its chunks), and one that runs past the ceiling is rolled back and
+ *  retried with fewer rows, so processing, reprocessing and edits of those periods never wait long. */
+export const INDIVIDUAL_IMPORT_STEP_TARGET_MS = 250;
+export const INDIVIDUAL_IMPORT_STEP_CEILING_MS = 1000;
+/** Wall time one worker tick spends on an import before the shared runner loop moves on. */
+export const INDIVIDUAL_IMPORT_TICK_MS = 2000;
 /** Rows shown per page of an Import Log batch. */
 export const INDIVIDUAL_IMPORT_PAGE_ROWS = 100;
 

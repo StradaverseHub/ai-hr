@@ -26,6 +26,9 @@ export type IndividualImportTickOptions = {
   beforeStep?: (job: {id: string; state: string}) => Promise<void> | void;
   /** Wait between attempts at a step that failed for a reason other than its own data. */
   retryDelayMs?: number;
+  /** Wall time of one tick (INDIVIDUAL_IMPORT_TICK_MS by default), and the measured length of each write transaction. */
+  tickMs?: number;
+  timings?: number[];
 };
 /** A step is tried this many times before the batch is stopped; a refusal of its own data is not retried. */
 const STEP_ATTEMPTS = 3;
@@ -42,9 +45,10 @@ async function withRetries<T>(run: () => Promise<T>, delayMs: number): Promise<T
 }
 
 /**
- * One bounded unit of the Individual Transaction queue per call: validating one workbook, or ONE step of about 250
- * rows of a confirmed import or of a revert, so a 10,000-row batch never holds the shared runner loop
- * (scripts/bank-import-runner.ts) for longer than one step. Every step commits on its own; a restarted worker
+ * One bounded unit of the Individual Transaction queue per call: validating one workbook, or about
+ * INDIVIDUAL_IMPORT_TICK_MS of a confirmed import or of a revert (at most 250 rows), written by short time-budgeted
+ * transactions, so a 10,000-row batch never holds the shared runner loop (scripts/bank-import-runner.ts) or a payroll
+ * period for long. Every step commits on its own; a restarted worker
  * resumes after the last committed step and the outcome table and payroll_individual_txn_source_ref_uq keep any row
  * from being written twice. A step that keeps failing stops the batch, keeping the rows already written.
  */
@@ -93,7 +97,7 @@ export async function runIndividualImportTick(
         const stepCtx = ctx;
         const progress: IndividualImportProgress = await withRetries(async () => {
           await options.beforeStep?.({id: job.id, state: 'importing'});
-          return confirmIndividualImportStep(stepCtx, {id: job.attempt_id!, scopeIds: job.company_ids});
+          return confirmIndividualImportStep(stepCtx, {id: job.attempt_id!, scopeIds: job.company_ids}, {tickMs: options.tickMs, timings: options.timings});
         }, retryDelayMs);
         if (progress.state === 'completed') {
           await connection`update payroll_individual_import_job set state = 'completed', processed = ${progress.processed}, finished_at = now() where id = ${job.id}`;
@@ -137,7 +141,7 @@ async function revertTick(
     const stepCtx = ctx;
     const progress = await withRetries(async () => {
       await options.beforeStep?.({id: job.id, state: 'reverting'});
-      return revertIndividualImportStep(stepCtx, p);
+      return revertIndividualImportStep(stepCtx, p, {tickMs: options.tickMs, timings: options.timings});
     }, retryDelayMs);
     if (progress.state !== 'reverting') {
       // Reverted, or handed back by someone else meanwhile.

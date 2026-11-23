@@ -72,6 +72,9 @@ CREATE POLICY payroll_txn_import_outcome_append ON public.payroll_txn_import_out
 --> statement-breakpoint
 GRANT SELECT,INSERT ON public.payroll_txn_import_outcome TO ai_hr_app;
 --> statement-breakpoint
+-- Append-only: the owner's default privileges (deploy/bootstrap-db.sql) also grant UPDATE and DELETE; take them back.
+REVOKE UPDATE,DELETE,TRUNCATE ON public.payroll_txn_import_outcome FROM ai_hr_app;
+--> statement-breakpoint
 -- 3. Transitions. Source and outcomes stay immutable; progress only grows; a step-written import completes only when
 --    every row has its outcome, and a revert finishes only when every written row is gone.
 CREATE OR REPLACE FUNCTION app.payroll_txn_import_immutable() RETURNS trigger LANGUAGE plpgsql AS $$

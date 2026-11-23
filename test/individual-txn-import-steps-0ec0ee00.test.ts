@@ -52,6 +52,8 @@ describe('0ec0ee00 — Individual Transaction import written in steps',()=>{
  });
  const workbook=async(data:string[][])=>Buffer.from(await buildXlsx([...INDIVIDUAL_IMPORT_HEADERS.monthly],data));
  const tick=(options?:IndividualImportTickOptions)=>runIndividualImportTick(owner.client,async session=>({...session,entitlements:adminCtx(base).entitlements}),{retryDelayMs:1,...options});
+ /** One tick writes exactly one slice of INDIVIDUAL_IMPORT_STEP_ROWS rows (still in several short transactions). */
+ const slice=(options?:IndividualImportTickOptions)=>tick({tickMs:600_000,...options});
  const imported=async()=>(await owner.client<{n:number}[]>`select count(*)::int as n from payroll_individual_txn where tenant_id=${base.tenantId} and source='import'`)[0].n;
  const duplicates=async()=>owner.client`select source_ref,count(*)::int as n from payroll_individual_txn where tenant_id=${base.tenantId} and source_ref is not null group by source_ref having count(*)>1`;
  async function upload(data:string[][],id=randomUUID()){
@@ -74,16 +76,16 @@ describe('0ec0ee00 — Individual Transaction import written in steps',()=>{
   const ready=await readIndividualImportJob(adminCtx(base),id,scopeIds());
   expect(ready).toMatchObject({state:'ready',total:10_000,failed_rows:0});
   expect(await queueIndividualImportConfirmation(adminCtx(base),id,scopeIds())).toBe(true);
-  const steps:number[]=[];let job=ready!;
+  // Default tick budget, as in production; every write and revert transaction's lock-holding time is recorded.
+  const writes:number[]=[],reverts:number[]=[],ticks:number[]=[];let job=ready!;
   const c0=performance.now();
   while(job.state!=='completed'){
-   const s0=performance.now();await tick();steps.push(performance.now()-s0);
+   const s0=performance.now();await tick({timings:writes});ticks.push(performance.now()-s0);
    job=(await readIndividualImportJob(adminCtx(base),id,scopeIds()))!;
    expect(['importing','completed']).toContain(job.state);
-   expect(steps.length).toBeLessThanOrEqual(Math.ceil(10_000/INDIVIDUAL_IMPORT_STEP_ROWS)+1);
+   expect(ticks.length).toBeLessThan(400);
   }
   const confirm=performance.now()-c0;
-  expect(steps).toHaveLength(Math.ceil(10_000/INDIVIDUAL_IMPORT_STEP_ROWS));
   expect(job).toMatchObject({state:'completed',processed:10_000,written:10_000,failed_rows:0});
   expect(await imported()).toBe(10_000);expect(await duplicates()).toEqual([]);
   const summary=await readIndividualImportSummary(adminCtx(base),job.attempt_id!,scopeIds());
@@ -94,12 +96,17 @@ describe('0ec0ee00 — Individual Transaction import written in steps',()=>{
   expect(last.rows.every(row=>row.outcome==='imported')).toBe(true);
   const r0=performance.now();
   expect(await requestIndividualImportRevert(adminCtx(base),{id:job.attempt_id!,scopeIds:scopeIds(),confirmProcessed:false})).toEqual({state:'reverting',queued:true});
-  const reverted=await untilState(id,['reverted','stopped','completed']);
+  const reverted=await untilState(id,['reverted','stopped','completed'],{timings:reverts},2_000);
   const revert=performance.now()-r0;
   expect(reverted.state).toBe('reverted');expect(await imported()).toBe(0);
-  console.log('[0ec0ee00 timing]',JSON.stringify({rows:10_000,validateMs:Math.round(validate),confirmMs:Math.round(confirm),
-   steps:steps.length,maxStepMs:Math.round(Math.max(...steps)),meanStepMs:Math.round(steps.reduce((a,b)=>a+b,0)/steps.length),revertMs:Math.round(revert)}));
- },900_000);
+  const stats=(xs:number[])=>({count:xs.length,maxMs:Math.round(Math.max(...xs)),meanMs:Math.round(xs.reduce((a,b)=>a+b,0)/xs.length),
+   p95Ms:Math.round([...xs].sort((a,b)=>a-b)[Math.floor(xs.length*0.95)])});
+  console.log('[0ec0ee00 timing]',JSON.stringify({rows:10_000,validateMs:Math.round(validate),confirmMs:Math.round(confirm),ticks:ticks.length,maxTickMs:Math.round(Math.max(...ticks)),
+   writeTransactions:stats(writes),revertMs:Math.round(revert),revertTransactions:stats(reverts)}));
+  // Each transaction holding payroll period locks stays under the 1 s ceiling (rolled back and retried smaller past it).
+  expect(Math.max(...writes,...reverts)).toBeLessThan(1_500);
+ // Before time budgeting this case measured 329 s on a 4-vCPU GitHub runner (focused run 45171886195); generous headroom.
+ },1_000_000);
 
  it('refuses 10,001 rows as too many, and keeps the Fixed import at 2,000',async()=>{
   const csv=toCsv([[...INDIVIDUAL_IMPORT_HEADERS.monthly],...rows(INDIVIDUAL_IMPORT_MAX_RECORDS+1)]);
@@ -113,14 +120,14 @@ describe('0ec0ee00 — Individual Transaction import written in steps',()=>{
  it('resumes after a worker dies between steps without writing any row twice, and a second runner never doubles a step',async()=>{
   const id=await upload(rows(600));
   await tick();await queueIndividualImportConfirmation(adminCtx(base),id,scopeIds());
-  await tick();
+  await slice();
   const first=(await readIndividualImportJob(adminCtx(base),id,scopeIds()))!;
   expect(first).toMatchObject({state:'importing',processed:INDIVIDUAL_IMPORT_STEP_ROWS});
   // The worker died after the step committed but before the queue row recorded it.
   await owner.client`update payroll_individual_import_job set processed=0 where id=${id}`;
-  // Two runners at once: the attempt row lock lets one write the step; the other sees it moved and writes nothing.
-  const both=await Promise.all([1,2].map(()=>confirmIndividualImportStep(adminCtx(base),{id:first.attempt_id!,scopeIds:scopeIds()})));
-  expect(Math.max(...both.map(step=>step.processed))).toBe(2*INDIVIDUAL_IMPORT_STEP_ROWS);
+  // Two runners at once: the attempt row lock serializes their transactions; one that finds progress moved stops.
+  const both=await Promise.all([1,2].map(()=>confirmIndividualImportStep(adminCtx(base),{id:first.attempt_id!,scopeIds:scopeIds()},{tickMs:600_000})));
+  expect(Math.max(...both.map(step=>step.processed))).toBeGreaterThan(INDIVIDUAL_IMPORT_STEP_ROWS);
   const done=await untilState(id,['completed','stopped']);
   expect(done).toMatchObject({state:'completed',processed:600,written:600});
   expect(await imported()).toBe(600);expect(await duplicates()).toEqual([]);
@@ -145,7 +152,7 @@ describe('0ec0ee00 — Individual Transaction import written in steps',()=>{
   const [manual]=await owner.db.insert(schema.payrollIndividualTxn).values({tenantId:base.tenantId,companyId:base.companyId,payPeriod:'2026-08',employmentId:(await owner.db.select({id:schema.employment.id}).from(schema.employment).where(and(eq(schema.employment.tenantId,base.tenantId),eq(schema.employment.employeeCode,codes[0]))))[0].id,kind:'earning',componentId:component.id,txnDate:'2026-08-03',amount:'999.99',source:'manual'}).returning();
   const id=await upload(rows(600));
   await tick();await queueIndividualImportConfirmation(a,id,scopeIds());
-  await tick();
+  await slice();
   let calls=0;
   // From the second step on, every attempt fails for a reason that is not the rows' own data.
   const stopped=await untilState(id,['stopped','completed'],{beforeStep:()=>{calls++;throw new Error('fictional database outage');}});

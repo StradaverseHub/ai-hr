@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {and,asc,desc,eq,inArray,lt,or,sql} from 'drizzle-orm';
-import {INDIVIDUAL_IMPORT_MAX_CSV_BYTES,INDIVIDUAL_IMPORT_PAGE_ROWS,INDIVIDUAL_IMPORT_STEP_ROWS} from '../lib/individual-import-job';
+import {INDIVIDUAL_IMPORT_MAX_CSV_BYTES,INDIVIDUAL_IMPORT_PAGE_ROWS,INDIVIDUAL_IMPORT_STEP_CEILING_MS,INDIVIDUAL_IMPORT_STEP_ROWS,INDIVIDUAL_IMPORT_STEP_TARGET_MS,INDIVIDUAL_IMPORT_TICK_MS} from '../lib/individual-import-job';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
@@ -96,104 +96,185 @@ export async function validateIndividualImport(ctx:SessionContext,p:{operationId
 /** 0ec0ee00 — where a step-written import stands. */
 export type IndividualImportProgress={state:IndividualImportAttemptState;total:number;processed:number;written:number;revertedCount:number};
 type StepState={id:string;state:IndividualImportAttemptState;method:IndividualImportMethod;companyIds:string[];total:number;processed:number;written:number;
- recalcBatchIds:string[];fileError:string|null;rows:TxnImportRow[];bindings:Record<string,PayrollTxnImportBinding>};
+ fileError:string|null;rows:TxnImportRow[];bindings:Record<string,PayrollTxnImportBinding>};
 const progressOf=(r:{state:IndividualImportAttemptState;total:number;processed:number;written:number;revertedCount?:number}):IndividualImportProgress=>
  ({state:r.state,total:r.total,processed:r.processed,written:r.written,revertedCount:r.revertedCount??0});
-/** The next step's preview rows and stored bindings, sliced in SQL: a step never parses the whole preview. */
-async function readStep(tx:Tx,ctx:SessionContext,id:string,scopeIds:string[],lock:boolean):Promise<StepState>{
+/**
+ * While an import is being written its progress is the outcome table itself (rows recorded, rows imported), so a
+ * write transaction appends outcomes without rewriting the attempt row (whose 10 MB of source the immutability
+ * trigger would compare on every update). The attempt's own columns are set once, when it completes or stops.
+ * `slice` also returns the next INDIVIDUAL_IMPORT_STEP_ROWS preview rows and their stored bindings, sliced in SQL.
+ */
+async function readStep(tx:Tx,ctx:SessionContext,id:string,scopeIds:string[],lock:boolean,slice=true):Promise<StepState>{
  uuid.parse(id);await scope(ctx,scopeIds,tx);
- const [r]=await tx.execute<{id:string;state:IndividualImportAttemptState;method:IndividualImportMethod;company_ids:string[];total:number;processed:number;written:number;recalc_batch_ids:string[];file_error:string|null;rows:TxnImportRow[];bindings:Record<string,PayrollTxnImportBinding>}>(sql`
-  select a.id,a.state,a.method,a.company_ids,coalesce(a.total_rows,jsonb_array_length(a.preview->'rows'))::int as total,a.processed,a.written,a.recalc_batch_ids,
+ const [r]=await tx.execute<{id:string;state:IndividualImportAttemptState;method:IndividualImportMethod;company_ids:string[];total:number;processed:number;written:number;file_error:string|null;rows:TxnImportRow[]|null;bindings:Record<string,PayrollTxnImportBinding>|null}>(sql`
+  select a.id,a.state,a.method,a.company_ids,coalesce(a.total_rows,jsonb_array_length(a.preview->'rows'))::int as total,p.processed,p.written,
    case when a.total_rows is null or a.total_rows=0 then a.preview->>'fileError' end as file_error,
-   case when a.state in ('validated','importing') then (select coalesce(jsonb_agg(e order by i),'[]'::jsonb) from jsonb_array_elements(a.preview->'rows') with ordinality t(e,i)
-    where i>a.processed and i<=a.processed+${INDIVIDUAL_IMPORT_STEP_ROWS}) else '[]'::jsonb end as rows,
-   case when a.state in ('validated','importing') then (select coalesce(jsonb_object_agg(b.key,b.value),'{}'::jsonb) from jsonb_each(a.bindings) b
-    where (case when b.key ~ '^[0-9]{1,6}$' then b.key::int end) between a.processed+2 and a.processed+1+${INDIVIDUAL_IMPORT_STEP_ROWS}) else '{}'::jsonb end as bindings
-  from payroll_txn_import_attempt a where a.id=${id}::uuid and a.tenant_id=${ctx.tenantId}::uuid ${lock?sql`for update of a`:sql``}`);
+   case when ${slice} and a.state in ('validated','importing') then (select coalesce(jsonb_agg(e order by i),'[]'::jsonb) from jsonb_array_elements(a.preview->'rows') with ordinality t(e,i)
+    where i>p.processed and i<=p.processed+${INDIVIDUAL_IMPORT_STEP_ROWS}) end as rows,
+   case when ${slice} and a.state in ('validated','importing') then (select coalesce(jsonb_object_agg(b.key,b.value),'{}'::jsonb) from jsonb_each(a.bindings) b
+    where (case when b.key ~ '^[0-9]{1,6}$' then b.key::int end) between p.processed+2 and p.processed+1+${INDIVIDUAL_IMPORT_STEP_ROWS}) end as bindings
+  from payroll_txn_import_attempt a
+  cross join lateral (select case when a.state in ('validated','importing') then (select count(*)::int from payroll_txn_import_outcome o where o.attempt_id=a.id) else a.processed end as processed,
+   case when a.state in ('validated','importing') then (select count(*)::int from payroll_txn_import_outcome o where o.attempt_id=a.id and o.state='imported') else a.written end as written) p
+  where a.id=${id}::uuid and a.tenant_id=${ctx.tenantId}::uuid ${lock?sql`for update of a`:sql``}`);
  if(!r||r.company_ids.some(c=>!scopeIds.includes(c)))deny();
- return {id:r.id,state:r.state,method:r.method,companyIds:r.company_ids,total:r.total,processed:r.processed,written:r.written,recalcBatchIds:r.recalc_batch_ids,
-  fileError:r.file_error,rows:r.rows,bindings:r.bindings};
+ return {id:r.id,state:r.state,method:r.method,companyIds:r.company_ids,total:r.total,processed:r.processed,written:r.written,
+  fileError:r.file_error,rows:r.rows??[],bindings:r.bindings??{}};
+}
+/** A write transaction ran past the hard ceiling: it is rolled back and retried with fewer rows. */
+class StepOverrun extends Error {}
+/**
+ * Writes `part` (consecutive preview rows) in the caller's transaction and returns one outcome per row, in order.
+ * Rows of the same payee, run and cycle are written by one createIndividualTxnsBulkTx call (its own checks, one
+ * insert and one event per row); a group the writer refuses is retried row by row, so each row keeps its own outcome.
+ */
+async function writeRows(tx:Tx,ctx:SessionContext,method:IndividualImportMethod,part:TxnImportRow[],bindings:Record<string,PayrollTxnImportBinding>,
+ fresh:Map<number,TxnImportRow>,resolvedRows:Map<number,ResolvedRow>,ceilingAt:number):Promise<IndividualImportOutcome[]>{
+ const outcomes=new Map<number,IndividualImportOutcome>();
+ const candidates:{row:TxnImportRow;resolved:ResolvedRow}[]=[];
+ for(const original of part){
+  // A row the reviewer saw refused is never written; it keeps the verdict the reviewer saw.
+  if(!original.ok){outcomes.set(original.rowNum,{row:original,state:'invalid'});continue;}
+  const row=fresh.get(original.rowNum)??original,resolved=resolvedRows.get(original.rowNum),binding=bindings[String(original.rowNum)];
+  // An unbound legacy attempt or a changed lookup must never acquire a new payee/target on confirmation.
+  if(!resolved||!row.ok||!binding||!isDeepStrictEqual(binding,canonicalBinding(resolved))||original.amount!==row.amount){
+   outcomes.set(original.rowNum,{row:{...row,ok:false,reason:'previewChanged'},state:'failed'});continue;
+  }
+  candidates.push({row,resolved});
+ }
+ const fail=(row:TxnImportRow,e:unknown)=>{const failure:{reason:string;detail?:Record<string,string|number>}=e instanceof IndividualImportError?{reason:e.message}:txnImportReason(e);if(failure.reason==='unexpected')delete failure.detail;outcomes.set(row.rowNum,{row:{...row,ok:false,...failure},state:'failed'});};
+ if(candidates.length){
+  const runs=[...new Set(candidates.map(c=>c.resolved.targetBatchId).filter((v):v is string=>!!v))].sort();
+  if(runs.length)await tx.select({id:payrollBatch.id}).from(payrollBatch).where(inArray(payrollBatch.id,runs)).orderBy(asc(payrollBatch.id)).for('update');
+  const items=new Map((await tx.select({id:payComponent.id,rule:payComponent.rule}).from(payComponent)
+   .where(inArray(payComponent.id,[...new Set(candidates.map(c=>c.resolved.componentId))])).orderBy(asc(payComponent.id)).for('share')).map(item=>[item.id,item.rule as PayRule|null]));
+  const ready:typeof candidates=[];
+  for(const c of candidates){
+   const {resolved,row}=c;
+   try{
+    if(!items.has(resolved.componentId))throw new IndividualImportError('previewChanged');
+    const rule=items.get(resolved.componentId)??null;
+    if(method==='daily'){
+     const daily=resolveDailyImportInput(rule,resolved.explicitDailyInput);
+     if('reason' in daily||daily.unit!==resolved.unit||resolved.explicitDailyRuleHash&&resolved.explicitDailyRuleHash!==digest(JSON.stringify(rule??null)))throw new IndividualImportError('previewChanged');
+    }
+    // A typed-amount item has nothing to re-price; a calculating item must still price to the previewed amount.
+    if(rule!=null){
+     const priced=await tx.transaction(savepoint=>deriveIndividualTxnAmountTx(savepoint,ctx,{componentId:resolved.componentId,employmentId:resolved.employmentId,companyId:resolved.companyId,payPeriod:resolved.payPeriod,quantity:resolved.quantity,unit:resolved.unit,effectiveDate:resolved.txnDate}));
+     if(priced.derived&&priced.amount.toFixed(2)!==row.amount)throw new IndividualImportError('previewChanged');
+    }
+    ready.push(c);
+   }catch(e){fail(row,e);}
+  }
+  const groups=new Map<string,typeof ready>();
+  for(const c of ready){const r=c.resolved,key=[r.targetBatchId??'',r.companyId,r.payPeriod,r.employmentId,r.intendedCycleId??''].join('|');groups.set(key,[...(groups.get(key)??[]),c]);}
+  const written:{row:TxnImportRow;id:string;batchId:string|null}[]=[];
+  const write=(target:typeof ready)=>tx.transaction(savepoint=>{const r=target[0].resolved;return createIndividualTxnsBulkTx(savepoint,ctx,{
+   ...(r.targetBatchId?{batchId:r.targetBatchId}:{companyId:r.companyId,payPeriod:r.payPeriod}),employmentIds:[r.employmentId],intendedCycleId:r.intendedCycleId,
+   rows:target.map(({resolved:x})=>({kind:x.kind,componentId:x.componentId,txnDate:x.txnDate,amount:x.amount,quantity:x.quantity,unit:x.unit,notes:x.notes,source:'import',sourceRef:x.sourceRef})),
+  });});
+  for(const group of groups.values()){
+   if(Date.now()>ceilingAt&&part.length>1)throw new StepOverrun();
+   try{const result=await write(group);if(result.ids.length!==group.length)throw new IndividualImportError('importFailed');group.forEach((c,i)=>written.push({row:c.row,id:result.ids[i],batchId:c.resolved.targetBatchId}));}
+   catch{
+    for(const c of group){
+     try{const result=await write([c]);written.push({row:c.row,id:result.ids[0],batchId:c.resolved.targetBatchId});}catch(e){fail(c.row,e);}
+    }
+   }
+  }
+  if(written.length){
+   const ids=written.map(w=>w.id);
+   const created=new Map((await tx.select().from(payrollIndividualTxn).where(inArray(payrollIndividualTxn.id,ids))).map(row=>[row.id,row]));
+   const events=await eventIdsByRow(tx,ctx,ids);
+   const runs=[...new Set(written.map(w=>w.batchId).filter((v):v is string=>!!v))];
+   const processedRuns=new Set(runs.length?(await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(inArray(payrollBatch.id,runs),eq(payrollBatch.status,'processed')))).map(x=>x.id):[]);
+   for(const w of written){
+    const row=created.get(w.id);
+    if(!row){fail(w.row,new IndividualImportError('importFailed'));continue;}
+    // A processed run this row reached will need recalculation; kept with the row, so a stopped import still names it.
+    outcomes.set(w.row.rowNum,{row:w.row,state:'imported',transactionId:row.id,snapshot:snapshot(row),eventIds:events.get(row.id)??[],...(w.batchId&&processedRuns.has(w.batchId)?{recalcBatchId:w.batchId}:{})});
+   }
+  }
+ }
+ return part.map(row=>outcomes.get(row.rowNum)!);
+}
+/** Counts and processed runs recorded so far, for the attempt's own columns when it completes or stops. */
+async function finalCounts(tx:Tx,id:string,recalcBefore:string[]){
+ const [c]=await tx.execute<{processed:number;written:number;failed:number;recalc:string[]}>(sql`select count(*)::int as processed,count(*) filter (where state='imported')::int as written,
+  count(*) filter (where state='failed')::int as failed,coalesce(jsonb_agg(distinct outcome->>'recalcBatchId') filter (where outcome ? 'recalcBatchId'),'[]'::jsonb) as recalc
+  from payroll_txn_import_outcome where attempt_id=${id}::uuid`);
+ return {...c,recalc:[...recalcBefore,...c.recalc.filter(id=>!recalcBefore.includes(id)).sort()]};
 }
 
 /**
- * 0ec0ee00 — one confirmation step: the next INDIVIDUAL_IMPORT_STEP_ROWS rows in one short transaction that owns only
- * those rows' payroll periods and step-scoped bindings. The stored whole-file analysis decides which rows may be
- * written; each of them is re-checked against a fresh analysis of the whole stored file focused on this step, so the
- * file digest (sourceRef), row numbers and run targeting are those the reviewer approved. Outcomes are appended to
- * payroll_txn_import_outcome and the attempt's progress moves in the same transaction, so a step either commits in
- * full or not at all and a resumed worker continues after the last committed step. The attempt is completed only
- * by the step that records the last row.
+ * 0ec0ee00 — one tick of confirmation. The next INDIVIDUAL_IMPORT_STEP_ROWS rows are re-checked against a fresh
+ * analysis of the whole stored file focused on them (same digest/sourceRef, row numbers and run targeting the reviewer
+ * approved), then written by short transactions, each owning only its rows' payroll periods and step-scoped bindings.
+ * Each transaction is time-budgeted: rows are added until about INDIVIDUAL_IMPORT_STEP_TARGET_MS of work, and one
+ * that passes INDIVIDUAL_IMPORT_STEP_CEILING_MS is rolled back and retried with fewer rows, so payroll processing and
+ * other writers of those periods never wait long. Outcomes are appended in the same transaction as the rows, so a
+ * resumed worker continues after the last committed transaction. The attempt completes with its last row.
  */
-export async function confirmIndividualImportStep(ctx:SessionContext,p:{id:string;scopeIds:string[]}):Promise<IndividualImportProgress>{
+export async function confirmIndividualImportStep(ctx:SessionContext,p:{id:string;scopeIds:string[]},options:{tickMs?:number;timings?:number[]}={}):Promise<IndividualImportProgress>{
  const nominee=await withTenant(ctx,tx=>readStep(tx,ctx,p.id,p.scopeIds,false));
  if(nominee.state!=='validated'&&nominee.state!=='importing')return progressOf(nominee);
  if(nominee.fileError)throw new IndividualImportError(nominee.fileError);
- const selections=nominee.rows.filter(row=>row.ok).flatMap(row=>{const b=nominee.bindings[String(row.rowNum)];return b?[{companyId:b.companyId,payPeriod:b.payPeriod}]:[];});
- const [{records}]=await withTenant(ctx,tx=>tx.select({records:attempt.records}).from(attempt).where(eq(attempt.id,nominee.id)));
- return withTenant(ctx,async tx=>{
-  if(selections.length)await lockNativePayrollPeriodsTx(tx,ctx,selections);
-  const r=await readStep(tx,ctx,p.id,p.scopeIds,true);
-  // Another runner moved this attempt since the nominee read: report where it is; the caller reads again.
-  if((r.state!=='validated'&&r.state!=='importing')||r.processed!==nominee.processed)return progressOf(r);
-  const writable=r.rows.filter(row=>row.ok).map(row=>row.rowNum);
-  // The bounded owner helper locks only this step's immutable canonical identities.
-  // Employment intentionally has no runtime UPDATE grant, so ordinary SELECT FOR SHARE is unavailable.
-  if(writable.length){try{await tx.execute(sql`select app.payroll_txn_import_lock_step_bindings(${r.id}::uuid,${intArray(writable)}::int[])`);}catch{throw new IndividualImportError('previewChanged');}}
-  const analysis=writable.length?await analyzeTxnImport(ctx,{kind:'individual',scopeIds:p.scopeIds,records,focus:new Set(writable)}):null;
-  if(analysis&&analysis.kind!=='individual')throw new IndividualImportError('templateMismatch');
-  const fresh=new Map((analysis?safePreview(analysis.preview).rows:[]).map(row=>[row.rowNum,row]));
-  const outcomes:IndividualImportOutcome[]=[],targets=new Set<string>();
-  for(const original of r.rows){
-   // A row the reviewer saw refused is never written; it keeps the verdict the reviewer saw.
-   if(!original.ok){outcomes.push({row:original,state:'invalid'});continue;}
-   const row=fresh.get(original.rowNum)??original;
-   const resolved=analysis?.resolved.get(original.rowNum);
-   const originalBinding=r.bindings[String(original.rowNum)];
-   // An unbound legacy attempt or a changed lookup must never acquire a new payee/target on confirmation.
-   if(!resolved||!row.ok||!originalBinding||!isDeepStrictEqual(originalBinding,canonicalBinding(resolved))||original.amount!==row.amount){
-    outcomes.push({row:{...row,ok:false,reason:'previewChanged'},state:'failed'});continue;
-   }
-   try{
-    const result=await tx.transaction(async savepoint=>{
-     if(resolved.targetBatchId)await savepoint.select({id:payrollBatch.id}).from(payrollBatch).where(eq(payrollBatch.id,resolved.targetBatchId)).for('update');
-     const [item]=await savepoint.select({rule:payComponent.rule}).from(payComponent).where(eq(payComponent.id,resolved.componentId)).for('share');
-     if(!item)throw new IndividualImportError('previewChanged');
-     const rule=item.rule as PayRule|null;
-     if (r.method === 'daily') {
-      const daily = resolveDailyImportInput(rule, resolved.explicitDailyInput);
-      if ('reason' in daily || daily.unit !== resolved.unit ||
-          resolved.explicitDailyRuleHash && resolved.explicitDailyRuleHash !== digest(JSON.stringify(rule ?? null))) throw new IndividualImportError('previewChanged');
-     }
-     const priced=await deriveIndividualTxnAmountTx(savepoint,ctx,{componentId:resolved.componentId,employmentId:resolved.employmentId,companyId:resolved.companyId,payPeriod:resolved.payPeriod,quantity:resolved.quantity,unit:resolved.unit,effectiveDate:resolved.txnDate});
-     if(priced.derived&&priced.amount.toFixed(2)!==row.amount)throw new IndividualImportError('previewChanged');
-     const result=await createIndividualTxnsBulkTx(savepoint,ctx,{
-      ...(resolved.targetBatchId?{batchId:resolved.targetBatchId}:{companyId:resolved.companyId,payPeriod:resolved.payPeriod}),
-      employmentIds:[resolved.employmentId],intendedCycleId:resolved.intendedCycleId,
-      rows:[{kind:resolved.kind,componentId:resolved.componentId,txnDate:resolved.txnDate,amount:resolved.amount,quantity:resolved.quantity,unit:resolved.unit,notes:resolved.notes,source:'import',sourceRef:resolved.sourceRef}],
-     });
-     const [created]=await savepoint.select().from(payrollIndividualTxn).where(eq(payrollIndividualTxn.id,result.ids[0]));
-     if(!created)throw new IndividualImportError('importFailed');
-     return {row,state:'imported' as const,transactionId:created.id,snapshot:snapshot(created),eventIds:await eventIds(savepoint,created.id)};
-    });outcomes.push(result);
-    if(resolved.targetBatchId)targets.add(resolved.targetBatchId);
-   }catch(e){const failure:{reason:string;detail?:Record<string,string|number>}=e instanceof IndividualImportError?{reason:e.message}:txnImportReason(e);if(failure.reason==='unexpected')delete failure.detail;outcomes.push({row:{...row,ok:false,...failure},state:'failed'});}
+ const writable=nominee.rows.filter(row=>row.ok).map(row=>row.rowNum);
+ let analysis:IndividualAnalysis|null=null;
+ if(writable.length){
+  const [{records}]=await withTenant(ctx,tx=>tx.select({records:attempt.records}).from(attempt).where(eq(attempt.id,nominee.id)));
+  const fresh=await analyzeTxnImport(ctx,{kind:'individual',scopeIds:p.scopeIds,records,focus:new Set(writable)});
+  if(fresh.kind!=='individual')throw new IndividualImportError('templateMismatch');
+  analysis=fresh;
+ }
+ const freshRows=new Map((analysis?safePreview(analysis.preview).rows:[]).map(row=>[row.rowNum,row]));
+ const resolvedRows=analysis?.resolved??new Map<number,ResolvedRow>();
+ const tickEnds=Date.now()+(options.tickMs??INDIVIDUAL_IMPORT_TICK_MS);
+ let offset=0,size=Math.min(32,INDIVIDUAL_IMPORT_STEP_ROWS),last:IndividualImportProgress=progressOf(nominee);
+ while(offset<nominee.rows.length){
+  const part=nominee.rows.slice(offset,offset+size);
+  const selections=part.filter(row=>row.ok).flatMap(row=>{const b=nominee.bindings[String(row.rowNum)];return b?[{companyId:b.companyId,payPeriod:b.payPeriod}]:[];});
+  const started=Date.now();
+  let result:{progress:IndividualImportProgress;moved:boolean};
+  try{
+   result=await withTenant(ctx,async tx=>{
+    if(selections.length)await lockNativePayrollPeriodsTx(tx,ctx,selections);
+    const r=await readStep(tx,ctx,p.id,p.scopeIds,true,false);
+    // Another runner moved this attempt meanwhile: report where it is; the caller reads again.
+    if((r.state!=='validated'&&r.state!=='importing')||r.processed!==nominee.processed+offset)return {progress:progressOf(r),moved:true};
+    const lockable=part.filter(row=>row.ok&&nominee.bindings[String(row.rowNum)]).map(row=>row.rowNum);
+    // The bounded owner helper locks only these rows' immutable canonical identities.
+    // Employment intentionally has no runtime UPDATE grant, so ordinary SELECT FOR SHARE is unavailable.
+    if(lockable.length){try{await tx.execute(sql`select app.payroll_txn_import_lock_step_bindings(${r.id}::uuid,${intArray(lockable)}::int[])`);}catch{throw new IndividualImportError('previewChanged');}}
+    const outcomes=await writeRows(tx,ctx,r.method,part,nominee.bindings,freshRows,resolvedRows,started+INDIVIDUAL_IMPORT_STEP_CEILING_MS);
+    await tx.insert(outcomeTable).values(outcomes.map(o=>({attemptId:r.id,rowNum:o.row.rowNum,tenantId:ctx.tenantId,state:o.state,transactionId:o.transactionId??null,outcome:o})));
+    const processed=r.processed+outcomes.length,written=r.written+outcomes.filter(o=>o.state==='imported').length;
+    if(processed>=r.total){
+     const [head]=await tx.select({recalc:attempt.recalcBatchIds}).from(attempt).where(eq(attempt.id,r.id));
+     const counts=await finalCounts(tx,r.id,head.recalc);
+     await tx.update(attempt).set({state:'completed',processed:counts.processed,written:counts.written,recalcBatchIds:counts.recalc}).where(eq(attempt.id,r.id));
+     await stamp(tx,ctx,r.id,'confirmed',{written:counts.written,failed:counts.failed});
+     return {progress:progressOf({state:'completed',total:r.total,processed:counts.processed,written:counts.written}),moved:false};
+    }
+    // The first transaction marks the attempt importing; later ones only append outcomes.
+    if(r.state==='validated')await tx.update(attempt).set({state:'importing'}).where(eq(attempt.id,r.id));
+    return {progress:progressOf({state:'importing',total:r.total,processed,written}),moved:false};
+   });
+  }catch(e){
+   if(e instanceof StepOverrun&&size>1){size=Math.max(1,Math.floor(size/2));continue;}
+   throw e;
   }
-  // A processed run this step wrote to will need recalculation; remembered per step, so a stopped import keeps it.
-  const recalc=[...r.recalcBatchIds];
-  if(targets.size){
-   const processedRuns=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(inArray(payrollBatch.id,[...targets]),eq(payrollBatch.status,'processed')));
-   for(const run of processedRuns.map(x=>x.id).sort())if(!recalc.includes(run))recalc.push(run);
-  }
-  if(outcomes.length)await tx.insert(outcomeTable).values(outcomes.map(o=>({attemptId:r.id,rowNum:o.row.rowNum,tenantId:ctx.tenantId,state:o.state,transactionId:o.transactionId??null,outcome:o})));
-  const processed=r.processed+outcomes.length,written=r.written+outcomes.filter(o=>o.state==='imported').length;
-  const state:IndividualImportAttemptState=processed>=r.total?'completed':'importing';
-  await tx.update(attempt).set({state,processed,written,recalcBatchIds:recalc}).where(eq(attempt.id,r.id));
-  if(state==='completed'){
-   const [failed]=await tx.execute<{count:number}>(sql`select count(*)::int as count from payroll_txn_import_outcome where attempt_id=${r.id}::uuid and state='failed'`);
-   await stamp(tx,ctx,r.id,'confirmed',{written,failed:failed.count});
-  }
-  return progressOf({state,total:r.total,processed,written});
- });
+  const elapsed=Date.now()-started;
+  options.timings?.push(elapsed);
+  last=result.progress;
+  if(result.moved||last.state!=='importing')return last;
+  offset+=part.length;
+  // Aim the next transaction at the target from this one's measured cost per row.
+  size=Math.max(1,Math.min(INDIVIDUAL_IMPORT_STEP_ROWS,Math.floor(part.length*INDIVIDUAL_IMPORT_STEP_TARGET_MS/Math.max(elapsed,1))));
+  if(Date.now()>tickEnds)break;
+ }
+ return last;
 }
 
 /**
@@ -202,10 +283,12 @@ export async function confirmIndividualImportStep(ctx:SessionContext,p:{id:strin
  */
 export async function stopIndividualImport(ctx:SessionContext,p:{id:string;scopeIds:string[];reason:string}):Promise<IndividualImportAttemptState>{
  return withTenant(ctx,async tx=>{
-  const r=await readStep(tx,ctx,p.id,p.scopeIds,true);
+  const r=await readStep(tx,ctx,p.id,p.scopeIds,true,false);
   if(r.state!=='validated'&&r.state!=='importing')return r.state;
-  await tx.update(attempt).set({state:'stopped'}).where(eq(attempt.id,r.id));
-  await stamp(tx,ctx,r.id,'stopped',{reason:p.reason,written:r.written,processed:r.processed});
+  const [head]=await tx.select({recalc:attempt.recalcBatchIds}).from(attempt).where(eq(attempt.id,r.id));
+  const counts=await finalCounts(tx,r.id,head.recalc);
+  await tx.update(attempt).set({state:'stopped',processed:counts.processed,written:counts.written,recalcBatchIds:counts.recalc}).where(eq(attempt.id,r.id));
+  await stamp(tx,ctx,r.id,'stopped',{reason:p.reason,written:counts.written,processed:counts.processed});
   return 'stopped';
  });
 }
@@ -255,7 +338,9 @@ export async function readIndividualImportSummary(ctx:SessionContext,id:string,s
    file_error:string|null;inline_outcomes:number;inline_failed:number;periods:string[];cycles:string[];job_id:string|null}>(sql`
    select a.id,a.source_name,a.method,a.created_at,a.state,a.company_ids,
     coalesce(a.total_rows,(a.preview->>'total')::int,0) as total,coalesce(a.invalid_rows,(a.preview->>'invalid')::int,0) as invalid,
-    a.processed,a.written,a.reverted_count,a.reverted_at,a.reverted_by,
+    case when a.state='importing' then (select count(*)::int from payroll_txn_import_outcome o where o.attempt_id=a.id) else a.processed end as processed,
+    case when a.state='importing' then (select count(*)::int from payroll_txn_import_outcome o where o.attempt_id=a.id and o.state='imported') else a.written end as written,
+    a.reverted_count,a.reverted_at,a.reverted_by,
     case when a.total_rows is null or a.total_rows=0 then a.preview->>'fileError' end as file_error,
     case when a.processed=0 and a.state<>'validated' then jsonb_array_length(a.outcomes) else 0 end as inline_outcomes,
     case when a.processed=0 and a.state<>'validated' then (select count(*)::int from jsonb_array_elements(a.outcomes) o where o->>'state'<>'imported') else 0 end as inline_failed,
@@ -332,7 +417,8 @@ export async function listIndividualImportFailures(ctx:SessionContext,id:string,
       (select coalesce(jsonb_agg(x.pair order by x.i),'[]'::jsonb) from (
         select o.row_num-1 as i,jsonb_build_array(o.row_num-1,o.outcome->'row') as pair from payroll_txn_import_outcome o where o.attempt_id=a.id and o.state<>'imported'
         union all
-        select i,jsonb_build_array(i,e) from jsonb_array_elements(a.preview->'rows') with ordinality t(e,i) where i>a.processed and (e->>'ok')::boolean is not true) x)
+        select i,jsonb_build_array(i,e) from jsonb_array_elements(a.preview->'rows') with ordinality t(e,i) where (e->>'ok')::boolean is not true
+         and not exists(select 1 from payroll_txn_import_outcome o where o.attempt_id=a.id and o.row_num=i+1)) x)
     end as failures
    from payroll_txn_import_attempt a where a.id=${id}::uuid and a.tenant_id=${ctx.tenantId}::uuid`);
   if(!r||r.company_ids.some(c=>!scopeIds.includes(c)))deny();
@@ -397,17 +483,18 @@ export const individualImportErrorCode=(e:unknown,fallback:string)=>e instanceof
 /**
  * Start (or join) a revert: under the attempt's row lock, every remaining imported row is proved unchanged and
  * revertable before anything is removed, and the attempt moves to reverting. A refusal changes nothing.
- * `jobStalled`: the batch's queue entry is no longer reverting, so a revert left half-done is handed back first.
+ * `jobState`: the batch's queue state. When the queue no longer reverts (or imports) it, a revert (or an import) left
+ * half-done is handed back first; a revert or import still running there is joined, never interrupted.
  */
-async function beginRevertTx(tx:Tx,ctx:SessionContext,p:{id:string;scopeIds:string[];confirmProcessed:boolean},jobStalled:boolean):Promise<IndividualImportAttemptState>{
+async function beginRevertTx(tx:Tx,ctx:SessionContext,p:{id:string;scopeIds:string[];confirmProcessed:boolean},jobState:string|null):Promise<IndividualImportAttemptState>{
  let r=await readRevert(tx,ctx,p.id,p.scopeIds,true);
  if(r.state==='reverted')return r.state;
- if(r.state==='reverting'&&!jobStalled)return r.state;
+ if(r.state==='reverting'&&(jobState===null||jobState==='reverting'))return r.state;
  if(r.state==='reverting'){
   await tx.update(attempt).set({state:r.revertedCount===0&&(r.inline||r.processed===r.total)?'completed':'stopped'}).where(eq(attempt.id,r.id));
   r=await readRevert(tx,ctx,p.id,p.scopeIds,true);
  }
- if(r.state==='importing'&&jobStalled){
+ if(r.state==='importing'&&(jobState==='stopped'||jobState==='failed')){
   // The worker stopped this import but could not record it (for example, its creator lost access).
   await tx.update(attempt).set({state:'stopped'}).where(eq(attempt.id,r.id));
   r=await readRevert(tx,ctx,p.id,p.scopeIds,true);
@@ -436,41 +523,58 @@ export async function handBackIndividualImportRevert(ctx:SessionContext,p:{id:st
  });
 }
 /**
- * 0ec0ee00 — one revert step: the next INDIVIDUAL_IMPORT_STEP_ROWS imported rows, in one short transaction that owns
- * only their payroll periods, runs and rows. Each is re-proved unchanged under those locks and removed set-based.
- * The attempt is reverted only by the step that removes the last written row.
+ * 0ec0ee00 — one tick of a revert: the next imported rows, removed by short transactions that each own only their
+ * rows' payroll periods, runs and rows, time-budgeted like confirmation (about INDIVIDUAL_IMPORT_STEP_TARGET_MS each,
+ * rolled back and retried smaller past INDIVIDUAL_IMPORT_STEP_CEILING_MS). Each row is re-proved unchanged under
+ * those locks and removed set-based. The attempt is reverted only by the transaction that removes the last row.
  */
-export async function revertIndividualImportStep(ctx:SessionContext,p:{id:string;scopeIds:string[]}):Promise<IndividualImportProgress>{
- const nominee=await withTenant(ctx,async tx=>{
-  const r=await readRevert(tx,ctx,p.id,p.scopeIds,false);
-  if(r.state!=='reverting')return {r,selections:[]};
-  const slice=await importedAfter(tx,r,r.revertCursor,INDIVIDUAL_IMPORT_STEP_ROWS);
-  const ids=slice.map(row=>row.transactionId);
-  // Own every payroll period these rows (and their runs) are filed under, as deleting one row by hand does.
-  const periods=ids.length?await tx.execute<{companyId:string|null;payPeriod:string|null}>(sql`
-   select t.company_id as "companyId",t.pay_period as "payPeriod" from payroll_individual_txn t where t.id=any(${uuidArray(ids)}::uuid[])
-   union select b.company_id,b.pay_period from payroll_individual_txn t join payroll_batch b on b.id=t.batch_id where t.id=any(${uuidArray(ids)}::uuid[])`):[];
-  const fromSnapshots=slice.flatMap(row=>typeof row.snapshot?.companyId==='string'&&typeof row.snapshot?.payPeriod==='string'?[{companyId:row.snapshot.companyId,payPeriod:row.snapshot.payPeriod}]:[]);
-  return {r,selections:[...[...periods].flatMap(x=>x.companyId&&x.payPeriod?[{companyId:x.companyId,payPeriod:x.payPeriod}]:[]),...fromSnapshots]};
- });
- if(nominee.r.state!=='reverting')return progressOf(nominee.r);
- return withTenant(ctx,async tx=>{
-  if(nominee.selections.length)await lockNativePayrollPeriodsTx(tx,ctx,nominee.selections);
-  const r=await readRevert(tx,ctx,p.id,p.scopeIds,true);
-  if(r.state!=='reverting'||r.revertCursor!==nominee.r.revertCursor)return progressOf(r);
-  const slice=await importedAfter(tx,r,r.revertCursor,INDIVIDUAL_IMPORT_STEP_ROWS);
-  if(!slice.length&&r.revertedCount<r.written)throw new IndividualImportError('importRowsChanged');
-  const rows=await verifyRevertable(tx,ctx,p.scopeIds,slice,r.confirmProcessed,true);
-  await deleteImportedIndividualTxnsTx(tx,ctx,rows);
-  const revertedCount=r.revertedCount+rows.length,revertCursor=slice.at(-1)?.rowNum??r.revertCursor;
-  if(revertedCount>=r.written){
-   await tx.update(attempt).set({state:'reverted',revertedCount,revertCursor,revertedAt:new Date(),revertedBy:ctx.userId!}).where(eq(attempt.id,r.id));
-   await stamp(tx,ctx,r.id,'reverted',{count:r.written});
-   return progressOf({...r,state:'reverted',revertedCount});
+export async function revertIndividualImportStep(ctx:SessionContext,p:{id:string;scopeIds:string[]},options:{tickMs?:number;timings?:number[]}={}):Promise<IndividualImportProgress>{
+ const tickEnds=Date.now()+(options.tickMs??INDIVIDUAL_IMPORT_TICK_MS);
+ let size=Math.min(64,INDIVIDUAL_IMPORT_STEP_ROWS);
+ for(;;){
+  const nominee=await withTenant(ctx,async tx=>{
+   const r=await readRevert(tx,ctx,p.id,p.scopeIds,false);
+   if(r.state!=='reverting')return {r,selections:[],count:0};
+   const slice=await importedAfter(tx,r,r.revertCursor,size);
+   const ids=slice.map(row=>row.transactionId);
+   // Own every payroll period these rows (and their runs) are filed under, as deleting one row by hand does.
+   const periods=ids.length?await tx.execute<{companyId:string|null;payPeriod:string|null}>(sql`
+    select t.company_id as "companyId",t.pay_period as "payPeriod" from payroll_individual_txn t where t.id=any(${uuidArray(ids)}::uuid[])
+    union select b.company_id,b.pay_period from payroll_individual_txn t join payroll_batch b on b.id=t.batch_id where t.id=any(${uuidArray(ids)}::uuid[])`):[];
+   const fromSnapshots=slice.flatMap(row=>typeof row.snapshot?.companyId==='string'&&typeof row.snapshot?.payPeriod==='string'?[{companyId:row.snapshot.companyId,payPeriod:row.snapshot.payPeriod}]:[]);
+   return {r,selections:[...[...periods].flatMap(x=>x.companyId&&x.payPeriod?[{companyId:x.companyId,payPeriod:x.payPeriod}]:[]),...fromSnapshots],count:slice.length};
+  });
+  if(nominee.r.state!=='reverting')return progressOf(nominee.r);
+  const started=Date.now();
+  let progress:IndividualImportProgress,moved=false;
+  try{
+   progress=await withTenant(ctx,async tx=>{
+    if(nominee.selections.length)await lockNativePayrollPeriodsTx(tx,ctx,nominee.selections);
+    const r=await readRevert(tx,ctx,p.id,p.scopeIds,true);
+    if(r.state!=='reverting'||r.revertCursor!==nominee.r.revertCursor){moved=true;return progressOf(r);}
+    const slice=await importedAfter(tx,r,r.revertCursor,nominee.count||size);
+    if(!slice.length&&r.revertedCount<r.written)throw new IndividualImportError('importRowsChanged');
+    const rows=await verifyRevertable(tx,ctx,p.scopeIds,slice,r.confirmProcessed,true);
+    await deleteImportedIndividualTxnsTx(tx,ctx,rows);
+    if(Date.now()-started>INDIVIDUAL_IMPORT_STEP_CEILING_MS&&slice.length>1)throw new StepOverrun();
+    const revertedCount=r.revertedCount+rows.length,revertCursor=slice.at(-1)?.rowNum??r.revertCursor;
+    if(revertedCount>=r.written){
+     await tx.update(attempt).set({state:'reverted',revertedCount,revertCursor,revertedAt:new Date(),revertedBy:ctx.userId!}).where(eq(attempt.id,r.id));
+     await stamp(tx,ctx,r.id,'reverted',{count:r.written});
+     return progressOf({...r,state:'reverted',revertedCount});
+    }
+    await tx.update(attempt).set({revertedCount,revertCursor}).where(eq(attempt.id,r.id));
+    return progressOf({...r,revertedCount});
+   });
+  }catch(e){
+   if(e instanceof StepOverrun&&size>1){size=Math.max(1,Math.floor(nominee.count/2));continue;}
+   throw e;
   }
-  await tx.update(attempt).set({revertedCount,revertCursor}).where(eq(attempt.id,r.id));
-  return progressOf({...r,revertedCount});
- });
+  const elapsed=Date.now()-started;
+  options.timings?.push(elapsed);
+  if(moved||progress.state!=='reverting'||Date.now()>tickEnds)return progress;
+  size=Math.max(1,Math.min(INDIVIDUAL_IMPORT_STEP_ROWS,Math.floor(nominee.count*INDIVIDUAL_IMPORT_STEP_TARGET_MS/Math.max(elapsed,1))));
+ }
 }
 async function revertSteps(ctx:SessionContext,p:{id:string;scopeIds:string[]}){
  let idle=0,last=-1;
@@ -483,7 +587,7 @@ async function revertSteps(ctx:SessionContext,p:{id:string;scopeIds:string[]}){
 }
 /** Whole-batch reversal in this call: refuses any changed row before removing anything; original outcomes remain immutable. */
 export async function revertIndividualImport(ctx:SessionContext,p:{id:string;scopeIds:string[];confirmProcessed:boolean}):Promise<IndividualImportAttempt>{
- try{await withTenant(ctx,tx=>beginRevertTx(tx,ctx,p,false));}catch(e){await recordRefusal(ctx,p,e);throw e;}
+ try{await withTenant(ctx,tx=>beginRevertTx(tx,ctx,p,null));}catch(e){await recordRefusal(ctx,p,e);throw e;}
  try{await revertSteps(ctx,p);}catch(e){await handBackIndividualImportRevert(ctx,p,e).catch(()=>{});throw e;}
  return withTenant(ctx,async tx=>{const r=await owned(tx,ctx,p.id,p.scopeIds);return project(r,await outcomesOf(tx,r));});
 }
@@ -497,7 +601,7 @@ export async function requestIndividualImportRevert(ctx:SessionContext,p:{id:str
  try{
   state=await withTenant(ctx,async tx=>{
    const [job]=await tx.execute<{id:string;state:string}>(sql`select id,state from payroll_individual_import_job where attempt_id=${p.id}::uuid limit 1`);
-   const begun=await beginRevertTx(tx,ctx,p,!!job&&job.state!=='reverting');
+   const begun=await beginRevertTx(tx,ctx,p,job?.state??null);
    if(job&&begun==='reverting'){
     const context=JSON.stringify({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId,grants:ctx.grants,roles:ctx.roles});
     const [flag]=await tx.execute<{ok:boolean}>(sql`select app.payroll_individual_import_request_revert(${job.id}::uuid,${context}::jsonb) as ok`);

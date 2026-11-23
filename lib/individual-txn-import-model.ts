@@ -1,6 +1,7 @@
 import type {IndividualImportMethod,TxnImportPreview,TxnImportRow} from './payroll-txn-import-schema';
 import type {ImportActor} from './import-reference';
-export type IndividualImportOutcome={row:TxnImportRow;state:'invalid'|'imported'|'failed';transactionId?:string;snapshot?:Record<string,unknown>;eventIds?:string[]};
+/** `recalcBatchId` (0ec0ee00): the processed run this imported row was written to, which needs recalculation. */
+export type IndividualImportOutcome={row:TxnImportRow;state:'invalid'|'imported'|'failed';transactionId?:string;snapshot?:Record<string,unknown>;eventIds?:string[];recalcBatchId?:string};
 /** 0ec0ee00 — importing/stopped/reverting: an import written, or reverted, in steps by the background worker. */
 export type IndividualImportAttemptState='validated'|'importing'|'completed'|'stopped'|'reverting'|'reverted';
 export type IndividualImportAttempt={id:string;sourceName:string;method:IndividualImportMethod;createdBy:string;createdAt:string;state:IndividualImportAttemptState;records:Record<string,string>[];preview:TxnImportPreview;outcomes:IndividualImportOutcome[];written:number;recalcBatchIds:string[];revertedAt:string|null;revertedBy:string|null;events?:{type:string;at:string;actorId:string|null;actor?:ImportActor;reason?:string}[];

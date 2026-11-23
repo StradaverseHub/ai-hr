@@ -14,9 +14,12 @@ const uuid = z.uuid();
 const metadata = sql`job.id, job.source_name, job.created_by, job.created_at, job.started_at, job.finished_at,
   job.attempt_id, case when job.state = 'completed' and attempt.state = 'reverted' then 'reverted' else job.state end as state,
   job.processed, job.error, job.method,
-  coalesce(attempt.total_rows, (attempt.preview->>'total')::int, 0) as total, coalesce(attempt.written, 0) as written,
+  coalesce(attempt.total_rows, (attempt.preview->>'total')::int, 0) as total,
+  case when attempt.state = 'importing' then (select count(*)::int from payroll_txn_import_outcome o where o.attempt_id = attempt.id and o.state = 'imported')
+    else coalesce(attempt.written, 0) end as written,
   coalesce(attempt.reverted_count, 0) as reverted_rows,
   case when attempt.state is null or attempt.state = 'validated' then coalesce(attempt.invalid_rows, (attempt.preview->>'invalid')::int, 0)
+    when attempt.state = 'importing' then (select count(*)::int from payroll_txn_import_outcome o where o.attempt_id = attempt.id and o.state <> 'imported')
     when attempt.processed > 0 then attempt.processed - attempt.written
     else jsonb_array_length(attempt.outcomes) - attempt.written end as failed_rows`;
 const jobWithAttempt = sql`payroll_individual_import_job job
