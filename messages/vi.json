@@ -7503,7 +7503,8 @@
         "progressCount": "Đã xong {done}/{total} bước",
         "backgroundHelp": "Bạn có thể rời trang này. Nhân viên không thấy gì cho đến khi đợt lương được đóng, và bạn sẽ nhận thông báo khi xử lý xong.",
         "waiting": "Đang chờ dịch vụ xử lý bảng lương. Tiến độ đã được lưu; đừng xử lý lại đợt lương này.",
-        "workerUnavailable": "Dịch vụ xử lý bảng lương chưa chạy. Đợt lương đã được lưu và tự động bắt đầu ngay khi dịch vụ chạy."
+        "workerUnavailable": "Dịch vụ xử lý bảng lương chưa chạy. Đợt lương đã được lưu và tự động bắt đầu ngay khi dịch vụ chạy.",
+        "statusRetrying": "Việc kiểm tra tiến độ đang lâu hơn bình thường. Lần chạy đã được lưu; trang này sẽ tiếp tục kiểm tra."
       },
       "reprocessJob": {
         "title": "Đang xử lý lại ở chế độ nền",

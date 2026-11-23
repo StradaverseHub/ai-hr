@@ -19,9 +19,11 @@ import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { startMultiCompanyPayroll, type RunGroupResult } from '../core/payroll-run-group';
 import { readRunGroup, recordRunGroup, settleRunGroupsForJob } from '../core/payroll-run-group-store';
 import { runBulkJobTick } from '../core/bulk-job-worker';
+import { lockAccessConfigurationWriteTx } from '../core/access-configuration-lock';
 import { payrollProcessJobHandler } from '../core/payroll-processing-job';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, workerOwner, type Base } from './harness';
 import { drainRunGroup } from './payroll-run-group-helpers';
+import { repairPayrollRunGroupSettlement } from '../scripts/repair-payroll-run-group-settlement';
 
 let scope: { s: SessionContext; scopeIds: string[] };
 vi.mock('@/lib/authz', async (original) => ({
@@ -202,6 +204,31 @@ describe('a company job that fails inside a wizard run group renders as its reas
     }
   });
 
+  it('the repair script settles a group the worker left open, once, with its event and the same result', async () => {
+    const a = groupAdmin();
+    await paid(a, base.companyId, base.deptA, 'Alice');
+    await paid(a, companyB, deptB, 'Bob');
+    const { groupId } = await startMultiCompanyPayroll(a, { companyIds: [base.companyId, companyB], payPeriod: '2026-05', payrollCycleId: await regularCycleId(base.companyId), employmentIds: [] });
+    const settled = await drainRunGroup(groupId);
+    // The state the double-encoded settle left behind: every job finished and recorded its settle, the group stayed open.
+    await owner.client`update payroll_run_group set ended_at=null,result=null,event_id=null where id=${groupId}::uuid`;
+    const completed = async () => (await owner.client<{ n: number }[]>`select count(*)::int as n from domain_event where event_type='payroll-run-group.completed'`)[0].n;
+    const before = await completed();
+    const lines: string[] = [];
+    expect(await repairPayrollRunGroupSettlement(workerOwner(), { apply: false, log: (l) => lines.push(l) })).toEqual({ open: 1, ready: 1, settled: 0, withEvent: 0, stillOpen: 1 });
+    expect(lines.some((l) => l.includes(groupId))).toBe(true);
+    expect((await owner.client<{ ended: boolean }[]>`select ended_at is not null as ended from payroll_run_group where id=${groupId}::uuid`)[0].ended).toBe(false);
+    expect(await repairPayrollRunGroupSettlement(workerOwner(), { apply: true, log: () => undefined })).toEqual({ open: 1, ready: 1, settled: 1, withEvent: 1, stillOpen: 0 });
+    const [group] = await owner.client<{ result: RunGroupResult; result_type: string; payload_type: string }[]>`select g.result,jsonb_typeof(g.result) as result_type,
+      jsonb_typeof(e.payload) as payload_type from payroll_run_group g join domain_event e on e.id=g.event_id where g.id=${groupId}::uuid`;
+    expect(group).toMatchObject({ result_type: 'object', payload_type: 'object' });
+    expect(group.result).toEqual(settled);
+    expect(await completed()).toBe(before + 1);
+    // Idempotent: nothing is left, and a second apply writes nothing.
+    expect(await repairPayrollRunGroupSettlement(workerOwner(), { apply: true, log: () => undefined })).toEqual({ open: 0, ready: 0, settled: 0, withEvent: 0, stillOpen: 0 });
+    expect(await completed()).toBe(before + 1);
+  });
+
   it('is refused when its job prepares: the same reason row, and the page still renders the other company', async () => {
     const a = groupAdmin();
     await paid(a, base.companyId, base.deptA, 'Alice');
@@ -222,6 +249,23 @@ describe('a company job that fails inside a wizard run group renders as its reas
     expect((await response.json()).companies).toEqual(waiting?.companies);
     expect(await withTenant(peer, tx => tx.execute(sql`select id from payroll_run_group where id=${groupId}::uuid`))).toHaveLength(0);
     scope.s = a;
+    // A read that cannot finish is not a missing run: while an Access edit holds the
+    // tenant's lock past the read's bounded 5 s wait, the poll answers 503 retry, never 404 "Payroll run unavailable.".
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await owner.db.transaction(async (tx) => {
+        await lockAccessConfigurationWriteTx(tx, base.tenantId);
+        const blocked = await resultStatus(statusRequest(groupId));
+        expect(blocked.status).toBe(503);
+        expect(blocked.headers.get('Retry-After')).toBe('2');
+        expect(blocked.headers.get('Cache-Control')).toBe('private, no-store');
+        expect(await blocked.json()).toEqual({ retry: true });
+      });
+      expect(errors).toHaveBeenCalledWith('[payroll run group status] progress read failed', '55P03');
+    } finally { errors.mockRestore(); }
+    const unblocked = await resultStatus(statusRequest(groupId));
+    expect(unblocked.status).toBe(200);
+    expect((await unblocked.json()).done).toBe(false);
 
     const result = await drainRunGroup(groupId);
     expect(result.perCompany.find((c) => c.companyId === companyB)).toEqual({ companyId: companyB, companyName: 'Beta Sdn Bhd', status: 'failed', employeesSelected: 0, employeesSucceeded: 0, reason: 'PRE_PROCESS_BLOCKED' });

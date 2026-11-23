@@ -6779,7 +6779,8 @@
         "progressCount": "{done} of {total} steps complete",
         "backgroundHelp": "You can leave this page. Employees see nothing until the run is closed, and you get a notice when processing finishes.",
         "waiting": "Waiting for the payroll processing service. Progress is saved; do not process the run again.",
-        "workerUnavailable": "The payroll processing service is not running yet. The run is saved and starts automatically as soon as it is."
+        "workerUnavailable": "The payroll processing service is not running yet. The run is saved and starts automatically as soon as it is.",
+        "statusRetrying": "Checking progress is taking longer than usual. The run is saved; this page keeps checking."
       },
       "reprocessJob": {
         "title": "Reprocessing in the background",

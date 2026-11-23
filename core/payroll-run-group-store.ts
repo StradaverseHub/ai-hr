@@ -106,7 +106,10 @@ function runGroupEventPayload(p:RunGroupEventInput){
 function settlement(g:GroupRow,jobs:Map<string,JobOutcomeRow>):{result:RunGroupResult;event:RunGroupEventInput|null}|null{
  const resolved:CompanyOutcome[]=[];
  for(const o of g.outcomes){const out=pending(o)?finishedOutcome(o,jobs.get(o.jobId)):o;if(!out)return null;resolved.push(out);}
- const startedAt=iso(g.started_at),endedAt=new Date().toISOString();
+ // The run ended when its last job finished, which is when a settle normally runs; a settle that runs later (a
+ // retried settle, or scripts/repair-payroll-run-group-settlement.ts days afterwards) records the same time.
+ const finished=g.outcomes.flatMap(o=>{const at=pending(o)?jobs.get(o.jobId)?.finished_at:null;return at?[iso(at)]:[];}).sort();
+ const startedAt=iso(g.started_at),endedAt=finished.at(-1)??new Date().toISOString();
  const result=summarize(g.pay_period,startedAt,endedAt,resolved);
  return{result,event:g.kind==='run'?{mode:'process',payPeriod:g.pay_period,startedAt,endedAt,requested:g.company_ids,result}:null};
 }
@@ -157,11 +160,17 @@ export async function recordRunGroup(ctx:SessionContext,p:{kind:RunGroupKind;pay
  * `owner` is the connection inside the transaction the caller opened: the kernel's unit.ownerTx for the job's settle
  * (one transaction attributed to the job, so the event also carries payload.bulkJob, migration 5014). No begin or
  * commit here. The job's settle key is taken first (see settleTx), so a group whose recording has not committed yet
- * is waited for and then found. */
+ * is waited for and then found.
+ *
+ * Every JSON parameter here is sent as text and cast (`::text::jsonb`), as the kernel's own owner writes are. `owner`
+ * is the worker's plain postgres.js client (db/worker-connection.ts), not a drizzle-wrapped one: a `${string}::jsonb`
+ * parameter is typed jsonb there and JSON-encoded a second time, so the containment below compared every group with a
+ * JSON *string* and matched none. Run groups were left open that way (November 2026), silently, while each job's
+ * settle still recorded success. */
 export async function settleRunGroupsForJobTx(owner:postgres.ReservedSql,job:Pick<BulkJobRow,'id'|'tenant_id'|'created_by'>){
  await owner`select pg_advisory_xact_lock(hashtextextended(${jobSettleKey(job.tenant_id,job.id)},0))`;
  const groups=await owner<GroupRow[]>`select * from payroll_run_group where tenant_id=${job.tenant_id}::uuid and ended_at is null and sealed_at is not null
-  and outcomes @> ${JSON.stringify([{jobId:job.id}])}::jsonb order by id for update`;
+  and outcomes @> ${JSON.stringify([{jobId:job.id}])}::text::jsonb order by id for update`;
  for(const g of groups){
   const ids=g.outcomes.filter(pending).map(o=>o.jobId);
   const jobs=new Map((ids.length?await owner<JobOutcomeRow[]>`select id,state,result,plan,finished_at,error from bulk_job where tenant_id=${g.tenant_id}::uuid and id=any(${ids}::uuid[])`:[]).map(r=>[r.id,r]));
@@ -171,10 +180,10 @@ export async function settleRunGroupsForJobTx(owner:postgres.ReservedSql,job:Pic
   if(settled.event){
    const [row]=await owner<{id:string}[]>`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
     values(${g.tenant_id}::uuid,'payroll-run-group',${randomUUID()}::uuid,${runGroupEventType(settled.event)},'user',${g.created_by}::uuid,
-     ${JSON.stringify(runGroupEventPayload(settled.event))}::jsonb) returning id`;
+     ${JSON.stringify(runGroupEventPayload(settled.event))}::text::jsonb) returning id`;
    eventId=row.id;
   }
-  await owner`update payroll_run_group set ended_at=${settled.result.endedAt}::timestamptz,result=${JSON.stringify(settled.result)}::jsonb,event_id=${eventId}::uuid where id=${g.id}::uuid`;
+  await owner`update payroll_run_group set ended_at=${settled.result.endedAt}::timestamptz,result=${JSON.stringify(settled.result)}::text::jsonb,event_id=${eventId}::uuid where id=${g.id}::uuid`;
  }
 }
 /** The same settlement as its own transaction on a queue-owner connection, outside a job unit (a repair or a test

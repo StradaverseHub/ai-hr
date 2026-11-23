@@ -7503,7 +7503,8 @@
         "progressCount": "{done} daripada {total} langkah selesai",
         "backgroundHelp": "Anda boleh tinggalkan halaman ini. Pekerja tidak melihat apa-apa sehingga larian ditutup, dan anda menerima notis apabila pemprosesan selesai.",
         "waiting": "Menunggu perkhidmatan pemprosesan gaji. Kemajuan disimpan; jangan proses larian ini sekali lagi.",
-        "workerUnavailable": "Perkhidmatan pemprosesan gaji belum berjalan. Larian telah disimpan dan bermula secara automatik sebaik sahaja perkhidmatan berjalan."
+        "workerUnavailable": "Perkhidmatan pemprosesan gaji belum berjalan. Larian telah disimpan dan bermula secara automatik sebaik sahaja perkhidmatan berjalan.",
+        "statusRetrying": "Semakan kemajuan mengambil masa lebih lama daripada biasa. Larian telah disimpan; halaman ini terus menyemak."
       },
       "reprocessJob": {
         "title": "Memproses semula di latar belakang",

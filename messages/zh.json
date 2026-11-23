@@ -7503,7 +7503,8 @@
         "progressCount": "已完成 {done}/{total} 个步骤",
         "backgroundHelp": "您可以离开此页面。批次关闭前员工看不到任何内容，处理完成后您会收到通知。",
         "waiting": "正在等待薪资处理服务。进度已保存；请勿再次处理此批次。",
-        "workerUnavailable": "薪资处理服务尚未运行。批次已保存，服务一运行便会自动开始。"
+        "workerUnavailable": "薪资处理服务尚未运行。批次已保存，服务一运行便会自动开始。",
+        "statusRetrying": "进度查询比平时慢。该次运行已保存，本页面会继续查询。"
       },
       "reprocessJob": {
         "title": "正在后台重新处理",
