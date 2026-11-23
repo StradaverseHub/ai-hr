@@ -1,3 +1,18 @@
+# Individual Transaction import written in steps (board 0ec0ee00, stage 2), 23 November 2026
+
+Reserve `7140_payroll_individual_import_steps`, journal index `10540`, timestamp `1795280007140`,
+SQL SHA-256 `c2f75af90ad00c779e3447311ba8efb25ad06066ab46dc744810fba720223d5f`. `7120` and `7130` (idx `10520`–`10530`) are
+installed on staging with release 13877b505 (board a16382b4); this entry follows them and was reconciled with them
+when combined into the 016276b7 + 0ec0ee00 release on 23 November 2026. The timestamp is above every entry on this branch's journal
+(`1795280007110`). Recheck both installations' watermarks and competing reservations before admission.
+
+Raises the Individual Transaction attempt and queue limits from 2,000 to 10,000 rows, adds the importing, stopped,
+reverting and reverted states with a replacement transition trigger, summary and revert-progress columns, the
+append-only `payroll_txn_import_outcome` table (RLS forced, `ai_hr_app` SELECT and INSERT only; the default UPDATE, DELETE and TRUNCATE are revoked), the step-scoped
+`app.payroll_txn_import_lock_step_bindings` and the bounded `app.payroll_individual_import_request_revert`. Existing
+rows are not rewritten; the looser records CHECK is added NOT VALID and validated separately. The Fixed Transaction
+import does not use these tables.
+
 # Contract account lookup, Person first, 23 November 2026
 
 Reserve `7130_contract_users_person_first`, journal index `10530`, timestamp `1795280007130`,

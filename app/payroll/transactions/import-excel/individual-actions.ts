@@ -1,11 +1,10 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {scopedAdmin} from '@/lib/scope';
-import {submitIndividualImportJob,queueIndividualImportConfirmation,revertIndividualImport,IndividualImportError,BatchNotDraftError} from '@/packs/payroll/service';
+import {submitIndividualImportJob,queueIndividualImportConfirmation,requestIndividualImportRevert,IndividualImportError,BatchNotDraftError} from '@/packs/payroll/service';
 import {INDIVIDUAL_IMPORT_MAX_BYTES} from '@/lib/individual-import-job';
 import type {IndividualImportMethod} from '@/lib/payroll-txn-import-schema';
-import type {IndividualImportAttempt} from '@/lib/individual-txn-import-model';
-async function result(run:()=>Promise<IndividualImportAttempt>){try{return {ok:true as const,data:await run()};}catch(e){return {ok:false as const,error:e instanceof IndividualImportError?e.message:e instanceof BatchNotDraftError?'revertFailed':'failed'};}}
+async function result<T>(run:()=>Promise<T>){try{return {ok:true as const,data:await run()};}catch(e){return {ok:false as const,error:e instanceof IndividualImportError?e.message:e instanceof BatchNotDraftError?'revertFailed':'failed'};}}
 export async function submitIndividualImportAction(form: FormData) {
   const {s, scopeIds} = await scopedAdmin();
   const file = form.get('file');
@@ -29,4 +28,5 @@ export async function queueIndividualImportAction(id: string) {
     return {ok: false};
   }
 }
-export async function revertIndividualImportAction(p:{id:string;confirmProcessed:boolean}){const {s,scopeIds}=await scopedAdmin();return result(async()=>{const r=await revertIndividualImport(s,{...p,scopeIds});revalidatePath('/payroll/transactions/individual');revalidatePath('/payroll/transactions/individual/imports');return r;});}
+/** 0ec0ee00 — refusals are decided here; a queued batch is then reverted by the worker in steps (`queued`). */
+export async function revertIndividualImportAction(p:{id:string;confirmProcessed:boolean}){const {s,scopeIds}=await scopedAdmin();return result(async()=>{const r=await requestIndividualImportRevert(s,{...p,scopeIds});revalidatePath('/payroll/transactions/individual');revalidatePath('/payroll/transactions/individual/imports');return r;});}

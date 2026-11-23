@@ -38,11 +38,13 @@ describe('durable Individual Transaction import',()=>{
  const historicalReceipt=async()=>{
   const input=await validate('monthly',[monthly()]);const saved=await confirm(input.id);
   const [original]=await owner.db.select().from(schema.payrollTxnImportAttempt).where(eq(schema.payrollTxnImportAttempt.id,input.id));
-  const outcomes=structuredClone(original.outcomes);
+  // 0ec0ee00 — a step-written attempt keeps its outcomes in payroll_txn_import_outcome; a pre-3900 receipt held them inline.
+  expect(original.outcomes).toEqual([]);expect(saved.outcomes).toHaveLength(1);
+  const outcomes=structuredClone(saved.outcomes);
   for(const outcome of outcomes)if(outcome.snapshot){expect(outcome.snapshot.calculationMethod).toBeNull();delete outcome.snapshot.calculationMethod;}
   // A physical pre-3900 receipt preserves every original field and event ID. No trigger is
   // disabled and no stored completed receipt is rewritten to manufacture this witness.
-  const [legacy]=await owner.withTenant(adminCtx(base),tx=>tx.insert(schema.payrollTxnImportAttempt).values({...original,id:randomUUID(),operationId:randomUUID(),outcomes}).returning());
+  const [legacy]=await owner.withTenant(adminCtx(base),tx=>tx.insert(schema.payrollTxnImportAttempt).values({...original,id:randomUUID(),operationId:randomUUID(),outcomes,processed:0}).returning());
   return {legacy,transactionId:saved.outcomes[0].transactionId!};
  };
  it('reverses an unchanged pre-method import while preserving its original receipt',async()=>{

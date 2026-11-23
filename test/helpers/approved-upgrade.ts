@@ -478,9 +478,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10510,when:1795280007110,tag:'7110_payroll_draft_tax_readiness'},
  {idx:10520,when:1795280007120,tag:'7120_payroll_tax_basis_run'},
  {idx:10530,when:1795280007130,tag:'7130_contract_users_person_first'},
+ {idx:10540,when:1795280007140,tag:'7140_payroll_individual_import_steps'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '7140_payroll_individual_import_steps':'c2f75af90ad00c779e3447311ba8efb25ad06066ab46dc744810fba720223d5f',
  '7120_payroll_tax_basis_run':'e5aab381a4d81892cdf95d32d6cd9c857976662135c5f6bb188aec7876c8cc2a',
  '7130_contract_users_person_first':'f365166f4b483dbeaacc03552e97d022c4ede42b35f6b66babbda1f1fdac71e8',
  '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',

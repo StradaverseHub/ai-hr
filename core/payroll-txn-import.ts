@@ -59,6 +59,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { employmentPayComponent, payComponent, payrollCycle, payrollIndividualTxn } from '../db/schema';
 import { listEmployees } from './read';
+import { INDIVIDUAL_IMPORT_MAX_RECORDS } from '../lib/individual-import-job';
 // ADR-0080 D9 — payroll is a PACK, and this module is spine, so every payroll service comes through the
 // FACADE rather than reaching into core/pay-components, core/pay-rule, core/payroll-individual-txn or
 // core/payroll directly. Importing those turns test/payroll-pack-drift.test.ts red, and the fix is never
@@ -113,7 +114,8 @@ import {
   type TxnImportRow,
 } from '../lib/payroll-txn-import-schema';
 
-/** A file bigger than this is a mistake, not an import. 2,000 rows is ~50× production's whole ledger. */
+/** A file bigger than this is a mistake, not an import. 2,000 rows is ~50× production's whole ledger. Fixed Transaction only:
+ *  board 0ec0ee00 gives the Individual Transaction upload its own limit (INDIVIDUAL_IMPORT_MAX_RECORDS), written in steps. */
 const MAX_ROWS = 2000;
 
 /** One parsed record from `parseCsvRecords` — every value already trimmed, keys already snake_cased. */
@@ -498,7 +500,13 @@ const fail = (base: Omit<TxnImportRow, 'ok' | 'reason'>, reason: string, detail?
  */
 export async function analyzeTxnImport(
   ctx: SessionContext,
-  p: { kind: TxnImportKind; scopeIds: string[]; records: TxnImportRecord[] },
+  p: {
+    kind: TxnImportKind; scopeIds: string[]; records: TxnImportRecord[];
+    /** Board 0ec0ee00, Individual only: re-check just these Excel row numbers of the WHOLE file. The file digest (and so
+     *  every sourceRef) and the row numbers still come from all records; rows outside the focus are skipped, so the
+     *  caller keeps each other row's stored whole-file verdict, including its in-file duplicate check. */
+    focus?: ReadonlySet<number>;
+  },
 ): Promise<Analysis> {
   const { kind, records } = p;
   const empty: TxnImportPreview = { kind, total: 0, valid: 0, invalid: 0, rows: [] };
@@ -508,7 +516,7 @@ export async function analyzeTxnImport(
       ? { kind, preview: { ...empty, fileError: 'emptyFile' }, resolved: new Map() }
       : { kind, preview: { ...empty, fileError: 'emptyFile' }, resolved: new Map() };
   }
-  if (records.length > MAX_ROWS) {
+  if (records.length > (kind === 'individual' ? INDIVIDUAL_IMPORT_MAX_RECORDS : MAX_ROWS)) {
     return kind === 'fixed'
       ? { kind, preview: { ...empty, fileError: 'tooManyRows' }, resolved: new Map() }
       : { kind, preview: { ...empty, fileError: 'tooManyRows' }, resolved: new Map() };
@@ -526,7 +534,7 @@ export async function analyzeTxnImport(
   const cat = await loadCatalogs(ctx, p.scopeIds);
   return kind === 'fixed'
     ? { kind: 'fixed', ...(await analyzeFixed(ctx, records, cat)) }
-    : { kind: 'individual', ...(await analyzeIndividual(ctx, records, cat)) };
+    : { kind: 'individual', ...(await analyzeIndividual(ctx, records, cat, p.focus)) };
 }
 
 async function analyzeFixed(
@@ -703,6 +711,7 @@ async function analyzeIndividual(
   ctx: SessionContext,
   records: TxnImportRecord[],
   cat: Catalogs,
+  focus?: ReadonlySet<number>,
 ): Promise<{ preview: TxnImportPreview; resolved: Map<number, ResolvedIndividual> }> {
   const rows: TxnImportRow[] = [];
   const resolved = new Map<number, ResolvedIndividual>();
@@ -730,6 +739,7 @@ async function analyzeIndividual(
 
   for (const [i, rec] of records.entries()) {
     const rowNum = i + 2;
+    if (focus && !focus.has(rowNum)) continue;
     const employeeId = rec.employee_id ?? '';
     const payItemCode = rec.pay_item_code ?? '';
     const base = {

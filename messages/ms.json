@@ -10670,7 +10670,10 @@
         "confirmed": "Menunggu import",
         "importing": "Mengimport",
         "completed": "Selesai",
-        "failed": "Gagal"
+        "failed": "Gagal",
+        "stopped": "Terhenti",
+        "reverting": "Sedang dibatalkan",
+        "reverted": "Dibatalkan"
       },
       "open": "Import Excel",
       "log": "Log import",
@@ -10729,7 +10732,7 @@
       "templateMismatch": "Tajuk lajur tidak sepadan dengan kaedah input. Gunakan templat yang sepadan tanpa mengubah tajuk.",
       "fileTooLarge": "Fail ini melebihi 10 MB, saiz maksimum bagi satu muat naik. Pecahkannya kepada muat naik yang lebih kecil.",
       "emptyFile": "Lembaran data tidak mengandungi baris.",
-      "tooManyRows": "Fail ini mempunyai lebih daripada 2,000 transaksi. Satu muat naik boleh memuatkan maksimum 2,000. Pecahkannya kepada muat naik yang lebih kecil.",
+      "tooManyRows": "Fail ini mempunyai lebih daripada 10,000 transaksi. Satu muat naik boleh memuatkan maksimum 10,000. Pecahkannya kepada muat naik yang lebih kecil.",
       "invalidFormat": "Pilih fail Excel .xlsx.",
       "revertUnavailable": "Kelompok ini tiada rekod import lengkap untuk dibatalkan.",
       "importRowsChanged": "Rekod import telah berubah atau dibuang. Tiada rekod diterbalikkan.",
@@ -10742,11 +10745,31 @@
         "validated": "Disahkan",
         "confirmed": "Import disahkan",
         "reverted": "Import dibatalkan",
-        "revert-refused": "Pembatalan ditolak"
+        "revert-refused": "Pembatalan ditolak",
+        "stopped": "Import terhenti"
       },
       "inputType": "Jenis input",
       "fileTooLargeSize": "Fail ini bersaiz {size} MB. Satu muat naik boleh mencapai maksimum 10 MB. Pecahkannya kepada muat naik yang lebih kecil.",
-      "contentTooLarge": "Helaian transaksi mengandungi lebih banyak teks daripada yang boleh diproses oleh satu muat naik. Buang lajur yang tidak digunakan atau catatan yang panjang, atau pecahkannya kepada muat naik yang lebih kecil."
+      "contentTooLarge": "Helaian transaksi mengandungi lebih banyak teks daripada yang boleh diproses oleh satu muat naik. Buang lajur yang tidak digunakan atau catatan yang panjang, atau pecahkannya kepada muat naik yang lebih kecil.",
+      "importing": "Mengimport",
+      "stopped": "Terhenti",
+      "reverting": "Sedang dibatalkan",
+      "rowsDone": "{percent}% · {done} daripada {total} baris selesai",
+      "rowsReverted": "{percent}% · {done} daripada {total} baris diimport telah dikeluarkan",
+      "totalRows": "Jumlah baris",
+      "importedRows": "Diimport",
+      "failedRows": "Gagal",
+      "remainingRows": "Baki",
+      "leavePage": "Anda boleh meninggalkan halaman ini. Import terus berjalan dan log ini dikemas kini.",
+      "leavePageRevert": "Anda boleh meninggalkan halaman ini. Pembatalan terus berjalan dan log ini dikemas kini.",
+      "stoppedNotice": "Import ini terhenti sebelum selesai. {written} baris telah diimport dan kekal dalam gaji; baris selebihnya tidak diimport. Batalkan untuk mengeluarkan baris yang diimport.",
+      "importStopped": "Import terhenti sebelum selesai. Baris yang telah diimport kekal dalam gaji sehingga anda membatalkannya.",
+      "revertQueued": "Pembatalan dimulakan. Anda boleh meninggalkan halaman ini; Log import menunjukkan kemajuannya.",
+      "revertPartial": "{reverted} daripada {written} baris diimport telah dikeluarkan sebelum pembatalan terhenti. Batalkan sekali lagi untuk mengeluarkan selebihnya.",
+      "pageRows": "Baris {from}–{to} daripada {total}",
+      "previousPage": "Sebelumnya",
+      "nextPage": "Seterusnya",
+      "pending": "Belum diimport"
     }
   },
   "admin": {

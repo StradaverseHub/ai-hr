@@ -10670,7 +10670,10 @@
         "confirmed": "Chờ nhập",
         "importing": "Đang nhập",
         "completed": "Hoàn tất",
-        "failed": "Thất bại"
+        "failed": "Thất bại",
+        "stopped": "Đã dừng",
+        "reverting": "Đang hoàn tác",
+        "reverted": "Đã hoàn tác"
       },
       "open": "Nhập Excel",
       "log": "Nhật ký nhập",
@@ -10729,7 +10732,7 @@
       "templateMismatch": "Tiêu đề cột không khớp phương thức nhập. Dùng đúng mẫu và không sửa tiêu đề.",
       "fileTooLarge": "Tệp này lớn hơn 10 MB, mức tối đa cho một lần tải lên. Hãy chia thành các tệp nhỏ hơn.",
       "emptyFile": "Trang dữ liệu không có dòng nào.",
-      "tooManyRows": "Tệp này có hơn 2.000 giao dịch. Mỗi lần tải lên tối đa 2.000 giao dịch. Hãy chia thành các tệp nhỏ hơn.",
+      "tooManyRows": "Tệp này có hơn 10.000 giao dịch. Mỗi lần tải lên tối đa 10.000 giao dịch. Hãy chia thành các tệp nhỏ hơn.",
       "invalidFormat": "Chọn tệp Excel .xlsx.",
       "revertUnavailable": "Lô này không có bản ghi nhập hoàn tất để hoàn tác.",
       "importRowsChanged": "Bản ghi nhập đã thay đổi hoặc bị xóa. Không có bản ghi nào được đảo.",
@@ -10742,11 +10745,31 @@
         "validated": "Đã kiểm tra",
         "confirmed": "Đã xác nhận nhập",
         "reverted": "Đã hoàn tác nhập",
-        "revert-refused": "Hoàn tác bị từ chối"
+        "revert-refused": "Hoàn tác bị từ chối",
+        "stopped": "Đã dừng nhập"
       },
       "inputType": "Loại đầu vào",
       "fileTooLargeSize": "Tệp này có dung lượng {size} MB. Mỗi lần tải lên tối đa 10 MB. Hãy chia thành các tệp nhỏ hơn.",
-      "contentTooLarge": "Trang tính giao dịch chứa nhiều văn bản hơn mức một lần tải lên có thể xử lý. Hãy xóa các cột không dùng hoặc ghi chú dài, hoặc chia thành các tệp nhỏ hơn."
+      "contentTooLarge": "Trang tính giao dịch chứa nhiều văn bản hơn mức một lần tải lên có thể xử lý. Hãy xóa các cột không dùng hoặc ghi chú dài, hoặc chia thành các tệp nhỏ hơn.",
+      "importing": "Đang nhập",
+      "stopped": "Đã dừng",
+      "reverting": "Đang hoàn tác",
+      "rowsDone": "{percent}% · Đã xong {done}/{total} dòng",
+      "rowsReverted": "{percent}% · Đã gỡ {done}/{total} dòng đã nhập",
+      "totalRows": "Tổng số dòng",
+      "importedRows": "Đã nhập",
+      "failedRows": "Thất bại",
+      "remainingRows": "Còn lại",
+      "leavePage": "Bạn có thể rời trang này. Quá trình nhập vẫn tiếp tục và nhật ký này sẽ tự cập nhật.",
+      "leavePageRevert": "Bạn có thể rời trang này. Quá trình hoàn tác vẫn tiếp tục và nhật ký này sẽ tự cập nhật.",
+      "stoppedNotice": "Lần nhập này đã dừng trước khi hoàn tất. {written} dòng đã được nhập và vẫn nằm trong bảng lương; các dòng còn lại chưa được nhập. Hoàn tác sẽ gỡ các dòng đã nhập.",
+      "importStopped": "Quá trình nhập đã dừng trước khi hoàn tất. Các dòng đã nhập vẫn nằm trong bảng lương cho đến khi bạn hoàn tác.",
+      "revertQueued": "Đã bắt đầu hoàn tác. Bạn có thể rời trang này; Nhật ký nhập sẽ hiển thị tiến độ.",
+      "revertPartial": "Đã gỡ {reverted}/{written} dòng đã nhập trước khi hoàn tác dừng. Hãy hoàn tác lại để gỡ phần còn lại.",
+      "pageRows": "Dòng {from}–{to} trên {total}",
+      "previousPage": "Trước",
+      "nextPage": "Tiếp",
+      "pending": "Chưa nhập"
     }
   },
   "admin": {
