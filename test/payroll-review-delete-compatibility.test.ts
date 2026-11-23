@@ -62,7 +62,9 @@ async function rawDelete(){return withTenant(ctx,async tx=>{
  await tx.delete(s.payrollStatusHistory).where(eq(s.payrollStatusHistory.batchId,batchId));
  await tx.delete(s.payrollBatch).where(eq(s.payrollBatch.id,batchId));
 });}
-async function waitingOn(holder:number){for(let n=0;n<500;n++){const [row]=await owner.db.execute<{pid:number;wait:string}>(sql`select a.pid,a.wait_event_type as wait from pg_stat_activity a where ${holder}=any(pg_blocking_pids(a.pid)) and a.pid<>pg_backend_pid() order by a.pid limit 1`);if(row){expect(row.wait).toBe('Lock');return row.pid;}await new Promise<void>(yes=>setTimeout(yes,10));}throw Error('Actual PostgreSQL blocking edge was not observed');}
+// pg_blocking_pids can report a blocked backend a moment before pg_stat_activity publishes its Lock wait event
+// (seen as wait=null in gate 45223425820), so poll until the blocked backend is observed actually waiting on a Lock.
+async function waitingOn(holder:number){for(let n=0;n<500;n++){const [row]=await owner.db.execute<{pid:number;wait:string}>(sql`select a.pid,a.wait_event_type as wait from pg_stat_activity a where ${holder}=any(pg_blocking_pids(a.pid)) and a.pid<>pg_backend_pid() order by a.pid limit 1`);if(row?.wait==='Lock')return row.pid;await new Promise<void>(yes=>setTimeout(yes,10));}throw Error('Actual PostgreSQL blocking edge was not observed');}
 async function capturedPending(){const r=await prepareReset();const [saved]=await owner.db.execute<{row:Record<string,unknown>;body:Record<string,unknown>}>(sql`select to_jsonb(r) as row,to_jsonb(c) as body from app.assistant_own_leave_review r join app.assistant_own_leave_review_content c on c.action_id=r.id where r.id=${r.actionId}::uuid`);expect(saved.body).not.toBeNull();await owner.db.execute(sql`delete from app.assistant_own_leave_review where id=${r.actionId}::uuid`);await resetProcessedBatch(ctx,{batchId,reason});return{r,...saved};}
 async function restoreCaptured(tx:Tx,saved:Awaited<ReturnType<typeof capturedPending>>){
  // OWNER-ONLY fixture restoring the whole genuinely encrypted row to isolate database guard
