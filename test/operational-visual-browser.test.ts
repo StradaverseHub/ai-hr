@@ -38,6 +38,7 @@ it('renders affected operational routes at desktop and mobile widths without pag
   const pairStarted=Date.now();
   signal.throwIfAborted();await preview.start();
   for(const route of routes.slice(index,index+2)){
+   const routeStarted=Date.now();
    const page=await context.newPage();page.setDefaultTimeout(60000);
    for(const [device,width,height] of [['desktop',1440,1050],['mobile',390,844]] as const){
     signal.throwIfAborted();await page.setViewportSize({width,height});
@@ -71,6 +72,7 @@ it('renders affected operational routes at desktop and mobile widths without pag
     checks.push({route,device,...metrics});writeFileSync(join(evidence,'operational-visual-progress.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,complete:false,checks},null,2));
    }
    await page.close();
+   console.info('Operational visual route', route, Date.now()-routeStarted, 'ms');
   }
   await preview.stop();
   console.info('Operational visual routes completed', routes.slice(index,index+2), Date.now()-pairStarted, 'ms');
@@ -79,5 +81,6 @@ it('renders affected operational routes at desktop and mobile widths without pag
  writeFileSync(join(evidence,'operational-overflow-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,overflowFailures},null,2));
  expect(overflowFailures,'Every route must fit the document and main scroller; screenshots are retained for all failures').toEqual([]);
  writeFileSync(join(evidence,'operational-authenticated-visual-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional isolated authenticated HR administrator with own employment',complete:true,checks},null,2));
- // Allow cold startup for nine preview pairs while retaining each navigation and assertion deadline.
-},1_200_000);
+ // Nine recycled Turbopack preview pairs took 172 s on a hosted runner (focused run 45213425683; webpack took 829 s).
+ // The limit keeps more than three times that for slow runners while each navigation keeps its own deadline.
+},600_000);
