@@ -90,6 +90,45 @@ node --import tsx /ABSOLUTE/CONTROLLER/.github/ci/operator-release.mjs resume-ar
 
 The route grants no acceptance, alpha, board or production authority. Policy or controller repairs need a fresh whole run on the final controller commit, so dispatch the next release gate from the main that contains this route.
 
+### Owner-approved DB-unit recovery — `aihr-db-unit-recovery/v1`
+
+**Owner decision, 23 November 2026** (the owner's own words, bound verbatim into every certificate as `ownerDecision`):
+
+- "For the browser test that fails, lets run the test specifically for it, dont have to run a new full gate, once the test pass, we can release"
+- "No need to check, i allow and approve it, go ahead"
+- "Just use gate 4, re test the failed one and go with hand installed exception"
+
+The first case was gate `45191515984` (candidate `9336682460`, controller `13877b505`). Its only failed DB unit was `db-ea8c926fb5a437f7` (`test/operational-visual-browser.test.ts` hit its 1,200,000 ms timeout), and the dependent `verify` failed with it. The focused rerun was `45201472834`. A later full gate on the same source, `45200846990`, was cancelled on the owner's instruction.
+
+```sh
+cd /ABSOLUTE/CANDIDATE
+AIHR_RECOVERY_CONTROLLER_RUN_ID=CONTROLLER_ONLY_RUN AIHR_SSH_CONFIG=/PRIVATE/ssh_config \
+node --import tsx /ABSOLUTE/CONTROLLER/.github/ci/operator-release.mjs verify-db-unit-recovery /ABSOLUTE/CANDIDATE RUN_ID \
+  '{"focusedRunIds":[FOCUSED_RUN],"candidateBranch":"CANDIDATE_BRANCH"}'
+```
+
+`deploy-db-unit-recovery` takes the same arguments, plus the staging lease. Only the release owner runs it.
+
+**Admission.** The route admits only the following:
+
+- The original run is a completed, failed first attempt. Every job succeeded, except failed DB units without PDF tooling, the dependent `verify` (which must stay failed) and a skipped `runner-diagnostics`.
+- Every file in each failed DB unit failed in the original process. A partly passing unit refuses.
+- Each focused run is a successful first-attempt `alpha-focused-checks.yml` run titled `Focused only · <candidate branch>`. It was dispatched with `--ref main|alpha`, so its `head_sha` is the original gate's controller, not the candidate. It started after the original finished. It produced one homogeneous DB packet (`focused.json` plus `db.vitest.json`, with the Postgres diagnostics validated as in the repair route). That packet reruns exactly the files of one failed unit, on the same candidate SHA, controller, runtime and classifier.
+- The replacement assertions equal the original assertion inventory.
+- Every other unit's original report is retained unchanged and re-verified.
+- The original build artifact is used, and the original failed run is never relabelled.
+
+**History.** The route reads the complete branch history after the original finished. It accounts only for:
+
+- the declared focused runs;
+- an `Alpha CI · <branch>` gate on the same controller that was cancelled, whose digest-authenticated `gate-plan` proves the identical candidate SHA. This gate is recorded as `LATER_SAME_SOURCE_GATE_CANCELLED_BY_OWNER_NOT_EVIDENCE` and is never used as evidence.
+
+Earlier gates that overlapped the original are recorded as `overlapping`. Any other run refuses: pending, failed, successful but unaccounted, or on a different source or controller.
+
+**Controller.** The verification controller must descend from the original controller and may differ from it only in this route's own files. It also needs a successful controller-only diagnostic (`AIHR_RECOVERY_CONTROLLER_RUN_ID`).
+
+**Result.** The result is labelled `recoveryPolicy: aihr-db-unit-recovery/v1`, `exception: OWNER_APPROVED_DB_UNIT_RECOVERY_NOT_A_FULL_GATE_PASS`, `fullGatePass: false` and `resultKind: OWNER_APPROVED_DB_UNIT_RECOVERY_EXCEPTION`. `createInstallGrant` accepts it only through `validateDbUnitGrantEvidence`. The earlier no-DB route (`aihr-focused-recovery/v1`) assumes that the controller equals the candidate, so it cannot admit focused runs dispatched with `--ref main`. This route does not change that route.
+
 ## Change control
 
 The final controller is frozen before the fresh whole pilot. A repair to verification or orchestration requires a new reviewed controller and whole validation witness; successful phases from older runs are not substituted. Changes to the policy's acceptance guarantees require an explicit version change. Candidate application source remains unchanged by CI setup or the operator adapter. Automatic staging and main deployment switches remain false throughout this pilot.
