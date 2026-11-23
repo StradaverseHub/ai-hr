@@ -1,5 +1,5 @@
 import {summarizeAccessLockLog} from './access-lock-server-log.mjs';
-import {admissionFailureMarkers} from './admission-failure-log.mjs';
+import {admissionFailureMarkers,admissionFailureOrigins} from './admission-failure-log.mjs';
 import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
 import {readWebPoolerWork,summarizePoolerWindow} from './pooler-wait-evidence.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
@@ -92,15 +92,17 @@ const freshGroupBuilds=new Set([
 ]);
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 const currentMainScopedJobReviewer='162aea78851d2ec44d601e51a8f2a3750c1c9bf1';
+const admissionTraceSource='37f2ebba59056511b96e347edbc70e0c94249275';
+const admissionTrace=env.AIHR_CI_HEAD===admissionTraceSource;
 const currentMainLifetimeContract=shellPermissionVariant==='contract-optimized'&&(
  reusedBuild ? [currentMainLifetimeCandidate,currentMainIndexedPayrollBoundary,currentMainScopedJobReviewer].includes(env.AIHR_CI_HEAD)
- : env.AIHR_CI_HEAD===currentMainScopedJobReviewer
+ : env.AIHR_CI_HEAD===currentMainScopedJobReviewer||admissionTrace
 );
 const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD)
  ||env.AIHR_CI_HEAD===currentMainFixture||currentMainLifetimeContract)&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
 const currentMainLifetimeBuild=[currentMainLifetimeCandidate,currentMainIndexedCandidate,currentMainIndexedPayrollBoundary,
- currentMainScopedJobReviewer].includes(env.AIHR_CI_HEAD);
+ currentMainScopedJobReviewer,admissionTraceSource].includes(env.AIHR_CI_HEAD);
 if(currentMainLifetimeBuild)assert(mixedLoad&&groupScale&&establishedAttendance&&databaseTopology==='transaction-pool'
  &&(shellPermissionVariant==='none'||currentMainLifetimeContract)&&!fixtureOnly);
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild||currentMainLifetimeBuild)&&!fixtureOnly));
@@ -2181,6 +2183,7 @@ try{
    ? ['--import','tsx','scripts/performance/http-lifetime-next-server.mjs',String(appPort)]
    : ['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(appPort)];
   app=start('application',process.execPath,serverArgs,{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(webDatabaseConnections),
+   AIHR_PERF_ADMISSION_TRACE:String(admissionTrace),
     ...(shellLifetimeEnabled&&{PERF_HTTP_SUITE:'browser-route-baseline',PERF_SHELL_HTTP_LIFETIME:'true'}),
     ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web')}),
     ...(webPooler&&{
@@ -2247,6 +2250,7 @@ try{
    if(existsSync(appLog)){
     const log=readFileSync(appLog,'utf8');
     if(mixedLoad)report.serverAdmissionFailureMarkers=admissionFailureMarkers(log);
+    if(admissionTrace)report.serverAdmissionFailureOrigins=admissionFailureOrigins(log);
     const counts={};
     for(const [,code] of log.matchAll(/(?:^|\n)\s*code: ['"]([0-9A-Z]{5})['"]/g)){
      counts[code]=(counts[code]??0)+1;
