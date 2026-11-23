@@ -1,3 +1,17 @@
+# Contract list company rights once per company, 23 November 2026
+
+Reserve `7150_contract_list_company_rights_once`, journal index `10550`, timestamp `1795280007150`,
+SQL SHA-256 `780626af53f87077421ff3ba94c174239c52fd4ab3ab9368243027a3edf10e3c`. Staging had applied 1,139 entries through `1795280007140` (release be980b458, which installed
+`7140_payroll_individual_import_steps`); this entry follows it. The reservation scan covered the 300 most recently committed
+remote branch heads and every registered worktree journal, and none held an entry above `7140`.
+The production watermark was not read from this session; recheck it and competing reservations before admission.
+
+Replaces the body of `app.contract_shared_page(text,integer,integer)` only. The company-level Contract grant is evaluated
+once per company, and the per-employment check runs only for cases the company grant does not already permit. Rows,
+order, signature, owner and the 6314 EXECUTE grant are unchanged; it is guarded by the exact 6314 list body and the
+exact 6308 permission body. Measured cause: with 1,000 cases in 70 companies one list call took about 1.6 s, nearly
+all of it in the per-case permission check (focused diagnostic runs 45192349790 and 45192363574).
+
 # Individual Transaction import written in steps (board 0ec0ee00, stage 2), 23 November 2026
 
 Reserve `7140_payroll_individual_import_steps`, journal index `10540`, timestamp `1795280007140`,

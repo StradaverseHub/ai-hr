@@ -7974,6 +7974,13 @@
       "when": 1795280007140,
       "tag": "7140_payroll_individual_import_steps",
       "breakpoints": true
+    },
+    {
+      "idx": 10550,
+      "version": "7",
+      "when": 1795280007150,
+      "tag": "7150_contract_list_company_rights_once",
+      "breakpoints": true
     }
   ]
 }
