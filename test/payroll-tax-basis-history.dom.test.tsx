@@ -1,4 +1,4 @@
-/** a16382b4 — Recalculate Income Tax Value: history on its own page, searchable company picker and progress from
+/** a16382b4 — Recalculate Income Tax Value: history as the page's history view (same route, no new linkable page), searchable company picker and progress from
  * recorded work. Service reads are mocked here; their SQL is proven in payroll-tax-basis(-history).test.ts. */
 import type {ReactNode} from 'react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
@@ -14,7 +14,6 @@ import viMessages from '../messages/vi.json';
 import {TaxBasisWorkflow,type TaxBasisOptions} from '../app/payroll/income-tax-recalculation/workflow';
 import {TaxBasisHistory} from '../app/payroll/income-tax-recalculation/history-table';
 import TaxBasisPage from '../app/payroll/income-tax-recalculation/page';
-import TaxBasisHistoryPage from '../app/payroll/income-tax-recalculation/history/page';
 import type {TaxBasisHistoryRow} from '../lib/payroll-tax-basis';
 
 const mocks=vi.hoisted(()=>({groupPreview:vi.fn(),groupConfirm:vi.fn(),groupProgress:vi.fn(),push:vi.fn(),refresh:vi.fn(),options:vi.fn(),get:vi.fn(),history:vi.fn(),queued:vi.fn()}));
@@ -47,13 +46,13 @@ describe('history navigation',()=>{
  it('opens history from a button at the top of the page and no longer lists it below the workflow',async()=>{
   mocks.options.mockResolvedValue(options);
   render(wrap(await TaxBasisPage({searchParams:Promise.resolve({})})));
-  expect(screen.getByRole('link',{name:T.history})).toHaveAttribute('href','/payroll/income-tax-recalculation/history');
+  expect(screen.getByRole('link',{name:T.history})).toHaveAttribute('href','/payroll/income-tax-recalculation?view=history');
   expect(screen.queryByRole('table')).toBeNull();
  });
  it('shows queued rows first on the first page, a back link, and keyset paging without queued rows on later pages',async()=>{
   mocks.queued.mockResolvedValue([row({id:'queued:run-2:company-c',kind:'queued',reference:null,companyId:'company-c',companyName:'Northwind Logistics Sdn Bhd',status:'pending',completedAt:null,employeeCount:152,processedCount:0,completedCount:0,notIncludedCount:4,batches:[]})]);
   mocks.history.mockResolvedValue({rows:[row()],next:{createdAt:'2026-11-20 09:02:00.123+08',id:'run-0:company-a'}});
-  render(wrap(await TaxBasisHistoryPage({searchParams:Promise.resolve({})})));
+  render(wrap(await TaxBasisPage({searchParams:Promise.resolve({view:'history'})})));
   expect(mocks.history).toHaveBeenCalledExactlyOnceWith(expect.anything(),{cursor:null});
   expect(screen.getByRole('link',{name:'← '+T.backRecalculation})).toHaveAttribute('href','/payroll/income-tax-recalculation');
   const rows=screen.getAllByRole('row').slice(1);
@@ -61,13 +60,19 @@ describe('history navigation',()=>{
   expect(within(rows[0]).getByText(T.waitingToStart)).toBeVisible();
   expect(within(rows[1]).getByText('TAX-B1')).toBeVisible();
   const next=screen.getByRole('link',{name:T.historyNextPage});
-  expect(new URL(next.getAttribute('href')!,'https://example.test').searchParams.get('after')).toBe('2026-11-20 09:02:00.123+08');
+  const nextUrl=new URL(next.getAttribute('href')!,'https://example.test');
+  expect(nextUrl.pathname).toBe('/payroll/income-tax-recalculation');
+  expect(nextUrl.searchParams.get('view')).toBe('history');
+  expect(nextUrl.searchParams.get('after')).toBe('2026-11-20 09:02:00.123+08');
+  expect(nextUrl.searchParams.get('key')).toBe('run-0:company-a');
+  // The history view reads no workflow options.
+  expect(mocks.options).not.toHaveBeenCalled();
   expect(screen.queryByRole('link',{name:T.historyFirstPage})).toBeNull();
   cleanup();mocks.queued.mockClear();mocks.history.mockResolvedValue({rows:[row()],next:null});
-  render(wrap(await TaxBasisHistoryPage({searchParams:Promise.resolve({after:'2026-11-20 09:02:00.123+08',key:'run-0:company-a'})})));
+  render(wrap(await TaxBasisPage({searchParams:Promise.resolve({view:'history',after:'2026-11-20 09:02:00.123+08',key:'run-0:company-a'})})));
   expect(mocks.queued).not.toHaveBeenCalled();
   expect(mocks.history).toHaveBeenLastCalledWith(expect.anything(),{cursor:{createdAt:'2026-11-20 09:02:00.123+08',id:'run-0:company-a'}});
-  expect(screen.getByRole('link',{name:T.historyFirstPage})).toHaveAttribute('href','/payroll/income-tax-recalculation/history');
+  expect(screen.getByRole('link',{name:T.historyFirstPage})).toHaveAttribute('href','/payroll/income-tax-recalculation?view=history');
  });
 });
 

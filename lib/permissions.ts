@@ -1493,8 +1493,6 @@ export const SCREENS: readonly ScreenEntry[] = [
       // income and records tax-basis corrections. Registered for test/function-access.test.ts reverse completeness.
       '/payroll/income-tax-recalculation',
       '/payroll/income-tax-recalculation/[id]',
-      // a16382b4: Recalculation history moved to its own page; same guard and key as the screen above.
-      '/payroll/income-tax-recalculation/history',
       '/payroll/payslip-information',
       // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
       // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.

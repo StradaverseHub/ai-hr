@@ -5,10 +5,12 @@ import {taxBasisOptions,getTaxBasisBatch} from '@/packs/payroll/service';
 import {PageHeader,pageWideCls} from '@/components/ui';
 import type {TaxBasisSelection} from '@/lib/payroll-tax-basis';
 import {TaxBasisWorkflow,type TaxBasisGroupProgressLink} from './workflow';
+import {TaxBasisHistoryView,TAX_BASIS_HISTORY_HREF} from './history-view';
 
-export default async function TaxBasisPage({searchParams}:{searchParams:Promise<{retry?:string;group?:string;phase?:string;company?:string;year?:string;month?:string;employee?:string}>}){
+export default async function TaxBasisPage({searchParams}:{searchParams:Promise<{view?:string;after?:string;key?:string;retry?:string;group?:string;phase?:string;company?:string;year?:string;month?:string;employee?:string}>}){
   const ctx=await requirePayrollAccess(),t=await getTranslations('payrollTaxBasis');
-  const {retry,group,phase,company,year,month,employee}=await searchParams;
+  const {view,after,key,retry,group,phase,company,year,month,employee}=await searchParams;
+  if(view==='history')return TaxBasisHistoryView({ctx,after,pageKey:key});
   const initialGroup:TaxBasisGroupProgressLink|undefined=group&&/^[\da-f-]{36}$/.test(group)&&(phase==='preview'||phase==='confirm')?{id:group,phase}:undefined;
   const options=await taxBasisOptions(ctx);
   const assessmentYear=Number(year),finalMonth=Number(month);
@@ -23,6 +25,6 @@ export default async function TaxBasisPage({searchParams}:{searchParams:Promise<
     if(batch&&failed.length)initialSelection={companyId:batch.companyId,year:batch.year,upToMonth:batch.upToMonth,employmentIds:failed};
   }
   return <div className={pageWideCls}><PageHeader title={t('title')} description={t('description')} back={{href:'/payroll/setup',label:t('backSettings')}}
-    actions={<Link href="/payroll/income-tax-recalculation/history" className="inline-flex items-center rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('history')}</Link>}/>
+    actions={<Link href={TAX_BASIS_HISTORY_HREF} className="inline-flex items-center rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('history')}</Link>}/>
     <TaxBasisWorkflow options={options} initialSelection={initialSelection} initialGroup={initialGroup}/></div>;
 }

@@ -1646,14 +1646,14 @@ The repository owner approved carrying forward the 28 existing approvals to exac
 
 ## Recalculation history, company search and progress with payroll run-group settlement, 23 November 2026
 
-The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `70ccab7c6433083be9280a351483f02eb920bdc30723432ea5d2a3b5a9d8e407` across 1,836 files. The standing re-binding approval dates from 12 November 2026. On 23 November 2026 the owner asked for board item a16382b4 and the PR 269 payroll run-group settlement fix to be released together on top of the staged combined release `4e385f7ce`.
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `24f28e5be3fdcd65bf2b19e3c7ad5b78423f0c84ca3bec0df7c472a8378b2dd1` across 1,836 files. The standing re-binding approval dates from 12 November 2026. On 23 November 2026 the owner asked for board item a16382b4 and the PR 269 payroll run-group settlement fix to be released together on top of the staged combined release `4e385f7ce`.
 
 Board item a16382b4 adds three things:
 
-- a Recalculation history page grouped per company per run (migration 7120 adds a nullable run link);
+- Recalculation history grouped per company per run, shown as a view of the existing Recalculate Income Tax Value page (migration 7120 adds a nullable run link);
 - company search in the picker;
 - employee-level progress counts.
 
 PR 269 changes one covered file, `core/payroll-run-group-store.ts`, so that the worker's run-group settlement no longer double-encodes JSON parameters.
 
-This fingerprint supersedes the intermediate fingerprints `bc2c6d52c68efbab45232fc1d37ef4a8d5a757c8a60389a7e0513054fbe1f77a` and `5fc9d14959635ae9504b42805c7e6ec855a40fbdb481f1368dd40f7eb3970be9`, neither of which was installed. Exactly 28 digest literals change from `2b84eb4ed17f74821083720aee6e1a3891866a8c773bac10bdb7dc601d7b6bc5`, the fingerprint currently on staging, and reversing those substitutions restores that registry byte for byte. The derived module-agent fingerprint is `e078c2b00ee0df4ce451a5415bb4241151d5b1a4f60c5f9225ca4b4886da9475` across 497 files. No provider transform, outbound field, purpose, endpoint or transport changed.
+This fingerprint supersedes the intermediate fingerprints `bc2c6d52c68efbab45232fc1d37ef4a8d5a757c8a60389a7e0513054fbe1f77a`, `5fc9d14959635ae9504b42805c7e6ec855a40fbdb481f1368dd40f7eb3970be9` and `70ccab7c6433083be9280a351483f02eb920bdc30723432ea5d2a3b5a9d8e407`, none of which was installed. The last one was replaced after the owner chose, on 23 November 2026, to show history as a view of the existing page; this adds no new linkable page or AI Centre surface. Exactly 28 digest literals change from `2b84eb4ed17f74821083720aee6e1a3891866a8c773bac10bdb7dc601d7b6bc5`, the fingerprint currently on staging, and reversing those substitutions restores that registry byte for byte. The derived module-agent fingerprint is `858b7737441094921a9f6ef67ddc9a3f822876b7c3ec79ee51d8be97dfdb6f63` across 497 files. No provider transform, outbound field, purpose, endpoint or transport changed.
