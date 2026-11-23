@@ -21,29 +21,33 @@ const metadata=n=>({run:api(`actions/runs/${n}`),jobs:pages(`actions/runs/${n}/j
 const facts=m=>({run:m.run,jobs:m.jobs,artifacts:m.artifacts});
 const save=(dir,name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
 const positive=n=>Number.isSafeInteger(n)&&n>0;
-const ALLOWED_CONTROLLER_DELTA=new Set(['.github/ci/db-unit-recovery.mjs','.github/ci/db-unit-recovery-policy.mjs','.github/ci/db-unit-recovery.test.mjs','.github/ci/operator-release.mjs','.github/ci/ci-install-grant.mjs','.github/ci/staging-preflight.test.mjs','.github/workflows/alpha-staging.yml','docs/CI-STAGING-VERIFICATION-POLICY.md']);
+const ALLOWED_CONTROLLER_DELTA=new Set(['.github/ci/db-unit-recovery.mjs','.github/ci/db-unit-recovery-extract.py','.github/ci/db-unit-recovery-policy.mjs','.github/ci/db-unit-recovery.test.mjs','.github/ci/operator-release.mjs','.github/ci/ci-install-grant.mjs','.github/ci/staging-preflight.test.mjs','.github/workflows/alpha-staging.yml','docs/CI-STAGING-VERIFICATION-POLICY.md']);
 /** The verifier may differ from the original gate controller only by this route's own controls. */
 export function validateDbUnitControllerDelta(paths){
  assert(paths.every(p=>ALLOWED_CONTROLLER_DELTA.has(p)),'Verification controller changed application, runner or unrelated controls');
- if(paths.length)for(const p of ['.github/ci/db-unit-recovery.mjs','.github/ci/db-unit-recovery-policy.mjs','.github/ci/db-unit-recovery.test.mjs'])assert(paths.includes(p),'Incomplete DB-unit recovery controller');
+ if(paths.length)for(const p of ['.github/ci/db-unit-recovery.mjs','.github/ci/db-unit-recovery-extract.py','.github/ci/db-unit-recovery-policy.mjs','.github/ci/db-unit-recovery.test.mjs'])assert(paths.includes(p),'Incomplete DB-unit recovery controller');
 }
 function planAt(path,{controller,baseline,runtime}){
  const previous=process.env.AIHR_CI_CLASSIFIER_RUNTIME;process.env.AIHR_CI_CLASSIFIER_RUNTIME='native';
  try{const local=createPlan(path),{fingerprint,...body}={...local,controller,migrationBase:baseline,runtime};return {...body,fingerprint:hash(body)};}
  finally{if(previous===undefined)delete process.env.AIHR_CI_CLASSIFIER_RUNTIME;else process.env.AIHR_CI_CLASSIFIER_RUNTIME=previous;}
 }
+/** Download one digest-authenticated artifact and extract only the named JSON members with a bounded extractor. */
+async function authenticatedMembers(artifact,sub,reuse,extractor,members){
+ if(!reuse){mkdirSync(sub,{recursive:true,mode:0o700});await downloadCiArchives([artifact],sub);}
+ const zip=join(sub,artifact.name+'.zip'),bytes=readCiArchive(artifact,zip);verifyArtifactBytes(artifact,bytes);
+ const out=join(sub,'extracted-'+randomUUID());
+ execFileSync('python3',[fileURLToPath(new URL(extractor,import.meta.url)),zip,out],{timeout:60000,stdio:'pipe'});
+ assert(isDeepStrictEqual(readdirSync(out).sort(),members),'Unexpected extracted members: '+artifact.name);
+ return new Map(members.map(name=>[name,JSON.parse(readFileSync(join(out,name),'utf8'))]));
+}
 /** Only the digest-authenticated gate-plan of a later same-branch gate, to prove its source SHA. */
 async function laterGatePlan(row,dir,reuse){
  const artifacts=pages(`actions/runs/${row.id}/artifacts`,'artifacts').filter(a=>a.name==='gate-plan');
  assert(artifacts.length===1,'Later gate has no unique gate-plan to prove its source: '+row.id);
  const a=artifacts[0],w=a.workflow_run;assert(w?.id===row.id&&w.repository_id===REPOSITORY_ID&&w.head_repository_id===REPOSITORY_ID&&w.head_sha===row.head_sha&&/^sha256:[a-f0-9]{64}$/.test(a.digest),'Foreign later gate-plan artifact');
- const sub=join(dir,'later-gate-'+row.id);
- if(!reuse){mkdirSync(sub,{recursive:true,mode:0o700});await downloadCiArchives([a],sub);}
- const bytes=readCiArchive(a,join(sub,'gate-plan.zip'));verifyArtifactBytes(a,bytes);
- const out=join(sub,reuse?'extracted-'+randomUUID():'extracted');
- execFileSync('python3',[fileURLToPath(new URL('./extract-artifact.py',import.meta.url)),join(sub,'gate-plan.zip'),out],{timeout:60000,stdio:'pipe'});
- assert(isDeepStrictEqual(readdirSync(out),['ci-plan.json']),'Unexpected later gate-plan members');
- const plan=JSON.parse(readFileSync(join(out,'ci-plan.json'),'utf8'));return {sha:plan.sha,controller:plan.controller,migrationBase:plan.migrationBase,fingerprint:plan.fingerprint,artifactId:a.id,digest:a.digest};
+ const plan=(await authenticatedMembers(a,join(dir,'later-gate-'+row.id),reuse,'./extract-artifact.py',['ci-plan.json'])).get('ci-plan.json');
+ return {sha:plan.sha,controller:plan.controller,migrationBase:plan.migrationBase,fingerprint:plan.fingerprint,artifactId:a.id,digest:a.digest};
 }
 export async function verifyDbUnitRecoveredCi({candidatePath,runId,baseline,focusedRunIds,candidateBranch,evidenceDirectory,reuse=false}){
  candidatePath=resolve(candidatePath);runId=Number(runId);
@@ -74,10 +78,9 @@ export async function verifyDbUnitRecoveredCi({candidatePath,runId,baseline,focu
  const focused=[],focusedMetadata=new Map();
  for(const n of focusedRunIds.slice().sort((a,b)=>a-b)){
   const m=metadata(n),producer=validateDbFocusedMetadata({...m,expected:{runId:n,controller,controllerBranch:source.run.head_branch,workflowId:workflow.id,candidateBranch,after:source.run.updated_at}});
-  const f=await collectRecoveryEvidence(n,join(dir,'focused-'+n),{reuse,repairPackets:true});assert(isDeepStrictEqual(m,facts(f)),'Focused metadata changed during collection');
-  const artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
-  assert(isDeepStrictEqual([...packet.keys()].sort(),['db.vitest.json','focused.json']),'Exact homogeneous DB focused packet required');
-  focusedMetadata.set(n,m);focused.push({...f,producer,artifact,report:packet.get('focused.json'),result:packet.get('db.vitest.json')});
+  const sub=join(dir,'focused-'+n),artifact=m.artifacts[0];if(!reuse){mkdirSync(sub,{recursive:true,mode:0o700});for(const [k,v] of Object.entries(facts(m)))save(sub,k+'.json',v);}
+  const packet=await authenticatedMembers(artifact,sub,reuse,'./db-unit-recovery-extract.py',['db.vitest.json','focused.json']);
+  focusedMetadata.set(n,m);focused.push({...facts(m),producer,artifact,report:packet.get('focused.json'),result:packet.get('db.vitest.json')});
  }
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
  const rows=[...pages(`actions/workflows/${WORKFLOW_ID}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${workflow.id}/runs?${query}`,'workflow_runs')];

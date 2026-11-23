@@ -8,6 +8,11 @@ import {verifyDbUnitRecovery,validateDbFocusedMetadata,validateDbUnitHistory,val
 import {validateDbUnitControllerDelta} from './db-unit-recovery.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
+import {execFileSync} from 'node:child_process';
+import {mkdtempSync,readdirSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {fileURLToPath} from 'node:url';
 const branch='claude/combined-board';
 function input(){
  const f=fixture(),plan=f.expectedPlan,unit=plan.units.find(u=>u.kind==='db');
@@ -84,7 +89,7 @@ for(const [name,change] of [
  ['conflicting snapshots',f=>f.rows.push({...f.rows[0],conclusion:'failure'})],['other source branch title',f=>f.source.run.display_title='Alpha CI · other'],
 ])test('History refuses '+name,()=>{const f=history();change(f);assert.throws(()=>validateDbUnitHistory(f));});
 test('Controller delta is limited to this route',()=>{
- const own=['.github/ci/db-unit-recovery.mjs','.github/ci/db-unit-recovery-policy.mjs','.github/ci/db-unit-recovery.test.mjs','.github/ci/operator-release.mjs','.github/ci/ci-install-grant.mjs'];
+ const own=['.github/ci/db-unit-recovery.mjs','.github/ci/db-unit-recovery-extract.py','.github/ci/db-unit-recovery-policy.mjs','.github/ci/db-unit-recovery.test.mjs','.github/ci/operator-release.mjs','.github/ci/ci-install-grant.mjs'];
  validateDbUnitControllerDelta(own);validateDbUnitControllerDelta([]);
  for(const p of ['.github/ci/run-unit.mjs','.github/ci/focused-checks.mjs','.github/ci/manifest.mjs','app/page.tsx','pnpm-lock.yaml'])assert.throws(()=>validateDbUnitControllerDelta([...own,p]));
  assert.throws(()=>validateDbUnitControllerDelta(own.slice(1)));
@@ -97,4 +102,16 @@ test('A distinct DB-unit certificate grants the original successful build withou
   const altered=structuredClone(e);change(altered);altered.fingerprint=hash(altered.recovery);assert.throws(()=>createInstallGrant({...g,evidence:altered,run,producer}));
  }
  assert.throws(()=>createInstallGrant({...g,evidence:e,run:{...run,conclusion:'success'},producer}));
+});
+function extract(entries){
+ const dir=mkdtempSync(join(tmpdir(),'aihr-db-unit-extract-')),zip=join(dir,'p.zip'),out=join(dir,'out');
+ execFileSync('python3',['-c','import json,sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); [z.writestr(k,v) for k,v in json.load(sys.stdin).items()]; z.close()',zip],{input:JSON.stringify(entries)});
+ try{execFileSync('python3',[fileURLToPath(new URL('./db-unit-recovery-extract.py',import.meta.url)),zip,out],{stdio:'pipe'});return readdirSync(out).sort();}finally{rmSync(dir,{recursive:true,force:true});}
+}
+const packet=()=>({'focused.json':JSON.stringify({groups:{NODB:[],DB:['test/a.test.ts']}}),'db.vitest.json':'{}','postgres.log':'x','postgres-state.json':'{}','postgres-stats.txt':'x','operational-today-desktop.png':'x','operational-preview-heap/heap-12.json':'{}','operational-preview.log':'x'});
+test('DB packet extractor keeps diagnostics in the ZIP and extracts only the result pair',()=>{
+ assert.deepEqual(extract(packet()),['db.vitest.json','focused.json']);
+ for(const change of [p=>delete p['postgres.log'],p=>delete p['db.vitest.json'],p=>p['nodb.vitest.json']='{}',p=>p['../escape.json']='{}',p=>p['nested/dir/x.png']='x',p=>p['run.sh']='x',p=>p['focused.json']=JSON.stringify({groups:{NODB:['test/b.test.ts'],DB:['test/a.test.ts']}})]){
+  const p=packet();change(p);assert.throws(()=>extract(p));
+ }
 });
