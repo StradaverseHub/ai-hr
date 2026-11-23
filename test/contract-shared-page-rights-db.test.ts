@@ -74,9 +74,9 @@ describe('Contract list company rights (7150)',()=>{
   // A case whose employment has since moved company is not company-current and is not listed by either source.
   const moved=await employee('Fictional rights moved',first);await contractCase(moved.employmentId,first,'CT-R-moved');
   await owner.db.execute(sql`update employment set company_id=${second}::uuid where id=${moved.employmentId}::uuid`);
-  // A voided employment is filtered by both.
-  const voided=await employee('Fictional rights voided',other);await contractCase(voided.employmentId,other,'CT-R-voided');
-  await owner.db.execute(sql`update employment set voided_at=now() where id=${voided.employmentId}::uuid`);
+  // A blacklisted employment is filtered by both.
+  const blacklisted=await employee('Fictional rights blacklisted',other);await contractCase(blacklisted.employmentId,other,'CT-R-blacklisted');
+  await owner.db.execute(sql`update employment set blacklisted_at=now() where id=${blacklisted.employmentId}::uuid`);
 
   const firstMember=await user('Fictional rights first member',b.companyId);await grant(firstMember.userId,['view'],{companyId:first});
   const groupMember=await user('Fictional rights group member',b.companyId);await grant(groupMember.userId,['view'],{groupId:group});
