@@ -1657,3 +1657,16 @@ Board item a16382b4 adds three things:
 PR 269 changes one covered file, `core/payroll-run-group-store.ts`, so that the worker's run-group settlement no longer double-encodes JSON parameters.
 
 This fingerprint supersedes the intermediate fingerprints `bc2c6d52c68efbab45232fc1d37ef4a8d5a757c8a60389a7e0513054fbe1f77a`, `5fc9d14959635ae9504b42805c7e6ec855a40fbdb481f1368dd40f7eb3970be9` and `70ccab7c6433083be9280a351483f02eb920bdc30723432ea5d2a3b5a9d8e407`, none of which was installed. The last one was replaced after the owner chose, on 23 November 2026, to show history as a view of the existing page; this adds no new linkable page or AI Centre surface. Exactly 28 digest literals change from `2b84eb4ed17f74821083720aee6e1a3891866a8c773bac10bdb7dc601d7b6bc5`, the fingerprint currently on staging, and reversing those substitutions restores that registry byte for byte. The derived module-agent fingerprint is `858b7737441094921a9f6ef67ddc9a3f822876b7c3ec79ee51d8be97dfdb6f63` across 497 files. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Combined board release: reprocess selection, TP3 opening and Direct Superior save, 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `e74058784cbe5370d910818efeee36ea95c95cafc25c6dc8a2c54a4cbc7604e5` across 1,840 files. The standing re-binding approval dates from 12 November 2026 ("I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). On 23 November 2026 the owner asked for these three board items to be combined and deployed to staging once the full gate is green.
+
+The candidate is built on the recalculation history and run-group settlement candidate `13877b505` (fingerprint `24f28e5be3fdcd65bf2b19e3c7ad5b78423f0c84ca3bec0df7c472a8378b2dd1`) and adds:
+
+- board item 6aee208b: Reprocess Required selection across every page, with Reprocess Required and Processed / No Change tabs (`core/payroll.ts`);
+- board item 0af23331: the accepted TP3, or RM0 when there is none, as the previous-employer exemption opening for Recalculate Income Tax Value and live changed-history reprocessing, with an exemption ledger and bounds for held employees (`core/payroll-tax-basis.ts`, `core/payroll-tax-opening.ts`, `lib/payroll-tax-basis.ts`, `lib/payroll-tax-opening-tp3.ts`, `localization/country-pack.ts`, `localization/my/index.ts`, `localization/my/tax-basis-replay.ts`; owner decision recorded in ADR-0167);
+- board item 8f959c7a: a Direct Superior save that reports its outcome without a redirect, refuses a repeat save, and shows From–To periods (`core/movement.ts`, `core/org.ts`, `lib/direct-superior-period.ts`);
+- screen text for all three in the six `messages/*.json` files.
+
+None of these files is a provider transform. Exactly 28 digest literals change from `24f28e5be3fdcd65bf2b19e3c7ad5b78423f0c84ca3bec0df7c472a8378b2dd1`, and reversing those substitutions restores that registry byte for byte. The staging installation currently carries `2b84eb4ed17f74821083720aee6e1a3891866a8c773bac10bdb7dc601d7b6bc5`. The derived module-agent fingerprint is `7fecc7bdb89bdd6c9ba7a2a994ef63a506515f20a643352c9e8d8d0d6ff6578a` across 497 files. No provider transform, outbound field, purpose, endpoint or transport changed.
