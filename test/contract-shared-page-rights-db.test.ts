@@ -44,10 +44,10 @@ async function employee(name:string,companyId:string){
  return {personId:p.id,employmentId:e.id};
 }
 async function contractCase(employmentId:string,companyId:string,number:string){
- const [term]=await owner.db.execute<{id:string}>(sql`insert into contract_term(tenant_id,company_id,employment_id,version,kind,start_on,end_on,source_revision)
-  values(${b.tenantId}::uuid,${companyId}::uuid,${employmentId}::uuid,1,'project','2026-01-01'::date,'2027-12-31'::date,'rights-fixture') returning id`);
- await owner.db.execute(sql`insert into contract_case(tenant_id,company_id,employment_id,term_id,number,revision,data)
-  values(${b.tenantId}::uuid,${companyId}::uuid,${employmentId}::uuid,${term.id}::uuid,${number},1,
+ const [term]=await owner.db.execute<{id:string}>(sql`insert into contract_term(id,tenant_id,company_id,employment_id,version,kind,start_on,end_on,source_revision)
+  values(gen_random_uuid(),${b.tenantId}::uuid,${companyId}::uuid,${employmentId}::uuid,1,'project','2026-01-01'::date,'2027-12-31'::date,'rights-fixture') returning id`);
+ await owner.db.execute(sql`insert into contract_case(id,tenant_id,company_id,employment_id,term_id,number,revision,data)
+  values(gen_random_uuid(),${b.tenantId}::uuid,${companyId}::uuid,${employmentId}::uuid,${term.id}::uuid,${number},1,
    jsonb_build_object('revision',1,'state','upcoming','term',jsonb_build_object('startOn','2026-01-01','endOn','2027-12-31'),'decision',NULL,'decisionDraft',NULL))`);
 }
 async function user(name:string,companyId:string){
@@ -123,8 +123,8 @@ describe('Contract list company rights (7150)',()=>{
     insert into contract_term(id,tenant_id,company_id,employment_id,version,kind,start_on,end_on,source_revision)
     select term_id,${b.tenantId}::uuid,company_id,employment_id,1,'project','2026-01-01'::date,'2027-12-31'::date,'rights-scale' from fixture
    )
-   insert into contract_case(tenant_id,company_id,employment_id,term_id,number,revision,data)
-   select ${b.tenantId}::uuid,company_id,employment_id,term_id,'CT-RS-'||lpad(n::text,4,'0'),1,
+   insert into contract_case(id,tenant_id,company_id,employment_id,term_id,number,revision,data)
+   select gen_random_uuid(),${b.tenantId}::uuid,company_id,employment_id,term_id,'CT-RS-'||lpad(n::text,4,'0'),1,
     jsonb_build_object('revision',1,'state','upcoming','term',jsonb_build_object('startOn','2026-01-01','endOn','2027-12-31'),'decision',NULL,'decisionDraft',NULL) from fixture`);
   const [admin]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional rights administrator',${randomUUID()+'@rights.test'}) returning id`);
   await owner.db.execute(sql`update app_user set person_id=${admin.id}::uuid where tenant_id=${b.tenantId}::uuid and id=${b.adminUserId}::uuid`);
