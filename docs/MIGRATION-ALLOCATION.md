@@ -1,3 +1,15 @@
+# Recalculation history run link, 23 November 2026
+
+Reserve `7120_payroll_tax_basis_run`, journal index `10520`, timestamp `1795280007120`,
+SQL SHA-256 `e5aab381a4d81892cdf95d32d6cd9c857976662135c5f6bb188aec7876c8cc2a`. Staging reported 1,136 applied
+entries through `1795280007110` before allocation. The production watermark was not read from this session; recheck
+it and competing reservations before admission. The reservation scan covered the 300 most recently committed remote
+and local branch heads and every registered worktree journal; none held an entry above `7110`.
+
+Adds a nullable `run_id` to `payroll_tax_basis_batch` and a partial index on it (board a16382b4). The grouped
+confirmation worker step is the only writer. Existing batches keep NULL; rows, triggers, grants and row policies are
+unchanged.
+
 # Draft payroll historical tax readiness, 22 November 2026
 
 Reserve `7110_payroll_draft_tax_readiness`, journal index `10510`, timestamp `1795280007110`,

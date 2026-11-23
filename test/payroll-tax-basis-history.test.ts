@@ -6,8 +6,9 @@ import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {listTaxBasisHistory,listTaxBasisBatches} from '../core/payroll-tax-basis';
-import type {TaxBasisHistoryCursor,TaxBasisHistoryRow} from '../lib/payroll-tax-basis';
+import type {TaxBasisHistoryCursor,TaxBasisHistoryRow,TaxBasisPreview} from '../lib/payroll-tax-basis';
 import type {SessionContext} from '../db/client';
+import * as schema from '../db/schema';
 import {closeAll,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 
@@ -25,7 +26,7 @@ beforeAll(async()=>{
  // The single-company persona's runs are the newest, so the per-batch reader's 100 most recent batches include them.
  const order=[...f.companyIds.filter(id=>id!==f.singleCompanyId),f.singleCompanyId];
  const now=Date.now(),start=now-order.length*4*MINUTE-60*MINUTE;
- const previews:unknown[]=[],rows:unknown[]=[],events:unknown[]=[];
+ const previews:(typeof schema.payrollTaxBasisPreview.$inferInsert)[]=[],rows:(typeof schema.payrollTaxBasisBatch.$inferInsert)[]=[],events:(typeof schema.payrollTaxBasisEvent.$inferInsert)[]=[];
  order.forEach((companyId,ci)=>{
   const people=byCompany.get(companyId)??[];
   const runs=[{key:randomUUID(),grouped:true,parts:3},{key:'',grouped:false,parts:1}];
@@ -40,12 +41,12 @@ beforeAll(async()=>{
    const recent=companyId===f.singleCompanyId&&final===null;
    const eventAt=(n:number)=>recent?now-2*MINUTE+n*1000:createdAt+(n+1)*1000;
    const previewId=randomUUID();
-   previews.push({id:previewId,tenant_id:b.tenantId,company_id:companyId,created_by:f.personas.group.userId,preview_hash:'h-'+previewId,expires_at:new Date(createdAt+15*MINUTE),created_at:new Date(createdAt),
+   previews.push({id:previewId,tenantId:b.tenantId,companyId,createdBy:f.personas.group.userId!,previewHash:'h-'+previewId,expiresAt:new Date(createdAt+15*MINUTE),createdAt:new Date(createdAt),
     selection:{companyId,year:2026,upToMonth:8,employmentIds:null},
     preview:{previewId,companyId,companyName:names.get(companyId),year:2026,upToMonth:8,selection:'all',eligibleCount:assigned.length,skippedCount:notIncluded,blockedCount:0,unchangedCount:0,recordCount:assigned.length,
-     employees:assigned.map(employmentId=>({id:employmentId,employeeNo:'FX',name:'Fictional',status:'ready',reason:null,recordCount:1}))}});
-   rows.push({id,tenant_id:b.tenantId,company_id:companyId,preview_id:previewId,created_by:f.personas.group.userId,created_at:new Date(createdAt),run_id:run.grouped?run.key:null});
-   let n=0;const add=(kind:string,employmentId:string|null)=>events.push({tenant_id:b.tenantId,company_id:companyId,batch_id:id,employment_id:employmentId,actor_id:f.personas.group.userId,kind,detail:{},created_at:new Date(eventAt(n++))});
+     employees:assigned.map(employmentId=>({id:employmentId,employeeNo:'FX',name:'Fictional',status:'ready',reason:null,recordCount:1}))} as unknown as TaxBasisPreview});
+   rows.push({id,tenantId:b.tenantId,companyId,previewId,createdBy:f.personas.group.userId!,createdAt:new Date(createdAt),runId:run.grouped?run.key:null});
+   let n=0;const add=(kind:string,employmentId:string|null)=>events.push({tenantId:b.tenantId,companyId,batchId:id,employmentId,actorId:f.personas.group.userId!,kind,detail:{},createdAt:new Date(eventAt(n++))});
    add('pending',null);if(assigned.length)add('processing',null);
    // An unfinished batch has processed only part of its employees.
    const processedPeople=final===null?assigned.slice(0,Math.floor(assigned.length/2)):assigned;
@@ -55,13 +56,13 @@ beforeAll(async()=>{
     failed:processedPeople.filter(e=>failedIds.has(e)).length,final,finalAt:final?eventAt(n-1):null,lastAt:eventAt(n-1),processing:assigned.length>0});
   }});
  });
- await owner.client.begin(async tx=>{
+ await owner.db.transaction(async tx=>{
   // Seeded as the owner without row triggers: the binding trigger requires each writer's live session, which a
   // read fixture does not have. Every identity it would check is consistent by construction above.
-  await tx.unsafe('set local session_replication_role = replica');
-  for(let i=0;i<previews.length;i+=200)await tx`insert into payroll_tax_basis_preview ${tx(previews.slice(i,i+200) as Record<string,unknown>[])}`;
-  for(let i=0;i<rows.length;i+=200)await tx`insert into payroll_tax_basis_batch ${tx(rows.slice(i,i+200) as Record<string,unknown>[])}`;
-  for(let i=0;i<events.length;i+=1000)await tx`insert into payroll_tax_basis_event ${tx(events.slice(i,i+1000) as Record<string,unknown>[])}`;
+  await tx.execute(sql`set local session_replication_role = replica`);
+  for(let i=0;i<previews.length;i+=200)await tx.insert(schema.payrollTaxBasisPreview).values(previews.slice(i,i+200));
+  for(let i=0;i<rows.length;i+=200)await tx.insert(schema.payrollTaxBasisBatch).values(rows.slice(i,i+200));
+  for(let i=0;i<events.length;i+=1000)await tx.insert(schema.payrollTaxBasisEvent).values(events.slice(i,i+1000));
  });
 },180_000);
 afterAll(closeAll);

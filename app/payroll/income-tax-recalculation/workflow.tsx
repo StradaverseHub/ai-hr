@@ -166,7 +166,7 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
     }
   }
   async function generatePreview(){
-    updateGroupProgressLink(null);setCompaniesOpen(false);setPreview(null);setPreviewJobId(null);setPreviewCompanies([]);
+    updateGroupProgressLink(null);setPreview(null);setPreviewJobId(null);setPreviewCompanies([]);
     setCompanyOutcomes([]);setError(null);setBusy('preview');
     try{
       const selections=companyIds.map(companyId=>({companyId,year,upToMonth,

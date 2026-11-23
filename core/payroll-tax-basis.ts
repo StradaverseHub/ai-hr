@@ -548,7 +548,7 @@ export async function listTaxBasisHistory(ctx:SessionContext,options:{cursor?:Ta
     where b.tenant_id=${ctx.tenantId}::uuid group by b.company_id,coalesce(b.run_id,b.id)
    ), page as (
     select r.*,(r.run_key::text||':'||r.company_id::text) collate "C" as key from runs r
-    ${cursor?sql`where (r.started_at,(r.run_key::text||':'||r.company_id::text) collate "C")<(${cursor.createdAt}::timestamptz,${cursor.id} collate "C")`:sql``}
+    ${cursor?sql`where (r.started_at,(r.run_key::text||':'||r.company_id::text) collate "C")<(${cursor.createdAt}::timestamptz,${cursor.id}::text collate "C")`:sql``}
     order by r.started_at desc,key desc limit ${limit+1}
    )
    select page.key,page.company_id as "companyId",page.started_at::text as "startedAt",page.batch_ids::text[] as "batchIds",
