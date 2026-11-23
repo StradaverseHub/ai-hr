@@ -17,7 +17,7 @@ export default async function TransactionWorkbookList({
   const jobs = (await withPayrollTenant(s, (tx) => listBulkJobsTx(tx, s, TRANSACTION_EXPORT_KIND, 25)))
     .filter((item) => item.company_ids.length > 0 && item.company_ids.every((id) => scopeIds.includes(id)));
   const active = jobs.some((item) => bulkJobActive(item.state));
-  const backHref = tab === 'fixed' || tab === 'individual' ? `/payroll/transaction-view?tab=${tab}` : '/payroll/transaction-view';
+  const backHref = tab === 'fixed' || tab === 'individual' || tab === 'history' ? `/payroll/transaction-view?tab=${tab}` : '/payroll/transaction-view';
 
   return (
     <main className={pageWideCls}>
@@ -38,7 +38,7 @@ export default async function TransactionWorkbookList({
                 <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
                   aria-current={item.id === job ? 'true' : undefined}>
                   <div>
-                    <p className="font-medium">{kind === 'fixed' ? t('fixed') : kind === 'individual' ? t('individual') : t('workbook')}</p>
+                    <p className="font-medium">{kind === 'fixed' ? t('fixed') : kind === 'individual' ? t('individual') : kind === 'history' ? t('history') : t('workbook')}</p>
                     <p className="text-sm text-muted-foreground">
                       {format.dateTime(new Date(item.created_at), { dateStyle: 'medium', timeStyle: 'short' })}
                     </p>

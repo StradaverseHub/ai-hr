@@ -1629,3 +1629,13 @@ The repository owner approved the revised exact staging fingerprint `cae18ae5ede
 The repository owner approved carrying forward the same 28 provider approvals to source fingerprint `eee00d413d961b8687f91c415030af5fde88451f2e7df0938aa5b6a97527e74e`. Payroll preview and confirmation now release the worker database slot between their read and write transactions. Provider data fields, purposes, endpoints and transports are unchanged.
 
 The repository owner approved the revised exact fingerprint `4759bfd71e0bb4fdd028591b3d960dc9f4449c376b001034cf11a4d32b801928` after restoring the public TypeScript contract of ordinary job handlers. The three corrected type declarations emit identical worker JavaScript. The same 28 provider approvals retain their data fields, purposes, endpoints and transports.
+
+## Historical payroll tax replay, 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `8e6bae2f57e5285aefa1c85171c29ff4f0d6bee62fa4ce8aa25c6862ca78d3c1`. Historical PCB replay now applies the same zero floor to normal taxable remuneration as live payroll. The provider contracts and their data fields, purposes, endpoints and transports retain their approved scope.
+
+## Transaction View History export and payroll progress busy state, 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `d59277753c90442a37f723340300a0bd29a498abc95f39abbfc32994a743420b` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). The Transaction View History export now prepares its workbook in the background period by period; the payroll run progress panel answers a busy read as retryable instead of unavailable; the locked tax-basis batch opening logs its own durations to the worker journal. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+The repository owner approved the revised exact fingerprint `2b84eb4ed17f74821083720aee6e1a3891866a8c773bac10bdb7dc601d7b6bc5` after PR 224 joined the same combined staging candidate (owner, 23 November 2026: "Can also merge production investigation session into the combined release"; re-binding approved 12 November 2026). PR 224 explains database refusals with specific reasons and refuses a backdated salary with its start date. No provider transform, outbound field, purpose, endpoint or transport changed.

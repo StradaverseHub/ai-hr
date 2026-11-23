@@ -1,6 +1,6 @@
 import { recordPayrollExportReceiptAcross } from '@/core/payroll-audit/access-log';
 import {
-  readTransactionExportJob, readTransactionWorkbookPart, transactionWorkbookReceipt,
+  readTransactionExportJob, readTransactionWorkbookPart, transactionWorkbookFile, transactionWorkbookReceipt,
 } from '@/core/payroll-transaction-export';
 import { BulkJobError } from '@/core/bulk-job';
 import { BulkJobAuthorityLost } from '@/core/bulk-job-worker';
@@ -17,6 +17,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       return new Response(null, { status: 404 });
     }
     const receipt = transactionWorkbookReceipt(job.result);
+    const file = transactionWorkbookFile(receipt);
     const first = await readTransactionWorkbookPart(s, id, 0);
     await recordPayrollExportReceiptAcross(s, {
       surface: 'transaction_export', companyIds: job.company_ids, format: 'xlsx', detail: receipt.kind,
@@ -34,8 +35,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       headers: {
         'Cache-Control': 'private, no-store',
         'Content-Length': String(receipt.bytes),
-        'Content-Disposition': `attachment; filename="${receipt.kind}-transactions.xlsx"`,
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="${file.name}"`,
+        'Content-Type': file.contentType,
       },
     });
   } catch (error) {

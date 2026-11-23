@@ -16,7 +16,7 @@ export function RunGroupProgressPanel({groupId,initial}:{groupId:string;initial:
  const t=useTranslations('payroll.batch.processingJob');
  const tp=useTranslations('payroll.process');
  const router=useRouter();
- const [progress,setProgress]=useState(initial),[error,setError]=useState(''),[checkedAt,setCheckedAt]=useState(0);
+ const [progress,setProgress]=useState(initial),[error,setError]=useState(''),[busy,setBusy]=useState(false),[checkedAt,setCheckedAt]=useState(0);
  const settled=useRef(initial.done);
  useEffect(()=>{
   if(initial.done)return;
@@ -25,10 +25,12 @@ export function RunGroupProgressPanel({groupId,initial}:{groupId:string;initial:
    let again=true;
    try{
     const response=await fetch(`/payroll/process/result/status?g=${encodeURIComponent(groupId)}`,{cache:'no-store'});
+    // 503: the server is busy (another payroll task holds the lock); the run is fine, so keep the last progress.
+    if(response.status===503){if(alive){setBusy(true);setError('');}return;}
     const payload=await response.json().catch(()=>null);
     if(!response.ok||!payload)throw new Error(payload?.error??'');
-    if(alive){setProgress(payload);setError('');setCheckedAt(Date.now());again=!payload.done;}
-   }catch(e){if(alive)setError((e as Error).message||'');}
+    if(alive){setProgress(payload);setError('');setBusy(false);setCheckedAt(Date.now());again=!payload.done;}
+   }catch(e){if(alive){setBusy(false);setError((e as Error).message||'');}}
    finally{if(alive&&again)timer=setTimeout(poll,pollMs);}
   };
   void poll();return()=>{alive=false;clearTimeout(timer);};
@@ -51,7 +53,7 @@ export function RunGroupProgressPanel({groupId,initial}:{groupId:string;initial:
     </li>;
    })}
   </ul>
-  <p className="text-xs text-muted-foreground">{progress.companies.some(c=>c.job?.state==='queued')&&progress.worker==='unavailable'?t('workerUnavailable')
+  <p className="text-xs text-muted-foreground">{busy?t('busy'):progress.companies.some(c=>c.job?.state==='queued')&&progress.worker==='unavailable'?t('workerUnavailable')
    :progress.companies.some(c=>c.job&&bulkJobActive(c.job.state)&&checkedAt-Date.parse(c.job.updatedAt)>90_000)?t('waiting'):t('backgroundHelp')}</p>
   {error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
  </Card>;

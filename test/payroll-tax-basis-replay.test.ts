@@ -15,6 +15,25 @@ describe('explicit historical tax basis replay',()=>{
  it('refuses incomplete lines, unmapped codes, unsupported years and noncash provenance',()=>{let p=input();p.slips[0].sourceLines.pop();expect(()=>replayMyTaxBasis(p)).toThrow(/reconcile/);p=input();p.settings.pop();expect(()=>replayMyTaxBasis(p)).toThrow(/missing, archived/);p=input();p.year=2025;p.slips[0].period='2025-01';p.rulesByPeriod['2025-01']=p.rulesByPeriod['2026-01'];expect(()=>replayMyTaxBasis(p)).toThrow(/different assessment year/);p=input();p.slips[0].statutory.pcbNonCash={owned:{bik:100,vola:0}};expect(()=>replayMyTaxBasis(p)).toThrow(/noncash/);});
  it('refuses out-of-cutoff records, duplicate identities and ambiguous run order',()=>{let p=input();p.upToMonth=2;expect(()=>replayMyTaxBasis(p)).toThrow(/outside/);p=input();p.slips[1].id=p.slips[0].id;expect(()=>replayMyTaxBasis(p)).toThrow(/more than once/);p=input();p.slips[1].period=p.slips[0].period;expect(()=>replayMyTaxBasis(p)).toThrow(/run order/);});
  it('reduces only the tax base for a taxable payroll deduction',()=>{const p=input();p.slips=p.slips.slice(0,1);p.settings.push({...basic,id:'unpaid',code:'UNPAID',kind:'deduction'});p.slips[0].sourceLines.push({code:'UNPAID',amount:100,direction:'deduction'});p.slips[0].expectedOtherDeductions=100;expect(replayMyTaxBasis(p)[0].basis.pcb).toBe(5400);expect(p.slips[0].expectedGross).toBe(5500);});
+ it('floors normal remuneration at zero without offsetting additional pay on a fully deducted imported slip',()=>{
+  const p=input();
+  p.settings=[basic,
+   {...travel,id:'leave-encashment',code:'ENCASHMENT',pcbRemunerationType:'additional'},
+   {...travel,id:'non-taxable',code:'NON_TAXABLE',includedInPcb:false,pcbRemunerationType:null},
+   {...basic,id:'unpaid',code:'UNPAID',kind:'deduction'},
+  ];
+  p.slips=[{...p.slips[0],sourceKind:'import',sourceLines:[
+   {code:'BASIC',amount:1161.29,direction:'earning'},
+   {code:'ENCASHMENT',amount:76.92,direction:'earning'},
+   {code:'NON_TAXABLE',amount:589.73,direction:'earning'},
+   {code:'UNPAID',amount:1827.94,direction:'deduction'},
+  ],expectedGross:1827.94,expectedOtherDeductions:1827.94,statutory:{pcb:0}}];
+  const original=structuredClone(p);
+  expect(replayMyTaxBasis(p)[0].basis).toMatchObject({normal:0,additional:76.92,pcb:76.92,exempt:589.73});
+  expect(p).toEqual(original);
+  p.slips[0].expectedOtherDeductions=1827.93;
+  expect(()=>replayMyTaxBasis(p)).toThrow(/reconcile/);
+ });
  it('requires known year-specific exemption codes and unambiguous latest classifications',()=>{let p=input();p.settings[1]={...travel,pcbExemptionCode:'PCB_UNKNOWN'};expect(()=>replayMyTaxBasis(p)).toThrow(/unsupported/);p=input();p.settings[1]={...travel,pcbRemunerationType:null};expect(()=>replayMyTaxBasis(p)).toThrow(/explicit supported/);p=input();p.settings.push({...travel});expect(()=>replayMyTaxBasis(p)).toThrow(/ambiguous/);});
 });
 

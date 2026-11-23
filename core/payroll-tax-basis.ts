@@ -18,6 +18,7 @@ import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type Ta
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
+import {lap,reportSlowTaxBasisOpening,type TaxBasisLaps} from '../lib/payroll-tax-basis-timing';
 import {resolvePayrollPermission,parsePayrollHistorySource,markBatchNeedsRecalc} from '../packs/payroll/service';
 import {taxBasisSourceRowsTx,hashTaxBasisSource as importedSourceHash,createTaxBasisPreviewReadTx,readEffectiveTaxBasesTx,validatedTaxBasis,type TaxBasisSource,type EffectiveTaxBasis} from './payroll-tax-basis-read';
 const uuidArray=(ids:string[])=>sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
@@ -366,23 +367,23 @@ export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:
  * the assessment year's verified rules, and every payslip and run of the company in that year (row versions), with
  * the income-tax corrections and imported history snapshots and revisions on them. Read set-wise, under the caller's
  * row security, so the batch can open after a short check instead of a full recomputation under the write locks. */
-async function taxBasisInputsDigestTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection){
- const settings=await settingsTx(tx);
- const subjects=await tx.execute<{id:string}>(sql`select id,"employeeNo",name from app.payroll_tax_basis_subjects(${selection.companyId}::uuid,${selection.year},${selection.upToMonth}) order by id`);
- const selectedSubjects=selection.employmentIds===null?[]:await taxBasisSubjectsTx(tx,selection);
+async function taxBasisInputsDigestTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,laps?:TaxBasisLaps){
+ const settings=await lap(laps,'settings',()=>settingsTx(tx));
+ const subjects=await lap(laps,'subjects',()=>tx.execute<{id:string}>(sql`select id,"employeeNo",name from app.payroll_tax_basis_subjects(${selection.companyId}::uuid,${selection.year},${selection.upToMonth}) order by id`));
+ const selectedSubjects=selection.employmentIds===null?[]:await lap(laps,'selectedSubjects',()=>taxBasisSubjectsTx(tx,selection));
  const [company]=await tx.execute<{country:string;row:string}>(sql`select country,legal_name||':'||coalesce(archived_at::text,'')||':'||xmin::text as row from company where id=${selection.companyId}::uuid`);
  const pack=company?requirePackFor(company.country):null;const rules:unknown[]=[];
  if(pack?.payroll.replayTaxBasis)for(let month=1;month<=selection.upToMonth;month++){
   const period=`${selection.year}-${String(month).padStart(2,'0')}`;
-  rules.push(hash(await pack.payroll.loadRulesetResolved(tx,{asOf:period+'-01'}).catch((error:unknown)=>({unavailable:error instanceof Error?error.message:String(error)}))));
+  rules.push(hash(await lap(laps,'rules',()=>pack.payroll.loadRulesetResolved(tx,{asOf:period+'-01'})).catch((error:unknown)=>({unavailable:error instanceof Error?error.message:String(error)}))));
  }
  const year=selection.year+'-%';
- const [rows]=await tx.execute<{d:string}>(sql`select md5(coalesce(string_agg(x,',' order by x),'')) as d from (
+ const [rows]=await lap(laps,'sourceRows',()=>tx.execute<{d:string}>(sql`select md5(coalesce(string_agg(x,',' order by x),'')) as d from (
    select 'p:'||p.id||':'||p.xmin||':'||b.id||':'||b.xmin as x from payslip p join payroll_batch b on b.id=p.batch_id where b.company_id=${selection.companyId}::uuid and b.pay_period like ${year}
    union all select 'r:'||r.id||':'||r.xmin from payroll_tax_basis_revision r where r.company_id=${selection.companyId}::uuid and r.period like ${year}
    union all select 's:'||s.id from payroll_history_import_snapshot s join payroll_history_import_record h on h.id=s.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}
-   union all select 'v:'||v.id from payroll_history_import_revision v join payroll_history_import_record h on h.id=v.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}) q`);
- const noTp3Opening=[...await noTp3OpeningTx(tx,ctx,selection.year,(selection.employmentIds===null?subjects:selectedSubjects).map(subject=>subject.id))].sort();
+   union all select 'v:'||v.id from payroll_history_import_revision v join payroll_history_import_record h on h.id=v.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}) q`));
+ const noTp3Opening=[...await lap(laps,'noTp3Opening',()=>noTp3OpeningTx(tx,ctx,selection.year,(selection.employmentIds===null?subjects:selectedSubjects).map(subject=>subject.id)))].sort();
  return hash({settings,subjects:[...subjects],selectedSubjects:[...selectedSubjects],company:company?.row??null,rules,rows:rows?.d??null,noTp3Opening});
 }
 async function recordEventTx(tx:Tx,ctx:SessionContext,batchId:string,companyId:string,kind:string,detail:unknown={},employmentId:string|null=null){await tx.execute(sql`insert into payroll_tax_basis_event(tenant_id,company_id,batch_id,employment_id,actor_id,kind,detail) values(${ctx.tenantId}::uuid,${companyId}::uuid,${batchId}::uuid,${employmentId}::uuid,${ctx.userId!}::uuid,${kind},${JSON.stringify(detail)}::jsonb)`);}
@@ -416,14 +417,20 @@ async function calculateTaxBasisConfirmation(ctx:SessionContext,input:PreviewInp
 }
 
 async function openTaxBasisBatchTx(tx:Tx,ctx:SessionContext,input:PreviewInput,digest:string,groupReviewed:boolean,runId:string|null=null):Promise<OpenedTaxBasisBatch|null>{
- await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
- const {stored,existing}=await loadTaxBasisPreviewTx(tx,ctx,input,true,groupReviewed);
- if(existing)return {...stored,id:existing,existing:true};
- if(await taxBasisInputsDigestTx(tx,ctx,stored.selection)!==digest)return null;
- const id=randomUUID();
- await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by,run_id) values(${id}::uuid,${ctx.tenantId}::uuid,${stored.selection.companyId}::uuid,${input.previewId}::uuid,${ctx.userId!}::uuid,${runId}::uuid)`);
- await recordEventTx(tx,ctx,id,stored.selection.companyId,'pending');
- return {...stored,id,existing:false};
+ const laps:TaxBasisLaps={},started=performance.now();let lockedAt=started,outcome='opened';
+ try{
+  await lap(laps,'historyLockWait',()=>lockPayrollHistoryWriteTx(tx,ctx.tenantId));
+  lockedAt=performance.now(); // every payroll page waits from here: the module gate reads payroll history shared
+  await lap(laps,'accessLockWait',()=>lockAccessConfigurationWriteTx(tx,ctx.tenantId));
+  const {stored,existing}=await lap(laps,'loadPreview',()=>loadTaxBasisPreviewTx(tx,ctx,input,true,groupReviewed));
+  if(existing){outcome='existing';return {...stored,id:existing,existing:true};}
+  if(await taxBasisInputsDigestTx(tx,ctx,stored.selection,laps)!==digest){outcome='changed';return null;}
+  const id=randomUUID();
+  await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by,run_id) values(${id}::uuid,${ctx.tenantId}::uuid,${stored.selection.companyId}::uuid,${input.previewId}::uuid,${ctx.userId!}::uuid,${runId}::uuid)`);
+  await recordEventTx(tx,ctx,id,stored.selection.companyId,'pending');
+  return {...stored,id,existing:false};
+ }catch(error){outcome='refused';throw error;}
+ finally{reportSlowTaxBasisOpening(input.previewId,outcome,Math.round(performance.now()-lockedAt),Math.round(performance.now()-started),laps);}
 }
 
 /** `runId` is the grouped confirmation bulk job: it only groups this run's employee-group batches per company on the

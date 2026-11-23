@@ -44,6 +44,25 @@ describe('RunGroupProgressPanel',()=>{
   expect(refresh).not.toHaveBeenCalled();
  });
 
+ it('keeps the last progress and polling, with a calm note and no error, while the server answers busy',async()=>{
+  // Production, 23 November 2026: a tax-basis recalculation held the Access lock and every poll for ~25 s failed.
+  const busy=()=>Promise.resolve(new Response(JSON.stringify({busy:true}),{status:503,headers:{'content-type':'application/json'}}));
+  const fetch=vi.fn().mockImplementationOnce(busy).mockImplementation(()=>respond(running));vi.stubGlobal('fetch',fetch);
+  vi.useFakeTimers({shouldAdvanceTime:true});
+  try{
+   harness(en,'en',running);
+   const copy=(en as unknown as {payroll:{batch:{processingJob:{busy:string;state:Record<string,string>;backgroundHelp:string}}}}).payroll.batch.processingJob;
+   expect(copy.busy.length).toBeGreaterThan(0);
+   await waitFor(()=>expect(screen.getByText(copy.busy)).toBeInTheDocument());
+   expect(screen.queryByRole('alert')).toBeNull();
+   expect(within(screen.getAllByRole('listitem')[1]).getByRole('status')).toHaveTextContent(copy.state.running);
+   await vi.advanceTimersByTimeAsync(2500);
+   await waitFor(()=>expect(fetch).toHaveBeenCalledTimes(2));
+   await waitFor(()=>expect(screen.getByText(copy.backgroundHelp)).toBeInTheDocument());
+   expect(screen.queryByText(copy.busy)).toBeNull();
+  }finally{vi.useRealTimers();}
+ });
+
  it('refreshes to the outcomes once every company’s run has finished',async()=>{
   vi.stubGlobal('fetch',vi.fn(()=>respond({...running,done:true,companies:running.companies.map(c=>c.job?{...c,job:job('completed',10)}:c)})));
   harness(zh,'zh',running);

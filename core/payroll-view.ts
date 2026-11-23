@@ -1,7 +1,7 @@
 import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {recordedPayrollReconciliationItems} from '../lib/payroll-comparison-source';
 import { ALL_RECORDED_PAY_ITEMS } from '../lib/payroll-period-comparison';
-import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,overlayInformationDocument} from './information-correction-history';
+import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,overlayInformationDocument,RetainedDocumentCeilingError} from './information-correction-history';
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
 import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
 import {payPeriodBounds, payslipCoverage} from './payslip-segment';
@@ -1194,68 +1194,125 @@ export function listProcessedPayslipsAcross(
   },
 ): Promise<ProcessedPayslipViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
+  return withTenant(ctx, (tx) => readProcessedPayslipsTx(tx, p));
+}
+
+/** Newest period first, then run number, then employee name — the order every processed-payslip read returns. */
+const processedPayslipOrder = (a: ProcessedPayslipViewRow, b: ProcessedPayslipViewRow) =>
+  b.payPeriod.localeCompare(a.payPeriod) || a.runSeq - b.runSeq || a.employeeName.localeCompare(b.employeeName);
+
+/** `listProcessedPayslipsAcross` inside the caller's transaction, so a slicing reader can keep one snapshot. */
+async function readProcessedPayslipsTx(
+  tx: Tx,
+  p: ProcessedPayslipFilters & { limit?: number },
+): Promise<ProcessedPayslipViewRow[]> {
+  if (p.companyIds.length === 0) return [];
   const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
   const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
+  const q = tx
+    .select({
+      id: payslip.id,
+      employmentId: payslip.employmentId,
+      employeeName: person.fullName,
+      employeeCode: employment.employeeCode,
+      companyId: payrollBatch.companyId,
+      company: company.legalName,
+      // ADR-0077 slice 6 (D-9). The `company` join is already here — one column, no new join.
+      currency: company.currency,
+      // 417d4937 — the run id, so a caller can ask the ledger which transactions this slip consumed.
+      batchId: payslip.batchId,
+      payrollCycleId: payrollBatch.payrollCycleId,
+      payPeriod: payrollBatch.payPeriod,
+      runType: payrollBatch.runType,
+      runSeq: payrollBatch.runSeq,
+      batchStatus: payrollBatch.status,
+      // b240c0ff — what the run is CALLED when it is imported history (see `payrollRunLabel`).
+      historyImportAttemptId: payrollBatch.historyImportAttemptId,
+      historyImportCycleName: payrollBatch.historyImportCycleName,
+      // 3c88d593 (r206) — the coverage window (0446), so Transaction View can show a transferred
+      // employee's month as the two employer segments it was actually paid on instead of one summed
+      // cell. Two columns off a table already joined; nothing about any FIGURE changes.
+      coverageFrom: payslip.coverageFrom,
+      coverageTo: payslip.coverageTo,
+      // 169e3c24 — publication state + revision count, resolved on screen through payrollPublicationState.
+      releasedAt: payrollBatch.releasedAt,
+      version: payslip.version,
+      basic: payslip.basicSalary,
+      allowance: payslip.allowance,
+      overtime: payslip.overtimePay,
+      bonus: payslip.bonus,
+      gross: payslip.grossPay,
+      statutory: payslip.statutory,
+      // 970e4143 — see the field docs. The two Transaction History surfaces could not reconcile without it.
+      otherDeductions: payslip.otherDeductions,
+      totalDeductions: payslip.totalDeductions,
+      net: payslip.netPay,
+    })
+    .from(payslip)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+    .innerJoin(company, eq(company.id, payrollBatch.companyId))
+    .innerJoin(employment, eq(employment.id, payslip.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(processedPayslipFilters(p))
+    .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
+    .$dynamic();
+  // An absent cap does not call .limit() at all, so every existing caller — including the CSV
+  // export, which must never be clipped — issues exactly the query it issued before.
+  const rows=await (limit ? q.limit(limit) : q);
+  // Same cap as the live rows: the landing tab must not read (or fail on) every retained document ever kept.
+  const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true,limit});
+  const seen=new Set(rows.map(row=>row.id));
+  for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
+    rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payrollCycleId:r.payrollCycleId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
+  }
+  if(retained.length)rows.sort(processedPayslipOrder);
+  return limit?rows.slice(0,limit):rows;
+}
+
+/**
+ * Production 2026-11-23 — EVERY processed payslip in scope, for the History workbook (a background job, never a web
+ * request). `listProcessedPayslipsAcross` without a limit refuses once the scope holds more than
+ * RETAINED_DOCUMENT_CEILING retained documents, and production holds about 17,000, so "All processed payroll" could
+ * never be downloaded. This reader asks for one pay period at a time, and splits a period by company only if that
+ * period alone is over the ceiling. Nothing is dropped: a single company-period still over the ceiling refuses, as
+ * the uncapped read always has.
+ *
+ * The periods come from `payroll_batch`, whose row security admits a batch on `can_admin_payroll_for(company_id)` —
+ * the same predicate `app.information_payslip_documents` requires of a retained document's batch — so every period
+ * that can hold a retained document is visited. One read-only snapshot covers every slice, so the file is one
+ * consistent picture. Rows are concatenated in period order, which is exactly the order of the unsliced read.
+ */
+export async function readProcessedPayslipsForExport(
+  ctx: SessionContext,
+  p: ProcessedPayslipFilters,
+): Promise<ProcessedPayslipViewRow[]> {
+  if (p.companyIds.length === 0) return []; // fail closed — no scope, no rows
   return withTenant(ctx, async (tx) => {
-    const q = tx
-      .select({
-        id: payslip.id,
-        employmentId: payslip.employmentId,
-        employeeName: person.fullName,
-        employeeCode: employment.employeeCode,
-        companyId: payrollBatch.companyId,
-        company: company.legalName,
-        // ADR-0077 slice 6 (D-9). The `company` join is already here — one column, no new join.
-        currency: company.currency,
-        // 417d4937 — the run id, so a caller can ask the ledger which transactions this slip consumed.
-        batchId: payslip.batchId,
-        payrollCycleId: payrollBatch.payrollCycleId,
-        payPeriod: payrollBatch.payPeriod,
-        runType: payrollBatch.runType,
-        runSeq: payrollBatch.runSeq,
-        batchStatus: payrollBatch.status,
-        // b240c0ff — what the run is CALLED when it is imported history (see `payrollRunLabel`).
-        historyImportAttemptId: payrollBatch.historyImportAttemptId,
-        historyImportCycleName: payrollBatch.historyImportCycleName,
-        // 3c88d593 (r206) — the coverage window (0446), so Transaction View can show a transferred
-        // employee's month as the two employer segments it was actually paid on instead of one summed
-        // cell. Two columns off a table already joined; nothing about any FIGURE changes.
-        coverageFrom: payslip.coverageFrom,
-        coverageTo: payslip.coverageTo,
-        // 169e3c24 — publication state + revision count, resolved on screen through payrollPublicationState.
-        releasedAt: payrollBatch.releasedAt,
-        version: payslip.version,
-        basic: payslip.basicSalary,
-        allowance: payslip.allowance,
-        overtime: payslip.overtimePay,
-        bonus: payslip.bonus,
-        gross: payslip.grossPay,
-        statutory: payslip.statutory,
-        // 970e4143 — see the field docs. The two Transaction History surfaces could not reconcile without it.
-        otherDeductions: payslip.otherDeductions,
-        totalDeductions: payslip.totalDeductions,
-        net: payslip.netPay,
-      })
-      .from(payslip)
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(processedPayslipFilters(p))
-      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
-      .$dynamic();
-    // An absent cap does not call .limit() at all, so every existing caller — including the CSV
-    // export, which must never be clipped — issues exactly the query it issued before.
-    const rows=await (limit ? q.limit(limit) : q);
-    // Same cap as the live rows: the landing tab must not read (or fail on) every retained document ever kept.
-    const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true,limit});
-    const seen=new Set(rows.map(row=>row.id));
-    for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
-      rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payrollCycleId:r.payrollCycleId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
+    const periods = await tx
+      .selectDistinct({ payPeriod: payrollBatch.payPeriod })
+      .from(payrollBatch)
+      .where(and(
+        inArray(payrollBatch.companyId, p.companyIds),
+        periodFilter(p.year, p.month),
+        p.payrollCycleId ? eq(payrollBatch.payrollCycleId, p.payrollCycleId) : undefined,
+      ))
+      .orderBy(desc(payrollBatch.payPeriod));
+    const rows: ProcessedPayslipViewRow[] = [];
+    for (const { payPeriod } of periods) {
+      const slice = { ...p, year: Number(payPeriod.slice(0, 4)), month: Number(payPeriod.slice(5, 7)) };
+      try {
+        rows.push(...await readProcessedPayslipsTx(tx, slice));
+      } catch (error) {
+        if (!(error instanceof RetainedDocumentCeilingError) || p.companyIds.length < 2) throw error;
+        const period: ProcessedPayslipViewRow[] = [];
+        for (const companyId of p.companyIds) {
+          period.push(...await readProcessedPayslipsTx(tx, { ...slice, companyIds: [companyId] }));
+        }
+        rows.push(...period.sort(processedPayslipOrder));
+      }
     }
-    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
-    return limit?rows.slice(0,limit):rows;
-  });
+    return rows;
+  }, { readOnlySnapshot: true });
 }
 
 /**
