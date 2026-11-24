@@ -10,6 +10,7 @@ import { movementImportIssueText } from '@/lib/movement-import-issues';
 import {setEmploymentBlacklist,setEmploymentInfo,setReportingLine} from '@/core/workforce-commands';
 import { publicErrorMessage } from '@/lib/public-error';
 import { amendDirectSuperior } from '@/core/information-correction';
+import { correctDirectSuperiorPeriod } from '@/core/direct-superior-periods';
 import { DirectSuperiorAlreadySavedError, DirectSuperiorUnchangedError, ReportingCycleError } from '@/core/org';
 import { reportingLinesFor } from '@/core/read';
 import { isCalendarDate } from '@/lib/calendar-date';
@@ -823,6 +824,41 @@ export async function setDirectSuperiorAction(_previous: DirectSuperiorSaveOutco
 }
 
 class DirectSuperiorFormRefusal extends Error {}
+
+/** Board 8f959c7a r2 — correct one Direct Superior period from the card (Edit, clear its end date, or Remove).
+ * Same typed outcome as the card's Save: a refusal is answered beside the button with the entries kept, and the
+ * page refreshes in the background after a saved correction. The service owns every rule and permission. */
+export async function correctDirectSuperiorPeriodAction(_previous: DirectSuperiorSaveOutcome, formData: FormData): Promise<DirectSuperiorSaveOutcome> {
+  const session = await requireAdmin();
+  const t = await getTranslations('people.detail');
+  const submissionId = String(formData.get('submissionId') ?? '');
+  const employmentId = String(formData.get('employmentId') ?? '');
+  const operation = formData.get('periodOperation');
+  const reason = String(formData.get('reason') ?? '').trim();
+  const managerEmploymentId = String(formData.get('superiorEmploymentId') ?? '').trim();
+  try {
+    if (operation !== 'edit' && operation !== 'remove') throw new DirectSuperiorFormRefusal(t('directSuperiorChooseMode'));
+    if (!reason || reason.length > 200) throw new DirectSuperiorFormRefusal(t('directSuperiorReasonRequired'));
+    const common = { employmentId, reason, revision: String(formData.get('periodRevision') ?? ''),
+      lineId: String(formData.get('periodLineId') ?? '') };
+    if (operation === 'remove') {
+      await correctDirectSuperiorPeriod(session, { ...common, operation });
+    } else {
+      const validFrom = String(formData.get('validFrom') ?? '').trim();
+      const validToInclusive = String(formData.get('validToInclusive') ?? '').trim() || null;
+      if (!managerEmploymentId) throw new DirectSuperiorFormRefusal(t('directSuperiorPeriodSuperiorRequired'));
+      if (!isCalendarDate(validFrom) || (validToInclusive !== null && !isCalendarDate(validToInclusive))) {
+        throw new DirectSuperiorFormRefusal(t('directSuperiorDateRequired'));
+      }
+      await correctDirectSuperiorPeriod(session, { ...common, operation, managerEmploymentId, validFrom, validToInclusive });
+    }
+  } catch (error) {
+    unstable_rethrow(error);
+    return { status: 'refused', submissionId, message: directSuperiorRefusalText(error, t, managerEmploymentId === employmentId) };
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  return { status: 'saved', submissionId, message: t(operation === 'remove' ? 'directSuperiorPeriodRemoved' : 'directSuperiorPeriodSaved') };
+}
 
 /** Plain sentences for the refusals HR can act on; database errors keep their reference sentence. */
 function directSuperiorRefusalText(error: unknown, t: (key: string, values?: Record<string, string>) => string, self: boolean): string {

@@ -127,6 +127,8 @@ import {
   HIRE_CORRECTED_EVENT,
   hireCorrectionTraceTx,
   liveIncarnationOf,
+  originMapOf,
+  replacedReportingLineIds,
   type HireCorrectionTrace,
 } from './hire-correction';
 import {
@@ -5237,6 +5239,48 @@ export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, empl
   return { id: row.id, kind: recordedKind, displayKind:row.kind, behaviour, effectiveDate: row.effectiveDate, status, reversed: !!row.reversed, scheduled: row.scheduled, input, recorded: plain, history: null };
 }
 
+/** Board 8f959c7a r2 — a Direct Superior correction a rollback of this movement can safely act through.
+ *
+ * Every line the correction replaced is followed by liveIncarnationOf, so the rollback of THIS movement acts on
+ * the corrected line rather than the original. What it cannot protect is a LATER movement's line: deleting an
+ * older change replays the later ones from their recorded values, which would put a corrected superior back.
+ * So a correction is safe when each line it replaced descends from this movement's own legs, or from a line no
+ * movement created (hire, import, an earlier amendment). Walked back through the recorded replacements. */
+function correctsOwnSuperiorPeriod(correction: RawEvent, group: RawEvent[], events: RawEvent[]): boolean {
+  const replaced = replacedReportingLineIds(correction.payload);
+  if (!replaced.length) return false;
+  const own = new Set(group.filter((event) => event.eventType === 'reporting-line.set').map((event) => event.aggregateId));
+  const movementLines = new Set(events.filter((event) => event.eventType === 'reporting-line.set' && !!tagOf(event)).map((event) => event.aggregateId));
+  const origin = originMapOf(events.filter((x) => isAssignmentReplacementEvent(x.eventType, HIRE_CORRECTED_EVENT)).map((x) => x.payload));
+  return replaced.every((id) => {
+    let cur = id;
+    const seen = new Set<string>();
+    while (origin.has(cur) && !seen.has(cur)) { seen.add(cur); cur = origin.get(cur)!; }
+    return own.has(cur) || !movementLines.has(cur);
+  });
+}
+
+/** Board 8f959c7a r2 — which applied "Changed Direct Superior" row created each live administrative line.
+ *
+ * A row owns the line its reporting-line.set leg inserted, followed through every later replacement (an
+ * amendment, a period correction or a hire correction re-inserts a line under a new id; liveIncarnationOf is
+ * the same ledger walk Roll Back uses, so the answer here is exactly the line a Delete would act on). Lines
+ * no movement owns (hire, import, amendment-only) are absent. One projection read; command-time only. */
+export async function directSuperiorLineOwnersTx(tx: Tx, ctx: SessionContext, employmentId: string) {
+  const { events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
+  const corrections = events.filter((x) => isAssignmentReplacementEvent(x.eventType, HIRE_CORRECTED_EVENT)).map((x) => x.payload);
+  const owners = new Map<string, { movementId: string; effectiveDate: string }>();
+  for (const row of rows) {
+    if (row.reversed || statusOf(row) !== 'applied') continue;
+    const group = groupEventsOf(events, row);
+    if (resolvedTypes.get(recordedMovementKind(row, group))?.behaviourKind !== 'reportingLineChange') continue;
+    const leg = [...group].reverse().find((event) => event.eventType === 'reporting-line.set'
+      && (event.payload as ReportingPayload | null)?.lineType === 'administrative');
+    if (leg) owners.set(liveIncarnationOf(leg.aggregateId, corrections), { movementId: row.id, effectiveDate: row.effectiveDate });
+  }
+  return owners;
+}
+
 /** The rollback guards, shared by the rollback and by read-only eligibility checks. */
 async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string, movementId: string) {
   const { events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
@@ -5274,6 +5318,10 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
     if(event.eventType!=='employment.information.corrected'||event.sequence<=row.sequence)return false;
     const payload=(event.payload??{}) as {fields?:string[];source?:string;effectiveOn?:string};
     if(payload.source==='original-hire'&&payload.effectiveOn&&payload.effectiveOn<=row.effectiveDate)return false;
+    // Board 8f959c7a r2 — a Direct Superior amendment or period correction records the lines it replaced, and the
+    // rollback acts on their live incarnation (liveIncarnationOf). Blocking left a superior change that was later
+    // amended impossible to fix. A correction of a LATER change's period still blocks (see the helper).
+    if(payload.source==='direct-superior'&&correctsOwnSuperiorPeriod(event,group,events))return false;
     return (payload.fields??[]).some(field=>protectedFields.has(field));
   });
   if(conflictingCorrection){

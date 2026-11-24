@@ -1099,5 +1099,39 @@
       "name": "superiorChangeMode",
       "reason": "Selects the guarded reporting-line amendment or dated Movement command without storing a Personnel value."
     }
+  ],
+  "app/admin/personnel/[employmentId]/direct-superior-periods.tsx": [
+    {
+      "tag": "input",
+      "context": "DirectSuperiorPeriods",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by the Direct Superior period editor; the period correction owner checks subject scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "DirectSuperiorPeriods",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "periodRevision",
+      "reason": "Compare-and-change proof of the exact live reporting lines shown on the card, validated by the period correction owner; not a Personnel value."
+    },
+    {
+      "tag": "input",
+      "context": "DirectSuperiorPeriods",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "periodLineId",
+      "reason": "Record pointer to the reporting-line period being corrected; the period correction owner re-reads and authorizes it. Not a Personnel value."
+    },
+    {
+      "tag": "input",
+      "context": "DirectSuperiorPeriods",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "periodOperation",
+      "reason": "Selects the guarded period Edit or Remove command without storing a Personnel value."
+    }
   ]
 }

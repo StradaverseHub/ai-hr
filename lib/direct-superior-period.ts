@@ -25,3 +25,24 @@ export function directSuperiorPeriodOf(lines: readonly DirectSuperiorLine[], eff
   const next = live.map(line => line.validFrom).filter(day => day > effectiveDate).sort()[0];
   return { from: effectiveDate, to: next ? addCalendarDays(next, -1) : null };
 }
+
+/** Board 8f959c7a r2 — one live administrative line as the Direct Superior card lists it. */
+export type DirectSuperiorLineRow = DirectSuperiorLine & { id: string; managerEmploymentId: string };
+
+/** The token a card correction carries back: the exact live lines the user looked at. Any other writer in
+ * between changes it, and the correction is refused instead of acting on periods the user never saw. */
+export function directSuperiorRevision(lines: readonly DirectSuperiorLineRow[]): string {
+  return [...lines].sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : a.id < b.id ? -1 : 1))
+    .map(line => `${line.id}@${line.validFrom}@${line.validTo ?? ''}@${line.managerEmploymentId}`).join(';');
+}
+
+/** Lines whose period runs straight into a later one with the same superior (the split HR asked to join). */
+export function joinableSuperiorLineIds(lines: readonly DirectSuperiorLineRow[]): Set<string> {
+  const ordered = [...lines].sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1));
+  const ids = new Set<string>();
+  for (let i = 0; i + 1 < ordered.length; i++) {
+    const line = ordered[i], next = ordered[i + 1];
+    if (line.validTo === next.validFrom && line.managerEmploymentId === next.managerEmploymentId) ids.add(line.id);
+  }
+  return ids;
+}

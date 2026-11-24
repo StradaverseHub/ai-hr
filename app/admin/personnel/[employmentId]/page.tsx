@@ -42,7 +42,7 @@ import {
   adminCompanies,
   assignmentHistory,
   delegationsFor,
-  directSuperiorHistoryFor,
+  directSuperiorPeriodsFor,
   employeeDetail,
   employmentCompanyEditable,
   listDepartments,
@@ -59,7 +59,7 @@ import { PhotoLightbox } from './photo-lightbox';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DateField } from '@/components/ui/date-field';
 import { formatDmy, formatDmyTime } from '@/lib/date-display';
-import { inclusiveSuperiorEnd } from '@/lib/direct-superior-period';
+import { joinableSuperiorLineIds } from '@/lib/direct-superior-period';
 import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
 // 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Create New Employee wizard.
 import { PersonDetailsFields } from '@/components/person-details-fields';
@@ -71,6 +71,7 @@ import { EpfRegistrationFields } from '@/components/epf-registration-fields';
 // carries "EMP-0008 – John Tan" so type-ahead matches Employee ID and name alike.
 import { Combobox } from '@/components/ui/combobox';
 import { DirectSuperiorChangeForm } from './direct-superior-change-form';
+import { DirectSuperiorPeriods } from './direct-superior-periods';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
@@ -89,6 +90,7 @@ import {
   endDelegationAction,
   setCompensationAction,
   setDirectSuperiorAction,
+  correctDirectSuperiorPeriodAction,
   setComplianceFieldsAction,
   setContactAddressAction,
   changeEmploymentCompanyAction,
@@ -583,7 +585,8 @@ export default async function EmployeePage({
   // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
   // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
   const currentSuperior = reporting.managers.find((m) => m.lineType === 'administrative') ?? null;
-  const superiorHistory = readProfileCards ? await directSuperiorHistoryFor(s, employmentId, today) : [];
+  // Board 8f959c7a r2 — every live period (the current one included) feeds the card's Edit/Remove list.
+  const superiorPeriods = readProfileCards ? await directSuperiorPeriodsFor(s, employmentId) : { periods: [], revision: '' };
   // "EMP-0008 – John Tan" labels: the Combobox filters on the label, so one picker searches Employee ID
   // and name alike. Active employees only (`others` already excludes self + terminated); the current
   // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
@@ -594,6 +597,13 @@ export default async function EmployeePage({
       value: currentSuperior.employmentId,
       label: superiorLabel(currentSuperior.employeeCode, currentSuperior.name),
     });
+  }
+  // A past period may name someone who has since left; the period editor still has to show them.
+  const periodOptions = [...superiorOptions];
+  for (const p of superiorPeriods.periods) {
+    if (!periodOptions.some((o) => o.value === p.managerEmploymentId)) {
+      periodOptions.push({ value: p.managerEmploymentId, label: superiorLabel(p.employeeCode, p.name) });
+    }
   }
   // Movement tab redesign (78853b97): Employment History is a read-model projection over the
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
@@ -4528,25 +4538,27 @@ export default async function EmployeePage({
             </div>
           </DirectSuperiorChangeForm>
         )}
-        {superiorHistory.length > 0 && (
-          <details className="text-sm">
-            <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('directSuperiorHistory')}
-            </summary>
-            <ul className="mt-2 space-y-1">
-              {superiorHistory.map((h) => (
-                <li key={h.id} className="flex items-center justify-between gap-3">
-                  <Link href={`/admin/personnel/${h.managerEmploymentId}`} className="text-foreground hover:text-primary">
-                    {superiorLabel(h.employeeCode, h.name)}
-                  </Link>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {/* 8f959c7a — valid_to is exclusive (the next superior's first day); show the last day served. */}
-                    {formatDmy(h.validFrom)} → {formatDmy(inclusiveSuperiorEnd(h.validTo))}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </details>
+        {superiorPeriods.periods.length > 0 && (
+          <DirectSuperiorPeriods action={correctDirectSuperiorPeriodAction} employmentId={emp.employmentId}
+            revision={superiorPeriods.revision}
+            periods={superiorPeriods.periods.map((p) => ({ id: p.id, managerEmploymentId: p.managerEmploymentId,
+              label: superiorLabel(p.employeeCode, p.name), validFrom: p.validFrom, validTo: p.validTo }))}
+            joinable={[...joinableSuperiorLineIds(superiorPeriods.periods)]}
+            options={periodOptions}
+            canEdit={admin && canMaintainWorkforce && !emp.terminatedOn}
+            canRemove={admin && canMaintainWorkforce && canDeleteMovement && !emp.terminatedOn}
+            historyHref={`/admin/personnel/${emp.employmentId}?tab=careerMovement`}
+            labels={{ title: t('directSuperiorPeriodsTitle'), current: t('directSuperiorPeriodCurrent'),
+              edit: t('directSuperiorPeriodEdit'), remove: t('directSuperiorPeriodRemove'),
+              superior: t('directSuperiorLabel'), start: t('directSuperiorPeriodStart'), end: t('directSuperiorPeriodEnd'),
+              endCurrent: t('directSuperiorPeriodEndCurrent'), endFixed: t('directSuperiorPeriodEndFixed'),
+              reason: t('directSuperiorReason'), cancel: t('directSuperiorCancel'),
+              saveCorrection: t('directSuperiorPeriodSaveCorrection'), removePeriod: t('directSuperiorPeriodRemoveConfirm'),
+              confirmClear: t.raw('directSuperiorPeriodConfirmClear'), confirmRemovePrevious: t.raw('directSuperiorPeriodConfirmRemovePrevious'),
+              confirmRemoveNext: t.raw('directSuperiorPeriodConfirmRemoveNext'), confirmRemoveAlone: t('directSuperiorPeriodConfirmRemoveAlone'),
+              joinHint: t('directSuperiorPeriodJoinHint'), uncertain: t('directSuperiorUncertain'),
+              checkHistory: t('directSuperiorCheckHistory'), searchPlaceholder: t('directSuperiorSearch'),
+              noResults: t('directSuperiorNoResults'), none: t('directSuperiorNone') }} />
         )}
         <p className="text-xs text-muted-foreground">{t('directSuperiorHint')}</p>
       </div>

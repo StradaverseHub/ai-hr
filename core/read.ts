@@ -213,6 +213,7 @@ import type { EmploymentStatus } from './employment-status';
 import { employmentStatusSql, type EmploymentStatusColumns } from './employment-status-sql';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { directSuperiorRevision } from '../lib/direct-superior-period';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
@@ -6171,6 +6172,37 @@ export function directSuperiorHistoryFor(ctx: SessionContext, employmentId: stri
         ),
       )
       .orderBy(desc(reportingLine.validFrom), desc(reportingLine.validTo));
+  });
+}
+
+/** Board 8f959c7a r2 — every live administrative period for the Direct Superior card, the current one
+ *  included, newest first, with the revision token a card correction must carry back. One bounded read;
+ *  RLS scopes the manager join like directSuperiorHistoryFor. */
+export function directSuperiorPeriodsFor(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: reportingLine.id,
+        managerEmploymentId: reportingLine.managerEmploymentId,
+        employeeCode: employment.employeeCode,
+        name: person.fullName,
+        validFrom: reportingLine.validFrom,
+        validTo: reportingLine.validTo,
+      })
+      .from(reportingLine)
+      .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, employmentId),
+          eq(reportingLine.lineType, 'administrative'),
+          isNull(reportingLine.supersededAt),
+          sql`(${reportingLine.validTo} is null or ${reportingLine.validTo} > ${reportingLine.validFrom})`,
+        ),
+      )
+      .orderBy(desc(reportingLine.validFrom), desc(reportingLine.id))
+      .limit(500);
+    return { periods: rows, revision: directSuperiorRevision(rows) };
   });
 }
 
