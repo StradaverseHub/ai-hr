@@ -459,6 +459,7 @@ AIHR_ALERT_COMMAND=curl -sS -X POST -d @- https://your-webhook.example/aihr
 * * * * * cd /opt/ai-hr && deploy/cron-alert.sh provision /home/ubuntu/aihr-cron-logs/provision.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/provision-runner.ts
 30 3 * * * cd /opt/ai-hr && deploy/cron-alert.sh entitlement-alarm /home/ubuntu/aihr-cron-logs/entitlement-alarm.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/entitlement-alarm.ts
 15 * * * * cd /opt/ai-hr && deploy/cron-alert.sh ai-alerts /home/ubuntu/aihr-cron-logs/ai-alerts.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/ai-alerts.ts
+10 0 * * * cd /opt/ai-hr && deploy/cron-alert.sh access-effective-company /home/ubuntu/aihr-cron-logs/access-effective-company.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-effective-company-check.ts
 ```
 
 The `ai-alerts` line (WP12, review R20) is **documented here, not installed**; the release owner adds it. It is a
@@ -467,6 +468,17 @@ tenant could not be checked) and writes a `job_run` row (`ai.alerts`) each run. 
 hours, refusals under the scheduled agent principal, this month's USD allocation against the tenant cap (and a
 breach), and stale AI switch overrides that disagree with the real switch. Allowance meters and module- or
 platform-held switches are shown only on the AI management banner (they need a signed-in session's entitlements).
+
+The `access-effective-company` line (ADR 0181 Phase 2 pilot, migration 7210) is **documented here, not installed**.
+It runs ten minutes after midnight Kuala Lumpur time (on a host whose clock is UTC, use `10 16 * * *`). On the
+owner connection it recomputes each tenant's precomputed company access from scratch and compares it with the
+trigger-maintained rows (`app.access_effective_company_verify`). A future-dated restructure whose day has come is
+recomputed, not reported. A difference marks that tenant untrusted, so its Job descriptions reads fall back to the
+legacy per-company check, and the job exits `3` with the tenant id and counts only. It stays `3` every night until an
+operator fixes the cause and runs `select app.access_effective_company_retrust('<tenant id>')` as the owner. Exit `2`
+means a tenant could not be checked. The installation's mode is `legacy` until changed with
+`select app.access_precompute_set_mode('shadow' | 'precomputed' | 'legacy')`; staging runs `shadow` under the staging
+lease, production stays `legacy` until the pilot is accepted and a separate production request changes it.
 
 The last line is **readiness 2.1 (r296) and it is a DETECTOR, not a sweep** — it changes nothing, and
 every transaction it opens is `SET TRANSACTION READ ONLY`, so the server refuses a write from it. It is
@@ -508,6 +520,7 @@ class. Schedule the check separately, against whatever interval each job should 
 7 * * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name provision -mmin +10 -exec sh -c 'echo "AI HR: provision runner has not succeeded in 10 minutes" | logger -t aihr-cron -p user.err' \;
 17 6 * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name entitlement-alarm -mmin +2880 -exec sh -c 'echo "AI HR: the entitlement alarm has not completed cleanly in 48 hours" | logger -t aihr-cron -p user.err' \;
 27 7 * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name ai-alerts -mmin +2880 -exec sh -c 'echo "AI HR: the AI alert check has not completed cleanly in 48 hours" | logger -t aihr-cron -p user.err' \;
+37 7 * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name access-effective-company -mmin +2880 -exec sh -c 'echo "AI HR: the precomputed access check has not completed cleanly in 48 hours" | logger -t aihr-cron -p user.err' \;
 ```
 
 `heartbeat/ai-alerts` also means "last CHECKED AND CLEAN": a standing AI alert keeps it stale while the hourly
