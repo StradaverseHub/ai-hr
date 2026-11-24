@@ -10,6 +10,7 @@ import {readIndividualImportWorkbook} from '../lib/individual-import-read';
 import {parseIndividualImport} from '../lib/individual-txn-import-contract';
 import {INDIVIDUAL_IMPORT_MAX_BYTES, INDIVIDUAL_IMPORT_MAX_RECORDS} from '../lib/individual-import-job';
 import type {TxnTemplateReference} from '../lib/import-template-xlsx';
+import {INDIVIDUAL_IMPORT_SHEET} from '../lib/payroll-txn-import-schema';
 
 const headings = {employees: 'Employees', employeeId: 'Employee ID', employeeName: 'Employee name', company: 'Company', department: 'Department',
   payItems: 'Pay Items', payItemCode: 'Pay Item code', payItemName: 'Pay Item name', payItemKind: 'Kind', payItemInput: 'Input',
@@ -50,6 +51,17 @@ describe('Individual Transaction upload reader (0ec0ee00)', () => {
     expect(text.trim().split('\n')).toHaveLength(6);
   });
 
+  it('keeps transactions after long runs of blank rows when the data tab is after a reference tab', async () => {
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['Employee reference only']]), 'Employees');
+    const sheet = XLSX.utils.aoa_to_sheet([['Employee ID', 'Amount'], ['0001', 0]]);
+    XLSX.utils.sheet_add_aoa(sheet, [['0002', -5]], {origin: `A${INDIVIDUAL_IMPORT_MAX_RECORDS + 4}`});
+    XLSX.utils.book_append_sheet(book, sheet, INDIVIDUAL_IMPORT_SHEET.monthly);
+    const bytes = new Uint8Array(XLSX.write(book, {type: 'array', bookType: 'xlsx'}));
+    const text = await readIndividualImportWorkbook(bytes, 't.xlsx', 'monthly');
+    expect(text).toBe('Employee ID,Amount\r\n0001,0\r\n0002,-5\r\n');
+  });
+
   it('accepts exactly the record limit and refuses one more as too many rows, not too large', async () => {
     expect(await code(readIndividualImportWorkbook(await workbook(10, INDIVIDUAL_IMPORT_MAX_RECORDS), 't.xlsx', 'monthly'))).toBe('accepted');
     expect(await code(readIndividualImportWorkbook(await workbook(10, INDIVIDUAL_IMPORT_MAX_RECORDS + 1), 't.xlsx', 'monthly'))).toBe('tooManyRows');
@@ -62,4 +74,16 @@ describe('Individual Transaction upload reader (0ec0ee00)', () => {
     expect(await code(readIndividualImportWorkbook(await workbook(10, 5), 't.csv', 'monthly'))).toBe('invalidFormat');
     expect(await code(readIndividualImportWorkbook(await workbook(10, 0), 't.xlsx', 'monthly'))).not.toBe('fileTooLarge');
   });
+});
+
+it('uses the exact confirmed transaction worksheet and refuses a missing or hidden selection', async () => {
+ const book=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Employee ID'],['001']]),INDIVIDUAL_IMPORT_SHEET.monthly);
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Employee ID'],['002'],[' '],['003']]),'November');
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Employee ID'],['004']]),'Hidden');
+ book.Workbook={Sheets:book.SheetNames.map(name=>({name,Hidden:name==='Hidden'?1:0}))};
+ const bytes=new Uint8Array(XLSX.write(book,{type:'array',bookType:'xlsx'}));
+ expect(await readIndividualImportWorkbook(bytes,'transactions.xlsx','monthly','November')).toBe('Employee ID\r\n002\r\n003\r\n');
+ await expect(readIndividualImportWorkbook(bytes,'transactions.xlsx','monthly','Missing')).rejects.toMatchObject({code:'emptyFile'});
+ await expect(readIndividualImportWorkbook(bytes,'transactions.xlsx','monthly','Hidden')).rejects.toMatchObject({code:'emptyFile'});
 });

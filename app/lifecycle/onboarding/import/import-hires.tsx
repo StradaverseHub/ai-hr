@@ -1,7 +1,8 @@
 'use client';
 
 import { ExportDownloadLink } from '@/components/export-download-link';
-import { useActionState } from 'react';
+import {useImportWorksheet} from '@/components/use-import-worksheet';
+import { useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { importCommitAction, importPreviewAction, type ImportState } from '../../actions';
@@ -11,25 +12,47 @@ const TONE = { ok: 'text-emerald-700 dark:text-emerald-400', duplicate: 'text-am
 export function ImportHires({ companies }: { companies: { id: string; name: string }[] }) {
   const t = useTranslations('lifecycle');
   const [pv, preview, previewing] = useActionState<ImportState, FormData>(importPreviewAction, {});
+  const {readWorksheet,clearWorksheet,worksheetPicker}=useImportWorksheet();
+  const fileMessages=useTranslations('worksheetImport');
+  const [source,setSource]=useState<{file:File;worksheets:string[]}|null>(null);
+  const [reading,setReading]=useState(false),[showPreview,setShowPreview]=useState(false),[showResult,setShowResult]=useState(false),[readError,setReadError]=useState(false);
+  async function pickWorkbook(file:File|undefined){
+    clearWorksheet();setSource(null);setShowPreview(false);setShowResult(false);setReadError(false);
+    if(!file)return;
+    if(!/\.xlsx$/i.test(file.name)){setReadError(true);return;}
+    setReading(true);
+    try{
+      const choice=await readWorksheet(file,{inspectOnly:true,multiple:true,maxFileBytes:8*1024*1024,exclude:['Instructions','Reference']});
+      if(choice)setSource({file,worksheets:choice.worksheets});
+    }catch{setReadError(true);}finally{setReading(false);}
+  }
   const [done, commit, committing] = useActionState<ImportState, FormData>(importCommitAction, {});
   return (
     <div className="space-y-4">
       <Card className="p-4">
-        <form action={preview} className="grid gap-3 sm:grid-cols-2">
-          <Field label={t('import.file')} required className="col-span-full"><input name="file" type="file" accept=".xlsx" required className={inputCls} /></Field>
+        <form action={form=>{
+          if(!source)return;
+          form.set('file',source.file);
+          for(const worksheet of source.worksheets)form.append('worksheet',worksheet);
+          setShowPreview(true);
+          preview(form);
+        }} className="grid gap-3 sm:grid-cols-2">
+          <Field label={t('import.file')} required className="col-span-full"><input type="file" accept=".xlsx" disabled={reading||previewing||committing} className={inputCls} onChange={event=>{const file=event.currentTarget.files?.[0];event.currentTarget.value='';void pickWorkbook(file);}} /></Field>
+          <div className="col-span-full">{worksheetPicker}</div>
+          {readError&&<p role="alert" className="col-span-full text-sm text-destructive">{fileMessages('readError')}</p>}
           <Field label={t('import.defaultCompany')}>
             <select name="defaultCompanyId" className={inputCls}><option value="">—</option>{companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
           </Field>
           <div className="flex items-end gap-3">
-            <Button type="submit" disabled={previewing}>{t('import.preview')}</Button>
+            <Button type="submit" disabled={!source||reading||previewing||committing}>{t('import.preview')}</Button>
             <ExportDownloadLink href="/lifecycle/onboarding/import/template" className="text-sm text-primary underline-offset-2 hover:underline">{t('import.template')}</ExportDownloadLink>
           </div>
           <p className="col-span-full text-xs text-muted-foreground">{t('import.rules')}</p>
         </form>
-        {pv.error && <p className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{pv.error}</p>}
+        {showPreview && pv.error && <p className="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{pv.error}</p>}
       </Card>
 
-      {pv.preview && !done.result && (
+      {showPreview && !previewing && pv.preview && !(showResult&&done.result) && (
         <Card className="overflow-hidden">
           <div className="border-b border-border px-4 py-3 text-sm">
             <span className="font-medium">{t('import.summary', { ok: pv.preview.ok, duplicate: pv.preview.duplicate, error: pv.preview.error })}</span>
@@ -49,15 +72,15 @@ export function ImportHires({ companies }: { companies: { id: string; name: stri
             </table>
           </div>
           {pv.preview.ok > 0 && (
-            <form action={commit} className="border-t border-border px-4 py-3">
+            <form action={form=>{setShowResult(true);commit(form);}} className="border-t border-border px-4 py-3">
               <input type="hidden" name="rows" value={JSON.stringify(pv.preview.rows)} />
               <Button type="submit" disabled={committing}>{t('import.commit', { count: pv.preview.ok })}</Button>
             </form>
           )}
         </Card>
       )}
-      {done.error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{done.error}</p>}
-      {done.result && (
+      {showResult && !committing && done.error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{done.error}</p>}
+      {showResult && !committing && done.result && (
         <Card className="space-y-2 p-4 text-sm">
           <p className="font-medium">{t('import.created', { count: done.result.created.length })}</p>
           <ul className="list-disc pl-5">{done.result.created.map((c) => <li key={c.number}><a className="text-primary underline-offset-2 hover:underline" href={`/lifecycle/onboarding/${c.number}`}>{c.number}</a> · {c.requisition}</li>)}</ul>

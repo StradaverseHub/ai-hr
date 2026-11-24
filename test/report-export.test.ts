@@ -58,6 +58,13 @@ describe('report-export serializers (ADR-0047)', () => {
     expect(startsWith(bytes, '%PDF')).toBe(true);
   });
 
+  it('gives Excel a valid 31-character worksheet name when the report title contains XML punctuation', () => {
+    const title = 'A'.repeat(29) + '&/Payroll';
+    const html = dec.decode(toXlsxReport({...sample, title}).bytes);
+    expect(html).toContain(`<x:Name>${'A'.repeat(29)}&amp;</x:Name>`);
+    expect(html).toContain(`${'A'.repeat(29)}&amp;/Payroll</div>`);
+  });
+
   it('empty report → each format produces a valid, openable file (no crash)', async () => {
     // CSV: header-only line.
     const csv = dec.decode(toCsvReport(empty).bytes);

@@ -1,4 +1,5 @@
 'use client';
+import { useImportWorksheet } from '@/components/use-import-worksheet';
 import { ActionButton } from '@/components/ui/action-button';
 import {BankImportProgress} from './bank-import-progress';
 import { personnelTemplateReferenceLists } from '@/lib/personnel-template-reference';
@@ -78,6 +79,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
   const [reading, setReading] = useState(false);
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { readFile, clearWorksheet, worksheetPicker, choosingWorksheet } = useImportWorksheet();
   // Board d3ba1e9f — the picked file's Excel rows (blank rows are dropped from the text, not from Excel), sent with
   // the check only while the text is still that file's text.
   const excelRows = useRef<{text:string;rows:number[]}|null>(null);
@@ -150,15 +152,24 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
   const loadFile = async (file: File) => {
     if (commitPending.current) return;
     reset();
+    setCsv('');
     const revision = inputRevision.current;
     const readRevision = ++fileReadRevision.current;
     setFileName(null);setSourceFile(null);
     setReading(true);
     try {
-      // No extra sheets: a section file is ONE sheet by definition — that is what makes it a section.
-      const { name, text, format } = await readImportFile(file,{allowedSheets:['Reference','Instructions','__PersonnelLists']});
-      let rows:number[]=[];
-      try{rows=format==='csv'?csvDataExcelRows(text):(await (await import('@/lib/spreadsheet')).workbookDataRowNumbers(await file.arrayBuffer())).first;}catch{rows=[];}
+      const referenceSheets = ['Reference', 'Instructions', '__PersonnelLists'];
+      const read = section === 'bank_statutory'
+        ? await readImportFile(file, {allowedSheets: referenceSheets})
+        : await readFile(file, {framed: true, exclude: referenceSheets});
+      if (!read) return;
+      const {name, text, format} = read;
+      let rows: number[] = [];
+      if ('excelRows' in read && read.excelRows) rows = read.excelRows;
+      else if (format === 'csv') rows = csvDataExcelRows(text);
+      else {
+        try { rows = (await (await import('@/lib/spreadsheet')).workbookDataRowNumbers(await file.arrayBuffer())).first; } catch { /* Optional error-log provenance. */ }
+      }
       if (revision !== inputRevision.current) return;
       excelRows.current={text,rows};
       setCsv(text);
@@ -375,7 +386,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
             }`}
           >
             <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden />
-            <div className="text-sm font-medium">{reading ? t('reading') : t('dropHere')}</div>
+            <div className="text-sm font-medium">{reading && !choosingWorksheet ? t('reading') : t('dropHere')}</div>
             <p className="text-xs text-muted-foreground">{t('uploadHint')}</p>
             <input
               ref={fileInputRef}
@@ -392,6 +403,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
             <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{t('fileLoaded', { name: fileName })}</p>
           )}
         </Field>
+        {worksheetPicker}
 
         <details className="border-t border-border pt-3" open={!fileName}>
           <summary className="cursor-pointer select-none text-sm font-medium text-muted-foreground">
@@ -404,6 +416,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
                 value={csv}
                 onChange={(e) => {
                   if (commitPending.current) return;
+                  clearWorksheet();
                   setCsv(e.target.value);
                   setFileName(null);setSourceFile(null);
                   reset();

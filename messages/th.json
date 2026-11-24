@@ -288,6 +288,21 @@
     "dayContextHelp": "ป้ายวันแยกจากการกำหนดกะ รายละเอียดการลาอยู่ในเมนูลา",
     "colPosition": "ตำแหน่ง"
   },
+  "worksheetImport": {
+    "title": "เลือกแผ่นงาน",
+    "label": "แผ่นงาน",
+    "placeholder": "เลือกแผ่นงานหนึ่งรายการ",
+    "option": "{name} · {count, number} แถว",
+    "count": "ข้อมูล {count, number} แถว",
+    "hint": "จำนวนนี้ไม่รวมหัวตารางและแถวว่าง",
+    "noData": "ไม่มีแผ่นงานที่มีแถวข้อมูล เพิ่มข้อมูลหรือเลือกไฟล์อื่น",
+    "multiple": "แผ่นงาน",
+    "companions": "รวมแผ่นงานประกอบ",
+    "confirmMultiple": "ใช้แผ่นงานที่เลือก",
+    "readError": "ไม่สามารถอ่านสมุดงานได้ เลือกไฟล์ Excel ที่ถูกต้อง",
+    "confirm": "ใช้แผ่นงานนี้",
+    "selected": "{name} · เลือกข้อมูล {count, number} แถวแล้ว"
+  },
   "common": {
     "close": "ปิด",
     "appName": "AIHR",

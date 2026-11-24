@@ -55,12 +55,13 @@ export function toCsv(rows: (string | number | null | undefined)[][]): string {
 }
 
 /** Parse a CSV with a header row into records keyed by normalised header
- *  (lower-cased, spaces → underscores). Returns the headers and one record per data row. */
-export function parseCsvRecords(text: string): {
+ *  (lower-cased, spaces → underscores). Fully blank rows can contain delimiters or quoted cells. */
+export function parseCsvRecords(text: string, options?: { preserveBlankRows?: boolean }): {
   headers: string[];
   records: Record<string, string>[];
 } {
-  const rows = parseCsv(text);
+  const parsed = parseCsv(text);
+  const rows = options?.preserveBlankRows ? parsed : parsed.filter(row => row.some(cell => cell.trim() !== ''));
   if (rows.length === 0) return { headers: [], records: [] };
   const headers = rows[0].map((h) => h.trim().toLowerCase().replace(/\s+/g, '_'));
   const records = rows.slice(1).map((r) => {

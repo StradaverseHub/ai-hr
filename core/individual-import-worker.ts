@@ -12,6 +12,7 @@ import {readIndividualImportJob} from './individual-import-job';
 
 type QueuedJob = IndividualImportJob & {
   context: SessionContext;
+  source_worksheet: string | null;
   revert_context: SessionContext | null;
   company_ids: string[];
   tenant_id: string;
@@ -64,7 +65,7 @@ export async function runIndividualImportTick(
     if (!lock.ok) return false;
     try {
       const [job] = await connection<QueuedJob[]>`
-        select id, tenant_id, created_by, company_ids, context, revert_context, source_name, source_hash, method, template_version, state, attempt_id
+        select id, tenant_id, created_by, company_ids, context, revert_context, source_name, source_worksheet, source_hash, method, template_version, state, attempt_id
         from payroll_individual_import_job where state in ('pending', 'validating', 'confirmed', 'importing', 'reverting')
         order by created_at, id limit 1`;
       if (!job) return false;
@@ -81,7 +82,7 @@ export async function runIndividualImportTick(
           const [payload] = await connection<{source: Buffer}[]>`select source from payroll_individual_import_job where id = ${job.id}`;
           if (createHash('sha256').update(payload.source).digest('hex') !== job.source_hash) throw new IndividualImportError('fileReadError');
           // 0ec0ee00 — only the transaction sheet is measured and read; the template's reference sheets are ignored.
-          const text = await readIndividualImportWorkbook(new Uint8Array(payload.source), job.source_name, job.method);
+          const text = await readIndividualImportWorkbook(new Uint8Array(payload.source), job.source_name, job.method, job.source_worksheet??undefined);
           const attempt = await validateIndividualImport(ctx, {
             operationId: job.id, sourceName: job.source_name, csv: text, method: job.method, scopeIds: job.company_ids,
             allowPreviousDaily: job.template_version === 1,

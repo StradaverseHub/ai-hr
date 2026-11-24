@@ -2,6 +2,7 @@
 /** Authored UNRUN. Actual intake composition with isolated file/hash/network seams; no native import proof. */
 import React from 'react';
 import {File as NodeFile} from 'node:buffer';
+import * as XLSX from 'xlsx';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {NextIntlClientProvider} from 'next-intl';
@@ -25,10 +26,16 @@ const t=messages.people.import,activeText='employee_code,full_name,email,hired_o
 function worksheet(sheetName:string,text:string):PersonnelWorksheetSource{return{sheetName,rows:text.trimEnd().split('\n').map((line,index)=>({row:index+1,cells:line.split(',').map((value,column)=>({column:column+1,raw:value,display:value,decoded:value,kind:'string'}))}))};}
 const activeRead=():ImportFileRead=>({name:'active.xlsx',format:'xlsx',text:activeText,dependentsText:oldFamily,extraTexts:{[ALLOCATION_SHEET]:oldAllocation},source:worksheet('Employee',activeText)});
 const candidateRead=():ImportFileRead=>({name:'candidate.xlsx',format:'xlsx',text:candidateText,dependentsText:'',preparation:{sheets:[{sheetName:'People',text:candidateText,source:worksheet('People',candidateText)},{sheetName:EMPLOYEE_XLSX_SHEETS.family,text:newFamily,source:worksheet(EMPLOYEE_XLSX_SHEETS.family,newFamily)}],decodedBytes:1000,rangeCells:20}});
-const file=(name:string)=>new NodeFile(['fictional bytes'],name) as unknown as File;
+const file=(name:string)=>{
+  if(name!=='active.xlsx')return new NodeFile(['fictional bytes'],name) as unknown as File;
+  const workbook=XLSX.utils.book_new();
+  const sheets=[['Employee',activeText],[EMPLOYEE_XLSX_SHEETS.family,oldFamily],[ALLOCATION_SHEET,oldAllocation]];
+  for(const [sheet,text] of sheets)XLSX.utils.book_append_sheet(workbook,XLSX.utils.aoa_to_sheet(text.trimEnd().split('\n').map(line=>line.split(','))),sheet);
+  return new NodeFile([XLSX.write(workbook,{type:'array',bookType:'xlsx'})],name) as unknown as File;
+};
 function view(){const rendered=render(<NextIntlClientProvider locale="en" messages={messages}><EmployeeImport companies={[{id:'c1',name:'Original Company'},{id:'c2',name:'Other Company'}]} defaultCompanyId="c1" reference={{departments:['Finance'],positions:['Executive'],costCenters:['CC1'],states:['Selangor'],countries:['Malaysia'],nationalities:['Malaysian'],relationships:['Spouse'],familyRelationships:['spouse','child']}}/></NextIntlClientProvider>);return{...rendered,pick:(name:string)=>fireEvent.change(rendered.container.querySelector('input[type=file]')!,{target:{files:[file(name)]}})};}
 const snapshot=()=>{if(!calls.evaluation)throw Error('Expected actual mounted measurement seam');return{epoch:calls.evaluation.sourceEpoch,companyId:calls.evaluation.companyId,canBegin:calls.evaluation.canBegin,...calls.evaluation.getSource()};};
-async function seedActive(){const rendered=view();calls.read.mockResolvedValueOnce(activeRead());calls.digest.mockResolvedValueOnce(oldFingerprint);rendered.pick('active.xlsx');await waitFor(()=>expect(snapshot().fingerprint).toBe(oldFingerprint));await waitFor(()=>expect(calls.validate).toHaveBeenCalled());return rendered;}
+async function seedActive(){const rendered=view();calls.read.mockResolvedValueOnce(activeRead());calls.digest.mockResolvedValueOnce(oldFingerprint);rendered.pick('active.xlsx');fireEvent.click(await screen.findByRole('button',{name:messages.worksheetImport.confirm}));await waitFor(()=>expect(snapshot().fingerprint).toBe(oldFingerprint));await waitFor(()=>expect(calls.validate).toHaveBeenCalled());return rendered;}
 function optIn(){fireEvent.click(screen.getByRole('checkbox',{name:new RegExp(t.headerAssistance.workbook.prepareToggle)}));}
 async function pending(rendered:ReturnType<typeof view>){calls.read.mockResolvedValueOnce(candidateRead());calls.digest.mockResolvedValueOnce(candidateFingerprint);rendered.pick('candidate.xlsx');await screen.findByRole('button',{name:'Cancel candidate workbook'});}
 beforeEach(()=>{vi.clearAllMocks();calls.evaluation=null;calls.validate.mockRejectedValue(Error('Fictional fresh canonical validation still required'));});afterEach(cleanup);

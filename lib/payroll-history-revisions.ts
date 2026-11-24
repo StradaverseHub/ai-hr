@@ -26,6 +26,7 @@ export type HistoryRevisionRow = {
 /** The identity a replacement is ticked by on the screen and confirmed by on the server. */
 export const historyRecordKey=(row:Pick<HistoryRevisionRow,'companyId'|'employmentId'|'period'|'cycleId'>)=>[row.companyId,row.employmentId,row.period,row.cycleId].join(':');
 export type HistoryRevisionPlan = {version:1;rows:HistoryRevisionRow[];issues:{rowNum:number;reason:string}[];
+ sourceWorksheet?:string;
  maintenance?:{version:1;mode:'replace'|'update_listed'|'edit'|'remove_items'|'remove_batch';reason:string;request?:import('./payroll-history-maintenance').PayrollHistoryMaintenanceRequest};
  counts:{created:number;replaced:number;unchanged:number;invalid:number};companyIds:string[];sourceHash:string;previewHash:string};
 export type HistoryRevisionChange = {recordId:string;revisionId:string;previousRevisionId:string|null;snapshotId:string|null};

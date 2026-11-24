@@ -43,6 +43,7 @@ export default async function ImportBatchPage({params, searchParams}: {params: P
   const canRevert = item && (item.state === 'completed' || item.state === 'stopped') && written - revertedCount > 0;
   return <div className={pageWideCls}>
     <PageHeader title={job.source_name} back={{href: log, label: t('log')}}/>
+    {job.source_worksheet&&<p className="break-all text-sm text-muted-foreground">{job.source_worksheet}</p>}
     <section className="space-y-4 rounded-xl border border-border p-5">
       <p className="font-medium">{formatImportBatch(labels, job.id)}</p>
       <p role="status"><Badge variant={tone[job.state as keyof typeof tone] ?? 'info'}>{status}</Badge></p>

@@ -2,26 +2,28 @@
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {BANK_IMPORT_CHUNK_BYTES,BANK_IMPORT_MAX_BYTES,BANK_IMPORT_PAGE_ROWS,type BankImportProgress,type BankImportState} from '../lib/bank-import-job';
+import {validImportWorksheet} from '../lib/import-worksheet';
 import {importFileFormat} from '../lib/import-file';
 import {importSourceName} from './import-history';
 export class BankImportJobError extends Error{constructor(message:string,readonly status=400){super(message);}}
-export type BankImportJobRow={id:string;tenant_id:string;created_by:string;context:SessionContext;source_name:string;source_hash:string;source_bytes:number;uploaded_bytes:number;state:BankImportState;total:number;validated:number;valid:number;invalid:number;unchanged:number;processed:number;saved:number;failed:number;attempt_id:string|null;error:string|null;updated_at:Date;created_at:Date};
+export type BankImportJobRow={id:string;tenant_id:string;created_by:string;context:SessionContext;source_worksheet:string|null;source_name:string;source_hash:string;source_bytes:number;uploaded_bytes:number;state:BankImportState;total:number;validated:number;valid:number;invalid:number;unchanged:number;processed:number;saved:number;failed:number;attempt_id:string|null;error:string|null;updated_at:Date;created_at:Date};
 const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export const bankJobId=(id:string)=>{if(!uuid.test(id))throw new BankImportJobError('Import unavailable.',404);return id;};
 export async function bankJobTx(tx:Tx,id:string,lock=false){
  const [row]=await tx.execute<BankImportJobRow>(sql`select * from bank_import_job where id=${bankJobId(id)}::uuid ${lock?sql`for update`:sql``}`);
  if(!row)throw new BankImportJobError('Import unavailable.',404);return row;
 }
-function progress(row:BankImportJobRow):BankImportProgress{return{id:row.id,sourceName:row.source_name,state:row.state,total:row.total,validated:row.validated,valid:row.valid,invalid:row.invalid,unchanged:row.unchanged,processed:row.processed,saved:row.saved,failed:row.failed,uploadedBytes:row.uploaded_bytes,sourceBytes:row.source_bytes,attemptId:row.attempt_id,error:row.error,updatedAt:new Date(row.updated_at).toISOString(),createdAt:new Date(row.created_at).toISOString()};}
-export async function createBankImportJob(ctx:SessionContext,input:{name:string;hash:string;bytes:number}){
+function progress(row:BankImportJobRow):BankImportProgress{return{id:row.id,sourceName:row.source_name,sourceWorksheet:row.source_worksheet??undefined,state:row.state,total:row.total,validated:row.validated,valid:row.valid,invalid:row.invalid,unchanged:row.unchanged,processed:row.processed,saved:row.saved,failed:row.failed,uploadedBytes:row.uploaded_bytes,sourceBytes:row.source_bytes,attemptId:row.attempt_id,error:row.error,updatedAt:new Date(row.updated_at).toISOString(),createdAt:new Date(row.created_at).toISOString()};}
+export async function createBankImportJob(ctx:SessionContext,input:{name:string;hash:string;bytes:number;worksheet?:string}){
  if(!ctx.userId||typeof input.name!=='string'||!importFileFormat(input.name)||!/^[a-f0-9]{64}$/.test(input.hash)||!Number.isSafeInteger(input.bytes)||input.bytes<1||input.bytes>BANK_IMPORT_MAX_BYTES)throw new BankImportJobError('Choose a CSV or Excel file no larger than 128 MiB.');
+ if(input.worksheet!==undefined&&(!validImportWorksheet(input.worksheet)||importFileFormat(input.name)==='csv'))throw new BankImportJobError('Choose a worksheet in the uploaded workbook.');
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'bank-import-admit:'+ctx.tenantId+':'+input.hash},0))`);
   const [existing]=await tx.execute<BankImportJobRow>(sql`select * from bank_import_job where source_hash=${input.hash} and state in ('uploading','queued','validating','ready','importing')`);
-  if(existing)return{job:progress(existing),existing:true};
+  if(existing){if((existing.source_worksheet??undefined)!==input.worksheet)throw new BankImportJobError('This workbook already has an active import with a different worksheet. Finish or cancel that import first.',409);return{job:progress(existing),existing:true};}
   const [count]=await tx.execute<{n:number}>(sql`select count(*)::int as n from bank_import_job where state in ('uploading','queued','validating','ready','importing')`);
   if(count.n>=3)throw new BankImportJobError('Finish or cancel your existing imports before uploading another file.',409);
-  const [row]=await tx.execute<BankImportJobRow>(sql`insert into bank_import_job(tenant_id,created_by,context,source_name,source_hash,source_bytes) values(${ctx.tenantId}::uuid,${ctx.userId}::uuid,'{}'::jsonb,${importSourceName(input.name,'bank-statutory.csv')},${input.hash},${input.bytes}) on conflict do nothing returning *`);
+  const [row]=await tx.execute<BankImportJobRow>(sql`insert into bank_import_job(tenant_id,created_by,context,source_name,source_hash,source_bytes,source_worksheet) values(${ctx.tenantId}::uuid,${ctx.userId}::uuid,'{}'::jsonb,${importSourceName(input.name,'bank-statutory.csv')},${input.hash},${input.bytes},${input.worksheet??null}) on conflict do nothing returning *`);
   if(!row)throw new BankImportJobError('This file already has an active import. Wait for that import to finish.',409);
   return{job:progress(row),existing:false};
  });

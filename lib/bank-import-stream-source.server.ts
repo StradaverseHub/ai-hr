@@ -261,26 +261,35 @@ class SheetCsvProjection{
  private refuse(){this.parseError=budgetError();this.stage.release();}
 }
 
-async function stageWorkbook(bytes:Uint8Array):Promise<BankImportStaged>{
+async function stageWorkbook(bytes:Uint8Array,worksheet?:string):Promise<BankImportStaged>{
  const stage=new BankRecordStage(),projection=new SheetCsvProjection(stage);
  try{
   const XLSX=await import('xlsx');
   // The options of workbookToCsvTexts for these bounds, plus three that change only storage and presentation fields
   // sheet_to_json(raw:true) never reads: dense cell arrays, no formatted text (`w`) and no rich-text HTML (`h`).
-  const wb=XLSX.read(bytes,{type:'array',cellDates:true,sheetRows:ROW_LIMIT+1,dense:true,cellText:false,cellHTML:false});
+  const {isVisibleImportWorksheet}=await import('./import-worksheet');
+  const sheetIndex=worksheet===undefined?undefined:XLSX.read(bytes,{type:'array',bookSheets:true}).SheetNames.indexOf(worksheet);
+  if(sheetIndex===-1)throw Error('UNEXPECTED_SHEET');
+  const wb=XLSX.read(bytes,{type:'array',cellDates:true,sheetRows:sheetIndex===undefined?ROW_LIMIT+1:undefined,sheets:sheetIndex,dense:sheetIndex===undefined,cellText:false,cellHTML:false});
+  if(worksheet!==undefined&&!isVisibleImportWorksheet(wb,worksheet))throw Error('UNEXPECTED_SHEET');
+  if(worksheet!==undefined){
+   const sheet=wb.Sheets[worksheet];if(!sheet)throw Error('EMPTY_SHEET');
+   const {trimWorksheetToData}=await import('./spreadsheet-data-extent');
+   if(!trimWorksheetToData(sheet))throw Error('EMPTY_SHEET');
+  }
   let cells=0;if(wb.SheetNames.length>32)throw Error('FILE_TOO_LARGE');
-  for(const name of wb.SheetNames){const ws=wb.Sheets[name],ref=ws?.['!fullref']??ws?.['!ref'];if(!ref)continue;
+  for(const name of worksheet===undefined?wb.SheetNames:[worksheet]){const ws=wb.Sheets[name],ref=ws?.['!fullref']??ws?.['!ref'];if(!ref)continue;
    const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
    cells+=height*width;if(height>ROW_LIMIT||width>256||cells>MAX_CELLS)throw Error('FILE_TOO_LARGE');
   }
-  const firstName=wb.SheetNames[0];
+  const firstName=worksheet??wb.SheetNames[0];
   if(!firstName)throw new Error('EMPTY_SHEET');
   for(const row of sheetRows(XLSX,wb.Sheets[firstName]))projection.add(row);
   if(!projection.rows)throw new Error('EMPTY_SHEET');
   const key=(s:string)=>s.trim().toLowerCase();
   if(new Set(wb.SheetNames.map(key)).size!==wb.SheetNames.length)throw new Error('UNEXPECTED_SHEET');
   const allowed=new Set(ALLOWED_SHEETS.map(key));
-  for(const name of wb.SheetNames)if(name!==firstName&&!allowed.has(key(name))&&!sheetRows(XLSX,wb.Sheets[name]).next().done)throw new Error('UNEXPECTED_SHEET');
+  for(const name of wb.SheetNames)if(worksheet===undefined&&name!==firstName&&!allowed.has(key(name))&&!sheetRows(XLSX,wb.Sheets[name]).next().done)throw new Error('UNEXPECTED_SHEET');
  }catch(e){
   stage.release();
   throw new ImportFileError((e as Error)?.message==='FILE_TOO_LARGE'?'FILE_TOO_LARGE':(e as Error)?.message === 'EMPTY_SHEET' ? 'EMPTY_SHEET' : (e as Error)?.message==='UNEXPECTED_SHEET'?'UNEXPECTED_SHEET':'FILE_READ_FAILED');
@@ -295,7 +304,7 @@ async function stageWorkbook(bytes:Uint8Array):Promise<BankImportStaged>{
  * Decode and stage an uploaded Bank & Statutory file from its stored parts, in order. Takes ownership of `parts`:
  * each entry is released once read so the raw file and the staged rows are not both held for a CSV.
  */
-export async function stageBankImportSource(name:string,parts:Uint8Array[]):Promise<BankImportStaged>{
+export async function stageBankImportSource(name:string,parts:Uint8Array[],worksheet?:string):Promise<BankImportStaged>{
  const format=importFileFormat(name);
  if(!format)throw new ImportFileError('UNSUPPORTED_FILE_TYPE');
  let size=0;for(const part of parts)size+=part.length;
@@ -305,7 +314,7 @@ export async function stageBankImportSource(name:string,parts:Uint8Array[]):Prom
  const bytes=new Uint8Array(size);let offset=0;
  for(const part of parts){bytes.set(part,offset);offset+=part.length;}
  parts.length=0;
- return stageWorkbook(bytes);
+ return stageWorkbook(bytes,worksheet);
 }
 
 /** The records of one staged batch, as decodeBankImportSource's `records` slice: same keys, order and values. */

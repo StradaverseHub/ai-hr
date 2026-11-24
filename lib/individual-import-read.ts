@@ -20,17 +20,16 @@ export class IndividualImportReadFailure extends Error {
   constructor(readonly code: IndividualImportReadError) { super(code); this.name = 'IndividualImportReadFailure'; }
 }
 
-export async function readIndividualImportWorkbook(bytes: Uint8Array, name: string, method: IndividualImportMethod): Promise<string> {
+export async function readIndividualImportWorkbook(bytes: Uint8Array, name: string, method: IndividualImportMethod, worksheet?: string): Promise<string> {
   if (!name.trim().toLowerCase().endsWith('.xlsx')) throw new IndividualImportReadFailure('invalidFormat');
   if (bytes.byteLength > INDIVIDUAL_IMPORT_MAX_BYTES) throw new IndividualImportReadFailure('fileTooLarge');
   // An .xlsx is a ZIP archive. Anything else (a renamed CSV, random bytes) would be read by SheetJS as loose text.
   if (bytes.byteLength < 4 || bytes[0] !== 0x50 || bytes[1] !== 0x4b || bytes[2] !== 0x03 || bytes[3] !== 0x04) throw new IndividualImportReadFailure('fileReadError');
-  const {workbookToCsvTexts} = await import('./spreadsheet');
+  const {namedWorksheetToCsvText} = await import('./spreadsheet');
   let text: string;
   try {
-    // Header row + the record limit, + 1 so one row over the limit is seen and refused as tooManyRows.
-    ({first: text} = await workbookToCsvTexts(bytes, [], false, undefined, false, false,
-      {maxRows: INDIVIDUAL_IMPORT_MAX_RECORDS + 1, maxCells: INDIVIDUAL_IMPORT_MAX_CELLS, sheet: INDIVIDUAL_IMPORT_SHEET[method]}));
+    text = await namedWorksheetToCsvText(bytes, worksheet ?? INDIVIDUAL_IMPORT_SHEET[method],
+      {maxRows: INDIVIDUAL_IMPORT_MAX_RECORDS + 1, maxCells: INDIVIDUAL_IMPORT_MAX_CELLS}, worksheet !== undefined);
   } catch (error) {
     const message = (error as Error)?.message;
     throw new IndividualImportReadFailure(message === 'TOO_MANY_ROWS' ? 'tooManyRows' : message === 'FILE_TOO_LARGE' ? 'contentTooLarge'

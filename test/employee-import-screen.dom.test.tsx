@@ -96,6 +96,9 @@ describe('allocation companion upload stays separate from Family rows', () => {
     const input = container.querySelector('input[type="file"]');
     expect(input).not.toBeNull();
     fireEvent.change(input!, { target: { files: [file] } });
+    const confirmWorksheet = await screen.findByRole('button', {name: messages.worksheetImport.confirm});
+    expect(validateMock).not.toHaveBeenCalled();
+    fireEvent.click(confirmWorksheet);
     await waitFor(() => expect(validateMock).toHaveBeenCalledTimes(1));
     const [employeeCsv, companyId, familyCsv, , allocationCsv] = validateMock.mock.calls[0];
     expect(employeeCsv).toContain('00017');
@@ -394,6 +397,9 @@ describe('d3ba1e9f · a workbook with blank rows sends its Excel rows with the c
     const file = new NodeFile([XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })], 'blank-rows.xlsx');
     const { container } = screenUnderTest();
     fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } });
+    const confirmWorksheet = await screen.findByRole('button', {name: messages.worksheetImport.confirm});
+    expect(validateMock).not.toHaveBeenCalled();
+    fireEvent.click(confirmWorksheet);
     await waitFor(() => expect(validateMock).toHaveBeenCalledTimes(1));
     const sourceRows = validateMock.mock.calls[0][5];
     expect(sourceRows.employee).toEqual([2, 4]);

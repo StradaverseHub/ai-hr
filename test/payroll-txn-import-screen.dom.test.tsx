@@ -24,6 +24,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
+import * as XLSX from 'xlsx';
 
 import messages from '../messages/en.json';
 import { TxnImportButtons } from '../app/payroll/transactions/import-excel/txn-import-dialog';
@@ -42,12 +43,9 @@ vi.mock('../app/payroll/transactions/import-excel/actions', () => ({
   commitTxnImportAction: (...a: unknown[]) => commitMock(...a),
 }));
 
-// The .xlsx reader, stubbed: jsdom has no real File.arrayBuffer worth exercising here, and what this
-// file is about is the panels, not SheetJS (test/payroll-txn-import-template.test.ts drives the real
-// reader against a real workbook).
+// Keep template download separate. The upload exercises the real worksheet reader.
 vi.mock('../lib/spreadsheet', async (orig) => ({
   ...(await orig<typeof import('../lib/spreadsheet')>()),
-  workbookToCsvText: vi.fn(async () => 'Employee ID,Pay Item Code,Amount,Start Date\nX000001,BONUS,100,2026-08-01\n'),
   buildXlsx: vi.fn(async () => new Uint8Array([1, 2, 3])),
 }));
 
@@ -140,7 +138,32 @@ function renderButtons(kind: 'fixed' | 'individual' = 'fixed', queueFixedAction?
 }
 
 /** A File the component will accept or refuse purely on its NAME — which is the gate under test. */
-const file = (name: string) => new File(['x'], name, { type: 'application/octet-stream' });
+const file = (name: string) => {
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['Reference'], ['Other sheet only']]), 'Reference');
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ['Employee ID', 'Pay Item Code', 'Amount', 'Start Date'],
+    ['X000001', 'BONUS', 100, '2026-08-01'],
+    [' ', '', '', ''],
+    ['NOBODY-1', 'BONUS', 100, '2026-08-01'],
+    ['X000001', 'HANDPHONE', 50, '2026-09-01'],
+  ]), 'Transactions');
+  const bytes: ArrayBuffer = XLSX.write(workbook, {type: 'array', bookType: 'xlsx'});
+  const picked = new File([bytes], name, {type: 'application/octet-stream'});
+  Object.defineProperty(picked, 'arrayBuffer', {value: async () => bytes});
+  return picked;
+};
+
+async function useTransactions(user: ReturnType<typeof userEvent.setup>) {
+  const picker = await screen.findByRole('combobox', {name: 'Worksheet'});
+  expect(picker).toHaveFocus();
+  const confirm = screen.getByRole('button', {name: 'Use this worksheet'});
+  expect(confirm).toBeDisabled();
+  expect(validateMock).not.toHaveBeenCalled();
+  await user.selectOptions(picker, 'Transactions');
+  expect(screen.getByRole<HTMLOptionElement>('option', {name: 'Transactions · 3 rows'}).selected).toBe(true);
+  await user.click(confirm);
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -183,14 +206,47 @@ describe('5c65367d · the file-type gate', () => {
     expect(validateMock).not.toHaveBeenCalled();
   });
 
+  it('cancels selection without validation and can reopen the same file', async () => {
+    const user = userEvent.setup();
+    renderButtons();
+    await user.click(screen.getByRole('button', {name: 'Import Excel'}));
+    const input = screen.getByLabelText('Choose .xlsx file');
+    const workbook = file('transactions.xlsx');
+    await user.upload(input, workbook);
+    const picker = await screen.findByRole('combobox', {name: 'Worksheet'});
+    await user.selectOptions(picker, 'Reference');
+    await user.click(within(screen.getByRole('region', {name: 'Choose a worksheet'})).getByRole('button', {name: 'Cancel'}));
+    expect(validateMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole('combobox', {name: 'Worksheet'})).toBeNull();
+    await user.upload(input, workbook);
+    await useTransactions(user);
+    expect(await screen.findByText('3 records')).toBeInTheDocument();
+  });
+
+  it('refuses text renamed to .xlsx without opening the picker or validating', async () => {
+    const user = userEvent.setup();
+    renderButtons();
+    await user.click(screen.getByRole('button', {name: 'Import Excel'}));
+    const picked = new File(['id,amount'], 'renamed.xlsx');
+    Object.defineProperty(picked, 'arrayBuffer', {value: async () => new TextEncoder().encode('id,amount').buffer});
+    await user.upload(screen.getByLabelText('Choose .xlsx file'), picked);
+    expect(await screen.findByText(messages.payroll.txnImport.fileReadError)).toBeInTheDocument();
+    expect(screen.queryByRole('combobox', {name: 'Worksheet'})).toBeNull();
+    expect(validateMock).not.toHaveBeenCalled();
+  });
+
   it('accepts .xlsx and validates it', async () => {
     const user = userEvent.setup();
     renderButtons();
     await user.click(screen.getByRole('button', { name: 'Import Excel' }));
     await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
+    await useTransactions(user);
     expect(await screen.findByText('3 records')).toBeInTheDocument();
     expect(validateMock).toHaveBeenCalledTimes(1);
-    expect(validateMock.mock.calls[0][1]).toBe('fixed');
+    expect(validateMock.mock.calls[0]).toEqual([
+      'Employee ID,Pay Item Code,Amount,Start Date\r\nX000001,BONUS,100,2026-08-01\r\nNOBODY-1,BONUS,100,2026-08-01\r\nX000001,HANDPHONE,50,2026-09-01\r\n',
+      'fixed',
+    ]);
   });
 });
 
@@ -199,6 +255,7 @@ describe('5c65367d · the preview', () => {
     renderButtons();
     await user.click(screen.getByRole('button', { name: 'Import Excel' }));
     await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
+    await useTransactions(user);
     return screen.findByText('3 records');
   };
 
@@ -251,6 +308,7 @@ describe('5c65367d · the preview', () => {
     renderButtons('fixed', queue);
     await user.click(screen.getByRole('button', { name: 'Import Excel' }));
     await user.upload(screen.getByLabelText('Choose .xlsx file'), file('queued-fixed.xlsx'));
+    await useTransactions(user);
     const confirm = await screen.findByRole('button', { name: 'Import 1 valid record' });
     expect(queue).not.toHaveBeenCalled();
     await user.click(confirm);
@@ -267,6 +325,7 @@ describe('5c65367d · the preview', () => {
     renderButtons();
     await user.click(screen.getByRole('button', { name: 'Import Excel' }));
     await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
+    await useTransactions(user);
     await screen.findByText('3 records');
     // The preview can render while the upload transition still shows its busy action label.
     const confirm = await screen.findByRole('button', { name: 'Import 0 valid records' });
@@ -281,6 +340,7 @@ describe('5c65367d · the preview', () => {
     renderButtons();
     await user.click(screen.getByRole('button', { name: 'Import Excel' }));
     await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
+    await useTransactions(user);
     expect(
       await screen.findByText('That file is missing required columns. Download the template and use its headings unchanged.'),
     ).toBeInTheDocument();
@@ -294,6 +354,7 @@ describe('5c65367d · what actually happened', () => {
     renderButtons();
     await user.click(screen.getByRole('button', { name: 'Import Excel' }));
     await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
+    await useTransactions(user);
     await screen.findByText('3 records');
     // The preview commits before React finishes the async validation transition. Wait for the
     // final action label, rather than treating a visible row count as proof the action is ready.
@@ -356,6 +417,7 @@ describe('0db616f3 · a valid row that is still worth saying something about', (
     renderButtons('individual');
     await user.click(screen.getByRole('button', { name: 'Import Excel' }));
     await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
+    await useTransactions(user);
     await screen.findByText('1 record');
 
     // The row is valid — the warning does not demote it.
@@ -382,6 +444,7 @@ describe('0db616f3 · a valid row that is still worth saying something about', (
     renderButtons('individual');
     await user.click(screen.getByRole('button', { name: 'Import Excel' }));
     await user.upload(screen.getByLabelText('Choose .xlsx file'), file('transactions.xlsx'));
+    await useTransactions(user);
     await screen.findByText('1 record');
     expect(screen.queryByText(/with a warning/)).not.toBeInTheDocument();
     expect(screen.queryByText(/already produced payslips/)).not.toBeInTheDocument();
