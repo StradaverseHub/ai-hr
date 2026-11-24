@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { leaveRequestDateBreakdown, myEmployment, myEmploymentIdsAll, listLeaveTypes, listLeaveRequestsPage, countLeaveRequestsByStatus, employeeCancelOffers, pendingCancellationProgress } from '@/core/read';
+import { leaveRequestDateBreakdowns, myEmployment, myEmploymentIdsAll, listLeaveTypes, listLeaveRequestsPage, countLeaveRequestsByStatus, employeeCancelOffers, pendingCancellationProgress } from '@/core/read';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { todayInKualaLumpur } from '@/packs/leave/service';
 import { myUpcomingLeave, ownLeaveApprovalTrails, ownLeaveCancellations, ownLeaveRejections } from '@/core/my-leave';
@@ -208,12 +208,8 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   // 5-most-recent window the /me Leave tab resolved (R17 600be8ac ask #6), so the employee still sees the
   // date-by-date approved/rejected breakdown after the tab moved here — now inside the detail panel
   // (657962ec). The window follows the card order (5 newest by start date).
-  // RLS self-branch admits the subject to their rows.
-  const dateBreakdownEntries: (readonly [string, Awaited<ReturnType<typeof leaveRequestDateBreakdown>>])[] =
-    await Promise.all(
-      selfHistory.slice(0, 5).map(async (r) => [r.id, await leaveRequestDateBreakdown(session, r.id)] as const),
-    );
-  const requestDateBreakdowns = new Map(dateBreakdownEntries);
+  // RLS self-branch admits the subject to their rows. ADR-0181 1.4: one set read for the window, not one per row.
+  const requestDateBreakdowns = await leaveRequestDateBreakdowns(session, selfHistory.slice(0, 5).map((r) => r.id));
 
   // r301 (83511d3b) — Cancel Approved Leave, both read ONCE for the page: the offer per row (null ⇒ no button)
   // and where each pending cancellation stands in its copied approval chain.
