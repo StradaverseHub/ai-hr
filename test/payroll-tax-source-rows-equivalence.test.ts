@@ -56,6 +56,9 @@ beforeAll(async()=>{
   runs.push({id:randomUUID(),company:c,period:'2026-10',attempt:null,status:'processed'});
  }
  await owner.client.begin(async tx=>{
+  // Imported history is written directly, with the import guards off in this fixture transaction only (as
+  // test/payroll-dashboard-and-choice-multicompany-scale-db.test.ts does): the import job is not what is under test.
+  await tx`set local session_replication_role = replica`;
   await tx`insert into payroll_cycle(id,tenant_id,company_id,name,run_type) select y,${T}::uuid,c,'Monthly','regular' from unnest(${cycles}::uuid[],${all}::uuid[]) as x(y,c)`;
   await tx`insert into payroll_history_import_attempt(tenant_id,id,created_by,operation_key,source_name,mime_type,source_hash,source_content,company_ids,plan)
    select ${T}::uuid,a,${b.adminUserId}::uuid,gen_random_uuid(),'history.csv','text/csv',encode(sha256(a::text::bytea),'hex'),a::text::bytea,array[c],
