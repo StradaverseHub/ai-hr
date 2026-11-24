@@ -211,7 +211,14 @@ async function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string,sparse
  signal?.throwIfAborted();
  // The bounded scope can probe its own current Assignment keys. The other path
  // keeps the department match outside the Employment/Person witness.
- const departments=await tx.execute<ChoiceOptions>(sparseDepartment?sql`with authorized_members as materialized (
+ // The first-witness cross join proves an ABSENT pair by reading every current Assignment of
+ // that Department, once per Company, so its cost grows with companies x assignments. With one
+ // represented Company that is at most one read per Department (the 50k one-company fixture);
+ // across several it is not: staging, 24 Nov 2026, 74 companies x 98 departments for 961
+ // assignments and 104 pairs took 2,151 ms, against 24.6 ms for the per-member probe, which
+ // returned the identical 104 rows and reads each authorized member's Assignment once.
+ const perMember=sparseDepartment||companies.length>1;
+ const departments=await tx.execute<ChoiceOptions>(perMember?sql`with authorized_members as materialized (
   select ${employment.id} as employment_id,${employment.companyId} from ${employment}
   join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid where ${scope}
  ), represented_department_pairs as materialized (

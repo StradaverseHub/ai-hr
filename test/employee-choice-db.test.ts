@@ -320,15 +320,14 @@ it('compares product sparse Department pairs with the first witness under native
  const sorted=(rows:string[][])=>rows.map(row=>row.join('/')).sort();
  type Input=Parameters<typeof readEmployeeChoicesTx>[2];
  const read=async(tx:Tx,ctx:SessionContext,input:Input,baseline:boolean)=>{
-  const capture:{original?:SQL;forwarded?:SQL;pairs?:string[][]}={};
+  const capture:{original?:SQL;forwarded?:SQL;pairs?:string[][];sparse?:boolean}={};
   const proxy=new Proxy(tx,{get(target,key,receiver){
    if(key==='execute')return async(query:SQL)=>{
     const compiled=dialect.sqlToQuery(query),text=compiled.sql.trimStart();
     const sparse=isSparseDepartmentFacet(text);
     if(!sparse&&!isDepartmentFacet(text))return target.execute(query);
     if(capture.original)throw new Error('Multiple native Department statements');
-    const populationSize=input.employmentIds?.length??0;
-    expect(sparse).toBe(populationSize>0&&populationSize<=25);
+    capture.sparse=sparse;
     const reference=firstWitnessDepartmentFacet(ctx.tenantId,input);
     if(sparse)expect(compiled.params).toEqual(sparseDepartmentFacetBinds(ctx.tenantId,input));
     else expect(compiled).toEqual(dialect.sqlToQuery(reference));
@@ -343,6 +342,10 @@ it('compares product sparse Department pairs with the first witness under native
   const page=await readEmployeeChoicesTx(proxy,ctx,input);
   const {original,forwarded,pairs}=capture;
   if(!original||!forwarded||!pairs)throw new Error('Missing forwarded native Department result');
+  // Per-member probe for a bounded population, or when more than one Company is represented
+  // (the cross join's absent-pair proof grows with companies x assignments).
+  const populationSize=input.employmentIds?.length??0;
+  expect(capture.sparse).toBe(populationSize>0&&populationSize<=25||page.companyOptions.length>1);
   return {page,original:dialect.sqlToQuery(original),forwarded,pairs};
  };
  type HistoricalAssignment={id:string;employmentId:string;departmentId:string;validTo:string|null;supersededAt:Date|null};
