@@ -184,6 +184,17 @@ payroll truth stays in its source tables.
   70 companies / 1,000 employments (`test/leave-import-set-equivalence.test.ts`, which also proves equality of the
   ledger, events, job and progress view): 29.7 → 10.5 ms and 8.9 → 3.3 statements a planned row for the whole job,
   a group about 3.3 ms a row; `COPY` not used (the file is never the cost).
+- **J2, imports: Profile and Family section imports (built 25 November 2026; not yet on staging).** The profile showed
+  a per-row Profile step at about 83 ms and 31 statements, 35 ms of it the locked re-analysis reading every employee
+  the file names again for every row. In a Profile or Family file that changes no identifier another row reads (IC,
+  old IC, work e-mail), the first step of a chunk writes a group of following rows for distinct persons
+  (`applySectionGroupTx`, `core/import-sections.ts`): the writer locks and the whole-file analysis once, with every
+  group row's own database checks, then each row's unchanged tail of `applySectionRowTx` (plan comparison, authority,
+  record locks, every owner writer, in file order). The writes stay per row (they are the owners' writers: person,
+  compliance, statutory setters, dependents); only the reads are set-based. Any refusal rolls the group back to
+  `applySectionRowTx`. `SECTION_IMPORT_GROUP_MAX=1` restores the per-row path. Bank and Statutory files (Import
+  History) and the register imports (Qualification, Emergency Contact: about 40 ms an employee, already one
+  set-based release) are unchanged.
 
 ### 8. Guardrails
 

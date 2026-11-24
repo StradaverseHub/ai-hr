@@ -65,8 +65,9 @@ export type ImportGroupKind<P,R>={
 export type ImportGroupApply<P,R>={
  /** The row may join a set-based group (the kind's common shape). */
  shape(step:BulkJobStep<P>):boolean;
- /** `candidate` may join the group `first` started (for example the same company). */
- joins?(first:BulkJobStep<P>,candidate:BulkJobStep<P>):boolean;
+ /** `candidate` may join the group formed so far (`members`, the first one being the chunk's first step), for
+  *  example the same company or a person not yet in the group. The group ends before the first one that may not. */
+ joins?(candidate:BulkJobStep<P>,members:readonly BulkJobStep<P>[]):boolean;
  /** Writes the whole group in the caller's savepoint, or throws (any error declines the group). One outcome per step. */
  applyGroup(savepoint:Tx,steps:BulkJobStep<P>[]):Promise<R[]>;
  /** The kernel outcome a grouped step records: exactly what the per-row apply returns for the same row. */
@@ -103,7 +104,7 @@ export function importGroupController<P,R>(kind:ImportGroupKind<P,R>){
   const limit=Math.min(groupMax(),s.size);
   const members:BulkJobStep<P>[]=[];
   for(const candidate of pending){
-   if(members.length>=limit||s.single.has(candidate.seq)||!apply.shape(candidate)||(apply.joins&&!apply.joins(step,candidate)))break;
+   if(members.length>=limit||s.single.has(candidate.seq)||!apply.shape(candidate)||(apply.joins&&members.length>0&&!apply.joins(candidate,members)))break;
    members.push(candidate);
   }
   if(members.length<2)return null;

@@ -1,6 +1,7 @@
 import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {createHash} from 'node:crypto';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
+import {SetPathDeclined} from './import-set-group';
 import { getPeopleGeneral, readPeopleGeneralTx, occupiedNricsTx } from './people-general';
 import { NRIC_DUPLICATE_MESSAGE, NRIC_FILE_DUPLICATE_MESSAGE } from '../lib/nric-policy-message';
 import { pgSqlState } from '../lib/db-error';
@@ -217,8 +218,10 @@ async function analyze(
   section: ImportSection,
   records: ImportRecord[],
   suppliedTx?:Tx,
-  /** Commit re-analysis of ONE row: only that row's employee needs the (per-employee) residency read. */
-  focusRowNum?:number,
+  /** Commit re-analysis of ONE row: only that row's employee needs the (per-employee) residency read. A set-based
+   *  group of Profile or Family rows (ADR 0181 J2) passes its rows' numbers: their own database checks run, as each
+   *  row's own re-analysis would run them (residency is read only for Bank and Statutory files, never grouped). */
+  focusRowNum?:number|ReadonlySet<number>,
   /** Board d3ba1e9f — the file's Excel rows (index = data row - 1), when the browser read them from a workbook. */
   excelRows?:readonly number[],
 ): Promise<{ preview: SectionImportPreview; resolved: ResolvedSectionRow[] }> {
@@ -272,7 +275,7 @@ async function analyze(
     section,
     records.map(record=>norm(record.ic_number).replace(/\D/g,'')),
     suppliedTx,
-    {present:presentSet,emails:records.map(record=>norm(record.email).toLowerCase()),residencyCodes:new Set(records.filter(record=>['tax_residency','is_resident','tax_circumstance','tax_category','epf_citizenship'].some(column=>norm(record[column]))).map(record=>normalizeEmployeeCode(record[SECTION_KEY_COLUMN]))),focusCode:focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
+    {present:presentSet,emails:records.map(record=>norm(record.email).toLowerCase()),residencyCodes:new Set(records.filter(record=>['tax_residency','is_resident','tax_circumstance','tax_category','epf_citizenship'].some(column=>norm(record[column]))).map(record=>normalizeEmployeeCode(record[SECTION_KEY_COLUMN]))),focusCode:typeof focusRowNum==='number'&&focusRowNum?normalizeEmployeeCode(norm(records[focusRowNum-1]?.[SECTION_KEY_COLUMN])):undefined},
   );
 
   const { allowDuplicatedNric, allowDuplicatedEmail } = await (suppliedTx?readPeopleGeneralTx(suppliedTx):getPeopleGeneral(ctx));
@@ -406,7 +409,7 @@ async function analyze(
   // A commit re-analysis of ONE row (focusRowNum) runs the per-row database checks for that row only: they decide
   // only their own row's verdict, and repeating them for every row of the file inside every row's locked
   // transaction made each write cost the whole file.
-  const checked=(row:ResolvedSectionRow)=>focusRowNum===undefined||row.result.rowNum===focusRowNum;
+  const checked=(row:ResolvedSectionRow)=>focusRowNum===undefined||(typeof focusRowNum==='number'?row.result.rowNum===focusRowNum:focusRowNum.has(row.result.rowNum));
   for(const row of resolved)if(checked(row) && row.result.ok && row.subject && row.operations?.cardId) {
     try {await (suppliedTx?assertCardIdFree(suppliedTx,row.subject!.employmentId,row.operations!.cardId!):withTenant(ctx,tx=>assertCardIdFree(tx,row.subject!.employmentId,row.operations!.cardId!)));}
     catch {lateIssue(row,'card_id','card_id already identifies another employee; choose an unused card ID.','duplicate_in_system');}
@@ -988,6 +991,49 @@ export async function applySectionRowTx(tx:Tx,ctx:SessionContext,p:{section:Impo
  // Writer locks first, then the attempt row: the same order as a revert, so the two cannot deadlock.
  if(p.history)await lockImportAttemptHeaderTx(tx,ctx,p.history.attemptId,'bank_statutory');
  const current=await analyze(ctx,p.section,p.records,tx,nominated.rowNum);
+ return applyAnalyzedSectionRowTx(tx,ctx,p,nominated,state,current);
+}
+
+/** Section files a set-based group may write (ADR 0181 J2): Profile and Family files that change no identifier
+ * another row's analysis reads (IC, old IC, work e-mail), outside Import History (Bank and Statutory). In such a file
+ * one row's writes reach only its own person's records, so a group of rows for distinct persons, analysed once under
+ * the locks, decides each row exactly as its own re-analysis after the earlier rows' writes would (the in-file
+ * duplicate checks are whole-file on either path). */
+const SECTION_SET_IDENTITY_COLUMNS=['ic_number','old_ic_number','email'];
+export function isSectionImportSetShape(section:ImportSection,records:readonly ImportRecord[]):boolean{
+ if(section!=='profile'&&section!=='family')return false;
+ const present=new Set(records.length?Object.keys(records[0]).map(c=>c.trim()):[]);
+ return !SECTION_SET_IDENTITY_COLUMNS.some(column=>present.has(column));
+}
+
+/**
+ * ADR 0181 J2, imports: several nominated rows of a Profile or Family file (consecutive steps of the background
+ * import, each a different person) in the caller's savepoint. The writer locks are taken and the file is analysed
+ * ONCE for the group (the per-row path analyses the whole file again for every row: the file's employees, their
+ * statutory rows and family, the catalogue and the people settings), with every group row's own database checks;
+ * then each row runs the unchanged tail of applySectionRowTx (its plan comparison, authority checks, record locks and
+ * every owner writer) in file order, so the rows' writes and audit events are the per-row path's, in the same order.
+ * It never decides a refusal: any refusal throws, and the caller rolls the savepoint back so every row takes
+ * applySectionRowTx, which records its own outcome. Returns each row's outcome, as applySectionRowTx returns it.
+ */
+export async function applySectionGroupTx(tx:Tx,ctx:SessionContext,p:{section:ImportSection;records:ImportRecord[]},nominations:readonly SectionRowNomination[],
+ appliedPeople:ReadonlySet<string>):Promise<{wrote:boolean;personId:string;dependent:boolean}[]>{
+ if(!isSectionImportSetShape(p.section,p.records))throw new SetPathDeclined('shape');
+ if(new Set(nominations.map(n=>n.subject.personId)).size!==nominations.length)throw new SetPathDeclined('person');
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ const current=await analyze(ctx,p.section,p.records,tx,new Set(nominations.map(n=>n.rowNum)));
+ const people=new Set(appliedPeople),out:{wrote:boolean;personId:string;dependent:boolean}[]=[];
+ for(const nominated of nominations){
+  const row=await applyAnalyzedSectionRowTx(tx,ctx,p,nominated,{appliedPeople:people,step:{current:'person'}},current);
+  if(row.wrote)people.add(row.personId);
+  out.push(row);
+ }
+ return out;
+}
+
+/** applySectionRowTx after its locks and re-analysis: the plan comparison, authority, record locks and writers. */
+async function applyAnalyzedSectionRowTx(tx:Tx,ctx:SessionContext,p:{section:ImportSection;records:ImportRecord[];history?:{attemptId:string}},nominated:SectionRowNomination,
+ state:{appliedPeople:ReadonlySet<string>;step:{current:WriteStep}},current:{preview:SectionImportPreview;resolved:ResolvedSectionRow[]}):Promise<{wrote:boolean;personId:string;dependent:boolean}>{
  const fresh=current.resolved[nominated.rowNum-1];
  if(current.preview.fileErrors.length||!fresh?.subject||fresh.subject.employmentId!==nominated.subject.employmentId||fresh.subject.personId!==nominated.subject.personId||fresh.subject.companyId!==nominated.subject.companyId||fresh.subject.employeeCode!==nominated.subject.employeeCode||fresh.subject.pack!==requirePackFor(nominated.subject.country))throw new Error('Section import inputs changed; preview the original file again.');
  if(fresh.result.errors.length)throw new Error('Section import inputs changed; preview the original file again.');

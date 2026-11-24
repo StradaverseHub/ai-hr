@@ -3,7 +3,10 @@
  * (applySectionRowTx) as the synchronous commit, so the validation, writers, refusal messages, history row and audit
  * are unchanged. What moves is where it runs: off the web request, in short chunk transactions, with the row's
  * re-analysis narrowed to that row's own database checks. The job's own plan is written only through unit.set in a
- * fenced transaction (sealed, migration 5013); finalize runs as the app role. */
+ * fenced transaction (sealed, migration 5013); finalize runs as the app role.
+ * ADR 0181 J2: in a Profile or Family file that changes no identifier, the first step of a chunk writes a group of
+ * following rows (distinct persons) through applySectionGroupTx: one locked analysis for the group, then every row's
+ * unchanged writers in file order. A group that declines rolls back and its rows take applySectionRowTx. */
 import {sql} from 'drizzle-orm';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
@@ -13,12 +16,23 @@ import type {ImportIssue,ImportRecord} from '../lib/import-schema';
 import type {ImportSection,SectionImportResult} from '../lib/import-sections';
 import {SECTION_IMPORT_KIND} from '../lib/section-import-job';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
-import {applySectionRowTx,planSectionImport,recordSectionRun,writeFailureMessage,type SectionRowNomination,type WriteStep} from './import-sections';
+import {applySectionGroupTx,applySectionRowTx,isSectionImportSetShape,planSectionImport,recordSectionRun,writeFailureMessage,type SectionRowNomination,type WriteStep} from './import-sections';
 import {syncChildReliefFromFamily} from './dependents';
-import {isTransientBulkJobError,type BulkJobHandler} from './bulk-job-worker';
+import {isTransientBulkJobError,type BulkJobHandler,type BulkJobStep} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
+import {importGroupController} from './import-set-group';
 
+/** Per-row step work per chunk before it commits. One per-row Profile step measured about 83 ms and 31 statements at
+ * the 70-company / 1,000-employment shape (ADR 0181 J2 profile); a set-based group is one chunk of its own. */
 export const SECTION_IMPORT_CHUNK_BUDGET_MS=Number(process.env.SECTION_IMPORT_CHUNK_BUDGET_MS??100);
+/** ADR 0181 J2, imports: set-based groups of Profile and Family rows (applySectionGroupTx through
+ * core/import-set-group.ts). SECTION_IMPORT_GROUP_MAX=1 restores the per-row path; SECTION_IMPORT_CHUNK_TARGET_MS /
+ * _CEILING_MS / _FIXED_MULTIPLE size them. A group still runs every owner writer per row, so it stays small. */
+const groups=importGroupController<SectionRowNomination,{wrote:boolean;personId:string;dependent:boolean}>({
+ kind:SECTION_IMPORT_KIND,envPrefix:'SECTION_IMPORT',
+ defaults:{groupMax:32,targetMs:250,ceilingMs:500,fixedMultiple:2,firstGroup:8},
+ perRowBudgetMs:()=>SECTION_IMPORT_CHUNK_BUDGET_MS,perRowMaxSteps:16,
+});
 /** Child-relief refreshes per finalize unit (each is one short transaction of its own, as before). */
 const RELIEF_BATCH=25;
 export type SectionImportJobInput={section:ImportSection;records:ImportRecord[];fileName:string};
@@ -37,13 +51,32 @@ async function appliedPeople(tx:Tx,job:BulkJobRow,cache:Map<string,unknown>){
  const rows=await tx.execute<{person_id:string}>(sql`select result->>'personId' as person_id from bulk_job_step where job_id=${job.id}::uuid and state='applied' and (result->>'wrote')::boolean`);
  people=new Set(rows.map(r=>r.person_id));cache.set('applied',people);return people;
 }
+/** One row through applySectionRowTx (the per-row path, unchanged). */
+async function applyRowTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<SectionRowNomination>,people:Set<string>){
+ const {section,records}=inputOf(job);
+ const progress:{current:WriteStep}={current:'person'};
+ try{
+  const out:StepResult=await applySectionRowTx(tx,ctx,{section,records},step.payload,{appliedPeople:people,step:progress});
+  if(out.wrote)people.add(out.personId);
+  const counters:Record<string,number>=out.wrote?{updated:1}:{skipped:1};
+  return{result:out,counters};
+ }catch(error){
+  // A busy lock or serialization refusal is retried by the kernel; it never becomes a failed row while it clears.
+  if(isTransientBulkJobError(error))throw error;
+  console.error(`[section-import] row ${step.payload.rowNum} (${step.payload.employeeCode}) failed at step "${progress.current}":`,pgSqlState(error)==='PN001'?'NRIC duplicate policy refusal':error);
+  throw new SectionRowRefused(writeFailureMessage(progress.current,error));
+ }
+}
 const failedOf=(job:BulkJobRow)=>(job.errors??[]).map(e=>({rowNum:e.rowNum,employeeCode:e.ref,message:e.message}));
 
 export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
  kind:SECTION_IMPORT_KIND,
  mode:'per-step',
- chunkBudgetMs:SECTION_IMPORT_CHUNK_BUDGET_MS,
- maxStepsPerChunk:16,
+ // Chunks end by `endChunk`: after a set-based group, or once per-row steps reach SECTION_IMPORT_CHUNK_BUDGET_MS or 16
+ // steps (core/import-set-group.ts). The kernel budget is only a backstop below the lease.
+ chunkBudgetMs:30_000,
+ // The pending steps a chunk reads: a group never extends past them.
+ get maxStepsPerChunk(){return groups.maxSteps();},
  // A row that stays busy for this many retries is reported as not saved and the file moves on.
  transientStepLimit:30,
  phaseOf:()=>'rows',
@@ -65,26 +98,25 @@ export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
   await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  groups.beginChunk(job.id);
  },
  async applyStepTx(tx,ctx,job,step,cache){
   const {section,records}=inputOf(job);
   const people=await appliedPeople(tx,job,cache);
-  const progress:{current:WriteStep}={current:'person'};
-  try{
-   const out:StepResult=await applySectionRowTx(tx,ctx,{section,records},step.payload,{appliedPeople:people,step:progress});
-   if(out.wrote)people.add(out.personId);
-   const counters:Record<string,number>=out.wrote?{updated:1}:{skipped:1};
-   return{result:out,counters};
-  }catch(error){
-   // A busy lock or serialization refusal is retried by the kernel; it never becomes a failed row while it clears.
-   if(isTransientBulkJobError(error))throw error;
-   console.error(`[section-import] row ${step.payload.rowNum} (${step.payload.employeeCode}) failed at step "${progress.current}":`,pgSqlState(error)==='PN001'?'NRIC duplicate policy refusal':error);
-   throw new SectionRowRefused(writeFailureMessage(progress.current,error));
-  }
+  return groups.applyStep(tx,job,step,{
+   shape:()=>isSectionImportSetShape(section,records),
+   // One row per person in a group (a Family file may hold several rows for one employee).
+   joins:(candidate,members)=>!members.some(m=>m.payload.subject.personId===candidate.payload.subject.personId),
+   applyGroup:(savepoint,steps)=>applySectionGroupTx(savepoint,ctx,{section,records},steps.map(s=>s.payload),people),
+   // The group committed with its savepoint: its persons join the ones earlier rows wrote, as on the per-row path.
+   outcomeOf:out=>{if(out.wrote)people.add(out.personId);return{result:out,counters:out.wrote?{updated:1}:{skipped:1}};},
+   perRow:()=>applyRowTx(tx,ctx,job,step,people),
+  });
  },
  /** After the rows: the child-relief refreshes the synchronous commit ran after each saved Family row (bounded
  * batches, each its own transaction), then the history row and the same result. */
  async finalize(ctx,job,unit){
+  groups.forget(job.id);
   const plan=planOf(job);const {section,fileName}=inputOf(job);
   const from=plan.reliefFrom??0;
   const relief=await withTenant(ctx,tx=>tx.execute<{seq:number;row_num:number;person_id:string}>(sql`select seq,row_num,result->>'personId' as person_id from bulk_job_step
@@ -110,6 +142,7 @@ export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
  /** A job that stopped early (cancelled, or the creator's access changed) keeps the rows it saved, as each row was
  * its own commit; its history row records them. Best effort, as the synchronous history row was. */
  async afterTerminal(ctx,job){
+  groups.forget(job.id);
   if(job.state==='completed'||!ctx)return;
   const plan=planOf(job);if(plan.result)return;
   const updated=Number(job.counters?.updated??0);
