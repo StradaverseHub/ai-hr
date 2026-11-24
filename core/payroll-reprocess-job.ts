@@ -10,15 +10,27 @@
  * Hardened kernel (5013, 5014): describeFailure is read only, so it hands the stop (code and employee) to the kernel
  * as a plan merge, and the settle writes the reprocess job's stop record from it in one owner transaction
  * (unit.ownerTx). The admission input is the kind's declared shape (5056); finalize runs as the application role.
+ *
+ * Set-based chunks (ADR 0181 J2). Steps stay one per employee, but the first step of a chunk recalculates a group: the
+ * longest run of following employees that are ordinary recalculations goes through ONE pass of the payroll engine
+ * (`reprocessEmployeeGroupTx`: the run-wide reads once, the same per-employee calculation, one checkpoint and one
+ * multi-row event insert), and the group's other steps then only record themselves. The group's size adapts so a
+ * chunk lasts about PAYROLL_REPROCESS_CHUNK_FIXED_MULTIPLE times one pass's measured fixed cost, and at least
+ * PAYROLL_REPROCESS_CHUNK_TARGET_MS (at most PAYROLL_REPROCESS_GROUP_MAX employees; 1 restores one employee per chunk).
+ * An addition, an exclusion and the employees a refused pass names take the per-employee transaction
+ * (`reprocessEmployeeTx`) in a chunk of their own, exactly as before, so every outcome and stop is the request path's;
+ * a refused pass is narrowed to the employee it names (or halved), and grouping resumes after them.
+ * Each chunk records its calculation (process CPU) and database (the rest of its wall time) split on the job's metrics.
  */
 
+import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {enqueueBulkJobTx,type BulkJobRow} from './bulk-job';
-import {BulkJobWaiting,isTransientBulkJobError,type BulkJobHandler} from './bulk-job-worker';
+import {BulkJobWaiting,isTransientBulkJobError,type BulkJobHandler,type BulkJobStepOutcome} from './bulk-job-worker';
 import {publicErrorMessage} from '../lib/public-error';
 import {
- claimSelectiveReprocess,completeSelectiveReprocess,enqueueSelectiveReprocess,reprocessEmployeeTx,reprocessRunErrorCode,payrollReprocessJobRowTx,
- type SelectiveReprocessRun,
+ claimSelectiveReprocess,completeSelectiveReprocess,enqueueSelectiveReprocess,reprocessEmployeeGroupTx,reprocessEmployeeTx,reprocessRunErrorCode,
+ payrollReprocessJobRowTx,type SelectiveReprocessRun,
 } from './payroll';
 import {PAYROLL_REPROCESS_JOB_KIND} from '../lib/payroll-processing-job';
 
@@ -34,6 +46,65 @@ const planOf=(job:BulkJobRow)=>job.plan as JobPlan|null;
 /** The employee a failing step stopped at, kept for the failure record (process-local, per job). */
 const stoppedOf=new Map<string,Stopped>();
 const runOf=(job:BulkJobRow):SelectiveReprocessRun=>{const p=planOf(job)!;return{jobId:p.reprocessJobId,batchId:p.batchId,employmentIds:p.employmentIds,reason:p.reason,workerToken:job.id};};
+/** Employees per engine pass, at most (1: one employee per chunk, the per-employee transaction only). */
+export const payrollReprocessGroupMax=()=>Math.max(1,Math.floor(Number(process.env.PAYROLL_REPROCESS_GROUP_MAX??200))||1);
+/** The chunk length the group size aims for, at least. The chunk holds the run's company/month key and its company's
+ * payroll inputs key, so this bounds how long a salary or statutory change for that company may wait behind it. */
+export const payrollReprocessChunkTargetMs=()=>Math.max(1,Number(process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS??1000)||1000);
+/** One engine pass has a fixed cost whatever its size (the run-wide reads: on the hosted runner about 2.6 s of a
+ * one-employee pass, against about 50 ms per further employee). A chunk may last this many times that fixed cost, so the
+ * fixed cost is spread over a group instead of paid per employee; the per-employee path held the same keys for one fixed
+ * cost per employee. */
+export const payrollReprocessFixedMultiple=()=>Math.max(1,Number(process.env.PAYROLL_REPROCESS_CHUNK_FIXED_MULTIPLE??2)||2);
+const FIRST_GROUP=16;
+/** Per job and process:
+ *  - `size`: the next group size, and `seen` the last passes of two different sizes it was estimated from;
+ *  - `cap`: a narrower limit for the group starting at one employee, after a refused pass (see `narrow`);
+ *  - `single`: employees a refused pass named, who take the per-employee transaction;
+ *  - `chunk`: the employees the current chunk's group already wrote (their steps only record themselves; the last one
+ *    ends the chunk). */
+type GroupState={size:number;seen:{employees:number;wallMs:number}[];cap:{at:string;max:number}|null;single:Set<string>;chunk:{done:Set<string>;last:string|null}};
+const groupStateOf=new Map<string,GroupState>();
+const stateOf=(jobId:string)=>{let state=groupStateOf.get(jobId);if(!state){state={size:FIRST_GROUP,seen:[],cap:null,single:new Set(),chunk:{done:new Set(),last:null}};groupStateOf.set(jobId,state);}return state;};
+const isTransient=(error:unknown)=>error instanceof BulkJobWaiting||isTransientBulkJobError(error);
+/** The next group size from the passes seen so far. Two passes of different sizes give the fixed cost F and the cost per
+ * employee m (a straight line); the group then fills max(target, multiple x F). Until then, or when the two passes do not
+ * give a rising line, the size doubles. Always 2..PAYROLL_REPROCESS_GROUP_MAX, and at most double the last group. */
+export function nextReprocessGroupSize(seen:readonly {employees:number;wallMs:number}[],last:number){
+ const max=payrollReprocessGroupMax(),grow=Math.max(2,Math.min(max,last*2));
+ const [a,b]=seen.slice(-2);
+ if(!a||!b||a.employees===b.employees)return grow;
+ const perEmployee=(b.wallMs-a.wallMs)/(b.employees-a.employees);
+ if(!(perEmployee>0))return grow;
+ const fixed=Math.max(0,b.wallMs-b.employees*perEmployee);
+ const target=Math.max(payrollReprocessChunkTargetMs(),payrollReprocessFixedMultiple()*fixed);
+ return Math.max(2,Math.min(grow,Math.floor((target-fixed)/perEmployee)));
+}
+/** After a refused pass of `group` (its first employee then takes the per-employee transaction in this chunk): the
+ * employees the refusal names (its `rows[].employmentId` or `employmentId`, as the reprocess refusals carry) take the
+ * per-employee transaction too, and the next group, starting at the second employee, stops before the first of them.
+ * A refusal that names no one halves the next group, so a refusing employee is found in about log2(n) passes. */
+export function narrowRefusedGroup(group:readonly string[],error:unknown):{cap:{at:string;max:number}|null;single:string[]}{
+ const named=new Set<string>();
+ const e=error as {employmentId?:unknown;rows?:unknown}|null;
+ if(typeof e?.employmentId==='string')named.add(e.employmentId);
+ if(Array.isArray(e?.rows))for(const row of e.rows){const id=(row as {employmentId?:unknown}|null)?.employmentId;if(typeof id==='string')named.add(id);}
+ const rest=group.slice(1);if(!rest.length)return{cap:null,single:[]};
+ const first=rest.findIndex(id=>named.has(id));
+ const single=rest.filter(id=>named.has(id));
+ // Only the first employee named (it runs alone now): the rest group as usual.
+ if(first<0&&named.size)return{cap:null,single};
+ const max=first>=0?first:Math.floor(group.length/2);
+ return{cap:max>=1?{at:rest[0],max}:null,single};
+}
+const ms=(value:number)=>Math.max(0,Math.round(value));
+/** One line per chunk on the worker's stdout, beside the web's request timing (lib/request-timing.ts, same prefix and
+ * privacy rule: closed labels and numbers only, never a tenant, person, company or value). */
+function logChunk(mode:'group'|'single',employees:number,wallMs:number,cpuMs:number,engine?:{wallMs:number;cpuMs:number}){
+ if(process.env.AIHR_TIMING==='off')return;
+ console.info('[aihr-timing] '+JSON.stringify({t:'bulk-chunk',kind:PAYROLL_REPROCESS_JOB_KIND,mode,employees,wallMs:ms(wallMs),calcMs:ms(cpuMs),dbMs:ms(wallMs-cpuMs),
+  ...(engine?{engineWallMs:ms(engine.wallMs),engineCalcMs:ms(engine.cpuMs)}:{})}));
+}
 
 /** Web side: the same validation, permission and idempotent enqueue as before, then the background job. A job that
  * already completed returns its stored result; one another worker is running is reported as running. */
@@ -57,10 +128,18 @@ export async function requestSelectiveReprocess(ctx:SessionContext,p:{batchId:st
 export const payrollReprocessJobHandler:BulkJobHandler<Step>={
  kind:PAYROLL_REPROCESS_JOB_KIND,
  mode:'atomic',
- // One employee per transaction, exactly the request path's unit: a later employee's failure never takes back one
- // that already committed.
- maxStepsPerChunk:1,
- isTransient:error=>error instanceof BulkJobWaiting||isTransientBulkJobError(error),
+ // A chunk is one group (its steps all fit) or one per-employee transaction: chunks end by `endChunk`, so the budget
+ // is only a backstop below the 60 s lease.
+ get maxStepsPerChunk(){return payrollReprocessGroupMax();},
+ chunkBudgetMs:30_000,
+ isTransient,
+ // Every chunk transaction starts with no group written yet. The point-read marker (0691/9954) is the processing
+ // job's: an employment read skips rebuilding the visible-employment array when the initiator administers the
+ // company or its payroll, an arm of the same predicate, so the rows read are the same.
+ async beginChunkTx(tx,_ctx,job){
+  stateOf(job.id).chunk={done:new Set(),last:null};
+  await tx.execute(sql`select set_config('app.bank_import_point_read','on',true)`);
+ },
  async prepare(ctx,job){
   const input=inputOf(job)!;
   const row=await withTenant(ctx,tx=>payrollReprocessJobRowTx(tx,input.reprocessJobId));
@@ -72,13 +151,52 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
   const done=new Set(((row.result as {outcomes?:{employmentId:string}[]}|null)?.outcomes??[]).map(o=>o.employmentId));
   return{steps:input.employmentIds.filter(id=>!done.has(id)).map(employmentId=>({kind:'employee',payload:{employmentId} satisfies Step})),plan:input,counters:{employees:input.employmentIds.length}};
  },
- async applyStepTx(tx,ctx,job,step){
+ async applyStepTx(tx,ctx,job,step):Promise<BulkJobStepOutcome>{
+  const id=step.payload.employmentId,state=stateOf(job.id);
+  // Written by this chunk's group already: only the step records itself, and the group's last step ends the chunk.
+  if(state.chunk.done.has(id))return{counters:{done:1},...(id===state.chunk.last?{endChunk:true}:{})};
   const stopped:Stopped={current:null};stoppedOf.set(job.id,stopped);
-  await reprocessEmployeeTx(tx,ctx,runOf(job),step.payload.employmentId,stopped);
+  const run=runOf(job);
+  const cap=state.cap?.at===id?state.cap.max:Infinity;
+  const limit=Math.min(payrollReprocessGroupMax(),state.size,cap);
+  if(limit>=2&&!state.single.has(id)&&!state.chunk.last){
+   const at=run.employmentIds.indexOf(id);
+   const candidates=at<0?[id]:run.employmentIds.slice(at,at+limit);
+   const group=await reprocessEmployeeGroupTx(tx,ctx,run,candidates,{isTransient,stopped});
+   if(group.kind==='done'){stoppedOf.delete(job.id);return{counters:{done:1}};}
+   if(group.kind==='set'){
+    const n=group.employmentIds.length,{wallMs,cpuMs}=group.timing;
+    logChunk('group',n,wallMs,cpuMs,{wallMs:group.timing.engineWallMs,cpuMs:group.timing.engineCpuMs});
+    state.chunk={done:new Set(group.employmentIds),last:group.employmentIds[n-1]};
+    if(state.cap?.at===id)state.cap=null;
+    // Passes of the full size estimate the line; a narrowed or cut-short group is still a valid point on it.
+    state.seen=[...state.seen.filter(p=>p.employees!==n),{employees:n,wallMs}].slice(-2);
+    state.size=nextReprocessGroupSize(state.seen,n);
+    stoppedOf.delete(job.id);
+    return{counters:{done:1},metrics:{
+     add:{reprocessGroups:1,reprocessGroupEmployees:n,reprocessCalcMs:ms(cpuMs),reprocessDbMs:ms(wallMs-cpuMs)},
+     max:{reprocessGroupMaxEmployees:n,reprocessGroupMaxMs:ms(wallMs),reprocessGroupMaxCalcMs:ms(cpuMs),reprocessGroupMaxDbMs:ms(wallMs-cpuMs)},
+    }};
+   }
+   // A refused pass: this employee takes the per-employee transaction now; the refusal narrows what follows.
+   if(group.kind==='fallback'){
+    const narrowed=narrowRefusedGroup(group.employmentIds,group.error);
+    state.cap=narrowed.cap;for(const employmentId of narrowed.single)state.single.add(employmentId);
+   }
+   stopped.current=null;
+  }
+  const started=performance.now(),cpuStarted=process.cpuUsage();
+  await reprocessEmployeeTx(tx,ctx,run,id,stopped);
+  state.single.delete(id);if(state.cap?.at===id)state.cap=null;
   stoppedOf.delete(job.id);
-  return{counters:{done:1}};
+  const cpu=process.cpuUsage(cpuStarted),wallMs=performance.now()-started,cpuMs=(cpu.user+cpu.system)/1000;
+  logChunk('single',1,wallMs,cpuMs);
+  return{counters:{done:1},endChunk:true,metrics:{
+   add:{reprocessSingles:1,reprocessCalcMs:ms(cpuMs),reprocessDbMs:ms(wallMs-cpuMs)},max:{reprocessSingleMaxMs:ms(wallMs)},
+  }};
  },
  async finalize(ctx,job){
+  groupStateOf.delete(job.id);
   const plan=planOf(job)!;
   if(plan.completed)return{result:plan.completed};
   return{result:await completeSelectiveReprocess(ctx,plan.reprocessJobId,job.id)};
@@ -88,7 +206,7 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
  // The request path's stop record: status failed, the run-level stop code and the employee it stopped at. Read only
  // here: the kernel merges the stop into the plan with the failure, and the settle below writes the record from it.
  async describeFailure(job,error){
-  const stopped=stoppedOf.get(job.id)?.current??null;stoppedOf.delete(job.id);
+  const stopped=stoppedOf.get(job.id)?.current??null;stoppedOf.delete(job.id);groupStateOf.delete(job.id);
   return{error:publicErrorMessage(error),planMerge:{stopped:{code:reprocessRunErrorCode(error),employee:stopped}} satisfies Pick<JobPlan,'stopped'>};
  },
  // The reprocess job's stop record, in one owner transaction attributed to this job (unit.ownerTx): the failure's
