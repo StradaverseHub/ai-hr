@@ -1,6 +1,6 @@
 /** Genuine signatures made by the pinned pre-alias application, followed by ordinary current migration.
  * No signed rows, receipts, function replacements or owner guards are manufactured by this fixture. */
-import {withoutApprovedPhoneDependency} from './helpers/approved-phone-dependency';
+import {withFrozenPostgresPatchHash,withoutApprovedPhoneDependency} from './helpers/approved-phone-dependency';
 import {execFile,execFileSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,lstatSync,readdirSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
@@ -94,7 +94,7 @@ it('preserves a genuinely signed old known label and old unresolved private labe
   for(const [file,hash] of Object.entries(DEPENDENCIES)){
    expect(sha(readFileSync(join(source,file))),file+' historical source pin').toBe(hash);
    const historical=readFileSync(join(source,file),'utf8'),prepared=readFileSync(join(root,file),'utf8');
-   expect(file==='tsconfig.json'?prepared:withoutApprovedPhoneDependency(file,prepared,historical),
+   expect(file==='tsconfig.json'?prepared:withFrozenPostgresPatchHash(file,withoutApprovedPhoneDependency(file,prepared,historical),historical,root),
     file+' exact prepared dependency/toolchain transition').toBe(historical);
   }
   symlinkSync(realpathSync(join(root,'node_modules')),join(source,'node_modules'),'dir');

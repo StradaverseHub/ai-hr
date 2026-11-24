@@ -39,6 +39,7 @@ import { IndividualTxnTable } from './individual-table';
 import {Pager} from '@/components/pager';
 import {pageState,parsePageQuery} from '@/lib/pagination';
 import { OutstandingTable } from './outstanding-table';
+import { ResettingSelect } from './resetting-select';
 import { HistoryTable } from './history-table';
 import { WorkbookExportForm } from './workbook-export-form';
 import { HistoryGrid } from './history-grid';
@@ -625,23 +626,23 @@ export default async function TransactionViewPage({
   const shownMonth = tab === 'history' ? historyMonth : month;
   const cycleSelect = (
     <Field label={t('view.filters.cycle')}>
-      <select name="payrollCycleId" defaultValue={payrollCycleId ?? ''} className={inputCls}>
+      <ResettingSelect name="payrollCycleId" defaultValue={payrollCycleId ?? ''} className={inputCls}>
         <option value="">{t('view.filters.all')}</option>
         {cycleChoices.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-      </select>
+      </ResettingSelect>
     </Field>
   );
 
   const companySelect = (
     <Field label={t('view.filters.company')}>
-      <select name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
+      <ResettingSelect name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
         <option value="">{t('view.filters.all')}</option>
         {scopedCompanies.map((c) => (
           <option key={c.id} value={c.id}>
             {c.name}
           </option>
         ))}
-      </select>
+      </ResettingSelect>
     </Field>
   );
   // bd14b7e2 — the long employee <select> that used to sit here is GONE from all four inquiry tabs; the
@@ -650,24 +651,24 @@ export default async function TransactionViewPage({
   const yearMonthSelects = (
     <>
       <Field label={t('view.filters.year')}>
-        <select name="year" defaultValue={shownYear != null ? String(shownYear) : ''} className={inputCls}>
+        <ResettingSelect name="year" defaultValue={shownYear != null ? String(shownYear) : ''} className={inputCls}>
           <option value="">{t('view.filters.all')}</option>
           {years.map((y) => (
             <option key={y} value={y}>
               {y}
             </option>
           ))}
-        </select>
+        </ResettingSelect>
       </Field>
       <Field label={t('view.filters.month')}>
-        <select name="month" defaultValue={shownMonth != null ? String(shownMonth).padStart(2, '0') : ''} className={inputCls}>
+        <ResettingSelect name="month" defaultValue={shownMonth != null ? String(shownMonth).padStart(2, '0') : ''} className={inputCls}>
           <option value="">{t('view.filters.all')}</option>
           {MONTHS.map((m) => (
             <option key={m} value={m}>
               {m}
             </option>
           ))}
-        </select>
+        </ResettingSelect>
       </Field>
     </>
   );
@@ -1233,13 +1234,13 @@ export default async function TransactionViewPage({
                 {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
                 {companyId && <input type="hidden" name="companyId" value={companyId} />}
                 <Field label={t('view.filters.year')}>
-                  <select name="year" defaultValue={String(gridYear)} className={inputCls}>
+                  <ResettingSelect name="year" defaultValue={String(gridYear)} className={inputCls}>
                     {years.map((y) => (
                       <option key={y} value={y}>
                         {y}
                       </option>
                     ))}
-                  </select>
+                  </ResettingSelect>
                 </Field>
                 <fieldset className="min-w-0">
                   <legend className="mb-1 text-xs font-medium text-muted-foreground">

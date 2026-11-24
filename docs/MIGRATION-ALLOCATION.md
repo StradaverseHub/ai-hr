@@ -12,7 +12,25 @@ Replaces the body of `app.enqueue_replacement_holidays()` only: an employment's 
 owner, SECURITY DEFINER, search_path, the 0547 triggers and REVOKE are unchanged; guarded by the exact 5010 body and its
 owner. Then one set-based DELETE removes the queue rows of already-voided employments (queue rows only; allocations and
 revisions stay). Measured cause: on staging the minute sweep failed 10 such rows a minute from 24 November 2026 19:53,
-after an employee import was reverted.
+after an employee import was reverted. Staging had applied 1,144 entries through `1795495007220` (25 November).
+
+# Movement sweep system payroll snapshot policies, 24 November 2026
+
+Reserve `7220_movement_system_payroll_snapshot_insert`, journal index `10620`, timestamp `1795495007220`,
+SQL SHA-256 `544c15edadb827658cb8d182a7dc6ae4c1872992d199ef8c72bd6bc311123470`. Re-allocated from `7210` / `10610` / `1795495007210`, which collided with
+`7210_access_effective_company` (PR 280, merged to main 24 November 2026 at 85fb894a0, same index and timestamp);
+this entry was never applied anywhere under its old tuple. A fresh scan of the 400 most recently committed remote and
+local branch heads and every registered worktree journal found nothing above `1795495007210`. Production reported
+1,140 applied entries through `1795280007150`; staging runs `1e3388f25` (ledger ending `7200`). This entry must be
+installed after `7210_access_effective_company` on every installation, or that lower timestamp is skipped. Recheck
+both watermarks and competing reservations before admission.
+
+Adds two policies on `information_payslip_snapshot`, both `TO ai_hr_owner`, for the system path that 5777 introduced
+(nightly movement sweep: storage-owner session, no user, workforce maintain): `information_snapshot_system_preserve_read`
+(SELECT) and `information_snapshot_system_preserve_insert` (INSERT of an unattributed system row for a closed payslip
+paid by a company the sweep administers). Without them a restricted owner refuses every due movement for an employee
+with closed payroll (staging sweep, 24 November 2026). Rows, grants, functions and the user and Contract policies are
+unchanged.
 
 # Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
 

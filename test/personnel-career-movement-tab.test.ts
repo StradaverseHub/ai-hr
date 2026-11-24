@@ -191,7 +191,9 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     expect(PAGE.includes("t('movement.reversedBadge')")).toBe(true);
     expect(PAGE.includes("t('movement.correctedBadge')")).toBe(true);
     // The projection is read whole and never narrowed at the source.
-    expect(PAGE.includes('await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards || directMovementHistory })')).toBe(true);
+    // Board eb01800b adds includeRecordChanges: record-change rows come back BESIDE `movements`, never inside or
+    // instead of them, so the projection stays whole.
+    expect(PAGE.includes('await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards || directMovementHistory, includeRecordChanges: true })')).toBe(true);
     // The Edit lookup resolves against the FULL history, so a hidden row is still reachable by id.
     expect(PAGE).toMatch(/movements\.find\(\((\w+)\)\s*=>\s*\1\.id\s*===\s*spEditMovement\s*&&\s*\1\.canEdit\)/);
     // …and the pending banner on the Employment tab reads the full history too.

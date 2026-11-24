@@ -8004,6 +8004,13 @@
       "breakpoints": true
     },
     {
+      "idx": 10620,
+      "version": "7",
+      "when": 1795495007220,
+      "tag": "7220_movement_system_payroll_snapshot_insert",
+      "breakpoints": true
+    },
+    {
       "idx": 10650,
       "version": "7",
       "when": 1795495007250,
