@@ -6,6 +6,8 @@ import {client} from '../db/client';
 import {createEmployeeImportJob} from '../core/employee-import-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
+import {employeeImportJobHandler} from '../core/employee-import-worker';
+import {sql} from 'drizzle-orm';
 import type {EmployeeImportUploadInput} from '../core/employee-import-upload';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase} from './harness';
 
@@ -15,7 +17,11 @@ const csv=(rows:Record<string,string>[])=>{const h=Object.keys(rows[0]);return [
 beforeAll(async()=>{await migrateTestDb();await resetDb();});
 afterAll(closeAll);
 
-it('profiles a staged employee import at the shape of a 70-company group',async()=>{
+const original=employeeImportJobHandler.beginChunkTx!;
+for(const variant of [{name:'baseline',marker:false,budget:100},{name:'marker',marker:true,budget:100},{name:'marker-1s',marker:true,budget:1000}])
+it(`profiles a staged employee import at the shape of a 70-company group: ${variant.name}`,async()=>{
+ employeeImportJobHandler.chunkBudgetMs=variant.budget;
+ employeeImportJobHandler.beginChunkTx=async(tx,c,j)=>{await original(tx,c,j);if(variant.marker)await tx.execute(sql`select set_config('app.bank_import_point_read','on',true)`);};
  const base=await seedBase();const ctx=await entitledCtx(base);
  const others=await owner.client<{id:string}[]>`insert into company(tenant_id,legal_name) select ${base.tenantId}::uuid,'Profile shape company '||n from generate_series(1,${COMPANIES-1}::integer)n returning id`;
  await owner.client`with people as(insert into person(tenant_id,full_name,primary_email) select ${base.tenantId}::uuid,'Profile shape person '||n,'profile-shape-'||n||'@fixture.invalid' from generate_series(1,${EMPLOYMENTS}::integer)n returning id),ranked as(select id,row_number()over(order by id)::int as n from people)
@@ -52,7 +58,7 @@ it('profiles a staged employee import at the shape of a 70-company group',async(
  if(trackFunctions){await owner.client.unsafe(`alter system reset track_functions`);await owner.client`select pg_reload_conf()`;}
  const prior=new Map(functionsBefore.map(f=>[f.f,f]));
  const fnDelta=functions.map(f=>({f:f.f,calls:f.calls-(prior.get(f.f)?.calls??0),totalMs:Math.round(f.total-(prior.get(f.f)?.total??0)),selfMs:Math.round(f.self-(prior.get(f.f)?.self??0))})).filter(f=>f.calls>0);
- console.info('EMPLOYEE_IMPORT_PROFILE',JSON.stringify({
+ console.info('EMPLOYEE_IMPORT_PROFILE',variant.name,JSON.stringify({
   rows:ROWS,state:job.state,error:job.error,wallMs:Math.round(wall),cpuMs:Math.round(cpuMs),msPerRow:Math.round(wall/ROWS),
   appStatements:sent.filter(s=>s.who==='app'&&!bookkeeping.test(s.text.trim())).length,ownerStatements:sent.filter(s=>s.who==='owner').length,
   appStatementsPerRow:Math.round(sent.filter(s=>s.who==='app'&&!bookkeeping.test(s.text.trim())).length/ROWS),
