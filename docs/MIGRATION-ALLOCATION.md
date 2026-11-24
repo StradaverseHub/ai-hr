@@ -1,3 +1,19 @@
+# Movement sweep system payroll snapshot policies, 24 November 2026
+
+Reserve `7210_movement_system_payroll_snapshot_insert`, journal index `10610`, timestamp `1795495007210`,
+SQL SHA-256 `544c15edadb827658cb8d182a7dc6ae4c1872992d199ef8c72bd6bc311123470`. Production reported 1,140 applied entries through `1795280007150` (read-only, 24 November 2026);
+staging runs `d9db526a2` with the same journal tail. The reservation scan covered the 300 most recently committed
+remote and local branch heads and every registered worktree journal: peers hold `7160`–`7200` (highest timestamp
+`1795495007200`, `7200_information_documents_planned_with_values`), so this entry follows them. Recheck both
+watermarks and competing reservations before admission.
+
+Adds two policies on `information_payslip_snapshot`, both `TO ai_hr_owner`, for the system path that 5777 introduced
+(nightly movement sweep: storage-owner session, no user, workforce maintain): `information_snapshot_system_preserve_read`
+(SELECT) and `information_snapshot_system_preserve_insert` (INSERT of an unattributed system row for a closed payslip
+paid by a company the sweep administers). Without them a restricted owner refuses every due movement for an employee
+with closed payroll (staging sweep, 24 November 2026). Rows, grants, functions and the user and Contract policies are
+unchanged.
+
 # Contract list company rights once per company, 23 November 2026
 
 Reserve `7150_contract_list_company_rights_once`, journal index `10550`, timestamp `1795280007150`,
