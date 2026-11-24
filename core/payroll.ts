@@ -57,6 +57,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // See core/module-gate.ts.
 import { assertModuleGate,withPayrollTenant as withTenant } from './module-gate';
 import { pricesChildReliefFromGrid } from './dependents';
+import { personnelFormulaPermissionsTx } from './pay-formula-personnel-permissions';
 import { actorOf, appendEvent,appendEvents,type AppendEventArgs } from '../db/events';
 import {
   PAYROLL_PERMISSION_DEFAULTS,
@@ -9792,9 +9793,12 @@ export async function payrollCloseCompanyIdsTx(
     .select({ id: company.id })
     .from(company)
     .where(and(inArray(company.id, ids), sql`app.can_admin_payroll_for(${company.id})`));
-  for (const row of scoped) {
-    if (await resolvePayrollPermission(tx, ctx, 'payroll.close', row.id)) allowed.add(row.id);
-  }
+  if (scoped.length === 0) return allowed;
+  // One set-based read for every company (ADR 0181 rule 2) instead of resolvePayrollPermission's three
+  // statements per company. personnelFormulaPermissionsTx is its batch equivalent (same principal, role,
+  // scope and override rules); test/payroll-permission-set-equivalence.test.ts compares them.
+  const permitted = (await personnelFormulaPermissionsTx(tx, ctx, scoped.map((row) => row.id), ['payroll.close'])).get('payroll.close');
+  for (const row of scoped) if (permitted?.has(row.id)) allowed.add(row.id);
   return allowed;
 }
 
@@ -11186,10 +11190,11 @@ export async function listReprocessEmployeeOutcomes(
   return withTenant(ctx,async tx=>{
     const batches = await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId}).from(payrollBatch)
       .where(and(inArray(payrollBatch.id,requested),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`));
-    const permittedCompanies = new Set<string>();
-    for(const companyId of new Set(batches.map(batch=>batch.companyId))) {
-      if(await resolvePayrollPermission(tx,ctx,'payroll.reprocess.selective',companyId)) permittedCompanies.add(companyId);
-    }
+    // One set-based permission read for all the batches' companies (ADR 0181 rule 2), not three statements per company.
+    const companies=[...new Set(batches.map(batch=>batch.companyId))];
+    const permittedCompanies = companies.length
+      ? (await personnelFormulaPermissionsTx(tx,ctx,companies,['payroll.reprocess.selective'])).get('payroll.reprocess.selective') ?? new Set<string>()
+      : new Set<string>();
     const batchIds = batches.filter(batch=>permittedCompanies.has(batch.companyId)).map(batch=>batch.id);
     if(!batchIds.length) return [];
     const jobs = await tx.select({id:payrollReprocessJob.id,batchId:payrollReprocessJob.batchId,
