@@ -17,7 +17,7 @@ import {correctDirectSuperiorPeriod} from '../core/direct-superior-periods';
 import {directSuperiorPeriodsFor} from '../core/read';
 import {reviewReprocessTaxReadiness} from '../packs/payroll/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 vi.mock('next/cache',()=>({revalidatePath:()=>{},revalidateTag:()=>{},updateTag:()=>{}}));
 
@@ -56,7 +56,8 @@ beforeAll(async()=>{
  all=[b.companyId,...level1,...level2];expect(all).toHaveLength(70);
  depts=[b.deptA,...(await owner.client<{id:string}[]>`insert into department(tenant_id,company_id,name)
   select ${T}::uuid,c,'Operations' from unnest(${all.slice(1)}::uuid[]) with ordinality x(c,k) order by k returning id`).map(r=>r.id)];
- const ADMIN=adminCtx(b);
+ for(const code of ['payroll','typed_pay_components','multi_cycle_payroll'])await setModule(T,code,'active');
+ const ADMIN=await entitledCtx(b);
  // 1,000 fictional hires through the real owner: 300 in the root company (the large payroll run), the rest spread.
  for(let k=0;k<1000;k++){
   const c=k<300?0:1+(k%69);
@@ -99,27 +100,38 @@ afterAll(closeAll);
 describe('write-path save cost at 70 companies / 1,000 employments',()=>{
  it('profiles the Direct Superior, movement and reprocess review owners',async()=>{
   const today=todayInKualaLumpur();
-  let n=0;const subject=()=>emp.filter(e=>e.company!==b.companyId)[40+(n++)*7];
+  // Subjects and new superiors are never a company's head (everyone reports to the head), so no change is a cycle.
+  const heads=new Set<string>();for(const e of emp)if(![...heads].some(h=>emp.find(x=>x.id===h)?.company===e.company))heads.add(e.id);
+  const pool=emp.filter(e=>e.company!==b.companyId&&!heads.has(e.id));let n=0;
+  const pair=()=>{const a=pool[(n++)*13%pool.length];const m=pool.find(x=>x.company===a.company&&x.id!==a.id&&!used.has(x.id))!;used.add(a.id);used.add(m.id);return[a,m] as const;};
+  const used=new Set<string>();
   const out:string[]=[];
   for(const[label,ctx]of Object.entries(actors)){
-   const a=subject(),m=emp.find(e=>e.company===a.company&&e.id!==a.id&&e.k!==a.k&&e.k>a.k)??emp.find(e=>e.company===a.company&&e.id!==a.id)!;
-   out.push((await profile(`${label} · amend direct superior`,()=>amendDirectSuperior(ctx,{employmentId:a.id,managerEmploymentId:m.id,reason:'Fictional correction',expectedLineId:null}))).line);
-   const c=subject(),cm=emp.find(e=>e.company===c.company&&e.id!==c.id)!;
-   out.push((await profile(`${label} · direct superior movement today`,()=>createMovementEvent(ctx,{employmentId:c.id,managerEmploymentId:cm.id,effectiveDate:today,remarks:'Fictional change',kind:'reportingLineChange'}))).line);
-   const d=subject(),dm=emp.find(e=>e.company===d.company&&e.id!==d.id)!;
-   out.push((await profile(`${label} · direct superior movement backdated`,()=>createMovementEvent(ctx,{employmentId:d.id,managerEmploymentId:dm.id,effectiveDate:'2026-06-01',remarks:'Fictional change',kind:'reportingLineChange'}))).line);
-   const t=subject();
-   out.push((await profile(`${label} · transfer with salary today`,()=>createMovementEvent(ctx,{employmentId:t.id,kind:'transfer',effectiveDate:today,basicSalary:4800,remarks:'Fictional transfer'}))).line);
-   const u=subject();
-   out.push((await profile(`${label} · transfer with salary backdated`,()=>createMovementEvent(ctx,{employmentId:u.id,kind:'transfer',effectiveDate:'2026-07-01',basicSalary:4700,remarks:'Fictional transfer'}))).line);
-   const p=subject();
-   const periods=await directSuperiorPeriodsFor(ctx,p.id).catch(()=>null) as unknown as {revision?:string;periods?:{id:string;validFrom:string}[]}|null;
-   const line=periods?.periods?.[0];const pm=emp.find(e=>e.company===p.company&&e.id!==p.id&&e.k!==emp.find(x=>x.company===p.company)?.k)!;
-   if(line&&periods?.revision)out.push((await profile(`${label} · correct direct superior period`,()=>correctDirectSuperiorPeriod(ctx,{employmentId:p.id,reason:'Fictional correction',revision:periods.revision!,lineId:line.id,operation:'edit',managerEmploymentId:pm.id,validFrom:line.validFrom,validToInclusive:null} as Parameters<typeof correctDirectSuperiorPeriod>[1]))).line);
-   else out.push(`[write-path-profile] ${label} · correct direct superior period: no period shape ${JSON.stringify(periods)?.slice(0,200)}`);
+   {const[a,m]=pair();out.push((await profile(`${label} · amend direct superior`,()=>amendDirectSuperior(ctx,{employmentId:a.id,managerEmploymentId:m.id,reason:'Fictional correction',expectedLineId:null}))).line);}
+   {const[a,m]=pair();out.push((await profile(`${label} · direct superior movement today`,()=>createMovementEvent(ctx,{employmentId:a.id,managerEmploymentId:m.id,effectiveDate:today,remarks:'Fictional change',kind:'reportingLineChange'}))).line);}
+   {const[a,m]=pair();out.push((await profile(`${label} · direct superior movement backdated`,()=>createMovementEvent(ctx,{employmentId:a.id,managerEmploymentId:m.id,effectiveDate:'2026-06-01',remarks:'Fictional change',kind:'reportingLineChange'}))).line);}
+   {const[t]=pair();out.push((await profile(`${label} · transfer with salary today`,()=>createMovementEvent(ctx,{employmentId:t.id,kind:'transfer',effectiveDate:today,basicSalary:4800,remarks:'Fictional transfer'}))).line);}
+   {const[t]=pair();out.push((await profile(`${label} · transfer with salary backdated`,()=>createMovementEvent(ctx,{employmentId:t.id,kind:'transfer',effectiveDate:'2026-07-01',basicSalary:4700,remarks:'Fictional transfer'}))).line);}
+   {const[p,pm]=pair();
+    const periods=await directSuperiorPeriodsFor(ctx,p.id) as {revision:string;periods:{id:string;validFrom:string}[]};
+    const line=periods.periods[0];
+    out.push((await profile(`${label} · correct direct superior period`,()=>correctDirectSuperiorPeriod(ctx,{employmentId:p.id,reason:'Fictional correction',revision:periods.revision,lineId:line.id,operation:'edit',managerEmploymentId:pm.id,validFrom:line.validFrom,validToInclusive:null}))).line);}
    const ids=emp.filter(e=>e.company===b.companyId).map(e=>e.id);
    out.push((await profile(`${label} · reprocess tax review (300 employees)`,()=>reviewReprocessTaxReadiness(ctx,processedRoot,ids))).line);
   }
-  expect(out.length).toBeGreaterThanOrEqual(10);
+  // Contention: another session holds the SHARED Access lock (as every converted writer and display read does) for
+  // 1.5 s. A save that asks for the exclusive lock waits for it; a save that joins shared does not.
+  const ctx=actors['group administrator'];
+  const hold=async()=>{await owner.client.begin(async tx=>{await tx`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`;await new Promise(r=>setTimeout(r,1500));});};
+  for(const[name,run]of [
+   ['amend direct superior',()=>{const[a,m]=pair();return amendDirectSuperior(ctx,{employmentId:a.id,managerEmploymentId:m.id,reason:'Fictional correction',expectedLineId:null});}],
+   ['direct superior movement today',()=>{const[a,m]=pair();return createMovementEvent(ctx,{employmentId:a.id,managerEmploymentId:m.id,effectiveDate:today,remarks:'Fictional change',kind:'reportingLineChange'});}],
+   ['transfer with salary today',()=>{const[t]=pair();return createMovementEvent(ctx,{employmentId:t.id,kind:'transfer',effectiveDate:today,basicSalary:4900,remarks:'Fictional transfer'});}],
+  ] as const){
+   const holder=hold();await new Promise(r=>setTimeout(r,100));
+   out.push((await profile(`contention (shared Access held 1.5 s) · ${name}`,run as ()=>Promise<unknown>)).line);
+   await holder;
+  }
+  expect(out.length).toBeGreaterThanOrEqual(14);
  },900_000);
 });
