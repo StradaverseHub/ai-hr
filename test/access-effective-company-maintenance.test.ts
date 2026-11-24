@@ -78,4 +78,18 @@ describe('precomputed company access (7210) on Job descriptions: maintenance',()
   await expectEquivalent('re-trusted after repair',PRECOMPUTED);
  },900_000);
 
+
+ it('ignores Access revision bumps and recomputes only when the configuration is initialised or cleared',async()=>{
+  const version=async()=>(await owner.client<{v:string}[]>`select access_version::text as v from access_company_state where tenant_id=${b.tenantId}::uuid`)[0].v;
+  const before=await version();
+  // The revision fence many writers bump (employment and access changes) is not an input of the stored answer.
+  await owner.client`update access_configuration set revision=gen_random_uuid() where tenant_id=${b.tenantId}::uuid`;
+  expect(await version()).toBe(before);
+  const[{initialized}]=await owner.client<{initialized:boolean}[]>`select initialized from access_configuration where tenant_id=${b.tenantId}::uuid`;
+  await owner.client`update access_configuration set initialized=${!initialized} where tenant_id=${b.tenantId}::uuid`;
+  const flipped=await version();expect(BigInt(flipped)).toBeGreaterThan(BigInt(before));
+  await owner.client`update access_configuration set initialized=${initialized} where tenant_id=${b.tenantId}::uuid`;
+  expect(BigInt(await version())).toBeGreaterThan(BigInt(flipped));
+  expect(verificationDifferences(await verifyAccessEffectiveCompanyTenant(owner.db,b.tenantId))).toBe(0);
+ },120_000);
 });
