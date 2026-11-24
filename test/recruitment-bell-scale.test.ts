@@ -57,13 +57,20 @@ beforeAll(async () => {
   // Recruitment work in six operating companies (the single administrator's among them): a job with a waiting agency
   // submission (a duplicate of an existing candidate waits for review) and a held interview whose feedback is due.
   const companies = [fixture.singleCompanyId, ...fixture.operatingCompanyIds.filter((c) => c !== fixture.singleCompanyId).slice(0, 5)];
+  // The interviewer works in each of these companies (a job's team is the company's active staff).
+  const interviewerPerson = (await owner.db.execute<{ id: string }>(sql`select person_id as id from app_user where id = ${interviewer.userId!}::uuid`))[0].id;
+  await owner.db.insert(schema.employment).values(companies.filter((c) => c !== fixture.singleCompanyId).map((companyId) => ({ tenantId: b.tenantId, companyId, personId: interviewerPerson, hiredOn: '2024-01-01' })));
   for (const companyId of companies) {
     const recruiter = await login(`Fictional Recruiter ${++seq}`, companyId);
     const { id: jobId } = await createJob(admin, { companyId, title: `Fictional role ${seq}`, jobGradeIds: [gradeId], workLocation: 'Kuala Lumpur', recruitmentType: 'budgeted',
       employmentType: 'full_time', description: 'Fictional job description.', recruiterUserId: recruiter.userId });
     await addJobMember(admin, jobId, 'interviewer', interviewer.userId!);
     const email = `candidate${seq}@fixture.test`;
-    const { applicationId } = await addApplication(recruiter, { jobId, fullName: `Fictional Candidate ${seq}`, email });
+    const { applicationId } = await addApplication(recruiter, { jobId, fullName: `Fictional Candidate ${seq}`, email: `interviewed${seq}@fixture.test` });
+    // The person the agency submits applied from a job board to another job of the company: the submission waits for review.
+    const { id: boardJobId } = await createJob(admin, { companyId, title: `Fictional board role ${seq}`, jobGradeIds: [gradeId], workLocation: 'Kuala Lumpur',
+      recruitmentType: 'budgeted', employmentType: 'full_time', description: 'Fictional job description.', recruiterUserId: recruiter.userId });
+    await addApplication(recruiter, { jobId: boardJobId, fullName: `Fictional Board Person ${seq}`, email, candidateSource: 'job_board' });
     const stage = (await owner.db.execute<{ id: string }>(sql`select ps.stage_id as id from recruitment_job_opening j join recruitment_process_stage ps on ps.process_id = j.process_id
       join recruitment_stage st on st.id = ps.stage_id where j.id = ${jobId}::uuid and st.stage_type = 'interview' order by ps.position limit 1`))[0].id;
     await moveApplication(recruiter, applicationId, stage);
@@ -73,7 +80,7 @@ beforeAll(async () => {
       startsOn: addDays(today, -40), endsOn: addDays(today, 100), hrContactUserId: b.adminUserId, access: 'public' });
     const { id: consultantId } = await saveAgencyConsultant(admin, { contractId, name: `Fictional Consultant ${seq}`, email: `consultant${seq}@agency.fixture.test` });
     await assignAgencyContract(admin, jobId, contractId);
-    expect((await recordAgencySubmission(recruiter, { jobId, contractId, consultantId, fullName: `Fictional Candidate ${seq}`, email })).outcome).toBe('waiting');
+    expect((await recordAgencySubmission(recruiter, { jobId, contractId, consultantId, fullName: `Fictional Board Person ${seq}`, email })).outcome).toBe('waiting');
   }
   await saveApprovalFlow(admin, fixture.singleCompanyId, 'requisition', [approver.userId]);
   const { id: reqId } = await createRequisition(admin, { companyId: fixture.singleCompanyId, title: 'Fictional analysts', vacancies: '2', workLocation: 'Kuala Lumpur', employmentType: 'full_time', recruitmentType: 'budgeted' });
@@ -131,7 +138,8 @@ describe('the bell\'s recruitment to-dos at the shape of a 71-company group', ()
 
   it('plans the statement every viewer pays far smaller than the earlier single statement', async () => {
     const report: string[] = [];
-    for (const [label, ctx, scope] of [['group, all companies', fixture.personas.group, [...fixture.companyIds]], ['employee', employee, undefined]] as const) {
+    const viewers: [string, SessionContext, string[] | undefined][] = [['group, all companies', fixture.personas.group, [...fixture.companyIds]], ['employee', employee, undefined]];
+    for (const [label, ctx, scope] of viewers) {
       const now = await observeStatements(() => pendingRecruitmentTasks(ctx, scope));
       const before = await observeStatements(() => originalRecruitmentTodos(ctx, scope));
       const [current, earlier] = [await planOf(now.statements, MAIN), await planOf(before.statements, MAIN)];

@@ -112,7 +112,7 @@ describe('the two-step personal to-dos read answers exactly what the single stat
     expect(await submitRequisition(admin, reqId)).toBe('pending');
     // Offer approvals: P1 is not on the team (names unreadable); the hiring manager is (names read); one candidate is removed later.
     const interview1 = await stageOf(t1.jobId, 'interview');
-    const [c1, c2, c3] = [await apply(t1, 'Fictional Candidate One', 'one@example.test'), await apply(t1, 'Fictional Candidate Two'), await apply(t1, 'Fictional Candidate Three')];
+    const [c1, c2, c3] = [await apply(t1, 'Fictional Candidate One'), await apply(t1, 'Fictional Candidate Two'), await apply(t1, 'Fictional Candidate Three')];
     for (const c of [c1, c2, c3]) await moveApplication(t1.recruiter, c.applicationId, interview1);
     await saveApprovalFlow(admin, base.companyId, 'offer', [p1.userId]);
     const offerP1 = await offerFor(t1, c1.applicationId);
@@ -122,7 +122,7 @@ describe('the two-step personal to-dos read answers exactly what the single stat
     // Feedback due (past interview), already given (none), and in another company.
     const { id: iv1 } = await scheduleInterview(t1.recruiter, { applicationId: c1.applicationId, type: 'video', startsAt: past(3), durationMinutes: 60, interviewerIds: [t1.interviewer.userId, t1.hm.userId] });
     await submitScorecard(t1.hm, iv1, { ratings: Object.fromEntries(['c1', 'c2', 'c3', 'c4', 'c5'].map((k) => [k, { rating: '4', notes: 'Fictional' }])), result: 'recommended' });
-    const o1 = await apply(t2, 'Fictional Other Candidate', 'other@example.test');
+    const o1 = await apply(t2, 'Fictional Other Candidate');
     await moveApplication(t2.recruiter, o1.applicationId, await stageOf(t2.jobId, 'interview'));
     const { id: ivOther } = await scheduleInterview(t2.recruiter, { applicationId: o1.applicationId, type: 'phone', startsAt: past(2), durationMinutes: 30, interviewerIds: [t2.interviewer.userId] });
     // Screening requests: the hiring manager of each job.
@@ -135,8 +135,16 @@ describe('the two-step personal to-dos read answers exactly what the single stat
     await agencyFor(base.companyId, contact.userId, addDays(today, 90)); // not yet due
     await assignAgencyContract(admin, t1.jobId, a1.contractId);
     await assignAgencyContract(admin, t2.jobId, a2.contractId);
-    const dup1 = await recordAgencySubmission(t1.recruiter, { jobId: t1.jobId, contractId: a1.contractId, consultantId: a1.consultantId, fullName: 'Fictional Candidate One', email: 'one@example.test' });
-    const dup2 = await recordAgencySubmission(t2.recruiter, { jobId: t2.jobId, contractId: a2.contractId, consultantId: a2.consultantId, fullName: 'Fictional Other Candidate', email: 'other@example.test' });
+    // A person who applied from a job board to another job of the same company: the agency's submission of them waits.
+    const boardApplicant = async (t: Team, fullName: string, email: string) => {
+      const { id: jobId } = await createJob(admin, { companyId: t.companyId, title: 'Fictional board role', jobGradeIds: [gradeId], workLocation: 'Kuala Lumpur',
+        recruitmentType: 'budgeted', employmentType: 'full_time', description: 'Fictional job description.', recruiterUserId: t.recruiter.userId });
+      await addApplication(t.recruiter, { jobId, fullName, email, candidateSource: 'job_board' });
+    };
+    await boardApplicant(t1, 'Fictional Agency Person One', 'agency1@example.test');
+    await boardApplicant(t2, 'Fictional Agency Person Two', 'agency2@example.test');
+    const dup1 = await recordAgencySubmission(t1.recruiter, { jobId: t1.jobId, contractId: a1.contractId, consultantId: a1.consultantId, fullName: 'Fictional Agency Person One', email: 'agency1@example.test' });
+    const dup2 = await recordAgencySubmission(t2.recruiter, { jobId: t2.jobId, contractId: a2.contractId, consultantId: a2.consultantId, fullName: 'Fictional Agency Person Two', email: 'agency2@example.test' });
     expect([dup1.outcome, dup2.outcome]).toEqual(['waiting', 'waiting']);
     // Background checks: the recorder's awaiting one, one in progress and overdue, one whose candidate is then removed.
     const offerStage = await stageOf(t1.jobId, 'offer');
@@ -177,7 +185,7 @@ describe('the two-step personal to-dos read answers exactly what the single stat
     expect(byId.get(`offerApproval:${offerHm}`)).toMatchObject({ title: 'Fictional data analyst', candidateName: 'Fictional Candidate Two' });
     expect(byId.get(`feedback:${iv1}`)).toMatchObject({ candidateName: 'Fictional Candidate One', title: 'Fictional data analyst' });
     expect(byId.get(`feedback:${ivOther}`)).toMatchObject({ companyId: otherCompanyId, title: 'Fictional other-company role' });
-    expect(byId.get(`agencyReview:${dup1.submissionId}`)).toMatchObject({ title: 'Fictional data analyst', candidateName: 'Fictional Candidate One' });
+    expect(byId.get(`agencyReview:${dup1.submissionId}`)).toMatchObject({ title: 'Fictional data analyst', candidateName: 'Fictional Agency Person One' });
     expect(byId.get(`contractExpiry:${a1.contractId}`)?.title).toMatch(/^Fictional Agency \d+ · Fictional contract$/);
     expect(byId.get(`backgroundCheckAuthorisation:${awaiting}`)).toMatchObject({ candidateName: 'Fictional Checked One', applicationId: b1.applicationId });
     expect(byId.has(`backgroundCheckAuthorisation:${removedCheck}`)).toBe(true);
@@ -187,7 +195,7 @@ describe('the two-step personal to-dos read answers exactly what the single stat
 
     // A removed candidate: the offer keeps its item with the neutral label, the background check leaves the list.
     const [c3Candidate, b3Candidate] = await Promise.all([c3, b3].map(async (c) => (await owner.db.execute<{ id: string }>(sql`select candidate_id as id from recruitment_application where id = ${c.applicationId}::uuid`))[0].id));
-    await asOwner(sql`update recruitment_candidate set destroyed_at = now() where id = any(${`{${c3Candidate},${b3Candidate}}`}::uuid[])`);
+    await asOwner(sql`update recruitment_candidate set destroyed_at = now(), destroyed_by_user_id = ${base.adminUserId}::uuid where id = any(${`{${c3Candidate},${b3Candidate}}`}::uuid[])`);
     seen.length = 0;
     await compareAll('after removal');
     const after = new Map(seen.map((x) => [`${x.kind}:${x.id}`, x]));
