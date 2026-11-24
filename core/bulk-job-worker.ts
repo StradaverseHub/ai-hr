@@ -32,7 +32,9 @@ export type BulkJobRefused={refused:string;errors?:BulkJobRowError[];plan?:unkno
 /** `endChunk`: commit the chunk after this step (the step must not share its transaction with the next one).
  *  `metrics`: the step's own timing on the job's metrics; `add` names are running totals (they only grow, so the claim's
  *  greatest() merge keeps them), `max` names keep their largest value. */
-export type BulkJobStepOutcome={result?:unknown;counters?:Record<string,number>;endChunk?:boolean;metrics?:{add?:Record<string,number>;max?:Record<string,number>}}|void;
+/** `consumed` (atomic kinds only): this step also applied the next `consumed` steps of the chunk (its `following`); their
+ *  applied markers (result null) commit with it in the same transaction, so the chunk budget never splits them. */
+export type BulkJobStepOutcome={result?:unknown;counters?:Record<string,number>;endChunk?:boolean;consumed?:number;metrics?:{add?:Record<string,number>;max?:Record<string,number>}}|void;
 /** A worker write to its own job row (app.bulk_job_worker_update, 5013). Only the keys present change. `state` is
  * limited to the worker's forward transitions (queued→preparing; preparing→running|finalizing|completed|failed;
  * running→finalizing|completed; finalizing→running|completed); `expectState` makes the write a no-op (false) unless
@@ -119,8 +121,9 @@ type BulkJobHandlerBase<P>={
  settle?(ctx:SessionContext|null,job:BulkJobRow,unit:BulkJobSettleUnit):Promise<void>;
 };
 export type BulkJobHandler<P=any>=BulkJobHandlerBase<P>&{
- /** A step's write and its applied marker commit together. */
- applyStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<P>,cache:Map<string,unknown>):Promise<BulkJobStepOutcome>;
+ /** A step's write and its applied marker commit together. `following`: the chunk's next pending steps, already loaded
+  *  and verified against their seals (the steps an outcome's `consumed` may cover). */
+ applyStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<P>,cache:Map<string,unknown>,following?:readonly BulkJobStep<P>[]):Promise<BulkJobStepOutcome>;
  prepareStep?:never;
 };
 export type BulkJobPreparedStepHandler<P=any>=BulkJobHandlerBase<P>&{
@@ -430,17 +433,25 @@ async function chunkUnit(connection:postgres.ReservedSql,handler:WorkerHandler,c
    for(const [name,value] of Object.entries(outcome?.metrics?.add??{}))metricsAdd[name]=(metricsAdd[name]??0)+value;
    for(const [name,value] of Object.entries(outcome?.metrics?.max??{}))metricsMax[name]=Math.max(metricsMax[name]??0,value);
   };
-  for(const step of steps){
+  for(let index=0;index<steps.length;index++){
+   const step=steps[index];
    if(count>0&&performance.now()-started>=budget)break;
    kind=step.kind;
    if(handler.prepareStep&&prepared?.step.seq!==step.seq)throw new BulkJobConfigurationError('The pending step changed during preparation.');
-   const apply=prepared?.apply??((writeTx:Tx)=>handler.applyStepTx!(writeTx,ctx,job,step,cache));
+   const following=steps.slice(index+1);
+   const apply=prepared?.apply??((writeTx:Tx)=>handler.applyStepTx!(writeTx,ctx,job,step,cache,following));
    if(handler.mode==='atomic'){
     let outcome:BulkJobStepOutcome;
     try{outcome=await apply(tx);}
     catch(error){if(isTransient(handler,error))throw error;throw new BulkJobStepRefused(step,error);}
     await stepSet(tx,job.id,step.seq,{state:'applied',result:outcome?.result??null});
     counters=merge(counters,outcome?.counters);timing(outcome);
+    const consumed=outcome?.consumed??0;
+    if(consumed){
+     if(!Number.isSafeInteger(consumed)||consumed<0||consumed>following.length)throw new BulkJobConfigurationError('A step consumed steps the chunk did not load.');
+     await stepSet(tx,job.id,following.slice(0,consumed).map(s=>s.seq),{state:'applied',result:null});
+     count+=consumed;index+=consumed;
+    }
     if(outcome?.endChunk){count++;break;}
    }else{
     let outcome:BulkJobStepOutcome=undefined,refused:unknown=null,failed=false;
@@ -454,6 +465,7 @@ async function chunkUnit(connection:postgres.ReservedSql,handler:WorkerHandler,c
      await stepSet(tx,job.id,step.seq,{state:'failed',error:message});
      failures.push({rowNum:step.row_num??0,ref:handler.stepRef?.(step)??'',message});counters=merge(counters,{failed:1});
     }else{
+     if(outcome?.consumed)throw new BulkJobConfigurationError('Only an atomic kind may consume the steps after it.');
      await stepSet(tx,job.id,step.seq,{state:'applied',result:outcome?.result??null});
      counters=merge(counters,outcome?.counters);timing(outcome);
      if(outcome?.endChunk){count++;break;}
