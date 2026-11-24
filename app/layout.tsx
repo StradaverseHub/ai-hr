@@ -27,7 +27,6 @@ import { Suspense } from 'react';
 import { Providers } from './providers';
 import { OperatorShell } from '@/components/operator-shell';
 import { Sidebar } from '@/components/sidebar';
-import {letterNavigation} from '@/core/letter-navigation';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
@@ -54,7 +53,6 @@ import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator, requireAdmin, requireModule } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
-import {readShellNavigationAccess} from '@/core/shell-navigation-access';
 import { companyContextForPage } from '@/lib/scope';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {requestReadJoinEnabled,withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
@@ -62,8 +60,6 @@ import {requestReadJoinEnabled,withBackgroundReadWork,withSharedReadSnapshot} fr
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
 import {EMPTY_LIFECYCLE_MODULE_INBOX,lifecycleModuleInbox,type LifecycleModuleInbox} from './lifecycle/module-inbox';
-import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
-import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { recruitmentTeamPresence, referralEligible } from '@/packs/recruitment/service';
@@ -71,6 +67,7 @@ import type { NotificationTaskItem } from '@/components/notification-center';
 import { ShellNotificationCenter } from './shell-notification-center';
 import { bellNotificationScope } from './bell-notifications';
 import { shellApprovalResult, shellCanApprove, shellPendingTaskSources } from './shell-approval-facts-read';
+import { viewerAccessVersion, viewerLetterDestinations, viewerMenuProfile } from './viewer-menu-profile';
 import { refreshShellApprovalFactsAction } from './shell-facts-actions';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
@@ -204,7 +201,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // (AIHR_DEFAULT_REQUEST_READ_JOIN=on, db/shared-read.ts). Off, each owner keeps its own transaction, in parallel.
   const readFrame=async()=>{
     const context=companyContextForPage(session);
-    const lifecycleNavigation=lifecycleModuleNavigation(session);
+    // ADR 0181 Phase 3, decision 3: menu visibility comes from the viewer's cached menu profile (app/viewer-menu-profile.ts),
+    // keyed by the session claims and the tenant's access version, and never older than 60 s. Work queues and counts below
+    // are read live on every draw.
+    const accessVersion=viewerAccessVersion(session);
+    const menu=viewerMenuProfile(session,accessVersion);
+    const lifecycleNavigation=menu.then(profile=>profile.lifecycleNavigation);
     // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
     // cycle this OneHR administrator administers. No cycle, a viewer who is not a OneHR administrator, the module off
     // or a failed read all leave the pack's /performance.
@@ -234,15 +236,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       // own EMPLOYMENT and PERSON (lib/viewer.ts), never from lib/principals.ts: that list is the dev/demo
       // switcher and is empty on a real deployment. Memoised, so the notice popup shares the employment row.
       viewerIdentity(session),
-      readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
-      isModuleEnabledOrFalse(session,'employees')?context.then(({scopeIds})=>letterNavigation(session,scopeIds)):Promise.resolve([]),
-      isModuleEnabledOrFalse(session, 'rewards')
-        ? import('@/packs/rewards/service').then(({ rewardNavigation }) => rewardNavigation(session)).catch(() => [])
-        : Promise.resolve([]),
+      menu.then(profile=>profile.shellAccess),
+      isModuleEnabledOrFalse(session,'employees')?context.then(({scopeIds})=>viewerLetterDestinations(session,scopeIds,accessVersion)):Promise.resolve([]),
+      menu.then(profile=>profile.rewardDestinations),
       lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
       lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
       lifecycleNavigation,
-      lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
+      menu.then(profile=>profile.offboardingPostingsAccess),
       // Navigation and the floating launcher share the current Assistant grant read.
       assistantShellFor(session),
       handlesPrivateCases(session).catch(() => false),
