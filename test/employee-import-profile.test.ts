@@ -18,7 +18,7 @@ beforeAll(async()=>{await migrateTestDb();await resetDb();});
 afterAll(closeAll);
 
 const original=employeeImportJobHandler.beginChunkTx!;
-for(const variant of [{name:'baseline',marker:false,budget:100},{name:'marker',marker:true,budget:100},{name:'marker-1s',marker:true,budget:1000}])
+for(const variant of [{name:'trace',marker:true,budget:1000}])
 it(`profiles a staged employee import at the shape of a 70-company group: ${variant.name}`,async()=>{
  employeeImportJobHandler.chunkBudgetMs=variant.budget;
  employeeImportJobHandler.beginChunkTx=async(tx,c,j)=>{await original(tx,c,j);if(variant.marker)await tx.execute(sql`select set_config('app.bank_import_point_read','on',true)`);};
@@ -58,6 +58,10 @@ it(`profiles a staged employee import at the shape of a 70-company group: ${vari
  if(trackFunctions){await owner.client.unsafe(`alter system reset track_functions`);await owner.client`select pg_reload_conf()`;}
  const prior=new Map(functionsBefore.map(f=>[f.f,f]));
  const fnDelta=functions.map(f=>({f:f.f,calls:f.calls-(prior.get(f.f)?.calls??0),totalMs:Math.round(f.total-(prior.get(f.f)?.total??0)),selfMs:Math.round(f.self-(prior.get(f.f)?.self??0))})).filter(f=>f.calls>0);
+ const persons=sent.map((x,i)=>[x,i] as const).filter(([x])=>x.who==='app'&&/^insert into "person"/.test(x.text)).map(([,i])=>i);
+ const from=persons[20],to=persons[21];
+ const seq=sent.slice(from-30,to+5).map((x,i,a)=>`${i+from-30} ${x.who} ${Math.round(((a[i+1]?.at??x.at)-x.at)*100)/100} ${x.text.replace(/\s+/g,' ').slice(0,230)}`);
+ console.info('EMPLOYEE_IMPORT_TRACE\n'+seq.join('\n'));
  console.info('EMPLOYEE_IMPORT_PROFILE',variant.name,JSON.stringify({
   rows:ROWS,state:job.state,error:job.error,wallMs:Math.round(wall),cpuMs:Math.round(cpuMs),msPerRow:Math.round(wall/ROWS),
   appStatements:sent.filter(s=>s.who==='app'&&!bookkeeping.test(s.text.trim())).length,ownerStatements:sent.filter(s=>s.who==='owner').length,
