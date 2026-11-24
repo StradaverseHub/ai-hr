@@ -234,8 +234,12 @@ it('recalculates a 100-employee run set-based exactly as the per-employee path, 
  expect(job.metrics.reprocessGroups).toBeGreaterThan(0);
  expect(job.metrics.reprocessGroupEmployees+job.metrics.reprocessSingles).toBe(RUN);
  expect(job.metrics.reprocessSingles).toBeGreaterThanOrEqual(ADDED+MISSING_SALARY.size);
- // A refused pass is narrowed to the employee it names: each refusal costs at most one more per-employee transaction.
- expect(job.metrics.reprocessSingles).toBeLessThanOrEqual(ADDED+2*MISSING_SALARY.size+1);
+ // A refused pass is narrowed to the employee it names, so the per-employee transactions grow with the refusals and
+ // additions, never with the group size (before narrowing, a refused group sent all its employees: 58 of 100). Where the
+ // random ids place them decides the exact count; at most: each addition and named refusal itself, per refusal the
+ // group's first employee and a one-employee group before the named one, one employee left alone before each addition
+ // or named refusal, and the last employee.
+ expect(job.metrics.reprocessSingles).toBeLessThanOrEqual(ADDED+MISSING_SALARY.size+2*MISSING_SALARY.size+(ADDED+MISSING_SALARY.size)+1);
  // The run-level audit rows cover the same employees: one per employee before, one per group now.
  const auditA=await passAudit(a),auditB=await passAudit(b);
  expect(auditB.statusIds).toEqual(auditA.statusIds);
