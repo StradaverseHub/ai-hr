@@ -24,7 +24,7 @@
  * whose tag is a known client component and flag any prop whose value is an arrow function or a function
  * expression. That is exactly the shape React refuses.
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -185,7 +185,7 @@ describe('b55fdf33 · a server component may not pass functions to a client comp
  * it, so the page only broke once there was something to download. Types, the build and source-only tests all pass
  * it; render a link-styled button from a server file with `<Button asChild variant=… size=…><a …/></Button>`.
  */
-describe('production 2026-11-24 · a server file under app/ never calls buttonVariants()', () => {
+describe('production 2026-11-24 · a server file under app/ never calls a function from a client module', () => {
   it('button.tsx is still a client module (otherwise this guard can be retired)', () => {
     expect(isClientFile(readFileSync(join(ROOT, 'components/ui/button.tsx'), 'utf8'))).toBe(true);
   });
@@ -199,6 +199,63 @@ describe('production 2026-11-24 · a server file under app/ never calls buttonVa
         return !isClientFile(src) && /buttonVariants\s*\(/.test(src.replace(/\/\/.*$/gm, ''));
       })
       .map((file) => relative(ROOT, file));
+    expect(offenders).toEqual([]);
+  });
+
+  it('no server page, layout or template calls any non-component function exported from a client module', () => {
+    // The general rule behind buttonVariants: a 'use client' module's exports reach a server file as client
+    // references, so CALLING one throws at render. Rendering a capitalised export as JSX is fine and is not checked.
+    const resolveImport = (from: string, spec: string): string | null => {
+      const base = spec.startsWith('@/') ? join(ROOT, spec.slice(2)) : spec.startsWith('.') ? resolve(dirname(from), spec) : null;
+      if (!base) return null;
+      for (const c of [base, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts'), join(base, 'index.tsx')]) {
+        if (existsSync(c) && statSync(c).isFile()) return c;
+      }
+      return null;
+    };
+    /** name → whether the module that DEFINES it is a client module, following `export { x } from '…'`. */
+    const cache = new Map<string, Map<string, boolean>>();
+    const exportsOf = (file: string, seen = new Set<string>()): Map<string, boolean> => {
+      const hit = cache.get(file);
+      if (hit) return hit;
+      const out = new Map<string, boolean>();
+      if (seen.has(file)) return out;
+      seen.add(file);
+      const src = readFileSync(file, 'utf8');
+      const client = isClientFile(src);
+      for (const m of src.matchAll(/export\s+(?:async\s+)?function\s+(\w+)|export\s+(?:const|let)\s+(\w+)/g)) {
+        out.set(m[1] ?? m[2], client);
+      }
+      for (const m of src.matchAll(/export\s*\{([^}]+)\}\s*(?:from\s*['"]([^'"]+)['"])?/g)) {
+        const target = m[2] ? resolveImport(file, m[2]) : null;
+        const inner = target ? exportsOf(target, seen) : null;
+        for (const part of m[1].split(',').map((x) => x.trim()).filter((x) => x && !x.startsWith('type '))) {
+          const [orig, alias] = part.split(/\s+as\s+/).map((x) => x.trim());
+          if (inner?.has(orig)) out.set(alias ?? orig, inner.get(orig)!);
+          else if (!m[2]) out.set(alias ?? orig, client);
+        }
+      }
+      cache.set(file, out);
+      return out;
+    };
+    const servers = walk(join(ROOT, 'app')).filter((f) => /\/(page|layout|template)\.tsx$/.test(f));
+    expect(servers.length).toBeGreaterThan(300);
+    const offenders: string[] = [];
+    for (const file of servers) {
+      const src = readFileSync(file, 'utf8');
+      if (isClientFile(src)) continue;
+      const body = src.replace(/\/\/.*$/gm, '');
+      for (const m of src.matchAll(/import\s+(?!type\b)\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g)) {
+        const target = resolveImport(file, m[2]);
+        if (!target) continue;
+        const exported = exportsOf(target);
+        for (const part of m[1].split(',').map((x) => x.trim()).filter((x) => x && !x.startsWith('type '))) {
+          const [orig, alias] = part.split(/\s+as\s+/).map((x) => x.trim());
+          if (/^[A-Z]/.test(orig) || exported.get(orig) !== true) continue;
+          if (new RegExp(`(?<![\\w.])${alias ?? orig}\\s*\\(`).test(body)) offenders.push(`${relative(ROOT, file)} calls ${orig}()`);
+        }
+      }
+    }
     expect(offenders).toEqual([]);
   });
 
