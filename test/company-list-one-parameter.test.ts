@@ -54,6 +54,9 @@ describe('one company-list parameter for hot list reads',()=>{
  it.each(Object.keys(READERS))('%s: one statement shape for 1 and 71 companies',async name=>{
   expect(fixture.companyIds.length).toBeGreaterThanOrEqual(70);
   const read=READERS[name],all=[...fixture.companyIds],one=[fixture.companyIds[0]];
+  // Warm once: the first read in a file also fills per-process caches (one extra statement), which is not a
+  // per-company cost.
+  await read(one);
   const a=await observeStatements(()=>read(all)),o=await observeStatements(()=>read(one));
   expect(a.statements.length,`${name}: statements`).toBe(o.statements.length);
   expect(a.statements.map(s=>s.sql),`${name}: same statement text`).toEqual(o.statements.map(s=>s.sql));
