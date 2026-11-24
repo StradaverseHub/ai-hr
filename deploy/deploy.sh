@@ -563,6 +563,21 @@ else
   echo "     pnpm exec next start -H 0.0.0.0 -p \${PORT:-3000}"
 fi
 
+# Resident scheduled jobs (deploy/scheduled-jobs/README.md): the provisioning runner and the notification sweep in one
+# long-running user service of THIS deploy user. It loaded the previous release's code at its start, so restart it now
+# that the new code and schema are in place. try-restart leaves a host without the service untouched, and the old
+# crontab line or timer then keeps running the new files as before. No sudo: it is this user's own service.
+# Deliberately no new dstate phase (test/r291-detached-deploy.test.ts).
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+if systemctl --user cat aihr-scheduled-jobs.service >/dev/null 2>&1; then
+  if systemctl --user try-restart aihr-scheduled-jobs.service; then
+    echo "✅ Scheduled jobs restarted on this release. Logs: journalctl --user -u aihr-scheduled-jobs -f"
+  else
+    echo "⚠️  Scheduled jobs did not restart, so provisioning and the notification sweep may still run the previous" >&2
+    echo "    release's code. Finish with:  systemctl --user restart aihr-scheduled-jobs   (then journalctl --user -u aihr-scheduled-jobs)" >&2
+  fi
+fi
+
 if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
   dstate phase ci-build-health
   node --import tsx .github/ci/staging-build-install.mjs confirm-runtime "$AIHR_SELECTED_DEPLOY_REF" "$AIHR_SELECTED_CI_BUILD_INSTALL" "$AIHR_SELECTED_TESTING_BUILD_RECORD"

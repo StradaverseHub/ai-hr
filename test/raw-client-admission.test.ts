@@ -31,7 +31,7 @@ describe('every raw postgres client query is admitted before it borrows a connec
   }
  });
  it('makes every deployed Node worker declare a counted connection budget',()=>{
-  const units=execFileSync('git',['ls-files','deploy/systemd/*.service','deploy/entra/aihr-entra.service'],{cwd:ROOT,encoding:'utf8'}).split('\n').filter(Boolean);
+  const units=execFileSync('git',['ls-files','deploy/systemd/*.service','deploy/entra/aihr-entra.service','deploy/scheduled-jobs/*.service'],{cwd:ROOT,encoding:'utf8'}).split('\n').filter(Boolean);
   const nodeUnits=units.filter(unit=>/^ExecStart=.*\bnode\b.*--import tsx/m.test(readFileSync(ROOT+unit,'utf8')));
   expect(nodeUnits.length).toBeGreaterThanOrEqual(7);
   for(const unit of nodeUnits){
