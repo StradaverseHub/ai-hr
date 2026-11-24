@@ -217,13 +217,39 @@ function usesEmploymentTenantPointIndex(node:PlanNode,point:EmploymentPoint){
 const matchedRelations=['assignment','company','department','employment','person'] as const;
 const matchedScans=['Seq Scan','Index Scan'];
 const matchedNodes=['Sort','Result','Nested Loop','ProjectSet',...matchedScans];
-const knownMatchedPaths={
- 'old-assignment-first':'d7725d1f6e9483cfe3c4127524d68a17a3051cf18f011e4ad46e031d677b7f74',
- 'old-employment-first':'89400a082d46fb1d76e97635b382f8c5bef20ea8ce88a5c6f15098420e7b73cb',
- 'candidate-assignment-first-primary-key':'160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96',
- 'candidate-assignment-first-tenant-key':'ccdbf6250eff201c6570ededb10fd765a9bcdd4735affb3e4c7fa1dc1d49941f',
-} as const;
-type MatchedPath=keyof typeof knownMatchedPaths;
+/* Reviewed active shapes. Each digest names the hosted runs whose raw plans it was reviewed from; a digest is never
+ * moved to another path or run.
+ * 9 Nov 2026 (runs 42567992502 and 42565465670, docs/qualification/employee-unicode-matched-work-parity-source-20261109.json):
+ *  raw digests, 19 active nodes per arm. They stay for that record and cannot recur, because the policies have changed.
+ * 24 Nov 2026, point-key digests. Runs 45391738739 and 45401820399 on main c6cba09a0 with PR 287 b31933569 and PR 289
+ *  7437f24b8; the old arm also ran in 45388651788, PR 289 alone, whose unlimited candidate PR 287 replaced. The
+ *  staged-import policies (5010, 11 Nov) add a hashed import-pending Employment set under Assignment's policy and
+ *  import-attempt predicates to every policy: 21 active nodes per arm. The `employment e` scan is the person policy's
+ *  visible-Employment sub-plan, with 0 loops. The product statement is now the first witness limited to represented
+ *  companies (PR 287): Company is the same one-row Seq Scan with the extra `company.id = ANY(...)` filter.
+ *  Review of both arms in every run: Company, then Department (2 rows), then the Assignment witness per Department (Seq
+ *  Scan, 2 loops, 0 rows, 25000 removed each). Then one Employment and one Person point lookup (1 loop, 1 row, 0
+ *  removed), and the same three policy expansions (import-pending set 1×0, visible Employment 1×50000 twice). Root
+ *  shared hits are equal between the arms of each run (4635, 4636), with no reads, temp blocks or new per-row scans.
+ *  The planner picks each point lookup's key per run between the relation's primary key and its unique (id, tenant_id)
+ *  key. The candidate used company_org_employment_tenant_uq with person_pkey (45391738739), and both tenant keys
+ *  (45401820399). Old used both primary keys. A point-key digest therefore names the relation key, and the tenant
+ *  predicate is held in the index condition or the filter, never both. */
+const knownMatchedPaths:Record<MatchedPath,{raw:readonly string[];pointKey:readonly string[]}>={
+ 'old-assignment-first':{raw:['d7725d1f6e9483cfe3c4127524d68a17a3051cf18f011e4ad46e031d677b7f74'],
+  pointKey:['86bc4264ea98217ec19fbd3cab14183206b25b4377bde2369fc84292c5bc9ead']},
+ 'old-employment-first':{raw:['89400a082d46fb1d76e97635b382f8c5bef20ea8ce88a5c6f15098420e7b73cb'],pointKey:[]},
+ 'candidate-assignment-first-primary-key':{raw:['160798ba0e9b1612178ba2bab626d93f286f20c2ea95b73a6bbd980cf3c7ed96'],pointKey:[]},
+ 'candidate-assignment-first-tenant-key':{raw:['ccdbf6250eff201c6570ededb10fd765a9bcdd4735affb3e4c7fa1dc1d49941f'],pointKey:[]},
+ 'candidate-assignment-first-point-key':{raw:[],pointKey:['ea78c56d2e3e0b3a307a491f2e0f28fd86adb8a01085aef0f516841d7b468168']},
+};
+/** Unique keys that extend a relation's primary key: a lookup by id through either finds the same one row. */
+const pointLookupKeys:Record<string,string>={employment_pkey:'employment-id',company_org_employment_tenant_uq:'employment-id',
+ person_pkey:'person-id',person_id_tenant_uq:'person-id'};
+type MatchedPath='old-assignment-first'|'old-employment-first'|'candidate-assignment-first-primary-key'|
+ 'candidate-assignment-first-tenant-key'|'candidate-assignment-first-point-key';
+const candidatePaths:readonly MatchedPath[]=['candidate-assignment-first-primary-key','candidate-assignment-first-tenant-key',
+ 'candidate-assignment-first-point-key'];
 type MatchedScope={label:'old-matched'|'candidate-matched';tenant:string;company:string};
 const matchedVariableCounters=new Set(['Startup Cost','Total Cost','Plan Rows','Plan Width','Shared Hit Blocks','Shared Read Blocks',
  'Rows Removed by Filter','Rows Removed by Index Recheck']);
@@ -234,8 +260,25 @@ type MatchedFacetWork={
 };
 type MatchedFacetArm={path:MatchedPath;label:MatchedScope['label'];work:MatchedFacetWork};
 
-/** Identify a reviewed access path while retaining native reference relationships. */
-function knownMatchedPath(root:PlanNode,scope:MatchedScope):MatchedPath|null{
+/** A facet point lookup with its key named by relation and its tenant predicate placed out of the comparison, or the
+ * node unchanged when it is not exactly a primary-key or tenant-key lookup holding that predicate once. */
+function pointKeyed(node:PlanNode,tenant:string):PlanNode{
+ const relation=node['Relation Name'],index=node['Index Name'],condition=node['Index Cond'],filter=node.Filter;
+ if(node['Node Type']!=='Index Scan'||(relation!=='employment'&&relation!=='person')||node.Alias!==relation||
+    typeof index!=='string'||pointLookupKeys[index]!==relation+'-id'||typeof condition!=='string'||typeof filter!=='string')return node;
+ const term=`(${relation}.tenant_id = '${tenant}'::uuid)`,count=(text:string)=>text.split(term).length-1;
+ if(count(condition)+count(filter)!==1)return node;
+ const suffix=' AND '+term+')';
+ if(count(condition)===1){
+  if(!condition.startsWith('((')||!condition.endsWith(suffix))return node;
+  return {...node,'Index Name':pointLookupKeys[index],'Index Cond':condition.slice(1,-suffix.length)};
+ }
+ const removed=filter.includes(term+' AND ')?filter.replace(term+' AND ',''):filter.replace(' AND '+term,'');
+ return removed===filter?node:{...node,'Index Name':pointLookupKeys[index],Filter:removed};
+}
+
+/** Normalized active-shape digest, retaining native reference relationships; null when a counter is malformed. */
+function matchedShapeHash(root:PlanNode,scope:Pick<MatchedScope,'tenant'|'company'>,pointKey=false):string|null{
  const references=new Map<string,number>(),shape:unknown[]=[];
  const normalize=(value:unknown):unknown=>{
   if(Array.isArray(value))return value.map(normalize);
@@ -250,10 +293,10 @@ function knownMatchedPath(root:PlanNode,scope:MatchedScope):MatchedPath|null{
  function walk(node:PlanNode,depth:number):boolean{
   if(node['Actual Loops']===0)return (node.Plans??[]).every(child=>child['Actual Loops']===0&&walk(child,depth+1));
   const scan=matchedScans.includes(String(node['Node Type']));
-  const fields=[];
-  for(const key of Object.keys(node).sort()){
+  const fields=[],compared=pointKey?pointKeyed(node,scope.tenant):node;
+  for(const key of Object.keys(compared).sort()){
    if(key==='Plans')continue;
-   const value=node[key];
+   const value=compared[key];
    const measured=matchedVariableCounters.has(key)||(scan&&(key==='Actual Loops'||key==='Actual Rows'));
    if(measured&&(typeof value!=='number'||!Number.isFinite(value)||value<0))return false;
    fields.push([key,measured?null:normalize(value)]);
@@ -261,16 +304,16 @@ function knownMatchedPath(root:PlanNode,scope:MatchedScope):MatchedPath|null{
   shape.push([depth,fields]);
   return (node.Plans??[]).every(child=>walk(child,depth+1));
  }
- if(!walk(root,0))return null;
- const hash=digest(JSON.stringify(shape));
- if(scope.label==='old-matched'){
-  if(hash===knownMatchedPaths['old-assignment-first'])return 'old-assignment-first';
-  if(hash===knownMatchedPaths['old-employment-first'])return 'old-employment-first';
- }else if(scope.label==='candidate-matched'){
-  if(hash===knownMatchedPaths['candidate-assignment-first-primary-key'])return 'candidate-assignment-first-primary-key';
-  if(hash===knownMatchedPaths['candidate-assignment-first-tenant-key'])return 'candidate-assignment-first-tenant-key';
- }
- return null;
+ return walk(root,0)?digest(JSON.stringify(shape)):null;
+}
+
+/** Identify a reviewed access path. */
+function knownMatchedPath(root:PlanNode,scope:MatchedScope):MatchedPath|null{
+ const raw=matchedShapeHash(root,scope),pointKey=matchedShapeHash(root,scope,true);
+ if(raw===null||pointKey===null)return null;
+ const paths:readonly MatchedPath[]=scope.label==='old-matched'?['old-assignment-first','old-employment-first']
+  :scope.label==='candidate-matched'?candidatePaths:[];
+ return paths.find(path=>knownMatchedPaths[path].raw.includes(raw)||knownMatchedPaths[path].pointKey.includes(pointKey))??null;
 }
 
 function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:PlanNode[],scope:MatchedScope):MatchedFacetArm|null{
@@ -285,15 +328,27 @@ function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:Pl
  if(!path)return null;
  const opposite=scope.label==='old-matched'?'candidate-matched':'old-matched';
  expect(knownMatchedPath(root,{...scope,label:opposite})).toBeNull();
- const [result]=root.Plans??[],[join]=result.Plans??[];
+ // Mutate the active outer Result. Since 5010 the root also carries an unexecuted import-release InitPlan, which
+ // the shape skips, so a mutation there would prove nothing.
+ const children=root.Plans??[],at=children.findIndex(child=>child['Parent Relationship']==='Outer'&&child['Actual Loops']===1);
+ if(at<0)return null;
+ const result=children[at],[join]=result.Plans??[];
+ const replaced=(node:PlanNode)=>({...root,Plans:children.map((child,index)=>index===at?node:child)});
  const withoutCounter={...result};delete withoutCounter['Shared Hit Blocks'];
  for(const changed of [
-  {...root,Plans:[result,{...result,Plans:[],'Actual Loops':50000}]},
-  {...root,Plans:[{...result,Plans:[join,{...join,Plans:[]}]}]},
-  {...root,Plans:[{...result,'One-Time Filter':String(result['One-Time Filter'])+' AND true'}]},
-  {...root,Plans:[withoutCounter]},
+  {...root,Plans:[...children,{...result,Plans:[],'Actual Loops':50000}]},
+  replaced({...result,Plans:[join,{...join,Plans:[]}]}),
+  replaced({...result,'One-Time Filter':String(result['One-Time Filter'])+' AND true'}),
+  replaced(withoutCounter),
  ])expect(knownMatchedPath(changed,scope)).toBeNull();
- const access=active.filter(node=>matchedScans.includes(String(node['Node Type'])));
+ // Row-security policies reach their own relations through sub-plans under policy aliases (the person policy's
+ // Employment check is `employment e`). That is policy work, not facet access: one scan per relation counts the
+ // facet's own aliases only. Any other aliased scan is unknown work and refuses.
+ const scansOf=active.filter(node=>matchedScans.includes(String(node['Node Type'])));
+ const policyScan=(node:PlanNode)=>node['Parent Relationship']==='SubPlan'&&typeof node['Relation Name']==='string'&&
+  typeof node.Alias==='string'&&node.Alias!==node['Relation Name'];
+ if(scansOf.some(node=>node.Alias!==node['Relation Name']&&!policyScan(node)))return null;
+ const access=scansOf.filter(node=>!policyScan(node));
  if(access.length!==matchedRelations.length)return null;
  const scans:MatchedAccess[]=[];
  for(const relation of matchedRelations){
@@ -311,7 +366,10 @@ function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:Pl
   const loops=node['Actual Loops'] as number,rows=node['Actual Rows'] as number;
   if(node['Node Type']==='ProjectSet'){
    const output=node.Output;
-   if(!Array.isArray(output)||output.length!==1||typeof output[0]!=='string'||!/^unnest\(\$\d+\)$/.test(output[0]))return null;
+   // Policy expansions: the visible-employment arrays and, since the staged import policies (5010, 11 Nov 2026), the
+   // hashed import-pending Employment set that Assignment's policy excludes.
+   if(!Array.isArray(output)||output.length!==1||typeof output[0]!=='string'||
+      !/^unnest\((?:\$\d+|app\.import_pending_employment_ids\(\))\)$/.test(output[0]))return null;
    policy.push([loops,rows]);
   }
   if(node['Node Type']==='Nested Loop'){
@@ -327,7 +385,9 @@ function matchedFacetWork(document:Record<string,unknown>,root:PlanNode,nodes:Pl
 
 function matchedFacetOutcome(old:MatchedFacetWork|null,candidate:MatchedFacetWork|null,elapsed:{ordinary:boolean;instrumented:boolean}){
  if(!old||!candidate)return 'refused';
- if(JSON.stringify(old)===JSON.stringify(candidate))return 'equivalent-work';
+ const pointClass=(work:MatchedFacetWork)=>({...work,access:work.access.map(entry=>
+  ({...entry,index:entry.index===null?null:pointLookupKeys[entry.index]??entry.index}))});
+ if(JSON.stringify(pointClass(old))===JSON.stringify(pointClass(candidate)))return 'equivalent-work';
  if(candidate.access[0].loops<old.access[0].loops&&candidate.sharedHits+candidate.sharedReads<old.sharedHits+old.sharedReads&&
     candidate.access.slice(1).every((entry,index)=>{
      const previous=old.access[index+1];
@@ -340,16 +400,18 @@ function matchedFacetOutcome(old:MatchedFacetWork|null,candidate:MatchedFacetWor
 
 function correlatedMatchedOutcome(old:MatchedFacetArm|null,candidate:MatchedFacetArm|null,elapsed:{ordinary:boolean;instrumented:boolean}){
  if(!old||!candidate||old.label!=='old-matched'||candidate.label!=='candidate-matched')return 'refused';
- const parity=old.path==='old-assignment-first'&&candidate.path==='candidate-assignment-first-primary-key';
+ // Parity needs equal counters, with each point lookup through its primary key or unique (id, tenant_id) key.
+ const parity=old.path==='old-assignment-first'&&
+  candidatePaths.includes(candidate.path);
  const changedWork=old.path==='old-employment-first'&&
-  (candidate.path==='candidate-assignment-first-primary-key'||candidate.path==='candidate-assignment-first-tenant-key');
+  candidatePaths.includes(candidate.path);
  if(!parity&&!changedWork)return 'refused';
  const outcome=matchedFacetOutcome(old.work,candidate.work,elapsed);
  if((parity&&outcome==='equivalent-work')||(changedWork&&outcome==='improved'))return outcome;
  return 'refused';
 }
 
-function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,sparseCount?:number,point?:EmploymentPoint,matched?:MatchedScope){
+function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:number,tenant:string,sparseCount?:number,point?:EmploymentPoint,matched?:MatchedScope){
  if(!Array.isArray(raw)||raw.length!==1||!raw[0]||typeof raw[0]!=='object')throw new Error('Unexpected native facet plan envelope');
  const document=raw[0] as Record<string,unknown>;
  const measure=(value:unknown)=>{
@@ -391,11 +453,11 @@ function summarizePlan(raw:unknown,assignmentFirst:boolean,maxAssignmentLoops:nu
  return {planningMs:measure(document['Planning Time']),executionMs:measure(document['Execution Time']),nodes,
   jitReported:Object.hasOwn(document,'JIT'),assignmentNodes:assignments.map(({qual:_qual,...value})=>value),correlatedWitnesses:witnesses,
   witnessLoops,indexPaths,sharedTraffic:measure(root['Shared Hit Blocks'])+measure(root['Shared Read Blocks']),
-  ...(matched?{matchedWork:matchedFacetWork(document,root,shapeNodes,matched)}:{}),
-  pathRefusals:sparseCount===undefined?[]:sparsePathRefusals(sparseCount,shapeNodes,root,measure,point)};
+  ...(matched?{matchedShape:{raw:matchedShapeHash(root,matched),pointKey:matchedShapeHash(root,matched,true)},matchedWork:matchedFacetWork(document,root,shapeNodes,matched)}:{}),
+  pathRefusals:sparseCount===undefined?[]:sparsePathRefusals(sparseCount,shapeNodes,root,measure,tenant,point)};
 }
 
-function sparsePathRefusals(expected:number,nodes:PlanNode[],root:PlanNode,measure:(value:unknown)=>number,point?:EmploymentPoint){
+function sparsePathRefusals(expected:number,nodes:PlanNode[],root:PlanNode,measure:(value:unknown)=>number,tenant:string,point?:EmploymentPoint){
  const active=nodes.filter(node=>measure(node['Actual Loops'])>0),refusals:string[]=[];
  const once=(matches:PlanNode[])=>matches.length===1&&measure(matches[0]['Actual Loops'])===1;
  const reads=(name:string)=>active.filter(node=>node['Node Type']==='CTE Scan'&&node['CTE Name']===name);
@@ -424,6 +486,12 @@ function sparsePathRefusals(expected:number,nodes:PlanNode[],root:PlanNode,measu
   const condition=text.replace(/[()\s]/g,'');
   return condition===left+'='+right||condition===right+'='+left;
  };
+ // 24 Nov 2026: the planner also reaches Person through its unique (id, tenant_id) key (run 45401820399, every
+ // product epoch). The same one row per member, with this fixture's tenant moved from the filter into the condition.
+ const personTenantKey=(text:string,person:string,member:string)=>{
+  const tenantTerm=` AND (${person}.tenant_id = '${tenant}'::uuid))`;
+  return text.startsWith('((')&&text.endsWith(tenantTerm)&&equality(text.slice(1,-tenantTerm.length),person+'.id',member+'.person_id');
+ };
  const employments=witnesses(authority[0],'employment'),[employmentNode]=employments;
  const people=witnesses(authority[0],'person'),[personNode]=people;
  const employmentAlias=String(employmentNode?.Alias),personAlias=String(personNode?.Alias);
@@ -432,7 +500,8 @@ function sparsePathRefusals(expected:number,nodes:PlanNode[],root:PlanNode,measu
     expected===1&&point&&usesEmploymentTenantPointIndex(employmentNode,point)))
   refusals.push('sparse-employment-primary-path');
  if(people.length!==1||personNode['Actual Loops']!==expected||personNode['Actual Rows']!==1||
-  !byIndex(personNode,['person_pkey'],condition=>equality(condition,personAlias+'.id',employmentAlias+'.person_id')))
+  !(byIndex(personNode,['person_pkey'],condition=>equality(condition,personAlias+'.id',employmentAlias+'.person_id'))||
+    byIndex(personNode,['person_id_tenant_uq'],condition=>personTenantKey(condition,personAlias,employmentAlias))))
   refusals.push('sparse-person-primary-path');
  const assignments=witnesses(pairs[0],'assignment'),[assignmentNode]=assignments;
  if(assignments.length!==1||assignmentNode['Actual Loops']!==expected||assignmentNode['Actual Rows']!==1||
@@ -553,6 +622,9 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
  }};
  const persist=()=>{
   const detail=JSON.stringify(metadata);
+  // 24 Nov 2026: the 64KiB cap stays. Since the 5010 import and 7210 company-access policies the catalogue in each
+  // application receipt is about 12KB, so only the first receipt keeps it whole; later receipts, and the final
+  // receipts asserted equal to their starting receipt, keep digests.
   if(Buffer.byteLength(detail)>65536)throw new Error('Private facet metadata exceeds 64KiB');
   const plans=JSON.stringify(rawPlans);
   if(Buffer.byteLength(plans)>4*1024*1024)throw new Error('Private facet plans exceed 4MiB');
@@ -620,10 +692,12 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   expect(identity.cluster).toMatch(/^\d+$/);expect(identity.postmasterStart).toMatch(/^\d+(?:\.\d+)?$/);
   assertBackend(identity);
  };
+ const receiptSeal=(identity:AppFacts)=>({pid:identity.pid,statementTimeout:identity.statementTimeout,
+  catalogueSha256:digest(JSON.stringify(identity.catalogue)),sha256:digest(JSON.stringify(identity))});
  const recordIdentity=(identity:AppFacts,ms:string)=>{
   if(!identity)throw new Error('Native application realm is missing');
   assertBackend(identity);identities.push(identity);
-  if(identityReceipts.length<2)identityReceipts.push(identity);
+  if(!identityReceipts.length)identityReceipts.push(identity);
   else{
    const {catalogue,...rest}=identity;
    identityReceipts.push({...rest,catalogueSha256:digest(JSON.stringify(catalogue))});
@@ -665,7 +739,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
   if(rawPlans.length>=10||bytes>1024*1024)throw new Error('Native facet plan inventory or size refused');
   rawPlans.push({label,raw});persist();
   const matched:MatchedScope|undefined=label==='old-matched'||label==='candidate-matched'?{label,tenant,company:b.companyId}:undefined;
-  const summary=summarizePlan(raw,first,loops,sparseCount,point,matched);
+  const summary=summarizePlan(raw,first,loops,tenant,sparseCount,point,matched);
   state.plans.push({label,wallMs,...summary});persist();
   return summary;
  };
@@ -698,12 +772,13 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    step(3000,'matched final statistics reset');await tx.execute(sql`select pg_stat_clear_snapshot()`);
    step(3000,'matched final native metadata');const [after]=await tx.execute<AppFacts>(appFacts);
    const {bound:_bound,...startFacts}=start;
-   expect(after).toEqual({...startFacts,statementTimeout:'3s'});metadata.matchedFinal=after;
+   expect(after).toEqual({...startFacts,statementTimeout:'3s'});metadata.matchedFinal=receiptSeal(after);
    state.matchedImprovement={ordinary:state.ordinaryMs.candidate<state.ordinaryMs.old,instrumented:candidatePlan.executionMs<oldPlan.executionMs};
    const oldArm=oldPlan.matchedWork??null,candidateArm=candidatePlan.matchedWork??null;
    state.matchedOutcome=correlatedMatchedOutcome(oldArm,candidateArm,state.matchedImprovement);
    metadata.matchedWorkOutcome={outcome:state.matchedOutcome,
     oldPath:oldArm?.path??null,candidatePath:candidateArm?.path??null,
+    oldShape:oldPlan.matchedShape??null,candidateShape:candidatePlan.matchedShape??null,
     elapsed:state.matchedOutcome==='improved'?'both-faster-in-this-run':'single-pair-inconclusive'};
    const oldWork=oldArm?.work;
    if(oldWork){
@@ -720,13 +795,22 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
     const oldHeavy:MatchedFacetArm={...oldLight,path:'old-employment-first',work:moreLoops};
     const primaryKey:MatchedFacetArm={path:'candidate-assignment-first-primary-key',label:'candidate-matched',work:oldWork};
     const tenantKey:MatchedFacetArm={...primaryKey,path:'candidate-assignment-first-tenant-key'};
+    const pointKeyArm:MatchedFacetArm={...primaryKey,path:'candidate-assignment-first-point-key'};
+    expect(correlatedMatchedOutcome(oldLight,pointKeyArm,opposed)).toBe('equivalent-work');
+    expect(correlatedMatchedOutcome(pointKeyArm,oldLight,bothFaster)).toBe('refused');
     expect(correlatedMatchedOutcome(oldLight,primaryKey,opposed)).toBe('equivalent-work');
-    expect(correlatedMatchedOutcome(oldLight,tenantKey,bothFaster)).toBe('refused');
+    expect(correlatedMatchedOutcome(oldLight,tenantKey,opposed)).toBe('equivalent-work');
+    const keyed=(work:MatchedFacetWork,relation:string,index:string)=>({...work,access:work.access.map(entry=>
+     entry.relation===relation?{...entry,index}:entry)});
+    expect(correlatedMatchedOutcome(oldLight,{...tenantKey,work:keyed(oldWork,'employment','company_org_employment_tenant_uq')},opposed)).toBe('equivalent-work');
+    expect(correlatedMatchedOutcome(oldLight,{...tenantKey,work:keyed(oldWork,'person','person_id_tenant_uq')},opposed)).toBe('equivalent-work');
+    expect(correlatedMatchedOutcome(oldLight,{...tenantKey,work:keyed(oldWork,'employment','employment_person_idx')},bothFaster)).toBe('refused');
+    expect(correlatedMatchedOutcome(oldLight,{...tenantKey,work:keyed(oldWork,'person','employment_pkey')},bothFaster)).toBe('refused');
     expect(correlatedMatchedOutcome(primaryKey,oldHeavy,bothFaster)).toBe('refused');
     expect(correlatedMatchedOutcome(null,primaryKey,bothFaster)).toBe('refused');
     expect(correlatedMatchedOutcome({...oldHeavy,work:oldWork},primaryKey,bothFaster)).toBe('refused');
     expect(correlatedMatchedOutcome({...oldLight,work:moreLoops},primaryKey,bothFaster)).toBe('refused');
-    for(const light of [primaryKey,tenantKey]){
+    for(const light of [primaryKey,tenantKey,pointKeyArm]){
      expect(correlatedMatchedOutcome(oldHeavy,light,bothFaster)).toBe('improved');
      expect(correlatedMatchedOutcome(oldHeavy,light,opposed)).toBe('refused');
      expect(correlatedMatchedOutcome(oldHeavy,light,{ordinary:true,instrumented:false})).toBe('refused');
@@ -909,7 +993,7 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
    laterStep('final stress application identity');
    const [final]=await tx.execute<AppFacts>(appFacts);
    const {prepared:_prepared,bound:_bound,...initial}=identity;
-   metadata.stressFinal=final;persist();
+   metadata.stressFinal=receiptSeal(final);persist();
    expect(final).toEqual({...initial,statementTimeout:'1s'});
    fit(activeEnd,1000,'stress transaction finalization');
   },activeEnd);
