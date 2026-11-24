@@ -12099,7 +12099,10 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
         employmentId: employment.id,
         name: person.fullName,
         employeeCode: employment.employeeCode,
-        terminatedOn: employment.terminatedOn,
+        // 7da649d3 — the payroll last day (least of terminated_on, resignation_date, last_working_date), the
+        // same end the run prorates to, so a leaver whose termination is still scheduled is listed in the
+        // month they leave rather than only after the sweep writes terminated_on.
+        terminatedOn: payrollEmploymentEnd,
         basic: compensation.basicSalary,
       })
       .from(employment)
@@ -12115,8 +12118,8 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
           // reason the plan insisted each of the six be decided on its own rather than replaced together.
           //
           // This is the LEAVERS SWEEP: who is being terminated inside this period, and therefore what
-          // final settlement (notice, leave encashment) their employer owes them. It is keyed on
-          // `terminated_on`, an event that happens ONCE, to the employment as it stands at that moment,
+          // final settlement (notice, leave encashment) their employer owes them. It is keyed on the
+          // exit (the payroll last day since 7da649d3), an event that happens ONCE, to the employment as it stands at that moment,
           // under the entity that holds it then — which is `employment.company_id` by definition.
           //
           // Widening it to the dated history would put a leaver on the advisory of an entity they had
@@ -12126,8 +12129,8 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
           // (which the segmented run pays) and no termination settlement at all. The dated question is
           // the wrong question here; the column is the right answer.
           eq(employment.companyId, batch.companyId),
-          gte(employment.terminatedOn, start),
-          lte(employment.terminatedOn, end),
+          sql`${payrollEmploymentEnd} >= ${start}::date`,
+          sql`${payrollEmploymentEnd} <= ${end}::date`,
         ),
       );
     if (leavers.length === 0) return [];

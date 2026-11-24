@@ -1465,7 +1465,12 @@
         "pendingMovementTitle": "Perubahan berjadual yang belum berkuat kuasa",
         "pendingMovementItem": "{kind} — berkuat kuasa {date}",
         "pendingMovementNote": "Nilai di bawah ialah nilai hari ini. Ia tidak akan berubah sehingga tarikh masing-masing tiba.",
-        "resignationMovementNote": "Tarikh peletakan jawatan diurus melalui Pergerakan. Peristiwa tertunda dan akan datang tidak menggantikan maklumat yang sedang berkuat kuasa.",
+        "pendingExitTitle": "{kind} dijadualkan",
+        "pendingExitLastDay": "Hari bekerja terakhir {lastDay} · pekerjaan tamat {date}",
+        "pendingExitLastDayOnly": "Hari bekerja terakhir {lastDay}",
+        "pendingExitPlacement": "Jabatan, jawatan dan penyelia langsung kekal sama sehingga tarikh itu",
+        "pendingExitPayroll": "Gaji dibayar sehingga hari bekerja terakhir",
+        "resignationMovementNote": "Tarikh peletakan jawatan diurus melalui Pergerakan. Penamatan atau Peletakan Jawatan yang dijadualkan memaparkan tarikhnya di sini sebaik sahaja disimpan, dan pekerja berada dalam tempoh notis sehingga hari bekerja terakhir.",
         "resignationMovementLink": "Rekod atau betulkan peletakan jawatan dalam Pergerakan",
         "contractNumber": "Contract number"
       },
@@ -2230,6 +2235,7 @@
       "resignationInformation": {
         "readOnly": "Maklumat peletakan jawatan diselenggara melalui Pergerakan.",
         "movementSource": "Peristiwa Pergerakan",
+        "scheduledSource": "Dijadualkan dalam Pergerakan · berkuat kuasa {date}",
         "legacySource": "Rekod lama — tiada peristiwa Pergerakan asal",
         "emptySource": "Tiada tarikh direkodkan",
         "unknownSource": "Tidak direkodkan dalam peristiwa ini"
