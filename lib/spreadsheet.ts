@@ -77,6 +77,50 @@ export async function workbookToCsvText(buf: ArrayBuffer | Uint8Array): Promise<
   return (await workbookToCsvTexts(buf)).first;
 }
 
+function csvCell(cell: Cell): Cell {
+  if (cell instanceof Date) return toIsoDate(cell);
+  if (typeof cell === 'number') return numberToPlainString(cell);
+  return cell;
+}
+
+/** Read the named data worksheet (falling back to the first for older workbooks). Count occupied
+ * rows instead of clipping at a physical row number or walking the worksheet's declared rectangle. */
+export async function namedWorksheetToCsvText(
+  bytes: Uint8Array,
+  name: string,
+  limits: {maxRows: number; maxCells: number},
+): Promise<string> {
+  const XLSX = await import('xlsx');
+  const {SheetNames} = XLSX.read(bytes, {type: 'array', bookSheets: true});
+  const wanted = name.trim().toLowerCase();
+  const index = Math.max(0, SheetNames.findIndex(sheet => sheet.trim().toLowerCase() === wanted));
+  if (SheetNames[index] === undefined) throw Error('EMPTY_SHEET');
+  const {Sheets} = XLSX.read(bytes, {type: 'array', sheets: index, cellDates: true, cellHTML: false, cellText: false});
+  const sheet = Sheets[SheetNames[index]];
+  if (!sheet?.['!ref']) throw Error('EMPTY_SHEET');
+  const firstColumn = XLSX.utils.decode_range(sheet['!ref']).s.c;
+  const rows = new Map<number, Cell[]>();
+  let width = 0;
+  for (const address in sheet) {
+    if (address.startsWith('!')) continue;
+    const cell = sheet[address] as import('xlsx').CellObject;
+    if (cell.t === 'e' || cell.t === 'z' || cell.v == null || String(cell.v).trim() === '') continue;
+    const {r, c} = XLSX.utils.decode_cell(address);
+    const column = c - firstColumn;
+    let row = rows.get(r);
+    if (!row) {
+      row = [];
+      rows.set(r, row);
+      if (rows.size > limits.maxRows) throw Error('TOO_MANY_ROWS');
+    }
+    row[column] = csvCell(cell.v);
+    width = Math.max(width, column + 1);
+  }
+  if (!rows.size) throw Error('EMPTY_SHEET');
+  if (width > 256 || rows.size * width > limits.maxCells) throw Error('FILE_TOO_LARGE');
+  return rowsToCsvText([...rows].sort(([a], [b]) => a - b).map(([, row]) => row));
+}
+
 /**
  * Item 2983802f — the same single decoder, reading the first worksheet AND any NAMED extra sheets.
  *
@@ -97,10 +141,7 @@ export async function workbookToCsvTexts(
   allowedSheetNames?:readonly string[],
   captureSource=false,
   preparePersonnel=false,
-  /** `sheet` (board 0ec0ee00): bound ONLY this worksheet (the import sheet; the first sheet when it is absent), by the
-   *  rows that hold a value, and decode it as `first`. Reference sheets in the same workbook are never measured or
-   *  decoded. A filled-row count above `maxRows` throws TOO_MANY_ROWS rather than FILE_TOO_LARGE. */
-  bounds?:{maxRows:number;maxCells:number;literalCells?:boolean;sheet?:string},
+  bounds?:{maxRows:number;maxCells:number;literalCells?:boolean},
 ): Promise<{ first: string; extra: Record<string, string>; source?:PersonnelWorksheetSource;preparation?:PersonnelWorkbookSource }> {
   const XLSX = await import('xlsx');
   // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
@@ -109,22 +150,7 @@ export async function workbookToCsvTexts(
   // cellDates → real Date objects for date-formatted cells; we ISO-format them below so a spreadsheet
   // date lands as the engine's YYYY-MM-DD (DATE_RE) instead of an Excel serial number or locale string.
   const wb = XLSX.read(bytes, { type: 'array', cellDates: true,...bounds?{sheetRows:bounds.maxRows+1}:{} });
-  const boundedSheet=bounds?.sheet===undefined?undefined
-    :wb.SheetNames.find(name=>name.trim().toLowerCase()===bounds.sheet!.trim().toLowerCase())??wb.SheetNames[0];
-  if(bounds&&bounds.sheet!==undefined){
-    // sheetRows already stopped the parser after maxRows+1 rows of every sheet, so memory is bounded however large the
-    // reference sheets or the import sheet's declared (formatted) range are. Measure what the import sheet holds.
-    const ws=boundedSheet?wb.Sheets[boundedSheet]:undefined,ref=ws?.['!ref'];
-    if(ws&&ref){
-      if(bounds.literalCells&&Object.entries(ws).some(([key,cell])=>!key.startsWith('!')&&(cell?.f||cell?.t==='e')))throw Error('NON_LITERAL_CELL');
-      // Rows and columns that hold a value; formatting Excel applied to whole rows or columns does not count.
-      const isFilled=(cell:unknown)=>cell!=null&&String(cell).trim()!=='';
-      const rows=(XLSX.utils.sheet_to_json(ws,{header:1,raw:true,blankrows:false}) as unknown[][]).filter(row=>row.some(isFilled));
-      const width=rows.reduce((w,row)=>{let last=row.length-1;while(last>=0&&!isFilled(row[last]))last--;return Math.max(w,last+1);},0);
-      if(rows.length>bounds.maxRows)throw Error('TOO_MANY_ROWS');
-      if(width>256||rows.length*width>bounds.maxCells)throw Error('FILE_TOO_LARGE');
-    }
-  }else if(bounds){
+  if(bounds){
     let cells=0;if(wb.SheetNames.length>32)throw Error('FILE_TOO_LARGE');
     for(const name of wb.SheetNames){const ws=wb.Sheets[name],ref=ws?.['!fullref']??ws?.['!ref'];if(!ref)continue;
       const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
@@ -132,7 +158,7 @@ export async function workbookToCsvTexts(
       cells+=height*width;if(height>bounds.maxRows||width>256||cells>bounds.maxCells)throw Error('FILE_TOO_LARGE');
     }
   }
-  const firstName = boundedSheet ?? wb.SheetNames[0];
+  const firstName = wb.SheetNames[0];
   if (!firstName) throw new Error('EMPTY_SHEET');
   // The explicit preparation path checks every worksheet range before materializing any CSV rows.
   // Default recognized-file decoding keeps its established behavior and output contract.
@@ -153,15 +179,7 @@ export async function workbookToCsvTexts(
     // the Date instance cellDates produced (raw:false would substitute the FORMATTED text, e.g. "1/1/26",
     // which fails the engine's DATE_RE). Non-date cells are strings/numbers and are String()-ed below.
     const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false });
-    const rows = (aoa as Cell[][]).map((row) =>
-      row.map((cell) => {
-        if (cell instanceof Date) return toIsoDate(cell);
-        // d8471481 — a General-formatted identity column arrives as a JS number; emit plain digits so
-        // nothing downstream ever sees exponential notation.
-        if (typeof cell === 'number') return numberToPlainString(cell);
-        return cell;
-      }),
-    );
+    const rows = (aoa as Cell[][]).map(row => row.map(csvCell));
     // Drop fully-empty trailing rows so a workbook padded with blanks doesn't yield empty CSV records.
     const nonEmpty = rows.filter((r) => r.some((c) => c != null && String(c).trim() !== ''));
     if (nonEmpty.length === 0) return '';

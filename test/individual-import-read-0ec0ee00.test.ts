@@ -10,6 +10,7 @@ import {readIndividualImportWorkbook} from '../lib/individual-import-read';
 import {parseIndividualImport} from '../lib/individual-txn-import-contract';
 import {INDIVIDUAL_IMPORT_MAX_BYTES, INDIVIDUAL_IMPORT_MAX_RECORDS} from '../lib/individual-import-job';
 import type {TxnTemplateReference} from '../lib/import-template-xlsx';
+import {INDIVIDUAL_IMPORT_SHEET} from '../lib/payroll-txn-import-schema';
 
 const headings = {employees: 'Employees', employeeId: 'Employee ID', employeeName: 'Employee name', company: 'Company', department: 'Department',
   payItems: 'Pay Items', payItemCode: 'Pay Item code', payItemName: 'Pay Item name', payItemKind: 'Kind', payItemInput: 'Input',
@@ -48,6 +49,17 @@ describe('Individual Transaction upload reader (0ec0ee00)', () => {
   it('counts only filled rows, not the template’s pre-formatted or Excel-enlarged blank rows', async () => {
     const text = await readIndividualImportWorkbook(await workbook(10, 5, {extraBlankFormattedRows: 30_000}), 't.xlsx', 'monthly');
     expect(text.trim().split('\n')).toHaveLength(6);
+  });
+
+  it('keeps transactions after long runs of blank rows when the data tab is after a reference tab', async () => {
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([['Employee reference only']]), 'Employees');
+    const sheet = XLSX.utils.aoa_to_sheet([['Employee ID', 'Amount'], ['0001', 0]]);
+    XLSX.utils.sheet_add_aoa(sheet, [['0002', -5]], {origin: `A${INDIVIDUAL_IMPORT_MAX_RECORDS + 4}`});
+    XLSX.utils.book_append_sheet(book, sheet, INDIVIDUAL_IMPORT_SHEET.monthly);
+    const bytes = new Uint8Array(XLSX.write(book, {type: 'array', bookType: 'xlsx'}));
+    const text = await readIndividualImportWorkbook(bytes, 't.xlsx', 'monthly');
+    expect(text).toBe('Employee ID,Amount\r\n0001,0\r\n0002,-5\r\n');
   });
 
   it('accepts exactly the record limit and refuses one more as too many rows, not too large', async () => {

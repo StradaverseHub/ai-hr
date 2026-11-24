@@ -75,7 +75,8 @@ export async function parsePayrollHistorySource(name:string,bytes:Buffer):Promis
  }else if(name.toLowerCase().endsWith('.csv')){
   try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{fail('Save the CSV file as UTF-8.');}
  }else fail('Choose a CSV, XLS or XLSX payroll history file.');
- const source=parseCsvRecords(text!);
+ // Retained attempts bind original source rows by index for tax-basis and correction replay.
+ const source=parseCsvRecords(text!,{preserveBlankRows:true});
  if(new Set(source.headers).size!==source.headers.length)fail('Remove repeated column headings before validating this file.');
  const parsed=source.records;
  if(parsed.length>50000)fail('Split this file into uploads of at most 50,000 rows.');

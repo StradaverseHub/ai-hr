@@ -134,7 +134,8 @@ export function rosterImportPlan(ctx:SessionContext,p:RosterImportInput):Promise
 /** One canonical planner for initial nomination and same-Tx actual group revalidation. */
 async function planRosterImport(ctx:SessionContext,p:RosterImportInput,existingTx:Tx):Promise<RosterImportPlan>{
   const fileName = p.fileName ?? '';
-  const { headers, records } = parseCsvRecords(p.csvText);
+  // The planner skips blank records while keeping the row labels used in roster rejects.
+  const { headers, records } = parseCsvRecords(p.csvText, {preserveBlankRows: true});
 
   const [employees, allShifts] = await Promise.all([
     listEmployees(ctx, [p.companyId],undefined,existingTx),
