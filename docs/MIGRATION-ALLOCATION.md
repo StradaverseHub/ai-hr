@@ -1,3 +1,22 @@
+# Precomputed employment visibility, 24 November 2026
+
+Reserve `7240_access_visible_employment`, journal index `10640`, timestamp `1795495007240`,
+SQL SHA-256 `3c2d86400233c1bf7d55249d00afee224b31b141c8666dc9d813e962ab83907b`. It follows `7230_assignment_current_department_index` (index `10630`), on which its
+department-head read relies; the reservation scan for 7230 found nothing above `7220_movement_system_payroll_snapshot_insert`
+(release 3 candidate `41482ceb0`). Neither installation's watermark was read from this session; recheck both and any
+competing reservation before admission.
+
+Step (c) of the approved employment-visibility addendum (docs/adr/0181-addendum-precomputed-employment-visibility.md).
+Adds `access_reporting_reach`, `access_department_closure`, `access_employment_state` and
+`access_employment_precompute_control` (owner-only: RLS forced with the `app.acting_as_owner()` policy, no `ai_hr_app`
+privilege), statement triggers on `reporting_line`, `employment` (update, delete), `department` and
+`access_company_closure` (insert), the compute, maintenance, verify, re-trust and mode functions, and the readers
+`app.access_visible_employment_ids()`, `app.access_visible_person_ids()`, `app.employment_read_companies()` and
+`app.employment_partner_companies()` (EXECUTE to `ai_hr_app`). Replaces the body of `app.visible_employment_ids()`
+(guarded by the exact 5144 body) and the USING of `employment_rls` and `person_rls` (guarded by their deparsed
+predecessors); WITH CHECK, roles and commands are unchanged. Installation mode starts as `legacy`. Builds every tenant
+in the migration transaction (rows bounded by employments x reporting depth).
+
 # Current assignments by department index, 24 November 2026
 
 Reserve `7230_assignment_current_department_index`, journal index `10630`, timestamp `1795495007230`,

@@ -263,6 +263,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10600,version:'7',when:1795495007200,tag:'7200_information_documents_planned_with_values',breakpoints:true},
  {idx:10610,version:'7',when:1795495007210,tag:'7210_access_effective_company',breakpoints:true},
  {idx:10630,version:'7',when:1795495007230,tag:'7230_assignment_current_department_index',breakpoints:true},
+ {idx:10640,version:'7',when:1795495007240,tag:'7240_access_visible_employment',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
