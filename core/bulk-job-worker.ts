@@ -123,7 +123,7 @@ type BulkJobHandlerBase<P>={
 export type BulkJobHandler<P=any>=BulkJobHandlerBase<P>&{
  /** A step's write and its applied marker commit together. `following`: the chunk's next pending steps, already loaded
   *  and verified against their seals (the steps an outcome's `consumed` may cover). */
- applyStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<P>,cache:Map<string,unknown>,following:readonly BulkJobStep<P>[]):Promise<BulkJobStepOutcome>;
+ applyStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<P>,cache:Map<string,unknown>,following?:readonly BulkJobStep<P>[]):Promise<BulkJobStepOutcome>;
  prepareStep?:never;
 };
 export type BulkJobPreparedStepHandler<P=any>=BulkJobHandlerBase<P>&{

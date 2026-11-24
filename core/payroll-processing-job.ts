@@ -180,7 +180,7 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
  },
  async beginChunkTx(tx,ctx,job){await lockRunUnitTx(tx,ctx,inputOf(job).batchId);await pointReadTx(tx);},
  async applyStepTx(tx,ctx,job,step,_cache,following){
-  return applyRunStepTx(tx,ctx,job,step,following);
+  return applyRunStepTx(tx,ctx,job,step,following??[]);
  },
  async finalize(ctx,job,unit){
   return finalizeRun(ctx,job,unit);

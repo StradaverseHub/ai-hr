@@ -197,8 +197,9 @@ export async function resolveTaxSelectionsMY(tx:Tx,p:{tenantId:string;companyId:
  }
  if(!applicable.length)return out;
  const keys=applicable.map(a=>p.tenantId+a.e.employmentId+'tax-scheme');
- // A function scan yields the array in order, so the locks are taken in the per-employee calls' order.
- await tx.execute(sql`SELECT count(pg_advisory_xact_lock(hashtextextended(k,0))) FROM unnest(${keys}::text[]) AS k`);
+ // A function scan yields the array in order, so the locks are taken in the per-employee calls' order. One jsonb
+ // parameter (an interpolated array would become one parameter per key).
+ await tx.execute(sql`SELECT count(pg_advisory_xact_lock(hashtextextended(k,0))) FROM jsonb_array_elements_text(${JSON.stringify(keys)}::jsonb) AS k`);
  const rows=new Map((await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,p.tenantId),
   inArray(employmentTaxSelectionMy.employmentId,applicable.map(a=>a.e.employmentId)),eq(employmentTaxSelectionMy.companyId,p.companyId)))).map(row=>[row.employmentId,row]));
  for(const {e,taxCircumstance,citizenship} of applicable){
