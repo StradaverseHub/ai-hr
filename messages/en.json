@@ -296,6 +296,10 @@
     "count": "{count, plural, one {# data row} other {# data rows}}",
     "hint": "Counts exclude the header and blank rows.",
     "noData": "No worksheet contains data rows. Add data or choose another file.",
+    "multiple": "Worksheets",
+    "companions": "Include companion worksheets",
+    "confirmMultiple": "Use selected worksheets",
+    "readError": "The workbook could not be read. Choose a valid Excel file.",
     "confirm": "Use this worksheet",
     "selected": "{name} · {count, plural, one {# data row selected} other {# data rows selected}}"
   },

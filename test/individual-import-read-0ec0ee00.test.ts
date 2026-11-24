@@ -75,3 +75,15 @@ describe('Individual Transaction upload reader (0ec0ee00)', () => {
     expect(await code(readIndividualImportWorkbook(await workbook(10, 0), 't.xlsx', 'monthly'))).not.toBe('fileTooLarge');
   });
 });
+
+it('uses the exact confirmed transaction worksheet and refuses a missing or hidden selection', async () => {
+ const book=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Employee ID'],['001']]),INDIVIDUAL_IMPORT_SHEET.monthly);
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Employee ID'],['002'],[' '],['003']]),'November');
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Employee ID'],['004']]),'Hidden');
+ book.Workbook={Sheets:book.SheetNames.map(name=>({name,Hidden:name==='Hidden'?1:0}))};
+ const bytes=new Uint8Array(XLSX.write(book,{type:'array',bookType:'xlsx'}));
+ expect(await readIndividualImportWorkbook(bytes,'transactions.xlsx','monthly','November')).toBe('Employee ID\r\n002\r\n003\r\n');
+ await expect(readIndividualImportWorkbook(bytes,'transactions.xlsx','monthly','Missing')).rejects.toMatchObject({code:'emptyFile'});
+ await expect(readIndividualImportWorkbook(bytes,'transactions.xlsx','monthly','Hidden')).rejects.toMatchObject({code:'emptyFile'});
+});

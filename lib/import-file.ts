@@ -112,7 +112,7 @@ export async function readImportFile(
   file: File,
   /** Item 2983802f — worksheets to read ALONGSIDE the first one, by name (the employee importer asks
    *  for its Family sheet). Ignored for a .csv upload, which has exactly one sheet. */
-  opts?: { extraSheets?: readonly string[];allowedSheets?:readonly string[];captureSource?:boolean;preparePersonnel?:boolean;maxFileBytes?:number;maxCsvBytes?:number;maxRows?:number;maxCells?:number },
+  opts?: { extraSheets?: readonly string[];allowedSheets?:readonly string[];excludedCompanions?:readonly string[];captureSource?:boolean;preparePersonnel?:boolean;primaryWorksheet?:string;maxFileBytes?:number;maxCsvBytes?:number;maxRows?:number;maxCells?:number },
 ): Promise<ImportFileRead> {
   const format = importFileFormat(file.name);
   if (!format) throw new ImportFileError('UNSUPPORTED_FILE_TYPE');
@@ -135,7 +135,7 @@ export async function readImportFile(
     const wanted = opts?.extraSheets ?? [];
     let extra: Record<string, string> = {};
     try {
-      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted,false,opts?.allowedSheets,opts?.captureSource,opts?.preparePersonnel,opts?.maxRows?{maxRows:opts.maxRows,maxCells:opts.maxCells??20_000_000}:undefined);
+      const decoded = await workbookToCsvTexts(await file.arrayBuffer(), wanted.filter(name=>!opts?.excludedCompanions?.includes(name)),false,opts?.allowedSheets,opts?.captureSource,opts?.preparePersonnel,opts?.maxRows?{maxRows:opts.maxRows,maxCells:opts.maxCells??20_000_000}:undefined,opts?.primaryWorksheet);
       text = decoded.first;
       source=decoded.source;preparation=decoded.preparation;
       extra = decoded.extra;

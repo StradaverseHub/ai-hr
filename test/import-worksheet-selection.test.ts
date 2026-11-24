@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import * as XLSX from 'xlsx';
-import {inspectImportWorksheets} from '../lib/spreadsheet';
+import {inspectImportWorksheets, namedWorksheetToCsvText, workbookToCsvTexts} from '../lib/spreadsheet';
 import {PERSONNEL_CSV_FRAME} from '../lib/personnel-csv';
 
 describe('import worksheet selection', () => {
@@ -25,4 +25,17 @@ describe('import worksheet selection', () => {
     expect(() => inspected.read('Empty', 5000)).toThrow('EMPTY_SHEET');
     expect(() => inspected.read('Data', 30)).toThrow('FILE_TOO_LARGE');
   });
+});
+
+it('binds a selected named sheet and optional companions while keeping legacy defaults', async () => {
+ const book=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Value'],['first']]),'Original');
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Value'],['picked']]),'Selected');
+ XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['Value'],['family']]),'Family');
+ const bytes=new Uint8Array(XLSX.write(book,{type:'array',bookType:'xlsx'}));
+ expect(await namedWorksheetToCsvText(bytes,'Selected',{maxRows:10,maxCells:50},true)).toBe('Value\r\npicked\r\n');
+ await expect(namedWorksheetToCsvText(bytes,'Unknown',{maxRows:10,maxCells:50},true)).rejects.toThrow('EMPTY_SHEET');
+ expect(await workbookToCsvTexts(bytes,['Family'],false,['Family'],false,false,undefined,'Selected')).toEqual({
+  first:'Value\r\npicked\r\n',extra:{Family:'Value\r\nfamily\r\n'},
+ });
 });

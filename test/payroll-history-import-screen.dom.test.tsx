@@ -1,5 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
+import * as XLSX from 'xlsx';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
@@ -17,9 +18,19 @@ describe('payroll history revision workflow',()=>{
  it('preserves the original upload bytes and requires both review and replacement confirmation',async()=>{
   const user=userEvent.setup(),fetcher=vi.fn().mockResolvedValue({ok:true,json:async()=>({attemptId:'attempt-a',plan:plan()})});vi.stubGlobal('fetch',fetcher);confirm.mockResolvedValue({ok:true,result:{}});
   render(wrap(<HistoryWorkflow codes={[]}/>));
-  const file=new File(['original workbook bytes'],'history.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-  await user.upload(screen.getByLabelText('Source file'),file);await user.click(screen.getByRole('button',{name:'Validate file'}));
-  expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('history.xlsx'),expect.objectContaining({body:file}));
+  const workbook=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook,XLSX.utils.aoa_to_sheet([['Employee ID'],['E01']]),'October');
+  XLSX.utils.book_append_sheet(workbook,XLSX.utils.aoa_to_sheet([['Employee ID'],['E02'],[' '],['E03']]),'November');
+  const bytes:ArrayBuffer=XLSX.write(workbook,{type:'array',bookType:'xlsx'});
+  const file=new File([bytes],'history.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  Object.defineProperty(file,'arrayBuffer',{value:async()=>bytes});
+  await user.upload(screen.getByLabelText('Source file'),file);
+  await user.selectOptions(await screen.findByRole('combobox',{name:'Worksheet'}),'November');
+  expect(screen.getByText('2 data rows')).toBeVisible();
+  expect(fetcher).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button',{name:'Use this worksheet'}));
+  await user.click(screen.getByRole('button',{name:'Validate file'}));
+  expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('worksheet=November'),expect.objectContaining({body:file}));
   // Legacy receipts retain separate replacement confirmation.
   const commit=screen.getByRole('button',{name:'Confirm overwrite and import'});expect(commit).toBeDisabled();
   expect(screen.getByText(/Tick the ones you want to overwrite/)).toBeVisible();
@@ -29,7 +40,7 @@ describe('payroll history revision workflow',()=>{
   await user.click(screen.getByLabelText('Overwrite 0000 2024-01'));
   expect(screen.getByText(/You have ticked 1 employee-month for overwrite/)).toBeVisible();expect(commit).toBeDisabled();
   await user.click(screen.getByLabelText(/I understand\. Replace the ticked records/));expect(commit).toBeEnabled();
-  await user.click(commit);expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-a',previewHash:'preview-hash',confirmReplacement:true,selectedRecordKeys:['company-a:employee-a:2024-01:cycle-a'],acknowledgeWarnings:false});expect(await screen.findByRole('status')).toHaveTextContent('Import committed');
+  await user.click(commit);expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-a',previewHash:'preview-hash',confirmReplacement:true,selectedRecordKeys:['company-a:employee-a:2024-01:cycle-a'],acknowledgeWarnings:false});expect(await screen.findByText(/Import committed\./)).toHaveTextContent('Import committed');
  });
  it.each([false,true])('imports new records with warning acknowledgement when required (warnings=%s)',async(hasWarnings)=>{
   const user=userEvent.setup(),fresh={...row(),operation:'create' as const,beforeValues:null,expectedSnapshotId:null,warnings:hasWarnings?['Later payroll used the figures already on file.']:[]};

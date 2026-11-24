@@ -296,6 +296,10 @@
     "count": "{count, number} dòng dữ liệu",
     "hint": "Số dòng không bao gồm tiêu đề và các dòng trống.",
     "noData": "Không có trang tính nào chứa dòng dữ liệu. Hãy thêm dữ liệu hoặc chọn tệp khác.",
+    "multiple": "Trang tính",
+    "companions": "Bao gồm trang tính đi kèm",
+    "confirmMultiple": "Dùng các trang tính đã chọn",
+    "readError": "Không đọc được sổ làm việc. Hãy chọn tệp Excel hợp lệ.",
     "confirm": "Dùng trang tính này",
     "selected": "{name} · Đã chọn {count, number} dòng dữ liệu"
   },

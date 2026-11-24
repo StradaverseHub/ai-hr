@@ -296,6 +296,10 @@
     "count": "{count, number} baris data",
     "hint": "Kiraan tidak termasuk pengepala dan baris kosong.",
     "noData": "Tiada lembaran kerja yang mengandungi baris data. Tambah data atau pilih fail lain.",
+    "multiple": "Lembaran kerja",
+    "companions": "Sertakan lembaran kerja tambahan",
+    "confirmMultiple": "Gunakan lembaran kerja yang dipilih",
+    "readError": "Buku kerja tidak dapat dibaca. Pilih fail Excel yang sah.",
     "confirm": "Gunakan lembaran kerja ini",
     "selected": "{name} · {count, number} baris data dipilih"
   },

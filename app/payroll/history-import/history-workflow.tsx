@@ -1,10 +1,11 @@
 'use client';
+import {useImportWorksheet} from '@/components/use-import-worksheet';
 import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 import {useCallback,useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import Link from 'next/link';
-import {buildPayrollHistoryWorkbook,PAYROLL_HISTORY_XLSX_FILENAME} from '@/lib/import-template-xlsx';
+import {buildPayrollHistoryWorkbook,PAYROLL_HISTORY_XLSX_FILENAME,PAYROLL_HISTORY_XLSX_SHEETS} from '@/lib/import-template-xlsx';
 import {PAYROLL_HISTORY_HEADERS} from '@/lib/payroll-history-import-schema';
 import {historyRecordKey,type HistoryRevisionPlan} from '@/lib/payroll-history-revisions';
 import {confirmHistoryUploadAction} from './workflow-actions';
@@ -19,6 +20,19 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
  const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<{attemptId:string;plan:HistoryRevisionPlan}|null>(null);
  const [busy,setBusy]=useState<'validate'|'confirm'|'template'|null>(null),[error,setError]=useState<string|null>(null),[confirmed,setConfirmed]=useState(false),[ticked,setTicked]=useState<Set<string>>(new Set()),[maintenanceMode,setMaintenanceMode]=useState<'replace'|'update_listed'>('replace'),[acknowledged,setAcknowledged]=useState(false),[warningsAcknowledged,setWarningsAcknowledged]=useState(false),[skipped,setSkipped]=useState(0),[done,setDone]=useState(false);
  const operation=useRef<string|null>(null);
+ const [worksheet,setWorksheet]=useState<string>(),[reading,setReading]=useState(false);
+ const {readWorksheet,clearWorksheet,worksheetPicker}=useImportWorksheet();
+ async function pickWorkbook(picked:File|undefined){
+  clearWorksheet();setFile(null);setWorksheet(undefined);operation.current=null;setPreview(null);setDone(false);setError(null);
+  if(!picked)return;
+  if(picked.size>10*1024*1024){setError(t('tooLarge'));return;}
+  if(!/\.xlsx?$/i.test(picked.name)){setFile(picked);return;}
+  setReading(true);
+  try{
+   const choice=await readWorksheet(picked,{inspectOnly:true,maxFileBytes:10*1024*1024,exclude:[PAYROLL_HISTORY_XLSX_SHEETS.codes,PAYROLL_HISTORY_XLSX_SHEETS.sample]});
+   if(choice){setWorksheet(choice.worksheet);setFile(picked);}
+  }catch{setError(t('failed'));}finally{setReading(false);}
+ }
  // The confirmation commits in the background; the panel follows the job and hands back its outcome.
  const [jobId,setJobId]=useState<string|null>(null);
  const finished=useCallback((job:BulkJobProgress)=>{
@@ -30,7 +44,7 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
   if(!file||busy)return;setBusy('validate');setError(null);setDone(false);setConfirmed(false);setTicked(new Set());setAcknowledged(false);setWarningsAcknowledged(false);setSkipped(0);
   try{
    operation.current??=crypto.randomUUID();
-   const response=await fetch('/payroll/history-import/upload?name='+encodeURIComponent(file.name)+'&mode='+maintenanceMode,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Upload-Operation':operation.current},body:file});
+   const response=await fetch('/payroll/history-import/upload?'+new URLSearchParams({name:file.name,mode:maintenanceMode,...worksheet?{worksheet}:{}}),{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Upload-Operation':operation.current},body:file});
    const data=await response.json();if(!response.ok)throw new Error(data.error??t('failed'));
    setPreview(data);
   }catch(error){setError(error instanceof Error?error.message:t('failed'));}finally{setBusy(null);}
@@ -64,7 +78,9 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
   <section className="space-y-4 rounded-xl border bg-card p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold">{t('fileTitle')}</h2><p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t('fileHint')}</p></div><ActionButton aria-busy={busy==='template'} type="button" onClick={template} disabled={busy!==null} className={button}>{busy==='template'?t('working'):t('template')}</ActionButton></div>
    <fieldset className="space-y-3 rounded-lg border border-border p-4" disabled={busy!==null}><legend className="px-1 text-sm font-medium">{m('importMode')}</legend>{(['replace','update_listed'] as const).map(mode=><label key={mode} className="flex min-h-11 cursor-pointer items-start gap-3 text-sm"><input className="mt-1" type="radio" name="history-import-mode" checked={maintenanceMode===mode} onChange={()=>{setMaintenanceMode(mode);setPreview(null);setConfirmed(false);setTicked(new Set());setAcknowledged(false);setWarningsAcknowledged(false);setDone(false);operation.current=null;}}/><span><strong className="block font-medium">{m(mode)}</strong><span className="mt-1 block text-muted-foreground">{m(mode+'Help')}</span></span></label>)}<p className="text-sm text-muted-foreground">{m('sameColumns')}</p></fieldset>
    <p className="text-xs text-muted-foreground">{PAYROLL_HISTORY_HEADERS.join(' · ')}</p>
-   <label className="block text-sm font-medium">{t('file')}<input type="file" accept=".csv,.xls,.xlsx" disabled={busy!==null} className="mt-2 block w-full rounded-lg border p-3 text-sm" onChange={event=>{setFile(event.target.files?.[0]??null);operation.current=null;setPreview(null);setDone(false);setError(null);}}/></label>
+   <label className="block text-sm font-medium">{t('file')}<input type="file" accept=".csv,.xls,.xlsx" disabled={reading||busy!==null} className="mt-2 block w-full rounded-lg border p-3 text-sm" onChange={event=>{const picked=event.currentTarget.files?.[0];event.currentTarget.value='';void pickWorkbook(picked);}}/></label>
+   {worksheetPicker}
+   {file&&!worksheet&&<p className="break-all text-xs text-muted-foreground">{file.name}</p>}
    {file&&file.size>10*1024*1024&&<p role="alert" className="text-sm text-destructive">{t('tooLarge')}</p>}
    <ActionButton guardNavigation={false} aria-busy={busy==='validate'} actionKind="uploading" type="button" onClick={validate} disabled={!file||file.size>10*1024*1024||busy!==null} className={button+' bg-primary text-primary-foreground'}>{busy==='validate'?t('validating'):t('validate')}</ActionButton>
   </section>

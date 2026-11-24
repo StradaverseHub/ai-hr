@@ -1,4 +1,5 @@
 import {MAX_IMPORT_CSV_BYTES} from './import-file';
+import {isVisibleImportWorksheet} from './import-worksheet';
 import {PERSONNEL_CSV_FRAME} from './personnel-csv';
 import type {PersonnelWorksheetSource,PersonnelWorkbookSource} from './personnel-import-assistance-source';
 /**
@@ -149,14 +150,17 @@ export async function namedWorksheetToCsvText(
   bytes: Uint8Array,
   name: string,
   limits: {maxRows: number; maxCells: number},
+  exact = false,
+  formatted = false,
 ): Promise<string> {
   const XLSX = await import('xlsx');
   const {SheetNames} = XLSX.read(bytes, {type: 'array', bookSheets: true});
   const wanted = name.trim().toLowerCase();
-  const index = Math.max(0, SheetNames.findIndex(sheet => sheet.trim().toLowerCase() === wanted));
+  const index = exact ? SheetNames.indexOf(name) : Math.max(0, SheetNames.findIndex(sheet => sheet.trim().toLowerCase() === wanted));
   if (SheetNames[index] === undefined) throw Error('EMPTY_SHEET');
-  const {Sheets} = XLSX.read(bytes, {type: 'array', sheets: index, cellDates: true, cellHTML: false, cellText: false});
-  const sheet = Sheets[SheetNames[index]];
+  const workbook = XLSX.read(bytes, {type: 'array', sheets: index, cellDates: !formatted, cellHTML: false, cellText: formatted});
+  if (exact && !isVisibleImportWorksheet(workbook, name)) throw Error('EMPTY_SHEET');
+  const sheet = workbook.Sheets[SheetNames[index]];
   if (!sheet?.['!ref']) throw Error('EMPTY_SHEET');
   const firstColumn = XLSX.utils.decode_range(sheet['!ref']).s.c;
   const rows = new Map<number, Cell[]>();
@@ -173,7 +177,7 @@ export async function namedWorksheetToCsvText(
       rows.set(r, row);
       if (rows.size > limits.maxRows) throw Error('TOO_MANY_ROWS');
     }
-    row[column] = csvCell(cell.v);
+    row[column] = formatted ? XLSX.utils.format_cell(cell) : csvCell(cell.v);
     width = Math.max(width, column + 1);
   }
   if (!rows.size) throw Error('EMPTY_SHEET');
@@ -202,6 +206,7 @@ export async function workbookToCsvTexts(
   captureSource=false,
   preparePersonnel=false,
   bounds?:{maxRows:number;maxCells:number;literalCells?:boolean},
+  primaryWorksheet?: string,
 ): Promise<{ first: string; extra: Record<string, string>; source?:PersonnelWorksheetSource;preparation?:PersonnelWorkbookSource }> {
   const XLSX = await import('xlsx');
   // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
@@ -218,7 +223,8 @@ export async function workbookToCsvTexts(
       cells+=height*width;if(height>bounds.maxRows||width>256||cells>bounds.maxCells)throw Error('FILE_TOO_LARGE');
     }
   }
-  const firstName = wb.SheetNames[0];
+  const firstName = primaryWorksheet ?? wb.SheetNames[0];
+  if (primaryWorksheet && !isVisibleImportWorksheet(wb, primaryWorksheet)) throw new Error('UNEXPECTED_SHEET');
   if (!firstName) throw new Error('EMPTY_SHEET');
   // The explicit preparation path checks every worksheet range before materializing any CSV rows.
   // Default recognized-file decoding keeps its established behavior and output contract.
@@ -254,7 +260,7 @@ export async function workbookToCsvTexts(
   if(allowedSheetNames||preparePersonnel) {
     if(byKey.size!==wb.SheetNames.length || !preparePersonnel && !includeFirstNamed && extraSheetNames.some(name=>key(name)===key(firstName)))throw new Error('UNEXPECTED_SHEET');
     const allowed=new Set((allowedSheetNames??[]).map(key));
-    for(const name of wb.SheetNames)if(!preparePersonnel && name!==firstName && !allowed.has(key(name)) && sheetCsv(name).trim())throw new Error('UNEXPECTED_SHEET');
+    for(const name of wb.SheetNames)if(!primaryWorksheet && !preparePersonnel && name!==firstName && !allowed.has(key(name)) && sheetCsv(name).trim())throw new Error('UNEXPECTED_SHEET');
   }
   const extra: Record<string, string> = {};
   for (const wanted of extraSheetNames) {
@@ -312,7 +318,7 @@ export async function workbookToCsvTexts(
  * the importer: at most 32 sheets and 10,000 rows per sheet, otherwise the sheet is left out (callers then fall
  * back to data row + 1).
  */
-export async function workbookDataRowNumbers(buf:ArrayBuffer|Uint8Array,sheetNames:readonly string[]=[]):Promise<{first:number[];extra:Record<string,number[]>}>{
+export async function workbookDataRowNumbers(buf:ArrayBuffer|Uint8Array,sheetNames:readonly string[]=[],primaryWorksheet?:string):Promise<{first:number[];extra:Record<string,number[]>}>{
   const XLSX=await import('xlsx');
   const bytes=buf instanceof Uint8Array?buf:new Uint8Array(buf);
   const wb=XLSX.read(bytes,{type:'array',cellDates:true,sheetRows:10001});
@@ -332,9 +338,10 @@ export async function workbookDataRowNumbers(buf:ArrayBuffer|Uint8Array,sheetNam
   };
   const key=(s:string)=>s.trim().toLowerCase();
   const byKey=new Map(wb.SheetNames.map(n=>[key(n),n]));
+  const first = primaryWorksheet ?? wb.SheetNames[0];
   const extra:Record<string,number[]>={};
-  for(const wanted of sheetNames){const found=byKey.get(key(wanted));if(found&&found!==wb.SheetNames[0])extra[wanted]=rowsOf(found);}
-  return{first:rowsOf(wb.SheetNames[0]),extra};
+  for(const wanted of sheetNames){const found=byKey.get(key(wanted));if(found&&found!==first)extra[wanted]=rowsOf(found);}
+  return{first:rowsOf(first),extra};
 }
 
 /**

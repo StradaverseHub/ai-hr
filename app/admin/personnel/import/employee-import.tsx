@@ -30,6 +30,7 @@ import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
 import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
+import {useImportWorksheet} from '@/components/use-import-worksheet';
 import { IMPORT_FILE_ACCEPT, MAX_IMPORT_CSV_BYTES, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import {csvDataExcelRows,lineRowOf,type ImportSourceRows} from '@/lib/import-problem-common';
 import {employeePreviewProblemLines,employeeResultProblemLines} from '@/lib/employee-import-problems';
@@ -185,6 +186,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   // reported from the click that does it and never inferred from something else being true.
   const [templateDownloaded, setTemplateDownloaded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const {readWorksheet,clearWorksheet,worksheetPicker,choosingWorksheet}=useImportWorksheet();
   // 524303d9 — the ORIGINAL file and the text read from it, so Import History keeps the uploaded file. Used
   // only while the text being imported is still exactly that text (an edit or a prepared text is not it).
   const sourceFile = useRef<{file:File;text:string}|null>(null);
@@ -259,7 +261,8 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   // text to the SAME validate step the paste box uses. Nothing about parsing, validation or the
   // write path changes — this only replaces "open the file and copy its contents" for the user.
   const loadFile = async (file: File) => {
-    if (commitPending.current) return;
+    if (commitPending.current || reading) return;
+    clearWorksheet();
     // A picked candidate is not the active source. Preserve its file label, companions, original
     // fingerprint and lineage until adoption; a failed/delayed read must not retarget old CSV.
     const priorGuidedUsed=pendingFileSource?.priorGuidedUsed??guidedUsed;
@@ -270,12 +273,24 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
     const readRevision = ++fileReadRevision.current;
     setReading(true);
     try {
+      const companions=[EMPLOYEE_XLSX_SHEETS.family,ALLOCATION_SHEET,...Object.values(PERSONNEL_REGISTER_SHEETS)];
+      const references=[ALLOCATION_REFERENCE_SHEET,ALLOCATION_INSTRUCTIONS_SHEET,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,'__PersonnelLists'];
+      let primaryWorksheet:string|undefined;
+      let selectedCompanions=companions;
+      if(!preparing&&/\.xlsx?$/i.test(file.name)){
+        const chosen=await readWorksheet(file,{inspectOnly:true,framed:true,companions,exclude:references});
+        if(!chosen||revision!==inputRevision.current)return;
+        primaryWorksheet=chosen.worksheet;
+        selectedCompanions=companions.filter(name=>chosen.companionSheets.some(sheet=>sheet.trim().toLowerCase()===name.trim().toLowerCase()));
+      }
       // The reader maps the first requested companion to dependentsText, so Family must stay first.
       // A workbook without Family returns empty dependentsText, even when allocations are present.
       const { name, format,text, dependentsText,extraTexts,source,preparation } = await readImportFile(file, {
         captureSource:true,preparePersonnel:preparing,
-        extraSheets: [EMPLOYEE_XLSX_SHEETS.family,ALLOCATION_SHEET,...Object.values(PERSONNEL_REGISTER_SHEETS)],
-        allowedSheets:[ALLOCATION_SHEET,ALLOCATION_REFERENCE_SHEET,ALLOCATION_INSTRUCTIONS_SHEET,EMPLOYEE_XLSX_SHEETS.family,EMPLOYEE_XLSX_SHEETS.reference,EMPLOYEE_XLSX_SHEETS.instructions,...Object.values(PERSONNEL_REGISTER_SHEETS),'__PersonnelLists'],
+        primaryWorksheet,
+        extraSheets: [EMPLOYEE_XLSX_SHEETS.family,...selectedCompanions.filter(name=>name!==EMPLOYEE_XLSX_SHEETS.family)],
+        excludedCompanions: companions.filter(name=>!selectedCompanions.includes(name)),
+        allowedSheets:[...companions,...references],
       });
       // The canonical reader has already enforced file/decode bounds before allocating hash bytes.
       let originalDigest:string|null=null;
@@ -301,7 +316,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
         if(format==='csv')rows={employee:csvDataExcelRows(text)};
         else{
           const {workbookDataRowNumbers}=await import('@/lib/spreadsheet');
-          const read=await workbookDataRowNumbers(await file.arrayBuffer(),[EMPLOYEE_XLSX_SHEETS.family,...Object.values(PERSONNEL_REGISTER_SHEETS)]);
+          const read=await workbookDataRowNumbers(await file.arrayBuffer(),[EMPLOYEE_XLSX_SHEETS.family,...Object.values(PERSONNEL_REGISTER_SHEETS)],primaryWorksheet);
           rows={employee:read.first,family:read.extra[EMPLOYEE_XLSX_SHEETS.family],qualification:read.extra[PERSONNEL_REGISTER_SHEETS.qualification],emergency:read.extra[PERSONNEL_REGISTER_SHEETS.emergency]};
         }
       }catch{rows={};}
@@ -637,7 +652,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
               }`}
             >
               <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden />
-              <div className="text-sm font-medium">{reading ? t('reading') : t('dropHere')}</div>
+              <div className="text-sm font-medium">{reading && !choosingWorksheet ? t('reading') : t('dropHere')}</div>
               <p className="text-xs text-muted-foreground">{t('fullUploadHint')}</p>
               <input
                 ref={fileInputRef}
@@ -656,6 +671,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
               </p>
             )}
           </Field>
+          {worksheetPicker}
         </div>
 
         {/* Secondary path, kept for the people who already use it — and the way to inspect or fix an
@@ -674,6 +690,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
                 onChange={(e) => {
                   if (commitPending.current) return;
                   if(pendingFileSource){setSourceEpoch(value=>value+1);setGuidedUsed(pendingFileSource.priorGuidedUsed);}
+                  clearWorksheet();
                   manualCorrection.current=true;originalSourceFingerprint.current=null;setCsv(e.target.value);setImportSource(null);headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);
                   setFileName(null);
                   reset();

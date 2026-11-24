@@ -7981,6 +7981,13 @@
       "when": 1795280007150,
       "tag": "7150_contract_list_company_rights_once",
       "breakpoints": true
+    },
+    {
+      "idx": 10560,
+      "version": "7",
+      "when": 1795488671000,
+      "tag": "7160_import_source_worksheet",
+      "breakpoints": true
     }
   ]
 }

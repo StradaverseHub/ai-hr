@@ -20,7 +20,7 @@ export class IndividualImportReadFailure extends Error {
   constructor(readonly code: IndividualImportReadError) { super(code); this.name = 'IndividualImportReadFailure'; }
 }
 
-export async function readIndividualImportWorkbook(bytes: Uint8Array, name: string, method: IndividualImportMethod): Promise<string> {
+export async function readIndividualImportWorkbook(bytes: Uint8Array, name: string, method: IndividualImportMethod, worksheet?: string): Promise<string> {
   if (!name.trim().toLowerCase().endsWith('.xlsx')) throw new IndividualImportReadFailure('invalidFormat');
   if (bytes.byteLength > INDIVIDUAL_IMPORT_MAX_BYTES) throw new IndividualImportReadFailure('fileTooLarge');
   // An .xlsx is a ZIP archive. Anything else (a renamed CSV, random bytes) would be read by SheetJS as loose text.
@@ -28,8 +28,8 @@ export async function readIndividualImportWorkbook(bytes: Uint8Array, name: stri
   const {namedWorksheetToCsvText} = await import('./spreadsheet');
   let text: string;
   try {
-    text = await namedWorksheetToCsvText(bytes, INDIVIDUAL_IMPORT_SHEET[method],
-      {maxRows: INDIVIDUAL_IMPORT_MAX_RECORDS + 1, maxCells: INDIVIDUAL_IMPORT_MAX_CELLS});
+    text = await namedWorksheetToCsvText(bytes, worksheet ?? INDIVIDUAL_IMPORT_SHEET[method],
+      {maxRows: INDIVIDUAL_IMPORT_MAX_RECORDS + 1, maxCells: INDIVIDUAL_IMPORT_MAX_CELLS}, worksheet !== undefined);
   } catch (error) {
     const message = (error as Error)?.message;
     throw new IndividualImportReadFailure(message === 'TOO_MANY_ROWS' ? 'tooManyRows' : message === 'FILE_TOO_LARGE' ? 'contentTooLarge'
