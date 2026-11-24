@@ -179,6 +179,19 @@ function firstDifference(a:unknown,b:unknown,path='$'):string|null{
 }
 
 const ROLES=['group','multi','single','manager','employee','payroll'] as const;
+describe('route read budget: repeatability',()=>{
+ // Equivalence is only meaningful if one mode renders the same output twice: six alternating renders of the heaviest
+ // route must all equal the first, whatever the mode.
+ it('renders Home for a company-by-company administrator identically six times across modes',async()=>{
+  const first=await render('home','multi','all','default');
+  const modes:Mode[]=['without','default','independent','default','without'];
+  for(const mode of modes){
+   const again=await render('home','multi','all',mode);
+   expect(firstDifference(first.output,again.output),`default vs ${mode}`).toBeNull();
+  }
+ },240_000);
+});
+
 describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
  it.each(ROLES)('renders identically with and without the default join, for %s, and never costs more transactions',async persona=>{
   // One unmeasured render first: process-level caches (tenant facts the first transaction learns) fill once.
