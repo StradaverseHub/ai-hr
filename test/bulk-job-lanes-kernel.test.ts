@@ -76,12 +76,14 @@ async function runFleet(fleet:Proc[],jobIds:string[]){
   }
  }));
 }
+/** Each job's company, recorded at admission: the kernel clears a finished job's input. */
+const companyOf=new Map<string,string>();
 /** The same mixed queue every time: payroll jobs for two companies (in order) between three long imports. */
 async function admitQueue(){
  const ids:string[]=[];
  const admit=async(kind:string,company:string,values:string[])=>{
   const {row}=await withTenant(ctx,tx=>enqueueBulkJobTx(tx,ctx,{kind,input:{company,values},source:{name:'fixture.csv',content:Buffer.from(values.join('\n'))}}));
-  ids.push(row.id);
+  ids.push(row.id);companyOf.set(row.id,company);
  };
  await admit(IMP,'-',Array.from({length:6},(_,i)=>`import-1-${i}`));
  await admit(PAY,'A',['a1-1','a1-2','a1-3']);
@@ -147,7 +149,7 @@ it('two lane processes and one all-lane process give the same outcomes, claim no
  // Same outcomes, job by job, as one process alone.
  expect(await outcomes(ids)).toEqual(baseline);
 
- const rows=await owner.client<{job_id:string;kind:string;company:string;process:string;started_at:string|Date;finished_at:string|Date}[]>`select r.job_id,j.kind,j.input->>'company' as company,r.process,r.started_at,r.finished_at
+ const rows=await owner.client<{job_id:string;kind:string;process:string;started_at:string|Date;finished_at:string|Date}[]>`select r.job_id,j.kind,r.process,r.started_at,r.finished_at
   from public.lane_fixture_row r join bulk_job j on j.id=r.job_id where r.job_id=any(${ids}::uuid[]) order by r.started_at,r.id`;
  // No double claim: each job's units ran one after another, never in two processes at once.
  for(const id of ids){
@@ -161,7 +163,7 @@ it('two lane processes and one all-lane process give the same outcomes, claim no
  expect(rows.some(r=>r.process==='import')).toBe(true);
  // Per-company payroll order: a company's next payroll job starts only after its previous one finished.
  for(const company of ['A','B']){
-  const jobs=ids.filter(id=>rows.some(r=>r.job_id===id&&r.kind===PAY&&r.company===company));
+  const jobs=ids.filter(id=>companyOf.get(id)===company&&rows.some(r=>r.job_id===id&&r.kind===PAY));
   expect(jobs.length).toBeGreaterThan(1);
   for(let i=1;i<jobs.length;i++){
    const previousEnd=Math.max(...rows.filter(r=>r.job_id===jobs[i-1]).map(r=>ms(r.finished_at)));
