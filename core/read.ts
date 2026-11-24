@@ -6792,7 +6792,7 @@ export function auditEventsPage(
       anchorFound = false;
       fetched = await read({ last: false });
     }
-    const page = keysetSlice(fetched, anchorFound ? cursor : { last: false }, anchorFound);
+    const page = keysetSlice(fetched, { ...(anchorFound ? cursor : { last: false }), limit: q.limit }, anchorFound);
     const cap = listCountCap(q.size);
     const bounded = tx.select({ one: sql`1` }).from(domainEvent).where(where);
     const counted = (q.exactCount ? bounded : bounded.limit(cap + 1)).as('counted');
