@@ -1,5 +1,5 @@
 import { getTranslations, getFormatter } from 'next-intl/server';
-import { Card, PageHeader, buttonVariants, pageWideCls } from '@/components/ui';
+import { Button, Card, PageHeader, pageWideCls } from '@/components/ui';
 import { scopedAdmin } from '@/lib/scope';
 import { bulkJobActive } from '@/lib/bulk-job';
 import { listBulkJobsTx } from '@/core/bulk-job';
@@ -45,8 +45,11 @@ export default async function TransactionWorkbookList({
                     {item.state === 'failed' && <p className="text-sm text-destructive">{t('failed')}</p>}
                   </div>
                   {item.state === 'completed' && !expires ? (
-                    <a href={`/payroll/transaction-view/workbooks/${item.id}`}
-                      className={buttonVariants({ variant: 'outline', size: 'sm' })}>{t('download')}</a>
+                    // Button asChild, never buttonVariants(): that function lives in a 'use client' module and
+                    // throws when a server page calls it — production 2026-11-24, every finished workbook.
+                    <Button asChild variant="outline" size="sm">
+                      <a href={`/payroll/transaction-view/workbooks/${item.id}`}>{t('download')}</a>
+                    </Button>
                   ) : (
                     <span className="text-sm text-muted-foreground">
                       {bulkJobActive(item.state) ? t('preparing') : item.state === 'completed' ? t('expired') : null}
