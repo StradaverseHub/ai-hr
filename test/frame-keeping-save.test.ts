@@ -122,9 +122,13 @@ beforeAll(async()=>{
  teamRequestIds=requests.slice(0,3).map(r=>r.id);
  await owner.db.insert(schema.leaveRequest).values(requests.map(r=>({id:r.id,tenantId:b.tenantId,employmentId:r.employmentId,leaveTypeId:b.annualLeaveTypeId,
   startDate:r.date,endDate:r.date,days:'1',durationType:'full_day' as const,status:'pending' as const})));
- // Notifications for every persona's login: three unread updates, two unread action items, two read.
+ // Notifications for every persona: three unread updates, two unread action items, two read.
+ // Addressed to the persona's own employment: a user-addressed notification is a Letters notification (guarded).
  for(const role of ROLES){
-  const rows=[0,1,2,3,4,5,6].map(i=>({id:randomUUID(),tenantId:b.tenantId,recipientUserId:personas[role].userId!,kind:'fixture.notice',
+  const [own]=await owner.db.select({id:schema.employment.id}).from(schema.employment)
+   .where(sql`${schema.employment.personId}=${personas[role].personId!}::uuid and ${schema.employment.terminatedOn} is null`).limit(1);
+  expect(own,`${role} has an own employment`).toBeTruthy();
+  const rows=[0,1,2,3,4,5,6].map(i=>({id:randomUUID(),tenantId:b.tenantId,recipientEmploymentId:own.id,kind:'fixture.notice',
    title:`Fictional notice ${i+1}`,body:'Fixture only',severity:(i===3||i===4?'action':'info') as 'info'|'action',
    readAt:i>=5?new Date(Date.now()-3_600_000):null,createdAt:new Date(Date.now()-(i+1)*60_000)}));
   await owner.db.insert(schema.notification).values(rows);

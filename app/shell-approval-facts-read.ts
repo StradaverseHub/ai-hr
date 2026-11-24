@@ -2,7 +2,7 @@ import 'server-only';
 import type { SessionContext } from '@/db/client';
 import { withBackgroundReadWork } from '@/db/client';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-import { pendingTaskSummary } from '@/core/approvals-inbox';
+import { pendingTaskSummary, type PendingTaskItem } from '@/core/approvals-inbox';
 import { isAdmin } from '@/lib/authz';
 import { companyContextForPage } from '@/lib/scope';
 import type { ShellApprovalResult } from '@/components/shell-approval-facts';
@@ -31,7 +31,7 @@ export function shellPendingTaskSources(session: SessionContext) {
 
 /** The shell's approval facts from the pending task summary and the lifecycle module inbox. */
 export function shellApprovalResult(
-  approvalSummary: Awaited<ReturnType<typeof pendingTaskSummary>>,
+  approvalSummary: { items: PendingTaskItem[]; total: number; approvalCount: number; claimTotal: number },
   lifecycle: LifecycleModuleInbox,
   canApprove: boolean,
 ): ShellApprovalResult {

@@ -24,7 +24,7 @@ describe('web claim rejection reason', () => {
   const actions = read('app/approvals/actions.ts');
 
   it('the single-claim action refuses a reasonless rejection and passes the reason to decideClaim', () => {
-    const single = between(actions, 'export async function approveClaimAction', 'await done(');
+    const single = between(actions, 'export async function approveClaimAction', 'return done(');
     expect(single).toMatch(/formData\.get\('rejectReason'\)/);
     expect(single).toMatch(/if \(!approved && !rejectReason\) throw new ClaimError\(/);
     expect(single).toMatch(/rejectReason: approved \? null : rejectReason/);
