@@ -197,7 +197,8 @@ import {
   toilAccrual,
 } from '../db/schema';
 import { payrollHistoryEffectiveBatch } from '../db/schema';
-import { ALL_ROW_CEILING } from '../lib/pagination';
+import { ALL_ROW_CEILING, cappedTotal, keysetFetchLimit, keysetSlice, listCountCap, type KeysetPageQuery, type KeysetRead } from '../lib/pagination';
+import { anyUuid } from '../db/sql-arrays';
 import { daysInMonth } from './payroll';
 import { filterDelegationOrgScopeTx } from './approvals';
 import { payslipReleaseAt } from './payroll-policy-config';
@@ -569,9 +570,10 @@ const employeeListColumns = (): EmployeeListColumns => ({
 function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = employeeListColumns()) {
   const q = p.q?.trim();
   return and(
-    p.companyIds && p.companyIds.length ? inArray(c.companyId, p.companyIds) : undefined,
+    // One `= any($n::uuid[])` parameter per company list (db/sql-arrays.ts): 10 and 74 companies are one statement.
+    p.companyIds && p.companyIds.length ? anyUuid(c.companyId, p.companyIds) : undefined,
     p.companyId ? eq(c.companyId, p.companyId) : undefined,
-    p.filterCompanyIds && p.filterCompanyIds.length ? inArray(c.companyId, p.filterCompanyIds) : undefined,
+    p.filterCompanyIds && p.filterCompanyIds.length ? anyUuid(c.companyId, p.filterCompanyIds) : undefined,
     p.departmentId ? eq(c.departmentId, p.departmentId) : undefined,
     anyOfOrBlank(c.departmentId, p.departmentIds, !!p.blankChoices?.includes('department')),
     p.employmentStatuses && p.employmentStatuses.length ? inArray(c.status, p.employmentStatuses) : undefined,
@@ -1336,6 +1338,72 @@ export function listWorkforcePersonnelPresentationPageTx(
   });
 }
 
+/** The employee listing's row projection, shared by the OFFSET reader and the keyset directory reader. */
+const employeeListRowSelection = () => ({
+  employmentId: employment.id,
+  name: person.fullName,
+  email: person.primaryEmail,
+  employeeCode: employment.employeeCode,
+  department: sql<string|null>`coalesce(nullif(trim(${department.label}), ''), ${department.name})`,
+  departmentId: assignment.departmentId,
+  position: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), ${position.title})`,
+  company: company.legalName,
+  companyId: employment.companyId,
+  hiredOn: employment.hiredOn,
+  terminatedOn: employment.terminatedOn,
+  // R43 c26c3ce5 — lifecycle inputs for the derived status badge.
+  confirmationDate: employment.confirmationDate,
+  finalConfirmationDate: employment.finalConfirmationDate,
+  // R81 — the probation fallbacks. Nothing writes a confirmation date at hire, so without these two
+  // a new hire serving probation derived to "Active" on day one. See core/employment-status.ts.
+  probationEndDate: employment.probationEndDate,
+  provisionalEndOn: employment.provisionalEndOn,
+  resignationDate: employment.resignationDate,
+  lastWorkingDate: employment.lastWorkingDate,
+  blacklistedAt: employment.blacklistedAt,
+  // ── Customize Columns (579255c3) ────────────────────────────────────────────────────────────
+  // The opt-in columns. Four 1:1 master lookups hung off the existing current-assignment join, so
+  // the row count is unchanged and the count query below needs no edit at all.
+  jobGrade: jobGrade.name,
+  employmentType: assignment.employmentType,
+  businessUnit: businessUnit.name,
+  costCenter: costCenter.name,
+  workLocation: location.name,
+  joinDate: employment.joinDate,
+  // "Reporting To". A SUBQUERY, not a join: reporting_line is 0..N per employment (administrative,
+  // functional, project, dotted, delegate), so joining it would return one LIST ROW PER EDGE and
+  // quietly show the same person two or three times — the class of fault that put 1 of 8 rows on
+  // the Companies screen for 24 days. It reads the SAME edge reportingLinesFor and the leave
+  // approver lookup read (administrative, still open, not superseded) rather than inventing a
+  // second notion of "manager" that could drift from the one the profile shows.
+  reportingTo: sql<string | null>`(
+    select mp.full_name from reporting_line rl
+    join employment me on me.id = rl.manager_employment_id
+    join person mp on mp.id = me.person_id
+    where rl.subordinate_employment_id = ${employment.id}
+      and rl.line_type = 'administrative'
+      and rl.valid_to is null and rl.superseded_at is null
+    order by rl.valid_from desc limit 1)`,
+});
+
+/** FROM and joins of the employee listing's rows (every join is ≤1 row per employment: see each comment). */
+function employeeListRowsFrom(tx: Tx) {
+  return tx
+    .select(employeeListRowSelection())
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .leftJoin(assignment, currentAssignmentJoin())
+    .leftJoin(department, eq(department.id, assignment.departmentId))
+    .leftJoin(position, eq(position.id, assignment.positionId))
+    // 579255c3 — the optional columns' masters. All four are FK → one row, so none of them can widen
+    // the result: `grade_id` on the employment, the other three on the CURRENT assignment.
+    .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+    .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
+    .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
+    .leftJoin(location, eq(location.id, assignment.locationId));
+}
+
 /** listEmployeesPage(…, 'workforce') inside a caller's Personnel overview snapshot. */
 export async function listWorkforcePersonnelPageTx(
   tx: Tx, ctx: SessionContext, input: PersonnelListInput & { companyIds: string[] }, overviewSnapshot: PersonnelOverviewSnapshot,
@@ -1362,52 +1430,7 @@ export function listEmployeesPage(
     const currentAssignment = currentAssignmentJoin();
     const where = employeeListWhere(p);
     const rows = (await tx
-      .select({
-        employmentId: employment.id,
-        name: person.fullName,
-        email: person.primaryEmail,
-        employeeCode: employment.employeeCode,
-        department: sql<string|null>`coalesce(nullif(trim(${department.label}), ''), ${department.name})`,
-        departmentId: assignment.departmentId,
-        position: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), ${position.title})`,
-        company: company.legalName,
-        companyId: employment.companyId,
-        hiredOn: employment.hiredOn,
-        terminatedOn: employment.terminatedOn,
-        // R43 c26c3ce5 — lifecycle inputs for the derived status badge.
-        confirmationDate: employment.confirmationDate,
-        finalConfirmationDate: employment.finalConfirmationDate,
-        // R81 — the probation fallbacks. Nothing writes a confirmation date at hire, so without these two
-        // a new hire serving probation derived to "Active" on day one. See core/employment-status.ts.
-        probationEndDate: employment.probationEndDate,
-        provisionalEndOn: employment.provisionalEndOn,
-        resignationDate: employment.resignationDate,
-        lastWorkingDate: employment.lastWorkingDate,
-        blacklistedAt: employment.blacklistedAt,
-        // ── Customize Columns (579255c3) ────────────────────────────────────────────────────────────
-        // The opt-in columns. Four 1:1 master lookups hung off the existing current-assignment join, so
-        // the row count is unchanged and the count query below needs no edit at all.
-        jobGrade: jobGrade.name,
-        employmentType: assignment.employmentType,
-        businessUnit: businessUnit.name,
-        costCenter: costCenter.name,
-        workLocation: location.name,
-        joinDate: employment.joinDate,
-        // "Reporting To". A SUBQUERY, not a join: reporting_line is 0..N per employment (administrative,
-        // functional, project, dotted, delegate), so joining it would return one LIST ROW PER EDGE and
-        // quietly show the same person two or three times — the class of fault that put 1 of 8 rows on
-        // the Companies screen for 24 days. It reads the SAME edge reportingLinesFor and the leave
-        // approver lookup read (administrative, still open, not superseded) rather than inventing a
-        // second notion of "manager" that could drift from the one the profile shows.
-        reportingTo: sql<string | null>`(
-          select mp.full_name from reporting_line rl
-          join employment me on me.id = rl.manager_employment_id
-          join person mp on mp.id = me.person_id
-          where rl.subordinate_employment_id = ${employment.id}
-            and rl.line_type = 'administrative'
-            and rl.valid_to is null and rl.superseded_at is null
-          order by rl.valid_from desc limit 1)`,
-      })
+      .select(employeeListRowSelection())
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -1440,6 +1463,53 @@ export function listEmployeesPage(
     return { rows, total: Number(count) };
   };
   return existingTx ? read(existingTx) : withTenant(ctx,read);
+}
+
+/** The People directory's keyset page (ADR 0181 decision 5, Phase 4): the same rows, filters and row security as
+ *  listEmployeesPage, ordered by name then employment id, paged by the anchor row's key instead of OFFSET, with a
+ *  total that is exact below the count cap and "cap+" above it (`exactCount` lifts the cap).
+ *
+ *  The cursor is an employment id. Its sort key is read in SQL under the viewer's own row security, so a viewer can
+ *  never page relative to a row they cannot see: an invisible or removed anchor yields no rows and the first page is
+ *  served instead (`anchorFound: false`). Two statements, whatever the number of companies in scope. */
+export async function listEmployeesDirectoryPage(
+  ctx: SessionContext,
+  p: EmployeeListFilters & Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>,
+): Promise<{ rows: EmployeeListRow[] } & KeysetRead> {
+  if (!Number.isSafeInteger(p.limit) || p.limit < 1 || p.limit > ALL_ROW_CEILING) throw new RangeError('Invalid directory page');
+  return withTenant(ctx, async tx => {
+    const where = employeeListWhere(p);
+    const anchorKey = (id: string) => sql`(select anchor_person.full_name, anchor_employment.id
+      from employment anchor_employment join person anchor_person on anchor_person.id = anchor_employment.person_id
+      where anchor_employment.id = ${id}::uuid)`;
+    const read = (cursor: Pick<KeysetPageQuery, 'after' | 'before' | 'last'>) => {
+      const backwards = cursor.before !== undefined || cursor.last;
+      const seek = cursor.after ? sql`(${person.fullName}, ${employment.id}) > ${anchorKey(cursor.after)}`
+        : cursor.before ? sql`(${person.fullName}, ${employment.id}) < ${anchorKey(cursor.before)}` : undefined;
+      return employeeListRowsFrom(tx)
+        .where(and(where, seek))
+        .orderBy(...(backwards ? [desc(person.fullName), desc(employment.id)] : [asc(person.fullName), asc(employment.id)]))
+        .limit(keysetFetchLimit(p)) as Promise<EmployeeListRow[]>;
+    };
+    const cursor = { after: p.after, before: p.before, last: p.last };
+    let fetched = await read(cursor), anchorFound = true;
+    if (fetched.length === 0 && (p.after || p.before)) {
+      // The anchor is gone or no longer visible to this viewer (or nothing follows it any more): open the first page.
+      anchorFound = false;
+      fetched = await read({ last: false });
+    }
+    const page = keysetSlice(fetched, anchorFound ? cursor : { last: false }, anchorFound);
+    const cap = listCountCap(p.size);
+    const bounded = tx.select({ one: sql`1` }).from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(assignment, currentAssignmentJoin())
+      .where(where);
+    // The assignment join is at most one row per employment (assignment_no_overlap), so count(*) is the exact count
+    // of employments and needs no DISTINCT, which would have to read every row before the cap could stop it.
+    const counted = (p.exactCount ? bounded : bounded.limit(cap + 1)).as('counted');
+    const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(counted);
+    return { rows: page.rows, total: cappedTotal(Number(count), cap, p.exactCount), hasPrev: page.hasPrev, hasNext: page.hasNext, anchorFound };
+  });
 }
 
 /** Which of `ids` the employee listing would return for these filters (the same FROM, joins and WHERE as

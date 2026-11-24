@@ -640,6 +640,7 @@
       "title": "Danh bạ nhóm",
       "adminTitle": "Quản lý Nhân sự",
       "employeeCount": "{count, plural, one {# nhân viên} other {# nhân viên}}",
+      "employeeCountCapped": "{count, number}+ nhân viên",
       "importCsv": "Nhập nhân viên",
       "duplicateRecords": "Hồ sơ trùng",
       "profileChangeRequests": "Yêu cầu thay đổi hồ sơ",
@@ -18070,6 +18071,9 @@
     "truncated": "Đang hiển thị {shown, number} dòng đầu tiên trong tổng số {total, number} dòng.",
     "truncatedHint": "Dùng Báo cáo → Xuất dữ liệu để lấy toàn bộ.",
     "truncatedExport": "Xuất toàn bộ dữ liệu",
+    "rangeCapped": "{from}–{to} trong {total, number}+",
+    "truncatedCapped": "Đang hiển thị {shown, number} dòng đầu tiên trong hơn {total, number} dòng.",
+    "countExactly": "Đếm chính xác",
     "previousPage": "Trang trước",
     "nextPage": "Trang sau"
   },
