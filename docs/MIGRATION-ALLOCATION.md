@@ -1,3 +1,18 @@
+# Retained payroll documents planned with their values, 24 November 2026
+
+Reserve `7200_information_documents_planned_with_values`, journal index `10600`, timestamp `1795495007200`,
+SQL SHA-256 `1346b1797640e36cb3c9af83aaa96b39bdd5a4b91b99411778e606128680c01e`. Staging had applied 1,140 entries
+through `1795280007150`. The reservation scan covered the 400 most recently committed remote branch heads, every local
+branch and every registered worktree journal; the highest entry found above `7150` was `7190_bank_import_worksheet_reservation`
+(`1795494980900`), with `7160` to `7180` reserved on other branches. The production watermark was not read from this
+session; recheck it and competing reservations before admission.
+
+Replaces the body of `app.information_payslip_documents(uuid[],integer,integer,text,uuid,boolean)` only: the 5129
+statement runs through `RETURN QUERY EXECUTE ... USING`, so it is planned with its argument values. Signature, owner,
+SECURITY DEFINER, search_path, the 0698 EXECUTE grant, rows and order are unchanged; it is guarded by the exact 5129 body.
+Measured cause (staging, 2,010 retained documents): one month's call took 441 ms against 15 ms for the same statement
+planned with its values, and Transaction View's History tab makes it on every load.
+
 # Recalculation opening source digest without per-row policies, 24 November 2026
 Reserve `7170_payroll_tax_basis_source_digest`, journal index `10570`, timestamp `1795488671170`,
 SQL SHA-256 `cdc4bbc16f68ff86c0964e3b480dd183c5c1fb98ab5847135dde158cf356b1a9`. Main had 1,140 entries through
@@ -10,6 +25,7 @@ income-tax recalculation opening. It returns the same md5 over the same rows the
 requiring the same authority, and is guarded by the exact SELECT/ALL policy list of the six relations it reads.
 Measured cause: production openings held the payroll-history and Access locks for 18-37 s per company in this digest
 (20 ms without row security); focused diagnostic run 45320620220.
+
 # Contract list company rights once per company, 23 November 2026
 
 Reserve `7150_contract_list_company_rights_once`, journal index `10550`, timestamp `1795280007150`,
