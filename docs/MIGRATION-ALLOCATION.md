@@ -1,3 +1,19 @@
+# Pay Item stale-run marker, containment before authority (ADR 0181 write side), 25 November 2026
+
+Reserve `7300_pay_component_itemised_payslips`, journal index `10700`, timestamp `1795495007300`,
+SQL SHA-256 `b078a1a609def1043736cdd4f27e165aa7fc62720f0ec71fe3dee441fb91e9cf`. The reservation scan covered the 500 most recently committed remote and local
+branch heads, every registered worktree's migration folder and journal, and every branch's copy of this file: the
+highest entries held were `7260_viewer_access_version`, `7270`/`7290_approval_history_keyset` (Phase 4 lists) and
+`7280_leave_delegated_decision_set`. Main ends at `7220`; staging runs J2 `3fe15c9cc` (ledger ending `7220`). Neither
+installation's watermark was read from this session beyond that; recheck both and any competing reservation before admission.
+
+Adds the definer `app.pay_component_itemised_payslips(uuid[],jsonb)` (EXECUTE to `ai_hr_app` only): the tenant's payslips
+in the given runs whose `statutory->'componentLines'` contain the given element, admitted by the same
+`app.payroll_history_native_artifact_allowed` call the 6693 `payroll_history_native_payslip` view makes, applied after the
+containment instead of before it. The view, its function and every grant are unchanged. Measured cause: production Pay
+Item saves up to 27.2 s (24 November 2026 request timing); the view ran the authority function for every slip of every
+open run because the containment test is not leakproof.
+
 # Movement sweep system payroll snapshot policies, 24 November 2026
 
 Reserve `7220_movement_system_payroll_snapshot_insert`, journal index `10620`, timestamp `1795495007220`,
