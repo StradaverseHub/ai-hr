@@ -329,14 +329,14 @@ compares it with the stored one, as in section 8.3.
 |---|---|---|---|
 | 1 | Post-287 staging "before": request timing and `pg_stat_statements` for `/payroll`, Transaction View tabs, the register and own payslips, on the owner's account or a fictional staging admin, under the staging lease | No | — |
 | 2 | Quick fix: one set statement for payroll permission in `payrollCloseCompanyIdsTx` and `listReprocessEmployeeOutcomes`, with an equivalence test against `resolvePayrollPermission` per company | No | — |
-| 3 | P1: the two tax-basis guards (reader settings as InitPlans). Also installs the shared switch, the full comparison job and the save-cost test | 7300 | Inert on install |
-| 4 | P2: payroll admin companies once per statement (`payroll_batch_rls`, `payslip_rls` admin arm, original-employer arm) | 7310 | Inert on install |
-| 5 | P3: own payslips once per statement (`payslip_rls` self arm) | 7320 | Inert on install |
-| 6 | P4: the stored history filter (section 5 as revised by 11.4) | 7330 | Inert on install |
-| 7 | F: imported-history run summary (section 7 as revised by 11.5), read only where P2 and P4 are on | 7340 | Inert on install |
+| 3 | P1: the two tax-basis guards (reader settings as InitPlans). Also installs the shared switch, the full comparison job and the save-cost test | 7310 | Inert on install |
+| 4 | P2: payroll admin companies once per statement (`payroll_batch_rls`, `payslip_rls` admin arm, original-employer arm) | 7320 | Inert on install |
+| 5 | P3: own payslips once per statement (`payslip_rls` self arm) | 7330 | Inert on install |
+| 6 | P4: the stored history filter (section 5 as revised by 11.4) | 7340 | Inert on install |
+| 7 | F: imported-history run summary (section 7 as revised by 11.5), read only where P2 and P4 are on | 7350 | Inert on install |
 | 8 | Staging after-measurement; close matching findings in `docs/ARCHITECTURE-PERFORMANCE-REMEDIATION.md` with their evidence | No | — |
 
-Numbers are proposed, above the coordinator's 7300 floor. Each is reserved through `docs/MIGRATION-ALLOCATION.md` and
+Numbers are proposed, and 7300 is taken (`7300_pay_component_itemised_payslips`, slow-saves session). Each is reserved through `docs/MIGRATION-ALLOCATION.md` and
 checked with the database revamp session only when its step is built.
 
 `docs/ARCHITECTURE-PERFORMANCE-REMEDIATION.md` has no finding for the Payroll list or Transaction View load. AP-037
