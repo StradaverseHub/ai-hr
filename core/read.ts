@@ -6746,6 +6746,61 @@ export function auditEventsCount(ctx: SessionContext, f: AuditFilters = {}): Pro
   });
 }
 
+/** The Audit Trail's keyset page (ADR 0181 decision 5, Phase 4): the same rows, filters, order and row security as
+ *  auditEvents, newest first by (occurred_at, sequence), paged from an anchor event instead of OFFSET, with a total
+ *  that is exact below the count cap and "cap+" above it (`exactCount` lifts the cap). The ledger only grows, so an
+ *  OFFSET page re-read every newer event and an exact count read the whole tenant's history on every page view.
+ *
+ *  The cursor is an event id; its (occurred_at, sequence) is read in SQL under the viewer's own row security, so an
+ *  event the viewer cannot see never anchors a page (the first page is served, `anchorFound: false`). */
+export function auditEventsPage(
+  ctx: SessionContext, f: Omit<AuditFilters, 'limit' | 'offset'>,
+  q: Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>,
+): Promise<{ rows: AuditRow[] } & KeysetRead> {
+  if (!Number.isSafeInteger(q.limit) || q.limit < 1 || q.limit > ALL_ROW_CEILING) throw new RangeError('Invalid audit page');
+  return withTenant(ctx, async (tx) => {
+    const where = auditWhere(f);
+    const anchorKey = (id: string) =>
+      sql`(select anchor_event.occurred_at, anchor_event.sequence from domain_event anchor_event where anchor_event.id = ${id}::uuid)`;
+    const read = (cursor: Pick<KeysetPageQuery, 'after' | 'before' | 'last'>) => {
+      // List order is newest first, so "after" (Next) is older and "before" (Previous) is newer.
+      const backwards = cursor.before !== undefined || cursor.last;
+      const seek = cursor.after ? sql`(${domainEvent.occurredAt}, ${domainEvent.sequence}) < ${anchorKey(cursor.after)}`
+        : cursor.before ? sql`(${domainEvent.occurredAt}, ${domainEvent.sequence}) > ${anchorKey(cursor.before)}` : undefined;
+      return tx
+        .select({
+          id: domainEvent.id,
+          aggregateType: domainEvent.aggregateType,
+          aggregateId: domainEvent.aggregateId,
+          eventType: domainEvent.eventType,
+          actorType: domainEvent.actorType,
+          actorName: person.fullName,
+          payload: domainEvent.payload,
+          occurredAt: domainEvent.occurredAt,
+          sequence: domainEvent.sequence,
+        })
+        .from(domainEvent)
+        .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+        .leftJoin(person, eq(person.id, appUser.personId))
+        .where(and(where, seek))
+        .orderBy(...(backwards ? [asc(domainEvent.occurredAt), asc(domainEvent.sequence)] : [desc(domainEvent.occurredAt), desc(domainEvent.sequence)]))
+        .limit(keysetFetchLimit(q)) as Promise<AuditRow[]>;
+    };
+    const cursor = { after: q.after, before: q.before, last: q.last };
+    let fetched = await read(cursor), anchorFound = true;
+    if (fetched.length === 0 && (q.after || q.before)) {
+      anchorFound = false;
+      fetched = await read({ last: false });
+    }
+    const page = keysetSlice(fetched, anchorFound ? cursor : { last: false }, anchorFound);
+    const cap = listCountCap(q.size);
+    const bounded = tx.select({ one: sql`1` }).from(domainEvent).where(where);
+    const counted = (q.exactCount ? bounded : bounded.limit(cap + 1)).as('counted');
+    const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(counted);
+    return { rows: page.rows, total: cappedTotal(Number(count), cap, q.exactCount), hasPrev: page.hasPrev, hasNext: page.hasNext, anchorFound };
+  });
+}
+
 /** The distinct aggregate types present in the tenant's log — drives the filter dropdown. */
 export function auditAggregateTypes(ctx: SessionContext): Promise<{ aggregateType: string }[]> {
   return withTenant(ctx, (tx) =>
