@@ -6,6 +6,7 @@ import type postgres from 'postgres';
 import type {createDb} from '../db/client';
 import {lanesRunSingletonTicks,type WorkerLane} from './bulk-job-lanes';
 import {runBulkJobTick,type BulkJobWorkerOptions} from './bulk-job-worker';
+import type {ImportWorkerPhase} from '../lib/import-worker-watchdog';
 
 export type WorkerSingletonTicks={
  bank(owner:postgres.Sql):Promise<boolean>;
@@ -22,7 +23,7 @@ export type WorkerLaneProcess={
  workerId?:string;
  ticks:WorkerSingletonTicks;
  /** The stall watchdog's phase marker (lib/import-worker-watchdog.ts). */
- enter?(phase:string):void;
+ enter?(phase:ImportWorkerPhase):void;
 };
 export type WorkerLaneIteration={bank:boolean;individual:boolean;bulk:boolean;rewardPlans:boolean;probation:boolean};
 
