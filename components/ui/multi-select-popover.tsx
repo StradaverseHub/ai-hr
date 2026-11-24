@@ -99,6 +99,7 @@ export function MultiSelectPopover({
   emptyLabelFor,
   optionNote,
   optionDisabled,
+  selectAllScope = 'visible',
 }: {
   /** Translated caption shown above the trigger (owned by the component — no <Field> at the call site). */
   label: string;
@@ -138,6 +139,13 @@ export function MultiSelectPopover({
    * WHICH rows from facts it was handed; this component owns no rule about them.
    */
   optionDisabled?: (option: MultiSelectPopoverOption) => boolean;
+  /**
+   * a16382b4 — opt-in: 'all' ⇒ Select all ticks every selectable option, not only the rows the current
+   * search shows (Recalculate Income Tax Value: "Select All Companies shall select all companies
+   * accessible to the logged-in user"). Omitted ⇒ 'visible', what every earlier call site has. Clear all
+   * is unchanged: it still removes only the visible rows.
+   */
+  selectAllScope?: 'visible' | 'all';
 }) {
   const captionId = useId();
   const summaryId = useId();
@@ -208,7 +216,13 @@ export function MultiSelectPopover({
     onChange(next);
   };
   // Select/Clear All act on the currently VISIBLE (search-filtered) options, matching both prior copies.
-  const selectAll = () => onChange(new Set([...selected, ...selectableVisibleIds]));
+  const selectAll = () =>
+    onChange(
+      new Set([
+        ...selected,
+        ...(selectAllScope === 'all' ? options.filter((o) => !optionDisabled?.(o)).map((o) => o.id) : selectableVisibleIds),
+      ]),
+    );
   const clearAll = () => onChange(new Set([...selected].filter((id) => !visibleIds.has(id))));
 
   const triggerLabel = selected.size === 0 ? allLabel : selectedCount(selected.size);

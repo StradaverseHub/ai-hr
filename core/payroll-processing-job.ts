@@ -28,6 +28,7 @@ import {payrollBatch} from '../db/schema';
 import {bulkJobId,bulkJobProgress,bulkJobWorkerStatusTx,enqueueBulkJobTx,type BulkJobRow} from './bulk-job';
 import {isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobStep,type BulkJobStepInput,type BulkJobUnit} from './bulk-job-worker';
 import {publicErrorMessage} from '../lib/public-error';
+import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {lockNativePayrollBatchPeriodTx} from './payroll-period-lock';
 import {
@@ -52,7 +53,7 @@ const DISCARD_BATCH=500;
  * its companies one after another, so this run waits for theirs (a cross-company transfer's coverage marks read
  * the earlier company's run as processed, exactly as before). */
 type JobInput={batchId:string;after?:string[]};
-type JobPlan=PayrollProcessingPlan&{batchId:string;finalized?:{payslips:number;totalNet:number;skipped:number};captured?:boolean;
+type JobPlan=PayrollProcessingPlan&{batchId:string;finalized?:{payslips:number;totalNet:number;skipped:number;taxHeld?:number};captured?:boolean;
  /** A failed run's reason code (core/payroll-run-group-result.ts), for the wizard's result screen. */
  failureReason?:string};
 type EmployeesStep={employmentIds:string[]};
@@ -202,9 +203,16 @@ async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJ
    return{result:unit.processingBegin};
   }
   const ids=(step.payload as EmployeesStep).employmentIds;
-  const unit=await runPayrollProcessingUnitTx(tx,ctx,batchId,{jobId:job.id,phase:'employees',employmentIds:ids,order:Object.fromEntries(ids.map((id,i)=>[id,i])),prefillOvertime:plan.prefillOvertime});
+  const run=(unitTx:Tx)=>runPayrollProcessingUnitTx(unitTx,ctx,batchId,{jobId:job.id,phase:'employees',employmentIds:ids,order:Object.fromEntries(ids.map((id,i)=>[id,i])),prefillOvertime:plan.prefillOvertime});
+  // 016276b7 — the chunk holds the employees whose tax history it cannot read before it calculates anything. A tax
+  // correction committed between that check and the chunk's own history read can still make the read refuse: the
+  // chunk is then rolled back to its savepoint and run once more, so its check sees the change and holds exactly that
+  // employee. A second refusal (including the refusals that are never a hold) fails the run as before.
+  let unit:Awaited<ReturnType<typeof run>>;
+  try{unit=await tx.transaction(run);}
+  catch(error){if(!(error instanceof PayrollTaxBasisError))throw error;unit=await tx.transaction(run);}
   if(!('processingChunk' in unit)||!unit.processingChunk)throw new Error('Payroll processing chunk unavailable.');
-  return{result:unit.processingChunk,counters:{paid:unit.processingChunk.paid.length,skipped:unit.processingChunk.skipped.length}};
+  return{result:unit.processingChunk,counters:{paid:unit.processingChunk.paid.length,skipped:unit.processingChunk.skipped.length,...(unit.processingChunk.taxHeld?.length?{taxHeld:unit.processingChunk.taxHeld.length}:{})}};
 }
 
 /** Finalize in two bounded units. First the flip, under the run's keys: status, totals, ledgers, claims and events,
@@ -226,7 +234,7 @@ async function finalizeRun(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit):P
     if(batch)await assertRunAuthorityTx(tx,batch.companyId);
     const rows=await tx.execute<{result:PayrollProcessingChunkResult}>(sql`select result from bulk_job_step where job_id=${job.id}::uuid and kind='employees' and state='applied' order by seq`);
     const done=await completePayrollProcessingTx(tx,ctx,{batchId,jobId:job.id,plannedEmploymentIds:plan.employmentIds,prefillOvertime:plan.prefillOvertime,chunks:rows.map(r=>r.result)});
-    const finalized={payslips:done.payslips,totalNet:done.totalNet,skipped:done.skipped.length};
+    const finalized={payslips:done.payslips,totalNet:done.totalNet,skipped:done.skipped.length,...(done.taxHeld.length?{taxHeld:done.taxHeld.length}:{})};
     await unit.set(tx,{planMerge:{finalized}});
    });
    unit.metric('finalizeTxMs',performance.now()-started);

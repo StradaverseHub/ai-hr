@@ -1,3 +1,57 @@
+# Contract list company rights once per company, 23 November 2026
+
+Reserve `7150_contract_list_company_rights_once`, journal index `10550`, timestamp `1795280007150`,
+SQL SHA-256 `780626af53f87077421ff3ba94c174239c52fd4ab3ab9368243027a3edf10e3c`. Staging had applied 1,139 entries through `1795280007140` (release be980b458, which installed
+`7140_payroll_individual_import_steps`); this entry follows it. The reservation scan covered the 300 most recently committed
+remote branch heads and every registered worktree journal, and none held an entry above `7140`.
+The production watermark was not read from this session; recheck it and competing reservations before admission.
+
+Replaces the body of `app.contract_shared_page(text,integer,integer)` only. The company-level Contract grant is evaluated
+once per company, and the per-employment check runs only for cases the company grant does not already permit. Rows,
+order, signature, owner and the 6314 EXECUTE grant are unchanged; it is guarded by the exact 6314 list body and the
+exact 6308 permission body. Measured cause: with 1,000 cases in 70 companies one list call took about 1.6 s, nearly
+all of it in the per-case permission check (focused diagnostic runs 45192349790 and 45192363574).
+
+# Individual Transaction import written in steps (board 0ec0ee00, stage 2), 23 November 2026
+
+Reserve `7140_payroll_individual_import_steps`, journal index `10540`, timestamp `1795280007140`,
+SQL SHA-256 `c2f75af90ad00c779e3447311ba8efb25ad06066ab46dc744810fba720223d5f`. `7120` and `7130` (idx `10520`–`10530`) are
+installed on staging with release 13877b505 (board a16382b4); this entry follows them and was reconciled with them
+when combined into the 016276b7 + 0ec0ee00 release on 23 November 2026. The timestamp is above every entry on this branch's journal
+(`1795280007110`). Recheck both installations' watermarks and competing reservations before admission.
+
+Raises the Individual Transaction attempt and queue limits from 2,000 to 10,000 rows, adds the importing, stopped,
+reverting and reverted states with a replacement transition trigger, summary and revert-progress columns, the
+append-only `payroll_txn_import_outcome` table (RLS forced, `ai_hr_app` SELECT and INSERT only; the default UPDATE, DELETE and TRUNCATE are revoked), the step-scoped
+`app.payroll_txn_import_lock_step_bindings` and the bounded `app.payroll_individual_import_request_revert`. Existing
+rows are not rewritten; the looser records CHECK is added NOT VALID and validated separately. The Fixed Transaction
+import does not use these tables.
+
+# Contract account lookup, Person first, 23 November 2026
+
+Reserve `7130_contract_users_person_first`, journal index `10530`, timestamp `1795280007130`,
+SQL SHA-256 `f365166f4b483dbeaacc03552e97d022c4ede42b35f6b66babbda1f1fdac71e8`. Staging had applied 1,136 entries
+through `1795280007110`, and `7120` is reserved above it for the same combined candidate. The reservation scan
+covered the 300 most recently committed remote branch heads and every registered worktree journal; none held an
+entry above `7120`. The production watermark was not read from this session; recheck it before admission.
+
+Replaces the body of `app.contract_users_for_employment(uuid)` only: the Person's accounts are matched before the
+per-account active and verified checks run. The signature, owner, the 0950 EXECUTE grant to `ai_hr_app`, and the
+returned accounts are unchanged; it is guarded by the exact original body hash. Measured cause: one Contract decision
+preview made about 35,000 per-account checks when a tenant held 5,000 unrelated accounts.
+
+# Recalculation history run link, 23 November 2026
+
+Reserve `7120_payroll_tax_basis_run`, journal index `10520`, timestamp `1795280007120`,
+SQL SHA-256 `e5aab381a4d81892cdf95d32d6cd9c857976662135c5f6bb188aec7876c8cc2a`. Staging reported 1,136 applied
+entries through `1795280007110` before allocation. The production watermark was not read from this session; recheck
+it and competing reservations before admission. The reservation scan covered the 300 most recently committed remote
+and local branch heads and every registered worktree journal; none held an entry above `7110`.
+
+Adds a nullable `run_id` to `payroll_tax_basis_batch` and a partial index on it (board a16382b4). The grouped
+confirmation worker step is the only writer. Existing batches keep NULL; rows, triggers, grants and row policies are
+unchanged.
+
 # Draft payroll historical tax readiness, 22 November 2026
 
 Reserve `7110_payroll_draft_tax_readiness`, journal index `10510`, timestamp `1795280007110`,

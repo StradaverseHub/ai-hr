@@ -6,6 +6,8 @@ import type {HistoryRevisionRow} from '../lib/payroll-history-revisions';
 import {importedTaxInput,SYSTEM_BASIC_TAX_SETTING,type ImportedTaxSetting} from '../lib/payroll-import-tax-input';
 import {readPcbNonCash} from '../localization/noncash-benefits';
 import {resolveTaxOpeningEvidence} from '../lib/payroll-tax-opening-evidence';
+import {readTaxOpeningRowsTx,resolveTaxOpeningRow} from './payroll-tax-opening';
+import {summarizeExemptionLedger,taxOpeningDigestRow,type TaxOpeningRow} from '../lib/payroll-tax-opening-tp3';
 import {resolveImportCodes} from './payroll-history-import';
 import {createHash,randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -14,7 +16,7 @@ import {appendEvent,actorOf} from '../db/events';
 import {requirePackFor} from '../localization/registry';
 import type {StatutoryRuleset} from '../localization/country-pack';
 import {readHistoryField} from '../lib/payroll-history-import-schema';
-import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type TaxBasisEmployee,type TaxBasisMonth,type TaxBasisValue,type TaxBasisBatch} from '../lib/payroll-tax-basis';
+import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type TaxBasisEmployee,type TaxBasisMonth,type TaxBasisValue,type TaxBasisBatch,type TaxBasisOpening,type TaxBasisHoldReason,type TaxBasisLedgerEntry,type TaxBasisBounds,type TaxBasisHistoryRow,type TaxBasisHistoryCursor,type TaxBasisProgressState,TAX_BASIS_HISTORY_PAGE_SIZE} from '../lib/payroll-tax-basis';
 import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
@@ -47,7 +49,7 @@ async function settingsTx(tx:Tx,lock=false){
 }
 type SourceSlip={id:string;period:string;runOrder:number;gross:string;deductions:string;basic:string;allowance:string;overtime:string;bonus:string;statutory:Record<string,unknown>;historyAttemptId:string|null;cycleId:string|null};
 type InputLine={code:string;amount:number;direction:'earning'|'deduction'|'noncash';settingId?:string;rowNum?:number;nonCashSource?:{source:'recurring'|'one_off';sourceId?:string};previousTreatment?:string|null};
-type SourceCache=Map<string,{retained:{name:string;sourceHash:string;rows:HistoryRevisionRow[]};rows:Awaited<ReturnType<typeof parsePayrollHistorySource>>}>&{codes?:Awaited<ReturnType<typeof resolveImportCodes>>;slips?:Map<string,SourceSlip[]>;country?:string;rules?:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;sourceHashes?:Map<string,string>;effective?:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null;superseded?:Map<string,string[]>;rulesStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>;noTp3Opening?:Set<string>};
+type SourceCache=Map<string,{retained:{name:string;sourceHash:string;rows:HistoryRevisionRow[]};rows:Awaited<ReturnType<typeof parsePayrollHistorySource>>}>&{codes?:Awaited<ReturnType<typeof resolveImportCodes>>;slips?:Map<string,SourceSlip[]>;country?:string;rules?:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;sourceHashes?:Map<string,string>;effective?:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null;superseded?:Map<string,string[]>;rulesStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>;openings?:Map<string,TaxOpeningRow>;withoutLedger?:boolean};
 /** Preview and atomic continuation share exact released ownership, including detached native origins. */
 async function supersededTaxBasisRowsTx(tx:Tx,sourceIds:readonly string[]):Promise<Map<string,string[]>>{
  const ids=[...new Set(sourceIds)];if(!ids.length)return new Map();
@@ -99,25 +101,13 @@ async function linesTx(tx:Tx,slip:SourceSlip,employmentId:string,companyId:strin
  if(!basicIncluded&&Number(slip.basic)!==0){if(settings.some(s=>s.code==='BASIC'&&s.id!=='system-basic-salary'))fail(`${slip.period}: the original basic Pay Item identity is unavailable.`);out.unshift({code:'BASIC',amount:Number(slip.basic),direction:'earning'});}
  return out;
 }
-/** Absence can supply a zero only where the caller can read the person's TP3 and applied opening.
- * The historical employer's grant on its own does not establish absence for a transferred person. */
-async function noTp3OpeningTx(tx:Tx,ctx:SessionContext,year:number,employmentIds:string[]):Promise<Set<string>>{
- if(!employmentIds.length)return new Set();
- const rows=await tx.execute<{id:string}>(sql`
-  select e.id from employment e
-  where e.tenant_id=${ctx.tenantId}::uuid and e.id=any(${uuidArray(employmentIds)})
-    and app.can_see_person(e.person_id) is true and app.can_admin_payroll_for(e.company_id) is true
-    and app.can_admin_employment(e.id) is true
-    and not exists(select 1 from employee_tp3 t where t.tenant_id=e.tenant_id
-      and t.person_id=e.person_id and t.assessment_year=${year})
-    and not exists(select 1 from employee_statutory_my s where s.tenant_id=e.tenant_id
-      and s.person_id=e.person_id and s.tp3_year=${year})
-    and (select a.had_previous_employer from payroll_tp3_previous_employer_answer a
-      where a.tenant_id=e.tenant_id and a.employment_id=e.id and a.person_id=e.person_id and a.assessment_year=${year}
-      order by a.answered_at desc,a.id desc limit 1) is not true
- `);
- return new Set(rows.map(row=>row.id));
-}
+/** 23 November 2026 (ADR-0167, board item 0af23331): after saved payslip evidence, the accepted TP3 for the year is the
+ * prior-employer opening; without one the opening is RM0 even when a previous employer was declared. A caller who cannot see
+ * the person's TP3 and applied opening keeps the hold (core/payroll-tax-opening.ts). */
+const savedSourceUnbound='Saved prior-employer exemption usage for this year is not bound to this employer, employee and saved history, so it cannot be used or replaced.';
+const accessHeld='Prior-employer exemption use cannot be confirmed because you are not allowed to see this employee\'s TP3 and applied tax opening.';
+/** Comparison normalises the 20 November label so an unchanged zero opening creates no new revision. */
+const comparableOpeningSource=(value:unknown)=>value==='no_tp3_default_zero'?'no_accepted_tp3':value;
 
 async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,who:{id:string;employeeNo:string;name:string},settings:Settings[],settingsHash:string,cache:SourceCache=new Map()):Promise<TaxBasisEmployee>{
  let pcbComparison:TaxBasisEmployee['pcbComparison'];
@@ -147,17 +137,29 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
   const heldDetail=(reason:string,field:string,affects:string[]):TaxBasisEmployee=>({...blocked(reason),recordCount:included.length,partialMonths:partialMonths(),missingEvidence:[{field,affects,reason}]});
   const hasSavedYearUsage=slips.some(({statutory:st})=>st.taxBasisOpeningExemptionYear===selection.year
     && object(st.taxBasisOpeningExemptionUsed) && Object.values(st.taxBasisOpeningExemptionUsed).some(value=>value!==0));
-  const defaultedOpening=opening.state==='missing' && included.some(slip=>slip.historyAttemptId)
-    && !hasSavedYearUsage
-    && (cache.noTp3Opening??await noTp3OpeningTx(tx,ctx,selection.year,[who.id])).has(who.id);
-  if(opening.state!=='known'&&!defaultedOpening){
-   const held=heldDetail(opening.reason,'priorEmployerExemptionUsage',['taxableWages','exemptWages','optionalDeductions','pcbComparison']);
-   if(opening.state==='conflict')return held;
-   return {...held,status:'skipped',reason:'Saved taxable and exempt values were kept because prior-employer exemption use is unknown.'};
+  let openingInfo:TaxBasisOpening|undefined,hold:{code:TaxBasisHoldReason;reason:string;status:'blocked'|'skipped'}|undefined;
+  if(!capped){/* Uncapped wage reconstruction needs no prior-employer opening and asserts none. */}
+  else if(opening.state==='known')openingInfo={source:'saved_payslip',used:opening.used};
+  else if(opening.state==='conflict')hold={code:'saved_evidence_conflict',reason:opening.reason,status:'blocked'};
+  else if(hasSavedYearUsage)hold={code:'saved_evidence_conflict',reason:savedSourceUnbound,status:'skipped'};
+  else{
+   const resolved=resolveTaxOpeningRow((cache.openings??await readTaxOpeningRowsTx(tx,ctx,selection.year,[who.id])).get(who.id));
+   if(resolved.state==='access_insufficient')hold={code:'access_insufficient',reason:accessHeld,status:'skipped'};
+   else if(resolved.state==='unreadable')fail(resolved.reason);
+   else openingInfo=resolved.opening;
   }
-  const openingExemptionUsed=opening.state==='known'?opening.used:{};
+  const replayInput={year:selection.year,upToMonth:selection.upToMonth,slips:input,settings,rulesByPeriod};
+  if(hold){
+   const held=heldDetail(hold.reason,'priorEmployerExemptionUsage',['taxableWages','exemptWages','optionalDeductions','pcbComparison']);
+   // Review-only ranges: never persisted (a held employee writes no revision) and never confirmable; totals stay null.
+   let bounds:TaxBasisBounds|undefined;
+   if(pack.payroll.boundTaxBasis){try{bounds=pack.payroll.boundTaxBasis(replayInput);}catch(error){if(!(error instanceof Error)||error.name!=='TaxBasisReplayError')throw error;}}
+   return {...held,holdReason:hold.code,status:hold.status,...(bounds?{bounds}:{}),
+    ...(hold.status==='skipped'?{reason:'Saved taxable and exempt values were kept because prior-employer exemption use is unknown. '+hold.reason}:{})};
+  }
+  const openingExemptionUsed=openingInfo?.used??{};
   let replay:ReturnType<typeof pack.payroll.replayTaxBasis>;
-  try{replay=pack.payroll.replayTaxBasis({year:selection.year,upToMonth:selection.upToMonth,slips:input,settings,rulesByPeriod,openingExemptionUsed});}
+  try{replay=pack.payroll.replayTaxBasis({...replayInput,openingExemptionUsed,ledger:!cache.withoutLedger});}
   catch(error){
    if(!(error instanceof Error)||error.name!=='TaxBasisReplayError')throw error;
    const noncash=/noncash/i.test(error.message),deduction=/relief|deduction split/i.test(error.message);
@@ -178,7 +180,10 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
    const old=(superseded.get(source.id)??[]).map(id=>({id}));
    const items=row.basis.items.map((item,index)=>{const saved=previous?.items[index];return {...item,previousTreatment:saved?.code===item.code&&saved.amount===item.amount?saved.latestTreatment:item.previousTreatment};});
    const basis:TaxBasisValue={...validatedTaxBasis(row.basis),items,supersedes:old.map(r=>r.id),settingsHash,appliedSettings:settings.filter(setting=>row.basis.items.some(item=>item.code===setting.code)),rulesEvidence:rulesEvidence[row.period],rulesState:ruleStates.get(row.period),
-     ...(defaultedOpening?{openingExemptionSource:'no_tp3_default_zero'}:{})};
+     // The comparable source stays as before for a saved opening (absent); provenance and the ledger are additive keys
+     // excluded from comparison(), so an unchanged employee creates no new revision.
+     ...(openingInfo&&openingInfo.source!=='saved_payslip'?{openingExemptionSource:openingInfo.source}:{}),
+     ...(openingInfo?{openingExemption:openingInfo}:{})};
    ytdTaxable=round(ytdTaxable+basis.pcb);ytdExempt=round(ytdExempt+exempt);
    const beforeNormal=previous?.normal??(object(st.pcbNonCash)?money(st.pcbNonCash.cashNormal):null);
    const beforeAdditional=previous?.additional??money(source.bonus);
@@ -190,14 +195,16 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
     ||hash(nonCashInputs(previous?.pcbNonCash??st.pcbNonCash))!==hash(nonCashInputs(basis.pcbNonCash));
    months.push({payrollInputsChanged,payslipId:source.id,period:source.period,sourceHash:hashes.get(source.id)!,beforeTaxable,taxable:basis.pcb,difference:beforeTaxable===null?null:round(basis.pcb-beforeTaxable),beforeExempt,exempt,ytdTaxable,ytdExempt,items:basis.items,basis});
   }
-  const comparison=(basis:TaxBasisValue)=>({pcb:basis.pcb,normal:basis.normal,additional:basis.additional,exempt:basis.exempt,lp:basis.lp,nonCash:nonCashInputs(basis.pcbNonCash),exemptionUsed:basis.exemptionUsed,settings:importedTaxSettingEvidence(basis.appliedSettings),rulesState:basis.rulesState,rulesEvidence:basis.rulesEvidence,openingExemptionSource:basis.openingExemptionSource,items:basis.items.map(({previousTreatment,name,...item})=>item)});
+  const comparison=(basis:TaxBasisValue)=>({pcb:basis.pcb,normal:basis.normal,additional:basis.additional,exempt:basis.exempt,lp:basis.lp,nonCash:nonCashInputs(basis.pcbNonCash),exemptionUsed:basis.exemptionUsed,settings:importedTaxSettingEvidence(basis.appliedSettings),rulesState:basis.rulesState,rulesEvidence:basis.rulesEvidence,openingExemptionSource:comparableOpeningSource(basis.openingExemptionSource),items:basis.items.map(({previousTreatment,name,...item})=>item)});
   const changed=months.some(month=>{const source=included.find(slip=>slip.id===month.payslipId)!,stamp=source.statutory.importedTaxBasis;const previous=effective?.get(month.payslipId)?.basis??(object(stamp)&&stamp.state==='ready'?{...validatedTaxBasis(stamp.basis),appliedSettings:stamp.settings,rulesState:stamp.rulesState,rulesEvidence:stamp.rulesEvidence}:null);return !previous||hash(comparison(previous))!==hash(comparison(month.basis));});
   const beforeTaxable=months.some(m=>m.beforeTaxable===null)?null:round(months.reduce((n,m)=>n+m.beforeTaxable!,0)),taxable=round(months.reduce((n,m)=>n+m.taxable,0)),beforeExempt=months.some(m=>m.beforeExempt===null)?null:round(months.reduce((n,m)=>n+m.beforeExempt!,0)),exempt=round(months.reduce((n,m)=>n+m.exempt,0));
   if(changed&&slips.some(s=>s.period>cutoff)){
    const altersAllocation=months.some(m=>Object.keys(m.basis.exemptionUsed).length>0||object(included.find(s=>s.id===m.payslipId)!.statutory.exemptionUsed)&&Object.keys(included.find(s=>s.id===m.payslipId)!.statutory.exemptionUsed as object).length>0);
    if(altersAllocation)return {...blocked('Later saved months depend on annual exemption allocation. Extend the selected final month and preview again.'),recordCount:months.length,beforeTaxable,taxable,difference:beforeTaxable===null?null:round(taxable-beforeTaxable),beforeExempt,exempt,months};
   }
-  return {...who,...(defaultedOpening?{openingExemptionSource:'no_tp3_default_zero' as const}:{}),...(pcbComparison?{pcbComparison}:{}),status:changed?'ready':'unchanged',reason:null,recordCount:months.length,beforeTaxable,taxable,difference:beforeTaxable===null?null:round(taxable-beforeTaxable),beforeExempt,exempt,months};
+  const ledgerEntries=months.flatMap(month=>object(month.basis.exemptionLedger)&&Array.isArray(month.basis.exemptionLedger.entries)?month.basis.exemptionLedger.entries as TaxBasisLedgerEntry[]:[]);
+  const exemptionLedger=cache.withoutLedger?undefined:summarizeExemptionLedger(ledgerEntries,openingExemptionUsed,openingInfo?.source??null);
+  return {...who,...(openingInfo?{openingExemptionSource:openingInfo.source,openingExemption:openingInfo}:{}),...(exemptionLedger?{exemptionLedger}:{}),...(pcbComparison?{pcbComparison}:{}),status:changed?'ready':'unchanged',reason:null,recordCount:months.length,beforeTaxable,taxable,difference:beforeTaxable===null?null:round(taxable-beforeTaxable),beforeExempt,exempt,months};
  }catch(error){if(error instanceof PayrollTaxBasisError||error instanceof Error&&['TaxBasisReplayError','ImportedTaxSourceError','NonCashBenefitConfigurationError'].includes(error.name))return blocked(error.message);throw error;}
 }
 /** Read-only replay for one authorized open-run employee. Only the exact prefix selected by payroll
@@ -230,6 +237,7 @@ export async function replayChangedPayrollHistoryTx(
  cache.sourceHashes=new Map(prefix.map(source=>[source.id,importedSourceHash(source)]));
  cache.effective=new Map(effective);
  cache.superseded=new Map();
+ cache.withoutLedger=true;
  const upToMonth=Number(slips.at(-1)!.period.slice(5));
  const replay=await employeeTx(tx,ctx,{companyId:first.companyId,year,upToMonth,employmentIds:[first.employmentId]},
   {id:first.employmentId,employeeNo:'',name:''},settings,hash(settings),cache);
@@ -296,8 +304,8 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
    for(const retained of page){if(createHash('sha256').update(retained.content).digest('hex')!==retained.sourceHash)fail('A retained import source is unavailable or changed.');cache.set(retained.id,{retained,rows:await parsePayrollHistorySource(retained.name,retained.content)});}
   }
  }
- cache.noTp3Opening=await noTp3OpeningTx(tx,ctx,selection.year,
-   employees.filter(employee=>cache.slips?.get(employee.id)?.some(slip=>slip.historyAttemptId)).map(employee=>employee.id));
+ // One set-wise opening read for every subject with saved history in the year (SCALE rule 2).
+ cache.openings=await readTaxOpeningRowsTx(tx,ctx,selection.year,employees.filter(employee=>cache.slips?.get(employee.id)?.length).map(employee=>employee.id));
  cache.rulesStates=await importedTaxRulesStatesTx(tx,[...new Set(allSlips.map(slip=>slip.period))]);
  const sourceRead=await createTaxBasisPreviewReadTx(tx,ctx,allSlips.map(slip=>slip.id));
  cache.sourceHashes=sourceRead.sourceHashes;
@@ -333,7 +341,7 @@ export async function searchCurrentTaxBasisEmployees(ctx:SessionContext,companyI
 export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
  await lockPayrollHistoryReadTx(tx,ctx.tenantId);
  assertModuleGate(ctx,'payroll');
- const companies=await tx.execute<{id:string;name:string;canRecalculate:boolean}>(sql`select id,legal_name as name,app.payroll_tax_basis_permission(id,'payroll.tax-basis.recalculate') as "canRecalculate" from company where archived_at is null and app.payroll_tax_basis_permission(id,'payroll.tax-basis.view') order by legal_name,id`);
+ const companies=await tx.execute<{id:string;name:string;code:string|null;canRecalculate:boolean}>(sql`select id,legal_name as name,nullif(btrim(company_label),'') as code,app.payroll_tax_basis_permission(id,'payroll.tax-basis.recalculate') as "canRecalculate" from company where archived_at is null and app.payroll_tax_basis_permission(id,'payroll.tax-basis.view') order by legal_name,id`);
  const canRecalculate=companies.some(company=>company.canRecalculate),ids=companies.map(company=>company.id);if(!ids.length)fail('Income-tax recalculation access is unavailable.');
  const employees:{id:string;companyId:string;employeeNo:string;name:string}[]=[];
  for(let offset=0;;offset+=500){
@@ -383,8 +391,9 @@ async function taxBasisInputsDigestTx(tx:Tx,ctx:SessionContext,selection:TaxBasi
    union all select 'r:'||r.id||':'||r.xmin from payroll_tax_basis_revision r where r.company_id=${selection.companyId}::uuid and r.period like ${year}
    union all select 's:'||s.id from payroll_history_import_snapshot s join payroll_history_import_record h on h.id=s.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}
    union all select 'v:'||v.id from payroll_history_import_revision v join payroll_history_import_record h on h.id=v.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}) q`));
- const noTp3Opening=[...await lap(laps,'noTp3Opening',()=>noTp3OpeningTx(tx,ctx,selection.year,(selection.employmentIds===null?subjects:selectedSubjects).map(subject=>subject.id)))].sort();
- return hash({settings,subjects:[...subjects],selectedSubjects:[...selectedSubjects],company:company?.row??null,rules,rows:rows?.d??null,noTp3Opening});
+ // The opening source, TP3 identity/revision, projection and declared answer invalidate a preview when any of them changes.
+ const openings=[...(await lap(laps,'openingEvidence',()=>readTaxOpeningRowsTx(tx,ctx,selection.year,(selection.employmentIds===null?subjects:selectedSubjects).map(subject=>subject.id)))).values()].map(taxOpeningDigestRow);
+ return hash({settings,subjects:[...subjects],selectedSubjects:[...selectedSubjects],company:company?.row??null,rules,rows:rows?.d??null,openings});
 }
 async function recordEventTx(tx:Tx,ctx:SessionContext,batchId:string,companyId:string,kind:string,detail:unknown={},employmentId:string|null=null){await tx.execute(sql`insert into payroll_tax_basis_event(tenant_id,company_id,batch_id,employment_id,actor_id,kind,detail) values(${ctx.tenantId}::uuid,${companyId}::uuid,${batchId}::uuid,${employmentId}::uuid,${ctx.userId!}::uuid,${kind},${JSON.stringify(detail)}::jsonb)`);}
 type PreviewInput={previewId:string;previewHash:string};
@@ -416,7 +425,7 @@ async function calculateTaxBasisConfirmation(ctx:SessionContext,input:PreviewInp
  },{readOnlySnapshot:true});
 }
 
-async function openTaxBasisBatchTx(tx:Tx,ctx:SessionContext,input:PreviewInput,digest:string,groupReviewed:boolean):Promise<OpenedTaxBasisBatch|null>{
+async function openTaxBasisBatchTx(tx:Tx,ctx:SessionContext,input:PreviewInput,digest:string,groupReviewed:boolean,runId:string|null=null):Promise<OpenedTaxBasisBatch|null>{
  const laps:TaxBasisLaps={},started=performance.now();let lockedAt=started,outcome='opened';
  try{
   await lap(laps,'historyLockWait',()=>lockPayrollHistoryWriteTx(tx,ctx.tenantId));
@@ -426,21 +435,24 @@ async function openTaxBasisBatchTx(tx:Tx,ctx:SessionContext,input:PreviewInput,d
   if(existing){outcome='existing';return {...stored,id:existing,existing:true};}
   if(await taxBasisInputsDigestTx(tx,ctx,stored.selection,laps)!==digest){outcome='changed';return null;}
   const id=randomUUID();
-  await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by) values(${id}::uuid,${ctx.tenantId}::uuid,${stored.selection.companyId}::uuid,${input.previewId}::uuid,${ctx.userId!}::uuid)`);
+  await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by,run_id) values(${id}::uuid,${ctx.tenantId}::uuid,${stored.selection.companyId}::uuid,${input.previewId}::uuid,${ctx.userId!}::uuid,${runId}::uuid)`);
   await recordEventTx(tx,ctx,id,stored.selection.companyId,'pending');
   return {...stored,id,existing:false};
  }catch(error){outcome='refused';throw error;}
  finally{reportSlowTaxBasisOpening(input.previewId,outcome,Math.round(performance.now()-lockedAt),Math.round(performance.now()-started),laps);}
 }
 
-export async function prepareReviewedTaxBasisConfirmation(ctx:SessionContext,input:PreviewInput){
+/** `runId` is the grouped confirmation bulk job: it only groups this run's employee-group batches per company on the
+ * Recalculation history page (a16382b4, migration 7120). It grants nothing and is never read for authority. */
+export async function prepareReviewedTaxBasisConfirmation(ctx:SessionContext,input:PreviewInput,runId:string|null=null){
+ if(runId!==null&&!uuid.test(runId))fail('Choose a valid recalculation batch.');
  const {digest}=await calculateTaxBasisConfirmation(ctx,input,true);
  return async (tx:Tx):Promise<{id:string|null}>=>{
   if(digest===null){
    await loadTaxBasisPreviewTx(tx,ctx,input,false,true);
    return {id:null};
   }
-  const opened=await openTaxBasisBatchTx(tx,ctx,input,digest,true);
+  const opened=await openTaxBasisBatchTx(tx,ctx,input,digest,true,runId);
   if(!opened)fail(historyChanged);
   return {id:opened.id};
  };
@@ -528,6 +540,88 @@ export async function listTaxBasisBatches(ctx:SessionContext,requestedId?:string
   }
   return result;
  });
+}
+/** a16382b4 — the Recalculation history page. One row per company per recalculation run: batches stamped with the
+ * same run_id (7120) are one run; an older or single-preview batch (run_id null) is its own run. Visibility,
+ * grouping, ordering, keyset paging and every count are one set-based statement — no per-row permission or event
+ * reads (docs/SCALE-AND-RELEASE-RULES.md §2). Authority is the same database owner the per-batch reader and the
+ * company picker use (app.payroll_tax_basis_permission, which also requires can_admin_payroll_for). */
+export async function listTaxBasisHistory(ctx:SessionContext,options:{cursor?:TaxBasisHistoryCursor|null;limit?:number}={}):Promise<{rows:TaxBasisHistoryRow[];next:TaxBasisHistoryCursor|null}>{
+ const limit=Math.min(Math.max(Math.trunc(options.limit??TAX_BASIS_HISTORY_PAGE_SIZE),1),100),cursor=options.cursor??null;
+ if(cursor&&(!/^\d{4}-\d{2}-\d{2}[ T][\d:.]+(?:Z|[+-]\d{2}(?::?\d{2})?)?$/.test(cursor.createdAt)||!/^[\da-f-]{36}:[\da-f-]{36}$/i.test(cursor.id)))fail('Choose a valid history page.');
+ assertModuleGate(ctx,'payroll');
+ if(!ctx.userId)return {rows:[],next:null};
+ return withTenant(ctx,async tx=>{
+  const [principal]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);
+  if(!principal?.ok)fail('Your payroll authority changed. Sign in again.');
+  const rows=await tx.execute<{key:string;companyId:string;startedAt:string;batchIds:string[];createdBy:string;actorName:string;companyName:string|null;year:number|null;upToMonth:number|null;employeeCount:number;notIncluded:number;completed:number;failed:number;finals:number;completedFinals:number;failedFinals:number;finalAt:string|null;processing:boolean;interrupted:boolean}>(sql`
+   with permitted as materialized (
+    select c.id from company c where c.tenant_id=${ctx.tenantId}::uuid and app.payroll_tax_basis_permission(c.id,'payroll.tax-basis.view')
+   ), runs as (
+    select b.company_id,coalesce(b.run_id,b.id) as run_key,min(b.created_at) as started_at,
+     array_agg(b.id order by b.created_at,b.id) as batch_ids,(array_agg(b.created_by order by b.created_at,b.id))[1] as created_by
+    from payroll_tax_basis_batch b join permitted on permitted.id=b.company_id
+    where b.tenant_id=${ctx.tenantId}::uuid group by b.company_id,coalesce(b.run_id,b.id)
+   ), page as (
+    select r.*,(r.run_key::text||':'||r.company_id::text) collate "C" as key from runs r
+    ${cursor?sql`where (r.started_at,(r.run_key::text||':'||r.company_id::text) collate "C")<(${cursor.createdAt}::timestamptz,${cursor.id}::text collate "C")`:sql``}
+    order by r.started_at desc,key desc limit ${limit+1}
+   )
+   select page.key,page.company_id as "companyId",page.started_at::text as "startedAt",page.batch_ids::text[] as "batchIds",
+    coalesce(actor.full_name,page.created_by::text) as "actorName",agg.company_name as "companyName",agg.year,agg.up_to_month as "upToMonth",
+    agg.employee_count::integer as "employeeCount",agg.not_included::integer as "notIncluded",
+    coalesce(outcome.completed,0)::integer as completed,coalesce(outcome.failed,0)::integer as failed,
+    coalesce(fin.finals,0)::integer as finals,coalesce(fin.completed_finals,0)::integer as "completedFinals",coalesce(fin.failed_finals,0)::integer as "failedFinals",
+    fin.final_at::text as "finalAt",coalesce(pr.processing,false) as processing,
+    (coalesce(fin.finals,0)<cardinality(page.batch_ids) and not coalesce(wm.worker_managed,false) and pr.last_at<now()-interval '5 minutes') as interrupted
+   from page
+   left join app_user u on u.id=page.created_by left join person actor on actor.id=u.person_id
+   cross join lateral (
+    select (array_agg(pv.preview->>'companyName' order by b.created_at,b.id))[1] as company_name,
+     min((pv.preview->>'year')::integer) as year,min((pv.preview->>'upToMonth')::integer) as up_to_month,
+     coalesce(sum((pv.preview->>'eligibleCount')::integer),0) as employee_count,
+     coalesce(sum(coalesce((pv.preview->>'skippedCount')::integer,0)+coalesce((pv.preview->>'blockedCount')::integer,0)+coalesce((pv.preview->>'unchangedCount')::integer,0)),0) as not_included
+    from payroll_tax_basis_batch b join payroll_tax_basis_preview pv on pv.id=b.preview_id where b.id=any(page.batch_ids)
+   ) agg
+   left join lateral (
+    select count(*) filter (where o.kind='employee_completed') as completed,count(*) filter (where o.kind='employee_failed') as failed
+    from (select distinct on (e.batch_id,e.employment_id) e.kind from payroll_tax_basis_event e
+     where e.batch_id=any(page.batch_ids) and e.kind in ('employee_completed','employee_failed')
+     order by e.batch_id,e.employment_id,e.created_at desc,e.id desc) o
+   ) outcome on true
+   left join lateral (
+    select count(*) as finals,count(*) filter (where f.kind='completed') as completed_finals,count(*) filter (where f.kind='failed') as failed_finals,max(f.created_at) as final_at
+    from (select distinct on (e.batch_id) e.kind,e.created_at from payroll_tax_basis_event e
+     where e.batch_id=any(page.batch_ids) and e.kind in ('completed','completed_with_errors','failed')
+     order by e.batch_id,e.created_at desc,e.id desc) f
+   ) fin on true
+   left join lateral (
+    select exists(select 1 from payroll_tax_basis_event e where e.batch_id=any(page.batch_ids) and e.kind='processing') as processing,
+     coalesce((select max(e.created_at) from payroll_tax_basis_event e where e.batch_id=any(page.batch_ids)),page.started_at) as last_at
+   ) pr on true
+   -- Interrupted, exactly as the per-batch reader decides it: unfinished, no worker owns it, no progress for 5 minutes.
+   -- Evaluated only for this page's unfinished rows (at most the page size).
+   left join lateral (
+    select bool_or(app.payroll_tax_basis_worker_managed(x.id)) as worker_managed from unnest(page.batch_ids) x(id)
+    where coalesce(fin.finals,0)<cardinality(page.batch_ids)
+   ) wm on true
+   order by page.started_at desc,page.key desc`);
+  const more=rows.length>limit,visible=rows.slice(0,limit);
+  const result=visible.map(row=>{
+   const count=row.batchIds.length,finished=row.finals===count;
+   const status:TaxBasisProgressState=finished
+    ?(row.completedFinals===count?'completed':row.failedFinals===count?'failed':'completed_with_errors')
+    :row.finals>0||row.processing?'processing':'pending';
+   return {
+    id:row.key,kind:'batch' as const,reference:'TAX-'+row.batchIds[0].toUpperCase(),companyId:row.companyId,companyName:row.companyName??'',
+    year:row.year,upToMonth:row.upToMonth,status,createdAt:row.startedAt,completedAt:finished?row.finalAt:null,actorName:row.actorName,
+    employeeCount:row.employeeCount,processedCount:row.completed+row.failed,completedCount:row.completed,failedCount:row.failed,
+    notIncludedCount:row.notIncluded,interrupted:row.interrupted===true,batches:row.batchIds.map(id=>({id,reference:'TAX-'+id.toUpperCase()})),
+   };
+  });
+  const last=visible.at(-1);
+  return {rows:result,next:more&&last?{createdAt:last.startedAt,id:last.key}:null};
+ },{readOnlySnapshot:true});
 }
 async function taxBasisWorkerManagedTx(tx:Tx,batchId:string){
  const [row]=await tx.execute<{active:boolean}>(sql`select app.payroll_tax_basis_worker_managed(${batchId}::uuid) as active`);

@@ -1639,3 +1639,58 @@ The repository owner approved carrying forward the 28 existing approvals to exac
 The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `d59277753c90442a37f723340300a0bd29a498abc95f39abbfc32994a743420b` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). The Transaction View History export now prepares its workbook in the background period by period; the payroll run progress panel answers a busy read as retryable instead of unavailable; the locked tax-basis batch opening logs its own durations to the worker journal. No provider transform, outbound field, purpose, endpoint or transport changed.
 
 The repository owner approved the revised exact fingerprint `2b84eb4ed17f74821083720aee6e1a3891866a8c773bac10bdb7dc601d7b6bc5` after PR 224 joined the same combined staging candidate (owner, 23 November 2026: "Can also merge production investigation session into the combined release"; re-binding approved 12 November 2026). PR 224 explains database refusals with specific reasons and refuses a backdated salary with its start date. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Payroll run-group settlement, 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `5fc9d14959635ae9504b42805c7e6ec855a40fbdb481f1368dd40f7eb3970be9` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"; staging release of this change requested 23 November 2026). The only covered file that changed is `core/payroll-run-group-store.ts`: the worker's run-group settlement passes its JSON parameters as text cast to jsonb so its plain database client no longer encodes them twice, and a repaired group ends at its last job's finish time. The payroll progress polls share one busy classifier. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Recalculation history, company search and progress with payroll run-group settlement, 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `24f28e5be3fdcd65bf2b19e3c7ad5b78423f0c84ca3bec0df7c472a8378b2dd1` across 1,836 files. The standing re-binding approval dates from 12 November 2026. On 23 November 2026 the owner asked for board item a16382b4 and the PR 269 payroll run-group settlement fix to be released together on top of the staged combined release `4e385f7ce`.
+
+Board item a16382b4 adds three things:
+
+- Recalculation history grouped per company per run, shown as a view of the existing Recalculate Income Tax Value page (migration 7120 adds a nullable run link);
+- company search in the picker;
+- employee-level progress counts.
+
+PR 269 changes one covered file, `core/payroll-run-group-store.ts`, so that the worker's run-group settlement no longer double-encodes JSON parameters.
+
+This fingerprint supersedes the intermediate fingerprints `bc2c6d52c68efbab45232fc1d37ef4a8d5a757c8a60389a7e0513054fbe1f77a`, `5fc9d14959635ae9504b42805c7e6ec855a40fbdb481f1368dd40f7eb3970be9` and `70ccab7c6433083be9280a351483f02eb920bdc30723432ea5d2a3b5a9d8e407`, none of which was installed. The last one was replaced after the owner chose, on 23 November 2026, to show history as a view of the existing page; this adds no new linkable page or AI Centre surface. Exactly 28 digest literals change from `2b84eb4ed17f74821083720aee6e1a3891866a8c773bac10bdb7dc601d7b6bc5`, the fingerprint currently on staging, and reversing those substitutions restores that registry byte for byte. The derived module-agent fingerprint is `858b7737441094921a9f6ef67ddc9a3f822876b7c3ec79ee51d8be97dfdb6f63` across 497 files. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Combined board release: reprocess selection, TP3 opening and Direct Superior save, 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `e74058784cbe5370d910818efeee36ea95c95cafc25c6dc8a2c54a4cbc7604e5` across 1,840 files. The standing re-binding approval dates from 12 November 2026 ("I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). On 23 November 2026 the owner asked for these three board items to be combined and deployed to staging once the full gate is green.
+
+The candidate is built on the recalculation history and run-group settlement candidate `13877b505` (fingerprint `24f28e5be3fdcd65bf2b19e3c7ad5b78423f0c84ca3bec0df7c472a8378b2dd1`) and adds:
+
+- board item 6aee208b: Reprocess Required selection across every page, with Reprocess Required and Processed / No Change tabs (`core/payroll.ts`);
+- board item 0af23331: the accepted TP3, or RM0 when there is none, as the previous-employer exemption opening for Recalculate Income Tax Value and live changed-history reprocessing, with an exemption ledger and bounds for held employees (`core/payroll-tax-basis.ts`, `core/payroll-tax-opening.ts`, `lib/payroll-tax-basis.ts`, `lib/payroll-tax-opening-tp3.ts`, `localization/country-pack.ts`, `localization/my/index.ts`, `localization/my/tax-basis-replay.ts`; owner decision recorded in ADR-0167);
+- board item 8f959c7a: a Direct Superior save that reports its outcome without a redirect, refuses a repeat save, and shows From–To periods (`core/movement.ts`, `core/org.ts`, `lib/direct-superior-period.ts`);
+- screen text for all three in the six `messages/*.json` files.
+
+None of these files is a provider transform. Exactly 28 digest literals change from `24f28e5be3fdcd65bf2b19e3c7ad5b78423f0c84ca3bec0df7c472a8378b2dd1`, and reversing those substitutions restores that registry byte for byte. The staging installation currently carries `2b84eb4ed17f74821083720aee6e1a3891866a8c773bac10bdb7dc601d7b6bc5`. The derived module-agent fingerprint is `7fecc7bdb89bdd6c9ba7a2a994ef63a506515f20a643352c9e8d8d0d6ff6578a` across 497 files. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Payroll processing holds for income tax review (board 016276b7), 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `60de9d4eed6ec08738aa6189c52c0a725431bec26dc9d7d205294362238d079f` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). Payroll processing now holds only the employees whose historical income tax inputs need review and processes the rest; their loan and claim reservations stay on the run, the run's processed event records them, and the existing selective reprocess adds them once corrected. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Individual Transaction import reads only the transaction sheet (board 0ec0ee00), 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `f02afb420e1c80b5ea1c9b980b283ab830cf2b847a5737395b405bc3c1ca16d7` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). The background Individual Transaction upload now measures and decodes only the transaction sheet by its filled rows, so the template's reference sheets cannot make a small file "too large", and each refusal keeps its own message. Combined with board 016276b7 for the same staging release. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Combined staging release of boards 016276b7 and 0ec0ee00 (stage 1) on top of 13877b505, 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `84ff70c5c8614c16057714045f9489731ccf54a566d14c965863cefde56139da` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). This fingerprint is the merge of the installed staging release 13877b505 (board a16382b4) with the two board changes recorded above; the owner asked on 23 November 2026 to release 016276b7 and 0ec0ee00 together. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Boards 016276b7 and 0ec0ee00 (stage 1) on top of the combined board release 933668246, 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `7a80c20699c9efa2bbda6428d9a781c85faee3e62fd34fbc55e82097165292e6` across 1,841 files (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). On 23 November 2026 the owner asked for this release to follow the combined board release (6aee208b, 0af23331, 8f959c7a), so the candidate merges that release's head `933668246` (fingerprint `e74058784cbe5370d910818efeee36ea95c95cafc25c6dc8a2c54a4cbc7604e5`) with the 016276b7 and 0ec0ee00 changes recorded above. The Reprocess screen keeps 6aee208b's Reprocess Required selection and adds 016276b7's "Process held employees" preselection beside it. Exactly 28 digest literals change from `e74058784cbe5370d910818efeee36ea95c95cafc25c6dc8a2c54a4cbc7604e5`, and reversing those substitutions restores that registry byte for byte. The derived module-agent fingerprint is `9ad2a94009050632aae6105ba2741bd6d3fdab1ce6687c0d5753e28df07ffc10` across 497 files. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Individual Transaction import of up to 10,000 rows, written in steps (board 0ec0ee00, stage 2), 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `54ebfd06a73be106c1f030d8bcbaad969d4972a521eeedb383085ab8db3bb011` (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). One Individual Transaction upload now holds up to 10,000 rows; the background worker writes and reverts them in short time-budgeted transactions (at most 250 rows each), records each row's outcome in an append-only table, shows progress, Stopped and Reverting in the Import Log, and pages its rows. No provider transform, outbound field, purpose, endpoint or transport changed.
+
+## Boards 016276b7 and 0ec0ee00 (stages 1 and 2) on top of the combined board release 933668246, 23 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `07da881b237d62f550e8bcadd20d97787a8be85d0a58823e9bf2b2edab886385` across 1,841 files (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"). On 23 November 2026 the owner asked for 0ec0ee00 stage 2 to be released together with stage 1 and 016276b7, so the candidate merges stage 2 (head `29742f90c`) into the release recorded in the previous section. Exactly 28 digest literals change from `7a80c20699c9efa2bbda6428d9a781c85faee3e62fd34fbc55e82097165292e6`, and reversing those substitutions restores that registry byte for byte. The derived module-agent fingerprint is `f7dfa96bf09e87dadf378e39d2346958294a32f124d07f8a759600f80c955db1` across 497 files. No provider transform, outbound field, purpose, endpoint or transport changed.

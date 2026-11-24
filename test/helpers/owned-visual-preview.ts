@@ -1,4 +1,7 @@
-/** A loopback-only disposable preview. Signals require the exact detached leader's kernel start time. */
+/** A loopback-only disposable preview. Signals require the exact detached leader's kernel start time.
+ * Turbopack, like `next dev` and `next build` for this app. On hosted runners (focused runs 45213425683 vs 45213462234,
+ * 24 Nov 2026) the webpack dev server took 25-37 s to compile the first route of each pair and peaked at 4.6-6.9 GB heap;
+ * Turbopack took 14-20 s per pair with a 0.96 GB peak heap and 4.0 GB peak RSS. Pairs are still recycled to bound memory. */
 import {spawn,type ChildProcess} from 'node:child_process';
 import {createWriteStream,readFileSync,type WriteStream} from 'node:fs';
 import {resolve} from 'node:path';
@@ -33,8 +36,8 @@ export class OwnedVisualPreview{
   if(this.child&&!this.closed)throw Error('Previous visual preview is still running');
   this.closed=false;this.failed=false;this.startTicks=undefined;
   const url=new URL(this.origin);
-  this.child=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname',url.hostname,'--port',url.port],{
-   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NEXT_WEBPACK_PARALLELISM:'1',NODE_OPTIONS:`--max-old-space-size=12288 --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:resolve(this.evidenceDir,'operational-preview-heap')},stdio:['ignore','pipe','pipe']});
+  this.child=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname',url.hostname,'--port',url.port],{
+   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=12288 --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:resolve(this.evidenceDir,'operational-preview-heap')},stdio:['ignore','pipe','pipe']});
   const child=this.child;
   child.once('spawn',()=>{this.startTicks=this.identity(child);});child.once('close',()=>{this.closed=true;});child.once('error',()=>{this.failed=true;});
   child.stdout?.pipe(this.log,{end:false});child.stderr?.pipe(this.log,{end:false});

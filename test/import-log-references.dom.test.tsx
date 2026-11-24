@@ -12,6 +12,11 @@ import en from '../messages/en.json';
 
 const m=vi.hoisted(()=>({
  jobs:vi.fn(),legacy:vi.fn(),readImport:vi.fn(),readJob:vi.fn(),historyList:vi.fn(),historyGet:vi.fn(),clockList:vi.fn(),clockGet:vi.fn(),personnelRun:vi.fn(),
+ // 0ec0ee00 — the details page reads the attempt's summary (counts and facts, no rows); built here from the same fixture.
+ summary:(a:{id:string;sourceName:string;method:string;createdAt:string;state:string;preview:{total:number;valid:number;invalid:number};written:number;revertedAt:string|null;createdByActor:unknown;revertedByActor:unknown;jobId:string|null;events:unknown[]})=>({
+  id:a.id,sourceName:a.sourceName,method:a.method,createdAt:a.createdAt,state:a.state,total:a.preview.total,valid:a.preview.valid,invalid:a.preview.invalid,
+  processed:a.preview.total,written:a.written,failed:0,revertedCount:0,fileError:null,revertedAt:a.revertedAt,periods:[],cycles:[],hasErrors:false,
+  createdByActor:a.createdByActor,revertedByActor:a.revertedByActor,jobId:a.jobId,events:a.events}),
 }));
 vi.mock('next-intl/server',async()=>{
  const {createTranslator:tr,createFormatter:fmt}=await import('next-intl');const messages=(await import('../messages/en.json')).default;
@@ -20,7 +25,7 @@ vi.mock('next-intl/server',async()=>{
 vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('notFound');},useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('@/lib/scope',()=>({scopedAdmin:async()=>({s:{userId:'viewer'},scopeIds:['company-a']})}));
 vi.mock('@/lib/authz',()=>({requireAdmin:async()=>({userId:'viewer'})}));
-vi.mock('@/packs/payroll/service',()=>({listIndividualImportJobs:m.jobs,listIndividualImports:m.legacy,readIndividualImport:m.readImport,readIndividualImportJob:m.readJob,listPayrollHistoryAttempts:m.historyList,getPayrollHistoryAttempt:m.historyGet}));
+vi.mock('@/packs/payroll/service',()=>({listIndividualImportJobs:m.jobs,listIndividualImports:m.legacy,readIndividualImport:m.readImport,readIndividualImportSummary:async(...args:unknown[])=>m.summary(await m.readImport(...args)),readIndividualImportJob:m.readJob,listPayrollHistoryAttempts:m.historyList,getPayrollHistoryAttempt:m.historyGet}));
 vi.mock('@/core/import-history',()=>({getImportRun:m.personnelRun}));
 vi.mock('@/packs/attendance/service',()=>({listClockingImportRuns:m.clockList,getClockingImportRun:m.clockGet}));
 vi.mock('../app/payroll/transactions/individual/imports/[attemptId]/result-rows',()=>({IndividualImportRows:()=>null}));

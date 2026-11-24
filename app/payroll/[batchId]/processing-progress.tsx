@@ -5,6 +5,7 @@ import {useTranslations} from 'next-intl';
 import {Card} from '@/components/ui';
 import {bulkJobActive,bulkJobPercent} from '@/lib/bulk-job';
 import type {PayrollProcessingStatus} from '@/lib/payroll-processing-job';
+import {readPayrollProgressPoll} from '@/lib/payroll-progress-poll';
 
 const pollMs=2000;
 
@@ -13,7 +14,7 @@ const pollMs=2000;
 export function PayrollProcessingPanel({batchId,initial}:{batchId:string;initial:PayrollProcessingStatus}){
  const t=useTranslations('payroll.batch.processingJob');
  const router=useRouter();
- const [status,setStatus]=useState(initial),[error,setError]=useState(''),[checkedAt,setCheckedAt]=useState(0);
+ const [status,setStatus]=useState(initial),[error,setError]=useState(''),[busy,setBusy]=useState(false),[checkedAt,setCheckedAt]=useState(0);
  const settled=useRef(initial.status!=='processing');
  useEffect(()=>{
   if(initial.status!=='processing')return;
@@ -21,11 +22,14 @@ export function PayrollProcessingPanel({batchId,initial}:{batchId:string;initial
   const poll=async()=>{
    let again=true;
    try{
-    const response=await fetch(`/payroll/${batchId}/processing`,{cache:'no-store'});
-    const payload=await response.json().catch(()=>null);
-    if(!response.ok||!payload)throw new Error(payload?.error??'');
-    if(alive){setStatus(payload);setError('');setCheckedAt(Date.now());again=payload.status==='processing';}
-   }catch(e){if(alive)setError((e as Error).message||'');}
+    // A busy read keeps the last status and polls again (lib/payroll-progress-poll.ts); only a
+    // refusal (the run is not readable) is an error. A dropped request is retried the same way.
+    const answer=await readPayrollProgressPoll<PayrollProcessingStatus>(await fetch(`/payroll/${batchId}/processing`,{cache:'no-store'}));
+    if(!alive)return;
+    if(answer.kind==='progress'){setStatus(answer.payload);setError('');setBusy(false);setCheckedAt(Date.now());again=answer.payload.status==='processing';}
+    else if(answer.kind==='busy'){setBusy(true);setError('');}
+    else{setBusy(false);setError(answer.message);}
+   }catch{if(alive)setBusy(true);}
    finally{if(alive&&again)timer=setTimeout(poll,pollMs);}
   };
   void poll();return()=>{alive=false;clearTimeout(timer);};
@@ -44,6 +48,7 @@ export function PayrollProcessingPanel({batchId,initial}:{batchId:string;initial
    <p className="text-xs text-muted-foreground">{t('progressCount',{done:job.stepsDone,total:job.stepsTotal})}</p>
    <p className="text-xs text-muted-foreground">{job.state==='queued'&&status.worker==='unavailable'?t('workerUnavailable'):checkedAt-Date.parse(job.updatedAt)>90_000?t('waiting'):t('backgroundHelp')}</p></>}
   {!processing&&job?.error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{job.error}</p>}
+  {busy&&!error&&<p role="status" className="text-xs text-muted-foreground">{t('busy')}</p>}
   {error&&<p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
  </Card>;
 }

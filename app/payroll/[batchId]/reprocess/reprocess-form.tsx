@@ -10,7 +10,7 @@ import { formatMoney } from '@/lib/money';
 import { withPayrollFrom } from '@/lib/return-to';
 import type { NothingPayableSkipKind } from '@/core/payroll-view';
 import {ClientPager} from '@/components/client-pager';
-import type {PageState} from '@/lib/pagination';
+import {pageCount, type PageState} from '@/lib/pagination';
 import {PayrollSelectionSearch} from '../../selection-search';
 import { reprocessSelectedAction, reviewReprocessTaxAction } from '../../actions';
 import type { ReprocessTaxReadiness } from '@/lib/payroll-reprocess-readiness';
@@ -29,6 +29,24 @@ export type ReprocessCandidate = {
    * Department column here for exactly that reason: it would need one.
    */
   reprocessedTimes: number;
+  /**
+   * 6aee208b — the run marked this payslip stale (`payroll_batch.recalc_employment_ids` on a processed run).
+   * Decides the row's Status and Reason only; what is TICKED comes from the `stale` prop, never from rows.
+   */
+  stale?: boolean;
+};
+
+/** 6aee208b — one person the run marked stale, as `reprocessStaleSelection` names them: identity, no money. */
+export type ReprocessStaleRow = { employmentId: string; employeeCode: string | null; name: string };
+
+/** 6aee208b — the review names at most this many people, then "and N more"; the tax readiness result lists all. */
+const REVIEW_NAME_CAP = 20;
+
+/** 6aee208b — the two lists over the run's payslips, with their (search-filtered) counts and their addresses. */
+export type ReprocessTabs = {
+  current: 'required' | 'unchanged';
+  counts: { required: number; unchanged: number };
+  hrefs: { required: string; unchanged: string };
 };
 
 /**
@@ -97,7 +115,8 @@ export function ReprocessForm({
   batchId,
   employees,
   newCandidates,
-  preselectedIds,
+  stale,
+  focusIds,
   pendingIds = [],
   previousJobId,
   jobRunning = false,
@@ -105,7 +124,7 @@ export function ReprocessForm({
   from,
   paging,
 }: {
-  paging?:{existing:PageState;additions:PageState;runTotal:number;existingTotal:number;search:string};
+  paging?:{existing:PageState;additions:PageState;runTotal:number;existingTotal:number;search:string;tabs?:ReprocessTabs};
   batchId: string;
   employees: ReprocessCandidate[];
   /**
@@ -122,12 +141,18 @@ export function ReprocessForm({
    */
   newCandidates?: ReprocessAddCandidate[];
   /**
-   * 49e7e0a2 — the employments the run itself says are stale (payroll_batch.recalcEmploymentIds),
-   * ticked on arrival. Editing a one-off transaction on a processed run is what produces this list, and
+   * 49e7e0a2 / 6aee208b — EVERY employment the run itself says is stale and that has a payslip here
+   * (`reprocessStaleSelection`, ordered as the list is), ticked on arrival on every page — not only the ones
+   * the first page shows. Editing a one-off transaction on a processed run is what produces this list, and
    * making the operator re-derive by hand which people they just changed is how the wrong subset gets
-   * reprocessed. Plain data, resolved on the server; the ticks stay editable.
+   * reprocessed. `withoutPayslip` counts the stale people with no payslip on the run: they are not in this
+   * list (New / Pending is where they appear), and the selection line says so, so its total reconciles with
+   * the count on Payroll Process. Plain data, resolved on the server; the ticks stay editable.
    */
-  preselectedIds?: string[];
+  stale?: { rows: ReprocessStaleRow[]; withoutPayslip: number };
+  /** 016276b7 — "Process held employees": tick exactly these New / Pending employees (the run's employees held for
+   * income tax review) and nothing else on arrival. The ticks stay editable. */
+  focusIds?: string[];
   pendingIds?: string[];
   previousJobId?: string;
   jobRunning?: boolean;
@@ -149,10 +174,25 @@ export function ReprocessForm({
   const pendingAdditions = additions.filter((c) => !c.skip);
   const skippedAdditions = additions.filter((c) => !!c.skip);
   const addable = pendingAdditions.filter((c) => c.blockers.length === 0);
-  type Selected=ReprocessCandidate|ReprocessAddCandidate;
-  // Page-local defaults are intentional (owner17Nov); navigation retains the exact already-picked records.
-  const [selected,setSelected]=useState<Map<string,Selected>>(()=>new Map([
-   ...employees.filter(e=>(preselectedIds??[]).includes(e.employmentId)).map(e=>[e.employmentId,e] as [string,Selected]),
+  type Selected=ReprocessCandidate|ReprocessAddCandidate|ReprocessStaleRow;
+  const staleRows = stale?.rows ?? [];
+  /**
+   * 6aee208b — THE SELECTION: the ticked employment ids (the keys) plus the last record seen for each, so an
+   * off-page tick can still be named in the review and posted as a hidden input. Seeded ONCE PER MOUNT:
+   *   - every stale payslip on the run, on every page (board item 6aee208b settles the 17 November open
+   *     assumption: the people the run already knows are out of date all arrive ticked);
+   *   - ready, in-scope New / Pending people on the INITIAL page only (unchanged: that rule is not reopened);
+   *   - nobody on Processed / No Change, ever.
+   * Page, rows-per-page, search and tab changes are router replaces under the same form key, so they keep
+   * this state; a later server render cannot add anyone to it (a person who becomes stale while the screen is
+   * open is counted on the selection line, unticked, and stays Reprocess Required on the run afterwards).
+   * 016276b7 — "Process held employees" (`focusIds`) instead ticks exactly the run's employees held for income tax
+   * review among the ready New / Pending people, and nobody else. The ticks stay editable.
+   */
+  const [selected,setSelected]=useState<Map<string,Selected>>(()=>new Map(focusIds
+   ? addable.filter(c=>focusIds.includes(c.employmentId)).map(c=>[c.employmentId,c] as [string,Selected])
+   : [
+   ...staleRows.map(e=>[e.employmentId,e] as [string,Selected]),
    ...addable.filter(c=>!c.outsideScope).map(c=>[c.employmentId,c] as [string,Selected]),
   ]));
   /**
@@ -170,8 +210,15 @@ export function ReprocessForm({
   const total = paging?.runTotal ?? employees.length + additions.length;
   const currentById=new Map<string,Selected>([...employees,...additions].map(e=>[e.employmentId,e]));
   const pickedRows=[...selected.values()].map(e=>currentById.get(e.employmentId)??e);
-  const pickedExisting=pickedRows.filter((e):e is ReprocessCandidate=>'reprocessedTimes' in e);
   const pickedNew=pickedRows.filter((e):e is ReprocessAddCandidate=>'hiredOn' in e);
+  // A stale row the operator has not seen yet is still an EXISTING payslip: it is a recalculation, not an add.
+  const pickedExisting=pickedRows.filter(e=>!('hiredOn' in e));
+  // 6aee208b — the selection line, read against the CURRENT stale set (a fresh render may name more people
+  // than the seed did; they are counted here, never silently ticked).
+  const staleSelected=staleRows.filter(e=>selected.has(e.employmentId)).length;
+  const staleOthers=selected.size-staleSelected;
+  const stalePages=pageCount(staleRows.length,paging?.existing.size??'all');
+  const staleLeftOut=staleRows.length-staleSelected;
   const picked = [...pickedNew, ...pickedExisting];
 
   const [checking,startCheck] = useTransition();
@@ -249,7 +296,7 @@ export function ReprocessForm({
    * button is "Reprocess N employee(s)". Without this guard, typing a name and pressing Enter — the most
    * natural thing anybody does in a search box — would enqueue the recalculation immediately: no review
    * click, no confirmation, on whatever happens to be ticked. And something IS ticked on arrival by
-   * design (the stale employments from `preselectedIds`, plus every addable in-scope New / Pending
+   * design (every stale employment from the `stale` prop, plus every addable in-scope New / Pending
    * candidate), so the button is live on exactly the runs big enough to want a search.
    *
    * Blocked at the FORM, not at the search box, so the next text field added here inherits the guard
@@ -392,7 +439,64 @@ export function ReprocessForm({
         </div>
       )}
 
-      {paging&&<ClientPager state={paging.existing} note={t('selectionPagingNote')} rememberAs="payroll-reprocess-existing"/>}
+      {/* 6aee208b — TWO LISTS over the run's payslips, each with its own count: the people whose data changed
+          and everybody else. Links, not buttons: the tab is the page's own `?tab=` (built on the server with the
+          page reset to 1 and the search kept), and the replace keeps this form mounted, so the ticks survive. */}
+      {paging?.tabs&&(
+        <nav aria-label={t('reprocessTabsLabel')}
+          className="flex max-w-full flex-wrap gap-1 rounded-[1.25rem] border border-border bg-card p-1.5 shadow-[var(--shadow-card)] sm:w-fit">
+          {(['required','unchanged'] as const).map(key=>{
+            const active=paging.tabs!.current===key;
+            return (
+              <Link key={key} href={paging.tabs!.hrefs[key]} replace scroll={false} aria-current={active?'page':undefined}
+                className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
+                  active?'bg-primary text-primary-foreground':'text-muted-foreground hover:bg-accent hover:text-foreground'}`}>
+                <span>{key==='required'?t('reprocessTabRequired'):t('reprocessTabUnchanged')}</span>
+                <span className={`rounded-md px-1.5 py-0.5 text-xs tabular-nums ${active?'bg-primary-foreground/20':'bg-muted text-foreground'}`}>
+                  {paging.tabs!.counts[key].toLocaleString()}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+      )}
+
+      {/* 6aee208b — THE SELECTION LINE. How many of the people needing reprocess are ticked, across how many
+          pages, with the way back to all of them and the way to none. People needing reprocess who have no
+          payslip on this run are stated separately (they are in New / Pending), so the numbers on this line add
+          up to the count Payroll Process showed. */}
+      {(staleRows.length>0 || (stale?.withoutPayslip ?? 0)>0) && (
+        <div role="status" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+          <p className="min-w-0 flex-1">
+            {staleRows.length>0 && (
+              <span className="font-medium">
+                {staleSelected===staleRows.length
+                  ? t('reprocessStaleAllSelected',{n:staleRows.length,pages:stalePages})
+                  : t('reprocessStalePartSelected',{x:staleSelected,n:staleRows.length,pages:stalePages})}
+              </span>
+            )}
+            {staleOthers>0 && <> {t('reprocessStaleOthers',{n:staleOthers})}</>}
+            {(stale?.withoutPayslip ?? 0)>0 && <> {t('reprocessStaleWithoutPayslip',{n:stale!.withoutPayslip})}</>}
+          </p>
+          <span className="flex flex-wrap gap-x-4 gap-y-1">
+            {staleSelected<staleRows.length && (
+              <button type="button"
+                onClick={()=>{setReviewPending(false);setSelected(prev=>new Map([...prev,...staleRows.map(e=>[e.employmentId,prev.get(e.employmentId)??e] as [string,Selected])]));}}
+                className="font-medium text-primary hover:underline">
+                {t('reprocessStaleSelectAgain',{n:staleRows.length})}
+              </button>
+            )}
+            {selected.size>0 && (
+              <button type="button" onClick={()=>{setReviewPending(false);setSelected(new Map());}}
+                className="font-medium text-primary hover:underline">
+                {t('reprocessClearSelection')}
+              </button>
+            )}
+          </span>
+        </div>
+      )}
+
+      {paging&&<ClientPager state={paging.existing} note={t('reprocessPagingNote')} rememberAs="payroll-reprocess-existing"/>}
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-[42rem] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -403,14 +507,14 @@ export function ReprocessForm({
                   <span className="normal-case tracking-normal text-foreground">
                     {t('reprocessSummary', { n: selected.size, total })}
                   </span>
-                  {/* 65e2d5de — SELECT ALL REPLACES THE SELECTION WITH THE ROWS ON SCREEN, and under a
-                      search that is narrower than the word "all" — deliberately, and matching
-                      remove-form.tsx. It cannot diverge from what the operator is told: the count, the
-                      review list and the button label all move with it, and every id it leaves selected is
-                      still submitted (the complete hidden selection below). With no search it is exactly what it was. */}
+                  {/* 65e2d5de / 6aee208b — SELECT THIS PAGE ADDS THE ROWS ON SCREEN TO THE SELECTION. It used
+                      to replace it, so pressing it on page 2 quietly dropped the people needing reprocess
+                      that arrived ticked on page 1. Under a search it adds only what the search shows. The
+                      count, the review list and the button label all move with it, and every ticked id is
+                      still submitted (the complete hidden selection below). Clear empties everything. */}
                   <button
                     type="button"
-                    onClick={() => {setReviewPending(false);setSelected(new Map(visibleEmployees.map((e) => [e.employmentId,e])));}}
+                    onClick={() => {setReviewPending(false);setSelected(prev=>new Map([...prev,...visibleEmployees.map((e) => [e.employmentId,e] as [string,Selected])]));}}
                     className="font-medium normal-case tracking-normal text-primary hover:underline"
                   >
                     {t('reprocessSelectAll')}
@@ -451,10 +555,18 @@ export function ReprocessForm({
                       <span>{e.name}</span>
                     </label>
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 font-medium text-emerald-700 dark:text-emerald-400">
-                    {t('reprocessStatusProcessed')}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">{t('reprocessReasonProcessed')}</td>
+                  {e.stale ? (
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+                        {t('reprocessStatusRequired')}
+                      </span>
+                    </td>
+                  ) : (
+                    <td className="whitespace-nowrap px-3 py-2 font-medium text-emerald-700 dark:text-emerald-400">
+                      {t('reprocessStatusProcessed')}
+                    </td>
+                  )}
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{e.stale ? t('reprocessReasonRequired') : t('reprocessReasonProcessed')}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
                     {e.reprocessedTimes > 0 ? t('reprocessAlreadyCount', { n: e.reprocessedTimes }) : '—'}
                   </td>
@@ -473,7 +585,15 @@ export function ReprocessForm({
                   {/* An empty RUN and an empty SEARCH RESULT are different facts, and saying "No employees
                       on this run" to somebody who has just typed a name is a false statement about the
                       payroll run. Same split as remove-form.tsx. */}
-                  {employees.length === 0 ? t('reprocessNoEmployees') : t('reprocessNoMatches')}
+                  {/* 6aee208b — under paging the rows ARE the server's filtered page, so the search text, not
+                      the row count, says whether this is an empty search; an empty TAB names its own list. */}
+                  {(paging ? paging.search.trim() !== '' : employees.length > 0)
+                    ? t('reprocessNoMatches')
+                    : paging?.tabs?.current === 'required'
+                      ? t('reprocessNoRequired')
+                      : paging?.tabs?.current === 'unchanged' && paging.existingTotal > 0
+                        ? t('reprocessNoUnchanged')
+                        : t('reprocessNoEmployees')}
                 </td>
               </tr>
             )}
@@ -488,13 +608,21 @@ export function ReprocessForm({
         <div className="rounded-xl border border-dashed border-primary/45 bg-primary/5 px-4 py-3">
           <p className="text-sm font-medium">{t('reprocessReviewTitle', { n: picked.length, total })}</p>
           <p className="mt-1 text-sm">
-            {picked.map((e) => (
+            {/* 6aee208b — capped, so a long selection does not fill the screen: the first names, then "and N
+                more". Every ticked id is still posted, and the tax readiness result lists everyone. */}
+            {picked.slice(0, REVIEW_NAME_CAP).map((e) => (
               <span key={e.employmentId} className="mr-3 inline-flex items-baseline gap-1.5">
                 <EmployeeCode code={e.employeeCode} />
                 <span>{e.name}</span>
               </span>
             ))}
+            {picked.length > REVIEW_NAME_CAP && (
+              <span className="text-muted-foreground">{t('reprocessReviewMore', { n: picked.length - REVIEW_NAME_CAP })}</span>
+            )}
           </p>
+          {staleLeftOut > 0 && (
+            <p className="mt-1.5 text-xs text-muted-foreground">{t('reprocessReviewStaleLeftOut', { n: staleLeftOut })}</p>
+          )}
           <p className="mt-1.5 text-xs text-muted-foreground">
             {/* "The other N payslips are not touched" counts PAYSLIPS, so it is the unpicked people who
                 already have one — an addition has no payslip to leave alone. */}

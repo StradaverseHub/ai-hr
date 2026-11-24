@@ -255,6 +255,10 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10490,version:'7',when:1795028007090,tag:'7090_report_delivery_history_order',breakpoints:true},
  {idx:10500,version:'7',when:1795280007100,tag:'7100_payroll_run_company_review',breakpoints:true},
  {idx:10510,version:'7',when:1795280007110,tag:'7110_payroll_draft_tax_readiness',breakpoints:true},
+ {idx:10520,version:'7',when:1795280007120,tag:'7120_payroll_tax_basis_run',breakpoints:true},
+ {idx:10530,version:'7',when:1795280007130,tag:'7130_contract_users_person_first',breakpoints:true},
+ {idx:10540,version:'7',when:1795280007140,tag:'7140_payroll_individual_import_steps',breakpoints:true},
+ {idx:10550,version:'7',when:1795280007150,tag:'7150_contract_list_company_rights_once',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1311,6 +1315,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.lifecycle_personnel_manager(uuid)',app:true},
    {fn:'app.lifecycle_manager_recovery_page(text,integer)',app:true},
    {fn:'app.payroll_tax_basis_worker_managed(uuid)',app:true},
+   //7140 (0ec0ee00): step-scoped import binding locks and the bounded Individual import revert request.
+   {fn:'app.payroll_txn_import_lock_step_bindings(uuid,integer[])',app:true},
+   {fn:'app.payroll_individual_import_request_revert(uuid,jsonb)',app:true},
    {fn:'app.payroll_transaction_export_read(uuid,integer)',app:true},
    {fn:'app.payroll_transaction_export_store(uuid,integer,bytea)',app:true},
   ];
@@ -1387,6 +1394,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const maintenanceRoutineSecurity=[
    {"fn":"app.payroll_run_review(uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.payroll_tax_basis_worker_managed(uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, pg_temp"]},
+   {"fn":"app.payroll_txn_import_lock_step_bindings(uuid,integer[])","owner":"OWNER","definer":true,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, app, pg_temp"]},
+   {"fn":"app.payroll_individual_import_request_revert(uuid,jsonb)","owner":"OWNER","definer":true,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, app, pg_temp"]},
    {"fn":"app.v9_document_shared_routing_row(jsonb,jsonb)","owner":"OWNER","definer":false,"volatility":"i","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.v9_offboarding_document_routings(uuid,integer,text[])","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
    // Reviewed protocol-specific metadata; aliases preserve the canonical source owner.
@@ -2448,6 +2457,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'automation_email_hold_context':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'probation_reconciliation_intent':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'probation_reconciliation_schedule':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   // 7140 (0ec0ee00): append-only step outcomes of an Individual Transaction import.
+   'payroll_txn_import_outcome':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
   };
   const isApprovedRelation=(rel:string)=>Object.hasOwn(approvedRelations,rel);
   expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isApprovedRelation(row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(approvedRelations);
@@ -2595,6 +2606,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
   const own='app.acting_as_owner()';
   const approvedPolicies:ApprovedPolicy[]=[
+   // 7140 (0ec0ee00): an outcome is visible exactly when its import attempt is, and appended only while it is written.
+   {table:'payroll_txn_import_outcome',name:'payroll_txn_import_outcome_read',cmd:'SELECT',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND EXISTS (SELECT 1 FROM public.payroll_txn_import_attempt a WHERE a.id=payroll_txn_import_outcome.attempt_id AND a.tenant_id=payroll_txn_import_outcome.tenant_id)',check:null},
+   {table:'payroll_txn_import_outcome',name:'payroll_txn_import_outcome_append',cmd:'INSERT',role:'ai_hr_app',using:null,check:"tenant_id=app.current_tenant_id() AND EXISTS (SELECT 1 FROM public.payroll_txn_import_attempt a WHERE a.id=payroll_txn_import_outcome.attempt_id AND a.tenant_id=payroll_txn_import_outcome.tenant_id AND a.state IN ('validated','importing'))"},
    {table:'ai_provider_candidate',name:'ai_provider_candidate_owner_presentation',cmd:'SELECT',role:'public',using:"current_user=pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.ai_provider_candidate'::regclass)) AND tenant_id=app.current_tenant_id() AND app._ai_provider_presentation_actor_valid()",check:null},
    {table:'probation_letter_completion_custody',name:'probation_letter_completion_custody_tenant',cmd:'ALL',role:'public',using:'tenant_id=app.current_tenant_id()',check:'tenant_id=app.current_tenant_id()'},
    {table:'probation_letter_personnel_proposal',name:'probation_letter_personnel_proposal_tenant',cmd:'ALL',role:'public',using:'tenant_id=app.current_tenant_id()',check:'tenant_id=app.current_tenant_id()'},

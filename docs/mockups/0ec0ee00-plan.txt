@@ -1,0 +1,106 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+The Excel template you download includes reference sheets, one of which lists every employee in the companies you selected. When the upload is checked in the background, the system measures every sheet in the file, not only the transactions. If that employee list is longer than 2,000 people, which happens easily with "All companies" selected, the whole file is refused as "too large", even with only 5 transactions filled in. We reproduced this with the real template.
+
+Separately, one upload can hold at most 2,000 transactions today, and all of them are written in one long step.
+
+WHAT WE'LL CHANGE
+
+We will deliver this in two stages, so the error you hit is fixed first.
+
+Stage 1 - the fix (comes first):
+
+- Only the transaction sheet is checked. The reference sheets (Instructions, Employees, Pay Items, Pay Cycles, Input Types) are ignored when you upload. You can keep them, change them or delete them.
+
+- Transactions are counted by the rows you actually filled in. Empty rows that are only formatted no longer count.
+
+- Error messages say exactly what is wrong and what the limit is. For example: "This file is 12.4 MB. One upload can be at most 10 MB." or "This file has 2,350 transactions. One upload can hold at most 2,000." A wrong template, an unreadable file or a validation problem each get their own message, never "too large".
+
+Stage 2 - large uploads:
+
+- One Individual Transaction upload can hold up to 10,000 transactions (up from 2,000). The file size limit stays at 10 MB.
+
+- Large uploads are written in the background in parts of a few hundred rows. The Import Log shows progress: total rows, rows done, imported, failed and a percentage. You can leave the page while it runs.
+
+- An import shows Completed only after every part has been written. If the server restarts part-way, the import continues from where it stopped without writing any row twice. If it cannot finish, the Import Log shows Stopped with the number of rows already written, and Revert removes them.
+
+- The Import Log's row details are shown page by page, so a 10,000-row import opens quickly.
+
+WHAT YOU'LL GET
+
+After Stage 1, a file with a handful of transactions always uploads, whatever the size of the employee list in the template. After Stage 2, monthly files of up to 10,000 transactions upload in one go, with clear progress in the Import Log, and nothing is half-imported without you being told.
+
+GOOD TO KNOW
+
+- We're not changing the template, its columns, the Pay Item and Input Type handling, the validation rules, how amounts are priced or anything in payroll processing.
+
+- Uploads already run in the background and appear in the Import Log. That stays, including the review step before you confirm the import.
+
+- Rows that fail validation are still listed with their row number and reason, and the valid rows are still imported.
+
+- Uploading the same file again, refreshing the page or pressing the button twice does not create duplicate transactions. This is already guaranteed today and stays.
+
+- Stage 2 applies to Individual Transaction uploads only. The Fixed Transaction import keeps its current 2,000-row limit.
+
+- 10,000 transactions per upload covers about 18 transactions for every employee in a 541-person company. If you regularly need more in one file, tell us and we will raise it after measuring the real speed on your data.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Root cause (reproduced with lib/individual-txn-import-workbook.ts buildIndividualTxnWorkbook and lib/import-file.ts readImportFile using the worker's exact bounds: 2,000 reference employees accepted, 2,100 refused with FILE_TOO_LARGE, 5 filled rows). core/individual-import-worker.ts:40-42 passes maxRows 2002 and maxCells 100,000. lib/spreadsheet.ts:110-114 applies these to EVERY sheet's declared range (!fullref or !ref) and sums cells across sheets. It also refuses more than 32 sheets and any sheet wider than 256 columns. The template's Employees sheet has one row per in-scope employee, so 2,001 or more employees refuses any file. The client (individual-import.tsx:25), action (individual-actions.ts:13) and admission (core/individual-import-job.ts:28) check only the 10 MB raw size. The 900,000-byte CSV check covers only the first sheet. An adversarial code review verified these findings and shaped the staging below.
+
+STAGE 1 - no migration. Ship first, as its own release.
+
+1. Bound only the import sheet. Add a bounded-sheet option to readImportFile and workbookToCsvTexts that applies row, column and cell bounds only to INDIVIDUAL_IMPORT_SHEET[method] (lib/payroll-txn-import-schema.ts). Fall back to the first sheet, as today, when that sheet is absent. Never decode reference sheets. Count rows up to the last row with a non-empty cell; trailing formatted blanks do not count toward maxRows. Keep a separate generous ceiling on that sheet's declared range, the decoded-cell ceiling and the 10 MB raw limit, so a hostile file cannot exhaust memory. Read with sheetRows. Drop the 32-sheet and other-sheet width refusals for this import only. Other imports' bounds are unchanged.
+
+2. Specific errors. The worker's catch currently maps any ImportFileError FILE_TOO_LARGE to fileTooLarge. Split it so that raw-size, too-many-rows (the existing tooManyRows code, lib/individual-txn-import-contract.ts:16) and unreadable or wrong-template failures each keep their own code. Carry the measured numbers (bytes or rows, and the limit) in the job's error text through an existing bounded column, or in the error code string itself if no column is available in Stage 1. Add six-locale messages that state the numbers. Never map an unrelated failure to fileTooLarge.
+
+3. Stage 1 tests:
+- The real template with 2,500 reference employees and 5 filled rows validates and imports.
+- 500 formatted blank rows plus 5 data rows count as 5.
+- 2,001 filled rows give tooManyRows with the numbers.
+- An 11 MB file gives fileTooLarge with the numbers.
+- A wrong sheet layout gives templateMismatch.
+- The Fixed import's behaviour is unchanged.
+- Six-locale messages and the i18n tests.
+- A rendered check of the refused and accepted Import Log entries.
+
+STAGE 2 - large Individual uploads. Needs migrations.
+
+4. Limits in one owner. Individual-only constants in lib/individual-import-job.ts: 10 MB raw, 10,000 records, a CSV ceiling of about 8 MB. Use them in the client, action, admission, worker, validate (core/individual-txn-import.ts:61) and parse (lib/individual-txn-import-contract.ts). Leave MAX_ROWS 2000 in core/payroll-txn-import.ts:117 for the Fixed import; give Individual its own limit there.
+
+5. Migrations, appended and allocated per docs/MIGRATION-ALLOCATION.md.
+- Raise the payroll_txn_import_attempt CHECKs records<=2000 and written<=2000 (0688:7,10) to 10,000 for Individual attempts.
+- Raise payroll_individual_import_job processed<=2000 (2460:13) to 10,000.
+- Add the states importing and stopped to the attempt state CHECK.
+- Replace the attempt transition trigger (0688:31-38) so that validated can go to importing, importing can go to importing (per-step progress), completed or stopped, and stopped can go to reverted. Keep validated to completed for small, single-step imports and completed to reverted.
+- Add a step-scoped variant of app.payroll_txn_import_lock_bindings (0688:45-84) that locks only the given rows' bindings.
+Review every writer before changing the constraints. Run a shadow migration and a populated-baseline rehearsal.
+
+6. Chunked confirmation. Keep the existing review flow: pending, validating, ready, the user's confirm (creator-only, migration 2460), then confirmed, importing, completed. Keep the existing worker and its states rather than the bulk-job kernel, whose states have no awaiting-review or stopped state (lib/bulk-job.ts:3-5). Confirmation runs in steps of about 250 rows. Each step is a short transaction that takes only that step's period locks and step-scoped binding locks, re-checks that step's stored bindings against a fresh analysis, writes its rows and records its outcomes.
+
+Reuse the whole-file analysis and the stored bindings; never re-analyse one step's records alone, because the sourceRef digest, the in-file duplicate check and run targeting depend on the whole file. Keep sourceRef exactly as it is (xlsx:<digest of all records>:<rowNum>, core/payroll-txn-import.ts:426-434). The unique index payroll_individual_txn_source_ref_uq (0432:47-49) already prevents a replayed step or a re-upload from writing twice.
+
+Store outcomes per step in an append-only child table keyed by attempt and row number, rather than rewriting one growing JSON array every step. The attempt's summary columns (written, failed, processed) update per step. Save recalcBatchIds per step, so a stopped import also marks processed batches for recalculation. The attempt reaches completed only after the last step commits. A failure that persists after retries marks it stopped.
+
+7. Revert at 10,000 rows. revertIndividualImport (core/individual-txn-import.ts:152-178) is one transaction with per-row queries and requires completed. Make it accept stopped, and run it in the same step shape with step-scoped locks, set-based reads and deletes per step, a reverting state and progress. Keep the existing refusals for changed rows and processed-batch confirmation.
+
+8. Import Log at scale. app/payroll/transactions/import-excel batches/[jobId]/page.tsx and result-rows.tsx load records, preview and outcomes in full and render every row. Page them through SQL (docs/SCALE-AND-RELEASE-RULES.md rule 2). Show total, imported, failed, percent and the new Stopped and Reverting states. Validation of a 10,000-row file must not block the shared runner loop (scripts/bank-import-runner.ts:36-40) for long: bound the work per tick or give it its own budget, and measure it.
+
+9. Set-based checks at 10,000 rows. analyzeTxnImport is already set-based (one read each for batches, ledger and cycles). Replace the O(n squared) lookups r.preview.rows.find (core/individual-txn-import.ts:99) and the one in revert (:168) with maps. Measure validate, confirm and revert at 10,000 fictional rows and record the timings.
+
+10. Stage 2 tests:
+- 10,000 rows import across steps.
+- 10,001 rows give tooManyRows.
+- A worker killed between steps resumes with no duplicates (count by sourceRef).
+- A forced persistent failure gives stopped, and Revert removes exactly the written rows.
+- Re-uploading the same file writes nothing twice.
+- The same operation key gives one job.
+- Processed batches written by a stopped import are marked for recalculation.
+- Import Log pages are bounded.
+- The Fixed import is unchanged.
+- Six-locale messages; the route-loading, capability and company-referrers inventories.
+- A rendered check of in progress, completed, stopped, reverting and refused.

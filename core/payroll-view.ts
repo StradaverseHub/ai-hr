@@ -32,6 +32,7 @@ import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch }
  * EMPTY companyIds set fails CLOSED (returns no rows) rather than falling back to "all".
  */
 import { randomUUID } from 'node:crypto';
+import {taxHeldRowsTx, type TaxHeldEmployeeRow} from './payroll-tax-holds';
 import {readPayrollOvertimePatternCashTx, OvertimePayrollError, type OvertimePayrollErrorCode} from './payroll-overtime-pattern';
 import {OvertimeOwnerError} from '../packs/attendance/service';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
@@ -61,6 +62,7 @@ import {
   payslipLessEligiblePage,
   payrollCloseCompanyIdsTx,
   resolveBatchScopeFilter,
+  resolvePayrollPermission,
   type BatchScope,
   type PayrollSkipReason,
   type PayslipLessEligibleRow,
@@ -3375,6 +3377,36 @@ export function listSkippedEmployees(
         reason: p.reason,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  });
+}
+
+/** 016276b7 — a held employee of one run, as the result screen and the run page show them. `canReviewTax` is the reader's
+ * `payroll.tax-basis.view` on the run's company: only then are the tax reason and the Recalculate link shown. */
+export type TaxHeldEmployeeView = TaxHeldEmployeeRow & {companyId: string; canReviewTax: boolean};
+
+/**
+ * 016276b7 — the employees each run held for income tax review (core/payroll-tax-holds.ts taxHeldRowsTx), with whether
+ * the reader may see their tax reasons. Read-only. Same degrade rule as listSkippedEmployees: no rows for a reader who
+ * may not read the run's processed event.
+ */
+export function listTaxHeldEmployees(ctx: SessionContext, batchIds: readonly string[]): Promise<TaxHeldEmployeeView[]> {
+  if (batchIds.length === 0) return Promise.resolve([]);
+  return withTenant(ctx, async (tx) => {
+    const rows = await taxHeldRowsTx(tx, batchIds);
+    if (rows.length === 0) return [];
+    const batches = await tx.select({ id: payrollBatch.id, companyId: payrollBatch.companyId }).from(payrollBatch)
+      .where(inArray(payrollBatch.id, [...new Set(rows.map((r) => r.batchId))]));
+    const companyOf = new Map(batches.map((b) => [b.id, b.companyId]));
+    const access = new Map<string, boolean>();
+    for (const companyId of new Set(batches.map((b) => b.companyId))) {
+      access.set(companyId, await resolvePayrollPermission(tx, ctx, 'payroll.tax-basis.view', companyId));
+    }
+    return rows.map((r) => {
+      const companyId = companyOf.get(r.batchId) ?? '';
+      const canReviewTax = access.get(companyId) === true;
+      // The tax reader's sentence is shown only to an income-tax reviewer; everyone else sees that a review is needed.
+      return { ...r, companyId, canReviewTax, reason: canReviewTax ? r.reason : '' };
+    });
   });
 }
 

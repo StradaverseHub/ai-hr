@@ -6,8 +6,8 @@ import { requirePayrollAccess } from '@/lib/authz';
 import { Badge, Card, ErrorBanner, EmployeeCode, PageHeader } from '@/components/ui';
 import { listEmployeesForPayrollRun } from '@/core/read';
 // r227 — the skipped are read from the run's own durable event, not carried in the redirect. See below.
-import { listSkippedEmployees } from '@/core/payroll-view';
-import { decodeRunGroupResult, type RunGroupReasonCode } from '@/core/payroll-run-group';
+import { listSkippedEmployees, listTaxHeldEmployees } from '@/core/payroll-view';
+import { decodeRunGroupResult, summarize, type RunGroupReasonCode } from '@/core/payroll-run-group';
 import { readRunGroup } from '@/core/payroll-run-group-store';
 import { payrollProcessBack } from '../../back';
 import { RunGroupProgressPanel } from './run-group-progress';
@@ -61,9 +61,9 @@ export default async function PayrollProcessResultPage({
       </div>
     );
   }
-  const result = g ? group?.result : decodeRunGroupResult(r);
+  const decoded = g ? group?.result : decodeRunGroupResult(r);
 
-  if (!result) {
+  if (!decoded) {
     return (
       <div className="mx-auto max-w-5xl space-y-6">
         <PageHeader back={back} title={t('resultTitle')} description={t('resultSubtitle')} />
@@ -74,6 +74,22 @@ export default async function PayrollProcessResultPage({
       </div>
     );
   }
+
+  // 016276b7 — employees held for income tax review. Their names, months and reasons come from each processed run's own
+  // event; a processed company whose outcome predates the count (or a run group read before it settled) takes its
+  // count from the same rows, and the header figures are summed again from the companies.
+  const processedBatchIds = decoded.mode === 'draft' ? [] : decoded.perCompany.flatMap((c) => (c.status === 'succeeded' && c.batchId ? [c.batchId] : []));
+  const heldRows = processedBatchIds.length ? await listTaxHeldEmployees(s, processedBatchIds) : [];
+  const heldByBatch = new Map<string, number>();
+  for (const h of heldRows) heldByBatch.set(h.batchId, (heldByBatch.get(h.batchId) ?? 0) + 1);
+  const result = heldRows.length
+    ? summarize(decoded.payPeriod, decoded.startedAt, decoded.endedAt, decoded.perCompany.map((c) =>
+        c.batchId && heldByBatch.has(c.batchId) && !c.employeesHeldForTax ? { ...c, employeesHeldForTax: heldByBatch.get(c.batchId) } : c))
+    : decoded;
+  const companyNameOfBatch = new Map(result.perCompany.flatMap((c) => (c.batchId ? [[c.batchId, c.companyName] as const] : [])));
+  const heldList = [...heldRows].sort((a, b) =>
+    (companyNameOfBatch.get(a.batchId) ?? '').localeCompare(companyNameOfBatch.get(b.batchId) ?? '') || a.name.localeCompare(b.name));
+  const anyHeld = (result.totalEmployeesHeldForTax ?? 0) > 0;
 
   // Organization Module (361e3b15) — an INVALID_CYCLE row names the company AND the missing cycle type (not a
   // bare "no cycle"), reusing the same friendly run-type labels the wizard uses. Other reasons stay as-is.
@@ -213,6 +229,9 @@ export default async function PayrollProcessResultPage({
           {(result.totalEmployeesSkipped ?? 0) > 0 && (
             <Stat label={t('totalEmployeesSkipped')} value={`${result.totalEmployeesSkipped}`} sub={t('skippedNotAFailure')} />
           )}
+          {anyHeld && (
+            <Stat label={t('totalEmployeesHeldForTax')} value={`${result.totalEmployeesHeldForTax}`} sub={t('heldForTaxNotAFailure')} />
+          )}
           <Stat label={t('totalEmployeesFailed')} value={`${result.totalEmployeesFailed}`} />
           <Stat label={t('startedAt')} value={fmtTime(result.startedAt)} />
           <Stat label={t('endedAt')} value={fmtTime(result.endedAt)} />
@@ -229,6 +248,7 @@ export default async function PayrollProcessResultPage({
                 <th className="px-4 py-2 font-medium">{t('colSelected')}</th>
                 <th className="px-4 py-2 font-medium">{t('colSucceeded')}</th>
                 <th className="px-4 py-2 font-medium">{t('colSkipped')}</th>
+                {anyHeld && <th className="px-4 py-2 font-medium">{t('colHeldForTax')}</th>}
                 <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
                 <th className="px-4 py-2 font-medium">{t('colDetail')}</th>
               </tr>
@@ -240,8 +260,11 @@ export default async function PayrollProcessResultPage({
                   <td className="px-4 py-2 text-muted-foreground">{c.employeesSelected}</td>
                   <td className="px-4 py-2 text-muted-foreground">{c.employeesSucceeded}</td>
                   <td className="px-4 py-2 text-muted-foreground">{c.employeesSkipped ?? 0}</td>
+                  {anyHeld && <td className="px-4 py-2 text-muted-foreground">{c.employeesHeldForTax ?? 0}</td>}
                   <td className="px-4 py-2">
-                    {c.status === 'succeeded' ? (
+                    {c.status === 'succeeded' && (c.employeesHeldForTax ?? 0) > 0 ? (
+                      <Badge variant="warning">{t('companyPartlyProcessed')}</Badge>
+                    ) : c.status === 'succeeded' ? (
                       <Badge variant="success">{t('companySucceeded')}</Badge>
                     ) : (
                       <Badge variant="danger">{t('companyFailed')}</Badge>
@@ -264,6 +287,57 @@ export default async function PayrollProcessResultPage({
           </table>
         </div>
       </Card>
+
+      {anyHeld && (
+        <Card className="overflow-hidden">
+          <div className="border-b border-border px-4 py-3">
+            <div className="text-sm font-medium">{t('heldForTaxTitle', { n: result.totalEmployeesHeldForTax ?? 0 })}</div>
+            <p className="mt-1 text-xs text-muted-foreground">{t('heldForTaxNote')}</p>
+            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">{t('heldForTaxNext')}</p>
+          </div>
+          {/* Count from the run; names from its processed event, which a reader without access to it (ADR-0015) does
+              not get. That reader sees this sentence, never an empty card that reads as "nobody was held". */}
+          {heldList.length === 0 && (
+            <p className="px-4 py-4 text-sm text-muted-foreground">{t('heldForTaxNamesUnavailable', { n: result.totalEmployeesHeldForTax ?? 0 })}</p>
+          )}
+          {heldList.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                    <th className="px-4 py-2 font-medium">{t('colEmployeeId')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colEmployeeName')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colHeldMonth')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colHeldReason')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {heldList.map((e) => {
+                    const review = new URLSearchParams({ company: e.companyId, year: e.period.slice(0, 4), month: String(Number(e.period.slice(5, 7))) });
+                    return (
+                      <tr key={`${e.batchId}:${e.employmentId}`} className="border-b border-border last:border-0 align-top">
+                        <td className="px-4 py-2"><EmployeeCode code={e.employeeCode} /></td>
+                        <td className="px-4 py-2 text-foreground">{e.name}</td>
+                        <td className="px-4 py-2 text-muted-foreground">{companyNameOfBatch.get(e.batchId) ?? ''}</td>
+                        <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">{e.period}</td>
+                        <td className="px-4 py-2 text-muted-foreground">
+                          <p>{e.canReviewTax && e.reason ? t('heldForTaxReason', { period: e.period, reason: e.reason }) : t('heldForTaxReasonGeneric', { period: e.period })}</p>
+                          {e.canReviewTax && (
+                            <Link className="font-medium text-primary hover:underline" href={`/payroll/income-tax-recalculation?${review}`}>
+                              {t('openIncomeTaxRecalculation')}
+                            </Link>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
 
       {(result.totalEmployeesSkipped ?? 0) > 0 && (
         <Card className="overflow-hidden">

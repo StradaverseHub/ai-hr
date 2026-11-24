@@ -170,6 +170,11 @@ afterEach(async ({task})=>{
  try{if(serverLog&&typeof serverLog.path==='string')console.error('Owned Next server failure tail:',logTail(serverLog.path,12000));}
  catch{console.error('Owned Next server failure tail unavailable');}
 },30000);
+// The first request to each import route compiles it on the CI dev server (measured up to 43 s per route, and the
+// result's errors route still compiling after 90 s in run 45204704467). Waits that follow such a first request get
+// this longer bound; the test's own 900 s budget is unchanged.
+const FIRST_COMPILE_WAIT_MS=240_000;
+
 describe('System Labels authenticated Excel browser journey',()=>{
  it('downloads, previews and imports actual authorized data, refuses restricted global imports, and renders six languages',async({signal,task})=>{
   const evidence=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR??'/tmp/aihr-label-browser-evidence');mkdirSync(evidence,{recursive:true});
@@ -181,7 +186,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
    const row={source:process.env.AIHR_CI_HEAD,phase,elapsedMs:Math.round(performance.now()-capacityStarted),
     memTotalBytes:field('MemTotal'),memAvailableBytes:available,swapTotalBytes:field('SwapTotal'),swapFreeBytes:field('SwapFree'),
     vitestPid:process.pid,vitestRssBytes:process.memoryUsage.rss(),nextPid:server?.pid??null,nextLeaderStartTicks:serverStartTicks??null,
-    webpackParallelism:1,lowHeadroomDiagnostic:available<1.5*1024**3,releaseAuthorized:false};
+    bundler:'turbopack',lowHeadroomDiagnostic:available<1.5*1024**3,releaseAuthorized:false};
    // A diagnostic flag is never a capacity/test PASS. Keep actual per-PID heap and DB cgroup evidence too.
    appendFileSync(join(evidence,'system-label-capacity-phases.jsonl'),JSON.stringify(row)+'\n');
    console.info('SYSTEM_LABEL_CAPACITY '+JSON.stringify(row));
@@ -211,7 +216,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   // available memory under system-label-dev-server-heap/ in its evidence.
   const memory=totalmem(),heapMiB=memory>=15*1024**3?12288:memory>=12*1024**3?8192:4096;
   const heapEvidence=join(evidence,'system-label-dev-server-heap');mkdirSync(heapEvidence,{recursive:true});
-  writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,webpackParallelism:1,runner:process.env.RUNNER_ENVIRONMENT??'local'}));
+  writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,bundler:'turbopack',runner:process.env.RUNNER_ENVIRONMENT??'local'}));
   const labelsPath='/admin/settings/system-labels',profilePath='/admin/settings/system-labels/profile-options';
   type LabelsPath=typeof labelsPath|typeof profilePath;
   function importTrigger(target:Page,messages:typeof en){
@@ -351,11 +356,12 @@ describe('System Labels authenticated Excel browser journey',()=>{
   // No production credentials or identity provider. Recycle only this owned detached server:
   // the first combined capture exhausted runner headroom after the six-language loop (44573956115).
   // Fresh processes retain the isolated database and sessions while releasing compiled dev-route graphs.
+  // Turbopack, like `next dev` and `next build` for this app; webpack dev compiles were the bulk of this test's ~800 s.
   async function startOwnedNext(){
    signal.throwIfAborted();
    serverClosed=false;serverSpawnFailed=false;serverStartTicks=undefined;
-   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
-    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NEXT_WEBPACK_PARALLELISM:'1',NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
+   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','--port',String(port)],{
+    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
    sampleCapacity?.('next-spawned');
    const nextChild=server;
    nextChild.once('spawn',()=>{if(server===nextChild)serverStartTicks=detachedLeaderStart(nextChild);});
@@ -427,7 +433,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const importDialog=await openImport(page,'group-admin');
   await importDialog.getByLabel(en.labelsImportWizard.upload,{exact:true}).setInputFiles({name:'fictional-labels.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:bytes});
   await page.getByRole('button',{name:en.labelsImportWizard.check,exact:true}).click();
-  await page.getByRole('button',{name:'Import 3 new codes',exact:true}).waitFor();
+  await page.getByRole('button',{name:'Import 3 new codes',exact:true}).waitFor({timeout:FIRST_COMPILE_WAIT_MS});
   expect(await page.getByRole('dialog').innerText()).toContain(en.systemLabelExchange.global);
   expect(await page.getByRole('dialog').innerText()).toContain('Fictional browser company B');
   expect(await page.getByRole('dialog').innerText()).toContain('BROWSER_GROUP_LABEL');
@@ -441,7 +447,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
    return page.getByRole('dialog').innerText();
   },{timeout:120000,interval:250}).toContain('Failed rows: 1');
   // Board c074c6b8: the result screen lists the row that was not imported, read back from the job.
-  await page.getByRole('table',{name:en.labelsImportWizard.problemsTitle}).getByText('Company is unknown, ambiguous, inactive or outside your administrator scope.',{exact:true}).waitFor();
+  await page.getByRole('table',{name:en.labelsImportWizard.problemsTitle}).getByText('Company is unknown, ambiguous, inactive or outside your administrator scope.',{exact:true}).waitFor({timeout:FIRST_COMPILE_WAIT_MS});
   const [labelJob]=await owner.client<{state:string}[]>`select state from bulk_job where tenant_id=${b.tenantId}::uuid and kind='system_label_import' order by created_at desc limit 1`;
   expect(labelJob).toEqual({state:'completed'});
   const [global]=await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_GLOBAL_LABEL'));
@@ -481,7 +487,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   await restrictedImportDialog.getByLabel(en.labelsImportWizard.upload,{exact:true}).setInputFiles({name:'forbidden-global.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:refused});
   await restrictedPage.getByRole('button',{name:en.labelsImportWizard.check,exact:true}).click();
   // Board c074c6b8: the refusal shows the server's own sentence (catalogue text) with its column.
-  await restrictedPage.getByText(en.labelsImportWizard.problem.globalAdminRequired,{exact:true}).waitFor();
+  await restrictedPage.getByText(en.labelsImportWizard.problem.globalAdminRequired,{exact:true}).waitFor({timeout:FIRST_COMPILE_WAIT_MS});
   expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_FORBIDDEN_GLOBAL'))).toHaveLength(0);
   const allowedExport=await restrictedContext.request.get(origin+'/admin/settings/system-labels/current-data?kind=division&inactive=1');
   expect(allowedExport.status()).toBe(200);expect(readSystemLabelWorkbook(await allowedExport.body()).some(row=>row.values.Code==='BROWSER_COMPANY_LABEL')).toBe(false);

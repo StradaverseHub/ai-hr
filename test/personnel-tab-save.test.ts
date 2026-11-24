@@ -384,7 +384,8 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
       expect(PAGE()).toContain('currentLineId={currentSuperior?.id ?? null}');
       expect(PAGE()).toContain('action={setDirectSuperiorAction}');
       const superior = formTags(stripComments(read('app/admin/personnel/[employmentId]/direct-superior-change-form.tsx')));
-      expect(superior.filter(tag => /action=\{action\}/.test(tag))).toHaveLength(1);
+      // 8f959c7a — the card's own form dispatches the action and shows its outcome in place (no redirect).
+      expect(superior.filter(tag => /onSubmit=\{submit\}/.test(tag))).toHaveLength(1);
       for (const tag of superior) expect(tag).not.toContain('data-save-section');
       const bound = [...formTags(PAGE()).map((tag) => /action=\{([\s\S]*?)\}/.exec(tag)?.[1] ?? ''), 'reverseMovementEventAction', 'setDirectSuperiorAction']
         .join(' | ');

@@ -10,7 +10,7 @@
  * amounts in payloads (ADR-0030). All writes are admin-only (asserted in the service; RLS does not enforce
  * admin-only writes here, matching claims — so the ESS path must NEVER call a loan write service).
  */
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -468,12 +468,15 @@ export async function applyLoansForBatch(
   batchId: string,
   appliedLoanCentsByEmp: Map<string, number>,
   onlyEmploymentIds?: string[],
+  /** 016276b7 — reservations of these employments stay reserved (held for income tax review, no payslip yet). */
+  exceptEmploymentIds?: readonly string[],
 ): Promise<void> {
   if (onlyEmploymentIds && onlyEmploymentIds.length === 0) return;
   const reservedFilter = and(
     eq(loanRepayment.reservedBatchId, batchId),
     eq(loanRepayment.status, 'reserved'),
     onlyEmploymentIds ? inArray(loanRepayment.employmentId, onlyEmploymentIds) : undefined,
+    exceptEmploymentIds?.length ? notInArray(loanRepayment.employmentId, [...exceptEmploymentIds]) : undefined,
   );
   // Lock the loans first, then read the reservations again: a writer that waited for another apply
   // of the same reservation then sees it already applied and leaves it, instead of deducting twice.
