@@ -145,7 +145,8 @@ async function passAudit(t:Tenant){
  const status=await owner.client<{ids:string[]}[]>`select coalesce(array(select jsonb_array_elements_text(after->'reprocessedEmploymentIds')),'{}') as ids from payroll_status_history where batch_id=${t.may}::uuid and action='reprocess'`;
  const events=await owner.client<{ids:string[]}[]>`select coalesce(array(select jsonb_array_elements_text(payload->'employmentIds')),'{}') as ids from domain_event where aggregate_id=${t.may}::uuid and event_type='payroll-batch.selective-reprocessed'`;
  const captures=await owner.client<{n:number}[]>`select count(*)::int as n from domain_event where aggregate_id=${t.base.companyId}::uuid and event_type='payroll-audit.inputs-not-captured'`;
- const ids=(rows:{ids:string[]}[])=>rows.flatMap(row=>row.ids).sort();
+ const number=new Map([...t.employees].map(([n,e])=>[e.employmentId,n]));
+ const ids=(rows:{ids:string[]}[])=>rows.flatMap(row=>row.ids.map(id=>number.get(id)??-1)).sort((x,y)=>x-y);
  return{statusRows:status.length,statusIds:ids(status),eventRows:events.length,eventIds:ids(events),captureMisses:captures[0].n};
 }
 async function drain(){
@@ -201,10 +202,7 @@ it('recalculates a 100-employee run set-based exactly as the per-employee path, 
  const setCpu=process.cpuUsage();
  const set=await profile(async()=>{
   const requested=await requestSelectiveReprocess(b.ctx,{batchId:b.may,employmentIds:selection(b),reason:'J2 equivalence'});
-  // Diagnostic run: groups double (16, 32, 64) instead of aiming at a chunk length, so the per-chunk lines measure the
-  // fixed cost of one engine pass against its cost per employee.
-  const target=process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS;process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS='600000';
-  try{await drain();}finally{if(target===undefined)delete process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS;else process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS=target;}
+  await drain();
   return requested;
  });
  const setCpuMs=cpuMs(setCpu);
@@ -236,6 +234,8 @@ it('recalculates a 100-employee run set-based exactly as the per-employee path, 
  expect(job.metrics.reprocessGroups).toBeGreaterThan(0);
  expect(job.metrics.reprocessGroupEmployees+job.metrics.reprocessSingles).toBe(RUN);
  expect(job.metrics.reprocessSingles).toBeGreaterThanOrEqual(ADDED+MISSING_SALARY.size);
+ // A refused pass is narrowed to the employee it names: each refusal costs at most one more per-employee transaction.
+ expect(job.metrics.reprocessSingles).toBeLessThanOrEqual(ADDED+2*MISSING_SALARY.size+1);
  // The run-level audit rows cover the same employees: one per employee before, one per group now.
  const auditA=await passAudit(a),auditB=await passAudit(b);
  expect(auditB.statusIds).toEqual(auditA.statusIds);

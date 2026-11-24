@@ -144,15 +144,23 @@ payroll truth stays in its source tables.
   payroll engine (`reprocessEmployeeGroupTx` in `core/payroll.ts`): the run-wide reads once, each employee's
   calculation unchanged, one job checkpoint and one multi-row outcome-event insert. The group's other steps only
   record themselves; the last one ends the chunk (kernel step outcome `endChunk`). Additions, exclusions, unreadable
-  employees and every employee of a refused pass take the per-employee transaction (`reprocessEmployeeTx`) in a chunk
-  of their own, so each outcome and stop record is the per-employee path's. The run-level checks (job claim and
-  token, batch status, permission, closed period) are the per-employee transaction's own, taken once per group under
-  the same keys and row locks; the payroll history barrier rules are those of the same engine pass. The group size
-  adapts so a chunk lasts about `PAYROLL_REPROCESS_CHUNK_TARGET_MS` (default 1,000 ms, which bounds how long a salary
-  or statutory change for that company waits behind it), with at most `PAYROLL_REPROCESS_GROUP_MAX` employees
-  (default 200; `1` restores one employee per chunk). Chunk transactions set the point-read marker the processing job
-  uses (0691/9954). Each chunk records its split on `bulk_job.metrics`: `reprocessCalcMs` (process CPU: calculation
-  and driver) and `reprocessDbMs` (the rest of the wall time), with group counts and per-chunk maxima.
+  employees and the employees a refused pass names take the per-employee transaction (`reprocessEmployeeTx`) in a chunk
+  of their own, so each outcome and stop record is the per-employee path's; a refused pass is narrowed to the employee
+  its refusal names (or halved when it names no one) and grouping resumes after them. The run-level checks (job claim
+  and token, batch status, permission, closed period) are the per-employee transaction's own, taken once per group
+  under the same keys and row locks; the payroll history barrier rules are those of the same engine pass. Chunk
+  transactions set the point-read marker the processing job uses (0691/9954).
+  - **Group size.** Measured on the hosted runner, one engine pass costs about 2.6 s whatever its size (2.1 s of it is
+    the Audit loop's whole-run inputs capture and the run's headcount recount) plus about 53 ms per employee, and the
+    calculation itself is 2–5% of the time; the rest is database. A one-employee pass therefore cannot meet a 100 ms or
+    1 s chunk. The group size is estimated from two passes of different sizes (a straight line: fixed cost F, cost per
+    employee m) so a chunk lasts `PAYROLL_REPROCESS_CHUNK_FIXED_MULTIPLE` x F (default 2) and at least
+    `PAYROLL_REPROCESS_CHUNK_TARGET_MS` (default 1,000 ms), at most `PAYROLL_REPROCESS_GROUP_MAX` employees (default 200;
+    `1` restores one employee per chunk), doubling from 16 until the estimate exists. A salary or statutory change for
+    the company may then wait up to about 2F behind one chunk instead of F, while the run needs about one chunk per 50
+    employees instead of one per employee. Each chunk logs an `[aihr-timing]` `bulk-chunk` line (closed labels and
+    numbers only) and adds to `bulk_job.metrics`: `reprocessCalcMs` (process CPU: calculation and driver) and
+    `reprocessDbMs` (the rest of the wall time), with group counts and per-chunk maxima.
   - **Known difference, intended.** The run-level audit rows of one engine pass, the `payroll_status_history`
     'reprocess' row, the `payroll-batch.selective-reprocessed` event and the Audit loop's inputs capture, are written
     once per group instead of once per employee; together they name exactly the same employees. The per-employee

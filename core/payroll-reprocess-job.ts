@@ -15,9 +15,11 @@
  * longest run of following employees that are ordinary recalculations goes through ONE pass of the payroll engine
  * (`reprocessEmployeeGroupTx`: the run-wide reads once, the same per-employee calculation, one checkpoint and one
  * multi-row event insert), and the group's other steps then only record themselves. The group's size adapts so a
- * chunk lasts about PAYROLL_REPROCESS_CHUNK_TARGET_MS (at most PAYROLL_REPROCESS_GROUP_MAX employees; 1 restores one
- * employee per chunk). An addition, an exclusion, a refused pass and its employees take the per-employee transaction
- * (`reprocessEmployeeTx`) in a chunk of their own, exactly as before, so every outcome and stop is the request path's.
+ * chunk lasts about PAYROLL_REPROCESS_CHUNK_FIXED_MULTIPLE times one pass's measured fixed cost, and at least
+ * PAYROLL_REPROCESS_CHUNK_TARGET_MS (at most PAYROLL_REPROCESS_GROUP_MAX employees; 1 restores one employee per chunk).
+ * An addition, an exclusion and the employees a refused pass names take the per-employee transaction
+ * (`reprocessEmployeeTx`) in a chunk of their own, exactly as before, so every outcome and stop is the request path's;
+ * a refused pass is narrowed to the employee it names (or halved), and grouping resumes after them.
  * Each chunk records its calculation (process CPU) and database (the rest of its wall time) split on the job's metrics.
  */
 
@@ -46,19 +48,54 @@ const stoppedOf=new Map<string,Stopped>();
 const runOf=(job:BulkJobRow):SelectiveReprocessRun=>{const p=planOf(job)!;return{jobId:p.reprocessJobId,batchId:p.batchId,employmentIds:p.employmentIds,reason:p.reason,workerToken:job.id};};
 /** Employees per engine pass, at most (1: one employee per chunk, the per-employee transaction only). */
 export const payrollReprocessGroupMax=()=>Math.max(1,Math.floor(Number(process.env.PAYROLL_REPROCESS_GROUP_MAX??200))||1);
-/** The chunk length the group size aims for. The chunk holds the run's company/month key and its company's payroll
- * inputs key, so this is how long a salary or statutory change for that company may wait behind it. */
+/** The chunk length the group size aims for, at least. The chunk holds the run's company/month key and its company's
+ * payroll inputs key, so this bounds how long a salary or statutory change for that company may wait behind it. */
 export const payrollReprocessChunkTargetMs=()=>Math.max(1,Number(process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS??1000)||1000);
+/** One engine pass has a fixed cost whatever its size (the run-wide reads: on the hosted runner about 2.6 s of a
+ * one-employee pass, against about 50 ms per further employee). A chunk may last this many times that fixed cost, so the
+ * fixed cost is spread over a group instead of paid per employee; the per-employee path held the same keys for one fixed
+ * cost per employee. */
+export const payrollReprocessFixedMultiple=()=>Math.max(1,Number(process.env.PAYROLL_REPROCESS_CHUNK_FIXED_MULTIPLE??2)||2);
 const FIRST_GROUP=16;
-/** Per job and process: the next group size, employees whose pass was refused (per-employee from here), and the
- * employees the current chunk's group already wrote (their steps only record themselves; the last one ends the chunk). */
-type GroupState={size:number;fallback:Set<string>;chunk:{done:Set<string>;last:string|null}};
+/** Per job and process:
+ *  - `size`: the next group size, and `seen` the last passes of two different sizes it was estimated from;
+ *  - `cap`: a narrower limit for the group starting at one employee, after a refused pass (see `narrow`);
+ *  - `single`: employees a refused pass named, who take the per-employee transaction;
+ *  - `chunk`: the employees the current chunk's group already wrote (their steps only record themselves; the last one
+ *    ends the chunk). */
+type GroupState={size:number;seen:{employees:number;wallMs:number}[];cap:{at:string;max:number}|null;single:Set<string>;chunk:{done:Set<string>;last:string|null}};
 const groupStateOf=new Map<string,GroupState>();
-const stateOf=(jobId:string)=>{let state=groupStateOf.get(jobId);if(!state){state={size:FIRST_GROUP,fallback:new Set(),chunk:{done:new Set(),last:null}};groupStateOf.set(jobId,state);}return state;};
+const stateOf=(jobId:string)=>{let state=groupStateOf.get(jobId);if(!state){state={size:FIRST_GROUP,seen:[],cap:null,single:new Set(),chunk:{done:new Set(),last:null}};groupStateOf.set(jobId,state);}return state;};
 const isTransient=(error:unknown)=>error instanceof BulkJobWaiting||isTransientBulkJobError(error);
-/** The next group: scaled toward the chunk target from the last group's wall time, at most doubling. */
-function nextGroupSize(employees:number,wallMs:number){
- return Math.max(2,Math.min(payrollReprocessGroupMax(),employees*2,Math.floor(employees*payrollReprocessChunkTargetMs()/Math.max(1,wallMs))));
+/** The next group size from the passes seen so far. Two passes of different sizes give the fixed cost F and the cost per
+ * employee m (a straight line); the group then fills max(target, multiple x F). Until then, or when the two passes do not
+ * give a rising line, the size doubles. Always 2..PAYROLL_REPROCESS_GROUP_MAX, and at most double the last group. */
+export function nextReprocessGroupSize(seen:readonly {employees:number;wallMs:number}[],last:number){
+ const max=payrollReprocessGroupMax(),grow=Math.max(2,Math.min(max,last*2));
+ const [a,b]=seen.slice(-2);
+ if(!a||!b||a.employees===b.employees)return grow;
+ const perEmployee=(b.wallMs-a.wallMs)/(b.employees-a.employees);
+ if(!(perEmployee>0))return grow;
+ const fixed=Math.max(0,b.wallMs-b.employees*perEmployee);
+ const target=Math.max(payrollReprocessChunkTargetMs(),payrollReprocessFixedMultiple()*fixed);
+ return Math.max(2,Math.min(grow,Math.floor((target-fixed)/perEmployee)));
+}
+/** After a refused pass of `group` (its first employee then takes the per-employee transaction in this chunk): the
+ * employees the refusal names (its `rows[].employmentId` or `employmentId`, as the reprocess refusals carry) take the
+ * per-employee transaction too, and the next group, starting at the second employee, stops before the first of them.
+ * A refusal that names no one halves the next group, so a refusing employee is found in about log2(n) passes. */
+export function narrowRefusedGroup(group:readonly string[],error:unknown):{cap:{at:string;max:number}|null;single:string[]}{
+ const named=new Set<string>();
+ const e=error as {employmentId?:unknown;rows?:unknown}|null;
+ if(typeof e?.employmentId==='string')named.add(e.employmentId);
+ if(Array.isArray(e?.rows))for(const row of e.rows){const id=(row as {employmentId?:unknown}|null)?.employmentId;if(typeof id==='string')named.add(id);}
+ const rest=group.slice(1);if(!rest.length)return{cap:null,single:[]};
+ const first=rest.findIndex(id=>named.has(id));
+ const single=rest.filter(id=>named.has(id));
+ // Only the first employee named (it runs alone now): the rest group as usual.
+ if(first<0&&named.size)return{cap:null,single};
+ const max=first>=0?first:Math.floor(group.length/2);
+ return{cap:max>=1?{at:rest[0],max}:null,single};
 }
 const ms=(value:number)=>Math.max(0,Math.round(value));
 /** One line per chunk on the worker's stdout, beside the web's request timing (lib/request-timing.ts, same prefix and
@@ -120,29 +157,37 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
   if(state.chunk.done.has(id))return{counters:{done:1},...(id===state.chunk.last?{endChunk:true}:{})};
   const stopped:Stopped={current:null};stoppedOf.set(job.id,stopped);
   const run=runOf(job);
-  if(payrollReprocessGroupMax()>1&&!state.fallback.has(id)&&!state.chunk.last){
+  const cap=state.cap?.at===id?state.cap.max:Infinity;
+  const limit=Math.min(payrollReprocessGroupMax(),state.size,cap);
+  if(limit>=2&&!state.single.has(id)&&!state.chunk.last){
    const at=run.employmentIds.indexOf(id);
-   const candidates=at<0?[id]:run.employmentIds.slice(at,at+Math.min(payrollReprocessGroupMax(),state.size));
+   const candidates=at<0?[id]:run.employmentIds.slice(at,at+limit);
    const group=await reprocessEmployeeGroupTx(tx,ctx,run,candidates,{isTransient,stopped});
    if(group.kind==='done'){stoppedOf.delete(job.id);return{counters:{done:1}};}
    if(group.kind==='set'){
     const n=group.employmentIds.length,{wallMs,cpuMs}=group.timing;
     logChunk('group',n,wallMs,cpuMs,{wallMs:group.timing.engineWallMs,cpuMs:group.timing.engineCpuMs});
     state.chunk={done:new Set(group.employmentIds),last:group.employmentIds[n-1]};
-    state.size=nextGroupSize(n,wallMs);
+    if(state.cap?.at===id)state.cap=null;
+    // Passes of the full size estimate the line; a narrowed or cut-short group is still a valid point on it.
+    state.seen=[...state.seen.filter(p=>p.employees!==n),{employees:n,wallMs}].slice(-2);
+    state.size=nextReprocessGroupSize(state.seen,n);
     stoppedOf.delete(job.id);
     return{counters:{done:1},metrics:{
      add:{reprocessGroups:1,reprocessGroupEmployees:n,reprocessCalcMs:ms(cpuMs),reprocessDbMs:ms(wallMs-cpuMs)},
      max:{reprocessGroupMaxEmployees:n,reprocessGroupMaxMs:ms(wallMs),reprocessGroupMaxCalcMs:ms(cpuMs),reprocessGroupMaxDbMs:ms(wallMs-cpuMs)},
     }};
    }
-   // A refused pass: its employees take the per-employee transaction, one chunk each, from this one on.
-   if(group.kind==='fallback')for(const employmentId of group.employmentIds)state.fallback.add(employmentId);
+   // A refused pass: this employee takes the per-employee transaction now; the refusal narrows what follows.
+   if(group.kind==='fallback'){
+    const narrowed=narrowRefusedGroup(group.employmentIds,group.error);
+    state.cap=narrowed.cap;for(const employmentId of narrowed.single)state.single.add(employmentId);
+   }
    stopped.current=null;
   }
   const started=performance.now(),cpuStarted=process.cpuUsage();
   await reprocessEmployeeTx(tx,ctx,run,id,stopped);
-  state.fallback.delete(id);
+  state.single.delete(id);if(state.cap?.at===id)state.cap=null;
   stoppedOf.delete(job.id);
   const cpu=process.cpuUsage(cpuStarted),wallMs=performance.now()-started,cpuMs=(cpu.user+cpu.system)/1000;
   logChunk('single',1,wallMs,cpuMs);
