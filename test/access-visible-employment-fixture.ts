@@ -2,7 +2,7 @@
  * visibility.md section 7): the 7210 pilot fixture (70 fictional companies in a three-level tree, 1,000 employments,
  * its administrator actors) plus
  *  * an administrative tree over the 1,000 employments (EQ k reports to EQ k/2, depth about 10), with a second current
- *    manager (EQ7 -> EQ500), a cycle (EQ9 -> EQ2), a terminated intermediate manager (EQ6), a future termination
+ *    manager (EQ7 -> EQ500) (reporting loops are refused by a guard, so the depth cap is not exercised), a terminated intermediate manager (EQ6), a future termination
  *    (EQ13), a line starting tomorrow (EQ20 -> EQ900), a line ending tomorrow (EQ15 -> EQ30), a superseded line
  *    (EQ40 -> EQ950) and a delegate line (EQ50 -> EQ51); many hops leave the root's company subtree (clamp);
  *  * three departments per company (two-deep chain), a five-deep chain in the top company, a cross-company child under
@@ -60,7 +60,7 @@ export async function buildVisibilityFixture(){
   select ${b.tenantId}::uuid,m.id,s.id,'administrative','2025-01-06' from employment s
   join employment m on m.tenant_id=s.tenant_id and m.employee_code='EQ'||lpad((substr(s.employee_code,3)::int/2)::text,5,'0')
   where s.tenant_id=${b.tenantId}::uuid and s.employee_code like 'EQ0%' and substr(s.employee_code,3)::int>=2`;
- await line(7,500);await line(9,2);await line(20,900,{from:day(1)});await line(40,950,{superseded:true});await line(50,51,{type:'delegate'});
+ await line(7,500);await line(20,900,{from:day(1)});await line(40,950,{superseded:true});await line(50,51,{type:'delegate'});
  await owner.client`update reporting_line set valid_to=${day(1)}::date where subordinate_employment_id=${byCode.get(eq(30))!.id}::uuid`;
  await owner.client`update employment set terminated_on=${day(-1)}::date where id=${byCode.get(eq(6))!.id}::uuid`;
  await owner.client`update employment set terminated_on=${day(1)}::date where id=${byCode.get(eq(13))!.id}::uuid`;

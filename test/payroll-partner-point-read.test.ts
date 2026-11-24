@@ -2,8 +2,9 @@
  * 5054 — the point-read marker (0691) now also answers for a payroll partner who is not a company administrator,
  * the case the payroll processing job's units left on the full predicate. Proved on the real policy: with the marker
  * on, a partner's employment read returns exactly the rows the original predicate returns (with the marker off),
- * for the partner's own company and for one it has no grant on, while the visible-employment array is never built;
- * with the marker off it still is (non-vacuity). An unrecognised marker keeps the original predicate.
+ * for the partner's own company and for one it has no grant on, while the visible-employment array is never built.
+ * Since 7240 the company arm answers first, so the partner's own company does not build it without the marker either;
+ * a company without a grant still does (non-vacuity). An unrecognised marker keeps the original predicate.
  */
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
@@ -14,10 +15,10 @@ import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedB
 
 type PlanNode = { 'Actual Loops'?: number; Output?: string[]; Plans?: PlanNode[] };
 const nodes = (n: PlanNode): PlanNode[] => [n, ...(n.Plans ?? []).flatMap(nodes)];
-/** How many times each node that builds the visible-employment array ran. */
+/** How many times each node that builds the visible-employment array ran (7240: the relationship reader). */
 async function arrayLoops(tx: Tx, query: string) {
   const [row] = await tx.execute<{ 'QUERY PLAN': { Plan: PlanNode }[] }>(sql.raw(`explain (analyze, verbose, costs off, timing off, format json) ${query}`));
-  return nodes(row['QUERY PLAN'][0].Plan).filter((n) => (n.Output ?? []).some((o) => o.includes('app.visible_employment_ids()'))).map((n) => n['Actual Loops'] ?? 0);
+  return nodes(row['QUERY PLAN'][0].Plan).filter((n) => (n.Output ?? []).some((o) => o.includes('app.visible_employment_ids()') || o.includes('app.access_visible_employment_ids()'))).map((n) => n['Actual Loops'] ?? 0);
 }
 
 describe('payroll partner point read', () => {
@@ -51,8 +52,10 @@ describe('payroll partner point read', () => {
   it('returns the original rows without building the visible-employment array', async () => {
     const original = await read(partner, null, b.companyId);
     expect(original.ids.length).toBeGreaterThanOrEqual(2);
-    // Non-vacuity: without the marker the partner's read builds the array.
-    expect(original.loops.some((n) => n > 0)).toBe(true);
+    // 7240: employment_rls asks the company question (app.employment_read_companies) before the relationship array, so
+    // for the partner's own company the array is not built even without the marker.
+    expect(original.loops.length).toBeGreaterThan(0);
+    expect(original.loops.every((n) => n === 0)).toBe(true);
     const marked = await read(partner, 'on', b.companyId);
     expect(marked.ids).toEqual(original.ids);
     expect(marked.loops.length).toBeGreaterThan(0);
@@ -60,7 +63,10 @@ describe('payroll partner point read', () => {
     // An unrecognised marker is the original predicate.
     const forged = await read(partner, 'garbage', b.companyId);
     expect(forged.ids).toEqual(original.ids);
-    expect(forged.loops.some((n) => n > 0)).toBe(true);
+    // Non-vacuity: for a company the partner has no grant on, the array is built.
+    const outside = await read(partner, null, otherCompany);
+    expect(outside.ids).toEqual([]);
+    expect(outside.loops.some((n) => n > 0)).toBe(true);
   });
 
   it('adds no authority: a company the partner has no grant on stays hidden, and an administrator is unchanged', async () => {
