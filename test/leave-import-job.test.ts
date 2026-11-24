@@ -185,8 +185,10 @@ describe('leave ledger import as a background job on the shared kernel',()=>{
   const people=await Promise.all(['S1','S2','S3','S4','S5','S6'].map(n=>hire('Stop '+n)));
   const job=await createLeaveImportJob(adminCtx(b),{records:people.map(p=>line(p.code,'1.00'))});
   await ticksUntil(job.id,['running']);
-  // One chunk with a tiny budget so the stop lands between rows.
-  await runBulkJobTick(owner.client,{handlers:[{...leaveImportJobHandler,chunkBudgetMs:1}]});
+  // One chunk of two rows (a set-based group of at most two, ADR 0181 J2) so the stop lands between rows. A chunk ends
+  // by its group, never by a kernel budget between the steps of a group.
+  process.env.LEAVE_IMPORT_GROUP_MAX='2';
+  try{await runBulkJobTick(owner.client,{handlers:[leaveImportJobHandler]});}finally{delete process.env.LEAVE_IMPORT_GROUP_MAX;}
   const [{n:saved}]=await owner.client`select count(*)::int as n from leave_ledger where tenant_id=${b.tenantId}::uuid and reason='Imported (leave migration)'`;
   expect(saved).toBeGreaterThan(0);expect(saved).toBeLessThan(6);
   await owner.client`update bulk_job set cancel_requested_at=now() where id=${job.id}::uuid`;
