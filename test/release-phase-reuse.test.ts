@@ -155,7 +155,7 @@ describe('bounded Operator historical assertion repair',()=>{
    put(root,OPERATOR_REPAIR.path,execFileSync('git',['show','10d24c2a8e11e52aa0f114426d438277ae611ada:'+OPERATOR_REPAIR.path],{cwd:owner,encoding:'utf8'}));
    for(const p of ['app/page.ts','db/migrations/0601_operator_customer_workspace.sql','db/migrations/meta/_journal.json','test/db0.test.ts','test/shared.ts','pnpm-lock.yaml'])put(root,p,'original');
    put(root,'CLAUDE.md','original');const original=save();
-   put(root,OPERATOR_REPAIR.path,readFileSync(join(owner,OPERATOR_REPAIR.path),'utf8'));put(root,'CLAUDE.md','owner full-gate rule');const repaired=save();
+   put(root,OPERATOR_REPAIR.path,execFileSync('git',['show','348c005112a60d1911601ea86df7006d9ef664bc:'+OPERATOR_REPAIR.path],{cwd:owner,encoding:'utf8'}));put(root,'CLAUDE.md','owner full-gate rule');const repaired=save();
    expect(validateOperatorRepairDelta(original,repaired,root)).toEqual(['CLAUDE.md',OPERATOR_REPAIR.path].sort());
    for(const p of ['app/page.ts','db/migrations/0601_operator_customer_workspace.sql','db/migrations/meta/_journal.json','test/db0.test.ts','test/shared.ts','pnpm-lock.yaml']){
     put(root,p,'unauthorized');const bad=save();expect(()=>validateOperatorRepairDelta(original,bad,root)).toThrow(/unapproved/);g(['reset','--hard',repaired]);

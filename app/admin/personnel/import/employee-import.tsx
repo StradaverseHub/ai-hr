@@ -31,7 +31,7 @@ import { DownloadTemplate } from '@/components/download-template';
 import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
 import {useImportWorksheet} from '@/components/use-import-worksheet';
-import { IMPORT_FILE_ACCEPT, MAX_IMPORT_CSV_BYTES, importFileMessageKey, readImportFile } from '@/lib/import-file';
+import {MAX_IMPORT_FILE_BYTES, IMPORT_FILE_ACCEPT, MAX_IMPORT_CSV_BYTES, importFileMessageKey, readImportFile } from '@/lib/import-file';
 import {csvDataExcelRows,lineRowOf,type ImportSourceRows} from '@/lib/import-problem-common';
 import {employeePreviewProblemLines,employeeResultProblemLines} from '@/lib/employee-import-problems';
 import {ImportProblems,useImportProblemTranslate} from './import-error-log';
@@ -261,7 +261,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
   // text to the SAME validate step the paste box uses. Nothing about parsing, validation or the
   // write path changes — this only replaces "open the file and copy its contents" for the user.
   const loadFile = async (file: File) => {
-    if (commitPending.current || reading) return;
+    if (commitPending.current) return;
     clearWorksheet();
     // A picked candidate is not the active source. Preserve its file label, companions, original
     // fingerprint and lineage until adoption; a failed/delayed read must not retarget old CSV.
@@ -278,7 +278,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
       let primaryWorksheet:string|undefined;
       let selectedCompanions=companions;
       if(!preparing&&/\.xlsx?$/i.test(file.name)){
-        const chosen=await readWorksheet(file,{inspectOnly:true,framed:true,companions,exclude:references});
+        const chosen=await readWorksheet(file,{inspectOnly:true,framed:true,companions,exclude:references,maxFileBytes:MAX_IMPORT_FILE_BYTES});
         if(!chosen||revision!==inputRevision.current)return;
         primaryWorksheet=chosen.worksheet;
         selectedCompanions=companions.filter(name=>chosen.companionSheets.some(sheet=>sheet.trim().toLowerCase()===name.trim().toLowerCase()));
@@ -577,6 +577,7 @@ unknownSheet:t('headerAssistance.unknownSheet'),aiTitle:t('headerAssistance.aiTi
               value={companyId}
               onChange={(e) => {
                 if (commitPending.current) return;
+                clearWorksheet();
                 setCompanyId(e.target.value);setSourceEpoch(value=>value+1);setGuidedUsed(false);manualCorrection.current=false;originalSourceFingerprint.current=null;headerAssistanceAnnotation.current=null;setWorkbookReview(null);setPreparationReview(null);setLocalEvidence([]);
                 reset();
               }}

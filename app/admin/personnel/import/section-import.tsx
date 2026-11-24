@@ -150,7 +150,7 @@ export function SectionImport({ section, reference, onCommitPendingChange }: { s
   };
 
   const loadFile = async (file: File) => {
-    if (commitPending.current || reading || pending) return;
+    if (commitPending.current) return;
     reset();
     setCsv('');
     const revision = inputRevision.current;
