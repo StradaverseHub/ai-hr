@@ -373,6 +373,33 @@ represented (company, department) pairs once from the authorised members (the ex
 statement) for every population size, behind an equivalence test against the current options. This is a code change
 in `core/employee-choice.ts` only, with no migration; the target is under 1 s.
 
+### 9.3 Scope change: 7245 restores the employment and person policies (25 November 2026, for the owner)
+
+Release 6's gate showed the History reads of Transaction View 4–7× slower
+(`test/transaction-view-history-scale-db.test.ts`, History rows 23 s in J2's gate, 169 s in release 6's). A diagnostic on
+that fixture isolated it to 7240's restated `employment_rls` and `person_rls` (section 6): with them, the planner
+reorders the payslip, employment and person joins around the new company arrays. Per History read (group
+administrator / Payroll partner / employee): 2,309 / 404 / 290 ms with the 7240 text, 330 / 168 / 110 ms with the
+pre-7240 text and the 7240 function. Migration `7245_access_visible_employment_policy_restore` puts both policies back to
+their exact pre-7240 text; it rides in 7250's release under the overnight staging approval, as a repair to release 6.
+
+What 7240 still delivers once 7245 is installed:
+- the stored reporting reach, the department closure, the per-tenant state and the mode control, maintained by the
+  column-diffing statement triggers and verified by the rebuild check (cron lines documented, not installed);
+- `app.visible_employment_ids()` with the 7240 body: the admin arm unchanged, unioned with
+  `app.access_visible_employment_ids()`, which serves the relationship part in `legacy`, `shadow` or `precomputed`.
+  The restored `employment_rls` and `person_rls` call `visible_employment_ids` (and `visible_person_ids`, which calls
+  it), as do about 58 other policies, so **switching the mode to `shadow` or `precomputed` still takes effect on every
+  one of them; no further migration is needed for the mode change**;
+- the 7230 index, which is what made the employee picker's department options about 4× faster.
+
+What is withdrawn:
+- the once-per-statement company arms in `employment_rls` and `person_rls` (`app.employment_read_companies`,
+  `app.employment_partner_companies`, `app.access_visible_person_ids`). The three functions stay installed but no policy
+  calls them; their EXECUTE stays off PUBLIC (granted to `ai_hr_app`, and the two person readers also to
+  `ai_hr_reward_setup_reader`, which reads person). They can be revoked or dropped in a later cleanup. A planner-friendly
+  restatement, if wanted, is a separate design question: measure it on the History fixture before proposing it.
+
 ## 10. Owner decisions requested
 
 1. **Store relationships by employment, keep admin scope company-level** (recommended), instead of one row per viewer
