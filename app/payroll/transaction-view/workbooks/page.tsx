@@ -2,10 +2,8 @@ import { getTranslations, getFormatter } from 'next-intl/server';
 import { Button, Card, PageHeader, pageWideCls } from '@/components/ui';
 import { scopedAdmin } from '@/lib/scope';
 import { bulkJobActive } from '@/lib/bulk-job';
-import { listBulkJobsTx } from '@/core/bulk-job';
-import { TRANSACTION_EXPORT_KIND } from '@/core/payroll-transaction-export';
-import { withPayrollTenant } from '@/core/module-gate';
 import { RefreshWorkbookList } from './refresh';
+import { readWorkbookList, workbookListActive, workbookListSignature } from './list';
 
 export default async function TransactionWorkbookList({
   searchParams,
@@ -14,9 +12,8 @@ export default async function TransactionWorkbookList({
   const { job, unavailable, tab } = await searchParams;
   const t = await getTranslations('payroll.transactions.view.workbooks');
   const format = await getFormatter();
-  const jobs = (await withPayrollTenant(s, (tx) => listBulkJobsTx(tx, s, TRANSACTION_EXPORT_KIND, 25)))
-    .filter((item) => item.company_ids.length > 0 && item.company_ids.every((id) => scopeIds.includes(id)));
-  const active = jobs.some((item) => bulkJobActive(item.state));
+  const jobs = await readWorkbookList(s, scopeIds);
+  const active = workbookListActive(jobs);
   const backHref = tab === 'fixed' || tab === 'individual' || tab === 'history' ? `/payroll/transaction-view?tab=${tab}` : '/payroll/transaction-view';
 
   return (
@@ -25,7 +22,7 @@ export default async function TransactionWorkbookList({
       {(unavailable || (job && !jobs.some((item) => item.id === job))) && (
         <p role="alert" className="text-sm text-destructive">{t('unavailable')}</p>
       )}
-      {active && <RefreshWorkbookList />}
+      {active && <RefreshWorkbookList signature={workbookListSignature(jobs)} />}
       <Card className="overflow-hidden">
         {jobs.length === 0 ? <p className="p-4 text-sm text-muted-foreground">{t('empty')}</p> : (
           <ul className="divide-y divide-border">
