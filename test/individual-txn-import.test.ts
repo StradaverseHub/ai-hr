@@ -153,8 +153,9 @@ describe('durable Individual Transaction import',()=>{
   const saved=await confirm(a.id);expect(saved.written).toBe(1);
   expect(saved.outcomes[3].snapshot).toMatchObject({quantity:null,unit:'amount',amount:'151.50'});
   await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:10}}).where(eq(schema.payComponent.id,componentId));
+  // 7b5b1665 (owner, 24 Nov 2026: aac17dd0 kept) — still refused, now pointing an amount to One Total for the Month.
   const blocked=await validate('daily',[daily('2026-08-06','amount','999')]);
-  expect(blocked.preview.rows[0]).toMatchObject({reason:'dailyInputTypeMismatch',detail:{value:'hours'}});
+  expect(blocked.preview.rows[0]).toMatchObject({reason:'dailyAmountUseMonthly',detail:{value:'hours'}});
  });
  it('34062f81: a Day by Day import prices calendar_days from each row\'s own date, in preview and on confirmation',async()=>{
   // basic / calendar_days x days, paid in October (31 days). Expected figures are independent literals for RM5,000 and 1 day.
