@@ -60,15 +60,19 @@ describe('a worker process serves AIHR_WORKER_LANE',()=>{
   expect(lanesRunSingletonTicks(['default'])).toBe(true);
   for(const lane of ['payroll','tax','import','export'] as const)expect(lanesRunSingletonTicks([lane])).toBe(false);
  });
- it('wires the runner through the lane loop: lane handlers only, lane markers, no probation pool outside the default lane',()=>{
-  const runner=readFileSync('scripts/bank-import-runner.ts','utf8');
-  expect(runner).toContain('const lanes=workerLanesFromEnv(process.env);');
-  expect(runner).toContain('const handlers=laneHandlers(BULK_JOB_HANDLERS,lanes);');
-  expect(runner).toContain('const probationOwner=singletons?createDb(url,{max:1}):null;');
-  expect(runner).toContain('runWorkerLaneIteration({owner,probationOwner,lanes,handlers,ticks,');
+ it('wires the worker process through the lane loop: lane handlers only, lane markers, no probation pool outside the default lane',()=>{
+  const worker=readFileSync('scripts/lib/worker-lane-process.ts','utf8');
+  expect(worker).toContain('const lanes=workerLanesFromEnv(process.env);');
+  expect(worker).toContain('const handlers=laneHandlers(BULK_JOB_HANDLERS,lanes);');
+  expect(worker).toContain('const probationOwner=singletons?createDb(url,{max:1}):null;');
+  expect(worker).toContain('runWorkerLaneIteration({owner,probationOwner,lanes,handlers,ticks,');
   // The ticks are reached only through the lane loop, which gates them on the default lane.
-  expect(runner).not.toMatch(/await run(BankImport|IndividualImport|RewardPlanCompany|ProbationReconciliation|BulkJob)Tick\(/);
-  expect(runner).not.toContain('{handlers:BULK_JOB_HANDLERS}');
+  expect(worker).not.toMatch(/await run(BankImport|IndividualImport|RewardPlanCompany|ProbationReconciliation|BulkJob)Tick\(/);
+  expect(worker).not.toContain('{handlers:BULK_JOB_HANDLERS}');
+  // The supervisor (AIHR_WORKER_LANES) never loads a handler: the worker module is imported only without it.
+  const runner=readFileSync('scripts/bank-import-runner.ts','utf8');
+  expect(runner).not.toMatch(/^import .*(bulk-job-handlers|worker-lane-process|db\/client)/m);
+  expect(runner).toContain("void import('./lib/worker-lane-process')");
  });
 });
 
