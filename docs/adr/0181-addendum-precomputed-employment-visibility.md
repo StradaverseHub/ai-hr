@@ -400,6 +400,20 @@ What is withdrawn:
   `ai_hr_reward_setup_reader`, which reads person). They can be revoked or dropped in a later cleanup. A planner-friendly
   restatement, if wanted, is a separate design question: measure it on the History fixture before proposing it.
 
+Measured result (focused runs on the same runner type, History file alone):
+
+| Candidate | File | History case | Latest-period case |
+|---|---|---|---|
+| Release 6 (`fbcb4128c`, 7240 policies) | 281 s | 195 s | not separated |
+| 7245 (`30786126b`) | 130.7 s | 40.5 s | 80.8 s |
+| J2 (`3fe15c9cc`, no 7240) | 127.4 s | 38.7 s | 79.5 s |
+
+The 7245 candidate's related files (18 files, 278 tests) and type check passed in run 45489326287. With 7245, the file runs
+within about 3 s of pre-7240. The latest-period case's roughly 80 s is the same on J2, so it is not a 7240 leftover.
+It is slower here than in release 4's full gate (26.6 s), which is a runner-context difference worth a separate look
+(test runtime only; the file is about 130 s against its 300 s limit). The plan-reuse variant of 7245
+(SQL-function bodies converted to PL/pgSQL) was a diagnostic, never reserved, gated or applied.
+
 ## 10. Owner decisions requested
 
 1. **Store relationships by employment, keep admin scope company-level** (recommended), instead of one row per viewer
