@@ -155,9 +155,11 @@ describe('People directory keyset paging at group scale',()=>{
   for(const [name,ctx] of Object.entries(fixture.personas)){
    const run=async(scope:Scope,cursor:Record<string,string>={})=>{
     const filters:EmployeeListFilters={companyIds:await scopeIds(ctx,scope),q:'person',status:'active'};
-    return observeStatements(()=>directory(ctx,filters,parseKeysetPageQuery({size:'25',...cursor})));
+    // Five-row pages, so even the single fictional company has a next page to step to.
+    return observeStatements(()=>directory(ctx,filters,parseKeysetPageQuery({size:'5',...cursor})));
    };
    const all=await run('all'),one=await run('one');
+   expect(all.result.hasNext&&one.result.hasNext,`${name}: both scopes have a next page`).toBe(true);
    expect((await scopeIds(ctx,'all')).length,`${name}: All companies is the group`).toBeGreaterThanOrEqual(name==='single'?1:70);
    for(const [label,a,o] of [['first page',all,one],
     ['next page',await run('all',{after:all.result.rows.at(-1)!.employmentId,page:'1'}),await run('one',{after:one.result.rows.at(-1)!.employmentId,page:'1'})]] as const){
