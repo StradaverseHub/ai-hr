@@ -64,9 +64,9 @@ afterEach(()=>{fs.rmSync(dir,{recursive:true,force:true});});
 
 function run(mode:string,env:Record<string,string>={}){
  const r=spawnSync('bash',[SCRIPT,mode],{cwd:root,encoding:'utf8',env:{
-  PATH:process.env.PATH!,HOME:home,FAKE_DIR:dir,XDG_RUNTIME_DIR:dir,AIHR_ROOT:root,
+  NODE_ENV:'test',PATH:process.env.PATH!,HOME:home,FAKE_DIR:dir,XDG_RUNTIME_DIR:dir,AIHR_ROOT:root,
   AIHR_SYSTEMCTL:fake('systemctl',FAKE_SYSTEMCTL),AIHR_CRONTAB:fake('crontab',FAKE_CRONTAB),AIHR_LOGINCTL:fake('loginctl',FAKE_LOGINCTL),
-  AIHR_NODE20:process.execPath,...env} as NodeJS.ProcessEnv});
+  AIHR_NODE20:process.execPath,...env}});
  return {status:r.status,out:r.stdout,err:r.stderr};
 }
 const crontab=()=>fs.readFileSync(path.join(dir,'crontab'),'utf8');
@@ -78,7 +78,7 @@ it('check is read-only and names exactly the active lines install would comment 
  expect(r.out).toContain(`  ${PROVISION}\n  ${SWEEP}\n`);
  expect(r.out).not.toContain('installed-internal-reports-only');expect(r.out).not.toContain('STAGING PAUSED');
  expect(crontab()).toBe(ORIGINAL);
- expect(fs.readFileSync(path.join(dir,'calls'),'utf8')).not.toMatch(/restart|enable|disable|crontab \//);
+ expect(fs.readFileSync(path.join(dir,'calls'),'utf8')).not.toMatch(/--user (daemon-reload|restart|enable|disable)\b|crontab \//);
 });
 
 it('install starts the service first, then comments out only the moved jobs and disables the timer',()=>{
