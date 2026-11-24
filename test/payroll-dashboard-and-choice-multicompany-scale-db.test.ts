@@ -197,10 +197,11 @@ describe('Employee choice Department options across many companies',()=>{
  const dialect=new PgDialect();
  type Pair=Record<string,unknown>;
  /** Reads the employee choices, captures the product's Department statement (rows and Assignment tuples read), then
-  * runs the first-witness statement in the same transaction for comparison. */
+  * runs the first-witness statement in the same transaction for comparison. The product reader is a presentation read:
+  * it confirms its principal on a REPEATABLE READ / READ ONLY snapshot, which withTenant's readOnlySnapshot opens. */
  async function department(ctx:SessionContext,companyIds:string[]){
   const input={companyIds,labelMode:'labels' as const};
-  return (await counted(ctx,sql`select 0 as n`,async tx=>{
+  return withTenant(ctx,async tx=>{
    const product:{form?:'per-member'|'cross';rows?:Pair[];reads?:number}={};
    const reads=async()=>Number((await tx.execute<{n:number}>(assignmentReads))[0]?.n??0);
    const proxy=new Proxy(tx,{get(target,key,receiver){
@@ -215,7 +216,7 @@ describe('Employee choice Department options across many companies',()=>{
    const page=await readEmployeeChoicesTx(proxy as Tx,ctx,input);
    const before=await reads(),reference=[...await tx.execute<Pair>(firstWitnessDepartmentFacet(ctx.tenantId,input))],referenceReads=(await reads())-before;
    return {page,product,reference,referenceReads};
-  })).value;
+  },{readOnlySnapshot:true});
  }
 
  it('returns the first-witness rows, reading each member Assignment once instead of once per company',async()=>{
