@@ -55,6 +55,7 @@ import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { LeaveDependencyUnavailable, lockLeaveDependenciesTx } from './leave-dependency-lock';
 import { isReplacementLeaveType } from './ess-view';
 import { leaveCreditRegisterLive } from './leave-credit-live';
+import { SetPathDeclined } from './import-set-group';
 import {
   LEAVE_IMPORT_COLUMNS,
   LEAVE_IMPORT_ENTRY_TYPES,
@@ -119,39 +120,51 @@ async function analyze(
   /** A company-scoped import (core/chat-import): a row matched to an employment of any other company is refused. */
   companyId?: string,
 ): Promise<{ preview: LeaveImportPreview; resolved: ResolvedRow[] }> {
-  const effective = withEffectiveGrants(ctx);
-  const groupAdmin = isGroupAdmin(effective);
+  // ONE RECORD RE-CHECKED INSIDE ITS OWN WRITE TRANSACTION (applyLeaveImportRowTx, under the Access and employee
+  // locks) reads only what that record's reference can match (readLeaveImportSource). The preview and the
+  // whole-file plan still read everything.
+  const singleRef = existingTx && records.length === 1 ? norm(records[0].employee_id) : '';
+  const source = await readLeaveImportSource(ctx, existingTx, narrowableLeaveImportRef(singleRef) ? [singleRef] : null);
+  return decideLeaveImport(ctx, records, source, companyId);
+}
 
+/** A reference a locked re-check may narrow its read to: non-empty plain ASCII (see readLeaveImportSource). */
+const narrowableLeaveImportRef = (ref: string) => ref !== '' && /^[\x20-\x7e]+$/.test(ref);
+/** One ledger row's duplicate key and year-open key, exactly as the validation compares them. */
+type LedgerKeyRow = { employmentId: string; leaveTypeId: string; entryType: string; effectiveOn: string; days: string | number };
+const ledgerDedupeKey = (l: LedgerKeyRow) => `${l.employmentId}|${l.leaveTypeId}|${l.entryType}|${l.effectiveOn}|${round2(Number(l.days)).toFixed(2)}`;
+const ledgerOpenedYear = (l: LedgerKeyRow) => (l.entryType === 'accrual' ? `${l.employmentId}|${l.leaveTypeId}|${l.effectiveOn.slice(0, 4)}` : null);
+/** What one validation reads: the leave types, the employments the references can match, and those employments'
+ * ledger keys. */
+type LeaveImportSource = {
+  types: Awaited<ReturnType<typeof listLeaveTypes>>;
+  emps: { id: string; companyId: string; code: string | null; email: string | null; ic: string | null; terminatedOn: string | null }[];
+  existingKeys: Set<string>;
+  openedYears: Set<string>;
+};
+
+/**
+ * The reads of one validation. `refs` null: every employment the caller may see and the whole ledger (the preview
+ * and the whole-file plan). `refs` given (a locked re-check of one row, or of one set-based group of rows, each a
+ * narrowable reference): only what those references can match — every employment whose code or email equals one of
+ * them ignoring case, or whose IC digits equal one's digits, plus any employment whose code or email is not plain
+ * ASCII (so no case-folding difference between the database and the matcher can drop one), and only those
+ * employments' ledger rows. The matcher looks a reference up by that reference's own keys only, and the duplicate
+ * and year-open keys are per employment, so on this set (or on a group's union of sets) every row decides exactly as
+ * on the whole tenant; the locked read no longer grows with the tenant.
+ */
+async function readLeaveImportSource(ctx: SessionContext, existingTx: Tx | undefined, refs: readonly string[] | null): Promise<LeaveImportSource> {
   // Leave types (non-archived) matched by code, case-insensitive. listLeaveTypes lives in core/read.
   const types = await listLeaveTypes(ctx, {}, existingTx);
-  const typeByCode = new Map(types.map((t) => [t.code.toLowerCase(), t.id]));
-  // 3fb1a611 (r299) — the Replacement Leave type(s): an imported row on one is a balance with no credit behind
-  // it (no date worked, no expiry, no place in the expiring-first order), the same ghost Leave Adjustments now
-  // refuses. Replacement Leave balances change on Leave Config › Leave Credit.
-  const replacementTypeIds = new Set(types.filter((t) => isReplacementLeaveType(t)).map((t) => t.id));
-  // …ONLY WHILE THE TENANT'S LEAVE CREDIT REGISTER IS LIVE (fix pass, D3) — the same condition, for the same
-  // reason, as Leave Adjustments (core/leave-adjustment.ts): without the paid `toil` module there is no Leave
-  // Credit screen to go to, and the import is main@60a40452's. Asked lazily, once, and only when a row actually
-  // names a Replacement Leave type, so a file of other types never reaches an entitlement question.
-  let registerLive: boolean | undefined;
-  const leaveCreditLive = () => (registerLive ??= leaveCreditRegisterLive(ctx));
-
+  const narrow = refs !== null && refs.length > 0;
   // Every employment the caller may see (RLS-scoped), matched on employeeCode / primaryEmail / IC.
   // NOT active-only: leave history migration routinely includes people who have since left (their final
   // unconsumed balance matters for final-pay reconciliation). Match ALL employments; terminated ones are
   // flagged, never conflated with "not found".
-  //
-  // ONE RECORD RE-CHECKED INSIDE ITS OWN WRITE TRANSACTION (applyLeaveImportRowTx, under the Access and
-  // employee locks) reads only what that record's reference can match: every employment whose code or email
-  // equals it ignoring case, or whose IC digits equal its digits, plus any employment whose code or email is not
-  // plain ASCII (so no case-folding difference between the database and the matcher below can drop one), and
-  // only those employments' ledger rows. The matcher and the duplicate and year-open keys below run unchanged
-  // on that set and decide exactly as on the whole tenant; the locked read no longer grows with the tenant.
-  // The preview and the whole-file plan still read everything.
-  const singleRef = existingTx && records.length === 1 ? norm(records[0].employee_id) : '';
-  const narrow = singleRef !== '' && /^[\x20-\x7e]+$/.test(singleRef);
   const readSource = async (tx: Tx) => {
-    const refLower = singleRef.toLowerCase(), refDigits = onlyDigits(singleRef);
+    const lowers = narrow ? [...new Set(refs.map((ref) => ref.toLowerCase()))] : [];
+    const digits = narrow ? [...new Set(refs.map(onlyDigits).filter((d) => d !== ''))] : [];
+    const list = (values: string[]) => sql.join(values.map((value) => sql`${value}`), sql`, `);
     const rows = await tx
       .select({
         id: employment.id,
@@ -165,11 +178,11 @@ async function analyze(
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(narrow ? or(
-        sql`lower(${employment.employeeCode}) = ${refLower}`,
-        sql`lower(${person.primaryEmail}) = ${refLower}`,
+        sql`lower(${employment.employeeCode}) in (${list(lowers)})`,
+        sql`lower(${person.primaryEmail}) in (${list(lowers)})`,
         sql`${employment.employeeCode} !~ '^[ -~]*$'`,
         sql`${person.primaryEmail} !~ '^[ -~]*$'`,
-        refDigits ? sql`regexp_replace(${employeeStatutoryMy.icNumber}, '[^0-9]+', '', 'g') = ${refDigits}` : undefined,
+        digits.length ? sql`regexp_replace(${employeeStatutoryMy.icNumber}, '[^0-9]+', '', 'g') in (${list(digits)})` : undefined,
       ) : undefined);
     // Existing ledger rows keyed on (employment|leaveType|entryType|effectiveOn|days) so a re-upload of an
     // already-loaded batch is a no-op (warning + skip on commit), per the ticket's dedupe requirement.
@@ -184,9 +197,7 @@ async function analyze(
       })
       .from(leaveLedger)
       .where(narrow ? inArray(leaveLedger.employmentId, candidateIds) : undefined);
-    const existingKeys = new Set(
-      ledger.map((l) => `${l.employmentId}|${l.leaveTypeId}|${l.entryType}|${l.effectiveOn}|${round2(Number(l.days)).toFixed(2)}`),
-    );
+    const existingKeys = new Set(ledger.map(ledgerDedupeKey));
     // ⚠️ THE YEAR-OPEN MARKER, KEYED THE WAY THE KERNEL KEYS IT. `yearOpenMarkerCond` (core/leave.ts,
     // read its header) is `entryType = 'accrual' AND effective_on BETWEEN <year>-01-01 AND <year>-12-31`:
     // ANY accrual row inside the leave year, deliberately WITHOUT a filter on `reason`. Two kernel engines
@@ -202,14 +213,41 @@ async function analyze(
     //
     // Derived from the ledger read above rather than from a second query: that read is already unfiltered,
     // so the marker set costs nothing extra and cannot drift from the rows the dedupe key is built from.
-    const openedYears = new Set(
-      ledger
-        .filter((l) => l.entryType === 'accrual')
-        .map((l) => `${l.employmentId}|${l.leaveTypeId}|${l.effectiveOn.slice(0, 4)}`),
-    );
+    const openedYears = new Set(ledger.map(ledgerOpenedYear).filter((key): key is string => key !== null));
     return { emps: rows, existingKeys, openedYears };
   };
-  const { emps, existingKeys, openedYears } = await (existingTx ? readSource(existingTx) : withTenant(ctx, readSource));
+  return { types, ...(await (existingTx ? readSource(existingTx) : withTenant(ctx, readSource))) };
+}
+
+/** A ledger row written after the source was read (an earlier row of the same set-based group), so a later row's
+ * re-check sees it exactly as the per-row re-check would have read it. */
+function rememberLedgerRow(source: LeaveImportSource, l: LedgerKeyRow) {
+  source.existingKeys.add(ledgerDedupeKey(l));
+  const opened = ledgerOpenedYear(l);
+  if (opened) source.openedYears.add(opened);
+}
+
+/** The validation of `records` on what readLeaveImportSource read (pure: no statement). */
+function decideLeaveImport(
+  ctx: SessionContext,
+  records: LeaveImportRecord[],
+  source: LeaveImportSource,
+  companyId: string | undefined,
+): { preview: LeaveImportPreview; resolved: ResolvedRow[] } {
+  const effective = withEffectiveGrants(ctx);
+  const groupAdmin = isGroupAdmin(effective);
+  const { types, emps, existingKeys, openedYears } = source;
+  const typeByCode = new Map(types.map((t) => [t.code.toLowerCase(), t.id]));
+  // 3fb1a611 (r299) — the Replacement Leave type(s): an imported row on one is a balance with no credit behind
+  // it (no date worked, no expiry, no place in the expiring-first order), the same ghost Leave Adjustments now
+  // refuses. Replacement Leave balances change on Leave Config › Leave Credit.
+  const replacementTypeIds = new Set(types.filter((t) => isReplacementLeaveType(t)).map((t) => t.id));
+  // …ONLY WHILE THE TENANT'S LEAVE CREDIT REGISTER IS LIVE (fix pass, D3) — the same condition, for the same
+  // reason, as Leave Adjustments (core/leave-adjustment.ts): without the paid `toil` module there is no Leave
+  // Credit screen to go to, and the import is main@60a40452's. Asked lazily, once, and only when a row actually
+  // names a Replacement Leave type, so a file of other types never reaches an entitlement question.
+  let registerLive: boolean | undefined;
+  const leaveCreditLive = () => (registerLive ??= leaveCreditRegisterLive(ctx));
 
   // Keep every candidate. Duplicated NRICs and multiple employments must never let
   // iteration order decide whose leave balance changes. An explicit Employee ID wins.
@@ -468,21 +506,77 @@ export async function applyLeaveImportRowTx(
   // join this actual row transaction after ownership. Do not lock a whole file or retarget.
   if (!raw) throw new LeaveDependencyUnavailable();
   const { resolved: freshRows } = await analyze(ctx, [raw], tx, companyId);
-  const fresh = freshRows[0];
+  if (!recheckLeaveImportRow(r, freshRows[0])) return false;
+  await tx.insert(leaveLedger).values(leaveImportLedgerValues(ctx, r));
+  return true;
+}
+
+/** The locked re-check's verdict on one planned row: true = write it, false = it already exists (skip on commit).
+ * Throws LeaveDependencyUnavailable ('changed') when the row no longer matches its plan. */
+function recheckLeaveImportRow(r: LeaveImportPlanRow, fresh: ResolvedRow | undefined): boolean {
   if (!fresh?.result.ok || fresh.employmentId !== r.employmentId || fresh.leaveTypeId !== r.leaveTypeId
     || fresh.entryType !== r.entryType || fresh.days !== r.days || fresh.effectiveOn !== r.effectiveOn
     || fresh.dedupeKey !== r.dedupeKey) throw new LeaveDependencyUnavailable();
-  if (fresh.result.warnings.some((w) => w.startsWith('Already imported'))) return false;
-  await tx.insert(leaveLedger).values({
-    tenantId: ctx.tenantId,
-    employmentId: r.employmentId,
-    leaveTypeId: r.leaveTypeId,
-    entryType: r.entryType,
-    days: r.days.toFixed(2),
-    effectiveOn: r.effectiveOn,
-    reason: 'Imported (leave migration)',
-  });
-  return true;
+  return !fresh.result.warnings.some((w) => w.startsWith('Already imported'));
+}
+const leaveImportLedgerValues = (ctx: SessionContext, r: LeaveImportPlanRow) => ({
+  tenantId: ctx.tenantId,
+  employmentId: r.employmentId,
+  leaveTypeId: r.leaveTypeId,
+  entryType: r.entryType,
+  days: r.days.toFixed(2),
+  effectiveOn: r.effectiveOn,
+  reason: 'Imported (leave migration)',
+});
+
+/** A planned row the set path may write (ADR 0181 J2): its record is present and its reference narrowable. */
+export function isLeaveImportSetShape(raw: LeaveImportRecord | undefined): boolean {
+  return raw !== undefined && narrowableLeaveImportRef(norm(raw.employee_id));
+}
+
+/**
+ * ADR 0181 J2, imports: several planned rows (consecutive steps of the background import) in the caller's
+ * savepoint, deciding each exactly as applyLeaveImportRowTx would, one after the other, in file order:
+ *  - the same locks, taken once: the tenant's Access lock, then the leave configuration and every row's employee
+ *    in ONE statement (the same keys, all non-waiting);
+ *  - the same reads, once for the group: the leave types, and the employments every row's reference can match with
+ *    their ledger keys (readLeaveImportSource on the union of the references, which decides each row as its own
+ *    narrowed read does);
+ *  - the same validation and plan comparison per row (decideLeaveImport, recheckLeaveImportRow), each row seeing the
+ *    rows the group wrote before it (rememberLedgerRow), as the per-row re-check sees committed earlier rows;
+ *  - the rows written in ONE multi-row insert in file order.
+ * Returns, per row, whether it was written (false: already imported, skipped). It never decides a refusal: a row
+ * that no longer matches its plan, a busy employee or any database refusal throws SetPathDeclined or the error,
+ * and the caller rolls the savepoint back so every row takes applyLeaveImportRowTx, which records its own outcome.
+ */
+export async function applyLeaveImportGroupTx(
+  tx: Tx,
+  ctx: SessionContext,
+  rows: readonly { plan: LeaveImportPlanRow; raw: LeaveImportRecord | undefined }[],
+  companyId?: string,
+): Promise<boolean[]> {
+  if (!rows.length || rows.some((row) => !isLeaveImportSetShape(row.raw))) throw new SetPathDeclined('shape');
+  await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+  try {
+    await lockLeaveDependenciesTx(tx, ctx.tenantId, rows.map((row) => row.plan.employmentId));
+  } catch (error) {
+    if (error instanceof LeaveDependencyUnavailable) throw new SetPathDeclined(error.reason === 'busy' ? 'busy' : 'changed');
+    throw error;
+  }
+  const source = await readLeaveImportSource(ctx, tx, rows.map((row) => norm(row.raw!.employee_id)));
+  const written: boolean[] = [];
+  const values: ReturnType<typeof leaveImportLedgerValues>[] = [];
+  for (const row of rows) {
+    const fresh = decideLeaveImport(ctx, [row.raw!], source, companyId).resolved[0];
+    let write: boolean;
+    try { write = recheckLeaveImportRow(row.plan, fresh); } catch { throw new SetPathDeclined('changed'); }
+    written.push(write);
+    if (!write) continue;
+    values.push(leaveImportLedgerValues(ctx, row.plan));
+    rememberLedgerRow(source, row.plan);
+  }
+  if (values.length) await tx.insert(leaveLedger).values(values);
+  return written;
 }
 
 /**
