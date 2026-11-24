@@ -20,7 +20,7 @@ import {
   seedBase,
   type Base,
 } from './harness';
-import { hireEmployee, setEmploymentAssignment, setEmploymentGrade, terminateEmployment } from '../core/org';
+import { AssignmentBeforeCurrentStartError, hireEmployee, setEmploymentAssignment, setEmploymentGrade, terminateEmployment } from '../core/org';
 import { createPosition, createJobGrade } from '../core/admin';
 import { assignmentHistory } from '../core/read';
 import * as schema from '../db/schema';
@@ -179,6 +179,19 @@ describe('setEmploymentAssignment — effective-dated org edit', () => {
     await expect(
       setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2025-12-01', departmentId: b.deptB }),
     ).rejects.toThrow('The date 01-Dec-2025 is before the current assignment record, which starts on 01-Jan-2026.');
+    // Board eb01800b — before the hire record there is no later record to name.
+    const error = await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2025-12-01', departmentId: b.deptB })
+      .then(() => null, (e: unknown) => e as AssignmentBeforeCurrentStartError);
+    expect(error?.source).toBeNull();
+  });
+
+  it('names the later untagged assignment change that a back-dated assignment change runs into', async () => {
+    const hire = await hireOne(); // hired 2026-01-01
+    await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-05-01', departmentId: b.deptB });
+    const error = await setEmploymentAssignment(adminCtx(b), { employmentId: hire.employmentId, effectiveDate: '2026-03-01', departmentId: b.deptA })
+      .then(() => null, (e: unknown) => e as AssignmentBeforeCurrentStartError);
+    expect(error).toBeInstanceOf(AssignmentBeforeCurrentStartError);
+    expect(error?.source).toMatchObject({ kind: 'untagged', effectiveDate: '2026-05-01', fields: ['departmentId'] });
   });
 
   // Board 2026-11-14 (production DB-V-079831): an Information-Only Correction started a new record on 12 Nov for 260
@@ -190,6 +203,12 @@ describe('setEmploymentAssignment — effective-dated org edit', () => {
     await expect(
       terminateEmployment(adminCtx(b), { employmentId: hire.employmentId, terminationDate: '2026-07-28', terminationReason: 'Resigned' }),
     ).rejects.toThrow('The date 28-Jul-2026 is before the current assignment record, which starts on 12-Nov-2026.');
+    // Board eb01800b — the refusal names the record that blocks it: what it is, its date and what it changed.
+    const named = await terminateEmployment(adminCtx(b), { employmentId: hire.employmentId, terminationDate: '2026-07-28', terminationReason: 'Resigned' })
+      .then(() => null, (e: unknown) => e as AssignmentBeforeCurrentStartError);
+    expect(named).toBeInstanceOf(AssignmentBeforeCurrentStartError);
+    expect(named?.source).toMatchObject({ kind: 'untagged', effectiveDate: '2026-11-12', fields: ['departmentId'], actorId: b.adminUserId });
+    expect(named?.message).toContain('The later record is an assignment record change (Department) dated 12-Nov-2026');
     expect(await assignmentRows(hire.employmentId)).toEqual(before);
     const [emp] = await owner.db.select({ terminatedOn: schema.employment.terminatedOn }).from(schema.employment).where(eq(schema.employment.id, hire.employmentId));
     expect(emp.terminatedOn).toBeNull();

@@ -1722,6 +1722,13 @@
       "salaryNegativeError": "Basic salary cannot be a negative amount. Leave it blank or enter 0 for an employee with no basic salary.",
       "salaryNotANumberError": "Basic salary must be a number. Leave it blank or enter 0 for an employee with no basic salary.",
       "salaryBeforeCurrentRecordError": "The effective date is before this employee's current salary starts on {date}, so nothing was saved. Use a date on or after {date}, or correct the salary history on the Salary tab.",
+      "assignmentBlocked": {
+        "correction": "An Information-Only Correction{fields} dated {recordDate} starts after {date}. Move its Effective Date to on or before {date}, or check what it changed, then record this event again.",
+        "mapping": "An organisation structure update{fields} dated {recordDate} starts after {date}. It cannot be re-dated from this employee’s page. Review the update in Organisation settings, or use a date on or after {recordDate}.",
+        "movement": "A recorded movement dated {recordDate} starts after {date}. Correct or delete that movement in Employment History, or use a date on or after {recordDate}.",
+        "untagged": "An assignment record change{fields} dated {recordDate} starts after {date}. Correct it from its line in Employment History, or use a date on or after {recordDate}.",
+        "goToRecord": "Go to this record"
+      },
       "salaryRecording": {
         "title": "Record salary change",
         "choice": "How should this be recorded?",
@@ -2014,6 +2021,22 @@
         "payrollAdjustmentReview": "Review any payroll adjustment needed for the corrected company or salary. Closed payroll and issued documents are unchanged.",
         "informationNeedsReview": "Correction needs review",
         "historyBadge": "History",
+        "recordChange": {
+          "kind": {
+            "correction": "Information corrected",
+            "mapping": "Organisation structure updated",
+            "untagged": "Assignment record changed"
+          },
+          "badge": "Correction",
+          "recordedBy": "by {name} on {date}",
+          "recordedOn": "recorded on {date}",
+          "noFields": "Repeats the earlier values",
+          "changed": "Changed",
+          "correct": "Correct",
+          "correctHint": "Correct opens Information-Only Correction with this Effective Date. Choose an earlier Effective Date to move it, or correct the values.",
+          "mappingHint": "An organisation structure update cannot be re-dated from this employee’s page. Review it in Organisation settings.",
+          "untaggedHint": "This record was saved without a movement event. Correct corrects its values from its Effective Date."
+        },
         "rehire": {
           "intro": "Rehired starts a new employment period for {name}. The previous period ({code}, {start} to {end}), resignation, payslips and EA Forms stay exactly as they are. Personal details, IC, EPF/SOCSO/tax numbers, bank details and login carry over.",
           "effectiveDate": "Rehired Effective Date",

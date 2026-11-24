@@ -1722,6 +1722,13 @@
       "salaryNegativeError": "基本薪金不能为负数。对于没有基本薪金的员工，请留空或填 0。",
       "salaryNotANumberError": "基本薪金必须是数字。对于没有基本薪金的员工，请留空或填 0。",
       "salaryBeforeCurrentRecordError": "生效日期早于该员工当前薪资的开始日期 {date}，因此未保存任何内容。请使用 {date} 当天或之后的日期，或在“薪资”标签页中更正薪资历史。",
+      "assignmentBlocked": {
+        "correction": "一项日期为 {recordDate} 的仅信息更正{fields}在 {date} 之后开始。请将其生效日期改为 {date} 当天或之前，或检查它更改了什么，然后重新记录此事件。",
+        "mapping": "一项日期为 {recordDate} 的组织架构更新{fields}在 {date} 之后开始。无法在此员工页面上更改其日期。请在组织设置中检查该更新，或使用 {recordDate} 当天或之后的日期。",
+        "movement": "一项日期为 {recordDate} 的已记录异动在 {date} 之后开始。请在雇佣历史中更正或删除该异动，或使用 {recordDate} 当天或之后的日期。",
+        "untagged": "一项日期为 {recordDate} 的任职记录变更{fields}在 {date} 之后开始。请在雇佣历史中从其所在行进行更正，或使用 {recordDate} 当天或之后的日期。",
+        "goToRecord": "前往此记录"
+      },
       "salaryRecording": {
         "title": "记录薪资变更",
         "choice": "如何记录此变更？",
@@ -2014,6 +2021,22 @@
         "payrollAdjustmentReview": "请核对更正公司或薪资后是否需要工资调整。已结算工资及已发出的文件保持不变。",
         "informationNeedsReview": "更正需要审核",
         "historyBadge": "历史",
+        "recordChange": {
+          "kind": {
+            "correction": "资料已更正",
+            "mapping": "组织架构已更新",
+            "untagged": "任职记录已变更"
+          },
+          "badge": "更正",
+          "recordedBy": "由 {name} 于 {date}",
+          "recordedOn": "记录于 {date}",
+          "noFields": "与之前的值相同",
+          "changed": "变更项",
+          "correct": "更正",
+          "correctHint": "“更正”会以此生效日期打开仅信息更正。选择更早的生效日期即可移动它，或更正其值。",
+          "mappingHint": "无法在此员工页面上更改组织架构更新的日期。请在组织设置中检查。",
+          "untaggedHint": "此记录保存时没有异动事件。“更正”会从其生效日期起更正其值。"
+        },
         "rehire": {
           "intro": "重新雇用将为 {name} 开始新的雇用期。上一雇用期（{code}，{start} 至 {end}）、辞职、工资单和 EA 表格均保持不变。个人资料、身份证、EPF/SOCSO/税号、银行资料和登录账号将沿用。",
           "effectiveDate": "重新雇用生效日期",
