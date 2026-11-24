@@ -11,7 +11,8 @@ import { isCalendarDate } from '../lib/calendar-date';
 import { type SessionContext, type Tx } from '../db/client';
 import { withPayrollTenant as withTenant } from './module-gate';
 import { transactionXlsxStream, type TransactionCell } from '../lib/transaction-xlsx-stream';
-import { bulkJobTx, BulkJobError, enqueueBulkJobTx } from './bulk-job';
+import { bulkJobTx, BulkJobError, enqueueBulkJobTx, listBulkJobSummariesTx } from './bulk-job';
+import { bulkJobActive, type BulkJobState } from '../lib/bulk-job';
 import { BulkJobAuthorityLost, type BulkJobHandler } from './bulk-job-worker';
 import {
   INDIVIDUAL_TXN_STATUS_FILTERS, listPayComponents, readProcessedPayslipsForExport, readTransactionExport, TXN_KINDS,
@@ -241,6 +242,31 @@ export const transactionExportJobHandler: BulkJobHandler = {
   },
 };
 
+/** One row of the Workbooks list: which export, its state and its times. */
+export type TransactionWorkbookItem = {
+  id: string; state: BulkJobState; exportKind: string | null; createdAt: Date; finishedAt: Date | null;
+};
+/** The viewer's own most recent transaction workbooks (at most 25), newest first, keeping those whose every company is
+ * in the selected scope. One indexed read of the list's columns only (listBulkJobSummariesTx). The Workbooks page and
+ * its "still preparing" poll both read through here, so the poll answers for exactly the rows the page shows. */
+export async function listTransactionWorkbooks(ctx: SessionContext, scopeIds: readonly string[]): Promise<TransactionWorkbookItem[]> {
+  const rows = await withTenant(ctx, (tx) => listBulkJobSummariesTx(tx, ctx, TRANSACTION_EXPORT_KIND, 25));
+  return rows
+    .filter((row) => row.company_ids.length > 0 && row.company_ids.every((id) => scopeIds.includes(id)))
+    .map((row) => {
+      const result = row.result as { kind?: unknown } | null;
+      const input = row.input as { kind?: unknown } | null;
+      const exportKind = result?.kind ?? input?.kind;
+      return {
+        id: row.id, state: row.state, exportKind: typeof exportKind === 'string' ? exportKind : null,
+        createdAt: new Date(row.created_at), finishedAt: row.finished_at === null ? null : new Date(row.finished_at),
+      };
+    });
+}
+/** Whether any workbook the list shows is still being prepared (the page's poll; no page render). */
+export async function transactionWorkbooksPreparing(ctx: SessionContext, scopeIds: readonly string[]): Promise<boolean> {
+  return (await listTransactionWorkbooks(ctx, scopeIds)).some((item) => bulkJobActive(item.state));
+}
 export function readTransactionExportJob(ctx: SessionContext, id: string) {
   return withTenant(ctx, async (tx) => {
     const job = await bulkJobTx(tx, id, { kind: TRANSACTION_EXPORT_KIND });
