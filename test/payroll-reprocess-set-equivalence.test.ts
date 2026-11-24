@@ -301,9 +301,21 @@ it('recalculates a 100-employee run set-based exactly as the per-employee path, 
   expect(now.results.rows,label).toBe(RUN);
  }
  const [capturedA]=(await reprocessCaptures(a)).rows,[capturedB]=(await reprocessCaptures(b)).rows;
- const shapeOf=(c:Record<string,unknown>)=>({...c,components:Object.fromEntries(Object.entries(c.components as Record<string,{rows:number}>).map(([k,v])=>[k,v.rows])),
-  results:(c.results as {rows:number}).rows});
- expect(normalizer(b)(shapeOf(capturedB))).toEqual(normalizer(a)(shapeOf(capturedA)));
+ // The same capture on both paths, but for the row hashes (each tenant's rows carry its own ids). The capture lists the
+ // employees in uuid order, which differs between tenants, so the labels are compared as a set.
+ const shapeOf=(t:Tenant,c:Record<string,unknown>)=>{
+  const labelled=normalizer(t)({...c,components:Object.fromEntries(Object.entries(c.components as Record<string,{rows:number}>).map(([k,v])=>[k,v.rows])),
+   results:(c.results as {rows:number}).rows}) as Record<string,unknown>&{reprocessedEmploymentIds:string[]};
+  return{...labelled,reprocessedEmploymentIds:[...labelled.reprocessedEmploymentIds].sort()};
+ };
+ expect(shapeOf(b,capturedB)).toEqual(shapeOf(a,capturedA));
+ // Headcount (ADR 0181 J2): the pass recounts through the run's write portal; on both paths the stored headcount is the
+ // count the read view gives the same administrator, and the write portal's count.
+ for(const [t,label] of [[a,'per-employee'],[b,'set']] as const){
+  const [stored]=await owner.client<{n:number}[]>`select employee_count::int as n from payroll_batch where id=${t.may}::uuid`;
+  const reads=await headcountReads(t);
+  expect({stored:stored.n,read:reads.nativeView.n,write:reads.nativeWriteView.n},label).toEqual({stored:RUN,read:RUN,write:RUN});
+ }
 
 
 },1_150_000);

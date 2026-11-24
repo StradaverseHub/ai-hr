@@ -8799,10 +8799,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // this screen's own result panel. It is RECOUNTED off the payslips rather than incremented by the
       // number of additions, so the stored figure is a fact about the run and not a running total that a
       // failed job could leave one out.
+      // ADR 0181 J2 — counted through the run's write portal, the one this pass just wrote its payslips through and
+      // the one the run's reset and removal owners read the whole run through: per row it asks the write authority
+      // (payroll administration of the employment, the run still writable), never the effective-history chain the
+      // read view evaluates. Same rows for the administrator who may reprocess (equivalence test), about 16 ms instead
+      // of 300 ms for a 100-payslip run on the hosted runner; it was a fixed cost of every engine pass.
       const [{ n: payslipCount } = { n: 0 }] = await tx
         .select({ n: sql<number>`count(*)::int` })
-        .from(nativePayrollPayslip)
-        .where(eq(nativePayrollPayslip.batchId, p.batchId));
+        .from(nativePayrollPayslipWrite)
+        .where(eq(nativePayrollPayslipWrite.batchId, p.batchId));
       await tx
         .update(payrollBatch)
         .set({ totals: deltaTotals, employeeCount: Number(payslipCount) })
