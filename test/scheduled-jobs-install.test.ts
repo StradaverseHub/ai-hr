@@ -49,7 +49,8 @@ if [ "$1" = -l ]; then [ -f "$FAKE_DIR/crontab" ] || { echo "no crontab for u" >
 const FAKE_LOGINCTL=`#!/usr/bin/env bash
 echo "\${FAKE_LINGER:-yes}"
 `;
-function fake(name:string,text:string){const file=path.join(dir,name);fs.writeFileSync(file,text,{mode:0o755});return file;}
+// The fakes live in their own directory: their state files (crontab, <unit>.enabled) share names with them otherwise.
+function fake(name:string,text:string){const bin=path.join(dir,'bin');fs.mkdirSync(bin,{recursive:true});const file=path.join(bin,name);fs.writeFileSync(file,text,{mode:0o755});return file;}
 beforeEach(()=>{
  dir=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'aihr-scheduled-install-')));
  root=path.join(dir,'opt-ai-hr');home=path.join(dir,'home');
@@ -65,7 +66,7 @@ function run(mode:string,env:Record<string,string>={}){
  const r=spawnSync('bash',[SCRIPT,mode],{cwd:root,encoding:'utf8',env:{
   PATH:process.env.PATH!,HOME:home,FAKE_DIR:dir,XDG_RUNTIME_DIR:dir,AIHR_ROOT:root,
   AIHR_SYSTEMCTL:fake('systemctl',FAKE_SYSTEMCTL),AIHR_CRONTAB:fake('crontab',FAKE_CRONTAB),AIHR_LOGINCTL:fake('loginctl',FAKE_LOGINCTL),
-  AIHR_NODE20:process.execPath,...env}});
+  AIHR_NODE20:process.execPath,...env} as NodeJS.ProcessEnv});
  return {status:r.status,out:r.stdout,err:r.stderr};
 }
 const crontab=()=>fs.readFileSync(path.join(dir,'crontab'),'utf8');

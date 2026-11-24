@@ -56,8 +56,10 @@ it('keeps the server allow-lists free of dependencies and equal to the rendered 
 it('loads both resident scheduled jobs and their preloaded graphs under the server runtime they share', () => {
   // scripts/scheduled-jobs.ts runs the provisioning runner and the notification sweep in one process under
   // --conditions=react-server; the runner used to run under plain Node, so its whole lazily-loaded graph is loaded here.
-  const source = `const provision = await import('./scripts/provision-runner.ts'); await provision.preloadProvisionPass();
-    const sweep = await import('./scripts/notification-email-sweep.ts'); await sweep.loadNotificationSweepModules();
+  // These scripts are CommonJS; an ES-module import here sees their exports on `default`.
+  const source = `const cjs = (m) => m.default ?? m;
+    const provision = cjs(await import('./scripts/provision-runner.ts')); await provision.preloadProvisionPass();
+    const sweep = cjs(await import('./scripts/notification-email-sweep.ts')); await sweep.loadNotificationSweepModules();
     await import('./scripts/lib/scheduled-jobs.ts');`;
   const result = spawnSync(process.execPath, ['--conditions=react-server', '--import', 'tsx', '--input-type=module', '-e', source], {
     cwd: root, encoding: 'utf8', timeout: 90000,
