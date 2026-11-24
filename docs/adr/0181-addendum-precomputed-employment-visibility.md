@@ -359,6 +359,20 @@ rows removed per pair), evaluating the ORed `contract_posting_assignment_read` p
 the visibility walks are shallow and cheap; the stored reach (7240) matters for deep trees and group scale, not for
 these two statements.
 
+### 9.2 After staging release 6 (25 November 2026)
+
+Release 6 (7230 + 7240, `fbcb4128c`) is on staging in `legacy` mode. On the fictional demo tenant the stored reach
+matches a from-scratch compute exactly, and the stored relationship answer equals the legacy walk for all 24 users
+with a person. The picker's department options fell from 6,179 ms to 1,786 ms (group administrator) and from 6,563 ms
+to 1,394 ms (line manager); the new index is used (about 30 assignment rows per probe instead of about 3,190).
+
+**Follow-up for the owner (not built):** the remaining picker cost is the consumer's shape, not access. `readOptions`
+crosses every company with every department (7,252 pairs on the demo tenant) and probes employments for each, about
+215,000 probes per load, each paying the per-row `contract_posting_assignment_read` policy. Proposed change: read the
+represented (company, department) pairs once from the authorised members (the existing "sparse" path's grouped
+statement) for every population size, behind an equivalence test against the current options. This is a code change
+in `core/employee-choice.ts` only, with no migration; the target is under 1 s.
+
 ## 10. Owner decisions requested
 
 1. **Store relationships by employment, keep admin scope company-level** (recommended), instead of one row per viewer
