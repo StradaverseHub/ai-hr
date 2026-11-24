@@ -230,17 +230,19 @@ describe('Employee choice Department options across many companies',()=>{
   expect(all.product.reads).toBeLessThanOrEqual(2*N);
   expect(all.referenceReads).toBeGreaterThan(10*all.product.reads!);
 
-  // One represented company keeps the first-witness statement (the 50k one-company fixture's shape).
+  // One represented company keeps the first-witness statement (the 50k one-company fixture's shape), limited to that
+  // company: unlimited, the cross join paired all 71 companies with every department (2,978,434 tuples read here).
   const one=await department(root(),[f.companies[2]]);
   expect(one.product.form).toBe('cross');expect(one.product.rows).toEqual(one.reference);
   expect(one.reference).toHaveLength(new Set(Array.from({length:N},(_,i)=>i+1).filter(n=>companyOf(n)===2).map(departmentOf)).size);
+  expect(one.referenceReads).toBeGreaterThan(10*one.product.reads!);
 
   // A one-company administrator asking for every company is narrowed by row security to company 2.
   const narrow=await department(scoped(),[...f.companies]);
   expect(narrow.page.companyOptions.map(option=>option.id)).toEqual([f.companies[2]]);
   expect(narrow.product.form).toBe('cross');expect(narrow.product.rows).toEqual(narrow.reference);expect(narrow.product.rows).toEqual(one.reference);
   console.log('EMPLOYEE_CHOICE_DEPARTMENT_READS',JSON.stringify({allCompanies:{product:all.product.reads,firstWitness:all.referenceReads,pairs:all.reference.length},
-   oneCompany:{product:one.product.reads,firstWitness:one.referenceReads}}));
+   oneCompany:{product:one.product.reads,firstWitness:one.referenceReads},oneCompanyAdministrator:{product:narrow.product.reads,firstWitness:narrow.referenceReads}}));
  },300000);
 
  it('keeps the grant the fixture gave the one-company administrator',async()=>{

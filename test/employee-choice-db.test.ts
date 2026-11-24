@@ -19,7 +19,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 import {createAssignmentAuthorityFixture} from './performance/employee-choice-assignment-authority';
-import {firstWitnessDepartmentFacet,isDepartmentFacet,isSparseDepartmentFacet,sparseDepartmentFacetBinds} from './performance/employee-choice-department-pair-probe';
+import {firstWitnessDepartmentFacet,isDepartmentFacet,isSparseDepartmentFacet,representedFirstWitnessDepartmentFacet,sparseDepartmentFacetBinds} from './performance/employee-choice-department-pair-probe';
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(resetDb);
 
 it('preserves native scope, exact JavaScript Unicode search, facets and independent deep selection',async()=>{
@@ -320,7 +320,7 @@ it('compares product sparse Department pairs with the first witness under native
  const sorted=(rows:string[][])=>rows.map(row=>row.join('/')).sort();
  type Input=Parameters<typeof readEmployeeChoicesTx>[2];
  const read=async(tx:Tx,ctx:SessionContext,input:Input,baseline:boolean)=>{
-  const capture:{original?:SQL;forwarded?:SQL;pairs?:string[][];sparse?:boolean}={};
+  const capture:{original?:SQL;forwarded?:SQL;pairs?:string[][];sparse?:boolean;compiled?:ReturnType<PgDialect['sqlToQuery']>}={};
   const proxy=new Proxy(tx,{get(target,key,receiver){
    if(key==='execute')return async(query:SQL)=>{
     const compiled=dialect.sqlToQuery(query),text=compiled.sql.trimStart();
@@ -330,7 +330,7 @@ it('compares product sparse Department pairs with the first witness under native
     capture.sparse=sparse;
     const reference=firstWitnessDepartmentFacet(ctx.tenantId,input);
     if(sparse)expect(compiled.params).toEqual(sparseDepartmentFacetBinds(ctx.tenantId,input));
-    else expect(compiled).toEqual(dialect.sqlToQuery(reference));
+    else capture.compiled=compiled;
     capture.original=query;
     const forwarded=baseline?reference:query;
     capture.forwarded=forwarded;
@@ -346,6 +346,9 @@ it('compares product sparse Department pairs with the first witness under native
   // (the cross join's absent-pair proof grows with companies x assignments).
   const populationSize=input.employmentIds?.length??0;
   expect(capture.sparse).toBe(populationSize>0&&populationSize<=25||page.companyOptions.length>1);
+  // The cross join is the a293 first-witness statement limited to the represented companies, ordered by id.
+  if(!capture.sparse)expect(capture.compiled).toEqual(dialect.sqlToQuery(representedFirstWitnessDepartmentFacet(ctx.tenantId,input,
+   page.companyOptions.map(option=>option.id).sort())));
   return {page,original:dialect.sqlToQuery(original),forwarded,pairs};
  };
  type HistoricalAssignment={id:string;employmentId:string;departmentId:string;validTo:string|null;supersededAt:Date|null};
