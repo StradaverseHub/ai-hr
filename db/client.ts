@@ -393,8 +393,10 @@ export function createDb(connectionString: string, options?: { max?: number; adm
 
   /** One request's reads as ONE read-only snapshot (db/shared-read.ts). `work` is every read owner of that
    * request; each joins while the identity matches. BEGIN carries the isolation and access mode, so the whole
-   * request pays BEGIN, one identity statement and COMMIT, instead of those per owner. Nothing outlives `work`. */
-  async function withSharedReadSnapshot<T>(ctx: SessionContext, work: () => Promise<T>, signal?: AbortSignal, scope?: object): Promise<T> {
+   * request pays BEGIN, one identity statement and COMMIT, instead of those per owner. Nothing outlives `work`.
+   * `pooled` (with `scope` only): `work`'s owners are independent and compare no results with each other, so they may
+   * spread over the request's bounded carrier pool (AIHR_DEFAULT_REQUEST_READ_CARRIERS) instead of one snapshot. */
+  async function withSharedReadSnapshot<T>(ctx: SessionContext, work: () => Promise<T>, signal?: AbortSignal, scope?: object, options?: { pooled?: true }): Promise<T> {
     if (!ctx?.tenantId || !ctx.userId || ctx.agent || independentTransactionsRequired()) return work();
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
@@ -413,7 +415,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     // a carrier cancels its statements at exactly one deadline.
     if (scope) {
       const shared = requestScopedSession(scope, ctx, grants, roleNames, identity, signal, readDeadline);
-      if (shared.deadline === readDeadline) return inTenant(shared, () => shared.track(work));
+      if (shared.deadline === readDeadline) return inTenant(shared, () => shared.track(work, options?.pooled === true));
     }
     const session = newSession(ctx, grants, roleNames, identity, signal, readDeadline, false);
     try {
@@ -434,9 +436,9 @@ export function createDb(connectionString: string, options?: { max?: number; adm
   function newSession(ctx: SessionContext, grants: Grant[], roleNames: string[], identity: string, signal: AbortSignal | undefined, readDeadline: AbortSignal | undefined, idleRelease: boolean): SharedReadSession<Tx> {
     const permits = { held: 0 };
     // The carrier factory runs only when the first owner joins, after `session` is assigned.
-    const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, identity, () => {
+    const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, identity, (state) => {
       // A carrier a default join opens reads no request preamble (db/shared-read.ts, package 1.1).
-      const plain = session.openingPlain;
+      const plain = state.plain;
       let finish: () => void = () => {};
       const finished = new Promise<void>((resolve) => { finish = resolve; });
       let resolveTx: (tx: Tx) => void = () => {};
@@ -453,7 +455,9 @@ export function createDb(connectionString: string, options?: { max?: number; adm
         try {
           // The carrier is this tenant's ordinary capped work unless the request already holds the tenant's permit:
           // it was inside a transaction or carrier when the snapshot was installed, or a carrier of this session
-          // holds one now (withSharedReadSnapshot installs that fact around every composition).
+          // holds one now (withSharedReadSnapshot installs that fact around every composition). A pooled default
+          // join's second or third carrier is nested in the first exactly as a fallback owner is, so one request holds
+          // at most the pool size plus its concurrent fallbacks: never more than its owners would hold with the join off.
           release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal, nestedInTenant(ctx.tenantId));
           held = true; permits.held++;
           const control: { current?: SharedReadCarrierControl } = {};
@@ -464,7 +468,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
                 // As in withTenant's own transaction, the deadline cancels the carrier's running statement and
                 // refuses later ones. It is armed on the driver's own client, beneath the shared statement guard.
                 if (readDeadline) stopDeadline = cancelStatementsAtDeadline({ client: sqlTx } as unknown as Parameters<typeof cancelStatementsAtDeadline>[0], readDeadline);
-                return fn(sharedReadDriver(sqlTx, session as SharedReadSession<unknown>, control));
+                return fn(sharedReadDriver(sqlTx, session as SharedReadSession<unknown>, state, control));
               });
           } });
           await drizzle(carrierClient).transaction(async (carrierTx) => {
@@ -474,7 +478,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
             // ahead, before any owner can join. Without one (or switched off) the statement is the plain bootstrap.
             const preamble = session.openPreamble(ctx, carrierTx, plain);
             const identityRow = await bootstrapTenantTx(carrierTx, ctx, grants, roleNames, preamble ? preambleColumns(preamble, ctx, grants, roleNames) : undefined);
-            session.bootstrapping = false;
+            state.bootstrapping = false;
             if (preamble) {
               if (preamble.jitOff) control.current?.hold('jit', 'off');
               const value = identityRow?.request_preamble;

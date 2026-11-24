@@ -31,8 +31,9 @@ export type SharedReadStats={joins:number;fallbacks:number;statements:number;mem
  preambles:number;seeded:number;
  /** Default joins (package 1.1), and those of them that kept their own transaction because the open carrier predates
   * a completed fallback and another owner was still inside it. */
- defaultJoins:number;staleSkips:number};
-type Join={tainted:boolean};
+ defaultJoins:number;staleSkips:number;
+ /** The most carriers this session held open at once (the default join's pool, at most its size). */
+ peakCarriers:number};
 const sessions=new AsyncLocalStorage<SharedReadSession<unknown>>();
 const joins=new AsyncLocalStorage<Join>();
 
@@ -92,7 +93,8 @@ export function scopePreamble():SharedReadPreamble|undefined{return requestScope
  *  - a default join never reads the request preamble (its carrier is plain: the preamble is a Home composition's), and
  *  - after an owner of the session has completed a fallback in its own transaction (which may have written), a default
  *    join never joins a carrier opened before that: an idle one is committed and a fresh snapshot begins; one still in
- *    use by another owner is left to it, and this owner reads in its own transaction, as before this package.
+ *    use by another owner is left to it, and this owner opens a fresh carrier while the pool (below) has room, else
+ *    reads in its own transaction, as before this package.
  * OPT-IN (owner decision, 24 November 2026): the join runs only while the web process has
  * `AIHR_DEFAULT_REQUEST_READ_JOIN=on` (read per call). Unset or any other value, every owner keeps its own transaction
  * exactly as before. One carrier is one connection, so owners that ran in parallel queue behind each other; on hardware
@@ -114,14 +116,60 @@ export function defaultRequestReadScope():object|undefined{
  if(!requestScopeResolver||sessions.getStore()||!requestReadJoinEnabled())return undefined;
  return requestScopeResolver();
 }
+/** ── The carrier pool of a default join (ADR 0181 Phase 1, bounded pool) ────────────────────────────────────────────
+ * One carrier is one connection: owners that ran in parallel in their own transactions queue behind each other on it.
+ * `AIHR_DEFAULT_REQUEST_READ_CARRIERS` (read per call; 1, 2 or 3, anything else is 1) lets a request's session for one
+ * identity hold up to that many carriers for its DEFAULT joins, so independent owners still run in parallel while the
+ * transactions a page pays stay bounded by the pool size per identity in a wave of concurrent reads.
+ *
+ * WHAT A READ SEES. Carriers opened at different moments are different snapshots, so one render may read from up to N
+ * snapshots. The unit of consistency of a default join is ONE OWNER (one `withTenant` call): every statement of it,
+ * and every nested `withTenant` of the same identity inside it, runs in the one carrier it joined. Two owners of a
+ * render are never promised one snapshot: with the join off (the production default) each keeps its own Read
+ * Committed transaction, and with one carrier a later owner already reads a fresh snapshot once the earlier carrier
+ * went idle. An owner that compares results across reads makes them inside one `withTenant`, or installs an explicit
+ * shared snapshot (`withSharedReadSnapshot`): an explicit composition is PINNED to one carrier. Its joins take the
+ * carrier they are nested in, else the session's oldest open carrier, and open one only when none is open, exactly as
+ * with one carrier, so no setting changes an explicit snapshot (Home, Today, the shell's approval summary).
+ *
+ * The one exception is a composition that declares itself `pooled`: a set of independent owners grouped only to bound
+ * their transactions, none of which compares its results with another's (the app frame's reads, package 1.2, which
+ * keep their own transactions with the join off). Its owners choose carriers as default joins do, without the
+ * stale-carrier rule (which no explicit join has); only the first carrier it opens reads the request preamble.
+ * Nested reads still stay on their owner's carrier. */
+export function requestReadCarrierLimit():number{
+ const value=process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;
+ return value==='2'?2:value==='3'?3:1;
+}
+
 /** What a carrier lets its opener do before any owner joins: answer statements ahead, and record a held setting. */
 export type SharedReadCarrierControl={seed(seeds:readonly SharedReadSeed[]):number;hold(setting:'jit',value:'on'|'off'):void};
 
 /** One open carrier transaction. `finish` lets it commit; `done` settles after COMMIT or ROLLBACK. */
 export type SharedReadCarrier<Tx>={tx:Promise<Tx>;finish:()=>void;done:Promise<void>};
+/** What a carrier's opener and its statement guard know about that one carrier. */
+export type SharedReadCarrierState={
+ /** True only while the carrier sets its own transaction-local identity, before any owner can join it. */
+ bootstrapping:boolean;
+ /** Opened by a default join: it reads no request preamble (package 1.1). */
+ readonly plain:boolean;
+ /** Statements sent on this carrier and not yet answered (diagnostic flight count only). */
+ inFlight:number;
+};
+type Slot<Tx>={carrier:SharedReadCarrier<Tx>;state:SharedReadCarrierState;
+ /** Owners inside this carrier now (joined or waiting for it to open). */
+ active:number;
+ /** Fallbacks completed when this carrier began (the stale-carrier rule). */
+ fallbacks:number};
+type Join={tainted:boolean;slot?:Slot<unknown>};
+/** 'new' opens a carrier that reads the request preamble (if declared); 'plain' one that reads none. */
+type Choice<Tx>=Slot<Tx>|'new'|'plain';
+/** The session whose pooled composition (see the pool notes) the current work belongs to. */
+const pooledWork=new AsyncLocalStorage<SharedReadSession<unknown>>();
 
 export class SharedReadSession<Tx>{
- private carrier?:SharedReadCarrier<Tx>;
+ /** Open carriers, oldest first. Explicit joins use one (see the pool notes); default joins up to the pool size. */
+ private slots:Slot<Tx>[]=[];
  private readonly carriers:Promise<void>[]=[];
  private poisoned=false;
  private closed=false;
@@ -129,23 +177,17 @@ export class SharedReadSession<Tx>{
  private waitingOwn=0;
  /** Request-scoped sessions only: compositions currently running inside this session. */
  private works=0;
- /** True only while a carrier sets its own transaction-local identity, before any owner can join it. */
- bootstrapping=false;
- readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0,flights:0,preambles:0,seeded:0,defaultJoins:0,staleSkips:0};
- /** Fallbacks completed so far, and how many had completed when the current carrier began. */
+ readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0,flights:0,preambles:0,seeded:0,defaultJoins:0,staleSkips:0,peakCarriers:0};
+ /** Fallbacks completed so far. */
  private settledFallbacks=0;
- private carrierFallbacks=0;
- /** True only while `begin` opens a carrier for a default join: the opener reads it synchronously (plain carrier). */
- openingPlain=false;
  /** The request preamble each new carrier reads (decision 12), if its request declared one. */
  preamble?:SharedReadPreamble;
- /** Statements sent on the current carrier and not yet answered (diagnostic flight count only). */
- inFlight=0;
  /** `deadline`: the hard read deadline (db/workload.ts) every carrier of this session cancels its statements at, if any.
   * `idleRelease`: a request-scoped session is shared by several independent compositions of one request (the
-  * Today sections and the shell's approvals). It is never closed; its carrier commits whenever no composition and
-  * no owner is inside it, so it never holds a connection between them. A later composition opens a fresh carrier. */
- constructor(private readonly owner:object,readonly identity:string,private readonly open:()=>SharedReadCarrier<Tx>,
+  * Today sections and the shell's approvals). It is never closed; each carrier commits whenever no composition and
+  * no owner is inside it, so it never holds a connection between them. A later composition opens a fresh carrier.
+  * Only such a session pools its default joins (`requestReadCarrierLimit`). */
+ constructor(private readonly owner:object,readonly identity:string,private readonly open:(state:SharedReadCarrierState)=>SharedReadCarrier<Tx>,
   readonly deadline?:AbortSignal,private readonly idleRelease=false){}
 
  /** Only the same database client, the exact same transaction identity settings and the same hard read deadline
@@ -158,68 +200,101 @@ export class SharedReadSession<Tx>{
   try{return this.preamble.build(ctx,tx);}catch{return null;}
  }
 
- join<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal?:AbortSignal):Promise<T>{return this.joinCarrier(fn,ownTransaction,signal,false);}
+ /** An explicit composition's owner: the carrier it is nested in, else (pinned) the oldest open one or a new one, or
+  * (a pooled composition) the pool's choice. */
+ join<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal?:AbortSignal):Promise<T>{
+  return this.joinCarrier(fn,ownTransaction,signal,()=>{
+   const enclosing=joins.getStore()?.slot as Slot<Tx>|undefined;
+   if(enclosing&&this.slots.includes(enclosing))return enclosing;
+   if(pooledWork.getStore()!==this)return this.slots[0]??'new';
+   const pick=this.pick(this.slots);
+   return pick==='room'?(this.slots.length===0?'new':'plain'):pick!;
+  });
+ }
  /** A `withTenant` read that joins this request-scoped session by default (package 1.1; see the module notes above). */
  joinDefault<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal?:AbortSignal):Promise<T>{
   signal?.throwIfAborted();
   this.stats.defaultJoins++;
-  if(this.carrier&&this.carrierFallbacks!==this.settledFallbacks){
-   if(this.active>0){this.stats.staleSkips++;return this.fallback(ownTransaction);}
-   this.release();
-  }
-  return this.joinCarrier(fn,ownTransaction,signal,true);
+  // The stale-carrier rule: a carrier that predates a completed fallback is committed when idle and never joined.
+  for(const slot of [...this.slots])if(slot.fallbacks!==this.settledFallbacks&&slot.active===0)this.releaseSlot(slot);
+  const pick=this.pick(this.slots.filter(slot=>slot.fallbacks===this.settledFallbacks));
+  // Every carrier in reach is stale and still in use by another owner: this owner reads in its own transaction.
+  if(!pick){this.stats.staleSkips++;return this.fallback(ownTransaction);}
+  return this.joinCarrier(fn,ownTransaction,signal,()=>pick==='room'?'plain':pick);
  }
- private async joinCarrier<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal:AbortSignal|undefined,plain:boolean):Promise<T>{
+ /** The pool's choice among `candidates`: an idle one (no new transaction), else room for a new carrier while the
+  * session holds fewer than the pool size, else the least busy. With one carrier this is exactly the earlier rule. */
+ private pick(candidates:Slot<Tx>[]):Slot<Tx>|'room'|undefined{
+  const idle=candidates.find(slot=>slot.active===0);
+  if(idle)return idle;
+  if(this.slots.length<(this.idleRelease?requestReadCarrierLimit():1))return 'room';
+  let least:Slot<Tx>|undefined;
+  for(const slot of candidates)if(!least||slot.active<least.active)least=slot;
+  return least;
+ }
+ private async joinCarrier<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal:AbortSignal|undefined,choose:()=>Choice<Tx>):Promise<T>{
   signal?.throwIfAborted();
   if(this.poisoned||this.closed)return this.fallback(ownTransaction);
-  this.active++;
+  const chosen=choose();
+  const slot=chosen==='new'||chosen==='plain'?this.begin(chosen==='plain'):chosen;
+  slot.active++;this.active++;
   let tainted=false,result:{ok:true;value:T}|{ok:false;error:unknown}|undefined;
   try{
    let tx:Tx;
-   try{tx=await (this.carrier??=this.begin(plain)).tx;}
+   try{tx=await slot.carrier.tx;}
    catch{this.poisoned=true;tainted=true;}
    if(!tainted){
     signal?.throwIfAborted();
     this.stats.joins++;
-    const join:Join={tainted:false};
+    const join:Join={tainted:false,slot:slot as Slot<unknown>};
     try{result={ok:true,value:await joins.run(join,()=>fn(tx!))};}
     catch(error){result={ok:false,error};}
     // A failure while the shared transaction is aborted may come from a sibling's statement this owner awaited.
     tainted=join.tainted||(!result.ok&&this.poisoned);
    }
-  }finally{this.leave();}
+  }finally{this.leave(slot);}
   // A refused or failed statement anywhere in this owner's work: discard everything it saw and rerun it.
   if(tainted)return this.fallback(ownTransaction);
   if(!result!.ok)throw result!.error;
   return result!.value;
  }
- private begin(plain=false){
-  this.stats.carriers++;this.bootstrapping=true;this.carrierFallbacks=this.settledFallbacks;
-  this.openingPlain=plain;
-  let carrier:SharedReadCarrier<Tx>;
-  try{carrier=this.open();}finally{this.openingPlain=false;}
-  this.carriers.push(carrier.done);return carrier;
+ private begin(plain:boolean):Slot<Tx>{
+  this.stats.carriers++;
+  const state:SharedReadCarrierState={bootstrapping:true,plain,inFlight:0};
+  const slot:Slot<Tx>={carrier:this.open(state),state,active:0,fallbacks:this.settledFallbacks};
+  this.slots.push(slot);
+  this.stats.peakCarriers=Math.max(this.stats.peakCarriers,this.slots.length);
+  this.carriers.push(slot.carrier.done);return slot;
  }
- private leave(){this.active--;if(this.active===0&&(this.waitingOwn>0||this.idleRelease&&this.works===0))this.release();}
+ private leave(slot:Slot<Tx>){
+  slot.active--;this.active--;
+  if(slot.active===0&&(this.waitingOwn>0||this.idleRelease&&this.works===0))this.releaseSlot(slot);
+ }
  /** One request-scoped composition: while it runs, its owners join this session; when the last one settles and no
-  * owner is inside, the carrier commits. Results and failures are the composition's own. */
- async track<T>(work:()=>Promise<T>):Promise<T>{
+  * owner is inside, the carriers commit. Results and failures are the composition's own. */
+ async track<T>(work:()=>Promise<T>,pooled=false):Promise<T>{
   this.works++;
-  try{return await runInSharedRead(this as SharedReadSession<unknown>,work);}
-  finally{this.works--;if(this.works===0&&this.active===0)this.release();}
+  const run=()=>runInSharedRead(this as SharedReadSession<unknown>,work);
+  try{return await (pooled?pooledWork.run(this as SharedReadSession<unknown>,run):run());}
+  finally{this.works--;if(this.works===0)this.releaseIdle();}
  }
  /** Every carrier this session opened has committed or rolled back. */
  settled(){return Promise.all(this.carriers.map(done=>done.catch(()=>undefined))).then(()=>undefined);}
  /** Commit an idle carrier so this request never holds a pool slot while its own fallback waits for one. A later
   * join opens a fresh carrier (a new snapshot and an empty memo). */
- private release(){const carrier=this.carrier;this.carrier=undefined;carrier?.finish();}
+ private releaseSlot(slot:Slot<Tx>){
+  const index=this.slots.indexOf(slot);
+  if(index===-1)return;
+  this.slots.splice(index,1);slot.carrier.finish();
+ }
+ private releaseIdle(){for(const slot of [...this.slots])if(slot.active===0)this.releaseSlot(slot);}
  private async fallback<T>(ownTransaction:()=>Promise<T>){
   this.stats.fallbacks++;this.waitingOwn++;
-  if(this.active===0)this.release();
+  this.releaseIdle();
   try{return await ownTransaction();}finally{this.waitingOwn--;this.settledFallbacks++;}
  }
  /** After the request's reads settle: commit every carrier and wait for each to finish. */
- async close(){this.closed=true;this.release();await Promise.all(this.carriers.map(done=>done.catch(()=>undefined)));}
+ async close(){this.closed=true;for(const slot of [...this.slots])this.releaseSlot(slot);await Promise.all(this.carriers.map(done=>done.catch(()=>undefined)));}
  refuse(reason:string){
   this.stats.refused[reason]=(this.stats.refused[reason]??0)+1;
   const join=joins.getStore();if(join)join.tainted=true;
@@ -332,7 +407,7 @@ type DriverTransaction={unsafe(query:string,params?:unknown[],options?:unknown):
 
 /** Wrap the driver's transaction-scoped client for the one carrier transaction. Drizzle issues every statement
  * through `unsafe(query, params)` (optionally `.values()`), and the driver starts a query only when awaited. */
-export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSession<unknown>,control?:{current?:SharedReadCarrierControl}):T{
+export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSession<unknown>,state:SharedReadCarrierState,control?:{current?:SharedReadCarrierControl}):T{
  const driver=sqlTx as unknown as DriverTransaction;
  const memo=new Map<string,Promise<unknown>>();
  // Settings already in force on this carrier transaction: READ ONLY from BEGIN, and any SET LOCAL jit it was sent.
@@ -364,9 +439,9 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
  };
  const send=(query:string,params:unknown[]|undefined,options:unknown,mode:'rows'|'values')=>{
   session.stats.statements++;
-  if(session.inFlight++===0)session.stats.flights++;
+  if(state.inFlight++===0)session.stats.flights++;
   const sent=driver.unsafe(query,params,options);
-  return Promise.resolve(mode==='values'?sent.values():sent).finally(()=>{session.inFlight--;}).catch(error=>{
+  return Promise.resolve(mode==='values'?sent.values():sent).finally(()=>{state.inFlight--;}).catch(error=>{
    const code=String((error as {code?:unknown})?.code??'unknown');
    if(code==='25006'&&learnedWriters.size<LEARNED_LIMIT)learnedWriters.add(query);
    session.failed(code);throw error;
@@ -374,7 +449,7 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
  };
  const execute=(query:string,params:unknown[]|undefined,options:unknown,mode:'rows'|'values'):Promise<unknown>=>{
   // The carrier's own identity statement, before any owner can join: never counted, classified or memoized.
-  if(session.bootstrapping){const sent=driver.unsafe(query,params,options);return Promise.resolve(mode==='values'?sent.values():sent);}
+  if(state.bootstrapping){const sent=driver.unsafe(query,params,options);return Promise.resolve(mode==='values'?sent.values():sent);}
   const statement=classifySharedStatement(query);
   if(statement.kind==='refuse')return Promise.reject(session.refuse(statement.reason));
   // A transaction-local setting the carrier already holds changes nothing when sent again: answer it here. The carrier

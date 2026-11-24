@@ -5,7 +5,10 @@
  * (test/helpers/ai-centre-scale-fixture.ts), for the native roles, and its statements and transactions are counted
  * (test/helpers/statement-observer.ts). It proves:
  *  - equivalence: every route renders identical output with the read join on (AIHR_DEFAULT_REQUEST_READ_JOIN=on,
- *    packages 1.1 and 1.2), off (the production default) and with no shared snapshot at all, for every role;
+ *    packages 1.1 and 1.2) with one carrier and with a pool of 2 and 3 (AIHR_DEFAULT_REQUEST_READ_CARRIERS), off (the
+ *    production default) and with no shared snapshot at all, for every role;
+ *  - pool bound: with a pool of N, no identity ever holds more than N carriers at once, and a pooled render never costs
+ *    more transactions than the join off;
  *  - cost: the default join never costs more transactions than reads without it, and the frame reads in at most
  *    FRAME_TRANSACTIONS transactions;
  *  - scale: "All companies" of 71 companies costs no more transactions or statements than one company, for a group
@@ -13,6 +16,8 @@
  *  - budgets: no route exceeds its recorded budget (BUDGETS). Budgets only go down; raising one needs an ADR note;
  *  - no write on page load (package 1.3): a frame render sends no INSERT, UPDATE or DELETE and takes no exclusive
  *    advisory lock, for any role; and the inventory of frame owners that fall back to their own transaction.
+ *  - wall time: each route rendered in interleaved rounds in every mode, printed as `ROUTE_WALL {json}` (median and
+ *    spread of `ms` per mode), to compare the pool sizes against the join off.
  * Every measurement is printed as one `ROUTE_BUDGET {json}` line for the release notes. All names are invented. */
 import {randomUUID} from 'node:crypto';
 import {createElement,type ReactNode} from 'react';
@@ -124,12 +129,15 @@ afterAll(async()=>{delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;await close
 const normalize=(key:string,value:unknown)=>key==='claimPreviewRevision'&&typeof value==='string'?'<revision>':value;
 const WRITE=/^\s*(insert\s+into|update\s+("?[a-z_][a-z0-9_.]*"?\.)?"?[a-z_][a-z0-9_]*"?\s+set\b|delete\s+from)|\bpg_(try_)?advisory_xact_lock\s*\(/i;
 
-/** default: the read join on (AIHR_DEFAULT_REQUEST_READ_JOIN=on: package 1.1 and the frame pass in one snapshot).
+/** default: the read join on (AIHR_DEFAULT_REQUEST_READ_JOIN=on: package 1.1 and the frame pass in one snapshot), one
+ * carrier per identity. pool2, pool3: the read join on with a bounded pool of 2 or 3 carriers per identity
+ * (AIHR_DEFAULT_REQUEST_READ_CARRIERS).
  * without: the production default, off (only Home's, Today's and the shell approval summary's explicit snapshots).
  * independent: no shared snapshot at all, every owner in its own transaction, as before shared snapshots existed. */
-type Mode='default'|'without'|'independent';
+type Mode='default'|'pool2'|'pool3'|'without'|'independent';
+const POOL:Partial<Record<Mode,string>>={pool2:'2',pool3:'3'};
 type Measured={route:Route;persona:string;scope:'all'|'one';mode:Mode;transactions:number;statements:number;ms:number;
- output:unknown;captured:Captured[];refused:Record<string,number>;fallbacks:number;staleSkips:number};
+ output:unknown;captured:Captured[];refused:Record<string,number>;fallbacks:number;staleSkips:number;peakCarriers:number};
 async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one',mode:Mode):Promise<Measured>{
  state.session=personas[persona];state.pathname=ROUTES[route].pathname;
  state.cookies=scope==='one'?{company_scope:workCompanyId}:{};
@@ -137,7 +145,12 @@ async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one
  // A redirect (a role that may not open the route) is the render's output, recorded by its digest.
  const run=()=>serverTreeSnapshot(createElement(Layout,{children:ROUTES[route].page()}),normalize)
   .catch((error:unknown)=>{const digest=(error as {digest?:unknown})?.digest;if(typeof digest==='string'&&digest.startsWith('NEXT_'))return {redirect:digest};throw error;});
- const observed=await withRequestReadScope(requestScope,()=>observeStatements(()=>mode==='default'?run():mode==='without'?withoutDefaultRequestJoin(run):withIndependentTransactions(run)));
+ const pool=POOL[mode];
+ if(pool)process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS=pool;else delete process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;
+ let observed:{result:unknown;ms:number;statements:Captured[];transactions:number};
+ try{
+  observed=await withRequestReadScope(requestScope,()=>observeStatements(()=>mode==='without'?withoutDefaultRequestJoin(run):mode==='independent'?withIndependentTransactions(run):run()));
+ }finally{delete process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;}
  const stats=await requestScopedReadStats(requestScope);
  const refused:Record<string,number>={},failures:Record<string,number>={};
  for(const session of stats){
@@ -154,9 +167,10 @@ async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one
   return [{barrier:text(statement),then:after}];
  });
  const measured={route,persona,scope,mode,transactions:observed.transactions,statements:observed.statements.length,ms:Math.round(observed.ms),output:observed.result,
-  captured:observed.statements,refused,fallbacks:stats.reduce((sum,session)=>sum+session.fallbacks,0),staleSkips:stats.reduce((sum,session)=>sum+session.staleSkips,0)};
+  captured:observed.statements,refused,fallbacks:stats.reduce((sum,session)=>sum+session.fallbacks,0),staleSkips:stats.reduce((sum,session)=>sum+session.staleSkips,0),
+  peakCarriers:Math.max(0,...stats.map(session=>session.peakCarriers))};
  console.log('ROUTE_BUDGET '+JSON.stringify({route,persona,scope,mode,transactions:measured.transactions,statements:measured.statements,
-  ms:measured.ms,refused,failures,fallbacks:measured.fallbacks,staleSkips:measured.staleSkips,barriers}));
+  ms:measured.ms,refused,failures,fallbacks:measured.fallbacks,staleSkips:measured.staleSkips,peakCarriers:measured.peakCarriers,identities:stats.length,barriers}));
  return measured;
 }
 
@@ -187,11 +201,11 @@ function firstDifference(a:unknown,b:unknown,path='$'):string|null{
 
 const ROLES=['group','multi','single','manager','employee','payroll'] as const;
 describe('route read budget: repeatability',()=>{
- // Equivalence is only meaningful if one mode renders the same output twice: six alternating renders of the heaviest
+ // Equivalence is only meaningful if one mode renders the same output twice: seven alternating renders of the heaviest
  // route must all equal the first, whatever the mode.
- it('renders Home for a company-by-company administrator identically six times across modes',async()=>{
+ it('renders Home for a company-by-company administrator identically eight times across modes',async()=>{
   const first=await render('home','multi','all','default');
-  const modes:Mode[]=['without','default','independent','default','without'];
+  const modes:Mode[]=['without','default','pool2','independent','pool3','default','without'];
   for(const mode of modes){
    const again=await render('home','multi','all',mode);
    expect(firstDifference(first.output,again.output),`default vs ${mode}`).toBeNull();
@@ -208,6 +222,13 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
   const unshared=await render(route,persona,'all','independent');
   expect(firstDifference(shared.output,independent.output),'default vs explicit snapshots only').toBeNull();
   expect(firstDifference(shared.output,unshared.output),'default vs no shared snapshot').toBeNull();
+  // The bounded pool: identical output, at most N carriers per identity at once, never more transactions than off.
+  for(const [mode,size] of [['pool2',2],['pool3',3]] as const){
+   const pooled=await render(route,persona,'all',mode);
+   expect(firstDifference(shared.output,pooled.output),`default vs ${mode}`).toBeNull();
+   expect(pooled.peakCarriers,`${mode} carriers at once`).toBeLessThanOrEqual(size);
+   expect(pooled.transactions,`${mode} transactions`).toBeLessThanOrEqual(independent.transactions);
+  }
   // The render produced real output (a nonempty tree), not an error-shaped stub.
   const redirected=typeof shared.output==='object'&&shared.output!==null&&'redirect' in shared.output;
   if(!redirected)expect(JSON.stringify(shared.output).length).toBeGreaterThan(500);
@@ -231,6 +252,8 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
   const shared=await statementTime(await render(route,persona,'all','default'));
   const independent=await statementTime(await render(route,persona,'all','without'));
   await statementTime(await render(route,persona,'all','independent'));
+  await statementTime(await render(route,persona,'all','pool2'));
+  await statementTime(await render(route,persona,'all','pool3'));
   // The same reads are replayed either way: the default join moves no work between statements.
   expect(shared.replayed).toBeGreaterThan(0);
   expect(independent.replayed).toBeGreaterThan(0);
@@ -249,4 +272,26 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
   expect(multi.transactions,'multi transactions').toBeLessThanOrEqual(single.transactions);
   expect(multi.statements,'multi statements').toBeLessThanOrEqual(single.statements);
  },180_000);
+});
+
+/** Wall time per mode: interleaved rounds (each round renders every mode once, in a rotated order) after one warm-up per
+ * mode, so drift and caches touch every mode alike. `ms` is the whole render, statements and server components. */
+const WALL_ROUNDS=5;
+const WALL_MODES:Mode[]=['without','default','pool2','pool3'];
+describe.each(Object.keys(ROUTES) as Route[])('route read budget: wall time by carrier pool, %s',route=>{
+ it.each(['group','manager','employee'] as const)('measures %s in every mode',async persona=>{
+  for(const mode of WALL_MODES)await render(route,persona,'all',mode);
+  const samples:Record<string,number[]>={},transactions:Record<string,number>={};
+  for(let round=0;round<WALL_ROUNDS;round++){
+   for(let index=0;index<WALL_MODES.length;index++){
+    const mode=WALL_MODES[(index+round)%WALL_MODES.length];
+    const measured=await render(route,persona,'all',mode);
+    (samples[mode]??=[]).push(measured.ms);transactions[mode]=measured.transactions;
+   }
+  }
+  const median=(values:number[])=>{const sorted=[...values].sort((x,y)=>x-y);return sorted[Math.floor(sorted.length/2)];};
+  const summary=Object.fromEntries(WALL_MODES.map(mode=>[mode,{median:median(samples[mode]),min:Math.min(...samples[mode]),max:Math.max(...samples[mode]),transactions:transactions[mode]}]));
+  console.log('ROUTE_WALL '+JSON.stringify({route,persona,rounds:WALL_ROUNDS,...summary}));
+  for(const mode of WALL_MODES)expect(samples[mode]).toHaveLength(WALL_ROUNDS);
+ },240_000);
 });
