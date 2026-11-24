@@ -24,7 +24,7 @@ vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocation
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import * as XLSX from 'xlsx';
-import { File as NodeFile } from 'node:buffer';
+import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
@@ -68,6 +68,21 @@ const screenUnderTest = () =>
     />,
   );
 
+async function confirmEmployeeWorksheet(book: XLSX.WorkBook, filename: string, input: HTMLInputElement) {
+  const user = userEvent.setup();
+  const bytes: ArrayBuffer = XLSX.write(book, { type: 'array', bookType: 'xlsx' });
+  const file = new File([bytes], filename);
+  Object.defineProperty(file, 'arrayBuffer', {value: async () => bytes});
+  await user.upload(input, file);
+  const worksheet = await screen.findByRole('combobox', {name: messages.worksheetImport.label});
+  await user.selectOptions(worksheet, 'Employee Import');
+  const confirmation = screen.getByRole('button', {name: messages.worksheetImport.confirm});
+  expect(confirmation).toBeEnabled();
+  expect(validateMock).not.toHaveBeenCalled();
+  await user.click(confirmation);
+  expect(await screen.findByText(messages.people.import.fileLoaded.replace('{name}', filename))).toBeVisible();
+}
+
 describe('allocation companion upload stays separate from Family rows', () => {
   it.each([
     { allocation: true, family: false },
@@ -77,6 +92,9 @@ describe('allocation companion upload stays separate from Family rows', () => {
     validateMock.mockClear();
     validateMock.mockResolvedValue({ ...basePreview, fileErrors: [] });
     const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ['full_name', 'email'], ['Unselected person', 'unselected@example.invalid'],
+    ]), 'Other employees');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
       ['full_name', 'email', 'department', 'hired_on', 'employee_code'],
       ['Fictional Hire', 'hire@example.invalid', 'Finance', '2026-01-01', '00017'],
@@ -90,18 +108,12 @@ describe('allocation companion upload stays separate from Family rows', () => {
       ['employee_code', 'relationship', 'name'],
       ['00017', 'child', 'Fictional Child'],
     ]), 'Family');
-    const bytes = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
-    const file = new NodeFile([bytes], 'companion.xlsx');
     const { container } = screenUnderTest();
-    const input = container.querySelector('input[type="file"]');
-    expect(input).not.toBeNull();
-    fireEvent.change(input!, { target: { files: [file] } });
-    const confirmWorksheet = await screen.findByRole('button', {name: messages.worksheetImport.confirm});
-    expect(validateMock).not.toHaveBeenCalled();
-    fireEvent.click(confirmWorksheet);
+    await confirmEmployeeWorksheet(workbook, 'companion.xlsx', container.querySelector<HTMLInputElement>('input[type="file"]')!);
     await waitFor(() => expect(validateMock).toHaveBeenCalledTimes(1));
     const [employeeCsv, companyId, familyCsv, , allocationCsv] = validateMock.mock.calls[0];
     expect(employeeCsv).toContain('00017');
+    expect(employeeCsv).not.toContain('Unselected person');
     expect(companyId).toBe('c1');
     if (family) expect(familyCsv).toContain('Fictional Child');
     else expect(familyCsv).toBe('');
@@ -394,12 +406,8 @@ describe('d3ba1e9f · a workbook with blank rows sends its Excel rows with the c
       ['Fictional Second', 'second@example.invalid', 'Finance', '2026-01-01', '00018'],
     ]), 'Employee Import');
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([['employee_code', 'relationship', 'name'], [], [], ['00017', 'child', 'Fictional Child']]), 'Family');
-    const file = new NodeFile([XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })], 'blank-rows.xlsx');
     const { container } = screenUnderTest();
-    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [file] } });
-    const confirmWorksheet = await screen.findByRole('button', {name: messages.worksheetImport.confirm});
-    expect(validateMock).not.toHaveBeenCalled();
-    fireEvent.click(confirmWorksheet);
+    await confirmEmployeeWorksheet(workbook, 'blank-rows.xlsx', container.querySelector<HTMLInputElement>('input[type="file"]')!);
     await waitFor(() => expect(validateMock).toHaveBeenCalledTimes(1));
     const sourceRows = validateMock.mock.calls[0][5];
     expect(sourceRows.employee).toEqual([2, 4]);
