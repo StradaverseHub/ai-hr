@@ -211,7 +211,19 @@ async function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string,sparse
  signal?.throwIfAborted();
  // The bounded scope can probe its own current Assignment keys. The other path
  // keeps the department match outside the Employment/Person witness.
- const departments=await tx.execute<ChoiceOptions>(sparseDepartment?sql`with authorized_members as materialized (
+ // The first-witness cross join proves an ABSENT pair by reading every current Assignment of
+ // that Department, once per Company, so its cost grows with companies x assignments. With one
+ // represented Company that is at most one read per Department (the 50k one-company fixture);
+ // across several it is not: staging, 24 Nov 2026, 74 companies x 98 departments for 961
+ // assignments and 104 pairs took 2,151 ms, against 24.6 ms for the per-member probe, which
+ // returned the identical 104 rows and reads each authorized member's Assignment once.
+ // The cross join is also limited to the represented companies found above: a pair needs an in-scope member of
+ // its company, so no other company can contribute a row, and without the limit every company in the tenant
+ // was paired with every department even for a one-company scope (2,978,434 assignment tuples read for one
+ // company of 71 in test/payroll-dashboard-and-choice-multicompany-scale-db.test.ts).
+ const represented=companies.map(row=>row.companyId);
+ const perMember=sparseDepartment||represented.length>1;
+ const departments=await tx.execute<ChoiceOptions>(perMember?sql`with authorized_members as materialized (
   select ${employment.id} as employment_id,${employment.companyId} from ${employment}
   join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid where ${scope}
  ), represented_department_pairs as materialized (
@@ -238,7 +250,8 @@ async function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string,sparse
      on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
      where ${employment.id}=${assignment.employmentId} and ${scope} and ${employment.companyId}=${company.id}
      offset 0)
-   offset 0) order by "companyId","departmentId"`);
+   offset 0)
+  and ${company.id}=any(${'{'+represented.join(',')+'}'}::uuid[]) order by "companyId","departmentId"`);
  signal?.throwIfAborted();
  const units=await tx.execute<ChoiceOptions>(sql`select ${company.id} as "companyId",${company.legalName} as company,null::uuid as "departmentId",null::text as "departmentCode",null::text as department,${businessUnit.id} as "businessUnitId",
   ${labels?sql`${businessUnit.code}`:sql`null::text`} as "businessUnitCode",

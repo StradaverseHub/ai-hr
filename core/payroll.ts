@@ -11894,20 +11894,54 @@ export async function removeEmployeePayrollTx(
   };
 }
 
-/** All-time dashboard warning/empty-state counts without materialising payroll money and run DTOs.
+/**
+ * The newest pay period that has a run in listBatches' population (same effective-history source, company
+ * inner join, company filter and empty-imported-history exclusion), or null when there is none.
+ *
+ * Measured on staging 24 Nov 2026 (74 companies, 615 runs of which 567 are imported history): the plain
+ * aggregate `max(pay_period) ... where history_import_attempt_id is null or employee_count > 0` took 3.95 s,
+ * because the effective view derives an imported run's employee_count from its payslips (a definer function,
+ * about 7 ms a run) and the filter forced that for every imported run in scope. This walks the runs newest period
+ * first behind OFFSET 0 and reads the view's employee_count only for an imported run, stopping at the first
+ * run that qualifies. The predicate is the same expression over the same view rows, so the answer is unchanged;
+ * a native run, or an imported run with payslips, in the newest period ends the walk at once.
+ */
+export async function latestListedBatchPeriodTx(tx: Tx, companyIds?: string[]) {
+  // The runs come from the plain table: the effective view is security_invoker over payroll_batch, one row per
+  // run, so the rows and their row security are the view's; only employee_count needs the view.
+  const candidates = tx
+    .select({ id: payrollBatch.id, payPeriod: payrollBatch.payPeriod, historyImportAttemptId: payrollBatch.historyImportAttemptId })
+    .from(payrollBatch)
+    .innerJoin(company, eq(company.id, payrollBatch.companyId))
+    .where(companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined);
+  // Drizzle omits `.offset(0)`, so the fence is written out: it keeps the walk ordered and lazy.
+  const [row] = await tx.execute<{ period: string | null }>(sql`select "candidate"."pay_period" as "period"
+     from (${candidates} order by ${payrollBatch.payPeriod} desc offset 0) "candidate"
+     where "candidate"."history_import_attempt_id" is null
+      or (select "effective"."employee_count" from public.payroll_history_effective_batch "effective"
+          where "effective"."id" = "candidate"."id") > 0
+     limit 1`);
+  return row?.period ?? null;
+}
+
+/** All-time dashboard warning/empty-state facts without materialising payroll money and run DTOs.
  * Same effective-history source, company visibility and empty company-filter semantics as listBatches.
- * The unpublished count follows payrollPublicationState, excluding imported history, drafts and closed runs. */
+ * The unpublished count follows payrollPublicationState, excluding imported history, drafts and closed runs;
+ * it reads native runs only, so it never derives an imported run's totals. `hasRuns` is whether listBatches
+ * would return any run: the screen only needs that for its empty state, and an exact all-time count would
+ * derive every imported run's employee_count (about 7 ms a run on staging, 24 Nov 2026). */
 export function payrollDashboardCounts(ctx:SessionContext,companyIds?:string[]){
- return withTenant(ctx,async tx=>{
+ return withTenant(ctx,tx=>payrollDashboardCountsTx(tx,companyIds));
+}
+export async function payrollDashboardCountsTx(tx:Tx,companyIds?:string[]){
   const [row]=await tx.select({
-   totalCount:sql<number>`count(*)`.mapWith(Number),
-   unpublishedCount:sql<number>`count(*) filter (where ${payrollBatch.historyImportAttemptId} is null and ${payrollBatch.status} not in ('draft','closed'))`.mapWith(Number),
-  }).from(payrollHistoryEffectiveBatch)
+   unpublishedCount:sql<number>`count(*)`.mapWith(Number),
+  }).from(payrollBatch)
    .innerJoin(company,eq(company.id,payrollBatch.companyId))
-   .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
-   .where(and(companyIds&&companyIds.length?inArray(payrollBatch.companyId,companyIds):undefined,or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0))));
-  return row??{totalCount:0,unpublishedCount:0};
- });
+   .where(and(companyIds&&companyIds.length?inArray(payrollBatch.companyId,companyIds):undefined,
+    isNull(payrollBatch.historyImportAttemptId),sql`${payrollBatch.status} not in ('draft','closed')`));
+  const unpublishedCount=row?.unpublishedCount??0;
+  return {hasRuns:unpublishedCount>0||await latestListedBatchPeriodTx(tx,companyIds)!==null,unpublishedCount};
 }
 
 // Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
@@ -12014,21 +12048,10 @@ export function listBatches(
  * transaction that inserts its first run (createBatch / createAdditionalRun) and deleted with its last
  * draft run, so "a run exists" is the created-period fact without opening on a month whose list is empty.
  * Null when nothing is visible; the caller then falls back to the tenant's current month.
+ * Read newest period first (latestListedBatchPeriodTx), not as a max over every run.
  */
 export function latestPayrollDashboardPeriod(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .select({ period: sql<string | null>`max(${payrollBatch.payPeriod})` })
-      .from(payrollHistoryEffectiveBatch)
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .where(
-        and(
-          companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
-          or(isNull(payrollBatch.historyImportAttemptId), gt(payrollBatch.employeeCount, 0)),
-        ),
-      );
-    return row?.period ?? null;
-  });
+  return withTenant(ctx, (tx) => latestListedBatchPeriodTx(tx, companyIds));
 }
 
 /**
@@ -12099,7 +12122,10 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
         employmentId: employment.id,
         name: person.fullName,
         employeeCode: employment.employeeCode,
-        terminatedOn: employment.terminatedOn,
+        // 7da649d3 — the payroll last day (least of terminated_on, resignation_date, last_working_date), the
+        // same end the run prorates to, so a leaver whose termination is still scheduled is listed in the
+        // month they leave rather than only after the sweep writes terminated_on.
+        terminatedOn: payrollEmploymentEnd,
         basic: compensation.basicSalary,
       })
       .from(employment)
@@ -12115,8 +12141,8 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
           // reason the plan insisted each of the six be decided on its own rather than replaced together.
           //
           // This is the LEAVERS SWEEP: who is being terminated inside this period, and therefore what
-          // final settlement (notice, leave encashment) their employer owes them. It is keyed on
-          // `terminated_on`, an event that happens ONCE, to the employment as it stands at that moment,
+          // final settlement (notice, leave encashment) their employer owes them. It is keyed on the
+          // exit (the payroll last day since 7da649d3), an event that happens ONCE, to the employment as it stands at that moment,
           // under the entity that holds it then — which is `employment.company_id` by definition.
           //
           // Widening it to the dated history would put a leaver on the advisory of an entity they had
@@ -12126,8 +12152,8 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
           // (which the segmented run pays) and no termination settlement at all. The dated question is
           // the wrong question here; the column is the right answer.
           eq(employment.companyId, batch.companyId),
-          gte(employment.terminatedOn, start),
-          lte(employment.terminatedOn, end),
+          sql`${payrollEmploymentEnd} >= ${start}::date`,
+          sql`${payrollEmploymentEnd} <= ${end}::date`,
         ),
       );
     if (leavers.length === 0) return [];

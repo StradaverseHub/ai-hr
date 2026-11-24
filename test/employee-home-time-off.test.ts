@@ -55,7 +55,10 @@ describe('Home Time Off consumes canonical own leave facts',()=>{
   const response=await calendarGET(new Request('http://localhost/api/home/calendar?'+new URLSearchParams({employmentId:own.employmentId,month:monday.slice(0,7)})));
   expect(response.status).toBe(200);expect(await response.json()).toEqual(result);
   expect(response.headers.get('cache-control')).toBe('private, no-store');
-  for(const field of ['Private fictional','reason','leaveTypeId','medical','personId','4321'])expect(JSON.stringify(result)).not.toContain(field);
+  // Generated UUIDs are blanked first: a random id such as 05d9413e-0422-4321-… must not trip the '4321' check
+  // (gate 45393941273). The check still refuses the fixture value anywhere else in the payload.
+  const visible=JSON.stringify(result).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,'<id>');
+  for(const field of ['Private fictional','reason','leaveTypeId','medical','personId','4321'])expect(visible).not.toContain(field);
  });
  it('shares the own and team Calendar checkout while retaining the separate Payroll read',async()=>{
   await setModule(b.tenantId,'payroll','active');

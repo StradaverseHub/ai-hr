@@ -146,7 +146,8 @@ describe('My Absence: everything the /me Leave tab had now lives on /leave', () 
 
   it('ports the per-date outcome expander, document link, stage line and partial badge', () => {
     expect(ownHistory.includes('<LeaveDateOutcome')).toBe(true);
-    expect(ownHistory.includes('leaveRequestDateBreakdown(session, r.id)')).toBe(true);
+    // UPDATED BY ADR-0181 1.4: the per-date breakdown is still read for the own history, now by one set call.
+    expect(ownHistory.includes('leaveRequestDateBreakdowns(session, selfHistory.slice(0, 5).map((r) => r.id))')).toBe(true);
     // Own uploaded attachment — served by the UNCHANGED route under /me/leave/attachment.
     expect(ownHistory.includes('/me/leave/attachment/${r.id}?inline=1')).toBe(true);
     expect(existsSync(root + 'app/me/leave/attachment/[id]/route.ts')).toBe(true);

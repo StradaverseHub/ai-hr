@@ -242,6 +242,10 @@ export async function ComponentForm({
               includedInHrdfBase={component?.includedInHrdfBase ?? PAY_COMPONENT_DEFAULTS.includedInHrdfBase}
               pcbRemunerationType={component?.pcbRemunerationType ?? null}
               pcbExemptionCode={component?.pcbExemptionCode ?? null}
+              // 8edeef41 — the identity the benefit lock reads; the island follows later edits of these selects.
+              kind={component?.kind ?? PAY_COMPONENT_DEFAULTS.kind}
+              displayCategory={component?.displayCategory ?? ''}
+              eaFormLine={component ? canonicalEa ?? '' : payComponentEaDefault(PAY_COMPONENT_DEFAULTS.kind) ?? ''}
             />
             <p className="text-xs text-muted-foreground sm:col-span-3">{t('flagsHint')}</p>
           </div>

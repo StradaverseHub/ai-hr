@@ -11,6 +11,7 @@ import './stub-server-only';
 import {freshImportContext,runBankImportTick} from '../../core/bank-import-worker';
 import {runIndividualImportTick} from '../../core/individual-import-worker';
 import {retireBulkJobWorker} from '../../core/bulk-job-worker';
+import {OwnerConnectionUnresponsive} from '../../core/owner-step-deadline';
 import {runWorkerLaneIteration,type WorkerSingletonTicks} from '../../core/worker-lane-loop';
 import {runRewardPlanCompanyTick} from '../../packs/rewards/service';
 import {runProbationReconciliationTick} from '../../packs/probation/service';
@@ -62,8 +63,21 @@ export function runWorkerProcess(){
    watchdog.enter('pause');
    if(!worked.bank&&!worked.individual)await new Promise(resolve=>setTimeout(resolve,worked.bulk||worked.rewardPlans||worked.probation?bulkPauseMs:1000));
   }while(!stopping);}
-  finally{watchdog.enter('stop');await retireBulkJobWorker(owner).catch(()=>undefined);await owner.end({timeout:5});await probationOwner?.client.end({timeout:5});await client.end({timeout:5});watchdog.stop();}
+  // The heartbeat removal is bounded (10 s): after OwnerConnectionUnresponsive the abandoned reservation still holds the
+  // only owner connection, so it would wait for ever; owner.end then closes that connection after 5 s. A heartbeat
+  // left behind only ages out (core/bulk-job-worker.ts).
+  finally{watchdog.enter('stop');await retireWithin(owner,10_000);await owner.end({timeout:5});await probationOwner?.client.end({timeout:5});await client.end({timeout:5});watchdog.stop();}
   ended=true;
  }
- main().catch(()=>{ended=true;console.error('Bank import worker stopped. Check its database access, migrations and runtime configuration.');process.exitCode=1;});
+ main().catch(error=>{
+  ended=true;
+  if(error instanceof OwnerConnectionUnresponsive)console.error(`Import worker: ${error.message} Exiting so systemd restarts it with a new connection.`);
+  console.error('Bank import worker stopped. Check its database access, migrations and runtime configuration.');process.exitCode=1;
+ });
+}
+
+async function retireWithin(owner:Parameters<typeof retireBulkJobWorker>[0],ms:number){
+ let timer:ReturnType<typeof setTimeout>|undefined;
+ await Promise.race([retireBulkJobWorker(owner).catch(()=>undefined),new Promise<void>(resolve=>{timer=setTimeout(resolve,ms);})]);
+ clearTimeout(timer);
 }

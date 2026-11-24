@@ -1,0 +1,27 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Movement history — sketch</title><style>
+body{margin:0;background:#fff;color:#1c1c1f;font:14px/1.55 system-ui}main{padding:24px 32px;max-width:1240px}
+.tag{font-size:12px;color:#66666e;text-transform:uppercase;letter-spacing:.04em;margin:18px 0 8px}h1{font-size:19px;margin:0 0 2px}.sub{color:#66666e;margin:0 0 12px}
+a{color:#c2410c;text-decoration:none;margin-right:12px}table{width:100%;border-collapse:collapse;border:1px solid #e8e8eb;border-radius:10px;overflow:hidden}
+th{background:#f6f6f7;color:#66666e;font-weight:500;text-align:left;padding:9px 12px;font-size:13px}td{padding:10px 12px;border-top:1px solid #eeeef0;vertical-align:top}
+.mono{font-family:ui-monospace,monospace}.muted{color:#66666e;font-size:12px}.b{font-weight:600}
+.badge{display:inline-block;border-radius:6px;padding:1px 8px;font-size:11px;font-weight:600;letter-spacing:.03em;margin-left:6px}
+.corr{background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe}.fix{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
+.new{background:#fffbeb}.err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;margin:10px 0}
+.err a{color:#991b1b;text-decoration:underline}.cols{display:grid;grid-template-columns:1fr;gap:6px}
+</style><main>
+<h1>SAMPLE EMPLOYEE</h1><p class="sub">BD0000 · SAMPLE COMPANY SDN BHD · Movement</p>
+
+<div class="tag">Today — the 12-Nov-2026 record is not listed</div>
+<div class="err">The date 02-Nov-2026 is before the current assignment record, which starts on 12-Nov-2026. Check the effective date against your HR records. If it is correct, review and correct the later assignment in Employment History before retrying.</div>
+<table><tr><th>Event Type</th><th>Effective Date</th><th>Department</th><th>Job Title</th><th>Action</th></tr>
+<tr><td class="b">Changed Direct Superior<div class="muted">From 28-Jul-2026 · To Current</div></td><td class="mono">28-Jul-2026</td><td>DP0007</td><td>J0854</td><td><a>View</a><a>Edit</a><a>Delete</a></td></tr>
+<tr><td class="b">Hired</td><td class="mono">09-Mar-2023</td><td>DP0007</td><td>J0854</td><td><a>View</a><a>Correct hire details</a></td></tr></table>
+
+<div class="tag" style="margin-top:28px">After — every dated record is listed, and the refusal names it</div>
+<div class="err">An Information-Only Correction (Department, Position) dated 12-Nov-2026 starts after 02-Nov-2026. Move its Effective Date to on or before 02-Nov-2026, then record the termination. <a>Go to this record</a></div>
+<table><tr><th>Event Type</th><th>Effective Date</th><th>Department</th><th>Job Title</th><th>Action</th></tr>
+<tr class="new"><td class="b">Information corrected<span class="badge corr">CORRECTION</span><div class="muted">Department, Position · by SAMPLE HR USER on 12-Nov-2026</div></td><td class="mono">12-Nov-2026</td><td>DP0009</td><td>J0860</td><td><a>View</a><a>Correct</a></td></tr>
+<tr><td class="b">Changed Direct Superior<div class="muted">From 28-Jul-2026 · To 11-Nov-2026</div></td><td class="mono">28-Jul-2026</td><td>DP0007</td><td>J0854</td><td><a>View</a><a>Edit</a><a>Delete</a></td></tr>
+<tr><td class="b">Hired</td><td class="mono">09-Mar-2023</td><td>DP0007</td><td>J0854</td><td><a>View</a><a>Correct hire details</a></td></tr></table>
+<p class="muted">Correction lines are shown apart from career movements. Correct opens Information-Only Correction with the Effective Date editable. If the later correction changes nothing, the termination simply saves. Sample data.</p>
+</main></html>
