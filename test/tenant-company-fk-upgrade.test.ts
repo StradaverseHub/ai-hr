@@ -2952,8 +2952,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    for(const [i,spec] of specs.entries())await tx.unsafe(`drop policy upgrade_expected_access_pilot_${i} on public.${spec.table}`);
    return rows.map(row=>({...row,policyname:specs[Number(row.policyname.slice('upgrade_expected_access_pilot_'.length))].name}));
   });
-  const accessPilotKey=(row:{tablename:string;policyname:string})=>row.tablename+'.'+row.policyname;
-  const accessPilotSort=<T extends {tablename:string;policyname:string}>(rows:readonly T[])=>[...rows].sort((a,b)=>accessPilotKey(a)<accessPilotKey(b)?-1:1);
+  const accessPilotKey=(row:Record<string,unknown>)=>String(row.tablename)+'.'+String(row.policyname);
+  const accessPilotSort=<T extends Record<string,unknown>>(rows:readonly T[])=>[...rows].sort((a,b)=>accessPilotKey(a)<accessPilotKey(b)?-1:1);
   const accessPilotAfter=accessPilotSort(await accessPilotExpected([
    ...accessPilotTables.map(table=>({table,name:table+'_owner',sql:accessPilotOwner})),
    {table:'job_document',name:'job_document_read',sql:"for select to ai_hr_app using(tenant_id=app.current_tenant_id() AND company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))::uuid[]))"},
