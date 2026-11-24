@@ -55,8 +55,9 @@ export const payrollReprocessGroupMax=()=>Math.max(1,Math.floor(Number(process.e
 /** The chunk length the group size aims for, at least. The chunk holds the run's company/month key and its company's
  * payroll inputs key, so this bounds how long a salary or statutory change for that company may wait behind it. */
 export const payrollReprocessChunkTargetMs=()=>Math.max(1,Number(process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS??1000)||1000);
-/** One engine pass has a fixed cost whatever its size (the run-wide reads: on the hosted runner about 2.6 s of a
- * one-employee pass, against about 50 ms per further employee). A chunk may last this many times that fixed cost, so the
+/** One engine pass has a fixed cost whatever its size (the run-wide reads: on the hosted runner about 0.3 s, against
+ * about 30 ms per further employee, since the Audit loop capture moved to the job and the headcount recount to the write
+ * portal; it was about 2.6 s, ADR 0181 J2). A chunk may last this many times that fixed cost, so the
  * fixed cost is spread over a group instead of paid per employee; the per-employee path held the same keys for one fixed
  * cost per employee. */
 export const payrollReprocessFixedMultiple=()=>Math.max(1,Number(process.env.PAYROLL_REPROCESS_CHUNK_FIXED_MULTIPLE??2)||2);
