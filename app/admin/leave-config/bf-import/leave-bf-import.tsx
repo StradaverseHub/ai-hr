@@ -1,4 +1,5 @@
 'use client';
+import { useImportWorksheet } from '@/components/use-import-worksheet';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { ActionButton } from '@/components/ui/action-button';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
@@ -14,7 +15,7 @@ import { DownloadTemplate } from '@/components/download-template';
 import { leaveBfImportTemplate, LEAVE_BF_XLSX_HEADERS } from '@/lib/import-template';
 import { toCsv, parseCsvRecords } from '@/lib/csv';
 import { requireLeaveImportHeaders } from '@/lib/leave-data-import';
-import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
+import { IMPORT_FILE_ACCEPT, importFileMessageKey } from '@/lib/import-file';
 import {
   LEAVE_BF_COLUMNS,
   LEAVE_BF_IMPORT_MODES,
@@ -70,6 +71,7 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
   const [dragging, setDragging] = useState(false);
   const [reading, setReading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { readFile, clearWorksheet, worksheetPicker, choosingWorksheet } = useImportWorksheet();
   /**
    * THE REPORTER'S IMPORT MODE, and its default comes from the CONTRACT, not from a literal `'replace'`
    * written here. `resolveLeaveBfImportOptions()` is the same function the server resolves with, so the
@@ -140,14 +142,17 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
 
   /** Step 2 → 3 → 4 in one gesture: read the file, then validate it immediately. */
   const loadFile = async (file: File) => {
-    setError(null);
+    if (reading || pending) return;
+    reset();
+    setFileInfo(null);
+    setCsv('');
     setReading(true);
     try {
-      const read = await readImportFile(file);
-      const rows = Math.max(0, read.text.trim() === '' ? 0 : read.text.trim().split(/\r?\n/).length - 1);
+      const read = await readFile(file);
+      if (!read) return;
       setCsv(read.text);
       setSource({ kind: 'file', name: read.name, format: read.format });
-      setFileInfo({ name: read.name, rows });
+      setFileInfo({ name: read.name, rows: read.rowCount });
       setResult(null);
       runValidate(read.text);
     } catch (e) {
@@ -234,7 +239,7 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
             ? 'uploadExcel'
             : 'downloadTemplate';
 
-  useAssistantImportIntake('leave_bf',text=>{if(!historyOnly){reset();setCsv(text);setSource({kind:'paste'});}},setError);
+  useAssistantImportIntake('leave_bf',text=>{if(!historyOnly){clearWorksheet();reset();setCsv(text);setSource({kind:'paste'});}},setError);
 
   if (historyOnly) return <>{error && <p role="alert" className="mb-3 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">{error}</p>}<ImportLog runs={runs} onDownload={downloadErrors} onRollback={rollback} busy={pending} /></>;
 
@@ -295,7 +300,7 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
             }`}
           >
             <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden />
-            <div className="text-sm font-medium">{reading ? t('reading') : t('dropHere')}</div>
+            <div className="text-sm font-medium">{reading && !choosingWorksheet ? t('reading') : t('dropHere')}</div>
             <p className="text-xs text-muted-foreground">{t('uploadHint')}</p>
             <input
               ref={fileInputRef}
@@ -314,6 +319,7 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
             </p>
           )}
         </Field>
+        {worksheetPicker}
 
         {/* The paste path, secondary: also how you inspect what a workbook actually decoded to. */}
         <details className="mt-4 border-t border-border pt-3" open={source.kind === 'paste' && !fileInfo}>
@@ -327,6 +333,7 @@ export function LeaveBfImport({ runs, showRunLog = true, historyOnly = false, on
                 placeholder={t('csvPlaceholder')}
                 value={csv}
                 onChange={(e) => {
+                  clearWorksheet();
                   setCsv(e.target.value);
                   setSource({ kind: 'paste' });
                   setFileInfo(null);

@@ -7,7 +7,7 @@ export const BANK_IMPORT_VALIDATION_ROWS=1000;
 export const BANK_IMPORT_PAGE_ROWS=100;
 export const BANK_IMPORT_ACTIVE_STATES=['uploading','queued','validating','ready','importing'] as const;
 export type BankImportState=typeof BANK_IMPORT_ACTIVE_STATES[number]|'completed'|'failed'|'cancelled';
-export type BankImportProgress={id:string;sourceName:string;state:BankImportState;total:number;validated:number;valid:number;invalid:number;unchanged:number;processed:number;saved:number;failed:number;uploadedBytes:number;sourceBytes:number;attemptId:string|null;error:string|null;updatedAt:string;createdAt:string};
+export type BankImportProgress={id:string;sourceName:string;sourceWorksheet?:string;state:BankImportState;total:number;validated:number;valid:number;invalid:number;unchanged:number;processed:number;saved:number;failed:number;uploadedBytes:number;sourceBytes:number;attemptId:string|null;error:string|null;updatedAt:string;createdAt:string};
 export const bankImportActive=(state:BankImportState)=> (BANK_IMPORT_ACTIVE_STATES as readonly string[]).includes(state);
 export function bankImportPercent(job:BankImportProgress){
  const total=job.state==='uploading'?job.sourceBytes:job.total;

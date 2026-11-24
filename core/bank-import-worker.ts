@@ -39,7 +39,7 @@ async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void
   const hash=createHash('sha256');let bytes=0;for(const part of parts){hash.update(part);bytes+=part.length;}
   if(bytes!==job.source_bytes||hash.digest('hex')!==job.source_hash)throw new Error('The uploaded file is incomplete or its checksum differs. Upload it again.');
   // Same rows, errors and refusals as decodeBankImportSource, staged as compact batches (lib/bank-import-stream-source.server.ts).
-  const staged=await stageBankImportSource(job.source_name,parts);
+  const staged=await stageBankImportSource(job.source_name,parts,job.source_worksheet??undefined);
   await withTenant(ctx,async tx=>{
    const current=await bankJobTx(tx,id,true);if(current.state!=='queued')return;
    for(let batch=0;batch<staged.batches.length;batch++){
@@ -81,7 +81,7 @@ async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void
    const current=await bankJobTx(tx,id,true);if(current.attempt_id)return;
    const companies=await tx.execute<{company_id:string}>(sql`select distinct company_id from bank_import_row where job_id=${id}::uuid and state='valid' and company_id is not null`);
    // Detailed preview remains paginated in bank_import_row; the immutable history plan references it.
-   const plan=sealImportPlan<ImportPlanBase&{kind:'bank_statutory';jobId:string;rows:never[]}>({version:1,kind:'bank_statutory',jobId:id,rows:[],previewHash:'',counts:{total:current.total,valid:current.valid,invalid:current.invalid},issues:[]});
+   const plan=sealImportPlan<ImportPlanBase&{kind:'bank_statutory';jobId:string;sourceWorksheet?:string;rows:never[]}>({version:1,kind:'bank_statutory',jobId:id,...current.source_worksheet?{sourceWorksheet:current.source_worksheet}:{},rows:[],previewHash:'',counts:{total:current.total,valid:current.valid,invalid:current.invalid},issues:[]});
    const attempt=await createImportAttemptTx(tx,ctx,{kind:'bank_statutory',sourceName:current.source_name,content:await sourceTx(tx,id),companyIds:companies.map(c=>c.company_id),plan,operationKey:id});
    await tx.execute(sql`update bank_import_job set attempt_id=${attempt.attemptId}::uuid,processed=total-valid,updated_at=now() where id=${id}::uuid`);
   });return;

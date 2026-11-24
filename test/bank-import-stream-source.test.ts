@@ -223,3 +223,12 @@ describe('Excel: streamed decode equals the whole-file decode',()=>{
   expect(outcome.ok&&outcome.errors.length).toBeGreaterThan(0);
  },60_000);
 });
+
+it('stages only the explicitly selected Bank & Statutory worksheet', async () => {
+ const bytes=Buffer.from(await buildXlsx(['employee_code','tax_number'],[['E01','T1']],{
+  sheetName:'October',extraSheets:[{name:'November',rows:[['employee_code','tax_number'],['E02','T2'],[' ',' '],['E03','T3']]}],
+ }));
+ const staged=await stageBankImportSource('bank.xlsx',split(bytes,123),'November');
+ expect(materialize(staged).records.map(row=>row.employee_code)).toEqual(['E02','E03']);
+ await expect(stageBankImportSource('bank.xlsx',split(bytes,123),'Unknown')).rejects.toMatchObject({code:'UNEXPECTED_SHEET'});
+});

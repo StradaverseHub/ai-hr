@@ -26,6 +26,7 @@ export type IndividualImportJobState =
 export type IndividualImportJob = {
   id: string;
   source_name: string;
+  source_worksheet?: string | null;
   created_by: string;
   created_at: Date;
   started_at: Date | null;

@@ -11634,7 +11634,7 @@ export const importAttemptEvent=pgTable('import_attempt_event',{
 /** Mutable operational checkpoints; immutable HR change history remains in import_attempt*. */
 export const bankImportJob=pgTable('bank_import_job',{
  id:id(),tenantId:tenantId(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),context:jsonb('context').notNull(),companyIds:uuid('company_ids').array().notNull().default(sql`'{}'::uuid[]`),
- sourceName:text('source_name').notNull(),sourceHash:text('source_hash').notNull(),sourceBytes:integer('source_bytes').notNull(),uploadedBytes:integer('uploaded_bytes').notNull().default(0),
+ sourceName:text('source_name').notNull(),sourceWorksheet:text('source_worksheet'),sourceHash:text('source_hash').notNull(),sourceBytes:integer('source_bytes').notNull(),uploadedBytes:integer('uploaded_bytes').notNull().default(0),
  state:text('state').notNull().default('uploading'),total:integer('total').notNull().default(0),validated:integer('validated').notNull().default(0),valid:integer('valid').notNull().default(0),
  invalid:integer('invalid').notNull().default(0),unchanged:integer('unchanged').notNull().default(0),processed:integer('processed').notNull().default(0),saved:integer('saved').notNull().default(0),failed:integer('failed').notNull().default(0),
  attemptId:uuid('attempt_id').references(()=>importAttempt.id),error:text('error'),createdAt:createdAt(),updatedAt:timestamp('updated_at',{withTimezone:true}).notNull().defaultNow(),

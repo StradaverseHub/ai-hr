@@ -1,4 +1,5 @@
 'use client';
+import {useImportWorksheet} from '@/components/use-import-worksheet';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import {useEffect,useMemo,useRef,useState} from 'react';
@@ -26,6 +27,7 @@ export function BankImportProgress(){
  const t=useTranslations('people.import'),j=useTranslations('people.import.background'),labels=useTranslations(),shared=useTranslations('importProblems');
  const fieldLabel=(column:string)=>personnelColumnLabel(column,'employee',(key,fallback)=>labels.has(key)?labels(key):fallback);
  const [job,setJob]=useState<BankImportProgress|null>(null),[jobs,setJobs]=useState<BankImportProgress[]>([]),[rows,setRows]=useState<Row[]>([]),[page,setPage]=useState(0),[checkedAt,setCheckedAt]=useState(0),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[paste,setPaste]=useState(''),[duplicate,setDuplicate]=useState(false);
+ const {readWorksheet,clearWorksheet,worksheetPicker,choosingWorksheet}=useImportWorksheet();
  const choosing=useRef(false),input=useRef<HTMLInputElement>(null);
  // d3ba1e9f — the first 200 problem rows once the check (or the import) has settled; the Error Log has them all.
  const [problems,setProblems]=useState<Problems|null>(null);
@@ -52,8 +54,15 @@ export function BankImportProgress(){
   if(choosing.current)return;choosing.current=true;setBusy(true);setError('');setDuplicate(false);setPage(0);
   try{
    if(file.size>BANK_IMPORT_MAX_BYTES)throw new Error(j('limit'));
+   clearWorksheet();
+   let worksheet:string|undefined;
+   if(/\.xlsx?$/i.test(file.name)){
+    const choice=await readWorksheet(file,{inspectOnly:true,framed:true,maxFileBytes:BANK_IMPORT_MAX_BYTES,exclude:['Reference','Instructions','__PersonnelLists']});
+    if(!choice)return;
+    worksheet=choice.worksheet;
+   }
    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');
-   const admitted=await jsonRequest(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:file.name,bytes:file.size,hash})});
+   const admitted=await jsonRequest(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:file.name,bytes:file.size,hash,worksheet})});
    setJob(admitted.job);setRows([]);setJobs(old=>[admitted.job,...old.filter(v=>v.id!==admitted.job.id)]);
    if(admitted.existing&&admitted.job.state!=='uploading'){setDuplicate(true);return;}
    for(let offset=0,part=0;offset<file.size;offset+=BANK_IMPORT_CHUNK_BYTES,part++){
@@ -75,15 +84,16 @@ export function BankImportProgress(){
    <p className="text-sm">{j('help')}</p><p className="text-xs text-muted-foreground">{j('limit')}</p>
    <label className="block text-sm font-medium" htmlFor="bank-import-file">{t('uploadFile')}</label>
    <input id="bank-import-file" ref={input} type="file" accept={IMPORT_FILE_ACCEPT} disabled={busy||loading} onChange={event=>{const file=event.target.files?.[0];if(file)void upload(file);}} className="block max-w-full text-sm file:mr-3 file:rounded-md file:border file:border-border file:bg-muted file:px-3 file:py-2"/>
+   {worksheetPicker}
    <details className="text-sm"><summary className="cursor-pointer">{j('paste')}</summary><textarea aria-label={j('paste')} value={paste} disabled={busy} onChange={event=>setPaste(event.target.value)} rows={5} className="my-3 w-full rounded border border-border bg-background p-2 font-mono text-xs"/><Button aria-busy={busy} variant="secondary" disabled={busy||!paste.trim()} onClick={()=>void upload(new File([paste],'pasted-bank-statutory.csv',{type:'text/csv'}))}>{j('checkPaste')}</Button></details>
    {loading&&<p role="status" className="text-sm text-muted-foreground">{j('loading')}</p>}
-   {busy&&!job&&<p role="status" className="text-sm text-muted-foreground">{j('preparing')}</p>}
+   {busy&&!job&&!choosingWorksheet&&<p role="status" className="text-sm text-muted-foreground">{j('preparing')}</p>}
   </Card>
   {error&&<p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
   {duplicate&&<p role="status" className="text-sm text-muted-foreground">{j('duplicate')}</p>}
   {jobs.length>1&&<label className="block text-sm">{j('recent')}<select className="ml-3 max-w-full rounded border border-border bg-background p-2" value={job?.id??''} disabled={busy} onChange={event=>{setPage(0);setRows([]);setJob(jobs.find(v=>v.id===event.target.value)??null);}}>{jobs.map(v=><option key={v.id} value={v.id}>{v.sourceName} · {new Date(v.createdAt).toLocaleString(undefined, { timeZone: HR_LOCAL_TZ })}</option>)}</select></label>}
   {job&&<Card className="space-y-4 p-5">
-   <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="break-all text-sm font-semibold">{job.sourceName}</h3><span role="status" className="text-sm">{stateLabels[job.state]}</span></div>
+   <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="break-all text-sm font-semibold">{job.sourceName}{job.sourceWorksheet&&<span className="ml-2 font-normal text-muted-foreground">· {job.sourceWorksheet}</span>}</h3><span role="status" className="text-sm">{stateLabels[job.state]}</span></div>
    {bankImportActive(job.state)&&job.state!=='ready'&&<><progress aria-label={stateLabels[job.state]} value={progress} max={100} className="h-2 w-full accent-primary"/><p className="text-xs text-muted-foreground">{job.state==='uploading'?j('uploadCount',{done:job.uploadedBytes,total:job.sourceBytes}):job.state==='importing'?j('savedCount',{saved:job.saved,done:job.processed,total:job.total}):j('validationCount',{done:job.validated,total:job.total})}</p></>}
    {['queued','validating','importing'].includes(job.state)&&<p className="text-xs text-muted-foreground">{checkedAt-Date.parse(job.updatedAt)>90_000?j('waiting'):j('backgroundHelp')}</p>}
    {job.total>0&&<p className="text-sm">{j('summary',{valid:job.valid,invalid:job.invalid,unchanged:job.unchanged})}</p>}

@@ -121,7 +121,7 @@ export async function importPreviewAction(_prev: ImportState, f: FormData): Prom
   try {
     const file = f.get('file');
     if (!(file instanceof File) || file.size === 0) return { error: 'Choose an .xlsx file first.' };
-    const preview = await lc.previewOnboardingImport(s, Buffer.from(await file.arrayBuffer()), { fileName: file.name, defaultCompanyId: opt(f, 'defaultCompanyId') });
+    const preview = await lc.previewOnboardingImport(s, Buffer.from(await file.arrayBuffer()), { fileName: file.name, defaultCompanyId: opt(f, 'defaultCompanyId'), worksheets: f.has('worksheet') ? f.getAll('worksheet').map(String) : undefined });
     return { preview };
   } catch (e) { return { error: publicErrorMessage(e) }; }
 }

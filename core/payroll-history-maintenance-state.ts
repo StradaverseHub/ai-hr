@@ -54,7 +54,7 @@ export async function historyMaintenanceStatesTx(tx:Tx,ctx:SessionContext,ids:re
  const plannedKey=(row:{companyId:string;employmentId:string;period:string;cycleId:string;valueHash:string|null})=>[row.companyId,row.employmentId,row.period,row.cycleId,row.valueHash].join(':');
  const plannedBySource=new Map(sources.map(source=>{const rows=new Map<string,typeof source.plan.rows>();for(const row of source.plan.rows){const key=plannedKey(row),group=rows.get(key)??[];group.push(row);rows.set(key,group);}return[source.id,rows] as const;}));
  const {parsePayrollHistorySource}=await import('./payroll-history-revisions');
- for(const source of sources){if(createHash('sha256').update(source.sourceContent).digest('hex')!==source.sourceHash)fail('The original retained source hash does not match.');parsed.set(source.id,await parsePayrollHistorySource(source.sourceName,source.sourceContent));}
+ for(const source of sources){if(createHash('sha256').update(source.sourceContent).digest('hex')!==source.sourceHash)fail('The original retained source hash does not match.');parsed.set(source.id,await parsePayrollHistorySource(source.sourceName,source.sourceContent,source.plan.sourceWorksheet));}
  for(const identity of identities){let state:HistoryContributionState={version:1,baselineSnapshotId:null,chains:{}};let values:ImportedPayrollValues|null=null;const bySnapshot=new Map<string,HistoryContributionState>();
   const current=latest.get(identity.id);
   if(current?.maintenance){const saved=current.snapshotId?snapshots.get(current.snapshotId):null;out.set(identity.id,{state:structuredClone(current.maintenance.state),values:saved?.values??null});continue;}

@@ -128,6 +128,8 @@ export function toXlsxReport(d: ReportData): SerializedReport {
   const paneOpts = frozenCols > 0
     ? `<x:FreezePanes/><x:SplitVertical>${frozenCols}</x:SplitVertical><x:LeftColumnRightPane>${frozenCols}</x:LeftColumnRightPane>`
     : '';
+  const sheetName = d.title.replace(/[\\/:*?\[\]\u0000-\u001f]/g, ' ').trim().slice(0, 31)
+    .replace(/[\uD800-\uDBFF]$/, '').replace(/^'+|'+$/g, '').trim() || 'Report';
   // SpreadsheetML-flavoured HTML workbook. The xmlns + <!--[if gte mso 9]> worksheet name make Excel
   // treat it as a real sheet; the .xls extension + vnd.ms-excel type route it to the spreadsheet app.
   const html =
@@ -135,7 +137,7 @@ export function toXlsxReport(d: ReportData): SerializedReport {
     `xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">` +
     `<head><meta charset="utf-8"/>` +
     `<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>` +
-    `<x:Name>${xmlEsc(d.title).slice(0, 31)}</x:Name>` +
+    `<x:Name>${xmlEsc(sheetName)}</x:Name>` +
     `<x:WorksheetOptions><x:DisplayGridlines/>${paneOpts}</x:WorksheetOptions>` +
     `</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->` +
     `</head><body>${logo}` +

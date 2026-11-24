@@ -1,4 +1,5 @@
 'use client';
+import { useImportWorksheet } from '@/components/use-import-worksheet';
 import {useRef,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {Button,inputCls} from '@/components/ui';
@@ -24,12 +25,14 @@ function PolicyMatrixGridDraft({kind,matrix,year,onRowsChange,pristineValidation
  const cellMessage=(row:string,column:number)=>issues.filter(issue=>issue.row===row&&(issue.column===column||issue.column===0)).map(message).join(' ');
  const uniqueIssues=issues.filter((issue,index)=>issues.findIndex(other=>other.row===issue.row&&other.column===issue.column)===index);
  const issueId=(row:string,column:number)=>`${kind}-error-${encodeURIComponent(row)}-${column}`;
+ const {readWorksheet,clearWorksheet,worksheetPicker}=useImportWorksheet();
  async function upload(input:File){
   setError(false);setBusy(true);setProposal(null);
   try{
    if(!input.name.toLowerCase().endsWith('.xlsx')||input.size>2*1024*1024)throw new Error();
-   const {workbookToCsvText}=await import('@/lib/spreadsheet');
-   const text=await workbookToCsvText(await input.arrayBuffer());
+   const sheet=await readWorksheet(input,{maxFileBytes:2*1024*1024});
+   if(!sheet)return;
+   const {text}=sheet;
    const parsed=parseCsv(text),actual=(parsed[0]??[]).map(value=>value.trim().toLowerCase()),records=parsed.slice(1);
    const expected=columns.map(value=>value.toLowerCase());
    if(actual.length!==expected.length||actual.some((value,index)=>value!==expected[index])||!records.length||records.length>200||records.some(row=>row.length!==expected.length))throw new Error();
@@ -40,7 +43,7 @@ function PolicyMatrixGridDraft({kind,matrix,year,onRowsChange,pristineValidation
   }catch{setError(true);}finally{setBusy(false);if(file.current)file.current.value='';}
  }
  const selectedYear=()=>{const input=file.current?.form?.elements.namedItem('year');return input instanceof HTMLInputElement?Number(input.value):year;};
- async function copy(){setBusy(true);setError(false);const requested=selectedYear();try{const choices=await loadPreviousRewardPolicyMatrices(requested);if(selectedYear()!==requested){setError(true);return;}setSourceYear(requested);setPrevious(choices);}catch{setError(true);}finally{setBusy(false);}}
+ async function copy(){clearWorksheet();setBusy(true);setError(false);const requested=selectedYear();try{const choices=await loadPreviousRewardPolicyMatrices(requested);if(selectedYear()!==requested){setError(true);return;}setSourceYear(requested);setPrevious(choices);}catch{setError(true);}finally{setBusy(false);}}
  const changeRows=(next:string[][])=>{if(guidance)setValidationInteracted(true);setRows(next);onRowsChange?.(next);};
  const update=(index:number,column:number,value:string)=>changeRows(rows.map((row,i)=>i===index?row.map((cell,c)=>c===column?value:cell):row));
  const proposalIssues=proposal?policyGridIssues(kind,proposal):[];
@@ -48,6 +51,7 @@ function PolicyMatrixGridDraft({kind,matrix,year,onRowsChange,pristineValidation
   onInvalidCapture={guidance?()=>setValidationInteracted(true):undefined}>
   <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-medium">{t(kind)}</h3><div className="flex flex-wrap gap-2"><Button aria-busy={busy} type="button" variant="outline" disabled={busy} onClick={()=>file.current?.click()}>{t('import')}</Button><Button aria-busy={busy} type="button" variant="outline" disabled={busy||year<=2000} onClick={()=>{void copy();}}>{t('copy')}</Button></div></div>
   <input ref={file} type="file" accept=".xlsx" className="sr-only" aria-label={t('import')} onChange={event=>{if(event.target.files?.[0])void upload(event.target.files[0]);}}/>
+  {worksheetPicker}
   <p className="text-xs text-muted-foreground">{t('columns',{columns:columns.join(', ')})}</p>
   {error&&<p key={announceFeedback?'file-alert':'file-inactive'} role={announceFeedback?'alert':undefined} className="text-sm text-destructive">{t('fileError')}</p>}
   {previous&&<div className="space-y-2 rounded-md border p-3"><p className="text-sm font-medium">{t('choosePrevious',{year:sourceYear-1})}</p>{previous.length?previous.map(item=><Button key={item.id} type="button" variant="outline" onClick={()=>{setProposal(policyGridRows(kind,item[kind]));setPrevious(null);}}>{item.name} · {t('version',{version:item.revision})}</Button>):<p className="text-sm text-muted-foreground">{t('noPrevious')}</p>}<Button type="button" variant="ghost" onClick={()=>setPrevious(null)}>{t('cancel')}</Button></div>}

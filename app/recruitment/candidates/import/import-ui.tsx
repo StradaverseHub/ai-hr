@@ -1,6 +1,7 @@
 'use client';
 /**
- * Recruitment slice 16 — the candidate import screen's two interactive parts: choosing a file and reading the preview (nothing is
+ * Recruitment slice 16 — the candidate import { useImportWorksheet } from '@/components/use-import-worksheet';
+import screen's two interactive parts: choosing a file and reading the preview (nothing is
  * written until "Start import"), and the running import's progress (the shared bulk-job progress shape, lib/bulk-job: state,
  * percent, steps; Stop). An Excel workbook is turned into CSV text in the browser by the repository's one workbook decoder
  * (lib/spreadsheet), so the server reads and checks plain text only, exactly as for a CSV file.
@@ -20,10 +21,6 @@ type Problem = { problem: string };
 const isProblem = (v: unknown): v is Problem => !!v && typeof v === 'object' && 'problem' in v;
 
 async function fileText(file: File): Promise<string> {
-  if (/\.(xlsx|xls)$/i.test(file.name)) {
-    const { workbookToCsvText } = await import('@/lib/spreadsheet');
-    return workbookToCsvText(await file.arrayBuffer());
-  }
   // Strict UTF-8: a file saved in another encoding is refused here, never read with replacement characters.
   const text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
   return text.replace(/^\uFEFF/, '');
@@ -35,24 +32,38 @@ export function CandidateImportWizard({ companyId, fieldLabels }: { companyId: s
   const te = useTranslations('recruitment.errors');
   const router = useRouter();
   const [busy, start] = useTransition();
+  const [reading, setReading] = useState(false);
   const [file, setFile] = useState<{ name: string; text: string } | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [problem, setProblem] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const operationKey = useRef<string>('');
+  const { readWorksheet, clearWorksheet, worksheetPicker, choosingWorksheet } = useImportWorksheet();
   const errorText = (code: string) => {
     try { return te(code as 'unexpected'); } catch { return te('unexpected'); }
   };
-  const choose = (picked: File | undefined) => {
+  const choose = async (picked: File | undefined) => {
+    clearWorksheet();
     setPreview(null); setProblem(''); setConfirmed(false); setFile(null);
     if (!picked) return;
     if (picked.size > MAX_FILE_BYTES) { setProblem(t('fileErrors.import_too_large')); return; }
+    setReading(true);
+    const excel = /\.xlsx?$/i.test(picked.name);
+    let text: string;
+    try {
+      if (excel) {
+        const selected = await readWorksheet(picked, {maxFileBytes: MAX_FILE_BYTES, maxCsvBytes: MAX_FILE_BYTES});
+        if (!selected) return;
+        text = selected.text;
+      } else text = await fileText(picked);
+    } catch (error) {
+      setProblem(t(error instanceof TypeError && !excel ? 'fileErrors.import_bad_encoding'
+        : error instanceof Error && error.message === 'FILE_TOO_LARGE' ? 'fileErrors.import_too_large' : 'fileErrors.import_file_invalid'));
+      return;
+    } finally {
+      setReading(false);
+    }
     start(async () => {
-      let text: string;
-      try { text = await fileText(picked); } catch (e) {
-        setProblem(e instanceof TypeError && !/\.(xlsx|xls)$/i.test(picked.name) ? t('fileErrors.import_bad_encoding') : t('fileErrors.import_file_invalid'));
-        return;
-      }
       const result = await previewCandidateImportAction({ companyId, text, fileName: picked.name });
       if (isProblem(result)) { setProblem(errorText(result.problem)); return; }
       if (!result.ok) { setProblem(t(`fileErrors.${result.fileError}`)); return; }
@@ -80,11 +91,16 @@ export function CandidateImportWizard({ companyId, fieldLabels }: { companyId: s
     <div className="space-y-4">
       <label className="block space-y-2">
         <span className="text-sm font-medium">{t('chooseFile')}</span>
-        <input type="file" accept=".csv,.xlsx,.xls,text/csv" disabled={busy} onChange={(e) => choose(e.target.files?.[0])}
+        <input type="file" accept=".csv,.xlsx,.xls,text/csv" disabled={busy || reading} onChange={(e) => {
+          const picked = e.currentTarget.files?.[0];
+          e.currentTarget.value = '';
+          void choose(picked);
+        }}
           className="block w-full text-sm file:mr-3 file:rounded-md file:border file:border-input file:bg-card file:px-3 file:py-1.5 file:text-sm file:font-medium" />
         <span className="block text-xs text-muted-foreground">{t('fileHelp')}</span>
       </label>
-      {busy && <p role="status" className="text-sm text-muted-foreground">{preview ? t('starting') : t('checking')}</p>}
+      {worksheetPicker}
+      {(busy || reading) && !choosingWorksheet && <p role="status" className="text-sm text-muted-foreground">{preview ? t('starting') : t('checking')}</p>}
       {problem && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{problem}</p>}
       {preview?.ok && (
         <section aria-labelledby="preview-title" className="space-y-4 rounded-xl border border-border bg-card p-4">
@@ -137,7 +153,7 @@ export function CandidateImportWizard({ companyId, fieldLabels }: { companyId: s
             <button type="button" className={btnPrimary} disabled={busy || !confirmed || preview.ready === 0} onClick={begin}>
               {t('start', { count: preview.ready })}
             </button>
-            <button type="button" className={btnGhost} disabled={busy} onClick={() => { setPreview(null); setFile(null); setConfirmed(false); }}>{t('cancelPreview')}</button>
+            <button type="button" className={btnGhost} disabled={busy} onClick={() => { clearWorksheet(); setPreview(null); setFile(null); setConfirmed(false); }}>{t('cancelPreview')}</button>
           </div>
         </section>
       )}

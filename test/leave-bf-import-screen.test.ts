@@ -227,11 +227,11 @@ describe('db55d08a — the page is the house shape', () => {
     }
   });
 
-  it('the island reads the file in the BROWSER, through the one decoder this repo has', () => {
+  it('the island reads the file in the BROWSER, through the worksheet picker', () => {
     const src = read(ISLAND);
     expect(src.startsWith("'use client'")).toBe(true);
     expect(src).toContain("from '@/lib/import-file'");
-    expect(src).toContain('readImportFile(file)');
+    expect(src).toContain('readFile(file)');
     // …and the xlsx template is built in the browser, so no spreadsheet library ships to the server.
     expect(src).toContain("await import('@/lib/spreadsheet')");
   });
@@ -286,10 +286,10 @@ describe('db55d08a — the contract, and the computed keys the coverage guard ca
     expect(en.admin.leaveBfImport.mode.replace.hint).toMatch(/previous B\/F import/);
   });
 
-  it('every reachable upload-failure message resolves for the permissive single-sheet Leave decoder', () => {
+  it('every reachable upload-failure message resolves for the Leave worksheet picker', () => {
     // Personnel's allowedSheets option adds UNEXPECTED_SHEET; this importer does not opt into that
     // strict multi-register policy. Keep every actual Leave failure translated without adding a policy.
-    expect(read(ISLAND)).toContain('readImportFile(file)');
+    expect(read(ISLAND)).toContain('readFile(file)');
     expect(read(ISLAND)).not.toContain('allowedSheets');
     const codes = ['UNSUPPORTED_FILE_TYPE', 'FILE_TOO_LARGE', 'EMPTY_FILE', 'EMPTY_SHEET', 'FILE_READ_FAILED'] as const;
     expect(codes).toHaveLength(5);

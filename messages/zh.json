@@ -288,6 +288,21 @@
     "dayContextHelp": "日期标签与排班分开。休假详情保留在休假模块中。",
     "colPosition": "职位"
   },
+  "worksheetImport": {
+    "title": "选择工作表",
+    "label": "工作表",
+    "placeholder": "请选择工作表",
+    "option": "{name} · {count, number} 行",
+    "count": "{count, number} 行数据",
+    "hint": "行数不包括表头和空行。",
+    "noData": "没有工作表包含数据行。请添加数据或选择其他文件。",
+    "multiple": "工作表",
+    "companions": "包含附属工作表",
+    "confirmMultiple": "使用选定的工作表",
+    "readError": "无法读取工作簿。请选择有效的 Excel 文件。",
+    "confirm": "使用此工作表",
+    "selected": "{name} · 已选择 {count, number} 行数据"
+  },
   "common": {
     "close": "关闭",
     "appName": "AIHR",

@@ -1,3 +1,4 @@
+import {validImportWorksheet} from '../lib/import-worksheet';
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -13,7 +14,7 @@ const uuid = z.uuid();
 // attempt confirmed before stage 2 (at most 2,000 rows). A batch reverted before stage 2 kept its queue state.
 const metadata = sql`job.id, job.source_name, job.created_by, job.created_at, job.started_at, job.finished_at,
   job.attempt_id, case when job.state = 'completed' and attempt.state = 'reverted' then 'reverted' else job.state end as state,
-  job.processed, job.error, job.method,
+  job.processed, job.error, job.method, job.source_worksheet,
   coalesce(attempt.total_rows, (attempt.preview->>'total')::int, 0) as total,
   case when attempt.state = 'importing' then (select count(*)::int from payroll_txn_import_outcome o where o.attempt_id = attempt.id and o.state = 'imported')
     else coalesce(attempt.written, 0) end as written,
@@ -27,13 +28,14 @@ const jobWithAttempt = sql`payroll_individual_import_job job
 const selection = (ids: string[]) => sql`job.company_ids <@ ${JSON.stringify(ids)}::jsonb`;
 
 export async function submitIndividualImportJob(ctx: SessionContext, input: {
-  id: string; name: string; content: Buffer; method: IndividualImportMethod; scopeIds: string[];
+  id: string; name: string; content: Buffer; method: IndividualImportMethod; scopeIds: string[]; worksheet?: string;
 }) {
   if (!uuid.safeParse(input.id).success) throw new IndividualImportError('operationChanged');
   if (!ctx.userId || ctx.agent || !isAdmin(ctx) || !input.scopeIds.length) throw new IndividualImportError('importAccessDenied');
   if (input.method !== 'monthly' && input.method !== 'daily') throw new IndividualImportError('templateMismatch');
   if (!input.name.toLowerCase().endsWith('.xlsx') || input.name.length > 255) throw new IndividualImportError('invalidFormat');
   if (input.content.length > INDIVIDUAL_IMPORT_MAX_BYTES) throw new IndividualImportError('fileTooLarge');
+  if (input.worksheet !== undefined && !validImportWorksheet(input.worksheet)) throw new IndividualImportError('templateMismatch');
   if (!input.content.length) throw new IndividualImportError('emptyFile');
   const hash = createHash('sha256').update(input.content).digest('hex');
   const companyIds = [...new Set(input.scopeIds)].sort();
@@ -41,6 +43,7 @@ export async function submitIndividualImportJob(ctx: SessionContext, input: {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'individual-import:' + ctx.tenantId + ':' + ctx.userId}, 0))`);
     const [existing] = await tx.execute<{same: boolean}>(sql`
       select created_by = ${ctx.userId}::uuid and source_hash = ${hash} and method = ${input.method}
+        and source_worksheet is not distinct from ${input.worksheet ?? null}::text
         and company_ids = ${JSON.stringify(companyIds)}::jsonb as same
       from payroll_individual_import_job where id = ${input.id}::uuid`);
     if (existing) {
@@ -53,10 +56,10 @@ export async function submitIndividualImportJob(ctx: SessionContext, input: {
     if (limit.count >= 3) throw new IndividualImportError('queueFull');
     await tx.execute(sql`
       insert into payroll_individual_import_job
-        (id, tenant_id, created_by, company_ids, context, source_name, source_hash, source, method, template_version)
+        (id, tenant_id, created_by, company_ids, context, source_name, source_hash, source, method, template_version, source_worksheet)
       values (${input.id}::uuid, ${ctx.tenantId}::uuid, ${ctx.userId}::uuid, ${JSON.stringify(companyIds)}::jsonb,
         ${JSON.stringify({tenantId: ctx.tenantId, userId: ctx.userId, personId: ctx.personId, grants: ctx.grants, roles: ctx.roles})}::jsonb,
-        ${input.name}, ${hash}, ${input.content}, ${input.method}, 2)`);
+        ${input.name}, ${hash}, ${input.content}, ${input.method}, 2, ${input.worksheet??null})`);
     return input.id;
   });
 }

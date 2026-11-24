@@ -1,3 +1,7 @@
+# Import worksheet selection, 24 November 2026 (draft)
+
+Candidate reserves `7160_import_source_worksheet`, index `10560`, and timestamp `1795488671000`. The freshly fetched main and alpha end at `7150`. A local ref-history search found no tracked migrations in the 7160–7239 range. Recheck competing allocations and both installed ledgers before release admission. The new columns are nullable for retained jobs.
+
 # Contract list company rights once per company, 23 November 2026
 
 Reserve `7150_contract_list_company_rights_once`, journal index `10550`, timestamp `1795280007150`,

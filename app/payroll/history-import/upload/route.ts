@@ -17,7 +17,7 @@ export async function POST(request:Request){
   const url=new URL(request.url);
   const mode=url.searchParams.get('mode')??'replace';
   if(mode!=='replace'&&mode!=='update_listed')return Response.json({error:null},{status:400});
-  const result=await previewPayrollHistoryUpload(ctx,{name:url.searchParams.get('name')??'',operationKey:request.headers.get('x-upload-operation')??undefined,content:Buffer.concat(chunks),maintenance:{version:1,mode}});
+  const result=await previewPayrollHistoryUpload(ctx,{name:url.searchParams.get('name')??'',operationKey:request.headers.get('x-upload-operation')??undefined,content:Buffer.concat(chunks),worksheet:url.searchParams.get('worksheet')??undefined,maintenance:{version:1,mode}});
   return Response.json(result,{headers:{'Cache-Control':'private, no-store'}});
  }catch(error){
   if(!(error instanceof PayrollHistoryRevisionError))console.error('[history upload]',error);

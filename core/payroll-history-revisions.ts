@@ -20,6 +20,7 @@ import {lockPayrollHistoryWriteTx} from './payroll-history-lock';
 import {resolvePayrollPermission,batchDownstreamWarnings,markHistoryAffectedPayrollTx} from './payroll';
 import {historyAnalyzeFactsTx,preparePayrollHistoryRevisionTx,toIsoPeriod} from './payroll-history-import';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {validImportWorksheet} from '../lib/import-worksheet';
 import {parseCsvRecords} from '../lib/csv';
 import {historyColumnLabel,readHistoryField,type PayrollHistoryRecord} from '../lib/payroll-history-import-schema';
 import {historyRecordKey,PayrollHistoryRevisionError,type HistoryRevisionPlan,type HistoryRevisionRow,type ImportedPayrollValues,type HistoryRevisionChange} from '../lib/payroll-history-revisions';
@@ -62,20 +63,28 @@ function checkWorkbook(bytes:Buffer){
  }
  if(position!==offset+size)fail('The workbook archive directory is invalid.');
 }
-export async function parsePayrollHistorySource(name:string,bytes:Buffer):Promise<PayrollHistoryRecord[]>{
+export async function parsePayrollHistorySource(name:string,bytes:Buffer,worksheet?:string):Promise<PayrollHistoryRecord[]>{
  if(bytes.length>10485760)fail('Choose a file no larger than 10 MB.');
+ if(worksheet!==undefined&&(!validImportWorksheet(worksheet)||!/\.xlsx?$/i.test(name)))fail('Choose a worksheet in the uploaded workbook.');
  let text:string;
  if(/\.xlsx?$/i.test(name)){
   if(name.toLowerCase().endsWith('.xlsx'))checkWorkbook(bytes);
   else if(bytes.subarray(0,8).toString('hex')!=='d0cf11e0a1b11ae1')fail('Choose a valid XLS workbook.');
+  if(worksheet!==undefined){
+   const {namedWorksheetToCsvText}=await import('../lib/spreadsheet');
+   try{text=await namedWorksheetToCsvText(new Uint8Array(bytes),worksheet,{maxRows:50001,maxCells:20_000_000},true,true);}
+   catch(error){if(error instanceof Error&&error.message==='TOO_MANY_ROWS')fail('Split this file into uploads of at most 50,000 rows.');fail('The selected worksheet could not be read or contains no data.');}
+  }else{
   const XLSX=await import('xlsx');
   const workbook=XLSX.read(bytes,{type:'buffer',sheetRows:50002,cellFormula:false,cellHTML:false,bookVBA:false});
   if(!workbook.SheetNames.length)fail('The workbook has no worksheet.');
   text=XLSX.utils.sheet_to_csv(workbook.Sheets[workbook.SheetNames[0]]);
+  }
  }else if(name.toLowerCase().endsWith('.csv')){
   try{text=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{fail('Save the CSV file as UTF-8.');}
  }else fail('Choose a CSV, XLS or XLSX payroll history file.');
- const source=parseCsvRecords(text!);
+ // Retained attempts bind original source rows by index for tax-basis and correction replay.
+ const source=parseCsvRecords(text!,{preserveBlankRows:worksheet===undefined});
  if(new Set(source.headers).size!==source.headers.length)fail('Remove repeated column headings before validating this file.');
  const parsed=source.records;
  if(parsed.length>50000)fail('Split this file into uploads of at most 50,000 rows.');
@@ -167,8 +176,8 @@ async function scopeFactsTx(tx:Tx){
 async function permitted(tx:Tx,ctx:SessionContext,companyId:string,kind:'import'|'revert'='import'){
  try{await permission(tx,ctx,companyId,kind);return true;}catch(error){if(!(error instanceof PayrollHistoryRevisionError))throw error;return false;}
 }
-async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],sourceHash:string,maintenance?:MaintenanceOptions,attemptId?:string):Promise<{plan:HistoryRevisionPlan;digest:string;factKeys:HistoryPlanFactKeys}>{
- const plan=emptyPlan(sourceHash);if(maintenance)plan.maintenance=maintenance;
+async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],sourceHash:string,maintenance?:MaintenanceOptions,attemptId?:string,worksheet?:string):Promise<{plan:HistoryRevisionPlan;digest:string;factKeys:HistoryPlanFactKeys}>{
+ const plan=emptyPlan(sourceHash);if(worksheet!==undefined)plan.sourceWorksheet=worksheet;if(maintenance)plan.maintenance=maintenance;
  const permissionKind=maintenance?.mode==='remove_items'||maintenance?.mode==='remove_batch'?'revert':'import';
  const facts:PlanFacts={companies:[],cycleRows:[],permissions:[],analyze:[],records:await planRecordFactsTx(tx,[])};
  const sealed=()=>({plan:seal(plan),digest:factsDigest(facts),factKeys:{permissionCompanies:facts.permissions.map(([id])=>id),analyzeCompanies:facts.analyze.map(([id])=>id),keys:[]}});
@@ -343,8 +352,8 @@ async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistory
  if(plan.issues.length&&!plan.counts.invalid)plan.counts.invalid=1;
  return{plan:seal(plan),digest:factsDigest(facts),factKeys:{permissionCompanies:facts.permissions.map(([id])=>id),analyzeCompanies:facts.analyze.map(([id])=>id),keys,...(maintenance?{maintenance:true,permissionKind,employeeNosByCompany:[...employeeNosByCompany].map(([companyId, employeeNos])=>[companyId,[...employeeNos]])}: {})}};
 }
-async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],sourceHash:string,maintenance?:MaintenanceOptions,attemptId?:string):Promise<HistoryRevisionPlan>{
- return (await planRowsWithFacts(tx,ctx,records,sourceHash,maintenance,attemptId)).plan;
+async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],sourceHash:string,maintenance?:MaintenanceOptions,attemptId?:string,worksheet?:string):Promise<HistoryRevisionPlan>{
+ return (await planRowsWithFacts(tx,ctx,records,sourceHash,maintenance,attemptId,worksheet)).plan;
 }
 /** Re-read every fact a plan was made from, by the keys planning recorded, and digest it exactly as planning did.
  * Equal digests mean equal inputs, so re-planning would produce the same plan; this is how a staged confirm's release
@@ -357,7 +366,8 @@ export async function historyPlanFactsDigestTx(tx:Tx,ctx:SessionContext,keys:His
  return factsDigest(facts);
 }
 
-export async function previewPayrollHistoryUpload(ctx:SessionContext,input:{name:string;mimeType?:string;content:Buffer;operationKey?:string;maintenance?:PayrollHistoryUploadMaintenance}){
+export async function previewPayrollHistoryUpload(ctx:SessionContext,input:{name:string;mimeType?:string;content:Buffer;operationKey?:string;worksheet?:string;maintenance?:PayrollHistoryUploadMaintenance}){
+ if(input.worksheet!==undefined&&!validImportWorksheet(input.worksheet))fail('Choose a worksheet in the uploaded workbook.');
  const maintenance=input.maintenance?z.object({version:z.literal(1),mode:z.enum(['replace','update_listed']),reason:z.string().trim().max(2000).optional()}).strict().parse(input.maintenance):undefined;
  return previewHistorySource(ctx,{...input,maintenance:maintenance?{...maintenance,reason:maintenance.reason||'Payroll history upload'}:undefined});
 }
@@ -375,16 +385,16 @@ async function previewPayrollHistoryMaintenanceSourceOwner(ctx:SessionContext,in
  if(maintenance.request?(maintenance.mode!==maintenance.request.operation||maintenance.reason!==maintenance.request.reason):!['replace','update_listed'].includes(maintenance.mode))fail('The payroll history maintenance operation does not match its reviewed request.');
  return previewHistorySource(ctx,{...input,maintenance},ownerTx);
 }
-async function previewHistorySource(ctx:SessionContext,input:{name:string;mimeType?:string;content:Buffer;operationKey?:string;maintenance?:MaintenanceOptions},ownerTx?:Tx){
+async function previewHistorySource(ctx:SessionContext,input:{name:string;mimeType?:string;content:Buffer;operationKey?:string;worksheet?:string;maintenance?:MaintenanceOptions},ownerTx?:Tx){
  assertModuleGate(ctx,'payroll');
  const name=(input.name.split(/[\\/]/).pop()??'payroll-history.csv').slice(0,255)||'payroll-history.csv';
  if(input.content.length>10485760)fail('Choose a file no larger than 10 MB.');
  const attemptId=randomUUID(),sourceHash=hash(input.content),operationKey=input.operationKey&&uuid.test(input.operationKey)?input.operationKey:randomUUID();
  let records:PayrollHistoryRecord[]=[],parseError:string|undefined;
- try{records=await parsePayrollHistorySource(name,input.content);}catch(error){parseError=error instanceof PayrollHistoryRevisionError?error.message:'This source file could not be read.';}
+ try{records=await parsePayrollHistorySource(name,input.content,input.worksheet);}catch(error){parseError=error instanceof PayrollHistoryRevisionError?error.message:'This source file could not be read.';}
  const priorTx=async(tx:Tx)=>{
   const [prior]=await tx.select({id:attempt.id,sourceHash:attempt.sourceHash,plan:attempt.plan}).from(attempt).where(and(eq(attempt.createdBy,ctx.userId!),eq(attempt.operationKey,operationKey)));
-  if(prior&&(prior.sourceHash!==sourceHash||canonical(prior.plan.maintenance??null)!==canonical(input.maintenance??null)))fail('This upload operation already identifies a different file.');
+  if(prior&&(prior.sourceHash!==sourceHash||prior.plan.sourceWorksheet!==input.worksheet||canonical(prior.plan.maintenance??null)!==canonical(input.maintenance??null)))fail('This upload operation already identifies a different file.');
   return prior?{attemptId:prior.id,plan:prior.plan}:null;
  };
  // The plan is validated in one read-only snapshot with no tenant-wide lock: a history writer commits whole, so the
@@ -394,7 +404,7 @@ async function previewHistorySource(ctx:SessionContext,input:{name:string;mimeTy
  const planTx=async(tx:Tx)=>{
   await principal(tx,ctx);
   const prior=await priorTx(tx);if(prior)return prior;
-  return {attemptId:null,plan:parseError?seal({...emptyPlan(sourceHash),issues:[{rowNum:1,reason:parseError}],counts:{created:0,replaced:0,unchanged:0,invalid:1}}):await planRows(tx,ctx,records,sourceHash,input.maintenance,attemptId)};
+  return {attemptId:null,plan:parseError?seal({...emptyPlan(sourceHash),...(input.worksheet===undefined?{}:{sourceWorksheet:input.worksheet}),issues:[{rowNum:1,reason:parseError}],counts:{created:0,replaced:0,unchanged:0,invalid:1}}):await planRows(tx,ctx,records,sourceHash,input.maintenance,attemptId,input.worksheet)};
  };
  const planned=ownerTx?await planTx(ownerTx):await withTenant(ctx,planTx,{readOnlySnapshot:true});
  if(planned.attemptId)return {attemptId:planned.attemptId,plan:planned.plan};
@@ -479,7 +489,7 @@ export async function confirmPayrollHistoryUploadTx(tx:Tx,ctx:SessionContext,inp
   if(confirmed)return {attemptId:source.id,counts:source.plan.counts,changes:confirmed.changes,alreadyCommitted:true,importedRows:0};
   await refuseWhileStagedTx(tx);
   await shareMasterRowsTx(tx,source);
-  const fresh=await planRows(tx,ctx,await parsePayrollHistorySource(source.sourceName,source.sourceContent),source.sourceHash,source.plan.maintenance,source.id);
+  const fresh=await planRows(tx,ctx,await parsePayrollHistorySource(source.sourceName,source.sourceContent,source.plan.sourceWorksheet),source.sourceHash,source.plan.maintenance,source.id,source.plan.sourceWorksheet);
   if(fresh.previewHash!==source.plan.previewHash||fresh.counts.invalid)fail('The source, master data, permissions or target revisions changed. Validate a new attempt.');
   if(fresh.maintenance){
    const historical=[...new Set(fresh.rows.filter(row=>applies(row)&&row.recordId&&!row.withdrawal).map(row=>row.employmentId))];
@@ -608,7 +618,7 @@ export async function planStagedPayrollHistoryConfirm(ctx:SessionContext,input:H
  return withTenant(ctx,async tx=>{
   const {source,confirmed,applies}=await confirmChecksTx(tx,ctx,input,false);
   if(confirmed)return{alreadyCommitted:true,result:{attemptId:source.id,counts:source.plan.counts,changes:confirmed.changes.length,alreadyCommitted:true,importedRows:0}};
-  const {plan:fresh,digest,factKeys}=await planRowsWithFacts(tx,ctx,await parsePayrollHistorySource(source.sourceName,source.sourceContent),source.sourceHash,source.plan.maintenance,source.id);
+  const {plan:fresh,digest,factKeys}=await planRowsWithFacts(tx,ctx,await parsePayrollHistorySource(source.sourceName,source.sourceContent,source.plan.sourceWorksheet),source.sourceHash,source.plan.maintenance,source.id,source.plan.sourceWorksheet);
   if(fresh.previewHash!==source.plan.previewHash||fresh.counts.invalid)fail('The source, master data, permissions or target revisions changed. Validate a new attempt.');
   const groupOf=new Map<string,number>(),groups:StagedHistoryGroup[]=[],rows:{group:number;row:HistoryRevisionRow}[]=[];
   const totals:BatchTotals[]=[];

@@ -11,6 +11,7 @@
  * or bank detail is NEVER READ (only its heading is reported); dates are read day-first (13/10/2026 is
  * 13 October); and the commit takes ROWS, not trusted flags — every row is re-validated server-side.
  */
+import {isVisibleImportWorksheet,validImportWorksheet} from '../lib/import-worksheet';
 import * as XLSX from 'xlsx';
 import { sql } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
@@ -88,13 +89,18 @@ export function onboardingTemplate(): Buffer {
 }
 
 export async function previewOnboardingImport(
-  ctx: SessionContext, file: Buffer, opts: { fileName?: string; defaultCompanyId?: string | null } = {},
+  ctx: SessionContext, file: Buffer, opts: { fileName?: string; defaultCompanyId?: string | null; worksheets?: readonly string[] } = {},
 ): Promise<ImportPreview> {
   if (file.length === 0) throw new LifecycleError('The file is empty.');
   if (file.length > IMPORT_MAX_BYTES) throw new LifecycleError('The file is larger than 8 MB.');
   if (file.length < 4 || file.toString('latin1', 0, 2) !== 'PK') throw new LifecycleError('Only .xlsx workbooks can be imported.');
   let wb: XLSX.WorkBook;
   try { wb = XLSX.read(file, { type: 'buffer', cellDates: true, dense: false }); } catch { throw new LifecycleError('That file could not be read as an Excel workbook.'); }
+
+  const selected = opts.worksheets === undefined ? null : new Set(opts.worksheets);
+  if (selected && (!selected.size || selected.size > wb.SheetNames.length || [...selected].some(name => !validImportWorksheet(name) || !isVisibleImportWorksheet(wb,name)))) {
+    throw new LifecycleError('Choose valid worksheets in the uploaded workbook.');
+  }
 
   const companies = await withTenant(ctx, async (tx) => {
     await requireLevel(tx, null, LEVEL.agent, 'only staff import new hires');
@@ -115,10 +121,12 @@ export async function previewOnboardingImport(
   const seenNos = new Set<string>(); const seenEmails = new Set<string>();
   let total = 0;
   for (const sheetName of wb.SheetNames) {
+    if (selected && !selected.has(sheetName)) continue;
     const ws = wb.Sheets[sheetName]!;
     const matrix = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: '', blankrows: false });
     if (matrix.length < 2) continue;
     const headerIdx = matrix.findIndex((r) => (r as unknown[]).some((c) => String(c ?? '').trim() !== ''));
+    if (headerIdx < 0) continue;
     const head = (matrix[headerIdx] as unknown[]).map((h) => String(h ?? '').trim());
     const col: Record<string, number> = {};
     head.forEach((h, i) => {

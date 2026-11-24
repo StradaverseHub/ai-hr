@@ -13,6 +13,7 @@ export async function submitIndividualImportAction(form: FormData) {
   try {
     const id = await submitIndividualImportJob(s, {
       id: String(form.get('id') ?? ''), name: file.name, content: Buffer.from(await file.arrayBuffer()),
+      worksheet: typeof form.get('worksheet') === 'string' ? String(form.get('worksheet')) : undefined,
       method: form.get('method') as IndividualImportMethod, scopeIds,
     });
     return {ok: true as const, id};

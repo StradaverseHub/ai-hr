@@ -49,7 +49,7 @@ async function settingsTx(tx:Tx,lock=false){
 }
 type SourceSlip={id:string;period:string;runOrder:number;gross:string;deductions:string;basic:string;allowance:string;overtime:string;bonus:string;statutory:Record<string,unknown>;historyAttemptId:string|null;cycleId:string|null};
 type InputLine={code:string;amount:number;direction:'earning'|'deduction'|'noncash';settingId?:string;rowNum?:number;nonCashSource?:{source:'recurring'|'one_off';sourceId?:string};previousTreatment?:string|null};
-type SourceCache=Map<string,{retained:{name:string;sourceHash:string;rows:HistoryRevisionRow[]};rows:Awaited<ReturnType<typeof parsePayrollHistorySource>>}>&{codes?:Awaited<ReturnType<typeof resolveImportCodes>>;slips?:Map<string,SourceSlip[]>;country?:string;rules?:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;sourceHashes?:Map<string,string>;effective?:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null;superseded?:Map<string,string[]>;rulesStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>;openings?:Map<string,TaxOpeningRow>;withoutLedger?:boolean};
+type SourceCache=Map<string,{retained:{name:string;sourceHash:string;worksheet?:string;rows:HistoryRevisionRow[]};rows:Awaited<ReturnType<typeof parsePayrollHistorySource>>}>&{codes?:Awaited<ReturnType<typeof resolveImportCodes>>;slips?:Map<string,SourceSlip[]>;country?:string;rules?:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;sourceHashes?:Map<string,string>;effective?:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null;superseded?:Map<string,string[]>;rulesStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>;openings?:Map<string,TaxOpeningRow>;withoutLedger?:boolean};
 /** Preview and atomic continuation share exact released ownership, including detached native origins. */
 async function supersededTaxBasisRowsTx(tx:Tx,sourceIds:readonly string[]):Promise<Map<string,string[]>>{
  const ids=[...new Set(sourceIds)];if(!ids.length)return new Map();
@@ -61,9 +61,9 @@ async function supersededTaxBasisRowsTx(tx:Tx,sourceIds:readonly string[]):Promi
 async function linesTx(tx:Tx,slip:SourceSlip,employmentId:string,companyId:string,settings:Settings[],cache:SourceCache,ctx:SessionContext):Promise<InputLine[]>{
  if(slip.historyAttemptId){
   let cached=cache.get(slip.historyAttemptId);
-  if(!cached){const [retained]=await tx.execute<{name:string;content:Buffer;sourceHash:string;rows:HistoryRevisionRow[]}>(sql`select a.source_name as name,a.source_content as content,a.source_hash as "sourceHash",a.plan->'rows' as rows from payroll_history_import_attempt a where a.id=${slip.historyAttemptId}::uuid`);
+  if(!cached){const [retained]=await tx.execute<{name:string;content:Buffer;sourceHash:string;worksheet?:string;rows:HistoryRevisionRow[]}>(sql`select a.source_name as name,a.source_content as content,a.source_hash as "sourceHash",a.plan->>'sourceWorksheet' as worksheet,a.plan->'rows' as rows from payroll_history_import_attempt a where a.id=${slip.historyAttemptId}::uuid`);
   if(!retained||createHash('sha256').update(retained.content).digest('hex')!==retained.sourceHash)fail(`${slip.period}: retained import source is unavailable or changed.`);
-  cached={retained,rows:await parsePayrollHistorySource(retained.name,retained.content)};cache.set(slip.historyAttemptId,cached);}
+  cached={retained,rows:await parsePayrollHistorySource(retained.name,retained.content,retained.worksheet??undefined)};cache.set(slip.historyAttemptId,cached);}
   const {retained,rows}=cached;
   const plans=retained.rows.filter(r=>r.companyId===companyId&&r.employmentId===employmentId&&r.period===slip.period&&r.cycleId===slip.cycleId);
   if(plans.length!==1||!Array.isArray(plans[0].rowNums)||!plans[0].rowNums.length)fail(`${slip.period}: original source row binding is unavailable.`);
@@ -300,8 +300,8 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
   const [size]=await tx.execute<{bytes:string}>(sql`select coalesce(sum(octet_length(source_content)),0)::text as bytes from payroll_history_import_attempt where id=any(${uuidArray(attempts)})`);
   if(Number(size.bytes)>64*1024*1024)fail('The retained import sources exceed the preview budget. Select a smaller employee group.');
   for(let offset=0;offset<attempts.length;offset+=25){
-   const page=await tx.execute<{id:string;name:string;content:Buffer;sourceHash:string;rows:HistoryRevisionRow[]}>(sql`select id,source_name as name,source_content as content,source_hash as "sourceHash",plan->'rows' as rows from payroll_history_import_attempt where id=any(${uuidArray(attempts.slice(offset,offset+25))}) order by id`);
-   for(const retained of page){if(createHash('sha256').update(retained.content).digest('hex')!==retained.sourceHash)fail('A retained import source is unavailable or changed.');cache.set(retained.id,{retained,rows:await parsePayrollHistorySource(retained.name,retained.content)});}
+   const page=await tx.execute<{id:string;name:string;content:Buffer;sourceHash:string;worksheet?:string;rows:HistoryRevisionRow[]}>(sql`select id,source_name as name,source_content as content,source_hash as "sourceHash",plan->>'sourceWorksheet' as worksheet,plan->'rows' as rows from payroll_history_import_attempt where id=any(${uuidArray(attempts.slice(offset,offset+25))}) order by id`);
+   for(const retained of page){if(createHash('sha256').update(retained.content).digest('hex')!==retained.sourceHash)fail('A retained import source is unavailable or changed.');cache.set(retained.id,{retained,rows:await parsePayrollHistorySource(retained.name,retained.content,retained.worksheet??undefined)});}
   }
  }
  // One set-wise opening read for every subject with saved history in the year (SCALE rule 2).
