@@ -172,6 +172,18 @@ payroll truth stays in its source tables.
     the job, equal on every payslip column (money, statutory breakdown, tax metadata, version), run totals, headcount
     and recalculation marks, result history, tax-basis receipts and revisions, job outcomes and counts, and outcome
     events.
+- **J2, imports: leave ledger import (built 25 November 2026; not yet on staging).** The `leave_ledger` job keeps one
+  step per planned row; the first step of a chunk writes a group of following rows (`applyLeaveImportGroupTx`,
+  `core/leave-import.ts`): the Access lock once, the configuration and every employee in one lock statement, the leave
+  types and the narrowed employment and ledger reads once for the union of the rows' references, the unchanged
+  validation and plan comparison per row in file order (each row sees the rows the group wrote before it), and one
+  multi-row insert. Any decline (a changed row, a busy employee, a non-ASCII reference, a database refusal) rolls the
+  group back and its rows take `applyLeaveImportRowTx`, which records every outcome. The adaptive group size, the
+  `bulk-chunk` timing line and the `importCalcMs` / `importDbMs` metrics are shared for the per-step import kinds in
+  `core/import-set-group.ts`; `LEAVE_IMPORT_GROUP_MAX=1` restores the per-row path. Hosted runner, 160-row file at
+  70 companies / 1,000 employments (`test/leave-import-set-equivalence.test.ts`, which also proves equality of the
+  ledger, events, job and progress view): 29.7 → 10.5 ms and 8.9 → 3.3 statements a planned row for the whole job,
+  a group about 3.3 ms a row; `COPY` not used (the file is never the cost).
 
 ### 8. Guardrails
 

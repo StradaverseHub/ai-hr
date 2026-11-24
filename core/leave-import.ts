@@ -136,7 +136,7 @@ const ledgerDedupeKey = (l: LedgerKeyRow) => `${l.employmentId}|${l.leaveTypeId}
 const ledgerOpenedYear = (l: LedgerKeyRow) => (l.entryType === 'accrual' ? `${l.employmentId}|${l.leaveTypeId}|${l.effectiveOn.slice(0, 4)}` : null);
 /** What one validation reads: the leave types, the employments the references can match, and those employments'
  * ledger keys. */
-type LeaveImportSource = {
+type LeaveImportReads = {
   types: Awaited<ReturnType<typeof listLeaveTypes>>;
   emps: { id: string; companyId: string; code: string | null; email: string | null; ic: string | null; terminatedOn: string | null }[];
   existingKeys: Set<string>;
@@ -153,7 +153,7 @@ type LeaveImportSource = {
  * and year-open keys are per employment, so on this set (or on a group's union of sets) every row decides exactly as
  * on the whole tenant; the locked read no longer grows with the tenant.
  */
-async function readLeaveImportSource(ctx: SessionContext, existingTx: Tx | undefined, refs: readonly string[] | null): Promise<LeaveImportSource> {
+async function readLeaveImportSource(ctx: SessionContext, existingTx: Tx | undefined, refs: readonly string[] | null): Promise<LeaveImportReads> {
   // Leave types (non-archived) matched by code, case-insensitive. listLeaveTypes lives in core/read.
   const types = await listLeaveTypes(ctx, {}, existingTx);
   const narrow = refs !== null && refs.length > 0;
@@ -221,7 +221,7 @@ async function readLeaveImportSource(ctx: SessionContext, existingTx: Tx | undef
 
 /** A ledger row written after the source was read (an earlier row of the same set-based group), so a later row's
  * re-check sees it exactly as the per-row re-check would have read it. */
-function rememberLedgerRow(source: LeaveImportSource, l: LedgerKeyRow) {
+function rememberLedgerRow(source: LeaveImportReads, l: LedgerKeyRow) {
   source.existingKeys.add(ledgerDedupeKey(l));
   const opened = ledgerOpenedYear(l);
   if (opened) source.openedYears.add(opened);
@@ -231,7 +231,7 @@ function rememberLedgerRow(source: LeaveImportSource, l: LedgerKeyRow) {
 function decideLeaveImport(
   ctx: SessionContext,
   records: LeaveImportRecord[],
-  source: LeaveImportSource,
+  source: LeaveImportReads,
   companyId: string | undefined,
 ): { preview: LeaveImportPreview; resolved: ResolvedRow[] } {
   const effective = withEffectiveGrants(ctx);
