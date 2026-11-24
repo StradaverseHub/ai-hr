@@ -34,7 +34,7 @@ const mutating = () => calls().filter(c => !/^(show|is-enabled) /.test(c));
 const run = (mode?: string) => {
   const result = spawnSync('bash', [PARK, ...(mode ? [mode] : [])], {
     encoding: 'utf8',
-    env: { PATH: `${dir}:/usr/bin:/bin`, FAKE_DIR: dir, AIHR_APP_ENV_FILE: join(dir, 'app.env') },
+    env: { NODE_ENV: 'test', PATH: `${dir}:/usr/bin:/bin`, FAKE_DIR: dir, AIHR_APP_ENV_FILE: join(dir, 'app.env') },
   });
   return { code: result.status, out: result.stdout, err: result.stderr };
 };
