@@ -39,7 +39,7 @@ beforeAll(async()=>{
    select $1::uuid,n.id,($2::uuid[])[1+(n.k % 70)::int],'DI'||lpad(n.k::text,5,'0'),'2020-01-06' from n returning id,company_id),
   d as (select e.id,e.company_id,array_agg(x.id order by x.id) ds from e join department x on x.company_id=e.company_id group by e.id,e.company_id)
   insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from,valid_to,superseded_at)
-  select $1::uuid,d.id,d.company_id,d.ds[1+(abs(hashtext(d.id::text)) % 4)],'full_time','2025-01-01',null,null from d
+  select $1::uuid,d.id,d.company_id,d.ds[1+(abs(hashtext(d.id::text)) % 4)],'full_time','2025-01-01'::date,null::date,null::timestamptz from d
   union all select $1::uuid,d.id,d.company_id,d.ds[1+((abs(hashtext(d.id::text))+1) % 4)],'full_time','2020-01-06','2024-12-31',null from d
   union all select $1::uuid,d.id,d.company_id,d.ds[1+((abs(hashtext(d.id::text))+2) % 4)],'full_time','2025-01-01',null,now() from d`,[b.tenantId,`{${companies.join(',')}}`]);
  // A line manager in the top company (every other company descends from it, so no report is clamped away) with 30
