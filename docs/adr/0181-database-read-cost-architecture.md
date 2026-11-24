@@ -191,10 +191,13 @@ payroll truth stays in its source tables.
     rows (FOR SHARE, in person order) and selections for the whole pass and takes the declaration advisory locks in the
     per-employee order in one statement: four statements per pass instead of four per employee. Each employee's result
     or refusal comes from the single call's rules and is raised where the single call stood (first in employment order
-    for a generation, inside the payslip loop for a reprocess). New payslips are written by multi-row inserts after the
-    loop (`PAYROLL_PAYSLIP_INSERT_GROUP`, default 500; the only insert trigger on payslip is deferred, so row and trigger
-    outcomes are the per-row insert's). Still per employee, and only for the configurations that need them: working-day
-    proration and daily-rate holiday sets, the formula-builder runtime and attendance overtime windows.
+    for a generation, inside the payslip loop for a reprocess). The holiday sets of working-day proration, daily rates
+    and working-days leave divisors come from the calendar module's one-statement window read
+    (core/calendar-window-inputs.ts), 50 employees per statement, instead of each employee's own statements once per use.
+    New payslips are written by multi-row inserts of up to 500 after the loop (the only insert trigger on payslip is
+    deferred, so row and trigger outcomes are the per-row insert's). `PAYROLL_PASS_SET_READS=off` restores all three
+    per-employee forms. Still per employee, and only for the configurations that need them: the formula-builder runtime
+    and attendance overtime windows.
   - **Timing.** Each pass logs an `[aihr-timing]` `bulk-chunk` line (`kind` payroll_process, `mode` group or single,
     employees, steps, wall, calculation, database) and adds to `bulk_job.metrics`: `processCalcMs` (process CPU) and
     `processDbMs` (the rest of the wall time), `processGroups`, `processGroupEmployees`, `processSingles`,
@@ -202,8 +205,8 @@ payroll truth stays in its source tables.
   - **Proof.** `test/payroll-process-set-equivalence.test.ts`: two tenants built identically through the product owners
     at 70 companies and 1,000 employments; a 120-employee run with TP3 money and Section C2 openings, a taxable and a
     non-taxable Pay Item, May salary changes, daily-rated employees, people with no income tax and a May joiner, processed
-    for April and May on the per-employee path as it was (one step per pass, one tax resolution and one insert per
-    employee) and on the set path; equal on every payslip column, run totals, headcount and status, inputs, Pay Items,
+    for April and May on the per-employee path as it was (one step per pass, `PAYROLL_PASS_SET_READS=off`) and on the
+    set path; equal on every payslip column, run totals, headcount and status, inputs, Pay Items,
     audit events, status history and job results; a June run that loses a salary record after planning refuses and
     discards identically. The group tax resolver is compared employee by employee with the single resolver, refusals
     included. `test/payroll-processing-job.test.ts` runs its synchronous-oracle comparison (golden digest and audit

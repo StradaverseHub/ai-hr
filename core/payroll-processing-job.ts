@@ -68,7 +68,7 @@ const FIRST_GROUP=16;
  * (its steps run one per pass, as before). */
 type GroupState={size:number;seen:GroupPass[];singleThrough:number};
 const groupStateOf=new Map<string,GroupState>();
-const groupStateFor=(jobId:string)=>{let state=groupStateOf.get(jobId);if(!state){state={size:FIRST_GROUP,seen:[],singleThrough:-1};groupStateOf.set(jobId,state);}return state;};
+const groupStateFor=(jobId:string)=>{let state=groupStateOf.get(jobId);if(!state){state={size:Math.max(FIRST_GROUP,2*payrollProcessStepEmployees()),seen:[],singleThrough:-1};groupStateOf.set(jobId,state);}return state;};
 const roundMs=(value:number)=>Math.max(0,Math.round(value));
 /** One line per engine pass on the worker's stdout, beside the web's request timing (lib/request-timing.ts, same
  * prefix and privacy rule: closed labels and numbers only, never a tenant, person, company or value). */
@@ -254,8 +254,7 @@ async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:RunSt
     const chunk=await runEmployeesPassTx(tx,ctx,job,batchId,plan,group.flatMap(idsOf));
     const time=splitChunkTime(started,cpuStarted),n=group.reduce((sum,s)=>sum+idsOf(s).length,0);
     logPass('group',n,group.length,time);
-    state.seen=rememberGroupPass(state.seen,{employees:n,wallMs:time.wallMs});
-    state.size=nextGroupSize(state.seen,n,{max,targetMs:payrollProcessChunkTargetMs(),fixedMultiple:payrollProcessFixedMultiple()});
+    measure(state,max,n,time.wallMs);
     return{...chunkOutcome(chunk),consumed:group.length-1,metrics:{
      add:{processGroups:1,processGroupEmployees:n,processCalcMs:roundMs(time.calcMs),processDbMs:roundMs(time.dbMs)},
      max:{processGroupMaxEmployees:n,processGroupMaxMs:roundMs(time.wallMs),processGroupMaxCalcMs:roundMs(time.calcMs),processGroupMaxDbMs:roundMs(time.dbMs)},
@@ -271,11 +270,17 @@ async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:RunSt
   const chunk=await runEmployeesPassTx(tx,ctx,job,batchId,plan,idsOf(step));
   const time=splitChunkTime(started,cpuStarted);
   logPass('single',idsOf(step).length,1,time);
+  // A one-step pass is a point on the same line, so a group size estimated below two steps can grow again.
+  if(max>1)measure(state,max,idsOf(step).length,time.wallMs);
   return{...chunkOutcome(chunk),metrics:{
    add:{processSingles:1,processSingleEmployees:idsOf(step).length,processCalcMs:roundMs(time.calcMs),processDbMs:roundMs(time.dbMs)},max:{processSingleMaxMs:roundMs(time.wallMs)},
   }};
 }
 const idsOf=(step:RunStep)=>(step.payload as EmployeesStep).employmentIds;
+function measure(state:GroupState,max:number,employees:number,wallMs:number){
+  state.seen=rememberGroupPass(state.seen,{employees,wallMs});
+  state.size=nextGroupSize(state.seen,employees,{max,targetMs:payrollProcessChunkTargetMs(),fixedMultiple:payrollProcessFixedMultiple()});
+}
 function chunkOutcome(chunk:PayrollProcessingChunkResult){
   return{result:chunk,counters:{paid:chunk.paid.length,skipped:chunk.skipped.length,...(chunk.taxHeld?.length?{taxHeld:chunk.taxHeld.length}:{})}};
 }

@@ -7,10 +7,10 @@
  * non-taxable Pay Item on the run, salary changes from May, daily-rated employees (the working-day and holiday reads),
  * a person with no income tax (tax circumstance None), and a May joiner. April and May are processed by the background
  * job in both tenants:
- *  - tenant A, the per-employee path as it was: one step of four employees per engine pass (PAYROLL_PROCESS_GROUP_MAX=1),
- *    one tax-scheme resolution per employee (the pack's group resolver removed) and one insert per payslip
- *    (PAYROLL_PAYSLIP_INSERT_GROUP=1);
- *  - tenant B, the defaults: set-based groups, group resolution and multi-row inserts.
+ *  - tenant A, the per-employee path as it was: one step of four employees per engine pass (PAYROLL_PROCESS_GROUP_MAX=1)
+ *    and each employee's own reads and writes in the pass (PAYROLL_PASS_SET_READS=off: one tax-scheme resolution, the
+ *    holiday statements and one payslip insert per employee);
+ *  - tenant B, the defaults: set-based groups, group tax resolution, the pass's holiday windows and multi-row inserts.
  * Everything processing writes is compared with ids, hashes and timestamps replaced by stable labels: payslips (money,
  * statutory breakdown, PCB metadata, days, version), run totals, headcount, status and marks, payroll inputs, the runs'
  * audit events and status history, and the job's result and counters. A June run whose processing loses an employee's
@@ -31,7 +31,6 @@ import {setCompensation} from '../core/comp';
 import {setPayrollBatchComponent} from '../core/pay-components';
 import {setStatutoryProfileMY,setTp3ProfileMY} from '../localization/my/statutory';
 import {resolveTaxSelectionMY,resolveTaxSelectionsMY} from '../localization/my/tax-selection';
-import {myPack} from '../localization/my';
 import {createBatch} from '../core/payroll';
 import {payrollProcessJobHandler,requestPayrollProcessing} from '../core/payroll-processing-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
@@ -116,10 +115,9 @@ async function untilPlanned(jobId:string){
 type Mode='per-employee'|'set';
 /** Run `work` on the per-employee path as it was, or on the defaults. */
 async function onPath<T>(mode:Mode,work:()=>Promise<T>):Promise<T>{
- const pack=myPack.payroll as {resolveTaxSchemes?:unknown},saved=pack.resolveTaxSchemes;
- if(mode==='per-employee'){process.env.PAYROLL_PROCESS_GROUP_MAX='1';process.env.PAYROLL_PAYSLIP_INSERT_GROUP='1';pack.resolveTaxSchemes=undefined;}
+ if(mode==='per-employee'){process.env.PAYROLL_PROCESS_GROUP_MAX='1';process.env.PAYROLL_PASS_SET_READS='off';}
  try{return await work();}
- finally{delete process.env.PAYROLL_PROCESS_GROUP_MAX;delete process.env.PAYROLL_PAYSLIP_INSERT_GROUP;pack.resolveTaxSchemes=saved;}
+ finally{delete process.env.PAYROLL_PROCESS_GROUP_MAX;delete process.env.PAYROLL_PASS_SET_READS;}
 }
 const cpuMs=(start:NodeJS.CpuUsage)=>{const c=process.cpuUsage(start);return Math.round((c.user+c.system)/1000);};
 /** Test-only statement profile of the application pool (client.options.debug, as test/helpers/statement-observer.ts).
