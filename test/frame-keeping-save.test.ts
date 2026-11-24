@@ -69,7 +69,7 @@ import {approveLeaveAction} from '../app/approvals/actions';
 import {markNotificationReadAction} from '../app/notification-actions';
 import {decideProfileChangeAction} from '../app/admin/personnel/profile-changes/actions';
 import type {ShellApprovalResult} from '../components/shell-approval-facts';
-import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {explainStatements,observeStatements} from './helpers/statement-observer';
 import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
@@ -93,6 +93,8 @@ beforeAll(async()=>{
  // The frame is compared uncached (its worst case); the cached viewer menu is test/viewer-menu-profile.test.ts's.
  process.env.AIHR_VIEWER_MENU_CACHE='off';
  await migrateTestDb();await resetDb();b=await seedBase();
+ // The bell reads every notification only while the Notifications module is on for the tenant.
+ await setModule(b.tenantId,'notifications','active');
  fixture=await buildScaleFixture(b,{employments:1000,events:2000});
  const base=await entitledCtx(b,['hr_admin']);
  const own=async(employmentId:string,roles:string[],companyId:string|null=null):Promise<SessionContext>=>{
