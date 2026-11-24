@@ -118,7 +118,8 @@ describe('default request join (ADR 0181 package 1.1)',()=>{
  it('refuses a barrier hidden in a SQL function before sending it, so the snapshot stays usable for later owners',async()=>{
   expect(classifySharedStatement('select app.access_profile_policy_read_lock()')).toEqual({kind:'refuse',reason:'barrier'});
   const scope={};
-  const policyRead=async(tx:Tx)=>{await tx.execute(sql`select app.access_profile_policy_read_lock()`);return probeTx(tx);};
+  // As its owners call it (core/profile.ts): a read-only Read Committed transaction, then the barrier function.
+  const policyRead=async(tx:Tx)=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);await tx.execute(sql`select app.access_profile_policy_read_lock()`);return probeTx(tx);};
   const [locked,later]=await render(scope,async()=>[await withTenant(ctxA,policyRead),await probe(ctxA)] as const);
   expect(locked.iso).toBe('read committed');
   expect(comparable(locked)).toEqual(comparable(await withTenant(ctxA,policyRead)));
