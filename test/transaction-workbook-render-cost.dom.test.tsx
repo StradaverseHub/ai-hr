@@ -37,7 +37,8 @@ describe('workbook list signature', () => {
     expect(workbookListSignature([{ ...a, state: 'completed' }])).not.toBe(workbookListSignature([a]));
     expect(workbookListSignature([{ id: 'job-b', state: 'queued' }, a])).not.toBe(workbookListSignature([a]));
     expect(workbookListActive([a])).toBe(true);
-    expect(workbookListActive([{ ...a, state: 'completed' }, { id: 'job-c', state: 'failed' }])).toBe(false);
+    const finished = [{ ...a, state: 'completed' as const }, { id: 'job-c', state: 'failed' as const }];
+    expect(workbookListActive(finished)).toBe(false);
   });
 });
 
