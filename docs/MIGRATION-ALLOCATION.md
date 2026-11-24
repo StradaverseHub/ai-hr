@@ -1,3 +1,19 @@
+# Replacement-holiday queue skips voided employments, 25 November 2026
+
+Reserve `7250_replacement_holiday_queue_voided`, journal index `10650`, timestamp `1795495007250`,
+SQL SHA-256 `9562ead496a248b27dc6484541071272db724cf3d099070a20932d63005fdb0a`. Main ends at `7210` (`1795495007210`). The
+reservation scan covered the 400 most recently committed remote and local branch heads and every registered worktree
+journal; the highest entries found were `7220_movement_system_payroll_snapshot_insert` (`claude/j2-staging-on-release4`)
+and `7230`/`7240` (`claude/employment-visibility-reach`), so this entry takes `7250` above them. The production
+watermark was not read from this session; recheck both installations and competing reservations before admission.
+
+Replaces the body of `app.enqueue_replacement_holidays()` only: an employment's own void deletes its
+`replacement_holiday_queue` row in the void's transaction, and no change queues a voided employment again. Signature,
+owner, SECURITY DEFINER, search_path, the 0547 triggers and REVOKE are unchanged; guarded by the exact 5010 body and its
+owner. Then one set-based DELETE removes the queue rows of already-voided employments (queue rows only; allocations and
+revisions stay). Measured cause: on staging the minute sweep failed 10 such rows a minute from 24 November 2026 19:53,
+after an employee import was reverted. Staging had applied 1,144 entries through `1795495007220` (25 November).
+
 # Movement sweep system payroll snapshot policies, 24 November 2026
 
 Reserve `7220_movement_system_payroll_snapshot_insert`, journal index `10620`, timestamp `1795495007220`,
