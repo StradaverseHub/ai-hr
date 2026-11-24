@@ -14,7 +14,8 @@
  *
  * Compared, with ids, hashes and timestamps replaced by stable labels: every row the imports wrote (person,
  * employment, assignment, statutory profile, tax selection, salary, leave ledger, reporting lines, dependents), every
- * domain event the imports appended, in chain order, with its payload, the job (state, counters, errors, result and
+ * domain event the imports appended, in chain order, with its payload (the owner-transaction events of the discard and
+ * the settle, whose batch sizes adapt to measured time, as a sorted set), the job (state, counters, errors, result and
  * the screen's progress view), Import History (attempt, items, events, runs and their error rows), and the audit chain
  * verification. The diagnostic line EMPLOYEE_IMPORT_SET_EQUIVALENCE_DIAGNOSTIC reports wall time, process CPU
  * (calculation and driver) and the rest (database), application statements and the job's per-chunk split from
@@ -160,7 +161,12 @@ async function snapshot(t:Tenant,jobId:string,prefix:string,sinceSequence:number
   ledger:byCode(ledger.map(r=>omit(r,[...STAMPS,'id'])),'employment_id'),
   lines:byCode(lines.map(r=>omit(r,[...STAMPS,'id'])),'subordinate_employment_id'),
   dependents:byCode(dependents.map(r=>omit(r,[...STAMPS,'id'])),'person_id'),
-  events:events.map(r=>omit(r,[...STAMPS,'id'])),
+  // The imports' own events in chain order. The owner-transaction events (attributed to the job: the discard's voids,
+  // the settle's follow-ups) are written in bounded batches whose size adapts to measured time, so their order is the
+  // batches' on either path: they are compared as a sorted set, without their chain position.
+  events:events.filter(r=>!(r.payload as {bulkJob?:unknown}|null)?.bulkJob).map(r=>omit(r,[...STAMPS,'id'])),
+  ownerEvents:events.filter(r=>(r.payload as {bulkJob?:unknown}|null)?.bulkJob).map(r=>omit(r,[...STAMPS,'id','chain_seq','hash','prev_hash']))
+   .map(r=>({row:r,key:JSON.stringify(n(r))})).sort((a,b)=>a.key.localeCompare(b.key)).map(r=>r.row),
   job:{...job,attempt_id:'attempt'},
   view:{...omit(view as unknown as Record<string,unknown>,['id','createdAt','updatedAt','finishedAt','startedAt','metrics']),attemptId:'attempt'},
   attempts:attempts.map(r=>omit(r,[...STAMPS,'id'])),
