@@ -2,8 +2,11 @@
 
 Date: 25 November 2026
 
-Status: **Proposed, for owner review.** Nothing here is built, and no migration is reserved. Section 10 lists the
-decisions this design needs from the owner. This addendum applies ADR 0181 decision 1 (precomputed access) and decision
+Status: **Revised after the owner's risk review on 25 November 2026.** The owner asked whether the risks could be
+removed, then said "go ahead" to revising the design with the risk reductions in section 11, starting with the
+migration-free quick fix (section 9, step 2). Section 11 changes sections 5–9 wherever they differ, and section 10 lists
+the decisions as they now stand. Each migration-bearing step is still built inert, and is switched only by a separate
+owner request. No migration is reserved yet. This addendum applies ADR 0181 decision 1 (precomputed access) and decision
 6 (change F, read models) to the payroll family: `payslip`, `payroll_batch`, their policies, the
 `payroll_history_effective_batch` and `payroll_history_native_payslip` views, and the payroll history barrier. It
 reuses the company pilot ([7210](0181-addendum-precomputed-company-access.md)) and employment visibility (7240, PR 292 /
@@ -320,33 +323,120 @@ compares it with the stored one, as in section 8.3.
    reads fall back. It also logs an alert with counts only. An operator re-trusts the tenant after the cause is fixed
    (7210 decision 2).
 
-## 9. Order of work
+## 9. Order of work (revised by section 11)
 
-| Step | What | Schema |
-|---|---|---|
-| 1 | Post-287 staging "before": request timing and `pg_stat_statements` for `/payroll`, Transaction View tabs, the register and own payslips, on the owner's account or a fictional staging admin, under the staging lease | No |
-| 2 | Set-based payroll permission (one statement for all companies in `payrollCloseCompanyIdsTx` and `listReprocessEmployeeOutcomes`), with an equivalence test against `resolvePayrollPermission` per company | No |
-| 3 | Change P migration (7300+) in `legacy` mode, with the equivalence tests and the shadow log | Yes |
-| 4 | Staging shadow period; then `precomputed` by a separate owner request | Mode only |
-| 5 | Change F migration and worker sweep, reading the summary only in `precomputed` mode of change P | Yes |
-| 6 | Staging after-measurement; close matching findings in `docs/ARCHITECTURE-PERFORMANCE-REMEDIATION.md` with their evidence | No |
+| Step | What | Schema | Switch |
+|---|---|---|---|
+| 1 | Post-287 staging "before": request timing and `pg_stat_statements` for `/payroll`, Transaction View tabs, the register and own payslips, on the owner's account or a fictional staging admin, under the staging lease | No | — |
+| 2 | Quick fix: one set statement for payroll permission in `payrollCloseCompanyIdsTx` and `listReprocessEmployeeOutcomes`, with an equivalence test against `resolvePayrollPermission` per company | No | — |
+| 3 | P1: the two tax-basis guards (reader settings as InitPlans). Also installs the shared switch, the full comparison job and the save-cost test | 7300 | Inert on install |
+| 4 | P2: payroll admin companies once per statement (`payroll_batch_rls`, `payslip_rls` admin arm, original-employer arm) | 7310 | Inert on install |
+| 5 | P3: own payslips once per statement (`payslip_rls` self arm) | 7320 | Inert on install |
+| 6 | P4: the stored history filter (section 5 as revised by 11.4) | 7330 | Inert on install |
+| 7 | F: imported-history run summary (section 7 as revised by 11.5), read only where P2 and P4 are on | 7340 | Inert on install |
+| 8 | Staging after-measurement; close matching findings in `docs/ARCHITECTURE-PERFORMANCE-REMEDIATION.md` with their evidence | No | — |
+
+Numbers are proposed, above the coordinator's 7300 floor. Each is reserved through `docs/MIGRATION-ALLOCATION.md` and
+checked with the database revamp session only when its step is built.
 
 `docs/ARCHITECTURE-PERFORMANCE-REMEDIATION.md` has no finding for the Payroll list or Transaction View load. AP-037
-(mobile payslip lists) and AP-045 (run row-menu screens) read the same policies and are re-measured in step 6. They are
+(mobile payslip lists) and AP-045 (run row-menu screens) read the same policies and are re-measured in step 8. They are
 closed only if that evidence shows them fixed.
 
-## 10. Owner decisions requested
+## 10. Owner decisions
 
-1. **Approve change P as designed:** the payroll policies are restated once per statement, and the committed part of
-   the history barrier is stored (section 5). The barrier lock and its rules stay unchanged, and any tenant with a
-   staged import falls back to the per-row function. *Recommended.*
-2. **Modes as for 7210/7240:** `legacy` on install, `shadow` on staging, `precomputed` only by a separate request after
-   seven clean days. *Recommended.*
-3. **Approve change F scoped to the per-batch summary** (section 7), served only to viewers who administer every
-   employer company of the run, and read from the source otherwise. Transaction View money rows stay on `payslip`.
-   *Recommended*, rather than a per-payslip projection.
-4. **Approve step 2 now** (set-based payroll permission; no migration). It can go through the staging queue under the
-   staging release approval already relayed. *Recommended.*
-5. **Keep the admin arm on the employment's current company.** The batch-company alternative would be cheaper at very
-   large scale, but it changes who sees a moved employee's earlier payslips, so it would be a separate permission
-   decision. *Recommended: keep.*
+Decided on 25 November 2026 ("go ahead", after the risk review in this session):
+
+- Revise the design with the risk reductions of section 11.
+- Start with step 2, the quick fix. It has no migration and goes through the staging queue under the staging release
+  approval already relayed by the coordinator.
+
+Still open, and asked step by step:
+
+1. Each step's switch from `legacy` to `shadow`, and then to `precomputed`, on staging. This is a separate request per
+   step, after its full comparison reports zero differences.
+2. Running the full comparison job read-only on production (counts only) before any production switch. This needs a
+   separate production permission.
+3. The save-cost limit (section 11.6). Proposed: 2%.
+4. Keep the admin arm on the employment's current company (section 6). *Recommended: keep.* The batch-company
+   alternative changes who sees a moved employee's earlier payslips, so it would be a separate permission decision.
+
+## 11. Risk reductions (owner review, 25 November 2026)
+
+The owner judged the first draft's risks too high. These changes take the risk out of installation and prove each
+step on real data before anyone relies on it. Where they differ from sections 5–9, they win.
+
+### 11.1 Installing changes nothing
+
+- No migration replaces a payroll policy. Each step's migration adds the new functions and tables, and keeps today's
+  policies word for word.
+- Each step's restated policy is created alongside the old one but stays detached. A definer operator function owned
+  by `ai_hr_owner`, not granted to `ai_hr_app`, swaps them atomically in one transaction, and swaps them back. Each
+  swap is guarded by the exact predecessor text, so a swap never applies over an unexpected policy.
+- Until the swap is requested, behaviour is today's, apart from `shadow` work (11.2). Rollback is the reverse swap: it
+  takes seconds and needs no migration.
+
+### 11.2 Compare every person against every row, not a sample
+
+- **Full comparison job.** For every user of a tenant with a payroll-relevant role or an employment, it computes the
+  payslip and run ids they can see under the old predicate and under the new one. It also compares each guard's raise
+  or no-raise, and, for P4 and F, the effective totals. It reports differences as counts by step and reason, with no
+  person, tenant or money values.
+- It runs on staging after each install and nightly during the shadow period. A step switches only after zero
+  differences on every run.
+- Before any production switch, the same job runs read-only on production under a separate production permission
+  (decision 2). It proves the new rules give identical answers on real data, for every user.
+- The traffic-based `shadow` log of section 8.2 stays as a second witness.
+
+### 11.3 Small steps, each with its own switch
+
+The steps run in the order P1–P4 of section 9, lowest risk first. Each has its own switch, comparison report and
+rollback, so a problem in one step is switched back without undoing the others.
+
+- **P1 is identical by construction.** Every tenant transaction sets both reader settings, and each guard returns true
+  at its first line when its setting holds.
+
+### 11.4 History import in progress: fall back only for the imported rows
+
+Section 5's "any staged stage, whole tenant falls back" becomes a per-row fallback:
+
+- The stored set is read for every payslip that no staged row touches.
+- The per-row `payroll_history_effective(id)` runs only for payslips an in-progress stage touches. Those are payslips
+  staged directly, plus payslips of the history records whose revisions or snapshots are staged.
+- That affected set is computed once per statement from `payroll_history_staged_row` (already read once per statement
+  by `payroll_history_hidden_rows`).
+- The equivalence tests cover a stage in flight, both for its authorised importer and for every other actor.
+
+### 11.5 Payroll saves get no extra work
+
+- **P4 triggers fire only on what can change the history filter.** That means payslip INSERT and DELETE (transition
+  tables), payslip `UPDATE OF batch_id, employment_id` (a statement trigger without transition tables, so it can take
+  a column list), and the history import, revision, snapshot and capture tables.
+  - Money-column updates by processing, reprocessing and corrections fire nothing.
+  - For `payroll_batch`, an `UPDATE OF company_id, pay_period, payroll_cycle_id` statement trigger, plus insert and
+    delete.
+- **F covers imported-history runs only.** For a native run, `payroll_history_effective_batch` already serves
+  `payroll_batch.employee_count` and `totals` from the run itself, and the list keeps reading those directly.
+  - The summary holds only the `derived` flag, the derived totals, the employer companies and the source version.
+  - Its source version moves only on history import, adoption and reversal, native capture, and an employment company
+    change for an employment that has imported history. The last is one indexed probe on that save.
+  - `payroll_batch` and payslip money writes never touch it.
+- **No new waiting.** History writers already hold the payroll history barrier lock. Movement and employment writers
+  take the Access lock before any maintenance, so the lock order is unchanged.
+
+### 11.6 Save-cost limit before install
+
+A focused CI test times, with and without each step's maintenance:
+
+- a payroll processing chunk;
+- a selective reprocess;
+- a history confirm and an adoption;
+- a 1,000-employee movement import.
+
+The build fails if any of them is slower by more than the owner's limit (decision 3; proposed 2%).
+
+### 11.7 Automatic fall back, never to "deny"
+
+- A nightly rebuild difference (section 8.3) marks that tenant's step untrusted, and its reads use today's rules.
+- A full comparison difference does the same for that step on that tenant. An operator re-trusts it only after the
+  cause is fixed (7210 decision 2).
