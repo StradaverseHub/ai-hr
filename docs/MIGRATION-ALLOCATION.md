@@ -1,3 +1,49 @@
+# Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
+
+Reserve `7210_access_effective_company`, journal index `10610`, timestamp `1795495007210`,
+SQL SHA-256 `b69dafe700e795d50f7d664ac17dfef6d7daffa7f0966ad8ef9c71d5a886eb9a`. The reservation scan covered the 300 most recently committed remote branch heads
+and every registered worktree journal: the highest entry found was `7200_information_documents_planned_with_values`
+(index `10600`, when `1795495007200`, branch `claude/txn-view-slow-load-af9f97`), and `7160`–`7190` are held by the
+import and tax-basis branches. This entry is above all of them. Neither installation's watermark was read from this
+session; recheck both and any competing reservation before admission.
+
+Adds `access_company_closure`, `access_effective_company`, `access_company_state` and `access_precompute_control`
+(owner-only: RLS forced with the `app.acting_as_owner()` policy, no `ai_hr_app` privilege), statement triggers on
+`role_assignment`, `access_membership`, `access_user_override`, `access_group`, `access_group_grant`,
+`access_configuration`, `access_capability`, `company`, `company_organisation_run` and `company_organisation_mapping`,
+the maintenance, verify, re-trust and mode functions, and `app.access_workforce_companies(text)` (EXECUTE to
+`ai_hr_app`). Replaces the `job_document_read`, `job_document_revision_read` and (FOR ALL, so it also governs reads)
+`job_document_revision_write` policies with once-per-statement forms of the same predicates; the `job_document`
+insert, update and delete policies are unchanged. Installation mode starts as `legacy`. Builds every existing tenant in the
+migration transaction (rows bounded by admin role holders × companies × 2).
+# Retained payroll documents planned with their values, 24 November 2026
+
+Reserve `7200_information_documents_planned_with_values`, journal index `10600`, timestamp `1795495007200`,
+SQL SHA-256 `1346b1797640e36cb3c9af83aaa96b39bdd5a4b91b99411778e606128680c01e`. Staging had applied 1,140 entries
+through `1795280007150`. The reservation scan covered the 400 most recently committed remote branch heads, every local
+branch and every registered worktree journal; the highest entry found above `7150` was `7190_bank_import_worksheet_reservation`
+(`1795494980900`), with `7160` to `7180` reserved on other branches. The production watermark was not read from this
+session; recheck it and competing reservations before admission.
+
+Replaces the body of `app.information_payslip_documents(uuid[],integer,integer,text,uuid,boolean)` only: the 5129
+statement runs through `RETURN QUERY EXECUTE ... USING`, so it is planned with its argument values. Signature, owner,
+SECURITY DEFINER, search_path, the 0698 EXECUTE grant, rows and order are unchanged; it is guarded by the exact 5129 body.
+Measured cause (staging, 2,010 retained documents): one month's call took 441 ms against 15 ms for the same statement
+planned with its values, and Transaction View's History tab makes it on every load.
+
+# Recalculation opening source digest without per-row policies, 24 November 2026
+Reserve `7170_payroll_tax_basis_source_digest`, journal index `10570`, timestamp `1795488671170`,
+SQL SHA-256 `cdc4bbc16f68ff86c0964e3b480dd183c5c1fb98ab5847135dde158cf356b1a9`. Main had 1,140 entries through
+`7150` (`1795280007150`). The reservation scan of the 300 most recently committed remote branch heads found
+`7160_import_source_worksheet` (idx `10560`, timestamp `1795488671000`) on unmerged Codex branches, so this entry takes
+`7170` with a timestamp above it and cannot be skipped whichever lands first. The production watermark was not read
+from this session; recheck both installations and competing reservations before admission.
+Adds the definer `app.payroll_tax_basis_source_digest(uuid,integer)` (EXECUTE to `ai_hr_app` only), used by the locked
+income-tax recalculation opening. It returns the same md5 over the same rows the reader's row security admitted, after
+requiring the same authority, and is guarded by the exact SELECT/ALL policy list of the six relations it reads.
+Measured cause: production openings held the payroll-history and Access locks for 18-37 s per company in this digest
+(20 ms without row security); focused diagnostic run 45320620220.
+
 # Contract list company rights once per company, 23 November 2026
 
 Reserve `7150_contract_list_company_rights_once`, journal index `10550`, timestamp `1795280007150`,

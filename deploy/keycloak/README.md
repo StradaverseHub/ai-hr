@@ -72,3 +72,11 @@ Runtime enrollment selects an installation, not an HR tenant or permission scope
 ## Rollback
 
 Keep the pre-cutover app environment and proxy/tunnel configuration in root-owned backups. Roll back the environment to its previous explicit provider and restart the unchanged built app, restoring the tunnel upstream if needed. Preserve additive identity/session tables and all internal HR IDs. Do not turn on a hidden demo fallback when Keycloak is unavailable; the previous gated demo is an explicit emergency rollback decision only. Existing WorkOS configurations can use their legacy adapter. Never delete/rewrite attendance, leave, people or grants to roll authentication back.
+
+## Parking on an embedded-login installation
+
+ADR-0117 cancelled Keycloak activation. An installation that selects embedded HR login (`AUTH_PROVIDER=internal`) does not call Keycloak or the identity-email agent: account, notification and report mail go through `lib/internal-auth`. Both services still run where they were installed earlier, and they cost memory. On the 2-vCPU / 3.9 GB staging box on 24 Nov 2026, Keycloak held about 230 MB RSS plus 390 MB of swap, and the agent about 80 MB, while the agent's socket had never accepted a connection.
+
+`deploy/keycloak/park.sh status` is read-only. It checks that the app environment has exactly one `AUTH_PROVIDER=internal` and no non-empty `KEYCLOAK_*` value, that only `aihr-identity-email.service` requires Keycloak, and that the agent's socket has no open connection. It then prints each unit's memory and swap. `sudo deploy/keycloak/park.sh park` runs the same checks, then stops and disables the agent's socket and service, and then Keycloak. It never restarts `aihr`. `sudo deploy/keycloak/park.sh unpark` enables and starts them again.
+
+Parking deletes nothing. `/etc/aihr-keycloak`, `/opt/aihr-keycloak`, the `aihr_identity` database, `/var/lib/aihr-identity-email` and the daily identity backup job stay in place. Parking is an installation change: it needs the owner's explicit approval and, on staging, the shared staging lease. Removing the packages, database or configuration is a separate, later decision.

@@ -40,18 +40,29 @@ def same(left,right):
     return (left.st_dev,left.st_ino,left.st_mode,left.st_uid,left.st_gid,left.st_nlink,left.st_size,left.st_mtime_ns,left.st_ctime_ns)==(right.st_dev,right.st_ino,right.st_mode,right.st_uid,right.st_gid,right.st_nlink,right.st_size,right.st_mtime_ns,right.st_ctime_ns)
 
 
+def same_ancestor(left,right):
+    # An ancestor is only traversed, never enumerated or recorded. A swap shows in its device and inode, and a
+    # type, permission or ownership change in mode, uid and gid. Its link count, size and times change whenever
+    # any sibling entry is created or removed in it (a shared /tmp or /var/tmp), which changes nothing this
+    # fence opens; comparing them refused real captures under unrelated concurrent activity (CI, 24 Nov 2026).
+    return (left.st_dev,left.st_ino,left.st_mode,left.st_uid,left.st_gid)==(right.st_dev,right.st_ino,right.st_mode,right.st_uid,right.st_gid)
+
+
 def canonical_directory(value,deadline):
     """Open every ancestor relative to a held descriptor, rejecting all symbolic-link ancestors."""
     raw=bounded_path(os.fspath(value));path=Path(raw)
     require(path.is_absolute() and str(path)==raw and '..' not in path.parts,'canonical absolute root required')
     clock(deadline);fd=os.open('/',os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC)
+    names=path.parts[1:]
     try:
-        for name in path.parts[1:]:
+        for index,name in enumerate(names):
             clock(deadline);before=os.stat(name,dir_fd=fd,follow_symlinks=False)
             require(stat.S_ISDIR(before.st_mode),'root ancestor is not a real directory')
             opened=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=fd)
+            # The requested directory itself keeps the complete comparison; its strict ancestors compare identity.
+            unchanged=same if index==len(names)-1 else same_ancestor
             try:
-                require(same(before,os.fstat(opened)) and same(before,os.stat(name,dir_fd=fd,follow_symlinks=False)),'root ancestor changed while opening')
+                require(unchanged(before,os.fstat(opened)) and unchanged(before,os.stat(name,dir_fd=fd,follow_symlinks=False)),'root ancestor changed while opening')
             except BaseException:os.close(opened);raise
             os.close(fd);fd=opened;clock(deadline)
         return path,fd

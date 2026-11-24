@@ -332,7 +332,7 @@ describe('every process counts against the database connection limit',()=>{
   expect(()=>applicationDatabaseBudget({AIHR_DB_PROCESS_ROLE:'job'})).toThrow(/AIHR_DB_PROCESS_ROLE/);
  });
  it('adds web, background and reserved connections for the fleet',()=>{
-  expect(databaseFleetBudget({...shared,AIHR_DB_BACKGROUND_CONNECTIONS:'14',AIHR_DB_RESERVED_CONNECTIONS:'6'})).toEqual({webConnections:16,backgroundConnections:14,reservedConnections:6,requiredConnections:36});
+  expect(databaseFleetBudget({...shared,AIHR_DB_BACKGROUND_CONNECTIONS:'14',AIHR_DB_RESERVED_CONNECTIONS:'6'})).toEqual({webConnections:16,backgroundConnections:14,workerLaneConnections:0,reservedConnections:6,requiredConnections:36});
  });
  it('refuses to start when the fleet cannot fit the server limit',()=>{
   expect(assertFleetFitsServer(shared,{maxConnections:100,superuserReserved:3})).toMatchObject({requiredConnections:37,available:97});
