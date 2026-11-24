@@ -194,7 +194,8 @@ export async function applyEmployeeHireGroupTx(tx:Tx,ctx:SessionContext,steps:re
  });
 
  // ── initializeHiredStatutoryMY, for the group ───────────────────────────────────────────────────────────────
- await lockStatutoryGroupTx(tx,ctx,rows.map(r=>({personId:r.personId})));
+ // Its statutory interval is the one the tax selection took above, in this transaction: the same tenant-level locks
+ // and the same subject keys (each employment's subject is its person), so nothing more is acquired here.
  const statutoryIds=await tx.insert(employeeStatutoryMy).values(rows.map(r=>({tenantId:tenant,personId:r.personId,...r.statutory.values}))).returning({id:employeeStatutoryMy.id,personId:employeeStatutoryMy.personId});
  const statutoryOf=new Map(statutoryIds.map(s=>[s.personId,s.id]));
  const subjects=await subjectEmploymentsTx(tx,tenant,personIds);
@@ -205,16 +206,16 @@ export async function applyEmployeeHireGroupTx(tx:Tx,ctx:SessionContext,steps:re
  const withDob=rows.map((r,i)=>({r,i})).filter(({r})=>r.dob!==null);
  if(withDob.length){
   const dobEmployments=withDob.map(({r})=>r.employmentId),dobPersons=withDob.map(({r})=>r.personId);
-  await lockAccessConfigurationTx(tx,tenant);
+  // The command's shared Access lock and workforce barrier, and the writer's shared Access lock and leave
+  // configuration lock, are held already in this transaction (the hire and the statutory interval took them above);
+  // the checks, the profile-policy lock and the subject keys are this writer's own.
   await joinWorkforceBarrierTx(tx,tenant);
   await allTrue(tx,sql`select bool_and(app.access_workforce_employment(e,'workforce.maintain')) as ok from unnest(${uuidList(dobEmployments)}) as u(e)`,'compliance-employment');
   await lockEmploymentLeaveDependenciesTx(tx,tenant,[],{configuration:true});
   await allTrue(tx,sql`select bool_and(app.access_workforce_person(p,'workforce.maintain')) as ok from unnest(${uuidList(dobPersons)}) as u(p)`,'compliance-person');
-  await lockAccessConfigurationTx(tx,tenant);
   // lockPersonLeaveDependenciesWaitTx: every employment of each person (each new person has exactly this one).
   const peers=await tx.execute<{id:string}>(sql`select peer.id from public.employment subject join public.employment peer on peer.person_id=subject.person_id and peer.tenant_id=subject.tenant_id where subject.id=any(${uuidList(dobEmployments)})`);
   if(peers.length!==dobEmployments.length)decline('compliance-peers');
-  await lockLeaveDependenciesWaitTx(tx,tenant,[]);
   await tryAdvisoryLocksTx(tx,dobEmployments.map(id=>`leave-dependency-employment:${tenant.toLowerCase()}:${id.toLowerCase()}`));
   await lockProfileValueSharedTx(tx,tenant);
   await tryAdvisoryLocksTx(tx,dobPersons.map(id=>`profile-subject:${tenant}:${id}`));
@@ -227,12 +228,11 @@ export async function applyEmployeeHireGroupTx(tx:Tx,ctx:SessionContext,steps:re
  }
 
  // ── setCompensation (the first salary record), for the group ────────────────────────────────────────────────
- await lockAccessConfigurationTx(tx,tenant);
- await tx.execute(sql`select app.access_workforce_write_lock()`);
+ // ownCompensationDependenciesTx: the shared Access lock, the workforce barrier rows, the shared leave configuration
+ // and the group's payroll inputs keys are held already in this transaction (the statutory interval took them above);
+ // the authority check and the employment keys are this writer's own.
  await allTrue(tx,sql`select bool_and(exists(select 1 from public.employment e where e.id=u.id and e.tenant_id=${tenant}::uuid and (app.can_admin_employment(e.id) or app.can_admin_perfcomp_employment(e.id)))) as ok from unnest(${uuidList(employmentIds)}) as u(id)`,'compensation-authority');
- await lockLeaveDependenciesWaitTx(tx,tenant,[]);
  await tryAdvisoryLocksTx(tx,employmentIds.map(id=>`leave-dependency-employment:${tenant.toLowerCase()}:${id.toLowerCase()}`));
- await lockPayrollInputsTx(tx,{employmentIds});
  const current=await tx.select({id:compensation.id}).from(compensation).where(and(inArray(compensation.employmentId,employmentIds),isNull(compensation.validTo),isNull(compensation.supersededAt)));
  if(current.length)decline('compensation-exists');
  const salaries=await tx.insert(compensation).values(rows.map(r=>({tenantId:tenant,...r.terms.values,employmentId:r.employmentId}))).returning({id:compensation.id,employmentId:compensation.employmentId});

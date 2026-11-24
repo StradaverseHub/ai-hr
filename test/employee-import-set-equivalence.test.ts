@@ -94,13 +94,17 @@ async function runImport(t:Tenant,file:{csv:string;dependentsCsv:string},name:st
  * statement text only, never a parameter. */
 async function profile<T>(work:()=>Promise<T>){
  const options=(client as unknown as {options:{debug?:unknown}}).options,previous=options.debug;
- const sent:string[]=[];
- options.debug=(_connection:number,text:string)=>{sent.push(text);};
+ const sent:{at:number;text:string}[]=[];
+ options.debug=(_connection:number,text:string)=>{sent.push({at:performance.now(),text});};
  const started=performance.now(),cpu=process.cpuUsage();
  try{
-  const result=await work();const ms=performance.now()-started,c=process.cpuUsage(cpu),cpuMs=(c.user+c.system)/1000;
+  const result=await work();const ms=performance.now()-started,c=process.cpuUsage(cpu),cpuMs=(c.user+c.system)/1000,end=performance.now();
   const bookkeeping=/^(begin|commit|rollback|savepoint|release|start transaction)\b/i;
-  return{result,ms,cpuMs,statements:sent.filter(s=>!bookkeeping.test(s.trim())).length,transactions:sent.filter(s=>/^select set_config\('app\.tenant_id'/i.test(s.trim())).length};
+  // Time from each statement's send to the next one's (its execution plus the application work after it), by text.
+  const byText=new Map<string,{n:number;ms:number}>();
+  sent.forEach((s,i)=>{const key=s.text.replace(/\s+/g,' ').trim().slice(0,140);const row=byText.get(key)??{n:0,ms:0};row.n++;row.ms+=(sent[i+1]?.at??end)-s.at;byText.set(key,row);});
+  return{result,ms,cpuMs,statements:sent.filter(s=>!bookkeeping.test(s.text.trim())).length,transactions:sent.filter(s=>/^select set_config\('app\.tenant_id'/i.test(s.text.trim())).length,
+   top:[...byText].sort((a,b)=>b[1].ms-a[1].ms).slice(0,30).map(([text,row])=>({ms:Math.round(row.ms),n:row.n,text}))};
  }finally{options.debug=previous;}
 }
 
@@ -235,7 +239,7 @@ it('imports set-based exactly as the per-row path, at the shape of a 70-company 
   msPerRow:Math.round(p.ms/rows),statements:p.statements,statementsPerRow:Math.round(p.statements/rows),transactions:p.transactions});
  console.info('EMPLOYEE_IMPORT_SET_EQUIVALENCE_DIAGNOSTIC',JSON.stringify({
   shape:{companies:COMPANIES,employments:EMPLOYMENTS,rows:ROWS,refusedRows:REFUSED_ROWS},
-  perRow:{...split(perRow,ROWS),metrics:perRowMetrics},set:{...split(set,ROWS),metrics:setMetrics},
+  perRow:{...split(perRow,ROWS),metrics:perRowMetrics},set:{...split(set,ROWS),metrics:setMetrics,top:set.top},
   perRowRefused:split(perRowRefused,REFUSED_ROWS),setRefused:{...split(setRefused,REFUSED_ROWS),metrics:setRefusedMetrics},
  },null,1));
 },900_000);
