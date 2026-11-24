@@ -1328,6 +1328,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.access_company_closure_compute(uuid)',app:false},
    {fn:'app.access_effective_company_capability_changed()',app:false},
    {fn:'app.access_effective_company_company_changed()',app:false},
+   {fn:'app.access_effective_company_configuration_changed()',app:false},
    {fn:'app.access_effective_company_compute(uuid,uuid[])',app:false},
    {fn:'app.access_effective_company_publication_changed()',app:false},
    {fn:'app.access_effective_company_refresh(uuid,uuid[])',app:false},

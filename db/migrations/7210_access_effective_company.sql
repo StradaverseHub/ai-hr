@@ -248,6 +248,28 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
+-- access_configuration carries the tenant's Access revision, which many writers bump (employment and access fences);
+-- only its initialized flag feeds the stored answer, so an update recomputes only when that flag changes.
+CREATE FUNCTION app.access_effective_company_configuration_changed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid;
+BEGIN
+ IF TG_OP='INSERT' THEN
+  FOR t IN SELECT DISTINCT n.tenant_id FROM new_rows n LOOP PERFORM app.access_effective_company_refresh(t,NULL); END LOOP;
+ ELSIF TG_OP='DELETE' THEN
+  FOR t IN SELECT DISTINCT o.tenant_id FROM old_rows o LOOP PERFORM app.access_effective_company_refresh(t,NULL); END LOOP;
+ ELSE
+  FOR t IN SELECT x.tenant_id FROM (
+    SELECT n.tenant_id FROM new_rows n LEFT JOIN old_rows o ON o.tenant_id=n.tenant_id
+     WHERE o.tenant_id IS NULL OR o.initialized IS DISTINCT FROM n.initialized
+    UNION
+    SELECT o.tenant_id FROM old_rows o LEFT JOIN new_rows n ON n.tenant_id=o.tenant_id WHERE n.tenant_id IS NULL) x
+  LOOP PERFORM app.access_effective_company_refresh(t,NULL); END LOOP;
+ END IF;
+ RETURN NULL;
+END;
+$$;
+--> statement-breakpoint
 -- The capability catalogue is global and migration-owned: a change to a Workforce capability recomputes every
 -- tenant that has companies.
 CREATE FUNCTION app.access_effective_company_capability_changed() RETURNS trigger
@@ -277,7 +299,7 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.access_effective_company_publication_changed(),app.access_effective_company_role_changed(),app.access_effective_company_user_rows_changed(),
+REVOKE ALL ON FUNCTION app.access_effective_company_configuration_changed(),app.access_effective_company_publication_changed(),app.access_effective_company_role_changed(),app.access_effective_company_user_rows_changed(),
  app.access_effective_company_tenant_rows_changed(),app.access_effective_company_company_changed(),
  app.access_effective_company_capability_changed() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -292,7 +314,7 @@ BEGIN
   ('access_user_override','access_effective_company_user_rows_changed'),
   ('access_group','access_effective_company_tenant_rows_changed'),
   ('access_group_grant','access_effective_company_tenant_rows_changed'),
-  ('access_configuration','access_effective_company_tenant_rows_changed'),
+  ('access_configuration','access_effective_company_configuration_changed'),
   ('company_organisation_run','access_effective_company_tenant_rows_changed'),
   ('company_organisation_mapping','access_effective_company_tenant_rows_changed'),
   ('company','access_effective_company_company_changed'),
