@@ -120,8 +120,10 @@ beforeAll(async()=>{
   const periods=runs.map(()=>randomUUID());
   await tx`insert into pay_period(id,tenant_id,company_id,period,status)
    select p,${T}::uuid,c,per,'open' from unnest(${periods}::uuid[],${runs.map(r=>r.company)}::uuid[],${runs.map(r=>r.period)}::text[]) as x(p,c,per)`;
-  await tx`insert into payroll_batch(id,tenant_id,company_id,pay_period,batch_date,status,employee_count,totals,pay_period_id,closed_at)
-   select r,${T}::uuid,c,per,(per||'-25')::date,st::payroll_status,0,'{}'::jsonb,pp,case when st='closed' then now() end
+  // A processing run carries its background job's lease (payroll_batch_processing_lease); a fictional job id.
+  await tx`insert into payroll_batch(id,tenant_id,company_id,pay_period,batch_date,status,employee_count,totals,pay_period_id,closed_at,processing_job_id,processing_started_at)
+   select r,${T}::uuid,c,per,(per||'-25')::date,st::payroll_status,0,'{}'::jsonb,pp,case when st='closed' then now() end,
+    case when st='processing' then gen_random_uuid() end,case when st='processing' then now() end
    from unnest(${runs.map(r=>r.id)}::uuid[],${runs.map(r=>r.company)}::uuid[],${runs.map(r=>r.period)}::text[],${runs.map(r=>r.status)}::text[],${periods}::uuid[]) as x(r,c,per,st,pp)`;
   // Payslips: every employee on their company's processed and closed runs, every other employee on a processing run.
   // componentLines itemise FXA for k%5 in (0,1) and FXB for k%7=0; FXC is never itemised.
