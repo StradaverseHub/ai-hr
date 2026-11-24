@@ -26,9 +26,14 @@ export type NonCashClassificationInput = {
   displayCategory?: string | null; eaFormLine?: string | null;
   pcbRemunerationType?: string | null; epfBonus2012?: boolean;
 };
+/** Stable refusal reasons. `epf_bonus_not_allowed` and `normal_remuneration_required` are separate facts
+ *  (board 8edeef41): the EPF Bonus 2012 refusal applies only when that box is ticked, and the remuneration
+ *  refusal only when the type is not Normal. BIK/VOLA stay normal remuneration (ADR-0090). */
+export type NonCashBenefitConfigurationReason = 'classification_conflict' | 'unsupported_kind' | 'epf_bonus_not_allowed'
+  | 'normal_remuneration_required' | 'month_baseline_unavailable';
 export class NonCashBenefitConfigurationError extends Error {
   readonly code = 'pcb_non_cash_configuration_invalid';
-  constructor(readonly componentCode: string, readonly reason: 'classification_conflict' | 'unsupported_kind' | 'normal_remuneration_required' | 'month_baseline_unavailable') {
+  constructor(readonly componentCode: string, readonly reason: NonCashBenefitConfigurationReason) {
     super('Non-cash benefit configuration requires review'); this.name = 'NonCashBenefitConfigurationError';
   }
 }
@@ -42,7 +47,8 @@ export function classifyNonCashBenefit(c: NonCashClassificationInput): NonCashBe
   const benefit = explicit ?? legacy;
   if (!benefit) return null;
   if (c.kind !== 'allowance' && c.kind !== 'earning' && c.kind !== 'non_payable') throw new NonCashBenefitConfigurationError(c.code, 'unsupported_kind');
-  if (c.pcb && (c.epfBonus2012 || (c.pcbRemunerationType != null && c.pcbRemunerationType !== 'normal'))) {
+  if (c.pcb && c.epfBonus2012) throw new NonCashBenefitConfigurationError(c.code, 'epf_bonus_not_allowed');
+  if (c.pcb && c.pcbRemunerationType != null && c.pcbRemunerationType !== 'normal') {
     throw new NonCashBenefitConfigurationError(c.code, 'normal_remuneration_required');
   }
   return benefit;
