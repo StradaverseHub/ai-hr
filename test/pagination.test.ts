@@ -196,7 +196,7 @@ describe('fc776376 — one implementation, not a sixth', () => {
       expect(read(file)).toContain("query = parseInquiryQuery(sp, 'records')");
       expect(read('lib/leave-inquiry-query.ts')).toContain("import { parsePageQuery } from './pagination'");
       expect(read('lib/leave-inquiry-query.ts')).toContain('const pq = parsePageQuery({ size, page })');
-    } else if (file === 'app/personnel/page.tsx') {
+    } else if (file === 'app/personnel/page.tsx' || file === 'app/admin/audit/page.tsx') {
       // ADR 0181 Phase 4: the directory pages by key; parseKeysetPageQuery reads ?size= through parsePageQuery.
       expect(read(file)).toContain('parseKeysetPageQuery(sp)');
       expect(read('lib/pagination.ts')).toContain('const base = parsePageQuery(sp);');
