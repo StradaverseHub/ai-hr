@@ -3,7 +3,10 @@
 Date: 24 November 2026
 
 Status: **Approved by the owner on 24 November 2026** ("Approve as recommended"): all six decisions of section 10 as
-written. Approved is not built. No migration is written or allocated yet. Staging work goes through the shared staging queue,
+written. Built, not installed: step (a) is PR 295 (headcount, no migration; in staging release 4); step (b) is PR 296
+(`7230_assignment_current_department_index`); step (c) is PR 300 (`7240_access_visible_employment`, stacked on 296).
+The owner decided 7230 and 7240 ship together as one migration-bearing staging release. Step (d), the leave delegation
+set, is not started. Staging work goes through the shared staging queue,
 after release 3, which carries 7210. That covers the read-only attribution read approved in decision 6, and later
 installing the build for its shadow period, which is a separate staging release. This applies ADR 0181 decision 1 to the next family after the company pilot
 ([company pilot addendum](0181-addendum-precomputed-company-access.md), migration `7210_access_effective_company`, PRs
