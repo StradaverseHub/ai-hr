@@ -1,8 +1,9 @@
 /** Real Linux descriptor/flock lifetime tests run on standard hosted Actions, without root operations. */
 import {spawnSync} from 'node:child_process';
 import {expect,it} from 'vitest';
+import {workerFixtureEnv} from './helpers/worker-fixture-tmp';
 it('holds native SH and worker EX through direct mutating children and fences exact fixed authority',()=>{
- const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-operation-guard-tests.py'],{encoding:'utf8',maxBuffer:1024**2,timeout:90000});
+ const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-operation-guard-tests.py'],{env:workerFixtureEnv('operation-guard'),encoding:'utf8',maxBuffer:1024**2,timeout:90000});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
  expect(result.stderr).toContain('Ran 17 tests');
 },100000);

@@ -6,7 +6,7 @@ import {performance} from 'node:perf_hooks';
 import * as XLSX from 'xlsx';
 import {withTenant} from '../db/client';
 import {runBulkJobTick} from '../core/bulk-job-worker';
-import {enqueueTransactionExport,readTransactionExportJob,readTransactionWorkbookPart,transactionExportJobHandler,transactionWorkbookFile,transactionWorkbookReceipt} from '../core/payroll-transaction-export';
+import {enqueueTransactionExport,listTransactionWorkbooks,readTransactionExportJob,transactionWorkbooksPreparing,readTransactionWorkbookPart,transactionExportJobHandler,transactionWorkbookFile,transactionWorkbookReceipt} from '../core/payroll-transaction-export';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import type {SessionContext,Tx} from '../db/client';
@@ -245,6 +245,14 @@ it('publishes a typed private workbook from the background job and scopes each d
  expect(job.state,job.error ?? '').toBe('completed');
  const receipt=transactionWorkbookReceipt(job.result);
  expect(receipt).toMatchObject({rows:1,kind:'individual',employmentId:employee.employmentId,parts:1});
+ // The Workbooks list and its preparing poll (staging 24 Nov 2026): the creator's own job in scope, list columns only.
+ const listed=await listTransactionWorkbooks(actor,[b.companyId]);
+ expect(listed.map(item=>[item.id,item.state,item.exportKind])).toEqual([[id,'completed','individual']]);
+ expect(Object.keys(listed[0]).sort()).toEqual(['createdAt','exportKind','finishedAt','id','state']);
+ expect(listed[0].finishedAt).toBeInstanceOf(Date);
+ expect(await transactionWorkbooksPreparing(actor,[b.companyId])).toBe(false);
+ expect(await listTransactionWorkbooks(actor,[randomUUID()])).toEqual([]);
+ expect(await listTransactionWorkbooks({...actor,userId:randomUUID()},[b.companyId])).toEqual([]);
  const content=await readTransactionWorkbookPart(actor,id,0);
  expect(content.length).toBe(receipt.bytes);
  const workbook=XLSX.read(content,{type:'buffer',cellDates:true});
