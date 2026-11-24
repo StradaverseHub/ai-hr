@@ -1,14 +1,18 @@
 # Approval History keyset page and capped count (ADR 0181 Phase 4), 25 November 2026
 
-Reserve `7270_approval_history_keyset`, journal index `10670`, timestamp `1795495007270`,
-SQL SHA-256 `c29c31fda4ed91e258c9b07884ddab16e8db040a3118d3d0adace495722122f8`. The reservation scan covered the 400 most recently committed remote branch heads, every
-local branch and every registered worktree's journal and migration folder. The highest entries found were
-`7230_assignment_current_department_index` (PR 296), `7240_access_visible_employment` (PR 292),
-`7250_replacement_holiday_queue_voided` (`claude/release-rhq-7250-20261125`) and
-`7260_viewer_access_version` (local branch `claude/db-read-cost-phase-3`), so this entry is above them all.
-Neither installation's watermark was read from this session. Recheck both, and any competing reservation, before admission.
-Install order (confirmed by the coordinator, 25 November 2026): staging applies 7250 (voided replacement holiday) and
-7260 (Phase 3 viewer access version) before 7270. Coordinate the ticket with the ORCHESTRATOR session.
+Reserve `7290_approval_history_keyset`, journal index `10690`, timestamp `1795495007290`,
+SQL SHA-256 `c29c31fda4ed91e258c9b07884ddab16e8db040a3118d3d0adace495722122f8` (unchanged from 7270).
+
+**Renumbered from `7270_approval_history_keyset` (idx `10670`, when `1795495007270`).** The 7270 slot is abandoned:
+it was never applied on any installation. The staging coordinator moved `7280_leave_delegated_decision_set` ahead of
+this release, and a lower timestamp than an applied one would be silently skipped, so this migration takes `7290`.
+The database revamp session confirmed 7290 free on 25 November 2026, after a scan of the 400 most recent remote
+branches. This session's scan found nothing above 7280 among the 300 most recent remote heads and every registered
+worktree's migration folder. Neither installation's watermark was read from this session; recheck both, and any
+competing reservation, before admission.
+
+Staging order (coordinator, 25 November 2026): R6 (7230 + 7240), 7250, 7260, 7280, then this one (7290). Deploy the
+web app and the migration only, without a worker restart, and coordinate the ticket with the ORCHESTRATOR session.
 
 Adds three SECURITY DEFINER functions beside the unchanged `app.approval_history` (0818) and
 `app.approval_history_count` (0320), which keep serving the bell's History tab:

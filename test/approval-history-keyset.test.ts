@@ -1,4 +1,4 @@
-/** ADR 0181 decision 5 (Phase 4), migration 7270: Approval History pages by key and caps its total.
+/** ADR 0181 decision 5 (Phase 4), migration 7290: Approval History pages by key and caps its total.
  *
  * On the fictional 71-company / 1,000-employment group (test/helpers/ai-centre-scale-fixture.ts) with ~2,400 invented
  * approval decisions (several kinds, a run sharing one timestamp, some on the viewers' own employments), for the
@@ -103,7 +103,7 @@ async function walkBackward(ctx:SessionContext,f:ApprovalHistoryFilters,size:str
 const ids=(rows:readonly {id:string}[])=>rows.map(r=>r.id);
 const day=(offsetHours:number)=>new Date(Date.now()-offsetHours*3_600_000).toISOString();
 
-describe('Approval History keyset paging at group scale (7270)',()=>{
+describe('Approval History keyset paging at group scale (7290)',()=>{
  it('reads the previous reader\'s decisions in its order, forwards and backwards, for every role and filter',async()=>{
   expect(fixture.companyIds.length).toBeGreaterThanOrEqual(70);
   const filters:Record<string,ApprovalHistoryFilters>={
@@ -160,7 +160,7 @@ describe('Approval History keyset paging at group scale (7270)',()=>{
  },120_000);
 
  it('the migration keeps the previous functions and grants only the page and the capped count',()=>{
-  const migration=readFileSync('db/migrations/7270_approval_history_keyset.sql','utf8');
+  const migration=readFileSync('db/migrations/7290_approval_history_keyset.sql','utf8');
   expect(migration).not.toMatch(/CREATE OR REPLACE|DROP |ALTER /i);
   expect(migration.match(/GRANT EXECUTE ON FUNCTION app\.(\w+)/g)).toEqual(['GRANT EXECUTE ON FUNCTION app.approval_history_page','GRANT EXECUTE ON FUNCTION app.approval_history_count_capped']);
  });
