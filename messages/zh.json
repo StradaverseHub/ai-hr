@@ -14749,7 +14749,9 @@
     "details": "详情",
     "homePreferences": "首页偏好设置",
     "chooseCompanies": "重新选择",
-    "pendingCompanySelection": "选择公司以更新视图。当前公司范围尚未改变。"
+    "pendingCompanySelection": "选择公司以更新视图。当前公司范围尚未改变。",
+    "employerCompanies": "您任职的公司",
+    "employerCompaniesHint": "仅限您本人的记录。不在您被分配的角色范围内。"
   },
   "components": {
     "plannedAbsences": {

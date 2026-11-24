@@ -8,6 +8,7 @@ import { ChevronDown } from 'lucide-react';
 import { setCompanyScope } from '@/app/scope-actions';
 import { cn } from '@/lib/utils';
 import { useIsMonolith } from '@/components/ui-theme-context';
+import type { AllowedCompanyAccess } from '@/core/read';
 
 /**
  * Odoo-style multi-company context: shows the active company/companies, multi-select to re-scope.
@@ -51,7 +52,8 @@ export function CompanySwitcher({
   companies,
   selected,
 }: {
-  companies: { id: string; name: string }[];
+  /** `access` comes from allowedCompanies; absent means a role covers the company (the pre-label shape). */
+  companies: { id: string; name: string; access?: AllowedCompanyAccess }[];
   selected: string[];
 }) {
   const pathname = usePathname();
@@ -78,6 +80,41 @@ export function CompanySwitcher({
   // every() over the rendered companies, NOT a size compare: a size compare misfires if `sel` ever
   // holds an id that is not in the listed companies.
   const allSelected = companies.length > 0 && companies.every((c) => sel.has(c.id));
+
+  // A company reached only through the user's own employment shows them their own records, not what an
+  // assignment would. Kept apart (and said so) only when it sits beside assigned companies; a user with no
+  // assignments sees one plain list.
+  const assigned = companies.filter((c) => c.access !== 'employment');
+  const ownRecordsOnly = companies.filter((c) => c.access === 'employment');
+  const split = assigned.length > 0 && ownRecordsOnly.length > 0;
+
+  const companyRow = (c: (typeof companies)[number]) => (
+    <label
+      key={c.id}
+      className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
+    >
+      <input
+        type="checkbox"
+        name="companyId"
+        value={c.id}
+        checked={sel.has(c.id)}
+        onChange={(e) => {
+          // The native tick is already in the DOM when onChange fires, so this synchronous
+          // submit posts the correct companyId set for this one change (no flushSync).
+          const form = e.currentTarget.form;
+          const next = new Set(sel);
+          if (e.currentTarget.checked) next.add(c.id);
+          else next.delete(c.id);
+          setSel(next);
+          if (next.size > 0) form?.requestSubmit();
+        }}
+        className="size-4 shrink-0 accent-[var(--color-primary)]"
+      />
+      <span className="truncate" title={c.name}>
+        {c.name}
+      </span>
+    </label>
+  );
 
   return (
     // min-w-0 is load-bearing (overlap guard d9b81f8d): this div is a flex item of the topbar's
@@ -162,33 +199,20 @@ export function CompanySwitcher({
             </button>
             {sel.size === 0 && <p role="status" className="px-2 py-2 text-xs text-muted-foreground">{t('pendingCompanySelection')}</p>}
             <div className="-mx-1.5 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5">
-              {companies.map((c) => (
-                <label
-                  key={c.id}
-                  className="flex cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
-                >
-                  <input
-                    type="checkbox"
-                    name="companyId"
-                    value={c.id}
-                    checked={sel.has(c.id)}
-                    onChange={(e) => {
-                      // The native tick is already in the DOM when onChange fires, so this synchronous
-                      // submit posts the correct companyId set for this one change (no flushSync).
-                      const form = e.currentTarget.form;
-                      const next = new Set(sel);
-                      if (e.currentTarget.checked) next.add(c.id);
-                      else next.delete(c.id);
-                      setSel(next);
-                      if (next.size > 0) form?.requestSubmit();
-                    }}
-                    className="size-4 shrink-0 accent-[var(--color-primary)]"
-                  />
-                  <span className="truncate" title={c.name}>
-                    {c.name}
-                  </span>
-                </label>
-              ))}
+              {split ? (
+                <>
+                  {assigned.map(companyRow)}
+                  <div role="group" aria-labelledby="company-context-own-records" className="mt-1 border-t border-border pt-1">
+                    <div id="company-context-own-records" className="px-2 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {t('employerCompanies')}
+                    </div>
+                    <p className="px-2 pb-1 text-xs text-muted-foreground">{t('employerCompaniesHint')}</p>
+                    {ownRecordsOnly.map(companyRow)}
+                  </div>
+                </>
+              ) : (
+                companies.map(companyRow)
+              )}
             </div>
           </form>
         </>

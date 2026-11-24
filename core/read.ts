@@ -7335,18 +7335,27 @@ export function myAttendance(ctx: SessionContext, employmentId: string, limit = 
   });
 }
 
+/**
+ * How the principal reaches an allowed company. `role` — a role assignment names it, names a parent company
+ * above it, or is group-wide (other than the plain `employee` role every staff login carries). `employment` —
+ * it is listed only because the principal works there, so the company context shows them their own records
+ * and nothing an assignment would add. A label for the company context, never an authorization input: RLS
+ * decides what each company reveals.
+ */
+export type AllowedCompanyAccess = 'role' | 'employment';
+
 /** Companies this principal may scope to (top-bar company context): group admin → all; otherwise
  *  the companies they're employed at + the companies of their company-scoped grants. */
 export function allowedCompanies(ctx: SessionContext, existingTx?: Tx) {
   ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
 
-  return withReadTx(ctx, existingTx, async (tx) => {
+  return withReadTx(ctx, existingTx, async (tx): Promise<{ id: string; name: string; access: AllowedCompanyAccess }[]> => {
     const isGroupAdmin =
       ctx.grants?.some((g) => (g.role === 'hr_admin' || g.role === 'super_admin') && !g.companyId) ??
       false;
     if (isGroupAdmin) {
       return tx
-        .select({ id: company.id, name: company.legalName })
+        .select({ id: company.id, name: company.legalName, access: sql<AllowedCompanyAccess>`'role'` })
         .from(company)
         .orderBy(company.legalName);
     }
@@ -7356,8 +7365,17 @@ export function allowedCompanies(ctx: SessionContext, existingTx?: Tx) {
       ? tx.select({ id: employment.companyId }).from(employment)
         .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
       : undefined;
+    const groupWideRole = (ctx.grants ?? []).some(grant => !grant.companyId && grant.role !== 'employee');
+    const grantArray = sql`ARRAY[${sql.join(grantCompanyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
+    const access = groupWideRole
+      ? sql<AllowedCompanyAccess>`'role'`
+      : grantCompanyIds.length
+        ? sql<AllowedCompanyAccess>`case when ${company.id} = any(${grantArray})
+            or exists (select 1 from unnest(${grantArray}) assigned(id) where app.is_company_descendant(${company.id}, assigned.id))
+            then 'role' else 'employment' end`
+        : sql<AllowedCompanyAccess>`'employment'`;
     return tx
-      .select({ id: company.id, name: company.legalName })
+      .select({ id: company.id, name: company.legalName, access })
       .from(company)
       .where(or(
         grantCompanyIds.length ? inArray(company.id, grantCompanyIds) : undefined,

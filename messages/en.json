@@ -14749,7 +14749,9 @@
     "details": "Details",
     "homePreferences": "Home preferences",
     "chooseCompanies": "Choose a new selection",
-    "pendingCompanySelection": "Choose a company to update the view. The current company scope is unchanged."
+    "pendingCompanySelection": "Choose a company to update the view. The current company scope is unchanged.",
+    "employerCompanies": "Where you work",
+    "employerCompaniesHint": "Your own records only. Not covered by your assigned roles."
   },
   "components": {
     "plannedAbsences": {
