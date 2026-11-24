@@ -12,8 +12,10 @@
  * outcomes, counts and totals, and the per-employee outcome events.
  *
  * Known, intended difference (recorded in ADR 0181): the run-level audit rows of one engine pass, the status-history
- * row, the `payroll-batch.selective-reprocessed` event and the Audit loop's inputs capture, are written once per group
- * instead of once per employee. The test proves they cover exactly the same employees.
+ * row and the `payroll-batch.selective-reprocessed` event, are written once per group instead of once per employee. The
+ * test proves they cover exactly the same employees. The Audit loop's inputs capture is taken once per JOB on both paths
+ * (ADR 0181 J2, fixed cost): the test proves each path wrote exactly one, naming every employee the job reprocessed, and
+ * that its hashes are the run's inputs and results as they stand after the job (an independent read of the same rows).
  *
  * The diagnostic line REPROCESS_SET_EQUIVALENCE_DIAGNOSTIC reports, for both paths, wall time, process CPU (the
  * calculation and the driver), the rest (database), application statements, and the job's per-chunk split from
@@ -27,11 +29,12 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setPayrollBatchComponent} from '../core/pay-components';
 import {setStatutoryProfileMY,setTp3ProfileMY} from '../localization/my/statutory';
-import {createBatch,generatePayslips,getReprocessJob,reprocessSelectedEmployees} from '../core/payroll';
+import {createBatch,generatePayslips,getReprocessJob,reprocessSelectedEmployees,resolveBatchCutOffWindow} from '../core/payroll';
+import {runInputsTx} from '../core/payroll-audit/inputs';
 import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation} from '../core/payroll-tax-basis';
 import {requestSelectiveReprocess,payrollReprocessJobHandler} from '../core/payroll-reprocess-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
-import {client} from '../db/client';
+import {client,withTenant,type Tx} from '../db/client';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 const COMPANIES=70,EMPLOYMENTS=1000,PROCESSED=98,ADDED=2,RUN=PROCESSED+ADDED,SHAPE=EMPLOYMENTS-RUN;
@@ -149,6 +152,42 @@ async function passAudit(t:Tenant){
  const ids=(rows:{ids:string[]}[])=>rows.flatMap(row=>row.ids.map(id=>number.get(id)??-1)).sort((x,y)=>x-y);
  return{statusRows:status.length,statusIds:ids(status),eventRows:events.length,eventIds:ids(events),captureMisses:captures[0].n};
 }
+/** The Audit loop's inputs captures the reprocess wrote for May (trigger `reprocessed`), with an independent read of the
+ * run's inputs now: the same owner reads (core/payroll-audit/inputs.ts runInputsTx) through the tenant's own session. */
+async function reprocessCaptures(t:Tenant){
+ const rows=await owner.client<{content:Record<string,unknown>}[]>`select content from payroll_audit_capture where tenant_id=${t.base.tenantId}::uuid
+  and source_key=${'inputs:'+t.may} and content->>'trigger'='reprocessed' order by seq`;
+ const now=await withTenant(t.ctx,async tx=>{
+  const window=(type:'attendance'|'overtime'|'leave'|'claim')=>resolveBatchCutOffWindow(tx,t.base.companyId,type,'2026-05');
+  return runInputsTx(tx,{batchId:t.may,payPeriod:'2026-05',windows:{attendance:await window('attendance'),overtime:await window('overtime'),leave:await window('leave'),claim:await window('claim')}});
+ });
+ return{rows:rows.map(row=>row.content),now};
+}
+/** (b) evaluation, measurement only: the run's headcount by the pass's own read (the native payslip view, per-row row
+ * security) beside cheaper candidate reads, each timed three times in the tenant's session (median). A read the session
+ * may not make is reported as refused. */
+async function headcountReads(t:Tenant){
+ const candidates:Record<string,string>={
+  nativeView:'select count(*)::int as n from public.payroll_history_native_payslip where batch_id=$1::uuid',
+  nativeWriteView:'select count(*)::int as n from public.payroll_history_native_payslip_write where batch_id=$1::uuid',
+  payslipTable:'select count(*)::int as n from public.payslip where batch_id=$1::uuid',
+ };
+ const out:Record<string,{n:number|null;ms:number|null;refused?:true}>={};
+ await withTenant(t.ctx,async tx=>{
+  for(const [name,text] of Object.entries(candidates)){
+   const times:number[]=[];let n:number|null=null;
+   try{
+    for(let i=0;i<3;i++){
+     const started=performance.now();
+     const [row]=await tx.transaction(async savepoint=>(savepoint as unknown as Tx).execute<{n:number}>(sql.raw(text.replace('$1',`'${t.may}'`))));
+     times.push(performance.now()-started);n=Number(row?.n??0);
+    }
+    out[name]={n,ms:Math.round(times.sort((x,y)=>x-y)[1])};
+   }catch{out[name]={n:null,ms:null,refused:true};}
+  }
+ });
+ return out;
+}
 async function drain(){
  for(let i=0;i<5000;i++){
   if(!await runBulkJobTick(owner.client,{handlers:[payrollReprocessJobHandler]})){
@@ -212,6 +251,7 @@ it('recalculates a 100-employee run set-based exactly as the per-employee path, 
  const split=(wall:number,cpu:number)=>({wallMs:Math.round(wall),cpuMs:cpu,dbMs:Math.max(0,Math.round(wall-cpu))});
  console.info('REPROCESS_SET_EQUIVALENCE_DIAGNOSTIC',JSON.stringify({
   shape:{companies:COMPANIES,employments:EMPLOYMENTS,run:RUN},
+  headcountReads:await headcountReads(b),
   perEmployee:{...split(perEmployee.ms,perEmployeeCpu),statements:perEmployee.statements,transactions:perEmployee.transactions,
    msPerEmployee:Math.round(perEmployee.ms/RUN),statementsPerEmployee:Math.round(perEmployee.statements/RUN),top:perEmployee.top},
   set:{...split(set.ms,setCpuMs),statements:set.statements,transactions:set.transactions,
@@ -247,6 +287,23 @@ it('recalculates a 100-employee run set-based exactly as the per-employee path, 
  expect(auditA.statusRows).toBe(RUN-MISSING_SALARY.size);
  expect(auditB.statusRows).toBe(job.metrics.reprocessGroups+job.metrics.reprocessSingles-MISSING_SALARY.size);
  expect(auditB.captureMisses).toBe(auditA.captureMisses);
+ expect(auditB.captureMisses).toBe(0);
+ // The Audit loop's inputs capture: once per job on both paths, naming every employee the job reprocessed, and holding
+ // the run's inputs and results as they stand after the job (nothing changed them since).
+ const reprocessed=(right.outcomes as {employmentId:string;status:string}[]).filter(o=>o.status==='reprocessed').map(o=>o.employmentId).sort();
+ for(const [t,label] of [[a,'per-employee'],[b,'set']] as const){
+  const {rows,now}=await reprocessCaptures(t);
+  expect(rows,label).toHaveLength(1);
+  const [capture]=rows as (Record<string,unknown>&{reprocessedEmploymentIds:string[];components:Record<string,unknown>;results:unknown;employments:number})[];
+  expect(normalizer(t)(capture.reprocessedEmploymentIds).sort(),label).toEqual(reprocessed);
+  expect(capture,label).toMatchObject({basis:'processed',trigger:'reprocessed',processedBy:t.ctx.userId,employments:RUN,
+   components:now.components,results:now.results,windows:now.windows});
+  expect(now.results.rows,label).toBe(RUN);
+ }
+ const [capturedA]=(await reprocessCaptures(a)).rows,[capturedB]=(await reprocessCaptures(b)).rows;
+ const shapeOf=(c:Record<string,unknown>)=>({...c,components:Object.fromEntries(Object.entries(c.components as Record<string,{rows:number}>).map(([k,v])=>[k,v.rows])),
+  results:(c.results as {rows:number}).rows});
+ expect(normalizer(b)(shapeOf(capturedB))).toEqual(normalizer(a)(shapeOf(capturedA)));
 
 
 },1_150_000);
