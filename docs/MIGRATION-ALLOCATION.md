@@ -1,3 +1,21 @@
+# Approval History keyset page and capped count (ADR 0181 Phase 4), 25 November 2026
+
+Reserve `7270_approval_history_keyset`, journal index `10670`, timestamp `1795495007270`,
+SQL SHA-256 `c29c31fda4ed91e258c9b07884ddab16e8db040a3118d3d0adace495722122f8`. The reservation scan covered the 400 most recently committed remote branch heads, every
+local branch and every registered worktree's journal and migration folder. The highest entries found were
+`7230_assignment_current_department_index` (PR 296), `7240_access_visible_employment` (PR 292),
+`7250_replacement_holiday_queue_voided` (`claude/release-rhq-7250-20261125`) and
+`7260_viewer_access_version` (local branch `claude/db-read-cost-phase-3`), so this entry is above them all.
+Neither installation's watermark was read from this session. Recheck both, and any competing reservation, before admission.
+
+Adds three SECURITY DEFINER functions beside the unchanged `app.approval_history` (0818) and
+`app.approval_history_count` (0320), which keep serving the bell's History tab:
+- `app.approval_history_events`: the 0818 visibility and filter predicates as a keyset slice, owner-only.
+- `app.approval_history_page`: that slice with the 0818 names and "on behalf of" projection. EXECUTE to `ai_hr_app`.
+- `app.approval_history_count_capped`: counts up to cap + 1 matching decisions, with no projection. EXECUTE to `ai_hr_app`.
+
+The functions add no table, column, policy or grant on existing objects and replace no object.
+
 # Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
 
 Reserve `7210_access_effective_company`, journal index `10610`, timestamp `1795495007210`,

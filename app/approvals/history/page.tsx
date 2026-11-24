@@ -4,10 +4,9 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import {
-  approvalHistoryCount,
+  approvalHistoryPage,
   delegationsScoped,
   employmentPickerList,
-  listApprovalHistory,
   myEmploymentIdsAll,
 } from '@/core/read';
 import {
@@ -19,7 +18,7 @@ import {
 } from '@/lib/approval-history';
 import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { Pager } from '@/components/pager';
-import { pageState, parsePageQuery } from '@/lib/pagination';
+import { keysetPageState, parseKeysetPageQuery } from '@/lib/pagination';
 const MYT = 'Asia/Kuala_Lumpur';
 
 /** Today's date in the tenant-local (MYT) calendar, yyyy-mm-dd. */
@@ -53,6 +52,10 @@ export default async function ApprovalHistoryPage({
     decider?: string;
     page?: string;
     size?: string;
+    after?: string;
+    before?: string;
+    last?: string;
+    count?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedSession();
@@ -62,7 +65,8 @@ export default async function ApprovalHistoryPage({
   const sp = await searchParams;
   const t = await getTranslations('approvalHistory');
   const locale = await getLocale();
-  const pq = parsePageQuery(sp);
+  // ADR 0181 Phase 4 (7270): keyset paging (no OFFSET), total exact below 1,000 and "1,000+" above.
+  const pq = parseKeysetPageQuery(sp);
 
   // The viewer's own hand-over periods (viewer = DELEGATOR). app.self_delegations self-scopes and
   // resolves both names under the definer boundary; history:true keeps past windows selectable.
@@ -80,8 +84,8 @@ export default async function ApprovalHistoryPage({
   const moduleKey = sp.module && isApprovalHistoryModule(sp.module) ? sp.module : undefined;
   const action = sp.action && isApprovalHistoryAction(sp.action) ? sp.action : undefined;
 
-  // fc776376 — the same filters drive the page and its COUNT (app.approval_history_count, migration
-  // 0320), replacing the fetch-one-extra trick with a real position: "26-50 of 312".
+  // fc776376 — the same filters drive the page and its COUNT; since 7270 both come from one keyset read
+  // (app.approval_history_page and app.approval_history_count_capped): "26-50 of 312", or "of 1,000+".
   const historyFilters = {
     from: fromDate ? mytStartIso(fromDate) : undefined,
     to: toDate ? mytStartIso(nextDay(toDate)) : undefined,
@@ -89,13 +93,12 @@ export default async function ApprovalHistoryPage({
     action,
     deciderEmploymentId: decider,
   };
-  const [rows, total, people] = await Promise.all([
-    listApprovalHistory(s, { ...historyFilters, limit: pq.limit, offset: pq.offset }),
-    approvalHistoryCount(s, historyFilters),
+  const [{ rows, ...read }, people] = await Promise.all([
+    approvalHistoryPage(s, historyFilters, pq),
     employmentPickerList(s, scopeIds),
   ]);
   const items = shapeApprovalHistoryItems(rows);
-  const pgState = pageState(pq, total, items.length);
+  const pgState = keysetPageState(pq, read, rows.map((r) => r.id));
   const fmt = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone: MYT });
 
   return (
