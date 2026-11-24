@@ -42,13 +42,16 @@ const RESTATED:Record<string,string>={
  'app.is_company_descendant(uuid,uuid)':'ff727e66b1225c703c53f1e6211cc77cbc8accec7e729884b35e3b4093f8de68',
  'app.job_document_scope(uuid,uuid)':'10ebe4aecc41fb808fe037016219f7335cb97929a2b36e3e30f02c001ab1ba3c',
 };
-/** The read policies 7210 replaced, exactly as 0595 created them (2202 then limited both to ai_hr_app). */
+/** The policies 7210 replaced, exactly as 0595 created them (2202 then limited each to ai_hr_app). The revision write
+ * policy is FOR ALL, so it also governs reads (and SELECT ... FOR UPDATE). */
+const REVISION_WRITE="app.job_document_scope(tenant_id,job_id) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=job_id AND j.tenant_id=job_document_revision.tenant_id AND app.access_workforce_company(j.company_id,'workforce.maintain'))";
 const OLD_POLICIES={
- job_document_read:{table:'job_document',using:"tenant_id=app.current_tenant_id() AND app.access_workforce_company(company_id,'workforce.view')"},
- job_document_revision_read:{table:'job_document_revision',using:'app.job_document_scope(tenant_id,job_id)'},
+ job_document_read:{table:'job_document',command:'select',using:"tenant_id=app.current_tenant_id() AND app.access_workforce_company(company_id,'workforce.view')",check:null},
+ job_document_revision_read:{table:'job_document_revision',command:'select',using:'app.job_document_scope(tenant_id,job_id)',check:null},
+ job_document_revision_write:{table:'job_document_revision',command:'all',using:REVISION_WRITE,check:REVISION_WRITE},
 } as const;
 type PolicyName=keyof typeof OLD_POLICIES;
-let newPolicies:Record<PolicyName,string>;
+let newPolicies:Record<PolicyName,{using:string;check:string|null}>;
 
 let b:Base,other:Base,root:string,beta:string,level1:string[],level2:string[],a1:string,a1Children:string[],leaf:string,betaChild:string;
 let approverId:string,probeJob:string;
@@ -87,9 +90,10 @@ async function setMode(mode:Mode){await owner.client`select app.access_precomput
 async function usePolicies(kind:'old'|'new'){
  await owner.client.begin(async tx=>{
   for(const name of Object.keys(OLD_POLICIES) as PolicyName[]){
-   const{table,using}=OLD_POLICIES[name];
-   await tx.unsafe(`drop policy ${name} on public.${table}`);
-   await tx.unsafe(`create policy ${name} on public.${table} for select to ai_hr_app using (${kind==='old'?using:newPolicies[name]})`);
+   const old=OLD_POLICIES[name],next=newPolicies[name];
+   const using=kind==='old'?old.using:next.using,check=kind==='old'?old.check:next.check;
+   await tx.unsafe(`drop policy ${name} on public.${old.table}`);
+   await tx.unsafe(`create policy ${name} on public.${old.table} for ${old.command} to ai_hr_app using (${using})${check?` with check (${check})`:''}`);
   }
  });
 }
@@ -105,10 +109,13 @@ async function observe(ctx:SessionContext,companyId:string|null){
    ${companyId?sql`where r.job_id in (select j.id from job_document j where j.company_id=${companyId}::uuid)`:sql``} order by r.job_id,r.version`)).map(r=>r.id);
   return{list,count:count.n,revisions};
  }));
+ // Rows locked FOR UPDATE must also pass the UPDATE policies: the maintain side of the revision write policy.
+ const lockable=await settle(()=>withTenant(ctx,async tx=>(await tx.execute<{id:string}>(sql`select r.id::text as id from job_document_revision r
+  ${companyId?sql`where r.job_id in (select j.id from job_document j where j.company_id=${companyId}::uuid)`:sql``} order by r.job_id,r.version for update of r`)).map(r=>r.id)));
  const filters=companyId?{company:companyId}:{};
  const page=async(p:string)=>settle(async()=>{const r=await getJobDocumentPage(ctx,{...filters,page:p});return{ids:r.rows.map(x=>x.id),total:r.total,page:r.page};});
  const read=await settle(async()=>{const r=await readJobDocument(ctx,probeJob);return{job:r.job.id,revision:r.revision.id,history:r.history.map(h=>h.id)};});
- return{raw,page1:await page('1'),page2:await page('2'),read};
+ return{raw,lockable,page1:await page('1'),page2:await page('2'),read};
 }
 async function observeAll():Promise<Record<string,Observation>>{
  const out:Record<string,Observation>={};
@@ -141,9 +148,10 @@ async function unusable(ctx:SessionContext):Promise<string|null>{
 beforeAll(async()=>{
  await migrateTestDb();await resetDb();
  b=await seedBase();other=await seedBase();root=b.companyId;
- const[pol]=await owner.client<{name:PolicyName;qual:string}[]>`select policyname as name,qual from pg_policies where schemaname='public' and policyname='job_document_read'`;
- const[rev]=await owner.client<{name:PolicyName;qual:string}[]>`select policyname as name,qual from pg_policies where schemaname='public' and policyname='job_document_revision_read'`;
- newPolicies={job_document_read:pol.qual,job_document_revision_read:rev.qual};
+ const installed=await owner.client<{name:PolicyName;qual:string;check:string|null}[]>`select policyname as name,qual,with_check as check from pg_policies
+  where schemaname='public' and policyname in ('job_document_read','job_document_revision_read','job_document_revision_write') order by 1`;
+ expect(installed.map(p=>p.name)).toEqual(['job_document_read','job_document_revision_read','job_document_revision_write']);
+ newPolicies=Object.fromEntries(installed.map(p=>[p.name,{using:p.qual,check:p.check}])) as typeof newPolicies;
  // 70 companies: the root, eight children and a second root (Beta), and sixty grandchildren across those nine.
  level1=await companies(b.tenantId,[...Array.from({length:8},(_,i)=>`Fictional A${i+1} Sdn Bhd`),'Fictional Beta Bhd'],[...Array(8).fill(root),null]);
  beta=level1[8];a1=level1[0];
@@ -193,11 +201,12 @@ describe('precomputed company access (7210) on Job descriptions',()=>{
   const m0595=readFileSync('db/migrations/0595_job_description_documents.sql','utf8');
   expect(m0595).toContain(`CREATE POLICY job_document_read ON job_document FOR SELECT USING(${OLD_POLICIES.job_document_read.using});`);
   expect(m0595).toContain(`CREATE POLICY job_document_revision_read ON job_document_revision FOR SELECT USING(${OLD_POLICIES.job_document_revision_read.using});`);
-  const touching=readdirSync('db/migrations').filter(f=>f.endsWith('.sql')&&/\bjob_document(_revision)?_read ON\b/.test(readFileSync(`db/migrations/${f}`,'utf8'))).sort();
+  expect(m0595).toContain(`CREATE POLICY job_document_revision_write ON job_document_revision FOR ALL USING(${REVISION_WRITE}) WITH CHECK(${REVISION_WRITE});`);
+  const touching=readdirSync('db/migrations').filter(f=>f.endsWith('.sql')&&/\bjob_document(_revision)?_(read|write) ON\b/.test(readFileSync(`db/migrations/${f}`,'utf8'))).sort();
   expect(touching).toEqual(['0595_job_description_documents.sql','2202_job_architecture_profile.sql','7210_access_effective_company.sql']);
-  for(const qual of Object.values(newPolicies)){expect(qual).toContain('access_workforce_companies');expect(qual).not.toMatch(/access_workforce_company\(/);}
-  const roles=await owner.client<{policyname:string;roles:string[]}[]>`select policyname,roles::text[] as roles from pg_policies where policyname in ('job_document_read','job_document_revision_read') order by 1`;
-  expect(roles).toEqual([{policyname:'job_document_read',roles:['ai_hr_app']},{policyname:'job_document_revision_read',roles:['ai_hr_app']}]);
+  for(const p of Object.values(newPolicies))for(const expr of [p.using,p.check].filter(Boolean) as string[]){expect(expr).toContain('access_workforce_companies');expect(expr).not.toMatch(/access_workforce_company\(|job_document_scope/);}
+  const roles=await owner.client<{policyname:string;cmd:string;roles:string[]}[]>`select policyname,cmd,roles::text[] as roles from pg_policies where policyname in ('job_document_read','job_document_revision_read','job_document_revision_write') order by 1`;
+  expect(roles).toEqual([{policyname:'job_document_read',cmd:'SELECT',roles:['ai_hr_app']},{policyname:'job_document_revision_read',cmd:'SELECT',roles:['ai_hr_app']},{policyname:'job_document_revision_write',cmd:'ALL',roles:['ai_hr_app']}]);
   // ai_hr_app reaches the stored answer only through the read function.
   const tables=await owner.client<{name:string;app:boolean;rls:boolean;forced:boolean;policies:number}[]>`select c.relname as name,
    has_table_privilege('ai_hr_app',c.oid,'select,insert,update,delete') as app,c.relrowsecurity as rls,c.relforcerowsecurity as forced,

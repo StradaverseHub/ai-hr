@@ -1,7 +1,7 @@
 # Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
 
 Reserve `7210_access_effective_company`, journal index `10610`, timestamp `1795495007210`,
-SQL SHA-256 `77314b303c5935cf3f1c9d8fa3c28875904846ae94edd70c23558b57d08fca3a`. The reservation scan covered the 300 most recently committed remote branch heads
+SQL SHA-256 `d5f985a65899c4bc4d6960c9d59865fecd78a9ef0b17daa353ba832a1b405919`. The reservation scan covered the 300 most recently committed remote branch heads
 and every registered worktree journal: the highest entry found was `7200_information_documents_planned_with_values`
 (index `10600`, when `1795495007200`, branch `claude/txn-view-slow-load-af9f97`), and `7160`–`7190` are held by the
 import and tax-basis branches. This entry is above all of them. Neither installation's watermark was read from this
@@ -12,8 +12,9 @@ Adds `access_company_closure`, `access_effective_company`, `access_company_state
 `role_assignment`, `access_membership`, `access_user_override`, `access_group`, `access_group_grant`,
 `access_configuration`, `access_capability`, `company`, `company_organisation_run` and `company_organisation_mapping`,
 the maintenance, verify, re-trust and mode functions, and `app.access_workforce_companies(text)` (EXECUTE to
-`ai_hr_app`). Replaces the `job_document_read` and `job_document_revision_read` policies with once-per-statement
-forms; write policies are unchanged. Installation mode starts as `legacy`. Builds every existing tenant in the
+`ai_hr_app`). Replaces the `job_document_read`, `job_document_revision_read` and (FOR ALL, so it also governs reads)
+`job_document_revision_write` policies with once-per-statement forms of the same predicates; the `job_document`
+insert, update and delete policies are unchanged. Installation mode starts as `legacy`. Builds every existing tenant in the
 migration transaction (rows bounded by admin role holders × companies × 2).
 
 # Contract list company rights once per company, 23 November 2026

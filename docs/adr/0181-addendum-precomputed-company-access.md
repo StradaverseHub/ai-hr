@@ -13,6 +13,10 @@ Two refinements made while building, within the approved decisions:
 
 - An `access_capability` change recomputes every tenant inline instead of marking them untrusted. The catalogue is
   changed only by migrations, and recomputing keeps reads on the stored answer rather than on the fallback.
+- `job_document_revision_write` is a `FOR ALL` policy, so PostgreSQL also applies it to every revision read; left
+  unchanged it would keep the per-row chain on reads. It is restated once per statement with the same predicate
+  (view and maintain on the job's company), and the equivalence test compares it through `SELECT ... FOR UPDATE`.
+  The `job_document` insert, update and delete policies are unchanged.
 - The rebuild check reports through the cron wrapper (exit code, heartbeat, journal) like the other wrapper jobs and
   does not yet write a `job_run` row. Adding it to `/admin/scheduled-actions` needs a job key and its translations,
   which is a follow-up.
@@ -140,7 +144,7 @@ evaluated once per statement as an InitPlan:
 
 The fallback is never "deny": it is the existing authority, evaluated per company instead of per row.
 
-New read policies for `ai_hr_app` (write policies are unchanged in the pilot):
+New read policies for `ai_hr_app` (plus the `FOR ALL` revision write policy, restated the same way; see Status):
 
 ```sql
 job_document_read:          tenant_id = app.current_tenant_id()
