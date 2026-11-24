@@ -1749,3 +1749,13 @@ The repository owner approved carrying forward the 28 existing approvals to exac
 ## Staging release 6 (7230 + 7240, PRs 296 and 300) on J2 3fe15c9cc, 25 November 2026
 
 The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `8caf5fe35f1c570e2d1bdb94dc3c0034c6c17e41fd83d8e37961ab7103aa238f` across 1,845 files (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"; on 24 November 2026 the owner approved release 6 for staging in this session: "Approve release 6"). The candidate merges the 7240 branch (which carries 7230) onto J2's head `3fe15c9cc` (fingerprint `ce5a9daae93b8e5227bafc3f81163822f96d6e94fdd67ebf8fa657c4901f4c00`). The one covered change is `core/company-refs.ts`: two declarations that the derived `access_department_closure` table's foreign keys into `department` go with the department on a company delete (`effect: 'part'`). It reads, sends and changes no provider transform, outbound field, approved purpose or transport. Exactly 28 digest literals change, and reversing those substitutions restores J2's registry byte for byte. The module-agent manifest was regenerated afterwards (`68724281a3a7f7ae2a82b12a5be5102deb2b676cdaf3233f15d462099cbbc54a` -> `f3cf65500985e0b4edd2aca9e88cb1258bac3bd4a46604c109e32d8b1b4ac494`, 497 files). Staging only; no production authority.
+
+## Staging batch C trial (PRs 317 and 318, ADR 0181 J2 imports) on staging release 6 fbcb4128c, 25 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `94a86212bb1adcd12b5f78bb4d05f6147825835216602168c3187fed571fc1ba` across 1,846 files (owner, 12 November 2026: "I approve fully on the rebinding and the AI approval, dont have to wait for my decision"), re-bound from release 6's `8caf5fe35f1c570e2d1bdb94dc3c0034c6c17e41fd83d8e37961ab7103aa238f`. This is a trial integration to surface conflicts early. The release candidate is rebuilt on the chain's later baseline and re-bound again there. The covered changes are import code reached through the closure:
+- `core/leave-import.ts`: the leave ledger import's set-based group apply, with its per-row validation lifted out;
+- `core/import-sections.ts`: the Profile/Family section import's group analysis;
+- the new `core/import-set-group.ts`: shared group formation, fallback, adaptive size and timing.
+
+None of these reads, sends or changes a provider transform, outbound field, approved purpose or transport. Exactly 28 digest literals change. The module-agent manifest was regenerated afterwards (`95a7e8fde26c0226b6067912d12109fece178788f0da25348d85efe1e1752f7d`, 497 files).
+
