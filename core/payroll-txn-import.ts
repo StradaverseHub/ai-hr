@@ -102,7 +102,10 @@ import {
   batchEditImpact,
   listBatches,
   listPayrollCyclesForCompanies,
+  priceIndividualTxnInputTx,
 } from '../packs/payroll/service';
+import { PayFormulaError } from '../lib/pay-formula-model';
+import { isPayFormulaQuantityUnit } from '../lib/pay-formula-input';
 import {
   TXN_IMPORT_REQUIRED_COLUMNS,
   fixedWindowsOverlap,
@@ -172,6 +175,9 @@ export function txnImportReason(e: unknown): { reason: string; detail?: Record<s
   }
   if (e instanceof BatchNotDraftError) return { reason: 'runNotWritable' };
   if (e instanceof PayRuleEvalError) return { reason: 'derivedAmountUnavailable' };
+  // 7b5b1665 — a Formula Builder row priced by the entry pricing owner. Its message is English and may name
+  // internals, so it never reaches a downloadable report; the row says the formula could not price it.
+  if (e instanceof PayFormulaError) return { reason: 'derivedAmountUnavailable' };
   // A Postgres 23P01 from the 0426 exclusion constraint would land here. It should be unreachable —
   // the pre-flight uses that constraint's own predicate — but "unreachable" is not "impossible", and
   // a raw driver message must never reach a downloadable error report.
@@ -332,14 +338,21 @@ type ResolvedIndividual = {
   /** `payroll_individual_txn.source_ref` — this row's identity as a line OF THIS FILE. See `fileRowRef`. */
   sourceRef: string;
   intendedCycleId?: string | null;
+  /** The import method ('monthly' | 'daily'), not the ledger input method below. */
   method?: string;
+  /** 7b5b1665 — the ledger's `calculation_method` for this row, decided from the file's Input Type on a formula Pay
+   *  Item (One Total for the Month only). 'amount' pays the typed Amount with no formula; 'formula' prices the
+   *  Qty, Hours, Days or Units with the saved formula exactly as manual entry does. Absent = existing behaviour. */
+  calculationMethod?: IndividualEntryMethod;
   explicitDailyInput?: string;
   explicitDailyRuleHash?: string;
 };
 
 /** The rows already in the ledger for the employments a file names, read ONCE for the whole file. The
  *  left-hand side of the duplicate test — the January double import's whole defence. */
+type IndividualEntryMethod = 'amount' | 'formula';
 type LedgerRow = {
+  calculationMethod: string | null;
   batchId: string | null;
   companyId: string | null;
   payPeriod: string | null;
@@ -357,6 +370,7 @@ async function loadLedgerRows(ctx: SessionContext, employmentIds: string[]): Pro
   return withTenant(ctx, (tx) =>
     tx
       .select({
+        calculationMethod: payrollIndividualTxn.calculationMethod,
         batchId: payrollIndividualTxn.batchId,
         companyId: payrollIndividualTxn.companyId,
         payPeriod: payrollIndividualTxn.payPeriod,
@@ -380,7 +394,7 @@ async function loadLedgerRows(ctx: SessionContext, employmentIds: string[]): Pro
 }
 
 /**
- * THE DUPLICATE KEY: which RUN, which PERSON, which PAY ITEM, which AMOUNT.
+ * THE DUPLICATE KEY: which RUN, which PERSON, which PAY ITEM, which INPUT TYPE and which ENTERED VALUE.
  *
  * Exactly the grouping that found January's eleven duplicated pairs on production (2026-08-13:
  * `group by (employment_id, component_id, amount)` over one batch returned 11 groups with count 2,
@@ -393,15 +407,32 @@ async function loadLedgerRows(ctx: SessionContext, employmentIds: string[]): Pro
  * same dates, but an operator who re-uploads a file after nudging one date has still uploaded the same
  * money twice, and a date is the easiest field in a spreadsheet to change by accident.
  */
+/*
+ * 7b5b1665 — METHOD-AWARE. A row carries its input method (calculation_method) and the value that was entered:
+ * the quantity for 'formula', the amount otherwise. ONOR as Amount 105.40 and ONOR as Qty 105.40 pay different
+ * money, so they are not duplicates of each other; a row without a method (every non-formula Pay Item and every
+ * older row) keeps exactly the amount comparison above.
+ */
+const runKey = (p: { batchId: string | null; companyId: string | null; payPeriod: string | null }) =>
+  p.batchId ?? `period:${p.companyId ?? ''}:${p.payPeriod ?? ''}`;
+const entryValueOf = (p: { calculationMethod?: string | null; amount: string | number; quantity: string | number | null }): string =>
+  p.calculationMethod === 'formula' ? (p.quantity == null ? '' : Number(p.quantity).toFixed(2)) : Number(p.amount).toFixed(2);
 const dupKey = (p: {
   batchId: string | null;
   companyId: string | null;
   payPeriod: string | null;
   employmentId: string;
   componentId: string | null;
-  amount: string;
+  calculationMethod?: string | null;
+  amount: string | number;
+  quantity: string | number | null;
 }): string =>
-  [p.batchId ?? `period:${p.companyId ?? ''}:${p.payPeriod ?? ''}`, p.employmentId, p.componentId ?? '', p.amount].join('|');
+  [runKey(p), p.employmentId, p.componentId ?? '', p.calculationMethod ?? '', entryValueOf(p)].join('|');
+/** The Input Type a saved or new row was entered as, for the refusal message. */
+const entryType = (p: { calculationMethod?: string | null; unit: string | null }) =>
+  p.calculationMethod === 'amount' ? 'amount' : p.unit && p.unit !== 'amount' ? p.unit : 'qty';
+/** Pricing for a refusal or a preview runs in short transactions of at most this many rows. */
+const PRICE_CHUNK = 200;
 
 /**
  * THIS ROW'S IDENTITY AS A LINE OF THIS FILE, and the reason `source_ref` is now populated on an import.
@@ -803,12 +834,40 @@ async function analyzeIndividual(
     if (rec.__method === 'daily') {
       const daily = resolveDailyImportInput(comp.rule, explicitDaily ? typedUnit : undefined);
       if ('reason' in daily) {
-        push(fail(base, daily.reason, daily.expected ? { value: daily.expected } : undefined));
+        // 7b5b1665 (owner, 24 Nov 2026: decision aac17dd0 kept) — Day by Day stays quantity-only and Formula Builder
+        // items stay unavailable there. A typed Amount is still refused; the refusal now says where an amount goes.
+        if (typedUnit === 'amount' && daily.reason === 'dailyInputTypeMismatch' && daily.expected) push(fail(base, 'dailyAmountUseMonthly', { value: daily.expected }));
+        else if (typedUnit === 'amount' && daily.reason === 'dailyItemUnsupported') push(fail(base, 'dailyItemAmountUseMonthly'));
+        else push(fail(base, daily.reason, daily.expected ? { value: daily.expected } : undefined));
         continue;
       }
       inputUnit = daily.unit;
     }
-    if(rec.__method==='monthly'&&typedUnit){
+    // 7b5b1665 — ONE TOTAL FOR THE MONTH KEEPS EACH ROW'S INPUT TYPE on a formula Pay Item, exactly as Add new
+    // transaction does (decision aac17dd0): Amount pays the typed figure with no formula (method 'amount'); Qty, Hours,
+    // Days or Units on a Formula Builder item is priced by its saved formula (method 'formula'). Before this, the file
+    // never said which, so a typed 105.40 was stored without a method and payroll fed it to the formula as {#Input}.
+    // A type the item refuses, or a row with both cells filled, is refused BY ROW AND PAY ITEM: nothing is converted.
+    const ruleKind = comp.rule?.kind;
+    const formulaKind = rec.__method === 'monthly' && (ruleKind === 'formula' || ruleKind === 'formula_builder') ? ruleKind : null;
+    let calculationMethod: IndividualEntryMethod | undefined;
+    if (formulaKind) {
+      const named = { row: rowNum, code: comp.code };
+      // A blank type on a Formula Builder item is exactly the defect's shape (amount stored, formula applied); an
+      // inline formula item with a blank type keeps its existing quantity path below.
+      if (!typedUnit && formulaKind === 'formula_builder') { push(fail(base, 'formulaInputTypeRequired', named)); continue; }
+      if (typedUnit) {
+        if (!isTxnUnit(typedUnit)) { push(fail(base, 'inputTypeInvalid')); continue; }
+        const accepted = typedUnit === 'amount' ||
+          (formulaKind === 'formula_builder' ? isPayFormulaQuantityUnit(typedUnit) : ruleInputUnit == null || typedUnit === ruleInputUnit);
+        if (!accepted) { push(fail(base, 'inputTypeNotAccepted', { ...named, value: typedUnit })); continue; }
+        if ((rec.amount ?? '').trim() !== '' && (rec.quantity ?? '').trim() !== '') { push(fail(base, 'amountAndQuantity', named)); continue; }
+        if (typedUnit === 'amount') calculationMethod = 'amount';
+        else if (formulaKind === 'formula_builder') calculationMethod = 'formula';
+        inputUnit = typedUnit;
+      }
+    }
+    if(rec.__method==='monthly'&&typedUnit&&!formulaKind){
       if(!isTxnUnit(typedUnit)||inputUnit!=null&&typedUnit!==inputUnit){push(fail(base,'inputTypeInvalid'));continue;}
       inputUnit=typedUnit;
     }
@@ -816,23 +875,33 @@ async function analyzeIndividual(
     const quantityRaw = (rec.quantity ?? '').trim();
     const enteredValue = quantityRaw === '' ? null : parseAmountCell(quantityRaw);
     const directDaily = explicitDaily && inputUnit === 'amount';
-    const quantity = directDaily ? null : enteredValue;
+    const quantity = directDaily || calculationMethod === 'amount' ? null : enteredValue;
     if (quantityRaw !== '' && enteredValue == null) {
       push(fail(base, 'quantityInvalid', { value: quantityRaw }));
       continue;
     }
-    if (ruleInputUnit != null && !(Number(quantity) > 0)) {
+    if (calculationMethod === 'formula') {
+      if (!(Number(quantity) > 0)) { push(fail(base, 'formulaQuantityRequired', { row: rowNum, code: comp.code })); continue; }
+      // The pricing owner refuses more than two decimals; say so by row rather than as a formula failure.
+      if (Number(quantity!.toFixed(2)) !== quantity) { push(fail(base, 'quantityInvalid', { value: quantityRaw })); continue; }
+    } else if (calculationMethod === undefined && ruleInputUnit != null && !(Number(quantity) > 0)) {
       push(fail(base, inputUnit === 'hours' ? 'quantityRequiredHours' : 'quantityRequiredDays'));
       continue;
     }
 
-    const typed = directDaily ? enteredValue : parseAmountCell(rec.amount ?? '');
+    const typed = directDaily ? enteredValue : calculationMethod === 'formula' ? null : parseAmountCell(rec.amount ?? '');
+    if (calculationMethod === 'amount' && typed == null) {
+      push(fail(base, (rec.amount ?? '').trim() === '' ? 'amountNotPositive' : 'amountInvalid', { value: rec.amount ?? '' }));
+      continue;
+    }
     // THE AMOUNT THE PREVIEW SHOWS IS THE AMOUNT THAT WILL BE STORED. On a calculating pay item that is
     // the SERVER's figure, from the same evaluator the payslip uses — never the typed one. Previewing
     // the typed figure and storing a different one would be a preview that lies.
+    // 7b5b1665 — a method row is not derived here: 'amount' is the typed figure, and 'formula' is priced by the entry
+    // pricing owner once its run is known (below), because the saved formula may read that run.
     let amount = typed ?? 0;
     let unit: string | null = inputUnit;
-    if (comp.rule != null) {
+    if (comp.rule != null && calculationMethod === undefined) {
       try {
         const d = await deriveIndividualTxnAmount(ctx, {
           componentId: comp.id,
@@ -854,7 +923,7 @@ async function analyzeIndividual(
         continue;
       }
     }
-    if (!(amount > 0)) {
+    if (calculationMethod !== 'formula' && !(amount > 0)) {
       push(fail(base, typed == null && comp.rule == null ? 'amountInvalid' : 'amountNotPositive', { value: directDaily ? quantityRaw : rec.amount ?? '' }));
       continue;
     }
@@ -878,8 +947,9 @@ async function analyzeIndividual(
 
     stage.push({
       rowNum,
-      base: { ...base, payItem: comp.name, amount: amount.toFixed(2),
-        ...(explicitDaily && unit && enteredValue != null ? {inputType:unit,inputValue:enteredValue} : {}) },
+      base: { ...base, payItem: comp.name, amount: calculationMethod === 'formula' ? '' : amount.toFixed(2),
+        ...(explicitDaily && unit && enteredValue != null ? {inputType:unit,inputValue:enteredValue} : {}),
+        ...(calculationMethod ? { inputType: unit!, inputValue: calculationMethod === 'formula' ? quantity! : amount, calculationMethod } : {}) },
       failure: null,
       displayCategory: comp.displayCategory,
       cycleStated: cycleRaw !== '',
@@ -898,6 +968,7 @@ async function analyzeIndividual(
         targetCycle,
         sourceRef: fileRowRef(digest, rowNum),
         intendedCycleId, method:rec.__method,
+        ...(calculationMethod ? { calculationMethod } : {}),
         ...(explicitDaily ? {explicitDailyInput: typedUnit, explicitDailyRuleHash: createHash('sha256').update(JSON.stringify(comp.rule ?? null)).digest('hex')} : {}),
       },
     });
@@ -913,9 +984,69 @@ async function analyzeIndividual(
   const allBatches = periods.length > 0 && companyIds.length > 0 ? await listBatches(ctx, companyIds, periods) : [];
   const ledger = await loadLedgerRows(ctx, [...new Set(staged.map((s) => s.r!.employmentId))]);
 
-  const onFileKeys = new Set(ledger.map((l) => dupKey({ ...l, amount: Number(l.amount).toFixed(2) })));
+  const onFileKeys = new Map(ledger.map((l) => [dupKey(l), l] as const));
   const dailyKey = (r:{txnDate:string;quantity:string|number|null;unit:string|null}, key:string) => [key,r.txnDate,r.quantity==null?'':Number(r.quantity).toFixed(2),r.unit??''].join('|');
-  const onFileDailyKeys=new Set(ledger.map(l=>dailyKey(l,dupKey({...l,amount:Number(l.amount).toFixed(2)}))));
+  const onFileDailyKeys=new Set(ledger.map(l=>dailyKey(l,dupKey(l))));
+  // 7b5b1665 — THE LEGACY EXCEPTION. A Formula Builder row saved by an older import has no method: payroll feeds its
+  // stored amount to the formula as {#Input}, so "105.40" pays the formula of 105.40 (the Edit screen shows it as
+  // Qty). A new row of the same item, employee, run and value — as Amount or as Qty — would pay on top of it, so it
+  // is refused until HR corrects the earlier transaction. Keyed on the value only, deliberately: the old row never
+  // recorded which type it meant.
+  const builderIds = new Set([...cat.componentByCode.values()].filter((c) => c.rule?.kind === 'formula_builder').map((c) => c.id));
+  const legacyKey = (p: { batchId: string | null; companyId: string | null; payPeriod: string | null; employmentId: string; componentId: string | null }, value: string) =>
+    [runKey(p), p.employmentId, p.componentId ?? '', value].join('|');
+  const legacyRows = new Map(ledger.filter((l) => l.calculationMethod == null && l.componentId != null && builderIds.has(l.componentId))
+    .map((l) => [legacyKey(l, Number(l.amount).toFixed(2)), l] as const));
+  // The run each staged row lands on, decided exactly once and shared by pricing and the verdict below.
+  const targetsOf = (r: Omit<ResolvedIndividual, 'targetBatchId'>) => allBatches.filter(
+    (b) =>
+      b.companyId === r.companyId &&
+      b.payPeriod === r.payPeriod &&
+      b.runType === r.targetCycle &&
+      (!r.intendedCycleId || b.payrollCycleId === r.intendedCycleId || b.payrollCycleId == null && cycles.filter(c=>c.companyId===r.companyId&&c.runType===r.targetCycle).length===1) &&
+      (b.status === 'draft' || b.status === 'processed') &&
+      // Read defensively, exactly as app/payroll/transactions/individual/page.tsx does: `listBatches`
+      // does not project `scope` today, so this reads undefined and every run is treated as
+      // whole-company — which is precisely how the Add form behaves. `createIndividualTxnsBulk`
+      // re-checks scope membership authoritatively and refuses with EmploymentNotInBatchScopeError,
+      // surfaced as `employeeNotInScope`. If the projection ever grows the column this starts
+      // narrowing correctly with no further change.
+      batchScopeIncludes((b as { scope?: BatchScopeShape }).scope ?? null, r),
+  );
+  // 7b5b1665 — PRICE THE FORMULA ROWS WITH THE ENTRY PRICING OWNER (priceIndividualTxnInputTx), against the run and
+  // cycle the row will be written to, so the preview shows the figure Add new transaction and the confirm writer
+  // produce. Also prices what an earlier method-less row pays now, for its refusal. Short transactions of at most
+  // PRICE_CHUNK rows, a savepoint per row so one refusal never aborts the rest; reads only.
+  type PriceInput = Parameters<typeof priceIndividualTxnInputTx>[2];
+  const priceJobs: { key: string; input: PriceInput }[] = [];
+  for (const s of stage) {
+    const r = s.r;
+    if (!r?.calculationMethod) continue;
+    const targets = targetsOf(r);
+    if (targets.length > 1) continue;
+    const at = { companyId: r.companyId, employmentId: r.employmentId, componentId: r.componentId, payPeriod: r.payPeriod, txnDate: r.txnDate,
+      cycleId: r.intendedCycleId ?? null, batchId: targets[0]?.id ?? null };
+    if (r.calculationMethod === 'formula') {
+      priceJobs.push({ key: `row:${s.rowNum}`, input: { ...at, quantity: r.quantity, unit: r.unit, amount: 0, method: 'formula' } });
+    }
+    const legacy = builderIds.has(r.componentId)
+      ? legacyRows.get(legacyKey({ ...r, batchId: targets[0]?.id ?? null }, entryValueOf(r))) : undefined;
+    if (legacy) {
+      priceJobs.push({ key: `legacy:${s.rowNum}`, input: { ...at, txnDate: legacy.txnDate, quantity: Number(legacy.amount), unit: 'qty', amount: 0, method: 'formula' } });
+    }
+  }
+  const prices = new Map<string, number | { reason: string; detail?: Record<string, string | number> }>();
+  for (let i = 0; i < priceJobs.length; i += PRICE_CHUNK) {
+    await withTenant(ctx, async (tx) => {
+      for (const job of priceJobs.slice(i, i + PRICE_CHUNK)) {
+        try {
+          prices.set(job.key, (await tx.transaction((sp) => priceIndividualTxnInputTx(sp, ctx, job.input))).amount);
+        } catch (e) {
+          prices.set(job.key, txnImportReason(e));
+        }
+      }
+    });
+  }
   // (employment, date, component, source_ref) — the exact key of `payroll_individual_txn_source_ref_uq`.
   // Checking it here rather than letting the index raise 23505 is what keeps the preview honest.
   const onFileRefs = new Set(
@@ -932,21 +1063,7 @@ async function analyzeIndividual(
     }
     const r = s.r!;
     // The run of the resolved cycle, if it is writable and covers this employee — see `batchScopeIncludes`.
-    const targets = allBatches.filter(
-      (b) =>
-        b.companyId === r.companyId &&
-        b.payPeriod === r.payPeriod &&
-        b.runType === r.targetCycle &&
-        (!r.intendedCycleId || b.payrollCycleId === r.intendedCycleId || b.payrollCycleId == null && cycles.filter(c=>c.companyId===r.companyId&&c.runType===r.targetCycle).length===1) &&
-        (b.status === 'draft' || b.status === 'processed') &&
-        // Read defensively, exactly as app/payroll/transactions/individual/page.tsx does: `listBatches`
-        // does not project `scope` today, so this reads undefined and every run is treated as
-        // whole-company — which is precisely how the Add form behaves. `createIndividualTxnsBulk`
-        // re-checks scope membership authoritatively and refuses with EmploymentNotInBatchScopeError,
-        // surfaced as `employeeNotInScope`. If the projection ever grows the column this starts
-        // narrowing correctly with no further change.
-        batchScopeIncludes((b as { scope?: BatchScopeShape }).scope ?? null, r),
-    );
+    const targets = targetsOf(r);
     if(r.method&&targets.length>1){rows.push(fail(s.base,'runAmbiguous'));continue;}
     const target=targets[0];
     if(r.method&&!target&&allBatches.some(b=>b.companyId===r.companyId&&b.payPeriod===r.payPeriod&&b.runType===r.targetCycle&&(!b.payrollCycleId||b.payrollCycleId===r.intendedCycleId)&&b.status==='closed')){rows.push(fail(s.base,'runNotWritable'));continue;}
@@ -959,17 +1076,40 @@ async function analyzeIndividual(
       rows.push(fail(s.base, 'runMissingForCycle', { cycle: r.targetCycle, period: r.payPeriod }));
       continue;
     }
+    if (r.calculationMethod === 'formula') {
+      const priced = prices.get(`row:${s.rowNum}`);
+      if (typeof priced !== 'number') {
+        rows.push(fail(s.base, priced?.reason ?? 'derivedAmountUnavailable', priced?.detail));
+        continue;
+      }
+      r.amount = priced;
+      s.base.amount = priced.toFixed(2);
+    }
+    const value = entryValueOf(r);
+    if (r.calculationMethod && builderIds.has(r.componentId) && legacyRows.has(legacyKey({ ...r, batchId: target?.id ?? null }, value))) {
+      const pays = prices.get(`legacy:${s.rowNum}`);
+      rows.push(typeof pays === 'number'
+        ? fail(s.base, 'legacyFormulaImport', { code: s.base.payItemCode, value, pays: pays.toFixed(2) })
+        : fail(s.base, 'legacyFormulaImportUnpriced', { code: s.base.payItemCode, value }));
+      continue;
+    }
     const baseKey = dupKey({
       batchId: target?.id ?? null,
       companyId: r.companyId,
       payPeriod: r.payPeriod,
       employmentId: r.employmentId,
       componentId: r.componentId,
-      amount: r.amount.toFixed(2),
+      calculationMethod: r.calculationMethod ?? null,
+      amount: r.amount,
+      quantity: r.quantity,
     });
     const key=r.method==='daily'?dailyKey(r,baseKey):baseKey;
-    if ((r.method==='daily'?onFileDailyKeys:onFileKeys).has(key)) {
-      rows.push(fail(s.base, 'duplicateInRun', { code: s.base.payItemCode, amount: r.amount.toFixed(2) }));
+    const onFile = r.method==='daily' ? onFileDailyKeys.has(key) : onFileKeys.get(key);
+    if (onFile) {
+      // 7b5b1665 — a typed row names the type, the value and what the saved line pays.
+      rows.push(r.calculationMethod && onFile !== true
+        ? fail(s.base, 'duplicateInRunTyped', { code: s.base.payItemCode, type: entryType(onFile), value, pays: Number(onFile.amount).toFixed(2) })
+        : fail(s.base, 'duplicateInRun', { code: s.base.payItemCode, amount: r.amount.toFixed(2) }));
       continue;
     }
     const refKey = [r.employmentId, r.txnDate, r.componentId, 'import', r.sourceRef].join('|');
@@ -979,7 +1119,9 @@ async function analyzeIndividual(
     }
     const earlier = seenInFile.get(key);
     if (earlier != null) {
-      rows.push(fail(s.base, 'duplicateInFile', { row: earlier, code: s.base.payItemCode }));
+      rows.push(r.calculationMethod
+        ? fail(s.base, 'duplicateInFileTyped', { row: earlier, code: s.base.payItemCode, type: entryType(r), value })
+        : fail(s.base, 'duplicateInFile', { row: earlier, code: s.base.payItemCode }));
       continue;
     }
     seenInFile.set(key, s.rowNum);
@@ -1109,6 +1251,8 @@ export async function commitTxnImport(
               quantity: r.quantity,
               unit: r.unit,
               notes: r.notes,
+              // 7b5b1665 — the Input Type the file gave, as Confirm Import writes it.
+              ...(r.calculationMethod ? { calculationMethod: r.calculationMethod } : {}),
               // 4e403268 — provenance. An imported row is not hand-keyed, and saying so is the whole
               // reason the column exists.
               source: 'import',

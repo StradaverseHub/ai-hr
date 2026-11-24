@@ -4,12 +4,30 @@ Reserve `7260_viewer_access_version`, journal index `10660`, timestamp `17954950
 SQL SHA-256 `ebc0519c213da029769b94e88156cb26f9d9cff8540b1cc6fed85744fb657be0`. The reservation scan covered every remote branch head's journal and every registered worktree:
 the highest entries found were `7220_movement_system_payroll_snapshot_insert` (10620), `7230_assignment_current_department_index`
 (10630), `7240_access_visible_employment` (10640) and `7250_replacement_holiday_queue_voided` (10650, `1795495007250`), all
-on unmerged branches; main ends at `7210_access_effective_company`. Neither installation's watermark was read from this
+on unmerged branches when reserved (7220 has since merged to main with release 3); this entry installs after 7250 and before 7270 (staging coordinator's order). Neither installation's watermark was read from this
 session; recheck both and any competing reservation before admission.
 
 Adds `app.viewer_access_version()` only: a STABLE SECURITY DEFINER SQL function returning the caller's own tenant's
 `access_company_state.access_version` (0 before the tenant's first maintenance), EXECUTE to `ai_hr_app`. No table,
 policy, trigger or grant on data changes.
+# Movement sweep system payroll snapshot policies, 24 November 2026
+
+Reserve `7220_movement_system_payroll_snapshot_insert`, journal index `10620`, timestamp `1795495007220`,
+SQL SHA-256 `544c15edadb827658cb8d182a7dc6ae4c1872992d199ef8c72bd6bc311123470`. Re-allocated from `7210` / `10610` / `1795495007210`, which collided with
+`7210_access_effective_company` (PR 280, merged to main 24 November 2026 at 85fb894a0, same index and timestamp);
+this entry was never applied anywhere under its old tuple. A fresh scan of the 400 most recently committed remote and
+local branch heads and every registered worktree journal found nothing above `1795495007210`. Production reported
+1,140 applied entries through `1795280007150`; staging runs `1e3388f25` (ledger ending `7200`). This entry must be
+installed after `7210_access_effective_company` on every installation, or that lower timestamp is skipped. Recheck
+both watermarks and competing reservations before admission.
+
+Adds two policies on `information_payslip_snapshot`, both `TO ai_hr_owner`, for the system path that 5777 introduced
+(nightly movement sweep: storage-owner session, no user, workforce maintain): `information_snapshot_system_preserve_read`
+(SELECT) and `information_snapshot_system_preserve_insert` (INSERT of an unattributed system row for a closed payslip
+paid by a company the sweep administers). Without them a restricted owner refuses every due movement for an employee
+with closed payroll (staging sweep, 24 November 2026). Rows, grants, functions and the user and Contract policies are
+unchanged.
+
 # Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
 
 Reserve `7210_access_effective_company`, journal index `10610`, timestamp `1795495007210`,

@@ -483,6 +483,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10570,when:1795488671170,tag:'7170_payroll_tax_basis_source_digest'},
  {idx:10600,when:1795495007200,tag:'7200_information_documents_planned_with_values'},
  {idx:10610,when:1795495007210,tag:'7210_access_effective_company'},
+ {idx:10620,when:1795495007220,tag:'7220_movement_system_payroll_snapshot_insert'},
  {idx:10660,when:1795495007260,tag:'7260_viewer_access_version'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
@@ -494,6 +495,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7170_payroll_tax_basis_source_digest':'cdc4bbc16f68ff86c0964e3b480dd183c5c1fb98ab5847135dde158cf356b1a9',
  '7200_information_documents_planned_with_values':'1346b1797640e36cb3c9af83aaa96b39bdd5a4b91b99411778e606128680c01e',
  '7210_access_effective_company':'b69dafe700e795d50f7d664ac17dfef6d7daffa7f0966ad8ef9c71d5a886eb9a',
+ '7220_movement_system_payroll_snapshot_insert':'544c15edadb827658cb8d182a7dc6ae4c1872992d199ef8c72bd6bc311123470',
  '7260_viewer_access_version':'ebc0519c213da029769b94e88156cb26f9d9cff8540b1cc6fed85744fb657be0',
  '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',
  '7100_payroll_run_company_review':'558adf2530aa3961163841b6df000b3dbcc9af30d21e309258e3b2a72f2b5ec6',

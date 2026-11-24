@@ -1,7 +1,7 @@
 import 'server-only';
 import {and,eq,inArray,sql} from 'drizzle-orm';
 import {z} from 'zod';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,employment} from '../db/schema';
 import {actorOf,appendEvent} from '../db/events';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
@@ -10,13 +10,36 @@ import {employmentStatusSql} from './employment-status-sql';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {packFor} from '../localization/registry';
 import {companyRegistrationResult,type CompanyRegistrationClassification} from '../lib/company-registration-readiness';
+/** Active employees per company for Admin > Organisation, run inside the caller's tenant transaction.
+ * Both authority questions are about the company, so they are answered once per company per statement instead of
+ * once per employment row (docs/adr/0181-addendum-precomputed-employment-visibility.md, section 9):
+ * app.is_admin_for over the tenant's companies, and app.access_workforce_companies('workforce.view') (7210), which is
+ * exactly the companies passing app.access_workforce_company. The rest of app.access_workforce_employment (same
+ * tenant, not voided, import condition) is written out. The rows equal the per-row
+ * `app.is_admin_for(company_id) AND app.access_workforce_employment(id,'workforce.view')` this replaces
+ * (test/company-registration-headcount-equivalence.test.ts). Employment row security still applies. */
+export async function companyActiveHeadcounts(tx:Tx,tenantId:string,companyIds:string[]){
+ return companyIds.length?companyActiveHeadcountsQuery(tx,tenantId,companyIds):[];
+}
+/** The statement itself, exported so its plan can be checked. */
+export function companyActiveHeadcountsQuery(tx:Tx,tenantId:string,companyIds:string[]){
+ return tx.select({companyId:employment.companyId,count:sql<number>`count(distinct ${employment.id})::int`}).from(employment).where(and(
+  eq(employment.tenantId,tenantId),inArray(employment.companyId,companyIds),
+  sql`${employment.tenantId}=app.current_tenant_id()`,sql`${employment.voidedAt} is null`,
+  sql`(${employment.importPendingAttemptId} is null or ${employment.importPendingAttemptId}::text=current_setting('app.import_attempt',true))`,
+  // A scalar array subquery is an InitPlan: is_admin_for runs once per tenant company, never per employment row
+  // (an IN subquery could become a per-row semi-join probe).
+  sql`${employment.companyId}=any((select array_agg(c.id) from company c where c.tenant_id=app.current_tenant_id() and app.is_admin_for(c.id))::uuid[])`,
+  sql`${employment.companyId}=any((select app.access_workforce_companies('workforce.view'))::uuid[])`,
+  sql`${employment.hiredOn}<=${todayInKualaLumpur()}::date`,sql`${employmentStatusSql()} in ('active','probation','active_serving_notice')`)).groupBy(employment.companyId);
+}
 export async function companyRegistrationOverview(ctx:SessionContext){
  const companies=await listCompanies(ctx,{includeArchived:true,adminOnly:true});if(!companies.length)return[];
  const countries=[...new Set(companies.map(c=>c.country))],rowsByCompany=new Map<string,Awaited<ReturnType<NonNullable<ReturnType<typeof packFor>>['companyStatutory']['list']>>[number]>();
  for(const country of countries){const pack=packFor(country);if(pack)for(const row of await pack.companyStatutory.list(ctx))rowsByCompany.set(row.companyId,row);}
  const {classifications,headcounts}=await withTenant(ctx,async tx=>{
   const classifications=await tx.execute<{company_id:string;entity_kind:'legal_entity'|'grouping_node';is_test_entity:boolean;revision:number}>(sql`select company_id,entity_kind,is_test_entity,revision from company_registration_classification where tenant_id=${ctx.tenantId}::uuid`);
-  const headcounts=await tx.select({companyId:employment.companyId,count:sql<number>`count(distinct ${employment.id})::int`}).from(employment).where(and(eq(employment.tenantId,ctx.tenantId),inArray(employment.companyId,companies.map(c=>c.id)),sql`app.is_admin_for(${employment.companyId})`,sql`app.access_workforce_employment(${employment.id},'workforce.view')`,sql`${employment.hiredOn}<=${todayInKualaLumpur()}::date`,sql`${employmentStatusSql()} in ('active','probation','active_serving_notice')`)).groupBy(employment.companyId);
+  const headcounts=await companyActiveHeadcounts(tx,ctx.tenantId,companies.map(c=>c.id));
   return{classifications,headcounts};
  });
  const classificationBy=new Map(classifications.map(c=>[c.company_id,{entityKind:c.entity_kind,isTestEntity:c.is_test_entity,revision:c.revision} satisfies CompanyRegistrationClassification]));

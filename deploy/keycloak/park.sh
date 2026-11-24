@@ -24,7 +24,16 @@ EMAIL_SERVICE=aihr-identity-email.service
 EMAIL_SOCKET=aihr-identity-email.socket
 WEB_UNIT=aihr.service
 
-refuse() { echo "✗ $*" >&2; exit 1; }
+CHANGED=0
+refuse() {
+  echo "✗ $*" >&2
+  if [ "$CHANGED" = 1 ]; then
+    echo "  Units were already stopped or started before this check failed; read the states below before acting." >&2
+    echo "  Do not run unpark unless you mean to roll back." >&2
+    evidence >&2 || true
+  fi
+  exit 1
+}
 show() { systemctl show -p "$2" --value "$1"; }
 
 # The app's provider selection, read from the file systemd loads. Exactly one AUTH_PROVIDER assignment,
@@ -71,6 +80,19 @@ evidence() {
 
 checks() { check_app_provider; check_dependants; check_email_socket_idle; evidence; }
 
+# The Keycloak JVM answers systemd's SIGTERM by exiting 143 and its unit has no SuccessExitStatus=143,
+# so a clean stop leaves the unit "failed" (seen on staging, 24 Nov 2026). Accept exactly that and clear
+# the mark; any other failure is reported.
+clear_keycloak_sigterm_failure() {
+  [ "$(show "$KEYCLOAK_UNIT" ActiveState)" = failed ] || return 0
+  local result status
+  result=$(show "$KEYCLOAK_UNIT" Result); status=$(show "$KEYCLOAK_UNIT" ExecMainStatus)
+  [ "$result" = exit-code ] && [ "$status" = 143 ] \
+    || refuse "$KEYCLOAK_UNIT stopped as failed (result=$result, exit status=$status), not the JVM's normal SIGTERM exit 143"
+  systemctl reset-failed "$KEYCLOAK_UNIT"
+  echo "✓ $KEYCLOAK_UNIT stopped with the JVM's normal SIGTERM exit 143; cleared the failed mark"
+}
+
 expect_state() {
   local unit=$1 want=$2 got
   got=$(show "$unit" ActiveState)
@@ -85,9 +107,11 @@ case "${1:-status}" in
     checks
     [ "$(show "$WEB_UNIT" ActiveState)" = active ] || refuse "$WEB_UNIT is not active; investigate before changing identity services"
     # The dependant first, so its Requires= never restarts Keycloak behind us.
+    CHANGED=1
     systemctl disable --now "$EMAIL_SOCKET"
     systemctl stop "$EMAIL_SERVICE"
     systemctl disable --now "$KEYCLOAK_UNIT"
+    clear_keycloak_sigterm_failure
     expect_state "$EMAIL_SOCKET" inactive; expect_state "$EMAIL_SERVICE" inactive; expect_state "$KEYCLOAK_UNIT" inactive
     expect_state "$WEB_UNIT" active
     evidence
@@ -95,6 +119,7 @@ case "${1:-status}" in
     echo "  Roll back with: sudo deploy/keycloak/park.sh unpark"
     ;;
   unpark)
+    CHANGED=1
     systemctl enable --now "$KEYCLOAK_UNIT"
     systemctl enable --now "$EMAIL_SOCKET"
     expect_state "$KEYCLOAK_UNIT" active; expect_state "$EMAIL_SOCKET" active

@@ -9,6 +9,7 @@ import {promisify} from 'node:util';
 import {mkdirSync,mkdtempSync,readFileSync,rmSync,symlinkSync,writeFileSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
+import {withFrozenPostgresPatchHash} from './helpers/approved-phone-dependency';
 import postgres from 'postgres';
 import {getTableName,sql} from 'drizzle-orm';
 import {drizzle} from 'drizzle-orm/postgres-js';
@@ -59,6 +60,7 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10570,version:'7',when:1795488671170,tag:'7170_payroll_tax_basis_source_digest',breakpoints:true},
  {idx:10600,version:'7',when:1795495007200,tag:'7200_information_documents_planned_with_values',breakpoints:true},
  {idx:10610,version:'7',when:1795495007210,tag:'7210_access_effective_company',breakpoints:true},
+ {idx:10620,version:'7',when:1795495007220,tag:'7220_movement_system_payroll_snapshot_insert',breakpoints:true},
  {idx:10660,version:'7',when:1795495007260,tag:'7260_viewer_access_version',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
@@ -180,7 +182,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
     expect(archived.includes(addition),file+' leaf is absent from the frozen runtime').toBe(false);
     expect(prepared.split(addition)).toHaveLength(2);prepared=prepared.replace(addition,'');
    }
-   expect(prepared,file+' only the exact approved additive leaf differs').toBe(archived);
+   expect(withFrozenPostgresPatchHash(file,prepared,archived,root),file+' only the exact approved additive leaf differs').toBe(archived);
   }
   symlinkSync(realpathSync(join(root,'node_modules')),join(source,'node_modules'),'dir');
   const currentJournal=JSON.parse(readFileSync(join(root,'db/migrations/meta/_journal.json'),'utf8')) as Journal;
