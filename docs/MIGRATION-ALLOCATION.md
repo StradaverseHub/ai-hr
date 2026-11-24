@@ -1,3 +1,37 @@
+# Precomputed employment visibility, 24 November 2026
+
+Reserve `7240_access_visible_employment`, journal index `10640`, timestamp `1795495007240`,
+SQL SHA-256 `dbece9c5d10ca36cfc4bdd2a8c3aad1df6feaa1843eb38892889170f9a9cee74`. It follows `7230_assignment_current_department_index` (index `10630`), on which its
+department-head read relies; the reservation scan for 7230 found nothing above `7220_movement_system_payroll_snapshot_insert`
+(release 3 candidate `41482ceb0`). Neither installation's watermark was read from this session; recheck both and any
+competing reservation before admission.
+
+Step (c) of the approved employment-visibility addendum (docs/adr/0181-addendum-precomputed-employment-visibility.md).
+Adds `access_reporting_reach`, `access_department_closure`, `access_employment_state` and
+`access_employment_precompute_control` (owner-only: RLS forced with the `app.acting_as_owner()` policy, no `ai_hr_app`
+privilege), statement triggers on `reporting_line`, `employment` (update, delete), `department` and
+`access_company_closure` (insert), the compute, maintenance, verify, re-trust and mode functions, and the readers
+`app.access_visible_employment_ids()`, `app.access_visible_person_ids()`, `app.employment_read_companies()` and
+`app.employment_partner_companies()` (never PUBLIC: EXECUTE to exactly the roles that evaluate the policies calling
+them, derived from the catalogue as 5070 does). Replaces the body of `app.visible_employment_ids()`
+(guarded by the exact 5144 body) and the USING of `employment_rls` and `person_rls` (guarded by their deparsed
+predecessors); WITH CHECK, roles and commands are unchanged. Installation mode starts as `legacy`. Builds every tenant
+in the migration transaction (rows bounded by employments x reporting depth).
+
+# Current assignments by department index, 24 November 2026
+
+Reserve `7230_assignment_current_department_index`, journal index `10630`, timestamp `1795495007230`,
+SQL SHA-256 `09cfad9849af9981f5be010625aecaba17c667c791eed79e57ea59238f7e39d9`. The reservation scan covered the 400 most
+recently committed remote branch heads and every registered worktree journal: the highest entry found was
+`7220_movement_system_payroll_snapshot_insert` (index `10620`, when `1795495007220`, staging release 3 candidate
+`41482ceb0`, not yet on main). This entry is above it. Neither installation's watermark was read from this session;
+recheck both and any competing reservation before admission.
+
+Adds the partial index `assignment_current_department_idx` on `assignment (department_id) INCLUDE
+(employment_id) WHERE valid_to IS NULL AND superseded_at IS NULL AND department_id IS NOT NULL`, step (b) of the
+approved employment-visibility addendum (docs/adr/0181-addendum-precomputed-employment-visibility.md). No rows,
+policies, grants or functions change. The build holds a SHARE lock on `assignment` (writes wait) with `lock_timeout` 5 s.
+
 # Movement sweep system payroll snapshot policies, 24 November 2026
 
 Reserve `7220_movement_system_payroll_snapshot_insert`, journal index `10620`, timestamp `1795495007220`,
