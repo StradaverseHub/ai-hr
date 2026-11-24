@@ -1351,6 +1351,13 @@ class StagingEnvironmentRebindTests(unittest.TestCase):
             accepted=json.loads((f.app/'releases'/f.source/'worker-install-v2.json').read_text())
             self.assertEqual(accepted['selectedEnvironmentSha256'],f.env_hash);self.assertEqual(f.env.read_bytes(),before)
             self.assertEqual(f.unit.read_text(),f.service_unit(f.source));self.assertEqual(json.loads((f.old_release/'worker-install-v2.json').read_text()),f.old_receipt)
+    def test_added_worker_lanes_key_drains_and_activates_with_the_unchanged_unit(self):
+        # ADR 0181 J1.2: lanes are switched on by one reviewed key in the protected environment; the unit stays the same.
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.fixture(tmp,added={'AIHR_WORKER_LANES':'payroll,tax,import,export'});rebind={'previous-worker-env-sha256':f.previous_env_hash}
+            f.invoke('drain',rebind);f.web=f.source;f.invoke('activate',rebind)
+            accepted=json.loads((f.app/'releases'/f.source/'worker-install-v2.json').read_text())
+            self.assertEqual(accepted['selectedEnvironmentSha256'],f.env_hash);self.assertEqual(f.unit.read_text(),f.service_unit(f.source))
     def test_wrong_malformed_or_redundant_previous_pin_refuses_before_any_change(self):
         for case in ['wrong','current-as-previous','malformed','short','adopt']:
             with self.subTest(case=case),tempfile.TemporaryDirectory() as tmp:
@@ -1478,5 +1485,22 @@ class ProductionEnvironmentRebindTests(unittest.TestCase):
             self.assertEqual(sorted(json.loads((f.operation/'drained.json').read_text())['identity']),sorted(n.replace('-','_') for n in production.UPDATE_ARGS))
             with self.assertRaisesRegex(ValueError,'drained previous release'):f.rollback({'previous-worker-env-sha256':'c'*64})
             self.assertEqual(f.mutations()[before:],[])
+
+class WorkerLaneEnvironmentTests(unittest.TestCase):
+    """ADR 0181 J1.2: lanes run as children of the one unit; the unit and its exact pool setting are unchanged."""
+    def test_unit_keeps_one_service_and_exactly_the_reviewed_pool(self):
+        unit=install.service_unit('1'*40)
+        self.assertEqual([line for line in unit.splitlines() if line.startswith('Environment=')],['Environment=NODE_ENV=production','Environment=AIHR_DB_PROCESS_ROLE=worker','Environment=AIHR_DB_POOL_MAX=2'])
+        self.assertNotIn('AIHR_WORKER_LANE',unit);self.assertIn('ExecStart=/opt/node22/bin/node --import tsx scripts/bank-import-runner.ts\n',unit)
+        base=dict(User='aihr-import',Group='aihr-import',WorkingDirectory='/opt/aihr-import/releases/'+'1'*40,FragmentPath=str(install.UNIT),EnvironmentFiles=str(install.ENV)+' (ignore_errors=no)')
+        install.validate_service({**base,'Environment':'NODE_ENV=production AIHR_DB_PROCESS_ROLE=worker AIHR_DB_POOL_MAX=2'},Path(base['WorkingDirectory']))
+        for environment in ['NODE_ENV=production AIHR_DB_PROCESS_ROLE=worker AIHR_DB_POOL_MAX=3','NODE_ENV=production AIHR_DB_PROCESS_ROLE=worker AIHR_DB_POOL_MAX=2 AIHR_WORKER_LANES=payroll']:
+            with self.assertRaisesRegex(ValueError,'Environment'):install.validate_service({**base,'Environment':environment},Path(base['WorkingDirectory']))
+    def test_worker_lanes_is_a_reviewed_key_with_a_closed_value(self):
+        self.assertIn('AIHR_WORKER_LANES',install.ENV_KEYS)
+        self.assertEqual(install.worker_lanes_value('payroll,tax,import,export'),['payroll','tax','import','export'])
+        self.assertEqual(install.worker_lanes_value(''),[])
+        for value in ['default','payroll,payroll','payroll, tax','payroll;tax','payroll,','PAYROLL']:
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'unsupported worker lane list'):install.worker_lanes_value(value)
 
 unittest.main()

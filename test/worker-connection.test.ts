@@ -44,9 +44,12 @@ describe('worker connection options',()=>{
  });
 
  it('is the only way the import worker opens its owner connection',()=>{
+  // The loop lives in scripts/lib/worker-lane-process.ts since ADR 0181 J1.2; the lane supervisor opens no connection.
+  const worker=readFileSync('scripts/lib/worker-lane-process.ts','utf8');
+  expect(worker).toContain('const owner=openImportWorkerOwner(url);');
+  expect(worker).not.toMatch(/\bpostgres\(/);
   const runner=readFileSync('scripts/bank-import-runner.ts','utf8');
-  expect(runner).toContain('const owner=openImportWorkerOwner(url);');
-  expect(runner).not.toMatch(/\bpostgres\(/);
+  expect(runner).not.toMatch(/\bpostgres\(|openImportWorkerOwner|createDb/);
   const client=readFileSync('db/client.ts','utf8');
   expect(client).toContain('...processConnectionOptions(applicationBudget.role)');
  });
