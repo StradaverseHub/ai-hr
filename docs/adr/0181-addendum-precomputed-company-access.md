@@ -45,7 +45,7 @@ Every input, and how the pilot treats it:
 | Storage-owner session | `access_workforce_storage_owner` | `session_user`, role membership | **Live**, once per statement |
 | Admin role assignments and their company scope | the join on `role_assignment` | `role_assignment` | **Precomputed** |
 | Company scope cover and company tree | `access_scope_covers` → `is_company_descendant` → `company_org_parent_for_tenant` | `company.parent_company_id`, published `company_organisation_run` + `company_organisation_mapping`, **`(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date`** | **Precomputed** as a company closure, valid for a date window (section 5) |
-| Capability catalogue (`supported`, `bindings`, `scope`) | `access_allowed_for_tenant` | `access_capability` (global, migration-owned) | **Precomputed** |
+| Capability catalogue (`supported`, `bindings`, `scope`) as the tenant sees it | `access_workforce_company` and `access_allowed_for_tenant`, through `app.access_capability_effective(tenant)` (5071) | `access_capability` (global, migration-owned), `app.access_capability_publication`, `app.access_capability_tenant_publication` (a tenant not yet published keeps the previous catalogue) | **Precomputed** |
 | Tenant configuration initialised | same | `access_configuration.initialized` | **Precomputed** |
 | Deny and allow overrides | same | `access_user_override` (`effect`, `company_id`, `retired_at`) | **Precomputed** |
 | Group memberships and grants | same, via the `access_effective_membership` view | `access_membership`, `access_group` (`legacy_key`, `retired_at`), `access_group_grant`, `role_assignment` | **Precomputed** |
@@ -66,6 +66,7 @@ Writers found in source (SQL definer functions and TypeScript), as of `d9db526a2
 | `access_group`, `access_group_grant` | 0579, 2107, access editor owner presentation (3211), movement payroll protection (5773) |
 | `access_configuration` | 0579, 2107, 3211, 5000, 5003, 5012 |
 | `access_capability` | migrations only (0579, 2107, 5773) |
+| `app.access_capability_publication`, `app.access_capability_tenant_publication` | the per-tenant capability publication (5071, `deploy/access/publish-workforce-capabilities.ts`) |
 | `company` (insert, delete, `parent_company_id`) | `core/admin.ts`, `db/provision.ts`, `core/hiring-defaults.ts`, `core/company-display-group.ts`, `core/leave-approval-policy.ts`, `core/leave-team-minimum.ts`, 0030, 0324 |
 | `company_organisation_run`, `company_organisation_mapping` | Company organisation tagging (2126), employee import staged job (5010) |
 

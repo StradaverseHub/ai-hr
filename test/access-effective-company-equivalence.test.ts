@@ -195,10 +195,13 @@ afterAll(async()=>{try{await setMode('legacy');await owner.db.execute(sql`update
 
 describe('precomputed company access (7210) on Job descriptions',()=>{
  it('pins its predecessors, its policies, its grants and its once-per-statement plan',async()=>{
+  const changed:string[]=[];
   for(const[signature,expected]of Object.entries(RESTATED)){
    const[row]=await owner.client<{body:string}[]>`select prosrc as body from pg_proc where oid=${signature}::regprocedure`;
-   expect(sha256(row.body),signature).toBe(expected);
+   // Source code only: print what is installed so a changed predecessor can be reviewed against 7210.
+   if(sha256(row.body)!==expected){changed.push(signature);console.log(`[access-effective-company] installed ${signature} ${sha256(row.body)}\n${row.body}`);}
   }
+  expect(changed).toEqual([]);
   // The reinstated "old" policies are the real predecessors: 0595 created them, 2202 only limited them to ai_hr_app,
   // and no other migration before 7210 touched them.
   const m0595=readFileSync('db/migrations/0595_job_description_documents.sql','utf8');
@@ -298,11 +301,10 @@ describe('precomputed company access (7210) on Job descriptions',()=>{
 
  it('fails closed to the legacy answer when a writer bypassed maintenance, and logs counts only in shadow',async()=>{
   const missed=await user('employee',null);
-  await owner.client.begin(async tx=>{
-   await tx`alter table role_assignment disable trigger access_effective_company_insert`;
-   await tx`insert into role_assignment(tenant_id,app_user_id,role,company_id) values(${b.tenantId}::uuid,${missed.userId!}::uuid,'hr_admin',null)`;
-   await tx`alter table role_assignment enable trigger access_effective_company_insert`;
-  });
+  // Separate statements: a table with pending trigger events cannot be altered in the same transaction.
+  await owner.client`alter table role_assignment disable trigger access_effective_company_insert`;
+  try{await owner.client`insert into role_assignment(tenant_id,app_user_id,role,company_id) values(${b.tenantId}::uuid,${missed.userId!}::uuid,'hr_admin',null)`;}
+  finally{await owner.client`alter table role_assignment enable trigger access_effective_company_insert`;}
   actors['administrator added by a bypassing writer']={...missed,roles:['employee','hr_admin'],grants:[{role:'employee',companyId:null},{role:'hr_admin',companyId:null}]} as SessionContext;
   // Shadow serves the legacy answer and reports the difference as counts, with no identifier.
   const notices:string[]=[];

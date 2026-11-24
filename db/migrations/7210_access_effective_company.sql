@@ -99,7 +99,8 @@ REVOKE ALL ON FUNCTION app.access_company_closure_compute(uuid) FROM PUBLIC,ai_h
 -- The company-dependent part of app.access_workforce_company's user branch, for every admin role holder (or the
 -- listed users) of the tenant, over the STORED closure: role_assignment scope (app.access_scope_covers), and when
 -- the capability is supported, app.access_allowed_for_tenant without its user-only conditions (archive and login
--- block), which the read function checks live for the same user.
+-- block), which the read function checks live for the same user. The catalogue is read as this tenant sees it
+-- (app.access_capability_effective, 5071), exactly as both installed predecessors read it.
 CREATE FUNCTION app.access_effective_company_compute(p_tenant uuid,p_users uuid[])
 RETURNS TABLE(user_id uuid,capability text,company_id uuid,roles text[])
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -117,7 +118,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  config AS (SELECT coalesce(bool_or(s.initialized),false) AS initialized FROM public.access_configuration s WHERE s.tenant_id=p_tenant),
  allowed AS (
   SELECT p.user_id,c.id AS capability,p.company_id
-  FROM pairs p CROSS JOIN public.access_capability c CROSS JOIN config
+  FROM pairs p CROSS JOIN app.access_capability_effective(p_tenant) c CROSS JOIN config
   WHERE c.id IN ('workforce.view','workforce.maintain')
    AND CASE WHEN NOT c.supported THEN true ELSE (config.initialized AND jsonb_array_length(c.bindings)>0 AND c.scope='company'
     AND NOT EXISTS(SELECT 1 FROM public.access_user_override o
@@ -265,7 +266,19 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.access_effective_company_role_changed(),app.access_effective_company_user_rows_changed(),
+-- A capability publication (5071) changes what each tenant sees of the catalogue: opening or closing a version
+-- recomputes every tenant; one tenant's publication recomputes that tenant (access_capability_tenant_publication
+-- has tenant_id and uses the tenant function).
+CREATE FUNCTION app.access_effective_company_publication_changed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid;
+BEGIN
+ FOR t IN SELECT DISTINCT c.tenant_id FROM public.company c ORDER BY 1 LOOP PERFORM app.access_effective_company_refresh(t,NULL); END LOOP;
+ RETURN NULL;
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.access_effective_company_publication_changed(),app.access_effective_company_role_changed(),app.access_effective_company_user_rows_changed(),
  app.access_effective_company_tenant_rows_changed(),app.access_effective_company_company_changed(),
  app.access_effective_company_capability_changed() FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -284,11 +297,13 @@ BEGIN
   ('company_organisation_run','access_effective_company_tenant_rows_changed'),
   ('company_organisation_mapping','access_effective_company_tenant_rows_changed'),
   ('company','access_effective_company_company_changed'),
-  ('access_capability','access_effective_company_capability_changed')) v(tbl,fn)
+  ('access_capability','access_effective_company_capability_changed'),
+  ('app.access_capability_publication','access_effective_company_publication_changed'),
+  ('app.access_capability_tenant_publication','access_effective_company_tenant_rows_changed')) v(tbl,fn)
  LOOP
   FOREACH ev IN ARRAY ARRAY['insert','update','delete'] LOOP
-   EXECUTE format('CREATE TRIGGER %I AFTER %s ON public.%I REFERENCING %s FOR EACH STATEMENT EXECUTE FUNCTION app.%I()',
-    'access_effective_company_'||ev,upper(ev),target.tbl,
+   EXECUTE format('CREATE TRIGGER %I AFTER %s ON %s REFERENCING %s FOR EACH STATEMENT EXECUTE FUNCTION app.%I()',
+    'access_effective_company_'||ev,upper(ev),CASE WHEN target.tbl LIKE 'app.%' THEN target.tbl ELSE 'public.'||quote_ident(target.tbl) END,
     CASE ev WHEN 'insert' THEN 'NEW TABLE AS new_rows' WHEN 'delete' THEN 'OLD TABLE AS old_rows' ELSE 'OLD TABLE AS old_rows NEW TABLE AS new_rows' END,
     target.fn);
   END LOOP;
