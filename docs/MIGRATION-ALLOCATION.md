@@ -1,3 +1,39 @@
+# Movement sweep system payroll snapshot policies, 24 November 2026
+
+Reserve `7220_movement_system_payroll_snapshot_insert`, journal index `10620`, timestamp `1795495007220`,
+SQL SHA-256 `544c15edadb827658cb8d182a7dc6ae4c1872992d199ef8c72bd6bc311123470`. Re-allocated from `7210` / `10610` / `1795495007210`, which collided with
+`7210_access_effective_company` (PR 280, merged to main 24 November 2026 at 85fb894a0, same index and timestamp);
+this entry was never applied anywhere under its old tuple. A fresh scan of the 400 most recently committed remote and
+local branch heads and every registered worktree journal found nothing above `1795495007210`. Production reported
+1,140 applied entries through `1795280007150`; staging runs `1e3388f25` (ledger ending `7200`). This entry must be
+installed after `7210_access_effective_company` on every installation, or that lower timestamp is skipped. Recheck
+both watermarks and competing reservations before admission.
+
+Adds two policies on `information_payslip_snapshot`, both `TO ai_hr_owner`, for the system path that 5777 introduced
+(nightly movement sweep: storage-owner session, no user, workforce maintain): `information_snapshot_system_preserve_read`
+(SELECT) and `information_snapshot_system_preserve_insert` (INSERT of an unattributed system row for a closed payslip
+paid by a company the sweep administers). Without them a restricted owner refuses every due movement for an employee
+with closed payroll (staging sweep, 24 November 2026). Rows, grants, functions and the user and Contract policies are
+unchanged.
+
+# Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
+
+Reserve `7210_access_effective_company`, journal index `10610`, timestamp `1795495007210`,
+SQL SHA-256 `f7573100e12f8bf4a37f66fc1e181ef861040ee4475e0d6532573ef1489765e8`. The reservation scan covered the 300 most recently committed remote branch heads
+and every registered worktree journal: the highest entry found was `7200_information_documents_planned_with_values`
+(index `10600`, when `1795495007200`, branch `claude/txn-view-slow-load-af9f97`), and `7160`–`7190` are held by the
+import and tax-basis branches. This entry is above all of them. Neither installation's watermark was read from this
+session; recheck both and any competing reservation before admission.
+
+Adds `access_company_closure`, `access_effective_company`, `access_company_state` and `access_precompute_control`
+(owner-only: RLS forced with the `app.acting_as_owner()` policy, no `ai_hr_app` privilege), statement triggers on
+`role_assignment`, `access_membership`, `access_user_override`, `access_group`, `access_group_grant`,
+`access_configuration`, `access_capability`, `company`, `company_organisation_run` and `company_organisation_mapping`,
+the maintenance, verify, re-trust and mode functions, and `app.access_workforce_companies(text)` (EXECUTE to
+`ai_hr_app`). Replaces the `job_document_read`, `job_document_revision_read` and (FOR ALL, so it also governs reads)
+`job_document_revision_write` policies with once-per-statement forms of the same predicates; the `job_document`
+insert, update and delete policies are unchanged. Installation mode starts as `legacy`. Builds every existing tenant in the
+migration transaction (rows bounded by admin role holders × companies × 2).
 # Retained payroll documents planned with their values, 24 November 2026
 
 Reserve `7200_information_documents_planned_with_values`, journal index `10600`, timestamp `1795495007200`,
