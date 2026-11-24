@@ -1,10 +1,11 @@
 /** A minimal PostgreSQL wire-protocol server for driver-state tests that need exact control over when a connection
  * closes or a statement answers, which a real server cannot give deterministically. It trusts every login and
  * answers every statement with no rows. Hooks decide, per connection, what happens on Terminate and on each statement:
- * answer it, never answer (`hold`, as a stalled backend), or drop the socket (`destroy`, as a lost connection). */
+ * answer it, answer one row with a boolean column `ok` true (`ok`, for a proof or a lock), never answer (`hold`, as a
+ * stalled backend), or drop the socket (`destroy`, as a lost connection). Statements must have no parameters. */
 import net from 'node:net';
 
-export type FakeStatementAction='answer'|'hold'|'destroy';
+export type FakeStatementAction='answer'|'ok'|'hold'|'destroy';
 export type FakePostgresHooks={
  /** The client sent Terminate. The default ends the socket at once. */
  terminate?(socket:net.Socket):void;
@@ -30,12 +31,15 @@ function message(type:string,body:Buffer=Buffer.alloc(0)){
 const int32=(n:number)=>{const b=Buffer.alloc(4);b.writeUInt32BE(n);return b;};
 const READY=message('Z',Buffer.from('I'));
 const SELECT_NONE=message('C',Buffer.from('SELECT 0\0'));
+// RowDescription of one column `ok` of type bool (oid 16, length 1, text format), and its row holding true.
+const OK_COLUMNS=message('T',Buffer.concat([Buffer.from([0,1]),Buffer.from('ok\0'),int32(0),Buffer.from([0,0]),int32(16),Buffer.from([0,1]),int32(0xffffffff),Buffer.from([0,0])]));
+const OK_ROW=Buffer.concat([message('D',Buffer.concat([Buffer.from([0,1]),int32(1),Buffer.from('t')])),message('C',Buffer.from('SELECT 1\0'))]);
 
 export async function startFakePostgres(hooks:FakePostgresHooks={}):Promise<FakePostgresServer>{
  const connections:net.Socket[]=[];const open=new Set<net.Socket>();const statements:string[]=[];
  const server=net.createServer(socket=>{
   open.add(socket);socket.on('close',()=>open.delete(socket));socket.on('error',()=>undefined);
-  let buffer=Buffer.alloc(0),started=false,held=false;
+  let buffer=Buffer.alloc(0),started=false,held=false,rows:'none'|'ok'='none';
   socket.on('data',chunk=>{
    buffer=Buffer.concat([buffer,chunk]);
    for(;;){
@@ -60,13 +64,14 @@ export async function startFakePostgres(hooks:FakePostgresHooks={}):Promise<Fake
      const action=hooks.statement?.(text,socket)??'answer';
      if(action==='destroy'){socket.destroy();return;}
      if(action==='hold'){held=true;continue;}
+     rows=action==='ok'?'ok':'none';
     }
     if(type==='P')socket.write(message('1'));
-    else if(type==='D')socket.write(Buffer.concat([message('t',Buffer.from([0,0])),message('n')]));
+    else if(type==='D')socket.write(Buffer.concat([message('t',Buffer.from([0,0])),rows==='ok'?OK_COLUMNS:message('n')]));
     else if(type==='B')socket.write(message('2'));
-    else if(type==='E')socket.write(SELECT_NONE);
+    else if(type==='E')socket.write(rows==='ok'?OK_ROW:SELECT_NONE);
     else if(type==='S')socket.write(READY);
-    else if(type==='Q')socket.write(Buffer.concat([SELECT_NONE,READY]));
+    else if(type==='Q')socket.write(Buffer.concat([rows==='ok'?Buffer.concat([OK_COLUMNS,OK_ROW]):SELECT_NONE,READY]));
    }
   });
  });

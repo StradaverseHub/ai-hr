@@ -14,6 +14,7 @@ import {PersonnelCsvError} from '../lib/personnel-csv';
 import {BANK_IMPORT_STAGE_ROWS,bankImportStagedRecords,stageBankImportSource} from '../lib/bank-import-stream-source.server';
 import {BANK_IMPORT_BATCH_ROWS,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
 import {analyzeBankImportBatch,applyBankImportRowTx,BankImportRowRejectedError} from './import-sections';
+import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reserveOwner} from './owner-step-deadline';
 import {createImportAttemptTx,recordImportEventTx,sealImportPlan} from './import-history';
 import type {ImportPlanBase} from '../lib/import-history';
 import type {ImportRecord} from '../lib/import-schema';
@@ -130,16 +131,23 @@ async function processBankImportPhase(ctx:SessionContext,id:string,options:BankI
   await tx.execute(sql`delete from bank_import_chunk where job_id=${id}::uuid`);
  });
 }
-/** Owner credential stays in the dedicated worker. Never passed to a domain writer. */
-export async function runBankImportTick(owner:postgres.Sql):Promise<boolean>{
- const connection=await owner.reserve();
+/** Owner credential stays in the dedicated worker. Never passed to a domain writer. The owner steps (reservation,
+ * proof, lock, claim, failure record, unlock) are bounded by core/owner-step-deadline.ts; processing the job is not.
+ * A reservation whose statement missed its deadline is neither unlocked nor released: the worker exits, and the
+ * session's end frees the advisory lock. ownerDeadlineMs is a test hook. */
+export async function runBankImportTick(owner:postgres.Sql,options:{ownerDeadlineMs?:number}={}):Promise<boolean>{
+ const deadlineMs=ownerDeadlineMs(options.ownerDeadlineMs);
+ const claimStep=ownerClaimDeadline(deadlineMs);
+ const connection=await reserveOwner(owner,deadlineMs);
+ let unresponsive=false;
+ const lost=(error:unknown)=>{if(error instanceof OwnerConnectionUnresponsive)unresponsive=true;throw error;};
  try{
-  const [proof]=await connection<{ok:boolean}[]>`select exists(select 1 from pg_roles r join pg_class c on c.oid='public.bank_import_job'::regclass where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid)) as ok`;
+  const [proof]=await claimStep(connection<{ok:boolean}[]>`select exists(select 1 from pg_roles r join pg_class c on c.oid='public.bank_import_job'::regclass where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid)) as ok`,'the Bank import owner proof');
   if(!proof?.ok)throw new Error('The import worker requires the physical queue owner connection.');
-  const [lock]=await connection<{ok:boolean}[]>`select pg_try_advisory_lock(hashtextextended('bank-import-worker',0)) as ok`;
+  const [lock]=await claimStep(connection<{ok:boolean}[]>`select pg_try_advisory_lock(hashtextextended('bank-import-worker',0)) as ok`,'the Bank import lock');
   if(!lock?.ok)return false;
   try{
-   const [job]=await connection<BankImportJobRow[]>`select * from bank_import_job where state in ('queued','validating','importing') order by updated_at,created_at limit 1`;
+   const [job]=await claimStep(connection<BankImportJobRow[]>`select * from bank_import_job where state in ('queued','validating','importing') order by updated_at,created_at limit 1`,'the Bank import claim');
    if(!job)return false;
    try{await processBankImportJob(await freshImportContext(job.context),job.id);}
    catch(error){
@@ -149,9 +157,11 @@ export async function runBankImportTick(owner:postgres.Sql):Promise<boolean>{
      // d3ba1e9f: an unexpected stop carries a short reference (full error in the worker log) for the Error Log.
      `Import stopped. Rows already saved are retained. Review the result and your access before trying again. Reference ${unexpectedErrorReference(error,'bank import job')}.`;
     // Bounded message only; raw DB failures can contain employee values. Already saved rows stay saved.
-    await connection`update bank_import_job set state='failed',error=${message},updated_at=now() where id=${job.id}::uuid`;
+    await ownerStep(connection`update bank_import_job set state='failed',error=${message},updated_at=now() where id=${job.id}::uuid`,'the Bank import failure record',deadlineMs);
    }
    return true;
-  }finally{await connection`select pg_advisory_unlock(hashtextextended('bank-import-worker',0))`;}
- }finally{await connection.release();}
+  }catch(error){return lost(error);}
+  finally{if(!unresponsive)await ownerStep(connection`select pg_advisory_unlock(hashtextextended('bank-import-worker',0))`,'the Bank import unlock',deadlineMs);}
+ }catch(error){return lost(error);}
+ finally{if(!unresponsive)connection.release();}
 }

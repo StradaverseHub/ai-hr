@@ -207,15 +207,24 @@ far below them (see the decode memory section below).
 
 ### Queue-owner deadline
 
-The watchdog is the backstop. The owner-connection steps of a bulk-job tick have their own, much shorter bound
-(`BULK_JOB_OWNER_DEADLINE_SECONDS`, 120 s, in `core/bulk-job-worker.ts`). These steps are reserving the connection,
-the owner proof, the heartbeat, the claim and, after a unit, clearing its lease. Each is one short statement. When
-one of them has not finished in time, the tick fails, the worker logs one line and exits with status 1, and the
-lane supervisor and systemd restart it:
+The watchdog is the backstop. Each tick's own steps on the queue-owner connection have a much shorter bound
+(`OWNER_STEP_DEADLINE_SECONDS`, 120 s, in `core/owner-step-deadline.ts`). This covers the Bank & Statutory, Individual
+Transaction and bulk-job ticks. The bounded steps are:
+- reserving the connection;
+- the owner proof;
+- the queue lock (Bank and Individual) or the heartbeat (bulk jobs);
+- the claim;
+- the job-state writes and lease release;
+- the unlock.
 
-    Import worker: The bulk job queue-owner connection did not complete the connection reservation within 120 s. Exiting so systemd restarts it with a new connection.
+Each is one short statement. When one has not finished in time, the tick fails, the worker logs one line and exits
+with status 1, and the lane supervisor and systemd restart it:
 
-The unit itself (prepare, chunk, finalize) is not bounded this way; the watchdog still covers it.
+    Import worker: The import worker's queue-owner connection did not complete the connection reservation within 120 s. Exiting so systemd restarts it with a new connection.
+
+The connection is then neither unlocked nor returned to the pool; process exit closes it, which frees the advisory
+lock. The job keeps its state, and the restarted worker resumes it. The import work itself (decoding, validating,
+writing rows, a bulk-job unit) is not bounded this way; the watchdog still covers it.
 
 On 24 Nov 2026 (release 5b4359399) the payroll lane logged `stalled in bulk for 1822 s` while no payroll job
 existed and PostgreSQL logged no error or lock wait. The cause was in postgres.js 3.4.9. The lane's one owner

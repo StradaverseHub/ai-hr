@@ -10,7 +10,8 @@
 import './stub-server-only';
 import {freshImportContext,runBankImportTick} from '../../core/bank-import-worker';
 import {runIndividualImportTick} from '../../core/individual-import-worker';
-import {BulkJobOwnerUnresponsive,retireBulkJobWorker} from '../../core/bulk-job-worker';
+import {retireBulkJobWorker} from '../../core/bulk-job-worker';
+import {OwnerConnectionUnresponsive} from '../../core/owner-step-deadline';
 import {runWorkerLaneIteration,type WorkerSingletonTicks} from '../../core/worker-lane-loop';
 import {runRewardPlanCompanyTick} from '../../packs/rewards/service';
 import {runProbationReconciliationTick} from '../../packs/probation/service';
@@ -62,7 +63,7 @@ export function runWorkerProcess(){
    watchdog.enter('pause');
    if(!worked.bank&&!worked.individual)await new Promise(resolve=>setTimeout(resolve,worked.bulk||worked.rewardPlans||worked.probation?bulkPauseMs:1000));
   }while(!stopping);}
-  // The heartbeat removal is bounded (10 s): after BulkJobOwnerUnresponsive the abandoned reservation still holds the
+  // The heartbeat removal is bounded (10 s): after OwnerConnectionUnresponsive the abandoned reservation still holds the
   // only owner connection, so it would wait for ever; owner.end then closes that connection after 5 s. A heartbeat
   // left behind only ages out (core/bulk-job-worker.ts).
   finally{watchdog.enter('stop');await retireWithin(owner,10_000);await owner.end({timeout:5});await probationOwner?.client.end({timeout:5});await client.end({timeout:5});watchdog.stop();}
@@ -70,7 +71,7 @@ export function runWorkerProcess(){
  }
  main().catch(error=>{
   ended=true;
-  if(error instanceof BulkJobOwnerUnresponsive)console.error(`Import worker: ${error.message} Exiting so systemd restarts it with a new connection.`);
+  if(error instanceof OwnerConnectionUnresponsive)console.error(`Import worker: ${error.message} Exiting so systemd restarts it with a new connection.`);
   console.error('Bank import worker stopped. Check its database access, migrations and runtime configuration.');process.exitCode=1;
  });
 }

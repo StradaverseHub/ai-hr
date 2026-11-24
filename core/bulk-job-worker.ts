@@ -23,6 +23,7 @@ import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {freshImportContext} from './bank-import-worker';
 import type {BulkJobRow} from './bulk-job';
 import {laneMarker,type WorkerLane} from './bulk-job-lanes';
+import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reserveOwner} from './owner-step-deadline';
 
 export type BulkJobStepInput={kind:string;rowNum?:number|null;payload:unknown};
 export type BulkJobStep<P=unknown>={seq:number;kind:string;row_num:number|null;payload:P};
@@ -160,29 +161,8 @@ const merge=(a:Record<string,number>,b?:Record<string,number>)=>{if(!b)return a;
 /** lanes: the lanes this process was started for (scripts/bank-import-runner.ts). Its heartbeat then also advertises
  * one marker per lane (core/bulk-job-lanes.ts), which admission reads to refuse a kind the live lane worker lacks. */
 export type BulkJobWorkerOptions={workerId?:string;handlers:readonly WorkerHandler[];lanes?:readonly WorkerLane[];
- /** Test hook: BULK_JOB_OWNER_DEADLINE_SECONDS in milliseconds. */
+ /** Test hook: the owner step deadline (core/owner-step-deadline.ts) in milliseconds. */
  ownerDeadlineMs?:number};
-/** Longest the queue-owner steps of one tick around a unit may take: getting the reserved connection, the owner proof,
- * the heartbeat and the claim, and after a unit clearing its lease. Each is one short statement (milliseconds); a
- * fresh connection adds at most connect_timeout (30 s) and its type fetch. Past this the owner connection is not
- * answering, which no server timeout can bound while the client never sends the statement (the 24 November payroll
- * lane waited in reserve() for 1,822 s with nothing running in PostgreSQL), so the tick fails with
- * BulkJobOwnerUnresponsive and the worker exits for systemd to restart it. The unit itself is not bounded here: the
- * stall watchdog (lib/import-worker-watchdog.ts, at least 1,200 s) stays its backstop. */
-export const BULK_JOB_OWNER_DEADLINE_SECONDS=120;
-export class BulkJobOwnerUnresponsive extends Error{
- constructor(readonly step:string,readonly seconds:number){super(`The bulk job queue-owner connection did not complete ${step} within ${seconds} s.`);this.name='BulkJobOwnerUnresponsive';}
-}
-/** `work`, or BulkJobOwnerUnresponsive once `ms` pass. The timer is deliberately referenced: a call that can never
- * settle must still end the tick rather than let the process drain its event loop. `late` receives a value that
- * arrives after the deadline (a reservation is released). */
-async function ownerStep<T>(work:Promise<T>,step:string,ms:number,late?:(value:T)=>void):Promise<T>{
- let timer:ReturnType<typeof setTimeout>|undefined;
- const expired=new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new BulkJobOwnerUnresponsive(step,Math.round(ms/1000))),ms);});
- try{return await Promise.race([work,expired]);}
- catch(error){if(error instanceof BulkJobOwnerUnresponsive)work.then(value=>late?.(value),()=>undefined);throw error;}
- finally{clearTimeout(timer);}
-}
 type Uuid=`${string}-${string}-${string}-${string}-${string}`;
 /** One claim: the lease token (visible on the row) and its capability (only here and as a digest in app.bulk_job_seal). */
 type Claimed={job:BulkJobRow;token:string;capability:string;metrics:Record<string,number>;ownerPool:postgres.Sql;ownerOpen?:boolean};
@@ -206,13 +186,12 @@ export async function retireBulkJobWorker(owner:postgres.Sql,workerId:string=pro
 export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOptions):Promise<boolean>{
  const handlers=new Map(options.handlers.map(h=>[h.kind,h]));
  const kinds=[...handlers.keys()];
- const deadlineMs=options.ownerDeadlineMs??BULK_JOB_OWNER_DEADLINE_SECONDS*1000;
- // One deadline for the whole claim (reserve to claimed row), and a fresh one for each lease-clearing statement.
- const claimBy=Date.now()+deadlineMs;
- const claimStep=<T>(work:Promise<T>,step:string)=>ownerStep(work,step,Math.max(0,claimBy-Date.now()));
- const connection=await ownerStep(owner.reserve(),'the connection reservation',deadlineMs,late=>late.release());
- // A statement that missed its deadline may still be running on the reservation: it is never returned to the pool
- // (the worker exits; process exit closes the socket and PostgreSQL rolls back).
+ // The owner steps around the unit are bounded (core/owner-step-deadline.ts): one deadline for the whole claim
+ // (reservation to claimed row), and a fresh one for each lease-clearing statement. A reservation whose statement
+ // missed its deadline is never returned to the pool; the worker exits.
+ const deadlineMs=ownerDeadlineMs(options.ownerDeadlineMs);
+ const claimStep=ownerClaimDeadline(deadlineMs);
+ const connection=await reserveOwner(owner,deadlineMs);
  let unresponsive=false;
  try{
   const [proof]=await claimStep(connection<{ok:boolean}[]>`select exists(select 1 from pg_roles r join pg_class c on c.oid='public.bulk_job'::regclass where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid)) as ok`,'the owner proof');
@@ -245,7 +224,7 @@ export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOpt
     try{await withBackgroundDatabaseWork(()=>processClaimed(connection,handlers.get(job.kind)!,claimed));}
     finally{recordUnitTiming(job,claimed.metrics,performance.now()-unitStarted);}
    }
-  }catch(error){if(error instanceof BulkJobOwnerUnresponsive)unresponsive=true;throw error;}
+  }catch(error){if(error instanceof OwnerConnectionUnresponsive)unresponsive=true;throw error;}
   finally{if(!unresponsive){
    await ownerStep(connection`update app.bulk_job_seal set lease_token=null,capability_digest=null where job_id=${job.id}::uuid and lease_token=${token}::uuid`,'the lease release',deadlineMs);
    // updated_at moves on every unit, so the least recently touched job is always next (fair across tenants).
@@ -254,7 +233,7 @@ export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOpt
     where id=${job.id}::uuid and lease_token=${token}::uuid`,'the lease release',deadlineMs);
   }}
   return true;
- }catch(error){if(error instanceof BulkJobOwnerUnresponsive)unresponsive=true;throw error;}
+ }catch(error){if(error instanceof OwnerConnectionUnresponsive)unresponsive=true;throw error;}
  finally{if(!unresponsive)connection.release();}
 }
 
