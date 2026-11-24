@@ -30,10 +30,11 @@ const sha256=(text:string)=>createHash('sha256').update(text).digest('hex');
 const MODES=['legacy','shadow','precomputed'] as const;
 type Mode=typeof MODES[number];
 
-/** The predecessor bodies 7210 restates, as installed. A change to any of them must change 7210 in the same migration. */
+/** The predecessor bodies 7210 restates, as installed (access_workforce_company and access_allowed_for_tenant as 5071
+ * re-created them, reading app.access_capability_effective). A change to any of them must change 7210 in the same migration. */
 const RESTATED:Record<string,string>={
- 'app.access_workforce_company(uuid,text)':'7e4779d1352da39dee00b0bb405e5b9f9a627c34d008fe57d8c85fe69d1bb9e1',
- 'app.access_allowed_for_tenant(uuid,uuid,text,uuid)':'ae92fd6400e7d45e226f76067003b7ff78b98a74500acf064c2ea6a8a3b9ac49',
+ 'app.access_workforce_company(uuid,text)':'a011dea56573fb9ed6ec42039fd633c482441190f84b7a3fd4ef0a23b76236da',
+ 'app.access_allowed_for_tenant(uuid,uuid,text,uuid)':'45bd6bc38de30e1c483af3d1b5f1aa2b0399d886832ba0c5ce87a45aa3b20b5a',
  'app.access_scope_covers(uuid,uuid,uuid)':'cdc1e711ad646d29026ab900cd53b1d9d99c710dccbad5c7238651a5a3fb27c1',
  'app.company_org_descendant_for_tenant(uuid,uuid,uuid)':'fe5db167282ceb4c00dbfe9213d784ec9905fbd3c17b432d302e7e4d9bcddcfe',
  'app.company_org_parent_for_tenant(uuid,uuid)':'7739caaa28906ca3087dabd1704564005ab61d202ab682f3baef295d6b12906c',

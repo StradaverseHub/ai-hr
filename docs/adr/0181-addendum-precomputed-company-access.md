@@ -184,14 +184,17 @@ Architecture profile reader policies are untouched. The migration guards the pre
    tenant untrusted (reads fall back) and logs an alert with counts only. It also recomputes tenants whose date window
    has passed. It runs on the existing worker sweep shortly after midnight Kuala Lumpur time and when a window expires.
 
-## 8. A measured caution
+## 8. Measured in the equivalence test
 
-The once-per-company `legacy` form already removes the per-row cost: about 70 company checks per statement instead of
-one per document row and per revision (at about 1 ms per check as measured for 5076, roughly 70 ms instead of
-seconds). The stored table takes the same statement to an index lookup and, more importantly, is the shape that the
-employment visibility family needs, where a per-company shortcut does not exist. The pilot therefore ships both: the
-`legacy` set form is the fallback and the default, and the timing logs measure `legacy` against `precomputed` on the
-same screen so the gain of the stored answer is shown, not assumed.
+The draft of this section expected the once-per-company `legacy` form to remove most of the per-row cost. The
+equivalence test on GitHub Actions (fictional fixture: 70 companies, 1,000 employments, 140 documents, 280 revisions)
+showed otherwise. One pass of 24 observations (12 actors, "All companies" and one company: list, count, revisions,
+locked revisions, two pages with totals, document read) took about 16–24 s under the previous policies, about the same
+in `legacy` and `shadow`, and about 0.4–0.5 s in `precomputed`. When the stored answer is unusable (outside its date
+window, or untrusted) `precomputed` takes the `legacy` time, as designed. So the stored answer is what removes the
+cost; the per-company form is only the safe fallback. Staging measurements, including plan time
+(`pg_stat_statements` `mean_plan_time` and `total_plan_time`) as well as execution time, follow when the pilot is
+installed there.
 
 ## 9. Owner decisions (approved 24 November 2026)
 
