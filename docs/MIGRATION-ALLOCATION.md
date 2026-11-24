@@ -1,7 +1,7 @@
 # Precomputed employment visibility, 24 November 2026
 
 Reserve `7240_access_visible_employment`, journal index `10640`, timestamp `1795495007240`,
-SQL SHA-256 `352ab0836ecfd3aeeeab8b8e47678b374476bac653511022b5b273104cd5b26b`. It follows `7230_assignment_current_department_index` (index `10630`), on which its
+SQL SHA-256 `dbece9c5d10ca36cfc4bdd2a8c3aad1df6feaa1843eb38892889170f9a9cee74`. It follows `7230_assignment_current_department_index` (index `10630`), on which its
 department-head read relies; the reservation scan for 7230 found nothing above `7220_movement_system_payroll_snapshot_insert`
 (release 3 candidate `41482ceb0`). Neither installation's watermark was read from this session; recheck both and any
 competing reservation before admission.
@@ -11,9 +11,9 @@ Adds `access_reporting_reach`, `access_department_closure`, `access_employment_s
 `access_employment_precompute_control` (owner-only: RLS forced with the `app.acting_as_owner()` policy, no `ai_hr_app`
 privilege), statement triggers on `reporting_line`, `employment` (update, delete), `department` and
 `access_company_closure` (insert), the compute, maintenance, verify, re-trust and mode functions, and the readers
-`app.access_visible_employment_ids()` and `app.employment_read_companies()` (EXECUTE to `ai_hr_app`), and
-`app.access_visible_person_ids()` and `app.employment_partner_companies()` (EXECUTE to PUBLIC, as person_rls applies to
-every role and its predecessors kept the default). Replaces the body of `app.visible_employment_ids()`
+`app.access_visible_employment_ids()`, `app.access_visible_person_ids()`, `app.employment_read_companies()` and
+`app.employment_partner_companies()` (never PUBLIC: EXECUTE to exactly the roles that evaluate the policies calling
+them, derived from the catalogue as 5070 does). Replaces the body of `app.visible_employment_ids()`
 (guarded by the exact 5144 body) and the USING of `employment_rls` and `person_rls` (guarded by their deparsed
 predecessors); WITH CHECK, roles and commands are unchanged. Installation mode starts as `legacy`. Builds every tenant
 in the migration transaction (rows bounded by employments x reporting depth).

@@ -31,11 +31,25 @@ describe('precomputed employment visibility (7240): equivalence',()=>{
    and (p.proname like 'access_visible_%' or p.proname like 'access_reach%' or p.proname like 'access_department_closure%' or p.proname like 'access_employment_%' or p.proname like 'employment_%_companies')
    and has_function_privilege('ai_hr_app',p.oid,'execute') order by 1`;
   expect(fns.map(f=>f.name)).toEqual(['access_visible_employment_ids','access_visible_person_ids','employment_partner_companies','employment_read_companies']);
-  // person_rls applies to every role (the Rewards reader roles read person too), so its two readers keep PostgreSQL's
-  // default EXECUTE for PUBLIC, as app.visible_person_ids did; employment_rls's readers are ai_hr_app only.
-  const pub=await owner.client<{name:string;pub:boolean}[]>`select p.proname as name,has_function_privilege('public',p.oid,'execute') as pub from pg_proc p
-   where p.pronamespace='app'::regnamespace and p.proname in ('access_visible_employment_ids','access_visible_person_ids','employment_partner_companies','employment_read_companies','visible_person_ids') order by 1`;
-  expect(pub).toEqual([{name:'access_visible_employment_ids',pub:false},{name:'access_visible_person_ids',pub:true},{name:'employment_partner_companies',pub:true},{name:'employment_read_companies',pub:false},{name:'visible_person_ids',pub:true}]);
+  // Never PUBLIC; every role a calling policy applies to may run them (person_rls applies to every role: the Rewards
+  // reader roles read person too). Same derivation as test/policy-helper-function-grants.test.ts.
+  for(const fn of ['app.access_visible_employment_ids()','app.access_visible_person_ids()','app.employment_read_companies()','app.employment_partner_companies()']){
+   const[pub]=await owner.client<{p:boolean}[]>`select exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+    where p.oid=to_regprocedure(${fn}) and a.grantee=0 and a.privilege_type='EXECUTE') as p`;
+   expect(pub.p,fn).toBe(false);
+   const needs=await owner.client<{role:string;relation:string;execute:boolean}[]>`
+    with policies as (select distinct p.oid,p.polrelid,p.polroles from pg_policy p join pg_depend d on d.classid='pg_policy'::regclass and d.objid=p.oid
+      and d.refclassid='pg_proc'::regclass and d.refobjid=to_regprocedure(${fn}))
+    select r.rolname::text as role,c.relname::text as relation,has_function_privilege(r.oid,to_regprocedure(${fn}),'EXECUTE') as execute
+    from policies p join pg_class c on c.oid=p.polrelid cross join pg_roles r
+    where not r.rolsuper and not r.rolbypassrls and r.rolname not like 'pg\\_%' and (not pg_has_role(r.oid,c.relowner,'USAGE') or c.relforcerowsecurity)
+     and (has_table_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE') or has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE'))
+     and (0=any(p.polroles) or exists(select 1 from unnest(p.polroles) x where pg_has_role(r.oid,x,'MEMBER')))`;
+   expect(needs.length,fn).toBeGreaterThan(0);
+   expect(needs.filter(n=>!n.execute),fn).toEqual([]);
+  }
+  const personReaders=await owner.client<{n:number}[]>`select count(distinct r.rolname)::int as n from pg_roles r where has_function_privilege(r.oid,'app.access_visible_person_ids()'::regprocedure,'EXECUTE') and r.rolname<>'ai_hr_app' and not r.rolsuper`;
+  expect(personReaders[0].n,'roles other than ai_hr_app that read person can run its reader').toBeGreaterThan(0);
   const[mode]=await owner.client<{mode:string}[]>`select mode from access_employment_precompute_control`;expect(mode.mode).toBe('legacy');
   expect(await stateRow()).toMatchObject({stale:false,trusted:true});
   expect(await unusable(managerUsers[eq(2)])).toBeNull();

@@ -589,6 +589,7 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.access_visible_employment_ids() FROM PUBLIC;
 --> statement-breakpoint
+-- visible_employment_ids (SECURITY DEFINER) calls this as its owner; ai_hr_app also calls it through employment_rls.
 GRANT EXECUTE ON FUNCTION app.access_visible_employment_ids() TO ai_hr_app;
 --> statement-breakpoint
 -- The caller's own person and the persons of the relationship part (app.visible_person_ids without the admin arm,
@@ -605,9 +606,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT coalesce(array_agg(v.id ORDER BY v.id), '{}'::uuid[]) FROM visible v WHERE v.id IS NOT NULL;
 $$;
 --> statement-breakpoint
--- person_rls applies to every role (it has no TO list), so every role that reads person evaluates this reader, as it
--- evaluated app.visible_person_ids, which kept PostgreSQL's default EXECUTE for PUBLIC. Same here.
-GRANT EXECUTE ON FUNCTION app.access_visible_person_ids() TO PUBLIC;
+REVOKE ALL ON FUNCTION app.access_visible_person_ids() FROM PUBLIC;
 --> statement-breakpoint
 -- The tenant's companies on which the session holds an administrator, Payroll partner or performance-and-
 -- compensation partner claim (app.is_admin_for, app.can_admin_payroll_for, app.can_admin_perfcomp_for), once per
@@ -627,13 +626,10 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   AND (app.can_admin_payroll_for(c.id) OR app.can_admin_perfcomp_for(c.id));
 $$;
 --> statement-breakpoint
--- employment_rls applies to ai_hr_app only. person_rls applies to every role and asks employment_partner_companies,
--- as it asked app.can_admin_payroll_for and app.can_admin_perfcomp_for (default EXECUTE for PUBLIC).
-REVOKE ALL ON FUNCTION app.employment_read_companies() FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.employment_read_companies(),app.employment_partner_companies() FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.employment_read_companies() TO ai_hr_app;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.employment_partner_companies() TO PUBLIC;
+-- The four readers are granted at the end of this migration, after the policies that call them, to exactly the roles
+-- that evaluate those policies (the 5070 derivation).
 --> statement-breakpoint
 -- app.visible_employment_ids (replaces 5144): the 2105 admin arm unchanged, unioned with the relationship part
 -- (which carries the attendance window subject exactly as 5144 merged it). Same signature, result and order.
@@ -781,3 +777,36 @@ BEGIN
  EXECUTE format('ALTER POLICY person_rls ON public.person USING (%s)',person_next);
 END;
 $policies$;
+--> statement-breakpoint
+-- The readers named by employment_rls and person_rls are evaluated by row security under whichever role a policy
+-- applies to, so each is executable by exactly those roles instead of PUBLIC (as 5070 grants
+-- app.import_released_attempt_ids): a policy's own roles, or, for a policy to PUBLIC (person_rls), every role holding a
+-- privilege on the policy's table (and the table owner where row security is forced). A role granted person later needs
+-- this grant too; without it the policy fails closed (permission denied), never open.
+DO $policy_function_grants$
+DECLARE fn regprocedure; r record;
+BEGIN
+ FOREACH fn IN ARRAY ARRAY['app.access_visible_employment_ids()','app.access_visible_person_ids()','app.employment_read_companies()','app.employment_partner_companies()']::regprocedure[] LOOP
+  FOR r IN
+   WITH policies AS (
+    SELECT DISTINCT p.oid,p.polrelid,p.polroles FROM pg_catalog.pg_policy p JOIN pg_catalog.pg_depend d
+     ON d.classid='pg_catalog.pg_policy'::regclass AND d.objid=p.oid AND d.refclassid='pg_catalog.pg_proc'::regclass AND d.refobjid=fn)
+   SELECT DISTINCT g.grantee FROM (
+    SELECT unnest(p.polroles) AS grantee FROM policies p
+    UNION ALL
+    SELECT a.grantee FROM policies p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid
+     CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) a
+     WHERE 0=ANY(p.polroles) AND (a.grantee<>c.relowner OR c.relforcerowsecurity)
+    UNION ALL
+    SELECT a.grantee FROM policies p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid
+     JOIN pg_catalog.pg_attribute att ON att.attrelid=c.oid AND att.attacl IS NOT NULL
+     CROSS JOIN LATERAL pg_catalog.aclexplode(att.attacl) a
+     WHERE 0=ANY(p.polroles) AND (a.grantee<>c.relowner OR c.relforcerowsecurity)
+    UNION ALL
+    SELECT c.relowner FROM policies p JOIN pg_catalog.pg_class c ON c.oid=p.polrelid WHERE 0=ANY(p.polroles) AND c.relforcerowsecurity
+   ) g WHERE g.grantee<>0
+  LOOP
+   EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I',fn,pg_catalog.pg_get_userbyid(r.grantee));
+  END LOOP;
+ END LOOP;
+END $policy_function_grants$;
