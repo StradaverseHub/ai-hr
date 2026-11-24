@@ -1,4 +1,4 @@
-/** 7210 — the nightly movement sweep preserves closed payroll as a SYSTEM actor (no user, recorded_by NULL). On a real
+/** 7210 — the nightly movement sweep preserves closed payroll as a SYSTEM actor (no user, recorded_by NULL), which must both read and write snapshots. On a real
  * installation the storage owner is NOSUPERUSER and information_payslip_snapshot forces row security, so that INSERT needs
  * its own policy. The harness owner is a superuser, which bypasses row security, so the sweep tests elsewhere cannot see
  * this. Here, inside one transaction that is always rolled back, the objects the preservation touches are owned by the
@@ -67,17 +67,22 @@ it('lets the restricted storage owner preserve closed payroll for the system swe
    exists(select 1 from public.payslip p join public.payroll_batch b on b.id=p.batch_id where p.id=${closed}::uuid and p.employment_id=${id}::uuid
     and b.company_id=${b.companyId}::uuid and b.status='closed') as closed_slip`;
   expect(admission).toEqual({tenant:true,no_user:true,storage_owner:true,maintain:true,admin:true,closed_slip:true});
-  expect((await tx`select policyname::text,roles::text,cmd::text from pg_policies where schemaname='public' and tablename='information_payslip_snapshot'
-   and policyname='information_snapshot_system_preserve_insert'`)).toEqual([{policyname:'information_snapshot_system_preserve_insert',roles:'{ai_hr_owner}',cmd:'INSERT'}]);
-  // The policy admits the system row directly (rolled back to keep the function's own count below honest).
-  const DIRECT='direct insert admitted';
-  await expect(tx.savepoint(async sp=>{await sp`insert into information_payslip_snapshot(payslip_id,tenant_id,employment_id,company_id,hired_on,document_metadata,recorded_by)
-   values (${closed}::uuid,${b.tenantId}::uuid,${id}::uuid,${b.companyId}::uuid,'2026-01-01',${JSON.stringify({preservationActor:'system'})}::jsonb,null)`;throw new Error(DIRECT);}))
-   .rejects.toThrow(DIRECT);
+  expect(await tx`select policyname::text,roles::text,cmd::text from pg_policies where schemaname='public' and tablename='information_payslip_snapshot'
+   and policyname like 'information_snapshot_system_preserve_%' order by 1`).toEqual([
+   {policyname:'information_snapshot_system_preserve_insert',roles:'{ai_hr_owner}',cmd:'INSERT'},
+   {policyname:'information_snapshot_system_preserve_read',roles:'{ai_hr_owner}',cmd:'SELECT'}]);
   const [{count}]=await tx<{count:number}[]>`select app.preserve_movement_payroll(${id}::uuid) as count`;
   expect(Number(count)).toBe(2);
+  // Already preserved (production's common case): nothing to write, and the coverage count must still see both.
+  const [{count:again}]=await tx<{count:number}[]>`select app.preserve_movement_payroll(${id}::uuid) as count`;
+  expect(Number(again)).toBe(2);
+  expect((await tx<{n:number}[]>`select count(*)::int as n from information_payslip_snapshot where employment_id=${id}::uuid`)[0].n).toBe(2);
   // Not closed: the system path preserves issued (closed) payroll only.
   await expect(direct(processed)).rejects.toThrow(/row-level security/);
+  await tx`reset role`;
+  // The web role with no user reads none of them.
+  await tx.unsafe('set local role ai_hr_app');
+  expect((await tx<{n:number}[]>`select count(*)::int as n from information_payslip_snapshot where employment_id=${id}::uuid`)[0].n).toBe(0);
   await tx`reset role`;
   const rows=await tx<{payslip_id:string;recorded_by:string|null;actor:string}[]>`select payslip_id::text,recorded_by::text,document_metadata->>'preservationActor' as actor
    from information_payslip_snapshot where employment_id=${id}::uuid order by payslip_id`;
