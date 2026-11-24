@@ -265,6 +265,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10620,version:'7',when:1795495007220,tag:'7220_movement_system_payroll_snapshot_insert',breakpoints:true},
  {idx:10630,version:'7',when:1795495007230,tag:'7230_assignment_current_department_index',breakpoints:true},
  {idx:10640,version:'7',when:1795495007240,tag:'7240_access_visible_employment',breakpoints:true},
+ {idx:10645,version:'7',when:1795495007245,tag:'7245_access_visible_employment_plan_reuse',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{

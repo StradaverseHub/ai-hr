@@ -48,6 +48,12 @@ describe('precomputed employment visibility (7240): equivalence',()=>{
    expect(needs.length,fn).toBeGreaterThan(0);
    expect(needs.filter(n=>!n.execute),fn).toEqual([]);
   }
+  // Every read-path function is PL/pgSQL, so its statements are planned once per connection: a LANGUAGE sql SECURITY
+  // DEFINER function with SET is never inlined and is re-planned on every call (7245; release 6 gate, History 23 s -> 169 s).
+  const langs=await owner.client<{name:string;lang:string}[]>`select p.proname as name,l.lanname as lang from pg_proc p join pg_language l on l.oid=p.prolang
+   where p.pronamespace='app'::regnamespace and p.proname in ('visible_employment_ids','access_visible_employment_ids','access_visible_employment_unusable','access_visible_employment_legacy',
+    'access_visible_employment_stored','access_visible_person_ids','employment_read_companies','employment_partner_companies') order by 1`;
+  expect(langs.map(r=>r.lang)).toEqual(Array(8).fill('plpgsql'));
   const personReaders=await owner.client<{n:number}[]>`select count(distinct r.rolname)::int as n from pg_roles r where has_function_privilege(r.oid,'app.access_visible_person_ids()'::regprocedure,'EXECUTE') and r.rolname<>'ai_hr_app' and not r.rolsuper`;
   expect(personReaders[0].n,'roles other than ai_hr_app that read person can run its reader').toBeGreaterThan(0);
   const[mode]=await owner.client<{mode:string}[]>`select mode from access_employment_precompute_control`;expect(mode.mode).toBe('legacy');

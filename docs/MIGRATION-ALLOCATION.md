@@ -1,3 +1,17 @@
+# Precomputed employment visibility readers planned once per connection, 25 November 2026
+
+Reserve `7245_access_visible_employment_plan_reuse`, journal index `10645`, timestamp `1795495007245`,
+SQL SHA-256 `6a4beaa4acc1062f26b86d4df47d5ba78c5ac6c12cc74fda75403c1d0e2f0699`. Between the applied `7240_access_visible_employment` (staging release 6, `fbcb4128c`) and
+`7250_replacement_holiday_queue_voided` (`1795495007250`, not yet applied anywhere); a scan of the 400 most recent remote
+heads found nothing between them. It must install before 7250 (alone or in the same release), or Drizzle would skip it.
+Neither installation's watermark was read beyond staging's release 6 arrival (1,146 rows ending 7240).
+
+Redefines six 7240 read-path functions (`app.access_visible_employment_unusable`, `_legacy`, `_stored`,
+`app.access_visible_person_ids`, `app.employment_read_companies`, `app.employment_partner_companies`) from LANGUAGE sql
+to PL/pgSQL with the identical query, so each is planned once per connection instead of on every call. Signatures,
+owner, volatility, SECURITY DEFINER, search_path and EXECUTE grants are unchanged; each predecessor is guarded by its
+exact 7240 body. Found by release 6's gate: `test/transaction-view-history-scale-db.test.ts` History rows 23 s -> 169 s.
+
 # Precomputed employment visibility, 24 November 2026
 
 Reserve `7240_access_visible_employment`, journal index `10640`, timestamp `1795495007240`,
