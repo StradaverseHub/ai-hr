@@ -108,6 +108,7 @@ describe('a company job that fails inside a wizard run group renders as its reas
   afterEach(() => {
     delete process.env.PAYROLL_PROCESS_STEP_EMPLOYEES;
     delete process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS;
+    delete process.env.PAYROLL_PROCESS_GROUP_MAX;
   });
   afterAll(async () => { await closeAll(); });
 
@@ -120,6 +121,8 @@ describe('a company job that fails inside a wizard run group renders as its reas
     // second one is reached.
     process.env.PAYROLL_PROCESS_STEP_EMPLOYEES = '1';
     process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS = '1';
+    // One step per engine pass (no set-based group, ADR 0181 J2): a group would pay both in one transaction.
+    process.env.PAYROLL_PROCESS_GROUP_MAX = '1';
     const { groupId } = await startMultiCompanyPayroll(a, { companyIds: [base.companyId, companyB], payPeriod: '2026-05', payrollCycleId: await regularCycleId(base.companyId), employmentIds: [] });
     const betaJob = (await jobOf(companyB)).job!;
     // Drive the worker until Beta's run has paid exactly one employee.

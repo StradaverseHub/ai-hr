@@ -4063,6 +4063,9 @@ export type PayrollProcessingUnit={jobId:string;phase:'plan'|'begin'|'employees'
  * attendance overtime (the full generation's `formulaCoverage.keys.size`, asked over the whole run). */
 export type PayrollProcessingPlan={employmentIds:string[];prefillOvertime:boolean};
 const PAYROLL_PROCESSING_COVERAGE_GROUP=200;
+/** Payslips per multi-row insert (about 60 columns each: well under the 65,535 bind parameters of one statement).
+ * PAYROLL_PAYSLIP_INSERT_GROUP=1 restores one insert per payslip. */
+const payslipInsertGroup=()=>Math.max(1,Math.min(500,Math.floor(Number(process.env.PAYROLL_PAYSLIP_INSERT_GROUP??500))||500));
 /** Totals contribution of one payslip, in the order the full generation adds it (see `totals` below). */
 export type PayrollProcessingContribution=[gross:number,net:number,epfEmployee:number,epfEmployer:number,socsoEmployee:number,socsoEmployer:number,eisEmployee:number,eisEmployer:number,pcb:number,hrdfEmployer:number,deductions:number,employerCost:number];
 export type PayrollProcessingInputSnapshot={employmentId:string;row:Record<string,unknown>|null};
@@ -7150,11 +7153,33 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // Resolve and lock employer-period declarations in stable employment order, before producing money.
     // Save/revoke uses the same lock; an approval decision remains valid until this payroll commits.
     const resolvedTaxSchemes = new Map<string, {scheme:string;declarationId?:string;selectionId?:string;selectionVersion?:number;selectionSource?:'income_tax_resident';taxCircumstance?:NonNullable<Parameters<typeof pack.payroll.statutory>[5]>['taxCircumstance']}>();
-    if (!subset && pack.payroll.resolveTaxScheme) {
-      for (const e of [...emps].sort((a,b)=>a.employmentId.localeCompare(b.employmentId))) {
-        resolvedTaxSchemes.set(e.employmentId, await pack.payroll.resolveTaxScheme(tx, {tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:batch.companyId,payPeriod:batch.payPeriod,legacyScheme:e.taxResidency,resident:e.isResident ?? true,epfCitizenship:e.epfCitizenship}));
+    // ADR 0181 J2 — the pack's group resolver answers every employee of the pass in a few statements (instead of four
+    // per employee), each employee's result or refusal decided by the single call's rules. A full generation raises the
+    // first refusal in this stable order, as the per-employee loop did; a selective reprocess raises an employee's
+    // refusal inside the payslip loop below, where its per-employee call stood.
+    let subsetTaxSchemes: Map<string, { ok: true; value: NonNullable<ReturnType<typeof resolvedTaxSchemes.get>> } | { ok: false; error: unknown }> | null = null;
+    if (pack.payroll.resolveTaxScheme) {
+      const ordered = subset ? emps : [...emps].sort((a,b)=>a.employmentId.localeCompare(b.employmentId));
+      if (pack.payroll.resolveTaxSchemes) {
+        const outcomes = await pack.payroll.resolveTaxSchemes(tx, { tenantId: ctx.tenantId, companyId: batch.companyId, payPeriod: batch.payPeriod,
+          employees: ordered.map((e) => ({ employmentId: e.employmentId, legacyScheme: e.taxResidency, resident: e.isResident ?? true, epfCitizenship: e.epfCitizenship })) });
+        if (subset) subsetTaxSchemes = outcomes;
+        else for (const e of ordered) {
+          const outcome = outcomes.get(e.employmentId);
+          if (!outcome) throw new Error('Tax scheme resolution unavailable.');
+          if (!outcome.ok) throw outcome.error;
+          resolvedTaxSchemes.set(e.employmentId, outcome.value);
+        }
+      } else if (!subset) {
+        for (const e of ordered) {
+          resolvedTaxSchemes.set(e.employmentId, await pack.payroll.resolveTaxScheme(tx, {tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:batch.companyId,payPeriod:batch.payPeriod,legacyScheme:e.taxResidency,resident:e.isResident ?? true,epfCitizenship:e.epfCitizenship}));
+        }
       }
     }
+    // ADR 0181 J2 — the pass's new payslips, written by one multi-row statement per 500 after the loop. The only
+    // insert trigger on payslip is deferred (payroll_history_retained_insert_custody), so every row and trigger outcome is
+    // the per-row insert's; nothing in the loop reads this run's payslips.
+    const pendingSlips: (typeof payslip.$inferInsert)[] = [];
 
     for (const e of emps) {
       const postEmployment=postEmploymentIds.has(e.employmentId);
@@ -7319,7 +7344,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           name: identity?.name ?? e.employmentId, employeeCode: identity?.employeeCode ?? null }]);
       }
       if (subset && pack.payroll.resolveTaxScheme) {
-        resolvedTaxSchemes.set(e.employmentId, await pack.payroll.resolveTaxScheme(tx, {
+        const outcome = subsetTaxSchemes?.get(e.employmentId);
+        if (subsetTaxSchemes && !outcome) throw new Error('Tax scheme resolution unavailable.');
+        if (outcome && !outcome.ok) throw outcome.error;
+        resolvedTaxSchemes.set(e.employmentId, outcome ? outcome.value : await pack.payroll.resolveTaxScheme(tx, {
           tenantId: ctx.tenantId, employmentId: e.employmentId, companyId: batch.companyId,
           payPeriod: batch.payPeriod, legacyScheme: e.taxResidency, resident: e.isResident ?? true,
           epfCitizenship: e.epfCitizenship,
@@ -8671,7 +8699,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       if(retainedSlipIds.has(e.employmentId)){
         const {id:retainedId,...values}=nextSlip;
         await tx.update(nativePayrollPayslipWrite).set(values).where(eq(nativePayrollPayslipWrite.id,retainedId!));
-      }else await tx.insert(nativePayrollPayslipWrite).values(nextSlip);
+      }else pendingSlips.push(nextSlip);
 
       totals.gross += roundedGross;
       totals.net += net;
@@ -8690,6 +8718,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       if (processing) chunkPaid.push({ employmentId: e.employmentId, contribution: [roundedGross, net, st.epfEmployee, st.epfEmployer,
         st.socsoEmployee, st.socsoEmployer, st.eisEmployee, st.eisEmployer, st.pcb, Number(st.hrdf), totalDeductions, employerCost] });
     }
+    for (let i = 0, size = payslipInsertGroup(); i < pendingSlips.length; i += size)
+      await tx.insert(nativePayrollPayslipWrite).values(pendingSlips.slice(i, i + size));
     if (processing) {
       const chunk: PayrollProcessingChunkResult = {
         paid: chunkPaid,

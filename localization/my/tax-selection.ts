@@ -162,6 +162,56 @@ export async function resolveTaxSelectionMY(tx:Tx,p:{tenantId:string;employmentI
  }
  return {scheme:row.scheme,selectionId:row.id,selectionVersion:row.version,selectionSource:'income_tax_resident',taxCircumstance};
 }
+export type TaxSelectionResolution=Awaited<ReturnType<typeof resolveTaxSelectionMY>>;
+/** One employee's answer from `resolveTaxSelectionsMY`: the result `resolveTaxSelectionMY` returns, or the error it throws. */
+export type TaxSelectionOutcome={ok:true;value:TaxSelectionResolution}|{ok:false;error:unknown};
+/** ADR 0181 J2 — `resolveTaxSelectionMY` for a group of employees of one employer and period, in four statements
+ * instead of four per employee. Each employee's outcome (its result, or the error the single call throws) is decided
+ * by the same rules from the same rows, and returned rather than thrown, so the caller raises it at the point the
+ * single call would have. Locks: the statutory rows of the group FOR SHARE (in person order: a writer takes one row
+ * FOR UPDATE and then its employee's advisory lock, so it can never wait for a lock this call takes later), then each
+ * applicable employee's declaration advisory lock in `employees` order, as the per-employee calls take them. */
+export async function resolveTaxSelectionsMY(tx:Tx,p:{tenantId:string;companyId:string;payPeriod:string;
+ employees:readonly {employmentId:string;legacyScheme?:string|null;resident?:boolean;epfCitizenship?:string|null}[]}):Promise<Map<string,TaxSelectionOutcome>>{
+ const out=new Map<string,TaxSelectionOutcome>();
+ const fail=(employmentId:string,error:unknown)=>out.set(employmentId,{ok:false,error});
+ if(!periodOk(p.payPeriod)){for(const e of p.employees)fail(e.employmentId,new TaxSelectionError('invalid_period'));return out;}
+ const ids=[...new Set(p.employees.map(e=>e.employmentId))];
+ if(!ids.length)return out;
+ const identities=new Map((await tx.select({employmentId:employment.id,personId:employment.personId}).from(employment)
+  .where(and(inArray(employment.id,ids),eq(employment.tenantId,p.tenantId)))).map(row=>[row.employmentId,row.personId]));
+ const persons=[...new Set(identities.values())];
+ const profiles=new Map(persons.length?(await tx.select({personId:employeeStatutoryMy.personId,key:employeeStatutoryMy.taxCircumstance,category:employeeStatutoryMy.taxCategory,
+  epoch:employeeStatutoryMy.taxApplicabilityEpoch,citizenship:employeeStatutoryMy.epfCitizenship}).from(employeeStatutoryMy)
+  .where(and(inArray(employeeStatutoryMy.personId,persons),eq(employeeStatutoryMy.tenantId,p.tenantId))).orderBy(employeeStatutoryMy.personId).for('share')).map(row=>[row.personId,row]):[]);
+ const applicable:{e:(typeof p.employees)[number];taxCircumstance:ReturnType<typeof savedTaxCircumstance>;citizenship:string|null}[]=[];
+ for(const e of p.employees){
+  if(out.has(e.employmentId))continue;
+  const personId=identities.get(e.employmentId);
+  if(!personId){fail(e.employmentId,new TaxSelectionError('not_found'));continue;}
+  const profile=profiles.get(personId);
+  let taxCircumstance:ReturnType<typeof savedTaxCircumstance>;
+  try{taxCircumstance=savedTaxCircumstance(profile?.key,profile?.category,profile?.epoch??0);}catch(error){fail(e.employmentId,error);continue;}
+  if(!taxCircumstance.applicable){out.set(e.employmentId,{ok:true,value:{scheme:'none',taxCircumstance}});continue;}
+  applicable.push({e,taxCircumstance,citizenship:profile?.citizenship??null});
+ }
+ if(!applicable.length)return out;
+ const keys=applicable.map(a=>p.tenantId+a.e.employmentId+'tax-scheme');
+ // A function scan yields the array in order, so the locks are taken in the per-employee calls' order.
+ await tx.execute(sql`SELECT count(pg_advisory_xact_lock(hashtextextended(k,0))) FROM unnest(${keys}::text[]) AS k`);
+ const rows=new Map((await tx.select().from(employmentTaxSelectionMy).where(and(eq(employmentTaxSelectionMy.tenantId,p.tenantId),
+  inArray(employmentTaxSelectionMy.employmentId,applicable.map(a=>a.e.employmentId)),eq(employmentTaxSelectionMy.companyId,p.companyId)))).map(row=>[row.employmentId,row]));
+ for(const {e,taxCircumstance,citizenship} of applicable){
+  const row=rows.get(e.employmentId);
+  const configured=row?.scheme??legacyOf(e.legacyScheme,e.resident);const details=selectedSchemeOk(configured)?{configuredScheme:configured}:undefined;
+  if(!row||row.transitionState!=='resolved'||row.taxApplicabilityEpoch!==taxCircumstance.epoch){fail(e.employmentId,new TaxSelectionError('confirmation_required',details));continue;}
+  if(!selectedSchemeOk(row.scheme)){fail(e.employmentId,new TaxSelectionError('invalid_scheme',details));continue;}
+  // The single call re-reads the same identity and the same share-locked statutory row here: the values cannot differ.
+  if(row.scheme==='c_suite'&&!['pr','non_citizen'].includes(citizenship??'')){fail(e.employmentId,new TaxSelectionError('citizenship_unknown',{configuredScheme:row.scheme}));continue;}
+  out.set(e.employmentId,{ok:true,value:{scheme:row.scheme,selectionId:row.id,selectionVersion:row.version,selectionSource:'income_tax_resident',taxCircumstance}});
+ }
+ return out;
+}
 /** Hiring supplies explicit initial normal/nonresident intent in the SAME employment transaction. */
 export async function initializeHiredTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;companyId:string;scheme:'resident'|'non_resident'}){
  ctx=captureStatutoryContext(ctx);p=structuredClone(p);await statutoryWriteIntervalMYTx(tx,ctx,{employmentId:p.employmentId});
