@@ -39,7 +39,6 @@ CREATE TABLE public.access_company_state(
  computed_for date,
  valid_until date,
  trusted boolean NOT NULL DEFAULT true,
- refreshed_at timestamptz,
  last_verified_at timestamptz,
  last_difference_count integer NOT NULL DEFAULT 0
 );
@@ -47,7 +46,8 @@ CREATE TABLE public.access_company_state(
 CREATE TABLE public.access_precompute_control(
  singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
  mode text NOT NULL DEFAULT 'legacy' CHECK(mode IN ('legacy','shadow','precomputed')),
- updated_at timestamptz NOT NULL DEFAULT now()
+ -- Set only when an operator changes the mode, so the migration's own rows hold no wall-clock value.
+ updated_at timestamptz
 );
 --> statement-breakpoint
 INSERT INTO public.access_precompute_control(singleton,mode) VALUES(true,'legacy');
@@ -159,7 +159,7 @@ BEGIN
   DELETE FROM public.access_company_closure k WHERE k.tenant_id=p_tenant;
   INSERT INTO public.access_company_closure(tenant_id,ancestor_id,descendant_id)
    SELECT p_tenant,x.ancestor_id,x.descendant_id FROM app.access_company_closure_compute(p_tenant) x;
-  UPDATE public.access_company_state s SET computed_for=v_today,refreshed_at=now(),
+  UPDATE public.access_company_state s SET computed_for=v_today,
    valid_until=(SELECT min(r.effective_on) FROM public.company_organisation_run r WHERE r.tenant_id=p_tenant AND r.state='published' AND r.effective_on>v_today)
   WHERE s.tenant_id=p_tenant;
   DELETE FROM public.access_effective_company e WHERE e.tenant_id=p_tenant;
@@ -169,7 +169,6 @@ BEGIN
   DELETE FROM public.access_effective_company e WHERE e.tenant_id=p_tenant AND e.user_id=ANY(p_users);
   INSERT INTO public.access_effective_company(tenant_id,user_id,capability,company_id,roles,access_version)
    SELECT p_tenant,x.user_id,x.capability,x.company_id,x.roles,v_version FROM app.access_effective_company_compute(p_tenant,p_users) x;
-  UPDATE public.access_company_state s SET refreshed_at=now() WHERE s.tenant_id=p_tenant;
  END IF;
  RETURN v_version;
 END;
