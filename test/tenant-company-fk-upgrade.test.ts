@@ -265,7 +265,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10620,version:'7',when:1795495007220,tag:'7220_movement_system_payroll_snapshot_insert',breakpoints:true},
  {idx:10630,version:'7',when:1795495007230,tag:'7230_assignment_current_department_index',breakpoints:true},
  {idx:10640,version:'7',when:1795495007240,tag:'7240_access_visible_employment',breakpoints:true},
- {idx:10645,version:'7',when:1795495007245,tag:'7245_access_visible_employment_plan_reuse',breakpoints:true},
+ {idx:10645,version:'7',when:1795495007245,tag:'7245_access_visible_employment_policy_restore',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1573,8 +1573,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const isEmploymentPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='employment'&&row.policyname==='employment_rls';
   const beforeEmployment=beforePerformancePrivileges.policies.find(isEmploymentPolicy),afterEmployment=afterPerformancePrivileges.policies.find(isEmploymentPolicy);
   expect(beforeEmployment?.qual).toBe(expectedEmploymentQuals[0]);
-  expect(afterEmployment?.qual).toBe(expectedEmploymentQuals[3]);
-  const wrappedMembership='(id IN ( SELECT unnest(( SELECT app.access_visible_employment_ids() AS access_visible_employment_ids)) AS unnest))';
+  // 7245 restored the 5054 text after 7240 had restated it (expectedEmploymentQuals[3]), so the installed policy is [2].
+  expect(afterEmployment?.qual).toBe(expectedEmploymentQuals[2]);
+  expect(expectedEmploymentQuals[3]).not.toBe(expectedEmploymentQuals[2]);
+  const wrappedMembership='(id IN ( SELECT unnest(( SELECT app.visible_employment_ids() AS visible_employment_ids)) AS unnest))';
   expect(afterEmployment?.qual?.split(wrappedMembership)).toHaveLength(3);
   // 7240 also replaced person_rls USING with the same predicate in once-per-statement form; everything else is unchanged.
   const expectedPersonQuals=await storage.client.begin(async tx=>{
@@ -1591,7 +1593,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const isPersonPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='person'&&row.policyname==='person_rls';
   const beforePerson=beforePerformancePrivileges.policies.find(isPersonPolicy),afterPerson=afterPerformancePrivileges.policies.find(isPersonPolicy);
   expect(beforePerson?.qual).toBe(expectedPersonQuals[0]);
-  expect(afterPerson?.qual).toBe(expectedPersonQuals[1]);
+  // 7245 restored the 0676 text after 7240's restatement (expectedPersonQuals[1]).
+  expect(afterPerson?.qual).toBe(expectedPersonQuals[0]);
   expect({...afterPerson,qual:expectedPersonQuals[0]}).toEqual(beforePerson);
   expect(beforeEmployment).toMatchObject({permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',with_check:'((tenant_id = app.current_tenant_id()) AND app.is_admin_for(company_id))'});
   expect({...afterEmployment,qual:expectedEmploymentQuals[0]}).toEqual(beforeEmployment);

@@ -1,16 +1,16 @@
-# Precomputed employment visibility readers planned once per connection, 25 November 2026
+# Restore the pre-7240 employment and person policies, 25 November 2026
 
-Reserve `7245_access_visible_employment_plan_reuse`, journal index `10645`, timestamp `1795495007245`,
-SQL SHA-256 `6a4beaa4acc1062f26b86d4df47d5ba78c5ac6c12cc74fda75403c1d0e2f0699`. Between the applied `7240_access_visible_employment` (staging release 6, `fbcb4128c`) and
-`7250_replacement_holiday_queue_voided` (`1795495007250`, not yet applied anywhere); a scan of the 400 most recent remote
-heads found nothing between them. It must install before 7250 (alone or in the same release), or Drizzle would skip it.
-Neither installation's watermark was read beyond staging's release 6 arrival (1,146 rows ending 7240).
+Reserve `7245_access_visible_employment_policy_restore`, journal index `10645`, timestamp `1795495007245`, SQL SHA-256 `a6c56530bedd086ccaa8e3287d2e00180307b12509ed376e8e92ff042a56160a`.
+Between the applied `7240_access_visible_employment` (staging release 6, `fbcb4128c`) and
+`7250_replacement_holiday_queue_voided` (`1795495007250`, not yet applied anywhere), reserved by the database revamp
+session; a scan of the 400 most recent remote heads found nothing else between them. It rides inside 7250's release,
+installed before 7250, or Drizzle would skip it.
 
-Redefines six 7240 read-path functions (`app.access_visible_employment_unusable`, `_legacy`, `_stored`,
-`app.access_visible_person_ids`, `app.employment_read_companies`, `app.employment_partner_companies`) from LANGUAGE sql
-to PL/pgSQL with the identical query, so each is planned once per connection instead of on every call. Signatures,
-owner, volatility, SECURITY DEFINER, search_path and EXECUTE grants are unchanged; each predecessor is guarded by its
-exact 7240 body. Found by release 6's gate: `test/transaction-view-history-scale-db.test.ts` History rows 23 s -> 169 s.
+Puts `employment_rls` and `person_rls` USING back to their exact pre-7240 text (as 7240's own guard recorded it),
+guarded by the installed 7240 text. Found by release 6's gate (`test/transaction-view-history-scale-db.test.ts` History
+rows 23 s -> 169 s) and isolated by a diagnostic to these two restatements (History reads 2,309 / 404 / 290 ms with the
+7240 text against 330 / 168 / 110 ms with the pre-7240 text, group administrator / Payroll partner / employee). Everything
+else of 7240 is unchanged. WITH CHECK, roles and commands are unchanged.
 
 # Precomputed employment visibility, 24 November 2026
 

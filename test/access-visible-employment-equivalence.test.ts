@@ -45,17 +45,10 @@ describe('precomputed employment visibility (7240): equivalence',()=>{
     where not r.rolsuper and not r.rolbypassrls and r.rolname not like 'pg\\_%' and (not pg_has_role(r.oid,c.relowner,'USAGE') or c.relforcerowsecurity)
      and (has_table_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE,DELETE') or has_any_column_privilege(r.oid,c.oid,'SELECT,INSERT,UPDATE'))
      and (0=any(p.polroles) or exists(select 1 from unnest(p.polroles) x where pg_has_role(r.oid,x,'MEMBER')))`;
-   expect(needs.length,fn).toBeGreaterThan(0);
+   // 7245 put employment_rls and person_rls back to the pre-7240 text, so no policy calls the four readers any more
+   // (visible_employment_ids, which the policies call, calls access_visible_employment_ids as its owner).
    expect(needs.filter(n=>!n.execute),fn).toEqual([]);
   }
-  // Every read-path function is PL/pgSQL, so its statements are planned once per connection: a LANGUAGE sql SECURITY
-  // DEFINER function with SET is never inlined and is re-planned on every call (7245; release 6 gate, History 23 s -> 169 s).
-  const langs=await owner.client<{name:string;lang:string}[]>`select p.proname as name,l.lanname as lang from pg_proc p join pg_language l on l.oid=p.prolang
-   where p.pronamespace='app'::regnamespace and p.proname in ('visible_employment_ids','access_visible_employment_ids','access_visible_employment_unusable','access_visible_employment_legacy',
-    'access_visible_employment_stored','access_visible_person_ids','employment_read_companies','employment_partner_companies') order by 1`;
-  expect(langs.map(r=>r.lang)).toEqual(Array(8).fill('plpgsql'));
-  const personReaders=await owner.client<{n:number}[]>`select count(distinct r.rolname)::int as n from pg_roles r where has_function_privilege(r.oid,'app.access_visible_person_ids()'::regprocedure,'EXECUTE') and r.rolname<>'ai_hr_app' and not r.rolsuper`;
-  expect(personReaders[0].n,'roles other than ai_hr_app that read person can run its reader').toBeGreaterThan(0);
   const[mode]=await owner.client<{mode:string}[]>`select mode from access_employment_precompute_control`;expect(mode.mode).toBe('legacy');
   expect(await stateRow()).toMatchObject({stale:false,trusted:true});
   expect(await unusable(managerUsers[eq(2)])).toBeNull();
@@ -65,12 +58,12 @@ describe('precomputed employment visibility (7240): equivalence',()=>{
   expect(counts.reach).toBeGreaterThan(50);expect(counts.depts).toBeGreaterThan(210);
   const v=await verifyAccessVisibleEmploymentTenant(owner.db,b.tenantId);
   expect(v.trusted).toBe(true);expect(visibleEmploymentDifferences(v)).toBe(0);
-  // The employment and person policies ask their company questions once per statement.
+  // The employment and person policies (restored to the pre-7240 text by 7245).
   for(const m of MODES){
    await setMode(m);
    const plan=(await withTenant(actors['group administrator'],tx=>tx.execute<{'QUERY PLAN':string}>(sql`explain (verbose,costs off) select e.id from employment e join person p on p.id=e.person_id`))).map(r=>r['QUERY PLAN']).join('\n');
-   expect(plan,m).toMatch(/InitPlan[\s\S]*employment_read_companies/);expect(plan,m).toMatch(/InitPlan[\s\S]*access_visible_employment_ids/);
-   expect(plan,m).not.toMatch(/can_admin_perfcomp_for\(e\.company_id\)/);
+   // 7245: the pre-7240 policies, which ask visible_employment_ids once per statement.
+   expect(plan,m).toMatch(/InitPlan[\s\S]*visible_employment_ids/);expect(plan,m).not.toMatch(/employment_read_companies/);
   }
   await setMode('legacy');
  },600_000);

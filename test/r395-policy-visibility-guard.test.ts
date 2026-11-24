@@ -119,8 +119,10 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     const personFixture = FIXTURE.policies.find((p) => key(p.table, p.policy) === 'person.person_rls');
     expect(personFixture).toBeTruthy();
     expect(voidNarrowedQual(personFixture!.newQual)).toBe(await deparsedUsing(client, 'person', VISIBILITY_7240.personBefore));
-    const employment7240 = await deparsedUsing(client, 'employment', VISIBILITY_7240.employmentAfter);
-    const person7240 = await deparsedUsing(client, 'person', VISIBILITY_7240.personAfter);
+    // 7245 restored both to the pre-7240 text (the restatement made the planner reorder the payslip/employment/person
+    // joins): the installed policies are the reviewed predecessors again.
+    const employment7240 = await deparsedUsing(client, 'employment', VISIBILITY_7240.employmentBefore);
+    const person7240 = await deparsedUsing(client, 'person', VISIBILITY_7240.personBefore);
     const reconciledFeedbackKeys = new Set<string>();
     for (const p of FIXTURE.policies) {
       // These historical invariants still apply to all 57 fixture entries, including the five 0560/0561 cases.
