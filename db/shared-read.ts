@@ -93,17 +93,25 @@ export function scopePreamble():SharedReadPreamble|undefined{return requestScope
  *  - after an owner of the session has completed a fallback in its own transaction (which may have written), a default
  *    join never joins a carrier opened before that: an idle one is committed and a fresh snapshot begins; one still in
  *    use by another owner is left to it, and this owner reads in its own transaction, as before this package.
- * `AIHR_DEFAULT_REQUEST_READ_JOIN=off` (read per call) and `withoutDefaultRequestJoin` switch the default join off
- * without changing any explicit shared snapshot. */
+ * OPT-IN (owner decision, 24 November 2026): the join runs only while the web process has
+ * `AIHR_DEFAULT_REQUEST_READ_JOIN=on` (read per call). Unset or any other value, every owner keeps its own transaction
+ * exactly as before. One carrier is one connection, so owners that ran in parallel queue behind each other; on hardware
+ * with many cores that can cost more wall time than the transactions it saves, so it stays off in production until it
+ * is measured there. `withoutDefaultRequestJoin` and `withIndependentTransactions` switch it off for their work. No
+ * switch changes an explicit shared snapshot (Home, Today, the shell's approval summary). */
 let requestScopeResolver:(()=>object|undefined)|undefined;
 export function registerRequestScopeResolver(resolve:()=>object|undefined){requestScopeResolver=resolve;}
 const noDefaultJoin=new AsyncLocalStorage<true>();
 /** Every owner inside `work` joins only a shared snapshot that is explicitly installed (equivalence proofs). */
 export function withoutDefaultRequestJoin<T>(work:()=>Promise<T>):Promise<T>{return noDefaultJoin.run(true,work);}
+/** Whether a render's reads share its read snapshot: `AIHR_DEFAULT_REQUEST_READ_JOIN=on` and not switched off for
+ * this work. It also decides whether the root layout reads its frame inside the render's snapshot (package 1.2). */
+export function requestReadJoinEnabled():boolean{
+ return process.env.AIHR_DEFAULT_REQUEST_READ_JOIN==='on'&&!independent.getStore()&&!noDefaultJoin.getStore();
+}
 /** The request read scope a `withTenant` read outside any shared session may join, or undefined. */
 export function defaultRequestReadScope():object|undefined{
- if(!requestScopeResolver||independent.getStore()||noDefaultJoin.getStore()||sessions.getStore())return undefined;
- if(process.env.AIHR_DEFAULT_REQUEST_READ_JOIN==='off')return undefined;
+ if(!requestScopeResolver||sessions.getStore()||!requestReadJoinEnabled())return undefined;
  return requestScopeResolver();
 }
 /** What a carrier lets its opener do before any owner joins: answer statements ahead, and record a held setting. */
