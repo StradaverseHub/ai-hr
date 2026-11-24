@@ -194,7 +194,10 @@ payroll truth stays in its source tables.
   compliance, statutory setters, dependents); only the reads are set-based. Any refusal rolls the group back to
   `applySectionRowTx`. `SECTION_IMPORT_GROUP_MAX=1` restores the per-row path. Bank and Statutory files (Import
   History) and the register imports (Qualification, Emergency Contact: about 40 ms an employee, already one
-  set-based release) are unchanged.
+  set-based release) are unchanged. Hosted runner (`test/section-import-set-equivalence.test.ts`, run 45494683209):
+  Profile 72.7 → 47.0 ms and 30.3 → 25.3 statements a row; Family 57.4 → 31.3 ms and 27.7 → 19.4. The writers'
+  own statements remain, so the gain is smaller than for the leave import, and the longest chunk hold rises from
+  about 210 to 505 ms (groups of at most 16 rows); `SECTION_IMPORT_CHUNK_CEILING_MS` lowers it.
 
 ### 8. Guardrails
 
