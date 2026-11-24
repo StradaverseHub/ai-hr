@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 
 export const NONCASH_CONFIGURATION_REASONS = new Set([
-  'classification_conflict', 'unsupported_kind', 'normal_remuneration_required', 'month_baseline_unavailable',
+  'classification_conflict', 'unsupported_kind', 'epf_bonus_not_allowed', 'normal_remuneration_required', 'month_baseline_unavailable',
 ]);
 
 /** Consume a stable public refusal, never expose component names or raw calculation errors. */

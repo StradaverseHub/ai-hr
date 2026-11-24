@@ -24,6 +24,14 @@ describe('r383 canonical BIK/VOLA classification and pack cash isolation',()=>{
  it('refuses conflicts, unsupported sign/kind and additional normal-benefit declarations',()=>{
   for(const c of [{...kindInput,eaFormLine:'EA_B4'},{...kindInput,kind:'deduction'},{...kindInput,pcbRemunerationType:'additional'}])expect(()=>classifyNonCashBenefit(c)).toThrow(NonCashBenefitConfigurationError);
  });
+ it('8edeef41: EPF Bonus 2012 and a non-Normal remuneration type are separate reasons',()=>{
+  const reason=(c:Parameters<typeof classifyNonCashBenefit>[0])=>{try{classifyNonCashBenefit(c);return null;}catch(error){return (error as NonCashBenefitConfigurationError).reason;}};
+  expect(reason({...kindInput,pcbRemunerationType:'additional'})).toBe('normal_remuneration_required');
+  expect(reason({...kindInput,pcbRemunerationType:'normal',epfBonus2012:true})).toBe('epf_bonus_not_allowed');
+  expect(reason({...kindInput,pcbRemunerationType:'additional',epfBonus2012:true})).toBe('epf_bonus_not_allowed');
+  expect(reason({...kindInput,pcbRemunerationType:'normal',epfBonus2012:false})).toBeNull();
+  expect(reason({...kindInput,pcb:false,pcbRemunerationType:'additional',epfBonus2012:true})).toBeNull();
+ });
  it('unknown PCB-subject nonpayable items remain refused even when a normal stream is declared',()=>{
   expect(isUnsupportedTaxableComponent({code:'UNKNOWN',kind:'non_payable',includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,isNonPayable:true,pcbRemunerationType:'normal'})).toBe(true);
   expect(isUnsupportedTaxableComponent({code:'KNOWN',kind:'non_payable',displayCategory:'vola',includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,isNonPayable:true,pcbRemunerationType:'normal'})).toBe(false);
