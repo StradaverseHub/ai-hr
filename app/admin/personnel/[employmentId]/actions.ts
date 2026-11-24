@@ -606,7 +606,7 @@ export async function createMovementEventAction(formData: FormData) {
       });
     }
   } catch (e) {
-    if(formData.get('movementPage'))throw new Error(await movementPageErrorMessage(e));
+    if(formData.get('movementPage'))throw new Error(withBlockedRecordLink(e, await compensationErrorMessage(e)));
     // r374 (item 7dbaf677) — THROUGH THE ONE TRANSLATOR, because this path reaches `setCompensation`.
     //
     // `core/movement.ts` writes compensation whenever the pay STRUCTURE changed, not only when an amount
@@ -981,9 +981,9 @@ function assignmentBlockedSource(e: unknown) {
   const error = e as AssignmentBeforeCurrentStartError;
   return error.source ? { source: error.source, date: error.effectiveDate ?? error.currentStart } : null;
 }
-/** The inline New Event refusal; a named correction, mapping or untagged record also gets a link to its line. */
-async function movementPageErrorMessage(e: unknown): Promise<string> {
-  const message = await compensationErrorMessage(e);
+/** The inline New Event refusal: the ONE translator's message, plus a link to the line of a named correction,
+ *  mapping or untagged record (board eb01800b). Not a second translator — it only marks the translated text. */
+function withBlockedRecordLink(e: unknown, message: string): string {
   const blocked = assignmentBlockedSource(e);
   return blocked && blocked.source.kind !== 'movement' ? withMovementRecordMarker(message, blocked.source.versionId) : message;
 }
