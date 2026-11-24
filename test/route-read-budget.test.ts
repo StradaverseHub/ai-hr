@@ -101,26 +101,36 @@ async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one
  state.session=personas[persona];state.pathname=ROUTES[route].pathname;
  state.cookies=scope==='one'?{company_scope:fixture.singleCompanyId}:{};
  const requestScope={};
- const run=()=>serverTreeSnapshot(createElement(Layout,{children:ROUTES[route].page()}),normalize);
+ // A redirect (a role that may not open the route) is the render's output, recorded by its digest.
+ const run=()=>serverTreeSnapshot(createElement(Layout,{children:ROUTES[route].page()}),normalize)
+  .catch((error:unknown)=>{const digest=(error as {digest?:unknown})?.digest;if(typeof digest==='string'&&digest.startsWith('NEXT_'))return {redirect:digest};throw error;});
  const observed=await withRequestReadScope(requestScope,()=>observeStatements(()=>mode==='default'?run():withoutDefaultRequestJoin(run)));
  const stats=await requestScopedReadStats(requestScope);
- const refused:Record<string,number>={};
- for(const session of stats)for(const [reason,count] of Object.entries(session.refused))refused[reason]=(refused[reason]??0)+count;
+ const refused:Record<string,number>={},failures:Record<string,number>={};
+ for(const session of stats){
+  for(const [reason,count] of Object.entries(session.refused))refused[reason]=(refused[reason]??0)+count;
+  for(const [code,count] of Object.entries(session.failures))failures[code]=(failures[code]??0)+count;
+ }
+ // Statement text only (code, never parameters): which owners took a barrier in their own transaction.
+ const barriers=observed.statements.filter(statement=>/pg_(try_)?advisory/i.test(statement.sql)).map(statement=>statement.sql.replace(/\s+/g,' ').slice(0,240));
  const measured={route,persona,scope,mode,transactions:observed.transactions,statements:observed.statements.length,output:observed.result,
   captured:observed.statements,refused,fallbacks:stats.reduce((sum,session)=>sum+session.fallbacks,0),staleSkips:stats.reduce((sum,session)=>sum+session.staleSkips,0)};
  console.log('ROUTE_BUDGET '+JSON.stringify({route,persona,scope,mode,transactions:measured.transactions,statements:measured.statements,
-  refused,fallbacks:measured.fallbacks,staleSkips:measured.staleSkips}));
+  refused,failures,fallbacks:measured.fallbacks,staleSkips:measured.staleSkips,barriers}));
  return measured;
 }
 
 const ROLES=['group','multi','single','manager','employee','payroll'] as const;
 describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
  it.each(ROLES)('renders identically with and without the default join, for %s, and never costs more transactions',async persona=>{
+  // One unmeasured render first: process-level caches (tenant facts the first transaction learns) fill once.
+  await render(route,persona,'all','default');
   const shared=await render(route,persona,'all','default');
   const independent=await render(route,persona,'all','without');
   expect(shared.output).toEqual(independent.output);
   // The render produced real output (a nonempty tree), not an error-shaped stub.
-  expect(JSON.stringify(shared.output).length).toBeGreaterThan(500);
+  const redirected=typeof shared.output==='object'&&shared.output!==null&&'redirect' in shared.output;
+  if(!redirected)expect(JSON.stringify(shared.output).length).toBeGreaterThan(500);
   expect(shared.transactions).toBeLessThanOrEqual(independent.transactions);
   expect(shared.transactions).toBeGreaterThan(0);
   if(route==='frame'){
@@ -137,6 +147,7 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
  },180_000);
 
  it('costs no more for 71 companies than for one company',async()=>{
+  await render(route,'group','all','default');
   // A group administrator: "All companies" against one company chosen in the company switcher.
   const all=await render(route,'group','all','default');
   const one=await render(route,'group','one','default');
