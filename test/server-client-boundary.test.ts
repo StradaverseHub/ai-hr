@@ -176,3 +176,35 @@ describe('b55fdf33 · a server component may not pass functions to a client comp
     expect(sig).not.toContain('ReturnType<typeof useTranslations>');
   });
 });
+
+/**
+ * Production 2026-11-24 — Transaction View › Export to Excel › the workbook list said "This page could not be
+ * displayed" for every user whose workbook had FINISHED: the Download link was drawn with
+ * `className={buttonVariants(...)}` from a server page, and components/ui/button.tsx is 'use client', so the RSC
+ * server refused the call ("Attempted to call buttonVariants() from the server"). Preparing/failed rows never call
+ * it, so the page only broke once there was something to download. Types, the build and source-only tests all pass
+ * it; render a link-styled button from a server file with `<Button asChild variant=… size=…><a …/></Button>`.
+ */
+describe('production 2026-11-24 · a server file under app/ never calls buttonVariants()', () => {
+  it('button.tsx is still a client module (otherwise this guard can be retired)', () => {
+    expect(isClientFile(readFileSync(join(ROOT, 'components/ui/button.tsx'), 'utf8'))).toBe(true);
+  });
+
+  it('no server .tsx under app/ calls buttonVariants(', () => {
+    const files = walk(join(ROOT, 'app'));
+    expect(files.length).toBeGreaterThan(100);
+    const offenders = files
+      .filter((file) => {
+        const src = readFileSync(file, 'utf8');
+        return !isClientFile(src) && /buttonVariants\s*\(/.test(src.replace(/\/\/.*$/gm, ''));
+      })
+      .map((file) => relative(ROOT, file));
+    expect(offenders).toEqual([]);
+  });
+
+  it('the transaction workbook list draws Download through Button asChild', () => {
+    const src = readFileSync(join(ROOT, 'app/payroll/transaction-view/workbooks/page.tsx'), 'utf8');
+    expect(isClientFile(src)).toBe(false);
+    expect(src).toMatch(/<Button asChild variant="outline" size="sm">\s*<a href=\{`\/payroll\/transaction-view\/workbooks\/\$\{item\.id\}`\}>/);
+  });
+});
