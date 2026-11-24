@@ -92,7 +92,7 @@ export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
   return{steps:planned.nominations.map(n=>({kind:'row',rowNum:n.rowNum,payload:n})),counters,plan};
  },
  /** The row writers' locks, in the order each row transaction took them. */
- async beginChunkTx(tx,ctx){
+ async beginChunkTx(tx,ctx,job){
   // Reader/writer Access lock: the row writers keep the exclusive lock; the bounded wait first, so a chunk that
   // meets a long holder is a transient refusal the kernel retries.
   await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
@@ -109,7 +109,7 @@ export const sectionImportJobHandler:BulkJobHandler<SectionRowNomination>={
    joins:(candidate,members)=>!members.some(m=>m.payload.subject.personId===candidate.payload.subject.personId),
    applyGroup:(savepoint,steps)=>applySectionGroupTx(savepoint,ctx,{section,records},steps.map(s=>s.payload),people),
    // The group committed with its savepoint: its persons join the ones earlier rows wrote, as on the per-row path.
-   outcomeOf:out=>{if(out.wrote)people.add(out.personId);return{result:out,counters:out.wrote?{updated:1}:{skipped:1}};},
+   outcomeOf:out=>{if(out.wrote)people.add(out.personId);const counters:Record<string,number>=out.wrote?{updated:1}:{skipped:1};return{result:out,counters};},
    perRow:()=>applyRowTx(tx,ctx,job,step,people),
   });
  },
