@@ -41,7 +41,7 @@ BEGIN
 END $policy_guard$;
 --> statement-breakpoint
 CREATE FUNCTION app.payroll_tax_basis_source_digest(p_company uuid,p_year integer) RETURNS text
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app,pg_temp AS $$
 DECLARE tenant uuid:=app.current_tenant_id();period_prefix text:=p_year::text||'-%';result text;
 BEGIN
  IF p_company IS NULL OR p_year IS NULL OR p_year<1900 OR p_year>2999 OR tenant IS NULL

@@ -34,6 +34,11 @@ async function timed(ctx:SessionContext,query:ReturnType<typeof sql>){
  const started=performance.now();const [row]=await withTenant(ctx,tx=>tx.execute<{d:string}>(query));
  return {d:row.d,ms:Math.round(performance.now()-started)};
 }
+/** The database refusal under the driver's "Failed query" wrapper. */
+async function refusal(work:Promise<unknown>){
+ try{await work;}catch(error){const cause=(error as {cause?:{code?:string;message?:string}}).cause;return {code:cause?.code,message:cause?.message};}
+ throw new Error('Expected a refusal');
+}
 async function both(ctx:SessionContext,companyId:string,year=2026){
  const before=await timed(ctx,rowSecurityDigest(companyId,year)),after=await timed(ctx,definerDigest(companyId,year));
  return {rowSecurity:before,definer:after};
@@ -93,9 +98,9 @@ describe('app.payroll_tax_basis_source_digest',()=>{
   expect(committed.definer.d).toBe(committed.rowSecurity.d);expect(committed.definer.d).not.toBe(settled.definer.d);
 
   // Refusals: an unknown company, and a signed-in employee without payroll administration.
-  await expect(withTenant(ctx,tx=>tx.execute(definerDigest(randomUUID(),2026)))).rejects.toThrow(/unavailable for this company/);
+  expect(await refusal(withTenant(ctx,tx=>tx.execute(definerDigest(randomUUID(),2026))))).toEqual({code:'42501',message:'Income-tax recalculation access is unavailable for this company.'});
   const employeeUser=await createAppUser(b.tenantId,null,'employee');
   const employeeCtx:SessionContext={...ctx,userId:employeeUser,roles:['employee']};
-  await expect(withTenant(employeeCtx,tx=>tx.execute(definerDigest(b.companyId,2026)))).rejects.toThrow(/unavailable for this company/);
+  expect(await refusal(withTenant(employeeCtx,tx=>tx.execute(definerDigest(b.companyId,2026))))).toEqual({code:'42501',message:'Income-tax recalculation access is unavailable for this company.'});
  },1_100_000);
 });

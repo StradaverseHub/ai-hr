@@ -1,6 +1,6 @@
 # Recalculation opening source digest without per-row policies, 24 November 2026
 Reserve `7170_payroll_tax_basis_source_digest`, journal index `10570`, timestamp `1795488671170`,
-SQL SHA-256 `3ee9634289b42a561f365ab7d2e349163a2e16e969006f5697a27ba4f219f438`. Main had 1,140 entries through
+SQL SHA-256 `cdc4bbc16f68ff86c0964e3b480dd183c5c1fb98ab5847135dde158cf356b1a9`. Main had 1,140 entries through
 `7150` (`1795280007150`). The reservation scan of the 300 most recently committed remote branch heads found
 `7160_import_source_worksheet` (idx `10560`, timestamp `1795488671000`) on unmerged Codex branches, so this entry takes
 `7170` with a timestamp above it and cannot be skipped whichever lands first. The production watermark was not read
