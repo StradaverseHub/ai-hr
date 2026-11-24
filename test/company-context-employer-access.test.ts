@@ -32,8 +32,10 @@ const hire = async (fullName: string) =>
     hiredOn: '2024-01-01',
   });
 
+type AssignedGrant = Grant & { role: (typeof schema.roleEnum.enumValues)[number] };
+
 /** A real login for `personId` holding exactly `grants` as role assignments, so the session matches the database. */
-async function login(personId: string, grants: Grant[]): Promise<SessionContext> {
+async function login(personId: string, grants: AssignedGrant[]): Promise<SessionContext> {
   const [user] = await owner.db.insert(schema.appUser).values({ tenantId: b.tenantId, workosUserId: `user_${crypto.randomUUID()}`, personId }).returning({ id: schema.appUser.id });
   await owner.db.insert(schema.roleAssignment).values(grants.map(grant => ({ tenantId: b.tenantId, appUserId: user.id, role: grant.role, companyId: grant.companyId })));
   return { tenantId: b.tenantId, userId: user.id, personId, grants, roles: [...new Set(grants.map(grant => grant.role))], entitlements: harnessSnapshot(b.tenantId) };

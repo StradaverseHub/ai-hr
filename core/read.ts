@@ -7367,11 +7367,13 @@ export function allowedCompanies(ctx: SessionContext, existingTx?: Tx) {
       : undefined;
     const groupWideRole = (ctx.grants ?? []).some(grant => !grant.companyId && grant.role !== 'employee');
     const grantArray = sql`ARRAY[${sql.join(grantCompanyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
+    // A selected column renders unqualified ("id"), so the unnested alias must not be named id: inside the
+    // subquery it would shadow company.id and make every company its own descendant.
     const access = groupWideRole
       ? sql<AllowedCompanyAccess>`'role'`
       : grantCompanyIds.length
         ? sql<AllowedCompanyAccess>`case when ${company.id} = any(${grantArray})
-            or exists (select 1 from unnest(${grantArray}) assigned(id) where app.is_company_descendant(${company.id}, assigned.id))
+            or exists (select 1 from unnest(${grantArray}) assigned(assigned_company) where app.is_company_descendant(${company.id}, assigned_company))
             then 'role' else 'employment' end`
         : sql<AllowedCompanyAccess>`'employment'`;
     return tx
