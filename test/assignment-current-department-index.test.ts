@@ -1,19 +1,19 @@
 /** Migration 7230: the partial index on current assignments by department (ADR 0181 employment-visibility addendum,
  * step (b)). It is an index only, so the employee picker must return identical pages with and without it. This test
  * pins the installed definition, checks the current-assignment department probe uses it, and compares the picker for
- * a group administrator, a subtree administrator (claim) and a line manager on a fictional group of 70 companies,
+ * a group administrator, a subtree administrator and a line manager on a fictional group of 70 companies,
  * 280 departments and 1,000 employments with superseded and ended assignment history, under "All companies" and one
  * company, with the index dropped and restored. Timings are logged for both. */
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {readEmployeeChoices} from '../core/employee-choice';
-import {appUser} from '../db/schema';
+import {appUser,roleAssignment} from '../db/schema';
 import type {SessionContext} from '../db/client';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 const MIGRATION='db/migrations/7230_assignment_current_department_index.sql';
-const DEFINITION='CREATE INDEX assignment_current_department_idx ON public.assignment USING btree (tenant_id, department_id) INCLUDE (employment_id) WHERE ((valid_to IS NULL) AND (superseded_at IS NULL) AND (department_id IS NOT NULL))';
+const DEFINITION='CREATE INDEX assignment_current_department_idx ON public.assignment USING btree (department_id) INCLUDE (employment_id) WHERE ((valid_to IS NULL) AND (superseded_at IS NULL) AND (department_id IS NOT NULL))';
 let b:Base,companies:string[]=[],departments:string[]=[],leafCompany:string;
 const actors:Record<string,SessionContext>={};
 
@@ -48,11 +48,15 @@ beforeAll(async()=>{
  const subordinates=await owner.client<{id:string}[]>`select id::text from employment where tenant_id=${b.tenantId}::uuid and employee_code like 'DI%' and id<>${manager.id}::uuid order by employee_code limit 30`;
  await owner.client`insert into reporting_line(tenant_id,manager_employment_id,subordinate_employment_id,line_type,valid_from)
   select ${b.tenantId}::uuid,${manager.id}::uuid,s,'administrative','2025-01-01' from unnest(${subordinates.map(s=>s.id)}::uuid[]) s`;
- const[u]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:`fixture_${randomUUID()}`,personId:manager.person_id}).returning({id:appUser.id});
+ // Real principals (the picker proves the session's claims against role assignments): a subtree administrator of
+ // the first child company and the line manager.
+ const[subtree]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:`fixture_${randomUUID()}`}).returning({id:appUser.id});
+ await owner.db.insert(roleAssignment).values({tenantId:b.tenantId,appUserId:subtree.id,role:'hr_admin',companyId:level1[0]});
+ const managerUser=await createAppUser(b.tenantId,manager.person_id,'manager');
  Object.assign(actors,{
-  'group administrator':{...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]},
-  'subtree administrator':{...adminCtx(b),grants:[{role:'hr_admin',companyId:level1[0]}]},
-  'line manager':{...adminCtx(b),userId:u.id,personId:manager.person_id,roles:['employee'],grants:[{role:'employee',companyId:null}]},
+  'group administrator':adminCtx(b),
+  'subtree administrator':{tenantId:b.tenantId,userId:subtree.id,grants:[{role:'hr_admin',companyId:level1[0]}]},
+  'line manager':{tenantId:b.tenantId,userId:managerUser,personId:manager.person_id,roles:['manager']},
  } as Record<string,SessionContext>);
  await owner.client`analyze assignment`;await owner.client`analyze employment`;await owner.client`analyze department`;
 },600_000);
@@ -74,7 +78,7 @@ it('installs exactly the reviewed partial index, and the current department prob
  await owner.client.begin(async tx=>{
   // Planner choice on a small fixture: make the comparison about access paths, not table size.
   await tx`set local enable_seqscan=off`;
-  const plan=(await tx.unsafe(`explain (costs off) select a.employment_id from assignment a where a.tenant_id='${b.tenantId}' and a.valid_to is null and a.superseded_at is null and a.department_id='${departments[0]}'`)).map((r:Record<string,string>)=>r['QUERY PLAN']).join('\n');
+  const plan=(await tx.unsafe(`explain (costs off) select a.employment_id from assignment a where a.valid_to is null and a.superseded_at is null and a.department_id='${departments[0]}'`)).map((r:Record<string,string>)=>r['QUERY PLAN']).join('\n');
   expect(plan).toContain('assignment_current_department_idx');
  });
 },120_000);
