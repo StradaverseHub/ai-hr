@@ -7,6 +7,8 @@ local branch and every registered worktree's journal and migration folder. The h
 `7250_replacement_holiday_queue_voided` (`claude/release-rhq-7250-20261125`) and
 `7260_viewer_access_version` (local branch `claude/db-read-cost-phase-3`), so this entry is above them all.
 Neither installation's watermark was read from this session. Recheck both, and any competing reservation, before admission.
+Install order (confirmed by the coordinator, 25 November 2026): staging applies 7250 (voided replacement holiday) and
+7260 (Phase 3 viewer access version) before 7270. Coordinate the ticket with the ORCHESTRATOR session.
 
 Adds three SECURITY DEFINER functions beside the unchanged `app.approval_history` (0818) and
 `app.approval_history_count` (0320), which keep serving the bell's History tab:
