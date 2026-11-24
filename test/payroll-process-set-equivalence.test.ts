@@ -175,7 +175,11 @@ async function snapshot(t:Tenant,periods:string[]){
   components:sorted(components.map(row=>omit(row,['id','created_at','updated_at']))),
   history:sorted(history),
   events:sorted(events.map(row=>({...row,payload:stripJob(row.payload)}))),
-  jobs:sorted(jobs.map(row=>({...row,steps_total:undefined,result:stripJob(row.result),counters:row.counters}))),
+  // A failed job's progress counters count the chunks that committed before the refusal (the refusing chunk rolls
+  // back, and the run is discarded): where chunks end depends on the host's timing on both paths, so only its
+  // planned headcount is compared.
+  jobs:sorted(jobs.map(row=>({...row,steps_total:undefined,result:stripJob(row.result),
+   counters:row.state==='failed'?{employees:(row.counters as {employees?:number}|null)?.employees}:row.counters}))),
  };
 }
 
