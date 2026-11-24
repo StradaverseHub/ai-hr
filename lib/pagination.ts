@@ -295,7 +295,7 @@ export type KeysetRead = {
   anchorFound: boolean;
 };
 
-export type KeysetPageState = PageState & {
+export type KeysetPageState = PageState & Pick<KeysetPageQuery, 'after' | 'before' | 'last'> & {
   mode: 'keyset';
   capped: boolean;
   exactCount: boolean;

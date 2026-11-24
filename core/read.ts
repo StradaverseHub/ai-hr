@@ -1498,7 +1498,7 @@ export async function listEmployeesDirectoryPage(
       anchorFound = false;
       fetched = await read({ last: false });
     }
-    const page = keysetSlice(fetched, anchorFound ? cursor : { last: false }, anchorFound);
+    const page = keysetSlice(fetched, { ...(anchorFound ? cursor : { last: false }), limit: p.limit }, anchorFound);
     const cap = listCountCap(p.size);
     const bounded = tx.select({ one: sql`1` }).from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
