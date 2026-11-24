@@ -264,6 +264,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10610,version:'7',when:1795495007210,tag:'7210_access_effective_company',breakpoints:true},
  {idx:10630,version:'7',when:1795495007230,tag:'7230_assignment_current_department_index',breakpoints:true},
  {idx:10640,version:'7',when:1795495007240,tag:'7240_access_visible_employment',breakpoints:true},
+ {idx:10660,version:'7',when:1795495007260,tag:'7260_leave_delegated_decision_set',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1364,6 +1365,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.access_visible_person_ids()',app:true},
    {fn:'app.employment_partner_companies()',app:true},
    {fn:'app.employment_read_companies()',app:true},
+   // 7260 (ADR 0181 step (d)): the delegated-decision set the five leave read policies ask once per statement.
+   {fn:'app.delegated_decision_employment_ids()',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
@@ -1589,6 +1592,17 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(beforePerson?.qual).toBe(expectedPersonQuals[0]);
   expect(afterPerson?.qual).toBe(expectedPersonQuals[1]);
   expect({...afterPerson,qual:expectedPersonQuals[0]}).toEqual(beforePerson);
+  // 7260 replaced only the per-row delegation term of five leave read policies with the once-per-statement set.
+  const delegatedLeavePolicies=['leave_request_rls','leave_approval_step_rls','leave_request_date_rls','replacement_leave_request_rls','replacement_leave_request_date_rls'];
+  const isDelegatedLeavePolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&delegatedLeavePolicies.includes(String(row.policyname));
+  const beforeDelegated=new Map(beforePerformancePrivileges.policies.filter(isDelegatedLeavePolicy).map(row=>[String(row.policyname),row]));
+  expect([...beforeDelegated.keys()].sort()).toEqual([...delegatedLeavePolicies].sort());
+  for(const row of afterPerformancePrivileges.policies.filter(isDelegatedLeavePolicy)){
+   const before=beforeDelegated.get(String(row.policyname))!,m=String(before.qual).match(/app\.can_decide_via_delegation\(([a-z_]+)\)/);
+   expect(m,String(row.policyname)).toBeTruthy();
+   expect(row.qual).toBe(String(before.qual).replace(m![0],`(${m![1]} = ANY (( SELECT app.delegated_decision_employment_ids() AS delegated_decision_employment_ids)::uuid[]))`));
+   expect({...row,qual:before.qual}).toEqual(before);
+  }
   expect(beforeEmployment).toMatchObject({permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',with_check:'((tenant_id = app.current_tenant_id()) AND app.is_admin_for(company_id))'});
   expect({...afterEmployment,qual:expectedEmploymentQuals[0]}).toEqual(beforeEmployment);
   // Independently parse the one reviewed Assignment transition from 3102. The
@@ -3026,7 +3040,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
    policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)&&!isSixItemPolicy(row)&&!isPayrollReadPolicy(row)&&!isAccessPilotPolicy(row)).map(row=>
-    isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:isPersonPolicy(row)?{...row,qual:expectedPersonQuals[0]}:
+    isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:isPersonPolicy(row)?{...row,qual:expectedPersonQuals[0]}:isDelegatedLeavePolicy(row)?{...row,qual:beforeDelegated.get(String(row.policyname))!.qual}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
       isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:originalLegacyEmailAssetPredicate(row)),
   };

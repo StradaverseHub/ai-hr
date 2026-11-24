@@ -1,3 +1,17 @@
+# Leave delegated decisions once per statement, 25 November 2026
+
+Reserve `7260_leave_delegated_decision_set`, journal index `10660`, timestamp `1795495007260`,
+SQL SHA-256 `9be9796a524f31cf3d8c615022fc980c1ccfc5881bfd999999ee695c3636ae37`. It follows `7240_access_visible_employment` (`10640`) and the staging coordinator's
+`7250` (the replacement-holiday queue fix, PR 299, timestamp `1795495007250`, released after release 6); any later entry
+must be above it. Neither installation's watermark was read from this session; recheck both and any competing
+reservation before admission.
+
+Step (d) of the approved employment-visibility addendum. Adds `app.delegated_decision_employment_ids()` (EXECUTE to
+`ai_hr_app`), the 0109 `can_decide_via_delegation` predicate as one set per statement, and replaces only the per-row
+delegation term in the USING of `leave_request_rls`, `leave_approval_step_rls`, `leave_request_date_rls`,
+`replacement_leave_request_rls` and `replacement_leave_request_date_rls` (each guarded by its exact installed text).
+WITH CHECK, roles and commands are unchanged. No table or row changes.
+
 # Precomputed employment visibility, 24 November 2026
 
 Reserve `7240_access_visible_employment`, journal index `10640`, timestamp `1795495007240`,
