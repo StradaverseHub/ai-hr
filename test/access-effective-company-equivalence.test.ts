@@ -5,7 +5,7 @@
  * exact 0595 text, reinstated by this test) and the 7210 policies in each mode ('legacy', 'shadow', 'precomputed')
  * return identical rows, order and counts for every actor, under "All companies" and one company: the raw list,
  * count and revision history, the Job descriptions page (both pages, with its total) and the document read.
- * Actors cover group, subtree, leaf and second-tree administrators, a super administrator, a holder of both roles, an
+ * Actors cover group, subtree, leaf and second-tree administrators, a super administrator, a holder of both roles (claiming both or one), an
  * employee, a session claim narrower than the grant, a claim wider than the grant, an archived and a login-blocked
  * administrator. Phases: capability unsupported, capability enforced, an explicit deny saved through the real
  * access editor, a future-dated restructure the day before and on its effective day, a writer that bypassed the
@@ -182,8 +182,11 @@ beforeAll(async()=>{
   'claim wider than grant':{...(await user('hr_admin',betaChild)),grants:[{role:'hr_admin',companyId:null}]} as SessionContext,
   'login-blocked administrator':await user('hr_admin',null,blockedPerson.id),
  });
- const both=await user('hr_admin',a1);await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:both.userId!,role:'super_admin',companyId:beta});
- actors['holder of both roles (A1 hr, Beta super)']={...both,roles:['hr_admin','super_admin'],grants:[{role:'hr_admin',companyId:a1},{role:'super_admin',companyId:beta}]} as SessionContext;
+ // Two roles (super_admin is group-wide by constraint): the stored roles must match the session's claims, so claiming
+ // only the A1 hr_admin grant narrows the answer to A1's subtree.
+ const both=await user('hr_admin',a1);await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:both.userId!,role:'super_admin',companyId:null});
+ actors['holder of both roles, claiming both']={...both,roles:['hr_admin','super_admin'],grants:[{role:'hr_admin',companyId:a1},{role:'super_admin',companyId:null}]} as SessionContext;
+ actors['holder of both roles, claiming A1 hr only']={...both,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:a1}]} as SessionContext;
  const archived=await user('hr_admin',null);
  await owner.client`update app_user set archived_at=now() where id=${archived.userId!}::uuid`;
  actors['archived administrator']=archived;
@@ -241,7 +244,8 @@ describe('precomputed company access (7210) on Job descriptions',()=>{
   expect(listed(seen['claim narrower than grant / All companies'])).toBe(2*(1+a1Children.length));
   expect(listed(seen['leaf administrator / All companies'])).toBe(2);
   expect(listed(seen['second-tree administrator (Beta) / All companies'])).toBe(2*(1+level2.filter((_,i)=>i%9===8).length));
-  expect(listed(seen['holder of both roles (A1 hr, Beta super) / All companies'])).toBe(2*(2+a1Children.length+level2.filter((_,i)=>i%9===8).length));
+  expect(listed(seen['holder of both roles, claiming both / All companies'])).toBe(140);
+  expect(listed(seen['holder of both roles, claiming A1 hr only / All companies'])).toBe(2*(1+a1Children.length));
   expect(listed(seen['super administrator / All companies'])).toBe(140);
   for(const none of ['employee','claim wider than grant','login-blocked administrator','archived administrator'])expect(listed(seen[`${none} / All companies`]),none).toBe(0);
   expect(listed(seen['group administrator / one company'])).toBe(2);
