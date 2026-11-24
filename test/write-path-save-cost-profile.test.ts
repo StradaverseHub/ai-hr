@@ -13,7 +13,8 @@ import {sql} from 'drizzle-orm';
 import {taxBasisSourceRowsTx} from '../core/payroll-tax-basis-read';
 import * as s from '../db/schema';
 import {amendDirectSuperior} from '../core/information-correction';
-import {createMovementEvent} from '../core/movement';
+import {createMovementEvent,createMovementEventTx} from '../core/movement';
+import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {hireEmployee} from '../core/org';
 import {correctDirectSuperiorPeriod} from '../core/direct-superior-periods';
 import {directSuperiorPeriodsFor} from '../core/read';
@@ -153,4 +154,44 @@ describe('write-path save cost at 70 companies / 1,000 employments',()=>{
   });
   expect(out.length).toBeGreaterThanOrEqual(14);
  },900_000);
+
+ it('strict probe: which movement kinds would run under the SHARED Access lock',async()=>{
+  const ctx=actors['group administrator'];const today=todayInKualaLumpur();
+  const before=process.env.AIHR_ACCESS_LOCK_STRICT;process.env.AIHR_ACCESS_LOCK_STRICT='on';
+  const root=emp.filter(e=>e.company===b.companyId).slice(200);let i=0;const next=()=>root[i++];
+  const other=emp.filter(e=>e.company===all[5]);
+  const cases:[string,()=>Record<string,unknown>][]=[
+   ['reportingLineChange today',()=>{const a=next(),m=next();return{employmentId:a.id,managerEmploymentId:m.id,effectiveDate:today,kind:'reportingLineChange',remarks:'Fictional'};}],
+   ['reportingLineChange backdated',()=>{const a=next(),m=next();return{employmentId:a.id,managerEmploymentId:m.id,effectiveDate:'2026-06-01',kind:'reportingLineChange',remarks:'Fictional'};}],
+   ['transfer department + salary today',()=>({employmentId:next().id,kind:'transfer',effectiveDate:today,departmentId:b.deptB,basicSalary:5100,remarks:'Fictional'})],
+   ['transfer department + salary backdated',()=>({employmentId:next().id,kind:'transfer',effectiveDate:'2026-07-01',departmentId:b.deptB,basicSalary:5000,remarks:'Fictional'})],
+   ['increment today',()=>({employmentId:next().id,kind:'increment',effectiveDate:today,basicSalary:5200,remarks:'Fictional'})],
+   ['employmentTypeChange today',()=>({employmentId:next().id,kind:'employmentTypeChange',effectiveDate:today,employmentType:'contract',remarks:'Fictional'})],
+   ['entityTransfer today',()=>({employmentId:next().id,kind:'entityTransfer',effectiveDate:today,companyId:all[5],departmentId:depts[5],remarks:'Fictional'})],
+   ['confirmation today',()=>({employmentId:next().id,kind:'confirmation',effectiveDate:today,remarks:'Fictional'})],
+   ['resignation future',()=>({employmentId:next().id,kind:'resignation',effectiveDate:'2027-01-31',resignationDate:today,remarks:'Fictional'})],
+   ['termination today',()=>({employmentId:next().id,kind:'termination',effectiveDate:today,terminationReasonCode:null,remarks:'Fictional'})],
+  ];
+  void other;
+  const lines:string[]=[];
+  try{
+   for(const[name,input]of cases){
+    const run=async(mode:'shared first'|'as today')=>{
+     const t=performance.now();
+     try{const held=await withTenant(ctx,async tx=>{
+      await tx.execute(sql`select set_config('app.access_lock_strict','on',true)`);
+      if(mode==='shared first')await lockAccessConfigurationTx(tx,ctx.tenantId);
+      await createMovementEventTx(tx,ctx,input() as Parameters<typeof createMovementEventTx>[2]);
+      const [row]=await tx.execute<{mode:string|null}>(sql`select app.access_lock_mode_held(${ctx.tenantId}::uuid) as mode`);
+      throw Object.assign(new Error('probe-rollback'),{held:row?.mode});
+     });void held;}
+     catch(e){const err=e as Error&{held?:string};return err.message==='probe-rollback'?`ok, held ${err.held} (${Math.round(performance.now()-t)} ms)`:`refused: ${String(err.message).slice(0,160)}`;}
+     return 'unexpected commit';
+    };
+    lines.push(`${name}: as today -> ${await run('as today')}; shared first -> ${await run('shared first')}`);
+   }
+  }finally{if(before===undefined)delete process.env.AIHR_ACCESS_LOCK_STRICT;else process.env.AIHR_ACCESS_LOCK_STRICT=before;}
+  console.log('[write-path-profile] strict probe\n'+lines.join('\n'));
+  expect(lines.length).toBe(cases.length);
+ },600_000);
 });
