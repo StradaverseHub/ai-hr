@@ -168,6 +168,16 @@ async function statementTime(measured:Measured){
  return row;
 }
 
+/** The first place two snapshots differ, as a path and both values (vitest truncates deep trees in its diff). */
+function firstDifference(a:unknown,b:unknown,path='$'):string|null{
+ if(Object.is(a,b))return null;
+ if(typeof a!=='object'||typeof b!=='object'||a===null||b===null||Array.isArray(a)!==Array.isArray(b))
+  return `${path}: ${JSON.stringify(a)?.slice(0,300)} !== ${JSON.stringify(b)?.slice(0,300)}`;
+ const keys=[...new Set([...Object.keys(a as object),...Object.keys(b as object)])];
+ for(const key of keys){const found=firstDifference((a as Record<string,unknown>)[key],(b as Record<string,unknown>)[key],`${path}.${key}`);if(found)return found;}
+ return null;
+}
+
 const ROLES=['group','multi','single','manager','employee','payroll'] as const;
 describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
  it.each(ROLES)('renders identically with and without the default join, for %s, and never costs more transactions',async persona=>{
@@ -176,8 +186,8 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
   const shared=await render(route,persona,'all','default');
   const independent=await render(route,persona,'all','without');
   const unshared=await render(route,persona,'all','independent');
-  expect(shared.output).toEqual(independent.output);
-  expect(shared.output).toEqual(unshared.output);
+  expect(firstDifference(shared.output,independent.output),'default vs explicit snapshots only').toBeNull();
+  expect(firstDifference(shared.output,unshared.output),'default vs no shared snapshot').toBeNull();
   // The render produced real output (a nonempty tree), not an error-shaped stub.
   const redirected=typeof shared.output==='object'&&shared.output!==null&&'redirect' in shared.output;
   if(!redirected)expect(JSON.stringify(shared.output).length).toBeGreaterThan(500);
