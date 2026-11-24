@@ -414,7 +414,7 @@ async function main() {
     } catch { console.error('Provisioning tick failed.'); process.exitCode=1; }
     try {
       const holidays=await sweepReplacementHolidayQueue(owner);
-      if(holidays.processed||holidays.failed)console.log(`· replacement holidays: ${holidays.processed} processed, ${holidays.review} need review, ${holidays.failed} failed`);
+      if(holidays.processed||holidays.failed||holidays.dropped)console.log(`· replacement holidays: ${holidays.processed} processed, ${holidays.review} need review, ${holidays.failed} failed, ${holidays.dropped} dropped (voided or removed employment)`);
       if(holidays.failed)process.exitCode=1;
     } catch { console.error('Replacement holiday tick failed.'); process.exitCode=1; }
     try {
