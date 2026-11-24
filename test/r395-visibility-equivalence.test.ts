@@ -38,7 +38,8 @@
  *   Tables are filled generically (one row per employment of both tenants, plus a NULL-subject row where
  *   the policy column is nullable), and the test PRINTS which tables got rows and which stayed empty.
  *
- * NON-VACUITY: four mutations of visible_employment_ids (drop the HOD arm; drop the manager arm's company
+ * NON-VACUITY: four mutations of the visibility walk (since 7240 in app.access_visible_employment_legacy, which
+ * visible_employment_ids reaches in legacy mode): drop the HOD arm; drop the manager arm's company
  * clamp; ignore reporting_line.valid_to; ignore terminated_on) must each break (i). Always-on tests assert
  * that; `R395_MUTATION=hod|clamp|valid_to|terminated` additionally installs the mutation for the whole file
  * so the equivalence assertions themselves go red with their names (run the file alone).
@@ -57,6 +58,7 @@ import { supplyR395PayrollPeriods } from './r395-payroll-period-fill';
 const REPORT: Record<string, unknown> = {};
 
 let originalDef = '';
+let walkDef = '';
 let currentFeedbackPolicies:Row[]=[];
 let currentProfilePolicies:Row[]=[];
 
@@ -68,15 +70,19 @@ beforeAll(async () => {
   currentProfilePolicies=await assertCurrentProfilePolicyGraph();
   const [d] = await q(`select pg_get_functiondef('app.visible_employment_ids()'::regprocedure) as def`);
   originalDef = d.def as string;
+  // 7240: visible_employment_ids unions the admin arm with app.access_visible_employment_ids(), whose 'legacy' mode
+  // runs the 5144 relationship walk in app.access_visible_employment_legacy(). The mutations target that walk.
+  const [w] = await q(`select pg_get_functiondef('app.access_visible_employment_legacy()'::regprocedure) as def`);
+  walkDef = w.def as string;
   const m = process.env.R395_MUTATION;
   if (m) {
     if (!MUTATIONS[m]) throw new Error(`unknown R395_MUTATION ${m}`);
-    await q(MUTATIONS[m](originalDef));
+    await q(MUTATIONS[m](walkDef));
   }
 }, 240_000);
 
 afterAll(async () => {
-  if (process.env.R395_MUTATION && originalDef) await q(originalDef);
+  if (process.env.R395_MUTATION && walkDef) await q(walkDef);
   if (process.env.R395_REPORT) writeFileSync(process.env.R395_REPORT, JSON.stringify({ fill, ...REPORT }, null, 2));
   await closeAll();
 });
@@ -254,7 +260,7 @@ describe('r395 — non-vacuity: each mutation of visible_employment_ids breaks (
     const broken: string[] = [];
     try {
       await pg.begin(async (tx) => {
-        await tx.unsafe(MUTATIONS[m](originalDef));
+        await tx.unsafe(MUTATIONS[m](walkDef));
         for (const ctx of CONTEXTS) {
           await tx.unsafe(
             `select set_config('app.tenant_id', $1, true), set_config('app.user_id', $2, true), set_config('app.roles', $3, true), set_config('app.grants', $4, true)`,
@@ -278,5 +284,7 @@ describe('r395 — non-vacuity: each mutation of visible_employment_ids breaks (
   it('the live function is the original after the mutation tests (rolled back)', async () => {
     const [d] = await q(`select pg_get_functiondef('app.visible_employment_ids()'::regprocedure) as def`);
     if (!process.env.R395_MUTATION) expect(d.def).toBe(originalDef);
+    const [w] = await q(`select pg_get_functiondef('app.access_visible_employment_legacy()'::regprocedure) as def`);
+    if (!process.env.R395_MUTATION) expect(w.def).toBe(walkDef);
   });
 });
