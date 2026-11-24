@@ -309,7 +309,10 @@ describe('657962ec §1: the self-service history renders as compact cards, newes
     expect(ownHistory).not.toMatch(/\[\.\.\.history\]\.sort\(/);
     // The per-date outcome window follows the card order (5 newest by start date).
     expect(ownHistory).toMatch(/selfHistory\.slice\(0, 5\)\.map/);
-    expect(ownHistory.includes('leaveRequestDateBreakdown(session, r.id)')).toBe(true);
+    // UPDATED BY ADR-0181 1.4: the 5-row window is read by ONE set call (no per-row read); the window and its
+    // card order are still what this pins.
+    expect(ownHistory.includes('leaveRequestDateBreakdowns(session, selfHistory.slice(0, 5).map((r) => r.id))')).toBe(true);
+    expect(ownHistory.includes('leaveRequestDateBreakdown(session, r.id)')).toBe(false);
   });
 
   it('the card face carries ONLY the essentials — actions, document link and outcomes are panel-only', () => {

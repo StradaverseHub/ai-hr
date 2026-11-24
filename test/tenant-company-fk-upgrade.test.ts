@@ -262,6 +262,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10570,version:'7',when:1795488671170,tag:'7170_payroll_tax_basis_source_digest',breakpoints:true},
  {idx:10600,version:'7',when:1795495007200,tag:'7200_information_documents_planned_with_values',breakpoints:true},
  {idx:10610,version:'7',when:1795495007210,tag:'7210_access_effective_company',breakpoints:true},
+ {idx:10620,version:'7',when:1795495007220,tag:'7220_movement_system_payroll_snapshot_insert',breakpoints:true},
  {idx:10630,version:'7',when:1795495007230,tag:'7230_assignment_current_department_index',breakpoints:true},
 ];
 
@@ -2976,12 +2977,45 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const accessPilotRelations=afterPerformancePrivileges.relations.filter(row=>isAccessPilotRelation(row.rel));
   expect(accessPilotRelations.map(row=>[row.rel,row.rls,row.force])).toEqual(accessPilotTables.map(rel=>[rel,true,true]));
   for(const row of accessPilotRelations)expect(String(row.acl??''),row.rel+' grants nothing to the application role').not.toContain('ai_hr_app');
+  // 7220: the nightly movement sweep's system path reads and writes information_payslip_snapshot as the storage owner.
+  // Rendered by PostgreSQL from the reviewed text, under temporary names, exactly as the other lanes above.
+  const systemPreservePolicies=await storage.client.begin(async tx=>{
+   await tx.unsafe(`create policy upgrade_expected_system_preserve_read on public.information_payslip_snapshot for select to ai_hr_owner
+    using(tenant_id=app.current_tenant_id() and app.current_user_id() is null
+     and app.access_workforce_storage_owner()
+     and app.access_workforce_employment(employment_id,'workforce.maintain'))`);
+   await tx.unsafe(`create policy upgrade_expected_system_preserve_insert on public.information_payslip_snapshot for insert to ai_hr_owner
+    with check(tenant_id=app.current_tenant_id()
+     and recorded_by is null and app.current_user_id() is null
+     and document_metadata->>'preservationActor'='system'
+     and app.access_workforce_storage_owner()
+     and app.access_workforce_employment(employment_id,'workforce.maintain')
+     and app.is_admin_for(company_id)
+     and exists(select 1 from public.payslip p join public.payroll_batch b on b.id=p.batch_id
+      where p.id=information_payslip_snapshot.payslip_id and p.employment_id=information_payslip_snapshot.employment_id
+       and p.tenant_id=information_payslip_snapshot.tenant_id and b.tenant_id=information_payslip_snapshot.tenant_id
+       and b.company_id=information_payslip_snapshot.company_id and b.status='closed'))`);
+   const rows=await tx<{
+    schemaname:string;tablename:string;policyname:string;permissive:string;roles:string;cmd:string;
+    qual:string|null;with_check:string|null;
+   }[]>`select schemaname::text,tablename::text,policyname::text,permissive::text,roles::text,cmd::text,qual,with_check
+    from pg_policies where schemaname='public' and tablename='information_payslip_snapshot'
+    and policyname like 'upgrade_expected_system_preserve_%' order by policyname`;
+   await tx`drop policy upgrade_expected_system_preserve_read on public.information_payslip_snapshot`;
+   await tx`drop policy upgrade_expected_system_preserve_insert on public.information_payslip_snapshot`;
+   return rows.map(row=>({...row,policyname:row.policyname.replace('upgrade_expected_system_preserve_','information_snapshot_system_preserve_')}));
+  });
+  expect(systemPreservePolicies).toHaveLength(2);
+  const isSystemPreservePolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>
+   systemPreservePolicies.some(expected=>row.schemaname===expected.schemaname&&row.tablename===expected.tablename&&row.policyname===expected.policyname);
+  expect(beforePerformancePrivileges.policies.filter(isSystemPreservePolicy)).toEqual([]);
+  expect(afterPerformancePrivileges.policies.filter(isSystemPreservePolicy)).toEqual(systemPreservePolicies);
   const terminalComparable={
    relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)&&!isAccessPilotRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)&&!isSixItemPolicy(row)&&!isPayrollReadPolicy(row)&&!isAccessPilotPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)&&!isSixItemPolicy(row)&&!isPayrollReadPolicy(row)&&!isAccessPilotPolicy(row)&&!isSystemPreservePolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
       isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:originalLegacyEmailAssetPredicate(row)),

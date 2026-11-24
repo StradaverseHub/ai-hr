@@ -29,6 +29,15 @@
         ],
         "createdAt": "2026-11-17T10:11:13.208Z",
         "reason": "Typed signature presentation only; intentionally cursive handwriting inside the canonical document signature, not application typography."
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "docs/mockups/7da649d3-employment-tab.html"
+        ],
+        "createdAt": "2026-11-24T09:20:04.659Z",
+        "reason": "Claude: board plan sketch mirroring the app's compact Employment-tab type; the rendered PNG is already attached to board item 7da649d3"
       }
     ]
   }

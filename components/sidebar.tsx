@@ -114,7 +114,7 @@ export function Sidebar({
   const hasAssignedAttendanceApproval=approvals?approvals.state==='ready'&&approvals.hasAssignedAttendanceApproval:assignedAttendanceFromProps;
   const hasAssignedApproval=approvals?approvals.state==='ready'&&approvals.hasAssignedApproval:assignedApprovalFromProps;
   const approvalCount=approvals?approvals.state==='ready'?approvals.approvalCount:0:baseApprovalCount;
-  const taskCount=approvals?approvals.state==='ready'?baseTaskCount+approvals.total:0:baseTaskCount;
+  const taskCount=approvals?approvals.state==='ready'?baseTaskCount+approvals.total+(approvals.lifecycleTaskCount??0):0:baseTaskCount;
   const pathname = usePathname();
   // Query-aware active matching (fdc20776): usePathname excludes the query string, so the six
   // Reports children (/reports?cat=…) need the search params to light up. Safe without a Suspense

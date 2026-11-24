@@ -9,6 +9,7 @@ import {
   revertIndividualImportStep, stopIndividualImport, validateIndividualImport, type IndividualImportProgress,
 } from './individual-txn-import';
 import {readIndividualImportJob} from './individual-import-job';
+import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reservedWithin} from './owner-step-deadline';
 
 type QueuedJob = IndividualImportJob & {
   context: SessionContext;
@@ -29,6 +30,8 @@ export type IndividualImportTickOptions = {
   /** Wall time of one tick (INDIVIDUAL_IMPORT_TICK_MS by default), and the measured length of each write transaction. */
   tickMs?: number;
   timings?: number[];
+  /** The owner step deadline (core/owner-step-deadline.ts) in milliseconds. */
+  ownerDeadlineMs?: number;
 };
 /** A step is tried this many times before the batch is stopped; a refusal of its own data is not retried. */
 const STEP_ATTEMPTS = 3;
@@ -58,18 +61,29 @@ export async function runIndividualImportTick(
   options: IndividualImportTickOptions = {},
 ): Promise<boolean> {
   const retryDelayMs = options.retryDelayMs ?? 250;
-  const connection = await owner.reserve();
+  // The owner steps (reservation, lock, claim, job-state writes, unlock) are bounded by core/owner-step-deadline.ts;
+  // validating, confirming and reverting are not. A reservation whose statement missed its deadline is neither
+  // unlocked nor released: the worker exits, and the session's end frees the advisory lock.
+  const deadlineMs = ownerDeadlineMs(options.ownerDeadlineMs);
+  const claimStep = ownerClaimDeadline(deadlineMs);
+  const own = <T>(work: Promise<T>, step: string) => ownerStep(work, step, deadlineMs);
+  const connection = await reservedWithin(owner.reserve(), deadlineMs);
+  let unresponsive = false;
+  const lost = (error: unknown) => {
+    if (error instanceof OwnerConnectionUnresponsive) unresponsive = true;
+    throw error;
+  };
   try {
-    const [lock] = await connection<{ok: boolean}[]>`select pg_try_advisory_lock(hashtextextended('payroll-individual-import-worker', 0)) as ok`;
-    if (!lock.ok) return false;
+    const [lock] = await claimStep(connection<{ok: boolean}[]>`select pg_try_advisory_lock(hashtextextended('payroll-individual-import-worker', 0)) as ok`, 'the Individual import lock');
+    if (!lock?.ok) return false;
     try {
-      const [job] = await connection<QueuedJob[]>`
+      const [job] = await claimStep(connection<QueuedJob[]>`
         select id, tenant_id, created_by, company_ids, context, revert_context, source_name, source_hash, method, template_version, state, attempt_id
         from payroll_individual_import_job where state in ('pending', 'validating', 'confirmed', 'importing', 'reverting')
-        order by created_at, id limit 1`;
+        order by created_at, id limit 1`, 'the Individual import claim');
       if (!job) return false;
       if (job.state === 'reverting') {
-        await revertTick(connection, job, refreshContext, options, retryDelayMs);
+        await revertTick(connection, job, refreshContext, options, retryDelayMs, own);
         return true;
       }
       let ctx: SessionContext | null = null;
@@ -77,8 +91,8 @@ export async function runIndividualImportTick(
         ctx = await refreshContext({...job.context, tenantId: job.tenant_id, userId: job.created_by});
         if (!await readIndividualImportJob(ctx, job.id, job.company_ids)) throw new IndividualImportError('importAccessDenied');
         if (job.state === 'pending' || job.state === 'validating') {
-          await connection`update payroll_individual_import_job set state = 'validating', started_at = coalesce(started_at, now()) where id = ${job.id}`;
-          const [payload] = await connection<{source: Buffer}[]>`select source from payroll_individual_import_job where id = ${job.id}`;
+          await own(connection`update payroll_individual_import_job set state = 'validating', started_at = coalesce(started_at, now()) where id = ${job.id}`, 'the Individual import state');
+          const [payload] = await own(connection<{source: Buffer}[]>`select source from payroll_individual_import_job where id = ${job.id}`, 'the Individual import source read');
           if (createHash('sha256').update(payload.source).digest('hex') !== job.source_hash) throw new IndividualImportError('fileReadError');
           // 0ec0ee00 — only the transaction sheet is measured and read; the template's reference sheets are ignored.
           const text = await readIndividualImportWorkbook(new Uint8Array(payload.source), job.source_name, job.method);
@@ -87,43 +101,50 @@ export async function runIndividualImportTick(
             allowPreviousDaily: job.template_version === 1,
           });
           const error = attempt.preview.fileError ?? (attempt.preview.valid ? null : 'noValidRows');
-          await connection`update payroll_individual_import_job set attempt_id = ${attempt.id},
+          await own(connection`update payroll_individual_import_job set attempt_id = ${attempt.id},
             state = ${error ? 'failed' : 'ready'}, error = ${error},
-            finished_at = case when ${Boolean(error)} then now() else null end where id = ${job.id}`;
+            finished_at = case when ${Boolean(error)} then now() else null end where id = ${job.id}`, 'the Individual import state');
           return true;
         }
         if (!job.attempt_id) throw new IndividualImportError('importFailed');
-        if (job.state === 'confirmed') await connection`update payroll_individual_import_job set state = 'importing', processed = 0 where id = ${job.id}`;
+        if (job.state === 'confirmed') await own(connection`update payroll_individual_import_job set state = 'importing', processed = 0 where id = ${job.id}`, 'the Individual import state');
         const stepCtx = ctx;
         const progress: IndividualImportProgress = await withRetries(async () => {
           await options.beforeStep?.({id: job.id, state: 'importing'});
           return confirmIndividualImportStep(stepCtx, {id: job.attempt_id!, scopeIds: job.company_ids}, {tickMs: options.tickMs, timings: options.timings});
         }, retryDelayMs);
         if (progress.state === 'completed') {
-          await connection`update payroll_individual_import_job set state = 'completed', processed = ${progress.processed}, finished_at = now() where id = ${job.id}`;
+          await own(connection`update payroll_individual_import_job set state = 'completed', processed = ${progress.processed}, finished_at = now() where id = ${job.id}`, 'the Individual import state');
         } else if (progress.state === 'stopped') {
-          await connection`update payroll_individual_import_job set state = 'stopped', processed = ${progress.processed}, error = coalesce(error, 'importStopped'), finished_at = now() where id = ${job.id}`;
+          await own(connection`update payroll_individual_import_job set state = 'stopped', processed = ${progress.processed}, error = coalesce(error, 'importStopped'), finished_at = now() where id = ${job.id}`, 'the Individual import state');
         } else {
-          await connection`update payroll_individual_import_job set processed = ${progress.processed} where id = ${job.id}`;
+          await own(connection`update payroll_individual_import_job set processed = ${progress.processed} where id = ${job.id}`, 'the Individual import state');
         }
       } catch (error) {
+        // An unresponsive owner connection is the worker's failure, not the batch's: the job keeps its state and the
+        // restarted worker resumes it.
+        if (error instanceof OwnerConnectionUnresponsive) throw error;
         // Driver exceptions may contain payroll values. Persist only bounded application codes.
         const code = error instanceof IndividualImportReadFailure ? error.code : individualImportErrorCode(error, 'importFailed');
         if ((job.state === 'confirmed' || job.state === 'importing') && job.attempt_id) {
           // Rows written by earlier steps stay written (and revertable); the batch says it stopped.
           const state = ctx ? await stopIndividualImport(ctx, {id: job.attempt_id, scopeIds: job.company_ids, reason: code}).catch(() => 'stopped') : 'stopped';
-          await connection`update payroll_individual_import_job set state = ${state === 'completed' ? 'completed' : 'stopped'},
-            error = ${state === 'completed' ? null : code}, finished_at = now() where id = ${job.id}`;
+          await own(connection`update payroll_individual_import_job set state = ${state === 'completed' ? 'completed' : 'stopped'},
+            error = ${state === 'completed' ? null : code}, finished_at = now() where id = ${job.id}`, 'the Individual import state');
         } else {
-          await connection`update payroll_individual_import_job set state = 'failed', error = ${code}, finished_at = now() where id = ${job.id}`;
+          await own(connection`update payroll_individual_import_job set state = 'failed', error = ${code}, finished_at = now() where id = ${job.id}`, 'the Individual import state');
         }
       }
       return true;
+    } catch (error) {
+      return lost(error);
     } finally {
-      await connection`select pg_advisory_unlock(hashtextextended('payroll-individual-import-worker', 0))`;
+      if (!unresponsive) await own(connection`select pg_advisory_unlock(hashtextextended('payroll-individual-import-worker', 0))`, 'the Individual import unlock');
     }
+  } catch (error) {
+    return lost(error);
   } finally {
-    await connection.release();
+    if (!unresponsive) connection.release();
   }
 }
 
@@ -131,6 +152,7 @@ export async function runIndividualImportTick(
 async function revertTick(
   connection: postgres.ReservedSql, job: QueuedJob, refreshContext: (ctx: SessionContext) => Promise<SessionContext>,
   options: IndividualImportTickOptions, retryDelayMs: number,
+  own: <T>(work: Promise<T>, step: string) => Promise<T>,
 ) {
   let ctx: SessionContext | null = null;
   const p = {id: job.attempt_id!, scopeIds: job.company_ids};
@@ -145,13 +167,14 @@ async function revertTick(
     }, retryDelayMs);
     if (progress.state !== 'reverting') {
       // Reverted, or handed back by someone else meanwhile.
-      await connection`update payroll_individual_import_job set state = ${progress.state === 'reverted' ? 'reverted' : progress.state === 'completed' ? 'completed' : 'stopped'},
-        finished_at = now() where id = ${job.id}`;
+      await own(connection`update payroll_individual_import_job set state = ${progress.state === 'reverted' ? 'reverted' : progress.state === 'completed' ? 'completed' : 'stopped'},
+        finished_at = now() where id = ${job.id}`, 'the Individual import state');
     }
   } catch (error) {
+    if (error instanceof OwnerConnectionUnresponsive) throw error;
     const code = individualImportErrorCode(error, 'revertFailed');
     const back = ctx ? await handBackIndividualImportRevert(ctx, p, error).catch(() => null) : null;
-    await connection`update payroll_individual_import_job set state = ${back === 'completed' ? 'completed' : back === 'reverted' ? 'reverted' : 'stopped'},
-      error = ${back === 'reverted' ? null : code}, finished_at = now() where id = ${job.id}`;
+    await own(connection`update payroll_individual_import_job set state = ${back === 'completed' ? 'completed' : back === 'reverted' ? 'reverted' : 'stopped'},
+      error = ${back === 'reverted' ? null : code}, finished_at = now() where id = ${job.id}`, 'the Individual import state');
   }
 }

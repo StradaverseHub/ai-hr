@@ -1,0 +1,51 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+When HR records a Termination dated 02-Nov-2026, the system refuses it because "the current assignment record starts on 12-Nov-2026". But the Movement tab shows only Hired (09-Mar-2023) and Changed Direct Superior (28-Jul-2026). HR cannot see what starts on 12-Nov-2026, so they cannot fix it.
+
+The hidden record is almost certainly an Information-Only Correction. Until 15 November, every Information-Only Correction (for example a Department or Position correction) started a new record on the day it was saved, not on a date HR chose. On 12 November this happened to about 260 employees at once. Those corrections are saved and audited, but the Movement tab only lists movement events. A correction to Department, Business Unit or Position never gets its own line, so it stays out of sight while still blocking new events.
+
+WHAT WE'LL CHANGE
+
+- Every dated record that can affect a new event will show as its own line in the Movement tab, in date order. This includes Information-Only Corrections and organisation-structure updates, for example "Information corrected - Department, Position · 12-Nov-2026 · by (name) on (date)". These lines are clearly marked as corrections, not career moves.
+
+- Each of these lines has View. People who are allowed to correct employee information also get Correct. It opens the Information-Only Correction with its Effective Date editable, so HR can move the date or fix the values.
+
+- When a new event is refused because of a later record, the message will name that record: what it is, its date and what it changed, with a link to its line. For example: "An Information-Only Correction (Department, Position) dated 12-Nov-2026 starts after 02-Nov-2026. Move its Effective Date to on or before 02-Nov-2026, then record the termination." No message will ever point at a record the Movement tab does not show.
+
+- If the later correction does not actually change anything for the termination date (it only repeats the same values), the Termination is saved straight away and HR has nothing to fix. Other movements have worked this way since 15 November; Termination did not.
+
+WHAT YOU'LL GET
+
+The Movement tab becomes the complete list of everything dated on the employee's record. When the system stops you, it tells you exactly which line is in the way and takes you to it, so you can fix it yourself without anyone searching the database.
+
+GOOD TO KNOW
+
+- Much of this already works today. All movement events show in the Movement tab: hired, transfers, promotion, change of superior, salary revision, resignation, termination, rehire, and your own event types. Future-dated events show with a Pending badge. Backdated and imported events are listed too. View, Edit and Delete are already there, depending on each person's access, and every change keeps its audit history. Delete still needs its own separate permission.
+
+- The system will never move or delete a correction by itself. If a correction really does change Department or Position from 12-Nov-2026, HR decides whether to move its date or choose a later termination date.
+
+- An organisation-structure update cannot be re-dated from one employee's page. In that case the message names the update and tells you where to review it.
+
+- Closed payroll is never recalculated. The existing payroll notices still apply.
+
+- For the employee in your example: once this is live, open their Movement tab, find the 12-Nov-2026 line, change its Effective Date to on or before 02-Nov-2026 (or check what it changed), then record the termination again.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Root cause (verified in code at 7909f0c43; the exact source row for this employee was not queried). New Event Termination runs applyTerminationTx (core/movement.ts about 3577) and then terminateEmploymentTx (core/org.ts about 829-845). It reads the single open assignment version (validTo null, supersededAt null) and throws AssignmentBeforeCurrentStartError (core/org.ts 115-122) when the date is before that version's validFrom. The same guard exists in transferEmployee (about 695) and setEmploymentAssignment (about 2405). Before docs/adr/2026-11-15-dated-information-corrections.md, every Information-Only Correction started "today" (ADR-0163). Production DB-V-079831 recorded 260 employees with a 12-Nov version (see test/employment-assignment-edit.test.ts about 184-197). projectRows (core/movement.ts about 724+) only produces rows from tagged movement events. personnelInformationCorrections (lib/personnel-history.ts) only overlays INFORMATION_FIELDS (lib/information-correction.ts:3) as a link on an existing row. Corrections of DATED_ASSIGNMENT_FIELDS (core/movement-history.ts about 398: business unit, department, position) and organisation-mapping splits (projectEmploymentOrganisationAssignmentTx, core/org.ts about 4140-4170) have no row. Decision 5 of the dated-corrections ADR lifts correction boundaries (liftCorrectionBoundariesTx, core/movement-history.ts about 487-540) only in the comparison writer and contract posting. applyTerminationTx never calls it.
+
+1. Name the blocker. Add blockingAssignmentSourceTx(tx, employmentId, versionId). It follows the liveOf replacement chain (core/movement-history.ts about 482) to the creating event and returns its kind (correction / mapping / movement / untagged), effective date, changed fields and actor. Give AssignmentBeforeCurrentStartError an optional source, and pass it at all three throw sites. Map it to new i18n keys in all six locales; keep movement_before_current_record for the import. Translations need review.
+
+2. Termination applies Decision 5. In applyTerminationTx, before terminateEmploymentTx and only when D is today or earlier, call liftCorrectionBoundariesTx(tx, ctx, id, D). Boundaries that change nothing are dropped and audited through the existing employment.information.boundary.reapplied payload. If any later version still changes values, roll the whole transaction back and raise the named refusal. There must be no partial writes. Do not fold later correction values back to D automatically.
+
+3. Show the rows. In projectMovementHistoryTx, add a recordChange row for each live assignment version whose start date is not owned by a visible movement row. Build it from the events the projection already reads (corrections of any DATED_ASSIGNMENT_FIELDS, mapping splits, untagged employment.assignment.changed): set-based, no per-row queries. Set kind recordChange, canEdit false and canReverse false. Keep these rows out of movement replay (recordedMovementChangesTx), the Movement Excel export and any reports that consume movementHistory. The Correct action reuses the existing Information-Only Correction dialog (app/admin/personnel/information-correction-actions.ts) with the effective date prefilled. It is gated by the same maintain authority. Viewers see field names only where they can already see the values.
+
+4. No migration and no data change. The existing 12-Nov versions are fixed through the existing correction owner.
+
+Tests: termination before a correction-only boundary that changes nothing (saved, boundary audited); termination before a boundary that does change values (refused, names kind, date and fields, nothing written); the projection shows a department-only correction row and a mapping-split row; movement replay and export are unchanged; cross-company access is refused; update the employment-assignment-edit tests. Add a rendered check of the Movement tab with the new row and the named refusal.
+
+Rules followed: dated-corrections ADR (Decision 5, revisions 2 and 4), 2026-11-13 backward movement history, 2026-11-17 comprehensive movement workflow (one owner per fact, append-only corrections, delete behind its own permission), and tagged-event projection rule 30325fc1 (untagged writes are not shown as career movements, hence the distinct recordChange kind).
