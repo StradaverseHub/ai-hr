@@ -122,8 +122,10 @@ describe('Daily Attendance keyset paging at group scale',()=>{
 
  it('costs the same statements for one company and 71 companies',async()=>{
   for(const [name,ctx] of [['group',fixture.personas.group],['multi',fixture.personas.multi]] as const){
-   const run=async(scope:Scope,cursor:Record<string,string>={})=>
-    observeStatements(()=>page(ctx,await scopeIds(ctx,scope),{},parseKeysetPageQuery({size:'25',...cursor})));
+   const run=async(scope:Scope,cursor:Record<string,string>={})=>{
+    const companyIds=await scopeIds(ctx,scope);
+    return observeStatements(()=>page(ctx,companyIds,{},parseKeysetPageQuery({size:'25',...cursor})));
+   };
    const all=await run('all'),one=await run('one');
    expect((await scopeIds(ctx,'all')).length,`${name}: All companies is the group`).toBeGreaterThanOrEqual(70);
    expect(all.result.hasNext&&one.result.hasNext,`${name}: both scopes have a next page`).toBe(true);
