@@ -1180,7 +1180,6 @@ function processedPayslipBatchFence(tx: Tx, p: ProcessedPayslipFilters): SQL | u
   return sql`${payslip.batchId} = any(array(${ids}))`;
 }
 
-const newestBatch = alias(payrollBatch, 'newest_batch');
 
 /**
  * Resolve the latest visible period before reading payslip rows for the History landing page.
@@ -1220,7 +1219,7 @@ export async function latestProcessedPayslipPeriodTx(tx: Tx, p: ProcessedPayslip
       where ${processedPayslipBatchFilters(p)}
       order by ${payrollBatch.payPeriod} desc offset 0) "candidate"
      where exists(${probe}) limit 1) as "live",
-    (select max(${newestBatch.payPeriod}) from ${newestBatch} where ${inArray(newestBatch.companyId, p.companyIds)}) as "newest"`);
+    (select max(${payrollBatch.payPeriod}) from ${payrollBatch} where ${inArray(payrollBatch.companyId, p.companyIds)}) as "newest"`);
   const live = row?.live ?? null, newest = row?.newest ?? null;
   if (newest == null || (live != null && live >= newest)) return live;
   const retained = await informationPayslipDocuments(tx, {
