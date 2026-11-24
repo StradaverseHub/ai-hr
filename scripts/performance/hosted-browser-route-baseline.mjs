@@ -2415,7 +2415,7 @@ async function measureActions(fixture){
     assert.equal(new URL(page.url()).pathname,'/payroll/process');
     const witnesses=[
      ['heading',main.getByRole('heading',{name:'Payroll Process',exact:true,level:1})],
-     ['company-toggle',main.getByRole('checkbox',{name:'All my companies',exact:true})],
+     ['company-toggle',main.locator('label').filter({hasText:/^\s*All my companies\s*$/}).locator('input[type=checkbox]')],
      ['scoped-company',main.getByText(fixture.scaleCompany.name,{exact:true}).first()],
      ['month',main.locator('input[type="month"]')],
      ['cycle',main.getByRole('combobox',{name:/^Payroll cycle/})],
