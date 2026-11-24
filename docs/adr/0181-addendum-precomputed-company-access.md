@@ -2,7 +2,9 @@
 
 Date: 24 November 2026
 
-Status: The owner approved this design and the four decisions in section 9 as written on 24 November 2026. It is built
+Status: Approved by the owner on 24 November 2026 ("Okay proceed" in the review session, and "Approve, build it" in
+the build session), with decisions 1–3 of section 9 as written and decision 4 with a minimum compared-statement count
+added (section 9). It is built
 as migration `7210_access_effective_company`, `core/access-effective-company-check.ts`,
 `scripts/access-effective-company-check.ts` and `test/access-effective-company-equivalence.test.ts`. Built is not
 installed or accepted: staging shadow evidence and the switch to `precomputed` follow separately. It applies ADR 0181
@@ -148,12 +150,12 @@ New read policies for `ai_hr_app` (plus the `FOR ALL` revision write policy, res
 
 ```sql
 job_document_read:          tenant_id = app.current_tenant_id()
-                            AND company_id = ANY ((SELECT app.access_workforce_companies('workforce.view')))
+                            AND company_id = ANY ((SELECT app.access_workforce_companies('workforce.view'))::uuid[])
 job_document_revision_read: tenant_id = app.current_tenant_id()
                             AND EXISTS (SELECT 1 FROM job_document j
                                         WHERE j.tenant_id = job_document_revision.tenant_id
                                           AND j.id = job_document_revision.job_id
-                                          AND j.company_id = ANY ((SELECT app.access_workforce_companies('workforce.view'))))
+                                          AND j.company_id = ANY ((SELECT app.access_workforce_companies('workforce.view'))::uuid[]))
 ```
 
 These are exactly the old predicates: `app.job_document_scope` is `p_tenant = current tenant AND EXISTS(job in
@@ -171,8 +173,11 @@ Architecture profile reader policies are untouched. The migration guards the pre
    (checked the day before and on the effective day). For each actor, under "All companies" and one company, the old
    policies and the new policies in each mode return identical rows, order and counts for the list, its count and the
    revision history, plus a test that each trigger-maintained change is visible in the same transaction.
-2. **Staging shadow comparison:** staging runs `shadow` for an agreed period under the staging lease; switch needs
-   zero unexplained differences in the logged counts.
+2. **Staging shadow comparison:** staging runs `shadow` under the staging lease for seven days with zero
+   unexplained differences in the logged counts, and the period counts only once it holds the minimum number of
+   compared statements per capability (decision 4). Count them from the database log:
+   `grep -c 'access_effective_company shadow capability=workforce.view .* reason=compared'` (and the same for
+   `workforce.maintain`), and sum `missing=` and `extra=` over the same lines.
 3. **Scheduled rebuild-and-compare:** a worker sweep recomputes each tenant from scratch into a temporary set, compares
    it with the maintained rows, records `last_verified_at` and the difference count, and on any difference marks the
    tenant untrusted (reads fall back) and logs an alert with counts only. It also recomputes tenants whose date window
@@ -187,14 +192,18 @@ employment visibility family needs, where a per-company shortcut does not exist.
 `legacy` set form is the fallback and the default, and the timing logs measure `legacy` against `precomputed` on the
 same screen so the gain of the stored answer is shown, not assumed.
 
-## 9. Decisions requested from the owner
+## 9. Owner decisions (approved 24 November 2026)
 
 1. **Maintenance by table triggers** (recommended) rather than calls added to each writer.
 2. **After a rebuild difference** the tenant stays on the fallback until an operator re-trusts it after the cause is
    fixed (recommended), rather than repairing itself automatically, which would hide a missed writer.
 3. **Mode per installation:** `legacy` on production and on install by default; `shadow` on staging from its next
    release; `precomputed` only after acceptance, by a separate request.
-4. **Shadow period:** seven days of staging traffic with zero unexplained differences (proposed).
+4. **Shadow period:** seven days of staging traffic with zero unexplained differences, which counts only once the
+   shadow log holds a minimum number of compared statements (`reason=compared` lines) for each capability,
+   `workforce.view` and `workforce.maintain`, inside those seven days. Approved with the minimum added; the figure is
+   proposed in the pilot's pull request from staging's request timing and confirmed by the owner before the period
+   starts.
 
 Out of scope until the pilot is accepted: `access_visible_employment` and the employment, person, reporting line and
 leave families; the Job descriptions write, review, attachment and audit policies; the cached viewer profile.

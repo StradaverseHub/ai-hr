@@ -431,7 +431,7 @@ $build$;
 DROP POLICY job_document_read ON public.job_document;
 --> statement-breakpoint
 CREATE POLICY job_document_read ON public.job_document FOR SELECT TO ai_hr_app
- USING(tenant_id=app.current_tenant_id() AND company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))));
+ USING(tenant_id=app.current_tenant_id() AND company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))::uuid[]));
 --> statement-breakpoint
 -- job_document_revision_write is FOR ALL, so PostgreSQL also ORs its USING into every revision read. Same predicate,
 -- once per statement: job_document_scope (view) AND the job's company passes 'workforce.maintain'. One job row
@@ -441,16 +441,16 @@ DROP POLICY job_document_revision_write ON public.job_document_revision;
 CREATE POLICY job_document_revision_write ON public.job_document_revision FOR ALL TO ai_hr_app
  USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.job_document j
   WHERE j.tenant_id=job_document_revision.tenant_id AND j.id=job_document_revision.job_id
-   AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.view')))
-   AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.maintain')))))
+   AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))::uuid[])
+   AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.maintain'))::uuid[])))
  WITH CHECK(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.job_document j
   WHERE j.tenant_id=job_document_revision.tenant_id AND j.id=job_document_revision.job_id
-   AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.view')))
-   AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.maintain')))));
+   AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))::uuid[])
+   AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.maintain'))::uuid[])));
 --> statement-breakpoint
 DROP POLICY job_document_revision_read ON public.job_document_revision;
 --> statement-breakpoint
 CREATE POLICY job_document_revision_read ON public.job_document_revision FOR SELECT TO ai_hr_app
  USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.job_document j
   WHERE j.tenant_id=job_document_revision.tenant_id AND j.id=job_document_revision.job_id
-   AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.view')))));
+   AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))::uuid[])));

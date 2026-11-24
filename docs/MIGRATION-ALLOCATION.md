@@ -1,7 +1,7 @@
 # Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
 
 Reserve `7210_access_effective_company`, journal index `10610`, timestamp `1795495007210`,
-SQL SHA-256 `d5f985a65899c4bc4d6960c9d59865fecd78a9ef0b17daa353ba832a1b405919`. The reservation scan covered the 300 most recently committed remote branch heads
+SQL SHA-256 `f3c59a13f0cb38587709b11917a6b9902edaa818beb7bd3c22a963f4312f20ab`. The reservation scan covered the 300 most recently committed remote branch heads
 and every registered worktree journal: the highest entry found was `7200_information_documents_planned_with_values`
 (index `10600`, when `1795495007200`, branch `claude/txn-view-slow-load-af9f97`), and `7160`–`7190` are held by the
 import and tax-basis branches. This entry is above all of them. Neither installation's watermark was read from this
