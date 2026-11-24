@@ -196,7 +196,7 @@ payroll truth stays in its source tables.
   (`app.bulk_job_steps_put`, 400 per statement), which measured 44 ms for the whole 60-row file, so loading is not
   where the time goes; a `COPY` route would need a new definer reading a session table for no measurable gain.
   - **Group size.** A chunk holds the tenant's exclusive Access lock, so groups aim for a short chunk:
-    `EMPLOYEE_IMPORT_CHUNK_TARGET_MS` (default 250 ms) or `EMPLOYEE_IMPORT_CHUNK_FIXED_MULTIPLE` (default 2) x the
+    `EMPLOYEE_IMPORT_CHUNK_TARGET_MS` (default 300 ms of group work) or `EMPLOYEE_IMPORT_CHUNK_FIXED_MULTIPLE` (default 2) x the
     measured fixed cost, never above `EMPLOYEE_IMPORT_CHUNK_CEILING_MS` (default 500 ms), estimated from two groups of
     different sizes as for the reprocess job, starting at 8 rows; `EMPLOYEE_IMPORT_GROUP_MAX` (default 64; `1`
     restores the per-row path for every row). Per-row steps keep the 100 ms chunk budget. Each chunk logs an

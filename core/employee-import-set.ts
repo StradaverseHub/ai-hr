@@ -240,10 +240,11 @@ export async function applyEmployeeHireGroupTx(tx:Tx,ctx:SessionContext,steps:re
  rows.forEach((r,i)=>{const id=salaryOf.get(r.employmentId);if(!id)decline('compensation-insert');
   events[i].push({tenantId:tenant,aggregateType:'compensation',aggregateId:id!,eventType:'compensation.set',actor,subjectEmploymentId:r.employmentId,
    payload:compensationSetEventPayload({...r.compensationInput,employmentId:r.employmentId},r.terms.fieldsChanged)});});
- for(const from of new Set(rows.map(r=>r.compensationInput.effectiveFrom))){
-  const marked=await markPayrollRunsForCompensationSetTx(tx,ctx,{employmentIds:rows.filter(r=>r.compensationInput.effectiveFrom===from).map(r=>r.employmentId),from});
-  if(marked.length)decline('payroll-marked');
- }
+ // The payroll run marker over the whole group from its earliest effective date: it finds nothing for new employments.
+ // Anything it finds (a superset of what each row's own date would find) declines the group, and the savepoint undoes
+ // the marks; the per-row path then marks exactly its own runs.
+ const earliest=rows.map(r=>r.compensationInput.effectiveFrom).sort()[0];
+ if((await markPayrollRunsForCompensationSetTx(tx,ctx,{employmentIds,from:earliest})).length)decline('payroll-marked');
 
  // ── The group's audit events, in the per-row order, in one statement; then the Import History items ─────────
  await appendEvents(tx,events.flat());

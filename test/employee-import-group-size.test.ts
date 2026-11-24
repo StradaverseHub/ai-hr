@@ -12,9 +12,9 @@ it('doubles until two groups of different sizes give a line, then fills the targ
  expect(nextEmployeeImportGroupSize([{rows:8,wallMs:150}],8)).toBe(16);
  // Before a line exists, growth stops where the last group's own rate would cross the 500 ms ceiling.
  expect(nextEmployeeImportGroupSize([{rows:8,wallMs:346}],8)).toBe(11);
- // 8 rows in 140 ms and 16 in 220 ms: 10 ms a row, 60 ms fixed; target max(250, 2 x 60) = 250 -> 19 rows.
- expect(nextEmployeeImportGroupSize([{rows:8,wallMs:140},{rows:16,wallMs:220}],16)).toBe(19);
- // A large fixed cost: 2 x 200 = 400 ms target -> 20 rows; the 500 ms ceiling bounds it at 3 x 200 = 600.
+ // 8 rows in 140 ms and 16 in 220 ms: 10 ms a row, 60 ms fixed; target max(300, 2 x 60) = 300 -> 24 rows.
+ expect(nextEmployeeImportGroupSize([{rows:8,wallMs:140},{rows:16,wallMs:220}],16)).toBe(24);
+ // A large fixed cost: 2 x 200 = 400 ms target -> 20 rows; with a multiple of 3 the 500 ms ceiling bounds it (30 rows).
  expect(nextEmployeeImportGroupSize([{rows:8,wallMs:280},{rows:16,wallMs:360}],16)).toBe(20);
  process.env.EMPLOYEE_IMPORT_CHUNK_FIXED_MULTIPLE='3';
  expect(nextEmployeeImportGroupSize([{rows:8,wallMs:280},{rows:16,wallMs:360}],16)).toBe(30);
@@ -23,6 +23,10 @@ it('doubles until two groups of different sizes give a line, then fills the targ
  expect(nextEmployeeImportGroupSize([{rows:8,wallMs:60},{rows:16,wallMs:70}],16)).toBe(32);
  process.env.EMPLOYEE_IMPORT_GROUP_MAX='12';
  expect(nextEmployeeImportGroupSize([{rows:8,wallMs:140},{rows:16,wallMs:220}],16)).toBe(12);
+ delete process.env.EMPLOYEE_IMPORT_GROUP_MAX;
+ process.env.EMPLOYEE_IMPORT_CHUNK_TARGET_MS='250';
+ expect(nextEmployeeImportGroupSize([{rows:8,wallMs:140},{rows:16,wallMs:220}],16)).toBe(19);
+ delete process.env.EMPLOYEE_IMPORT_CHUNK_TARGET_MS;
  delete process.env.EMPLOYEE_IMPORT_GROUP_MAX;
  expect(nextEmployeeImportGroupSize([{rows:2,wallMs:400},{rows:3,wallMs:900}],3)).toBe(2);
  // A falling or flat line (noise) is no estimate: the size doubles.

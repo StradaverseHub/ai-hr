@@ -33,7 +33,7 @@ export const EMPLOYEE_IMPORT_CHUNK_BUDGET_MS=Number(process.env.EMPLOYEE_IMPORT_
 export const employeeImportGroupMax=()=>Math.max(1,Math.floor(Number(process.env.EMPLOYEE_IMPORT_GROUP_MAX??64))||1);
 /** The chunk length a group aims for, at least, and never more than the ceiling: a chunk holds the tenant's exclusive
  * Access lock (SCALE rule 1 keeps every exclusive hold under about 1 s). */
-const groupTargetMs=()=>Math.max(1,Number(process.env.EMPLOYEE_IMPORT_CHUNK_TARGET_MS??250)||250);
+const groupTargetMs=()=>Math.max(1,Number(process.env.EMPLOYEE_IMPORT_CHUNK_TARGET_MS??300)||300);
 const groupCeilingMs=()=>Math.max(1,Number(process.env.EMPLOYEE_IMPORT_CHUNK_CEILING_MS??500)||500);
 /** One group has a fixed cost whatever its size (the group's tenant-level locks, checks and set statements); a chunk
  * may last this many times that fixed cost, so it is spread over the group (same rule as the reprocess job). */
