@@ -67,6 +67,7 @@ import {readShellApprovalFacts} from '../app/shell-approval-facts-read';
 import {bellNotificationScope,readBellNotifications} from '../app/bell-notifications';
 import {approveLeaveAction} from '../app/approvals/actions';
 import {markNotificationReadAction} from '../app/notification-actions';
+import {decideProfileChangeAction} from '../app/admin/personnel/profile-changes/actions';
 import type {ShellApprovalResult} from '../components/shell-approval-facts';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
@@ -255,6 +256,32 @@ describe('frame-keeping save: behaviour',()=>{
   expect(spies.redirect).toEqual([]);
   const [row]=await owner.db.select({status:schema.leaveRequest.status}).from(schema.leaveRequest).where(sql`${schema.leaveRequest.id}=${teamRequestIds[2]}::uuid`);
   expect(row.status).toBe('pending');
+ },120_000);
+
+ it('decides a profile change from <ActionNavigateForm> without revalidating or redirecting; the result matches the database',async()=>{
+  const session=as('group');
+  const [pending]=await owner.db.select({id:schema.profileChangeRequest.id}).from(schema.profileChangeRequest)
+   .where(sql`${schema.profileChangeRequest.tenantId}=${b.tenantId}::uuid and ${schema.profileChangeRequest.status}='pending'`).limit(1);
+  expect(pending).toBeTruthy();
+  const before=await readShellApprovalFacts(session);
+  const form=new FormData();
+  form.set('requestId',pending.id);form.set('decision','rejected');form.set('reason','Fictional: number does not match the record');
+  form.set(ACTION_NAVIGATION_FIELD,'client');
+  const result=await decideProfileChangeAction(form);
+  expect(spies.revalidatePath).toEqual([]);
+  expect(spies.redirect).toEqual([]);
+  const [row]=await owner.db.select({status:schema.profileChangeRequest.status}).from(schema.profileChangeRequest).where(sql`${schema.profileChangeRequest.id}=${pending.id}::uuid`);
+  // A decision that committed asks for the badges; a refusal changes nothing and shows its error.
+  if(row.status==='rejected'){
+   expect(result).toEqual({navigate:'/admin/personnel/profile-changes',refreshShellApprovals:true});
+   const after=await readShellApprovalFacts(session);
+   expect(after).toEqual(await previousShellApprovalFacts(session));
+   expect(after.state==='ready'&&before.state==='ready'&&after.total<=before.total).toBe(true);
+  }else{
+   expect(row.status).toBe('pending');
+   expect(result.refreshShellApprovals).toBeUndefined();
+   expect(result.navigate).toMatch(/^\/admin\/personnel\/profile-changes\?error=/);
+  }
  },120_000);
 
  it('marks a notification read and returns the bell without it, never revalidating',async()=>{
