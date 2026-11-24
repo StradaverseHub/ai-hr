@@ -1,7 +1,7 @@
 /** Real appended policy migration; populated data and native authority, no mocks. */
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {againstReviewedVisibility,REVIEWED_VISIBILITY_PREDECESSOR,installPre7240} from './helpers/reviewed-visibility';
+import {againstReviewedVisibility,PRE_7240_VISIBILITY,REVIEWED_VISIBILITY_PREDECESSOR,installPre7240} from './helpers/reviewed-visibility';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant} from '../db/client';
@@ -52,7 +52,7 @@ it('replays actual SQL on populated predecessor data with native history, scope 
  try{
   await setQual(previousSql);expect(compact((await policy()).qual)).toBe(originalQual);
   const before=await assertAssignmentAuthority(f);
-  await owner.client.begin(tx=>tx.unsafe(againstReviewedVisibility(migration)));
+  await owner.client.begin(tx=>tx.unsafe(againstReviewedVisibility(migration,PRE_7240_VISIBILITY)));
   expect(await policy()).toEqual(installed);expect(await security()).toEqual(metadata);
   const after=await assertAssignmentAuthority(f);expect(after).toEqual(before);
   let denied:unknown;

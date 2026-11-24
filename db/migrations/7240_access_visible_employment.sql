@@ -605,9 +605,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT coalesce(array_agg(v.id ORDER BY v.id), '{}'::uuid[]) FROM visible v WHERE v.id IS NOT NULL;
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.access_visible_person_ids() FROM PUBLIC;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.access_visible_person_ids() TO ai_hr_app;
+-- person_rls applies to every role (it has no TO list), so every role that reads person evaluates this reader, as it
+-- evaluated app.visible_person_ids, which kept PostgreSQL's default EXECUTE for PUBLIC. Same here.
+GRANT EXECUTE ON FUNCTION app.access_visible_person_ids() TO PUBLIC;
 --> statement-breakpoint
 -- The tenant's companies on which the session holds an administrator, Payroll partner or performance-and-
 -- compensation partner claim (app.is_admin_for, app.can_admin_payroll_for, app.can_admin_perfcomp_for), once per
@@ -627,9 +627,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   AND (app.can_admin_payroll_for(c.id) OR app.can_admin_perfcomp_for(c.id));
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.employment_read_companies(),app.employment_partner_companies() FROM PUBLIC;
+-- employment_rls applies to ai_hr_app only. person_rls applies to every role and asks employment_partner_companies,
+-- as it asked app.can_admin_payroll_for and app.can_admin_perfcomp_for (default EXECUTE for PUBLIC).
+REVOKE ALL ON FUNCTION app.employment_read_companies() FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.employment_read_companies(),app.employment_partner_companies() TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.employment_read_companies() TO ai_hr_app;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.employment_partner_companies() TO PUBLIC;
 --> statement-breakpoint
 -- app.visible_employment_ids (replaces 5144): the 2105 admin arm unchanged, unioned with the relationship part
 -- (which carries the attendance window subject exactly as 5144 merged it). Same signature, result and order.

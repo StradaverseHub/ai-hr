@@ -31,6 +31,11 @@ describe('precomputed employment visibility (7240): equivalence',()=>{
    and (p.proname like 'access_visible_%' or p.proname like 'access_reach%' or p.proname like 'access_department_closure%' or p.proname like 'access_employment_%' or p.proname like 'employment_%_companies')
    and has_function_privilege('ai_hr_app',p.oid,'execute') order by 1`;
   expect(fns.map(f=>f.name)).toEqual(['access_visible_employment_ids','access_visible_person_ids','employment_partner_companies','employment_read_companies']);
+  // person_rls applies to every role (the Rewards reader roles read person too), so its two readers keep PostgreSQL's
+  // default EXECUTE for PUBLIC, as app.visible_person_ids did; employment_rls's readers are ai_hr_app only.
+  const pub=await owner.client<{name:string;pub:boolean}[]>`select p.proname as name,has_function_privilege('public',p.oid,'execute') as pub from pg_proc p
+   where p.pronamespace='app'::regnamespace and p.proname in ('access_visible_employment_ids','access_visible_person_ids','employment_partner_companies','employment_read_companies','visible_person_ids') order by 1`;
+  expect(pub).toEqual([{name:'access_visible_employment_ids',pub:false},{name:'access_visible_person_ids',pub:true},{name:'employment_partner_companies',pub:true},{name:'employment_read_companies',pub:false},{name:'visible_person_ids',pub:true}]);
   const[mode]=await owner.client<{mode:string}[]>`select mode from access_employment_precompute_control`;expect(mode.mode).toBe('legacy');
   expect(await stateRow()).toMatchObject({stale:false,trusted:true});
   expect(await unusable(managerUsers[eq(2)])).toBeNull();

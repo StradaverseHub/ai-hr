@@ -10,9 +10,12 @@ function definition(file:string,head:string){
 }
 const CAN_SEE='CREATE OR REPLACE FUNCTION app.can_see_employment(emp_id uuid)',VISIBLE='CREATE OR REPLACE FUNCTION app.visible_employment_ids()';
 export const REVIEWED_VISIBILITY_PREDECESSOR=definition('db/migrations/0109_hierarchy_visibility_rls.sql',CAN_SEE)+definition('db/migrations/2105_authorization_navigation_plans.sql',VISIBLE);
-export const CURRENT_VISIBILITY=definition('db/migrations/5144_attendance_lane_security_review.sql',CAN_SEE)+definition('db/migrations/5144_attendance_lane_security_review.sql',VISIBLE);
-/** Replay `sql` against the reviewed predecessor bodies, then reinstall the current ones in the same statement batch. */
-export const againstReviewedVisibility=(sql:string)=>REVIEWED_VISIBILITY_PREDECESSOR+sql+'\n'+CURRENT_VISIBILITY;
+/** The installed bodies: 5144's can_see_employment and 7240's visible_employment_ids. */
+export const CURRENT_VISIBILITY=definition('db/migrations/5144_attendance_lane_security_review.sql',CAN_SEE)+definition('db/migrations/7240_access_visible_employment.sql',VISIBLE);
+/** The bodies 7240 replaced (both from 5144), for replay tests that run in the pre-7240 state (installPre7240). */
+export const PRE_7240_VISIBILITY=definition('db/migrations/5144_attendance_lane_security_review.sql',CAN_SEE)+definition('db/migrations/5144_attendance_lane_security_review.sql',VISIBLE);
+/** Replay `sql` against the reviewed predecessor bodies, then reinstall the current ones (or `current`) in the same statement batch. */
+export const againstReviewedVisibility=(sql:string,current:string=CURRENT_VISIBILITY)=>REVIEWED_VISIBILITY_PREDECESSOR+sql+'\n'+current;
 
 /** 7240 (precomputed employment visibility) replaced app.visible_employment_ids (5144 body), and the USING of
  * employment_rls and person_rls. Its reviewed predecessor and replacement texts live in the migration itself. */
