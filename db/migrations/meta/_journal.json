@@ -7981,6 +7981,13 @@
       "when": 1795280007150,
       "tag": "7150_contract_list_company_rights_once",
       "breakpoints": true
+    },
+    {
+      "idx": 10570,
+      "version": "7",
+      "when": 1795488671170,
+      "tag": "7170_payroll_tax_basis_source_digest",
+      "breakpoints": true
     }
   ]
 }

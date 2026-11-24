@@ -259,6 +259,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10530,version:'7',when:1795280007130,tag:'7130_contract_users_person_first',breakpoints:true},
  {idx:10540,version:'7',when:1795280007140,tag:'7140_payroll_individual_import_steps',breakpoints:true},
  {idx:10550,version:'7',when:1795280007150,tag:'7150_contract_list_company_rights_once',breakpoints:true},
+ {idx:10570,version:'7',when:1795488671170,tag:'7170_payroll_tax_basis_source_digest',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1320,6 +1321,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_individual_import_request_revert(uuid,jsonb)',app:true},
    {fn:'app.payroll_transaction_export_read(uuid,integer)',app:true},
    {fn:'app.payroll_transaction_export_store(uuid,integer,bytea)',app:true},
+   {fn:'app.payroll_tax_basis_source_digest(uuid,integer)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
@@ -1396,6 +1398,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {"fn":"app.payroll_tax_basis_worker_managed(uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.payroll_txn_import_lock_step_bindings(uuid,integer[])","owner":"OWNER","definer":true,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, app, pg_temp"]},
    {"fn":"app.payroll_individual_import_request_revert(uuid,jsonb)","owner":"OWNER","definer":true,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, app, pg_temp"]},
+   {"fn":"app.payroll_tax_basis_source_digest(uuid,integer)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, app, pg_temp"]},
    {"fn":"app.v9_document_shared_routing_row(jsonb,jsonb)","owner":"OWNER","definer":false,"volatility":"i","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.v9_offboarding_document_routings(uuid,integer,text[])","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
    // Reviewed protocol-specific metadata; aliases preserve the canonical source owner.
