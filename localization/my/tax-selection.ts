@@ -169,9 +169,16 @@ export async function initializeHiredTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p
  if(e.companyId!==p.companyId)throw new TaxSelectionError('stale_context');
  const [profile]=await tx.select({epoch:employeeStatutoryMy.taxApplicabilityEpoch}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,e.personId)).limit(1).for('share');
  await lock(tx,ctx.tenantId,e.employmentId);
- const [row]=await tx.insert(employmentTaxSelectionMy).values({tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:e.companyId,taxApplicabilityEpoch:profile?.epoch??0,scheme:p.scheme,transitionState:'resolved',source:'explicit',provenance:{reason:'initial_hire_selection',declarationIds:[]},updatedByUserId:ctx.userId}).returning();
- await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment-tax-selection',aggregateId:row.id,eventType:'employee.tax-scheme.selected',actor:actorOf(ctx),subjectEmploymentId:e.employmentId,payload:{employmentId:e.employmentId,companyId:e.companyId,selectionId:row.id,before:null,after:{scheme:row.scheme,transitionState:row.transitionState,version:row.version},eligibilityDecision:'initial_hire_selection'}});
+ const [row]=await tx.insert(employmentTaxSelectionMy).values(hiredTaxSelectionValuesMY(ctx,{employmentId:e.employmentId,companyId:e.companyId,epoch:profile?.epoch??0,scheme:p.scheme})).returning();
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment-tax-selection',aggregateId:row.id,eventType:'employee.tax-scheme.selected',actor:actorOf(ctx),subjectEmploymentId:e.employmentId,payload:hiredTaxSelectionEventPayloadMY(row)});
  return row;
+}
+/** The initial selection row of a hire and its event payload; shared with the employee import's set path. */
+export function hiredTaxSelectionValuesMY(ctx:SessionContext,p:{employmentId:string;companyId:string;epoch:number;scheme:'resident'|'non_resident'}){
+ return {tenantId:ctx.tenantId,employmentId:p.employmentId,companyId:p.companyId,taxApplicabilityEpoch:p.epoch,scheme:p.scheme,transitionState:'resolved' as const,source:'explicit' as const,provenance:{reason:'initial_hire_selection',declarationIds:[] as string[]},updatedByUserId:ctx.userId};
+}
+export function hiredTaxSelectionEventPayloadMY(row:{id:string;employmentId:string;companyId:string;scheme:string|null;transitionState:string;version:number}){
+ return {employmentId:row.employmentId,companyId:row.companyId,selectionId:row.id,before:null,after:{scheme:row.scheme,transitionState:row.transitionState,version:row.version},eligibilityDecision:'initial_hire_selection'};
 }
 
 /** Canonical company writers supply their locked before-company after writing the new dated relation. */

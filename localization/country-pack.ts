@@ -418,6 +418,11 @@ export interface CountryPack {
   statutory: {
     set: MyStatutoryModule['setStatutoryProfileMY'];
     initializeForHire?:MyStatutoryModule['initializeHiredStatutoryMY'];
+    /** The pure parts of initializeForHire and initializeHiredTaxSelectionTx for a person with no profile yet, for the
+     * employee import's set path (ADR 0181 J2): the values the owner writes and the events' payloads. A pack without
+     * them imports every row through the per-row owners. */
+    hireGroup?:{prepareNewProfile:MyStatutoryModule['prepareNewStatutoryProfileMY'];profileEventPayload:MyStatutoryModule['statutoryProfileEventPayloadMY'];
+     taxSelectionValues:MyTaxSelectionModule['hiredTaxSelectionValuesMY'];taxSelectionEventPayload:MyTaxSelectionModule['hiredTaxSelectionEventPayloadMY']};
     /** Actual country-owned one-Tx read/modify/write interval for split-card pass-through. */
     withWrite?:MyStatutoryModule['withStatutoryProfileWriteMY'];
     /** Optional trusted human full-row reviewed source; never a generic model executor. */

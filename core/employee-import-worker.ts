@@ -18,15 +18,56 @@ import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {syncChildReliefFromFamily} from './dependents';
 import {claimEmployeeImportEvaluationTx,completeEmployeeImportEvaluationTx} from './personnel-import-evaluation';
 import {EMPLOYEE_IMPORT_KIND,type EmployeeImportJobInput} from './employee-import-job';
+import {applyEmployeeHireGroupTx,isEmployeeImportSetShape,SetPathDeclined,type EmployeeHireStep} from './employee-import-set';
 import type {AllocationImportPreview} from '../lib/cost-allocation-import';
 import type {EmployeeImportResultSummary} from '../lib/employee-import-job';
 import type {RowResult} from '../lib/import-schema';
 import type {BulkJobRowError} from '../lib/bulk-job';
 import {EMPLOYEE_IMPORT_SAVE_REPORT_LIMIT,cancelledFileMessage,cancelledRowMessage,ownerRefusalColumn,type EmployeeImportSaveReportRow} from '../lib/employee-import-report';
 
-/** Step work per chunk before it commits. One hire costs 60–150 ms (more on a loaded host), so most chunks hold the
- * tenant writer locks for one or two rows; the 8,000-row rehearsal at 200 ms peaked at 1.42 s under host load. */
+/** Per-row step work per chunk before it commits. One per-row hire costs 60–150 ms (more on a loaded host; about 100
+ * statements), so a chunk of per-row steps holds the tenant writer locks for one or two rows; the 8,000-row rehearsal
+ * at 200 ms peaked at 1.42 s under host load. A set-based group (below) is one chunk of its own. */
 export const EMPLOYEE_IMPORT_CHUNK_BUDGET_MS=Number(process.env.EMPLOYEE_IMPORT_CHUNK_BUDGET_MS??100);
+/** ADR 0181 J2, imports. Rows per set-based group, at most (1: every row takes the per-row path). */
+export const employeeImportGroupMax=()=>Math.max(1,Math.floor(Number(process.env.EMPLOYEE_IMPORT_GROUP_MAX??64))||1);
+/** The chunk length a group aims for, at least, and never more than the ceiling: a chunk holds the tenant's exclusive
+ * Access lock (SCALE rule 1 keeps every exclusive hold under about 1 s). */
+const groupTargetMs=()=>Math.max(1,Number(process.env.EMPLOYEE_IMPORT_CHUNK_TARGET_MS??250)||250);
+const groupCeilingMs=()=>Math.max(1,Number(process.env.EMPLOYEE_IMPORT_CHUNK_CEILING_MS??500)||500);
+/** One group has a fixed cost whatever its size (the group's tenant-level locks, checks and set statements); a chunk
+ * may last this many times that fixed cost, so it is spread over the group (same rule as the reprocess job). */
+const groupFixedMultiple=()=>Math.max(1,Number(process.env.EMPLOYEE_IMPORT_CHUNK_FIXED_MULTIPLE??2)||2);
+const FIRST_GROUP=8;
+/** The next group size from the last two groups of different sizes (a straight line: fixed cost F, cost per row m):
+ * the chunk fills max(target, multiple x F), at most the ceiling; until then, or when the line does not rise, the size
+ * doubles. Always 2..EMPLOYEE_IMPORT_GROUP_MAX, and at most double the last group. */
+export function nextEmployeeImportGroupSize(seen:readonly {rows:number;wallMs:number}[],last:number){
+ const max=employeeImportGroupMax(),grow=Math.max(2,Math.min(max,last*2));
+ const [a,b]=seen.slice(-2);
+ if(!a||!b||a.rows===b.rows)return grow;
+ const perRow=(b.wallMs-a.wallMs)/(b.rows-a.rows);
+ if(!(perRow>0))return grow;
+ const fixed=Math.max(0,b.wallMs-b.rows*perRow);
+ const target=Math.min(groupCeilingMs(),Math.max(groupTargetMs(),groupFixedMultiple()*fixed));
+ return Math.max(2,Math.min(grow,Math.floor((target-fixed)/perRow)));
+}
+/** Per job and process: the next group size and the passes it was estimated from; the steps that take the per-row
+ * path (their group was declined); and this chunk's state (when it started, how many steps it applied, and the steps
+ * its group already wrote, whose kernel steps only record themselves; the last one ends the chunk). */
+type ChunkState={startedAt:number;cpu:NodeJS.CpuUsage;applied:number;done:Map<number,StepResult>;last:number|null};
+type GroupState={size:number;seen:{rows:number;wallMs:number}[];single:Set<number>;chunk:ChunkState};
+const freshChunk=():ChunkState=>({startedAt:performance.now(),cpu:process.cpuUsage(),applied:0,done:new Map(),last:null});
+const groupStateOf=new Map<string,GroupState>();
+const groupState=(jobId:string)=>{let s=groupStateOf.get(jobId);if(!s){s={size:FIRST_GROUP,seen:[],single:new Set(),chunk:freshChunk()};groupStateOf.set(jobId,s);}return s;};
+const roundMs=(value:number)=>Math.max(0,Math.round(value));
+/** One line per chunk on the worker's stdout, beside the web's request timing (lib/request-timing.ts, same prefix and
+ * privacy rule: closed labels and numbers only, never a tenant, person, company or value). */
+function logChunk(mode:'group'|'single'|'declined',rows:number,wallMs:number,cpuMs:number,reason?:string){
+ if(process.env.AIHR_TIMING==='off')return;
+ console.info('[aihr-timing] '+JSON.stringify({t:'bulk-chunk',kind:EMPLOYEE_IMPORT_KIND,mode,rows,wallMs:roundMs(wallMs),calcMs:roundMs(cpuMs),dbMs:roundMs(wallMs-cpuMs),...(reason?{reason}:{})}));
+}
+const cpuMsSince=(start:NodeJS.CpuUsage)=>{const c=process.cpuUsage(start);return(c.user+c.system)/1000;};
 /** Target wall time of one settle or discard batch, and its bounds in rows per table. */
 const BATCH_TARGET_MS=Number(process.env.EMPLOYEE_IMPORT_BATCH_TARGET_MS??200);
 const BATCH_MIN=10,BATCH_MAX=1000;
@@ -82,9 +123,11 @@ async function ownerBatch(job:BulkJobRow,unit:Pick<BulkJobDiscardUnit,'metric'>,
 export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
  kind:EMPLOYEE_IMPORT_KIND,
  mode:'atomic',
- chunkBudgetMs:EMPLOYEE_IMPORT_CHUNK_BUDGET_MS,
- // A chunk applies a few rows within its budget; reading more pending payloads than that is wasted work.
- maxStepsPerChunk:16,
+ // Chunks end by `endChunk`: after a set-based group, or once per-row steps reach EMPLOYEE_IMPORT_CHUNK_BUDGET_MS
+ // (applyStepTx below). The kernel budget is only a backstop below the 60 s lease.
+ chunkBudgetMs:30_000,
+ // The pending steps a chunk reads: a group never extends past them (applyStepTx reads the same list).
+ get maxStepsPerChunk(){return Math.max(16,employeeImportGroupMax());},
  phaseOf:kind=>kind==='employee'?'employees':kind==='superior'?'superiors':'registers',
  isTransient,
  finalizeOwner:true,
@@ -122,13 +165,92 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
   await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  // The point-read marker (0691) the bank import and the payroll jobs use: an employment read skips rebuilding the
+  // visible-employment array when the initiator administers the company, an arm of the same predicate, so the rows
+  // read are the same. It grants no authority (row security and the staged-row policy are unchanged).
+  await tx.execute(sql`select set_config('app.bank_import_point_read','on',true)`);
+  groupState(job.id).chunk=freshChunk();
  },
  /** Item 1859cce0 — each step runs in a savepoint. A refusal by the owner (a business rule, not a busy database) is
   *  recorded on the step and the remaining rows continue, so every problem of the file is reported together;
   *  finalize then refuses the release and the discard voids everything staged. A transient error still rolls the
   *  whole chunk back for the kernel to retry. Steps of a refused row are skipped, never attempted. */
  async applyStepTx(tx,ctx,job,step,cache):Promise<BulkJobStepOutcome>{
-  const env=await stepEnv(tx,job,cache);const p=step.payload;
+  const state=groupState(job.id),chunk=state.chunk;
+  // Written by this chunk's group already: the step only records the result it had, and the group's last step ends
+  // the chunk.
+  const grouped=chunk.done.get(step.seq);
+  if(grouped){chunk.applied++;return{result:grouped,counters:{imported:1},...(step.seq===chunk.last?{endChunk:true}:{})};}
+  const env=await stepEnv(tx,job,cache);
+  if(chunk.applied===0&&employeeImportGroupMax()>=2&&isEmployeeImportSetShape(step.payload,planOf(job).allocationPreview)&&!state.single.has(step.seq)){
+   const group=await setGroupTx(tx,ctx,job,step,state,env);
+   if(group)return group;
+  }
+  const started=performance.now(),cpu=process.cpuUsage();
+  const outcome=await applyStepPerRowTx(tx,ctx,job,step,env);
+  const wallMs=performance.now()-started,cpuMs=cpuMsSince(cpu);
+  state.single.delete(step.seq);chunk.applied++;
+  const end=performance.now()-chunk.startedAt>=EMPLOYEE_IMPORT_CHUNK_BUDGET_MS;
+  if(end)logChunk('single',chunk.applied,performance.now()-chunk.startedAt,cpuMsSince(chunk.cpu));
+  return{...outcome,...(end?{endChunk:true}:{}),metrics:{add:{importSingles:1,importCalcMs:roundMs(cpuMs),importDbMs:roundMs(wallMs-cpuMs)},max:{importSingleMaxMs:roundMs(wallMs)}}};
+ },
+ finalize:(ctx,job,unit)=>{groupStateOf.delete(job.id);return finishing.finalize!(ctx,job,unit);},
+ onFailure:job=>planOf(job).released?'fail':'discard',
+ describeFailure:(job,error,step,owner)=>{groupStateOf.delete(job.id);return finishing.describeFailure!(job,error,step,owner);},
+ discard:(job,unit)=>finishing.discard!(job,unit),
+ afterTerminal:(ctx,job)=>finishing.afterTerminal!(ctx,job),
+};
+
+/** ADR 0181 J2: the first step of a chunk, of the common shape, writes the longest run of following pending steps of
+ * the same shape and company (up to the group size) through the set path, in one savepoint. A declined or refused
+ * group rolls back and its rows take the per-row path, which records exactly its own outcome. */
+async function setGroupTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<EmployeeImportPlanStep>,state:GroupState,env:StepEnv):Promise<BulkJobStepOutcome|null>{
+ const allocationPreview=planOf(job).allocationPreview;
+ // The same verified pending list the kernel read for this chunk (same definer, same limit; nothing applied yet).
+ const pending=await tx.execute<BulkJobStep<EmployeeImportPlanStep>>(sql`select seq,kind,row_num,payload from app.bulk_job_pending_steps(${job.id}::uuid,${employeeImportHandlerMaxSteps()})`);
+ if(pending[0]?.seq!==step.seq)return null;
+ const limit=Math.min(employeeImportGroupMax(),state.size);
+ const company=(step.payload as EmployeeHireStep).row.hire.companyId;
+ const group:BulkJobStep<EmployeeHireStep>[]=[];
+ for(const candidate of pending){
+  if(group.length>=limit||state.single.has(candidate.seq)||!isEmployeeImportSetShape(candidate.payload,allocationPreview)||candidate.payload.row.hire.companyId!==company)break;
+  group.push(candidate as BulkJobStep<EmployeeHireStep>);
+ }
+ if(group.length<2)return null;
+ const started=performance.now(),cpu=process.cpuUsage();
+ let results:Awaited<ReturnType<typeof applyEmployeeHireGroupTx>>;
+ try{results=await tx.transaction(savepoint=>applyEmployeeHireGroupTx(savepoint as Tx,ctx,group.map(g=>g.payload),{attemptId:job.attempt_id!}));}
+ catch(error){
+  if(isTransient(error))throw error;
+  // Declined or refused: every row of the group takes the per-row path (at most one group's worth of per-row work).
+  for(const g of group)state.single.add(g.seq);
+  logChunk('declined',group.length,performance.now()-started,cpuMsSince(cpu),error instanceof SetPathDeclined?error.reason:'refused');
+  return null;
+ }
+ const wallMs=performance.now()-started,cpuMs=cpuMsSince(cpu),n=group.length;
+ const done=new Map<number,StepResult>();
+ group.forEach((g,i)=>{
+  const r=results[i];done.set(g.seq,{employmentId:r.employmentId,personId:r.personId,family:r.family});
+  env.employmentByIndex.set(g.payload.index,r.employmentId);
+  if(g.payload.row.hire.employeeCode)env.registerSubjects.set(g.payload.row.hire.employeeCode,{employmentId:r.employmentId,personId:r.personId});
+ });
+ state.chunk.done=done;state.chunk.last=group[n-1].seq;state.chunk.applied++;
+ state.seen=[...state.seen.filter(p=>p.rows!==n),{rows:n,wallMs}].slice(-2);
+ state.size=nextEmployeeImportGroupSize(state.seen,n);
+ logChunk('group',n,wallMs,cpuMs);
+ return{result:done.get(step.seq),counters:{imported:1},metrics:{
+  add:{importGroups:1,importGroupRows:n,importCalcMs:roundMs(cpuMs),importDbMs:roundMs(wallMs-cpuMs)},
+  max:{importGroupMaxRows:n,importGroupMaxMs:roundMs(wallMs),importGroupMaxCalcMs:roundMs(cpuMs),importGroupMaxDbMs:roundMs(wallMs-cpuMs)},
+ }};
+}
+const employeeImportHandlerMaxSteps=()=>Math.max(16,employeeImportGroupMax());
+
+/** Item 1859cce0 — each step runs in a savepoint. A refusal by the owner (a business rule, not a busy database) is
+ *  recorded on the step and the remaining rows continue, so every problem of the file is reported together;
+ *  finalize then refuses the release and the discard voids everything staged. A transient error still rolls the
+ *  whole chunk back for the kernel to retry. Steps of a refused row are skipped, never attempted. */
+async function applyStepPerRowTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<EmployeeImportPlanStep>,env:StepEnv):Promise<{result:unknown;counters?:Record<string,number>}>{
+  const p=step.payload;
   if(p.kind==='superior'){
    if(env.refusedByIndex.has(p.index))return{result:{skipped:'refused-row'} satisfies StepResult};
    const managerRow=p.superior.kind==='row'?env.refusedByIndex.get(p.superior.index):undefined;
@@ -144,7 +266,10 @@ export const employeeImportJobHandler:BulkJobHandler<EmployeeImportPlanStep>={
    if(p.kind==='employee'){env.refusedByIndex.set(p.index,stepExcelRow(p));if(p.row.hire.employeeCode)env.refusedCodes.add(p.row.hire.employeeCode);}
    return{result:{refused:{message,column:ownerRefusalColumn(message)}} satisfies StepResult,counters:{refused:1}};
   }
- },
+}
+
+/** The import's release, failure record, discard and Import History, unchanged by the set path. */
+const finishing:Pick<BulkJobHandler<EmployeeImportPlanStep>,'finalize'|'onFailure'|'describeFailure'|'discard'|'afterTerminal'>={
  /** Release (one short transaction), then settle in bounded batches, then the post-commit follow-ups. */
  async finalize(ctx,job,unit){
   const plan=planOf(job);
