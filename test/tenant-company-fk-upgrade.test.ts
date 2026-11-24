@@ -263,6 +263,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10600,version:'7',when:1795495007200,tag:'7200_information_documents_planned_with_values',breakpoints:true},
  {idx:10610,version:'7',when:1795495007210,tag:'7210_access_effective_company',breakpoints:true},
  {idx:10620,version:'7',when:1795495007220,tag:'7220_movement_system_payroll_snapshot_insert',breakpoints:true},
+ {idx:10700,version:'7',when:1795495007300,tag:'7300_pay_component_itemised_payslips',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1342,6 +1343,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.access_effective_company_verify(uuid)',app:false},
    {fn:'app.access_precompute_set_mode(text)',app:false},
    {fn:'app.access_workforce_companies(text)',app:true},
+   // 7300 (ADR 0181 write side): the Pay Item stale-run marker's itemised slips, containment before authority.
+   {fn:'app.pay_component_itemised_payslips(uuid[],jsonb)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
