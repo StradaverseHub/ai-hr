@@ -54,6 +54,14 @@ export async function lockEmploymentLeaveDependenciesTx(tx:Tx,tenantId:string,em
  if(employmentIds.length)await lockLeaveDependenciesTx(tx,tenantId,employmentIds);
 }
 
+/** Leave-dependency configuration, exclusive, in the mode the transaction holds: a shared Access holder waits with the
+ * Access bound (a no-wait refusal would turn an ordinary concurrent leave command into a false busy, because leave
+ * commands no longer meet the writer on the exclusive Access lock); any other transaction keeps the no-wait lock. */
+export async function lockLeaveConfigurationForWriterTx(tx:Tx,tenantId:string):Promise<void>{
+ if(await accessLockModeHeldTx(tx,tenantId)==='S'){await lockLeaveConfigurationExclusiveWaitTx(tx,tenantId);return;}
+ await lockLeaveDependencyConfigurationTx(tx,tenantId);
+}
+
 /** Exclusive leave-dependency configuration with the bounded wait, for a shared Access holder. Same carrier checks
  * as the leave-dependency owner; a reached bound is the existing busy refusal, with nothing written. Taken before
  * any shared configuration or employment lock, so the holder never upgrades its own configuration lock. */

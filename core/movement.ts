@@ -28,7 +28,8 @@ import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx, MovementClosedPayrollAcknowledgementError } from './closed-payroll-correction-authority';
 export { MovementClosedPayrollAcknowledgementError };
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,workforceEmploymentPredicate,WorkforceAccessError} from './workforce-access';
-import {withAccessDisplayRead} from './access-configuration-lock';
+import {lockAccessConfigurationTx,withAccessDisplayRead} from './access-configuration-lock';
+import {lockLeaveConfigurationForWriterTx} from './workforce-lock-mode';
 import {withPersonnelRead} from './personnel-read-bounds';
 import {ownPersonPredicate} from './own-person';
 /**
@@ -3845,7 +3846,27 @@ async function resolveInputTypeTx<T extends CreateMovementInput>(
  * existing termination reason, movement remarks are staff-visible by design.
  */
 export function createMovementEvent(ctx: SessionContext, rawInput: CreateMovementInput, options?: {captureGradeBefore?:boolean}) {
-  return withTenant(ctx,tx=>createMovementEventTx(tx,ctx,rawInput,options));
+  return withTenant(ctx,tx=>createMovementEventSharedTx(tx,ctx,rawInput,options));
+}
+
+/**
+ * ADR 0181 (write side) — reader/writer Access lock for a New Event save. Taken as the transaction's first lock, the
+ * shared Access lock makes the movement a converted writer: its Workforce checks join shared and every leg (assignment,
+ * grade, reporting line, salary, employment information, payment method) already runs its converted, mode-aware owner.
+ * Before this, the first Workforce check took the EXCLUSIVE Access lock with no bound, so a save waited for every
+ * shared holder in the tenant (page reads, other HR saves, payroll jobs) and then blocked them all until it committed
+ * (production 24 November 2026: Save movement up to 7.4 s, 9 of 11 over 1 s; Direct Superior movement up to 8.1 s;
+ * focused diagnostic: a 1.5 s shared holder delayed a 0.2 s save by the full 1.5 s).
+ *
+ * Kinds that change the company or end or create an employment keep the exclusive lock exactly as before: their
+ * employment writes advance the Access revision and the administrator set only under it. A tenant's own event type
+ * resolves only to an interchangeable comparison kind (core/movement-kinds.ts), so it is shared like them.
+ * Proven in strict mode for every shared kind by test/access-reader-writer-movement.test.ts.
+ */
+export const MOVEMENT_EXCLUSIVE_ACCESS_KINDS:ReadonlySet<string>=new Set(MOVEMENT_KINDS.filter(kind=>!isComparisonKind(kind)||kind==='entityTransfer'||kind==='contractRenewal'));
+export async function createMovementEventSharedTx(tx:Tx,ctx:SessionContext,rawInput:CreateMovementInput,options?:{captureGradeBefore?:boolean}){
+  if(!MOVEMENT_EXCLUSIVE_ACCESS_KINDS.has(rawInput.kind))await lockAccessConfigurationTx(tx,ctx.tenantId);
+  return createMovementEventTx(tx,ctx,rawInput,options);
 }
 
 /** Canonical dispatcher in a caller-owned transaction; every writer/ledger leg shares this Tx. */
@@ -3857,7 +3878,8 @@ export async function createMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:Cr
   if (rawInput.kind === 'reportingLineChange') await refuseRepeatedDirectSuperiorChangeTx(tx, ctx, rawInput);
   // The tenant catalogue resolves custom codes to their actual effect. Own configuration before
   // that resolution and before current-state planning, not merely when the termination leg writes.
-  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+  // A shared Access holder (createMovementEventSharedTx) waits for it with the Access bound; otherwise no-wait as before.
+  await lockLeaveConfigurationForWriterTx(tx, ctx.tenantId);
   if (!probationMovementAuthorityTx(tx, rawInput)) assertMovementAdmin(ctx, 'record a movement');
   await lockPayrollInputsTx(tx, { employmentIds: [rawInput.employmentId], companyIds: rawInput.companyId ? [rawInput.companyId] : [] });
   if(!probationMovementAuthorityTx(tx,rawInput)&&isCalendarDate(rawInput.effectiveDate)&&rawInput.effectiveDate<=todayInKualaLumpur()){
