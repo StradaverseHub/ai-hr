@@ -2935,17 +2935,56 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    payrollReadPolicies.some(expected=>row.schemaname===expected.schemaname&&row.tablename===expected.tablename&&row.policyname===expected.policyname);
   expect(beforePerformancePrivileges.policies.filter(isPayrollReadPolicy)).toEqual([]);
   expect(afterPerformancePrivileges.policies.filter(isPayrollReadPolicy)).toEqual(payrollReadPolicies);
+  // 7210 (ADR 0181 Phase 2 pilot): four owner-only tables with their owner policies, and the Job descriptions read
+  // policies restated once per statement (job_document_read, job_document_revision_read and the FOR ALL
+  // job_document_revision_write). Each expected text is normalised by PostgreSQL under a temporary name.
+  const accessPilotTables=['access_company_closure','access_company_state','access_effective_company','access_precompute_control'];
+  const accessPilotOwner='for all using(app.acting_as_owner()) with check(app.acting_as_owner())';
+  const accessPilotView="j.company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))::uuid[])";
+  const accessPilotRevision=(extra:string)=>`tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.job_document j WHERE j.tenant_id=job_document_revision.tenant_id AND j.id=job_document_revision.job_id AND ${accessPilotView}${extra})`;
+  const accessPilotMaintain=" AND j.company_id=ANY((SELECT app.access_workforce_companies('workforce.maintain'))::uuid[])";
+  const accessPilotOldWrite="app.job_document_scope(tenant_id,job_id) AND EXISTS(SELECT 1 FROM job_document j WHERE j.id=job_id AND j.tenant_id=job_document_revision.tenant_id AND app.access_workforce_company(j.company_id,'workforce.maintain'))";
+  const accessPilotExpected=async(specs:{table:string;name:string;sql:string}[])=>storage.client.begin(async tx=>{
+   for(const [i,spec] of specs.entries())await tx.unsafe(`create policy upgrade_expected_access_pilot_${i} on public.${spec.table} ${spec.sql}`);
+   const rows=await tx<{schemaname:string;tablename:string;policyname:string;permissive:string;roles:string;cmd:string;qual:string|null;with_check:string|null}[]>`select schemaname::text,tablename::text,policyname::text,permissive::text,roles::text,cmd::text,qual,with_check
+    from pg_policies where schemaname='public' and policyname like 'upgrade_expected_access_pilot_%'`;
+   for(const [i,spec] of specs.entries())await tx.unsafe(`drop policy upgrade_expected_access_pilot_${i} on public.${spec.table}`);
+   return rows.map(row=>({...row,policyname:specs[Number(row.policyname.slice('upgrade_expected_access_pilot_'.length))].name}));
+  });
+  const accessPilotKey=(row:{tablename:string;policyname:string})=>row.tablename+'.'+row.policyname;
+  const accessPilotSort=<T extends {tablename:string;policyname:string}>(rows:readonly T[])=>[...rows].sort((a,b)=>accessPilotKey(a)<accessPilotKey(b)?-1:1);
+  const accessPilotAfter=accessPilotSort(await accessPilotExpected([
+   ...accessPilotTables.map(table=>({table,name:table+'_owner',sql:accessPilotOwner})),
+   {table:'job_document',name:'job_document_read',sql:"for select to ai_hr_app using(tenant_id=app.current_tenant_id() AND company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))::uuid[]))"},
+   {table:'job_document_revision',name:'job_document_revision_read',sql:`for select to ai_hr_app using(${accessPilotRevision('')})`},
+   {table:'job_document_revision',name:'job_document_revision_write',sql:`for all to ai_hr_app using(${accessPilotRevision(accessPilotMaintain)}) with check(${accessPilotRevision(accessPilotMaintain)})`},
+  ]));
+  const accessPilotBefore=accessPilotSort(await accessPilotExpected([
+   {table:'job_document',name:'job_document_read',sql:"for select to ai_hr_app using(tenant_id=app.current_tenant_id() AND app.access_workforce_company(company_id,'workforce.view'))"},
+   {table:'job_document_revision',name:'job_document_revision_read',sql:'for select to ai_hr_app using(app.job_document_scope(tenant_id,job_id))'},
+   {table:'job_document_revision',name:'job_document_revision_write',sql:`for all to ai_hr_app using(${accessPilotOldWrite}) with check(${accessPilotOldWrite})`},
+  ]));
+  expect(accessPilotAfter).toHaveLength(7);expect(accessPilotBefore).toHaveLength(3);
+  const isAccessPilotPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>row.schemaname==='public'&&accessPilotAfter.some(expected=>accessPilotKey(expected)===accessPilotKey(row));
+  const isAccessPilotReplaced=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&accessPilotBefore.some(expected=>accessPilotKey(expected)===accessPilotKey(row));
+  const isAccessPilotRelation=(rel:string)=>accessPilotTables.includes(rel);
+  expect(accessPilotSort(beforePerformancePrivileges.policies.filter(isAccessPilotPolicy))).toEqual(accessPilotBefore);
+  expect(accessPilotSort(afterPerformancePrivileges.policies.filter(isAccessPilotPolicy))).toEqual(accessPilotAfter);
+  expect(beforePerformancePrivileges.relations.filter(row=>isAccessPilotRelation(row.rel))).toEqual([]);
+  const accessPilotRelations=afterPerformancePrivileges.relations.filter(row=>isAccessPilotRelation(row.rel));
+  expect(accessPilotRelations.map(row=>[row.rel,row.rls,row.force])).toEqual(accessPilotTables.map(rel=>[rel,true,true]));
+  for(const row of accessPilotRelations)expect(String(row.acl??''),row.rel+' grants nothing to the application role').not.toContain('ai_hr_app');
   const terminalComparable={
-   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)).map(row=>
+   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)&&!isAccessPilotRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)&&!isSixItemPolicy(row)&&!isPayrollReadPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)&&!isSixItemPolicy(row)&&!isPayrollReadPolicy(row)&&!isAccessPilotPolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
       isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:originalLegacyEmailAssetPredicate(row)),
   };
-  expect(terminalComparable).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row)&&!isLanePolicy(row))});
+  expect(terminalComparable).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row)&&!isLanePolicy(row)&&!isAccessPilotReplaced(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);
   expect(complete.slice(0,performanceStart)).toEqual(beforePerformanceLedger);
   expect(complete.slice(671).map(row=>({hash:row.hash,created_at:row.created_at}))).toEqual(APPROVED_UPGRADE_TAIL.map(entry=>({hash:hash(readFileSync('db/migrations/'+entry.tag+'.sql')),created_at:String(entry.when)})));
