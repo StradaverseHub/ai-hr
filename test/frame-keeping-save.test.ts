@@ -90,6 +90,8 @@ function dayPlus(date:string,days:number){const d=new Date(`${date}T00:00:00Z`);
 function weekday(offset:number){let d=dayPlus(todayInKualaLumpur(),14+offset);while([0,6].includes(new Date(`${d}T00:00:00Z`).getUTCDay()))d=dayPlus(d,1);return d;}
 
 beforeAll(async()=>{
+ // The frame is compared uncached (its worst case); the cached viewer menu is test/viewer-menu-profile.test.ts's.
+ process.env.AIHR_VIEWER_MENU_CACHE='off';
  await migrateTestDb();await resetDb();b=await seedBase();
  fixture=await buildScaleFixture(b,{employments:1000,events:2000});
  const base=await entitledCtx(b,['hr_admin']);
@@ -136,7 +138,7 @@ beforeAll(async()=>{
  }
  await owner.db.execute(sql`analyze public.leave_request, public.leave_request_date, public.reporting_line, public.notification`);
 },300_000);
-afterAll(async()=>{await closeAll();});
+afterAll(async()=>{delete process.env.AIHR_VIEWER_MENU_CACHE;await closeAll();});
 beforeEach(()=>{spies.revalidatePath.length=0;spies.redirect.length=0;});
 
 function as(role:Role,scope:'all'|'one'='all'){
