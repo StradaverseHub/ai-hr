@@ -22,8 +22,10 @@ export type ViewerMenuProfile = {
   offboardingPostingsAccess: boolean;
 };
 
-/** The tenant's access version (migration 7260), or null when it cannot be read (the frame then reads live). */
+/** The tenant's access version (migration 7260), or null when it cannot be read or the menu is not cached for this
+ * session (the frame then reads live, and sends no version read). */
 export async function viewerAccessVersion(session: SessionContext): Promise<string | null> {
+  if (!cacheable(session)) return null;
   try {
     return await withTenant(session, async tx => {
       const [row] = await tx.execute<{ version: string }>(sql`select app.viewer_access_version()::text as version`);
