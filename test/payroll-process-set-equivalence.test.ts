@@ -203,10 +203,14 @@ it('processes a 120-employee run in set-based groups exactly as the per-employee
   const split=(p:typeof per,job:typeof perJob)=>({wallMs:Math.round(p.ms),cpuMs:p.cpuMs,dbMs:Math.max(0,Math.round(p.ms-p.cpuMs)),statements:p.statements,
    msPerEmployee:+(p.ms/paid).toFixed(1),statementsPerEmployee:+(p.statements/paid).toFixed(1),metrics:job.metrics,top:p.top});
   timing[period]={perEmployee:split(per,perJob),set:split(set,setJob)};
-  // The set path really grouped: no single steps, every employee in a group, fewer passes than steps.
-  expect(setJob.metrics.processSingles??0).toBe(0);
-  expect(setJob.metrics.processGroupEmployees).toBe(paid);
-  expect(setJob.metrics.processGroups).toBeLessThan(Math.ceil(paid/4));
+  // The set path really grouped: no group refused, every employee in a pass, and far fewer passes than steps. A
+  // one-step pass is only the run's last step left alone (the group size follows the measured passes, so where the
+  // last group ends depends on the host's timing).
+  expect(setJob.metrics.processRefusedGroups??0).toBe(0);
+  expect(setJob.metrics.processSingles??0).toBeLessThanOrEqual(1);
+  expect(setJob.metrics.processGroupEmployees+(setJob.metrics.processSingleEmployees??0)).toBe(paid);
+  expect(setJob.metrics.processGroupEmployees).toBeGreaterThan(paid-4);
+  expect(setJob.metrics.processGroups+(setJob.metrics.processSingles??0)).toBeLessThan(Math.ceil(paid/4)/2);
   expect(perJob.metrics.processGroups??0).toBe(0);
   expect(perJob.metrics.processSingleEmployees).toBe(paid);
   // Per-employee statements fall: the group path sends fewer statements per employee than the per-employee path.

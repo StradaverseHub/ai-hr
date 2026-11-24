@@ -235,7 +235,8 @@ payroll truth stays in its source tables.
   - **Timing.** Each pass logs an `[aihr-timing]` `bulk-chunk` line (`kind` payroll_process, `mode` group or single,
     employees, steps, wall, calculation, database) and adds to `bulk_job.metrics`: `processCalcMs` (process CPU) and
     `processDbMs` (the rest of the wall time), `processGroups`, `processGroupEmployees`, `processSingles`,
-    `processSingleEmployees` and per-pass maxima.
+    `processSingleEmployees`, `processRefusedGroups` (group passes that refused and fell back) and per-pass maxima. A
+    one-step pass is otherwise the run's last step left alone, or a group estimated below two steps.
   - **Proof.** `test/payroll-process-set-equivalence.test.ts`: two tenants built identically through the product owners
     at 70 companies and 1,000 employments; a 120-employee run with TP3 money and Section C2 openings, a taxable and a
     non-taxable Pay Item, May salary changes, daily-rated employees, people with no income tax and a May joiner, processed

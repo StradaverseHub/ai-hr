@@ -248,6 +248,7 @@ async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:RunSt
     group.push(next);employees+=idsOf(next).length;
    }
   }
+  let refused=false;
   if(group.length>1){
    const started=performance.now(),cpuStarted=process.cpuUsage();
    try{
@@ -263,7 +264,7 @@ async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:RunSt
     if(isTransientRunError(error))throw error;
     // The group's savepoint rolled back every write of the pass. Its steps run one per pass, exactly as before, so a
     // refusal (and the employees it names) is the per-step path's; grouping resumes after them.
-    state.singleThrough=group[group.length-1].seq;
+    state.singleThrough=group[group.length-1].seq;refused=true;
    }
   }
   const started=performance.now(),cpuStarted=process.cpuUsage();
@@ -273,7 +274,9 @@ async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:RunSt
   // A one-step pass is a point on the same line, so a group size estimated below two steps can grow again.
   if(max>1)measure(state,max,idsOf(step).length,time.wallMs);
   return{...chunkOutcome(chunk),metrics:{
-   add:{processSingles:1,processSingleEmployees:idsOf(step).length,processCalcMs:roundMs(time.calcMs),processDbMs:roundMs(time.dbMs)},max:{processSingleMaxMs:roundMs(time.wallMs)},
+   // `processRefusedGroups`: group passes that refused and fell back (a one-step pass is otherwise the run's last step
+   // alone, or a group estimated below two steps).
+   add:{processSingles:1,processSingleEmployees:idsOf(step).length,processCalcMs:roundMs(time.calcMs),processDbMs:roundMs(time.dbMs),...(refused?{processRefusedGroups:1}:{})},max:{processSingleMaxMs:roundMs(time.wallMs)},
   }};
 }
 const idsOf=(step:RunStep)=>(step.payload as EmployeesStep).employmentIds;
