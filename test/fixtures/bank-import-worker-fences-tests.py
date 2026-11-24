@@ -19,7 +19,7 @@ fences=importlib.util.module_from_spec(spec);spec.loader.exec_module(fences)
 class FencesTests(unittest.TestCase):
     def setUp(self):
         self.assertEqual(sys.platform,'linux','Descriptor metadata fixture requires standard Linux hosted runner')
-        self.tmp=tempfile.TemporaryDirectory(prefix='aihr-worker-fences-',dir='/tmp');self.root=Path(self.tmp.name)
+        self.tmp=tempfile.TemporaryDirectory(prefix='aihr-worker-fences-');self.root=Path(self.tmp.name)
         self.tree=self.root/'source';self.tree.mkdir();self.file=self.tree/'pay.dat';self.file.write_bytes(b'paid')
         self.targets=self.root/'dependencies';self.targets.mkdir();(self.targets/'target').write_bytes(b'dependency')
     def tearDown(self):self.tmp.cleanup()

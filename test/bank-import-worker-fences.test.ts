@@ -1,8 +1,9 @@
 /** Complete descriptor-relative metadata observations; hosted Linux only, no staging/live mutation. */
 import {spawnSync} from 'node:child_process';
 import {expect,it} from 'vitest';
+import {workerFixtureEnv} from './helpers/worker-fixture-tmp';
 it('refuses real filesystem races and observes complete stable bounded metadata with actual descriptors',()=>{
- const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-fences-tests.py'],{encoding:'utf8',maxBuffer:1024**2,timeout:90000});
+ const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-fences-tests.py'],{env:workerFixtureEnv('fences'),encoding:'utf8',maxBuffer:1024**2,timeout:90000});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
  expect(result.stderr).toContain('Ran 26 tests');
 },100000);
