@@ -9,7 +9,7 @@ import {
   revertIndividualImportStep, stopIndividualImport, validateIndividualImport, type IndividualImportProgress,
 } from './individual-txn-import';
 import {readIndividualImportJob} from './individual-import-job';
-import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reserveOwner} from './owner-step-deadline';
+import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reservedWithin} from './owner-step-deadline';
 
 type QueuedJob = IndividualImportJob & {
   context: SessionContext;
@@ -67,7 +67,7 @@ export async function runIndividualImportTick(
   const deadlineMs = ownerDeadlineMs(options.ownerDeadlineMs);
   const claimStep = ownerClaimDeadline(deadlineMs);
   const own = <T>(work: Promise<T>, step: string) => ownerStep(work, step, deadlineMs);
-  const connection = await reserveOwner(owner, deadlineMs);
+  const connection = await reservedWithin(owner.reserve(), deadlineMs);
   let unresponsive = false;
   const lost = (error: unknown) => {
     if (error instanceof OwnerConnectionUnresponsive) unresponsive = true;

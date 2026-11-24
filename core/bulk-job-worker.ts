@@ -23,7 +23,7 @@ import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {freshImportContext} from './bank-import-worker';
 import type {BulkJobRow} from './bulk-job';
 import {laneMarker,type WorkerLane} from './bulk-job-lanes';
-import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reserveOwner} from './owner-step-deadline';
+import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reservedWithin} from './owner-step-deadline';
 
 export type BulkJobStepInput={kind:string;rowNum?:number|null;payload:unknown};
 export type BulkJobStep<P=unknown>={seq:number;kind:string;row_num:number|null;payload:P};
@@ -191,7 +191,7 @@ export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOpt
  // missed its deadline is never returned to the pool; the worker exits.
  const deadlineMs=ownerDeadlineMs(options.ownerDeadlineMs);
  const claimStep=ownerClaimDeadline(deadlineMs);
- const connection=await reserveOwner(owner,deadlineMs);
+ const connection=await reservedWithin(owner.reserve(),deadlineMs);
  let unresponsive=false;
  try{
   const [proof]=await claimStep(connection<{ok:boolean}[]>`select exists(select 1 from pg_roles r join pg_class c on c.oid='public.bulk_job'::regclass where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid)) as ok`,'the owner proof');

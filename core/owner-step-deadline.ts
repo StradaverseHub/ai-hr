@@ -43,7 +43,8 @@ export function ownerClaimDeadline(ms:number){
  return <T>(work:Promise<T>,step:string)=>ownerStep(work,step,Math.max(0,by-Date.now()));
 }
 
-/** The owner connection reserved within `ms`; a reservation that arrives later is released at once. */
-export function reserveOwner(owner:postgres.Sql,ms:number):Promise<postgres.ReservedSql>{
- return ownerStep(owner.reserve(),'the connection reservation',ms,late=>late.release());
+/** The pending owner reservation, within `ms`; one that arrives later is released at once. The caller reserves
+ * itself, so a reserved connection stays confined to the worker files test/pooler-compatibility-drift.test.ts allows. */
+export function reservedWithin(reservation:Promise<postgres.ReservedSql>,ms:number):Promise<postgres.ReservedSql>{
+ return ownerStep(reservation,'the connection reservation',ms,late=>late.release());
 }

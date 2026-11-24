@@ -14,7 +14,7 @@ import {PersonnelCsvError} from '../lib/personnel-csv';
 import {BANK_IMPORT_STAGE_ROWS,bankImportStagedRecords,stageBankImportSource} from '../lib/bank-import-stream-source.server';
 import {BANK_IMPORT_BATCH_ROWS,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
 import {analyzeBankImportBatch,applyBankImportRowTx,BankImportRowRejectedError} from './import-sections';
-import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reserveOwner} from './owner-step-deadline';
+import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reservedWithin} from './owner-step-deadline';
 import {createImportAttemptTx,recordImportEventTx,sealImportPlan} from './import-history';
 import type {ImportPlanBase} from '../lib/import-history';
 import type {ImportRecord} from '../lib/import-schema';
@@ -138,7 +138,7 @@ async function processBankImportPhase(ctx:SessionContext,id:string,options:BankI
 export async function runBankImportTick(owner:postgres.Sql,options:{ownerDeadlineMs?:number}={}):Promise<boolean>{
  const deadlineMs=ownerDeadlineMs(options.ownerDeadlineMs);
  const claimStep=ownerClaimDeadline(deadlineMs);
- const connection=await reserveOwner(owner,deadlineMs);
+ const connection=await reservedWithin(owner.reserve(),deadlineMs);
  let unresponsive=false;
  const lost=(error:unknown)=>{if(error instanceof OwnerConnectionUnresponsive)unresponsive=true;throw error;};
  try{
