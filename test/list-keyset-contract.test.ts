@@ -65,7 +65,9 @@ describe('keyset page query', () => {
     expect(parseKeysetPageQuery({ count: 'yes' }).exactCount).toBe(false);
   });
   it('"All" has no cursor and no Last', () => {
-    expect(parseKeysetPageQuery({ size: 'all', after: A, last: '1' })).toMatchObject({ size: 'all', limit: ALL_ROW_CEILING, after: undefined, last: false });
+    const q = parseKeysetPageQuery({ size: 'all', after: A, last: '1' });
+    expect(q).toMatchObject({ size: 'all', limit: ALL_ROW_CEILING, last: false });
+    expect(q.after).toBeUndefined();
   });
 });
 
