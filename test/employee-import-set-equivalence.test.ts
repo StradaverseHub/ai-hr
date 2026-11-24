@@ -186,7 +186,8 @@ const takeCode=(t:Tenant)=>async()=>{
 beforeAll(async()=>{await migrateTestDb();await resetDb();});
 afterAll(async()=>{delete process.env.EMPLOYEE_IMPORT_GROUP_MAX;await closeAll();});
 
-// Budget about 3x the first hosted run's case duration, recorded in the PR (SCALE rule 15).
+// Hosted runner case durations 50.9 s (run 45478436767) and 84.1 s (run 45482824672); the limit is about 3x the slower
+// (SCALE rule 15).
 it('imports set-based exactly as the per-row path, at the shape of a 70-company group',async()=>{
  const started=performance.now();
  const a=await build(),b=await build();
@@ -248,4 +249,4 @@ it('imports set-based exactly as the per-row path, at the shape of a 70-company 
   perRow:{...split(perRow,ROWS),metrics:perRowMetrics},set:{...split(set,ROWS),metrics:setMetrics,top:set.top},
   perRowRefused:split(perRowRefused,REFUSED_ROWS),setRefused:{...split(setRefused,REFUSED_ROWS),metrics:setRefusedMetrics},
  },null,1));
-},900_000);
+},260_000);

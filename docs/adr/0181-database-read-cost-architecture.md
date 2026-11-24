@@ -209,6 +209,13 @@ payroll truth stays in its source tables.
     80-row file refused while saving (one row's Employee ID taken after preparation, so its group is declined
     mid-file). Equal on every saved row, every event in chain order with its payload, the job, the progress view,
     Import History (attempt, items, events, runs and error rows) and the chain verification.
+  - **Measured** (hosted runner, the equivalence file of 120 rows): 157 ms and 117 statements a row per row against
+    81 ms and 28 statements set-based (run 45478436767; calculation 5.0 s and database 13.9 s against 1.7 s and 8.0 s),
+    and 284 against 126 ms a row on a slower runner (run 45482824672). One group costs about 140 ms fixed plus about
+    20 ms a row; about 15 ms a row more is deferred work at commit, and validation (unchanged) about 20 ms a row. Groups
+    of about 16 rows would save a further 15–20 ms a row at the price of exclusive holds near 1 s, so the target stays
+    at 300 ms. The longest chunk lock hold rose from about 350 ms to about 700 ms (commit included), under the 1 s
+    bound, over about a third as many chunks.
   - **Maintenance.** A change to a covered owner (the hire, the first salary, the IC-derived date of birth, the MY
     statutory or tax-selection initialisation) must keep the set path in step; the equivalence test fails otherwise.
 
