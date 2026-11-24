@@ -113,20 +113,21 @@ describe('the bell\'s recruitment to-dos at the shape of a 71-company group', ()
   it('sends the same few statements whatever the number of companies, and answers as the earlier reader did', async () => {
     const { group, multi, single } = fixture.personas;
     const all = [...fixture.companyIds];
-    const cases: [string, SessionContext, string[] | undefined, number][] = [
-      ['group, no selection', group, undefined, 6], ['group, all companies', group, all, 6], ['group, one company', group, [fixture.singleCompanyId], 1],
-      ['multi, all companies', multi, all, 6],
-      ['single, its company', single, [fixture.singleCompanyId], 1], ['interviewer, no selection', interviewer, undefined, 6],
-      ['approver, no selection', approver, undefined, 1], ['employee, no selection', employee, undefined, 0],
+    // [label, viewer, selection, items, statements]: the identity, the statement timeout, the viewer's own rows, and the names
+    // only when a row names a job, candidate or agency (a requisition approval names none; nothing at all names nothing).
+    const cases: [string, SessionContext, string[] | undefined, number, number][] = [
+      ['group, no selection', group, undefined, 6, 4], ['group, all companies', group, all, 6, 4], ['group, one company', group, [fixture.singleCompanyId], 1, 4],
+      ['multi, all companies', multi, all, 6, 4],
+      ['single, its company', single, [fixture.singleCompanyId], 1, 4], ['interviewer, no selection', interviewer, undefined, 6, 4],
+      ['approver, no selection', approver, undefined, 1, 3], ['employee, no selection', employee, undefined, 0, 3],
     ];
     const shapes: Record<string, number[]> = {};
-    for (const [label, ctx, scope, items] of cases) {
+    for (const [label, ctx, scope, items, statements] of cases) {
       const observed = await observeStatements(() => pendingRecruitmentTasks(ctx, scope));
       expect(observed.result, label).toEqual((await originalRecruitmentTodos(ctx, scope)).flatMap((x) => todoToPackTask(x) ?? []));
       expect(observed.result, label).toHaveLength(items);
       expect(observed.transactions, label).toBe(1);
-      // The identity, the statement timeout, the viewer's own rows, and the names only when there are rows.
-      expect(observed.statements, label).toHaveLength(items ? 4 : 3);
+      expect(observed.statements, label).toHaveLength(statements);
       shapes[label] = observed.statements.map((s) => s.params.length);
     }
     // A selection of 71 companies is the same statements with the same parameters as a selection of one; 71 grants one by one
