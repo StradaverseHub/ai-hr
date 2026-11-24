@@ -1,4 +1,4 @@
-/** 7260 (ADR 0181 employment-visibility addendum, step (d)): app.delegated_decision_employment_ids() is exactly
+/** 7280 (renumbered from 7260; ADR 0181 employment-visibility addendum, step (d)): app.delegated_decision_employment_ids() is exactly
  * { s : app.can_decide_via_delegation(s) } (the 0109 predicate) for every user, and the five leave read policies ask
  * it once per statement. Fixture (fictional): a delegator with three current reports, one terminated report, one
  * report through an ended line and one through a superseded line; delegate lines that are current, expired,

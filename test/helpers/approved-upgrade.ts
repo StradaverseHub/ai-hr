@@ -485,7 +485,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10610,when:1795495007210,tag:'7210_access_effective_company'},
  {idx:10630,when:1795495007230,tag:'7230_assignment_current_department_index'},
  {idx:10640,when:1795495007240,tag:'7240_access_visible_employment'},
- {idx:10660,when:1795495007260,tag:'7260_leave_delegated_decision_set'},
+ {idx:10680,when:1795495007280,tag:'7280_leave_delegated_decision_set'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -498,7 +498,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7210_access_effective_company':'b69dafe700e795d50f7d664ac17dfef6d7daffa7f0966ad8ef9c71d5a886eb9a',
  '7230_assignment_current_department_index':'09cfad9849af9981f5be010625aecaba17c667c791eed79e57ea59238f7e39d9',
  '7240_access_visible_employment':'3c2d86400233c1bf7d55249d00afee224b31b141c8666dc9d813e962ab83907b',
- '7260_leave_delegated_decision_set':'9be9796a524f31cf3d8c615022fc980c1ccfc5881bfd999999ee695c3636ae37',
+ '7280_leave_delegated_decision_set':'7793e230fe94c533afb2d2261ca652ee5459082c884b1fb031089a221a2fe6ae',
  '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',
  '7100_payroll_run_company_review':'558adf2530aa3961163841b6df000b3dbcc9af30d21e309258e3b2a72f2b5ec6',
  '7080_job_run_deterministic_order':'7f7b01ba1053bd6a39e8c5f04f50ae429e6553c04fb420d79318b0ba80bad736',

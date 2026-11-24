@@ -1,10 +1,11 @@
-# Leave delegated decisions once per statement, 25 November 2026
+# Leave delegated decisions once per statement, 25 November 2026 (7280)
 
-Reserve `7260_leave_delegated_decision_set`, journal index `10660`, timestamp `1795495007260`,
-SQL SHA-256 `9be9796a524f31cf3d8c615022fc980c1ccfc5881bfd999999ee695c3636ae37`. It follows `7240_access_visible_employment` (`10640`) and the staging coordinator's
-`7250` (the replacement-holiday queue fix, PR 299, timestamp `1795495007250`, released after release 6); any later entry
-must be above it. Neither installation's watermark was read from this session; recheck both and any competing
-reservation before admission.
+Reserve `7280_leave_delegated_decision_set`, journal index `10680`, timestamp `1795495007280`,
+SQL SHA-256 `7793e230fe94c533afb2d2261ca652ee5459082c884b1fb031089a221a2fe6ae`. Renumbered from 7260 on 25 November 2026: Phase 3's `7260_viewer_access_version`
+(branch `claude/db-read-cost-phase-3`) reserved 7260 first, and Phase 4 holds `7270_approval_history_keyset`. A scan of
+the 400 most recent remote heads and every registered worktree journal found nothing above 7270. Install order stays
+ascending: release 6 (7230, 7240), 7250 (PR 299), 7260 (Phase 3), 7270 (Phase 4), then this. Neither installation's
+watermark was read from this session; recheck both and any competing reservation before admission.
 
 Step (d) of the approved employment-visibility addendum. Adds `app.delegated_decision_employment_ids()` (EXECUTE to
 `ai_hr_app`), the 0109 `can_decide_via_delegation` predicate as one set per statement, and replaces only the per-row

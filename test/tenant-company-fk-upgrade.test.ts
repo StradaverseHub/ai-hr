@@ -264,7 +264,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10610,version:'7',when:1795495007210,tag:'7210_access_effective_company',breakpoints:true},
  {idx:10630,version:'7',when:1795495007230,tag:'7230_assignment_current_department_index',breakpoints:true},
  {idx:10640,version:'7',when:1795495007240,tag:'7240_access_visible_employment',breakpoints:true},
- {idx:10660,version:'7',when:1795495007260,tag:'7260_leave_delegated_decision_set',breakpoints:true},
+ {idx:10680,version:'7',when:1795495007280,tag:'7280_leave_delegated_decision_set',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1365,7 +1365,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.access_visible_person_ids()',app:true},
    {fn:'app.employment_partner_companies()',app:true},
    {fn:'app.employment_read_companies()',app:true},
-   // 7260 (ADR 0181 step (d)): the delegated-decision set the five leave read policies ask once per statement.
+   // 7280 (ADR 0181 step (d)): the delegated-decision set the five leave read policies ask once per statement.
    {fn:'app.delegated_decision_employment_ids()',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
@@ -1592,7 +1592,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(beforePerson?.qual).toBe(expectedPersonQuals[0]);
   expect(afterPerson?.qual).toBe(expectedPersonQuals[1]);
   expect({...afterPerson,qual:expectedPersonQuals[0]}).toEqual(beforePerson);
-  // 7260 replaced only the per-row delegation term of five leave read policies with the once-per-statement set.
+  // 7280 replaced only the per-row delegation term of five leave read policies with the once-per-statement set.
   const delegatedLeavePolicies=['leave_request_rls','leave_approval_step_rls','leave_request_date_rls','replacement_leave_request_rls','replacement_leave_request_date_rls'];
   const isDelegatedLeavePolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&delegatedLeavePolicies.includes(String(row.policyname));
   const beforeDelegated=new Map(beforePerformancePrivileges.policies.filter(isDelegatedLeavePolicy).map(row=>[String(row.policyname),row]));

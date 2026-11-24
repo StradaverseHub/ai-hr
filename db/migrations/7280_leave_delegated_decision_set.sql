@@ -1,4 +1,4 @@
--- ADR 0181 employment-visibility addendum, step (d), approved by the owner on 24 November 2026
+-- 7280 (renumbered from 7260, which Phase 3 reserved first). ADR 0181 employment-visibility addendum, step (d), approved by the owner on 24 November 2026
 -- (docs/adr/0181-addendum-precomputed-employment-visibility.md, decision 3).
 --
 -- Five leave read policies admit a row when its subject is visible OR the caller may decide it through a delegation:
