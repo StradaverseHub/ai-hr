@@ -14,7 +14,7 @@ import {createBackgroundReadAdmission} from './background-read-admission';
 import {createTenantWriteAdmission} from './tenant-write-admission';
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {cancelStatementsAtDeadline,currentDatabaseReadDeadline,currentDatabaseWorkload,databaseReadSignal,inIdempotentDatabaseRead,withBackgroundDatabaseWork} from './workload';
-import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
+import {applicationDatabaseBudget,databaseAdmissionShares,databaseConnectionLifetime} from './capacity';
 import {applicationDatabaseUrl} from './pooling';
 import {processConnectionOptions} from './worker-connection';
 import {markDatabaseCapacityFailure,retryAdmissionRefusal,retryIdempotentRead} from './read-retry';
@@ -22,6 +22,8 @@ import {SharedReadSession,currentSharedRead,independentTransactionsRequired,mark
 export {declareSharedReadWindow,declareSharedReadPreamble,withOwnerPreambleReads} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
+// Long-lived connections keep PostgreSQL's catalog caches warm under row security (db/capacity.ts, ADR 0181).
+const connectionLifetime = databaseConnectionLifetime(process.env);
 /** The tenant whose transaction this code runs inside; a nested acquire must not wait on that tenant's own share. */
 const transactionTenant = new AsyncLocalStorage<string>();
 /** The tenant whose shared read snapshot (db/shared-read.ts) this request runs inside, and whether one of its carrier
@@ -223,8 +225,9 @@ function sharedReadIdentity(ctx: SessionContext, grants: Grant[], roleNames: str
 export function createDb(connectionString: string, options?: { max?: number; admissionWaitMs?: number }) {
   let client = pgPools.get(connectionString);
   if (!client) {
-    // A worker-role process also gets dead-peer detection (db/worker-connection.ts); the web keeps driver defaults.
-    client = postgres(connectionString, { max: options?.max ?? applicationBudget.poolMax, ...processConnectionOptions(applicationBudget.role) });
+    // A worker-role process also gets dead-peer detection (db/worker-connection.ts). Every pool keeps each connection
+    // for hours instead of the driver's 30–60 minutes (connectionLifetime above).
+    client = postgres(connectionString, { max: options?.max ?? applicationBudget.poolMax, max_lifetime: connectionLifetime, ...processConnectionOptions(applicationBudget.role) });
     pgPools.set(connectionString, client);
   }
   // Direct table-based select/insert/update/delete retain their own schema and types. Registering

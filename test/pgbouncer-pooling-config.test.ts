@@ -125,6 +125,16 @@ describe('the pooler sizing and rendered configuration', () => {
     expect(hba).toMatch(/^host\s+ai_hr\s+ai_hr_app\s+127\.0\.0\.1\/32\s+scram-sha-256$/m);
     expect(hba).not.toMatch(/^host\s+\S+\s+all\b/m);
   });
+  it('keeps server connections warm for hours by default, within operator bounds (ADR 0181)', () => {
+    const {ini} = renderFiles(inputs);
+    expect(ini).toMatch(/^server_lifetime = 21600$/m);
+    expect(ini).toMatch(/^server_idle_timeout = 1800$/m);
+    const tuned = renderFiles({...inputs, AIHR_PGBOUNCER_SERVER_LIFETIME: '7200', AIHR_PGBOUNCER_SERVER_IDLE_TIMEOUT: '600'}).ini;
+    expect(tuned).toMatch(/^server_lifetime = 7200$/m);
+    expect(tuned).toMatch(/^server_idle_timeout = 600$/m);
+    expect(() => renderFiles({...inputs, AIHR_PGBOUNCER_SERVER_LIFETIME: '60'})).toThrow('AIHR_PGBOUNCER_SERVER_LIFETIME');
+    expect(() => renderFiles({...inputs, AIHR_PGBOUNCER_SERVER_LIFETIME: '86401'})).toThrow('AIHR_PGBOUNCER_SERVER_LIFETIME');
+  });
   it('refuses plaintext to a remote database and any non-loopback listener', () => {
     expect(() => renderFiles({...inputs, AIHR_PGBOUNCER_SERVER_TLS: 'disable'})).toThrow('Server TLS may be disabled only for a database on loopback.');
     expect(() => renderFiles({...inputs, AIHR_PGBOUNCER_LISTEN_ADDRESS: '0.0.0.0'})).toThrow('The listener is loopback only');
