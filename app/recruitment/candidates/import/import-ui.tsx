@@ -1,7 +1,6 @@
 'use client';
 /**
- * Recruitment slice 16 — the candidate import { useImportWorksheet } from '@/components/use-import-worksheet';
-import screen's two interactive parts: choosing a file and reading the preview (nothing is
+ * Recruitment slice 16 — the candidate import screen's two interactive parts: choosing a file and reading the preview (nothing is
  * written until "Start import"), and the running import's progress (the shared bulk-job progress shape, lib/bulk-job: state,
  * percent, steps; Stop). An Excel workbook is turned into CSV text in the browser by the repository's one workbook decoder
  * (lib/spreadsheet), so the server reads and checks plain text only, exactly as for a CSV file.
@@ -11,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { bulkJobActive, bulkJobPercent } from '@/lib/bulk-job';
 import { btnGhost, btnPrimary } from '@/components/ui';
+import { useImportWorksheet } from '@/components/use-import-worksheet';
 import { cn } from '@/lib/utils';
 import type { CandidateImportJob, ImportPreview, ImportPreviewRow } from '@/packs/recruitment/service';
 import { cancelCandidateImportAction, candidateImportStatusAction, previewCandidateImportAction, startCandidateImportAction } from '../../actions';
