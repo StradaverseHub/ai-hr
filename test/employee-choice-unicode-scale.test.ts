@@ -110,7 +110,10 @@ it('measures exact full and missing searches over the real 50k Unicode populatio
   spy.mockRestore();await Promise.allSettled([...originalCallbacks]);save();
  }
  if(facetAdmission){
-  expect(statements).toHaveLength(305);
+  // 304 since 9e32ad8ec (9 Nov 2026, after this count was pinned): an empty first page no longer runs the separate
+  // count, so the missing search reads one statement fewer. Checked directly, so a change there names itself.
+  expect(statements.filter(entry=>String(entry.sql).trimStart().startsWith('select count(*)::int as total'))).toEqual([]);
+  expect(statements).toHaveLength(304);
   expect(captured).toHaveLength(4);
   await probeDepartmentFacet({b,ctx,organisationTagSample,captured,dialect,report,save,actual,caseStart,signal:context.signal},facetAdmission);
  }
