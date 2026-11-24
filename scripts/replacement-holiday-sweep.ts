@@ -1,15 +1,20 @@
 /** Existing minute runner invokes this exported pass; no second scheduler or read-side write. */
 import {and,asc,eq,isNull,lt,lte,or,sql} from 'drizzle-orm';
 import {createDb,withTenant,type SessionContext} from '../db/client';
-import {replacementHolidayQueue} from '../db/schema';
+import {employment,replacementHolidayQueue} from '../db/schema';
 import {resolveEntitlementsTx} from '../core/entitlements';
 import {loadSweepScope} from '../core/sweep-scope';
 import {reconcileReplacementHolidaysTx} from '../core/holiday-replacements';
 import {recordJobRun} from '../core/job-run';
 import {publicErrorMessage} from '../lib/public-error';
+/** True when the employment is voided or no longer exists. Read on the owner connection, which sees voided rows. */
+async function employmentEnded(owner:ReturnType<typeof createDb>,tenantId:string,employmentId:string){
+ const [row]=await owner.db.select({voidedAt:employment.voidedAt}).from(employment).where(and(eq(employment.id,employmentId),eq(employment.tenantId,tenantId)));
+ return !row||row.voidedAt!==null;
+}
 export async function sweepReplacementHolidayQueue(owner:ReturnType<typeof createDb>,options:{limitPerTenant?:number}={}){
  const startedAt=Date.now(),scope=await loadSweepScope(owner.db),limit=Math.min(100,Math.max(1,Math.trunc(options.limitPerTenant??10)));
- let processed=0,changed=0,review=0,failed=0;const failedTenants=new Set<string>();
+ let processed=0,changed=0,review=0,failed=0,dropped=0;const failedTenants=new Set<string>();
  for(const tenant of scope.run){
   try{
   const ctx:SessionContext={tenantId:tenant.id,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}],entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,tenant.id))};
@@ -29,6 +34,13 @@ export async function sweepReplacementHolidayQueue(owner:ReturnType<typeof creat
      return result;
     });processed++;changed+=result.changed;review+=result.review;
    }catch(error){
+    // A voided employment is final and hidden from every reconciler (employment_rls); a deleted one took its row
+    // with it (ON DELETE CASCADE). Either way the row is finished work, not a failure. A live employment this pass
+    // cannot see still fails loudly below.
+    if(await employmentEnded(owner,tenant.id,claim.employmentId)){
+     await owner.db.delete(replacementHolidayQueue).where(and(eq(replacementHolidayQueue.tenantId,tenant.id),eq(replacementHolidayQueue.employmentId,claim.employmentId)));
+     dropped++;continue;
+    }
     failed++;failedTenants.add(tenant.id);
     await withTenant(ctx,tx=>tx.update(replacementHolidayQueue).set({requestedAt:new Date(Date.now()+15*60_000),claimedAt:null,claimedGeneration:null,lastError:publicErrorMessage(error)}).where(and(eq(replacementHolidayQueue.employmentId,claim.employmentId),eq(replacementHolidayQueue.generation,claim.generation))));
    }
@@ -38,8 +50,8 @@ export async function sweepReplacementHolidayQueue(owner:ReturnType<typeof creat
    failed++;failedTenants.add(tenant.id);console.error('Replacement holiday tenant pass failed:',publicErrorMessage(error));
   }
  }
- await recordJobRun(owner.db,{jobKey:'replacement-holidays.reconcile',startedAt,tenantsProcessed:scope.run.length,tenantsFailed:failedTenants.size,tenantsSkipped:scope.skipped.length,result:{processed,changed,review,failed}});
- return {processed,changed,review,failed,skipped:scope.skipped.length};
+ await recordJobRun(owner.db,{jobKey:'replacement-holidays.reconcile',startedAt,tenantsProcessed:scope.run.length,tenantsFailed:failedTenants.size,tenantsSkipped:scope.skipped.length,result:{processed,changed,review,failed,dropped}});
+ return {processed,changed,review,failed,dropped,skipped:scope.skipped.length};
 }
 async function main(){
  try{process.loadEnvFile('.env.production');}catch{try{process.loadEnvFile('.env.local');}catch{/* supplied by runner */}}
