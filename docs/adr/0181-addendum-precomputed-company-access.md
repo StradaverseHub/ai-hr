@@ -207,9 +207,10 @@ installed there.
    release; `precomputed` only after acceptance, by a separate request.
 4. **Shadow period:** seven days of staging traffic with zero unexplained differences, which counts only once the
    shadow log holds a minimum number of compared statements (`reason=compared` lines) for each capability,
-   `workforce.view` and `workforce.maintain`, inside those seven days. Approved with the minimum added; the figure is
-   proposed in the pilot's pull request from staging's request timing and confirmed by the owner before the period
-   starts.
+   `workforce.view` and `workforce.maintain`, inside those seven days. The owner accepted the minimum on 24 November
+   2026 ("yes, accept the minimum and merge PR 280"): at least **2,000** `reason=compared` lines for
+   `workforce.view` and **500** for `workforce.maintain`, about 200 Job descriptions page loads. Natural staging
+   traffic will not reach it, so a scheduled walkthrough with fictional users drives the page during the period.
 
 Out of scope until the pilot is accepted: `access_visible_employment` and the employment, person, reporting line and
 leave families; the Job descriptions write, review, attachment and audit policies; the cached viewer profile.
