@@ -7,10 +7,29 @@ import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import type {BulkJobProgress,BulkJobRowError,BulkJobState,BulkJobWorkerStatus} from '../lib/bulk-job';
+import {bulkJobLaneOf,isLaneKind,laneMarker} from './bulk-job-lanes';
 
 export class BulkJobError extends Error{constructor(message:string,readonly status=400){super(message);this.name='BulkJobError';}}
 /** Stable code, translated by the screen, for an admission refused because the kind's scope already runs a job. */
 export const BULK_JOB_ALREADY_RUNNING='bulk-job-already-running';
+/** Shown when the kind's lane worker is live but runs an older release that does not have this kind yet (ADR 0181 J1:
+ * the web is installed first, the worker next). Nothing was queued. */
+export const BULK_JOB_BEING_INSTALLED='This feature is still being installed. Nothing was started. Try again in a few minutes.';
+
+/** Whether a job of this kind can be queued now (ADR 0181 J1.3), read through the existing app.bulk_job_worker_ready:
+ *  'ready'      a live worker advertises the kind;
+ *  'installing' a live worker serves the kind's lane (its lane marker is current) but does not advertise the kind,
+ *               so it runs an older release: refuse rather than leave a job queued that nothing can run;
+ *  'waiting'    no live worker serves the lane (a restart, or a worker from before lanes): queue as before, and the
+ *               screen shows that the job waits for the background service.
+ * A kind outside the lane catalogue (core/bulk-job-lanes.ts) is never refused here. One statement; CASE evaluates the
+ * second readiness read only when the first is false. */
+export async function bulkJobAdmissionReadinessTx(tx:Tx,kind:string):Promise<'ready'|'installing'|'waiting'>{
+ if(!isLaneKind(kind))return'ready';
+ const [row]=await tx.execute<{readiness:'ready'|'installing'|'waiting'}>(sql`select case when app.bulk_job_worker_ready(${kind}) then 'ready'
+  when app.bulk_job_worker_ready(${laneMarker(bulkJobLaneOf(kind))}) then 'installing' else 'waiting' end as readiness`);
+ return row?.readiness??'waiting';
+}
 
 export type BulkJobRow={
  id:string;tenant_id:string;kind:string;created_by:string|null;context:SessionContext;operation_key:string;exclusive_key:string;
@@ -45,9 +64,11 @@ export type BulkJobAdmission={kind:string;operationKey?:string;companyIds?:reado
 /** Admit a job inside the caller's transaction, after the kind's own permission checks, through app.bulk_job_enqueue
  * (the database checks the session's tenant and user, the kind, the companies and the input shape, and hashes the
  * file). A repeated operation key returns the existing job; a second active job in the kind's scope is refused with
- * BULK_JOB_ALREADY_RUNNING. */
+ * BULK_JOB_ALREADY_RUNNING. A kind whose live lane worker lacks it is refused with BULK_JOB_BEING_INSTALLED (503). */
 export async function enqueueBulkJobTx(tx:Tx,ctx:SessionContext,admission:BulkJobAdmission):Promise<{row:BulkJobRow;existing:boolean}>{
  if(!ctx.userId)throw new BulkJobError('Sign in again to start this job.',401);
+ // Before admission: a kind no live worker can run is never queued, and the refusal rolls back the caller's transaction.
+ if(await bulkJobAdmissionReadinessTx(tx,admission.kind)==='installing')throw new BulkJobError(BULK_JOB_BEING_INSTALLED,503);
  const operationKey=admission.operationKey&&uuid.test(admission.operationKey)?admission.operationKey:randomUUID();
  const source=admission.source;
  const companies=[...new Set(admission.companyIds??[])];
