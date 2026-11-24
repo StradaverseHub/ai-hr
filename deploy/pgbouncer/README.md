@@ -46,8 +46,8 @@ minimum  = ceil(default / 4)                                     min_pool_size
 | `max_db_connections` | formula | Hard ceiling on server connections; the deploy check compares this with `max_connections` |
 | `max_client_conn` | formula | Client connections PgBouncer accepts. Needs file descriptors, so the unit sets `LimitNOFILE=65536` |
 | `min_pool_size` | formula | Server connections kept open and ready |
-| `server_idle_timeout` | 300 s | Closes server connections idle this long, returning them to PostgreSQL after a burst |
-| `server_lifetime` | 3600 s | Recycles server connections hourly |
+| `server_idle_timeout` | 1800 s (`AIHR_PGBOUNCER_SERVER_IDLE_TIMEOUT`) | Closes server connections idle this long, returning them to PostgreSQL after a burst. A new connection plans every statement cold under row security (ADR 0181), so short timeouts make quiet hours slow |
+| `server_lifetime` | 21600 s (`AIHR_PGBOUNCER_SERVER_LIFETIME`) | Recycles server connections every 6 hours, keeping catalog caches warm in between |
 | `query_wait_timeout` | 30 s | A client waiting this long for a server connection is refused. The application treats this as capacity: reads retry, then the page shows its degraded state |
 | `max_prepared_statements` | 200 | PgBouncer tracks named prepared statements per server connection. Requires 1.21 or later |
 

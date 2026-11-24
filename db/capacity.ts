@@ -74,6 +74,23 @@ export function applicationDatabaseBudget(env: Record<string, string | undefined
   return {role: 'web' as const, poolMax, workers, totalConnections, maxWaiting: Math.floor(WEB_WAITING / workers), waitMs: 30_000};
 }
 
+const CONNECTION_LIFETIME_DEFAULT_SECONDS = 6 * 60 * 60;
+
+/**
+ * How long the driver keeps one database connection before retiring it (ADR 0181, Phase 1).
+ *
+ * A new PostgreSQL backend starts with empty catalog caches. Under row security its first plan of each statement loads
+ * the policies and definer functions it touches: 166 ms cold against 8–9 ms warm for the same statement, measured on
+ * staging on 24 November 2026. postgres.js retires every connection after 30–60 minutes by default, so a pool kept
+ * every backend permanently half cold. AIHR_DB_CONNECTION_LIFETIME_SECONDS (300 to 86,400, default 6 hours) sets the
+ * base. Each connection draws its own lifetime from base to 1.25 × base, so a pool never recycles all at once.
+ * Recycling stays bounded so a backend's caches and any server-side drift are still refreshed.
+ */
+export function databaseConnectionLifetime(env: Record<string, string | undefined>, random: () => number = Math.random): () => number {
+  const base = reader(env)('AIHR_DB_CONNECTION_LIFETIME_SECONDS', CONNECTION_LIFETIME_DEFAULT_SECONDS, 300, 86_400);
+  return () => Math.round(base * (1 + Math.min(Math.max(random(), 0), 1) / 4));
+}
+
 /** Admission shares for one physical pool. See the formula above. */
 export function databaseAdmissionShares(
   poolMax: number,
