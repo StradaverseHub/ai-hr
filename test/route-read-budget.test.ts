@@ -43,7 +43,7 @@ vi.mock('../lib/session',async importOriginal=>({...await importOriginal<typeof 
  getSession:async()=>state.session,getBrowserCommandSession:async()=>state.session}));
 
 import type {SessionContext} from '../db/client';
-import {requestScopedReadStats,withoutDefaultRequestJoin} from '../db/client';
+import {requestScopedReadStats,withIndependentTransactions,withoutDefaultRequestJoin} from '../db/client';
 import * as schema from '../db/schema';
 import {withRequestReadScope} from '../lib/request-read-scope';
 import Layout from '../app/layout';
@@ -55,12 +55,23 @@ import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fix
 import {explainStatements,observeStatements,type Captured} from './helpers/statement-observer';
 import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
 
-/** The frame (app/layout.tsx with no page) reads in at most this many transactions for every role (package 1.2). */
-const FRAME_TRANSACTIONS=4;
+/** The frame (app/layout.tsx with no page) reads in at most this many transactions for every role (package 1.2): its
+ * one pass, plus, for an administrator with pending profile changes in view, the Profile Changes owner's locked
+ * decision check, which takes the shared Access and profile-policy barriers and so keeps its own transaction. */
+const FRAME_TRANSACTIONS=2;
 /** Recorded budgets per route (transactions, statements) at "All companies" on the 71-company fixture, default join on.
  * Budgets only go down. Raising one needs an ADR note (docs/plans/2026-11-24-database-read-cost-phase-0-1.md 1.5). */
-const BUDGETS:Record<Route,Partial<Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll',{transactions:number;statements:number}>>|undefined>={
- frame:undefined,home:undefined,approvals:undefined,personnel:undefined,
+const BUDGETS:Record<Route,Partial<Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll',{transactions:number;statements:number}>>>={
+ frame:{group:{transactions:2,statements:22},multi:{transactions:2,statements:22},single:{transactions:1,statements:10},
+  manager:{transactions:1,statements:9},employee:{transactions:1,statements:9},payroll:{transactions:1,statements:9}},
+ // Home's administrator Today keeps its payroll-history and setting owners in their own transactions (barriers).
+ home:{group:{transactions:16,statements:122},multi:{transactions:16,statements:122},single:{transactions:14,statements:82},
+  manager:{transactions:2,statements:29},employee:{transactions:1,statements:52},payroll:{transactions:1,statements:52}},
+ // Recorded before package 1.4 (set-based leave breakdowns); lower these once it is on main. Employees are redirected.
+ approvals:{group:{transactions:8,statements:48},multi:{transactions:8,statements:48},single:{transactions:7,statements:36},
+  manager:{transactions:7,statements:32}},
+ personnel:{group:{transactions:3,statements:29},multi:{transactions:3,statements:29},single:{transactions:2,statements:17},
+  manager:{transactions:3,statements:21},employee:{transactions:3,statements:21},payroll:{transactions:3,statements:21}},
 };
 
 type Route='frame'|'home'|'approvals'|'personnel';
@@ -107,16 +118,19 @@ afterAll(async()=>{await closeAll();});
 const normalize=(key:string,value:unknown)=>key==='claimPreviewRevision'&&typeof value==='string'?'<revision>':value;
 const WRITE=/^\s*(insert\s+into|update\s+("?[a-z_][a-z0-9_.]*"?\.)?"?[a-z_][a-z0-9_]*"?\s+set\b|delete\s+from)|\bpg_(try_)?advisory_xact_lock\s*\(/i;
 
-type Measured={route:Route;persona:string;scope:'all'|'one';mode:'default'|'without';transactions:number;statements:number;ms:number;
+/** default: package 1.1 on. without: only explicit shared snapshots (the frame pass, Home, the shell's approvals).
+ * independent: no shared snapshot at all, every owner in its own transaction, as before shared snapshots existed. */
+type Mode='default'|'without'|'independent';
+type Measured={route:Route;persona:string;scope:'all'|'one';mode:Mode;transactions:number;statements:number;ms:number;
  output:unknown;captured:Captured[];refused:Record<string,number>;fallbacks:number;staleSkips:number};
-async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one',mode:'default'|'without'):Promise<Measured>{
+async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one',mode:Mode):Promise<Measured>{
  state.session=personas[persona];state.pathname=ROUTES[route].pathname;
  state.cookies=scope==='one'?{company_scope:workCompanyId}:{};
  const requestScope={};
  // A redirect (a role that may not open the route) is the render's output, recorded by its digest.
  const run=()=>serverTreeSnapshot(createElement(Layout,{children:ROUTES[route].page()}),normalize)
   .catch((error:unknown)=>{const digest=(error as {digest?:unknown})?.digest;if(typeof digest==='string'&&digest.startsWith('NEXT_'))return {redirect:digest};throw error;});
- const observed=await withRequestReadScope(requestScope,()=>observeStatements(()=>mode==='default'?run():withoutDefaultRequestJoin(run)));
+ const observed=await withRequestReadScope(requestScope,()=>observeStatements(()=>mode==='default'?run():mode==='without'?withoutDefaultRequestJoin(run):withIndependentTransactions(run)));
  const stats=await requestScopedReadStats(requestScope);
  const refused:Record<string,number>={},failures:Record<string,number>={};
  for(const session of stats){
@@ -161,7 +175,9 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
   await render(route,persona,'all','default');
   const shared=await render(route,persona,'all','default');
   const independent=await render(route,persona,'all','without');
+  const unshared=await render(route,persona,'all','independent');
   expect(shared.output).toEqual(independent.output);
+  expect(shared.output).toEqual(unshared.output);
   // The render produced real output (a nonempty tree), not an error-shaped stub.
   const redirected=typeof shared.output==='object'&&shared.output!==null&&'redirect' in shared.output;
   if(!redirected)expect(JSON.stringify(shared.output).length).toBeGreaterThan(500);
@@ -173,7 +189,7 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
    expect(shared.captured.filter(statement=>WRITE.test(statement.sql)).map(statement=>statement.sql.slice(0,160))).toEqual([]);
    expect(shared.refused.write??0).toBe(0);
   }
-  const budget=BUDGETS[route]?.[persona];
+  const budget=BUDGETS[route][persona];
   if(budget){
    expect(shared.transactions,`${route} ${persona} transactions`).toBeLessThanOrEqual(budget.transactions);
    expect(shared.statements,`${route} ${persona} statements`).toBeLessThanOrEqual(budget.statements);
@@ -184,6 +200,7 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
   await render(route,persona,'all','default');
   const shared=await statementTime(await render(route,persona,'all','default'));
   const independent=await statementTime(await render(route,persona,'all','without'));
+  await statementTime(await render(route,persona,'all','independent'));
   // The same reads are replayed either way: the default join moves no work between statements.
   expect(shared.replayed).toBeGreaterThan(0);
   expect(independent.replayed).toBeGreaterThan(0);
