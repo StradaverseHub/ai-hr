@@ -1103,7 +1103,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // Movement5773–5779: exact new function inventory, with no PUBLIC execute and one private implementation.
   addedFunctions.push('app.access_movement_delete_employment(uuid)','app.cost_allocations_after_hire_company_correction(uuid,uuid,text)','app.employment_payment_method_on(uuid,date)','app.preserve_movement_payroll(uuid)','app.preserve_payroll_metadata(uuid,boolean)','app.workforce_payroll_inputs_changed(uuid,date,date,text)','app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)');
   //6100–6102 and6600–6642: independently reviewed signatures and exact application EXECUTE decisions.
-  const approvedFunctions:{fn:string;app:boolean}[]=[
+  const approvedFunctions:{fn:string;app:boolean;acl?:string}[]=[
    //6686/87: native private source/custody; only scoped completion and explicit Personnel review are public.
    {fn:'app.probation_letter_completion_actor()',app:false},
    {fn:'app.probation_letter_completion_lock_person(uuid)',app:false},
@@ -1363,8 +1363,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.access_visible_employment_stored()',app:false},
    {fn:'app.access_visible_employment_unusable()',app:false},
    {fn:'app.access_visible_employment_verify(uuid)',app:false},
-   {fn:'app.access_visible_person_ids()',app:true},
-   {fn:'app.employment_partner_companies()',app:true},
+   // person_rls applies to every role: also every role holding a privilege on person (7240's per-policy grant).
+   {fn:'app.access_visible_person_ids()',app:true,acl:'{OWNER=X/OWNER,ai_hr_reward_setup_reader=X/OWNER,ai_hr_app=X/OWNER}'},
+   // person_rls applies to every role: also every role holding a privilege on person (7240's per-policy grant).
+   {fn:'app.employment_partner_companies()',app:true,acl:'{OWNER=X/OWNER,ai_hr_reward_setup_reader=X/OWNER,ai_hr_app=X/OWNER}'},
    {fn:'app.employment_read_companies()',app:true},
    // 7280 (ADR 0181 step (d)): the delegated-decision set the five leave read policies ask once per statement.
    {fn:'app.delegated_decision_employment_ids()',app:true},
@@ -2548,7 +2550,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(beforePerformancePrivileges.columns.filter(row=>isApprovedRelation(row.rel))).toEqual([]);
   // PostgreSQL locale ordering treats punctuation differently from JavaScript; compare exact rows in one deterministic order.
   expect(afterPerformancePrivileges.functions.filter(row=>approvedFunctions.some(expected=>expected.fn===row.fn)).map(row=>({fn:row.fn,acl:ownerAcl(row.acl)})).sort((a,b)=>a.fn<b.fn?-1:a.fn>b.fn?1:0))
-   .toEqual(approvedFunctions.map(row=>({fn:row.fn,acl:row.app?'{OWNER=X/OWNER,ai_hr_app=X/OWNER}':'{OWNER=X/OWNER}'})).sort((a,b)=>a.fn<b.fn?-1:a.fn>b.fn?1:0));
+   .toEqual(approvedFunctions.map(row=>({fn:row.fn,acl:row.acl??(row.app?'{OWNER=X/OWNER,ai_hr_app=X/OWNER}':'{OWNER=X/OWNER}')})).sort((a,b)=>a.fn<b.fn?-1:a.fn>b.fn?1:0));
   //6690–6699: literal financial/source ownership DDL, independent of the observed upgraded catalogue.
   // The migration author cannot bless its bridge from its final ACL: the separate restricted-owner
   // prefix rehearsal asserts the two predecessor role lists BEFORE6695 and then their literal union.
