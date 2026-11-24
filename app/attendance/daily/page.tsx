@@ -4,14 +4,14 @@ import { Fragment } from 'react';
 import { getTranslations } from 'next-intl/server';
 import { placeStickyColumns } from '@/lib/sticky-columns';
 import { scopedSession } from '@/lib/scope';
-import { attendanceForDatePage, attendancePunchesForDays, ATTENDANCE_DAILY_Q_MAX } from '@/core/attendance';
+import { attendanceForDateKeysetPage, attendancePunchesForDays, ATTENDANCE_DAILY_Q_MAX } from '@/core/attendance';
 import { flagOf, statusOf } from '@/core/attendance-derive';
 import { listCompanies, listDepartments } from '@/core/read';
 import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { AttendanceDayCells, AttendanceTrailRow, dayCellLabels } from '@/components/attendance-day-cells';
 import { Pager } from '@/components/pager';
-import { pageState, parsePageQuery } from '@/lib/pagination';
+import { keysetPageState, parseKeysetPageQuery } from '@/lib/pagination';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -38,6 +38,10 @@ export default async function DailyAttendancePage({
     q?: string;
     page?: string;
     size?: string;
+    after?: string;
+    before?: string;
+    last?: string;
+    count?: string;
   }>;
 }) {
   const t = await getTranslations('attendance');
@@ -57,14 +61,15 @@ export default async function DailyAttendancePage({
   const deptFilter = sp.dept && departments.some((d) => d.id === sp.dept) ? sp.dept : undefined;
   const effectiveScope = companyFilter ? [companyFilter] : scopeIds;
   const q = (sp.q ?? '').trim().slice(0, ATTENDANCE_DAILY_Q_MAX);
-  const pq = parsePageQuery(sp);
-  const { rows: dayPage, total } = await attendanceForDatePage(s, date, effectiveScope, {
+  // ADR 0181 Phase 4: keyset paging (no OFFSET) and a total that is exact below 1,000 and "1,000+" above.
+  const pq = parseKeysetPageQuery(sp);
+  const { rows: dayPage, ...read } = await attendanceForDateKeysetPage(s, date, effectiveScope, {
     departmentId: deptFilter,
     q,
-    limit: pq.limit,
-    offset: pq.offset,
+    ...pq,
   });
-  const pgState = pageState(pq, total, dayPage.length);
+  const pgState = keysetPageState(pq, read, dayPage.map((r) => r.employmentId));
+  const total = read.total.count;
   // R45 — the clocking trail for the page's days only (one read), for the "several clockings" line.
   const punchesByAttendance = await attendancePunchesForDays(
     s,
@@ -104,7 +109,7 @@ export default async function DailyAttendancePage({
       <ErrorBanner message={sp.error} />
 
       <Card className="overflow-hidden" data-tour="attendance-day">
-        <SectionHeader title={date === todayIso ? t('today') : date} count={total} />
+        <SectionHeader title={date === todayIso ? t('today') : date} count={total} countCapped={read.total.capped} />
         {/* Filter panel — plain GET form (server-driven, no-JS): Search · Company · Department · Date. */}
         <form method="GET" className="grid min-w-0 grid-cols-1 items-end gap-3 border-b border-border px-4 py-3 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,1fr)_minmax(12rem,1fr)_minmax(12rem,1fr)_10rem_auto]">
           <label className="flex min-w-0 flex-col gap-1.5 text-xs text-muted-foreground">
