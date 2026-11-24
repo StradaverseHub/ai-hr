@@ -60,6 +60,13 @@ it('lets the restricted storage owner preserve closed payroll for the system swe
   // The sweep's identity: the storage owner, no user, the legacy hr_admin engine grant (scripts/review-sweep.ts).
   // Before 7210 this call failed exactly as staging's 03:00 sweep did on 24 November 2026.
   await as('');
+  // Each part of the 7210 admission for the closed payslip, as the restricted owner with the sweep's identity.
+  const [admission]=await tx`select app.current_tenant_id()=${b.tenantId}::uuid as tenant,app.current_user_id() is null as no_user,
+   app.access_workforce_storage_owner() as storage_owner,app.access_workforce_employment(${id}::uuid,'workforce.maintain') as maintain,
+   app.is_admin_for(${b.companyId}::uuid) as admin,
+   exists(select 1 from public.payslip p join public.payroll_batch b on b.id=p.batch_id where p.id=${closed}::uuid and p.employment_id=${id}::uuid
+    and b.company_id=${b.companyId}::uuid and b.status='closed') as closed_slip`;
+  expect(admission).toEqual({tenant:true,no_user:true,storage_owner:true,maintain:true,admin:true,closed_slip:true});
   const [{count}]=await tx<{count:number}[]>`select app.preserve_movement_payroll(${id}::uuid) as count`;
   expect(Number(count)).toBe(2);
   // Not closed: the system path preserves issued (closed) payroll only.
