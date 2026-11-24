@@ -38,9 +38,11 @@ type Tenant={base:Base;ctx:SessionContext;companies:string[]};
 async function build():Promise<Tenant>{
  const base=await seedBase();
  const others=await owner.client<{id:string}[]>`insert into company(tenant_id,legal_name) select ${base.tenantId}::uuid,'Import shape company '||lpad(n::text,2,'0') from generate_series(1,${COMPANIES-1}::integer)n order by n returning id`;
+ // The existing workforce of the group, spread over all 70 companies (the importing company included).
+ const all=[base.companyId,...others.map(r=>r.id)];
  await owner.client`with people as(insert into person(tenant_id,full_name,primary_email) select ${base.tenantId}::uuid,'Import shape person '||n,'import-shape-'||n||'@fixture.invalid' from generate_series(1,${EMPLOYMENTS}::integer)n returning id,primary_email),
   ranked as(select id,row_number()over(order by primary_email)::int as n from people)
-  insert into employment(tenant_id,person_id,company_id,employee_code,hired_on) select ${base.tenantId}::uuid,id,(${others.map(r=>r.id)}::uuid[])[1+((n-1)%${COMPANIES-1}::integer)],'EQ-SHAPE-'||lpad(n::text,4,'0'),'2025-01-01'::date from ranked`;
+  insert into employment(tenant_id,person_id,company_id,employee_code,hired_on) select ${base.tenantId}::uuid,id,(${all}::uuid[])[1+((n-1)%${COMPANIES}::integer)],'EQ-SHAPE-'||lpad(n::text,4,'0'),'2025-01-01'::date from ranked`;
  const ctx=await entitledCtx(base);
  // A standing Annual Leave table, so every hire also writes its opening grant through the template resolver.
  await seedEntitlement(ctx,{leaveTypeId:base.annualLeaveTypeId,annualDays:14});

@@ -189,7 +189,8 @@ export async function applyEmployeeHireGroupTx(tx:Tx,ctx:SessionContext,steps:re
   // The organisation classification owner, per employment, in one statement.
   const tags=await tx.execute<{tags:unknown}>(sql`select app.record_employment_organisation_tags(e,${companyId}::uuid,d,'hire') as tags from unnest(${uuidList(employmentIds)},${sql`${`{${hires.map(h=>h.hiredOn).join(',')}}`}::date[]`}) with ordinality as u(e,d,n) order by n`);
   if(tags.length!==rows.length||tags.some(t=>!t.tags))decline('organisation-tags');
-  return rows.map(r=>({step:r.step,personId:r.personId,employmentId:r.employmentId,code:r.code}));
+  // The Import History item names the Employee ID as stored (recordImportItemTx's caller reads it back).
+  return rows.map(r=>({step:r.step,personId:r.personId,employmentId:r.employmentId,code:information.get(r.employmentId)?.employeeCode??''}));
  });
 
  // ── initializeHiredStatutoryMY, for the group ───────────────────────────────────────────────────────────────

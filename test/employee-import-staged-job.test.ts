@@ -19,8 +19,9 @@ import type {EmployeeImportUploadInput} from '../core/employee-import-upload';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
-// Force near one-row chunks so failures land after earlier chunks already committed; arm the audit chain.
-vi.hoisted(()=>{process.env.EMPLOYEE_IMPORT_CHUNK_BUDGET_MS='30';process.env.EMPLOYEE_IMPORT_BATCH_TARGET_MS='5';process.env.AUDIT_HASH_CHAIN_ENABLED='true';});
+// Force near one-row chunks so failures land after earlier chunks already committed; arm the audit chain. Set-based
+// groups (ADR 0181 J2) hold at most two rows here, so a file still spans several chunks on either path.
+vi.hoisted(()=>{process.env.EMPLOYEE_IMPORT_CHUNK_BUDGET_MS='30';process.env.EMPLOYEE_IMPORT_BATCH_TARGET_MS='5';process.env.EMPLOYEE_IMPORT_GROUP_MAX='2';process.env.AUDIT_HASH_CHAIN_ENABLED='true';});
 let b:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);
 beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);});

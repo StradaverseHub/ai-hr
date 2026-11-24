@@ -41,16 +41,22 @@ const groupFixedMultiple=()=>Math.max(1,Number(process.env.EMPLOYEE_IMPORT_CHUNK
 const FIRST_GROUP=8;
 /** The next group size from the last two groups of different sizes (a straight line: fixed cost F, cost per row m):
  * the chunk fills max(target, multiple x F), at most the ceiling; until then, or when the line does not rise, the size
- * doubles. Always 2..EMPLOYEE_IMPORT_GROUP_MAX, and at most double the last group. */
+ * doubles while the last group's own rate keeps it under the ceiling. Always 2..EMPLOYEE_IMPORT_GROUP_MAX, and at most
+ * double the last group. */
 export function nextEmployeeImportGroupSize(seen:readonly {rows:number;wallMs:number}[],last:number){
- const max=employeeImportGroupMax(),grow=Math.max(2,Math.min(max,last*2));
+ const max=employeeImportGroupMax(),doubled=Math.max(2,Math.min(max,last*2));
+ // Without a line, growth stops where the last group's own rate would cross the ceiling (its cost is at least
+ // proportional to its rows, the fixed cost being >= 0).
+ const point=seen.at(-1);
+ const grow=Math.max(2,Math.min(doubled,point&&point.wallMs>0?Math.floor(point.rows*groupCeilingMs()/point.wallMs):Infinity));
  const [a,b]=seen.slice(-2);
  if(!a||!b||a.rows===b.rows)return grow;
  const perRow=(b.wallMs-a.wallMs)/(b.rows-a.rows);
  if(!(perRow>0))return grow;
+ const grow2=doubled;
  const fixed=Math.max(0,b.wallMs-b.rows*perRow);
  const target=Math.min(groupCeilingMs(),Math.max(groupTargetMs(),groupFixedMultiple()*fixed));
- return Math.max(2,Math.min(grow,Math.floor((target-fixed)/perRow)));
+ return Math.max(2,Math.min(grow2,Math.floor((target-fixed)/perRow)));
 }
 /** Per job and process: the next group size and the passes it was estimated from; the steps that take the per-row
  * path (their group was declined); and this chunk's state (when it started, how many steps it applied, and the steps

@@ -10,6 +10,8 @@ afterEach(()=>{for(const k of keys){if(saved[k]===undefined)delete process.env[k
 
 it('doubles until two groups of different sizes give a line, then fills the target, never past the ceiling',()=>{
  expect(nextEmployeeImportGroupSize([{rows:8,wallMs:150}],8)).toBe(16);
+ // Before a line exists, growth stops where the last group's own rate would cross the 500 ms ceiling.
+ expect(nextEmployeeImportGroupSize([{rows:8,wallMs:346}],8)).toBe(11);
  // 8 rows in 140 ms and 16 in 220 ms: 10 ms a row, 60 ms fixed; target max(250, 2 x 60) = 250 -> 19 rows.
  expect(nextEmployeeImportGroupSize([{rows:8,wallMs:140},{rows:16,wallMs:220}],16)).toBe(19);
  // A large fixed cost: 2 x 200 = 400 ms target -> 20 rows; the 500 ms ceiling bounds it at 3 x 200 = 600.
