@@ -334,6 +334,27 @@ read-back of `pg_policy` for the tables above. This session's attempt at that re
 check, so it needs the owner's go-ahead (decision 6). The equivalence-test timing on GitHub Actions follows, as in the
 pilot's section 8.
 
+### 9.1 Attribution read on staging (24 November 2026, decision 6)
+
+Read-only transaction as `ai_hr_app` on the fictional demo tenant (2,959 employments, 74 companies, 98 departments,
+58 current administrative lines), staging at `41482ceb0` with 7210 in `legacy` mode, `EXPLAIN (ANALYZE, BUFFERS)`,
+rolled back. Status ladder omitted from the headcount statement in both forms.
+
+| Statement | Group administrator | Line manager |
+|---|---:|---:|
+| Headcount, previous statement | 1,406 ms | |
+| Headcount, PR 295 statement | 75 ms | |
+| Picker department options | 6,179 ms (20.4 M buffer hits) | 6,563 ms (19.9 M) |
+| `visible_employment_ids()` alone | 8 ms | 1 ms |
+| `visible_person_ids()` alone | 9 ms | 1 ms |
+
+The picker's cost is not employment visibility. For each of the 7,252 company and department pairs, the assignment
+probe scans the tenant's current assignments through `assignment_no_overlap` and filters `department_id` (about 3,190
+rows removed per pair), evaluating the ORed `contract_posting_assignment_read` policy
+(`app.contract_shared_posting_tx_subject(employment_id)`) on each. The 7230 index addresses exactly this. On this tenant
+the visibility walks are shallow and cheap; the stored reach (7240) matters for deep trees and group scale, not for
+these two statements.
+
 ## 10. Owner decisions requested
 
 1. **Store relationships by employment, keep admin scope company-level** (recommended), instead of one row per viewer
