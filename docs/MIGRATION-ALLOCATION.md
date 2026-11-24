@@ -1,13 +1,15 @@
 # Reprocess tax review import revisions, asked only for imported payslips (ADR 0181 write side), 25 November 2026
 
 Reserve `7310_payroll_tax_import_source_revisions`, journal index `10710`, timestamp `1795495007310`,
-SQL SHA-256 `e2ce876f2b3a7fe1e8a39de458c60976ec43d3a079566baec2e6305ac68d6665`. Same scan as `7300_pay_component_itemised_payslips` (claude/write-path-save-cost), the
+SQL SHA-256 `a1b6a4708f8596d4801f88980ccca2a838ea6c2ce36477b8299a42e1a7ad18c0`. Same scan as `7300_pay_component_itemised_payslips` (claude/write-path-save-cost), the
 entry just below this one in allocation order: the highest held were 7260, 7270/7290 and 7280. Recheck both installations'
 watermarks and any competing reservation before admission.
 
-Adds the definer `app.payroll_tax_import_source_revisions(uuid[])` (EXECUTE to `ai_hr_app` only): for the requested
-payslips that have an import snapshot in the current tenant, the unchanged 6660/7051 `app.payroll_tax_import_source_revision`
-answer, non-null answers only. `taxBasisSourceRowsTx` joins it instead of calling the per-row function for every payslip.
+Adds the definer `app.payroll_tax_import_source_revisions(uuid[])` (EXECUTE to `ai_hr_app` only): the 6660/7051
+`app.payroll_tax_import_source_revision` answer for a set of payslips in one statement, non-null answers only. Its body
+is restated set-wise (principal once, payroll administration per company, the effective rule through
+`app.payroll_history_effective_ids`), and the migration refuses unless that function's and `app.payroll_history_effective`'s
+installed bodies are exactly the restated ones. `taxBasisSourceRowsTx` joins it instead of calling the per-row function for every payslip.
 Measured cause: production reprocess tax review 18.9 s (24 November 2026); focused diagnostic: the per-row column was
 5.6 s of a 6.4 s read of 1,800 payslips for a group administrator (17 s of 24 s for one holding 70 company grants).
 

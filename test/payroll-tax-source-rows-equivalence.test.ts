@@ -143,12 +143,17 @@ describe('tax-basis source rows: previous and set-based import revisions are ide
   const ids=slipsByCompany.get(0)!.slice(0,60);
   const answers=await withTenant(otherCtx,tx=>tx.execute<{n:number}>(sql`select count(*)::int as n from app.payroll_tax_import_source_revisions(${`{${ids.join(',')}}`}::uuid[])`));
   expect(answers[0].n).toBe(0);
-  const mine=await withTenant(actors['group administrator'],async tx=>{
-   const set=await tx.execute<{payslip_id:string;revision_id:string}>(sql`select payslip_id::text,revision_id::text from app.payroll_tax_import_source_revisions(${`{${ids.join(',')}}`}::uuid[]) order by 1`);
-   const single=await tx.execute<{id:string;revision:string|null}>(sql`select x::text as id,app.payroll_tax_import_source_revision(x)::text as revision from unnest(${`{${ids.join(',')}}`}::uuid[]) x order by 1`);
-   return {set:set.map(r=>[r.payslip_id,r.revision_id]),single:single.filter(r=>r.revision).map(r=>[r.id,r.revision])};
-  });
-  expect(mine.set).toEqual(mine.single);
-  expect(mine.set.length).toBeGreaterThan(0);
+  // The set form restates the single-payslip function: the same non-null answers for every actor, over imported,
+  // native and other companies' slips (and both revision ordinals).
+  const probe=everySlip.filter((_,i)=>i%17===0).slice(0,600);let answered=0;
+  for(const[label,ctx]of Object.entries(actors)){
+   const mine=await withTenant(ctx,async tx=>{
+    const set=await tx.execute<{payslip_id:string;revision_id:string}>(sql`select payslip_id::text,revision_id::text from app.payroll_tax_import_source_revisions(${`{${probe.join(',')}}`}::uuid[]) order by 1`);
+    const single=await tx.execute<{id:string;revision:string|null}>(sql`select x::text as id,app.payroll_tax_import_source_revision(x)::text as revision from unnest(${`{${probe.join(',')}}`}::uuid[]) x order by 1`);
+    return {set:set.map(r=>[r.payslip_id,r.revision_id]),single:single.filter(r=>r.revision).map(r=>[r.id,r.revision])};
+   });
+   expect(mine.set,label).toEqual(mine.single);answered+=mine.set.length;
+  }
+  expect(answered).toBeGreaterThan(50);
  },300_000);
 });
