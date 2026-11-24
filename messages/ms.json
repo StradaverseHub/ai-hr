@@ -1722,6 +1722,13 @@
       "salaryNegativeError": "Gaji asas tidak boleh menjadi jumlah negatif. Biarkan kosong atau masukkan 0 bagi pekerja yang tiada gaji asas.",
       "salaryNotANumberError": "Gaji asas mesti satu nombor. Biarkan kosong atau masukkan 0 bagi pekerja yang tiada gaji asas.",
       "salaryBeforeCurrentRecordError": "Tarikh berkuat kuasa adalah sebelum gaji semasa pekerja ini bermula pada {date}, jadi tiada apa-apa disimpan. Gunakan tarikh pada atau selepas {date}, atau betulkan sejarah gaji di tab Gaji.",
+      "assignmentBlocked": {
+        "correction": "Pembetulan Maklumat Sahaja{fields} bertarikh {recordDate} bermula selepas {date}. Alihkan Tarikh Berkuat Kuasanya ke {date} atau lebih awal, atau semak apa yang diubahnya, kemudian rekod peristiwa ini sekali lagi.",
+        "mapping": "Kemas kini struktur organisasi{fields} bertarikh {recordDate} bermula selepas {date}. Tarikhnya tidak boleh diubah dari halaman pekerja ini. Semak kemas kini itu dalam tetapan Organisasi, atau gunakan tarikh pada atau selepas {recordDate}.",
+        "movement": "Pergerakan yang direkodkan bertarikh {recordDate} bermula selepas {date}. Betulkan atau padam pergerakan itu dalam Sejarah Pekerjaan, atau gunakan tarikh pada atau selepas {recordDate}.",
+        "untagged": "Perubahan rekod penugasan{fields} bertarikh {recordDate} bermula selepas {date}. Betulkannya dari barisnya dalam Sejarah Pekerjaan, atau gunakan tarikh pada atau selepas {recordDate}.",
+        "goToRecord": "Pergi ke rekod ini"
+      },
       "salaryRecording": {
         "title": "Rekod perubahan gaji",
         "choice": "Bagaimanakah perubahan ini direkodkan?",
@@ -2014,6 +2021,22 @@
         "payrollAdjustmentReview": "Semak sebarang pelarasan gaji yang diperlukan untuk syarikat atau gaji yang dibetulkan. Penggajian yang ditutup dan dokumen yang dikeluarkan kekal tidak berubah.",
         "informationNeedsReview": "Pembetulan perlu disemak",
         "historyBadge": "Sejarah",
+        "recordChange": {
+          "kind": {
+            "correction": "Maklumat dibetulkan",
+            "mapping": "Struktur organisasi dikemas kini",
+            "untagged": "Rekod penugasan diubah"
+          },
+          "badge": "Pembetulan",
+          "recordedBy": "oleh {name} pada {date}",
+          "recordedOn": "direkodkan pada {date}",
+          "noFields": "Mengulangi nilai terdahulu",
+          "changed": "Diubah",
+          "correct": "Betulkan",
+          "correctHint": "Betulkan membuka Pembetulan Maklumat Sahaja dengan Tarikh Berkuat Kuasa ini. Pilih Tarikh Berkuat Kuasa yang lebih awal untuk mengalihkannya, atau betulkan nilainya.",
+          "mappingHint": "Tarikh kemas kini struktur organisasi tidak boleh diubah dari halaman pekerja ini. Semaknya dalam tetapan Organisasi.",
+          "untaggedHint": "Rekod ini disimpan tanpa peristiwa pergerakan. Betulkan membetulkan nilainya dari Tarikh Berkuat Kuasanya."
+        },
         "rehire": {
           "intro": "Diambil Semula memulakan tempoh pekerjaan baharu untuk {name}. Tempoh sebelumnya ({code}, {start} hingga {end}), peletakan jawatan, slip gaji dan Borang EA kekal seperti sedia ada. Butiran peribadi, No. KP, nombor KWSP/PERKESO/cukai, butiran bank dan log masuk dibawa ke hadapan.",
           "effectiveDate": "Tarikh Berkuat Kuasa Diambil Semula",

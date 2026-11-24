@@ -19,6 +19,9 @@ import {latestPersonnelHistory} from '@/lib/personnel-history';
 import {movementHistoryHref,movementPageHref} from '@/lib/personnel-movement-navigation';
 import {MovementActionShell} from './movement-action-shell';
 import {MovementHistoryActions} from './movement-history-actions';
+// Board eb01800b — dated records that are not career movements, listed in Employment History.
+import {MovementRecordChangeActions,MovementRecordChangeSummary,type MovementRecordChangeLabels} from './movement-record-change';
+import {movementRecordAnchor} from '@/lib/assignment-blocked-message';
 import {movementScreenAccess} from '../../../../lib/movement-screen-access';
 import {informationCorrectionHistory} from '@/core/information-correction';
 import {InformationCorrectionAudit} from '../information-correction-form';
@@ -610,16 +613,19 @@ export default async function EmployeePage({
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
   // Only the history table, the pending banner, and the edit lookup need the full projection.
   const movementProjection = admin && (!movementPage || movementPage === 'history' || movementPage === 'edit')
-    ? await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards || directMovementHistory })
+    ? await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards || directMovementHistory, includeRecordChanges: true })
     : null;
   const movements = movementProjection?.movements ?? [];
+  // Board eb01800b — correction, mapping and untagged record lines. Drawn in the TABLE only; `movements` (the Edit
+  // lookup, the salary candidates, the pending banner) never contains them.
+  const recordChanges = movementProjection?.recordChanges ?? [];
   // 95d17761 — the DEFAULT view drops the correction artefacts (rolled back / corrected / cancelled /
   // superseded) so the tab reads as a career rather than a list of mistakes. Nothing is deleted and the
   // projection above is untouched: `movements` stays the complete history and is what the Edit lookup,
   // the pending-movement banner and the detail view keep reading. Only the TABLE draws `visibleMovements`.
   const showCorrectedMovements = spShowCorrected === '1';
   const { visible: visibleMovements, hiddenCount: correctedMovementCount } = partitionMovementRows(
-    latestPersonnelHistory(movements),
+    latestPersonnelHistory([...movements, ...recordChanges]),
     showCorrectedMovements,
   );
   // The Show / Hide link keeps the reader exactly where they are: same tab, same open detail view, same
@@ -3195,6 +3201,28 @@ export default async function EmployeePage({
     />
   ) : null;
 
+  // Board eb01800b — captions for the record lines. Field names are the Information-Only Correction's own; a viewer of
+  // this table already sees these placements in its columns and in each row's detail view.
+  const recordFieldLabels: Record<string, string> = Object.fromEntries(
+    (['companyId', 'employmentType', 'businessUnitId', 'departmentId', 'positionId'] as const).map((f) => [f, tPersonnel(`people.informationCorrection.fields.${f}`)]),
+  );
+  const recordChangeLabels = (record: NonNullable<MovementHistoryRow['recordChange']>): MovementRecordChangeLabels => ({
+    title: t(`movement.recordChange.kind.${record.kind === 'movement' ? 'untagged' : record.kind}`),
+    badge: t('movement.recordChange.badge'),
+    recorded: record.recordedAt
+      ? record.actorName
+        ? t('movement.recordChange.recordedBy', { name: record.actorName, date: formatDmy(record.recordedAt) })
+        : t('movement.recordChange.recordedOn', { date: formatDmy(record.recordedAt) })
+      : '',
+    noFields: t('movement.recordChange.noFields'),
+    view: t('movement.view'),
+    changed: t('movement.recordChange.changed'),
+    before: t('movement.detail.beforeChanges'),
+    after: t('movement.detail.afterChanges'),
+    effectiveDate: tPersonnel('people.informationCorrection.effectiveDate'),
+    correct: t('movement.recordChange.correct'),
+    hint: t(record.kind === 'mapping' ? 'movement.recordChange.mappingHint' : record.kind === 'untagged' ? 'movement.recordChange.untaggedHint' : 'movement.recordChange.correctHint'),
+  });
   const employmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
       <SectionHeader title={t('movement.title')} />
@@ -3281,9 +3309,11 @@ export default async function EmployeePage({
             <tr
               key={m.id}
               data-movement-id={m.id}
-              className={m.reversed || m.status === 'superseded' ? 'text-muted-foreground' : undefined}
+              {...(m.recordChange ? { id: movementRecordAnchor(m.recordChange.versionId), 'data-record-change': m.recordChange.kind } : {})}
+              className={m.recordChange ? 'bg-amber-50/60 dark:bg-amber-500/5' : m.reversed || m.status === 'superseded' ? 'text-muted-foreground' : undefined}
             >
               <td className="px-4 py-2.5 font-medium text-foreground">
+                {m.recordChange ? <MovementRecordChangeSummary record={m.recordChange} fieldLabels={recordFieldLabels} labels={recordChangeLabels(m.recordChange)} /> : <>
                 <span className={m.reversed || m.status === 'superseded' ? 'line-through' : undefined}>
                   {movementRecordLabel(m.kind, m.superiorChange)}
                 </span>
@@ -3374,6 +3404,7 @@ export default async function EmployeePage({
                     </details>
                   </div>
                 )}
+                </>}
               </td>
               <td className="px-4 py-2.5 font-mono text-xs">{formatDmy(m.effectiveDate)}</td>
               {/* Reconstructed AS OF the row's effective date in core/movement.ts — never a live read of the
@@ -3384,6 +3415,8 @@ export default async function EmployeePage({
               <td className="px-4 py-2.5 text-muted-foreground">{m.jobTitle ?? '—'}</td>
               <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{m.basic ?? '—'}</td>
               <td className="px-4 py-2.5">
+                {m.recordChange ? <MovementRecordChangeActions employmentId={employmentId} record={m.recordChange} fieldLabels={recordFieldLabels}
+                  labels={recordChangeLabels(m.recordChange)} effectiveDateText={formatDmy(m.effectiveDate)} canCorrect={canCorrectMovement} /> : <>
                 <MovementHistoryActions context={movementContext} employmentId={employmentId} row={m} standalone={movementPage==='history'}
                   eventLabel={`${movementRecordLabel(m.kind, m.superiorChange)} · ${formatDmy(m.effectiveDate)}`}
                   canCorrect={canCorrectMovement} canDelete={canDeleteMovement} reverseAction={reverseMovementEventAction}
@@ -3403,6 +3436,7 @@ export default async function EmployeePage({
                     closedAcknowledge:t('movement.form.closedPayrollAcknowledge'), processedWarning:t('movement.form.payrollWarning'),
                   }}/>
                 {m.payrollLocked && <p className="mt-1 text-xs text-muted-foreground">{t('movement.payrollClosedBadge', {periods:m.payrollClosedPeriods.join(', ')})}</p>}
+                </>}
               </td>
             </tr>
           ))}

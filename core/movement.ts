@@ -93,6 +93,9 @@ import {
   type TerminationType,
 } from './org';
 import { assertTerminationReasonOfferedTx, resolveTerminationReasonTx } from './termination-reason-catalog';
+// Board eb01800b — the named refusal and the Movement tab's record-change rows.
+import { AssignmentBeforeCurrentStartError } from './org';
+import { assignmentRecordSourcesTx, blockingAssignmentSourceTx, type AssignmentRecordSource } from './assignment-record-source';
 import {
   COMPARISON_KINDS,
   INTERCHANGEABLE_COMPARISON_KINDS,
@@ -349,7 +352,18 @@ export type MovementHistoryRow = {
   superiorChange?: SuperiorChange;
   /** Board 8f959c7a — applied Direct Superior rows only: From and inclusive To (null = current). */
   superiorPeriod?: DirectSuperiorPeriod;
+  /** Board eb01800b — only on a `recordChange` row (see MovementRecordChangeRow). */
+  recordChange?: AssignmentRecordSource;
 };
+
+/**
+ * Board eb01800b — a dated assignment record that no visible movement row owns: an Information-Only Correction of
+ * a dated placement field, an organisation-structure (mapping) split, or an untagged assignment change. It is a
+ * fact about the record, not a career movement, so it is a distinct kind (rule 30325fc1 still holds: untagged
+ * writes are never shown AS movements). It is returned beside the movements, never inside them, so movement
+ * replay, the Movement Excel export and every other movementHistory consumer keep exactly the rows they had.
+ */
+export type MovementRecordChangeRow = MovementHistoryRow & { kind: 'recordChange'; recordChange: AssignmentRecordSource };
 
 /**
  * 941c9dac — the lifecycle of a movement, DERIVED at projection time. Deliberately NOT a stored column:
@@ -1824,12 +1838,12 @@ export async function movementHistory(ctx: SessionContext, employmentId: string)
   return (await readWorkforceMovementHistory(ctx,employmentId)).movements;
 }
 
-export async function movementHistoryWithTypes(ctx:SessionContext,employmentId:string,options:{includeResignation?:boolean}={}){
-  const {movements,catalogue,resignation}=await readWorkforceMovementHistory(ctx,employmentId,options.includeResignation);
-  return {movements,movementTypes:movementEventTypeChoices(catalogue),resignation};
+export async function movementHistoryWithTypes(ctx:SessionContext,employmentId:string,options:{includeResignation?:boolean;includeRecordChanges?:boolean}={}){
+  const {movements,catalogue,resignation,recordChanges}=await readWorkforceMovementHistory(ctx,employmentId,options.includeResignation,options.includeRecordChanges);
+  return {movements,movementTypes:movementEventTypeChoices(catalogue),resignation,recordChanges};
 }
 
-function readWorkforceMovementHistory(ctx:SessionContext,employmentId:string,includeResignation=false){
+function readWorkforceMovementHistory(ctx:SessionContext,employmentId:string,includeResignation=false,includeRecordChanges=false){
   // Read authority, events and payroll affordances from one Personnel snapshot.
   // Caller-owned transactions still use movementHistoryTx and its command barrier.
   return withPersonnelRead(ctx, async tx => {
@@ -1837,7 +1851,7 @@ function readWorkforceMovementHistory(ctx:SessionContext,employmentId:string,inc
       sql`select ${workforceEmploymentPredicate(sql`${employmentId}::uuid`)} as allowed`,
     );
     if (!row?.allowed) throw new WorkforceAccessError();
-    return projectMovementHistoryTx(tx, ctx, employmentId, includeResignation);
+    return projectMovementHistoryTx(tx, ctx, employmentId, includeResignation, includeRecordChanges);
   });
 }
 
@@ -1864,7 +1878,7 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
   return (await projectMovementHistoryTx(tx,ctx,employmentId)).movements;
 }
 
-async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string,includeResignation=false){
+async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string,includeResignation=false,includeRecordChanges=false){
     const projection = await projectRows(tx, ctx.tenantId, employmentId);
     const { emp, events, rows, statusOf, resolvedTypes, catalogue } = projection;
     // 66a63bd6 — the two payroll period sets come from core/comp.ts, so the per-row affordance runs the
@@ -1965,7 +1979,28 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       };
     });
     const resignation=includeResignation?await resignationInformationFromProjection(tx,employmentId,projection):null;
-    return {movements,catalogue,resignation};
+    // Board eb01800b — every live assignment version whose start no visible movement row owns, built from one read of
+    // the versions and one of the ledger (assignmentRecordSourcesTx): no per-row query. Opt-in, for the Movement tab.
+    const recordChanges:MovementRecordChangeRow[]=[];
+    if(includeRecordChanges){
+      // The hire record (the first version) has no source; a version a tagged movement or history movement created
+      // is that movement's own row. Corrections and mapping pieces never share a start with either (they split a
+      // version only where no boundary exists), so they are never shown twice.
+      const {sources}=await assignmentRecordSourcesTx(tx,ctx.tenantId,employmentId);
+      const lastSequence=events.at(-1)?.sequence??0;
+      for(const source of sources.values()){
+        if(source.kind==='movement')continue;
+        const placement=placementAt(source.effectiveDate,source.sequence??lastSequence,undefined,false);
+        recordChanges.push({
+          id:'record:'+source.versionId,recordedAt:source.recordedAt,sortSequence:source.sequence??lastSequence,kind:'recordChange',
+          effectiveDate:source.effectiveDate,entryDate:source.recordedAt?dateOf(new Date(source.recordedAt)):null,status:'applied',
+          endDate:null,remarks:null,reversed:null,canEdit:false,canReverse:false,
+          payrollLocked:false,payrollClosedPeriods:[],payrollWarning:false,
+          ...placement,hireCorrection:null,recordedExit:null,recordedResignation:null,recordChange:source,
+        });
+      }
+    }
+    return {movements,catalogue,resignation,recordChanges};
   }
 
 /** Full correction snapshots contain unrelated fields; only a changed grade belongs in grade replay. */
@@ -3581,6 +3616,22 @@ async function applyTerminationTx(
   plan: TerminationPlan,
   opts?: { groupId?: string; allSecondary?: boolean },
 ) {
+  // Board eb01800b — Decision 5 of the dated-corrections ADR, applied to Termination (it already applied to the
+  // comparison writer and contract posting). Correction-created versions after D are lifted. A boundary that changes
+  // nothing is dropped and audited through the existing re-application owner (it places nothing, records the lifted
+  // ids). A boundary that still changes a value refuses the termination, naming that correction; the throw rolls
+  // the lift back with the rest of the transaction. Later values are never folded back to D.
+  if (plan.effectiveDate <= todayInKualaLumpur()) {
+    const lifted = await liftCorrectionBoundariesTx(tx, ctx, employmentId, plan.effectiveDate);
+    if (lifted) {
+      const changing = lifted.boundaries.find((boundary) => Object.keys(boundary.values).length > 0);
+      if (changing) {
+        throw new AssignmentBeforeCurrentStartError(changing.date, plan.effectiveDate,
+          await blockingAssignmentSourceTx(tx, ctx.tenantId, employmentId, plan.effectiveDate, { versionId: changing.liftedId }));
+      }
+      await reapplyCorrectionBoundariesTx(tx, ctx, employmentId, lifted);
+    }
+  }
   const groupId = opts?.groupId ?? randomUUID();
   let primaryTaken = opts?.allSecondary === true;
   const tag = (): MovementTag => {

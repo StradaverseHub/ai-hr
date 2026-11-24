@@ -1721,6 +1721,13 @@
       "salaryNegativeError": "Lương cơ bản không thể là số âm. Hãy để trống hoặc nhập 0 đối với nhân viên không có lương cơ bản.",
       "salaryNotANumberError": "Lương cơ bản phải là một số. Hãy để trống hoặc nhập 0 đối với nhân viên không có lương cơ bản.",
       "salaryBeforeCurrentRecordError": "Ngày hiệu lực sớm hơn ngày bắt đầu mức lương hiện tại của nhân viên này ({date}) nên không có gì được lưu. Hãy dùng ngày {date} hoặc sau đó, hoặc sửa lịch sử lương ở thẻ Lương.",
+      "assignmentBlocked": {
+        "correction": "Một lần Chỉ chỉnh sửa thông tin{fields} ngày {recordDate} bắt đầu sau {date}. Hãy chuyển Ngày hiệu lực của nó về {date} hoặc sớm hơn, hoặc kiểm tra nội dung nó đã thay đổi, rồi ghi nhận lại sự kiện này.",
+        "mapping": "Một cập nhật cơ cấu tổ chức{fields} ngày {recordDate} bắt đầu sau {date}. Không thể đổi ngày của nó từ trang của nhân viên này. Hãy xem lại cập nhật đó trong phần cài đặt Tổ chức, hoặc dùng ngày {recordDate} hoặc sau đó.",
+        "movement": "Một biến động đã ghi nhận ngày {recordDate} bắt đầu sau {date}. Hãy sửa hoặc xóa biến động đó trong Lịch sử làm việc, hoặc dùng ngày {recordDate} hoặc sau đó.",
+        "untagged": "Một thay đổi bản ghi phân công{fields} ngày {recordDate} bắt đầu sau {date}. Hãy sửa nó từ dòng của nó trong Lịch sử làm việc, hoặc dùng ngày {recordDate} hoặc sau đó.",
+        "goToRecord": "Đi tới bản ghi này"
+      },
       "paymentMethod": "Phương thức thanh toán",
       "salaryRecording": {
         "title": "Ghi nhận thay đổi lương",
@@ -2014,6 +2021,22 @@
         "payrollAdjustmentReview": "Kiểm tra việc điều chỉnh lương cần thiết sau khi sửa công ty hoặc mức lương. Kỳ lương đã khóa và chứng từ đã phát hành không thay đổi.",
         "informationNeedsReview": "Cần xem xét bản sửa đổi",
         "historyBadge": "Lịch sử",
+        "recordChange": {
+          "kind": {
+            "correction": "Thông tin đã được sửa",
+            "mapping": "Cơ cấu tổ chức đã được cập nhật",
+            "untagged": "Bản ghi phân công đã thay đổi"
+          },
+          "badge": "Chỉnh sửa",
+          "recordedBy": "bởi {name} vào {date}",
+          "recordedOn": "ghi nhận vào {date}",
+          "noFields": "Lặp lại các giá trị trước đó",
+          "changed": "Đã thay đổi",
+          "correct": "Sửa",
+          "correctHint": "Sửa sẽ mở Chỉ chỉnh sửa thông tin với Ngày hiệu lực này. Chọn Ngày hiệu lực sớm hơn để dời nó, hoặc sửa các giá trị.",
+          "mappingHint": "Không thể đổi ngày của cập nhật cơ cấu tổ chức từ trang của nhân viên này. Hãy xem lại trong phần cài đặt Tổ chức.",
+          "untaggedHint": "Bản ghi này được lưu mà không có sự kiện biến động. Sửa sẽ sửa các giá trị kể từ Ngày hiệu lực của nó."
+        },
         "rehire": {
           "intro": "Tái tuyển dụng bắt đầu một giai đoạn làm việc mới cho {name}. Giai đoạn trước ({code}, {start} đến {end}), việc nghỉ việc, phiếu lương và Biểu mẫu EA được giữ nguyên. Thông tin cá nhân, số CMND/IC, số EPF/SOCSO/thuế, thông tin ngân hàng và tài khoản đăng nhập được giữ lại.",
           "effectiveDate": "Ngày hiệu lực tái tuyển dụng",

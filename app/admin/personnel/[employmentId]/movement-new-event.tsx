@@ -25,6 +25,7 @@ import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { personnelWorkflowControl, personnelWorkflowInput, personnelFormLabel, personnelFormCatalog, personnelFormChoices } from '@/lib/personnel-form-contract';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DatabaseErrorText } from '@/components/database-error-text';
+import { MovementRefusalText } from './movement-refusal-text';
 import { DateField } from '@/components/ui/date-field';
 import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
@@ -775,7 +776,7 @@ export function MovementNewEvent({
         }
       }}>
       {pageContext&&<><input type="hidden" name="movementPage" value={edit?'edit':'new'}/><input type="hidden" name="showCorrected" value={pageContext.showCorrected??''}/><input type="hidden" name="from" value={pageContext.from??''}/></>}
-      {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive"><DatabaseErrorText message={pageError}/></p>}
+      {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive"><MovementRefusalText message={pageError} employmentId={employmentId} context={pageContext}/></p>}
       {postingError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive"><DatabaseErrorText message={postingError}/></p>}
       {posting&&<>
         <input type="hidden" name="postingId" value={posting.id}/>
