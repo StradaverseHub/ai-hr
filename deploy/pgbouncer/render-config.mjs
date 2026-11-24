@@ -85,7 +85,10 @@ export function renderValues(env) {
     RESERVE_POOL_SIZE: sizing.reservePoolSize,
     MAX_DB_CONNECTIONS: sizing.maxDbConnections,
     MAX_CLIENT_CONN: sizing.maxClientConn,
-    SERVER_IDLE_TIMEOUT: bounded(env, 'AIHR_PGBOUNCER_SERVER_IDLE_TIMEOUT', 300, 30, 86400),
+    // A fresh PostgreSQL backend plans every statement cold under row security (ADR 0181): keep server
+    // connections for hours, and let a burst's extra connections linger 30 minutes rather than 5.
+    SERVER_IDLE_TIMEOUT: bounded(env, 'AIHR_PGBOUNCER_SERVER_IDLE_TIMEOUT', 1800, 30, 86400),
+    SERVER_LIFETIME: bounded(env, 'AIHR_PGBOUNCER_SERVER_LIFETIME', 21600, 300, 86400),
     QUERY_WAIT_TIMEOUT: bounded(env, 'AIHR_PGBOUNCER_QUERY_WAIT_TIMEOUT', 30, 1, 600),
     SERVER_TLS_SSLMODE: tlsMode,
     SERVER_TLS_CA_FILE: caFile,

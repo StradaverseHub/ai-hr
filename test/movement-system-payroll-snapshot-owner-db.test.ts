@@ -1,4 +1,4 @@
-/** 7210 — the nightly movement sweep preserves closed payroll as a SYSTEM actor (no user, recorded_by NULL), which must both read and write snapshots. On a real
+/** 7220 — the nightly movement sweep preserves closed payroll as a SYSTEM actor (no user, recorded_by NULL), which must both read and write snapshots. On a real
  * installation the storage owner is NOSUPERUSER and information_payslip_snapshot forces row security, so that INSERT needs
  * its own policy. The harness owner is a superuser, which bypasses row security, so the sweep tests elsewhere cannot see
  * this. Here, inside one transaction that is always rolled back, the objects the preservation touches are owned by the
@@ -58,9 +58,9 @@ it('lets the restricted storage owner preserve closed payroll for the system swe
   await expect(direct(closed)).rejects.toThrow(/permission denied|row-level security/);
   await tx`reset role`;
   // The sweep's identity: the storage owner, no user, the legacy hr_admin engine grant (scripts/review-sweep.ts).
-  // Before 7210 this call failed exactly as staging's 03:00 sweep did on 24 November 2026.
+  // Before 7220 this call failed exactly as staging's 03:00 sweep did on 24 November 2026.
   await as('');
-  // Each part of the 7210 admission for the closed payslip, as the restricted owner with the sweep's identity.
+  // Each part of the 7220 admission for the closed payslip, as the restricted owner with the sweep's identity.
   const [admission]=await tx`select app.current_tenant_id()=${b.tenantId}::uuid as tenant,app.current_user_id() is null as no_user,
    app.access_workforce_storage_owner() as storage_owner,app.access_workforce_employment(${id}::uuid,'workforce.maintain') as maintain,
    app.is_admin_for(${b.companyId}::uuid) as admin,
