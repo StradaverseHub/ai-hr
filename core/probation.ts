@@ -21,6 +21,7 @@ import {DEFAULT_PROBATION_FORM,validateProbationForm,scoreProbationForm,probatio
 import {pendingSigningSteps,signingComplete,signingStepAction,type SigningRoute,type SigningDocument,type SigningGuardrails} from '../lib/document-signing-model';
 import {freezeFormApproversTx} from './probation-form-approvers';
 import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx,reviseSigningDocumentTx,refreshCanonicalProbationSigningRouteTx,declineDocumentAcknowledgementTx} from '../packs/document-signing/service';
+import {uuidArrayParam} from '../db/sql-arrays';
 export {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,ProbationError};
 export type {ProbationCase,ProbationPart,ProbationConfig,ProbationRole,ProbationForm};
 const uuid=(value:string)=>{if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value))throw new ProbationError('invalid','Choose a valid probation record.');return value;};
@@ -133,8 +134,8 @@ async function caseTx(tx:Tx,ctx:SessionContext,id:string,lock=false):Promise<Pro
  companyGate(ctx,row.data.companyId);
  const[version]=await tx.execute<{data:ProbationForm}>(sql`select data from probation_configuration where id=${row.form_id}::uuid and tenant_id=${ctx.tenantId}::uuid`);if(!version)throw new ProbationError('invalid','The pinned probation form is unavailable.');
  const roles=row.source_moved?[]:await rolesTx(tx,row.employment_id),metadata=await tx.execute<{id:string;revision:number;content_revision:number;commands:ProbationCommand[];lm_actor:boolean;self_actor:boolean;can_adjudicate:boolean;resolved_route:SigningRoute;offline_decision:import('../lib/probation-intake-model').ProbationOfflineFinalDecision|null;data:Omit<ProbationPart,'employee'|'manager'> & {documentKind?:string;signingFacts?:ProbationPersonnel;signingPeriod?:{startOn:string;endOn:string;gradeAtStart:string};signingKpis?:ProbationPart['kpis'];route:SigningRoute}}>(sql`select id,revision,content_revision,data,app.probation_resolved_route(id) as resolved_route,case when data->>'type'='3' and data->>'state'='completed_offline' then app.probation_offline_decision_for_part(id) else null end as offline_decision,case when data->>'type'='3' and data->>'state'='completed_offline' then app.probation_can_adjudicate_offline_final(id) else false end as can_adjudicate,app.probation_commands(id) as commands,app.probation_part_role(id,'lm') as lm_actor,app.probation_part_role(id,'employee') as self_actor from probation_part where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid and coalesce(data->>'documentKind','review')='review' order by (data->>'cycle')::integer,(data->>'type')::integer,id`);
- const ids=metadata.map(r=>r.id),drafts=ids.length?await tx.execute<{part_id:string;rater:'employee'|'lm';data:Partial<ProbationPart>}>(sql`select part_id,rater,data from probation_rater_draft where tenant_id=${ctx.tenantId}::uuid and part_id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`):[];
- const signatures=ids.length?await tx.execute<{id:string;subject_id:string;data:SigningDocument}>(sql`select id,subject_id,data from document_signing_document where tenant_id=${ctx.tenantId}::uuid and subject_type='probation' and subject_id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`):[];
+ const ids=metadata.map(r=>r.id),drafts=ids.length?await tx.execute<{part_id:string;rater:'employee'|'lm';data:Partial<ProbationPart>}>(sql`select part_id,rater,data from probation_rater_draft where tenant_id=${ctx.tenantId}::uuid and part_id=any(${uuidArrayParam(ids)})`):[];
+ const signatures=ids.length?await tx.execute<{id:string;subject_id:string;data:SigningDocument}>(sql`select id,subject_id,data from document_signing_document where tenant_id=${ctx.tenantId}::uuid and subject_type='probation' and subject_id=any(${uuidArrayParam(ids)})`):[];
  const blank=()=>Object.fromEntries(version.data.criteria.map(c=>[c.id,{rating:null,evidence:''}]));
  const parts:ProbationPartView[]=metadata.map(p=>{
   const self=drafts.find(d=>d.part_id===p.id&&d.rater==='employee'),manager=drafts.find(d=>d.part_id===p.id&&d.rater==='lm'),stored=signatures.find(d=>d.subject_id===p.id);
@@ -159,7 +160,7 @@ export function probationCase(ctx:SessionContext,id:string){return withProbation
 export function probationAutomationHistory(ctx:SessionContext,id:string){return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{companyId:string}>(sql`select company_id as "companyId" from probation_case where id=${uuid(id)}::uuid and tenant_id=${ctx.tenantId}::uuid`);if(!row)return[];companyGate(ctx,row.companyId);const{probationAutomationHistoryTx}=await import('./probation-automation');return probationAutomationHistoryTx(tx,uuid(id));});}
 export function probationCases(ctx:SessionContext){return withProbationTenant(ctx,async tx=>{
  const scoped=ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')?(ctx.entitlements?.scopedModules.lifecycle??[]):null;
- const ids=await tx.execute<{id:string}>(sql`select id from probation_case where tenant_id=${ctx.tenantId}::uuid ${scoped?sql`and company_id=any(array[${sql.join(scoped.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``} order by (data->>'endOn')::date,id limit 1000`);
+ const ids=await tx.execute<{id:string}>(sql`select id from probation_case where tenant_id=${ctx.tenantId}::uuid ${scoped?sql`and company_id=any(${uuidArrayParam(scoped)})`:sql``} order by (data->>'endOn')::date,id limit 1000`);
  return Promise.all(ids.map(r=>caseTx(tx,ctx,r.id)));
 });}
 export function saveProbationDraft(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;rater:'employee'|'lm';patch:Partial<ProbationPart>}){return withProbationTenant(ctx,async tx=>{
@@ -290,7 +291,7 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  kpi_submit:sql`(c.data->>'startOn')::date<=${today}::date and ${anyPart(sql`p.data->>'type'='1' and p.data->>'managerSubmittedAt' is null and p.data->>'state' not in('completed_offline','cancelled')`)}`,
  kpi_ack:anyPart(sql`p.data->>'type'='1' and p.data->>'managerSubmittedAt' is not null and p.data->>'acknowledgedAt' is null and p.data->>'state' not in('completed_offline','cancelled')`),
  overridden:anyPart(sql`p.data->>'override'='true' and p.data->>'state'<>'cancelled'`)};
- const scoped=sql`where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``}`;
+ const scoped=sql`where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(${uuidArrayParam(scope)})`:sql``}`;
  const conditions=sql`${scoped} ${filters.companyId?sql`and c.company_id=${uuid(filters.companyId)}::uuid`:sql``} ${filters.businessGroupId?sql`and c.data->'facts'->>'businessGroupId'=${uuid(filters.businessGroupId)}`:sql``} ${filters.businessUnitId?sql`and c.data->'facts'->>'businessUnitId'=${uuid(filters.businessUnitId)}`:sql``} ${filters.departmentId?sql`and c.data->'facts'->>'departmentId'=${uuid(filters.departmentId)}`:sql``} ${filters.grade?sql`and c.data->>'gradeAtStart'=${filters.grade}`:sql``} ${filters.pbpUserId?sql`and c.data->'facts'->'holders'->>'pbp'=${uuid(filters.pbpUserId)}`:sql``} ${filters.state?sql`and c.data->>'state'=${filters.state}`:sql``} ${filters.search?sql`and position(lower(${filters.search.trim().slice(0,100)}) in lower(c.data->'facts'->>'employeeName'))>0`:sql``} ${filters.mine?sql`and c.id in(select (task->>'caseId')::uuid from jsonb_array_elements(app.probation_task_list(null,200)->'items') task)`:sql``} ${filters.hideClosed?sql`and c.data->>'state' not in('confirmed','not_confirmed','withdrawn')`:sql``}`;
  type Counts={total:number;overdue:number;end_passed:number;ending14:number;low_result:number;kpi_submit:number;kpi_ack:number;overridden:number};
  const[result]=await tx.execute<{counts:Counts;rows:ProbationSummaryRow[];facets:ProbationTrackerFacet[]}>(sql`with vc as materialized (select * from app.probation_tracker_cases()),
@@ -304,7 +305,7 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  for(const row of rows){const detail=details.find(d=>d.case_id===row.id);row.parts=detail?.parts??[];row.letterWaiting=detail?.letter??null;for(const part of row.parts)part.waitingName=part.waitingName??detail?.names.find(n=>n.role===part.waitingRole)?.name??null;}
  // I3: low results whose action the PBP recorded for the part's current content (one bounded read for this page).
  const lowParts=rows.flatMap(row=>row.parts.filter(part=>part.scoreBand!==null).map(part=>part.id));
- const actioned=new Set(lowParts.length?(await tx.execute<{id:string}>(sql`select distinct f.part_id as id from probation_followup f join probation_part p on p.id=f.part_id and p.tenant_id=f.tenant_id where f.tenant_id=${ctx.tenantId}::uuid and f.kind='low_result_action' and f.content_revision=p.content_revision and f.part_id=any(array[${sql.join(lowParts.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`)).map(r=>r.id):[]);
+ const actioned=new Set(lowParts.length?(await tx.execute<{id:string}>(sql`select distinct f.part_id as id from probation_followup f join probation_part p on p.id=f.part_id and p.tenant_id=f.tenant_id where f.tenant_id=${ctx.tenantId}::uuid and f.kind='low_result_action' and f.content_revision=p.content_revision and f.part_id=any(${uuidArrayParam(lowParts)})`)).map(r=>r.id):[]);
  for(const row of rows)for(const part of row.parts)if(part.scoreBand!==null)part.lowResultActioned=actioned.has(part.id);
  // Working days overdue (KPI parts) come from the holiday owner, one resolution per company calendar: they are read
  // after the list by probationTrackerWorkingDays so the list never waits for them (72 companies: about 1 s).
@@ -337,7 +338,7 @@ async function workingDayCountsTx(tx:Tx,spans:{employmentId:string;from:string;t
  const start=spans.reduce((min,span)=>span.from<min?span.from:min,spans[0].from),end=spans.reduce((max,span)=>span.to>max?span.to:max,spans[0].to);
  const{holidayDatesByEmployment}=await import('./holidays');
  const holidays=await holidayDatesByEmployment(tx,{employmentIds:ids,startDate:start,endDate:end});
- const weeks=await tx.execute<{id:string;working:number[]|null;half:number[]|null}>(sql`select distinct on(e.id) e.id,p.working_days as working,p.half_working_days as half from employment e join company c on c.id=e.company_id left join attendance_policy p on p.company_id=e.company_id where e.id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by e.id`);
+ const weeks=await tx.execute<{id:string;working:number[]|null;half:number[]|null}>(sql`select distinct on(e.id) e.id,p.working_days as working,p.half_working_days as half from employment e join company c on c.id=e.company_id left join attendance_policy p on p.company_id=e.company_id where e.id=any(${uuidArrayParam(ids)}) order by e.id`);
  const week=new Map(weeks.map(row=>[row.id,new Set([...(row.working??[1,2,3,4,5]),...(row.half??[])])]));
  return spans.map(span=>{
   const off=holidays.get(span.employmentId)??new Set<string>(),days=week.get(span.employmentId)??new Set([1,2,3,4,5]);let count=0;
@@ -380,7 +381,7 @@ export function downloadProbationFile(ctx:SessionContext,caseId:string,fileId:st
 export type ProbationTrackerOptions={businessGroups:{id:string;name:string}[];businessUnits:{id:string;name:string}[];departments:{id:string;name:string}[];grades:string[];pbps:{id:string;name:string}[];states:string[];facets?:{businessGroupId:string|null;businessUnitId:string|null;departmentId:string|null;grade:string}[]};
 async function trackerOptionsTx(tx:Tx,ctx:SessionContext):Promise<ProbationTrackerOptions>{
  const scope=trackerScope(ctx);
- const rows=await tx.execute<ProbationTrackerFacet>(sql`select distinct ${trackerFacetColumns} from app.probation_tracker_cases() c where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``}`);
+ const rows=await tx.execute<ProbationTrackerFacet>(sql`select distinct ${trackerFacetColumns} from app.probation_tracker_cases() c where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(${uuidArrayParam(scope)})`:sql``}`);
  return trackerOptionsFrom([...rows]);
 }
 function trackerOptionsFrom(rows:ProbationTrackerFacet[]):ProbationTrackerOptions{
@@ -393,7 +394,7 @@ export function probationEmployeeNameSuggestions(ctx:SessionContext,input:{searc
  return withProbationTenant(ctx,async tx=>{
   const scope=ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')?(ctx.entitlements?.scopedModules.lifecycle??[]):null;
   const rows=await tx.execute<{name:string}>(sql`select distinct c.data->'facts'->>'employeeName' as name from app.probation_tracker_cases() c where c.tenant_id=${ctx.tenantId}::uuid
-   ${scope?sql`and c.company_id=any(array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``}
+   ${scope?sql`and c.company_id=any(${uuidArrayParam(scope)})`:sql``}
    and position(lower(${search}) in lower(c.data->'facts'->>'employeeName'))>0
    ${input.businessGroupId?sql`and c.data->'facts'->>'businessGroupId'=${uuid(input.businessGroupId)}`:sql``}
    ${input.businessUnitId?sql`and c.data->'facts'->>'businessUnitId'=${uuid(input.businessUnitId)}`:sql``}
