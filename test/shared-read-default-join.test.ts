@@ -11,7 +11,7 @@
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,describe,expect,it} from 'vitest';
 import {requestScopedReadStats,withSharedReadSnapshot,withTenant,withoutDefaultRequestJoin,type SessionContext,type Tx} from '../db/client';
-import {withIndependentTransactions,type SharedReadStats} from '../db/shared-read';
+import {classifySharedStatement,withIndependentTransactions,type SharedReadStats} from '../db/shared-read';
 import {withDatabaseReadDeadline} from '../db/workload';
 import {requestReadScope,withRequestReadScope} from '../lib/request-read-scope';
 // The request preamble every request scope's composition carriers read (registered on import, as the root layout does).
@@ -113,6 +113,19 @@ describe('default request join (ADR 0181 package 1.1)',()=>{
    const [stats]=await requestScopedReadStats(scope);
    expect([stats.fallbacks,stats.refused[reason]],reason).toEqual([1,1]);
   }
+ });
+
+ it('refuses a barrier hidden in a SQL function before sending it, so the snapshot stays usable for later owners',async()=>{
+  expect(classifySharedStatement('select app.access_profile_policy_read_lock()')).toEqual({kind:'refuse',reason:'barrier'});
+  const scope={};
+  const policyRead=async(tx:Tx)=>{await tx.execute(sql`select app.access_profile_policy_read_lock()`);return probeTx(tx);};
+  const [locked,later]=await render(scope,async()=>[await withTenant(ctxA,policyRead),await probe(ctxA)] as const);
+  expect(locked.iso).toBe('read committed');
+  expect(comparable(locked)).toEqual(comparable(await withTenant(ctxA,policyRead)));
+  // The carrier was never aborted: the next owner of the render still joins a read-only snapshot.
+  expect(later.iso).toBe('repeatable read');
+  const [stats]=await requestScopedReadStats(scope);
+  expect([stats.refused.barrier,Object.keys(stats.failures).length]).toEqual([1,0]);
  });
 
  it('after a completed fallback, never answers a later read from a carrier opened before it',async()=>{

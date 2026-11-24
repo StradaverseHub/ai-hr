@@ -272,6 +272,11 @@ const REFUSE=[
 ] as const;
 /** SQL functions that write even when called from a SELECT. A statement calling one keeps its own transaction. */
 const WRITING_FUNCTIONS=/\bapp\.reward_access_observe\s*\(/i;
+/** SQL functions that take an advisory barrier inside their body and refuse any transaction but read-only Read
+ * Committed (db/migrations/2135_profile_presentation_read_lock.sql). Sent to the carrier, the call raises and aborts
+ * the shared transaction, so every later owner of the request would rerun alone; refused before sending, only its own
+ * owner reruns, exactly as a barrier in the statement text does. */
+const BARRIER_FUNCTIONS=/\bapp\.access_profile_policy_read_lock\s*\(/i;
 /** Statement texts (never parameters or rows) that a read-only carrier refused with 25006 in this process. They
  * are refused before sending from then on; the first refusal already reran every affected owner. */
 const learnedWriters=new Set<string>();
@@ -284,6 +289,7 @@ export function classifySharedStatement(query:string):SharedStatementClass{
  if(CONTROL.test(query))return {kind:'refuse',reason:'control'};
  if(!/^\s*\(?\s*(select|with|values|table)\b/i.test(query))return {kind:'refuse',reason:'unknown'};
  if(WRITING_FUNCTIONS.test(query)||learnedWriters.has(query))return {kind:'refuse',reason:'write'};
+ if(BARRIER_FUNCTIONS.test(query))return {kind:'refuse',reason:'barrier'};
  for(const [reason,pattern] of REFUSE)if(pattern.test(query))return {kind:'refuse',reason};
  return VOLATILE.test(query)?{kind:'pass'}:{kind:'memo'};
 }

@@ -59,7 +59,7 @@ import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
 const FRAME_TRANSACTIONS=4;
 /** Recorded budgets per route (transactions, statements) at "All companies" on the 71-company fixture, default join on.
  * Budgets only go down. Raising one needs an ADR note (docs/plans/2026-11-24-database-read-cost-phase-0-1.md 1.5). */
-const BUDGETS:Record<Route,Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll',{transactions:number;statements:number}>|undefined>={
+const BUDGETS:Record<Route,Partial<Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll',{transactions:number;statements:number}>>|undefined>={
  frame:undefined,home:undefined,approvals:undefined,personnel:undefined,
 };
 
@@ -72,23 +72,35 @@ const ROUTES:Record<Route,{pathname:string;page:()=>unknown}>={
 };
 
 let b:Base,fixture:ScaleFixture;
-let personas:Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll',SessionContext>;
+let personas:Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll'|'base',SessionContext>;
+/** The fixture's work-holding company (its base company): the pending profile changes, payroll runs and checks of the
+ * fixture are there, so a one-company view of it shows every kind of pending work the 71-company view shows. Cost then
+ * differs only by the number of companies, which is what the scale check compares. */
+let workCompanyId:string;
 beforeAll(async()=>{
  await migrateTestDb();await resetDb();b=await seedBase();
  fixture=await buildScaleFixture(b,{employments:1000,events:2000});
  const base=await entitledCtx(b,['hr_admin']);
  /** A login for one of the fixture's own employments, with these roles. */
- const own=async(employmentId:string,roles:string[]):Promise<SessionContext>=>{
+ const own=async(employmentId:string,roles:string[],companyId:string|null=null):Promise<SessionContext>=>{
   const [row]=await owner.db.select({personId:schema.employment.personId}).from(schema.employment).where(sql`${schema.employment.id}=${employmentId}::uuid`);
   const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:`user_${randomUUID()}`,personId:row.personId}).returning({id:schema.appUser.id});
-  const grants=roles.map(role=>({role,companyId:null as string|null}));
+  const grants=roles.map(role=>({role,companyId}));
   await owner.db.insert(schema.roleAssignment).values(grants.map(g=>({tenantId:b.tenantId,appUserId:u.id,companyId:g.companyId,role:g.role as 'employee'})));
   return {...base,userId:u.id,personId:row.personId,roles,grants};
  };
  personas={...fixture.personas,
   manager:await own(fixture.activeEmploymentIds[11],['manager']),
   employee:await own(fixture.activeEmploymentIds[23],['employee']),
-  payroll:await own(fixture.activeEmploymentIds[37],['employee','payroll_partner'])};
+  payroll:await own(fixture.activeEmploymentIds[37],['employee','payroll_partner']),
+  base:undefined as unknown as SessionContext};
+ workCompanyId=b.companyId;
+ // A company HR administrator of the work-holding company only (with an own employment there, like the fixture's
+ // administrators), against company-by-company grants on all 71.
+ const [inBase]=await owner.db.select({id:schema.employment.id}).from(schema.employment)
+  .where(sql`${schema.employment.companyId}=${workCompanyId}::uuid and ${schema.employment.terminatedOn} is null and ${schema.employment.id}<>all(${sql.raw(`array[${[11,23,37].map(i=>`'${fixture.activeEmploymentIds[i]}'`).join(',')}]`)}::uuid[])`)
+  .orderBy(sql`${schema.employment.employeeCode} desc`).limit(1);
+ personas.base=await own(inBase.id,['hr_admin'],workCompanyId);
 },240_000);
 afterAll(async()=>{await closeAll();});
 
@@ -99,7 +111,7 @@ type Measured={route:Route;persona:string;scope:'all'|'one';mode:'default'|'with
  output:unknown;captured:Captured[];refused:Record<string,number>;fallbacks:number;staleSkips:number};
 async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one',mode:'default'|'without'):Promise<Measured>{
  state.session=personas[persona];state.pathname=ROUTES[route].pathname;
- state.cookies=scope==='one'?{company_scope:fixture.singleCompanyId}:{};
+ state.cookies=scope==='one'?{company_scope:workCompanyId}:{};
  const requestScope={};
  // A redirect (a role that may not open the route) is the render's output, recorded by its digest.
  const run=()=>serverTreeSnapshot(createElement(Layout,{children:ROUTES[route].page()}),normalize)
@@ -184,9 +196,9 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
   const one=await render(route,'group','one','default');
   expect(all.transactions,'group transactions').toBeLessThanOrEqual(one.transactions);
   expect(all.statements,'group statements').toBeLessThanOrEqual(one.statements);
-  // Company-by-company grants on every company against an administrator of one company.
+  // Company-by-company grants on every company against an administrator of the work-holding company only.
   const multi=await render(route,'multi','all','default');
-  const single=await render(route,'single','all','default');
+  const single=await render(route,'base','all','default');
   expect(multi.transactions,'multi transactions').toBeLessThanOrEqual(single.transactions);
   expect(multi.statements,'multi statements').toBeLessThanOrEqual(single.statements);
  },180_000);
