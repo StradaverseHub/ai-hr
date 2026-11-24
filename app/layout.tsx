@@ -57,7 +57,7 @@ import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import {readShellNavigationAccess} from '@/core/shell-navigation-access';
 import { companyContextForPage } from '@/lib/scope';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
-import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
+import {requestReadJoinEnabled,withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
@@ -180,9 +180,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </body>
     </html>;
   }
-  // ADR 0181 decision 3 (package 1.2): the frame's facts are read in ONE pass inside the render's read snapshot
-  // (lib/request-read-scope.ts). Every independent read starts at once and joins one REPEATABLE READ READ ONLY
-  // carrier for this login; only the company list waits for the company context it filters by. An owner whose
+  // ADR 0181 decision 3 (package 1.2): the frame's facts are read in ONE pass. Every independent read starts at once;
+  // only the letter navigation waits for the company context it filters by. With the read join on, the pass joins one
+  // REPEATABLE READ READ ONLY carrier for this login (lib/request-read-scope.ts). An owner whose
   // transaction contract the carrier cannot honour still runs in its own transaction (db/shared-read.ts). The
   // lifecycle inbox starts in the same pass but streams: the bell and the badge read it, and nothing above waits on it.
   // `…OrFalse`, not `isModuleEnabled`: this is the ROOT layout, so a throw here 500s every
@@ -197,7 +197,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   const showNoticePopup=pathname!=='/'||isAdmin(session);
-  const frame=await withSharedReadSnapshot(session,async()=>{
+  // Every independent read starts at once either way; inside the render's snapshot only while the read join is on
+  // (AIHR_DEFAULT_REQUEST_READ_JOIN=on, db/shared-read.ts). Off, each owner keeps its own transaction, in parallel.
+  const readFrame=async()=>{
     const context=companyContextForPage(session);
     const lifecycleNavigation=lifecycleModuleNavigation(session);
     // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
@@ -265,7 +267,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     return {principals,allowed,scopeIds,viewer,shellAccess,letterDestinations,rewardDestinations,onboardingNav,onboardingQueue,
       scopedLifecycleNavigation,offboardingPostingsAccess,launcher,assistantAccess,privateCaseHandler,recruitmentTeam,referralPortal,
       identityEmailAvailable,performanceAdminPath,lifecycleInbox,noticePopup,approvalSummary};
-  },undefined,requestReadScope());
+  };
+  const frame=requestReadJoinEnabled()?await withSharedReadSnapshot(session,readFrame,undefined,requestReadScope()):await readFrame();
   const {principals,allowed,scopeIds,viewer,letterDestinations,rewardDestinations,onboardingNav,onboardingQueue,scopedLifecycleNavigation,
     offboardingPostingsAccess,launcher,assistantAccess,privateCaseHandler,recruitmentTeam,referralPortal,identityEmailAvailable,
     performanceAdminPath,lifecycleInbox,noticePopup}=frame;
