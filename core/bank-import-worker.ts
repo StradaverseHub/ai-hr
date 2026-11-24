@@ -27,11 +27,19 @@ export async function freshImportContext(context:SessionContext):Promise<Session
  ctx.entitlements=await withBackgroundDatabaseWork(()=>withPoolWork(ctx.tenantId,()=>client.begin(async transaction=>resolveEntitlementsInTenantTx(async(q,params)=>[...await transaction.unsafe(q,params as postgres.ParameterOrJSON<never>[])],ctx.tenantId))));
  return ctx;
 }
+/** How long one import tick keeps saving rows before it hands the worker loop back. The worker runs every queue in
+ * one loop (scripts/bank-import-runner.ts), so a tick that saves a full BANK_IMPORT_BATCH_ROWS batch made every other
+ * background job wait for it: on production on 24 Nov 2026 rows took about 5.3 s each, so one 100-row batch held the
+ * loop for about 9 minutes and a queued payroll history commit sat at "Submitting…" with the worker shown as not
+ * running. Each row is its own committed checkpoint, so stopping early loses nothing; the next tick resumes at the
+ * next valid row. At least one row is always attempted, so a slow row still makes progress. */
+export const BANK_IMPORT_TICK_BUDGET_MS=10_000;
+export type BankImportPhaseOptions={budgetMs?:number;now?:()=>number};
 /** One bounded phase. Exported for real DB recovery/concurrency tests. */
-export function processBankImportJob(ctx:SessionContext,id:string):Promise<void>{
- return withBackgroundDatabaseWork(()=>processBankImportPhase(ctx,id));
+export function processBankImportJob(ctx:SessionContext,id:string,options:BankImportPhaseOptions={}):Promise<void>{
+ return withBackgroundDatabaseWork(()=>processBankImportPhase(ctx,id,options));
 }
-async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void>{
+async function processBankImportPhase(ctx:SessionContext,id:string,options:BankImportPhaseOptions):Promise<void>{
  const job=await withTenant(ctx,tx=>bankJobTx(tx,id));
  if(job.state==='queued'){
   // The parts stay separate: the hash and the decoder read them in order, and a CSV decode releases each one.
@@ -86,8 +94,10 @@ async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void
    await tx.execute(sql`update bank_import_job set attempt_id=${attempt.attemptId}::uuid,processed=total-valid,updated_at=now() where id=${id}::uuid`);
   });return;
  }
+ const now=options.now??(()=>performance.now()),deadline=now()+(options.budgetMs??BANK_IMPORT_TICK_BUDGET_MS);
  const pending=await withTenant(ctx,tx=>tx.execute<QueueRow>(sql`select * from bank_import_row where job_id=${id}::uuid and state='valid' order by ordinal limit ${BANK_IMPORT_BATCH_ROWS}`));
- for(const row of pending){
+ for(const [index,row] of pending.entries()){
+  if(index>0&&now()>=deadline)break;
   try{
    await withTenant(ctx,async tx=>{
     const [current]=await tx.execute<QueueRow>(sql`select * from bank_import_row where job_id=${id}::uuid and ordinal=${row.ordinal} for update`);
