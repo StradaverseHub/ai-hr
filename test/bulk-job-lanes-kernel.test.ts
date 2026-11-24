@@ -24,7 +24,8 @@ let b:Base,ctx:SessionContext;
 /** One process's handlers; `label` records which process applied each step. A payroll job of a company waits
  * (BulkJobWaiting, as payroll does) until every earlier job of that company has ended. */
 function handlers(label:string,kinds:readonly string[]):BulkJobHandler<{value:string}>[]{
- const apply=(sleepMs:number):BulkJobHandler<{value:string}>['applyStepTx']=async(tx,_ctx,job,step)=>{
+ type Apply=BulkJobHandler<{value:string}>['applyStepTx'];
+ const apply=(sleepMs:number):Apply=>async(tx,_ctx,job,step)=>{
   if(step.payload.value==='bad-row')throw new Error('Fixture row refused.');
   const [{started}]=await tx.execute<{started:string}>(sql`select clock_timestamp()::text as started`);
   await tx.execute(sql`select pg_sleep(${sleepMs/1000})`);
