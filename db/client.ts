@@ -19,7 +19,7 @@ import {applicationDatabaseUrl} from './pooling';
 import {processConnectionOptions} from './worker-connection';
 import {markDatabaseCapacityFailure,retryAdmissionRefusal,retryIdempotentRead} from './read-retry';
 import {SharedReadSession,currentSharedRead,defaultRequestReadScope,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
-export {declareSharedReadWindow,declareSharedReadPreamble,withOwnerPreambleReads,withoutDefaultRequestJoin} from './shared-read';
+export {declareSharedReadWindow,declareSharedReadPreamble,requestReadJoinEnabled,withOwnerPreambleReads,withoutDefaultRequestJoin} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
 // Long-lived connections keep PostgreSQL's catalog caches warm under row security (db/capacity.ts, ADR 0181).
@@ -349,8 +349,8 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     if (shared?.admits(client!, sharedReadIdentity(ctx, grants, roleNames), readDeadline)) {
       return shared.join(fn as (tx: unknown) => Promise<T>, ownTransaction, readSignal);
     }
-    // ADR 0181 decision 2 (package 1.1): during a server render, a read inside no shared session joins its identity's
-    // session of the render's request read scope by default. A login, no agent, and the session's own deadline only;
+    // ADR 0181 decision 2 (package 1.1), opt-in with AIHR_DEFAULT_REQUEST_READ_JOIN=on: during a server render, a read
+    // inside no shared session joins its identity's session of the render's request read scope. A login, no agent, and the session's own deadline only;
     // every refusal and fallback of db/shared-read.ts applies unchanged, and anything else keeps its own transaction.
     const scope = shared ? undefined : defaultRequestReadScope();
     if (scope && ctx.userId && !ctx.agent) {

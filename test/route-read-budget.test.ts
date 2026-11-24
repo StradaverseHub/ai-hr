@@ -4,8 +4,8 @@
  * resolved by test/helpers/server-tree-snapshot.ts) on the fictional 71-company / 1,000-employment group fixture
  * (test/helpers/ai-centre-scale-fixture.ts), for the native roles, and its statements and transactions are counted
  * (test/helpers/statement-observer.ts). It proves:
- *  - equivalence: every route renders identical output with the default request join (package 1.1) and without it,
- *    for every role;
+ *  - equivalence: every route renders identical output with the read join on (AIHR_DEFAULT_REQUEST_READ_JOIN=on,
+ *    packages 1.1 and 1.2), off (the production default) and with no shared snapshot at all, for every role;
  *  - cost: the default join never costs more transactions than reads without it, and the frame reads in at most
  *    FRAME_TRANSACTIONS transactions;
  *  - scale: "All companies" of 71 companies costs no more transactions or statements than one company, for a group
@@ -93,6 +93,8 @@ let personas:Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll'|'bas
  * differs only by the number of companies, which is what the scale check compares. */
 let workCompanyId:string;
 beforeAll(async()=>{
+ // The read join is opt-in (production default off); `default` below measures it switched on.
+ process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';
  await migrateTestDb();await resetDb();b=await seedBase();
  fixture=await buildScaleFixture(b,{employments:1000,events:2000});
  const base=await entitledCtx(b,['hr_admin']);
@@ -117,12 +119,13 @@ beforeAll(async()=>{
   .orderBy(sql`${schema.employment.employeeCode} desc`).limit(1);
  personas.base=await own(inBase.id,['hr_admin'],workCompanyId);
 },240_000);
-afterAll(async()=>{await closeAll();});
+afterAll(async()=>{delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;await closeAll();});
 
 const normalize=(key:string,value:unknown)=>key==='claimPreviewRevision'&&typeof value==='string'?'<revision>':value;
 const WRITE=/^\s*(insert\s+into|update\s+("?[a-z_][a-z0-9_.]*"?\.)?"?[a-z_][a-z0-9_]*"?\s+set\b|delete\s+from)|\bpg_(try_)?advisory_xact_lock\s*\(/i;
 
-/** default: package 1.1 on. without: only explicit shared snapshots (the frame pass, Home, the shell's approvals).
+/** default: the read join on (AIHR_DEFAULT_REQUEST_READ_JOIN=on: package 1.1 and the frame pass in one snapshot).
+ * without: the production default, off (only Home's, Today's and the shell approval summary's explicit snapshots).
  * independent: no shared snapshot at all, every owner in its own transaction, as before shared snapshots existed. */
 type Mode='default'|'without'|'independent';
 type Measured={route:Route;persona:string;scope:'all'|'one';mode:Mode;transactions:number;statements:number;ms:number;

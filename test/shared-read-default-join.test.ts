@@ -1,6 +1,7 @@
 /** ADR 0181 decision 2, plan package 1.1: during a server render, a `withTenant` read inside no shared session joins
- * its identity's session of the render's request read scope by default (db/client.ts, db/shared-read.ts
- * defaultRequestReadScope).
+ * its identity's session of the render's request read scope (db/client.ts, db/shared-read.ts defaultRequestReadScope).
+ * Opt-in: only with AIHR_DEFAULT_REQUEST_READ_JOIN=on (owner, 24 November 2026: production default off). Every case
+ * below runs with it on, except the switch case, which proves that unset means off.
  *
  * Proves: one identity's reads of one render share one REPEATABLE READ READ ONLY carrier; without a request scope
  * (a route handler, an action, a job, a test that models no render) every read keeps its own transaction exactly as
@@ -10,7 +11,7 @@
  * the read sees that commit; and both switches turn the default off without touching an explicit shared snapshot. */
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,describe,expect,it} from 'vitest';
-import {requestScopedReadStats,withSharedReadSnapshot,withTenant,withoutDefaultRequestJoin,type SessionContext,type Tx} from '../db/client';
+import {requestReadJoinEnabled,requestScopedReadStats,withSharedReadSnapshot,withTenant,withoutDefaultRequestJoin,type SessionContext,type Tx} from '../db/client';
 import {classifySharedStatement,withIndependentTransactions,type SharedReadStats} from '../db/shared-read';
 import {withDatabaseReadDeadline} from '../db/workload';
 import {requestReadScope,withRequestReadScope} from '../lib/request-read-scope';
@@ -27,9 +28,10 @@ beforeAll(async()=>{
  await migrateTestDb();await resetDb();a=await seedBase();b=await seedBase();
  ctxA=adminCtx(a);ctxB=adminCtx(b);
  hooks.__aihrPerfSharedRead=stats=>{closed.push(stats);};
+ process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';
 });
-afterEach(()=>{closed.length=0;delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;});
-afterAll(async()=>{delete hooks.__aihrPerfSharedRead;await closeAll();});
+afterEach(()=>{closed.length=0;process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';});
+afterAll(async()=>{delete hooks.__aihrPerfSharedRead;delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;await closeAll();});
 
 type Probe={at:string;iso:string;pid:number;tenant:string;companies:string[]};
 async function probeTx(tx:Tx):Promise<Probe>{
@@ -189,15 +191,21 @@ describe('default request join (ADR 0181 package 1.1)',()=>{
   expect((await requestScopedReadStats(scope))[0].defaultJoins).toBe(1);
  });
 
- it('is switched off by AIHR_DEFAULT_REQUEST_READ_JOIN=off, withoutDefaultRequestJoin and independent transactions',async()=>{
+ it('is off unless AIHR_DEFAULT_REQUEST_READ_JOIN=on, and off under withoutDefaultRequestJoin and independent transactions',async()=>{
   const pair=()=>Promise.all([probe(ctxA),probe(ctxA)]);
-  process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='off';
-  expect((await render({},pair)).map(row=>row.iso)).toEqual(['read committed','read committed']);
-  delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;
-  expect((await render({},()=>withoutDefaultRequestJoin(pair))).map(row=>row.iso)).toEqual(['read committed','read committed']);
+  const own=['read committed','read committed'];
+  // The production default: unset, and any value but `on`, keeps every owner's own transaction.
+  for(const value of [undefined,'off','true','1','ON']){
+   if(value===undefined)delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;else process.env.AIHR_DEFAULT_REQUEST_READ_JOIN=value;
+   expect(requestReadJoinEnabled(),String(value)).toBe(false);
+   expect((await render({},pair)).map(row=>row.iso),String(value)).toEqual(own);
+  }
+  process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';
+  expect(requestReadJoinEnabled()).toBe(true);
+  expect((await render({},()=>withoutDefaultRequestJoin(async()=>{expect(requestReadJoinEnabled()).toBe(false);return pair();}))).map(row=>row.iso)).toEqual(own);
   expect((await render({},()=>withIndependentTransactions(pair))).map(row=>row.iso)).toEqual(['read committed','read committed']);
   // An explicit shared snapshot is unchanged by the switches.
-  process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='off';
+  delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;
   expect((await withSharedReadSnapshot(ctxA,pair)).map(row=>row.iso)).toEqual(['repeatable read','repeatable read']);
  });
 
