@@ -22,6 +22,7 @@ import {recordUnitTiming} from '../lib/bulk-job-timing';
 import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {freshImportContext} from './bank-import-worker';
 import type {BulkJobRow} from './bulk-job';
+import {laneMarker,type WorkerLane} from './bulk-job-lanes';
 
 export type BulkJobStepInput={kind:string;rowNum?:number|null;payload:unknown};
 export type BulkJobStep<P=unknown>={seq:number;kind:string;row_num:number|null;payload:P};
@@ -156,23 +157,27 @@ const report=(kind:string,phase:string,ms:number,jobId:string)=>(globalThis as W
 async function label(tx:Tx,kind:string,phase:string){await tx.execute(sql`select set_config('application_name',${`aihr-bulk:${kind}:${phase}`},true)`);}
 const merge=(a:Record<string,number>,b?:Record<string,number>)=>{if(!b)return a;const out={...a};for(const [k,v] of Object.entries(b))out[k]=(out[k]??0)+v;return out;};
 
-export type BulkJobWorkerOptions={workerId?:string;handlers:readonly WorkerHandler[]};
+/** lanes: the lanes this process was started for (scripts/bank-import-runner.ts). Its heartbeat then also advertises
+ * one marker per lane (core/bulk-job-lanes.ts), which admission reads to refuse a kind the live lane worker lacks. */
+export type BulkJobWorkerOptions={workerId?:string;handlers:readonly WorkerHandler[];lanes?:readonly WorkerLane[]};
 type Uuid=`${string}-${string}-${string}-${string}-${string}`;
 /** One claim: the lease token (visible on the row) and its capability (only here and as a digest in app.bulk_job_seal). */
 type Claimed={job:BulkJobRow;token:string;capability:string;metrics:Record<string,number>;ownerPool:postgres.Sql;ownerOpen?:boolean};
 const caches=new Map<string,Map<string,unknown>>();
 const cacheOf=(id:string)=>{let c=caches.get(id);if(!c){c=new Map();caches.set(id,c);}return c;};
-let beatAt=0;const processWorker:Uuid=randomUUID();
+// Last heartbeat per worker id: one process normally has one id, and tests run several lane workers in one process.
+const beatAt=new Map<string,number>();const processWorker:Uuid=randomUUID();
 
-/** Heartbeat for readiness checks (deploy and the queued screen state). Throttled; owner connection only. */
+/** Heartbeat for readiness checks (deploy, admission and the queued screen state). Throttled per worker; owner
+ * connection only. The kinds are exactly the handlers this worker registers, so a lane worker advertises its lane. */
 export async function beatBulkJobWorker(owner:postgres.Sql|postgres.ReservedSql,kinds:readonly string[],workerId:string=processWorker,force=false){
- if(!force&&Date.now()-beatAt<15000)return;
- beatAt=Date.now();
+ if(!force&&Date.now()-(beatAt.get(workerId)??0)<15000)return;
+ beatAt.set(workerId,Date.now());
  await owner`insert into bulk_job_worker(id,kinds,host,pid) values(${workerId}::uuid,${kinds as string[]},${hostname().slice(0,255)},${process.pid})
   on conflict(id) do update set kinds=excluded.kinds,beat_at=now()`;
  await owner`delete from bulk_job_worker where beat_at<now()-interval '1 day'`;
 }
-export async function retireBulkJobWorker(owner:postgres.Sql,workerId:string=processWorker){await owner`delete from bulk_job_worker where id=${workerId}::uuid`;}
+export async function retireBulkJobWorker(owner:postgres.Sql,workerId:string=processWorker){beatAt.delete(workerId);await owner`delete from bulk_job_worker where id=${workerId}::uuid`;}
 
 /** One bounded unit of one job (fair across tenants: least recently touched first). Owner credential stays here. */
 export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOptions):Promise<boolean>{
@@ -182,7 +187,7 @@ export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOpt
  try{
   const [proof]=await connection<{ok:boolean}[]>`select exists(select 1 from pg_roles r join pg_class c on c.oid='public.bulk_job'::regclass where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid)) as ok`;
   if(!proof?.ok)throw new Error('The bulk job worker requires the physical queue owner connection.');
-  await beatBulkJobWorker(connection,kinds,options.workerId??processWorker);
+  await beatBulkJobWorker(connection,[...kinds,...(options.lanes??[]).map(laneMarker)],options.workerId??processWorker);
   if(handlers.has('contract_schedule'))await connection`select app.contract_shared_schedule_admit()`;
   const token=randomUUID();
   // Active work first, through the partial queue index (literal state list so the index predicate applies); then a

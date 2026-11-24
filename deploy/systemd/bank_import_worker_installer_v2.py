@@ -24,7 +24,15 @@ UNIT=Path('/etc/systemd/system/aihr-bank-import.service')
 USER='aihr-import'
 LOCK_DIRECTORY=Path('/run/aihr-bank-import')
 BASE_ENV={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'}
-ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY','MOVEMENT_IMPORT_WORKBOOK_KEY','MOVEMENT_IMPORT_WORKBOOK_KEY_ID'}
+ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY','MOVEMENT_IMPORT_WORKBOOK_KEY','MOVEMENT_IMPORT_WORKBOOK_KEY_ID','AIHR_WORKER_LANES'}
+# ADR 0181 J1.2: AIHR_WORKER_LANES makes the unit's main process supervise one child per listed lane (plus one
+# all-lane child) inside this same unit; the unit bytes, its pool setting and every tool's checks are unchanged.
+WORKER_LANES=('payroll','tax','import','export')
+
+def worker_lanes_value(value):
+    lanes=value.split(',') if value else []
+    check(all(lane in WORKER_LANES for lane in lanes) and len(set(lanes))==len(lanes),'unsupported worker lane list (values withheld)')
+    return lanes
 
 def check(ok,message):
     if not ok: raise ValueError('Worker installation refused: '+message)
@@ -208,6 +216,7 @@ def install(argv,fmt):
     code="const fs=require('node:fs'),{parseEnv}=require('node:util');const e=parseEnv(fs.readFileSync(0,'utf8'));const keys="+json.dumps(sorted(ENV_KEYS))+";console.log(JSON.stringify(Object.fromEntries(keys.filter(k=>e[k]!==undefined).map(k=>[k,e[k]]))));"
     environment=json.loads(command([str(NODE),'-e',code],input=raw_env.decode()).stdout)
     check(set(environment)<=ENV_KEYS and all(isinstance(v,str) and len(v)<=65536 and not any(ord(c)<32 or ord(c)==127 for c in v) for v in environment.values()),'unsupported selected environment value')
+    if 'AIHR_WORKER_LANES' in environment: worker_lanes_value(environment['AIHR_WORKER_LANES'])
     app=database_config(environment.get('DATABASE_URL'),'ai_hr_app');owner=database_config(environment.get('MIGRATION_DATABASE_URL'),'ai_hr_owner')
     check((app['PGHOST'],app['PGPORT'],app['PGDATABASE'])==(owner['PGHOST'],owner['PGPORT'],owner['PGDATABASE']),'app and physical owner must target the same approved staging database')
     sql="SELECT json_build_object('role',current_user,'database',current_database(),'super',r.rolsuper,'bypass',r.rolbypassrls,'owner',c.relowner=r.oid)::text FROM pg_roles r JOIN pg_class c ON c.oid='public.bank_import_job'::regclass WHERE r.rolname=current_user;"
