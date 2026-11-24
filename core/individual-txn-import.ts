@@ -9,7 +9,8 @@ import {domainEvent,payComponent,payrollBatch,payrollIndividualTxn,payrollTxnImp
 import {adminCompaniesTx} from './read';
 import {isAdmin} from '../lib/authz-model';
 import {analyzeTxnImport,txnImportReason} from './payroll-txn-import';
-import {BatchNotDraftError,WRITABLE_BATCH_STATUSES,createIndividualTxnsBulkTx,deleteImportedIndividualTxnsTx,lockNativePayrollPeriodsTx,deriveIndividualTxnAmountTx,resolveDailyImportInput,type PayRule,type WritableBatchStatus} from '../packs/payroll/service';
+import {BatchNotDraftError,WRITABLE_BATCH_STATUSES,createIndividualTxnsBulkTx,deleteImportedIndividualTxnsTx,lockNativePayrollPeriodsTx,deriveIndividualTxnAmountTx,priceIndividualTxnInputTx,resolveDailyImportInput,type PayRule,type WritableBatchStatus} from '../packs/payroll/service';
+import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {parseIndividualImport} from '../lib/individual-txn-import-contract';
 import type {IndividualImportMethod,TxnImportPreview,TxnImportRow} from '../lib/payroll-txn-import-schema';
 import type {IndividualImportAttempt,IndividualImportAttemptState,IndividualImportOutcome,IndividualImportPage,IndividualImportPageRow,IndividualImportSummary} from '../lib/individual-txn-import-model';
@@ -31,6 +32,8 @@ function matchesImportedSnapshot(row:typeof payrollIndividualTxn.$inferSelect,re
  const current=snapshot(row);
  // Receipts written before explicit input methods have no calculationMethod key. NULL retains
  // that exact legacy interpretation; an explicit method must still invalidate reversal.
+ // 7b5b1665 — a One Total for the Month row written with its Input Type records that method in its receipt, so it
+ // reverses only while the saved method is still the one written (an edit from Amount to Qty refuses reversal).
  if(recorded&&!Object.hasOwn(recorded,'calculationMethod')&&current.calculationMethod===null)delete current.calculationMethod;
  // 792053e5 — receipts written before the pricing marker have no marker keys. Marking the row (the one-off script or
  // a later re-pricing) is not an operator change; a re-priced amount still differs and still refuses reversal.
@@ -44,6 +47,8 @@ function canonicalBinding(r:ResolvedRow):PayrollTxnImportBinding{return {
  intendedCycleId:r.intendedCycleId??null,targetBatchId:r.targetBatchId,targetCycle:r.targetCycle,payPeriod:r.payPeriod,
  txnDate:r.txnDate,kind:r.kind,quantity:r.quantity,unit:r.unit,sourceRef:r.sourceRef,notes:r.notes,
  ...(r.explicitDailyRuleHash ? {dailyRuleHash:r.explicitDailyRuleHash} : {}),
+ // 7b5b1665 — the approved Input Type is part of what the reviewer saw; a change to it refuses as previewChanged.
+ ...(r.calculationMethod ? {calculationMethod:r.calculationMethod} : {}),
 };}
 async function eventIds(tx:Tx,id:string){return (await tx.select({id:domainEvent.id}).from(domainEvent).where(and(eq(domainEvent.aggregateId,id),eq(domainEvent.aggregateType,'payroll-individual-txn'))).orderBy(asc(domainEvent.id))).map(e=>e.id);}
 /** 0ec0ee00 — every row's event ids in one read (revert verifies up to 10,000 rows). Same order as eventIds. */
@@ -159,8 +164,18 @@ async function writeRows(tx:Tx,ctx:SessionContext,method:IndividualImportMethod,
      const daily=resolveDailyImportInput(rule,resolved.explicitDailyInput);
      if('reason' in daily||daily.unit!==resolved.unit||resolved.explicitDailyRuleHash&&resolved.explicitDailyRuleHash!==digest(JSON.stringify(rule??null)))throw new IndividualImportError('previewChanged');
     }
+    // 7b5b1665 — a One Total for the Month row with an Input Type: Amount still needs a formula Pay Item, and Qty,
+    // Hours, Days or Units must still price, with the entry pricing owner, to the previewed amount.
+    if(resolved.calculationMethod==='amount'){
+     if(rule?.kind!=='formula'&&rule?.kind!=='formula_builder')throw new IndividualImportError('previewChanged');
+    }else if(resolved.calculationMethod==='formula'){
+     if(rule?.kind!=='formula_builder')throw new IndividualImportError('previewChanged');
+     const priced=await tx.transaction(savepoint=>priceIndividualTxnInputTx(savepoint,ctx,{componentId:resolved.componentId,employmentId:resolved.employmentId,companyId:resolved.companyId,payPeriod:resolved.payPeriod,txnDate:resolved.txnDate,
+      quantity:resolved.quantity,unit:resolved.unit,amount:0,method:'formula',cycleId:resolved.intendedCycleId??null,batchId:resolved.targetBatchId}));
+     if(priced.amount.toFixed(2)!==row.amount)throw new IndividualImportError('previewChanged');
+    }
     // A typed-amount item has nothing to re-price; a calculating item must still price to the previewed amount.
-    if(rule!=null){
+    else if(rule!=null){
      const priced=await tx.transaction(savepoint=>deriveIndividualTxnAmountTx(savepoint,ctx,{componentId:resolved.componentId,employmentId:resolved.employmentId,companyId:resolved.companyId,payPeriod:resolved.payPeriod,quantity:resolved.quantity,unit:resolved.unit,effectiveDate:resolved.txnDate}));
      if(priced.derived&&priced.amount.toFixed(2)!==row.amount)throw new IndividualImportError('previewChanged');
     }
@@ -172,7 +187,8 @@ async function writeRows(tx:Tx,ctx:SessionContext,method:IndividualImportMethod,
   const written:{row:TxnImportRow;id:string;batchId:string|null}[]=[];
   const write=(target:typeof ready)=>tx.transaction(savepoint=>{const r=target[0].resolved;return createIndividualTxnsBulkTx(savepoint,ctx,{
    ...(r.targetBatchId?{batchId:r.targetBatchId}:{companyId:r.companyId,payPeriod:r.payPeriod}),employmentIds:[r.employmentId],intendedCycleId:r.intendedCycleId,
-   rows:target.map(({resolved:x})=>({kind:x.kind,componentId:x.componentId,txnDate:x.txnDate,amount:x.amount,quantity:x.quantity,unit:x.unit,notes:x.notes,source:'import',sourceRef:x.sourceRef})),
+   rows:target.map(({resolved:x})=>({kind:x.kind,componentId:x.componentId,txnDate:x.txnDate,amount:x.amount,quantity:x.quantity,unit:x.unit,notes:x.notes,source:'import',sourceRef:x.sourceRef,
+    ...(x.calculationMethod?{calculationMethod:x.calculationMethod}:{})})),
   });});
   for(const group of groups.values()){
    if(Date.now()>ceilingAt&&part.length>1)throw new StepOverrun();
@@ -239,6 +255,9 @@ export async function confirmIndividualImportStep(ctx:SessionContext,p:{id:strin
   let result:{progress:IndividualImportProgress;moved:boolean};
   try{
    result=await withTenant(ctx,async tx=>{
+    // 7b5b1665 — rows with an Input Type are priced and written under the shared catalogue lock. Take it BEFORE the
+    // payroll period, in generation's catalogue → period order, never as an upgrade after owning the period.
+    if(part.some(row=>row.ok&&nominee.bindings[String(row.rowNum)]?.calculationMethod))await lockPayComponentCatalogReadTx(tx,ctx);
     if(selections.length)await lockNativePayrollPeriodsTx(tx,ctx,selections);
     const r=await readStep(tx,ctx,p.id,p.scopeIds,true,false);
     // Another runner moved this attempt meanwhile: report where it is; the caller reads again.

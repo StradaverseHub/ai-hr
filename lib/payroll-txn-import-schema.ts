@@ -189,6 +189,9 @@ export type TxnImportRow = {
   amount: string;
   inputType?: string;
   inputValue?: number;
+  /** 7b5b1665 — One Total for the Month on a formula Pay Item: 'amount' pays the typed Amount with no formula,
+   *  'formula' is worked out by the Pay Item's saved formula. Absent on every other row. */
+  calculationMethod?: 'amount' | 'formula';
   ok: boolean;
   /** i18n key under `payroll.txnImport.reason.*`. Empty when `ok`. */
   reason: string;
