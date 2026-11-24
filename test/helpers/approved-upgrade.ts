@@ -481,9 +481,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10540,when:1795280007140,tag:'7140_payroll_individual_import_steps'},
  {idx:10550,when:1795280007150,tag:'7150_contract_list_company_rights_once'},
  {idx:10560,when:1795488671000,tag:'7160_import_source_worksheet'},
+ {idx:10590,when:1795494980900,tag:'7190_bank_import_worksheet_reservation'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '7190_bank_import_worksheet_reservation':'d057ebfdda823b9d8dac2fe47921e6797430f03b23800098dc4727bfde568585',
  '7160_import_source_worksheet':'ecb40f70761b3034176ddff3f56b1008a16012b15405e7813fdf90367a9accbf',
  '7140_payroll_individual_import_steps':'c2f75af90ad00c779e3447311ba8efb25ad06066ab46dc744810fba720223d5f',
  '7120_payroll_tax_basis_run':'e5aab381a4d81892cdf95d32d6cd9c857976662135c5f6bb188aec7876c8cc2a',
