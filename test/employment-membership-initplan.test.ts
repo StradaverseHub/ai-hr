@@ -2,7 +2,7 @@
  * All policy edits are confined to this test worker's disposable database. */
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {CURRENT_VISIBILITY,REVIEWED_VISIBILITY_PREDECESSOR} from './helpers/reviewed-visibility';
+import {PRE_7240_VISIBILITY,REVIEWED_VISIBILITY_PREDECESSOR,installPre7240} from './helpers/reviewed-visibility';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
@@ -51,7 +51,9 @@ async function securitySnapshot(){
   where table_schema='public' and table_name in ('employment','assignment','person') order by table_schema,table_name,grantee,privilege_type`);
  return {policies,functions,grants};
 }
-beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
+// 7240 replaced visible_employment_ids and the employment/person USING; this replay runs against the state it replaced.
+let restore7240:(()=>Promise<void>)|undefined;
+beforeAll(async()=>{await migrateTestDb();restore7240=await installPre7240(owner.client as never);});beforeEach(resetDb);afterAll(async()=>{try{await restore7240?.();}finally{await closeAll();}});
 
 async function fixture(){
  const b=await seedBase(),foreign=await seedBase(),ctx=adminCtx(b);
@@ -190,7 +192,7 @@ it('replays the real append on populated predecessor data with exact native befo
   const before=await authority(f);
   // Apply actual migration bytes, not a rewritten test replacement or fabricated ledger: 3001, then the later
   // reviewed 5054 rewrite of the same policy.
-  await owner.client.begin(async tx=>{await tx.unsafe(REVIEWED_VISIBILITY_PREDECESSOR);await tx.unsafe(migration);await tx.unsafe(partnerMigration);await tx.unsafe(CURRENT_VISIBILITY);});
+  await owner.client.begin(async tx=>{await tx.unsafe(REVIEWED_VISIBILITY_PREDECESSOR);await tx.unsafe(migration);await tx.unsafe(partnerMigration);await tx.unsafe(PRE_7240_VISIBILITY);});
   expect(await installedPolicy()).toEqual(installed);
   expect(await securitySnapshot()).toEqual(metadata);
   const after=await authority(f);expect(after).toEqual(before);

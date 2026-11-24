@@ -264,6 +264,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10610,version:'7',when:1795495007210,tag:'7210_access_effective_company',breakpoints:true},
  {idx:10620,version:'7',when:1795495007220,tag:'7220_movement_system_payroll_snapshot_insert',breakpoints:true},
  {idx:10630,version:'7',when:1795495007230,tag:'7230_assignment_current_department_index',breakpoints:true},
+ {idx:10640,version:'7',when:1795495007240,tag:'7240_access_visible_employment',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1101,7 +1102,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // Movement5773–5779: exact new function inventory, with no PUBLIC execute and one private implementation.
   addedFunctions.push('app.access_movement_delete_employment(uuid)','app.cost_allocations_after_hire_company_correction(uuid,uuid,text)','app.employment_payment_method_on(uuid,date)','app.preserve_movement_payroll(uuid)','app.preserve_payroll_metadata(uuid,boolean)','app.workforce_payroll_inputs_changed(uuid,date,date,text)','app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)');
   //6100–6102 and6600–6642: independently reviewed signatures and exact application EXECUTE decisions.
-  const approvedFunctions:{fn:string;app:boolean}[]=[
+  const approvedFunctions:{fn:string;app:boolean;acl?:string}[]=[
    //6686/87: native private source/custody; only scoped completion and explicit Personnel review are public.
    {fn:'app.probation_letter_completion_actor()',app:false},
    {fn:'app.probation_letter_completion_lock_person(uuid)',app:false},
@@ -1343,6 +1344,29 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.access_effective_company_verify(uuid)',app:false},
    {fn:'app.access_precompute_set_mode(text)',app:false},
    {fn:'app.access_workforce_companies(text)',app:true},
+   // 7240 (ADR 0181 employment visibility): owner-only compute, maintenance, verify and mode functions; the four readers are granted.
+   {fn:'app.access_department_closure_compute(uuid)',app:false},
+   {fn:'app.access_department_closure_refresh(uuid)',app:false},
+   {fn:'app.access_employment_closure_signature(uuid)',app:false},
+   {fn:'app.access_employment_line_window(uuid,date)',app:false},
+   {fn:'app.access_reach_compute(uuid,date,uuid[],uuid[],uuid[])',app:false},
+   {fn:'app.access_visible_employment_closure_changed()',app:false},
+   {fn:'app.access_visible_employment_department_changed()',app:false},
+   {fn:'app.access_visible_employment_employment_changed()',app:false},
+   {fn:'app.access_visible_employment_ids()',app:true},
+   {fn:'app.access_visible_employment_legacy()',app:false},
+   {fn:'app.access_visible_employment_line_changed()',app:false},
+   {fn:'app.access_visible_employment_refresh(uuid,uuid[],boolean,date)',app:false},
+   {fn:'app.access_visible_employment_retrust(uuid)',app:false},
+   {fn:'app.access_visible_employment_set_mode(text)',app:false},
+   {fn:'app.access_visible_employment_stored()',app:false},
+   {fn:'app.access_visible_employment_unusable()',app:false},
+   {fn:'app.access_visible_employment_verify(uuid)',app:false},
+   // person_rls applies to every role: also every role holding a privilege on person (7240's per-policy grant).
+   {fn:'app.access_visible_person_ids()',app:true,acl:'{OWNER=X/OWNER,ai_hr_reward_setup_reader=X/OWNER,ai_hr_app=X/OWNER}'},
+   // person_rls applies to every role: also every role holding a privilege on person (7240's per-policy grant).
+   {fn:'app.employment_partner_companies()',app:true,acl:'{OWNER=X/OWNER,ai_hr_reward_setup_reader=X/OWNER,ai_hr_app=X/OWNER}'},
+   {fn:'app.employment_read_companies()',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
@@ -1530,8 +1554,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // partner (app.can_admin_payroll_for), which the original predicate already admitted.
    const shapes:[string,string][]=[[memberships[0],'app.is_admin_for(company_id)'],[memberships[1],'app.is_admin_for(company_id)'],
     [memberships[1],'(app.is_admin_for(company_id) or app.can_admin_payroll_for(company_id))']];
-   for(const [membership,administratorArm] of shapes){
-    const inherited=`(voided_at is null) and ((tenant_id=app.current_tenant_id()) and ((${membership}) or app.can_admin_payroll_for(company_id) or app.can_admin_perfcomp_for(company_id)))`;
+   // The fourth is 7240's: the company questions once per statement and the relationship reader (same rows).
+   const companyArm='company_id=any((select app.employment_read_companies())::uuid[]) or id in(select unnest((select app.access_visible_employment_ids())))';
+   for(const [membership,administratorArm,arms] of [...shapes.map(([m,a])=>[m,a,null] as [string,string,string|null]),
+    [memberships[1],'(app.is_admin_for(company_id) or app.can_admin_payroll_for(company_id))',companyArm] as [string,string,string|null]]){
+    const inherited=arms?`(voided_at is null) and ((tenant_id=app.current_tenant_id()) and (${arms}))`:`(voided_at is null) and ((tenant_id=app.current_tenant_id()) and ((${membership}) or app.can_admin_payroll_for(company_id) or app.can_admin_perfcomp_for(company_id)))`;
     const expression=`(voided_at is null) and (tenant_id=app.current_tenant_id()) and case
      when (select current_setting('app.bank_import_point_read',true))='on'
      then case when ${administratorArm} then true else (${inherited}) end
@@ -1545,9 +1572,26 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const isEmploymentPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='employment'&&row.policyname==='employment_rls';
   const beforeEmployment=beforePerformancePrivileges.policies.find(isEmploymentPolicy),afterEmployment=afterPerformancePrivileges.policies.find(isEmploymentPolicy);
   expect(beforeEmployment?.qual).toBe(expectedEmploymentQuals[0]);
-  expect(afterEmployment?.qual).toBe(expectedEmploymentQuals[2]);
-  const wrappedMembership='(id IN ( SELECT unnest(( SELECT app.visible_employment_ids() AS visible_employment_ids)) AS unnest))';
+  expect(afterEmployment?.qual).toBe(expectedEmploymentQuals[3]);
+  const wrappedMembership='(id IN ( SELECT unnest(( SELECT app.access_visible_employment_ids() AS access_visible_employment_ids)) AS unnest))';
   expect(afterEmployment?.qual?.split(wrappedMembership)).toHaveLength(3);
+  // 7240 also replaced person_rls USING with the same predicate in once-per-statement form; everything else is unchanged.
+  const expectedPersonQuals=await storage.client.begin(async tx=>{
+   const out:string[]=[];
+   for(const expression of [
+    `(voided_at is null) and ((tenant_id=app.current_tenant_id()) and (((select app.is_admin()) or (id=any((select app.visible_person_ids())::uuid[]))) or (exists(select 1 from employment e where e.person_id=person.id and e.tenant_id=app.current_tenant_id() and (app.can_admin_payroll_for(e.company_id) or app.can_admin_perfcomp_for(e.company_id))))))`,
+    `(voided_at is null) and ((tenant_id=app.current_tenant_id()) and ((select app.is_admin()) or (id in(select unnest((select app.access_visible_person_ids())))) or (exists(select 1 from employment e where e.person_id=person.id and e.tenant_id=app.current_tenant_id() and e.company_id=any((select app.employment_partner_companies())::uuid[])))))`]){
+    await tx.unsafe('create policy performance_expected_person on public.person for select to ai_hr_app using ('+expression+')');
+    const [row]=await tx<{qual:string}[]>`select qual from pg_policies where schemaname='public' and tablename='person' and policyname='performance_expected_person'`;
+    out.push(row.qual);await tx.unsafe('drop policy performance_expected_person on public.person');
+   }
+   return out;
+  });
+  const isPersonPolicy=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='person'&&row.policyname==='person_rls';
+  const beforePerson=beforePerformancePrivileges.policies.find(isPersonPolicy),afterPerson=afterPerformancePrivileges.policies.find(isPersonPolicy);
+  expect(beforePerson?.qual).toBe(expectedPersonQuals[0]);
+  expect(afterPerson?.qual).toBe(expectedPersonQuals[1]);
+  expect({...afterPerson,qual:expectedPersonQuals[0]}).toEqual(beforePerson);
   expect(beforeEmployment).toMatchObject({permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',with_check:'((tenant_id = app.current_tenant_id()) AND app.is_admin_for(company_id))'});
   expect({...afterEmployment,qual:expectedEmploymentQuals[0]}).toEqual(beforeEmployment);
   // Independently parse the one reviewed Assignment transition from 3102. The
@@ -2492,7 +2536,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(beforePerformancePrivileges.columns.filter(row=>isApprovedRelation(row.rel))).toEqual([]);
   // PostgreSQL locale ordering treats punctuation differently from JavaScript; compare exact rows in one deterministic order.
   expect(afterPerformancePrivileges.functions.filter(row=>approvedFunctions.some(expected=>expected.fn===row.fn)).map(row=>({fn:row.fn,acl:ownerAcl(row.acl)})).sort((a,b)=>a.fn<b.fn?-1:a.fn>b.fn?1:0))
-   .toEqual(approvedFunctions.map(row=>({fn:row.fn,acl:row.app?'{OWNER=X/OWNER,ai_hr_app=X/OWNER}':'{OWNER=X/OWNER}'})).sort((a,b)=>a.fn<b.fn?-1:a.fn>b.fn?1:0));
+   .toEqual(approvedFunctions.map(row=>({fn:row.fn,acl:row.acl??(row.app?'{OWNER=X/OWNER,ai_hr_app=X/OWNER}':'{OWNER=X/OWNER}')})).sort((a,b)=>a.fn<b.fn?-1:a.fn>b.fn?1:0));
   //6690–6699: literal financial/source ownership DDL, independent of the observed upgraded catalogue.
   // The migration author cannot bless its bridge from its final ACL: the separate restricted-owner
   // prefix rehearsal asserts the two predecessor role lists BEFORE6695 and then their literal union.
@@ -2941,7 +2985,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // 7210 (ADR 0181 Phase 2 pilot): four owner-only tables with their owner policies, and the Job descriptions read
   // policies restated once per statement (job_document_read, job_document_revision_read and the FOR ALL
   // job_document_revision_write). Each expected text is normalised by PostgreSQL under a temporary name.
-  const accessPilotTables=['access_company_closure','access_company_state','access_effective_company','access_precompute_control'];
+  // 7240 adds four more owner-only tables with the same owner policy.
+  const accessPilotTables=['access_company_closure','access_company_state','access_effective_company','access_precompute_control',
+   'access_department_closure','access_employment_precompute_control','access_employment_state','access_reporting_reach'];
   const accessPilotOwner='for all using(app.acting_as_owner()) with check(app.acting_as_owner())';
   const accessPilotView="j.company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))::uuid[])";
   const accessPilotRevision=(extra:string)=>`tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.job_document j WHERE j.tenant_id=job_document_revision.tenant_id AND j.id=job_document_revision.job_id AND ${accessPilotView}${extra})`;
@@ -2967,7 +3013,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {table:'job_document_revision',name:'job_document_revision_read',sql:'for select to ai_hr_app using(app.job_document_scope(tenant_id,job_id))'},
    {table:'job_document_revision',name:'job_document_revision_write',sql:`for all to ai_hr_app using(${accessPilotOldWrite}) with check(${accessPilotOldWrite})`},
   ]));
-  expect(accessPilotAfter).toHaveLength(7);expect(accessPilotBefore).toHaveLength(3);
+  expect(accessPilotAfter).toHaveLength(11);expect(accessPilotBefore).toHaveLength(3);
   const isAccessPilotPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>row.schemaname==='public'&&accessPilotAfter.some(expected=>accessPilotKey(expected)===accessPilotKey(row));
   const isAccessPilotReplaced=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&accessPilotBefore.some(expected=>accessPilotKey(expected)===accessPilotKey(row));
   const isAccessPilotRelation=(rel:string)=>accessPilotTables.includes(rel);
@@ -2975,7 +3021,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(accessPilotSort(afterPerformancePrivileges.policies.filter(isAccessPilotPolicy))).toEqual(accessPilotAfter);
   expect(beforePerformancePrivileges.relations.filter(row=>isAccessPilotRelation(row.rel))).toEqual([]);
   const accessPilotRelations=afterPerformancePrivileges.relations.filter(row=>isAccessPilotRelation(row.rel));
-  expect(accessPilotRelations.map(row=>[row.rel,row.rls,row.force])).toEqual(accessPilotTables.map(rel=>[rel,true,true]));
+  expect(accessPilotRelations.map(row=>[row.rel,row.rls,row.force])).toEqual([...accessPilotTables].sort().map(rel=>[rel,true,true]));
   for(const row of accessPilotRelations)expect(String(row.acl??''),row.rel+' grants nothing to the application role').not.toContain('ai_hr_app');
   // 7220: the nightly movement sweep's system path reads and writes information_payslip_snapshot as the storage owner.
   // Rendered by PostgreSQL from the reviewed text, under temporary names, exactly as the other lanes above.
@@ -3016,7 +3062,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
    policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)&&!isSixItemPolicy(row)&&!isPayrollReadPolicy(row)&&!isAccessPilotPolicy(row)&&!isSystemPreservePolicy(row)).map(row=>
-    isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
+    isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:isPersonPolicy(row)?{...row,qual:expectedPersonQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
       isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:originalLegacyEmailAssetPredicate(row)),
   };

@@ -8016,6 +8016,13 @@
       "when": 1795495007230,
       "tag": "7230_assignment_current_department_index",
       "breakpoints": true
+    },
+    {
+      "idx": 10640,
+      "version": "7",
+      "when": 1795495007240,
+      "tag": "7240_access_visible_employment",
+      "breakpoints": true
     }
   ]
 }

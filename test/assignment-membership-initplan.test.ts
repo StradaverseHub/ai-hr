@@ -1,7 +1,7 @@
 /** Real appended policy migration; populated data and native authority, no mocks. */
 import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
-import {againstReviewedVisibility,REVIEWED_VISIBILITY_PREDECESSOR} from './helpers/reviewed-visibility';
+import {againstReviewedVisibility,PRE_7240_VISIBILITY,REVIEWED_VISIBILITY_PREDECESSOR,installPre7240} from './helpers/reviewed-visibility';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant} from '../db/client';
@@ -37,7 +37,9 @@ async function security(){
  return {policies,functions,grants,indexes};
 }
 async function setQual(qual:string){await owner.client.begin(tx=>tx.unsafe('ALTER POLICY assignment_rls ON public.assignment USING ('+qual+')'));}
-beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
+// 7240 replaced visible_employment_ids and the employment/person USING; this replay runs against the state it replaced.
+let restore7240:(()=>Promise<void>)|undefined;
+beforeAll(async()=>{await migrateTestDb();restore7240=await installPre7240(owner.client as never);});beforeEach(resetDb);afterAll(async()=>{try{await restore7240?.();}finally{await closeAll();}});
 
 it('installs the exact append and preserves all non-membership policy fields',async()=>{
  expect(createHash('sha256').update(migration).digest('hex')).toBe('21a7750a316cc8a0025e8d5c51e77cd06491ce8b1fea50d8414267e9c0cc6ab0');
@@ -50,7 +52,7 @@ it('replays actual SQL on populated predecessor data with native history, scope 
  try{
   await setQual(previousSql);expect(compact((await policy()).qual)).toBe(originalQual);
   const before=await assertAssignmentAuthority(f);
-  await owner.client.begin(tx=>tx.unsafe(againstReviewedVisibility(migration)));
+  await owner.client.begin(tx=>tx.unsafe(againstReviewedVisibility(migration,PRE_7240_VISIBILITY)));
   expect(await policy()).toEqual(installed);expect(await security()).toEqual(metadata);
   const after=await assertAssignmentAuthority(f);expect(after).toEqual(before);
   let denied:unknown;
