@@ -33,7 +33,7 @@ async function until<T>(what:string,fn:()=>Promise<T|undefined|false>,ms=120_000
  }
 }
 const alive=(pid:number)=>{try{process.kill(pid,0);return true;}catch{return false;}};
-const beats=()=>owner.client<{pid:number;kinds:string[];beat_at:Date}[]>`select pid,kinds,beat_at from bulk_job_worker where host<>'fixture' order by started_at`;
+const beats=()=>owner.client<{pid:number;kinds:string[];beat_at:string|Date}[]>`select pid,kinds,beat_at from bulk_job_worker where host<>'fixture' order by started_at`;
 /** Worker heartbeats of processes that are not `parent` (the children), keyed by the lanes they advertise. */
 async function childBeats(parent:number,count:number){
  return until(`${count} child heartbeats`,async()=>{const rows=(await beats()).filter(r=>r.pid!==parent&&alive(r.pid));return rows.length>=count&&rows;});
@@ -135,7 +135,7 @@ for(const lanes of [undefined,'payroll']){
    let settled=false;
    const outcome=await Promise.race([
     run.exit.then(exit=>({exited:exit})),
-    until('recovered heartbeats',async()=>{const rows=(await beats()).filter(r=>r.beat_at>outageAt&&alive(r.pid));return rows.length>=(lanes?2:1)&&rows;},90_000,()=>settled)
+    until('recovered heartbeats',async()=>{const rows=(await beats()).filter(r=>new Date(r.beat_at).getTime()>outageAt.getTime()&&alive(r.pid));return rows.length>=(lanes?2:1)&&rows;},90_000,()=>settled)
      .then(()=>({recovered:true as const}),error=>({stuck:String(error)})),
    ]);
    settled=true;

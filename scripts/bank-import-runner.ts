@@ -35,7 +35,7 @@ if(!dedicated.length){
  const supervisor=superviseWorkerLanes({
   children:workerLaneChildren(process.env,dedicated),once,
   spawn:spec=>spawn(process.execPath,[...process.execArgv,script,...(once?['--once']:[])],{
-   env:Object.fromEntries(Object.entries(spec.env).filter((entry):entry is [string,string]=>entry[1]!==undefined)),
+   env:Object.fromEntries(Object.entries(spec.env).filter((entry):entry is [string,string]=>entry[1]!==undefined)) as NodeJS.ProcessEnv,
    stdio:['ignore','inherit','inherit','ipc'],
   }),
   exit:code=>process.exit(code),

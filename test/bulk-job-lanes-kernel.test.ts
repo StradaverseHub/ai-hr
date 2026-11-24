@@ -105,6 +105,8 @@ async function outcomes(ids:string[]):Promise<Outcome[]>{
  return out;
 }
 let baseline:Outcome[]|null=null;
+/** The harness may return timestamps as text; compare instants either way. */
+const ms=(value:string|Date)=>new Date(value).getTime();
 
 beforeAll(async()=>{
  await migrateTestDb();
@@ -145,12 +147,12 @@ it('two lane processes and one all-lane process give the same outcomes, claim no
  // Same outcomes, job by job, as one process alone.
  expect(await outcomes(ids)).toEqual(baseline);
 
- const rows=await owner.client<{job_id:string;kind:string;company:string;process:string;started_at:Date;finished_at:Date}[]>`select r.job_id,j.kind,j.input->>'company' as company,r.process,r.started_at,r.finished_at
+ const rows=await owner.client<{job_id:string;kind:string;company:string;process:string;started_at:string|Date;finished_at:string|Date}[]>`select r.job_id,j.kind,j.input->>'company' as company,r.process,r.started_at,r.finished_at
   from public.lane_fixture_row r join bulk_job j on j.id=r.job_id where r.job_id=any(${ids}::uuid[]) order by r.started_at,r.id`;
  // No double claim: each job's units ran one after another, never in two processes at once.
  for(const id of ids){
   const units=rows.filter(r=>r.job_id===id);
-  for(let i=1;i<units.length;i++)expect(units[i].started_at.getTime()).toBeGreaterThanOrEqual(units[i-1].finished_at.getTime());
+  for(let i=1;i<units.length;i++)expect(ms(units[i].started_at)).toBeGreaterThanOrEqual(ms(units[i-1].finished_at));
  }
  // Each lane process ran only its own lane's kind; the all-lane process may run either.
  expect(rows.filter(r=>r.process==='payroll').every(r=>r.kind===PAY)).toBe(true);
@@ -162,8 +164,8 @@ it('two lane processes and one all-lane process give the same outcomes, claim no
   const jobs=ids.filter(id=>rows.some(r=>r.job_id===id&&r.kind===PAY&&r.company===company));
   expect(jobs.length).toBeGreaterThan(1);
   for(let i=1;i<jobs.length;i++){
-   const previousEnd=Math.max(...rows.filter(r=>r.job_id===jobs[i-1]).map(r=>r.finished_at.getTime()));
-   const nextStart=Math.min(...rows.filter(r=>r.job_id===jobs[i]).map(r=>r.started_at.getTime()));
+   const previousEnd=Math.max(...rows.filter(r=>r.job_id===jobs[i-1]).map(r=>ms(r.finished_at)));
+   const nextStart=Math.min(...rows.filter(r=>r.job_id===jobs[i]).map(r=>ms(r.started_at)));
    expect(nextStart,`company ${company} job ${i+1}`).toBeGreaterThanOrEqual(previousEnd);
   }
  }
