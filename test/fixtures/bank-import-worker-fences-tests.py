@@ -210,6 +210,46 @@ class FencesTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.capture(deadline=float('inf'))
         with self.assertRaises(ValueError):fences.capture_tree(str(self.tree)+'/../source',lambda p:False,[self.tree],time.monotonic()+10)
 
+    def opening(self,component,change):
+        """Run change() once, just before canonical_directory opens the named path component."""
+        original=fences.os.open;done=False
+        def call(name,flags,*args,**kw):
+            nonlocal done
+            if not done and name==component and kw.get('dir_fd') is not None:done=True;change()
+            return original(name,flags,*args,**kw)
+        return patch.object(fences.os,'open',side_effect=call)
+    def test_ancestor_sibling_activity_while_opening_does_not_refuse(self):
+        # Gates 45326625307 and 45339095373 (24 Nov 2026): other workers creating entries in a shared ancestor such
+        # as /tmp changed its link count and times between stat and open, and every capture under it refused.
+        before=self.root.stat()
+        with self.opening(self.root.name,lambda:(self.root/'sibling').mkdir()):
+            path,fd=fences.canonical_directory(str(self.tree),time.monotonic()+10)
+        try:self.assertEqual(path,self.tree);self.assertEqual(os.fstat(fd).st_ino,self.tree.stat().st_ino)
+        finally:os.close(fd)
+        after=self.root.stat();self.assertEqual(after.st_ino,before.st_ino)
+        self.assertNotEqual((after.st_nlink,after.st_mtime_ns),(before.st_nlink,before.st_mtime_ns),'the ancestor really changed')
+        with self.opening(self.root.name,lambda:(self.root/'other').write_bytes(b'x')):self.assertEqual(self.capture()['nodes'],2)
+    def test_ancestor_swap_while_opening_still_refuses(self):
+        moved=Path(str(self.root)+'-moved')
+        def swap():os.rename(self.root,moved);self.root.mkdir();(self.root/'source').mkdir()
+        try:
+            with self.opening(self.root.name,swap):
+                with self.assertRaisesRegex(ValueError,'root ancestor changed while opening'):fences.canonical_directory(str(self.tree),time.monotonic()+10)
+        finally:
+            for leftover in (self.root/'source',self.root):
+                if leftover.exists():leftover.rmdir()
+            os.rename(moved,self.root)
+    def test_ancestor_mode_change_while_opening_still_refuses(self):
+        mode=stat.S_IMODE(self.root.stat().st_mode)
+        try:
+            with self.opening(self.root.name,lambda:self.root.chmod(0o700 if mode!=0o700 else 0o750)):
+                with self.assertRaisesRegex(ValueError,'root ancestor changed while opening'):fences.canonical_directory(str(self.tree),time.monotonic()+10)
+        finally:self.root.chmod(mode)
+    def test_requested_directory_change_while_opening_still_refuses(self):
+        # The requested directory itself keeps the complete comparison: an entry added to it while opening refuses.
+        # A subdirectory raises its link count, which never depends on the clock's granularity.
+        with self.opening(self.tree.name,lambda:(self.tree/'added').mkdir()):
+            with self.assertRaisesRegex(ValueError,'root ancestor changed while opening'):fences.canonical_directory(str(self.tree),time.monotonic()+10)
 
 def uid_race(uid):
     assert os.geteuid()==0 and uid>0 and sys.platform=='linux'
