@@ -10,6 +10,7 @@
  * is decoded to CSV text here (lib/import-file, the one workbook decoder in this repo) and only that
  * text crosses the wire, exactly as the employee and leave importers do it.
  */
+import { useImportWorksheet } from '@/components/use-import-worksheet';
 import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -17,7 +18,7 @@ import { useTranslations } from 'next-intl';
 import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { RosterTemplateButton } from '@/components/roster-grid';
-import { IMPORT_FILE_ACCEPT, importFileMessageKey, readImportFile } from '@/lib/import-file';
+import { IMPORT_FILE_ACCEPT, importFileMessageKey } from '@/lib/import-file';
 import { addMonths } from '@/lib/roster-month';
 import type { RosterImportReject, RosterImportResult } from '@/core/roster-import';
 import { commitRosterImportAction, dryRunRosterImportAction } from './actions';
@@ -54,6 +55,7 @@ export function RosterImport({
   const [reading, setReading] = useState(false);
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { readFile, worksheetPicker, choosingWorksheet } = useImportWorksheet();
 
   const reset = () => {
     setPreview(null);
@@ -84,10 +86,15 @@ export function RosterImport({
     });
 
   const loadFile = async (file: File) => {
-    setError(null);
+    if (reading || pending) return;
+    reset();
+    setCsv('');
+    setFileName(null);
     setReading(true);
     try {
-      const { name, text } = await readImportFile(file);
+      const read = await readFile(file);
+      if (!read) return;
+      const {name, text} = read;
       setCsv(text);
       setFileName(name);
       setCommitted(null);
@@ -144,7 +151,7 @@ export function RosterImport({
           {companies.length > 1 && (
             <div className="sm:max-w-[260px]">
               <Field label={t('targetCompany')}>
-                <select className={inputCls} value={companyId} onChange={(e) => changeScope({ companyId: e.target.value })}>
+                <select className={inputCls} disabled={reading || pending} value={companyId} onChange={(e) => changeScope({ companyId: e.target.value })}>
                   {companies.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
@@ -156,7 +163,7 @@ export function RosterImport({
           )}
           <div className="sm:max-w-[200px]">
             <Field label={t('targetMonth')}>
-              <input type="month" className={inputCls} value={month} onChange={(e) => changeScope({ month: e.target.value })} />
+              <input type="month" className={inputCls} disabled={reading || pending} value={month} onChange={(e) => changeScope({ month: e.target.value })} />
             </Field>
           </div>
           <div className="flex items-end gap-2">
@@ -207,7 +214,7 @@ export function RosterImport({
               }`}
             >
               <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden />
-              <div className="text-sm font-medium">{reading ? t('reading') : t('dropHere')}</div>
+              <div className="text-sm font-medium">{reading && !choosingWorksheet ? t('reading') : t('dropHere')}</div>
               <p className="text-xs text-muted-foreground">{t('uploadHint', { month })}</p>
               <input
                 ref={fileInputRef}
@@ -222,6 +229,7 @@ export function RosterImport({
             </div>
             {fileName && <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">{t('fileLoaded', { name: fileName })}</p>}
           </Field>
+          {worksheetPicker}
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">

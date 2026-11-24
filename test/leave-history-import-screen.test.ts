@@ -116,10 +116,10 @@ describe('the page is the house shape', () => {
     expect(src).not.toMatch(/workbookToCsv|buildXlsx/);
   });
 
-  it('the island reads the file in the BROWSER, through the one decoder this repo has', () => {
+  it('the island reads the file in the BROWSER, through the worksheet picker', () => {
     const src = read(ISLAND);
     expect(src.startsWith("'use client'")).toBe(true);
-    expect(src).toContain('readImportFile(file)');
+    expect(src).toContain('readFile(file)');
     expect(src).toContain('IMPORT_FILE_ACCEPT');
     // The error report echoes user-supplied cells back into a file Excel will open, so it must go
     // through toCsv's formula-injection guard rather than being joined by hand.
@@ -158,9 +158,9 @@ describe('the six steps are the reporter’s six, in the reporter’s order', ()
   });
 
   it('every reachable upload-failure message resolves in all six catalogues for the permissive Leave decoder', () => {
-    // Personnel's strict allowedSheets policy owns UNEXPECTED_SHEET. This Leave importer reads the
-    // first sheet permissively, so its reachable failure family remains these five localized messages.
-    expect(read(ISLAND)).toContain('readImportFile(file)');
+    // Personnel's strict allowedSheets policy owns UNEXPECTED_SHEET. This Leave importer reads a
+    // user-selected worksheet, so its reachable failure family remains these five localized messages.
+    expect(read(ISLAND)).toContain('readFile(file)');
     expect(read(ISLAND)).not.toContain('allowedSheets');
     const codes = ['UNSUPPORTED_FILE_TYPE', 'FILE_TOO_LARGE', 'EMPTY_FILE', 'EMPTY_SHEET', 'FILE_READ_FAILED'] as const;
     expect(codes).toHaveLength(5);

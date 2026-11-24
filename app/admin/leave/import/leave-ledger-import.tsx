@@ -1,4 +1,6 @@
 'use client';
+import { importFileMessageKey } from '@/lib/import-file';
+import { useImportWorksheet } from '@/components/use-import-worksheet';
 import { ActionButton } from '@/components/ui/action-button';
 import { useNricPolicyMessage } from '@/components/nric-policy-message';
 
@@ -70,6 +72,7 @@ export function LeaveLedgerImport() {
   const [dragging, setDragging] = useState(false);
   const [reading, setReading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { readFile, clearWorksheet, worksheetPicker, choosingWorksheet } = useImportWorksheet();
   // A running background import, rejoined after a reload.
   const [job, setJob] = useState<LeaveImportJobProgress | null>(null);
   useEffect(() => {
@@ -116,7 +119,7 @@ export function LeaveLedgerImport() {
 
   // AI v2 slice 3 (issue 16b): "Fix the rows" on a leave balance import prepared in chat opens here with that same file's
   // text, validated at once so every row's own message is listed.
-  useAssistantImportIntake('leave_balances', (handed) => { reset(); setCsv(handed); setSource({ kind: 'paste' }); setFileInfo(null); runValidate(handed); }, setError);
+  useAssistantImportIntake('leave_balances', (handed) => { clearWorksheet(); reset(); setCsv(handed); setSource({ kind: 'paste' }); setFileInfo(null); runValidate(handed); }, setError);
 
   const commit = () =>
     startTransition(async () => {
@@ -130,45 +133,23 @@ export function LeaveLedgerImport() {
       }
     });
 
-  // Function 2: read a picked/dropped file into the shared `csv` state, then auto-run validation so the
-  // upload flows straight into the Ready/Error preview (Function 2 → 3 → 4). CSV is read natively;
-  // .xlsx/.xls are parsed IN THE BROWSER via the dynamically-imported SheetJS helper (server never sees
-  // a workbook — it always receives the same CSV text as the paste path and re-validates it).
   const loadFile = async (file: File) => {
-    setError(null);
+    if (reading || pending) return;
+    reset();
+    setFileInfo(null);
+    setCsv('');
     setReading(true);
     try {
-      const lower = file.name.toLowerCase();
-      let text: string;
-      let format: LeaveImportSource['format'];
-      if (lower.endsWith('.csv')) {
-        format = 'csv';
-        text = await file.text();
-      } else if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
-        format = lower.endsWith('.xlsx') ? 'xlsx' : 'xls';
-        const { workbookToCsvText } = await import('@/lib/spreadsheet');
-        try {
-          text = await workbookToCsvText(await file.arrayBuffer());
-        } catch (e) {
-          setError((e as Error).message === 'EMPTY_SHEET' ? t('emptySheet') : t('fileReadError'));
-          return;
-        }
-      } else {
-        setError(t('unsupportedFileType'));
-        return;
-      }
-      if (new Blob([text]).size > MAX_CSV_BYTES) {
-        setError(t('fileTooLarge'));
-        return;
-      }
-      const rows = Math.max(0, text.trim() === '' ? 0 : text.trim().split(/\r?\n/).length - 1);
+      const read = await readFile(file, {maxFileBytes: Infinity, maxCsvBytes: MAX_CSV_BYTES});
+      if (!read) return;
+      const {text, name, format, rowCount} = read;
       setCsv(text);
-      setSource({ kind: 'file', name: file.name, format });
-      setFileInfo({ name: file.name, rows });
+      setSource({ kind: 'file', name, format });
+      setFileInfo({ name, rows: rowCount });
       setResult(null);
       runValidate(text);
-    } catch {
-      setError(t('fileReadError'));
+    } catch (error) {
+      setError(t(importFileMessageKey(error)));
     } finally {
       setReading(false);
       // Allow re-selecting the same file (change event won't fire otherwise).
@@ -246,7 +227,7 @@ export function LeaveLedgerImport() {
             }`}
           >
             <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden />
-            <div className="text-sm font-medium">{reading ? t('reading') : t('dropHere')}</div>
+            <div className="text-sm font-medium">{reading && !choosingWorksheet ? t('reading') : t('dropHere')}</div>
             <p className="text-xs text-muted-foreground">{t('uploadHint')}</p>
             <input
               ref={fileInputRef}
@@ -265,6 +246,7 @@ export function LeaveLedgerImport() {
             </p>
           )}
         </Field>
+        {worksheetPicker}
 
         {/* Secondary path: paste raw CSV (also the way to inspect/fix an uploaded file's content). */}
         <details className="mt-4 border-t border-border pt-3" open={source.kind === 'paste' && !fileInfo}>
@@ -278,6 +260,7 @@ export function LeaveLedgerImport() {
                 placeholder={t('csvPlaceholder')}
                 value={csv}
                 onChange={(e) => {
+                  clearWorksheet();
                   setCsv(e.target.value);
                   setSource({ kind: 'paste' });
                   setFileInfo(null);
@@ -296,6 +279,7 @@ export function LeaveLedgerImport() {
           <Button aria-busy={pending}
             variant="outline"
             onClick={() => {
+              clearWorksheet();
               setCsv(SAMPLE);
               setSource({ kind: 'paste' });
               setFileInfo(null);

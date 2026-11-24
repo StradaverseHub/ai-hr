@@ -1,4 +1,5 @@
 import {MAX_IMPORT_CSV_BYTES} from './import-file';
+import {PERSONNEL_CSV_FRAME} from './personnel-csv';
 import type {PersonnelWorksheetSource,PersonnelWorkbookSource} from './personnel-import-assistance-source';
 /**
  * Spreadsheet (.xlsx / .xls) support for the Leave Data Import & Migration Tool.
@@ -24,12 +25,22 @@ type Cell = string | number | boolean | Date | null | undefined;
  *  files opened IN Excel). A `days` value of `-2` would become `'-2` and fail Number() in analyze().
  *  Here the text is re-parsed by our own code, never opened in a spreadsheet, so no guard is wanted —
  *  just correct quoting (quote when the cell holds a comma, quote, CR or LF; double embedded quotes). */
-function rowsToCsvText(rows: Cell[][]): string {
+function rowsToCsvText(rows: Cell[][], maxBytes?: number): string {
   const esc = (v: Cell): string => {
     const s = v == null ? '' : String(v);
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  return rows.map((r) => r.map(esc).join(',')).join('\r\n') + '\r\n';
+  const encoder = maxBytes === undefined ? undefined : new TextEncoder();
+  let size = 0;
+  const lines = rows.map(row => {
+    const line = row.map(esc).join(',');
+    if (encoder && maxBytes !== undefined) {
+      size += encoder.encode(line).byteLength + 2;
+      if (size > maxBytes) throw Error('FILE_TOO_LARGE');
+    }
+    return line;
+  });
+  return lines.join('\r\n') + '\r\n';
 }
 
 /** yyyy-mm-dd from a JS Date in local time (SheetJS returns dates at local midnight with cellDates). */
@@ -81,6 +92,55 @@ function csvCell(cell: Cell): Cell {
   if (cell instanceof Date) return toIsoDate(cell);
   if (typeof cell === 'number') return numberToPlainString(cell);
   return cell;
+}
+
+export type ImportWorksheet = { name: string; rowCount: number };
+
+/** Inspect occupied cells once. The selection and its CSV use the same rows, even across large gaps. */
+export async function inspectImportWorksheets(bytes: ArrayBuffer, framed = false, excluded: readonly string[] = []) {
+  const XLSX = await import('xlsx');
+  const book = XLSX.read(bytes, {type: 'array', cellDates: true, cellHTML: false, cellText: false});
+  const ignored = new Set(excluded.map(name => name.trim().toLowerCase()));
+  const data = new Map<string, {sheet: import('xlsx').WorkSheet; offset: number; rows: number[]; headerRows: number}>();
+  const worksheets: ImportWorksheet[] = [];
+  for (const [index, name] of book.SheetNames.entries()) {
+    if (book.Workbook?.Sheets?.[index]?.Hidden || ignored.has(name.trim().toLowerCase())) continue;
+    const sheet = book.Sheets[name];
+    if (!sheet?.['!ref']) {
+      worksheets.push({name, rowCount: 0});
+      continue;
+    }
+    const offset = XLSX.utils.decode_range(sheet['!ref']).s.c;
+    const occupied = new Set<number>();
+    for (const address of Object.keys(sheet)) {
+      if (address.startsWith('!')) continue;
+      const cell = sheet[address] as import('xlsx').CellObject;
+      if (cell.t !== 'e' && cell.t !== 'z' && cell.v != null && String(cell.v).trim() !== '') {
+        occupied.add(XLSX.utils.decode_cell(address).r);
+      }
+    }
+    const rows = [...occupied].sort((a, b) => a - b);
+    const headerRows = framed && rows.length > 0 && sheet[XLSX.utils.encode_cell({r: rows[0], c: offset})]?.v === PERSONNEL_CSV_FRAME ? 2 : 1;
+    worksheets.push({name, rowCount: Math.max(0, rows.length - headerRows)});
+    data.set(name, {sheet, offset, rows, headerRows});
+  }
+  return {
+    worksheets,
+    read(name: string, maxBytes: number) {
+      const selected = data.get(name);
+      if (!selected || selected.rows.length <= selected.headerRows) throw Error('EMPTY_SHEET');
+      const rows = new Map<number, Cell[]>(selected.rows.map(row => [row, []]));
+      for (const address of Object.keys(selected.sheet)) {
+        if (address.startsWith('!')) continue;
+        const cell = selected.sheet[address] as import('xlsx').CellObject;
+        if (cell.t === 'e' || cell.t === 'z' || cell.v == null) continue;
+        const {r, c} = XLSX.utils.decode_cell(address);
+        const row = rows.get(r);
+        if (row) row[c - selected.offset] = csvCell(cell.v);
+      }
+      return {text: rowsToCsvText([...rows.values()], maxBytes), excelRows: selected.rows.slice(selected.headerRows).map(row => row + 1)};
+    },
+  };
 }
 
 /** Read the named data worksheet (falling back to the first for older workbooks). Count occupied

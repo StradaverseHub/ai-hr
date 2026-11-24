@@ -288,6 +288,17 @@
     "dayContextHelp": "Nhãn ngày tách biệt với phân ca. Chi tiết nghỉ phép nằm trong mục Nghỉ phép.",
     "colPosition": "Chức vụ"
   },
+  "worksheetImport": {
+    "title": "Chọn trang tính",
+    "label": "Trang tính",
+    "placeholder": "Chọn một trang tính",
+    "option": "{name} · {count, number} dòng",
+    "count": "{count, number} dòng dữ liệu",
+    "hint": "Số dòng không bao gồm tiêu đề và các dòng trống.",
+    "noData": "Không có trang tính nào chứa dòng dữ liệu. Hãy thêm dữ liệu hoặc chọn tệp khác.",
+    "confirm": "Dùng trang tính này",
+    "selected": "{name} · Đã chọn {count, number} dòng dữ liệu"
+  },
   "common": {
     "close": "Đóng",
     "appName": "AIHR",

@@ -288,6 +288,17 @@
     "dayContextHelp": "Label hari berasingan daripada penetapan syif. Butiran cuti kekal dalam Cuti.",
     "colPosition": "Jawatan"
   },
+  "worksheetImport": {
+    "title": "Pilih lembaran kerja",
+    "label": "Lembaran kerja",
+    "placeholder": "Pilih satu lembaran kerja",
+    "option": "{name} · {count, number} baris",
+    "count": "{count, number} baris data",
+    "hint": "Kiraan tidak termasuk pengepala dan baris kosong.",
+    "noData": "Tiada lembaran kerja yang mengandungi baris data. Tambah data atau pilih fail lain.",
+    "confirm": "Gunakan lembaran kerja ini",
+    "selected": "{name} · {count, number} baris data dipilih"
+  },
   "common": {
     "close": "Tutup",
     "appName": "AIHR",

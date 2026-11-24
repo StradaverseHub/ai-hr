@@ -1,4 +1,5 @@
 'use client';
+import { useImportWorksheet } from '@/components/use-import-worksheet';
 import {useAssistantImportIntake} from '@/components/assistant/import-handoff';
 
 import { useRef, useState, useTransition } from 'react';
@@ -83,9 +84,11 @@ export function TxnImportButtons({
   const [reading, setReading] = useState(false);
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { readWorksheet, clearWorksheet, worksheetPicker, choosingWorksheet } = useImportWorksheet();
   const operationKey = useRef<string | null>(null);
 
   const reset = () => {
+    clearWorksheet();
     setCsv('');
     setFileName(null);
     setPreview(null);
@@ -107,9 +110,8 @@ export function TxnImportButtons({
     t(`warning.${w.reason}` as never, (w.detail ?? {}) as never);
 
   const loadFile = async (file: File) => {
-    setError(null);
-    setResult(null);
-    setPreview(null);
+    if (reading || pending) return;
+    reset();
     // THE FILE-TYPE GATE, and it is an extension check rather than a MIME check on purpose: browsers
     // disagree about the MIME type of an .xlsx (and Windows sometimes reports the .xls one), so trusting
     // `file.type` would refuse files that are perfectly correct.
@@ -120,18 +122,9 @@ export function TxnImportButtons({
     }
     setReading(true);
     try {
-      const { workbookToCsvText } = await import('@/lib/spreadsheet');
-      let text: string;
-      try {
-        text = await workbookToCsvText(await file.arrayBuffer());
-      } catch (e) {
-        setError((e as Error).message === 'EMPTY_SHEET' ? t('emptySheet') : t('fileReadError'));
-        return;
-      }
-      if (new Blob([text]).size > MAX_CSV_BYTES) {
-        setError(t('fileTooLarge'));
-        return;
-      }
+      const read = await readWorksheet(file, {maxCsvBytes: MAX_CSV_BYTES});
+      if (!read) return;
+      const {text} = read;
       setCsv(text);
       setFileName(file.name);
       if (queueFixedAction) operationKey.current = crypto.randomUUID();
@@ -150,8 +143,9 @@ export function TxnImportButtons({
           setError(t('fileReadError'));
         }
       });
-    } catch {
-      setError(t('fileReadError'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '';
+      setError(t(message === 'EMPTY_SHEET' ? 'emptySheet' : message === 'FILE_TOO_LARGE' ? 'fileTooLarge' : 'fileReadError'));
     } finally {
       setReading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -275,10 +269,11 @@ export function TxnImportButtons({
                     <UploadCloud className="h-4 w-4" aria-hidden="true" />
                     {t('chooseFile')}
                   </label>
-                  <span className="text-xs text-muted-foreground">
+                  <span hidden={choosingWorksheet} className="text-xs text-muted-foreground">
                     {reading || pending ? t('reading') : (fileName ?? t('noFile'))}
                   </span>
                 </div>
+                {worksheetPicker}
                 <p className="mt-2 text-xs text-muted-foreground">{t('xlsxOnlyHint')}</p>
               </Card>
 
