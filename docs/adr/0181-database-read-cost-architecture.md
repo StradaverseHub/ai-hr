@@ -138,6 +138,74 @@ payroll truth stays in its source tables.
   deterministic calculation per employee in memory, and write with multi-row statements, proven by equivalence tests
   for every pay item, tax and statutory output. Imports load with `COPY` into their staging tables. Chunk timing
   splits calculation from database time; only a calculation shown to be CPU-bound could justify a compiled engine.
+- **J2, selective reprocess (built, 24 November 2026; not yet on staging).** The `payroll_reprocess` job keeps one
+  step per employee, but the first step of a chunk recalculates a group: the longest run of following employees who
+  are ordinary recalculations (already on the run and still in the month) goes through one pass of the existing
+  payroll engine (`reprocessEmployeeGroupTx` in `core/payroll.ts`): the run-wide reads once, each employee's
+  calculation unchanged, one job checkpoint and one multi-row outcome-event insert. The group's other steps only
+  record themselves; the last one ends the chunk (kernel step outcome `endChunk`). Additions, exclusions, unreadable
+  employees and the employees a refused pass names take the per-employee transaction (`reprocessEmployeeTx`) in a chunk
+  of their own, so each outcome and stop record is the per-employee path's; a refused pass is narrowed to the employee
+  its refusal names (or halved when it names no one) and grouping resumes after them. The run-level checks (job claim
+  and token, batch status, permission, closed period) are the per-employee transaction's own, taken once per group
+  under the same keys and row locks; the payroll history barrier rules are those of the same engine pass. Chunk
+  transactions set the point-read marker the processing job uses (0691/9954).
+  - **Group size.** Measured on the hosted runner when this was built, one engine pass cost about 2.6 s whatever its
+    size (2.1 s of it the Audit loop's whole-run inputs capture and the run's headcount recount; both were removed
+    from the pass on 25 November 2026, see "Fixed cost of a pass" below) plus about 53 ms per employee, and the
+    calculation itself is 2–5% of the time; the rest is database. A one-employee pass therefore cannot meet a 100 ms or
+    1 s chunk. The group size is estimated from two passes of different sizes (a straight line: fixed cost F, cost per
+    employee m) so a chunk lasts `PAYROLL_REPROCESS_CHUNK_FIXED_MULTIPLE` x F (default 2) and at least
+    `PAYROLL_REPROCESS_CHUNK_TARGET_MS` (default 1,000 ms), at most `PAYROLL_REPROCESS_GROUP_MAX` employees (default 200;
+    `1` restores one employee per chunk), doubling from 16 until the estimate exists. A salary or statutory change for
+    the company may then wait up to about 2F behind one chunk instead of F, while the run needs about one chunk per 50
+    employees instead of one per employee. Each chunk logs an `[aihr-timing]` `bulk-chunk` line (closed labels and
+    numbers only) and adds to `bulk_job.metrics`: `reprocessCalcMs` (process CPU: calculation and driver) and
+    `reprocessDbMs` (the rest of the wall time), with group counts and per-chunk maxima.
+  - **Known difference, intended.** The run-level audit rows of one engine pass, the `payroll_status_history`
+    'reprocess' row and the `payroll-batch.selective-reprocessed` event, are written once per group instead of once
+    per employee; together they name exactly the same employees. The per-employee rows (result history, outcome
+    events, tax-basis receipts) are unchanged.
+  - **Fixed cost of a pass (decided 25 November 2026).** Most of the 2.6 s was two whole-run reads, each paying the
+    native payslip read view's per-row history-visibility predicate (about 3 ms a row):
+    - *Audit loop inputs capture: once per job, not once per pass.* A selective reprocess job's passes no longer
+      capture (`deferAuditCapture`, internal to `core/payroll.ts`). The job takes one capture
+      (`captureSelectiveReprocessInputsTx`) in its own finalize unit, with no run key held, before it marks the
+      reprocess job completed; a job that stops after committing employees takes it in its settle, under its
+      creator's re-checked authority; the request-path loop takes it after its last employee (and on a stop). Each
+      job records `captured` on its plan in the same transaction, so a capture is never repeated, and only the worker
+      holding the reprocess job's token captures. The capture keeps its shape (`trigger` 'reprocessed', source key
+      `inputs:<run>`): `reprocessedEmploymentIds` names every employee the job recalculated or added (outcome status
+      `reprocessed`), and the hashes are the whole run's inputs and results after the job's last committed employee.
+      What is given up: the intermediate snapshots between groups. Nothing reads them: the daily Audit loop compares
+      only the latest `inputs:<run>` capture with `inputs_now`, and a per-pass capture already hashed every employee
+      outside its group as they stood at that moment, so an input changed between chunks was never pinned to the
+      result that used it. A capture missed because the creator's access is gone is not retried (the daily
+      `inputs_now` capture still shows the inputs), exactly as a pass with no login. Every other caller of the subset
+      path (statutory adjustments, the public `generatePayslips`) still captures in its own transaction.
+    - *Headcount recount through the run's write portal.* The pass recounts `employee_count` through
+      `payroll_history_native_payslip_write`, the portal it writes its payslips through and the run's reset and removal
+      owners read the whole run through, instead of the read view. Per row it asks the write authority (payroll
+      administration of the employment, run still writable), not the effective-history chain. For the administrator who
+      may reprocess the two count the same rows; the equivalence test asserts the stored headcount equals both. The
+      removal owner's recount (`removeEmployeePayrollTx`) still uses the read view and is a follow-up.
+    - *Measured* on `alpha-focused-checks.yml` with the fixture below (before: run 45424377289 at 0e7d6a88d; capture
+      only: run 45460679094; both changes: run 45464181979 at dfd65261d). The engine pass's fixed cost F, fitted from
+      the job's group chunks (engine wall time against group size), went from about 1.8 s to about 0.29 s, with about
+      30 ms per further employee either way. One per-employee pass (request path): 1,843 ms, then 664 ms, then 373 ms.
+      The 100-employee job: 29.0 s in 15 chunks, then 14.7 s, then 10.0 s in 14 chunks; its longest chunk, which bounds
+      how long a salary or statutory edit for the company waits: 2.77 s, then 1.70 s, then 1.00 s. The job's one
+      capture unit takes about 1.25 s and holds no run key. The headcount read for the 100-payslip run: read view
+      about 295 ms, write portal about 15 ms. With the smaller F the same `PAYROLL_REPROCESS_CHUNK_FIXED_MULTIPLE`
+      keeps chunks near the 1 s `PAYROLL_REPROCESS_CHUNK_TARGET_MS` floor (largest group 18 employees).
+  - **Proof.** `test/payroll-reprocess-set-equivalence.test.ts`: two tenants built identically through the product
+    owners at 70 companies and 1,000 employments; a 100-employee run with TP3 openings, April and May income-tax
+    corrections, salary and Pay Item changes, two additions and two removed salary records; per-employee path against
+    the job, equal on every payslip column (money, statutory breakdown, tax metadata, version), run totals, headcount
+    and recalculation marks, result history, tax-basis receipts and revisions, job outcomes and counts, and outcome
+    events. Both paths write exactly one Audit loop inputs capture per job, naming the reprocessed employees, whose
+    hashes equal an independent read of the run's inputs and results after the job; the stored headcount equals the
+    read view's and the write portal's count.
 
 ### 8. Guardrails
 

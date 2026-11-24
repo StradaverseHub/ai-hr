@@ -58,7 +58,7 @@ import { type SessionContext, type Tx } from '../db/client';
 import { assertModuleGate,withPayrollTenant as withTenant } from './module-gate';
 import { pricesChildReliefFromGrid } from './dependents';
 import { personnelFormulaPermissionsTx } from './pay-formula-personnel-permissions';
-import { actorOf, appendEvent,appendEvents } from '../db/events';
+import { actorOf, appendEvent,appendEvents,type AppendEventArgs } from '../db/events';
 import {
   PAYROLL_PERMISSION_DEFAULTS,
   decidePayrollPermission,
@@ -1312,6 +1312,30 @@ export async function capturePayrollProcessingInputsTx(tx: Tx, ctx: SessionConte
   // A run reset in the moment between the flip and this unit has no processing left to record.
   if (!batch || batch.status === 'draft' || batch.status === 'processing') return false;
   await captureAuditInputsTx(tx, ctx, { batchId: batch.id, companyId: batch.companyId, payPeriod: batch.payPeriod }, 'processed');
+  return true;
+}
+
+/** ADR 0181 J2 — a selective reprocess job's Audit loop capture, ONCE for the job: the inputs and results of the whole run
+ * as they stand after the job's last committed employee, with every employee the job recalculated or added
+ * (`reprocessedEmploymentIds`, outcome status `reprocessed`). Its passes defer their own capture (`deferAuditCapture`), so
+ * the run-wide hashing is paid once per job instead of once per pass. Taken by the job's finalize before the job completes,
+ * and by its settle when it stopped after committing employees; by the request-path loop after its last employee.
+ * Read-only over owner rows plus the capture record, so it holds none of the run's keys (as the processing job's capture).
+ * Only the worker that holds the reprocess job (`workerToken`) captures for it. Never throws for the capture itself: a
+ * capture that cannot be read or written is recorded as `payroll-audit.inputs-not-captured` (core/payroll-audit/inputs.ts). */
+export async function captureSelectiveReprocessInputsTx(tx: Tx, ctx: SessionContext, reprocessJobId: string, workerToken: string) {
+  const [job] = await tx.select({ batchId: payrollReprocessJob.batchId, employmentIds: payrollReprocessJob.employmentIds, result: payrollReprocessJob.result })
+    .from(payrollReprocessJob).where(eq(payrollReprocessJob.id, reprocessJobId)).limit(1);
+  if (!job || (job.result as ReprocessJobResult | null)?.workerToken !== workerToken) return false;
+  const reprocessed = (decodeReprocessEmployeeOutcomes(job.result, job.employmentIds) ?? [])
+    .filter((outcome) => outcome.status === 'reprocessed').map((outcome) => outcome.employmentId);
+  // No employee's result was written by this job: no pass ran, so there is nothing new to record (as before).
+  if (!reprocessed.length) return false;
+  const [batch] = await tx.select({ id: payrollBatch.id, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, status: payrollBatch.status })
+    .from(payrollBatch).where(eq(payrollBatch.id, job.batchId)).limit(1);
+  // A run reset since the job's last employee has no reprocessed results left to record.
+  if (!batch || batch.status === 'draft' || batch.status === 'processing') return false;
+  await captureAuditInputsTx(tx, ctx, { batchId: batch.id, companyId: batch.companyId, payPeriod: batch.payPeriod }, 'reprocessed', reprocessed);
   return true;
 }
 
@@ -4083,7 +4107,10 @@ export async function runPayrollProcessingUnitTx(tx:Tx,ctx:SessionContext,batchI
  return generatePayslipsTx(tx,ctx,{batchId,processing:unit});
 }
 
-async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams & {processing?:PayrollProcessingUnit}) {
+/** `deferAuditCapture` (ADR 0181 J2): a selective reprocess JOB's pass leaves the Audit loop's inputs capture to the job,
+ * which takes it once for every employee the job reprocessed (`captureSelectiveReprocessInputsTx`). Internal only: every
+ * other caller of the subset path (statutory adjustments, the public generatePayslips) still captures in its own pass. */
+async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams & {processing?:PayrollProcessingUnit;deferAuditCapture?:true}) {
   await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
   const subset = p.reprocessSubset ?? null;
   const processing = subset ? null : p.processing ?? null;
@@ -8773,10 +8800,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // this screen's own result panel. It is RECOUNTED off the payslips rather than incremented by the
       // number of additions, so the stored figure is a fact about the run and not a running total that a
       // failed job could leave one out.
+      // ADR 0181 J2 — counted through the run's write portal, the one this pass just wrote its payslips through and
+      // the one the run's reset and removal owners read the whole run through: per row it asks the write authority
+      // (payroll administration of the employment, the run still writable), never the effective-history chain the
+      // read view evaluates. Same rows for the administrator who may reprocess (equivalence test), about 16 ms instead
+      // of 300 ms for a 100-payslip run on the hosted runner; it was a fixed cost of every engine pass.
       const [{ n: payslipCount } = { n: 0 }] = await tx
         .select({ n: sql<number>`count(*)::int` })
-        .from(nativePayrollPayslip)
-        .where(eq(nativePayrollPayslip.batchId, p.batchId));
+        .from(nativePayrollPayslipWrite)
+        .where(eq(nativePayrollPayslipWrite.batchId, p.batchId));
       await tx
         .update(payrollBatch)
         .set({ totals: deltaTotals, employeeCount: Number(payslipCount) })
@@ -9003,7 +9035,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       });
       // AI v2 P2-2b — the inputs as this reprocess used them, captured for the Audit loop in this same transaction.
       // Read-only (core/payroll-audit/inputs.ts): it hashes owner rows, never changes a figure, never stops the run.
-      await captureAuditInputsTx(tx, ctx, { batchId: p.batchId, companyId: batch.companyId, payPeriod: batch.payPeriod }, 'reprocessed',
+      // A selective reprocess job's pass defers it: the job captures once for all its employees (ADR 0181 J2).
+      if (!p.deferAuditCapture) await captureAuditInputsTx(tx, ctx, { batchId: p.batchId, companyId: batch.companyId, payPeriod: batch.payPeriod }, 'reprocessed',
         emps.map((e) => e.employmentId));
       // 49e7e0a2 — these employees' figures now match their transactions again, so the recalculation mark
       // is cleared FOR THEM ONLY. A reprocess that covers some of the waiting employees leaves the rest
@@ -10574,9 +10607,13 @@ export async function reprocessSelectedEmployees(
       stopped.current=null;
       await withTenant(ctx, (tx) => reprocessEmployeeTx(tx, ctx, run, employmentId, stopped));
     }
+    // ADR 0181 J2 — the Audit loop's capture, once for every employee this run reprocessed (its passes defer theirs).
+    await withTenant(ctx, (tx) => captureSelectiveReprocessInputsTx(tx, ctx, job.id, workerToken));
     const result = await completeSelectiveReprocess(ctx, job.id, workerToken);
     return {jobId:job.id,status:'completed' as const,...result};
   } catch (e) {
+    // A stop keeps the employees already committed, so their capture is still taken (it never throws for itself).
+    await withTenant(ctx, (tx) => captureSelectiveReprocessInputsTx(tx, ctx, job.id, workerToken)).catch(() => undefined);
     await failSelectiveReprocess(ctx, job.id, workerToken, e, stopped.current);
     throw new PayrollReprocessStoppedError(job.id,e);
   }
@@ -10656,7 +10693,7 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
     // Nested drizzle transaction is a SAVEPOINT on this same connection, never another tenant
     // transaction. Collection, snapshot/delete, money, ledger and coverage all roll back together.
     const result = await tx.transaction(employeeTx => generatePayslipsTx(employeeTx, ctx, {
-      batchId:run.batchId,reprocessSubset:{employmentIds:[employmentId],reason:run.reason,actorId:ctx.userId},
+      batchId:run.batchId,reprocessSubset:{employmentIds:[employmentId],reason:run.reason,actorId:ctx.userId},deferAuditCapture:true,
     }));
     if (!('reprocessed' in result)) throw new Error('Unexpected selected payroll result.');
     classification = result.added ? 'added' : 'recalculated';
@@ -10712,7 +10749,13 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
     payslipId:after?.id ?? null,versionBefore:before?.version ?? null,
     versionAfter:after?.version ?? null,historyId,at:new Date().toISOString(),
   };
-  const outcomes = [...(prior?.outcomes ?? []),outcome];
+  await saveReprocessCheckpointTx(tx,run,prior,[outcome]);
+  await appendEvent(tx,reprocessOutcomeEvent(ctx,run,currentBatch,outcome));
+}
+/** The job's durable checkpoint after `added` outcomes, with the run's fresh totals and headcount. Shared by the
+ * per-employee transaction and the set-based group, so both record exactly the same result. */
+async function saveReprocessCheckpointTx(tx:Tx,run:SelectiveReprocessRun,prior:ReprocessJobResult|null,added:ReprocessEmployeeOutcome[]){
+  const outcomes = [...(prior?.outcomes ?? []),...added];
   const [freshBatch] = await tx.select({totals:payrollBatch.totals,headcount:payrollBatch.employeeCount})
     .from(payrollBatch).where(eq(payrollBatch.id,run.batchId)).limit(1);
   const checkpoint: ReprocessJobResult = {
@@ -10729,10 +10772,14 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
   };
   await tx.update(payrollReprocessJob).set({result:checkpoint,updatedAt:new Date()})
     .where(eq(payrollReprocessJob.id,run.jobId));
-  await appendEvent(tx,{
+}
+/** One employee's outcome event (the audit row the result screen and the history read). */
+function reprocessOutcomeEvent(ctx:SessionContext,run:SelectiveReprocessRun,batch:{companyId:string;payPeriod:string},outcome:ReprocessEmployeeOutcome):AppendEventArgs{
+  const employmentId=outcome.employmentId;
+  return {
     tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:run.batchId,
     eventType:'payroll-batch.employee-reprocess-outcome',actor:actorOf(ctx),subjectEmploymentId:employmentId,
-    payload:{jobId:run.jobId,batchId:run.batchId,companyId:currentBatch.companyId,payPeriod:currentBatch.payPeriod,
+    payload:{jobId:run.jobId,batchId:run.batchId,companyId:batch.companyId,payPeriod:batch.payPeriod,
       employmentId,employeeName:outcome.name,employeeCode:outcome.employeeCode,
       status:outcome.status,reasonCode:outcome.reasonCode,
       validationCode:outcome.validationCode ?? null,resultRetained:outcome.resultRetained,
@@ -10740,7 +10787,121 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
       configuredTaxScheme:outcome.configuredTaxScheme ?? null,effectiveTaxScheme:outcome.effectiveTaxScheme ?? null,
       payslipId:outcome.payslipId,historyId:outcome.historyId,
       versionBefore:outcome.versionBefore,versionAfter:outcome.versionAfter},
+  };
+}
+/** ADR 0181 J2 — a set-based group of a selective reprocess. What it decides, in this order:
+ *  - `done`:     the first candidate already has an outcome (a resumed job): nothing to do for it;
+ *  - `single`:   the first candidate needs the per-employee transaction (`reprocessEmployeeTx`): it is an addition,
+ *                excluded from the month, unreadable, or alone;
+ *  - `set`:      the longest run of candidates from the first that are ordinary recalculations (already on this run,
+ *                still in the month) was recalculated by ONE pass of the payroll engine (`generatePayslipsTx`, its
+ *                run-wide reads once and its per-employee figures unchanged) and committed with every outcome in one
+ *                checkpoint and one multi-row event insert;
+ *  - `fallback`: that pass refused (a validation outcome, or any other refusal), was rolled back to its savepoint, and the
+ *                caller runs those employees through the per-employee transaction, so every outcome and every stop is
+ *                exactly the per-employee path's.
+ * The run-level checks are the per-employee transaction's own, in its order, taken once for the group under the same
+ * keys and row locks. `isTransient` errors are rethrown (the kernel retries the chunk), never turned into a fallback.
+ * `timing` splits the group's wall time into process CPU (the calculation and the driver) and the rest (database). */
+export type SelectiveReprocessGroup=
+ |{kind:'done'}
+ |{kind:'single'}
+ |{kind:'set';employmentIds:string[];timing:{wallMs:number;cpuMs:number;engineWallMs:number;engineCpuMs:number}}
+ |{kind:'fallback';employmentIds:string[];error:unknown};
+export async function reprocessEmployeeGroupTx(tx:Tx,ctx:SessionContext,run:SelectiveReprocessRun,candidates:readonly string[],
+ opts:{isTransient:(error:unknown)=>boolean;stopped:{current:{employmentId:string;name:string;employeeCode:string|null}|null}}):Promise<SelectiveReprocessGroup>{
+  const started=performance.now(),cpuStarted=process.cpuUsage();
+  await lockPayComponentCatalogReadTx(tx,ctx);
+  const ownedBatch=await lockNativePayrollBatchPeriodTx(tx,ctx,run.batchId);
+  const [currentJob] = await tx.select().from(payrollReprocessJob)
+    .where(eq(payrollReprocessJob.id, run.jobId)).limit(1).for('update');
+  if(currentJob.batchId!==ownedBatch?.id||JSON.stringify(currentJob.employmentIds)!==JSON.stringify(run.employmentIds))throw new Error('Payroll job source changed.');
+  const prior = currentJob.result as ReprocessJobResult | null;
+  if (currentJob.status!=='running' || prior?.workerToken!==run.workerToken)
+    throw new ReprocessRunBlockedError('SUPERSEDED','This payroll processing attempt was superseded by a recovered worker.');
+  if (prior && !decodeReprocessEmployeeOutcomes(prior,currentJob.employmentIds))
+    throw new Error('Stored payroll employee outcomes are invalid.');
+  const done=new Set((prior?.outcomes??[]).map(r=>r.employmentId));
+  if(!candidates.length||done.has(candidates[0]))return {kind:'done'};
+  const pending=[...new Set(candidates.filter(id=>!done.has(id)&&run.employmentIds.includes(id)))];
+  if(pending[0]!==candidates[0]||pending.length<2)return {kind:'single'};
+  await lockPayrollOvertimeBatchContextTx(tx,ctx,run.batchId);
+  const [currentBatchRow] = await tx.select().from(payrollBatch)
+    .where(eq(payrollBatch.id, run.batchId)).limit(1).for('update');
+  const currentBatch=withRunPayPeriod(currentBatchRow,()=>new Error('batch not found'));
+  await assertPayrollPermission(tx, ctx, 'payroll.reprocess.selective', currentBatch.companyId);
+  if (currentBatch.status !== 'processed') throw new BatchNotResettableError();
+  const [period] = await tx.select({status:payPeriod.status}).from(payPeriod)
+    .where(eq(payPeriod.id,currentBatch.payPeriodId)).limit(1).for('share');
+  if (period?.status === 'closed') throw new ReprocessRunBlockedError('PERIOD_CLOSED','This pay period is closed.');
+  const [year,month] = currentBatch.payPeriod.split('-').map(Number);
+  const periodStart = `${currentBatch.payPeriod}-01`;
+  const periodEnd = `${currentBatch.payPeriod}-${String(daysInMonth(year,month)).padStart(2,'0')}`;
+  // The per-employee transaction's identity and membership read, for the whole group in one statement.
+  const identities = new Map((await tx.select({employmentId:employment.id,name:person.fullName,employeeCode:employment.employeeCode,
+    hiredOn:employment.hiredOn,terminatedOn:payrollEmploymentEnd,
+    outstanding:sql<boolean>`${outstandingPaymentPredicate(currentBatch,settingEnabled(ctx,'payroll.individual_txn_pay_enabled'))}`,
+    withCompany:sql<boolean>`${employedByCompanyDuring(currentBatch.companyId,periodStart,periodEnd)}`})
+    .from(employment).innerJoin(person,eq(person.id,employment.personId))
+    .where(inArray(employment.id,pending))).map(row=>[row.employmentId,row]));
+  const before = new Map((await tx.select({employmentId:nativePayrollPayslip.employmentId,id:nativePayrollPayslip.id,version:nativePayrollPayslip.version})
+    .from(nativePayrollPayslip)
+    .where(and(eq(nativePayrollPayslip.batchId,run.batchId),inArray(nativePayrollPayslip.employmentId,pending)))).map(row=>[row.employmentId,row]));
+  // An ordinary recalculation: readable, already on this run, and inside the month by the per-employee rules (an
+  // exclusion or an addition takes the per-employee transaction, with its removal and side-effect owners).
+  const ordinary=(id:string)=>{
+    const identity=identities.get(id);if(!identity||!before.has(id))return false;
+    if(!identity.outstanding && identity.terminatedOn && identity.terminatedOn < periodStart)return false;
+    if(identity.hiredOn > periodEnd)return false;
+    return identity.outstanding || identity.withCompany;
+  };
+  const group:string[]=[];
+  for(const id of pending){if(!ordinary(id))break;group.push(id);}
+  if(group.length<2)return {kind:'single'};
+  const first=identities.get(group[0])!;
+  opts.stopped.current={employmentId:group[0],name:first.name,employeeCode:first.employeeCode};
+  const engineStarted=performance.now(),engineCpuStarted=process.cpuUsage();
+  let result:Awaited<ReturnType<typeof generatePayslipsTx>>;
+  try{
+    // One savepoint for the whole group: a refusal rolls back every figure, ledger and history write of the pass.
+    result = await tx.transaction(groupTx => generatePayslipsTx(groupTx, ctx, {
+      batchId:run.batchId,reprocessSubset:{employmentIds:group,reason:run.reason,actorId:ctx.userId},deferAuditCapture:true,
+    }));
+  }catch(error){
+    if(opts.isTransient(error))throw error;
+    return {kind:'fallback',employmentIds:group,error};
+  }
+  const engineWallMs=performance.now()-engineStarted,engineCpu=process.cpuUsage(engineCpuStarted);
+  if (!('reprocessed' in result) || result.added) throw new Error('Unexpected selected payroll result.');
+  const pass=result;
+  const after = new Map((await tx.select({employmentId:nativePayrollPayslip.employmentId,id:nativePayrollPayslip.id,version:nativePayrollPayslip.version,statutory:nativePayrollPayslip.statutory})
+    .from(nativePayrollPayslip)
+    .where(and(eq(nativePayrollPayslip.batchId,run.batchId),inArray(nativePayrollPayslip.employmentId,group)))).map(row=>[row.employmentId,row]));
+  const recalculatedTax=new Set(pass.recalculatedTaxEmploymentIds??[]);
+  const at=new Date().toISOString();
+  const outcomes:ReprocessEmployeeOutcome[]=group.map(employmentId=>{
+    const identity=identities.get(employmentId)!,was=before.get(employmentId)!,now=after.get(employmentId);
+    const historyId=pass.snapshotLinks?.[employmentId] ?? null;
+    if (!historyId) throw new Error('Selected payroll result has no history checkpoint.');
+    const repricedItems=pass.repriced?.[employmentId];
+    const savedScheme=(now?.statutory as {pcbMeta?:{calculationScheme?:unknown}} | undefined)?.pcbMeta?.calculationScheme;
+    // Field for field the per-employee outcome of a recalculated employee (status reprocessed, nothing retained).
+    return {
+      employmentId,name:identity.name,employeeCode:identity.employeeCode,status:'reprocessed',reasonCode:null,classification:'recalculated',
+      ...(typeof savedScheme==='string' && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
+      ...(recalculatedTax.has(employmentId) ? {taxBasisRecalculated:true} : {}),
+      resultRetained:false,
+      ...(repricedItems?.length ? {repricedItems} : {}),
+      payslipId:now?.id ?? null,versionBefore:was.version,
+      versionAfter:now?.version ?? null,historyId,at,
+    };
   });
+  await saveReprocessCheckpointTx(tx,run,prior,outcomes);
+  await appendEvents(tx,outcomes.map(outcome=>reprocessOutcomeEvent(ctx,run,currentBatch,outcome)));
+  opts.stopped.current=null;
+  const cpu=process.cpuUsage(cpuStarted);
+  return {kind:'set',employmentIds:group,timing:{wallMs:performance.now()-started,cpuMs:(cpu.user+cpu.system)/1000,
+    engineWallMs,engineCpuMs:(engineCpu.user+engineCpu.system)/1000}};
 }
 /** The reprocess job row the background job claims and follows (row security as the request path). */
 export async function payrollReprocessJobRowTx(tx:Tx,jobId:string){
