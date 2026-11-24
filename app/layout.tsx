@@ -269,7 +269,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       identityEmailAvailable,performanceAdminPath,lifecycleInbox,noticePopup,approvalSummary};
   };
   // Pooled: the frame's owners are independent reads (each its own transaction with the join off), grouped only to bound
-  // their transactions, so they may spread over the request's carrier pool (AIHR_DEFAULT_REQUEST_READ_CARRIERS).
+  // their transactions, so they may spread over the request's carrier pool (AIHR_DEFAULT_REQUEST_READ_CARRIERS); the
+  // page's own reads then get a carrier of their own rather than queueing behind the frame's.
   const frame=requestReadJoinEnabled()?await withSharedReadSnapshot(session,readFrame,undefined,requestReadScope(),{pooled:true}):await readFrame();
   const {principals,allowed,scopeIds,viewer,letterDestinations,rewardDestinations,onboardingNav,onboardingQueue,scopedLifecycleNavigation,
     offboardingPostingsAccess,launcher,assistantAccess,privateCaseHandler,recruitmentTeam,referralPortal,identityEmailAvailable,

@@ -32,7 +32,7 @@ export type SharedReadStats={joins:number;fallbacks:number;statements:number;mem
  /** Default joins (package 1.1), and those of them that kept their own transaction because the open carrier predates
   * a completed fallback and another owner was still inside it. */
  defaultJoins:number;staleSkips:number;
- /** The most carriers this session held open at once (the default join's pool, at most its size). */
+ /** The most carriers this session held open at once (the pool's size, plus the page's one extra carrier). */
  peakCarriers:number};
 const sessions=new AsyncLocalStorage<SharedReadSession<unknown>>();
 const joins=new AsyncLocalStorage<Join>();
@@ -138,10 +138,11 @@ export function defaultRequestReadScope():object|undefined{
  * stale-carrier rule (which no explicit join has); only the first carrier it opens reads the request preamble.
  * Nested reads still stay on their owner's carrier.
  *
- * ONE CARRIER IS KEPT FOR THE PAGE. With a pool of 2 or 3, a pooled composition opens at most N-1 carriers and joins
- * only its own, and the request's other reads (default joins and pinned compositions) prefer theirs: the frame never
- * fills the pool, so a page read (a redirect check, say) never queues behind frame statements. Each side joins the
- * other's carriers only when it has none of its own and the pool is full. With one carrier everything shares it. */
+ * THE PAGE'S OWN CARRIER. With a pool of 2 or 3, carriers belong to a lane: the pooled composition's (the frame) or the
+ * page's (every other read of the request: default joins and pinned compositions). Each lane joins its own carriers
+ * first. The frame may open up to N. When the frame holds every carrier and the page has none, the page opens ONE
+ * more, so a page read (a redirect check, say) never queues behind frame statements: at most N+1 carriers per identity,
+ * and N+1 only while the frame and the page overlap. With one carrier everything shares it, exactly as before. */
 export function requestReadCarrierLimit():number{
  const value=process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;
  return value==='2'?2:value==='3'?3:1;
@@ -216,7 +217,8 @@ export class SharedReadSession<Tx>{
    if(pooledWork.getStore()!==this){
     // Pinned: the oldest open carrier (with a pool, the oldest of the page's own, so the frame's are never joined).
     const pinned=this.slots.length>1||this.slots[0]?.lane==='pooled'?this.slots.find(slot=>slot.lane==='page'):this.slots[0];
-    return pinned??(this.slots.length<(this.idleRelease?requestReadCarrierLimit():1)?{plain:false,lane:'page'}:this.slots[0]);
+    const limit=this.idleRelease?requestReadCarrierLimit():1;
+    return pinned??(this.slots.length<limit||this.pageExtra('page',limit)?{plain:false,lane:'page'}:this.slots[0]);
    }
    const pick=this.pick(this.slots,'pooled');
    return pick==='room'?{plain:this.slots.length>0,lane:'pooled'}:pick!;
@@ -234,17 +236,19 @@ export class SharedReadSession<Tx>{
   return this.joinCarrier(fn,ownTransaction,signal,()=>pick==='room'?{plain:true,lane:'page'}:pick);
  }
  /** The pool's choice among `candidates` for a read of `lane`: an idle carrier of its own lane (no new transaction),
-  * else room for a new carrier (fewer than the pool size open, and a pooled composition below N-1), else the least
-  * busy of its own lane, else the least busy of the other. With one carrier this is exactly the earlier rule. */
+  * else room for a new carrier (fewer than the pool size open, or the page's one extra while it has none), else the
+  * least busy of its own lane, else the least busy of the other. With one carrier this is exactly the earlier rule. */
  private pick(candidates:Slot<Tx>[],lane:Lane):Slot<Tx>|'room'|undefined{
   const limit=this.idleRelease?requestReadCarrierLimit():1;
   const own=limit>1?candidates.filter(slot=>slot.lane===lane):candidates;
   const idle=own.find(slot=>slot.active===0);
   if(idle)return idle;
-  if(this.slots.length<limit&&(lane==='page'||limit<2||this.slots.filter(slot=>slot.lane==='pooled').length<limit-1))return 'room';
+  if(this.slots.length<limit||this.pageExtra(lane,limit))return 'room';
   const least=(slots:Slot<Tx>[])=>{let best:Slot<Tx>|undefined;for(const slot of slots)if(!best||slot.active<best.active)best=slot;return best;};
   return least(own)??least(candidates);
  }
+ /** The page's one carrier beyond the pool: only with a pool, only for the page, and only while it has none open. */
+ private pageExtra(lane:Lane,limit:number){return limit>1&&lane==='page'&&!this.slots.some(slot=>slot.lane==='page');}
  private async joinCarrier<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal:AbortSignal|undefined,choose:()=>Choice<Tx>):Promise<T>{
   signal?.throwIfAborted();
   if(this.poisoned||this.closed)return this.fallback(ownTransaction);

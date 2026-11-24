@@ -456,8 +456,9 @@ export function createDb(connectionString: string, options?: { max?: number; adm
           // The carrier is this tenant's ordinary capped work unless the request already holds the tenant's permit:
           // it was inside a transaction or carrier when the snapshot was installed, or a carrier of this session
           // holds one now (withSharedReadSnapshot installs that fact around every composition). A pooled default
-          // join's second or third carrier is nested in the first exactly as a fallback owner is, so one request holds
-          // at most the pool size plus its concurrent fallbacks: never more than its owners would hold with the join off.
+          // join's further carriers are nested in the first exactly as a fallback owner is, so one request holds at most
+          // the pool size, one carrier for the page and its concurrent fallbacks: never more than its owners would hold
+          // with the join off.
           release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal, nestedInTenant(ctx.tenantId));
           held = true; permits.held++;
           const control: { current?: SharedReadCarrierControl } = {};
