@@ -7,7 +7,7 @@ import { movementPageHref, type MovementPageContext } from '@/lib/personnel-move
 
 /** Board eb01800b — the New Event refusal; when it names a later record, a link goes to that record's line. */
 export function MovementRefusalText({ message, employmentId, context }: { message: string; employmentId: string; context?: MovementPageContext }) {
-  const t = useTranslations('people.detail.assignmentBlocked');
+  const t = useTranslations('people.detail');
   const { text, versionId } = splitMovementRecordMarker(message);
   return (
     <>
@@ -20,7 +20,7 @@ export function MovementRefusalText({ message, employmentId, context }: { messag
             data-movement-record-link={versionId}
             className="font-medium underline underline-offset-2"
           >
-            {t('goToRecord')}
+            {t('assignmentBlocked.goToRecord')}
           </Link>
         </>
       )}

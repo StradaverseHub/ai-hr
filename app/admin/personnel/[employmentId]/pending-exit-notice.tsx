@@ -17,25 +17,25 @@ export type PendingExit = {
 };
 
 export function PendingExitNotice({ exit }: { exit: PendingExit }) {
-  const t = useTranslations('people.detail.employmentInfo');
+  const t = useTranslations('people.detail');
   const lastDay = exit.lastWorkingDate ? formatDmy(exit.lastWorkingDate) : null;
   return (
     <section
-      aria-label={t('pendingExitTitle', { kind: exit.label })}
+      aria-label={t('employmentInfo.pendingExitTitle', { kind: exit.label })}
       data-pending-exit={exit.id}
       className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground"
     >
-      <p className="font-medium">{t('pendingExitTitle', { kind: exit.label })}</p>
+      <p className="font-medium">{t('employmentInfo.pendingExitTitle', { kind: exit.label })}</p>
       <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted-foreground">
         {lastDay ? (
           <li>
             {exit.behaviour === 'termination'
-              ? t('pendingExitLastDay', { lastDay, date: formatDmy(exit.effectiveDate) })
-              : t('pendingExitLastDayOnly', { lastDay })}
+              ? t('employmentInfo.pendingExitLastDay', { lastDay, date: formatDmy(exit.effectiveDate) })
+              : t('employmentInfo.pendingExitLastDayOnly', { lastDay })}
           </li>
         ) : null}
-        {exit.behaviour === 'termination' ? <li>{t('pendingExitPlacement')}</li> : null}
-        {lastDay ? <li>{t('pendingExitPayroll')}</li> : null}
+        {exit.behaviour === 'termination' ? <li>{t('employmentInfo.pendingExitPlacement')}</li> : null}
+        {lastDay ? <li>{t('employmentInfo.pendingExitPayroll')}</li> : null}
       </ul>
     </section>
   );
@@ -44,20 +44,20 @@ export function PendingExitNotice({ exit }: { exit: PendingExit }) {
 type ResignationSource = ResignationInformation[keyof ResignationInformation]['source'];
 
 export function ResignationSourceNote({ source, href }: { source: ResignationSource | undefined; href: (movementId: string) => string }) {
-  const t = useTranslations('people.detail.resignationInformation');
+  const t = useTranslations('people.detail');
   if (source?.kind === 'movement') {
     return (
       <Link className="text-xs text-primary underline" href={href(source.movementId)}>
-        {t('movementSource')} · {formatDmy(source.effectiveDate)}
+        {t('resignationInformation.movementSource')} · {formatDmy(source.effectiveDate)}
       </Link>
     );
   }
   if (source?.kind === 'scheduled') {
     return (
       <Link className="text-xs text-primary underline" href={href(source.movementId)}>
-        {t('scheduledSource', { date: formatDmy(source.effectiveDate) })}
+        {t('resignationInformation.scheduledSource', { date: formatDmy(source.effectiveDate) })}
       </Link>
     );
   }
-  return <p className="text-xs text-muted-foreground">{t(source?.kind === 'legacy' ? 'legacySource' : 'emptySource')}</p>;
+  return <p className="text-xs text-muted-foreground">{t(source?.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>;
 }
