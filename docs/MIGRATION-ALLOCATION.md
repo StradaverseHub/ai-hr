@@ -1,3 +1,17 @@
+# Current assignments by department index, 24 November 2026
+
+Reserve `7230_assignment_current_department_index`, journal index `10630`, timestamp `1795495007230`,
+SQL SHA-256 `68df0f31a050acf0acd1fade3b2420b10e3301e6af05fc674caf33928e3b3a11`. The reservation scan covered the 400 most
+recently committed remote branch heads and every registered worktree journal: the highest entry found was
+`7220_movement_system_payroll_snapshot_insert` (index `10620`, when `1795495007220`, staging release 3 candidate
+`41482ceb0`, not yet on main). This entry is above it. Neither installation's watermark was read from this session;
+recheck both and any competing reservation before admission.
+
+Adds the partial index `assignment_current_department_idx` on `assignment (tenant_id, department_id) INCLUDE
+(employment_id) WHERE valid_to IS NULL AND superseded_at IS NULL AND department_id IS NOT NULL`, step (b) of the
+approved employment-visibility addendum (docs/adr/0181-addendum-precomputed-employment-visibility.md). No rows,
+policies, grants or functions change. The build holds a SHARE lock on `assignment` (writes wait) with `lock_timeout` 5 s.
+
 # Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
 
 Reserve `7210_access_effective_company`, journal index `10610`, timestamp `1795495007210`,

@@ -8002,6 +8002,13 @@
       "when": 1795495007210,
       "tag": "7210_access_effective_company",
       "breakpoints": true
+    },
+    {
+      "idx": 10630,
+      "version": "7",
+      "when": 1795495007230,
+      "tag": "7230_assignment_current_department_index",
+      "breakpoints": true
     }
   ]
 }
