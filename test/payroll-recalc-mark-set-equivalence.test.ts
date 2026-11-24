@@ -82,7 +82,7 @@ async function observe(ctx:SessionContext,work:(tx:Tx)=>Promise<{batchId:string;
 }
 const decided=(o:Outcome)=>'error' in o?o:{returned:o.returned,batches:o.batches,events:o.events};
 
-async function user(role:string,companyId:string|null):Promise<SessionContext>{
+async function user(role:typeof s.roleAssignment.$inferInsert['role'],companyId:string|null):Promise<SessionContext>{
  const [u]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:`fixture_${randomUUID()}`,personId:null}).returning({id:s.appUser.id});
  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,role,companyId});
  return {...adminCtx(b),userId:u.id,roles:[role],grants:[{role,companyId}]} as SessionContext;
