@@ -3018,7 +3018,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(accessPilotSort(afterPerformancePrivileges.policies.filter(isAccessPilotPolicy))).toEqual(accessPilotAfter);
   expect(beforePerformancePrivileges.relations.filter(row=>isAccessPilotRelation(row.rel))).toEqual([]);
   const accessPilotRelations=afterPerformancePrivileges.relations.filter(row=>isAccessPilotRelation(row.rel));
-  expect(accessPilotRelations.map(row=>[row.rel,row.rls,row.force])).toEqual(accessPilotTables.map(rel=>[rel,true,true]));
+  expect(accessPilotRelations.map(row=>[row.rel,row.rls,row.force])).toEqual([...accessPilotTables].sort().map(rel=>[rel,true,true]));
   for(const row of accessPilotRelations)expect(String(row.acl??''),row.rel+' grants nothing to the application role').not.toContain('ai_hr_app');
   const terminalComparable={
    relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)&&!isAccessPilotRelation(row.rel)).map(row=>

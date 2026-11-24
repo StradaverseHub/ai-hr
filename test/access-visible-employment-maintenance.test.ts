@@ -7,6 +7,7 @@
  * counts only; a session whose current_date is not the Kuala Lumpur date gets the legacy answer. */
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import postgres from 'postgres';
+import {randomUUID} from 'node:crypto';
 import {accessVisibleEmploymentCheck,verifyAccessVisibleEmploymentTenant,visibleEmploymentDifferences} from '../core/access-visible-employment-check';
 import {owner} from './harness';
 import {teardownFixture,level2,beta} from './access-effective-company-fixture';
@@ -103,15 +104,25 @@ describe('precomputed employment visibility (7240): maintenance',()=>{
  },900_000);
 
  it('fails closed to the legacy walk when a writer bypassed maintenance, and logs counts only in shadow',async()=>{
+  // A manager in the top company (every company but the Beta tree descends from it, so its clamp admits the new
+  // report) gains a report through a writer that bypasses the triggers.
+  const[pair]=await owner.client<{manager:string;person:string;subject:string}[]>`select m.id::text as manager,m.person_id::text as person,s.id::text as subject
+   from employment m join employment s on s.company_id=m.company_id and s.id<>m.id and s.terminated_on is null and s.employee_code like 'EQ0%'
+   where m.tenant_id=${b.tenantId}::uuid and m.company_id=${b.companyId}::uuid and m.terminated_on is null and m.employee_code like 'EQ0%'
+    and not exists(select 1 from access_reporting_reach r where r.root_employment_id=m.id and r.subject_employment_id=s.id)
+    and not exists(select 1 from reporting_line rl where rl.manager_employment_id=s.id) -- a leaf: the new line cannot close a loop
+   order by m.employee_code,s.employee_code limit 1`;
+  const[known]=await owner.client<{id:string}[]>`select id::text from app_user where person_id=${pair.person}::uuid limit 1`;
+  const managerUser=known?.id??(await owner.client<{id:string}[]>`insert into app_user(tenant_id,workos_user_id,person_id) values(${b.tenantId}::uuid,${'fixture_'+randomUUID()},${pair.person}::uuid) returning id::text`)[0].id;
   await owner.client`alter table reporting_line disable trigger access_visible_employment_insert`;
-  try{await owner.client`insert into reporting_line(tenant_id,manager_employment_id,subordinate_employment_id,line_type,valid_from) values(${b.tenantId}::uuid,${id(2)}::uuid,${id(777)}::uuid,'administrative','2025-01-06')`;}
+  try{await owner.client`insert into reporting_line(tenant_id,manager_employment_id,subordinate_employment_id,line_type,valid_from) values(${b.tenantId}::uuid,${pair.manager}::uuid,${pair.subject}::uuid,'administrative','2025-01-06')`;}
   finally{await owner.client`alter table reporting_line enable trigger access_visible_employment_insert`;}
   const notices:string[]=[];
   const listen=postgres(process.env.TEST_MIGRATION_DATABASE_URL!,{max:1,onnotice:n=>notices.push(String(n.message))});
   try{
    await setMode('shadow');
    await listen.begin(async tx=>{
-    await tx`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${managerUsers[eq(2)]},true),set_config('client_min_messages','log',true)`;
+    await tx`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${managerUser},true),set_config('client_min_messages','log',true)`;
     await tx`select app.access_visible_employment_ids()`;
    });
    const line=notices.find(n=>n.startsWith('access_visible_employment shadow'));

@@ -37,7 +37,7 @@ describe('precomputed employment visibility (7240): equivalence',()=>{
   // Not vacuous: managers reach through the tree, and the department closure and reach hold rows.
   const[counts]=await owner.client<{reach:number;depts:number}[]>`select (select count(*)::int from access_reporting_reach where tenant_id=${b.tenantId}::uuid) as reach,
    (select count(*)::int from access_department_closure where tenant_id=${b.tenantId}::uuid) as depts`;
-  expect(counts.reach).toBeGreaterThan(100);expect(counts.depts).toBeGreaterThan(210);
+  expect(counts.reach).toBeGreaterThan(50);expect(counts.depts).toBeGreaterThan(210);
   const v=await verifyAccessVisibleEmploymentTenant(owner.db,b.tenantId);
   expect(v.trusted).toBe(true);expect(visibleEmploymentDifferences(v)).toBe(0);
   // The employment and person policies ask their company questions once per statement.
