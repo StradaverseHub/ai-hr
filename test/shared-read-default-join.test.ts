@@ -13,7 +13,8 @@
  * The bounded carrier pool (AIHR_DEFAULT_REQUEST_READ_CARRIERS=2|3, last block): one identity's concurrent default joins
  * spread over at most that many carriers and never more; every owner and its nested reads stay on one carrier (one
  * snapshot); two owners of one render may read two snapshots, exactly as without the join; an explicit composition
- * never spreads; the stale-carrier rule and every refusal still hold. */
+ * never spreads; a pooled composition (the app frame) takes at most N-1, so a page read never queues behind it; the
+ * stale-carrier rule and every refusal still hold. */
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,describe,expect,it} from 'vitest';
 import {requestReadJoinEnabled,requestScopedReadStats,withSharedReadSnapshot,withTenant,withoutDefaultRequestJoin,type SessionContext,type Tx} from '../db/client';
@@ -324,18 +325,47 @@ describe('bounded carrier pool for the default join (AIHR_DEFAULT_REQUEST_READ_C
   expect([stats.carriers,stats.peakCarriers,stats.joins,stats.defaultJoins]).toEqual([1,1,5,0]);
  });
 
- it.each([1,3] as const)('spreads a pooled composition (the app frame) over at most %i carriers; only its first reads the preamble',async size=>{
+ it.each([[1,1],[2,1],[3,2]] as const)('with a pool of %i, spreads a pooled composition (the app frame) over at most %i carriers; only its first reads the preamble',async(size,carriers)=>{
   pool(size);
   const scope={};
   const nestedRead=()=>withTenant(ctxA,async tx=>{const outer=await probeTx(tx);const inner=await probe(ctxA);return {outer,inner};});
   const rows=await observeStatements(()=>render(scope,()=>withSharedReadSnapshot(ctxA,()=>Promise.all(Array.from({length:5},nestedRead)),undefined,requestReadScope(),{pooled:true})));
-  expect(rows.transactions).toBe(size);
-  expect(new Set(rows.result.map(row=>row.outer.pid)).size).toBe(size);
+  // A pool of N keeps one carrier for the page: the frame takes at most N-1 (all of one carrier when N is 1).
+  expect(rows.transactions).toBe(carriers);
+  expect(new Set(rows.result.map(row=>row.outer.pid)).size).toBe(carriers);
   for(const {outer,inner} of rows.result)expect([inner.pid,inner.at]).toEqual([outer.pid,outer.at]);
   const [stats]=await requestScopedReadStats(scope);
-  expect([stats.carriers,stats.peakCarriers,stats.joins,stats.defaultJoins,stats.preambles]).toEqual([size,size,10,0,1]);
+  expect([stats.carriers,stats.peakCarriers,stats.joins,stats.defaultJoins,stats.preambles]).toEqual([carriers,carriers,10,0,1]);
   const independent=await render({},()=>withoutDefaultRequestJoin(()=>Promise.all(Array.from({length:5},nestedRead))));
   expect(rows.result.map(row=>comparable(row.outer))).toEqual(independent.map(row=>comparable(row.outer)));
+ });
+
+ it.each([1,2,3] as const)('with a pool of %i, a page read never queues behind a busy frame carrier (one is kept for the page)',async size=>{
+  pool(size);
+  const scope={},holding=deferred(),started=Array.from({length:4},deferred);
+  // The frame: a pooled composition whose four owners all hold their carriers.
+  const frame=render(scope,()=>withSharedReadSnapshot(ctxA,()=>Promise.all(started.map(gate=>withTenant(ctxA,async tx=>{
+   const row=await probeTx(tx);gate.resolve();await holding.promise;return row;}))),undefined,requestReadScope(),{pooled:true}));
+  await Promise.all(started.map(gate=>gate.promise));
+  // The page, while every frame owner is still busy: a default join and a pinned composition (the Today sections).
+  const [page,today]=await render(scope,()=>Promise.all([probe(ctxA),withSharedReadSnapshot(ctxA,()=>probe(ctxA),undefined,requestReadScope())]));
+  holding.resolve();
+  const frameRows=await frame;
+  const framePids=new Set(frameRows.map(row=>row.pid));
+  const [stats]=await requestScopedReadStats(scope);
+  expect(stats.peakCarriers).toBeLessThanOrEqual(size);
+  if(size===1){
+   // One carrier: everything shares it, exactly as before the pool.
+   expect([page.pid,today.pid]).toEqual([frameRows[0].pid,frameRows[0].pid]);
+   expect(stats.carriers).toBe(1);
+  }else{
+   expect(framePids.size).toBe(size-1);
+   expect(framePids.has(page.pid)).toBe(false);
+   expect(framePids.has(today.pid)).toBe(false);
+   expect(today.pid).toBe(page.pid);
+   expect(stats.carriers).toBe(size);
+  }
+  expect([page.iso,today.iso]).toEqual(['repeatable read','repeatable read']);
  });
 
  it('after a completed fallback, opens a fresh carrier while the pool has room, and falls back only when every carrier is stale and busy',async()=>{

@@ -136,7 +136,12 @@ export function defaultRequestReadScope():object|undefined{
  * their transactions, none of which compares its results with another's (the app frame's reads, package 1.2, which
  * keep their own transactions with the join off). Its owners choose carriers as default joins do, without the
  * stale-carrier rule (which no explicit join has); only the first carrier it opens reads the request preamble.
- * Nested reads still stay on their owner's carrier. */
+ * Nested reads still stay on their owner's carrier.
+ *
+ * ONE CARRIER IS KEPT FOR THE PAGE. With a pool of 2 or 3, a pooled composition opens at most N-1 carriers and joins
+ * only its own, and the request's other reads (default joins and pinned compositions) prefer theirs: the frame never
+ * fills the pool, so a page read (a redirect check, say) never queues behind frame statements. Each side joins the
+ * other's carriers only when it has none of its own and the pool is full. With one carrier everything shares it. */
 export function requestReadCarrierLimit():number{
  const value=process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;
  return value==='2'?2:value==='3'?3:1;
@@ -156,14 +161,16 @@ export type SharedReadCarrierState={
  /** Statements sent on this carrier and not yet answered (diagnostic flight count only). */
  inFlight:number;
 };
-type Slot<Tx>={carrier:SharedReadCarrier<Tx>;state:SharedReadCarrierState;
+/** 'pooled': opened by a pooled composition (the frame); 'page': by any other read of the request. */
+type Lane='pooled'|'page';
+type Slot<Tx>={carrier:SharedReadCarrier<Tx>;state:SharedReadCarrierState;lane:Lane;
  /** Owners inside this carrier now (joined or waiting for it to open). */
  active:number;
  /** Fallbacks completed when this carrier began (the stale-carrier rule). */
  fallbacks:number};
 type Join={tainted:boolean;slot?:Slot<unknown>};
-/** 'new' opens a carrier that reads the request preamble (if declared); 'plain' one that reads none. */
-type Choice<Tx>=Slot<Tx>|'new'|'plain';
+/** A carrier to join, or one to open in `lane`: `plain` reads no request preamble. */
+type Choice<Tx>=Slot<Tx>|{plain:boolean;lane:Lane};
 /** The session whose pooled composition (see the pool notes) the current work belongs to. */
 const pooledWork=new AsyncLocalStorage<SharedReadSession<unknown>>();
 
@@ -206,9 +213,13 @@ export class SharedReadSession<Tx>{
   return this.joinCarrier(fn,ownTransaction,signal,()=>{
    const enclosing=joins.getStore()?.slot as Slot<Tx>|undefined;
    if(enclosing&&this.slots.includes(enclosing))return enclosing;
-   if(pooledWork.getStore()!==this)return this.slots[0]??'new';
-   const pick=this.pick(this.slots);
-   return pick==='room'?(this.slots.length===0?'new':'plain'):pick!;
+   if(pooledWork.getStore()!==this){
+    // Pinned: the oldest open carrier (with a pool, the oldest of the page's own, so the frame's are never joined).
+    const pinned=this.slots.length>1||this.slots[0]?.lane==='pooled'?this.slots.find(slot=>slot.lane==='page'):this.slots[0];
+    return pinned??(this.slots.length<(this.idleRelease?requestReadCarrierLimit():1)?{plain:false,lane:'page'}:this.slots[0]);
+   }
+   const pick=this.pick(this.slots,'pooled');
+   return pick==='room'?{plain:this.slots.length>0,lane:'pooled'}:pick!;
   });
  }
  /** A `withTenant` read that joins this request-scoped session by default (package 1.1; see the module notes above). */
@@ -217,26 +228,28 @@ export class SharedReadSession<Tx>{
   this.stats.defaultJoins++;
   // The stale-carrier rule: a carrier that predates a completed fallback is committed when idle and never joined.
   for(const slot of [...this.slots])if(slot.fallbacks!==this.settledFallbacks&&slot.active===0)this.releaseSlot(slot);
-  const pick=this.pick(this.slots.filter(slot=>slot.fallbacks===this.settledFallbacks));
+  const pick=this.pick(this.slots.filter(slot=>slot.fallbacks===this.settledFallbacks),'page');
   // Every carrier in reach is stale and still in use by another owner: this owner reads in its own transaction.
   if(!pick){this.stats.staleSkips++;return this.fallback(ownTransaction);}
-  return this.joinCarrier(fn,ownTransaction,signal,()=>pick==='room'?'plain':pick);
+  return this.joinCarrier(fn,ownTransaction,signal,()=>pick==='room'?{plain:true,lane:'page'}:pick);
  }
- /** The pool's choice among `candidates`: an idle one (no new transaction), else room for a new carrier while the
-  * session holds fewer than the pool size, else the least busy. With one carrier this is exactly the earlier rule. */
- private pick(candidates:Slot<Tx>[]):Slot<Tx>|'room'|undefined{
-  const idle=candidates.find(slot=>slot.active===0);
+ /** The pool's choice among `candidates` for a read of `lane`: an idle carrier of its own lane (no new transaction),
+  * else room for a new carrier (fewer than the pool size open, and a pooled composition below N-1), else the least
+  * busy of its own lane, else the least busy of the other. With one carrier this is exactly the earlier rule. */
+ private pick(candidates:Slot<Tx>[],lane:Lane):Slot<Tx>|'room'|undefined{
+  const limit=this.idleRelease?requestReadCarrierLimit():1;
+  const own=limit>1?candidates.filter(slot=>slot.lane===lane):candidates;
+  const idle=own.find(slot=>slot.active===0);
   if(idle)return idle;
-  if(this.slots.length<(this.idleRelease?requestReadCarrierLimit():1))return 'room';
-  let least:Slot<Tx>|undefined;
-  for(const slot of candidates)if(!least||slot.active<least.active)least=slot;
-  return least;
+  if(this.slots.length<limit&&(lane==='page'||limit<2||this.slots.filter(slot=>slot.lane==='pooled').length<limit-1))return 'room';
+  const least=(slots:Slot<Tx>[])=>{let best:Slot<Tx>|undefined;for(const slot of slots)if(!best||slot.active<best.active)best=slot;return best;};
+  return least(own)??least(candidates);
  }
  private async joinCarrier<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal:AbortSignal|undefined,choose:()=>Choice<Tx>):Promise<T>{
   signal?.throwIfAborted();
   if(this.poisoned||this.closed)return this.fallback(ownTransaction);
   const chosen=choose();
-  const slot=chosen==='new'||chosen==='plain'?this.begin(chosen==='plain'):chosen;
+  const slot='carrier' in chosen?chosen:this.begin(chosen.plain,chosen.lane);
   slot.active++;this.active++;
   let tainted=false,result:{ok:true;value:T}|{ok:false;error:unknown}|undefined;
   try{
@@ -258,10 +271,10 @@ export class SharedReadSession<Tx>{
   if(!result!.ok)throw result!.error;
   return result!.value;
  }
- private begin(plain:boolean):Slot<Tx>{
+ private begin(plain:boolean,lane:Lane):Slot<Tx>{
   this.stats.carriers++;
   const state:SharedReadCarrierState={bootstrapping:true,plain,inFlight:0};
-  const slot:Slot<Tx>={carrier:this.open(state),state,active:0,fallbacks:this.settledFallbacks};
+  const slot:Slot<Tx>={carrier:this.open(state),state,lane,active:0,fallbacks:this.settledFallbacks};
   this.slots.push(slot);
   this.stats.peakCarriers=Math.max(this.stats.peakCarriers,this.slots.length);
   this.carriers.push(slot.carrier.done);return slot;
