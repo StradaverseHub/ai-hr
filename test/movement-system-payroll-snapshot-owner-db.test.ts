@@ -67,6 +67,13 @@ it('lets the restricted storage owner preserve closed payroll for the system swe
    exists(select 1 from public.payslip p join public.payroll_batch b on b.id=p.batch_id where p.id=${closed}::uuid and p.employment_id=${id}::uuid
     and b.company_id=${b.companyId}::uuid and b.status='closed') as closed_slip`;
   expect(admission).toEqual({tenant:true,no_user:true,storage_owner:true,maintain:true,admin:true,closed_slip:true});
+  expect((await tx`select policyname::text,roles::text,cmd::text from pg_policies where schemaname='public' and tablename='information_payslip_snapshot'
+   and policyname='information_snapshot_system_preserve_insert'`)).toEqual([{policyname:'information_snapshot_system_preserve_insert',roles:'{ai_hr_owner}',cmd:'INSERT'}]);
+  // The policy admits the system row directly (rolled back to keep the function's own count below honest).
+  const DIRECT='direct insert admitted';
+  await expect(tx.savepoint(async sp=>{await sp`insert into information_payslip_snapshot(payslip_id,tenant_id,employment_id,company_id,hired_on,document_metadata,recorded_by)
+   values (${closed}::uuid,${b.tenantId}::uuid,${id}::uuid,${b.companyId}::uuid,'2026-01-01',${JSON.stringify({preservationActor:'system'})}::jsonb,null)`;throw new Error(DIRECT);}))
+   .rejects.toThrow(DIRECT);
   const [{count}]=await tx<{count:number}[]>`select app.preserve_movement_payroll(${id}::uuid) as count`;
   expect(Number(count)).toBe(2);
   // Not closed: the system path preserves issued (closed) payroll only.
