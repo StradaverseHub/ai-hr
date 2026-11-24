@@ -19,8 +19,10 @@ unit="\${@: -1}"
 case "$1" in
   show) cat "$FAKE_DIR/$unit.$3" 2>/dev/null || true ;;
   is-enabled) cat "$FAKE_DIR/$2.enabled" 2>/dev/null || echo enabled ;;
-  stop) echo inactive > "$FAKE_DIR/$unit.ActiveState" ;;
-  disable) echo disabled > "$FAKE_DIR/$unit.enabled"; [ "$2" = --now ] && echo inactive > "$FAKE_DIR/$unit.ActiveState"; true ;;
+  stop) cat "$FAKE_DIR/$unit.stopState" 2>/dev/null > "$FAKE_DIR/$unit.ActiveState" || echo inactive > "$FAKE_DIR/$unit.ActiveState" ;;
+  disable) echo disabled > "$FAKE_DIR/$unit.enabled"
+    if [ "$2" = --now ]; then cat "$FAKE_DIR/$unit.stopState" 2>/dev/null > "$FAKE_DIR/$unit.ActiveState" || echo inactive > "$FAKE_DIR/$unit.ActiveState"; fi; true ;;
+  reset-failed) grep -qx failed "$FAKE_DIR/$unit.ActiveState" && echo inactive > "$FAKE_DIR/$unit.ActiveState"; true ;;
   enable) echo enabled > "$FAKE_DIR/$unit.enabled"; [ "$2" = --now ] && echo active > "$FAKE_DIR/$unit.ActiveState"; true ;;
   *) exit 2 ;;
 esac
@@ -122,6 +124,36 @@ describe('deploy/keycloak/park.sh', () => {
     expect(mutating().filter(Boolean)).toEqual([`enable --now ${KC}`, `enable --now ${SOCK}`]);
     expect(get(KC, 'ActiveState')).toBe('active');
     expect(get(SOCK, 'ActiveState')).toBe('active');
+  });
+
+  // Staging, 24 Nov 2026: the JVM exits 143 on SIGTERM and the unit has no SuccessExitStatus=143, so a clean
+  // stop leaves aihr-keycloak.service "failed". The first real park printed ✗ here and was then unparked.
+  it('accepts the JVM SIGTERM exit 143 as a clean stop and clears the failed mark', () => {
+    set(KC, 'stopState', 'failed'); set(KC, 'Result', 'exit-code'); set(KC, 'ExecMainStatus', '143');
+    const parked = run('park');
+    expect(parked.err).toBe('');
+    expect(parked.code).toBe(0);
+    expect(mutating()).toEqual([`disable --now ${SOCK}`, `stop ${MAIL}`, `disable --now ${KC}`, `reset-failed ${KC}`]);
+    expect(get(KC, 'ActiveState')).toBe('inactive');
+    expect(parked.out).toContain('normal SIGTERM exit 143');
+    expect(parked.out).toContain('✓ parked.');
+  });
+
+  it('reports any other failed stop without clearing it, and warns that units already changed', () => {
+    set(KC, 'stopState', 'failed'); set(KC, 'Result', 'exit-code'); set(KC, 'ExecMainStatus', '1');
+    const { code, out, err } = run('park');
+    expect(code).not.toBe(0);
+    expect(err).toContain('exit status=1');
+    expect(err).toContain('Do not run unpark unless you mean to roll back');
+    expect(err).toMatch(/aihr-keycloak\.service\s+failed/);
+    expect(mutating()).toEqual([`disable --now ${SOCK}`, `stop ${MAIL}`, `disable --now ${KC}`]);
+    expect(get(KC, 'ActiveState')).toBe('failed');
+    expect(out).not.toContain('✓ parked.');
+  });
+
+  it('a refusal before any change does not claim units changed', () => {
+    env('AUTH_PROVIDER=keycloak\n');
+    expect(run('park').err).not.toContain('Do not run unpark');
   });
 
   it('rejects an unknown mode', () => {
