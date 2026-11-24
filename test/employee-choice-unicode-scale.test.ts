@@ -16,7 +16,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {applicationDatabaseBudget} from '../db/capacity';
 import {closeAll,migrateTestDb,owner,type Base} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
-import {departmentFacetBinds,firstWitnessDepartmentFacet,isDepartmentFacet,isSparseDepartmentFacet,sparseDepartmentFacetBinds} from './performance/employee-choice-department-pair-probe';
+import {departmentFacetBinds,firstWitnessDepartmentFacet,isDepartmentFacet,isSparseDepartmentFacet,representedFirstWitnessDepartmentFacet,sparseDepartmentFacetBinds} from './performance/employee-choice-department-pair-probe';
 // This additional course is selected only by the existing focused controller. Other
 // Vitest runs keep the original setup and measurement, with their original URLs.
 const facetAdmission=await vi.hoisted(async()=>{
@@ -110,7 +110,10 @@ it('measures exact full and missing searches over the real 50k Unicode populatio
   spy.mockRestore();await Promise.allSettled([...originalCallbacks]);save();
  }
  if(facetAdmission){
-  expect(statements).toHaveLength(305);
+  // 304 since 9e32ad8ec (9 Nov 2026, after this count was pinned): an empty first page no longer runs the separate
+  // count, so the missing search reads one statement fewer. Checked directly, so a change there names itself.
+  expect(statements.filter(entry=>String(entry.sql).trimStart().startsWith('select count(*)::int as total'))).toEqual([]);
+  expect(statements).toHaveLength(304);
   expect(captured).toHaveLength(4);
   await probeDepartmentFacet({b,ctx,organisationTagSample,captured,dialect,report,save,actual,caseStart,signal:context.signal},facetAdmission);
  }
@@ -566,11 +569,13 @@ async function probeDepartmentFacet(p:Probe,admission:NonNullable<typeof facetAd
  const old=dialect.sqlToQuery(previous),compiled=dialect.sqlToQuery(candidate);
  expect(Buffer.byteLength(old.sql)).toBe(934);expect(digest(old.sql)).toBe(legacyHash);
  expect(old.params).toEqual([tenant,tenant,tenant,tenant,companyArray,tenant]);
- expect(compiled.params).toEqual([tenant,tenant,tenant,tenant,tenant,companyArray]);
- expect(isDepartmentFacet(compiled.sql)).toBe(true);expect(digest(compiled.sql)).toBe(firstWitnessHash);
- expect(compiled).toEqual(dialect.sqlToQuery(firstWitnessDepartmentFacet(tenant,{companyIds:[b.companyId]})));
+ // 24 Nov 2026: the product statement is the pinned a293 first witness limited to the represented company.
+ expect(compiled.params).toEqual([tenant,tenant,tenant,tenant,tenant,companyArray,companyArray]);
+ expect(isDepartmentFacet(compiled.sql)).toBe(true);
+ expect(digest(dialect.sqlToQuery(firstWitnessDepartmentFacet(tenant,{companyIds:[b.companyId]})).sql)).toBe(firstWitnessHash);
+ expect(compiled).toEqual(dialect.sqlToQuery(representedFirstWitnessDepartmentFacet(tenant,{companyIds:[b.companyId]},[b.companyId])));
  expect(p.captured.map(query=>dialect.sqlToQuery(query))).toEqual(p.captured.map(()=>compiled));
- metadata.sql={legacy:legacyHash,candidate:digest(compiled.sql),parameterCount:6};
+ metadata.sql={legacy:legacyHash,candidate:digest(compiled.sql),parameterCount:7};
  const proofRows=[{companyId:b.companyId,company:'Acme Sdn Bhd',departmentId:b.deptA,departmentCode:null,department:'Finance',
   businessUnitId:null,businessUnitCode:null,businessUnit:null}];
  const identities:AppFacts[]=[];
