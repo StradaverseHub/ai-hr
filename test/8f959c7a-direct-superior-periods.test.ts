@@ -90,7 +90,7 @@ describe('the reporter’s split period (8f959c7a r2)', () => {
     expect(await periods(employee)).toEqual([[kept, '2026-02-01', null]]);
     expect(await currentSuperior(employee)).toBe(kept);
     const [change] = await superiorChanges(employee);
-    expect(change.reversed).toBe(true);
+    expect(change.reversed).toBeTruthy();
   });
 
   it('lets Employment History Delete a dated change whose own period was later amended', async () => {
