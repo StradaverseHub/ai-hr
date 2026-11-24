@@ -64,13 +64,6 @@ export async function readBulkJob(ctx:SessionContext,id:string,kind?:string){ret
 export async function listBulkJobsTx(tx:Tx,ctx:SessionContext,kind:string,limit=10):Promise<BulkJobRow[]>{
  return[...await tx.execute<BulkJobRow>(sql`select * from bulk_job where tenant_id=${ctx.tenantId}::uuid and created_by=${ctx.userId??null}::uuid and kind=${kind} order by created_at desc limit ${Math.min(Math.max(limit,1),50)}`)];
 }
-/** What a list screen of one kind shows: never the uploaded file, the captured session, the plan, the counters or the
- * row errors (the whole row stays behind bulkJobTx for a job's own screen). */
-export type BulkJobSummaryRow=Pick<BulkJobRow,'id'|'kind'|'state'|'company_ids'|'input'|'result'|'created_at'|'finished_at'>;
-/** listBulkJobsTx's rows and order, with only the list's columns (same creator index, bulk_job_creator). */
-export async function listBulkJobSummariesTx(tx:Tx,ctx:SessionContext,kind:string,limit=10):Promise<BulkJobSummaryRow[]>{
- return[...await tx.execute<BulkJobSummaryRow>(sql`select id,kind,state,company_ids,input,result,created_at,finished_at from bulk_job where tenant_id=${ctx.tenantId}::uuid and created_by=${ctx.userId??null}::uuid and kind=${kind} order by created_at desc limit ${Math.min(Math.max(limit,1),50)}`)];
-}
 /** The creator asks a queued or running job to stop. The worker honours it before the next chunk: an all-or-nothing
  * kind discards what it staged; a per-row kind stops and keeps the rows already saved. Finalizing cannot be stopped. */
 export async function requestBulkJobCancel(ctx:SessionContext,id:string,kind?:string):Promise<BulkJobRow>{

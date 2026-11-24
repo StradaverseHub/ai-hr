@@ -7,7 +7,7 @@ import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {createHash,randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {BULK_JOB_ALREADY_RUNNING,enqueueBulkJobTx,listBulkJobSummariesTx,listBulkJobsTx,readBulkJob,requestBulkJobCancel} from '../core/bulk-job';
+import {BULK_JOB_ALREADY_RUNNING,enqueueBulkJobTx,listBulkJobsTx,readBulkJob,requestBulkJobCancel} from '../core/bulk-job';
 import {runBulkJobTick,type BulkJobHandler,type BulkJobUnit} from '../core/bulk-job-worker';
 import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -205,13 +205,6 @@ it('admits only through the definer: kind, companies and the declared input shap
  expect(row).toMatchObject({state:'queued',kind:'kernel_fixture',company_ids:[b.companyId],source_bytes:content.length,source_hash:createHash('sha256').update(content).digest('hex'),input:{values:['a','b']},plan:null});
  const listed=await withTenant(ctx,tx=>listBulkJobsTx(tx,ctx,'kernel_fixture'));
  expect(listed.map(r=>r.id)).toEqual([row.id]);
- // A list screen's reader: the same rows in the same order, with only the list's columns — never the uploaded file,
- // the captured session, the plan or the row errors (the transaction Workbooks list, staging 24 Nov 2026).
- const summaries=await withTenant(ctx,tx=>listBulkJobSummariesTx(tx,ctx,'kernel_fixture'));
- expect(summaries.map(r=>r.id)).toEqual(listed.map(r=>r.id));
- expect(Object.keys(summaries[0]).sort()).toEqual(['company_ids','created_at','finished_at','id','input','kind','result','state']);
- expect(summaries[0]).toMatchObject({id:row.id,kind:'kernel_fixture',state:'queued',company_ids:[b.companyId],input:{values:['a','b']},result:null,finished_at:null});
- expect(await withTenant(ctx,tx=>listBulkJobSummariesTx(tx,ctx,'kernel_owner_fixture'))).toEqual([]);
  // The seal holds the admitted input; the application role never sees it.
  const [seal]=await owner.client<{ok:boolean}[]>`select input_digest=sha256(convert_to(${JSON.stringify({values:['a','b']})}::text::jsonb::text,'UTF8')) and plan_digest=sha256(convert_to('null','UTF8')) as ok from app.bulk_job_seal where job_id=${row.id}::uuid`;
  expect(seal.ok).toBe(true);
