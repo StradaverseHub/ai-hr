@@ -15,7 +15,7 @@
  *    advisory lock, for any role; and the inventory of frame owners that fall back to their own transaction.
  * Every measurement is printed as one `ROUTE_BUDGET {json}` line for the release notes. All names are invented. */
 import {randomUUID} from 'node:crypto';
-import {createElement} from 'react';
+import {createElement,type ReactNode} from 'react';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 
@@ -75,7 +75,7 @@ const BUDGETS:Record<Route,Partial<Record<'group'|'multi'|'single'|'manager'|'em
 };
 
 type Route='frame'|'home'|'approvals'|'personnel';
-const ROUTES:Record<Route,{pathname:string;page:()=>unknown}>={
+const ROUTES:Record<Route,{pathname:string;page:()=>ReactNode}>={
  frame:{pathname:'/personnel',page:()=>null},
  home:{pathname:'/',page:()=>createElement(HomePage,{searchParams:Promise.resolve({})})},
  approvals:{pathname:'/approvals',page:()=>createElement(ApprovalsPage,{searchParams:Promise.resolve({})})},
