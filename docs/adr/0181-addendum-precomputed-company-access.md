@@ -6,7 +6,8 @@ Status: Approved by the owner on 24 November 2026 ("Okay proceed" in the review 
 the build session), with decisions 1–3 of section 9 as written and decision 4 with a minimum compared-statement count
 added (section 9). It is built
 as migration `7210_access_effective_company`, `core/access-effective-company-check.ts`,
-`scripts/access-effective-company-check.ts` and `test/access-effective-company-equivalence.test.ts`. Built is not
+`scripts/access-effective-company-check.ts`, `test/access-effective-company-equivalence.test.ts` and
+`test/access-effective-company-maintenance.test.ts` (shared fixture `test/access-effective-company-fixture.ts`). Built is not
 installed or accepted: staging shadow evidence and the switch to `precomputed` follow separately. It applies ADR 0181
 decision 1 (on PR 277, branch `claude/wonderful-pike-8d253b`) to the pilot scope the owner approved on 24 November
 2026: company-level access and the Job descriptions read path. Source facts were read at main `d9db526a2`.
@@ -166,7 +167,8 @@ Architecture profile reader policies are untouched. The migration guards the pre
 
 ## 7. Evidence before the switch
 
-1. **Equivalence tests** (new `test/access-effective-company-equivalence.test.ts`, database unit): a fixture of 70
+1. **Equivalence tests** (`test/access-effective-company-equivalence.test.ts` and, for the date window and the bypassing writer,
+   `test/access-effective-company-maintenance.test.ts`; database units): a fixture of 70
    companies in a three-level tree and 1,000 employments with Job descriptions and revisions across them; actors
    covering group-wide and subtree `hr_admin`/`super_admin`, a non-admin, a configurable-access deny on a subtree,
    an allow override, a group grant, a retired override, an archived user, a login-blocked user (employment ended
