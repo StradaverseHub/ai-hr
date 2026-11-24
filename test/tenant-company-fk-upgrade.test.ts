@@ -1324,6 +1324,22 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_transaction_export_read(uuid,integer)',app:true},
    {fn:'app.payroll_transaction_export_store(uuid,integer,bytea)',app:true},
    {fn:'app.payroll_tax_basis_source_digest(uuid,integer)',app:true},
+   // 7210 (ADR 0181 Phase 2 pilot): owner-only maintenance, verify and mode functions; only the once-per-statement read is granted.
+   {fn:'app.access_company_closure_compute(uuid)',app:false},
+   {fn:'app.access_effective_company_capability_changed()',app:false},
+   {fn:'app.access_effective_company_company_changed()',app:false},
+   {fn:'app.access_effective_company_compute(uuid,uuid[])',app:false},
+   {fn:'app.access_effective_company_publication_changed()',app:false},
+   {fn:'app.access_effective_company_refresh(uuid,uuid[])',app:false},
+   {fn:'app.access_effective_company_retrust(uuid)',app:false},
+   {fn:'app.access_effective_company_role_changed()',app:false},
+   {fn:'app.access_effective_company_stored(text)',app:false},
+   {fn:'app.access_effective_company_tenant_rows_changed()',app:false},
+   {fn:'app.access_effective_company_unusable()',app:false},
+   {fn:'app.access_effective_company_user_rows_changed()',app:false},
+   {fn:'app.access_effective_company_verify(uuid)',app:false},
+   {fn:'app.access_precompute_set_mode(text)',app:false},
+   {fn:'app.access_workforce_companies(text)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
