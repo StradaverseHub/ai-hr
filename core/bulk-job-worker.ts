@@ -28,7 +28,10 @@ export type BulkJobStepInput={kind:string;rowNum?:number|null;payload:unknown};
 export type BulkJobStep<P=unknown>={seq:number;kind:string;row_num:number|null;payload:P};
 export type BulkJobPrepared={steps:BulkJobStepInput[];plan?:unknown;counters?:Record<string,number>;companyIds?:readonly string[];phase?:string|null};
 export type BulkJobRefused={refused:string;errors?:BulkJobRowError[];plan?:unknown;counters?:Record<string,number>;companyIds?:readonly string[]};
-export type BulkJobStepOutcome={result?:unknown;counters?:Record<string,number>}|void;
+/** `endChunk`: commit the chunk after this step (the step must not share its transaction with the next one).
+ *  `metrics`: the step's own timing on the job's metrics; `add` names are running totals (they only grow, so the claim's
+ *  greatest() merge keeps them), `max` names keep their largest value. */
+export type BulkJobStepOutcome={result?:unknown;counters?:Record<string,number>;endChunk?:boolean;metrics?:{add?:Record<string,number>;max?:Record<string,number>}}|void;
 /** A worker write to its own job row (app.bulk_job_worker_update, 5013). Only the keys present change. `state` is
  * limited to the worker's forward transitions (queued→preparing; preparing→running|finalizing|completed|failed;
  * running→finalizing|completed; finalizing→running|completed); `expectState` makes the write a no-op (false) unless
@@ -408,9 +411,14 @@ async function chunkUnit(connection:postgres.ReservedSql,handler:WorkerHandler,c
   const steps=await pendingSteps(tx);
   if(!steps.length){
    await workerSet(tx,job.id,{state:handler.finalize?'finalizing':'completed',expectState:['running'],finished:!handler.finalize});
-   return{count:0,done:true,ms:performance.now()-started};
+   return{count:0,done:true,ms:performance.now()-started,metricsAdd:{} as Record<string,number>,metricsMax:{} as Record<string,number>};
   }
   let count=0,counters:Record<string,number>={};const failures:BulkJobRowError[]=[];let kind=steps[0].kind;
+  const metricsAdd:Record<string,number>={},metricsMax:Record<string,number>={};
+  const timing=(outcome:BulkJobStepOutcome)=>{
+   for(const [name,value] of Object.entries(outcome?.metrics?.add??{}))metricsAdd[name]=(metricsAdd[name]??0)+value;
+   for(const [name,value] of Object.entries(outcome?.metrics?.max??{}))metricsMax[name]=Math.max(metricsMax[name]??0,value);
+  };
   for(const step of steps){
    if(count>0&&performance.now()-started>=budget)break;
    kind=step.kind;
@@ -421,7 +429,8 @@ async function chunkUnit(connection:postgres.ReservedSql,handler:WorkerHandler,c
     try{outcome=await apply(tx);}
     catch(error){if(isTransient(handler,error))throw error;throw new BulkJobStepRefused(step,error);}
     await stepSet(tx,job.id,step.seq,{state:'applied',result:outcome?.result??null});
-    counters=merge(counters,outcome?.counters);
+    counters=merge(counters,outcome?.counters);timing(outcome);
+    if(outcome?.endChunk){count++;break;}
    }else{
     let outcome:BulkJobStepOutcome=undefined,refused:unknown=null,failed=false;
     try{outcome=await tx.transaction(apply);}
@@ -435,17 +444,23 @@ async function chunkUnit(connection:postgres.ReservedSql,handler:WorkerHandler,c
      failures.push({rowNum:step.row_num??0,ref:handler.stepRef?.(step)??'',message});counters=merge(counters,{failed:1});
     }else{
      await stepSet(tx,job.id,step.seq,{state:'applied',result:outcome?.result??null});
-     counters=merge(counters,outcome?.counters);
+     counters=merge(counters,outcome?.counters);timing(outcome);
+     if(outcome?.endChunk){count++;break;}
     }
    }
    count++;
   }
   const ms=performance.now()-started;
   await workerSet(tx,job.id,{stepsDoneAdd:count,phase:handler.phaseOf?.(kind)??job.phase,countersAdd:counters,errorsAppend:failures,resetTransientRetries:true});
-  return{count,done:false,ms};
+  return{count,done:false,ms,metricsAdd,metricsMax};
  });
  if(result.done)caches.delete(job.id);
- else{unit.metric('chunks',(Number(job.metrics?.chunks)||0)+1);unit.metric('maxChunkMs',result.ms);unit.metric('chunkHoldMs',performance.now()-lockedAt);}
+ else{
+  unit.metric('chunks',(Number(job.metrics?.chunks)||0)+1);unit.metric('maxChunkMs',result.ms);unit.metric('chunkHoldMs',performance.now()-lockedAt);
+  // Only after the chunk committed: a rolled-back chunk's work is not counted.
+  for(const [name,value] of Object.entries(result.metricsAdd??{}))unit.metric(name,(Number(job.metrics?.[name])||0)+value);
+  for(const [name,value] of Object.entries(result.metricsMax??{}))unit.metric(name,value);
+ }
  if(result.done&&!handler.finalize)await terminal(connection,handler,c,ctx);
 }
 

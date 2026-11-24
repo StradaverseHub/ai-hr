@@ -268,3 +268,28 @@ it('gives finalize the owner connection only when the kind declares it, and attr
  const [notice]=await owner.client<{payload:Record<string,unknown>}[]>`select payload from domain_event where event_type='bulk-job.finished' and aggregate_id=${third.row.id}::uuid`;
  expect(notice.payload).toMatchObject({kind:'kernel_owner_fixture',outcome:'completed'});expect(notice.payload.bulkJob).toBeUndefined();
 });
+
+// ADR 0181 J2: a step may end its chunk (the per-employee reprocess fallback must not share its transaction with the
+// next employee) and report timing that the kernel keeps on the job's metrics only once the chunk commits.
+it('ends a chunk after a step that asks for it and keeps committed step timing on the job metrics',async()=>{
+ const chunkOf:number[]=[];let chunk=0;
+ const ending:BulkJobHandler<{value:string}>={...fixture,mode:'atomic',chunkBudgetMs:60_000,maxStepsPerChunk:10,
+  async beginChunkTx(){chunk++;},
+  async applyStepTx(tx,_ctx,job,step){
+   chunkOf.push(chunk);
+   await tx.execute(sql`insert into public.kernel_fixture_row(tenant_id,job_id,value) values(${job.tenant_id}::uuid,${job.id}::uuid,${step.payload.value})`);
+   return{counters:{written:1},endChunk:step.payload.value.startsWith('end'),metrics:{add:{fixtureMs:5},max:{fixtureMaxMs:step.payload.value.length}}};
+  },
+  discard:async()=>'done',
+ };
+ const {row}=await admit(ctx,['a','end-b','c','d','end-eeee','f']);
+ expect(await run(row.id,undefined,200,[ending])).toBe('completed');
+ expect(await written(row.id)).toEqual(['a','end-b','c','d','end-eeee','f']);
+ // Three chunks: [a, end-b], [c, d, end-eeee], [f].
+ expect(chunkOf.map(c=>c-chunkOf[0])).toEqual([0,0,1,1,1,2]);
+ const job=await readBulkJob(ctx,row.id);
+ expect(job).toMatchObject({steps_done:6,counters:{total:6,written:6}});
+ expect(Number(job.metrics.fixtureMs)).toBe(30);
+ expect(Number(job.metrics.fixtureMaxMs)).toBe(8);
+ expect(Number(job.metrics.chunks)).toBe(3);
+});

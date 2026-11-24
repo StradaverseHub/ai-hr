@@ -1,0 +1,216 @@
+/**
+ * ADR 0181 J2: the set-based selective reprocess (core/payroll-reprocess-job.ts groups, `reprocessEmployeeGroupTx`) is
+ * equivalent to the per-employee path (`reprocessSelectedEmployees`, one `reprocessEmployeeTx` per employee) for every
+ * pay item, tax and statutory output. Two tenants are built identically through the product owners at the shape of a
+ * real group (SCALE rule 3: 70 companies, 1,000 employments). The run reprocessed holds 200 employees with TP3 openings
+ * (the five money columns and Section C2 exemptions), income-tax corrections of April and May (ADR 0167), salary and
+ * Pay Item changes after processing, two employees added after processing (the per-employee path's additions) and two
+ * whose salary record was removed (a refused group pass that falls back to the per-employee transaction). Tenant A runs
+ * the per-employee request path; tenant B runs the background job. Everything the reprocess writes is compared with
+ * ids, hashes and timestamps replaced by stable labels: payslips (money, statutory breakdown, PCB metadata, version),
+ * run totals, headcount and recalculation marks, per-employee result history, tax-basis replacement receipts, the job's
+ * outcomes, counts and totals, and the per-employee outcome events.
+ *
+ * Known, intended difference (recorded in ADR 0181): the run-level audit rows of one engine pass, the status-history
+ * row, the `payroll-batch.selective-reprocessed` event and the Audit loop's inputs capture, are written once per group
+ * instead of once per employee. The test proves they cover exactly the same employees.
+ *
+ * The diagnostic line REPROCESS_SET_EQUIVALENCE_DIAGNOSTIC reports, for both paths, wall time, process CPU (the
+ * calculation and the driver), the rest (database), application statements, and the job's per-chunk split from
+ * bulk_job.metrics. Fictional fixtures only.
+ */
+import {and,eq,sql} from 'drizzle-orm';
+import {afterAll,beforeAll,expect,it} from 'vitest';
+import * as schema from '../db/schema';
+import type {SessionContext} from '../db/client';
+import {hireEmployee} from '../core/org';
+import {setCompensation} from '../core/comp';
+import {setPayrollBatchComponent} from '../core/pay-components';
+import {setStatutoryProfileMY,setTp3ProfileMY} from '../localization/my/statutory';
+import {createBatch,generatePayslips,getReprocessJob,reprocessSelectedEmployees} from '../core/payroll';
+import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation} from '../core/payroll-tax-basis';
+import {requestSelectiveReprocess,payrollReprocessJobHandler} from '../core/payroll-reprocess-job';
+import {runBulkJobTick} from '../core/bulk-job-worker';
+import {observeStatements} from './helpers/statement-observer';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+
+const COMPANIES=70,EMPLOYMENTS=1000,PROCESSED=198,ADDED=2,RUN=PROCESSED+ADDED,SHAPE=EMPLOYMENTS-RUN;
+const MISSING_SALARY=new Set([37,151]);
+const tp3Money=(n:number)=>n%5===0,c2Opening=(n:number)=>n%7===0&&!tp3Money(n),travel=(n:number)=>n%5===1,raise=(n:number)=>n%2===0,travelChange=(n:number)=>n%10===1;
+const nameOf=(n:number)=>`J2 equivalence person ${String(n).padStart(3,'0')}`;
+
+type Tenant={base:Base;ctx:SessionContext;april:string;may:string;employees:Map<number,{employmentId:string;personId:string}>;travelId:string;companies:string[]};
+
+async function build():Promise<Tenant>{
+ const base=await seedBase();
+ for(const module of ['payroll','typed_pay_components','multi_cycle_payroll'])await setModule(base.tenantId,module,'active');
+ const ctx=await entitledCtx(base);
+ const others=await owner.client<{id:string}[]>`insert into company(tenant_id,legal_name) select ${base.tenantId}::uuid,'J2 shape company '||n from generate_series(1,${COMPANIES-1}::integer)n returning id`;
+ const companies=[base.companyId,...others.map(row=>row.id)];
+ // The rest of the group: people employed by the other 69 companies (not on this run), for the shape of every read.
+ await owner.client`with people as(insert into person(tenant_id,full_name,primary_email) select ${base.tenantId}::uuid,'J2 shape person '||n,'j2-shape-'||n||'@fixture.invalid' from generate_series(1,${SHAPE}::integer)n returning id),ranked as(select id,row_number()over(order by id)::int as n from people)
+  insert into employment(tenant_id,person_id,company_id,employee_code,hired_on) select ${base.tenantId}::uuid,id,(${others.map(row=>row.id)}::uuid[])[1+((n-1)%${COMPANIES-1}::integer)],'J2-SHAPE-'||lpad(n::text,4,'0'),'2025-01-01'::date from ranked`;
+ const [item]=await owner.db.insert(schema.payComponent).values({tenantId:base.tenantId,code:'TRV',name:'Fictional travel',kind:'allowance',displayCategory:'allowance',
+  includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_NON-TAXABLE'}).returning();
+ const employees=new Map<number,{employmentId:string;personId:string}>();
+ const hire=async(n:number,hiredOn:string)=>{
+  const e=await hireEmployee(ctx,{person:{fullName:nameOf(n),primaryEmail:`j2-${n}.${base.tenantId.slice(0,8)}@fixture.invalid`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn});
+  await setStatutoryProfileMY(ctx,{personId:e.personId,icNumber:`900101011${String(n).padStart(3,'0')}`,taxCategory:1+n%3,numChildren:n%4});
+  await setCompensation(ctx,{employmentId:e.employmentId,basicSalary:2800+(n*37)%4200,monthlyAllowance:(n%4)*100,effectiveFrom:hiredOn});
+  employees.set(n,{employmentId:e.employmentId,personId:e.personId});
+ };
+ for(let n=1;n<=PROCESSED;n++)await hire(n,'2026-01-01');
+ // TP3 openings: the five money columns through the owner, and a Section C2 exemption opening for others.
+ for(let n=1;n<=PROCESSED;n++)if(tp3Money(n))await setTp3ProfileMY(ctx,{personId:employees.get(n)!.personId,tp3Year:2026,tp3NetRemuneration:12000+n*10,tp3EpfClaimed:1320,tp3PcbPaid:300+n});
+ const c2=[...employees].filter(([n])=>c2Opening(n)).map(([,e])=>e.personId);
+ await owner.client`update employee_statutory_my set tp3_year=2026,tp3_exemption_used='{"PCB_TRA_BUSINESS":250}'::jsonb where tenant_id=${base.tenantId}::uuid and person_id=any(${c2}::uuid[])`;
+ const run=async(period:string)=>{
+  const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:period});
+  for(const [n,e] of employees)if(travel(n))await setPayrollBatchComponent(ctx,{batchId,employmentId:e.employmentId,componentId:item.id,amount:300+n});
+  await generatePayslips(ctx,{batchId});
+  return batchId;
+ };
+ const april=await run('2026-04'),may=await run('2026-05');
+ // ADR 0167: the travel item becomes taxable; April and May are corrected for the employees who were paid it.
+ await owner.db.update(schema.payComponent).set({pcbExemptionCode:'PCB_TAXABLE'}).where(eq(schema.payComponent.id,item.id));
+ const corrected=[...employees].filter(([n])=>travel(n)).map(([,e])=>e.employmentId);
+ const preview=await previewTaxBasisRecalculation(ctx,{companyId:base.companyId,year:2026,upToMonth:5,employmentIds:corrected});
+ expect(preview.eligibleCount).toBeGreaterThan(0);
+ await confirmTaxBasisRecalculation(ctx,{previewId:preview.previewId,previewHash:preview.previewHash});
+ // Changes after processing that the reprocess picks up.
+ for(const [n,e] of employees){
+  if(raise(n))await setCompensation(ctx,{employmentId:e.employmentId,basicSalary:3100+(n*37)%4200,monthlyAllowance:(n%4)*100+50,effectiveFrom:'2026-05-01'});
+  if(travelChange(n))await setPayrollBatchComponent(ctx,{batchId:may,employmentId:e.employmentId,componentId:item.id,amount:650});
+ }
+ // A salary record removed after processing: the group pass refuses and these employees take the per-employee path.
+ const removed=[...MISSING_SALARY].map(n=>employees.get(n)!.employmentId);
+ await owner.client`update compensation set superseded_at=now() where tenant_id=${base.tenantId}::uuid and employment_id=any(${removed}::uuid[]) and superseded_at is null`;
+ // Two people who joined during May after the run was processed: additions take the per-employee path.
+ for(let n=PROCESSED+1;n<=RUN;n++)await hire(n,'2026-05-15');
+ return{base,ctx,april,may,employees,travelId:item.id,companies};
+}
+
+/** Every uuid becomes a stable label (employment, person, company, run, Pay Item, tenant, user) or its order of first
+ * appearance; every 64-hex hash its order of first appearance; timestamps a constant. Equal structure, equal text. */
+function normalizer(t:Tenant){
+ const labels=new Map<string,string>([[t.base.tenantId,'tenant'],[t.april,'run:2026-04'],[t.may,'run:2026-05'],[t.travelId,'item:TRV'],[t.ctx.userId!,'user']]);
+ t.companies.forEach((id,i)=>labels.set(id,`company:${i}`));
+ for(const [n,e] of t.employees){labels.set(e.employmentId,`employment:${n}`);labels.set(e.personId,`person:${n}`);}
+ return(value:unknown)=>{
+  const seen=new Map<string,string>();
+  const text=JSON.stringify(value,(_key,v)=>v instanceof Date?'ts':v)
+   .replace(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})/g,'ts')
+   .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,id=>labels.get(id.toLowerCase())??(seen.get(id)??(seen.set(id,`id#${seen.size}`),seen.get(id)!)))
+   .replace(/\b[0-9a-f]{64}\b/g,h=>seen.get(h)??(seen.set(h,`hash#${seen.size}`),seen.get(h)!));
+  return JSON.parse(text);
+ };
+}
+
+const omit=(row:Record<string,unknown>,keys:string[])=>Object.fromEntries(Object.entries(row).filter(([k])=>!keys.includes(k)));
+async function snapshot(t:Tenant,jobId:string){
+ const n=normalizer(t),tenant=t.base.tenantId;
+ const byEmployment=new Map([...t.employees].map(([k,e])=>[e.employmentId,k]));
+ const order=<T extends Record<string,unknown>>(rows:T[],key:(row:T)=>string)=>rows.sort((a,b)=>key(a).localeCompare(key(b)));
+ const slips=await owner.client<Record<string,unknown>[]>`select * from payslip where tenant_id=${tenant}::uuid and batch_id=any(${[t.april,t.may]}::uuid[])`;
+ const batches=await owner.client<Record<string,unknown>[]>`select id,pay_period,status,totals,employee_count,recalc_employment_ids,scope from payroll_batch where id=any(${[t.april,t.may]}::uuid[]) order by pay_period`;
+ const history=await owner.client<Record<string,unknown>[]>`select employment_id,action,reason,version_before,version_after,before,after from payroll_employee_result_history where tenant_id=${tenant}::uuid and batch_id=${t.may}::uuid`;
+ const replacements=await owner.client<Record<string,unknown>[]>`select * from payroll_tax_basis_replacement where tenant_id=${tenant}::uuid`;
+ const revisions=await owner.client<Record<string,unknown>[]>`select * from payroll_tax_basis_revision where tenant_id=${tenant}::uuid`;
+ const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,t.may),eq(schema.domainEvent.eventType,'payroll-batch.employee-reprocess-outcome')));
+ const job=await getReprocessJob(t.ctx,jobId);
+ const result=job?.result as {outcomes:Record<string,unknown>[]}&Record<string,unknown>;
+ const key=(row:Record<string,unknown>)=>String(byEmployment.get(String(row.employment_id??row.employmentId))).padStart(4,'0')+String(row.batch_id??'');
+ return n({
+  status:job?.status,stopCode:job?.stopCode,
+  payslips:order(slips.map(row=>({...omit(row,['id','created_at','updated_at']),employment_id:row.employment_id,batch_id:row.batch_id})),key),
+  batches,
+  history:order(history,key),
+  replacements:order(replacements.map(row=>omit(row,['id','created_at'])),row=>JSON.stringify(n(row))),
+  revisions:order(revisions.map(row=>omit(row,['created_at'])),row=>JSON.stringify(n(row))),
+  outcomes:order((result?.outcomes??[]).map(o=>omit(o,['at'])),key),
+  counts:omit(result??{},['outcomes','workerToken']),
+  events:order(events.map(e=>omit(e.payload as Record<string,unknown>,['jobId'])),key),
+ });
+}
+/** The run-level audit rows of a pass: one per employee (per-employee path) or one per group (set path). */
+async function passAudit(t:Tenant){
+ const status=await owner.client<{ids:string[]}[]>`select coalesce(array(select jsonb_array_elements_text(after->'reprocessedEmploymentIds')),'{}') as ids from payroll_status_history where batch_id=${t.may}::uuid and action='reprocess'`;
+ const events=await owner.client<{ids:string[]}[]>`select coalesce(array(select jsonb_array_elements_text(payload->'employmentIds')),'{}') as ids from domain_event where aggregate_id=${t.may}::uuid and event_type='payroll-batch.selective-reprocessed'`;
+ const captures=await owner.client<{n:number}[]>`select count(*)::int as n from domain_event where aggregate_id=${t.base.companyId}::uuid and event_type='payroll-audit.inputs-not-captured'`;
+ const ids=(rows:{ids:string[]}[])=>rows.flatMap(row=>row.ids).sort();
+ return{statusRows:status.length,statusIds:ids(status),eventRows:events.length,eventIds:ids(events),captureMisses:captures[0].n};
+}
+async function drain(){
+ for(let i=0;i<5000;i++){
+  if(!await runBulkJobTick(owner.client,{handlers:[payrollReprocessJobHandler]})){
+   const [row]=await owner.client<{n:number}[]>`select count(*)::int as n from bulk_job where kind='payroll_reprocess' and (state not in ('completed','failed','cancelled') or notified_at is null)`;
+   if(!row.n)return;await new Promise(r=>setTimeout(r,20));
+  }
+ }
+ throw new Error('reprocess job did not finish');
+}
+const cpuMs=(start:NodeJS.CpuUsage)=>{const c=process.cpuUsage(start);return Math.round((c.user+c.system)/1000);};
+
+beforeAll(async()=>{await migrateTestDb();await resetDb();});
+afterAll(closeAll);
+
+// Measured budget: the first hosted run's case duration is recorded in the PR; this limit is about 3x that run.
+it('recalculates a 200-employee run set-based exactly as the per-employee path, at the shape of a 70-company group',async()=>{
+ const a=await build(),b=await build();
+ const [shape]=await owner.client<{companies:number;employments:number}[]>`select count(distinct company_id)::int as companies,count(*)::int as employments from employment where tenant_id=${b.base.tenantId}::uuid`;
+ expect(shape).toEqual({companies:COMPANIES,employments:EMPLOYMENTS});
+ const selection=(t:Tenant)=>[...t.employees.values()].map(e=>e.employmentId);
+ expect(selection(a)).toHaveLength(RUN);
+ // Both tenants hold corrections of April and May before the reprocess.
+ const corrections=async(t:Tenant)=>(await owner.client<{period:string;n:number}[]>`select period,count(*)::int as n from payroll_tax_basis_revision where tenant_id=${t.base.tenantId}::uuid group by period order by period`);
+ expect(await corrections(a)).toEqual(await corrections(b));
+ expect((await corrections(b)).map(row=>row.period)).toEqual(['2026-04','2026-05']);
+
+ const perCpu=process.cpuUsage();
+ const perEmployee=await observeStatements(()=>reprocessSelectedEmployees(a.ctx,{batchId:a.may,employmentIds:selection(a),reason:'J2 equivalence'}));
+ const perEmployeeCpu=cpuMs(perCpu);
+ expect(perEmployee.result.status).toBe('completed');
+
+ const setCpu=process.cpuUsage();
+ const set=await observeStatements(async()=>{
+  const requested=await requestSelectiveReprocess(b.ctx,{batchId:b.may,employmentIds:selection(b),reason:'J2 equivalence'});
+  await drain();
+  return requested;
+ });
+ const setCpuMs=cpuMs(setCpu);
+ const [job]=await owner.client<{metrics:Record<string,number>;counters:Record<string,number>;steps_total:number;steps_done:number}[]>`select metrics,counters,steps_total,steps_done from bulk_job where kind='payroll_reprocess' and tenant_id=${b.base.tenantId}::uuid`;
+
+ const left=await snapshot(a,perEmployee.result.jobId),right=await snapshot(b,set.result.jobId);
+ // The fixture exercised what it claims: reprocessed, recalculated tax sources, TP3 openings, additions and refusals.
+ const outcomes=right.outcomes as {employmentId:string;status:string;classification?:string;taxBasisRecalculated?:boolean}[];
+ expect(outcomes).toHaveLength(RUN);
+ expect(outcomes.filter(o=>o.classification==='added')).toHaveLength(ADDED);
+ expect(outcomes.filter(o=>o.status==='validation_failed').map(o=>o.employmentId).sort()).toEqual([...MISSING_SALARY].map(n=>`employment:${n}`).sort());
+ expect(outcomes.filter(o=>o.taxBasisRecalculated).length).toBeGreaterThan(0);
+ expect(outcomes.filter(o=>o.status==='reprocessed').length).toBe(RUN-MISSING_SALARY.size);
+ // Equivalence: every payslip figure, statutory breakdown, tax metadata and version, the run, the history, the tax
+ // receipts and corrections, the job's outcomes and counts, and the outcome events.
+ expect(right).toEqual(left);
+
+ // The set path really ran in groups, and the refused group fell back to the per-employee transaction.
+ expect(job.steps_done).toBe(RUN);
+ expect(job.metrics.reprocessGroups).toBeGreaterThan(0);
+ expect(job.metrics.reprocessGroupEmployees+job.metrics.reprocessSingles).toBe(RUN);
+ expect(job.metrics.reprocessSingles).toBeGreaterThanOrEqual(ADDED+MISSING_SALARY.size);
+ // The run-level audit rows cover the same employees: one per employee before, one per group now.
+ const auditA=await passAudit(a),auditB=await passAudit(b);
+ expect(auditB.statusIds).toEqual(auditA.statusIds);
+ expect(auditB.eventIds).toEqual(auditA.eventIds);
+ expect(auditA.statusRows).toBe(RUN-MISSING_SALARY.size);
+ expect(auditB.statusRows).toBe(job.metrics.reprocessGroups+job.metrics.reprocessSingles-MISSING_SALARY.size);
+ expect(auditB.captureMisses).toBe(auditA.captureMisses);
+
+ const split=(wall:number,cpu:number)=>({wallMs:Math.round(wall),cpuMs:cpu,dbMs:Math.max(0,Math.round(wall-cpu))});
+ console.info('REPROCESS_SET_EQUIVALENCE_DIAGNOSTIC',JSON.stringify({
+  shape:{companies:COMPANIES,employments:EMPLOYMENTS,run:RUN},
+  perEmployee:{...split(perEmployee.ms,perEmployeeCpu),statements:perEmployee.statements.length,transactions:perEmployee.transactions,
+   msPerEmployee:Math.round(perEmployee.ms/RUN),statementsPerEmployee:Math.round(perEmployee.statements.length/RUN)},
+  set:{...split(set.ms,setCpuMs),statements:set.statements.length,transactions:set.transactions,
+   msPerEmployee:Math.round(set.ms/RUN),statementsPerEmployee:Math.round(set.statements.length/RUN),metrics:job.metrics},
+ }));
+},1_150_000);
