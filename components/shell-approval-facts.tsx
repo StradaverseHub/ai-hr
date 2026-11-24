@@ -5,6 +5,8 @@ import type {PendingTaskItem} from '@/core/approvals-inbox';
 
 export type ShellApprovalResult=
  | {state:'ready';items:PendingTaskItem[];total:number;approvalCount:number;claimTotal:number;
+    /** The lifecycle module inbox's My tasks count, added to the rail's My tasks badge only (ADR 0181 package 1.3). */
+    lifecycleTaskCount?:number;
     hasAssignedAttendanceApproval:boolean;hasAssignedApproval:boolean}
  | {state:'unavailable'};
 type ShellApprovalFacts={result:ShellApprovalResult|{state:'pending'};canOpenApprovalsWithoutAssignment:boolean};

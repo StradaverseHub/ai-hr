@@ -18,8 +18,8 @@ import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
 import {applicationDatabaseUrl} from './pooling';
 import {processConnectionOptions} from './worker-connection';
 import {markDatabaseCapacityFailure,retryAdmissionRefusal,retryIdempotentRead} from './read-retry';
-import {SharedReadSession,currentSharedRead,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
-export {declareSharedReadWindow,declareSharedReadPreamble,withOwnerPreambleReads} from './shared-read';
+import {SharedReadSession,currentSharedRead,defaultRequestReadScope,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
+export {declareSharedReadWindow,declareSharedReadPreamble,withOwnerPreambleReads,withoutDefaultRequestJoin} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
 /** The tenant whose transaction this code runs inside; a nested acquire must not wait on that tenant's own share. */
@@ -345,7 +345,39 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     if (shared?.admits(client!, sharedReadIdentity(ctx, grants, roleNames), readDeadline)) {
       return shared.join(fn as (tx: unknown) => Promise<T>, ownTransaction, readSignal);
     }
+    // ADR 0181 decision 2 (package 1.1): during a server render, a read inside no shared session joins its identity's
+    // session of the render's request read scope by default. A login, no agent, and the session's own deadline only;
+    // every refusal and fallback of db/shared-read.ts applies unchanged, and anything else keeps its own transaction.
+    const scope = shared ? undefined : defaultRequestReadScope();
+    if (scope && ctx.userId && !ctx.agent) {
+      const session = requestScopedSession(scope, ctx, grants, roleNames, sharedReadIdentity(ctx, grants, roleNames), undefined, readDeadline);
+      if (session.deadline === readDeadline) {
+        return inSessionTenant(session, ctx.tenantId, nestedInTenant(ctx.tenantId) !== undefined, () => runInSharedRead(session as SharedReadSession<unknown>,
+          () => session.joinDefault(fn as (tx: unknown) => Promise<T>, ownTransaction, readSignal)));
+      }
+    }
     return ownTransaction();
+  }
+
+  /** The request-scoped session of `scope` for this identity, created on first use. The first opener's deadline is the
+   * session's: a composition or owner under another deadline keeps a snapshot or transaction of its own. */
+  function requestScopedSession(scope: object, ctx: SessionContext, grants: Grant[], roleNames: string[], identity: string, signal: AbortSignal | undefined, readDeadline: AbortSignal | undefined): SharedReadSession<Tx> {
+    let byIdentity = requestScopedSessions.get(scope);
+    if (!byIdentity) requestScopedSessions.set(scope, byIdentity = new Map());
+    let shared = byIdentity.get(identity);
+    if (!shared) {
+      byIdentity.set(identity, shared = newSession(ctx, grants, roleNames, identity, signal, readDeadline, true));
+      // The render's own request preamble (lib/request-read-scope.ts), read by each carrier a composition opens.
+      shared.preamble = scopePreamble();
+    }
+    return shared;
+  }
+
+  /** A request already inside this tenant's transaction or carrier holds the tenant's permit: neither a session's
+   * carriers nor an owner that keeps its own transaction inside it may wait on the tenant's own share. */
+  function inSessionTenant<R>(session: SharedReadSession<Tx>, tenantId: string, nested: boolean, run: () => Promise<R>): Promise<R> {
+    const permits = carrierPermits.get(session)!;
+    return sharedReadTenant.run({ tenantId, carrierHeld: () => nested || permits.held > 0 }, run);
   }
 
   /** A carrier's request preamble as columns of its identity statement (db/shared-read.ts, decision 12). The
@@ -374,24 +406,14 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     // A request that is already inside this tenant's transaction or carrier holds the tenant's permit: neither this
     // snapshot's carriers nor an owner that keeps its own transaction inside it may wait on the tenant's own share.
     const nested = nestedInTenant(ctx.tenantId) !== undefined;
-    const inTenant = <R>(session: SharedReadSession<Tx>, run: () => Promise<R>): Promise<R> => {
-      const permits = carrierPermits.get(session)!;
-      return sharedReadTenant.run({ tenantId: ctx.tenantId, carrierHeld: () => nested || permits.held > 0 }, run);
-    };
+    const inTenant = <R>(session: SharedReadSession<Tx>, run: () => Promise<R>): Promise<R> => inSessionTenant(session, ctx.tenantId, nested, run);
     // One request's independent read compositions (the Today sections and the shell's approvals of one page render)
     // share one session per identity: overhead and identical statements are paid once while they overlap. A
     // composition under another hard read deadline than that session's keeps a snapshot of its own below, because
     // a carrier cancels its statements at exactly one deadline.
     if (scope) {
-      let byIdentity = requestScopedSessions.get(scope);
-      if (!byIdentity) requestScopedSessions.set(scope, byIdentity = new Map());
-      let shared = byIdentity.get(identity);
-      if (!shared) {
-        byIdentity.set(identity, shared = newSession(ctx, grants, roleNames, identity, signal, readDeadline, true));
-        // The render's own request preamble (lib/request-read-scope.ts), read by each carrier of this session.
-        shared.preamble = scopePreamble();
-      }
-      if (shared.deadline === readDeadline) { const session = shared; return inTenant(session, () => session.track(work)); }
+      const shared = requestScopedSession(scope, ctx, grants, roleNames, identity, signal, readDeadline);
+      if (shared.deadline === readDeadline) return inTenant(shared, () => shared.track(work));
     }
     const session = newSession(ctx, grants, roleNames, identity, signal, readDeadline, false);
     try {
@@ -413,6 +435,8 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     const permits = { held: 0 };
     // The carrier factory runs only when the first owner joins, after `session` is assigned.
     const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, identity, () => {
+      // A carrier a default join opens reads no request preamble (db/shared-read.ts, package 1.1).
+      const plain = session.openingPlain;
       let finish: () => void = () => {};
       const finished = new Promise<void>((resolve) => { finish = resolve; });
       let resolveTx: (tx: Tx) => void = () => {};
@@ -448,7 +472,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
             readSignal?.throwIfAborted();
             // Decision 12: the request preamble rides this carrier's identity statement and answers its owner statements
             // ahead, before any owner can join. Without one (or switched off) the statement is the plain bootstrap.
-            const preamble = session.openPreamble(ctx, carrierTx);
+            const preamble = session.openPreamble(ctx, carrierTx, plain);
             const identityRow = await bootstrapTenantTx(carrierTx, ctx, grants, roleNames, preamble ? preambleColumns(preamble, ctx, grants, roleNames) : undefined);
             session.bootstrapping = false;
             if (preamble) {

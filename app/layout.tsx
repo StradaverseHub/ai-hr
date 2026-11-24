@@ -42,7 +42,7 @@ import { OnboardingTour } from '@/components/onboarding-tour';
 import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
 import {AssistantReplyClientEntry} from '@/components/assistant/chat-reply-boundary';
 import { assistantShellFor } from '@/core/assistant-launcher';
-import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
+import { NoticePopupSlot, viewerPopupNotice } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {AssistantImportHandoffProvider} from '@/components/assistant/import-handoff';
@@ -61,7 +61,7 @@ import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
-import {lifecycleModuleInbox} from './lifecycle/module-inbox';
+import {EMPTY_LIFECYCLE_MODULE_INBOX,lifecycleModuleInbox,type LifecycleModuleInbox} from './lifecycle/module-inbox';
 import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
@@ -180,116 +180,135 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </body>
     </html>;
   }
-  const principals = await listPrincipals();
-  // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
-  const showDevSwitcher = demoSwitcherEnabled();
-  const { allowed, scopeIds } = await companyContextForPage(session);
-  const cookieStore = await cookies();
-  const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
-  // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
-  // there is no open/closed state to persist (stale cookies in existing browsers are unused and
-  // harmless). rail_collapsed handling is unchanged.
-  // fbf6abd0 — WHO IS SIGNED IN. The name + Employee ID shown in the top right, read from the viewer's
-  // own EMPLOYMENT and PERSON (lib/viewer.ts), never from lib/principals.ts: that list is the dev/demo
-  // switcher and is empty on a real deployment, which is exactly why the header used to carry no
-  // identity at all. It always resolves to something renderable — an employed viewer, a named principal
-  // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
-  // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [viewer,{accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}]=await Promise.all([
-    viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
-  ]);
-  const letterDestinations=isModuleEnabledOrFalse(session,'employees')
-    ? await letterNavigation(session,scopeIds) : [];
-  const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')
-    ? await import('@/packs/rewards/service').then(({ rewardNavigation }) =>
-      rewardNavigation(session),
-    ).catch(() => [])
-    : [];
-  const tours = toursForRoles(session.roles);
-  const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
-  const canOpenAdminRail=isAdmin(session)||canManagePayroll(session)||canManagePerfComp(session);
-  const shellScopeKey=personnelImportBrowserKey(session,scopeIds);
-  // ADR-0034 34-3: when notifications are on, the bell shows the viewer's own notifications (everyone), not
-  // just the approvals queue. Opportunistic catch-up — an admin loading any page dispatches the tenant's new
-  // events when the cursor is free. The scheduled sweep owns queued projection; non-admins only read.
+  // ADR 0181 decision 3 (package 1.2): the frame's facts are read in ONE pass inside the render's read snapshot
+  // (lib/request-read-scope.ts). Every independent read starts at once and joins one REPEATABLE READ READ ONLY
+  // carrier for this login; only the company list waits for the company context it filters by. An owner whose
+  // transaction contract the carrier cannot honour still runs in its own transaction (db/shared-read.ts). The
+  // lifecycle inbox starts in the same pass but streams: the bell and the badge read it, and nothing above waits on it.
   // `…OrFalse`, not `isModuleEnabled`: this is the ROOT layout, so a throw here 500s every
   // authenticated route — and lib/session.ts deliberately degrades a snapshot-resolution failure into
   // `entitlementsError` on the session precisely so the app stays navigable. See the helper: it
   // swallows ONLY EntitlementsResolutionFailedError (the infrastructure state), and still throws for a
   // malformed or mis-attributed context, which is a wiring bug and must stay loud.
+  const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
+  // r292 — the two optional-module queues inside the inbox. Resolved HERE, with the quiet form, for the
+  // same reason as above: `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
+  // belongs to whichever surface calls it.
+  const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
+  const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
+  const showNoticePopup=pathname!=='/'||isAdmin(session);
+  const frame=await withSharedReadSnapshot(session,async()=>{
+    const context=companyContextForPage(session);
+    const lifecycleNavigation=lifecycleModuleNavigation(session);
+    // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
+    // cycle this OneHR administrator administers. No cycle, a viewer who is not a OneHR administrator, the module off
+    // or a failed read all leave the pack's /performance.
+    const performanceAdminHref = canAdminOnehr(session) && isModuleEnabledOrFalse(session, 'performance')
+      ? latestOnehrAdminCycleId(session).then(id => (id ? adminSectionHref(id, 'cycle') : undefined), () => undefined)
+      : Promise.resolve(undefined);
+    // The after-login notice popup's one owner read (the viewer's employment, then its live notices), started here so
+    // it overlaps the frame; the slot below renders it.
+    const noticePopup=showNoticePopup?viewerPopupNotice(session):null;
+    noticePopup?.catch(()=>undefined);
+    // The passive badge and task preview stream separately from navigation. Reserve
+    // interactive database capacity for the active page and the user's explicit actions.
+    // It starts in the frame's pass and joins the page render's read-only snapshot (lib/request-read-scope.ts), so
+    // the owners it shares with the page's own sections are read once; another identity or an incompatible owner
+    // keeps its own transaction.
+    const approvalSummary=context.then(({scopeIds})=>withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
+      attendance: isModuleEnabledOrFalse(session, 'attendance'),
+      claims: claimsEnabled,
+      performance: isModuleEnabledOrFalse(session, 'performance'),
+      rewards: isModuleEnabledOrFalse(session, 'rewards'),
+      // Recruitment slice 9: the bell (and the sidebar's My tasks badge, which is this total) asks for the recruitment
+      // to-dos — live, under the viewer's own access; nothing for a viewer with no recruitment role, and no call at all
+      // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
+      recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
+      probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
+      }, { deferClaimPreview: true }),undefined,requestReadScope())));
+    approvalSummary.catch(()=>undefined);
+    // A failed inbox read leaves its rows out of the bell and the badge (logged); it no longer fails the page.
+    const lifecycleInbox:Promise<LifecycleModuleInbox>=lifecycleNavigation.then(navigation=>lifecycleModuleInbox(session,navigation))
+      .catch((error):LifecycleModuleInbox=>{console.error('Lifecycle module inbox unavailable',error);return EMPTY_LIFECYCLE_MODULE_INBOX;});
+    const [principals,{allowed,scopeIds},viewer,shellAccess,letterDestinations,rewardDestinations,
+      onboardingNav,onboardingQueue,scopedLifecycleNavigation,offboardingPostingsAccess,
+      {launcher,allowed:assistantAccess},privateCaseHandler,recruitmentTeam,referralPortal,identityEmailAvailable,performanceAdminPath]=await Promise.all([
+      listPrincipals(),
+      context,
+      // fbf6abd0 — WHO IS SIGNED IN. The name + Employee ID shown in the top right, read from the viewer's
+      // own EMPLOYMENT and PERSON (lib/viewer.ts), never from lib/principals.ts: that list is the dev/demo
+      // switcher and is empty on a real deployment. Memoised, so the notice popup shares the employment row.
+      viewerIdentity(session),
+      readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
+      isModuleEnabledOrFalse(session,'employees')?context.then(({scopeIds})=>letterNavigation(session,scopeIds)):Promise.resolve([]),
+      isModuleEnabledOrFalse(session, 'rewards')
+        ? import('@/packs/rewards/service').then(({ rewardNavigation }) => rewardNavigation(session)).catch(() => [])
+        : Promise.resolve([]),
+      lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
+      lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
+      lifecycleNavigation,
+      lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
+      // Navigation and the floating launcher share the current Assistant grant read.
+      assistantShellFor(session),
+      handlesPrivateCases(session).catch(() => false),
+      // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does
+      // not administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row.
+      isModuleEnabledOrFalse(session, 'recruitment') && !canAdminRecruitment(session)
+        ? recruitmentTeamPresence(session).catch((e) => { console.error('recruitment team presence failed', e); return false; })
+        : Promise.resolve(false),
+      // Recruitment slice 7 — "Refer a candidate" shows for a person with an active employment in a company with
+      // Recruitment (a tenant-wide grant, as for every HR screen). Failure hides it.
+      referralEligible(session).catch(() => false),
+      canConfigureIdentityEmail(session),
+      performanceAdminHref,
+    ]);
+    return {principals,allowed,scopeIds,viewer,shellAccess,letterDestinations,rewardDestinations,onboardingNav,onboardingQueue,
+      scopedLifecycleNavigation,offboardingPostingsAccess,launcher,assistantAccess,privateCaseHandler,recruitmentTeam,referralPortal,
+      identityEmailAvailable,performanceAdminPath,lifecycleInbox,noticePopup,approvalSummary};
+  },undefined,requestReadScope());
+  const {principals,allowed,scopeIds,viewer,letterDestinations,rewardDestinations,onboardingNav,onboardingQueue,scopedLifecycleNavigation,
+    offboardingPostingsAccess,launcher,assistantAccess,privateCaseHandler,recruitmentTeam,referralPortal,identityEmailAvailable,
+    performanceAdminPath,lifecycleInbox,noticePopup}=frame;
+  const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=frame.shellAccess;
+  // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
+  const showDevSwitcher = demoSwitcherEnabled();
+  const cookieStore = await cookies();
+  const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
+  // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
+  // there is no open/closed state to persist (stale cookies in existing browsers are unused and
+  // harmless). rail_collapsed handling is unchanged.
+  const tours = toursForRoles(session.roles);
+  const canOpenAdminRail=isAdmin(session)||canManagePayroll(session)||canManagePerfComp(session);
+  const shellScopeKey=personnelImportBrowserKey(session,scopeIds);
+  // ADR-0034 34-3: when notifications are on, the bell shows the viewer's own notifications (everyone), not
+  // just the approvals queue. ADR 0181 decision 3 (package 1.3): a page load never dispatches — the minute
+  // notification sweep (scripts/notification-email-sweep.ts) owns projection, so an admin's new notification
+  // appears within the sweep interval. Every role only reads here.
   const notifEnabled = isModuleEnabledOrFalse(session, 'notifications');
   const letterNotificationCompanies=scopeIds.filter(id=>isModuleEnabledOrFalse(session,'notifications',id));
   const notificationScope = notifEnabled ? {} :
     letterNotificationCompanies.length > 0 ? { letterCompanyIds: letterNotificationCompanies } : null;
-  const catchUpNotifications = notifEnabled && isAdmin(session) && (session.grants === undefined || isGroupAdmin(session));
-  // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
-  // cycle this OneHR administrator administers, started here so it overlaps other shell reads. No cycle, a
-  // viewer who is not a OneHR administrator, the module off or a failed read all leave the pack's /performance.
-  const performanceAdminHref = canAdminOnehr(session) && isModuleEnabledOrFalse(session, 'performance')
-    ? latestOnehrAdminCycleId(session).then(id => (id ? adminSectionHref(id, 'cycle') : undefined), () => undefined)
-    : Promise.resolve(undefined);
   // 3-tab bell (feedback 1514d366) — one notification framework for every role, role-scoped by the reads:
   //   • Notification tab: unread informational (non-action) notifications + their unread badge.
   //   • Task tab: the live approvals queue (listPendingTasks — replaces the retired count-only legacy
   //     bell; self-short-circuits to [] for plain employees) + unread severity-'action' notifications.
   //   • History tab: read notifications + recent approval decisions (canApprove only) — never counted.
-  // r292 — the two optional-module queues inside the inbox. Resolved HERE, with the quiet form, for the
-  // same reason `notifEnabled` two lines above uses it: this is the root layout and a throw 500s every
-  // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
-  // belongs to whichever surface calls it.
-  const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
-  const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,onboardingQueue,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
-    lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
-    lifecycleModuleNavigation(session),
-    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
-  ]);
   const onboardingAccess=onboardingNav.module;
-  const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
-  const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
-  const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
-  const lifecycleMyTasksCount=onboardingQueue.length+lifecycleInbox.myTasksCount;
-  // Navigation and the floating launcher share the current Assistant grant read.
-  // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does not
-  // administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row only.
-  // Recruitment slice 7 — "Refer a candidate" shows for a person with an active employment in a company with Recruitment
-  // (a tenant-wide grant, as for every HR screen; the service gate refuses a tenant without one before any SQL). Failure hides it.
-  const [{launcher,allowed:assistantAccess},privateCaseHandler,recruitmentTeam,referralPortal] = await Promise.all([
-    assistantShellFor(session),
-    handlesPrivateCases(session).catch(() => false),
-    isModuleEnabledOrFalse(session, 'recruitment') && !canAdminRecruitment(session)
-      ? recruitmentTeamPresence(session).catch((e) => { console.error('recruitment team presence failed', e); return false; })
-      : Promise.resolve(false),
-    referralEligible(session).catch(() => false),
-  ]);
+  const onboardingTaskItems:NotificationTaskItem[]=onboardingQueue.map(onboardingNotificationTask);
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
-  const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
-  // The passive badge and task preview stream separately from navigation. Reserve
-  // interactive database capacity for the active page and the user's explicit actions.
-  // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
-  // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
-  const approvalFacts:Promise<ShellApprovalResult> = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
-    attendance: isModuleEnabledOrFalse(session, 'attendance'),
-    claims: claimsEnabled,
-    performance: isModuleEnabledOrFalse(session, 'performance'),
-    rewards: isModuleEnabledOrFalse(session, 'rewards'),
-    // Recruitment slice 9: the bell (and the sidebar's My tasks badge, which is this total) asks for the recruitment
-    // to-dos — live, under the viewer's own access; nothing for a viewer with no recruitment role, and no call at all
-    // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
-    recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
-    probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
-  }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
+  const approvalFacts:Promise<ShellApprovalResult> = frame.approvalSummary.then(approvalSummary=>lifecycleInbox.then((lifecycle):ShellApprovalResult=>({
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,
-    approvalCount:approvalSummary.approvalCount+lifecycleInbox.approvalCount,
+    approvalCount:approvalSummary.approvalCount+lifecycle.approvalCount,
     claimTotal:approvalSummary.claimTotal,
+    // The lifecycle inbox's My tasks share of the rail badge (it streams with these facts, package 1.3).
+    lifecycleTaskCount:lifecycle.myTasksCount,
     // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
     hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
-    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycleInbox.approvalCount)>0,
-  }),():ShellApprovalResult=>{
+    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycle.approvalCount)>0,
+  }))).then(result=>result,():ShellApprovalResult=>{
     console.error('Shared shell approval facts unavailable');
     return {state:'unavailable'};
   });
@@ -344,7 +363,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={performanceAdminPath}
-              taskCount={lifecycleMyTasksCount}
+              taskCount={onboardingQueue.length}
               onboardingAccess={onboardingAccess}
               probationAccess={scopedLifecycleNavigation.probation}
               contractStaffAccess={scopedLifecycleNavigation.contractStaff}
@@ -496,12 +515,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       key={shellScopeKey}
                       session={session}
                       scope={notificationScope}
-                      catchUp={catchUpNotifications}
                       lifecycleEnabled={lifecycleEnabled}
-                      tasks={lifecycleTasks}
-                      taskQueueLinks={lifecycleInbox.queueLinks}
+                      onboardingTasks={onboardingTaskItems}
+                      lifecycleInbox={lifecycleInbox}
                       claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
-                      taskCount={lifecycleTaskCount}
                       canApprove={canApprove}
                     />
                   </Suspense>
@@ -541,7 +558,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               already-cached employment lookup and nothing else on the overwhelming majority of loads. */}
           {/* Personal Home opens directly; its Notice card, full reader and canonical assigned work
               retain explicit acknowledgement. The path is set by trusted middleware. */}
-          {(pathname!=='/'||isAdmin(session))&&<NoticePopupSlot s={session} />}
+          {noticePopup&&<NoticePopupSlot s={session} due={noticePopup} />}
           <Suspense fallback={null}>
             <ToastFromQuery />
           </Suspense>
