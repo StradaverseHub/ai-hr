@@ -2,8 +2,10 @@
 
 Date: 24 November 2026
 
-Status: **Proposed, for the owner's review.** No migration is written or allocated until the owner approves or changes
-section 10. This applies ADR 0181 decision 1 to the next family after the company pilot
+Status: **Approved by the owner on 24 November 2026** ("Approve as recommended"): all six decisions of section 10 as
+written. Approved is not built. No migration is written or allocated yet. Staging work goes through the shared staging queue,
+after release 3, which carries 7210. That covers the read-only attribution read approved in decision 6, and later
+installing the build for its shadow period, which is a separate staging release. This applies ADR 0181 decision 1 to the next family after the company pilot
 ([company pilot addendum](0181-addendum-precomputed-company-access.md), migration `7210_access_effective_company`, PRs
 280/285/290). Source facts were read at main `a7d452c21`. Installed policy text was derived by replaying the migrations
 in journal order; it has not been read back from an installed catalogue (section 9 asks for that read).
