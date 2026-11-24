@@ -337,8 +337,9 @@ pilot's section 8.
 ### 9.1 Attribution read on staging (24 November 2026, decision 6)
 
 Read-only transaction as `ai_hr_app` on the fictional demo tenant (2,959 employments, 74 companies, 98 departments,
-58 current administrative lines), staging at `41482ceb0` with 7210 in `legacy` mode, `EXPLAIN (ANALYZE, BUFFERS)`,
-rolled back. Status ladder omitted from the headcount statement in both forms.
+58 current administrative lines), staging at `41482ceb0` with 7210 applied, `EXPLAIN (ANALYZE, BUFFERS)`, rolled back.
+The 7210 mode was reported as `legacy` at release 3's hand-back and as `shadow` by the pilot session; this read did not
+check it. In `shadow`, `access_workforce_companies` computes both answers, so the PR 295 time is an upper bound. Status ladder omitted from the headcount statement in both forms.
 
 | Statement | Group administrator | Line manager |
 |---|---:|---:|
