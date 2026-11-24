@@ -48,7 +48,7 @@ it('lets the restricted storage owner preserve closed payroll for the system swe
     set_config('app.grants',${JSON.stringify([{role:'hr_admin',companyId:null}])},true)`;
   };
   const direct=(payslipId:string)=>tx.savepoint(sp=>sp`insert into information_payslip_snapshot(payslip_id,tenant_id,employment_id,company_id,hired_on,document_metadata,recorded_by)
-   values (${payslipId}::uuid,${b.tenantId}::uuid,${id}::uuid,${b.companyId}::uuid,'2026-01-01',${sp.json({preservationActor:'system'})},null)`);
+   values (${payslipId}::uuid,${b.tenantId}::uuid,${id}::uuid,${b.companyId}::uuid,'2026-01-01',${JSON.stringify({preservationActor:'system'})}::jsonb,null)`);
   // A signed-in user never writes an unattributed snapshot, even of a closed payslip.
   await as(b.adminUserId);
   await expect(direct(closed)).rejects.toThrow(/row-level security/);
