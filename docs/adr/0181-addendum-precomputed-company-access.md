@@ -2,9 +2,20 @@
 
 Date: 24 November 2026
 
-Status: Design for owner review. No migration, policy or code has been written for it. It applies ADR 0181 decision 1
-(on PR 277, branch `claude/wonderful-pike-8d253b`) to the pilot scope the owner approved on 24 November 2026:
-company-level access and the Job descriptions read path. Source facts were read at main `d9db526a2`.
+Status: The owner approved this design and the four decisions in section 9 as written on 24 November 2026. It is built
+as migration `7210_access_effective_company`, `core/access-effective-company-check.ts`,
+`scripts/access-effective-company-check.ts` and `test/access-effective-company-equivalence.test.ts`. Built is not
+installed or accepted: staging shadow evidence and the switch to `precomputed` follow separately. It applies ADR 0181
+decision 1 (on PR 277, branch `claude/wonderful-pike-8d253b`) to the pilot scope the owner approved on 24 November
+2026: company-level access and the Job descriptions read path. Source facts were read at main `d9db526a2`.
+
+Two refinements made while building, within the approved decisions:
+
+- An `access_capability` change recomputes every tenant inline instead of marking them untrusted. The catalogue is
+  changed only by migrations, and recomputing keeps reads on the stored answer rather than on the fallback.
+- The rebuild check reports through the cron wrapper (exit code, heartbeat, journal) like the other wrapper jobs and
+  does not yet write a `job_run` row. Adding it to `/admin/scheduled-actions` needs a job key and its translations,
+  which is a follow-up.
 
 ## 1. What `app.access_workforce_company(company, capability)` actually depends on
 
@@ -98,8 +109,8 @@ Size is bounded by admin role holders × companies × 2, not by employees (for e
 - **Granularity.** `role_assignment`, `access_membership` and `access_user_override` changes recompute the affected
   users of the tenant. `access_group`, `access_group_grant`, `access_configuration`, `company` and the organisation
   run/mapping changes recompute the tenant (closure and rows). Both are set-based statements, bounded by the size above.
-  An `access_capability` change marks every tenant untrusted and the rebuild job recomputes them, so a migration does
-  not rebuild every tenant inline.
+  An `access_capability` change to a Workforce capability recomputes every tenant that has companies (see the
+  refinement under Status).
 - **Access version.** The incremented `access_version` is written into each recomputed row. It will key the cached
   viewer profile (Phase 3) and lets tests and the rebuild check prove freshness.
 - **HR date.** No new SQL clock. The company tree already decides "today" with
