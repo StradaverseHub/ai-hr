@@ -263,10 +263,10 @@ it('resolves a group of tax schemes exactly as one call per employee, refusals i
  const id=(n:number)=>hired.find(h=>h.n===n)!.employmentId;
  // Refusals: a selection awaiting confirmation, a stale applicability epoch, a C-suite scheme for a citizen; an
  // other scheme, a non-resident legacy label and an employment that is not there.
- await owner.client`update employment_tax_selection_my set transition_state='confirmation_required' where employment_id=${id(3)}::uuid`;
+ await owner.client`update employment_tax_selection_my set transition_state='confirmation_required',version=version+1,updated_at=now() where employment_id=${id(3)}::uuid`;
  await owner.client`update employee_statutory_my set tax_applicability_epoch=tax_applicability_epoch+1 where person_id=${hired.find(h=>h.n===4)!.personId}::uuid`;
- await owner.client`update employment_tax_selection_my set scheme='c_suite' where employment_id=${id(5)}::uuid`;
- await owner.client`update employment_tax_selection_my set scheme='knowledge_worker' where employment_id=${id(6)}::uuid`;
+ await owner.client`update employment_tax_selection_my set scheme='c_suite',version=version+1,updated_at=now() where employment_id=${id(5)}::uuid`;
+ await owner.client`update employment_tax_selection_my set scheme='knowledge_worker',version=version+1,updated_at=now() where employment_id=${id(6)}::uuid`;
  const employees=[...hired.map(h=>({employmentId:h.employmentId,legacyScheme:h.n===8?'non_resident':null,resident:h.n!==8,epfCitizenship:'citizen'})),
   {employmentId:'00000000-0000-4000-8000-000000000001',legacyScheme:null,resident:true,epfCitizenship:null}];
  const outcome=(value:unknown,error:unknown)=>error?{error:(error as {code?:string}).code??String(error),details:(error as {details?:unknown}).details??null}:{value};
