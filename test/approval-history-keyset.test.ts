@@ -51,7 +51,7 @@ beforeAll(async()=>{
   ['leave-request','leave-request.date.decided']] as const;
  const subjects=[...fixture.activeEmploymentIds,...sameCompany,...sameCompany];
  const now=Date.now(),instant=new Date(now-3*3_600_000);
- const events=Array.from({length:2400},(_,i)=>{const [aggregateType,eventType]=kinds[i%kinds.length];
+ const events:(typeof schema.domainEvent.$inferInsert)[]=Array.from({length:2400},(_,i)=>{const [aggregateType,eventType]=kinds[i%kinds.length];
   return {tenantId:b.tenantId,aggregateType,aggregateId:randomUUID(),eventType,actorType:'user' as const,actorId:i%3===0?mu.id:b.adminUserId,
    subjectEmploymentId:subjects[(i*7)%subjects.length],payload:eventType==='leave-request.date.decided'?{decision:i%2?'approved':'rejected'}:{n:i},
    // 50 decisions share one instant; the rest are a minute apart over ~40 hours.
