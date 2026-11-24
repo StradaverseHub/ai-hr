@@ -39,6 +39,10 @@ vi.mock('next-intl/server',()=>{
    relativeTime:(value:unknown)=>String(value),list:(value:unknown[])=>value.join(', '),dateTimeRange:(a:unknown,b:unknown)=>`${String(a)}–${String(b)}`}),
  };
 });
+// A real deployment: no dev identity switcher (its principal list is a dev/demo-only pool read, ordered by role and name
+// with ties, so its order can differ between two renders) and not the gated demo.
+vi.mock('../lib/demo-mode',async importOriginal=>({...await importOriginal<typeof import('../lib/demo-mode')>(),
+ demoSwitcherEnabled:()=>false,isDemoDeployment:()=>false}));
 vi.mock('../lib/session',async importOriginal=>({...await importOriginal<typeof import('../lib/session')>(),
  getSession:async()=>state.session,getBrowserCommandSession:async()=>state.session}));
 
@@ -62,16 +66,16 @@ const FRAME_TRANSACTIONS=2;
 /** Recorded budgets per route (transactions, statements) at "All companies" on the 71-company fixture, default join on.
  * Budgets only go down. Raising one needs an ADR note (docs/plans/2026-11-24-database-read-cost-phase-0-1.md 1.5). */
 const BUDGETS:Record<Route,Partial<Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll',{transactions:number;statements:number}>>>={
- frame:{group:{transactions:2,statements:22},multi:{transactions:2,statements:22},single:{transactions:1,statements:10},
-  manager:{transactions:1,statements:9},employee:{transactions:1,statements:9},payroll:{transactions:1,statements:9}},
+ frame:{group:{transactions:2,statements:21},multi:{transactions:2,statements:21},single:{transactions:1,statements:9},
+  manager:{transactions:1,statements:8},employee:{transactions:1,statements:8},payroll:{transactions:1,statements:8}},
  // Home's administrator Today keeps its payroll-history and setting owners in their own transactions (barriers).
- home:{group:{transactions:16,statements:122},multi:{transactions:16,statements:122},single:{transactions:14,statements:82},
-  manager:{transactions:2,statements:29},employee:{transactions:1,statements:52},payroll:{transactions:1,statements:52}},
+ home:{group:{transactions:16,statements:121},multi:{transactions:16,statements:121},single:{transactions:14,statements:81},
+  manager:{transactions:2,statements:28},employee:{transactions:1,statements:51},payroll:{transactions:1,statements:51}},
  // Recorded before package 1.4 (set-based leave breakdowns); lower these once it is on main. Employees are redirected.
- approvals:{group:{transactions:8,statements:48},multi:{transactions:8,statements:48},single:{transactions:7,statements:36},
-  manager:{transactions:7,statements:32}},
- personnel:{group:{transactions:3,statements:29},multi:{transactions:3,statements:29},single:{transactions:2,statements:17},
-  manager:{transactions:3,statements:21},employee:{transactions:3,statements:21},payroll:{transactions:3,statements:21}},
+ approvals:{group:{transactions:8,statements:47},multi:{transactions:8,statements:47},single:{transactions:7,statements:35},
+  manager:{transactions:7,statements:31}},
+ personnel:{group:{transactions:3,statements:28},multi:{transactions:3,statements:28},single:{transactions:2,statements:16},
+  manager:{transactions:3,statements:20},employee:{transactions:3,statements:20},payroll:{transactions:3,statements:20}},
 };
 
 type Route='frame'|'home'|'approvals'|'personnel';
