@@ -31,7 +31,7 @@ import {createBatch,generatePayslips,getReprocessJob,reprocessSelectedEmployees}
 import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation} from '../core/payroll-tax-basis';
 import {requestSelectiveReprocess,payrollReprocessJobHandler} from '../core/payroll-reprocess-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
-import {observeStatements} from './helpers/statement-observer';
+import {client} from '../db/client';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 const COMPANIES=70,EMPLOYMENTS=1000,PROCESSED=98,ADDED=2,RUN=PROCESSED+ADDED,SHAPE=EMPLOYMENTS-RUN;
@@ -126,7 +126,8 @@ async function snapshot(t:Tenant,jobId:string){
  const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,t.may),eq(schema.domainEvent.eventType,'payroll-batch.employee-reprocess-outcome')));
  const job=await getReprocessJob(t.ctx,jobId);
  const result=job?.result as {outcomes:Record<string,unknown>[]}&Record<string,unknown>;
- const key=(row:Record<string,unknown>)=>String(byEmployment.get(String(row.employment_id??row.employmentId))).padStart(4,'0')+String(row.batch_id??'');
+ const runLabel=(id:unknown)=>id===t.april?'2026-04':id===t.may?'2026-05':'';
+ const key=(row:Record<string,unknown>)=>String(byEmployment.get(String(row.employment_id??row.employmentId))).padStart(4,'0')+runLabel(row.batch_id);
  return n({
   status:job?.status,stopCode:job?.stopCode,
   payslips:order(slips.map(row=>({...omit(row,['id','created_at','updated_at']),employment_id:row.employment_id,batch_id:row.batch_id})),key),
@@ -157,6 +158,24 @@ async function drain(){
  throw new Error('reprocess job did not finish');
 }
 const cpuMs=(start:NodeJS.CpuUsage)=>{const c=process.cpuUsage(start);return Math.round((c.user+c.system)/1000);};
+/** Test-only statement profile of the application pool (client.options.debug, as test/helpers/statement-observer.ts):
+ * statements, transactions, and the time from each statement's send to the next one's (its execution plus the
+ * application work after it), totalled by statement text. Text only: no parameter is kept or printed. */
+async function profile<T>(work:()=>Promise<T>){
+ const options=(client as unknown as {options:{debug?:unknown}}).options,previous=options.debug;
+ const sent:{at:number;text:string}[]=[];
+ options.debug=(_connection:number,text:string)=>{sent.push({at:performance.now(),text});};
+ const started=performance.now();
+ try{
+  const result=await work();const ms=performance.now()-started,end=performance.now();
+  const byText=new Map<string,{n:number;ms:number}>();
+  sent.forEach((s,i)=>{const key=s.text.replace(/\s+/g,' ').trim().slice(0,150);const row=byText.get(key)??{n:0,ms:0};row.n++;row.ms+=(sent[i+1]?.at??end)-s.at;byText.set(key,row);});
+  const bookkeeping=/^(begin|commit|rollback|savepoint|release|start transaction)\b/i;
+  return{result,ms,statements:sent.filter(s=>!bookkeeping.test(s.text.trim())).length,
+   transactions:sent.filter(s=>/^select set_config\('app\.tenant_id'/i.test(s.text.trim())).length,
+   top:[...byText].sort((a,b)=>b[1].ms-a[1].ms).slice(0,15).map(([text,row])=>({ms:Math.round(row.ms),n:row.n,text}))};
+ }finally{options.debug=previous;}
+}
 
 beforeAll(async()=>{await migrateTestDb();await resetDb();});
 afterAll(closeAll);
@@ -174,21 +193,32 @@ it('recalculates a 100-employee run set-based exactly as the per-employee path, 
  expect((await corrections(b)).map(row=>row.period)).toEqual(['2026-04','2026-05']);
 
  const perCpu=process.cpuUsage();
- const perEmployee=await observeStatements(()=>reprocessSelectedEmployees(a.ctx,{batchId:a.may,employmentIds:selection(a),reason:'J2 equivalence'}));
+ const perEmployee=await profile(()=>reprocessSelectedEmployees(a.ctx,{batchId:a.may,employmentIds:selection(a),reason:'J2 equivalence'}));
  const perEmployeeCpu=cpuMs(perCpu);
  phase('per-employee path',performance.now()-perEmployee.ms);
  expect(perEmployee.result.status).toBe('completed');
 
  const setCpu=process.cpuUsage();
- const set=await observeStatements(async()=>{
+ const set=await profile(async()=>{
   const requested=await requestSelectiveReprocess(b.ctx,{batchId:b.may,employmentIds:selection(b),reason:'J2 equivalence'});
-  await drain();
+  // Diagnostic run: groups double (16, 32, 64) instead of aiming at a chunk length, so the per-chunk lines measure the
+  // fixed cost of one engine pass against its cost per employee.
+  const target=process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS;process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS='600000';
+  try{await drain();}finally{if(target===undefined)delete process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS;else process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS=target;}
   return requested;
  });
  const setCpuMs=cpuMs(setCpu);
  phase('set path',performance.now()-set.ms);
  const [job]=await owner.client<{metrics:Record<string,number>;counters:Record<string,number>;steps_total:number;steps_done:number}[]>`select metrics,counters,steps_total,steps_done from bulk_job where kind='payroll_reprocess' and tenant_id=${b.base.tenantId}::uuid`;
 
+ const split=(wall:number,cpu:number)=>({wallMs:Math.round(wall),cpuMs:cpu,dbMs:Math.max(0,Math.round(wall-cpu))});
+ console.info('REPROCESS_SET_EQUIVALENCE_DIAGNOSTIC',JSON.stringify({
+  shape:{companies:COMPANIES,employments:EMPLOYMENTS,run:RUN},
+  perEmployee:{...split(perEmployee.ms,perEmployeeCpu),statements:perEmployee.statements,transactions:perEmployee.transactions,
+   msPerEmployee:Math.round(perEmployee.ms/RUN),statementsPerEmployee:Math.round(perEmployee.statements/RUN),top:perEmployee.top},
+  set:{...split(set.ms,setCpuMs),statements:set.statements,transactions:set.transactions,
+   msPerEmployee:Math.round(set.ms/RUN),statementsPerEmployee:Math.round(set.statements/RUN),metrics:job.metrics,top:set.top},
+ },null,1));
  const left=await snapshot(a,perEmployee.result.jobId),right=await snapshot(b,set.result.jobId);
  // The fixture exercised what it claims: reprocessed, recalculated tax sources, TP3 openings, additions and refusals.
  const outcomes=right.outcomes as {employmentId:string;status:string;classification?:string;taxBasisRecalculated?:boolean}[];
@@ -214,12 +244,5 @@ it('recalculates a 100-employee run set-based exactly as the per-employee path, 
  expect(auditB.statusRows).toBe(job.metrics.reprocessGroups+job.metrics.reprocessSingles-MISSING_SALARY.size);
  expect(auditB.captureMisses).toBe(auditA.captureMisses);
 
- const split=(wall:number,cpu:number)=>({wallMs:Math.round(wall),cpuMs:cpu,dbMs:Math.max(0,Math.round(wall-cpu))});
- console.info('REPROCESS_SET_EQUIVALENCE_DIAGNOSTIC',JSON.stringify({
-  shape:{companies:COMPANIES,employments:EMPLOYMENTS,run:RUN},
-  perEmployee:{...split(perEmployee.ms,perEmployeeCpu),statements:perEmployee.statements.length,transactions:perEmployee.transactions,
-   msPerEmployee:Math.round(perEmployee.ms/RUN),statementsPerEmployee:Math.round(perEmployee.statements.length/RUN)},
-  set:{...split(set.ms,setCpuMs),statements:set.statements.length,transactions:set.transactions,
-   msPerEmployee:Math.round(set.ms/RUN),statementsPerEmployee:Math.round(set.statements.length/RUN),metrics:job.metrics},
- }));
+
 },1_150_000);

@@ -61,6 +61,13 @@ function nextGroupSize(employees:number,wallMs:number){
  return Math.max(2,Math.min(payrollReprocessGroupMax(),employees*2,Math.floor(employees*payrollReprocessChunkTargetMs()/Math.max(1,wallMs))));
 }
 const ms=(value:number)=>Math.max(0,Math.round(value));
+/** One line per chunk on the worker's stdout, beside the web's request timing (lib/request-timing.ts, same prefix and
+ * privacy rule: closed labels and numbers only, never a tenant, person, company or value). */
+function logChunk(mode:'group'|'single',employees:number,wallMs:number,cpuMs:number,engine?:{wallMs:number;cpuMs:number}){
+ if(process.env.AIHR_TIMING==='off')return;
+ console.info('[aihr-timing] '+JSON.stringify({t:'bulk-chunk',kind:PAYROLL_REPROCESS_JOB_KIND,mode,employees,wallMs:ms(wallMs),calcMs:ms(cpuMs),dbMs:ms(wallMs-cpuMs),
+  ...(engine?{engineWallMs:ms(engine.wallMs),engineCalcMs:ms(engine.cpuMs)}:{})}));
+}
 
 /** Web side: the same validation, permission and idempotent enqueue as before, then the background job. A job that
  * already completed returns its stored result; one another worker is running is reported as running. */
@@ -120,6 +127,7 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
    if(group.kind==='done'){stoppedOf.delete(job.id);return{counters:{done:1}};}
    if(group.kind==='set'){
     const n=group.employmentIds.length,{wallMs,cpuMs}=group.timing;
+    logChunk('group',n,wallMs,cpuMs,{wallMs:group.timing.engineWallMs,cpuMs:group.timing.engineCpuMs});
     state.chunk={done:new Set(group.employmentIds),last:group.employmentIds[n-1]};
     state.size=nextGroupSize(n,wallMs);
     stoppedOf.delete(job.id);
@@ -137,6 +145,7 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
   state.fallback.delete(id);
   stoppedOf.delete(job.id);
   const cpu=process.cpuUsage(cpuStarted),wallMs=performance.now()-started,cpuMs=(cpu.user+cpu.system)/1000;
+  logChunk('single',1,wallMs,cpuMs);
   return{counters:{done:1},endChunk:true,metrics:{
    add:{reprocessSingles:1,reprocessCalcMs:ms(cpuMs),reprocessDbMs:ms(wallMs-cpuMs)},max:{reprocessSingleMaxMs:ms(wallMs)},
   }};
