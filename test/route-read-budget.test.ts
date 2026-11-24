@@ -52,7 +52,7 @@ import ApprovalsPage from '../app/approvals/page';
 import PersonnelPage from '../app/personnel/page';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
-import {observeStatements,type Captured} from './helpers/statement-observer';
+import {explainStatements,observeStatements,type Captured} from './helpers/statement-observer';
 import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
 
 /** The frame (app/layout.tsx with no page) reads in at most this many transactions for every role (package 1.2). */
@@ -95,7 +95,7 @@ afterAll(async()=>{await closeAll();});
 const normalize=(key:string,value:unknown)=>key==='claimPreviewRevision'&&typeof value==='string'?'<revision>':value;
 const WRITE=/^\s*(insert\s+into|update\s+("?[a-z_][a-z0-9_.]*"?\.)?"?[a-z_][a-z0-9_]*"?\s+set\b|delete\s+from)|\bpg_(try_)?advisory_xact_lock\s*\(/i;
 
-type Measured={route:Route;persona:string;scope:'all'|'one';mode:'default'|'without';transactions:number;statements:number;
+type Measured={route:Route;persona:string;scope:'all'|'one';mode:'default'|'without';transactions:number;statements:number;ms:number;
  output:unknown;captured:Captured[];refused:Record<string,number>;fallbacks:number;staleSkips:number};
 async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one',mode:'default'|'without'):Promise<Measured>{
  state.session=personas[persona];state.pathname=ROUTES[route].pathname;
@@ -112,12 +112,34 @@ async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one
   for(const [code,count] of Object.entries(session.failures))failures[code]=(failures[code]??0)+count;
  }
  // Statement text only (code, never parameters): which owners took a barrier in their own transaction.
- const barriers=observed.statements.filter(statement=>/pg_(try_)?advisory/i.test(statement.sql)).map(statement=>statement.sql.replace(/\s+/g,' ').slice(0,240));
- const measured={route,persona,scope,mode,transactions:observed.transactions,statements:observed.statements.length,output:observed.result,
+ // Each barrier with the next statements of its own transaction, so the owner can be named.
+ const text=(statement:Captured)=>statement.sql.replace(/\s+/g,' ').slice(0,200);
+ const barriers=observed.statements.flatMap((statement,index)=>{
+  if(!/pg_(try_)?advisory/i.test(statement.sql))return [];
+  const after:string[]=[];
+  for(const next of observed.statements.slice(index+1,index+4)){if(/^select set_config\('app\.tenant_id'/i.test(next.sql.trim()))break;after.push(text(next));}
+  return [{barrier:text(statement),then:after}];
+ });
+ const measured={route,persona,scope,mode,transactions:observed.transactions,statements:observed.statements.length,ms:Math.round(observed.ms),output:observed.result,
   captured:observed.statements,refused,fallbacks:stats.reduce((sum,session)=>sum+session.fallbacks,0),staleSkips:stats.reduce((sum,session)=>sum+session.staleSkips,0)};
  console.log('ROUTE_BUDGET '+JSON.stringify({route,persona,scope,mode,transactions:measured.transactions,statements:measured.statements,
-  refused,failures,fallbacks:measured.fallbacks,staleSkips:measured.staleSkips,barriers}));
+  ms:measured.ms,refused,failures,fallbacks:measured.fallbacks,staleSkips:measured.staleSkips,barriers}));
  return measured;
+}
+
+/** Database time of a measured render: its read statements replayed under EXPLAIN ANALYZE in one rolled-back
+ * transaction (planning and execution summed). Phase 1 changes how many transactions and round trips a page pays;
+ * the per-statement cost of definer functions is Phase 2/3's, and this figure keeps that visible. */
+async function statementTime(measured:Measured){
+ const explained=await explainStatements(measured.captured);
+ const sum=(pick:(row:(typeof explained)[number])=>number|null|undefined)=>Math.round(explained.reduce((total,row)=>total+(pick(row)??0),0));
+ const slowest=[...explained].filter(row=>row.executionMs!==null).sort((x,y)=>(y.executionMs!+(y.planningMs??0))-(x.executionMs!+(x.planningMs??0))).slice(0,8)
+  .map(row=>({ms:Math.round(row.executionMs!+(row.planningMs??0)),sql:row.sql.replace(/\s+/g,' ').slice(0,140)}));
+ const row={route:measured.route,persona:measured.persona,scope:measured.scope,mode:measured.mode,executionMs:sum(row=>row.executionMs),
+  planningMs:sum(row=>row.planningMs),replayed:explained.filter(row=>row.executionMs!==null).length,slowest,
+  errors:explained.filter(row=>row.error&&row.error!=='not a read').map(row=>({sql:row.sql.replace(/\s+/g,' ').slice(0,200),error:row.error!.slice(0,160)}))};
+ console.log('ROUTE_STATEMENT_TIME '+JSON.stringify(row));
+ return row;
 }
 
 const ROLES=['group','multi','single','manager','employee','payroll'] as const;
@@ -144,6 +166,15 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
    expect(shared.transactions,`${route} ${persona} transactions`).toBeLessThanOrEqual(budget.transactions);
    expect(shared.statements,`${route} ${persona} statements`).toBeLessThanOrEqual(budget.statements);
   }
+ },180_000);
+
+ it.each(['group','employee'] as const)('reports the database time of its statements for %s (default join and without)',async persona=>{
+  await render(route,persona,'all','default');
+  const shared=await statementTime(await render(route,persona,'all','default'));
+  const independent=await statementTime(await render(route,persona,'all','without'));
+  // The same reads are replayed either way: the default join moves no work between statements.
+  expect(shared.replayed).toBeGreaterThan(0);
+  expect(independent.replayed).toBeGreaterThan(0);
  },180_000);
 
  it('costs no more for 71 companies than for one company',async()=>{
