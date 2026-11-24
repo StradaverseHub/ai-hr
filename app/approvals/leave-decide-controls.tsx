@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button, inputCls } from '@/components/ui';
 import { approveLeaveAction } from './actions';
+import { ActionNavigateForm } from '@/components/action-navigate-form';
 
 /**
  * Whole-request Approve / Reject for an ORDINARY leave row (a per-date-approval request uses
@@ -47,14 +48,14 @@ export function LeaveDecideControls({
   return (
     <div data-approval-surface className="flex flex-col items-end gap-2">
       <div className="flex items-center justify-end gap-2">
-        <form action={approveLeaveAction}>
+        <ActionNavigateForm action={approveLeaveAction}>
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="decision" value="approved" />
           {navFields}
           <Button type="submit" size="sm" data-action-approval>
             {labels.approve}
           </Button>
-        </form>
+        </ActionNavigateForm>
         {/* Closed state: the plain Reject button only OPENS the reason box — it never posts a decision.
             Once open it steps aside for the submit button below the textarea, so there is exactly one
             Reject control on screen at a time and no way to reject without a reason in the same click. */}
@@ -65,7 +66,7 @@ export function LeaveDecideControls({
         )}
       </div>
       {rejecting && (
-        <form action={approveLeaveAction} className="flex flex-col items-end gap-1">
+        <ActionNavigateForm action={approveLeaveAction} className="flex flex-col items-end gap-1">
           <input type="hidden" name="id" value={id} />
           <input type="hidden" name="decision" value="rejected" />
           {navFields}
@@ -80,7 +81,7 @@ export function LeaveDecideControls({
           <Button type="submit" size="sm" variant="outline">
             {labels.reject}
           </Button>
-        </form>
+        </ActionNavigateForm>
       )}
     </div>
   );
