@@ -183,7 +183,7 @@ const filterRunTypeSql = sql`app.payroll_filter_run_type(${payrollBatch.historyI
 /** Optional period narrowing on a 'YYYY-MM' pay-period column (default payroll_batch.pay_period; the
  *  Individual inquiry passes the txn row's own pay_period so unattached rows filter too): year+month →
  *  exact month; year only → that year; month only → that month across years. */
-function periodFilter(year?: number, month?: number, col: typeof payrollBatch.payPeriod | typeof payrollIndividualTxn.payPeriod = payrollBatch.payPeriod) {
+function periodFilter(year?: number, month?: number, col: typeof payrollBatch.payPeriod | typeof payrollIndividualTxn.payPeriod | typeof fenceBatch.payPeriod = payrollBatch.payPeriod) {
   const mm = month != null ? String(month).padStart(2, '0') : null;
   if (year != null && mm) return eq(col, `${year}-${mm}`);
   if (year != null) return like(col, `${year}-%`);
@@ -1133,7 +1133,7 @@ export type ProcessedPayslipViewRow = {
  * add a status predicate. Optional `cycle` = payroll run type (the Payroll-Cycle filter);
  * unknown values are ignored rather than cast to the pg enum (which would throw).
  */
-type ProcessedPayslipFilters = {
+export type ProcessedPayslipFilters = {
   companyIds: string[];
   year?: number;
   month?: number;
@@ -1142,36 +1142,92 @@ type ProcessedPayslipFilters = {
   payrollCycleId?: string;
 };
 
-function processedPayslipFilters(p: ProcessedPayslipFilters) {
+/** The `payroll_batch` half of the processed-payslip filters: company scope, period, Pay Cycle and run type. */
+function processedPayslipBatchFilters(p: ProcessedPayslipFilters) {
   const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
   return and(
     inArray(payrollBatch.companyId, p.companyIds),
     periodFilter(p.year, p.month),
-    p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
     p.payrollCycleId ? eq(payrollBatch.payrollCycleId, p.payrollCycleId) : undefined,
     cycle ? sql`${filterRunTypeSql} = ${cycle}` : undefined,
   );
 }
 
-/** Resolve the latest visible period before reading payslip rows for the History landing page. */
+function processedPayslipFilters(p: ProcessedPayslipFilters) {
+  return and(
+    processedPayslipBatchFilters(p),
+    p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
+  );
+}
+
+const fenceBatch = alias(payrollBatch, 'fence_batch');
+/**
+ * Staging 24 November 2026: the payslip row policies run several functions per row (about 90 us each), and with the
+ * period only on `payroll_batch` the planner reached payslips through their employment, so one month's History read
+ * evaluated the policies on all 6,823 payslips of the tenant to return 10 (748 ms). Fencing `payslip.batch_id` by
+ * the ids of the batches in that period, as an initplan array, lets the planner probe `payslip_batch_employment_uq`
+ * and evaluate the policies only on the period's payslips (19 ms). The fence repeats the outer query's own company,
+ * period and Pay Cycle predicates on the same table under the same row security, so it removes no row the outer
+ * query keeps. Without a period or Pay Cycle it would narrow nothing, so it is left out.
+ */
+function processedPayslipBatchFence(tx: Tx, p: ProcessedPayslipFilters): SQL | undefined {
+  if (p.year == null && p.month == null && !p.payrollCycleId) return undefined;
+  const ids = tx.select({ id: fenceBatch.id }).from(fenceBatch).where(and(
+    inArray(fenceBatch.companyId, p.companyIds),
+    periodFilter(p.year, p.month, fenceBatch.payPeriod),
+    p.payrollCycleId ? eq(fenceBatch.payrollCycleId, p.payrollCycleId) : undefined,
+  ));
+  return sql`${payslip.batchId} = any(array(${ids}))`;
+}
+
+const newestBatch = alias(payrollBatch, 'newest_batch');
+
+/**
+ * Resolve the latest visible period before reading payslip rows for the History landing page.
+ *
+ * Staging 24 November 2026: this ran on every History load and took about 1.5 s of the page's own 2.5 s. The live
+ * part ordered every visible payslip in scope by period to keep one (row security on all 6,823 payslips, 680 ms), and
+ * the retained part built every retained document in scope to keep one (2,010 documents, 785 ms).
+ *
+ * Live: the period belongs to the batch, so the batches are walked newest period first (ordered, and fenced with
+ * OFFSET 0 so the order survives) and each is probed for one visible payslip, joined exactly as the list joins it.
+ * The walk stops at the first batch with one, so row security runs on a handful of payslips (32 ms on staging). The
+ * answer is the same: the newest period among batches that hold a visible payslip under the same filters.
+ *
+ * Retained: a retained document's batch is in the caller's companies and payroll-administered, which is what admits a
+ * batch under `payroll_batch` row security, and a payslip hidden by an open history stage is not effective, so the
+ * document function returns none for it. A retained document can therefore only be newer than the live answer when
+ * a visible batch in the same companies is newer. The same statement reads the newest such batch, and only then
+ * does the retained read run, exactly as before. On a normal installation the newest batch holds live payslips and
+ * the retained read is not needed.
+ */
 export async function latestProcessedPayslipPeriod(ctx: SessionContext, p: ProcessedPayslipFilters) {
   if (!p.companyIds.length) return null;
-  return withTenant(ctx, async (tx) => {
-    const [live] = await tx.select({ payPeriod: payrollBatch.payPeriod })
-      .from(payslip)
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(processedPayslipFilters(p))
-      .orderBy(desc(payrollBatch.payPeriod))
-      .limit(1);
-    const retained = await informationPayslipDocuments(tx, {
-      ...p, cycle: p.payrollCycleId ? undefined : cleanRunType(p.cycle), intendedCycle: true, limit: 1,
-    });
-    const periods = [live?.payPeriod, ...retained.map((doc) => informationDocumentRow(doc).payPeriod)];
-    return periods.filter((period): period is string => !!period).sort().at(-1) ?? null;
+  return withTenant(ctx, (tx) => latestProcessedPayslipPeriodTx(tx, p));
+}
+
+/** `latestProcessedPayslipPeriod` inside the caller's transaction (test/transaction-view-history-scale-db.test.ts). */
+export async function latestProcessedPayslipPeriodTx(tx: Tx, p: ProcessedPayslipFilters): Promise<string | null> {
+  if (!p.companyIds.length) return null;
+  const probe = sql`select 1 from ${payslip}
+    inner join ${employment} on ${employment.id} = ${payslip.employmentId}
+    inner join ${person} on ${person.id} = ${employment.personId}
+    where ${payslip.batchId} = "candidate"."id"${p.employmentId ? sql` and ${payslip.employmentId} = ${p.employmentId}` : sql``}`;
+  const [row] = await tx.execute<{ live: string | null; newest: string | null }>(sql`select
+    (select "candidate"."pay_period" from (
+      select ${payrollBatch.id} as "id", ${payrollBatch.payPeriod} as "pay_period" from ${payrollBatch}
+      inner join ${company} on ${company.id} = ${payrollBatch.companyId}
+      where ${processedPayslipBatchFilters(p)}
+      order by ${payrollBatch.payPeriod} desc offset 0) "candidate"
+     where exists(${probe}) limit 1) as "live",
+    (select max(${newestBatch.payPeriod}) from ${newestBatch} where ${inArray(newestBatch.companyId, p.companyIds)}) as "newest"`);
+  const live = row?.live ?? null, newest = row?.newest ?? null;
+  if (newest == null || (live != null && live >= newest)) return live;
+  const retained = await informationPayslipDocuments(tx, {
+    ...p, cycle: p.payrollCycleId ? undefined : cleanRunType(p.cycle), intendedCycle: true, limit: 1,
   });
+  const periods = [live, ...retained.map((doc) => informationDocumentRow(doc).payPeriod)];
+  return periods.filter((period): period is string => !!period).sort().at(-1) ?? null;
 }
 
 export function listProcessedPayslipsAcross(
@@ -1204,7 +1260,7 @@ const processedPayslipOrder = (a: ProcessedPayslipViewRow, b: ProcessedPayslipVi
   b.payPeriod.localeCompare(a.payPeriod) || a.runSeq - b.runSeq || a.employeeName.localeCompare(b.employeeName);
 
 /** `listProcessedPayslipsAcross` inside the caller's transaction, so a slicing reader can keep one snapshot. */
-async function readProcessedPayslipsTx(
+export async function readProcessedPayslipsTx(
   tx: Tx,
   p: ProcessedPayslipFilters & { limit?: number },
 ): Promise<ProcessedPayslipViewRow[]> {
@@ -1255,7 +1311,7 @@ async function readProcessedPayslipsTx(
     .innerJoin(company, eq(company.id, payrollBatch.companyId))
     .innerJoin(employment, eq(employment.id, payslip.employmentId))
     .innerJoin(person, eq(person.id, employment.personId))
-    .where(processedPayslipFilters(p))
+    .where(and(processedPayslipFilters(p), processedPayslipBatchFence(tx, p)))
     .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
     .$dynamic();
   // An absent cap does not call .limit() at all, so every existing caller — including the CSV
