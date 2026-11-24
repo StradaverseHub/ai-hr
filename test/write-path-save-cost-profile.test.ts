@@ -8,7 +8,9 @@
  * database time). It asserts only that the fixture is non-vacuous; the measurements are the output. */
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import {client,type SessionContext} from '../db/client';
+import {client,withTenant,type SessionContext} from '../db/client';
+import {sql} from 'drizzle-orm';
+import {taxBasisSourceRowsTx} from '../core/payroll-tax-basis-read';
 import * as s from '../db/schema';
 import {amendDirectSuperior} from '../core/information-correction';
 import {createMovementEvent} from '../core/movement';
@@ -132,6 +134,23 @@ describe('write-path save cost at 70 companies / 1,000 employments',()=>{
    out.push((await profile(`contention (shared Access held 1.5 s) · ${name}`,run as ()=>Promise<unknown>)).line);
    await holder;
   }
+  // Decomposition of the review's source-row read (core/payroll-tax-basis-read.ts taxBasisSourceRowsTx) for both actors.
+  for(const[label,actor]of Object.entries(actors))await withTenant(actor,async tx=>{
+   const rootIds=emp.filter(e=>e.company===b.companyId).map(e=>e.id);
+   const prior=(await tx.execute<{id:string}>(sql`select p.id::text from payslip p join payroll_batch x on x.id=p.batch_id where p.employment_id=any(${`{${rootIds.join(',')}}`}::uuid[]) and x.company_id=${b.companyId}::uuid and x.pay_period<'2026-11'`)).map(r=>r.id);
+   const arr=`{${prior.join(',')}}`;
+   const time=async(name:string,run:()=>Promise<unknown>)=>{const t=performance.now();const r=await run();out.push(`[write-path-profile] ${label} · source read part · ${name}: ${Math.round(performance.now()-t)} ms (${Array.isArray(r)?r.length:'-'} rows of ${prior.length})`);console.log(out.at(-1));};
+   await time('full taxBasisSourceRowsTx',()=>taxBasisSourceRowsTx(tx,prior));
+   await time('row security only (no select-list functions)',()=>tx.execute(sql`select p.id,b.company_id,to_jsonb(p) from payslip p join payroll_batch b on b.id=p.batch_id where p.id=any(${arr}::uuid[])`));
+   await time('payslip row security alone',()=>tx.execute(sql`select p.id from payslip p where p.id=any(${arr}::uuid[])`));
+   await time('payroll_history_native_baseline per id',()=>tx.execute(sql`select app.payroll_history_native_baseline(x) from unnest(${arr}::uuid[]) x`));
+   await time('payroll_tax_import_source_revision per id',()=>tx.execute(sql`select app.payroll_tax_import_source_revision(x)::text from unnest(${arr}::uuid[]) x`));
+   await time('payroll_history_effective_ids once',()=>tx.execute(sql`select * from app.payroll_history_effective_ids(${arr}::uuid[])`));
+   await time('can_admin_payroll_employment per employment',()=>tx.execute(sql`select app.can_admin_payroll_employment(x) from unnest(${`{${rootIds.join(',')}}`}::uuid[]) x`));
+   await time('payroll_tax_basis_original_employer_read per row',()=>tx.execute(sql`select app.payroll_tax_basis_original_employer_read(p.batch_id) from payroll_batch p where p.company_id=${b.companyId}::uuid`));
+   const plan=await tx.execute<{'QUERY PLAN':string}>(sql`explain (analyze, costs off, timing on) select p.id,b.company_id,to_jsonb(p) from payslip p join payroll_batch b on b.id=p.batch_id where p.id=any(${arr}::uuid[])`);
+   console.log(`[write-path-profile] ${label} · source read plan:\n`+plan.map(r=>r['QUERY PLAN']).join('\n').slice(0,6000));
+  });
   expect(out.length).toBeGreaterThanOrEqual(14);
  },900_000);
 });
