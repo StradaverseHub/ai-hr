@@ -2,7 +2,8 @@ import {MY_DOCUMENT_MERGE_KEYS} from './document-merge';
 import {replayMyTaxBasis,boundMyTaxBasis} from './tax-basis-replay';
 import {ocbcBankPaymentFiles} from './ocbc-payment';
 import {childReliefTableHeadCount} from './statutory-tables';
-import {getTaxSelectionMY,getTaxSelectionsMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY,resolveTaxSelectionsMY} from './tax-selection';
+import {getTaxSelectionMY,getTaxSelectionsMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY,resolveTaxSelectionsMY,hiredTaxSelectionValuesMY,hiredTaxSelectionEventPayloadMY} from './tax-selection';
+import {prepareNewStatutoryProfileMY,statutoryProfileEventPayloadMY} from './statutory';
 import {listTaxSchemeDeclarationsMY,saveTaxSchemeDeclarationMY,revokeTaxSchemeDeclarationMY,resolveTaxSchemeMY} from './tax-scheme-declarations';
 import { MY_EA_REPORTING } from './ea-reporting';
 /**
@@ -89,6 +90,7 @@ export const myPack: CountryPack = {
   statutory: {
     set: setStatutoryProfileMY,
     initializeForHire: initializeHiredStatutoryMY,
+    hireGroup:{prepareNewProfile:prepareNewStatutoryProfileMY,profileEventPayload:statutoryProfileEventPayloadMY,taxSelectionValues:hiredTaxSelectionValuesMY,taxSelectionEventPayload:hiredTaxSelectionEventPayloadMY},
     withWrite:withStatutoryProfileWriteMY,
     reviewed:{readEditable:readReviewedStatutoryEditableMYTx,choices:reviewedStatutoryChoiceMetadataMYTx,labels:readReviewedStatutoryLabelsMYTx,lockSubject:lockReviewedStatutoryProfileMYTx,prepare:prepareReviewedStatutoryProfileMYTx,confirm:confirmReviewedStatutoryProfileMYTx,readReference:readReviewedStatutoryProfileReferenceMYTx},
     get: getStatutoryProfileMY,

@@ -494,6 +494,33 @@ async function setCompensationBody(
         await tx.update(compensation).set({ validTo: p.effectiveFrom }).where(eq(compensation.id, cur.id));
       }
     }
+    const { values, fieldsChanged } = compensationRevisionTerms(p, cur);
+    const [row] = await tx
+      .insert(compensation)
+      .values({ tenantId: ctx.tenantId, ...values })
+      .returning({ id: compensation.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'compensation',
+      aggregateId: row.id,
+      eventType: 'compensation.set',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: compensationSetEventPayload(p, fieldsChanged),
+    });
+    // 3244584c — a processed run that paid this employee for a month from the effective date on is stale.
+    // A November revision never marks October.
+    await markPayrollRunsForCompensationTx(tx, ctx, { employmentIds: [p.employmentId], category: 'compensation', from: p.effectiveFrom });
+    return { compensationId: row.id };
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
+}
+
+type CompensationRevisionInput = Omit<Parameters<typeof setCompensationBody>[1], 'movement'> & { movement?: MovementTag };
+/** The new salary record's terms and the fields its event names, from the request and the record it supersedes
+ * (`cur`; undefined for a first record). Pure: the same refusals, in the same order, as before it was lifted out of
+ * setCompensationBody, which the employee import's set path (core/employee-import-set.ts) shares. */
+export function compensationRevisionTerms(p: CompensationRevisionInput, cur: { monthlyAllowance: string | null; payMode: string; paymentTerm: string; rateAmount: string | null; currency: string } | undefined) {
     // Carry-forward semantics: undefined allowance keeps the prior figure (or 0 for a brand-new record);
     // an explicit value (incl. 0) sets it. This stops a basic-only revision from silently zeroing allowance.
     const allowanceProvided = p.monthlyAllowance !== undefined;
@@ -541,22 +568,18 @@ async function setCompensationBody(
     if (cur && (cur.payMode as PayMode) !== payMode && !isPeriodBoundary(p.effectiveFrom)) {
       throw new PayModePeriodBoundaryError();
     }
-    const [row] = await tx
-      .insert(compensation)
-      .values({
-        tenantId: ctx.tenantId,
-        employmentId: p.employmentId,
-        basicSalary: money(p.basicSalary),
-        currency,
-        monthlyAllowance: money(effectiveAllowance),
-        payMode,
-        paymentTerm,
-        rateAmount,
-        remarks: p.remarks ?? null,
-        validFrom: p.effectiveFrom,
-        validTo: null,
-      })
-      .returning({ id: compensation.id });
+    const values = {
+      employmentId: p.employmentId,
+      basicSalary: money(p.basicSalary),
+      currency,
+      monthlyAllowance: money(effectiveAllowance),
+      payMode,
+      paymentTerm,
+      rateAmount,
+      remarks: p.remarks ?? null,
+      validFrom: p.effectiveFrom,
+      validTo: null,
+    };
     const fieldsChanged = ['basicSalary'];
     if (currencyProvided) fieldsChanged.push('currency');
     if (allowanceProvided) fieldsChanged.push('monthlyAllowance');
@@ -564,42 +587,36 @@ async function setCompensationBody(
     if (paymentTermProvided) fieldsChanged.push('paymentTerm');
     if (rateProvided) fieldsChanged.push('rateAmount');
     if (p.remarks) fieldsChanged.push('remarks');
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'compensation',
-      aggregateId: row.id,
-      eventType: 'compensation.set',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
-      // PDPA redact-to-reference (ADR-0030 Layer 0): the salary AND the remarks text live on
-      // compensation[aggregateId]; the event keeps who/what/when + a reference, never cleartext pay or
-      // remark text in the append-only log. The 78853b97 movement tag is stripped to its STRUCTURAL keys:
-      // `type` plus (08913328) `secondary` and `groupId`, which carry no free text — a boolean and a
-      // random correlation id. Dropping those two made a pay leg submitted as part of a Promotion render
-      // as a SECOND, contradictory history row; `remarks` and `endDate` stay stripped.
-      payload: {
-        employmentId: p.employmentId,
-        effectiveFrom: p.effectiveFrom,
-        fieldsChanged,
-        ...(p.movement
-          ? {
-              movement: {
-                type: p.movement.type,
-                ...(p.movement.effectiveDate ? {effectiveDate:p.movement.effectiveDate} : {}),
-                ...(p.movement.secondary ? { secondary: true } : {}),
-                ...(p.movement.groupId ? { groupId: p.movement.groupId } : {}),
-              },
-            }
-          : {}),
-      },
-    });
-    // 3244584c — a processed run that paid this employee for a month from the effective date on is stale.
-    // A November revision never marks October.
-    await markPayrollRunsForCompensationTx(tx, ctx, { employmentIds: [p.employmentId], category: 'compensation', from: p.effectiveFrom });
-    return { compensationId: row.id };
-  };
-  return outerTx ? run(outerTx) : withTenant(ctx, run);
+    return { values, fieldsChanged };
 }
+
+/** The `compensation.set` payload. PDPA redact-to-reference (ADR-0030 Layer 0): the salary AND the remarks text live
+ * on compensation[aggregateId]; the event keeps who/what/when + a reference, never cleartext pay or remark text in the
+ * append-only log. The 78853b97 movement tag is stripped to its STRUCTURAL keys: `type` plus (08913328) `secondary`
+ * and `groupId`, which carry no free text — a boolean and a random correlation id. Dropping those two made a pay leg
+ * submitted as part of a Promotion render as a SECOND, contradictory history row; `remarks` and `endDate` stay
+ * stripped. */
+export function compensationSetEventPayload(p: Pick<CompensationRevisionInput, 'employmentId' | 'effectiveFrom' | 'movement'>, fieldsChanged: string[]) {
+  return {
+    employmentId: p.employmentId,
+    effectiveFrom: p.effectiveFrom,
+    fieldsChanged,
+    ...(p.movement
+      ? {
+          movement: {
+            type: p.movement.type,
+            ...(p.movement.effectiveDate ? {effectiveDate:p.movement.effectiveDate} : {}),
+            ...(p.movement.secondary ? { secondary: true } : {}),
+            ...(p.movement.groupId ? { groupId: p.movement.groupId } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+/** The employee import's set path (core/employee-import-set.ts) reads the payroll run marker through this owner. */
+export const markPayrollRunsForCompensationSetTx = (tx: Tx, ctx: SessionContext, p: { employmentIds: string[]; from: string }) =>
+  markPayrollRunsForCompensationTx(tx, ctx, { employmentIds: p.employmentIds, category: 'compensation', from: p.from });
 
 /**
  * Edit Salary Record (feedback 87c82b18, flow #4; widened for 7c7c2f80; currency added by 297ae65a).
