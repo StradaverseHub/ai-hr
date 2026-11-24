@@ -24,7 +24,7 @@
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {enqueueBulkJobTx,type BulkJobRow} from './bulk-job';
-import {BulkJobWaiting,isTransientBulkJobError,type BulkJobHandler} from './bulk-job-worker';
+import {BulkJobWaiting,isTransientBulkJobError,type BulkJobHandler,type BulkJobStepOutcome} from './bulk-job-worker';
 import {publicErrorMessage} from '../lib/public-error';
 import {
  claimSelectiveReprocess,completeSelectiveReprocess,enqueueSelectiveReprocess,reprocessEmployeeGroupTx,reprocessEmployeeTx,reprocessRunErrorCode,
@@ -107,7 +107,7 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
   const done=new Set(((row.result as {outcomes?:{employmentId:string}[]}|null)?.outcomes??[]).map(o=>o.employmentId));
   return{steps:input.employmentIds.filter(id=>!done.has(id)).map(employmentId=>({kind:'employee',payload:{employmentId} satisfies Step})),plan:input,counters:{employees:input.employmentIds.length}};
  },
- async applyStepTx(tx,ctx,job,step){
+ async applyStepTx(tx,ctx,job,step):Promise<BulkJobStepOutcome>{
   const id=step.payload.employmentId,state=stateOf(job.id);
   // Written by this chunk's group already: only the step records itself, and the group's last step ends the chunk.
   if(state.chunk.done.has(id))return{counters:{done:1},...(id===state.chunk.last?{endChunk:true}:{})};

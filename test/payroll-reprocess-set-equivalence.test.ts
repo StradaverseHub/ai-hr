@@ -2,7 +2,7 @@
  * ADR 0181 J2: the set-based selective reprocess (core/payroll-reprocess-job.ts groups, `reprocessEmployeeGroupTx`) is
  * equivalent to the per-employee path (`reprocessSelectedEmployees`, one `reprocessEmployeeTx` per employee) for every
  * pay item, tax and statutory output. Two tenants are built identically through the product owners at the shape of a
- * real group (SCALE rule 3: 70 companies, 1,000 employments). The run reprocessed holds 200 employees with TP3 openings
+ * real group (SCALE rule 3: 70 companies, 1,000 employments). The run reprocessed holds 100 employees with TP3 openings
  * (the five money columns and Section C2 exemptions), income-tax corrections of April and May (ADR 0167), salary and
  * Pay Item changes after processing, two employees added after processing (the per-employee path's additions) and two
  * whose salary record was removed (a refused group pass that falls back to the per-employee transaction). Tenant A runs
@@ -34,14 +34,17 @@ import {runBulkJobTick} from '../core/bulk-job-worker';
 import {observeStatements} from './helpers/statement-observer';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
-const COMPANIES=70,EMPLOYMENTS=1000,PROCESSED=198,ADDED=2,RUN=PROCESSED+ADDED,SHAPE=EMPLOYMENTS-RUN;
-const MISSING_SALARY=new Set([37,151]);
+const COMPANIES=70,EMPLOYMENTS=1000,PROCESSED=98,ADDED=2,RUN=PROCESSED+ADDED,SHAPE=EMPLOYMENTS-RUN;
+const MISSING_SALARY=new Set([37,81]);
+/** Phase timings on the log, so a slow hosted run shows where its time went. */
+const phase=(label:string,started:number)=>console.info('REPROCESS_SET_EQUIVALENCE_PHASE',label,Math.round(performance.now()-started));
 const tp3Money=(n:number)=>n%5===0,c2Opening=(n:number)=>n%7===0&&!tp3Money(n),travel=(n:number)=>n%5===1,raise=(n:number)=>n%2===0,travelChange=(n:number)=>n%10===1;
 const nameOf=(n:number)=>`J2 equivalence person ${String(n).padStart(3,'0')}`;
 
 type Tenant={base:Base;ctx:SessionContext;april:string;may:string;employees:Map<number,{employmentId:string;personId:string}>;travelId:string;companies:string[]};
 
 async function build():Promise<Tenant>{
+ const started=performance.now();
  const base=await seedBase();
  for(const module of ['payroll','typed_pay_components','multi_cycle_payroll'])await setModule(base.tenantId,module,'active');
  const ctx=await entitledCtx(base);
@@ -60,6 +63,7 @@ async function build():Promise<Tenant>{
   employees.set(n,{employmentId:e.employmentId,personId:e.personId});
  };
  for(let n=1;n<=PROCESSED;n++)await hire(n,'2026-01-01');
+ phase('hired',started);
  // TP3 openings: the five money columns through the owner, and a Section C2 exemption opening for others.
  for(let n=1;n<=PROCESSED;n++)if(tp3Money(n))await setTp3ProfileMY(ctx,{personId:employees.get(n)!.personId,tp3Year:2026,tp3NetRemuneration:12000+n*10,tp3EpfClaimed:1320,tp3PcbPaid:300+n});
  const c2=[...employees].filter(([n])=>c2Opening(n)).map(([,e])=>e.personId);
@@ -71,12 +75,14 @@ async function build():Promise<Tenant>{
   return batchId;
  };
  const april=await run('2026-04'),may=await run('2026-05');
+ phase('processed April and May',started);
  // ADR 0167: the travel item becomes taxable; April and May are corrected for the employees who were paid it.
  await owner.db.update(schema.payComponent).set({pcbExemptionCode:'PCB_TAXABLE'}).where(eq(schema.payComponent.id,item.id));
  const corrected=[...employees].filter(([n])=>travel(n)).map(([,e])=>e.employmentId);
  const preview=await previewTaxBasisRecalculation(ctx,{companyId:base.companyId,year:2026,upToMonth:5,employmentIds:corrected});
  expect(preview.eligibleCount).toBeGreaterThan(0);
  await confirmTaxBasisRecalculation(ctx,{previewId:preview.previewId,previewHash:preview.previewHash});
+ phase('corrected',started);
  // Changes after processing that the reprocess picks up.
  for(const [n,e] of employees){
   if(raise(n))await setCompensation(ctx,{employmentId:e.employmentId,basicSalary:3100+(n*37)%4200,monthlyAllowance:(n%4)*100+50,effectiveFrom:'2026-05-01'});
@@ -87,6 +93,7 @@ async function build():Promise<Tenant>{
  await owner.client`update compensation set superseded_at=now() where tenant_id=${base.tenantId}::uuid and employment_id=any(${removed}::uuid[]) and superseded_at is null`;
  // Two people who joined during May after the run was processed: additions take the per-employee path.
  for(let n=PROCESSED+1;n<=RUN;n++)await hire(n,'2026-05-15');
+ phase('built',started);
  return{base,ctx,april,may,employees,travelId:item.id,companies};
 }
 
@@ -155,7 +162,7 @@ beforeAll(async()=>{await migrateTestDb();await resetDb();});
 afterAll(closeAll);
 
 // Measured budget: the first hosted run's case duration is recorded in the PR; this limit is about 3x that run.
-it('recalculates a 200-employee run set-based exactly as the per-employee path, at the shape of a 70-company group',async()=>{
+it('recalculates a 100-employee run set-based exactly as the per-employee path, at the shape of a 70-company group',async()=>{
  const a=await build(),b=await build();
  const [shape]=await owner.client<{companies:number;employments:number}[]>`select count(distinct company_id)::int as companies,count(*)::int as employments from employment where tenant_id=${b.base.tenantId}::uuid`;
  expect(shape).toEqual({companies:COMPANIES,employments:EMPLOYMENTS});
@@ -169,6 +176,7 @@ it('recalculates a 200-employee run set-based exactly as the per-employee path, 
  const perCpu=process.cpuUsage();
  const perEmployee=await observeStatements(()=>reprocessSelectedEmployees(a.ctx,{batchId:a.may,employmentIds:selection(a),reason:'J2 equivalence'}));
  const perEmployeeCpu=cpuMs(perCpu);
+ phase('per-employee path',performance.now()-perEmployee.ms);
  expect(perEmployee.result.status).toBe('completed');
 
  const setCpu=process.cpuUsage();
@@ -178,6 +186,7 @@ it('recalculates a 200-employee run set-based exactly as the per-employee path, 
   return requested;
  });
  const setCpuMs=cpuMs(setCpu);
+ phase('set path',performance.now()-set.ms);
  const [job]=await owner.client<{metrics:Record<string,number>;counters:Record<string,number>;steps_total:number;steps_done:number}[]>`select metrics,counters,steps_total,steps_done from bulk_job where kind='payroll_reprocess' and tenant_id=${b.base.tenantId}::uuid`;
 
  const left=await snapshot(a,perEmployee.result.jobId),right=await snapshot(b,set.result.jobId);

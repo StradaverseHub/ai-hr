@@ -138,6 +138,32 @@ payroll truth stays in its source tables.
   deterministic calculation per employee in memory, and write with multi-row statements, proven by equivalence tests
   for every pay item, tax and statutory output. Imports load with `COPY` into their staging tables. Chunk timing
   splits calculation from database time; only a calculation shown to be CPU-bound could justify a compiled engine.
+- **J2, selective reprocess (built, 24 November 2026; not yet on staging).** The `payroll_reprocess` job keeps one
+  step per employee, but the first step of a chunk recalculates a group: the longest run of following employees who
+  are ordinary recalculations (already on the run and still in the month) goes through one pass of the existing
+  payroll engine (`reprocessEmployeeGroupTx` in `core/payroll.ts`): the run-wide reads once, each employee's
+  calculation unchanged, one job checkpoint and one multi-row outcome-event insert. The group's other steps only
+  record themselves; the last one ends the chunk (kernel step outcome `endChunk`). Additions, exclusions, unreadable
+  employees and every employee of a refused pass take the per-employee transaction (`reprocessEmployeeTx`) in a chunk
+  of their own, so each outcome and stop record is the per-employee path's. The run-level checks (job claim and
+  token, batch status, permission, closed period) are the per-employee transaction's own, taken once per group under
+  the same keys and row locks; the payroll history barrier rules are those of the same engine pass. The group size
+  adapts so a chunk lasts about `PAYROLL_REPROCESS_CHUNK_TARGET_MS` (default 1,000 ms, which bounds how long a salary
+  or statutory change for that company waits behind it), with at most `PAYROLL_REPROCESS_GROUP_MAX` employees
+  (default 200; `1` restores one employee per chunk). Chunk transactions set the point-read marker the processing job
+  uses (0691/9954). Each chunk records its split on `bulk_job.metrics`: `reprocessCalcMs` (process CPU: calculation
+  and driver) and `reprocessDbMs` (the rest of the wall time), with group counts and per-chunk maxima.
+  - **Known difference, intended.** The run-level audit rows of one engine pass, the `payroll_status_history`
+    'reprocess' row, the `payroll-batch.selective-reprocessed` event and the Audit loop's inputs capture, are written
+    once per group instead of once per employee; together they name exactly the same employees. The per-employee
+    rows (result history, outcome events, tax-basis receipts) are unchanged. This also removes a quadratic cost: the
+    inputs capture re-read the whole run for every employee.
+  - **Proof.** `test/payroll-reprocess-set-equivalence.test.ts`: two tenants built identically through the product
+    owners at 70 companies and 1,000 employments; a 100-employee run with TP3 openings, April and May income-tax
+    corrections, salary and Pay Item changes, two additions and two removed salary records; per-employee path against
+    the job, equal on every payslip column (money, statutory breakdown, tax metadata, version), run totals, headcount
+    and recalculation marks, result history, tax-basis receipts and revisions, job outcomes and counts, and outcome
+    events.
 
 ### 8. Guardrails
 
