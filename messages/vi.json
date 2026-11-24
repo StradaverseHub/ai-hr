@@ -1465,7 +1465,12 @@
         "pendingMovementTitle": "Các thay đổi đã lên lịch nhưng chưa có hiệu lực",
         "pendingMovementItem": "{kind} — có hiệu lực ngày {date}",
         "pendingMovementNote": "Các giá trị bên dưới là giá trị hiện tại. Chúng sẽ không thay đổi cho đến khi đến ngày tương ứng.",
-        "resignationMovementNote": "Ngày nghỉ việc được quản lý qua Biến động nhân sự. Sự kiện đang chờ hoặc có hiệu lực trong tương lai không thay thế thông tin hiện hành.",
+        "pendingExitTitle": "Đã lên lịch {kind}",
+        "pendingExitLastDay": "Ngày làm việc cuối cùng {lastDay} · chấm dứt việc làm ngày {date}",
+        "pendingExitLastDayOnly": "Ngày làm việc cuối cùng {lastDay}",
+        "pendingExitPlacement": "Phòng ban, chức danh và cấp trên trực tiếp giữ nguyên đến ngày đó",
+        "pendingExitPayroll": "Lương được trả đến ngày làm việc cuối cùng",
+        "resignationMovementNote": "Ngày nghỉ việc được quản lý qua Biến động nhân sự. Việc chấm dứt hoặc nghỉ việc đã lên lịch hiển thị ngày tại đây ngay khi được lưu, và nhân viên ở trạng thái báo trước cho đến ngày làm việc cuối cùng.",
         "resignationMovementLink": "Ghi nhận hoặc sửa thông tin nghỉ việc trong Biến động nhân sự",
         "contractNumber": "Contract number"
       },
@@ -2207,6 +2212,7 @@
       "resignationInformation": {
         "readOnly": "Thông tin nghỉ việc được quản lý qua Biến động nhân sự.",
         "movementSource": "Sự kiện biến động",
+        "scheduledSource": "Đã lên lịch trong Biến động nhân sự · có hiệu lực ngày {date}",
         "legacySource": "Hồ sơ cũ — không có sự kiện biến động gốc",
         "emptySource": "Chưa ghi ngày",
         "unknownSource": "Không được ghi nhận trong sự kiện này"

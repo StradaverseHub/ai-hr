@@ -1465,7 +1465,12 @@
         "pendingMovementTitle": "尚未生效的已排程变更",
         "pendingMovementItem": "{kind} — 于 {date} 生效",
         "pendingMovementNote": "以下数值为当前数值，在各自的生效日期到达前不会变更。",
-        "resignationMovementNote": "离职日期通过人事异动维护。待处理或未来的异动不会替换当前生效的信息。",
+        "pendingExitTitle": "{kind}已排程",
+        "pendingExitLastDay": "最后工作日 {lastDay} · 雇佣于 {date} 结束",
+        "pendingExitLastDayOnly": "最后工作日 {lastDay}",
+        "pendingExitPlacement": "在此之前，部门、职位和直属上级保持不变",
+        "pendingExitPayroll": "薪资发放至最后工作日",
+        "resignationMovementNote": "离职日期通过人事异动维护。已排程的终止或离职一经保存，其日期即显示于此；员工在最后工作日之前处于通知期。",
         "resignationMovementLink": "在人事异动中记录或更正离职信息",
         "contractNumber": "Contract number"
       },
@@ -2207,6 +2212,7 @@
       "resignationInformation": {
         "readOnly": "离职资料通过员工异动维护。",
         "movementSource": "异动事件",
+        "scheduledSource": "已在人事异动中排程 · 于 {date} 生效",
         "legacySource": "历史记录 — 无原始异动事件",
         "emptySource": "未记录日期",
         "unknownSource": "此事件未记录"
