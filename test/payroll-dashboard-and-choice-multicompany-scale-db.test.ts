@@ -60,7 +60,7 @@ beforeAll(async()=>{
   const all=[...f.companies,f.emptyCompany],cycles=all.map(id),attempts=all.map(id);
   await tx`insert into payroll_cycle(id,tenant_id,company_id,name,run_type) select y,${T}::uuid,c,'Monthly','regular' from unnest(${cycles}::uuid[],${all}::uuid[]) as x(y,c)`;
   await tx`insert into payroll_history_import_attempt(tenant_id,id,created_by,operation_key,source_name,mime_type,source_hash,source_content,company_ids,plan)
-   select ${T}::uuid,a,${b.adminUserId}::uuid,a::text,'history.csv','text/csv',encode(sha256(a::text::bytea),'hex'),a::text::bytea,array[c],
+   select ${T}::uuid,a,${b.adminUserId}::uuid,gen_random_uuid(),'history.csv','text/csv',encode(sha256(a::text::bytea),'hex'),a::text::bytea,array[c],
     jsonb_build_object('rows',jsonb_build_array(),'sourceHash',encode(sha256(a::text::bytea),'hex'))
    from unnest(${attempts}::uuid[],${all}::uuid[]) as x(a,c)`;
   type Run={id:string;company:number;period:string;attempt:string|null;status:string};
