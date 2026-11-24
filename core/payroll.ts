@@ -170,6 +170,7 @@ import {
 import { deriveAccumulatorSeed } from './tp3';
 import { applyLoansForBatch, lockLoansForLedgerTx } from './loans';
 import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
+import { calendarWindowInputsFrom, calendarWindowSql, type CalendarWindowInputs } from './calendar-window-inputs';
 import type { ShiftDifferential, PayRule, PayrollPolicyConfig } from '../db/schema';
 import {
   payItemFeedsUnpaidLeaveOrp,
@@ -4088,6 +4089,25 @@ export type PayrollProcessingUnit={jobId:string;phase:'plan'|'begin'|'employees'
  * attendance overtime (the full generation's `formulaCoverage.keys.size`, asked over the whole run). */
 export type PayrollProcessingPlan={employmentIds:string[];prefillOvertime:boolean};
 const PAYROLL_PROCESSING_COVERAGE_GROUP=200;
+/** ADR 0181 J2 — an engine pass reads and writes set-wise: the income-tax scheme of every employee in four statements,
+ * the holiday calendar inputs in one statement per HOLIDAY_WINDOW_GROUP employees, and new payslips by multi-row
+ * inserts. PAYROLL_PASS_SET_READS=off restores the per-employee reads and writes (each employee's own tax resolution,
+ * holiday statements and payslip insert); the results are the same either way. */
+const passSetReads=()=>process.env.PAYROLL_PASS_SET_READS!=='off';
+/** Payslips per multi-row insert (about 60 columns each: well under the 65,535 bind parameters of one statement). */
+const PAYSLIP_INSERT_GROUP=500;
+const HOLIDAY_WINDOW_GROUP=50;
+async function readPassHolidayWindowsTx(tx:Tx,employmentIds:readonly string[],from:string,to:string){
+ const windows=new Map<string,CalendarWindowInputs>();
+ if(!passSetReads())return windows;
+ const ids=[...new Set(employmentIds)];
+ for(let i=0;i<ids.length;i+=HOLIDAY_WINDOW_GROUP){
+  const group=ids.slice(i,i+HOLIDAY_WINDOW_GROUP);
+  const [row]=await tx.execute<Record<string,Parameters<typeof calendarWindowInputsFrom>[4]>>(sql`select ${sql.join(group.map((id,k)=>sql`${calendarWindowSql(id,from,to,{presence:false})} as ${sql.raw(`w${k}`)}`),sql`, `)}`);
+  group.forEach((id,k)=>windows.set(id,calendarWindowInputsFrom(tx,id,from,to,row?.[`w${k}`]??null)));
+ }
+ return windows;
+}
 /** Totals contribution of one payslip, in the order the full generation adds it (see `totals` below). */
 export type PayrollProcessingContribution=[gross:number,net:number,epfEmployee:number,epfEmployer:number,socsoEmployee:number,socsoEmployer:number,eisEmployee:number,eisEmployer:number,pcb:number,hrdfEmployer:number,deductions:number,employerCost:number];
 export type PayrollProcessingInputSnapshot={employmentId:string;row:Record<string,unknown>|null};
@@ -4823,6 +4843,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const dailyPayByEmp = new Map<string, { rate: number; eligibleDays: number; basic: number }>();
     // One set-wise read for the whole list: the same answer per employment as resolveAssignedPolicy.
     const assignedPolicies = await resolveAssignedPoliciesTx(tx, emps.map((e) => e.employmentId));
+    // ADR 0181 J2 — the period's holiday calendar inputs of every employee who reads a holiday set below (working-day
+    // proration that excludes holidays, a daily rate, a working-days leave divisor), read for the pass in one statement
+    // per HOLIDAY_WINDOW_GROUP (core/calendar-window-inputs.ts: each owner statement answered by its own predicate from
+    // the rows read), instead of each employee's own statements once per use. An employee not read here reads live.
+    const holidayWindows = await readPassHolidayWindowsTx(tx, emps.filter((e) => {
+      const cfg = assignedPolicies.get(e.employmentId)?.config ?? null;
+      const settings = resolveProrationSettings(cfg, { isHire: e.hiredOn > periodStart, isResign: !!(e.terminatedOn && e.terminatedOn < periodEnd) });
+      const l = cfg?.leave;
+      return (usesWorkingDayProration(settings) && !(settings?.includeHoliday ?? false)) || (e.payMode === 'daily' && e.rateAmount != null)
+        || l?.unpaidLeaveDivisor === 'working_days' || l?.unpaidTimeOffDivisor === 'working_days' || l?.encashmentDivisor === 'working_days';
+    }).map((e) => e.employmentId), periodStart, periodEnd);
     for (const e of emps) {
       const policy = assignedPolicies.get(e.employmentId) ?? null;
       const cfg = policy?.config ?? null;
@@ -4840,7 +4871,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       if (usesWorkingDayProration(prorationSettings)) {
         const holidays = (prorationSettings?.includeHoliday ?? false)
           ? new Set<string>() //              holidays count as worked days ⇒ empty exclusion set
-          : await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
+          : await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd }, holidayWindows.get(e.employmentId));
         opts.workingDayBasis = { roster: workingDayRoster(prorationSettings), holidays };
       }
       // c7fdfcf6 (Payroll Schedule) — the SALARY cut-off window for this employment (policy override → company
@@ -4886,7 +4917,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // basic = 0 (no divide-by-zero: this is a multiply, not a divide).
       if (e.payMode === 'daily' && e.rateAmount != null) {
         const rate = Number(e.rateAmount);
-        const dailyHolidays = await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
+        const dailyHolidays = await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd }, holidayWindows.get(e.employmentId));
         // 3c88d593 — clamped to this employer's entity segment, so a daily-rated employee who transferred
         // on the 11th is paid by the outgoing entity for the working days up to the 10th and by the
         // incoming one for the rest. Unsegmented ⇒ the stored dates ⇒ the identical count as before.
@@ -5055,7 +5086,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       })
       .map((e) => e.employmentId);
     for (const employmentId of wdEmpIds) {
-      const holidays = await holidayDatesFor(tx, { employmentId, startDate: periodStart, endDate: periodEnd });
+      const holidays = await holidayDatesFor(tx, { employmentId, startDate: periodStart, endDate: periodEnd }, holidayWindows.get(employmentId));
       const roster = [1, 2, 3, 4, 5]; // Mon–Fri working-day basis for the leave divisor (no Sat/Sun override here)
       let n = 0;
       for (let t = Date.parse(`${periodStart}T00:00:00Z`); t <= Date.parse(`${periodEnd}T00:00:00Z`); t += 86_400_000) {
@@ -7178,11 +7209,33 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // Resolve and lock employer-period declarations in stable employment order, before producing money.
     // Save/revoke uses the same lock; an approval decision remains valid until this payroll commits.
     const resolvedTaxSchemes = new Map<string, {scheme:string;declarationId?:string;selectionId?:string;selectionVersion?:number;selectionSource?:'income_tax_resident';taxCircumstance?:NonNullable<Parameters<typeof pack.payroll.statutory>[5]>['taxCircumstance']}>();
-    if (!subset && pack.payroll.resolveTaxScheme) {
-      for (const e of [...emps].sort((a,b)=>a.employmentId.localeCompare(b.employmentId))) {
-        resolvedTaxSchemes.set(e.employmentId, await pack.payroll.resolveTaxScheme(tx, {tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:batch.companyId,payPeriod:batch.payPeriod,legacyScheme:e.taxResidency,resident:e.isResident ?? true,epfCitizenship:e.epfCitizenship}));
+    // ADR 0181 J2 — the pack's group resolver answers every employee of the pass in a few statements (instead of four
+    // per employee), each employee's result or refusal decided by the single call's rules. A full generation raises the
+    // first refusal in this stable order, as the per-employee loop did; a selective reprocess raises an employee's
+    // refusal inside the payslip loop below, where its per-employee call stood.
+    let subsetTaxSchemes: Map<string, { ok: true; value: NonNullable<ReturnType<typeof resolvedTaxSchemes.get>> } | { ok: false; error: unknown }> | null = null;
+    if (pack.payroll.resolveTaxScheme) {
+      const ordered = subset ? emps : [...emps].sort((a,b)=>a.employmentId.localeCompare(b.employmentId));
+      if (pack.payroll.resolveTaxSchemes && passSetReads()) {
+        const outcomes = await pack.payroll.resolveTaxSchemes(tx, { tenantId: ctx.tenantId, companyId: batch.companyId, payPeriod: batch.payPeriod,
+          employees: ordered.map((e) => ({ employmentId: e.employmentId, legacyScheme: e.taxResidency, resident: e.isResident ?? true, epfCitizenship: e.epfCitizenship })) });
+        if (subset) subsetTaxSchemes = outcomes;
+        else for (const e of ordered) {
+          const outcome = outcomes.get(e.employmentId);
+          if (!outcome) throw new Error('Tax scheme resolution unavailable.');
+          if (!outcome.ok) throw outcome.error;
+          resolvedTaxSchemes.set(e.employmentId, outcome.value);
+        }
+      } else if (!subset) {
+        for (const e of ordered) {
+          resolvedTaxSchemes.set(e.employmentId, await pack.payroll.resolveTaxScheme(tx, {tenantId:ctx.tenantId,employmentId:e.employmentId,companyId:batch.companyId,payPeriod:batch.payPeriod,legacyScheme:e.taxResidency,resident:e.isResident ?? true,epfCitizenship:e.epfCitizenship}));
+        }
       }
     }
+    // ADR 0181 J2 — the pass's new payslips, written by one multi-row statement per 500 after the loop (passSetReads). The only
+    // insert trigger on payslip is deferred (payroll_history_retained_insert_custody), so every row and trigger outcome is
+    // the per-row insert's; nothing in the loop reads this run's payslips.
+    const pendingSlips: (typeof payslip.$inferInsert)[] = [];
 
     for (const e of emps) {
       const postEmployment=postEmploymentIds.has(e.employmentId);
@@ -7347,7 +7400,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           name: identity?.name ?? e.employmentId, employeeCode: identity?.employeeCode ?? null }]);
       }
       if (subset && pack.payroll.resolveTaxScheme) {
-        resolvedTaxSchemes.set(e.employmentId, await pack.payroll.resolveTaxScheme(tx, {
+        const outcome = subsetTaxSchemes?.get(e.employmentId);
+        if (subsetTaxSchemes && !outcome) throw new Error('Tax scheme resolution unavailable.');
+        if (outcome && !outcome.ok) throw outcome.error;
+        resolvedTaxSchemes.set(e.employmentId, outcome ? outcome.value : await pack.payroll.resolveTaxScheme(tx, {
           tenantId: ctx.tenantId, employmentId: e.employmentId, companyId: batch.companyId,
           payPeriod: batch.payPeriod, legacyScheme: e.taxResidency, resident: e.isResident ?? true,
           epfCitizenship: e.epfCitizenship,
@@ -8699,7 +8755,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       if(retainedSlipIds.has(e.employmentId)){
         const {id:retainedId,...values}=nextSlip;
         await tx.update(nativePayrollPayslipWrite).set(values).where(eq(nativePayrollPayslipWrite.id,retainedId!));
-      }else await tx.insert(nativePayrollPayslipWrite).values(nextSlip);
+      }else pendingSlips.push(nextSlip);
 
       totals.gross += roundedGross;
       totals.net += net;
@@ -8718,6 +8774,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       if (processing) chunkPaid.push({ employmentId: e.employmentId, contribution: [roundedGross, net, st.epfEmployee, st.epfEmployer,
         st.socsoEmployee, st.socsoEmployer, st.eisEmployee, st.eisEmployer, st.pcb, Number(st.hrdf), totalDeductions, employerCost] });
     }
+    for (let i = 0, size = passSetReads() ? PAYSLIP_INSERT_GROUP : 1; i < pendingSlips.length; i += size)
+      await tx.insert(nativePayrollPayslipWrite).values(pendingSlips.slice(i, i + size));
     if (processing) {
       const chunk: PayrollProcessingChunkResult = {
         paid: chunkPaid,

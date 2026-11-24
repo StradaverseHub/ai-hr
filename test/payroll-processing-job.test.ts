@@ -67,11 +67,12 @@ async function runUntil(id:string,done:(applied:number)=>boolean,max=200){
 let base:Base;
 beforeAll(async()=>{await migrateTestDb();});
 beforeEach(async()=>{
- // Steps of two employees, one step per chunk transaction, so a test can stop between chunks.
- process.env.PAYROLL_PROCESS_STEP_EMPLOYEES='2';process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS='1';
+ // Steps of two employees, one step per chunk transaction and one step per engine pass (no set-based group, ADR 0181
+ // J2), so a test can stop between chunks. The first test also runs with groups.
+ process.env.PAYROLL_PROCESS_STEP_EMPLOYEES='2';process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS='1';process.env.PAYROLL_PROCESS_GROUP_MAX='1';
  await resetDb();base=await seedBase();for(const module of ['payroll','typed_pay_components'])await setModule(base.tenantId,module,'active');await setSetting(base.tenantId,'payroll.reset_enabled',true);
 });
-afterEach(()=>{delete process.env.PAYROLL_PROCESS_STEP_EMPLOYEES;delete process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS;});
+afterEach(()=>{delete process.env.PAYROLL_PROCESS_STEP_EMPLOYEES;delete process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS;delete process.env.PAYROLL_PROCESS_GROUP_MAX;});
 afterAll(async()=>{await closeAll();});
 
 /** The payroll wave's equivalence fixture, verbatim. */
@@ -137,7 +138,8 @@ async function fixture(){
 }
 
 describe('payroll processing background job',()=>{
- it('processes the run in chunks to the synchronous path’s exact figures and audit events',async()=>{
+ it.each([['one step per pass','1',4],['set-based groups (ADR 0181 J2)','200',2]] as const)('processes the run in chunks to the synchronous path’s exact figures and audit events: %s',async(_label,groupMax,minChunks)=>{
+  process.env.PAYROLL_PROCESS_GROUP_MAX=groupMax;
   const f=await fixture();
   // The synchronous oracle first (its digest is the base commit's), then reset and process through the job. The
   // audit comparison uses a second synchronous run after a reset, so both sides start from the same history.
@@ -166,8 +168,9 @@ describe('payroll processing background job',()=>{
 
   const done=await runJob(jobId);
   expect(done).toMatchObject({state:'completed',error:null});
-  // begin + three chunks of two employees.
-  expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(4);
+  // begin + three chunks of two employees, or begin + one group of the three steps.
+  expect(Number(done.metrics.chunks)).toBeGreaterThanOrEqual(minChunks);
+  if(groupMax!=='1')expect(done.metrics).toMatchObject({processGroups:1,processGroupEmployees:5});
   const viaJob=await f.snapshot();
   expect(viaJob).toEqual(sync);
   expect(await storedTraces()).toBe(5);

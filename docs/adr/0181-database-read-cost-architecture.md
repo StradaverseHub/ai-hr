@@ -206,6 +206,46 @@ payroll truth stays in its source tables.
     events. Both paths write exactly one Audit loop inputs capture per job, naming the reprocessed employees, whose
     hashes equal an independent read of the run's inputs and results after the job; the stored headcount equals the
     read view's and the write portal's count.
+- **J2, payroll processing (built, 25 November 2026; not yet on staging).** The `payroll_process` job keeps its steps
+  of `PAYROLL_PROCESS_STEP_EMPLOYEES` (4), but one `employees` step now computes a group: itself and the chunk's following
+  employees steps, up to an adaptive number of employees, through one pass of the same compute path
+  (`runPayrollProcessingUnitTx`), so the run-wide reads and checks (about 45 statements) are paid once per group instead
+  of once per four employees. The step marks the steps it covered applied in the same transaction (new kernel step
+  outcome `consumed`: the kernel loads and verifies those steps, and the chunk budget can never split a group); the
+  group's whole chunk result sits on its first step, and finalize skips the covered steps' empty results. A group pass
+  that refuses is rolled back to its savepoint and its steps then run one per pass exactly as before, so a refusal and
+  its message are the per-step path's; grouping resumes after them. Group size: the shared estimator
+  (`core/bulk-job-group-size.ts`, also used by the reprocess) aims a pass at max(`PAYROLL_PROCESS_CHUNK_TARGET_MS`,
+  default 500 ms, `PAYROLL_PROCESS_CHUNK_FIXED_MULTIPLE` x the measured fixed cost, default 2), at most
+  `PAYROLL_PROCESS_GROUP_MAX` employees (default 200; `1` restores one step per pass), doubling from 16. The target is
+  lower than the reprocess's because a processing pass has no whole-run inputs capture, so its fixed cost is small, and
+  a chunk holds the company's payroll inputs key exclusively.
+  - **Per-employee statements removed from the engine pass** (both full generation and the reprocess use them): the
+    income-tax scheme resolution (`resolveTaxSelectionsMY`, pack seam `resolveTaxSchemes`) reads identities, statutory
+    rows (FOR SHARE, in person order) and selections for the whole pass and takes the declaration advisory locks in the
+    per-employee order in one statement: four statements per pass instead of four per employee. Each employee's result
+    or refusal comes from the single call's rules and is raised where the single call stood (first in employment order
+    for a generation, inside the payslip loop for a reprocess). The holiday sets of working-day proration, daily rates
+    and working-days leave divisors come from the calendar module's one-statement window read
+    (core/calendar-window-inputs.ts), 50 employees per statement, instead of each employee's own statements once per use.
+    New payslips are written by multi-row inserts of up to 500 after the loop (the only insert trigger on payslip is
+    deferred, so row and trigger outcomes are the per-row insert's). `PAYROLL_PASS_SET_READS=off` restores all three
+    per-employee forms. Still per employee, and only for the configurations that need them: the formula-builder runtime
+    and attendance overtime windows.
+  - **Timing.** Each pass logs an `[aihr-timing]` `bulk-chunk` line (`kind` payroll_process, `mode` group or single,
+    employees, steps, wall, calculation, database) and adds to `bulk_job.metrics`: `processCalcMs` (process CPU) and
+    `processDbMs` (the rest of the wall time), `processGroups`, `processGroupEmployees`, `processSingles`,
+    `processSingleEmployees`, `processRefusedGroups` (group passes that refused and fell back) and per-pass maxima. A
+    one-step pass is otherwise the run's last step left alone, or a group estimated below two steps.
+  - **Proof.** `test/payroll-process-set-equivalence.test.ts`: two tenants built identically through the product owners
+    at 70 companies and 1,000 employments; a 120-employee run with TP3 money and Section C2 openings, a taxable and a
+    non-taxable Pay Item, May salary changes, daily-rated employees, people with no income tax and a May joiner, processed
+    for April and May on the per-employee path as it was (one step per pass, `PAYROLL_PASS_SET_READS=off`) and on the
+    set path; equal on every payslip column, run totals, headcount and status, inputs, Pay Items,
+    audit events, status history and job results; a June run that loses a salary record after planning refuses and
+    discards identically. The group tax resolver is compared employee by employee with the single resolver, refusals
+    included. `test/payroll-processing-job.test.ts` runs its synchronous-oracle comparison (golden digest and audit
+    events) both ways.
 
 ### 8. Guardrails
 
