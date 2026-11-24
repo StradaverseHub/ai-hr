@@ -2,7 +2,7 @@ import { getTranslations } from 'next-intl/server';
 
 import type { SessionContext } from '@/db/client';
 import { viewerEmployment } from '@/lib/viewer';
-import { noticesForEmployment, popupNoticeFor } from '@/core/notice';
+import { noticesForEmployment, popupNoticeFor, type EmployeeNoticeRow } from '@/core/notice';
 import { dismissNoticePopupAction } from '@/app/notices/actions';
 import { NoticePopup } from './notice-popup';
 
@@ -27,16 +27,22 @@ import { NoticePopup } from './notice-popup';
  */
 
 /**
+ * The popup's one owner read: the viewer's employment (memoised, the same row the topbar reads) and then its live
+ * notices, as one promise the root layout starts in its frame pass (ADR 0181 package 1.2) so both statements join the
+ * render's read snapshot. No employment, no notices: null.
+ */
+export function viewerPopupNotice(s: SessionContext): Promise<EmployeeNoticeRow | null> {
+  return viewerEmployment(s).then(async (me) => (me ? popupNoticeFor(await noticesForEmployment(s, me.employmentId)) : null));
+}
+
+/**
  * The after-login popup. At most ONE notice, chosen by `popupNoticeFor`; returns null when nothing is due.
  *
  * Mounted in the root layout beside the onboarding tour, which is the existing "show something after login
  * and remember that it was dismissed" precedent in this product.
  */
-export async function NoticePopupSlot({ s }: { s: SessionContext }) {
-  const t = await getTranslations('notices');
-  const me = await viewerEmployment(s);
-  if (!me) return null;
-  const due = popupNoticeFor(await noticesForEmployment(s, me.employmentId));
+export async function NoticePopupSlot({ s, due: started }: { s: SessionContext; due?: Promise<EmployeeNoticeRow | null> }) {
+  const [t, due] = await Promise.all([getTranslations('notices'), started ?? viewerPopupNotice(s)]);
   if (!due) return null;
   return (
     <NoticePopup

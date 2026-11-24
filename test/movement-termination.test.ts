@@ -254,7 +254,7 @@ describe('recording a termination dated today or in the past', () => {
 // ───────────────────────── the future-dated case (the defect) ─────────────────────────
 
 describe('a FUTURE-dated termination', () => {
-  it('writes NOTHING today — the placement, the manager and terminated_on are all untouched', async () => {
+  it('writes only the exit dates today — the placement, the manager and terminated_on are all untouched', async () => {
     const manager = await hireOne('Future Term Manager');
     const { employmentId } = await hireOne('Future Term');
     await setReportingLine(adminCtx(b), {
@@ -276,15 +276,19 @@ describe('a FUTURE-dated termination', () => {
     expect(after.positionId).toBe(before.positionId);
     expect(after.managerEmploymentId).toBe(manager.employmentId);
 
+    // 7da649d3 — the last working day is written when the termination is saved (Serving Notice, payroll's
+    // last day); terminated_on, the reason and the assignment closure still wait for the effective date.
     const row = await employmentRow(employmentId);
     expect(row.terminatedOn).toBeNull();
-    expect(row.lastWorkingDate).toBeNull();
+    expect(row.lastWorkingDate).toBe(FUTURE);
     expect(row.terminationReasonCode).toBeNull();
     expect((await assignmentsOf(employmentId))[0].validTo).toBeNull();
+    expect(deriveEmploymentStatus(row, TODAY)).toBe('active_serving_notice');
 
-    // One scheduled event and no termination event at all.
+    // One scheduled event, its exit-dates companion, and no termination event at all.
     const types = await eventTypesFor(b.tenantId, employmentId);
     expect(types).toContain('employment.movement.scheduled');
+    expect(types).toContain('employment.info.updated');
     expect(types).not.toContain('employment.terminated');
 
     const hist = await movementHistory(adminCtx(b), employmentId);
@@ -344,6 +348,8 @@ describe('a FUTURE-dated termination', () => {
 
     await reverseMovementEvent(adminCtx(b), { employmentId, movementId: pending.id, reason: 'Withdrawn' });
     expect((await employmentRow(employmentId)).terminatedOn).toBeNull();
+    // 7da649d3 — cancelling also clears the last working day the scheduled termination wrote.
+    expect((await employmentRow(employmentId)).lastWorkingDate).toBeNull();
     expect(
       (await movementHistory(adminCtx(b), employmentId)).find((r) => r.id === pending.id)!.status,
     ).toBe('reversed');
@@ -377,8 +383,9 @@ describe('a FUTURE-dated termination', () => {
     const live = hist.filter((r) => r.kind === 'termination' && r.status === 'pending');
     expect(live).toHaveLength(1);
     expect(live[0].effectiveDate).toBe(newDate);
-    // Still nothing written — a corrected pending movement is still pending.
+    // A corrected pending movement is still pending: no terminated_on, and the last working day follows it.
     expect((await employmentRow(employmentId)).terminatedOn).toBeNull();
+    expect((await employmentRow(employmentId)).lastWorkingDate).toBe(newDate);
   });
 });
 

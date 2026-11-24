@@ -26,6 +26,72 @@ index 8e79170aeb13efe8c3c77ccede0cd3a115b5e1b5..b08d67476fbbd745516fabc4627af0b4
    function addArrayType(oid, typarray) {
      if (!!options.parsers[typarray] && !!options.serializers[typarray]) return
      const parser = options.parsers[oid]
+diff --git a/cf/src/index.js b/cf/src/index.js
+index ffbe7aef075d6037c540cbd5e8f7e298d4345cc3..63b36780aec25b4dec9efd557fb8398db80333df 100644
+--- a/cf/src/index.js
++++ b/cf/src/index.js
+@@ -206,7 +206,9 @@ function Postgres(a, b) {
+     const c = open.length
+       ? open.shift()
+       : await new Promise((resolve, reject) => {
+-        const query = { reserve: resolve, reject }
++        // ai-hr patch (patches/README.md). A reserve request stays in queries until onopen answers it; one
++        // that fails (its connection attempt errored) leaves the queue, so it is never answered after failing.
++        const query = { reserve: resolve, reject: e => (queries.remove(query), reject(e)) }
+         queries.push(query)
+         closed.length && connect(closed.shift(), query)
+       })
+@@ -218,7 +220,13 @@ function Postgres(a, b) {
+     c.reserved.release = true
+ 
+     const sql = Sql(handler)
++    // ai-hr patch (patches/README.md). Only the live reservation returns its connection. When the connection
++    // closed while reserved, onclose already returned it to the pool (closed, or reconnecting for a waiting
++    // query); opening it here would put a socketless connection in the open queue.
++    const reservation = c.reserved
+     sql.release = () => {
++      if (c.reserved !== reservation)
++        return
+       c.reserved = null
+       onopen(c)
+     }
+@@ -226,6 +234,11 @@ function Postgres(a, b) {
+     return sql
+ 
+     function handler(q) {
++      // ai-hr patch (patches/README.md). A reservation whose connection closed (or that was released) refuses
++      // further queries instead of writing to a connection it no longer holds.
++      if (c.reserved !== reservation)
++        return q.reject(Errors.connection('CONNECTION_CLOSED', options, options))
++
+       c.queue === full
+         ? queue.push(q)
+         : c.execute(q) || move(c, full)
+@@ -424,7 +437,10 @@ function Postgres(a, b) {
+     c.reserved = null
+     c.onclose && (c.onclose(e), c.onclose = null)
+     options.onclose && options.onclose(c.id)
+-    queries.length && connect(c, queries.shift())
++    // ai-hr patch (patches/README.md). A waiting reserve request is answered by onopen from queries (the
++    // connection drops a reserve request it was started with), so it must stay queued; shifting it out
++    // left reserve() waiting forever once the connection opened.
++    queries.length && connect(c, queries.peek().reserve ? queries.peek() : queries.shift())
+   }
+ }
+ 
+diff --git a/cf/src/queue.js b/cf/src/queue.js
+index c4ef97164f057db99dce1b9af3401dbb1af37e31..ac94e4d350315a9b16b432aa4ff33fa29dac66ee 100644
+--- a/cf/src/queue.js
++++ b/cf/src/queue.js
+@@ -15,6 +15,8 @@ function Queue(initial = []) {
+         : (xs.splice(index, 1), x)
+     },
+     push: (x) => (xs.push(x), x),
++    // ai-hr patch (patches/README.md): the next item without removing it.
++    peek: () => xs[index],
+     shift: () => {
+       const out = xs[index++]
+ 
 diff --git a/cjs/src/connection.js b/cjs/src/connection.js
 index 07f6716702ac888215c86ad6e0071aaf55ae519c..1b99bdceaf14bfb4f6c854fa6875c23c73c920b7 100644
 --- a/cjs/src/connection.js
@@ -54,6 +120,72 @@ index 07f6716702ac888215c86ad6e0071aaf55ae519c..1b99bdceaf14bfb4f6c854fa6875c23c
    function addArrayType(oid, typarray) {
      if (!!options.parsers[typarray] && !!options.serializers[typarray]) return
      const parser = options.parsers[oid]
+diff --git a/cjs/src/index.js b/cjs/src/index.js
+index f09c61c7e998f411560b95c9a8e1ed6a97972c11..38bb3ed572e10125e79ba1e90022120afd8fcdde 100644
+--- a/cjs/src/index.js
++++ b/cjs/src/index.js
+@@ -205,7 +205,9 @@ function Postgres(a, b) {
+     const c = open.length
+       ? open.shift()
+       : await new Promise((resolve, reject) => {
+-        const query = { reserve: resolve, reject }
++        // ai-hr patch (patches/README.md). A reserve request stays in queries until onopen answers it; one
++        // that fails (its connection attempt errored) leaves the queue, so it is never answered after failing.
++        const query = { reserve: resolve, reject: e => (queries.remove(query), reject(e)) }
+         queries.push(query)
+         closed.length && connect(closed.shift(), query)
+       })
+@@ -217,7 +219,13 @@ function Postgres(a, b) {
+     c.reserved.release = true
+ 
+     const sql = Sql(handler)
++    // ai-hr patch (patches/README.md). Only the live reservation returns its connection. When the connection
++    // closed while reserved, onclose already returned it to the pool (closed, or reconnecting for a waiting
++    // query); opening it here would put a socketless connection in the open queue.
++    const reservation = c.reserved
+     sql.release = () => {
++      if (c.reserved !== reservation)
++        return
+       c.reserved = null
+       onopen(c)
+     }
+@@ -225,6 +233,11 @@ function Postgres(a, b) {
+     return sql
+ 
+     function handler(q) {
++      // ai-hr patch (patches/README.md). A reservation whose connection closed (or that was released) refuses
++      // further queries instead of writing to a connection it no longer holds.
++      if (c.reserved !== reservation)
++        return q.reject(Errors.connection('CONNECTION_CLOSED', options, options))
++
+       c.queue === full
+         ? queue.push(q)
+         : c.execute(q) || move(c, full)
+@@ -423,7 +436,10 @@ function Postgres(a, b) {
+     c.reserved = null
+     c.onclose && (c.onclose(e), c.onclose = null)
+     options.onclose && options.onclose(c.id)
+-    queries.length && connect(c, queries.shift())
++    // ai-hr patch (patches/README.md). A waiting reserve request is answered by onopen from queries (the
++    // connection drops a reserve request it was started with), so it must stay queued; shifting it out
++    // left reserve() waiting forever once the connection opened.
++    queries.length && connect(c, queries.peek().reserve ? queries.peek() : queries.shift())
+   }
+ }
+ 
+diff --git a/cjs/src/queue.js b/cjs/src/queue.js
+index 8438f5da92cf7637d98a33491d75c75b1c817c25..7094317da2a4df6b99375d8cb9aee99d2bcc39da 100644
+--- a/cjs/src/queue.js
++++ b/cjs/src/queue.js
+@@ -15,6 +15,8 @@ function Queue(initial = []) {
+         : (xs.splice(index, 1), x)
+     },
+     push: (x) => (xs.push(x), x),
++    // ai-hr patch (patches/README.md): the next item without removing it.
++    peek: () => xs[index],
+     shift: () => {
+       const out = xs[index++]
+ 
 diff --git a/src/connection.js b/src/connection.js
 index 1b1cccde43b4570d5d071d6ffaab2669b3c2065a..2c8875c3d1f41923e53867d4a0633a206e9ee7d5 100644
 --- a/src/connection.js
@@ -82,3 +214,69 @@ index 1b1cccde43b4570d5d071d6ffaab2669b3c2065a..2c8875c3d1f41923e53867d4a0633a20
    function addArrayType(oid, typarray) {
      if (!!options.parsers[typarray] && !!options.serializers[typarray]) return
      const parser = options.parsers[oid]
+diff --git a/src/index.js b/src/index.js
+index c7fba3dace20173f4cb13f3f138bb6d213b43683..7d7551bef5ccc9dd6297eee4eec6765bad3dc749 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -205,7 +205,9 @@ function Postgres(a, b) {
+     const c = open.length
+       ? open.shift()
+       : await new Promise((resolve, reject) => {
+-        const query = { reserve: resolve, reject }
++        // ai-hr patch (patches/README.md). A reserve request stays in queries until onopen answers it; one
++        // that fails (its connection attempt errored) leaves the queue, so it is never answered after failing.
++        const query = { reserve: resolve, reject: e => (queries.remove(query), reject(e)) }
+         queries.push(query)
+         closed.length && connect(closed.shift(), query)
+       })
+@@ -217,7 +219,13 @@ function Postgres(a, b) {
+     c.reserved.release = true
+ 
+     const sql = Sql(handler)
++    // ai-hr patch (patches/README.md). Only the live reservation returns its connection. When the connection
++    // closed while reserved, onclose already returned it to the pool (closed, or reconnecting for a waiting
++    // query); opening it here would put a socketless connection in the open queue.
++    const reservation = c.reserved
+     sql.release = () => {
++      if (c.reserved !== reservation)
++        return
+       c.reserved = null
+       onopen(c)
+     }
+@@ -225,6 +233,11 @@ function Postgres(a, b) {
+     return sql
+ 
+     function handler(q) {
++      // ai-hr patch (patches/README.md). A reservation whose connection closed (or that was released) refuses
++      // further queries instead of writing to a connection it no longer holds.
++      if (c.reserved !== reservation)
++        return q.reject(Errors.connection('CONNECTION_CLOSED', options, options))
++
+       c.queue === full
+         ? queue.push(q)
+         : c.execute(q) || move(c, full)
+@@ -423,7 +436,10 @@ function Postgres(a, b) {
+     c.reserved = null
+     c.onclose && (c.onclose(e), c.onclose = null)
+     options.onclose && options.onclose(c.id)
+-    queries.length && connect(c, queries.shift())
++    // ai-hr patch (patches/README.md). A waiting reserve request is answered by onopen from queries (the
++    // connection drops a reserve request it was started with), so it must stay queued; shifting it out
++    // left reserve() waiting forever once the connection opened.
++    queries.length && connect(c, queries.peek().reserve ? queries.peek() : queries.shift())
+   }
+ }
+ 
+diff --git a/src/queue.js b/src/queue.js
+index c4ef97164f057db99dce1b9af3401dbb1af37e31..ac94e4d350315a9b16b432aa4ff33fa29dac66ee 100644
+--- a/src/queue.js
++++ b/src/queue.js
+@@ -15,6 +15,8 @@ function Queue(initial = []) {
+         : (xs.splice(index, 1), x)
+     },
+     push: (x) => (xs.push(x), x),
++    // ai-hr patch (patches/README.md): the next item without removing it.
++    peek: () => xs[index],
+     shift: () => {
+       const out = xs[index++]
+ 

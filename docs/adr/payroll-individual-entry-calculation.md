@@ -105,3 +105,25 @@ Item the employee simply doesn't have in this run counts as 0."
   and evaluation payload change only when an item was counted as 0, and `PAY_FORMULA_PROVIDER_VERSION` is unchanged,
   so saved revisions, passed tests and active formulas need no re-save or re-test. Covered by
   pay-formula-missing-item-zero.test.ts.
+
+## Amendment 7b5b1665 — One Total for the Month writes the row's Input Type (24 November 2026)
+
+Production case NORMAL OT (ONOR): an Amount of 105.40 imported through One Total for the Month was stored without a
+method, so payroll fed it to the Formula Builder formula as `{#Input}` and paid MYR 2,468.79. The import now writes
+the method for formula Pay Items, as Add new transaction does (aac17dd0); other writers are unchanged.
+
+- Monthly rows on a `formula` or `formula_builder` Pay Item: Input Type `amount` writes method `amount` (positive
+  Amount, no Quantity; formula bypassed). Qty, Hours, Days or Units on a Formula Builder item writes method
+  `formula`, priced by `priceIndividualTxnInputTx` against the row's run and cycle in preview, at confirmation
+  (`previewChanged` when it differs) and by the writer. An inline formula item with its own Hours/Days unit keeps the
+  method-NULL `pay_item_rule` path. Both cells filled, an Input Type the item refuses, a blank Input Type on a Formula
+  Builder item, or a missing quantity is refused by row and Pay Item; nothing is converted.
+- Duplicate checks compare method plus entered value (quantity for `formula`, amount otherwise). A method-NULL
+  Formula Builder row of the same run, employee, item and value refuses the new row until HR corrects it (no double
+  pay). The method is part of the confirmation binding and the reversal receipt.
+- Day by Day is unchanged (owner, 24 November 2026: aac17dd0 kept): quantity-only, Formula Builder items refused; an
+  Amount row's refusal now points to One Total for the Month.
+- No backfill. `scripts/report-formula-builder-amount-imports-7b5b1665.ts` is a read-only report of open-month imported
+  method-NULL Formula Builder lines with unit `amount` or blank, showing what each pays now and as an Amount, for HR to
+  correct with Edit. Covered by individual-txn-import-input-type-7b5b1665.test.ts and
+  individual-import-log-input-type-7b5b1665.dom.test.tsx.

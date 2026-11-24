@@ -282,7 +282,8 @@ describe('(D) the Employment tab has no writer for the fields it displays', () =
     for (const [field, name] of [['tenderresignationdate', 'tenderResignationDate'], ['lastworkingdate', 'lastWorkingDate']]) {
       expect(hasPersonnelPostedBinding(card, `employment.employment_dates_and_service.${field}`, name), `${name} belongs to Movement`).toBe(false);
       expect(card).toContain(`readOnlyValue("employment.employment_dates_and_service.${field}"`);
-      expect(card).toContain(`resignationInfo?.${name}.source.kind === 'movement'`);
+      // 7da649d3 — the provenance (applied Movement, scheduled Movement, legacy, empty) renders through one component.
+      expect(card).toContain(`<ResignationSourceNote source={resignationInfo?.${name}.source}`);
     }
     expect(card).toContain('<ConfirmationDateField mode="form" value={emp.confirmationDate} dmyDisplay />');
     const confirmationAt = PERIOD_FIELDS_SRC.indexOf('export function ConfirmationDateField');
