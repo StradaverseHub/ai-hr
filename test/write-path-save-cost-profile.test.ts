@@ -146,7 +146,6 @@ describe('write-path save cost at 70 companies / 1,000 employments',()=>{
    await time('payslip row security alone',()=>tx.execute(sql`select p.id from payslip p where p.id=any(${arr}::uuid[])`));
    await time('payroll_history_native_baseline per id',()=>tx.execute(sql`select app.payroll_history_native_baseline(x) from unnest(${arr}::uuid[]) x`));
    await time('payroll_tax_import_source_revision per id',()=>tx.execute(sql`select app.payroll_tax_import_source_revision(x)::text from unnest(${arr}::uuid[]) x`));
-   await time('payroll_history_effective_ids once',()=>tx.execute(sql`select * from app.payroll_history_effective_ids(${arr}::uuid[])`));
    await time('can_admin_payroll_employment per employment',()=>tx.execute(sql`select app.can_admin_payroll_employment(x) from unnest(${`{${rootIds.join(',')}}`}::uuid[]) x`));
    await time('payroll_tax_basis_original_employer_read per row',()=>tx.execute(sql`select app.payroll_tax_basis_original_employer_read(p.batch_id) from payroll_batch p where p.company_id=${b.companyId}::uuid`));
    const plan=await tx.execute<{'QUERY PLAN':string}>(sql`explain (analyze, costs off, timing on) select p.id,b.company_id,to_jsonb(p) from payslip p join payroll_batch b on b.id=p.batch_id where p.id=any(${arr}::uuid[])`);
@@ -166,11 +165,11 @@ describe('write-path save cost at 70 companies / 1,000 employments',()=>{
    ['transfer department + salary today',()=>({employmentId:next().id,kind:'transfer',effectiveDate:today,departmentId:b.deptB,basicSalary:5100,remarks:'Fictional'})],
    ['transfer department + salary backdated',()=>({employmentId:next().id,kind:'transfer',effectiveDate:'2026-07-01',departmentId:b.deptB,basicSalary:5000,remarks:'Fictional'})],
    ['increment today',()=>({employmentId:next().id,kind:'increment',effectiveDate:today,basicSalary:5200,remarks:'Fictional'})],
-   ['employmentTypeChange today',()=>({employmentId:next().id,kind:'employmentTypeChange',effectiveDate:today,employmentType:'contract',remarks:'Fictional'})],
-   ['entityTransfer today',()=>({employmentId:next().id,kind:'entityTransfer',effectiveDate:today,companyId:all[5],departmentId:depts[5],remarks:'Fictional'})],
+   ['employmentTypeChange today',()=>({employmentId:next().id,kind:'employmentTypeChange',effectiveDate:today,employmentType:'part_time',remarks:'Fictional'})],
+   ['entityTransfer today',()=>({employmentId:next().id,kind:'entityTransfer',effectiveDate:today,companyId:all[5],departmentId:depts[5],managerEmploymentId:null,remarks:'Fictional'})],
    ['confirmation today',()=>({employmentId:next().id,kind:'confirmation',effectiveDate:today,remarks:'Fictional'})],
    ['resignation future',()=>({employmentId:next().id,kind:'resignation',effectiveDate:'2027-01-31',resignationDate:today,remarks:'Fictional'})],
-   ['termination today',()=>({employmentId:next().id,kind:'termination',effectiveDate:today,terminationReasonCode:null,remarks:'Fictional'})],
+   ['termination today',()=>({employmentId:next().id,kind:'termination',effectiveDate:today,endDate:today,terminationReasonCode:'resignation',remarks:'Fictional'})],
   ];
   void other;
   const lines:string[]=[];
