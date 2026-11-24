@@ -226,8 +226,9 @@ export function createDb(connectionString: string, options?: { max?: number; adm
   let client = pgPools.get(connectionString);
   if (!client) {
     // A worker-role process also gets dead-peer detection (db/worker-connection.ts). Every pool keeps each connection
-    // for hours instead of the driver's 30–60 minutes (connectionLifetime above).
-    client = postgres(connectionString, { max: options?.max ?? applicationBudget.poolMax, max_lifetime: connectionLifetime, ...processConnectionOptions(applicationBudget.role) });
+    // for hours instead of the driver's 30–60 minutes (connectionLifetime above). postgres.js types max_lifetime as a
+    // number, but its timer calls a function once per connection, as its own default does (src/connection.js, timer).
+    client = postgres(connectionString, { max: options?.max ?? applicationBudget.poolMax, max_lifetime: connectionLifetime as unknown as number, ...processConnectionOptions(applicationBudget.role) });
     pgPools.set(connectionString, client);
   }
   // Direct table-based select/insert/update/delete retain their own schema and types. Registering
