@@ -189,7 +189,8 @@ export type SystemLabelWrite=
  |{kind:'option';key:string;input:{category:string;value:string;label:string;description:string;sortOrder:number;isActive:boolean;scopeCompanyIds:string[]|null}}
  |{kind:'grade';key:string;input:{code:string;name:string;rank:number;description:string;active:boolean;scopeCompanyIds:string[]|null}}
  |{kind:'group';key:string;input:{name:string;gradeIds:string[];scopeCompanyIds:string[]|null}};
-async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audit: ExportAudit|null, selectedKeys?: string[]): Promise<{preview:LabelImportPreview;writes:SystemLabelWrite[]}> {
+type LabelImportAnalysis={preview:LabelImportPreview;writes:SystemLabelWrite[];matchesPreview:boolean};
+async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audit: ExportAudit|null, selectedKeys?: string[], expectedToken?: string): Promise<LabelImportAnalysis> {
   const c=await catalogue(tx), output:LabelImportPreviewRow[]=[], writes:SystemLabelWrite[]=[];
   const allowedKeys=new Set(rows.map(r=>r.sheet+':'+r.row));
   if(selectedKeys&&(new Set(selectedKeys).size!==selectedKeys.length||selectedKeys.some(k=>!allowedKeys.has(k))))throw new Error('Invalid row selection.');
@@ -285,8 +286,14 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
   const selectedWrites=writes.filter(write=>output.some(row=>row.selected&&row.outcome==='add'&&row.sheet+':'+row.row===write.key));
   // Application order: flat codes in workbook order, then each organisation category in ORGANISATION_LABEL_KINDS order.
   const ordered=[...selectedWrites.filter(write=>write.kind!=='org'),...ORGANISATION_LABEL_KINDS.flatMap(kind=>selectedWrites.filter(write=>write.kind==='org'&&write.orgKind===kind))];
-  const token=createHash('sha256').update(JSON.stringify([ctx.tenantId,ctx.userId,'add',c,audit,output.map(tokenRow)])).digest('hex');
-  return {preview:{token,rows:output,valid:selectedWrites.length>0,mode:'add'},writes:ordered};
+  const reviewedRows=output.map(tokenRow);
+  // Bind what the administrator reviewed and the canonical write targets. A disjoint
+  // catalogue change cannot invalidate this preview, while re-resolved conflicts can.
+  const token=createHash('sha256').update(JSON.stringify(['system-label-import-v2',ctx.tenantId,ctx.userId,audit,reviewedRows,ordered])).digest('hex');
+  // Previously queued imports keep their original, stricter catalogue binding.
+  const matchesPreview=expectedToken===token || (expectedToken!==undefined &&
+    expectedToken===createHash('sha256').update(JSON.stringify([ctx.tenantId,ctx.userId,'add',c,audit,reviewedRows])).digest('hex'));
+  return {preview:{token,rows:output,valid:selectedWrites.length>0,mode:'add'},writes:ordered,matchesPreview};
 }
 
 const gradeAlreadyGrouped='A grade already belongs to another group. Change its membership in the editor first.';
@@ -334,10 +341,10 @@ export async function lockSystemLabelImportTx(tx:Tx,ctx:SessionContext,writerLoc
   await lockLabelCriteriaTx(tx,ctx.tenantId);
 }
 /** Analysis as the preview runs it (no writer lock): the job validates once with this and compares the token. */
-export function analyseSystemLabelImport(ctx:SessionContext,bytes:Buffer,selectedKeys?:string[]):Promise<{preview:LabelImportPreview;writes:SystemLabelWrite[]}>{
+export function analyseSystemLabelImport(ctx:SessionContext,bytes:Buffer,token:string,selectedKeys?:string[]):Promise<LabelImportAnalysis>{
   const rows=readSystemLabelWorkbook(bytes);
   if(!rows.length)throw new Error('The workbook contains no label data. Fill in new codes in a recognised category sheet.');
-  return withTenant(ctx,async tx=>analyse(tx,ctx,rows,await readExportAudit(tx,ctx,systemLabelExportId(bytes)),selectedKeys));
+  return withTenant(ctx,async tx=>analyse(tx,ctx,rows,await readExportAudit(tx,ctx,systemLabelExportId(bytes)),selectedKeys,token));
 }
 
 export function previewSystemLabelImport(ctx:SessionContext,bytes:Buffer,_legacyMode:LabelImportMode='add',selectedKeys?:string[]): Promise<LabelImportPreview> {
@@ -364,8 +371,8 @@ export function applySystemLabelImport(ctx:SessionContext,p:{bytes:Buffer;mode?:
       await tx.execute(sql`select app.access_configuration_write_lock()`);
     });
     const audit=await readExportAudit(tx,ctx,systemLabelExportId(p.bytes));
-    const {preview,writes}=await analyse(tx,ctx,rows,audit,p.selectedKeys);
-    if(preview.token!==p.token)throw new Error(SYSTEM_LABEL_IMPORT_CHANGED);
+    const {preview,writes,matchesPreview}=await analyse(tx,ctx,rows,audit,p.selectedKeys,p.token);
+    if(!matchesPreview)throw new Error(SYSTEM_LABEL_IMPORT_CHANGED);
     if(!preview.valid)throw new Error(SYSTEM_LABEL_IMPORT_NOTHING);
     await applyWritesTx(tx,ctx,writes);
     const summary=systemLabelImportSummary(preview);

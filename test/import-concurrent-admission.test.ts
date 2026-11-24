@@ -151,17 +151,17 @@ it('admits two System Labels uploads and publishes both disjoint grades',async()
   const ids=await submitTogether('system_label_import',slot=>async actor=>{
     const bytes=await buildSystemLabelWorkbook({
       kinds:['grades'],includeStatus:true,references:{companies:[],grades:[],employees:[]},
-      rows:{grades:[{Code:`QUEUE-GRADE-${slot}`,Label:`Queued grade ${slot}`,Rank:String(slot+1),Status:'Active'}]},
+      rows:{grades:[{Code:`QUEUE_GRADE_${slot}`,Label:`Queued grade ${slot}`,Rank:String(slot+1),Status:'Active',Criteria:'companies','Criteria Companies':base.companyId}]},
     });
     const preview=await previewSystemLabelImport(actor,bytes);
-    expect(preview.valid).toBe(true);
+    expect(preview.valid,JSON.stringify(preview.rows)).toBe(true);
     const {job}=await startSystemLabelImportJob(actor,{bytes,token:preview.token,fileName:`labels-${slot}.xlsx`});
     return job.id;
   });
   await drain('system_label_import',ids);
   expect([...await owner.client`
-    select code from job_grade where tenant_id=${base.tenantId}::uuid and code like 'QUEUE-GRADE-%' order by code
-  `]).toEqual([{code:'QUEUE-GRADE-0'},{code:'QUEUE-GRADE-1'}]);
+    select code from job_grade where tenant_id=${base.tenantId}::uuid and code in ('QUEUE_GRADE_0','QUEUE_GRADE_1') order by code
+  `]).toEqual([{code:'QUEUE_GRADE_0'},{code:'QUEUE_GRADE_1'}]);
 },180_000);
 
 it('admits two Rewards Person History uploads and records both awards',async()=>{
@@ -178,7 +178,7 @@ it('admits two Rewards Person History uploads and records both awards',async()=>
     await hireEmployee(actor,{
       person:{fullName:`Fictional award subject ${slot}`,primaryEmail:`queue-award-${slot}@fixture.test`},
       companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',
-      employeeCode:`QUEUE-AWARD-${slot}`,hiredOn:`${year-1}-01-01`,
+      employeeCode:`QUEUE-AWARD-${slot}`,hiredOn:`${year-2}-01-01`,
     });
   }
   const ids=await submitTogether('reward_person_history',slot=>async actor=>{

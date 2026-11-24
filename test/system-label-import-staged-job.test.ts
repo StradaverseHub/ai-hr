@@ -182,11 +182,11 @@ describe('staged System Labels import job',{timeout:240_000},()=>{
 
  it('refuses before writing when labels changed after the preview, and refuses non-administrators at admission',async()=>{
   const bytes=await workbook('TK');const preview=await previewSystemLabelImport(ctx,bytes);
-  await createJobGrade(ctx,{code:'UNRELATED_X',name:'Fictional unrelated grade',rank:2});
+  await createJobGrade(ctx,{code:'TK_G1',name:'Fictional grade added after preview',rank:2});
   const {job:started}=await startSystemLabelImportJob(ctx,{bytes,token:preview.token,fileName:'labels.xlsx'});
   const failed=await ticks(started.id,row=>row.state==='failed'||row.state==='completed');
   expect(failed.state).toBe('failed');expect(failed.error).toMatch(/changed since preview/);expect(failed.attempt_id).toBeNull();
-  expect(await visible('TK_')).toBe(0);
+  expect(await owner.client`select code from job_grade where code in ('TK_G1','TK_G2') order by code`).toEqual([{code:'TK_G1'}]);
   const employee={...ctx,roles:['employee'],grants:[{role:'employee',companyId:null}]} as SessionContext;
   await expect(startSystemLabelImportJob(employee,{bytes,token:preview.token})).rejects.toBeInstanceOf(SystemLabelImportJobError);
  });

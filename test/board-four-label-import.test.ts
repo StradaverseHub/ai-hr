@@ -65,8 +65,10 @@ describe('reviewed System Labels imports',()=>{
     expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'VALID'))).toHaveLength(1);
     const valid=book({division:[{Code:'NOT_SAVED',Label:'Valid'}]});const stale=await previewSystemLabelImport(adminCtx(b),valid,'add');
     await apply(book({division:[{Code:'OTHER',Label:'Other'}]}));
+    expect((await previewSystemLabelImport(adminCtx(b),valid,'add')).token).toBe(stale.token);
+    await apply(book({division:[{Code:'NOT_SAVED',Label:'Already claimed'}]}));
     await expect(applySystemLabelImport(adminCtx(b),{bytes:valid,mode:'add',token:stale.token})).rejects.toThrow('changed since preview');
-    expect(await owner.db.select().from(s.profileOption).where(eq(s.profileOption.value,'NOT_SAVED'))).toEqual([]);
+    expect(await owner.db.select({label:s.profileOption.label}).from(s.profileOption).where(eq(s.profileOption.value,'NOT_SAVED'))).toEqual([{label:'Already claimed'}]);
   });
   it('preserves explicit company intent and rejects foreign companies or conflicting global input',async()=>{
     for(const Company of ['',randomUUID()]){

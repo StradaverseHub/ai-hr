@@ -55,16 +55,16 @@ export const systemLabelImportJobHandler:BulkJobHandler<SystemLabelWrite>={
  phaseOf:()=>'codes',
  isTransient:isTransientBulkJobError,
  stepRef:step=>codeOf(step.payload).slice(0,200),
- /** Validate once, as the preview did and with no writer lock: the token proves nothing changed since the preview. */
+ /** Validate once, as the preview did and with no writer lock: the token binds the reviewed outcomes and write targets. */
  async prepare(ctx,job){
   const {token,selectedKeys}=inputOf(job);
   let analysed:Awaited<ReturnType<typeof analyseSystemLabelImport>>;
-  try{analysed=await analyseSystemLabelImport(ctx,Buffer.from(job.source_content??Buffer.alloc(0)),selectedKeys);}
+  try{analysed=await analyseSystemLabelImport(ctx,Buffer.from(job.source_content??Buffer.alloc(0)),token,selectedKeys);}
   catch(error){if(isTransientBulkJobError(error))throw error;return{refused:publicErrorMessage(error)};}
-  const {preview,writes}=analysed;
+  const {preview,writes,matchesPreview}=analysed;
   const summary=systemLabelImportSummary(preview);
   const counters={total:preview.rows.length,valid:summary.imported,skipped:summary.skipped,invalid:summary.failed};
-  if(preview.token!==token)return{refused:SYSTEM_LABEL_IMPORT_CHANGED,counters};
+  if(!matchesPreview)return{refused:SYSTEM_LABEL_IMPORT_CHANGED,counters};
   if(!preview.valid)return{refused:SYSTEM_LABEL_IMPORT_NOTHING,counters};
   const plan:SystemLabelImportStoredPlan={summary,eventRows:systemLabelImportEventRows(preview),blocked:systemLabelImportBlockedRows(preview)};
   return{steps:writes.map(write=>({kind:write.kind,rowNum:rowNumOf(write.key),payload:write})),counters,plan};
