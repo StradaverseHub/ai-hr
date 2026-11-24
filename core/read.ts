@@ -6951,6 +6951,60 @@ export function approvalHistoryCount(ctx: SessionContext, f: ApprovalHistoryFilt
   });
 }
 
+/** Approval History's keyset page (ADR 0181 decision 5, Phase 4, migration 7290): the same decisions, visibility,
+ *  filters, names and order as listApprovalHistory (newest first, ties by sequence), paged from an anchor decision
+ *  inside app.approval_history_page instead of OFFSET, with a total counted by app.approval_history_count_capped up
+ *  to the cap (exact below 1,000, "1,000+" above; `exactCount` lifts the cap). The anchor is looked up among the
+ *  decisions this viewer may see under these filters, so a hidden decision serves the first page instead. */
+export function approvalHistoryPage(
+  ctx: SessionContext,
+  f: Omit<ApprovalHistoryFilters, 'limit' | 'offset'>,
+  q: Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>,
+): Promise<{ rows: ApprovalHistoryRow[] } & KeysetRead> {
+  if (!Number.isSafeInteger(q.limit) || q.limit < 1 || q.limit > ALL_ROW_CEILING) throw new RangeError('Invalid approval history page');
+  const typesCsv = f.module ? aggregateTypesOfModule[f.module].join(',') : null;
+  const action = f.action && isApprovalHistoryAction(f.action) ? f.action : null;
+  const filters = sql`${f.from ?? null}::timestamptz, ${f.to ?? null}::timestamptz, string_to_array(${typesCsv}::text, ','),
+    ${action}::text, ${f.deciderEmploymentId ?? null}::uuid`;
+  return withTenant(ctx, async (tx) => {
+    const read = async (cursor: Pick<KeysetPageQuery, 'after' | 'before' | 'last'>) => {
+      const anchor = cursor.after ?? cursor.before ?? null;
+      const backwards = cursor.before !== undefined || cursor.last;
+      const res = await tx.execute(sql`SELECT * FROM app.approval_history_page(${filters},
+        ${anchor}::uuid, ${backwards}::boolean, ${keysetFetchLimit(q)}::int)`);
+      return (res as unknown as {
+        id: string; aggregate_type: string; aggregate_id: string; event_type: string; occurred_at: Date | string;
+        subject_employment_id: string | null; subject_name: string | null; decider_name: string | null; is_auto: boolean;
+        on_behalf_of_employment_id: string | null; on_behalf_of_name: string | null; payload: unknown;
+      }[]).map((r): ApprovalHistoryRow => ({
+        id: r.id,
+        aggregateType: r.aggregate_type,
+        aggregateId: r.aggregate_id,
+        eventType: r.event_type,
+        occurredAt: r.occurred_at instanceof Date ? r.occurred_at : new Date(r.occurred_at),
+        subjectEmploymentId: r.subject_employment_id,
+        subjectName: r.subject_name,
+        deciderName: r.decider_name,
+        isAuto: r.is_auto,
+        onBehalfOfEmploymentId: r.on_behalf_of_employment_id,
+        onBehalfOfName: r.on_behalf_of_name,
+        payload: r.payload,
+      }));
+    };
+    const cursor = { after: q.after, before: q.before, last: q.last };
+    let fetched = await read(cursor), anchorFound = true;
+    if (fetched.length === 0 && (q.after || q.before)) {
+      anchorFound = false;
+      fetched = await read({ last: false });
+    }
+    const page = keysetSlice(fetched, { ...(anchorFound ? cursor : { last: false }), limit: q.limit }, anchorFound);
+    const cap = listCountCap(q.size);
+    const [{ n }] = (await tx.execute(sql`SELECT app.approval_history_count_capped(${filters},
+      ${q.exactCount ? 2147483646 : cap}::int) AS n`)) as unknown as { n: number | string }[];
+    return { rows: page.rows, total: cappedTotal(Number(n), cap, q.exactCount), hasPrev: page.hasPrev, hasNext: page.hasNext, anchorFound };
+  });
+}
+
 /** Change history for one employee — every event touching their employment, person, statutory
  *  profile, and compensation rows (the aggregates that carry their record). RLS-scoped. */
 export function employeeAudit(ctx: SessionContext, employmentId: string, limit = 50): Promise<AuditRow[]> {

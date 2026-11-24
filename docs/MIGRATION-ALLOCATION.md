@@ -1,3 +1,27 @@
+# Approval History keyset page and capped count (ADR 0181 Phase 4), 25 November 2026
+
+Reserve `7290_approval_history_keyset`, journal index `10690`, timestamp `1795495007290`,
+SQL SHA-256 `c29c31fda4ed91e258c9b07884ddab16e8db040a3118d3d0adace495722122f8` (unchanged from 7270).
+
+**Renumbered from `7270_approval_history_keyset` (idx `10670`, when `1795495007270`).** The 7270 slot is abandoned:
+it was never applied on any installation. The staging coordinator moved `7280_leave_delegated_decision_set` ahead of
+this release, and a lower timestamp than an applied one would be silently skipped, so this migration takes `7290`.
+The database revamp session confirmed 7290 free on 25 November 2026, after a scan of the 400 most recent remote
+branches. This session's scan found nothing above 7280 among the 300 most recent remote heads and every registered
+worktree's migration folder. Neither installation's watermark was read from this session; recheck both, and any
+competing reservation, before admission.
+
+Staging order (coordinator, 25 November 2026): R6 (7230 + 7240), 7250, 7260, 7280, then this one (7290). Deploy the
+web app and the migration only, without a worker restart, and coordinate the ticket with the ORCHESTRATOR session.
+
+Adds three SECURITY DEFINER functions beside the unchanged `app.approval_history` (0818) and
+`app.approval_history_count` (0320), which keep serving the bell's History tab:
+- `app.approval_history_events`: the 0818 visibility and filter predicates as a keyset slice, owner-only.
+- `app.approval_history_page`: that slice with the 0818 names and "on behalf of" projection. EXECUTE to `ai_hr_app`.
+- `app.approval_history_count_capped`: counts up to cap + 1 matching decisions, with no projection. EXECUTE to `ai_hr_app`.
+
+The functions add no table, column, policy or grant on existing objects and replace no object.
+
 # Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
 
 Reserve `7210_access_effective_company`, journal index `10610`, timestamp `1795495007210`,

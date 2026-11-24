@@ -262,6 +262,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10570,version:'7',when:1795488671170,tag:'7170_payroll_tax_basis_source_digest',breakpoints:true},
  {idx:10600,version:'7',when:1795495007200,tag:'7200_information_documents_planned_with_values',breakpoints:true},
  {idx:10610,version:'7',when:1795495007210,tag:'7210_access_effective_company',breakpoints:true},
+ {idx:10690,version:'7',when:1795495007290,tag:'7290_approval_history_keyset',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1341,6 +1342,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.access_effective_company_verify(uuid)',app:false},
    {fn:'app.access_precompute_set_mode(text)',app:false},
    {fn:'app.access_workforce_companies(text)',app:true},
+   // 7290 (ADR 0181 Phase 4): Approval History keyset page and capped count; the event filter stays owner-only.
+   {fn:'app.approval_history_events(timestamp with time zone,timestamp with time zone,text[],text,uuid,uuid,boolean,integer)',app:false},
+   {fn:'app.approval_history_page(timestamp with time zone,timestamp with time zone,text[],text,uuid,uuid,boolean,integer)',app:true},
+   {fn:'app.approval_history_count_capped(timestamp with time zone,timestamp with time zone,text[],text,uuid,integer)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
