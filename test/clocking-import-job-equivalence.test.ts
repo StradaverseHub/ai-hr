@@ -17,7 +17,7 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { BUILTIN_MAPPING_ID } from '../lib/clocking-file';
 import { checkIn } from '../core/attendance';
 import { commitClockingImport, setClockingMappingActive, type ClockingImportOutcome } from '../core/attendance-clocking-import';
-import { CLOCKING_NOT_IMPORTED, ClockingImportJobRefused, clockingImportJobHandler, getClockingImportJob, startClockingImportJob } from '../core/attendance-clocking-import-job';
+import { CLOCKING_NOT_IMPORTED, clockingImportJobHandler, getClockingImportJob, startClockingImportJob } from '../core/attendance-clocking-import-job';
 import { runBulkJobTick } from '../core/bulk-job-worker';
 import { attendanceSnapshot, buildAttendanceFixture, fixtureDate, normalizeIds, type AttendanceFixture } from './helpers/attendance-bulk-fixture';
 
@@ -114,12 +114,13 @@ it('refuses a job whose mapping was deactivated while it waited (no run is logge
   const f = await buildAttendanceFixture(b, { employees: 8 });
   const ctx = adminCtx(b);
   const { job } = await startClockingImportJob(ctx, { mappingId: f.codedMappingId, text: f.codedFile, fileName: 'week-3.csv', fileBytes: f.codedFile.length });
-  await expect(startClockingImportJob(ctx, { mappingId: BUILTIN_MAPPING_ID, text: f.uncodedFile, fileName: 'other.csv', fileBytes: 10 }))
-    .rejects.toMatchObject({ code: 'alreadyRunning' } satisfies Partial<ClockingImportJobRefused>);
+  const later = await startClockingImportJob(ctx, { mappingId: BUILTIN_MAPPING_ID, text: f.uncodedFile, fileName: 'other.csv', fileBytes: f.uncodedFile.length });
+  expect(later).toMatchObject({ existing: false, job: { state: 'queued' } });
   await setClockingMappingActive(ctx, f.codedMappingId, false);
   expect(await runJob(job.id)).toBe('failed');
   expect(await getClockingImportJob(ctx, job.id)).toMatchObject({ state: 'failed', errorCode: 'mappingInactive', result: null });
   expect(await owner.db.select().from(schema.clockingImportRun).where(eq(schema.clockingImportRun.tenantId, b.tenantId))).toHaveLength(0);
+  expect((await getClockingImportJob(ctx, later.job.id)).state).toBe('queued');
   // The inputs are gone once the job ended (the kernel keeps only the outcome).
   const [row] = await owner.client<{ source: boolean; steps: number }[]>`select source_content is not null as source,(select count(*)::int from bulk_job_step where job_id=${job.id}::uuid) as steps from bulk_job where id=${job.id}::uuid`;
   expect(row).toEqual({ source: false, steps: 0 });

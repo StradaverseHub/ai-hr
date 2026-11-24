@@ -57,6 +57,9 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10540,version:'7',when:1795280007140,tag:'7140_payroll_individual_import_steps',breakpoints:true},
  {idx:10550,version:'7',when:1795280007150,tag:'7150_contract_list_company_rights_once',breakpoints:true},
 ];
+const IMPORT_QUEUE_TAIL:readonly Entry[]=[
+ {idx:10580,version:'7',when:1795494620800,tag:'7180_import_tenant_queue',breakpoints:true},
+];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},
  {idx:10490,version:'7',when:1795028007090,tag:'7090_report_delivery_history_order',breakpoints:true},
@@ -186,7 +189,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   // cannot redefine its145 bodies, digest, order or rehearsal merely by appending a migration.
   const journal=candidate;
   expect(frozen.entries).toHaveLength(PREFIX);expect(journal.entries).toHaveLength(PREFIX+TAIL);
-  expect(currentJournal.entries).toHaveLength(PREFIX+TAIL+BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL+HOTFIX_TAIL+PAYROLL_ACCESS_TAIL+WORKBOOK_COMPANY_TAIL+READ_AUTHORIZATION_TAIL+CONTRACT_REPORTING_END_TAIL+TAX_REPROCESS_TAIL+TAX_BASIS_GROUP_TAIL+REPORTING_INDEX_TAIL.length+PAYROLL_REVIEW_TAIL.length);
+  expect(currentJournal.entries).toHaveLength(PREFIX+TAIL+BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL+HOTFIX_TAIL+PAYROLL_ACCESS_TAIL+WORKBOOK_COMPANY_TAIL+READ_AUTHORIZATION_TAIL+CONTRACT_REPORTING_END_TAIL+TAX_REPROCESS_TAIL+TAX_BASIS_GROUP_TAIL+REPORTING_INDEX_TAIL.length+PAYROLL_REVIEW_TAIL.length+IMPORT_QUEUE_TAIL.length);
   const guidanceStart=PREFIX+TAIL+BOARD_TAIL;
   const guidanceTail=currentJournal.entries.slice(guidanceStart,guidanceStart+GUIDANCE_TAIL);
   expect(guidanceTail).toEqual([GUIDANCE]);
@@ -209,7 +212,11 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   const reportingIndexStart=taxBasisGroupStart+TAX_BASIS_GROUP_TAIL;
   const taxBasisGroupTail=currentJournal.entries.slice(taxBasisGroupStart,reportingIndexStart);
   const reportingIndexTail=currentJournal.entries.slice(reportingIndexStart,reportingIndexStart+REPORTING_INDEX_TAIL.length);
-  const payrollRunReviewTail=currentJournal.entries.slice(reportingIndexStart+REPORTING_INDEX_TAIL.length);
+  const payrollReviewStart=reportingIndexStart+REPORTING_INDEX_TAIL.length;
+  const importQueueStart=payrollReviewStart+PAYROLL_REVIEW_TAIL.length;
+  const payrollRunReviewTail=currentJournal.entries.slice(payrollReviewStart,importQueueStart);
+  const importQueueTail=currentJournal.entries.slice(importQueueStart);
+  expect(importQueueTail).toEqual(IMPORT_QUEUE_TAIL);
   expect(taxReprocessTail).toEqual([TAX_REPROCESS]);
   expect(taxBasisGroupTail).toEqual([TAX_BASIS_GROUP]);
   expect(reportingIndexTail).toEqual(REPORTING_INDEX_TAIL);
@@ -398,8 +405,8 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   assertApprovedUpgradeTail(currentJournal.entries);
   const boardTail=currentJournal.entries.slice(PREFIX+TAIL,PREFIX+TAIL+BOARD_TAIL);expect(boardTail).toHaveLength(BOARD_TAIL);
   expect(boardTail[0].tag).toBe('6600_probation_reconciliation');
-  const forwardTail=[...boardTail,...guidanceTail,...sixItemTail,...hotfixTail,...payrollAccessTail,...workbookCompanyTail,...readAuthorizationTail,...contractReportingEndTail,...taxReprocessTail,...taxBasisGroupTail,...reportingIndexTail,...payrollRunReviewTail];
-  expect(forwardTail).toHaveLength(BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL+HOTFIX_TAIL+PAYROLL_ACCESS_TAIL+WORKBOOK_COMPANY_TAIL+READ_AUTHORIZATION_TAIL+CONTRACT_REPORTING_END_TAIL+TAX_REPROCESS_TAIL+TAX_BASIS_GROUP_TAIL+REPORTING_INDEX_TAIL.length+PAYROLL_REVIEW_TAIL.length);
+  const forwardTail=[...boardTail,...guidanceTail,...sixItemTail,...hotfixTail,...payrollAccessTail,...workbookCompanyTail,...readAuthorizationTail,...contractReportingEndTail,...taxReprocessTail,...taxBasisGroupTail,...reportingIndexTail,...payrollRunReviewTail,...importQueueTail];
+  expect(forwardTail).toHaveLength(BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL+HOTFIX_TAIL+PAYROLL_ACCESS_TAIL+WORKBOOK_COMPANY_TAIL+READ_AUTHORIZATION_TAIL+CONTRACT_REPORTING_END_TAIL+TAX_REPROCESS_TAIL+TAX_BASIS_GROUP_TAIL+REPORTING_INDEX_TAIL.length+PAYROLL_REVIEW_TAIL.length+IMPORT_QUEUE_TAIL.length);
   const boardIdentities=forwardTail.map((entry,index)=>{
    expect(entry.when).toBeGreaterThan(index?forwardTail[index-1].when:journal.entries.at(-1)!.when);
    const bytes=readFileSync(join(root,'db/migrations',entry.tag+'.sql'));
@@ -407,7 +414,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
    writeFileSync(join(migrations,entry.tag+'.sql'),bytes);
    return {hash:sha(bytes),created_at:String(entry.when)};
   });
-  const expectedCurrentLedger=[...expectedLedger,...boardIdentities];expect(expectedCurrentLedger).toHaveLength(PREFIX+TAIL+BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL+HOTFIX_TAIL+PAYROLL_ACCESS_TAIL+WORKBOOK_COMPANY_TAIL+READ_AUTHORIZATION_TAIL+CONTRACT_REPORTING_END_TAIL+TAX_REPROCESS_TAIL+TAX_BASIS_GROUP_TAIL+REPORTING_INDEX_TAIL.length+PAYROLL_REVIEW_TAIL.length);
+  const expectedCurrentLedger=[...expectedLedger,...boardIdentities];expect(expectedCurrentLedger).toHaveLength(PREFIX+TAIL+BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL+HOTFIX_TAIL+PAYROLL_ACCESS_TAIL+WORKBOOK_COMPANY_TAIL+READ_AUTHORIZATION_TAIL+CONTRACT_REPORTING_END_TAIL+TAX_REPROCESS_TAIL+TAX_BASIS_GROUP_TAIL+REPORTING_INDEX_TAIL.length+PAYROLL_REVIEW_TAIL.length+IMPORT_QUEUE_TAIL.length);
   const referenceNoticeOffset=referenceNotices.length,ownerNoticeOffset=ownerNotices.length;
   writeFileSync(join(migrations,'meta/_journal.json'),JSON.stringify(currentJournal));
   await migrate(drizzle(reference),{migrationsFolder:migrations});
