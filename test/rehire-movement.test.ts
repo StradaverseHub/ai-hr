@@ -81,7 +81,13 @@ describe('Rehired starts a new employment period for the same person',()=>{
    .where(and(eq(schema.domainEvent.subjectEmploymentId,result.employmentId),eq(schema.domainEvent.eventType,'employment.movement.recorded')));
   expect(event.actorId).toBe(b.adminUserId);
   expect(event.payload).toMatchObject({type:'rehire',effectiveDate:day(-5),fromEmploymentId:old.employmentId,previousEmployeeCode:'EMP-0123',employeeCode:'EMP-0418',groupJoinDate:day(-5),remarks:'Fictional returning employee'});
-  expect(JSON.stringify(event.payload)).not.toContain('5200');
+  // The salary never reaches the event: no pay field and no value equal to the salary. Matching the digits anywhere in
+  // the serialized payload failed whenever a random record id happened to contain them (gate 45368863462).
+  const leaves:[string,unknown][]=[];
+  const walk=(value:unknown,key:string)=>{if(value&&typeof value==='object')for(const [k,v] of Object.entries(value))walk(v,k);else leaves.push([key,value]);};
+  walk(event.payload,'');
+  expect(leaves.map(([key])=>key).filter(key=>/salary|pay|allowance|rate/i.test(key))).toEqual([]);
+  expect(leaves.filter(([,value])=>value!==null&&Number(value)===5200)).toEqual([]);
 
   // Employment Periods and the Personnel search link read the same periods from either side.
   const periods=await employmentPeriods(ctx(),old.employmentId);

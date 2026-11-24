@@ -20,7 +20,8 @@ function integer(env, name, {fallback, min, max}) {
 /**
  * The server-side budget of the pooler, and how it is split.
  *
- *   budget   = max_connections - superuser_reserved - background - reserved - platform
+ *   budget   = max_connections - superuser_reserved - background - lanes - reserved - platform
+ *   lanes    = 3 x each dedicated worker lane in AIHR_WORKER_LANES (db/capacity.ts, ADR 0181 J1)
  *   default  = clamp(2 x cores + 2, 4, floor(7/8 x budget))     the working pool
  *   reserve  = max(1, ceil(default / 8))                        for bursts, granted after reserve_pool_timeout
  *   server   = default + reserve                                the pooler's hard ceiling (max_db_connections)
@@ -37,7 +38,11 @@ export function pgbouncerSizing(env) {
   const poolMax = integer(env, 'AIHR_DB_POOL_MAX', {fallback: 10, min: 1, max: 50});
   // Each web process holds a separate direct two-connection pool when the control plane is on (db/platform.ts).
   const platform = env.PLATFORM_DATABASE_URL ? 2 * workers : 0;
-  const serverBudget = maxConnections - superuserReserved - background - reserved - platform;
+  // Dedicated worker lanes are counted on top of the background budget, 3 connections each (db/capacity.ts
+  // workerLaneProcessConnections); db/capacity.ts validates the lane names, so only the count matters here.
+  const laneList = (env.AIHR_WORKER_LANES ?? '').trim();
+  const lanes = laneList ? 3 * laneList.split(',').length : 0;
+  const serverBudget = maxConnections - superuserReserved - background - lanes - reserved - platform;
   if (serverBudget < 5) throw new Error(`The pooler needs at least 5 server connections but the budget leaves ${serverBudget}: raise max_connections or lower AIHR_DB_BACKGROUND_CONNECTIONS.`);
   const defaultPoolSize = Math.max(4, Math.min(2 * cores + 2, Math.floor((serverBudget * 7) / 8)));
   const reservePoolSize = Math.min(Math.max(1, Math.ceil(defaultPoolSize / 8)), serverBudget - defaultPoolSize);
