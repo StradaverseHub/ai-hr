@@ -65,7 +65,7 @@ export default async function ApprovalHistoryPage({
   const sp = await searchParams;
   const t = await getTranslations('approvalHistory');
   const locale = await getLocale();
-  // ADR 0181 Phase 4 (7270): keyset paging (no OFFSET), total exact below 1,000 and "1,000+" above.
+  // ADR 0181 Phase 4 (7290): keyset paging (no OFFSET), total exact below 1,000 and "1,000+" above.
   const pq = parseKeysetPageQuery(sp);
 
   // The viewer's own hand-over periods (viewer = DELEGATOR). app.self_delegations self-scopes and
@@ -84,7 +84,7 @@ export default async function ApprovalHistoryPage({
   const moduleKey = sp.module && isApprovalHistoryModule(sp.module) ? sp.module : undefined;
   const action = sp.action && isApprovalHistoryAction(sp.action) ? sp.action : undefined;
 
-  // fc776376 — the same filters drive the page and its COUNT; since 7270 both come from one keyset read
+  // fc776376 — the same filters drive the page and its COUNT; since 7290 both come from one keyset read
   // (app.approval_history_page and app.approval_history_count_capped): "26-50 of 312", or "of 1,000+".
   const historyFilters = {
     from: fromDate ? mytStartIso(fromDate) : undefined,

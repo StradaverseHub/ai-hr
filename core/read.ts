@@ -6951,7 +6951,7 @@ export function approvalHistoryCount(ctx: SessionContext, f: ApprovalHistoryFilt
   });
 }
 
-/** Approval History's keyset page (ADR 0181 decision 5, Phase 4, migration 7270): the same decisions, visibility,
+/** Approval History's keyset page (ADR 0181 decision 5, Phase 4, migration 7290): the same decisions, visibility,
  *  filters, names and order as listApprovalHistory (newest first, ties by sequence), paged from an anchor decision
  *  inside app.approval_history_page instead of OFFSET, with a total counted by app.approval_history_count_capped up
  *  to the cap (exact below 1,000, "1,000+" above; `exactCount` lifts the cap). The anchor is looked up among the
