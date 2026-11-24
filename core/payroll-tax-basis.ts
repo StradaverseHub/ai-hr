@@ -385,12 +385,9 @@ async function taxBasisInputsDigestTx(tx:Tx,ctx:SessionContext,selection:TaxBasi
   const period=`${selection.year}-${String(month).padStart(2,'0')}`;
   rules.push(hash(await lap(laps,'rules',()=>pack.payroll.loadRulesetResolved(tx,{asOf:period+'-01'})).catch((error:unknown)=>({unavailable:error instanceof Error?error.message:String(error)}))));
  }
- const year=selection.year+'-%';
- const [rows]=await lap(laps,'sourceRows',()=>tx.execute<{d:string}>(sql`select md5(coalesce(string_agg(x,',' order by x),'')) as d from (
-   select 'p:'||p.id||':'||p.xmin||':'||b.id||':'||b.xmin as x from payslip p join payroll_batch b on b.id=p.batch_id where b.company_id=${selection.companyId}::uuid and b.pay_period like ${year}
-   union all select 'r:'||r.id||':'||r.xmin from payroll_tax_basis_revision r where r.company_id=${selection.companyId}::uuid and r.period like ${year}
-   union all select 's:'||s.id from payroll_history_import_snapshot s join payroll_history_import_record h on h.id=s.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}
-   union all select 'v:'||v.id from payroll_history_import_revision v join payroll_history_import_record h on h.id=v.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}) q`));
+ // Set-wise under the same authority (migration 7170): the reader's row security ran the payslip policy stack once per
+ // tax-basis revision and held the locks for 18-37 s on production; the definer returns the same digest of the same rows.
+ const [rows]=await lap(laps,'sourceRows',()=>tx.execute<{d:string}>(sql`select app.payroll_tax_basis_source_digest(${selection.companyId}::uuid,${selection.year}::integer) as d`));
  // The opening source, TP3 identity/revision, projection and declared answer invalidate a preview when any of them changes.
  const openings=[...(await lap(laps,'openingEvidence',()=>readTaxOpeningRowsTx(tx,ctx,selection.year,(selection.employmentIds===null?subjects:selectedSubjects).map(subject=>subject.id)))).values()].map(taxOpeningDigestRow);
  return hash({settings,subjects:[...subjects],selectedSubjects:[...selectedSubjects],company:company?.row??null,rules,rows:rows?.d??null,openings});

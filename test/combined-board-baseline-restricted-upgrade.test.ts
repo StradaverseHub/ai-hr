@@ -56,6 +56,7 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10530,version:'7',when:1795280007130,tag:'7130_contract_users_person_first',breakpoints:true},
  {idx:10540,version:'7',when:1795280007140,tag:'7140_payroll_individual_import_steps',breakpoints:true},
  {idx:10550,version:'7',when:1795280007150,tag:'7150_contract_list_company_rights_once',breakpoints:true},
+ {idx:10570,version:'7',when:1795488671170,tag:'7170_payroll_tax_basis_source_digest',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},

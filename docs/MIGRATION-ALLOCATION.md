@@ -1,3 +1,15 @@
+# Recalculation opening source digest without per-row policies, 24 November 2026
+Reserve `7170_payroll_tax_basis_source_digest`, journal index `10570`, timestamp `1795488671170`,
+SQL SHA-256 `3ee9634289b42a561f365ab7d2e349163a2e16e969006f5697a27ba4f219f438`. Main had 1,140 entries through
+`7150` (`1795280007150`). The reservation scan of the 300 most recently committed remote branch heads found
+`7160_import_source_worksheet` (idx `10560`, timestamp `1795488671000`) on unmerged Codex branches, so this entry takes
+`7170` with a timestamp above it and cannot be skipped whichever lands first. The production watermark was not read
+from this session; recheck both installations and competing reservations before admission.
+Adds the definer `app.payroll_tax_basis_source_digest(uuid,integer)` (EXECUTE to `ai_hr_app` only), used by the locked
+income-tax recalculation opening. It returns the same md5 over the same rows the reader's row security admitted, after
+requiring the same authority, and is guarded by the exact SELECT/ALL policy list of the six relations it reads.
+Measured cause: production openings held the payroll-history and Access locks for 18-37 s per company in this digest
+(20 ms without row security); focused diagnostic run 45320620220.
 # Contract list company rights once per company, 23 November 2026
 
 Reserve `7150_contract_list_company_rights_once`, journal index `10550`, timestamp `1795280007150`,
