@@ -78,7 +78,7 @@ beforeAll(async()=>{
  await owner.client.begin(async tx=>{
   const periods=runs.map(()=>randomUUID());
   await tx`insert into pay_period(id,tenant_id,company_id,period,status)
-   select p,${T}::uuid,c,per,case when st='closed' then 'closed' else 'open' end from unnest(${periods}::uuid[],${runs.map(r=>r.company)}::uuid[],${runs.map(r=>r.period)}::text[],${runs.map(r=>r.status)}::text[]) as x(p,c,per,st)`;
+   select p,${T}::uuid,c,per,(case when st='closed' then 'closed' else 'open' end)::pay_period_status from unnest(${periods}::uuid[],${runs.map(r=>r.company)}::uuid[],${runs.map(r=>r.period)}::text[],${runs.map(r=>r.status)}::text[]) as x(p,c,per,st)`;
   await tx`insert into payroll_batch(id,tenant_id,company_id,pay_period,batch_date,status,employee_count,totals,pay_period_id,closed_at)
    select r,${T}::uuid,c,per,(per||'-25')::date,st::payroll_status,0,'{}'::jsonb,pp,case when st='closed' then now() end
    from unnest(${runs.map(r=>r.id)}::uuid[],${runs.map(r=>r.company)}::uuid[],${runs.map(r=>r.period)}::text[],${runs.map(r=>r.status)}::text[],${periods}::uuid[]) as x(r,c,per,st,pp)`;
