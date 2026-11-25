@@ -78,8 +78,37 @@ it('the five leave read policies ask it once per statement and no longer per row
  const rows=await owner.client<{tbl:string;qual:string}[]>`select c.relname::text as tbl,pg_get_expr(p.polqual,p.polrelid) as qual from pg_policy p join pg_class c on c.oid=p.polrelid
   where p.polname in ('leave_request_rls','leave_approval_step_rls','leave_request_date_rls','replacement_leave_request_rls','replacement_leave_request_date_rls') order by 1`;
  expect(rows.map(r=>r.tbl)).toEqual(['leave_approval_step','leave_request','leave_request_date','replacement_leave_request','replacement_leave_request_date']);
- for(const r of rows){expect(r.qual,r.tbl).toContain('delegated_decision_employment_ids');expect(r.qual,r.tbl).not.toContain('can_decide_via_delegation');}
+ for(const r of rows){expect(r.qual,r.tbl).toContain('app.delegated_decision_includes(');expect(r.qual,r.tbl).toContain('delegated_decision_employment_ids');expect(r.qual,r.tbl).not.toContain('can_decide_via_delegation');}
  const[fn]=await owner.client<{app:boolean}[]>`select has_function_privilege('ai_hr_app','app.delegated_decision_employment_ids()','execute') as app`;expect(fn.app).toBe(true);
  const plan=(await withTenant(adminCtx(b),tx=>tx.execute<{'QUERY PLAN':string}>(sql`explain (costs off) select id from leave_request`))).map(r=>r['QUERY PLAN']).join('\n');
  expect(plan).toMatch(/InitPlan/);expect(plan).not.toContain('can_decide_via_delegation');
+},120_000);
+
+it('keeps the per-row predecessor\'s row estimate: the membership check is opaque to the planner, a bare = ANY arm is not',async()=>{
+ // The release 8 gate: a bare `subject = ANY ((SELECT set)::uuid[])` arm made the planner expect ~1% of leave_request,
+ // and the Leave approvals candidate query's CTE join became a nested loop. The check must be PL/pgSQL (never inlined),
+ // run with the caller's rights, and be closed to PUBLIC.
+ const[f]=await owner.client<{lang:string;definer:boolean;vol:string;app:boolean;pub:boolean}[]>`select l.lanname as lang,p.prosecdef as definer,p.provolatile as vol,
+  has_function_privilege('ai_hr_app',p.oid,'execute') as app,(p.proacl is null or p.proacl::text ~ '(^|[{,])=X/') as pub
+  from pg_proc p join pg_language l on l.oid=p.prolang where p.oid='app.delegated_decision_includes(uuid,uuid[])'::regprocedure`;
+ expect(f).toEqual({lang:'plpgsql',definer:false,vol:'i',app:true,pub:false});
+ await owner.client`with p as (insert into person(tenant_id,full_name,primary_email)
+   select ${b.tenantId}::uuid,'Fictional estimate '||g,'estimate-'||g||'-'||gen_random_uuid()||'@example.test' from generate_series(1,400) g returning id),
+  e as (insert into employment(tenant_id,person_id,company_id,employee_code,hired_on)
+   select ${b.tenantId}::uuid,p.id,${b.companyId}::uuid,'EST-'||row_number() over (),'2020-01-01'::date from p returning id)
+  insert into leave_request(tenant_id,employment_id,leave_type_id,start_date,end_date,days,status)
+   select ${b.tenantId}::uuid,e.id,${b.annualLeaveTypeId}::uuid,'2026-12-01','2026-12-01',1,'pending' from e`;
+ await owner.client.unsafe('analyze public.leave_request');
+ const visible='(employment_id = ANY ((SELECT app.visible_employment_ids())::uuid[]))';
+ const estimate=(arm:string)=>owner.client.begin(async tx=>{
+  await tx`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${users[0].id},true)`;
+  const[r]=await tx.unsafe(`explain (format json) select id from public.leave_request where tenant_id = app.current_tenant_id() and (${visible} or ${arm})`);
+  return Number((r['QUERY PLAN'] as {Plan:{'Plan Rows':number}}[])[0].Plan['Plan Rows']);
+ });
+ const predecessor=await estimate('app.can_decide_via_delegation(employment_id)');
+ const membership=await estimate('app.delegated_decision_includes(employment_id, (SELECT app.delegated_decision_employment_ids()))');
+ const bare=await estimate('(employment_id = ANY ((SELECT app.delegated_decision_employment_ids())::uuid[]))');
+ expect(membership).toBe(predecessor);
+ // Non-vacuity: the bare arm really is estimated lower, which is what moved the candidate query's plan.
+ expect(bare).toBeLessThan(predecessor/2);
 },120_000);

@@ -193,7 +193,10 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
     // (docs/adr/2026-11-07-leave-inquiry-presentation-read-frame.md); the records reader is still
     // handed that freshly resolved scope, never a wider employee source. Same repair as 21ed4f8c0.
     expect(recordsPage).toContain('await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)');
-    expect(recordsPage).toContain('inquiry:scope,result:await leaveInquiryRecordsPageTx(tx,session,scope,query),');
+    // ADR 0181 Phase 4 (PR 327): the screen pages by key; it hands the same freshly resolved scope to the
+    // keyset reader, whose rules are pinned below alongside the OFFSET reader the export keeps.
+    expect(recordsPage).toContain('inquiry:scope,result:await leaveInquiryRecordsKeysetPageTx(tx,session,scope,query,keyset),');
+    expect(recordsPage).not.toContain('leaveInquiryRecordsPageTx(');
     expect(recordsPage).not.toContain('selectInquiryEmployee(');
     const owner = read('core/leave-inquiry.ts');
     // The snapshot resolves the SAME authorized All/single context the page previously read separately.
@@ -202,6 +205,16 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
     expect(snapshotFrom, 'admitted inquiry snapshot owner exists').toBeGreaterThan(-1);
     expect(snapshotTo, 'admitted inquiry snapshot owner has a closing boundary').toBeGreaterThan(snapshotFrom);
     expect(owner.slice(snapshotFrom, snapshotTo)).toContain('read(tx, await leaveInquiryContextTx(tx,session,ids,captured,ctx,selectionOnly))');
+    const keysetFrom = owner.indexOf('export async function leaveInquiryRecordsKeysetPageTx(');
+    const keysetTo = owner.indexOf('function checkWindow(', keysetFrom);
+    expect(keysetFrom, 'keyset records reader starts').toBeGreaterThan(-1);
+    expect(keysetTo, 'keyset records reader ends').toBeGreaterThan(keysetFrom);
+    const keysetReader = owner.slice(keysetFrom, keysetTo);
+    expect(keysetReader).toContain('scope = authorizedScope(ctx, scope, query)');
+    expect(keysetReader).toContain('if(verified!.tx!==tx)throw new InquiryQueryError(\'Forbidden\')');
+    expect(keysetReader).toContain('await assertInquiryPrincipalTx(tx,verified!.session)');
+    expect(keysetReader).toContain('if (!scope.companyIds.length) return { rows: [], total: { count: 0, capped: false }');
+    expect(keysetReader).toContain('companyIds: scope.companyIds, employmentIds: scope.selected ? [scope.selected.employmentId] : undefined');
     const from = owner.indexOf('export async function leaveInquiryRecordsPageTx(');
     const to = owner.indexOf('function checkWindow(', from);
     expect(from, 'canonical records reader starts').toBeGreaterThan(-1);
