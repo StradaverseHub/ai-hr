@@ -1,13 +1,10 @@
 import Link from 'next/link';
 import { personnelReferenceOptions } from '@/lib/personnel-template-reference';
 import {personnelImportBrowserKey} from '@/lib/personnel-import-browser-key';
-import { getPeopleGeneral } from '@/core/people-general';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
-import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
-import { listCostCenters, listPositions, listBusinessUnits } from '@/core/admin';
-import { listAllProfileOptions } from '@/core/profile-options';
+import { organisationLabelsForCompany, readPersonnelImportCatalogs } from '@/core/personnel-import-reference';
 import { personnelCatalogReferenceValues } from '@/lib/personnel-import-catalog';
 import { PageHeader, pageWideCls } from '@/components/ui';
 import { ImportWorkbench } from './import-workbench';
@@ -20,37 +17,36 @@ export default async function ImportPage() {
   // ones core/import's analyze() validates a row against. Reading them here (rather than
   // hand-maintaining a second list) is what makes "the value in the template is a value the importer
   // accepts" true by construction. Unscoped on purpose: a file may now span several companies.
-  const [
+  //
+  // ADR 0181 (no per-company loops in a request): every catalog is read ONCE, in one read-only snapshot
+  // transaction (core/personnel-import-reference.ts), and the company-specific guidance below is partitioned in
+  // memory. This page used to run four label reads per visible company (about 320 transactions per load).
+  const catalogs = await readPersonnelImportCatalogs(s);
+  const {
     companies,
     departments,
     positions,
     costCenters,
+    grades,
     // Item 2983802f — the catalog-governed vocabularies the new columns write into. Read here for the
     // same reason as the catalogs above: the Reference sheet must list the values `analyze()` accepts,
     // and the only way to guarantee that is to generate it from the list `analyze()` reads.
     allProfileOptions,
     nricPolicy,
-  ] = await Promise.all([
-    listCompanies(s,{adminOnly:true}),
-    listDepartments(s),
-    listPositions(s),
-    listCostCenters(s),
-    listAllProfileOptions(s,{activeOnly:true}),
-    getPeopleGeneral(s),
-  ]);
+  } = catalogs;
   // Company-specific guidance uses the same visibility owners as full-import validation.
   // The Company cell can override Target company; preview is authoritative in that case.
-  const grades=await listJobGrades(s);
-  const organisationOptionsByCompany=Object.fromEntries(await Promise.all(companies.map(async co=>{
-    const [ds,ps,cs,bs]=await Promise.all([listDepartments(s,{companyIds:[co.id]}),listPositions(s,{companyIds:[co.id]}),listCostCenters(s,{companyIds:[co.id]}),listBusinessUnits(s,{companyIds:[co.id]})]);
+  const jobGradeOptions=personnelReferenceOptions(grades.map(g=>({value:g.code,label:g.name})));
+  const organisationOptionsByCompany=Object.fromEntries(companies.map(co=>{
+    const {departments:ds,positions:ps,costCenters:cs,businessUnits:bs}=organisationLabelsForCompany(catalogs,co.id);
     return [co.id,{
       department:personnelReferenceOptions(ds.map(d=>({value:d.code,label:d.label?.trim()||d.description||d.code}))),
       position:personnelReferenceOptions(ps.map(p=>({value:p.code,label:p.label?.trim()||p.description||p.code}))),
       cost_center:personnelReferenceOptions(cs.map(c=>({value:c.code,label:c.label?.trim()||c.name||c.code}))),
       business_unit:personnelReferenceOptions(bs.map(b=>({value:b.code,label:b.label?.trim()||b.name||b.code}))),
-      job_grade:personnelReferenceOptions(grades.map(g=>({value:g.code,label:g.name}))),
+      job_grade:jobGradeOptions,
     }] as const;
-  })));
+  }));
   const organisationByCompany=Object.fromEntries(Object.entries(organisationOptionsByCompany).map(([id,fields])=>[id,Object.fromEntries(Object.entries(fields).map(([column,options])=>[column,uniqSorted(options.map(option=>option.value))]))]));
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
   // Default to the active scope if it's a single company; otherwise the company with the most

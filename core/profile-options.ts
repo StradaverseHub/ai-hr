@@ -241,8 +241,10 @@ export function listProfileOptions(
 export async function listAllProfileOptions(
   ctx: SessionContext,
   opts: { activeOnly?: boolean; companyId?:string|null } = {},
+  /** Optional caller transaction: a page that reads several catalogs in one read snapshot passes it here. */
+  outerTx?: Tx,
 ): Promise<Record<ProfileOptionCategory, ProfileOptionRow[]>> {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const where = opts.activeOnly ? eq(profileOption.isActive, true) : undefined;
     const rows = await tx
       .select()
@@ -268,7 +270,8 @@ export async function listAllProfileOptions(
       }
     }
     return out;
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /**
