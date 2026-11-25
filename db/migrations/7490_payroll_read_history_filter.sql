@@ -74,6 +74,12 @@ CREATE TABLE public.payroll_history_ineffective_payslip(
 --> statement-breakpoint
 CREATE INDEX payroll_history_ineffective_payslip_tenant_idx ON public.payroll_history_ineffective_payslip(tenant_id);
 --> statement-breakpoint
+-- The recompute and the stage's touched set find a record's snapshots by record_id; the table had no index on it, so
+-- each history-writing commit scanned every snapshot (the full gate measured the commit-time upkeep at 4.6% of a
+-- history confirm against the owner's 2%; 1.0% where the table was small). Built inside this migration's transaction
+-- (a SHARE lock on the snapshot table for its duration).
+CREATE INDEX payroll_history_import_snapshot_record_idx ON public.payroll_history_import_snapshot(tenant_id,record_id);
+--> statement-breakpoint
 CREATE TABLE public.payroll_history_ineffective_state(
  tenant_id uuid PRIMARY KEY REFERENCES public.tenant(id) ON DELETE CASCADE,
  version bigint NOT NULL DEFAULT 0

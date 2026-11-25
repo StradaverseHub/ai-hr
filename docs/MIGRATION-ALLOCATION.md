@@ -1,10 +1,12 @@
 # ADR 0181 payroll read addendum, P4: stored payroll history barrier, 25 November 2026
 
-Reserve `7490_payroll_read_history_filter`, journal index `10890`, timestamp `1795495007490`, SQL SHA-256 `563cf49262f7daa248d5a38f041d33c0d81c6746b9e0e713f7ca15a12d51e506`. Next free
+Reserve `7490_payroll_read_history_filter`, journal index `10890`, timestamp `1795495007490`, SQL SHA-256 `c70cfbe6ddbd2c754548060f22fd635e02385c9d7437fd8f0220224deaa01b97`. Next free
 slot after this session's `7480_payroll_read_own_payslips`, which it requires. Recheck both installations' watermarks
 and any competing reservation at admission.
 
-Registers step `p4_history_filter` (legacy) and the pieces of `payroll_history_effective_only`. Adds
+Registers step `p4_history_filter` (legacy) and the pieces of `payroll_history_effective_only`. Adds the index
+`payroll_history_import_snapshot_record_idx` on `payroll_history_import_snapshot(tenant_id, record_id)` (the lookup by
+record had none; a SHARE lock on that table while it builds inside the migration). Adds
 `payroll_history_ineffective_payslip` (the payslips the barrier hides with no stage in flight; owner only, ON DELETE CASCADE from payslip), the owner-only `payroll_history_ineffective_state`
 (per-tenant lock and version) and `payroll_history_ineffective_commit` (one row per writing transaction, whose deferred
 constraint trigger recomputes the noted payslips once at commit), the set-wise recompute, triggers on payslip (insert statement; `UPDATE OF batch_id, employment_id`
