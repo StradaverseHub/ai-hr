@@ -7,7 +7,8 @@ import { reasonForPayrollError, transactionFailureForPayrollError } from '../cor
  *     Item. A genuine formula failure keeps its existing remark and link (restated, unchanged).
  *   • The whole-run processing message (PayItemFormulaRepriceError) says the same, without "Correct the formula".
  *   • Every new message exists in all six locales with its placeholders (non-English copy awaits native review).
- *   • payrollLeavingDate mirrors payrollEmploymentEnd's least() over the three columns, NULLs ignored.
+ *   • payrollLeavingDate mirrors payrollEmploymentEnd: the earlier of termination and resignation date, NULLs
+ *     ignored; the last working date only when both are empty (7da649d3, owner decision 2026-11-25).
  * Pure: recorded outcome shapes are decoded and rendered; nothing is recalculated. Fictional data.
  */
 import fs from 'node:fs';
@@ -114,11 +115,16 @@ describe('ad6ed930 · messages and the whole-run processing text', () => {
     }
   });
 
-  it('payrollLeavingDate is the earliest of the three dates, NULLs ignored', () => {
+  it('payrollLeavingDate is the employment end date; the last working date only when it is the only one recorded', () => {
     expect(payrollLeavingDate({ terminatedOn: null, resignationDate: null, lastWorkingDate: null })).toBeNull();
-    expect(payrollLeavingDate({ terminatedOn: '2026-10-31', resignationDate: null, lastWorkingDate: '2026-10-29' })).toBe('2026-10-29');
+    // 7da649d3 — annual leave cleared after the last physical day: pay runs to the termination date, not 29 Oct.
+    expect(payrollLeavingDate({ terminatedOn: '2026-10-31', resignationDate: null, lastWorkingDate: '2026-10-29' })).toBe('2026-10-31');
+    expect(payrollLeavingDate({ terminatedOn: null, resignationDate: '2026-11-20', lastWorkingDate: '2026-11-10' })).toBe('2026-11-20');
     expect(payrollLeavingDate({ terminatedOn: '2026-10-29', resignationDate: '2026-11-15', lastWorkingDate: null })).toBe('2026-10-29');
+    expect(payrollLeavingDate({ terminatedOn: '2026-11-20', resignationDate: '2026-11-20', lastWorkingDate: '2026-11-10' })).toBe('2026-11-20');
     expect(payrollLeavingDate({ resignationDate: '2026-12-01' })).toBe('2026-12-01');
+    // Legacy records with only a last working date keep it.
+    expect(payrollLeavingDate({ terminatedOn: null, resignationDate: null, lastWorkingDate: '2026-10-29' })).toBe('2026-10-29');
   });
   it('exposes only known structured refusals and supplies localized copy in every language', () => {
     const error=new PayItemFormulaRepriceError(emp,componentId,'ONOR','NORMAL OT',['2026-10-31'],'after_leaving_date',

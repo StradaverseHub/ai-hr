@@ -108,7 +108,7 @@ export async function correctHireEmploymentInformationTx(tx:Tx,ctx:SessionContex
   if(field.endsWith('Value')&&(!/^\d+$/.test(next)||!Number.isSafeInteger(Number(next))))throw new Error('Employment periods must be whole numbers greater than or equal to zero.');
   if(field.endsWith('Unit')&&!['day','week','month'].includes(next))throw new Error('Period unit must be Month, Week or Day.');
  }
- assertEmploymentInformationDateOrder({hire:after.hiredOn,join:after.joinDate,confirmation:after.confirmationDate,extendedConfirmation:after.extendedConfirmationDate,tender:after.tenderResignationDate,resignation:after.resignationDate,lastWorking:after.lastWorkingDate});
+ assertEmploymentInformationDateOrder({hire:after.hiredOn,join:after.joinDate,confirmation:after.confirmationDate,extendedConfirmation:after.extendedConfirmationDate,tender:after.tenderResignationDate,resignation:after.resignationDate,lastWorking:after.lastWorkingDate,exitOrder:fields.includes('resignationDate')||fields.includes('lastWorkingDate')});
  await assertEmploymentInformationLabelsTx(tx,Object.fromEntries(fields.filter(field=>HIRE_SCALAR_INFORMATION_FIELDS.includes(field as typeof HIRE_SCALAR_INFORMATION_FIELDS[number])).map(field=>[field,after[field]])),before,after.companyId);
  const scopes=[...new Set([master.companyId,first.companyId,after.companyId,...plan.chain.slice(0,affectedLength).map(version=>version.companyId)])];
  const companies=await tx.select({id:company.id,country:company.country,archivedAt:company.archivedAt,allowed:sql<boolean>`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.maintain')`}).from(company).where(and(eq(company.tenantId,ctx.tenantId),inArray(company.id,scopes)));

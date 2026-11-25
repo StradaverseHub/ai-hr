@@ -34,7 +34,7 @@ function wageProjection(row:HistoryRevisionRow):ImportedWageProjection|null{
 }
 function ImportedWageBasis({row}:{row:HistoryRevisionRow}){
  const t=useTranslations('payrollTaxBasis'),basis=wageProjection(row);if(!basis)return null;
- const nc=basis.basis?.pcbNonCash,noncash=nc&&typeof nc==='object'&&(nc as {version?:unknown}).version===1?nc as PcbNonCashSnapshot:null;
+ const nc=basis.basis?.pcbNonCash,noncash=nc&&typeof nc==='object'&&[1,2].includes((nc as {version?:unknown}).version as number)?nc as PcbNonCashSnapshot:null;
  const money=(amount:unknown)=>(typeof amount==='number'&&Number.isFinite(amount)||typeof amount==='string'&&/^-?\d+(\.\d+)?$/.test(amount))?formatMoney(amount as number|string,row.currency):t('unavailable');
  return <details className="min-w-0 rounded-lg border border-border p-4"><summary className="cursor-pointer space-y-1 font-medium text-primary"><span className="block">{t('importWageBasis')}</span><span className="block break-words text-sm font-normal text-muted-foreground">{row.employeeNo}{row.employeeName?' · '+row.employeeName:''} · {row.companyName} · {row.period} · {row.cycleName}</span></summary><section className="mt-3 space-y-3 rounded-lg border border-border p-3" aria-label={t('importWageBasis')}>
   <p className="font-medium">{t(basis.state==='ready'?'importBasisReady':'importBasisHeld')}</p><p className="text-xs text-muted-foreground">{t('importBasisHelp')}</p><p className="text-xs text-muted-foreground">{t('pcbComparisonUnavailable')}</p>

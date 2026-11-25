@@ -26,6 +26,7 @@ export type RunGroupReasonCode =
   | 'NON_CASH_CLASSIFICATION_CONFLICT'
   | 'NON_CASH_UNSUPPORTED_KIND'
   | 'NON_CASH_EPF_BONUS_NOT_ALLOWED'
+  | 'NON_CASH_REMUNERATION_TYPE_NOT_SUPPORTED'
   // Retained after 8edeef41 split the EPF Bonus refusal out: older ?r= payloads and stored job reasons decode.
   | 'NON_CASH_NORMAL_REMUNERATION_REQUIRED'
   | 'NON_CASH_MONTH_BASELINE_UNAVAILABLE'
@@ -144,7 +145,7 @@ export function reasonForPayrollError(error: unknown): RunGroupReasonCode {
     return 'SYSTEM_VALIDATION_ERROR';
   }
   if (error instanceof NonCashBenefitConfigurationError) {
-    const codes = {classification_conflict:'NON_CASH_CLASSIFICATION_CONFLICT',unsupported_kind:'NON_CASH_UNSUPPORTED_KIND',epf_bonus_not_allowed:'NON_CASH_EPF_BONUS_NOT_ALLOWED',normal_remuneration_required:'NON_CASH_NORMAL_REMUNERATION_REQUIRED',month_baseline_unavailable:'NON_CASH_MONTH_BASELINE_UNAVAILABLE'} as const;
+    const codes = {classification_conflict:'NON_CASH_CLASSIFICATION_CONFLICT',unsupported_kind:'NON_CASH_UNSUPPORTED_KIND',epf_bonus_not_allowed:'NON_CASH_EPF_BONUS_NOT_ALLOWED',remuneration_type_not_supported:'NON_CASH_REMUNERATION_TYPE_NOT_SUPPORTED',normal_remuneration_required:'NON_CASH_NORMAL_REMUNERATION_REQUIRED',month_baseline_unavailable:'NON_CASH_MONTH_BASELINE_UNAVAILABLE'} as const;
     return Object.hasOwn(codes, error.reason) ? codes[error.reason] : 'NON_CASH_CONFIGURATION_INVALID';
   }
   return reasonForError(error instanceof Error ? error.message : typeof error === 'string' ? error : '');

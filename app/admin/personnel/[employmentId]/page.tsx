@@ -4087,15 +4087,21 @@ export default async function EmployeePage({
     .filter((m) => m.status === 'pending')
     .sort((a, b) => (a.effectiveDate < b.effectiveDate ? -1 : a.effectiveDate > b.effectiveDate ? 1 : 0));
   // 7da649d3 — a scheduled exit (any type with Termination or Resignation behaviour) has already written its
-  // dates, so it gets its own notice: last working day, placement kept until then, payroll to that day.
+  // dates, so it gets its own notice: Resignation Date and last working day, placement kept until then, and payroll
+  // to the Resignation Date (owner decision 2026-11-25). A Termination's Resignation Date is its effective date.
   const pendingExitBehaviour = (m: MovementHistoryRow): PendingExit['behaviour'] | null => {
     const behaviour = movementTypeByCode.get(m.correctionKind ?? m.kind)?.behaviourKind ?? m.correctionKind ?? m.kind;
     return behaviour === 'termination' || behaviour === 'resignation' ? behaviour : null;
   };
+  const scheduledResignationDate = (movementId: string): string | null => {
+    const recorded = resignationInfo?.resignationDate;
+    return recorded && recorded.source.kind === 'scheduled' && recorded.source.movementId === movementId ? recorded.value : null;
+  };
   const pendingExits: PendingExit[] = pendingMovements.flatMap((m) => {
     const behaviour = pendingExitBehaviour(m);
     return behaviour
-      ? [{ id: m.id, label: movementRecordLabel(m.kind, m.superiorChange), behaviour, effectiveDate: m.effectiveDate, lastWorkingDate: m.endDate }]
+      ? [{ id: m.id, label: movementRecordLabel(m.kind, m.superiorChange), behaviour, effectiveDate: m.effectiveDate, lastWorkingDate: m.endDate,
+          resignationDate: scheduledResignationDate(m.id) ?? (behaviour === 'termination' ? m.effectiveDate : null) }]
       : [];
   });
   const pendingOtherMovements = pendingMovements.filter((m) => !pendingExitBehaviour(m));

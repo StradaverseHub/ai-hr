@@ -45,9 +45,9 @@ describe('multi-company payroll — pure helpers', () => {
   it('typed wizard failures retain safe reasons through result transport and every locale', () => {
     const errors = [
       ...(['confirmation_required','invalid_scheme','citizenship_unknown','not_resident'] as const).map(code=>new TaxSelectionError(code)),
-      ...(['classification_conflict','unsupported_kind','epf_bonus_not_allowed','normal_remuneration_required','month_baseline_unavailable'] as const).map(reason=>new NonCashBenefitConfigurationError('PRIVATE_COMPONENT',reason)),
+      ...(['classification_conflict','unsupported_kind','epf_bonus_not_allowed','remuneration_type_not_supported','normal_remuneration_required','month_baseline_unavailable'] as const).map(reason=>new NonCashBenefitConfigurationError('PRIVATE_COMPONENT',reason)),
     ];
-    const expected = ['TAX_SELECTION_CONFIRMATION_REQUIRED','TAX_SELECTION_INVALID_SCHEME','TAX_SELECTION_CITIZENSHIP_UNKNOWN','TAX_SELECTION_NOT_RESIDENT','NON_CASH_CLASSIFICATION_CONFLICT','NON_CASH_UNSUPPORTED_KIND','NON_CASH_EPF_BONUS_NOT_ALLOWED','NON_CASH_NORMAL_REMUNERATION_REQUIRED','NON_CASH_MONTH_BASELINE_UNAVAILABLE'];
+    const expected = ['TAX_SELECTION_CONFIRMATION_REQUIRED','TAX_SELECTION_INVALID_SCHEME','TAX_SELECTION_CITIZENSHIP_UNKNOWN','TAX_SELECTION_NOT_RESIDENT','NON_CASH_CLASSIFICATION_CONFLICT','NON_CASH_UNSUPPORTED_KIND','NON_CASH_EPF_BONUS_NOT_ALLOWED','NON_CASH_REMUNERATION_TYPE_NOT_SUPPORTED','NON_CASH_NORMAL_REMUNERATION_REQUIRED','NON_CASH_MONTH_BASELINE_UNAVAILABLE'];
     expect(expected).toHaveLength(errors.length);
     errors.forEach((error,i)=>{
       const reason=reasonForPayrollError(error);expect(reason).toBe(expected[i]);

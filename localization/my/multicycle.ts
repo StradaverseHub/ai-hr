@@ -60,6 +60,8 @@ export type MonthRunInput = {
   runType: RunType; payment: number; overtime?: number;
   /** Saved run-owned taxable normal benefits; never a cash wage or a catalogue revaluation. */
   pcbNonCashNormal?: NonCashAmounts;
+  /** Board 8edeef41 — saved run-owned taxable benefits on the ADDITIONAL stream (Yt, Kt = 0). Absent ⇒ unchanged. */
+  pcbNonCashAdditional?: NonCashAmounts;
 };
 
 export type MonthRunResult = {
@@ -141,6 +143,9 @@ export function computeMonthlyRuns(p: {
   const out: MonthRunResult[] = [];
   const cumulativeBenefits = {...(p.opts?.pcbNonCashNormal ?? {bik:0,vola:0})};
   const hasBenefitInputs = p.runs.some(run => run.pcbNonCashNormal !== undefined);
+  // 8edeef41 — additional-stream benefits accumulate on their own and are passed only when a run carries them.
+  const cumulativeAdditionalBenefits = {...(p.opts?.pcbNonCashAdditional ?? {bik:0,vola:0})};
+  const hasAdditionalBenefitInputs = p.runs.some(run => run.pcbNonCashAdditional !== undefined);
 
 
   for (const run of p.runs) {
@@ -152,6 +157,10 @@ export function computeMonthlyRuns(p: {
       if (!Number.isFinite(owned) || owned < 0) throw new RangeError('Invalid saved non-cash contribution');
       cumulativeBenefits[kind] = round2(cumulativeBenefits[kind] + owned);
       if (!Number.isFinite(cumulativeBenefits[kind])) throw new RangeError('Invalid saved non-cash contribution');
+      const ownedAdditional = run.pcbNonCashAdditional?.[kind] ?? 0;
+      if (!Number.isFinite(ownedAdditional) || ownedAdditional < 0) throw new RangeError('Invalid saved non-cash contribution');
+      cumulativeAdditionalBenefits[kind] = round2(cumulativeAdditionalBenefits[kind] + ownedAdditional);
+      if (!Number.isFinite(cumulativeAdditionalBenefits[kind])) throw new RangeError('Invalid saved non-cash contribution');
     }
 
     // Re-compute the whole month with cumulative bases; the run's figure is the increment.
@@ -161,7 +170,9 @@ export function computeMonthlyRuns(p: {
       cumAdditional,
       cumOt,
       { month: p.month, acc: p.priorAcc, lpCurrent: p.lpCurrent, zakatCurrent: p.zakatCurrent },
-      hasBenefitInputs ? {...p.opts, pcbNonCashNormal: {...cumulativeBenefits}} : p.opts,
+      hasBenefitInputs || hasAdditionalBenefitInputs ? {...p.opts,
+        ...(hasBenefitInputs ? {pcbNonCashNormal: {...cumulativeBenefits}} : {}),
+        ...(hasAdditionalBenefitInputs ? {pcbNonCashAdditional: {...cumulativeAdditionalBenefits}} : {})} : p.opts,
       rules,
     );
     last = {

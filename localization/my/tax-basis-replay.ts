@@ -1,5 +1,5 @@
 /** Explicit historical tax-input replay. Never executes compensation rules or computes a PCB deduction. */
-import {classifyNonCashBenefit,createNonCashOwnershipReplay,readPcbNonCash,NonCashBenefitConfigurationError,type NonCashEntry,type NonCashEaEntry,type PcbNonCashSnapshot} from '../noncash-benefits';
+import {classifyNonCashBenefit,nonCashBenefitStream,createNonCashOwnershipReplay,readPcbNonCash,NonCashBenefitConfigurationError,type NonCashEntry,type NonCashEaEntry,type PcbNonCashSnapshot} from '../noncash-benefits';
 import type {TaxBasisItem,TaxBasisValue,TaxBasisLedgerEntry,TaxBasisBounds} from '../../lib/payroll-tax-basis';
 import type {StatutoryRuleset} from './statutory-tables';
 export class TaxBasisReplayError extends Error {constructor(message:string){super(message);this.name='TaxBasisReplayError';}}
@@ -60,9 +60,11 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
     const taxable=setting.includedInPcb?round(amount-itemExempt):0;
     if(!line.nonCashSource&&slip.sourceKind!=='import')fail(`${slip.period}: ${line.code} original noncash source identity is unavailable.`);
     const source=line.nonCashSource??{source:'one_off' as const,sourceId:`${slip.id}:row:${line.rowNum}`};
-    if(setting.includedInPcb)nonCashEntries.push({kind,code:setting.code,...source,entered:amount,exempt:itemExempt,taxable,...(setting.pcbExemptionCode?{exemptionCode:setting.pcbExemptionCode}:{})});
+    // 8edeef41 — the latest Pay Item classification decides the stream, as it does for cash items (ADR-0167).
+    const stream=nonCashBenefitStream(setting);
+    if(setting.includedInPcb)nonCashEntries.push({kind,code:setting.code,...source,entered:amount,exempt:itemExempt,taxable,...(setting.pcbExemptionCode?{exemptionCode:setting.pcbExemptionCode}:{}),stream});
     nonCashEaEntries.push({kind,code:setting.code,...source,entered:amount,reportableAmount:setting.includedInPcb?taxable:amount,exemptAmount:itemExempt,eaFormLine:setting.eaFormLine??null,subjectPCB:setting.includedInPcb,...(setting.pcbExemptionCode?{exemptionCode:setting.pcbExemptionCode}:{})});
-    exempt=round(exempt+itemExempt);items.push({code:setting.code,name:setting.name,amount,previousTreatment:line.previousTreatment??null,latestTreatment:`Non-cash ${kind.toUpperCase()} · ${setting.includedInPcb?'Taxable':'Non-Taxable'}`,taxable,exempt:itemExempt});continue;
+    exempt=round(exempt+itemExempt);items.push({code:setting.code,name:setting.name,amount,previousTreatment:line.previousTreatment??null,latestTreatment:`Non-cash ${kind.toUpperCase()} · ${setting.includedInPcb?'Taxable':'Non-Taxable'}${setting.includedInPcb&&stream==='additional'?' · additional':''}`,taxable,exempt:itemExempt});continue;
    }
    if(setting.isNonPayable)fail(`${slip.period}: ${line.code} cannot be treated as cash.`);
    if(line.direction!=='earning'&&line.direction!=='deduction')fail('Source Pay Item direction is unavailable.');

@@ -240,8 +240,8 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
 /**
  * ad6ed930 — `options.workDate` is a one-off transaction's own Effective Date, when the caller prices one.
  *
- * THE LAST DAY BOUNDS EVERY PRICE. The employee's last day is payrollEmploymentEnd (least of terminated_on,
- * resignation_date and last_working_date). A work date — or, without one, the evaluation date — after it is refused
+ * THE LAST DAY BOUNDS EVERY PRICE. The employee's last day is payrollEmploymentEnd (the earlier of terminated_on
+ * and resignation_date, else last_working_date — 7da649d3). A work date — or, without one, the evaluation date — after it is refused
  * with the named PayFormulaAfterLeavingDateError, never priced and never reported as a Pay Item set-up fault.
  *
  * A FORMER EMPLOYEE'S LATE CLAIM. When the employment ended before the selected payroll month starts and the work date

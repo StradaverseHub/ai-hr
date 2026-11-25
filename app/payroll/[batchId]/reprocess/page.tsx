@@ -6,7 +6,7 @@ import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchSummary, payrollEmployeeSelectionPage, payrollReprocessResultIdentities, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility, reprocessStaleSelection } from '@/core/payroll';
-import { payslipLessEligibleWithSkipPage, listRecomputeDisclosure, listTaxHeldEmployees } from '@/core/payroll-view';
+import { reprocessRequiredWithSkipPage, listRecomputeDisclosure, listTaxHeldEmployees } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { Card, EmployeeCode, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -19,7 +19,7 @@ import { formatMoney } from '@/lib/money';
 // months, company, cycle and status selection was thrown away. Whitelisted by shape, never echoed raw.
 import {parsePageQuery} from '@/lib/pagination';
 import { payrollListReturnTo } from '@/lib/return-to';
-import { ReprocessForm, type ReprocessAddCandidate, type ReprocessCandidate } from './reprocess-form';
+import { ReprocessForm, type ReprocessCandidate, type ReprocessRequiredRow } from './reprocess-form';
 // b372e923 — one Payroll Result href per result row, joined to this run's payslips by employment. The
 // join lives in its own module so the "opens somebody else's result" failure can be checked row by row
 // against a real reprocessed run; see the module header for why that is not a four-line inline map.
@@ -91,7 +91,7 @@ export default async function ReprocessPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; job?: string; from?: string;page?:string;size?:string;newPage?:string;newSize?:string;q?:string;tab?:string;held?:string }>;
+  searchParams: Promise<{ error?: string; job?: string; from?: string;page?:string;size?:string;q?:string;tab?:string;held?:string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
@@ -202,12 +202,17 @@ export default async function ReprocessPage({
   // the screen's total reconciles with that count.
   const stale = await reprocessStaleSelection(s, batchId);
 
-  // 6aee208b — two tabs over the run's payslips: Reprocess Required (the stale ones) and Processed / No
-  // Change (everyone else). A URL parameter on this same page, so changing tab is a router replace that keeps
-  // the form (and its selection) mounted. No `tab` ⇒ the reader opens Reprocess Required when it has anyone.
+  // a1a80747 — two tabs. Reprocess Required is ONE list (`reprocessRequiredWithSkipPage`): the payslips the run marked
+  // out of date ("Changed") and everyone eligible for the month with no payslip on it yet ("New"), each employee once,
+  // searched, counted and paged in SQL; the New rows carry their readiness and the run's nothing-payable decision (those
+  // go to their own Nothing payable group on the form). Processed / No Change is every other payslip, with its money
+  // (`payrollEmployeeSelectionPage`'s unchanged tab). A URL parameter on this same page, so changing tab is a router
+  // replace that keeps the form (and its selection) mounted. No `tab` ⇒ Reprocess Required when it has anyone.
   const tab = sp.tab === 'required' || sp.tab === 'unchanged' ? sp.tab : 'default';
-  const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'reprocess',page:parsePageQuery(sp),search:sp.q,tab});
-  const candidates: ReprocessCandidate[] = selection.rows.map((sl) => ({
+  const required=await reprocessRequiredWithSkipPage(s,{batchId,page:parsePageQuery(sp),search:sp.q});
+  const current: 'required' | 'unchanged' = tab === 'default' ? (required.runTotal > 0 ? 'required' : 'unchanged') : tab;
+  const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'reprocess',page:parsePageQuery(sp),search:sp.q,tab:'unchanged'});
+  const candidates: ReprocessCandidate[] = current === 'required' ? [] : selection.rows.map((sl) => ({
     employmentId: sl.employmentId,
     employeeCode: sl.employeeCode,
     name: sl.name,
@@ -218,6 +223,12 @@ export default async function ReprocessPage({
     reprocessedTimes: Math.max(0, (sl.version ?? 1) - 1),
     stale: sl.stale,
   }));
+  // fbcf706d — a New row is somebody eligible for this month with NO payslip on this run; pressing the button pays
+  // them (the same period window and readiness checks the engine applies). Plain serialisable data.
+  const requiredRows: ReprocessRequiredRow[] = current === 'required' ? required.rows.map((r): ReprocessRequiredRow => r.kind === 'added'
+    ? { kind: 'added', employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name, hiredOn: r.hiredOn,
+        outsideScope: r.outsideScope, blockers: r.blockers, warnings: r.warnings, skip: r.skip }
+    : { kind: 'recalculated', employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name }) : [];
   /** The same screen on the other tab: page back to 1, every other parameter (search, sizes, from) kept. */
   const tabHref = (to: 'required' | 'unchanged') => {
     const next = new URLSearchParams();
@@ -225,26 +236,6 @@ export default async function ReprocessPage({
     next.set('tab', to);
     return `/payroll/${batchId}/reprocess?${next.toString()}`;
   };
-
-  // fbcf706d — everyone eligible for this month with NO payslip on this run. Until now nothing on any
-  // screen said these people existed, and the only way to pay them was Reset, which throws away the
-  // month's processing and its record and re-runs the whole company. The read resolves the SAME period
-  // window the engine computes and calls the same readiness checks, so what is listed here is what
-  // pressing the button will actually do. Plain serialisable data — no closures cross to the client.
-  // c3258a72 — `skip` is the run's own decision that there is nothing to pay them (no monthly basic and no
-  // positive money on any door), narrowed exactly as the run page narrows its notice; the form puts those
-  // rows in their own Skipped group instead of New / Pending.
-  const additions=await payslipLessEligibleWithSkipPage(s,{batchId,page:parsePageQuery({page:sp.newPage,size:sp.newSize}),search:sp.q});
-  const newCandidates: ReprocessAddCandidate[] = additions.rows.map((r) => ({
-    employmentId: r.employmentId,
-    employeeCode: r.employeeCode,
-    name: r.name,
-    hiredOn: r.hiredOn,
-    outsideScope: r.outsideScope,
-    blockers: r.blockers,
-    warnings: r.warnings,
-    skip: r.skip,
-  }));
 
   // 97a9b0ab — every recomputation this run has had, each diffed against the calculation it replaced
   // with the cause named. It reads `payroll_employee_result_history`, NOT domain events, so the Audit
@@ -269,12 +260,6 @@ export default async function ReprocessPage({
   // Exact references in the recorded job result are the only job/history join. Earlier jobs
   // did not record them: keep their history available without guessing from timestamps.
   const outcomes = thisJob ? decodeReprocessEmployeeOutcomes(thisJob.result, thisJob.employmentIds) : null;
-  const held = (thisJob?.result as {heldEmploymentIds?:unknown}|null)?.heldEmploymentIds;
-  const finished = new Set(outcomes?.map(row=>row.employmentId));
-  const pendingIds = [...new Set([
-    ...(thisJob?.status==='failed' && outcomes !== null ? thisJob.employmentIds.filter(id=>!finished.has(id)) : []),
-    ...(Array.isArray(held) ? held.filter((id):id is string=>typeof id==='string' && UUID_RE.test(id)) : []),
-  ])];
   const jobRowIds = new Set(outcomes?.flatMap(outcome => outcome.historyId ? [outcome.historyId] : []) ?? []);
   const earlier = disclosure.filter(row => !jobRowIds.has(row.id));
 
@@ -317,7 +302,8 @@ export default async function ReprocessPage({
         <ReprocessOutcomePanel outcomes={outcomes} history={disclosure} slips={slips} run={batch}
           currency={currency} batchId={batchId} from={listFrom} jobId={thisJob.id}
           stoppedEmployee={readStoppedEmployee(thisJob.result,thisJob.employmentIds)}
-          selected={thisJob.employmentIds.length} stopped={thisJob.status === 'failed'} stoppedCode={thisJob.stopCode} />
+          selected={thisJob.employmentIds.length} stopped={thisJob.status === 'failed'} stoppedCode={thisJob.stopCode}
+          taxReviewHref={eligibility.taxReviewHref} />
       )}
       {thisJob?.status === 'completed' && outcomes === null && (
         <Card className="px-4 py-3 text-sm">
@@ -340,7 +326,7 @@ export default async function ReprocessPage({
                 ADDITION, whose first payslip collects the one-offs already waiting for that person
                 exactly as the original processing would have. Saying only the first half would now be
                 a false reassurance, so the second half is stated whenever the group is on screen. */}
-            {additions.runTotal > 0 && ` ${t('reprocessNewCollects')}`}
+            {required.addedRunTotal > 0 && ` ${t('reprocessNewCollects')}`}
           </p>
           {/* b372e923 — `from` rides the SUBMIT, not just the address bar. The action redirects, and a
               redirect builds a brand-new URL: without this the reprocess result lands on a URL carrying
@@ -350,16 +336,15 @@ export default async function ReprocessPage({
             key={thisJob?.id ?? 'selection'}
             batchId={batchId}
             employees={candidates}
-            newCandidates={newCandidates}
+            required={requiredRows}
             focusIds={focusIds}
             stale={stale}
-            pendingIds={pendingIds}
-            previousJobId={thisJob?.id}
             jobRunning={thisJob?.status==='queued' || thisJob?.status==='running'}
             currency={currency}
             from={listFrom ?? null}
-            paging={{existing:selection.state,additions:additions.state,runTotal:selection.runTotal+additions.runTotal,existingTotal:selection.runTotal,search:sp.q??'',
-              tabs:selection.tab==='all'?undefined:{current:selection.tab,counts:selection.tabCounts,
+            paging={{existing:current==='required'?required.state:selection.state,runTotal:selection.runTotal+required.addedRunTotal,
+              existingTotal:selection.runTotal,search:sp.q??'',
+              tabs:{current,counts:{required:required.state.total,unchanged:selection.tabCounts.unchanged},
                 hrefs:{required:tabHref('required'),unchanged:tabHref('unchanged')}}}}
           />
         </div>

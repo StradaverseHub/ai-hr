@@ -2678,7 +2678,9 @@ export type TaxableComponentClassification = {
   epfBonus2012?: boolean; includedInEpf: boolean; includedInSocsoEis: boolean;
   includedInPcb: boolean; isNonPayable: boolean; pcbRemunerationType?: string | null;
 };
-export type UnsupportedTaxableReason = 'classification_conflict' | 'unsupported_kind' | 'epf_bonus_not_allowed' | 'normal_remuneration_required' | 'unrecognised_taxable_item';
+/** `normal_remuneration_required` is retired (8edeef41, 2026-11-25): a taxable BIK/VOLA may be Normal or Additional, and
+ *  only another type is refused, as `remuneration_type_not_supported`. The old value stays in the union for stored rows. */
+export type UnsupportedTaxableReason = 'classification_conflict' | 'unsupported_kind' | 'epf_bonus_not_allowed' | 'remuneration_type_not_supported' | 'normal_remuneration_required' | 'unrecognised_taxable_item';
 
 /** The classifier remains the benefit owner; callers retain the reason rather than inventing one. */
 export function unsupportedTaxableReason(c: TaxableComponentClassification): UnsupportedTaxableReason | null {

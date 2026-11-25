@@ -129,8 +129,8 @@ export class InvalidTxnDateError extends Error {
 }
 
 /**
- * ad6ed930 — the Effective Date is after the employee's last day (payrollEmploymentEnd: the earliest of termination,
- * resignation and last working date). The Individual Transaction window caps its date picker there for convenience;
+ * ad6ed930 — the Effective Date is after the employee's last day (payrollEmploymentEnd: the earlier of termination
+ * and resignation date, else the last working date — 7da649d3). The Individual Transaction window caps its date picker there for convenience;
  * this is the server's refusal, with the date, so the window can say "This employee left on …". `leftOn` is ISO.
  */
 export class TxnAfterLeavingDateError extends Error {

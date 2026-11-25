@@ -17,6 +17,48 @@ Adds nullable `custom_pcb_amount numeric(12,2)` and `custom_pcb_rate numeric(5,2
 adds `employment_tax_selection_my_custom_pcb_check` (a custom scheme has exactly its own number; other schemes none)
 and grants `ai_hr_app` UPDATE on the two columns. The checks scan the table once under the migration's lock; no
 policy, function or other object changes.
+# Audit Trail company scope (ADR 0182 Phase 1), 25 November 2026
+
+Reserve `7360_audit_trail_company_scope`, journal index `10760`, timestamp `1795495007360`,
+SQL SHA-256 `9208657d57e69b13a9a4bea1058dc4f66798b943ee21875eeadb74669c88b02b`. Rebased onto the release 9 staging head
+`60189ca03` (1,156 entries through `7340_queue_read_contract_navigation`, `1795495007340`), so the ledger becomes 1,157
+entries ending `7360`. The original reservation scan covered the 500 most recently committed branch heads and every
+registered worktree journal; a fresh scan of 700 heads on 25 November found only `7370_custom_pcb_selection` above it.
+The owner decided on 25 November 2026 that this releases before `7370` (board d8dc0a8c), so `7370` installs after
+`7360` and keeps its higher timestamp; `7350` stays unused. A short-lived renumbering to `7380` (commit `032c75a47`)
+was withdrawn before merge and never applied. Recheck both installation watermarks before admission.
+
+Adds `app.admin_company_ids()` and `app.audit_admin_aggregates()` (SECURITY DEFINER, STABLE, search_path pinned,
+EXECUTE to `ai_hr_app` only), read once per statement by the Audit Trail company scope in core/read.ts. No table,
+row, policy, grant on a table or existing function changes.
+
+# ADR 0181 live work queues, Q1: Contract navigation access, 25 November 2026
+
+Reserve `7340_queue_read_contract_navigation`, journal index `10740`, timestamp `1795495007340`, SQL SHA-256
+`675007a187d548b3a387483502f6cece7241f293cad6eeecc38d4b739727c56b`. Taken from `node .github/ci/check-migration-collisions.mjs --local --next` on 25 November
+2026 (main and 399 recent branch journals; next free slot after `7330_queue_read_offboarding_access`, which it must follow:
+it adds a `queue_read_control` row). Recheck the installed ledgers and watermarks at admission.
+
+It renames the 6432 function to `contract_shared_navigation_access_legacy` (guarded by its exact body and 6435's
+`automation_can_configure` body), adds `contract_staff_automation_v2` and `contract_shared_navigation_access_v2` (the 6432
+statement word for word with only its automation arm restated once per statement), and a PL/pgSQL dispatcher at the
+original name and grant. Inert on install (`legacy`). No policy, trigger, column or business row changes. Design:
+`docs/adr/0181-addendum-live-work-queues-and-approvals.md` (PR 319). This entry carries no deployment authority.
+
+# ADR 0181 live work queues, Q1: offboarding posting queue access, 25 November 2026
+
+Reserve `7330_queue_read_offboarding_access`, journal index `10730`, timestamp `1795495007330`, SQL SHA-256
+`6313303feb1ff5a25f959ae2b99987a5aba2ab2b44ec4bfe29f8fe5cb39044a3`. Taken from `node .github/ci/check-migration-collisions.mjs --local --next` (PR 307's
+script, run from its branch) on 25 November 2026, which checked main and 398 recent branch journals and reported the
+next free slot after `7320_employment_search_trigram`. Its timestamp is above every reservation it saw. Staging's ledger
+reached 7250 at the time; production is below it. Recheck the installed ledgers and watermarks at admission.
+
+It installs the per-reader switch `queue_read_control` (owner only, every mode `legacy`), renames the 6302 function to
+`offboarding_posting_queue_access_legacy` (guarded by its exact body), adds the once-per-statement
+`offboarding_posting_queue_access_v2`, a PL/pgSQL dispatcher at the original name and grant, and two operator-only
+functions (mode setter, every-user comparison of any registered reader). Inert on install. No policy, trigger, column or row of business data
+changes. Design: `docs/adr/0181-addendum-live-work-queues-and-approvals.md` (PR 319). This entry carries no deployment
+authority.
 
 # Employee search trigram indexes and candidates (ADR 0181 Phase 4), 25 November 2026
 

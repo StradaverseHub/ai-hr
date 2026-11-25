@@ -14,18 +14,18 @@
  * ONLY the pure statutory-tables vocabulary (db-free) to keep the RSC boundary clean. Each statutory field
  * carries an ⓘ tooltip referencing the LHDN PCB 2026 specification.
  *
- * Board 8edeef41 — a non-cash BIK / living accommodation item subject to PCB is taxed as NORMAL remuneration
- * (ADR-0090; computeMonth has no additional-remuneration route for it). When the enclosing form's Category,
- * Payroll Category and EA line identify such a benefit (the same classifyNonCashBenefit owner the server
- * uses) and PCB is ticked, Remuneration Type shows Normal, is locked, and says why — before Save rather than
- * as an error afterwards. A disabled select posts nothing, so a hidden field carries `normal`. An item saved
- * earlier with another type opens locked to Normal, i.e. it is edited back to the valid value. An untouched
- * legacy blank pair keeps its preservation (the server's isUnchangedLegacyPcbClassification). The server
- * check stays the authority.
+ * Board 8edeef41 (owner decision 2026-11-25, amending ADR-0090) — a non-cash BIK / living accommodation item
+ * subject to PCB is Normal or Additional remuneration, chosen per item. When the enclosing form's Category,
+ * Payroll Category and EA line identify such a benefit (the same classifyNonCashBenefit owner the server uses)
+ * and PCB is ticked, Remuneration Type offers exactly those two choices, defaults to Normal, keeps the saved
+ * choice when the item is reopened, and says what the chosen route means. Optional Deduction is not offered for a
+ * benefit; an item saved earlier with it opens on Normal. Changing Payroll Category never changes the choice. EPF
+ * Bonus 2012 ticked on such a benefit is explained here before Save. An untouched legacy blank pair keeps its
+ * preservation (the server's isUnchangedLegacyPcbClassification). The server check stays the authority.
  */
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Info, Lock } from 'lucide-react';
+import { Info } from 'lucide-react';
 import { inputCls } from '@/components/ui';
 import { classifyNonCashBenefit } from '@/localization/noncash-benefits';
 import {
@@ -44,14 +44,14 @@ type Props = {
   pcbRemunerationType: PcbRemunerationType | null;
   pcbExemptionCode: string | null;
   /** The item's identity as rendered by the enclosing form (Category, Payroll Category, EA line). The island
-   *  follows later edits of those fields through the form's change events. Omitted ⇒ no benefit lock. */
+   *  follows later edits of those fields through the form's change events. Omitted ⇒ no benefit choice. */
   kind?: string;
   displayCategory?: string | null;
   eaFormLine?: string | null;
 };
 type Identity = { kind: string; displayCategory: string; eaFormLine: string };
 
-/** The benefit owner decides; a conflicting/unsupported identity is not locked here (the server names it). */
+/** The benefit owner decides; a conflicting/unsupported identity is not special-cased here (the server names it). */
 function isNonCashBenefit(identity: Identity): boolean {
   try {
     return classifyNonCashBenefit({ code: 'pay-item', kind: identity.kind, nonPayable: identity.kind === 'non_payable', pcb: false,
@@ -79,7 +79,7 @@ export function StatutoryConfig(p: Props) {
   const [exemptCode, setExemptCode] = useState(p.pcbExemptionCode ?? '');
   const [statutoryEdited, setStatutoryEdited] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const lockNoteId = useId();
+  const benefitNoteId = useId();
   const [initialIdentity] = useState<Identity>(() => ({ kind: p.kind ?? '', displayCategory: p.displayCategory ?? '', eaFormLine: p.eaFormLine ?? '' }));
   const [identity, setIdentity] = useState<Identity>(initialIdentity);
   // Follow Category / Payroll Category / EA line edits made elsewhere in the same form (server-rendered selects).
@@ -105,11 +105,15 @@ export function StatutoryConfig(p: Props) {
     && (identity.displayCategory !== initialIdentity.displayCategory || identity.eaFormLine !== initialIdentity.eaFormLine));
   // Only an unchanged existing pre-classification pair may remain blank. Create/copy is always strict.
   const preserveLegacy = p.editing && p.includedInPcb && p.pcbRemunerationType === null && p.pcbExemptionCode === null && !statutoryEdited && !identityEdited;
-  // 8edeef41 — BIK / living accommodation subject to PCB: Remuneration Type is Normal and cannot be changed.
-  const normalLocked = pcb && !preserveLegacy && isNonCashBenefit(identity);
-  const effectiveRemType: PcbRemunerationType | '' = normalLocked ? 'normal' : remType;
-  // An optional-deduction exemption saved on an older item is not valid for Normal; it must be chosen again.
-  const effectiveExemptCode = normalLocked && exemptCode && !(exemptCode in pcbExemptionCodesFor('normal')) ? '' : exemptCode;
+  // 8edeef41 — BIK / living accommodation subject to PCB: Remuneration Type is Normal (default) or Additional.
+  const identityIsBenefit = isNonCashBenefit(identity);
+  const benefitChoice = pcb && !preserveLegacy && identityIsBenefit;
+  const benefitRemType: 'normal' | 'additional' = remType === 'additional' ? 'additional' : 'normal';
+  const effectiveRemType: PcbRemunerationType | '' = benefitChoice ? benefitRemType : remType;
+  // An optional-deduction exemption saved on an older item is not valid for a benefit; it must be chosen again.
+  const effectiveExemptCode = benefitChoice && exemptCode && !(exemptCode in pcbExemptionCodesFor(benefitRemType)) ? '' : exemptCode;
+  // The server refuses EPF Bonus 2012 on a taxable benefit; say so beside the box, only while it is ticked.
+  const benefitEpfBonus = pcb && epfBonus && identityIsBenefit;
 
   // The exemption list valid for the selected remuneration type (built-in vocabulary; the annual caps are
   // shown beside each code exactly as the LHDN specification lists them).
@@ -156,6 +160,7 @@ export function StatutoryConfig(p: Props) {
             <InfoTip text={t('epfBonus2012Tip')} />
           </label>
         </div>
+        {benefitEpfBonus && <p role="note" className="text-xs leading-relaxed text-destructive">{t('benefitEpfBonusNote')}</p>}
       </div>
 
       {/* PCB Configuration */}
@@ -180,23 +185,46 @@ export function StatutoryConfig(p: Props) {
         {pcb && <p className="text-xs leading-relaxed text-muted-foreground">{t('pcbScopeHint')}</p>}
         {pcb && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {benefitChoice ? (
+              <fieldset className="flex min-w-0 flex-col gap-1.5" aria-describedby={benefitNoteId}>
+                <legend className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                  {t('remunerationTypeLabel')}
+                  <span className="text-destructive">*</span>
+                  <InfoTip text={t('remunerationTypeTip')} />
+                </legend>
+                {/* Exactly two choices for a benefit; the checked one is what Save posts. */}
+                <div role="radiogroup" aria-label={t('remunerationTypeLabel')} className="flex flex-wrap gap-2">
+                  {(['normal', 'additional'] as const).map((k) => (
+                    <label key={k} className="inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:font-medium has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring">
+                      <input
+                        type="radio"
+                        name="pcbRemunerationType"
+                        value={k}
+                        checked={benefitRemType === k}
+                        onChange={() => onRemTypeChange(k)}
+                        className="size-4"
+                      />
+                      {t(`remType_${k}`)}
+                    </label>
+                  ))}
+                </div>
+                <span id={benefitNoteId} className="text-xs leading-relaxed text-muted-foreground">
+                  {t(benefitRemType === 'additional' ? 'benefitAdditionalNote' : 'benefitNormalNote')}
+                </span>
+              </fieldset>
+            ) : (
             <label className="flex flex-col gap-1.5">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 {t('remunerationTypeLabel')}
                 {!preserveLegacy && <span className="text-destructive">*</span>}
                 <InfoTip text={t('remunerationTypeTip')} />
-                {normalLocked && <Lock className="size-3.5" aria-hidden="true" />}
               </span>
-              {/* A disabled select posts nothing: the hidden field carries the locked value. */}
-              {normalLocked && <input type="hidden" name="pcbRemunerationType" value="normal" />}
               <select
-                name={normalLocked ? undefined : 'pcbRemunerationType'}
-                required={!preserveLegacy && !normalLocked}
-                disabled={normalLocked}
-                aria-describedby={normalLocked ? lockNoteId : undefined}
+                name="pcbRemunerationType"
+                required={!preserveLegacy}
                 value={effectiveRemType}
                 onChange={(e) => onRemTypeChange(e.target.value as PcbRemunerationType | '')}
-                className={`${inputCls} ${normalLocked ? 'cursor-not-allowed bg-muted opacity-80' : ''}`}
+                className={inputCls}
               >
                 <option value="">{t('selectOption')}</option>
                 {PCB_REMUNERATION_TYPES.map((k) => (
@@ -205,8 +233,8 @@ export function StatutoryConfig(p: Props) {
                   </option>
                 ))}
               </select>
-              {normalLocked && <span id={lockNoteId} className="text-xs leading-relaxed text-muted-foreground">{t('benefitNormalLockedNote')}</span>}
             </label>
+            )}
             <label className="flex flex-col gap-1.5">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                 {t('exemptionTypeLabel')}
@@ -220,8 +248,9 @@ export function StatutoryConfig(p: Props) {
                 value={effectiveExemptCode}
                 onChange={(e) => {
                   setExemptCode(e.target.value);
-                  // Choosing an exemption under the lock commits Normal, so a later unlock cannot pair it with a stale type.
-                  if (normalLocked) setRemType('normal');
+                  // Choosing an exemption on a benefit commits its shown type, so a later identity change cannot pair it
+                  // with a stale Optional Deduction.
+                  if (benefitChoice) setRemType(benefitRemType);
                 }}
                 className={inputCls}
               >

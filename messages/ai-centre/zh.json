@@ -3163,7 +3163,7 @@
     "what": {
       "bank_change_before_pay_day": "银行账户于 {changed} 更改，即 {payDay} 发薪日前 {days} 天（现尾号 {last4}）。",
       "shared_bank_account": "尾号 {last4} 的同一账户被 {people} 人使用；其中 {paid} 人由本公司支付。",
-      "pay_after_last_day": "工资单的起始日期晚于最后工作日 {lastDay}，但仍有净薪。",
+      "pay_after_last_day": "工资单的起始日期晚于雇佣结束日 {lastDay}，但仍有净薪。",
       "pay_without_attendance": "期间内无出勤也无已批准假期，但有净薪。",
       "preparer_closed_run": "同一人处理并关闭了运行 {seq}。仅作标记：没有第二审批人。",
       "adjustment_without_reason": "录入了一项超过 {threshold} 的手动调整，但没有原因。",
