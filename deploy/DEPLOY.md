@@ -469,6 +469,7 @@ AIHR_ALERT_COMMAND=curl -sS -X POST -d @- https://your-webhook.example/aihr
 10 0 * * * cd /opt/ai-hr && deploy/cron-alert.sh access-effective-company /home/ubuntu/aihr-cron-logs/access-effective-company.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-effective-company-check.ts
 20 0 * * * cd /opt/ai-hr && deploy/cron-alert.sh access-visible-employment /home/ubuntu/aihr-cron-logs/access-visible-employment.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-visible-employment-check.ts
 */10 * * * * cd /opt/ai-hr && deploy/cron-alert.sh access-visible-employment-rebuild /home/ubuntu/aihr-cron-logs/access-visible-employment-rebuild.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-visible-employment-check.ts --rebuild-only
+5-55/10 * * * * cd /opt/ai-hr && AIHR_VISIBILITY_WALKTHROUGH=on flock -n /tmp/aihr-visibility-walkthrough.lock deploy/cron-alert.sh visibility-walkthrough /home/ubuntu/aihr-cron-logs/visibility-walkthrough.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/visibility-walkthrough.ts
 ```
 
 The `ai-alerts` line (WP12, review R20) is **documented here, not installed**; the release owner adds it. It is a
@@ -500,6 +501,41 @@ runs `select app.access_visible_employment_retrust('<tenant id>')` as the owner.
 `access_employment_precompute_control`), so their reads return to the stored answer soon. The mode is `legacy` until
 changed with `select app.access_visible_employment_set_mode('shadow' | 'precomputed' | 'legacy')`; the same staging and
 production rules as the company pilot apply.
+
+The `visibility-walkthrough` line is **staging only, documented here, not installed**, and never goes on a production
+or customer crontab. It supplies the employment visibility shadow period's manager and department-head reads
+(addendum section 10 decision 5: 20,000 `reason=compared` reader calls in seven days, at least 2,000 with
+`relationship=1`), which administrator traffic does not produce. Every ten minutes, offset five minutes from the rebuild
+pass, it reads as the demo seed tenant's fictional line managers and department heads (current employments with a
+login that manage at least one current administrative line), through the row policies their screens use: My Team,
+Personnel, assignments, leave, approvals, people and the organisation chart, as counts only. Its guards
+(`core/visibility-walkthrough.ts`):
+
+- it does nothing unless `AIHR_VISIBILITY_WALKTHROUGH=on`, which only this crontab line sets (keep it out of
+  `.env.production`);
+- the tenant is fixed in code to the demo seed's (`db/seed-guard.ts`); if that tenant is absent, or `DEV_TENANT_ID`
+  names another one, it exits `2` without reading;
+- it reads only while the 7240 mode is `shadow` (in `legacy` or `precomputed` it exits `0` at once), so it may be
+  installed before the switch and left in place after it;
+- every transaction is `BEGIN READ ONLY` and checked before its statement; it writes nothing, not even a `job_run`
+  row, and its log carries counts only;
+- 40 statements per run by default (`AIHR_VISIBILITY_WALKTHROUGH_STATEMENTS`, at most 120), at least 100 ms apart
+  (`AIHR_VISIBILITY_WALKTHROUGH_PAUSE_MS`, default 250), over up to 6 actors (`AIHR_VISIBILITY_WALKTHROUGH_ACTORS`,
+  at most 12), a 5 s statement timeout and a 240 s run budget; `flock -n` stops a second copy. It opens one owner
+  connection (preflight only) and one application connection.
+
+Exit `2` means it refused (not the demo installation, no actor) or a read failed. Remove the line when the shadow
+period is accepted. Count the period from the PostgreSQL log, per day, with counts only:
+
+```bash
+cd /opt/ai-hr && sudo cat /var/log/postgresql/postgresql-*-main.log | /opt/node20/bin/node --import tsx scripts/access-visible-employment-shadow-report.ts -
+cd /opt/ai-hr && /opt/node20/bin/node --import tsx scripts/access-visible-employment-shadow-report.ts --through=2026-12-02 /path/to/postgresql-*.log*
+```
+
+It prints compared lines per day by `relationship=0/1`, the summed `missing` and `extra`, the fallback reasons
+(`untrusted`, `stale`, `outside_window`, `clock`), and the seven-day window against the minimum. It exits `3` if any
+compared call had a difference (each needs an explanation before the period counts), `2` if a file could not be
+read, and `0` otherwise, whether or not the minimum is met yet.
 
 The last line is **readiness 2.1 (r296) and it is a DETECTOR, not a sweep** — it changes nothing, and
 every transaction it opens is `SET TRANSACTION READ ONLY`, so the server refuses a write from it. It is
