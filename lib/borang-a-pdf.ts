@@ -2,14 +2,31 @@
  * 9c8dad7a / cc9f9420 — draw a Borang A, A4 portrait, with pdf-lib (pure JS, no WASM/native, so no Next
  * bundler friction). Mirrors lib/ea-pdf.ts, which is the house pattern for a form we draw from scratch.
  *
- * ⚠️ THIS IS NOT KWSP ARTWORK, AND THE PAGE SAYS SO. The reporter's specimens are FILLED outputs from
- * other payroll vendors' engines (DevExpress v23.2.5 in August, another HRMS in October), not agency pages,
- * and we hold no KWSP blank to print onto — so there is nothing to overlay and every rule, box and heading
- * below is drawn. (r411: this used to add that KWSP publishes no blank Borang A. Nobody here checked that,
- * so it is no longer claimed — on the page, in the text twin or here.)
+ * ⚠️ DRAWN BY US TO KWSP'S LAYOUT, NOT PRINTED ONTO A KWSP BLANK. The reporter's specimens are FILLED
+ * outputs from other payroll vendors' engines (DevExpress v23.2.5 in August, another HRMS in October), not
+ * agency pages, and we hold no KWSP blank to print onto — so there is nothing to overlay and every rule, box
+ * and heading below is drawn. (r411: this used to add that KWSP publishes no blank Borang A. Nobody here
+ * checked that, so it is no longer claimed — on the page, in the text twin or here.)
  * The catalog entry stays `agency-layout` and may never become `official`: there is nothing official to
  * be faithful to, and claiming otherwise on a statutory document is the one thing this repo has refused
  * twice. test/statutory-forms-page.test.ts pins it.
+ *
+ * ── BOARD 66175cd2 (plan r1): THE REPORTER'S KWSP 6 REFERENCE, LOGO INCLUDED, NO FOOTNOTES OF OURS ──────
+ * This reverses r407/r411's "no logo, and the page says it is ours" at the reporter's explicit request
+ * (docs/adr/2026-11-25-kwsp-forms-official-logo-and-no-footer.md):
+ *   • THE KWSP LOGO, TOP LEFT, ON EVERY SHEET — drawn ONLY from the owner-supplied official file
+ *     (lib/kwsp-logo.ts reads `assets/kwsp/kwsp-logo.png`; the route hands its bytes in as `opts.logo`),
+ *     scaled to fit its box with its proportions kept, never stretched. Without that file the box is left
+ *     blank and the masthead is laid out exactly the same: nothing is traced, redrawn or borrowed from another
+ *     vendor's reproduction.
+ *   • A BOLD MASTHEAD and bold headings, and the right-hand block reading KWSP 6 / BORANG / A with the
+ *     sheet number (Mukasurat) under it, as on the reference.
+ *   • NO SMALL PRINT OF OURS AT THE FOOT: the three provenance lines and our English translation of
+ *     PERINGATAN are gone, because the reference has neither. PERINGATAN itself (the agency's Malay sentence)
+ *     stays. Provenance stays where it is not printed on the form: on the review screen beside the preview
+ *     and in this PDF's own metadata (Subject / Keywords), payroll month included.
+ * Borang 8A, 8B, SIP and CP39 are untouched and keep their own foot lines. A4 is kept (the references were
+ * printed on US Letter by another system; the arrangement follows them, the paper is the one used here).
  *
  * ── WHAT cc9f9420 ADDED, AND WHY THE PAGE GOT TIGHTER ─────────────────────────────────────────────
  * The reporter asked for the page FURNITURE a counter clerk recognises, none of which existed: the
@@ -34,8 +51,9 @@
  *     see the r411 block below);
  *   • the foot in the specimen's three columns: the representative's block with the place to sign beside
  *     "Tandatangan Wakil Majikan", the Cop Rasmi Majikan box, and CATATAN; PERINGATAN under all three.
- * The "Bulan Upah" line beside Tarikh DiCetak is GONE (the specimen has none); the payroll month stays in
- * the provenance line at the foot, so note 6's "+1" is still checkable on the page.
+ * The "Bulan Upah" line beside Tarikh DiCetak is GONE (the specimen has none). The payroll month used to be
+ * in the provenance line at the foot; since 66175cd2 it is in the PDF's metadata and on the review screen's
+ * tiles, so note 6's "+1" is still checkable.
  *
  * ── THE N K COLUMN IS PRINTED AND PERMANENTLY EMPTY ───────────────────────────────────────────────
  * Catatan 5 on the form: "Ruang ketiga (N K) hanya diisi oleh KWSP sahaja." It is drawn so the sheet has
@@ -61,14 +79,13 @@
  * and never payroll-derived; the specimen leaves every one of them blank too. Pre-filling a payment
  * method or stamping a signature box would be inventing a fact about a filing.
  */
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFImage } from 'pdf-lib';
 import {
   BORANG_A_CATATAN,
   BORANG_A_CITATION,
   BORANG_A_PAYMENT_INSTRUCTION,
   BORANG_A_PAYMENT_METHODS,
   BORANG_A_PAYMENT_REF_LABEL,
-  BORANG_A_PERINGATAN_EN,
   BORANG_A_PERINGATAN_MS,
   money,
   type BorangAForm,
@@ -91,17 +108,29 @@ const CW = RIGHT - M;
 const LX = M + 66;
 const RX = RIGHT - 90;
 const FRAME_TOP = H - M;
-const STRIP_TOP = FRAME_TOP - 38;
+/**
+ * 66175cd2 — the masthead band, taller than r407's 38pt: it holds the logo box at the top of the left margin
+ * column and the bold 15pt masthead, and on the right the KWSP 6 / BORANG / A block.
+ */
+const MAST_H = 70;
+const STRIP_TOP = FRAME_TOP - MAST_H;
 const CAP_H = 22;
 const VAL_H = 20;
 const PAY_TOP = STRIP_TOP - CAP_H - VAL_H;
 const PAY_H = 50;
 const EMP_TOP = PAY_TOP - PAY_H;
-const EMP_H = 56;
+/** 66175cd2 — 8pt more than r407, so a four-line address sits at reading size. */
+const EMP_H = 64;
 /** The frame's bottom edge — also where the employer band ends. */
 const FRAME_BOT = EMP_TOP - EMP_H;
 /** The four strip cells, as fractions of LX..RX — the specimen's 190 / 122 / 163 / 145 px. */
 const STRIP_FRACTIONS = [0.306, 0.197, 0.263, 0.234] as const;
+/**
+ * 66175cd2 — THE LOGO BOX: the top of the left margin column, above "Nama Majikan". The logo is scaled to FIT
+ * this box keeping its proportions (pdf-lib `scaleToFit`) and centred in it; without the official file the
+ * box is simply empty — nothing else moves.
+ */
+const LOGO_BOX = { x: M + 5, y: FRAME_TOP - 64, w: LX - M - 10, h: 58 } as const;
 
 /**
  * ── THE MEMBER TABLE, RULED ─────────────────────────────────────────────────────────────────────────
@@ -122,7 +151,7 @@ const COL = {
   employee: RIGHT - 55,
   end: RIGHT,
 };
-const TABLE_TOP = FRAME_BOT - 8;
+const TABLE_TOP = FRAME_BOT - 12;
 const HEAD_ROW = 14;
 /** Bottom of the two-level heading — the top edge of the brought-forward row. */
 const HEAD_BOT = TABLE_TOP - 2 * HEAD_ROW;
@@ -132,19 +161,23 @@ const base = (top: number) => top - 10;
 
 /**
  * ── THE FOOT, ANCHORED TO THE BOTTOM EDGE ─────────────────────────────────────────────────────────────
- * Provenance band, then PERINGATAN, then the three-column band (representative · Cop Rasmi Majikan ·
- * CATATAN). Measured upwards from the bottom margin because that is what they are anchored to.
+ * PERINGATAN, then the three-column band (representative · Cop Rasmi Majikan · CATATAN). Measured upwards
+ * from the bottom margin because that is what they are anchored to.
+ *
+ * 66175cd2 — the provenance band that sat under PERINGATAN is gone (the reference has no small print of
+ * ours), and so is our English line under PERINGATAN. The room it freed went to the masthead (logo), the
+ * employer band, the representative's rows and the signing box, so `borangASheetRowCapacity()` stays just
+ * above the 20 rows a sheet prints — the reporter's October sample breaks at row 20.
  */
-const PROV_TOP = M + 50;
-const WARN_TOP = PROV_TOP + 30;
+const WARN_TOP = M + 28;
 const FOOT_BOT = WARN_TOP + 12;
-const REP_ROW = 14;
+const REP_ROW = 15;
 /** Baseline of the LAST representative row (Tarikh); the five above it step up by REP_ROW. */
 const REP_LAST = FOOT_BOT + 4;
 const REP_ROWS = 6;
 /** The place to sign: beside the "Tandatangan Wakil Majikan" label, above the Nama row. */
 const SIGN_BOT = REP_LAST + (REP_ROWS - 1) * REP_ROW + 10;
-const SIGN_H = 28;
+const SIGN_H = 34;
 const FOOT_TOP = SIGN_BOT + SIGN_H + 4;
 /** Nothing drawn by the table may go below this. */
 const TABLE_FLOOR = FOOT_TOP + 6;
@@ -192,6 +225,10 @@ export const BORANG_A_SHEET_GEOMETRY = {
   sigRight: SIG_RIGHT,
   catatanX: CATATAN_X,
   paymentRight: RX,
+  /** 66175cd2 — where the official logo is fitted, when the owner has supplied it. */
+  logoBox: LOGO_BOX,
+  /** 66175cd2 — the PERINGATAN baseline: the lowest text on the sheet. */
+  warningTop: WARN_TOP,
 } as const;
 
 /** How many employee rows fit on a sheet: under the heading and the brought-forward row, above the foot. */
@@ -200,12 +237,42 @@ export function borangASheetRowCapacity(g = BORANG_A_SHEET_GEOMETRY): number {
   return Math.floor(usable / g.rowHeight);
 }
 
-export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
+/**
+ * 66175cd2 — what the PDF says about itself, now that the sheet carries no small print of ours: drawn by us
+ * to KWSP's layout from processed payroll, and which payroll month the contribution month was derived from.
+ * Exported so the test reads the same sentence the renderer writes.
+ */
+export function borangAProvenance(form: Pick<BorangAForm, 'contributionMonth' | 'payrollPeriodKey'>): string {
+  return (
+    `Drawn by AI HR to the layout of KWSP's Borang A (KWSP 6); not a KWSP-printed form. ` +
+    `Upah is the wage EPF was charged on and the contributions are taken from the processed payroll, never recalculated. ` +
+    `Bulan caruman ${form.contributionMonth} · bulan upah ${form.payrollPeriodKey}.`
+  );
+}
+
+/**
+ * Draw the form. `opts.logo` is the official KWSP logo's PNG bytes (lib/kwsp-logo.ts `readKwspLogo()`), or
+ * absent/null when the owner has not supplied one. Pass only bytes `readKwspLogo()` accepted:
+ * pdf-lib does not return on a truncated PNG, and that function refuses one before it gets here — the sheet is then the same, with the logo box empty.
+ */
+export async function renderBorangAPdf(form: BorangAForm, opts: { logo?: Uint8Array | null } = {}): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`Borang A — ${form.employerName} — ${form.contributionMonth}`);
   doc.setProducer('AI HR');
+  doc.setSubject(borangAProvenance(form));
+  doc.setKeywords(['KWSP', 'Borang A', 'KWSP 6', `bulan caruman ${form.contributionPeriodKey}`, `bulan upah ${form.payrollPeriodKey}`]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  // Embedded ONCE and drawn on every sheet. A file that pdf-lib cannot read is not drawn (and said so in the
+  // log) rather than failing the whole statutory download.
+  let logo: PDFImage | null = null;
+  if (opts.logo) {
+    try {
+      logo = await doc.embedPng(opts.logo);
+    } catch {
+      console.warn('[kwsp-logo] the supplied logo could not be embedded; Borang A is drawn without it.');
+    }
+  }
 
   const ink = rgb(0.09, 0.09, 0.11);
   const muted = rgb(0.42, 0.42, 0.47);
@@ -290,11 +357,21 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
     // ── The outer frame ─────────────────────────────────────────────────────────────────────────────
     box(M, FRAME_BOT, CW, FRAME_TOP - FRAME_BOT, rule, 0.9);
 
-    // ── Masthead: the agency's name and Kaedah 11(1), centred over the middle column; KWSP 6 top right ─
+    // ── 66175cd2: the official logo, top left, fitted to its box with its proportions kept ────────────
+    if (logo) {
+      const fit = logo.scaleToFit(LOGO_BOX.w, LOGO_BOX.h);
+      page.drawImage(logo, {
+        x: LOGO_BOX.x + (LOGO_BOX.w - fit.width) / 2,
+        y: LOGO_BOX.y + (LOGO_BOX.h - fit.height) / 2,
+        width: fit.width,
+        height: fit.height,
+      });
+    }
+
+    // ── Masthead: the agency's name and Kaedah 11(1), BOLD, centred over the middle column ─────────────
     const midX = (LX + RX) / 2;
-    atC('KUMPULAN WANG SIMPANAN PEKERJA', midX, FRAME_TOP - 17, 13, bold);
-    atC(BORANG_A_CITATION, midX, FRAME_TOP - 30, 7.5);
-    atC('KWSP 6', (RX + RIGHT) / 2, FRAME_TOP - 15, 9.5);
+    atC('KUMPULAN WANG SIMPANAN PEKERJA', midX, FRAME_TOP - 30, 15, bold);
+    atC(BORANG_A_CITATION, midX, FRAME_TOP - 46, 7.5, bold);
 
     // ── The four-box strip ──────────────────────────────────────────────────────────────────────────
     // No. Rujukan Borang A is KWSP's own reference for the filing and is DRAWN EMPTY — payroll cannot know
@@ -374,14 +451,16 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
       atFit(v, infoX + 60, yy, RX - 6 - (infoX + 60), 8, bold);
     }
 
-    // ── The Borang A column: KWSP 6 above, "Borang / A", the sheet number, Cop Agen Kutipan ─────────
+    // ── The Borang A column, as on the reference: KWSP 6 / BORANG / A (bold, the A large), the sheet
+    // number (Mukasurat) under it, and Cop Agen Kutipan at the foot of the frame.
     // Cop Agen Kutipan is DRAWN EMPTY on every sheet — it is the collecting agent's, not ours.
     vline(RX, FRAME_BOT, STRIP_TOP);
     hline(LX, RX, STRIP_TOP);
     const rcx = (RX + RIGHT) / 2;
-    atC('Borang', rcx, STRIP_TOP - 22, 18, bold);
-    atC('A', rcx, STRIP_TOP - 42, 18, bold);
-    atC(`Mukasurat: ${pageData.sheet}/${pageData.of}`, rcx, STRIP_TOP - 70, 8);
+    atC('KWSP 6', rcx, FRAME_TOP - 16, 10, bold);
+    atC('BORANG', rcx, FRAME_TOP - 33, 13, bold);
+    atC('A', rcx, FRAME_TOP - 72, 38, bold);
+    atC(`Mukasurat: ${pageData.sheet}/${pageData.of}`, rcx, FRAME_TOP - 90, 8);
     atC('Cop Agen Kutipan', rcx, FRAME_BOT + 8, 7.5);
 
     // ── The ruled member table: the two-level heading ───────────────────────────────────────────────
@@ -555,37 +634,14 @@ export async function renderBorangAPdf(form: BorangAForm): Promise<Uint8Array> {
       }
     }
 
-    // ── PERINGATAN ──────────────────────────────────────────────────────────────────────────────────
-    // Malay is the specimen's sentence; the English line under it is OURS and says so, because an
-    // unattributed translation of a statutory warning borrows the agency's authority.
+    // ── PERINGATAN — the agency's Malay sentence, as the reference prints it, and nothing under it ──────
+    // 66175cd2: our English translation and the provenance band are gone (see the header); provenance is in
+    // the PDF metadata and on the review screen instead.
     let wy = warnTop;
-    for (const [i, s] of [BORANG_A_PERINGATAN_MS, BORANG_A_PERINGATAN_EN].entries()) {
-      for (const l of wrap(s, 6.8, CW, i === 0 ? bold : font)) {
-        at(l, M, wy, 6.8, i === 0 ? bold : font, i === 0 ? ink : muted);
-        wy -= 9;
-      }
+    for (const l of wrap(BORANG_A_PERINGATAN_MS, 6.8, CW, bold)) {
+      at(l, M, wy, 6.8, bold);
+      wy -= 9;
     }
-
-    // ── Provenance band ─────────────────────────────────────────────────────────────────────────────
-    // WRAPPED, not one long line: the English sentence is wider than A4. The payroll month lives HERE
-    // (the specimen has no "Bulan Upah" box), so note 6's "+1" stays checkable on the page.
-    let by = PROV_TOP;
-    hline(M, RIGHT, by + 9, 0.6, hair);
-    const band = [
-      'Susun atur kami sendiri, dilukis mengikut Borang A — bukan borang rasmi KWSP.',
-      'Our own layout, drawn to match Borang A. The CATATAN notes and the PERINGATAN sentence are TRANSCRIBED from a filled ' +
-        'Borang A produced by another payroll system, not taken from a KWSP page, and the English line under ' +
-        'PERINGATAN is our own translation. Upah is the wage EPF was charged on and the contributions are ' +
-        'taken from the payroll run, never recalculated.',
-      `Bulan caruman ${form.contributionMonth} · bulan upah ${form.payrollPeriodKey}`,
-    ];
-    for (const paragraph of band) {
-      for (const l of wrap(paragraph, 6.2, CW)) {
-        at(l, M, by, 6.2, font, muted);
-        by -= 7.8;
-      }
-    }
-
   }
 
   return doc.save();

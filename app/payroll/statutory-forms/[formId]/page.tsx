@@ -152,6 +152,11 @@ export default async function StatutoryFormPage({
   // Unknown id, or a form this company's jurisdiction does not have. One answer for both, so the URL
   // cannot be used to enumerate what other packs register.
   if (!def) notFound();
+  // Board 66175cd2 — a form taken off the shelf (`EPF contributions (KWSP)`): an old link to its figures screen
+  // lands on its shelf. Its definition, its recorded generations and its deadline tracking all stay.
+  if (!def.onShelf) {
+    redirect(`/payroll/statutory-forms${def.submission ? `?body=${encodeURIComponent(def.submission.body)}` : ''}`);
+  }
 
   const today = todayInKualaLumpur();
   const annual = def.periodKind === 'year';

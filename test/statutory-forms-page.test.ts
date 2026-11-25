@@ -348,7 +348,10 @@ describe('the landing page is a directory, not a second generator', () => {
     // is the internal contributions overview, not a form anybody files — but its source moved: the
     // directory no longer takes a companyId, so it reads `listStatutoryCatalog` (the admin's whole company
     // scope, deduplicated by form id) instead of `listReports` for one chosen company.
-    expect(PAGE).toContain('catalog.reports.filter((r) => r.submission != null)');
+    // Board 66175cd2 UPDATED IT AGAIN, AND ADDED ONE RULE: only the reports ON the shelf. `my.epf` declares
+    // `shelf: false` — still registered, no longer offered (test/kwsp-forms-66175cd2.test.ts).
+    expect(PAGE).toContain('const shelfReports = catalog.reports.filter((r) => r.onShelf);');
+    expect(PAGE).toContain('shelfReports.filter((r) => r.submission != null)');
   });
 
   it('does not generate anything itself', () => {

@@ -449,7 +449,7 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
     // The names and what each is missing, exactly as before, and the table that shows them.
     return (
       <div className={pageWideCls}>
-        <PageHeader title={t('title')} description={subtitle} back={{ href: backToCriteria, label: t('viewerBack') }} />
+        <PageHeader title={t('title')} description={subtitle} back={{ href: backToCriteria, label: tf('viewer_back') }} />
         {provenance}
         {tiles}
         {checks}
@@ -473,7 +473,10 @@ export default async function BorangAPreviewPage({ searchParams }: { searchParam
           { href: `/payroll/borang-a/text?${documentQuery}`, label: t('downloadText') },
           ...(fileReadiness.ok ? [{ href: `/payroll/borang-a/file?${documentQuery}`, label: t('downloadFile') }] : []),
         ]}
-        back={{ href: backToCriteria, label: t('viewerBack') }}
+        // 66175cd2 — a clear "← Back" at the top LEFT, to the Open Form step with the same company, year,
+        // month and payroll cycles (`criteriaReturnHref`). A link: going back regenerates nothing.
+        back={{ href: backToCriteria, label: tf('viewer_back') }}
+        backPlacement="leading"
         openInNewTabLabel={tf('viewer_openNewTab')}
         frameTitle={tf('viewer_frameTitle', { form: t('title') })}
         sidePanel={

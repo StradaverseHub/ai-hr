@@ -18,6 +18,7 @@
  */
 import { borangAFilename } from '@/lib/borang-a';
 import { renderBorangAPdf } from '@/lib/borang-a-pdf';
+import { readKwspLogo } from '@/lib/kwsp-logo';
 import { NO_CONTRIBUTIONS, describeGaps, loadBorangA } from '../shared';
 
 export const runtime = 'nodejs';
@@ -53,7 +54,8 @@ export async function GET(req: Request) {
     return new Response(`Cannot produce Borang A: ${describeGaps(loaded)}.`, { status: 422 });
   }
 
-  const pdf = await renderBorangAPdf(loaded.form);
+  // 66175cd2 — the official KWSP logo, when the owner has installed it (assets/kwsp/kwsp-logo.png).
+  const pdf = await renderBorangAPdf(loaded.form, { logo: readKwspLogo() });
   // r407 (item 4f45f9b0) — THE PREVIEW IS THIS ROUTE, ASKED TO SHOW RATHER THAN SAVE. The in-app viewer
   // frames `?…&disposition=inline`: the same loader, the same gate, the same renderer, the same bytes —
   // only the header differs, so the form on screen IS the file Download saves. Any other value saves.
