@@ -24,7 +24,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {auditActors,auditAggregateTypes,auditEvents,auditEventsCount,employeeAudit,listCompanies} from '../core/read';
+import {auditActors,auditAggregateTypes,auditCompanyScope,auditEvents,auditEventsCount,employeeAudit,listCompanies} from '../core/read';
 import {GET as exportAudit} from '../app/admin/audit/export/route';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
@@ -194,14 +194,16 @@ describe('Unchanged readers',()=>{
   await time('one company, user filter',()=>auditActors(scoped));
   await time('all companies (group), first page',()=>auditEvents(group,{limit:25}));
   await time('all companies (group), count',()=>auditEventsCount(group,{}));
-  const plan=await withTenant(scoped,async tx=>(await tx.execute<{'QUERY PLAN':string}>(sql`explain (costs off)
-   select count(*) from domain_event where (not (select app.is_admin()) or (select app.is_group_admin())
-    or actor_id=app.current_user_id() or subject_employment_id in (select unnest(app.visible_employment_ids()))
-    or (payload->>'companyId') in (select unnest(app.admin_company_ids())::text)
-    or (aggregate_type,aggregate_id) in (select x.aggregate_type,x.aggregate_id from app.audit_admin_aggregates() x))`)).map(r=>r['QUERY PLAN']).join('\n'));
+  const explain=(predicate:ReturnType<typeof sql>)=>withTenant(scoped,async tx=>(await tx.execute<{'QUERY PLAN':string}>(sql`explain (costs off) select count(*) from domain_event where ${predicate}`)).map(r=>r['QUERY PLAN']).join('\n'));
+  const baseline=await explain(sql`true`);
+  const plan=await explain(auditCompanyScope());
   console.log('[audit-scope] plan\n'+plan);
-  // The anchor sets are uncorrelated: each runs once (InitPlan or hashed SubPlan), never once per event row.
-  expect(plan).toMatch(/hashed SubPlan/);
-  expect(plan.match(/\(SubPlan \d+\)/g)??[]).toEqual([]); // a correlated (per-row) sub-select would render as "(SubPlan n)"
+  // The anchor sets are uncorrelated: each runs once (InitPlan or hashed SubPlan), never once per event row. The
+  // existing restrictive policies already carry their own correlated sub-selects (e.g. 4342's clock-policy check,
+  // evaluated only for that event type), so the scope must add hashed sub-plans and no correlated one.
+  const correlated=(text:string)=>(text.match(/\(SubPlan \d+\)/g)??[]).length;
+  const hashed=(text:string)=>(text.match(/hashed SubPlan \d+/g)??[]).length;
+  expect(correlated(plan)).toBe(correlated(baseline));
+  expect(hashed(plan)-hashed(baseline)).toBeGreaterThanOrEqual(3);
  },60_000);
 });

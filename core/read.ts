@@ -6654,7 +6654,7 @@ export type AuditFilters = {
  * Every sub-select is uncorrelated, so it is evaluated once per statement (InitPlan / hashed SubPlan), never per row;
  * the group-administrator arm short-circuits before any of them run.
  */
-function auditCompanyScope() {
+export function auditCompanyScope() {
   return sql`(
     not (select app.is_admin()) or (select app.is_group_admin())
     or ${domainEvent.actorId} = app.current_user_id()
