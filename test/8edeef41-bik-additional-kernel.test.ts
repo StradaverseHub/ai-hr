@@ -41,7 +41,8 @@ describe('8edeef41 BIK/VOLA Additional through the payroll kernel', () => {
 
   async function employee() {
     const e = await hireEmployee(ctx, { person: { fullName: `Synthetic BKBOP ${++counter}`, primaryEmail: `${randomUUID()}@bkbop.test` }, companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2025-01-01' });
-    await pack.statutory.set(ctx, { personId: e.personId, icNumber: '900101880001' });
+    // A distinct fictional NRIC per employee (duplicate NRIC is refused); same birth date, so the same EPF age band.
+    await pack.statutory.set(ctx, { personId: e.personId, icNumber: `900101880${String(counter).padStart(3, '0')}` });
     await setCompensation(ctx, { employmentId: e.employmentId, basicSalary: BASIC, monthlyAllowance: 0, effectiveFrom: '2025-01-01' });
     return e;
   }

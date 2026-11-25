@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { statutory, foldPriorSlipIntoAccumulators } from '../localization/my/payroll';
+import { statutory, foldPriorSlipIntoAccumulators, type PcbAccumulators } from '../localization/my/payroll';
 import { computeMonthlyRuns } from '../localization/my/multicycle';
 import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
 import {
@@ -257,7 +257,7 @@ describe('8edeef41 versioned PCB noncash snapshot', () => {
 });
 
 describe('8edeef41 accumulated Σ(Y − K): foldPriorSlipIntoAccumulators is unchanged by the stream', () => {
-  const fresh = () => ({ netRemuneration: 0, epfClaimed: 0, pcbPaid: 0, zakatPaid: 0, lpAccumulated: 0 });
+  const fresh = (): PcbAccumulators => ({ netRemuneration: 0, epfClaimed: 0, pcbPaid: 0, zakatPaid: 0, lpAccumulated: 0 });
   it('a regular month with an Additional benefit accumulates its whole charged base once', () => {
     // bases.pcb = cash 9,000 + benefit 4,111 = 13,111 (the kernel stamps Y1 + Yt). Y − K = 13,111 − 990 = 12,121.
     const asAdditional = snapshot([bkbop], [bkbopEa]), asNormal = snapshot([{ ...bkbop, stream: 'normal' }], [bkbopEa]);
