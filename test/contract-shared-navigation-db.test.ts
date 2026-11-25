@@ -88,8 +88,8 @@ it('uses the same bounded visibility and configuration company owner for 1,000 e
  const all=await contractSharedTracker(admin,{limit:1});expect(all.total).toBe(1000);expect(all.companies).toHaveLength(70);
  const viewer=await ordinary(),outsider=await ordinary();await grant(viewer,['view'],all.companies[0].id);
  for(const actor of [admin,viewer,outsider]){
-  const rows=await contractSharedTracker(actor,{limit:1}),navigation=await navigation(actor);
-  expect(navigation.page).toBe(rows.total>0);expect(navigation.automation).toBe(actor.userId===admin.userId);
+  const rows=await contractSharedTracker(actor,{limit:1}),access=await navigation(actor);
+  expect(access.page).toBe(rows.total>0);expect(access.automation).toBe(actor.userId===admin.userId);
  }
  const single=await contractSharedTracker(viewer,{companyId:all.companies[0].id,limit:100});expect(single.total).toBe(15);
  const forbidden=await contractSharedTracker(viewer,{companyId:all.companies[1].id});expect(forbidden.total).toBe(0);
