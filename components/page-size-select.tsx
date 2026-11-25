@@ -14,10 +14,13 @@ export function PageSizeSelect({
   label,
   value,
   options,
+  onNavigate,
 }: {
   label: string;
   value: string;
   options: { value: string; label: string; href: string }[];
+  /** List-only mode (ADR 0181 Phase 4): hand the chosen size's address to the list instead of navigating. */
+  onNavigate?: (href: string) => void;
 }) {
   const router = useRouter();
   const id = useId();
@@ -32,7 +35,7 @@ export function PageSizeSelect({
         value={value}
         onChange={(e) => {
           const next = options.find((o) => o.value === e.target.value);
-          if (next) router.push(next.href, { scroll: false });
+          if (next) (onNavigate ? onNavigate(next.href) : router.push(next.href, { scroll: false }));
         }}
         className="h-7 rounded-md border border-border bg-card px-1.5 text-xs tabular-nums text-foreground outline-none transition-colors focus-visible:border-ring"
       >
