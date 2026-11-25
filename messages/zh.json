@@ -3834,6 +3834,7 @@
     "requestsTitle": "申请",
     "requestsCountFiltered": "{status} · {count}",
     "requestsCountTotal": "{count, plural, one {共 #} other {共 #}}",
+    "requestsCountTotalCapped": "共 {count, number}+",
     "colApplied": "申请于",
     "colType": "类型",
     "colDates": "日期",

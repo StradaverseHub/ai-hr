@@ -8,7 +8,8 @@ import type {EmployeeChoice,EmployeeChoiceInput,EmployeeChoicePage} from '../lib
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { isAdmin } from '../lib/authz-model';
 import { InquiryQueryError, type InquiryQuery } from '../lib/leave-inquiry-query';
-import { adminCompanies, adminCompaniesTx, listLeaveInquiryEmployeesTx, createLeaveInquiryMembershipReaderTx, listLeaveRequestsPageTx, type LeaveInquiryEmployee, listLeaveInquiryPickerIdentitiesTx,leaveInquiryPickerFacetsTx,leaveInquiryPickerDisplayRowsTx } from './read';
+import type { KeysetPageQuery } from '../lib/pagination';
+import { adminCompanies, adminCompaniesTx, listLeaveInquiryEmployeesTx, createLeaveInquiryMembershipReaderTx, listLeaveRequestsPageTx, listLeaveRequestsKeysetPageTx, type LeaveInquiryEmployee, listLeaveInquiryPickerIdentitiesTx,leaveInquiryPickerFacetsTx,leaveInquiryPickerDisplayRowsTx } from './read';
 import {isAiPresentationPrincipalCurrentTx,isAiPrincipalCurrentTx} from './ai-principal';
 import {boundPersonnelStatementTx} from './personnel-read-bounds';
 
@@ -80,6 +81,25 @@ export async function leaveInquiryRecordsPageTx(tx: Tx, ctx: SessionContext, sco
     ...(query.dateMode === 'applied' ? { appliedFrom: query.from, appliedTo: query.to, appliedTimezone: 'Asia/Kuala_Lumpur' as const } : { from: query.from, to: query.to }),
     sort: query.sort, dir: query.dir, limit: window.limit, offset: window.offset,
   });
+}
+/** ADR 0181 Phase 4: the Employee Leave Record screen's page by key, under the same authorization as
+ *  leaveInquiryRecordsPageTx (the verified context, its transaction and the inquiry principal). The export keeps the
+ *  exact OFFSET-batched reader above. */
+export async function leaveInquiryRecordsKeysetPageTx(tx: Tx, ctx: SessionContext, scope: LeaveInquiryContext, query: InquiryQuery,
+  page: Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>) {
+  query=structuredClone(query);page={...page};
+  const verified=authorizedContexts.get(scope);
+  scope = authorizedScope(ctx, scope, query);
+  if(verified!.tx!==tx)throw new InquiryQueryError('Forbidden');
+  await assertInquiryPrincipalTx(tx,verified!.session);
+  checkWindow({ limit: page.limit, offset: 0 });
+  if (!scope.companyIds.length) return { rows: [], total: { count: 0, capped: false }, hasPrev: false, hasNext: false, anchorFound: true };
+  return listLeaveRequestsKeysetPageTx(tx, verified!.session, {
+    companyIds: scope.companyIds, employmentIds: scope.selected ? [scope.selected.employmentId] : undefined,
+    leaveTypeIds: query.typeIds, statuses: query.statuses, q: query.q, departmentIds: query.departmentIds,
+    ...(query.dateMode === 'applied' ? { appliedFrom: query.from, appliedTo: query.to, appliedTimezone: 'Asia/Kuala_Lumpur' as const } : { from: query.from, to: query.to }),
+    sort: query.sort, dir: query.dir,
+  }, page);
 }
 function checkWindow(window: { limit: number; offset: number }) {
   if (!Number.isSafeInteger(window.limit) || window.limit < 1 || window.limit > 2000 || !Number.isSafeInteger(window.offset) || window.offset < 0 || !Number.isSafeInteger(window.offset + window.limit)) throw new InquiryQueryError('Invalid page');

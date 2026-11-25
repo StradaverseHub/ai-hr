@@ -29,6 +29,8 @@ vi.mock('../packs/leave/service',()=>({
   leaveInquirySnapshot:async(_session:unknown,_scope:unknown,query:{emp?:string},read:(tx:unknown,scope:unknown)=>Promise<unknown>)=>read({}, {employees:people,selected:people.find(person=>person.employmentId===query.emp),companies:[{id:'company',name:'Inquiry Company'}]}),
   readLeaveInquiryPickerTx:async(_tx:unknown,_session:unknown,_scope:unknown,input:{selectedId?:string})=>({contextId:'fixture',rows:people.map(({terminatedOn,...row})=>({...row,status:'active'})),selected:people.find(row=>row.employmentId===input.selectedId)??null,total:people.length,populationTotal:people.length,offset:0,limit:25,filters:{query:'',companyId:'',businessUnitId:'',departmentId:'',status:''},labelMode:'names',companyOptions:[{id:'company',name:'Inquiry Company'}],businessUnitOptions:[],departmentOptions:[{id:'department',name:'People'}],allDepartmentOptions:[{id:'department',name:'People'}]}),
   leaveInquiryRecordsPageTx:async()=>({rows:[],total:0}),
+  // ADR 0181 Phase 4: the screen reads the keyset page (rows plus a capped total); the export keeps the reader above.
+  leaveInquiryRecordsKeysetPageTx:async()=>({rows:[],total:{count:0,capped:false},hasPrev:false,hasNext:false,anchorFound:true}),
   replacementRequestAvailability:async()=>({allowed:false}),
   listEntitlementRecalcAudit:historyReads,
 }));

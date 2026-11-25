@@ -354,7 +354,19 @@ describe('20c699f8: Employee Balances', () => {
 describe('953be4b0: Employee Leave Record', () => {
   it('reads the canonical transaction projection within the authorized All/single scope and leave-type filter', () => {
     expect(recordsPage).toContain('await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)');
-    expect(recordsPage).toContain('leaveInquiryRecordsPageTx(tx,session,scope,query)');
+    // ADR 0181 Phase 4: the screen reads the keyset page under the same verified context and principal;
+    // the export keeps leaveInquiryRecordsPageTx (pinned in test/leave-inquiry-employee-search.test.ts).
+    expect(recordsPage).toContain('leaveInquiryRecordsKeysetPageTx(tx,session,scope,query,keyset)');
+    {
+      const owner = read('core/leave-inquiry.ts');
+      const at = owner.indexOf('export async function leaveInquiryRecordsKeysetPageTx(');
+      const keysetProjection = owner.slice(at, owner.indexOf('function checkWindow(', at));
+      expect(at, 'keyset records projection exists').toBeGreaterThan(-1);
+      for (const fact of ['scope = authorizedScope(ctx, scope, query)', "if(verified!.tx!==tx)throw new InquiryQueryError('Forbidden')",
+        'await assertInquiryPrincipalTx(tx,verified!.session)', 'listLeaveRequestsKeysetPageTx(tx, verified!.session, {',
+        'companyIds: scope.companyIds, employmentIds: scope.selected ? [scope.selected.employmentId] : undefined', 'leaveTypeIds: query.typeIds'])
+        expect(keysetProjection, fact).toContain(fact);
+    }
     const owner = read('core/leave-inquiry.ts');
     const from = owner.indexOf('export async function leaveInquiryRecordsPageTx(');
     const to = owner.indexOf('function checkWindow(', from);

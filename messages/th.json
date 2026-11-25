@@ -3834,6 +3834,7 @@
     "requestsTitle": "คำขอ",
     "requestsCountFiltered": "{status} · {count}",
     "requestsCountTotal": "{count, plural, one {# ทั้งหมด} other {# ทั้งหมด}}",
+    "requestsCountTotalCapped": "{count, number}+ ทั้งหมด",
     "colApplied": "วันที่ยื่น",
     "colType": "ประเภท",
     "colDates": "วันที่",

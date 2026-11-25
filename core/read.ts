@@ -2726,6 +2726,89 @@ export async function listLeaveRequestsPageTx(tx: Tx, ctx: SessionContext, p: Le
     return { rows: withDates, total: Number(count) };
 }
 
+/** The leave-request page's sort keys (the same whitelist as listLeaveRequestsPageTx) as comparable row parts. A
+ *  nullable employee code is the pair (code is null, coalesce(code, '')): ordering by the pair in one direction is
+ *  exactly PostgreSQL's default for the code itself (ascending puts blanks last, descending first). */
+function leaveRequestSortKey(sort: string | undefined) {
+  switch (sort ?? 'applied') {
+    case 'start': return { row: [sql`${leaveRequest.startDate}`], anchor: [sql`anchor_request.start_date`] };
+    case 'end': return { row: [sql`${leaveRequest.endDate}`], anchor: [sql`anchor_request.end_date`] };
+    case 'name': return { row: [sql`${person.fullName}`], anchor: [sql`anchor_person.full_name`] };
+    case 'employeeCode': return {
+      row: [sql`(${employment.employeeCode} is null)`, sql`coalesce(${employment.employeeCode}, '')`],
+      anchor: [sql`(anchor_employment.employee_code is null)`, sql`coalesce(anchor_employment.employee_code, '')`],
+    };
+    case 'status': return { row: [sql`${leaveRequest.status}`], anchor: [sql`anchor_request.status`] };
+    default: return { row: [sql`${leaveRequest.createdAt}`], anchor: [sql`anchor_request.created_at`] };
+  }
+}
+
+/** ADR 0181 decision 5 (Phase 4): the leave-request page by key. The same rows, filters, projection and order as
+ *  listLeaveRequestsPageTx (the chosen column in the chosen direction, then newest application first, then id),
+ *  continuing after (or, backwards, before) an anchor request read under the viewer's own row security, with a
+ *  total that is exact below the count cap and "cap+" above it (`exactCount` lifts the cap). An invisible or
+ *  removed anchor serves the first page. Exports and the mobile history keep listLeaveRequestsPageTx. */
+export async function listLeaveRequestsKeysetPageTx(
+  tx: Tx, ctx: SessionContext, p: Omit<LeaveRequestPageOptions, 'limit' | 'offset' | 'before'>,
+  q: Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>,
+): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[] } & KeysetRead> {
+  if (!Number.isSafeInteger(q.limit) || q.limit < 1 || q.limit > ALL_ROW_CEILING) throw new RangeError('Invalid leave request page');
+  const { where, currentAssignment } = leaveRequestPageWhere({ ...p, limit: q.limit, offset: 0 });
+  const ascending = p.dir === 'asc';
+  const key = leaveRequestSortKey(p.sort);
+  const row = (parts: SQL[]) => (parts.length === 1 ? parts[0] : sql`(${sql.join(parts, sql`, `)})`);
+  const anchorValue = (id: string, part: SQL) => sql`(select ${part} from leave_request anchor_request
+    join employment anchor_employment on anchor_employment.id = anchor_request.employment_id
+    join person anchor_person on anchor_person.id = anchor_employment.person_id
+    where anchor_request.id = ${id}::uuid)`;
+  const anchorRow = (id: string) => row(key.anchor.map((part) => anchorValue(id, part)));
+  const tie = sql`(${leaveRequest.createdAt}, ${leaveRequest.id})`;
+  const anchorTie = (id: string) => sql`(${anchorValue(id, sql`anchor_request.created_at`)}, ${anchorValue(id, sql`anchor_request.id`)})`;
+  /** Rows after the anchor in list order (forward) or before it (backward). The tie-break is newest first. */
+  const seek = (id: string, forward: boolean) => {
+    const primaryAfter = forward === ascending ? sql`>` : sql`<`;
+    const tieAfter = forward ? sql`<` : sql`>`;
+    return sql`(${row(key.row)} ${primaryAfter} ${anchorRow(id)} or (${row(key.row)} = ${anchorRow(id)} and ${tie} ${tieAfter} ${anchorTie(id)}))`;
+  };
+  const read = async (cursor: Pick<KeysetPageQuery, 'after' | 'before' | 'last'>) => {
+    const backwards = cursor.before !== undefined || cursor.last;
+    const primaryDir = (ascending !== backwards) ? sql`asc` : sql`desc`;
+    const tieDir = backwards ? sql`asc` : sql`desc`;
+    return tx
+      .select({ ...leaveRequestSelection, company: sql<string>`(select c.legal_name from company c where c.id = ${employment.companyId})`, department: department.name })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(and(where, cursor.after ? seek(cursor.after, true) : cursor.before ? seek(cursor.before, false) : undefined))
+      .orderBy(...key.row.map((part) => sql`${part} ${primaryDir}`), sql`${leaveRequest.createdAt} ${tieDir}`, sql`${leaveRequest.id} ${tieDir}`)
+      .limit(keysetFetchLimit(q));
+  };
+  const cursor = { after: q.after, before: q.before, last: q.last };
+  let fetched = await read(cursor), anchorFound = true;
+  if (fetched.length === 0 && (q.after || q.before)) {
+    anchorFound = false;
+    fetched = await read({ last: false });
+  }
+  const page = keysetSlice(fetched, { ...(anchorFound ? cursor : { last: false }), limit: q.limit }, anchorFound);
+  const cap = listCountCap(q.size);
+  // The current-assignment and department joins are at most one row per request (assignment_no_overlap), so
+  // count(*) needs no DISTINCT, which would have to read every row before the cap could stop it.
+  const bounded = tx.select({ one: sql`1` }).from(leaveRequest)
+    .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+    .leftJoin(assignment, currentAssignment)
+    .leftJoin(department, eq(department.id, assignment.departmentId))
+    .where(where);
+  const counted = (q.exactCount ? bounded : bounded.limit(cap + 1)).as('counted');
+  const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(counted);
+  const rows = await resolveLeaveWorkingDates(tx, page.rows);
+  return { rows, total: cappedTotal(Number(count), cap, q.exactCount), hasPrev: page.hasPrev, hasNext: page.hasNext, anchorFound };
+}
+
 /**
  * Approval Information filter — distinct people who have DECIDED (final approver/rejecter) at least one
  * leave request in scope, so the /leave admin "Approved by" filter can offer a named-person picker.

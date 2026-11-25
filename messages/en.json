@@ -3834,6 +3834,7 @@
     "requestsTitle": "Requests",
     "requestsCountFiltered": "{status} · {count}",
     "requestsCountTotal": "{count, plural, one {# total} other {# total}}",
+    "requestsCountTotalCapped": "{count, number}+ total",
     "colApplied": "Applied",
     "colType": "Type",
     "colDates": "Dates",
