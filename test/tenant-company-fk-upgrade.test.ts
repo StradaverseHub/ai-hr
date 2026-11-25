@@ -278,6 +278,11 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10760,version:'7',when:1795495007360,tag:'7360_audit_trail_company_scope',breakpoints:true},
  {idx:10790,version:'7',when:1795495007390,tag:'7390_custom_pcb_selection',breakpoints:true},
  {idx:10850,version:'7',when:1795495007450,tag:'7450_payroll_run_outstanding',breakpoints:true},
+ {idx:10860,version:'7',when:1795495007460,tag:'7460_payroll_read_access_switch',breakpoints:true},
+ {idx:10870,version:'7',when:1795495007470,tag:'7470_payroll_read_admin_companies',breakpoints:true},
+ {idx:10880,version:'7',when:1795495007480,tag:'7480_payroll_read_own_payslips',breakpoints:true},
+ {idx:10890,version:'7',when:1795495007490,tag:'7490_payroll_read_history_filter',breakpoints:true},
+ {idx:10900,version:'7',when:1795495007500,tag:'7500_payroll_read_history_summary',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1409,6 +1414,53 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // 7360 (ADR 0182 Phase 1): the Audit Trail company scope's once-per-statement read helpers.
    {fn:'app.admin_company_ids()',app:true},
    {fn:'app.audit_admin_aggregates()',app:true},
+   // 7460 (ADR 0181 payroll read addendum, P1): the step check and P1's two guard arms are evaluated by row security as
+   // the application role; the composer, the policy check, the mode setter and the every-user comparison are owner only.
+   {fn:'app.payroll_read_access_on(text)',app:true},
+   {fn:'app.payroll_tax_basis_reader_arm(uuid,uuid,boolean)',app:true},
+   {fn:'app.payroll_import_tax_reader_arm(uuid,uuid,jsonb,boolean)',app:true},
+   {fn:'app.payroll_read_access_forced(text)',app:false},
+   {fn:'app.payroll_read_access_policy_text(text,text,jsonb)',app:false},
+   {fn:'app.payroll_read_access_installed_as(text,text,text)',app:false},
+   {fn:'app.payroll_read_access_set_mode(text,text)',app:false},
+   {fn:'app.payroll_read_access_compare(text,uuid)',app:false},
+   {fn:'app.payroll_read_access_retrust(text,uuid)',app:false},
+   // 7470 (payroll read P2): the per-statement administration maps and their arms are evaluated by row security; the claim check is owner only.
+   {fn:'app.payroll_admin_claimed()',app:false},
+   {fn:'app.payroll_admin_company_set()',app:true},
+   {fn:'app.payroll_admin_employment_set()',app:true},
+   {fn:'app.payroll_original_employer_set()',app:true},
+   {fn:'app.payroll_admin_company_arm(uuid,jsonb)',app:true},
+   {fn:'app.payroll_admin_employment_arm(uuid,jsonb)',app:true},
+   {fn:'app.payroll_original_employer_arm(uuid,jsonb)',app:true},
+   // 7480 (payroll read P3): the own-payslip person reader and arm are evaluated by row security.
+   {fn:'app.payroll_self_person_ids()',app:true},
+   {fn:'app.payroll_self_person_arm(uuid,uuid[])',app:true},
+   // 7490 (payroll read P4): the stored barrier's touched-set reader and arm are evaluated by row security; recompute, maintenance, verify and rebuild are owner only.
+   {fn:'app.payroll_history_store_state()',app:true},
+   {fn:'app.payroll_history_effective_arm(uuid,jsonb)',app:true},
+   {fn:'app.payroll_history_ineffective_compute(uuid,uuid[])',app:false},
+   {fn:'app.payroll_history_ineffective_record_payslips(uuid,uuid[])',app:false},
+   {fn:'app.payroll_history_ineffective_batch_payslips(uuid,uuid[])',app:false},
+   {fn:'app.payroll_history_ineffective_refresh(uuid,uuid[])',app:false},
+   {fn:'app.payroll_history_ineffective_note(text)',app:false},
+   {fn:'app.payroll_history_ineffective_commit()',app:false},
+   {fn:'app.payroll_history_ineffective_payslip_inserted()',app:false},
+   {fn:'app.payroll_history_ineffective_payslip_moved()',app:false},
+   {fn:'app.payroll_history_ineffective_batch_moved()',app:false},
+   {fn:'app.payroll_history_ineffective_history_changed()',app:false},
+   {fn:'app.payroll_history_ineffective_verify(uuid)',app:false},
+   {fn:'app.payroll_history_ineffective_rebuild(uuid)',app:false},
+   // 7500 (payroll read F): the summary state and served check are evaluated through the security-invoker effective-run view; projection, maintenance, verify and the view swap are owner only.
+   {fn:'app.payroll_batch_summary_state()',app:true},
+   {fn:'app.payroll_batch_summary_served(uuid,jsonb)',app:true},
+   {fn:'app.payroll_batch_summary_bump(uuid[])',app:false},
+   {fn:'app.payroll_batch_summary_employment_moved()',app:false},
+   {fn:'app.payroll_batch_summary_compute(uuid)',app:false},
+   {fn:'app.payroll_batch_summary_project(uuid)',app:false},
+   {fn:'app.payroll_batch_summary_verify(uuid)',app:false},
+   {fn:'app.payroll_read_access_view_installed_as(text,text)',app:false},
+   {fn:'app.payroll_read_access_swap_views(text,text,text)',app:false},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
@@ -3049,9 +3101,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // policies restated once per statement (job_document_read, job_document_revision_read and the FOR ALL
   // job_document_revision_write). Each expected text is normalised by PostgreSQL under a temporary name.
   // 7240 adds four more owner-only tables with the same owner policy; 7330 adds queue_read_control (ADR 0181 live work
-  // queues), owner only with the same owner policy shape.
+  // queues), owner only with the same owner policy shape; 7460 adds the payroll read switch's three owner-only tables.
   const accessPilotTables=['access_company_closure','access_company_state','access_effective_company','access_precompute_control',
-   'access_department_closure','access_employment_precompute_control','access_employment_state','access_reporting_reach','queue_read_control'];
+   'access_department_closure','access_employment_precompute_control','access_employment_state','access_reporting_reach','queue_read_control',
+   'payroll_read_access_control','payroll_read_access_fragment','payroll_read_access_tenant','payroll_history_ineffective_state',
+   'payroll_history_ineffective_payslip','payroll_history_ineffective_commit',
+   'payroll_batch_summary_state','payroll_batch_summary','payroll_read_access_view'];
   const accessPilotOwner='for all using(app.acting_as_owner()) with check(app.acting_as_owner())';
   const accessPilotView="j.company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))::uuid[])";
   const accessPilotRevision=(extra:string)=>`tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.job_document j WHERE j.tenant_id=job_document_revision.tenant_id AND j.id=job_document_revision.job_id AND ${accessPilotView}${extra})`;
@@ -3077,7 +3132,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {table:'job_document_revision',name:'job_document_revision_read',sql:'for select to ai_hr_app using(app.job_document_scope(tenant_id,job_id))'},
    {table:'job_document_revision',name:'job_document_revision_write',sql:`for all to ai_hr_app using(${accessPilotOldWrite}) with check(${accessPilotOldWrite})`},
   ]));
-  expect(accessPilotAfter).toHaveLength(12);expect(accessPilotBefore).toHaveLength(3);
+  expect(accessPilotAfter).toHaveLength(21);expect(accessPilotBefore).toHaveLength(3);
   const isAccessPilotPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>row.schemaname==='public'&&accessPilotAfter.some(expected=>accessPilotKey(expected)===accessPilotKey(row));
   const isAccessPilotReplaced=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&accessPilotBefore.some(expected=>accessPilotKey(expected)===accessPilotKey(row));
   const isAccessPilotRelation=(rel:string)=>accessPilotTables.includes(rel);

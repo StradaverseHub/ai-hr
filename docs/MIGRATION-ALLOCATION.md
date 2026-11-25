@@ -1,3 +1,88 @@
+# ADR 0181 payroll read addendum, F: imported-history run summary, 25 November 2026
+
+Reserve `7500_payroll_read_history_summary`, journal index `10900`, timestamp `1795495007500`, SQL SHA-256 `5526740b3133f61d1431b9f44e7a1b4f2812bc7f425638f4bc5ab59ef8342f1f`. Next free
+slot after this session's `7490_payroll_read_history_filter`, which it requires. Recheck both installations'
+watermarks and any competing reservation at admission.
+
+Registers step `f_history_summary` (legacy). Adds owner-only `payroll_batch_summary` (per imported run: totals of its
+effective payslips, employer companies, the tenant summary version it was projected at), `payroll_batch_summary_state`
+(per-tenant version and projected version; moved once per history-writing transaction by 7490's commit-time step,
+which 7500 replaces guarded by its 7490 body, and by an `UPDATE OF company_id` row trigger on employment that probes for
+imported payslips) and `payroll_read_access_view`
+(the effective-run view's legacy and restated text). Adds the worker projection, the per-statement state, the served
+check (version current, no stage, P2 and P4 on, viewer administers every employer company), verify, a guarded view
+swap, and replaces `app.payroll_read_access_set_mode` (guarded by its 7460 body) to swap a step's views after its
+policies. The view itself is unchanged on install. A singleton worker tick (core/payroll-batch-summary.ts) projects
+while the step is not `legacy`. No existing policy, column or business row changes. Design: PR 308, sections 7 and
+11.5. This entry carries no deployment authority.
+
+# ADR 0181 payroll read addendum, P4: stored payroll history barrier, 25 November 2026
+
+Reserve `7490_payroll_read_history_filter`, journal index `10890`, timestamp `1795495007490`, SQL SHA-256 `563cf49262f7daa248d5a38f041d33c0d81c6746b9e0e713f7ca15a12d51e506`. Next free
+slot after this session's `7480_payroll_read_own_payslips`, which it requires. Recheck both installations' watermarks
+and any competing reservation at admission.
+
+Registers step `p4_history_filter` (legacy) and the pieces of `payroll_history_effective_only`. Adds
+`payroll_history_ineffective_payslip` (the payslips the barrier hides with no stage in flight; owner only, ON DELETE CASCADE from payslip), the owner-only `payroll_history_ineffective_state`
+(per-tenant lock and version) and `payroll_history_ineffective_commit` (one row per writing transaction, whose deferred
+constraint trigger recomputes the noted payslips once at commit), the set-wise recompute, triggers on payslip (insert statement; `UPDATE OF batch_id, employment_id`
+row trigger with WHEN), payroll_batch (`UPDATE OF company_id, pay_period, payroll_cycle_id` with WHEN) and the four
+history tables (statement, transition tables), the once-per-statement touched set of an in-flight stage, the arm, and
+operator verify and rebuild. Builds every existing tenant's set in the migration transaction (one set-wise statement
+per tenant). The migration refuses unless the barrier functions' bodies and the policy are exactly the reviewed ones.
+No existing policy, column or business row changes. Save cost is measured by test/payroll-read-save-cost.test.ts
+against the owner's 2% limit. Design: PR 308, sections 5, 8.3 and 11.4–11.7. This entry carries no deployment
+authority.
+
+# ADR 0181 payroll read addendum, P3: own payslips once per statement, 25 November 2026
+
+Reserve `7480_payroll_read_own_payslips`, journal index `10880`, timestamp `1795495007480`, SQL SHA-256 `d446b58e65b6241da5def8c0454eece8c8b5c4a55daca7ee53e97bf8c0bc2e82`. Next free
+slot after this session's `7470_payroll_read_admin_companies`, which it requires (same scan as 7470; recheck at
+admission). Recheck both installations' watermarks and any competing reservation at admission.
+
+Registers step `p3_own_payslips` (legacy), splits 7470's constant `payslip_rls` piece around the own-payslip arm (the
+joined text is unchanged and checked against the installed policy), and adds `app.payroll_self_person_ids` (a definer
+reading what `app.is_self_person` reads, once per statement) and `app.payroll_self_person_arm`, which replaces only the
+`is_self_person` call inside the unchanged EXISTS over employment (so the planner's cost and plan stay), executable by
+every role that evaluates `payslip_rls`. No
+policy, trigger, column or business row changes. Design: PR 308, sections 4, 6 and 11. This entry carries no
+deployment authority.
+
+# ADR 0181 payroll read addendum, P2: payroll administration once per statement, 25 November 2026
+
+Reserve `7470_payroll_read_admin_companies`, journal index `10870`, timestamp `1795495007470`, SQL SHA-256 `0ee21a3c7598c50e14284635910b4d29a469c0d1bf35e3dea5ba8a4633fdb1e9`. Taken
+from `node .github/ci/check-migration-collisions.mjs --local --next` on 25 November 2026 (main and 398 recent branch
+journals; next free slot after this session's `7460_payroll_read_access_switch`, which it requires). Recheck both
+installations' watermarks and any competing reservation at admission.
+
+Registers step `p2_admin_companies` (legacy) and the pieces of `payroll_batch_rls`, `payslip_rls` and
+`payslip_original_employer_read`, and adds the once-per-statement maps (`app.payroll_admin_company_set`,
+`app.payroll_admin_employment_set`, `app.payroll_original_employer_set`) and their plain PL/pgSQL arms, executable by
+every role that evaluates those policies. The admin arm stays on the employment's current company (owner decision, 25
+November 2026). The migration refuses unless the three legacy functions' bodies and the three policies are exactly
+the reviewed ones. No policy, trigger, column or business row changes. Design: PR 308, sections 4, 6 and 11. This
+entry carries no deployment authority.
+
+# ADR 0181 payroll read addendum, P1: payroll read switch and reader guards, 25 November 2026
+
+Reserve `7460_payroll_read_access_switch`, journal index `10860`, timestamp `1795495007460`, SQL SHA-256
+`cc8bdfb8ec9a19d26c1e5fa5d37ca3ee1aafea4ff665f8f1c9c19775698ca55b`. First reserved as 7400 (next free after
+`7390_custom_pcb_selection`); renumbered the same day because board batch 20261125b took `7450_payroll_run_outstanding`
+and installs first, and an applied 7450 would make Drizzle skip anything below it. `node
+.github/ci/check-migration-collisions.mjs --local --next` (PR 307's script) then named 7460 as the next free slot after
+7450, and the database revamp session (integrator) gave the same map. P1–F take 7460, 7470, 7480, 7490 and 7500 in
+order; 7400–7440 are permanently unused. Built on alpha `60189ca03` (release 9). Recheck both installations' watermarks
+and any competing reservation at admission.
+
+Installs, inert, the switch every payroll read step uses: owner-only `payroll_read_access_control` (one mode per step,
+all `legacy`), `payroll_read_access_fragment` (each restated policy's USING as ordered pieces) and
+`payroll_read_access_tenant` (per-tenant trust), the operator-only mode setter (swaps a step's policies in one
+transaction, each guarded by PostgreSQL's deparse of its recorded text), the every-user comparison and re-trust, and
+P1's two plain PL/pgSQL guard arms with the step check they read once per statement (EXECUTE to `ai_hr_app`). The
+migration refuses unless both guard functions' bodies and the two guard policies are exactly the reviewed ones. No
+policy, trigger, column or business row changes. Design: `docs/adr/0181-addendum-payroll-read-access-and-read-model.md`
+(PR 308), sections 9 and 11. This entry carries no deployment authority.
+
 # Payroll Process outstanding employees (board a1a80747, plan r2), 25 November 2026
 
 Reserve `7450_payroll_run_outstanding`, journal index `10850`, timestamp `1795495007450`, SQL SHA-256
