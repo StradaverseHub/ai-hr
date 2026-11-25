@@ -500,6 +500,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10790,when:1795495007390,tag:'7390_custom_pcb_selection'},
  {idx:10850,when:1795495007450,tag:'7450_payroll_run_outstanding'},
  {idx:10860,when:1795495007460,tag:'7460_payroll_read_access_switch'},
+ {idx:10870,when:1795495007470,tag:'7470_payroll_read_admin_companies'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -527,6 +528,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7390_custom_pcb_selection':'a840b463c061f47cf7245b393258db8fff8bb2623fb90adc44770d4db4ede175',
  '7450_payroll_run_outstanding':'da307ecf6fd170778c9b760cd8adac44b09fb58cecf69d32fcc4ada204d7cb13',
  '7460_payroll_read_access_switch':'cc8bdfb8ec9a19d26c1e5fa5d37ca3ee1aafea4ff665f8f1c9c19775698ca55b',
+ '7470_payroll_read_admin_companies':'0ee21a3c7598c50e14284635910b4d29a469c0d1bf35e3dea5ba8a4633fdb1e9',
  '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',
  '7100_payroll_run_company_review':'558adf2530aa3961163841b6df000b3dbcc9af30d21e309258e3b2a72f2b5ec6',
  '7080_job_run_deterministic_order':'7f7b01ba1053bd6a39e8c5f04f50ae429e6553c04fb420d79318b0ba80bad736',

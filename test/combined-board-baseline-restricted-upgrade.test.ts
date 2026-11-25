@@ -77,6 +77,7 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10790,version:'7',when:1795495007390,tag:'7390_custom_pcb_selection',breakpoints:true},
  {idx:10850,version:'7',when:1795495007450,tag:'7450_payroll_run_outstanding',breakpoints:true},
  {idx:10860,version:'7',when:1795495007460,tag:'7460_payroll_read_access_switch',breakpoints:true},
+ {idx:10870,version:'7',when:1795495007470,tag:'7470_payroll_read_admin_companies',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},

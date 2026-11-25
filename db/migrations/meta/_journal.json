@@ -8121,6 +8121,13 @@
       "when": 1795495007460,
       "tag": "7460_payroll_read_access_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 10870,
+      "version": "7",
+      "when": 1795495007470,
+      "tag": "7470_payroll_read_admin_companies",
+      "breakpoints": true
     }
   ]
 }

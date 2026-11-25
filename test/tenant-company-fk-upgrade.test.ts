@@ -279,6 +279,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10790,version:'7',when:1795495007390,tag:'7390_custom_pcb_selection',breakpoints:true},
  {idx:10850,version:'7',when:1795495007450,tag:'7450_payroll_run_outstanding',breakpoints:true},
  {idx:10860,version:'7',when:1795495007460,tag:'7460_payroll_read_access_switch',breakpoints:true},
+ {idx:10870,version:'7',when:1795495007470,tag:'7470_payroll_read_admin_companies',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1421,6 +1422,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_read_access_set_mode(text,text)',app:false},
    {fn:'app.payroll_read_access_compare(text,uuid)',app:false},
    {fn:'app.payroll_read_access_retrust(text,uuid)',app:false},
+   // 7470 (payroll read P2): the per-statement administration maps and their arms are evaluated by row security; the claim check is owner only.
+   {fn:'app.payroll_admin_claimed()',app:false},
+   {fn:'app.payroll_admin_company_set()',app:true},
+   {fn:'app.payroll_admin_employment_set()',app:true},
+   {fn:'app.payroll_original_employer_set()',app:true},
+   {fn:'app.payroll_admin_company_arm(uuid,jsonb)',app:true},
+   {fn:'app.payroll_admin_employment_arm(uuid,jsonb)',app:true},
+   {fn:'app.payroll_original_employer_arm(uuid,jsonb)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.

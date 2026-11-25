@@ -1,3 +1,18 @@
+# ADR 0181 payroll read addendum, P2: payroll administration once per statement, 25 November 2026
+
+Reserve `7470_payroll_read_admin_companies`, journal index `10870`, timestamp `1795495007470`, SQL SHA-256 `0ee21a3c7598c50e14284635910b4d29a469c0d1bf35e3dea5ba8a4633fdb1e9`. Taken
+from `node .github/ci/check-migration-collisions.mjs --local --next` on 25 November 2026 (main and 398 recent branch
+journals; next free slot after this session's `7460_payroll_read_access_switch`, which it requires). Recheck both
+installations' watermarks and any competing reservation at admission.
+
+Registers step `p2_admin_companies` (legacy) and the pieces of `payroll_batch_rls`, `payslip_rls` and
+`payslip_original_employer_read`, and adds the once-per-statement maps (`app.payroll_admin_company_set`,
+`app.payroll_admin_employment_set`, `app.payroll_original_employer_set`) and their plain PL/pgSQL arms, executable by
+every role that evaluates those policies. The admin arm stays on the employment's current company (owner decision, 25
+November 2026). The migration refuses unless the three legacy functions' bodies and the three policies are exactly
+the reviewed ones. No policy, trigger, column or business row changes. Design: PR 308, sections 4, 6 and 11. This
+entry carries no deployment authority.
+
 # ADR 0181 payroll read addendum, P1: payroll read switch and reader guards, 25 November 2026
 
 Reserve `7460_payroll_read_access_switch`, journal index `10860`, timestamp `1795495007460`, SQL SHA-256

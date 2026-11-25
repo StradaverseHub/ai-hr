@@ -1,4 +1,5 @@
 {
  "7450_payroll_run_outstanding.sql": "test/payroll-run-outstanding-7450-policy-timing.test.ts",
- "7460_payroll_read_access_switch.sql": "test/payroll-read-policy-timing.test.ts"
+ "7460_payroll_read_access_switch.sql": "test/payroll-read-policy-timing.test.ts",
+ "7470_payroll_read_admin_companies.sql": "test/payroll-read-policy-timing.test.ts"
 }
