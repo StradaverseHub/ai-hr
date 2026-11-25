@@ -48,7 +48,7 @@ function handlers(label:string,kinds:readonly string[]):BulkJobHandler<{value:st
  return [payroll,imports].filter(h=>kinds.includes(h.kind));
 }
 
-type Proc={label:string;lanes:readonly WorkerLane[];kinds:readonly string[];workerId:string;owner:postgres.Sql;ticks:Record<keyof WorkerSingletonTicks,number>;iterations:number};
+type Proc={label:string;lanes:readonly WorkerLane[];kinds:readonly string[];workerId:string;owner:postgres.Sql;ticks:Record<Exclude<keyof WorkerSingletonTicks,'payrollSummaries'>,number>;iterations:number};
 const procs:Proc[]=[];
 function proc(label:string,lanes:readonly WorkerLane[],kinds:readonly string[]):Proc{
  const p:Proc={label,lanes,kinds,workerId:randomUUID(),owner:openImportWorkerOwner(process.env.TEST_MIGRATION_DATABASE_URL!),ticks:{bank:0,individual:0,rewardPlans:0,probation:0},iterations:0};

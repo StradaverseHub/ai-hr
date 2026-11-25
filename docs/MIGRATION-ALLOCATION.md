@@ -1,3 +1,21 @@
+# ADR 0181 payroll read addendum, F: imported-history run summary, 25 November 2026
+
+Reserve `7500_payroll_read_history_summary`, journal index `10900`, timestamp `1795495007500`, SQL SHA-256 `5526740b3133f61d1431b9f44e7a1b4f2812bc7f425638f4bc5ab59ef8342f1f`. Next free
+slot after this session's `7490_payroll_read_history_filter`, which it requires. Recheck both installations'
+watermarks and any competing reservation at admission.
+
+Registers step `f_history_summary` (legacy). Adds owner-only `payroll_batch_summary` (per imported run: totals of its
+effective payslips, employer companies, the tenant summary version it was projected at), `payroll_batch_summary_state`
+(per-tenant version and projected version; moved once per history-writing transaction by 7490's commit-time step,
+which 7500 replaces guarded by its 7490 body, and by an `UPDATE OF company_id` row trigger on employment that probes for
+imported payslips) and `payroll_read_access_view`
+(the effective-run view's legacy and restated text). Adds the worker projection, the per-statement state, the served
+check (version current, no stage, P2 and P4 on, viewer administers every employer company), verify, a guarded view
+swap, and replaces `app.payroll_read_access_set_mode` (guarded by its 7460 body) to swap a step's views after its
+policies. The view itself is unchanged on install. A singleton worker tick (core/payroll-batch-summary.ts) projects
+while the step is not `legacy`. No existing policy, column or business row changes. Design: PR 308, sections 7 and
+11.5. This entry carries no deployment authority.
+
 # ADR 0181 payroll read addendum, P4: stored payroll history barrier, 25 November 2026
 
 Reserve `7490_payroll_read_history_filter`, journal index `10890`, timestamp `1795495007490`, SQL SHA-256 `563cf49262f7daa248d5a38f041d33c0d81c6746b9e0e713f7ca15a12d51e506`. Next free

@@ -36,6 +36,13 @@ export async function payrollReadAccessCheck(owner:Db,log:(line:string)=>void=()
      const [row]=await owner.transaction(tx=>tx.execute<{r:{missing:number;extra:number}}>(sql`select app.payroll_history_ineffective_verify(${id}::uuid) as r`));
      if(Number(row.r.missing)+Number(row.r.extra)>0)log(`payroll-read-access REBUILD DIFFERENCE step=${step} tenant=${id} missing=${row.r.missing} extra=${row.r.extra} (rebuild with app.payroll_history_ineffective_rebuild, then re-trust)`);
     }
+    // F has no policy pieces: its check is the summary rebuild comparison (section 7.4).
+    if(step==='f_history_summary'){
+     const [row]=await owner.transaction(tx=>tx.execute<{r:{checked:number;differ:number;trusted:boolean}}>(sql`select app.payroll_batch_summary_verify(${id}::uuid) as r`));
+     if(!row.r.trusted)out.untrusted++;
+     if(Number(row.r.differ)>0){out.comparisonsDiffering++;log(`payroll-read-access SUMMARY DIFFERENCE step=${step} tenant=${id} checked=${row.r.checked} differ=${row.r.differ} (served falls back to derivation until re-trusted)`);}
+     continue;
+    }
     const c=await comparePayrollReadAccess(owner,step,id);
     if(!c.trusted)out.untrusted++;
     if(c.valuesDiffer+c.raisesDiffer>0){

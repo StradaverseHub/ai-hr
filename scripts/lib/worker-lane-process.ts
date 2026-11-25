@@ -12,6 +12,7 @@ import {freshImportContext,runBankImportTick} from '../../core/bank-import-worke
 import {runIndividualImportTick} from '../../core/individual-import-worker';
 import {retireBulkJobWorker} from '../../core/bulk-job-worker';
 import {OwnerConnectionUnresponsive} from '../../core/owner-step-deadline';
+import {runPayrollBatchSummaryTick} from '../../core/payroll-batch-summary';
 import {runWorkerLaneIteration,type WorkerSingletonTicks} from '../../core/worker-lane-loop';
 import {runRewardPlanCompanyTick} from '../../packs/rewards/service';
 import {runProbationReconciliationTick} from '../../packs/probation/service';
@@ -38,7 +39,7 @@ export function runWorkerProcess(){
  // dedicated lane process holds at most the queue-owner connection and its app pool (db/capacity.ts).
  const probationOwner=singletons?createDb(url,{max:1}):null;
  const ticks:WorkerSingletonTicks={bank:runBankImportTick,individual:db=>runIndividualImportTick(db,freshImportContext),
-  rewardPlans:runRewardPlanCompanyTick,probation:runProbationReconciliationTick};
+  rewardPlans:runRewardPlanCompanyTick,probation:runProbationReconciliationTick,payrollSummaries:owner=>runPayrollBatchSummaryTick(owner)};
  // Between two bulk-job units, so waiting interactive writers always get the tenant locks first.
  const bulkPauseMs=Number(process.env.BULK_JOB_PAUSE_MS??25);
  let stopping=false,ended=false;
@@ -61,7 +62,7 @@ export function runWorkerProcess(){
    const worked=await runWorkerLaneIteration({owner,probationOwner,lanes,handlers,ticks,enter:phase=>watchdog.enter(phase)});
    if(once)break;
    watchdog.enter('pause');
-   if(!worked.bank&&!worked.individual)await new Promise(resolve=>setTimeout(resolve,worked.bulk||worked.rewardPlans||worked.probation?bulkPauseMs:1000));
+   if(!worked.bank&&!worked.individual)await new Promise(resolve=>setTimeout(resolve,worked.bulk||worked.rewardPlans||worked.probation||worked.payrollSummaries?bulkPauseMs:1000));
   }while(!stopping);}
   // The heartbeat removal is bounded (10 s): after OwnerConnectionUnresponsive the abandoned reservation still holds the
   // only owner connection, so it would wait for ever; owner.end then closes that connection after 5 s. A heartbeat
