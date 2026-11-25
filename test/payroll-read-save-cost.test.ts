@@ -88,19 +88,31 @@ describe(`payroll saves pay at most ${SAVE_COST_LIMIT*100}% for the read steps' 
   expect(r.share).toBeLessThanOrEqual(SAVE_COST_LIMIT);
  },600_000);
 
- it('a history confirm that adopts a processed payslip',async()=>{
+ it('a history confirm that adopts a processed payslip (median of five rounds)',async()=>{
+  // Five rounds, each the same shape: thirty new records for an unprocessed month and the adoption of one processed,
+  // closed payslip. The bound is on the median round, so one round slowed by runner load (the full gate measured one
+  // round at 4.6% while focused runs measured 1.0-1.1%) neither passes nor fails the build on its own; every round is
+  // printed. The runs adopted in rounds 2-5 are processed and closed first, outside any measure.
   await closeBatch(ctx,{batchId});
+  const rounds=[['02','07'],['03','08'],['04','09'],['05','10'],['06','11']].map(([adopt,add])=>({adopt:`${year}-${adopt}`,add:`${year}-${add}`}));
+  for(const round of rounds.slice(1)){const run=await createBatch(ctx,{companyId:b.companyId,payPeriod:round.adopt});await generatePayslips(ctx,{batchId:run.batchId});await closeBatch(ctx,{batchId:run.batchId});}
   const lines=(employee:string,period:string,amount:string)=>[[employee,period,'ME','BASIC','000AC',amount],[employee,period,'ME','EEEPF','000AC','0.00'],
    [employee,period,'ME','EESOCSO','000AC','0.00'],[employee,period,'ME','EEEIS','000AC','0.00'],[employee,period,'ME','PCB','000AC','0.00']];
   const codes=Array.from({length:EMPLOYEES},(_,i)=>String(100+i).padStart(4,'0'));
-  const content=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...codes.flatMap((code,i)=>lines(code,`${year}-03`,(5000+i).toFixed(2))),...lines(codes[0],`${year}-02`,'6100.00')]));
-  const preview=await previewPayrollHistoryUpload(ctx,{name:'cost.csv',content,operationKey:randomUUID()});
-  expect(preview.plan.counts).toMatchObject({created:EMPLOYEES,replaced:1});
-  const replace=preview.plan.rows.find(r=>r.operation==='replace')!;
-  const r=await measure('history confirm with adoption',()=>confirmPayrollHistoryUpload(ctx,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:true,selectedRecordKeys:[historyRecordKey(replace)],acknowledgeWarnings:true}));
-  expect(r.calls).toBeGreaterThan(0);
-  expect(r.share).toBeLessThanOrEqual(SAVE_COST_LIMIT);
- },600_000);
+  const shares:number[]=[];
+  for(const [n,round] of rounds.entries()){
+   const content=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...codes.flatMap((code,i)=>lines(code,round.add,(5000+i).toFixed(2))),...lines(codes[n],round.adopt,'6100.00')]));
+   const preview=await previewPayrollHistoryUpload(ctx,{name:`cost-${n}.csv`,content,operationKey:randomUUID()});
+   expect(preview.plan.counts,`round ${n+1}`).toMatchObject({created:EMPLOYEES,replaced:1});
+   const replace=preview.plan.rows.find(r=>r.operation==='replace')!;
+   const r=await measure(`history confirm with adoption, round ${n+1}`,()=>confirmPayrollHistoryUpload(ctx,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:true,selectedRecordKeys:[historyRecordKey(replace)],acknowledgeWarnings:true}));
+   expect(r.calls,`round ${n+1}`).toBeGreaterThan(0);
+   shares.push(r.share);
+  }
+  const median=[...shares].sort((x,y)=>x-y)[Math.floor(shares.length/2)];
+  console.info('PAYROLL_READ_SAVE_COST_MEDIAN',JSON.stringify({label:'history confirm with adoption',rounds:shares.map(x=>Math.round(x*10000)/100+'%'),median:Math.round(median*10000)/100+'%'}));
+  expect(median).toBeLessThanOrEqual(SAVE_COST_LIMIT);
+ },1_800_000);
 
  it('an employment movement import meets no read-step upkeep',async()=>{
   const triggers=await owner.client<{t:string}[]>`select tgrelid::regclass::text||'.'||tgname as t from pg_trigger t join pg_proc p on p.oid=t.tgfoid
