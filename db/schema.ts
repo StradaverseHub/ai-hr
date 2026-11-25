@@ -6909,6 +6909,24 @@ export const payrollReprocessJob = pgTable(
   (t) => [uniqueIndex('payroll_reprocess_job_idem_uq').on(t.tenantId, t.idempotencyKey)],
 );
 
+/**
+ * a1a80747 (migration 7450) — the stored answer "who on this PROCESSED run is still owed processing" that the Payroll
+ * Process list reads, worked out in the background by core/payroll-run-outstanding.ts from the Close rule
+ * (core/payroll.ts `runOutstandingTx`). Holds the close-pending employments only (new / pending with no payslip, and
+ * people held for income tax review); the recalculation mark stays on payroll_batch and is read live beside it.
+ * `employmentIds` NULL = not worked out yet. Cascades with the run. RLS: visible where the run is; written only by a
+ * payroll administrator of the run's company.
+ */
+export const payrollRunOutstanding = pgTable('payroll_run_outstanding', {
+  batchId: uuid('batch_id')
+    .primaryKey()
+    .references(() => payrollBatch.id, { onDelete: 'cascade' }),
+  tenantId: tenantId(),
+  employmentIds: jsonb('employment_ids').$type<string[]>(),
+  refreshedAt: timestamp('refreshed_at', { withTimezone: true }),
+  requestedAt: timestamp('requested_at', { withTimezone: true }),
+});
+
 // ─────────────── ADR-0076: the payroll anomaly layer (the ADR-0074 control-tower keystone) ───────────────
 //
 // READ-ONLY RELATIVE TO MONEY. The evaluator reads payslips and writes verdicts; it never mutates a
