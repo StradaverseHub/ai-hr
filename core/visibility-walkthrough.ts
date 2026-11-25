@@ -210,8 +210,7 @@ export async function runVisibilityWalkthrough(clients:{owner:Sql;app:Sql},setti
 /** 0 ran cleanly, or nothing to do (switched off, or not in shadow) · 2 refused (wrong installation, no actors), or a
  * read failed, or no actor resolved. */
 export function walkthroughExitCode(run:WalkthroughRun):number{
- if(run.status==='disabled'||run.status==='not_shadow')return 0;
- if(run.status==='refused')return 2;
+ if(run.status!=='ran')return run.status==='refused'?2:0;
  if(run.failed>0||run.statements===0)return 2;
  return 0;
 }
