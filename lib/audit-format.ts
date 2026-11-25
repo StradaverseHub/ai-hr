@@ -1,4 +1,13 @@
 import { HR_LOCAL_TZ } from './hr-date';
+import {
+  AGGREGATE_ENTITY,
+  ENTITY_LABEL,
+  auditFieldDef,
+  humanizeFieldKey,
+  isUuid,
+  type AuditEntityKind,
+  type AuditFieldLabelKey,
+} from './audit-fields';
 /** Shared formatting for the domain-event log — used by the dashboard widget, the global
  *  audit view, and per-record history cards. Pure (no DB), safe in client or server. */
 
@@ -99,6 +108,11 @@ const AGGREGATE: Record<string, { label: string; href?: (id: string) => string; 
   'company-statutory-my': { label: 'Company statutory' },
   'role-assignment': { label: 'Role assignment' },
   'reporting-line': { label: 'Reporting line' },
+  // 74a7a074 — an assignment transfer (core/org.ts transferEmployee). The label equals the humanizeEvent
+  // fallback it had, so the export's Record type column is byte-identical. It is deliberately NOT added to
+  // AGGREGATE_MODULE: that map also drives the Area filter (core/read.ts auditWhere) and the export's Module
+  // column, both of which this presentation change must leave as they are.
+  assignment: { label: 'Assignment' },
   'statutory-report': { label: 'Statutory report' },
   'employee-import': { label: 'Employee import' },
   'review-cycle': { label: 'Review cycle', href: (id) => `/performance/${id}`, adminOnly: true },
@@ -392,4 +406,186 @@ export function describePayload(payload: unknown): AuditDetailLine[] {
     }));
   }
   return Object.entries(p).map(([k, v]) => ({ key: k, value: maskValue(k, v) }));
+}
+
+// ─── 74a7a074 — the readable, sectioned detail ─────────────────────────────────────────────────────────
+//
+// describePayload above is UNCHANGED: the Audit Trail export (app/admin/audit/export/route.ts) prints its
+// "key: value" lines and must stay byte-identical (ADR-0047). The on-screen detail uses structurePayload,
+// which reads the same payload conventions, plus the { from, to } shape (assignment.transferred) and the
+// hire's nested employmentInformation, and splits it into Record / Changes / Other details / Technical
+// details. Every value still passes through maskValue, so masking is identical on screen and in the file.
+// References come back as {kind, ids}; core/audit-labels.ts resolves them under row-level security.
+
+/** A display value. `ref` is resolved to names by the server; `technical` is an id with no known owner,
+ *  shown only under Technical details; `fields` is a list of field names (the names-only convention). */
+export type AuditDisplayValue =
+  | { type: 'empty' }
+  | { type: 'text'; text: string }
+  | { type: 'ref'; kind: AuditEntityKind; ids: string[] }
+  | { type: 'technical' }
+  | { type: 'fields'; labels: AuditDisplayLabel[] };
+/** A label: a registry key (translated on screen) or, for an unregistered key, a humanized fallback. */
+export type AuditDisplayLabel = { key: AuditFieldLabelKey | null; fallback: string };
+export type AuditDisplayField = { key: string; label: AuditDisplayLabel; value: AuditDisplayValue };
+export type AuditDisplayChange = {
+  key: string;
+  label: AuditDisplayLabel;
+  previous: AuditDisplayValue;
+  updated: AuditDisplayValue;
+};
+export type AuditStructuredDetail = {
+  record: AuditDisplayField[];
+  changes: AuditDisplayChange[];
+  /** A before/after (or from/to) pair in which no field changed — say so rather than render nothing. */
+  noFieldChanged: boolean;
+  other: AuditDisplayField[];
+  /** The original keys and values (ids included, sensitive values masked), for exact tracing. */
+  technical: { key: string; value: string }[];
+};
+export type AuditStructureSource = { aggregateType: string; aggregateId: string; eventType: string; payload: unknown };
+
+/** Nested objects whose entries are business fields in their own right (the hire's information block). */
+const FLATTENED = new Set(['employmentInformation']);
+
+function displayLabel(key: string, module: ModuleKey): AuditDisplayLabel {
+  return { key: auditFieldDef(key, module)?.label ?? null, fallback: humanizeFieldKey(key) };
+}
+
+const uuidList = (v: unknown): v is string[] => Array.isArray(v) && v.length > 0 && v.every(isUuid);
+
+function displayValue(key: string, v: unknown, module: ModuleKey): AuditDisplayValue {
+  if (v == null) return { type: 'empty' };
+  const kind = auditFieldDef(key, module)?.kind;
+  if (kind && isUuid(v)) return { type: 'ref', kind, ids: [v.toLowerCase()] };
+  if (kind && uuidList(v)) return { type: 'ref', kind, ids: v.map((id) => id.toLowerCase()) };
+  if (isUuid(v) || uuidList(v)) return { type: 'technical' };
+  return { type: 'text', text: maskValue(key, v) };
+}
+
+function technicalValue(key: string, v: unknown): string {
+  // Id lists are printed whole (maskValue truncates long values), so every original id stays traceable.
+  return uuidList(v) ? v.join(', ') : maskValue(key, v);
+}
+
+/** Split one audit row into the sections the detail view draws. Pure; the same call feeds the resolver. */
+export function structurePayload(row: AuditStructureSource): AuditStructuredDetail {
+  const module = moduleKeyOf(row.aggregateType);
+  const p: Record<string, unknown> = OBJ(row.payload) ? row.payload : {};
+  const record: AuditDisplayField[] = [];
+  const other: AuditDisplayField[] = [];
+  const changes: AuditDisplayChange[] = [];
+  let noFieldChanged = false;
+
+  const place = (key: string, v: unknown) => {
+    const value = displayValue(key, v, module);
+    // An id with no known owner is not shown as a line: it is kept under Technical details.
+    if (value.type === 'technical') return;
+    const section = auditFieldDef(key, module)?.section ?? 'other';
+    (section === 'record' ? record : other).push({ key, label: displayLabel(key, module), value });
+  };
+  const compare = (b: Record<string, unknown>, a: Record<string, unknown>) => {
+    const keys = Array.from(new Set([...Object.keys(b), ...Object.keys(a)]));
+    for (const k of keys) {
+      if (JSON.stringify(b[k]) === JSON.stringify(a[k])) continue;
+      changes.push({
+        key: k,
+        label: displayLabel(k, module),
+        previous: displayValue(k, b[k], module),
+        updated: displayValue(k, a[k], module),
+      });
+    }
+    if (changes.length === 0) noFieldChanged = true;
+  };
+
+  // Which convention this payload uses, in describePayload's priority order, with { from, to } added.
+  const pair: [string, string] | null =
+    OBJ(p.before) || OBJ(p.after) ? ['before', 'after'] : OBJ(p.from) || OBJ(p.to) ? ['from', 'to'] : null;
+  const consumed = new Set<string>();
+  if (pair) {
+    const [bk, ak] = pair;
+    compare(OBJ(p[bk]) ? (p[bk] as Record<string, unknown>) : {}, OBJ(p[ak]) ? (p[ak] as Record<string, unknown>) : {});
+    consumed.add(bk).add(ak);
+  } else if (OBJ(p.diff)) {
+    for (const [k, v] of Object.entries(p.diff)) {
+      const d = OBJ(v) ? v : {};
+      changes.push({ key: k, label: displayLabel(k, module), previous: displayValue(k, d.from, module), updated: displayValue(k, d.to, module) });
+    }
+    consumed.add('diff');
+  }
+  if (Array.isArray(p.fields)) {
+    // The names-only convention. Beside a before/after pair the Changes table already says it, so the
+    // list is kept for Technical details only.
+    if (!pair) {
+      other.push({
+        key: 'fields',
+        label: { key: 'changedFields', fallback: 'Changed fields' },
+        value: { type: 'fields', labels: (p.fields as unknown[]).map((f) => displayLabel(String(f), module)) },
+      });
+    }
+    consumed.add('fields');
+  }
+  for (const [k, v] of Object.entries(p)) {
+    if (consumed.has(k)) continue;
+    if (FLATTENED.has(k) && OBJ(v)) {
+      // The hire's information block is mostly empty optional dates; an empty entry adds nothing to read.
+      // A key the payload also carries at the top level (the hire's hiredOn) is shown once, from there.
+      for (const [nk, nv] of Object.entries(v)) if (nv != null && !(nk in p)) place(nk, nv);
+      continue;
+    }
+    place(k, v);
+  }
+
+  // Name the record itself when the aggregate is a record kind and the payload has not already named it.
+  const aggregateKind = AGGREGATE_ENTITY[row.aggregateType];
+  if (aggregateKind && isUuid(row.aggregateId)) {
+    const id = row.aggregateId.toLowerCase();
+    const named = record.some((f) => f.value.type === 'ref' && f.value.kind === aggregateKind && f.value.ids.includes(id));
+    if (!named) {
+      const label = ENTITY_LABEL[aggregateKind];
+      record.unshift({ key: 'aggregateId', label: { key: label, fallback: humanizeFieldKey(label) }, value: { type: 'ref', kind: aggregateKind, ids: [id] } });
+    }
+  }
+
+  const technical: { key: string; value: string }[] = [
+    { key: 'aggregateType', value: row.aggregateType },
+    { key: 'aggregateId', value: row.aggregateId },
+    { key: 'eventType', value: row.eventType },
+  ];
+  for (const [k, v] of Object.entries(p)) {
+    if (OBJ(v)) {
+      for (const [nk, nv] of Object.entries(v)) {
+        if (OBJ(nv) && k === 'diff') {
+          technical.push({ key: `${k}.${nk}.from`, value: technicalValue(nk, nv.from) });
+          technical.push({ key: `${k}.${nk}.to`, value: technicalValue(nk, nv.to) });
+        } else {
+          technical.push({ key: `${k}.${nk}`, value: technicalValue(nk, nv) });
+        }
+      }
+    } else {
+      technical.push({ key: k, value: technicalValue(k, v) });
+    }
+  }
+
+  return { record, changes, noFieldChanged, other, technical };
+}
+
+/** Every record reference across `details`, by kind — what the resolver must look up for one page. */
+export function auditReferences(details: readonly AuditStructuredDetail[]): Map<AuditEntityKind, Set<string>> {
+  const out = new Map<AuditEntityKind, Set<string>>();
+  const add = (v: AuditDisplayValue) => {
+    if (v.type !== 'ref') return;
+    let set = out.get(v.kind);
+    if (!set) out.set(v.kind, (set = new Set()));
+    for (const id of v.ids) set.add(id);
+  };
+  for (const d of details) {
+    for (const f of d.record) add(f.value);
+    for (const f of d.other) add(f.value);
+    for (const c of d.changes) {
+      add(c.previous);
+      add(c.updated);
+    }
+  }
+  return out;
 }
