@@ -119,7 +119,7 @@ describe('payroll read switch and P1 reader guards (7460)',()=>{
  it('installs inert: every step legacy, policies unchanged, owner-only tables and operator functions',async()=>{
   expect(await owner.client`select step,mode from payroll_read_access_control where step=${STEP}`).toEqual([{step:STEP,mode:'legacy'}]);
   const tables=await owner.client<{name:string;app:boolean;rls:boolean;forced:boolean}[]>`select c.relname as name,has_table_privilege('ai_hr_app',c.oid,'SELECT') as app,c.relrowsecurity as rls,c.relforcerowsecurity as forced
-   from pg_class c where c.relnamespace='public'::regnamespace and c.relkind='r' and c.relname like 'payroll\\_read\\_access\\_%' order by 1`;
+   from pg_class c where c.relnamespace='public'::regnamespace and c.relname in ('payroll_read_access_control','payroll_read_access_fragment','payroll_read_access_tenant') order by 1`;
   expect(tables).toEqual(['payroll_read_access_control','payroll_read_access_fragment','payroll_read_access_tenant'].map(name=>({name,app:false,rls:true,forced:true})));
   const policies=await owner.client<{name:string;qual:string}[]>`select polname as name,pg_get_expr(polqual,polrelid) as qual from pg_policy
    where polrelid='public.payslip'::regclass and polname in ('payroll_tax_basis_reader_guard','payroll_import_tax_basis_reader_guard') order by 1`;
@@ -129,7 +129,8 @@ describe('payroll read switch and P1 reader guards (7460)',()=>{
   ]);
   const fns=await owner.client<{fn:string;app:boolean;pub:boolean;definer:boolean}[]>`select p.oid::regprocedure::text as fn,has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app,
    exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as pub,p.prosecdef as definer
-   from pg_proc p where p.pronamespace='app'::regnamespace and (p.proname like 'payroll_read_access_%' or p.proname in ('payroll_tax_basis_reader_arm','payroll_import_tax_reader_arm')) order by 1`;
+   from pg_proc p where p.pronamespace='app'::regnamespace and p.proname in ('payroll_read_access_compare','payroll_read_access_forced','payroll_read_access_installed_as',
+    'payroll_read_access_on','payroll_read_access_policy_text','payroll_read_access_retrust','payroll_read_access_set_mode','payroll_tax_basis_reader_arm','payroll_import_tax_reader_arm') order by 1`;
   expect(fns).toEqual([
    {fn:'app.payroll_import_tax_reader_arm(uuid,uuid,jsonb,boolean)',app:true,pub:false,definer:false},
    {fn:'app.payroll_read_access_compare(text,uuid)',app:false,pub:false,definer:true},
@@ -141,7 +142,8 @@ describe('payroll read switch and P1 reader guards (7460)',()=>{
    {fn:'app.payroll_read_access_set_mode(text,text)',app:false,pub:false,definer:true},
    {fn:'app.payroll_tax_basis_reader_arm(uuid,uuid,boolean)',app:true,pub:false,definer:false},
   ]);
-  // The arms keep the planner's view of the functions they stand for.
+  // P1's own objects, by name (later steps add more of the same prefix). The arms keep the planner's view of the
+  // functions they stand for.
   const shape=await owner.client<{fn:string;cost:number;vol:string;par:string}[]>`select proname as fn,procost::int as cost,provolatile as vol,proparallel as par from pg_proc
    where pronamespace='app'::regnamespace and proname in ('payroll_tax_basis_reader_arm','payroll_import_tax_reader_arm','payroll_tax_basis_reader_compatible','payroll_import_tax_reader_compatible') order by 1`;
   expect(new Set(shape.map(row=>`${row.cost}/${row.vol}/${row.par}`))).toEqual(new Set(['100/s/u']));
