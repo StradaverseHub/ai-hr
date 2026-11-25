@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reprocess — sketch</title><style>
+body{margin:0;background:#fff;color:#1c1c1f;font:14px/1.5 system-ui}main{padding:24px 32px;display:grid;grid-template-columns:1fr 1fr;gap:28px;max-width:1280px}
+.tag{font-size:12px;color:#66666e;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}h1{font-size:18px;margin:0 0 10px}
+.tabs{display:flex;gap:6px;margin-bottom:10px}.tab{border:1px solid #e8e8eb;border-radius:999px;padding:4px 12px;font-size:13px}.on{background:#1c1c1f;color:#fff;border-color:#1c1c1f}
+table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:#66666e;font-weight:500;border-bottom:1px solid #e8e8eb;padding:6px 6px}td{border-bottom:1px solid #f0f0f2;padding:7px 6px}
+.lab{display:inline-block;border-radius:999px;padding:0 8px;font-size:11px;font-weight:600}.new{background:#dbeafe;color:#1e40af}.chg{background:#f4f4f5;color:#3f3f46}
+.btn{display:inline-block;border-radius:8px;padding:7px 14px;font-weight:600}.dark{background:#1c1c1f;color:#fff}.ghost{border:1px solid #d4d4d8;color:#5f5f66}
+.bar{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}.strike{text-decoration:line-through}
+.tot{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}.t{border:1px solid #e8e8eb;border-radius:10px;padding:8px 10px}.t b{display:block;font-size:18px}.t span{font-size:12px;color:#66666e}
+.ok{color:#166534}.sk{color:#92400e}.fail{color:#b91c1c}a{color:#c2410c}.note{font-size:12px;color:#66666e}
+</style><main>
+<section><div class="tag">After · choose employees</div><h1>Reprocess · November 2026</h1>
+<div class="tabs"><span class="tab on">Reprocess Required (5)</span><span class="tab">Processed / No Change (212)</span><span class="tab">Nothing payable (2)</span></div>
+<table><tr><th>☑</th><th>Employee</th><th></th><th>Why</th></tr>
+<tr><td>☑</td><td>EMP0001 · SAMPLE A</td><td><span class="lab chg">Changed</span></td><td>Fixed transaction updated</td></tr>
+<tr><td>☑</td><td>EMP0002 · SAMPLE B</td><td><span class="lab chg">Changed</span></td><td>Individual transaction added</td></tr>
+<tr><td>☑</td><td>EMP0003 · SAMPLE C</td><td><span class="lab new">New</span></td><td>Hired after first processing</td></tr>
+<tr><td>☑</td><td>EMP0004 · SAMPLE D</td><td><span class="lab new">New</span></td><td>Pending individual transaction</td></tr>
+<tr><td>☑</td><td>EMP0005 · SAMPLE E</td><td><span class="lab chg">Changed</span></td><td>Earlier month's pay changed</td></tr></table>
+<div class="bar"><span class="btn ghost strike">Check tax readiness</span><span class="btn dark">Reprocess (5)</span></div>
+<p class="note">The tax-readiness check now runs automatically when you press Reprocess.</p></section>
+
+<section><div class="tag">After · results</div><h1>Reprocess finished</h1>
+<div class="tot"><div class="t"><b>5</b><span>Selected</span></div><div class="t"><b class="ok">3</b><span>Reprocessed</span></div><div class="t"><b class="sk">1</b><span>Skipped</span></div><div class="t"><b class="fail">1</b><span>Failed</span></div></div>
+<table><tr><th>Employee</th><th>Result</th></tr>
+<tr><td>EMP0001 · SAMPLE A</td><td class="ok">Reprocessed successfully</td></tr>
+<tr><td>EMP0002 · SAMPLE B</td><td class="ok">Reprocessed successfully</td></tr>
+<tr><td>EMP0003 · SAMPLE C</td><td class="ok">Reprocessed successfully (first payslip)</td></tr>
+<tr><td>EMP0005 · SAMPLE E</td><td class="sk">Skipped – income tax recalculation required · <a>Open recalculation</a></td></tr>
+<tr><td>EMP0004 · SAMPLE D</td><td class="fail">Failed – processing error: tax scheme not set · <a>Fix</a></td></tr></table></section>
+</main></html>

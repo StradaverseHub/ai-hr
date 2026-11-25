@@ -1,0 +1,53 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+When HR opens Reprocess on a processed payroll, employees who need attention are split across two lists. Reprocess Required holds employees whose payslip is out of date. New / Pending holds employees who have no payslip on this run yet, such as a late hire or someone with a new individual transaction. Both lists already go through the same reprocessing, but HR has to look in two places.
+
+HR must also press Check Tax Readiness before the Reprocess button works. If one employee's tax readiness changes between that check and pressing Reprocess, the whole request is refused and HR has to check again.
+
+The result screen already lists each employee, and one employee's problem already does not stop the others. But employees held back for income-tax recalculation do not appear in the results at all.
+
+WHAT WE'LL CHANGE
+
+- One list, called Reprocess Required. It includes everyone who needs processing: employees with an out-of-date payslip, plus new or pending employees with no payslip yet. Each employee appears once, even if several things changed for them.
+
+- Each row shows a small label, "New" or "Changed", so HR can still tell a first payslip from a recalculated one.
+
+- The Check Tax Readiness button is removed. HR ticks the employees and presses Reprocess. The tax-readiness check then runs automatically, one employee at a time, as part of the reprocessing.
+
+- Employees who need income-tax recalculation are skipped, as today, and the others carry on. One employee is never able to stop the rest.
+
+- The results show every employee with one of four outcomes: Reprocessed successfully; Skipped – income tax recalculation required; Skipped – nothing payable; Failed – processing error, with the reason. Totals at the top show Selected, Reprocessed, Skipped and Failed.
+
+- Skipped employees have a link to Income Tax Recalculation. Once that is done, they appear in Reprocess Required again.
+
+WHAT YOU'LL GET
+
+All employees who need processing are in one place, and one button does the work. HR never has to repeat a check by hand. The results make clear who is done and who still needs action.
+
+GOOD TO KNOW
+
+- We're not touching how anything is calculated, how changes are detected, the tax-readiness rules or income-tax recalculation. Approval, closing, releasing and payment stay as they are.
+
+- Employees with nothing to pay this month still show in their own "Nothing payable" group. They are not mixed into Reprocess Required.
+
+- Because the check now runs at the moment each employee is processed, it always uses up-to-date information. The "Tax readiness changed, please check again" message goes away.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Verified at d66030e57 (origin/main). Alpha differs only in core/payroll-reprocess-job.ts and core/payroll.ts (ADR 0181 J2 set-based groups, reprocessEmployeeGroupTx), so build on alpha. Route: app/payroll/[batchId]/reprocess (page.tsx, reprocess-form.tsx, outcomes.tsx, actions.ts).
+
+Facts. Reprocess Required = reprocessStaleSelection (core/payroll.ts about 11518) / staleEmploymentIdsSql (about 11449): payslip exists and the employee is in recalc_employment_ids. New / Pending = payslipLessEligibleWithSkipPage (core/payroll-view.ts about 3222) to listPayslipLessEligibleTx (payroll.ts about 12642): eligible with no payslip, including tax-held (016276b7). Both post to reprocessSelectedAction, which calls generatePayslipsTx with reprocessSubset; the result is labelled added or recalculated (about 10654). Readiness: reviewReprocessTaxAction (actions.ts about 509) runs reviewReprocessTaxReadiness (payroll.ts about 10785) inline. It is held in React state only, gates submit (form.tsx about 383 and 706), runs again on submit, and refuses the whole submit if any id changed (actions.ts about 575-579). Held ids go to result.heldEmploymentIds (about 10950), not to outcomes.
+
+1. One list. Replace the two groups with one set-based, paged union query: stale payslip ids UNION payslip-less eligible ids, de-duplicated by employment_id. Return a kind column (added or recalculated) for the row label. Keep the Nothing payable, blocked (not tickable) and outside-scope row states, and keep Processed / No Change. No per-employee loops in the request (SCALE-AND-RELEASE-RULES rules 2 and 4); check it with the 70+ company fixture.
+
+2. Readiness in the job. Remove the button and the inline review. reprocessSelectedAction enqueues all ticked ids. The payroll_reprocess job checks readiness per employee or group in its step, on the tax lane, using the same reviewReprocessTaxReadiness rules. This mirrors payroll_draft_tax_readiness (core/payroll-draft-tax-readiness.ts). ready continues; recalculating and blocked-for-tax become a skipped outcome with reasonCode TAX_RECALC_REQUIRED (or TAX_RECALC_IN_PROGRESS) and are kept as held for the add path, as today (ADR-0167 23 Nov amendment, "hold the employee, not the company"). This removes the check-then-submit race and the double inline cost. Keep the held-only path when the multi_cycle_payroll module is off (onlyTaxHeldTx). The idempotency key (about 10958) must no longer depend on the held ids computed at submit.
+
+3. Outcomes. Extend the outcome decoder (about 11016) and the mapping (about 531-563) with the tax-skip reason, and keep older job payloads decodable. In outcomes.tsx, show Selected / Reprocessed / Skipped (nothing payable + tax) / Failed (validation_failed + run stopped), with per-row reason and a link to income-tax recalculation (needs payroll.tax-basis.view; otherwise show the reason without the link). Six locales; translations need review.
+
+4. Permissions unchanged: page requireAdmin, action payroll.reprocess.selective scoped to the company, tax link payroll.tax-basis.view.
+
+Tests. Update test/payroll-reprocess-form.dom.test.tsx (one list, labels, no readiness button), test/payroll-corrected-source-reprocess.test.ts (readiness now in the job), test/payroll-reprocess-job.test.ts (tax skip outcome, partial success), test/payroll-reprocess-stale-selection-6aee208b.test.ts (union paging and de-duplication), test/c3258a72-reprocess-outcome-summary.test.ts, test/r382-reprocess-presentation.test.ts, and the alpha set-equivalence and group-size tests. Add a rendered check of the list and the results with one tax-held, one nothing-payable and one failed employee.

@@ -2,52 +2,64 @@ VERDICT: Partly there already   ·   SIZE: Moderate
 
 THE SITUATION TODAY
 
-When HR saves a Termination with a future date, for example 20-Nov-2026, the system only schedules it. Until that date arrives, the employee still shows as Active, Last Working Date shows Not set, and the Employment tab says nothing will change until the date.
+Thank you for the correction. You are right: salary should run to the Resignation Date, the official end of employment. It should not stop at the Last Working Day.
 
-Payroll does not see the scheduled date either. If November payroll is processed before the 20th, it pays the full month and does not list the employee as a leaver. HR cannot check the prorated final salary before the employee leaves.
+Since the last update, a future Termination already shows the employee as Active - Serving Notice straight away, and payroll can be run before the date. But payroll stops paying at the Last Working Day. If an employee clears annual leave from 11 to 20 Nov, November pay stops on 10 Nov. The Employment tab also says "Payroll pays up to the last working day", which is wrong.
+
+There is also a labelling problem. On the Termination event, the box called "Resignation Date" actually stores the Tender Resignation Date (the day notice was given). The real Resignation Date on the Employment tab stays empty.
 
 WHAT WE'LL CHANGE
 
-- As soon as a future Termination or Resignation is saved, the employee's status becomes Active - Serving Notice. This status already exists in the system; it just was not shown for scheduled terminations.
+- Payroll pays up to the Resignation Date. For a termination that is not a resignation, such as a dismissal, it pays up to the termination's Effective Date. The Last Working Day no longer cuts salary short. The existing proration formula and pay-item rules stay exactly as they are; only the date changes.
 
-- The Employment tab shows the Last Working Date straight away, and the Resignation Date where one was entered, marked "Scheduled in Movement · takes effect 20-Nov-2026". The termination date stays exactly as HR entered it. It is never changed to today.
+- On the Termination event, the box now called "Resignation Date" is renamed "Tender Resignation Date". The Termination's Effective Date becomes the employee's Resignation Date.
 
-- Department, position and direct superior stay as they are until the date arrives. On the date, the employee becomes Resigned, as today.
+- As soon as HR saves or edits a Termination, the Employment tab shows all three dates straight away, even when they are in the future: Tender Resignation Date, Resignation Date and Last Working Day.
 
-- Payroll recognises the last working day immediately. November payroll, including the preview, prorates basic salary up to that day, along with any pay items set to be prorated. The employee is listed as leaving in that month, so the usual leaver reminders (such as the leave balance) appear. This is the same calculation the system already uses for employees who have left. The difference is that HR can now run and check it in advance.
+- The Last Working Day can be on or before the Resignation Date. This applies to both Termination and Resignation events, so an employee can clear annual leave after their last physical day.
 
-- If HR changes the date, the Employment tab and payroll follow the latest saved date. The Movement tab still shows one Termination line with its change history, not a duplicate. If the scheduled Termination is deleted, the dates are cleared and payroll returns to the full month.
+- The wording on the Employment tab becomes "Payroll pays up to the Resignation Date 20-Nov-2026". Leaver reminders, such as the leave balance, appear in the month of the Resignation Date.
 
-- If the month's payroll is already processed but not closed when the date is entered or changed, the existing "needs reprocessing" flag appears. Closed payroll, payslips and statutory records are never changed. The usual closed-payroll notice is shown instead.
+- If HR changes any of the dates, the Employment tab and the payroll preview follow the latest saved dates. The Movement tab still shows one Termination line with its change history, not a duplicate.
+
+- An open payroll month that was already processed shows the usual "needs reprocessing" flag for the affected employee. Closed payroll, payslips and statutory records are never changed; the usual closed-payroll notice appears instead.
 
 WHAT YOU'LL GET
 
-HR can record a resignation as soon as it is known, see Serving Notice and the last working day straight away, and process and check the final month's prorated salary before the employee leaves, without waiting for the date or entering the same information on several screens.
+Example: Tender Resignation Date 20-Oct-2026, Resignation Date 20-Nov-2026, Last Working Day 10-Nov-2026. Basic salary and prorated allowances for November are calculated up to 20-Nov-2026. HR can enter this in October and check November payroll before the employee leaves.
 
 GOOD TO KNOW
 
+- Employment status timing does not change. The employee shows Active - Serving Notice until the Last Working Day and Resigned after it, and system login ends on the Last Working Day. Only pay uses the Resignation Date. If you want the status to stay Serving Notice until the Resignation Date, reject this plan and say so.
+
 - We're not touching how anything is calculated. EPF, SOCSO, EIS and PCB follow the prorated wages exactly as they already do for leavers.
 
-- Leave encashment stays a suggested figure for HR to decide, as today. Leaver tax forms and the final settlement process are not changed by this request.
+- Some employees who have already left may have a Last Working Day earlier than their Resignation Date. Where such an employee is in an open month that was already processed, that month is flagged "needs reprocessing" so HR can review it before anything changes. Nothing is changed in closed months.
 
-- This also applies to Resignation events entered with a future date, and to your company's own termination types.
+- Leave encashment stays a suggested figure for HR to decide, as today.
 
 ------------------------------------------------------------
 
 BUILD NOTES (technical - skip this if you are reviewing the request)
 
-Verified at 7909f0c43. scheduleTerminationTx (core/movement.ts about 3642) only writes an employment.movement.scheduled event. terminated_on, last_working_date and the reason stay null until sweepDueMovements (core/movement-apply.ts about 54, run by scripts/review-sweep.ts) calls applyTerminationTx (about 3577). A future Resignation movement also only schedules (about 3371-3378). deriveEmploymentStatus (core/employment-status.ts about 118-142) already returns active_serving_notice when least(resignationDate, lastWorkingDate, terminatedOn) is in the future, but the dates are null before the sweep. Payroll reads payrollEmploymentEnd = least(terminated_on, resignation_date, last_working_date) (core/payroll-employment-eligibility.ts:8, core/payroll.ts about 4398 and 4642) into payrollProrationRatio (lib/payroll-proration.ts). It never reads scheduled events. leaverAdvisory (core/payroll.ts about 12086 and 12102) and the pay-formula runtime (core/pay-formula-runtime.ts about 276-281) read terminated_on only. resignationInformationFromProjection (core/movement.ts about 5842-5872) ignores pending rows on purpose; that is changed here.
+Owner decision 2026-11-25: payroll end = employment end date, not LWD; status and login keep today's timing. Verified at d66030e57 (origin/main); alpha differs in core/payroll.ts only (J2 grouped reprocess adds a payrollEmploymentEnd reader, so build on alpha). Rev 1 was f23493774 + aa8810b0c.
 
-1. Write the exit dates when the termination is scheduled; defer only the closure. In scheduleTerminationTx and the future branch of recordResignationMovementTx, write last_working_date (and resignation_date / tender date when given) through withExitDateAuthorityTx and setEmploymentInfo. This is a secondary leg under the scheduled event's groupId. Do not write terminated_on early: planTerminationTx (about 3522) and other readers treat a non-null terminated_on as already terminated. Assignment and reporting-line closure stay with the sweep on the effective date (ae9350f2 / 941c9dac).
+Facts. db/schema.ts 1209-1237: tender_resignation_date = tender, resignation_date = effective resignation date, last_working_date = physical last day. The Termination form (app/admin/personnel/[employmentId]/movement-new-event.tsx about 838-945, planTerminationTx core/movement.ts about 3520-3626) stores its "Resignation Date" field in tender_resignation_date (about 3709 and 3783) and never writes resignation_date. test/scheduled-termination-exit-dates-7da649d3.test.ts:108 pins resignationDate null. The Resignation event enforces tender <= resignation <= LWD (core/movement.ts about 3419).
 
-2. Make applyTerminationTx leg 2 a no-op when the date is unchanged. Its change list hard-codes before null today; fix that.
+1. Single owner. Change payrollEmploymentEnd (core/payroll-employment-eligibility.ts:8) to coalesce(least(terminated_on, resignation_date), last_working_date). LWD is used only when both are null (legacy). Mirror it in lib/payroll-leaving-date.ts (payrollLeavingDate). Every reader inherits it: run generation (core/payroll.ts about 4398, 4644, 4807, 7836, 8471), reprocess (about 10616, 10631, plus the alpha J2 group path), leaverAdvisory (about 12128-12204), pre-process advisory (about 12362), the wizard (core/read.ts about 1756), Individual Transaction cap (core/payroll-individual-txn.ts about 151) and the pay-formula runtime (core/pay-formula-runtime.ts about 259 and 276).
 
-3. Reverse and edit. editMovementEventTx (reverse plus re-record) and reverseMovementTx must undo the date leg. Confirm the generic leg inverse covers it, and add a test.
+2. Termination writes resignation_date = effectiveDate. Do this through writeScheduledExitDatesTx (core/movement.ts about 3395-3409) in scheduleTerminationTx, and in applyTerminationTx for the immediate path, for every termination behaviour (ADR-0165/0166: key on behaviour, not reason code). Only resignation-reason terminations keep a tender date. The inverse already covers resignationDate (resignationFinancialDates, about 3384); add reverse and edit tests. Leave applyTerminationTx leg 2 a no-op when the dates are unchanged.
 
-4. Projection and copy. resignationInformationFromProjection shows a scheduled source for a pending owner. Update the Employment-tab banner and note (app/admin/personnel/[employmentId]/page.tsx about 4051-4075 and 4473-4490; messages en.json about 1465-1469) in all six locales. Translations need review.
+3. Validation. Termination: LWD <= effective date (exists); tender <= LWD. Resignation event: change to tender <= LWD <= resignation. Check test/884ea42d-resignation-owner.test.ts.
 
-5. Switch leaverAdvisory and the pay-formula runtime terminated reads to payrollEmploymentEnd.
+4. Thresholds and flags. planTerminationTx flagged periods (about 3584) and writeScheduledExitDatesTx's reprocess threshold key off the payroll end, not LWD. Closed months follow preserveMovementPayrollTx and the 2026-11-16 read-only notice decision.
 
-6. Audit the other last_working_date readers for future-date safety: core/read.ts (Personnel list status SQL about 6953), org.ts, lifecycle-cases.ts, rehire.ts, tp3.ts, rewards, pay-formula-registry, payroll-audit/controls. Processed-period flags come from the existing payrollFlaggedPeriods. Closed-window exit-date changes follow core/org.ts about 3302 and 3774-3790 and the 2026-11-16 closed-payroll notice decision. Key on termination behaviour (ADR-0165 / ADR-0166), not the literal code.
+5. Audit control. pay_after_last_day (core/payroll-audit/controls.ts:100) reads LWD first. Switch it to the payroll end, or it flags every correctly paid leave-clearing gap.
 
-Tests: a future termination gives active_serving_notice before any sweep (real HR date owner); a November run on 15 Nov prorates basic to 20 Nov; amending the date to 25 Nov re-prorates and keeps one history row; deleting the pending event clears the date and restores the full month; a closed run is unchanged and flagged; leaverAdvisory includes the pending leaver; the sweep still closes the assignment on 20 Nov; a tenant custom termination type behaves the same; update the pinned null in test/movement-termination.test.ts (about 278-288). Add a rendered Employment-tab check. No migration.
+6. Keep LWD for: employment status (core/employment-status.ts:130, app.employment_status_on in 0331/0698), login lifecycle (0279), rewards, rehire earliest date (core/rehire.ts), TP3 eligibility, contract schedule, the closed-month gate (core/org.ts:3317), the LWD formula variable (lib/pay-formula-registry.ts:11), and attendance. No migration.
+
+7. Copy. Relabel the Termination field to Tender Resignation Date (messages en.json about 1895). Reword people.detail.employmentInfo.pendingExitPayroll (about 1472) and resignationMovementNote (about 1473) to name the Resignation Date. Update the pending-exit-notice.tsx bullet. All six locales; translations need review.
+
+8. Existing leavers. Before release, run a read-only count on the target of employments where last_working_date < coalesce(terminated_on, resignation_date) that sit in open processed runs. Mark those employees with the existing markBatchNeedsRecalc in a separate, verified data script, run once and safe to re-run. Do not touch closed runs. Record the count in the release evidence.
+
+Tests. Add a case with LWD < effective date: 10-Nov LWD, 20-Nov end, prorated to 20-Nov. Update test/ad6ed930-leaving-date-presentation.test.ts:119, test/movement-termination.test.ts:495, test/r285-employment-info-closed-payroll.test.ts and the 7da649d3 test (108 and 143). Add a dismissal case (no resignation reason: cut-off = effective date). Add edit and delete of a scheduled Termination, and the audit control. Add a rendered six-locale Employment tab check.

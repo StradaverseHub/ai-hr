@@ -1,0 +1,55 @@
+VERDICT: Not built yet   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+When an HR Admin opens an Audit Trail record, the details are shown as a raw list of technical field names and codes, for example "companyId: 98796fcd-...". For edits, changed values show as "old → new", but those values are often codes too. HR Admins and auditors cannot tell which company, employee or department was affected without looking it up elsewhere.
+
+WHAT WE'LL CHANGE
+
+- Technical field names become plain labels. For example, companyId becomes Company, employmentId becomes Employee and departmentId becomes Department.
+
+- Codes are replaced by the business name. Examples: "Company: Sample Holdings (SHB)", "Employee: Sample Employee / EMP0001", "Department: Human Resources". The same applies to positions, grades, business units, leave types, payroll runs, pay items, workflows and users.
+
+- The detail view is organised into clear sections. Action shows who did what, and when. Record shows which record was affected. Changes is a table of each changed field with its Previous and Updated value, side by side.
+
+- If a referenced record has been deleted, or the person viewing is not allowed to see it, the screen shows "Record not available" instead of a code.
+
+- The original codes are still kept. A small "Technical details" link at the bottom of each record shows them for anyone who needs to trace a record exactly.
+
+- Assignment transfers and other records that today show a block of text are laid out the same readable way.
+
+WHAT YOU'LL GET
+
+Anyone reviewing the audit trail can see who did what, to which company, employee or record, and what changed, in plain business terms. Nothing has to be decoded by hand.
+
+GOOD TO KNOW
+
+- This only changes what's shown on screen. Audit records themselves are never changed, and nothing is removed from them.
+
+- Names are shown as they are today. If a department was renamed after the event, the current name is shown, with a note saying so. The system does not keep a history of names.
+
+- Employee names are shown only to admins who are allowed to see that employee. Others see "Record not available".
+
+- The Audit Trail Excel download stays exactly as it is for now, because other teams may rely on its layout. Adding readable columns to the download can be a follow-up request.
+
+- Branch is already stored as readable text, so it already shows correctly.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Verified at d66030e57 (origin/main); alpha is identical for every file below. This is presentation only: no migration, and no change to domain_event or its read policy.
+
+Facts. Route app/admin/audit/page.tsx (requireAdmin, about 70; screen auditTrail in lib/permissions.ts about 1624). Data comes from core/read.ts auditEvents (about 6686) and auditWhere (about 6640); today only the actor name is resolved. Rendering is components/audit-table.tsx (server component, details per row, about 62 and 117-123). Formatting is lib/audit-format.ts describePayload (about 352), which handles before/after, diff, fields and flat payloads, with maskValue for sensitive fields (295-339). It does not understand the from/to shape (assignment.transferred, core/org.ts about 741). The assignment aggregate is missing from AGGREGATE and the module map, so it is chipped Other. Export (app/admin/audit/export/route.ts) is byte-stable English under ADR-0047: leave it unchanged.
+
+1. Field registry (pure, in lib/audit-format or lib/audit-fields.ts). Map key to i18n label key, entity kind and section. Cover companyId(s), employmentId(s) and the manager/decider/subordinate employment ids, personId, userId/appUserId/createdByUserId/updatedByUserId, departmentId, businessUnitId, positionId, gradeId, leaveTypeId, batchId/runId, componentId, templateId, workflow and rule ids, locationId, cycleId and requestId. Unknown keys get a humanised label. Unknown ID-shaped values are shown only under Technical details.
+
+2. Resolver (core/audit-labels.ts). Collect ids from every row on the page, including nested before/after/from/to and employmentInformation. Run one batched = ANY(uuid[]) query per entity kind under withTenant (row-level security), so the query count is bounded by kinds, not rows. Measure at the 2,000-row ceiling (lib/pagination.ts). Reuse the patterns of companyNamesTx (core/movement.ts about 1605) and namesForEmployments/codesForEmployments (core/performance.ts about 1999). Return a map of id to label/code, or unavailable.
+
+3. Scope (GLOSSARY: USER, PERSON, EMPLOYEE and EMPLOYMENT are distinct). Resolve employee labels only through employment joined to person under RLS: employment is company-scoped for admins (is_admin_for). Resolve personId and userId to a name only when the viewer can see one of that person's employments; otherwise show unavailable. Use one neutral string for both deleted and out-of-scope references, so existence is not revealed. Company, department and position are tenant-wide today; confirm no later group-admin policy on department or business_unit.
+
+4. Rendering. Add Action / Record / Changes (Previous and Updated columns) / Other details sections and a collapsed Technical details block holding the raw keys and ids. Keep maskValue. Add from/to support and the assignment aggregate. Add "current name" hint copy. New components.auditTable keys in all six locales; translations need review.
+
+5. Pre-existing exposure, out of scope here and not widened by this change. domain_event is readable by any admin tenant-wide (app.is_admin(); 0016 and 0515 about 407), so a company-scoped hr_admin already sees other companies' events and raw payloads, and the Company filter lists every company. Raised to the owner separately; this build must not resolve names past the employment RLS boundary.
+
+Tests. Extend test/audit-format.test.ts (registry labels, from/to shape, section split, masking kept). Add a database-backed resolver test: batched query count independent of row count; a company-scoped hr_admin gets unavailable for another company's employee and personId; a deleted department gives unavailable. Check test/personnel-audit-subject.test.ts, test/audit-area-filter.test.ts and test/function-access.test.ts still pass, and that the export output is unchanged. Add a rendered six-locale check of one before/after record and one hire record.
