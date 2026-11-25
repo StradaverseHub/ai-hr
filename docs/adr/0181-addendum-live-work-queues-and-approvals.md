@@ -52,6 +52,40 @@ cost grows with the number of users and postings in the tenant (section 2.1). Th
 planning comes from 12 calls. Its source header measured 1.6–2.4 ms warm and 10–15 ms on a fresh backend, so cold
 backends are the likely cause. Section 7 asks for one attribution read to confirm it.
 
+### 1.1 Attribution read (step 0, 25 November 2026)
+
+This was owner decision 6. The read was read-only and rolled back, run while the staging lease was free. It used the demo
+tenant's own fictional administrator, manager and employee claims, and printed timings and counts only.
+
+The demo tenant has:
+
+- 24 users, 74 companies and 2,959 employments;
+- no offboarding postings and no probation cases;
+- no contract approvals or letters.
+
+Warm timings per call:
+
+| Read | Administrator | Manager | Employee |
+|---|---:|---:|---:|
+| `offboarding_posting_queue_access()` | 103 ms | 104 ms | 106 ms |
+| of which: `offboarding_posting_ops` over the 74 companies | 21 ms | 20 ms | 22 ms |
+| `contract_shared_navigation_access()` | 41 ms | 177 ms | 177 ms |
+| of which: `automation_can_configure('contract_staff')` | 2 ms | 134 ms | 135 ms |
+| `contract_shared_work_page('all', 20)`, no work | 47 ms | 38 ms | 39 ms |
+| `contract_shared_posting_work_page`, no postings | 26 ms | 27 ms | 26 ms |
+| `probation_navigation_access()` / `probation_task_list(NULL, 200)`, no cases | 3 / 5 ms | 2 / 4 ms | 2 / 4 ms |
+
+What this shows:
+
+- The offboarding cost is a floor of about 0.1 s per page for everyone, even with no posting to review. It comes from the
+  per-company arms, which repeat the principal, admin and Workforce checks for each company. The scan of the group's
+  members is only 1 ms with 24 users, but it grows with every user. The 428 ms `pg_stat_statements` mean is that floor
+  plus concurrency and cold backends.
+- Contract navigation costs a non-administrator about 0.18 s, three quarters of it in the per-company permission checks.
+- Recruitment: `count(*)` over `recruitment_application` as the application role planned in 64.6 ms on a fresh backend
+  and 0.29 ms on the next call. Joined to `recruitment_candidate`, it took 41.6 ms and then 1.1 ms. The 316 ms mean
+  is a cold-backend effect, so step Q2a matters less than Q1.
+
 ## 2. What these reads actually evaluate
 
 ### 2.1 `app.offboarding_posting_queue_access()` (6302)
@@ -189,20 +223,24 @@ Four steps. Each is proven, installed and switched on its own.
 
 ### Q0. Read each queue once per request (no migration)
 
-- **Contract work page.** The frame bell, Home and Approvals each call `contract_shared_work_page` with a different
-  category. Instead, the request reads the actor's whole assigned set once, through a request-scoped promise in the
-  render's shared read scope (`lib/request-read-scope.ts`). TypeScript derives each caller's category, company filter,
-  page and counts from it.
-  - The function already computes this set before it filters (the `assigned` CTE).
-  - The set is the actor's own work, so it is small. Above 1,000 items the derived pages fall back to the current
-    per-caller calls, so totals never become approximate.
-- **Probation task list.** The bell and Home share one `probation_task_list(NULL, 200)` read. Approvals derives its
-  `'approval'` category from that read when the read is not `capped`, and otherwise calls with `'approval'` as today.
+- **Contract work page.** Inside a page render, the frame bell and Home's Contract slot share one owner read: the first
+  page of every category, at the owner's largest limit (100), with no company filter. It is shared through
+  `lib/request-memo.ts` in the render's read scope.
+  - An `all` page inside that page is its slice. Any category page is the filtered slice when the shared page holds
+    every item. Otherwise the caller reads the owner itself.
+  - Approvals filters by company, and the items carry no company, so it still reads the owner. Step Q1 adds the company to
+    the set so that Approvals can share it too.
+- **Probation task list.** The frame bell and Approvals share one `probation_task_list(NULL, 200)` read. Each derives its
+  category when that read holds every task (`count` equals the items returned), and otherwise reads the owner. Home
+  reads its tasks from `/api/home/tasks`, a separate request, so it is not shared.
 - **Navigation.** `lifecycleModuleNavigation` is memoised per request, so `/tasks` reads it once.
 - **Account task statement:**
   - Pass `own` to the replacement and claims sections, as the other sections do. This is equivalent by the argument
     already recorded at `core/approvals.ts:137-141`.
-  - Read `employment_review` once for both review stages.
+  - A review stage in which the caller can decide nothing returns its empty array without reading the headers: the HR
+    stage for a non-administrator, and the manager stage for a non-administrator with no person. This is exactly what
+    the aggregate returns when every row is filtered out. It replaces the merged review read first proposed, which
+    would change more SQL for the same saving.
 - **Proof:** the derived pages and counts must equal the old per-caller calls for every category, company filter, limit
   and offset under the cap, for every actor of the fixture (section 5).
 
