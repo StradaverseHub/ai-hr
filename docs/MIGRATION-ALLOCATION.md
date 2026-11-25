@@ -1,3 +1,18 @@
+# Payroll Process outstanding employees (board a1a80747, plan r2), 25 November 2026
+
+Reserve `7450_payroll_run_outstanding`, journal index `10850`, timestamp `1795495007450`, SQL SHA-256
+`da307ecf6fd170778c9b760cd8adac44b09fb58cecf69d32fcc4ada204d7cb13`. Taken from
+`node .github/ci/check-migration-collisions.mjs --local --next` (the script from `claude/migration-collision-check`, run
+from this branch) on 25 November 2026, which checked main and 397 recent branch journals and named 7450 as the next free
+slot, after `7440_payroll_read_history_summary`. Built on alpha `f34f6ff976` (ledger ending `7360`) and merged with alpha `143bde4d5` (ledger ending `7390_custom_pcb_selection`), which 7450 stays above. Neither installation's
+watermark was read from this session; recheck both, and any competing reservation, before admission.
+
+Creates `public.payroll_run_outstanding` (one row per processed run: the close-pending employment ids, when they were
+worked out and when a refresh was asked for), with RLS forced: read where the run is visible, written only by a payroll
+administrator of the run's company (`app.can_admin_payroll_for`); SELECT, INSERT, UPDATE and DELETE to `ai_hr_app`. Adds
+the `payroll_run_outstanding_refresh` bulk-job kind (default lane, no exclusivity). No existing table, row, policy or
+function changes; the new table starts empty. This entry carries no deployment authority.
+
 # Custom PCB on the Income Tax Resident selection (ADR 0183, board d8dc0a8c), 25 November 2026
 
 Reserve `7390_custom_pcb_selection`, journal index `10790`, timestamp `1795495007390`,

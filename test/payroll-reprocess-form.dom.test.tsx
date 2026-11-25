@@ -870,3 +870,67 @@ describe('a1a80747 — one Reprocess Required list, no tax readiness step', () =
     expect(posted(container).sort()).toEqual(['c1', 'c2', 'c5']);
   });
 });
+
+/**
+ * a1a80747 r2 — THE TAB COUNTS AND PRE-TICKS EXACTLY WHO THE RUN OWES. The server marks each row `owed` from the rule
+ * Close uses (core/payroll.ts `runOutstandingTx`), which is the number the Payroll Process list prints. Everyone else who
+ * is eligible with no payslip here — outside a chosen-list run, removed on purpose, not paid by an additional run — is
+ * in their own unticked Not owed on this run group, with the reason, and can still be ticked by hand. Nothing payable
+ * stays its own group.
+ */
+describe('a1a80747 r2 — owed rows are the list; the rest are Not owed on this run', () => {
+  const required: ReprocessRequiredRow[] = [
+    { kind: 'recalculated', employmentId: 'c1', employeeCode: 'EMP0101', name: 'Owed Changed' },
+    added({ employmentId: 'n2', employeeCode: 'EMP0102', name: 'Owed New', owed: true, notOwedReason: null }),
+    // Held for income tax review on a chosen-list run, outside that list: still owed, so ticked.
+    added({ employmentId: 'h3', employeeCode: 'EMP0103', name: 'Owed Held', owed: true, notOwedReason: null, outsideScope: true }),
+    added({ employmentId: 'o4', employeeCode: 'EMP0104', name: 'Outside List', owed: false, notOwedReason: 'outsideScope', outsideScope: true }),
+    added({ employmentId: 'r5', employeeCode: 'EMP0105', name: 'Removed One', owed: false, notOwedReason: 'removed' }),
+    added({ employmentId: 'p6', employeeCode: 'EMP0106', name: 'Bonus Nonrecipient', owed: false, notOwedReason: 'notPaidByRun' }),
+    added({ employmentId: 's7', employeeCode: 'EMP0107', name: 'Nothing Due', owed: false, notOwedReason: 'other', warnings: ['nothingPayable'], skip: 'NOTHING_PAYABLE_THIS_PERIOD' }),
+  ];
+  const stale = { rows: [{ employmentId: 'c1', employeeCode: 'EMP0101', name: 'Owed Changed' }], withoutPayslip: 0 };
+  const paged = () => (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <ReprocessForm batchId="b1" employees={[]} required={required} currency="MYR" stale={stale}
+        paging={{existing:pageState(parsePageQuery(),7,7),runTotal:PEOPLE.length+6,existingTotal:PEOPLE.length,search:'',
+          tabs:{current:'required',counts:{required:3,unchanged:3},hrefs:{required:'?tab=required',unchanged:'?tab=unchanged'}}}} />
+    </NextIntlClientProvider>
+  );
+  const valuesOf = (table: Element) =>
+    [...table.querySelectorAll('tbody tr input[type="checkbox"]')].map((b) => (b as HTMLInputElement).value);
+
+  it('lists only the owed employees under Reprocess Required, with the tab count the server gave', () => {
+    const { container } = render(paged());
+    expect(valuesOf(screen.getByRole('table', { name: 'Reprocess Required' }))).toEqual(['c1', 'n2', 'h3']);
+    const tab = screen.getByRole('link', { name: /Reprocess Required/ });
+    expect(tab.textContent).toContain('3');
+    // Pre-ticked: exactly the owed set.
+    expect(posted(container).sort()).toEqual(['c1', 'h3', 'n2']);
+  });
+
+  it('puts everyone else in an unticked Not owed on this run group with the reason, still tickable by hand', async () => {
+    const user = userEvent.setup();
+    const { container } = render(paged());
+    const group = [...container.querySelectorAll('table')].find((tb) => tb.querySelector('caption')?.textContent?.includes('Not owed on this run'))!;
+    expect(group, 'the Not owed on this run group is rendered').toBeTruthy();
+    expect(group.querySelector('caption')!.textContent).toBe('Not owed on this run — 3 employee(s) on this page');
+    expect(valuesOf(group)).toEqual(['o4', 'r5', 'p6']);
+    const rows = [...group.querySelectorAll('tbody tr')] as HTMLElement[];
+    expect(rows.map((r) => r.querySelectorAll('td')[1]!.textContent)).toEqual(['Not owed', 'Not owed', 'Not owed']);
+    expect(rows[0]!.textContent).toContain('This run was set up for a chosen list of people');
+    expect(rows[1]!.textContent).toContain('Removed from this run on purpose.');
+    expect(rows[2]!.textContent).toContain('This run does not pay them.');
+    expect(container.textContent).toContain('Not ticked and not counted in Reprocess Required');
+    for (const box of group.querySelectorAll('input[type="checkbox"]')) {
+      expect((box as HTMLInputElement).checked).toBe(false);
+      expect((box as HTMLInputElement).disabled).toBe(false);
+    }
+    // The Nothing payable group is unchanged: the skipped employee is there, not in either list above.
+    const nothing = [...container.querySelectorAll('table')].find((tb) => tb.querySelector('caption')?.textContent?.includes('Nothing payable'))!;
+    expect(valuesOf(nothing)).toEqual(['s7']);
+    // Ticking a Not owed row by hand adds exactly that person.
+    await user.click(rows[0]!.querySelector('input[type="checkbox"]')!);
+    expect(posted(container).sort()).toEqual(['c1', 'h3', 'n2', 'o4']);
+  });
+});
