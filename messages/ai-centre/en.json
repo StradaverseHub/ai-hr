@@ -3163,7 +3163,7 @@
     "what": {
       "bank_change_before_pay_day": "Bank account changed on {changed}, {days, plural, one {# day} other {# days}} before pay day on {payDay} (now ending {last4}).",
       "shared_bank_account": "One account ending {last4} is on {people} people; {paid} paid by this company.",
-      "pay_after_last_day": "Net pay on a payslip that starts after the last working day, {lastDay}.",
+      "pay_after_last_day": "Net pay on a payslip that starts after the employment ended, {lastDay}.",
       "pay_without_attendance": "Net pay with no attendance and no approved leave in the period.",
       "preparer_closed_run": "The same person processed and closed run {seq}. Flagged only: there is no second approver.",
       "adjustment_without_reason": "A manual adjustment above {threshold} was keyed with no reason.",

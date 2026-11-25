@@ -12389,7 +12389,7 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
         employmentId: employment.id,
         name: person.fullName,
         employeeCode: employment.employeeCode,
-        // 7da649d3 — the payroll last day (least of terminated_on, resignation_date, last_working_date), the
+        // 7da649d3 — the payroll last day (payrollEmploymentEnd: the employment end date, not the last working day), the
         // same end the run prorates to, so a leaver whose termination is still scheduled is listed in the
         // month they leave rather than only after the sweep writes terminated_on.
         terminatedOn: payrollEmploymentEnd,

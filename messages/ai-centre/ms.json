@@ -3163,7 +3163,7 @@
     "what": {
       "bank_change_before_pay_day": "Akaun bank diubah pada {changed}, {days} hari sebelum hari gaji pada {payDay} (kini berakhir {last4}).",
       "shared_bank_account": "Satu akaun berakhir {last4} digunakan oleh {people} orang; {paid} dibayar oleh syarikat ini.",
-      "pay_after_last_day": "Gaji bersih pada slip gaji yang bermula selepas hari bekerja terakhir, {lastDay}.",
+      "pay_after_last_day": "Gaji bersih pada slip gaji yang bermula selepas pekerjaan tamat, {lastDay}.",
       "pay_without_attendance": "Gaji bersih tanpa kehadiran dan tanpa cuti yang diluluskan dalam tempoh itu.",
       "preparer_closed_run": "Orang yang sama memproses dan menutup larian {seq}. Ditanda sahaja: tiada pelulus kedua.",
       "adjustment_without_reason": "Pelarasan manual melebihi {threshold} dimasukkan tanpa sebab.",

@@ -97,15 +97,16 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
       confirmationDate: '2020-04-01',
 
     });
-    await saveExit(e.id,{tenderResignationDate:'2026-01-05',resignationDate:'2026-02-05',lastWorkingDate:'2026-02-28'});
+    // 7da649d3 rev 2 (owner decision 2026-11-25) — tender, last working day, then Resignation Date.
+    await saveExit(e.id,{tenderResignationDate:'2026-01-05',resignationDate:'2026-02-28',lastWorkingDate:'2026-02-05'});
     // d27961e3 — the extension is movement-only now; it persists via the tagged (movement-writer) path.
     await extendProbation(e.id, '2020-06-01');
     const d = await employeeDetail(adminCtx(b), e.id);
     expect(d!.confirmationDate).toBe('2020-04-01');
     expect(d!.extendedConfirmationDate).toBe('2020-06-01');
     expect(d!.tenderResignationDate).toBe('2026-01-05');
-    expect(d!.resignationDate).toBe('2026-02-05');
-    expect(d!.lastWorkingDate).toBe('2026-02-28');
+    expect(d!.resignationDate).toBe('2026-02-28');
+    expect(d!.lastWorkingDate).toBe('2026-02-05');
   });
 
   it('derives finalConfirmationDate = extended when present', async () => {
@@ -159,11 +160,14 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
     ).rejects.toThrow(/tender/i);
   });
 
-  it('rejects resignation later than last working date', async () => {
+  it('rejects a last working date later than the resignation date, and accepts an earlier one (7da649d3)', async () => {
     const e = await hire('LastWorkingOrder');
     await expect(
-      saveExit(e.id,{resignationDate:'2026-03-01',lastWorkingDate:'2026-02-01'}),
+      saveExit(e.id,{tenderResignationDate:'2026-01-15',resignationDate:'2026-02-01',lastWorkingDate:'2026-03-01'}),
     ).rejects.toThrow(/last working/i);
+    await saveExit(e.id,{tenderResignationDate:'2026-01-15',resignationDate:'2026-03-01',lastWorkingDate:'2026-02-01'});
+    const d = await employeeDetail(adminCtx(b), e.id);
+    expect([d!.resignationDate, d!.lastWorkingDate]).toEqual(['2026-03-01', '2026-02-01']);
   });
 
   it('rejects extended confirmation earlier than confirmation (movement path)', async () => {
@@ -177,7 +181,7 @@ describe('setEmploymentInfo — Employment Dates value+unit + lifecycle (955c7de
     await saveExit(e.id,{resignationDate:'2026-02-01'});
     // A later save of only the last working date must still be checked against the stored resignation date.
     await expect(
-      saveExit(e.id,{lastWorkingDate:'2026-01-01'}),
+      saveExit(e.id,{tenderResignationDate:'2026-01-01',lastWorkingDate:'2026-03-01'}),
     ).rejects.toThrow(/last working/i);
   });
 

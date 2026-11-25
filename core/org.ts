@@ -3653,7 +3653,10 @@ async function setEmploymentInfoBody(
     const extendedConfirmation='extendedConfirmationDate' in set?(set.extendedConfirmationDate as string|null):before.extendedConfirmationDate;
     const tender='tenderResignationDate' in set?(set.tenderResignationDate as string|null):before.tenderResignationDate;
     const lastWorking='lastWorkingDate' in set?(set.lastWorkingDate as string|null):before.lastWorkingDate;
-    assertEmploymentInformationDateOrder({hire,join,confirmation,extendedConfirmation,tender,resignation,lastWorking});
+    // 7da649d3 — exit dates reach this writer only under Movement's exit-date authority: its Resignation and
+    // Termination commands have already checked last working day <= Resignation Date, and a reversal restores a
+    // state that was valid when recorded. So the pair is not re-judged here (exitOrder off).
+    assertEmploymentInformationDateOrder({hire,join,confirmation,extendedConfirmation,tender,resignation,lastWorking,exitOrder:false});
 
     // 8590615a — the contract period, resolved against the RESULTING values like every check above.
     const contractStart =
