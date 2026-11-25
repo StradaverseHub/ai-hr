@@ -598,9 +598,13 @@ describe('case 64 — My tasks lists what its badge counts; Home and the launche
     expect((await listMyTasks(w.recruiter, [base.companyId], modules)).map((i) => i.kind)).toEqual(['noticeAcknowledgement']);
     expect((await listMyTasks(w.i1, [base.companyId], { ...modules, recruitment: false })).map((i) => i.kind)).toEqual(['noticeAcknowledgement']);
     // The page and layout wiring this rests on.
+    // ADR 0181 Phase 3: the shell's task sources are one rule (app/shell-approval-facts-read.ts), read by the root layout
+    // and by the re-read a frame-keeping save asks for, so the bell and the My tasks badge ask for recruitment the same way.
     const layout = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
-    expect(layout).toContain("recruitment: isModuleEnabledOrFalse(session, 'recruitment'),");
-    expect(layout).toContain('pendingTaskSummary(session, scopeIds, {');
+    const shellFacts = readFileSync(new URL('../app/shell-approval-facts-read.ts', import.meta.url), 'utf8');
+    expect(shellFacts).toContain("recruitment: isModuleEnabledOrFalse(session, 'recruitment'),");
+    expect(layout).toContain('pendingTaskSummary(session, scopeIds, shellPendingTaskSources(session),');
+    expect(shellFacts).toContain('pendingTaskSummary(session, scopeIds, shellPendingTaskSources(session),');
     // The sidebar's My tasks badge is the shell summary's total; the launcher counts its items without the recruitment kinds.
     expect(readFileSync(new URL('../components/sidebar.tsx', import.meta.url), 'utf8')).toContain('baseTaskCount+approvals.total');
     expect(readFileSync(new URL('../components/assistant/assistant-launcher.tsx', import.meta.url), 'utf8'))
