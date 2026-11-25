@@ -228,4 +228,30 @@ describe('stored payroll history barrier (7490)',()=>{
   const [c]=await owner.client<{r:Record<string,unknown>}[]>`select app.payroll_read_access_compare(${STEP},${f.b.tenantId}::uuid) as r`;
   expect(c.r).toMatchObject({valuesDiffer:0,raisesDiffer:0,trusted:true});
  },1_800_000);
+
+ it('7490: the commit-time lookup of a record\'s snapshots uses payroll_history_import_snapshot_record_idx at scale',async()=>{
+  const f=await buildPayrollReadFixture();
+  // The function's lookup, as installed (a rewrite of it must keep using an indexed predicate, or fail here).
+  const [fn]=await owner.client<{src:string}[]>`select prosrc as src from pg_proc where oid='app.payroll_history_ineffective_record_payslips(uuid,uuid[])'::regprocedure`;
+  expect(fn.src).toContain('FROM public.payroll_history_import_snapshot s WHERE s.tenant_id=p_tenant AND s.record_id=ANY(p_records)');
+  // About 4,000 snapshot rows over 1,000 records (one per payslip of the 70-company fixture), analysed, then the same
+  // statement explained for three records; all inside a transaction that is rolled back.
+  class Done{constructor(readonly plan:string){}}
+  let plan='';
+  try{
+   await owner.client.begin(async tx=>{
+    await tx`set local session_replication_role = replica`;
+    await tx`insert into payroll_history_import_snapshot(id,tenant_id,record_id,value_hash,"values")
+     select p.id,p.tenant_id,md5(p.employment_id::text)::uuid,repeat('0',64),'{}'::jsonb from payslip p where p.tenant_id=${f.b.tenantId}::uuid`;
+    await tx`analyze payroll_history_import_snapshot`;
+    const records=(await tx<{r:string}[]>`select distinct record_id::text as r from payroll_history_import_snapshot where tenant_id=${f.b.tenantId}::uuid order by 1 limit 3`).map(x=>x.r);
+    const rows=await tx.unsafe(`explain (analyze, costs off, format text) select s.id from public.payroll_history_import_snapshot s where s.tenant_id=$1 and s.record_id=any($2::uuid[])`,[f.b.tenantId,records] as never[]);
+    throw new Done(rows.map(r=>(r as Record<string,string>)['QUERY PLAN']).join('\n'));
+   });
+  }catch(error){if(error instanceof Done)plan=error.plan;else throw error;}
+  console.info('PAYROLL_READ_P4_SNAPSHOT_LOOKUP_PLAN\n'+plan);
+  expect(plan).toContain('payroll_history_import_snapshot_record_idx');
+  expect(plan).not.toMatch(/Seq Scan on payroll_history_import_snapshot/);
+ },600_000);
+
 });
