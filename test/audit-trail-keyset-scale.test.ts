@@ -18,6 +18,7 @@ import {LIST_COUNT_CAP,parseKeysetPageQuery,type KeysetPageQuery} from '../lib/p
 import {closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {observeStatements} from './helpers/statement-observer';
+import {todayInKualaLumpur} from '../lib/hr-date';
 
 let b:Base,fixture:ScaleFixture,otherTenantEventId:string;
 beforeAll(async()=>{
@@ -79,7 +80,7 @@ const FILTERS:Record<string,AuditFilters>={
  area:{module:'leave'},
  search:{eventQuery:'anomaly'},
  recordType:{aggregateType:'holiday'},
- range:{from:new Date(Date.now()-40*86_400_000).toISOString().slice(0,10),to:new Date().toISOString().slice(0,10)},
+ range:{from:todayInKualaLumpur(new Date(Date.now()-40*86_400_000)),to:todayInKualaLumpur()},
 };
 
 describe('Audit Trail keyset paging at group scale',()=>{

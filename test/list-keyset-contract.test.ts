@@ -8,7 +8,7 @@ import {
   LIST_COUNT_CAP,
   cappedTotal,
   isKeysetPageState,
-  keysetFetchLimit,
+  keysetReadLimit,
   keysetPageState,
   keysetSlice,
   listCountCap,
@@ -74,7 +74,7 @@ describe('keyset page query', () => {
 describe('keyset slice', () => {
   const rows = [1, 2, 3, 4];
   it('fetches one extra row to learn whether a next page exists', () => {
-    expect(keysetFetchLimit({ limit: 3 })).toBe(4);
+    expect(keysetReadLimit({ limit: 3 })).toBe(4);
     expect(keysetSlice(rows, { limit: 3, last: false }, true)).toEqual({ rows: [1, 2, 3], hasPrev: false, hasNext: true });
     expect(keysetSlice(rows.slice(0, 3), { limit: 3, last: false }, true)).toEqual({ rows: [1, 2, 3], hasPrev: false, hasNext: false });
     expect(keysetSlice(rows, { limit: 3, after: A, last: false }, true)).toEqual({ rows: [1, 2, 3], hasPrev: true, hasNext: true });
