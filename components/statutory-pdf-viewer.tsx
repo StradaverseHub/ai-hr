@@ -33,6 +33,9 @@ import { StatutoryPdfFrame } from './statutory-pdf-frame';
  *   • `sidePanel` — an optional column beside the document (a checklist, totals, notes) that stacks under
  *     it on a phone;
  *   • `back` — where Back goes. A link, not `history.back()`, so it works from a pasted URL too.
+ *   • `backPlacement` — board 66175cd2: `'leading'` draws Back as a visible "← Back" button at the LEFT of the
+ *     header, before the title (Borang A and BBCD, where the reporter could not find the way back). Absent ⇒
+ *     `'trailing'`, the small link after the downloads every other form still has, unchanged.
  * No string lives in this file: every caller passes its own, in the viewer's language.
  *
  * Server component: nothing here needs state. The frame is a small client island (`./statutory-pdf-frame`)
@@ -67,6 +70,8 @@ export type StatutoryPdfViewerProps = {
    * show it stretched — the thing the reporter asked this viewer never to do.
    */
   pageShape?: 'a4' | 'letter';
+  /** Board 66175cd2 — where Back sits. Absent ⇒ 'trailing' (after the downloads), every form before 66175cd2. */
+  backPlacement?: 'leading' | 'trailing';
 };
 
 /** Literal class strings, so Tailwind sees them. */
@@ -95,11 +100,26 @@ export function StatutoryPdfViewer({
   controls,
   sidePanel,
   pageShape = 'a4',
+  backPlacement = 'trailing',
 }: StatutoryPdfViewerProps) {
   const [primary, ...rest] = downloads;
+  const leading = backPlacement === 'leading';
   return (
     <div data-statutory-pdf-viewer className="w-full space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 border-b border-border pb-4 monolith:border-ink">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
+        {/* 66175cd2 — the way back FIRST, as a real button the eye lands on, before the form's name. It keeps
+            the selection: `back.href` is the criteria step re-opened on the same company, year, month and
+            payroll cycles. A link, so it regenerates nothing and works from a pasted URL. */}
+        {leading && (
+          <Link
+            href={back.href}
+            data-viewer-back="leading"
+            className={`${btnGhost} shrink-0 ${MONO_TXT}`}
+          >
+            <span aria-hidden="true">←</span> {back.label}
+          </Link>
+        )}
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="text-xl font-semibold tracking-tight monolith:text-[20px] monolith:font-medium">{title}</h1>
           {subtitle && (
@@ -107,6 +127,7 @@ export function StatutoryPdfViewer({
               {subtitle}
             </p>
           )}
+        </div>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           {controls}
@@ -120,9 +141,11 @@ export function StatutoryPdfViewer({
               {d.label}
             </ExportDownloadLink>
           ))}
-          <Link href={back.href} className={`${btnGhost} ${MONO_TXT}`}>
-            {back.label}
-          </Link>
+          {!leading && (
+            <Link href={back.href} className={`${btnGhost} ${MONO_TXT}`}>
+              {back.label}
+            </Link>
+          )}
         </div>
       </header>
 

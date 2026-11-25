@@ -83,7 +83,10 @@ import { createTranslator } from 'next-intl';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { createBatch, generatePayslips, reprocessRequiredPage } from '../core/payroll';
+import { refreshRunOutstandingTx } from '../core/payroll-run-outstanding';
+import { withTenant } from '../db/client';
+import { parsePageQuery } from '../lib/pagination';
 import { createIndividualTxn } from '../core/payroll-individual-txn';
 import {
   REPROCESS_REQUIRED,
@@ -91,6 +94,7 @@ import {
   needsReprocess,
   payrollListState,
   periodsForYear,
+  reprocessAffectedCount,
   reprocessEmploymentIds,
 } from '../app/payroll/dashboard-logic';
 import PayrollListPage from '../app/payroll/page';
@@ -189,6 +193,26 @@ function statusOptionsOf(node: unknown): { value: string; label: string }[] | nu
   return null;
 }
 
+/** a1a80747 r2 — the runs the page hands its refresh island (none when nothing is due, so no island is rendered). */
+function refreshIdsOf(node: unknown): string[] {
+  if (node == null || typeof node !== 'object') return [];
+  if (Array.isArray(node)) {
+    for (const n of node) {
+      const found = refreshIdsOf(n);
+      if (found.length) return found;
+    }
+    return [];
+  }
+  const el = node as Elementish;
+  if (Array.isArray(el.props?.batchIds)) return el.props.batchIds as string[];
+  if (!el.props) return [];
+  for (const v of Object.values(el.props)) {
+    const found = refreshIdsOf(v);
+    if (found.length) return found;
+  }
+  return [];
+}
+
 // ────────────────────────────── A. the derivation, pure (no DB) ──────────────────────────────
 
 describe('0b326d5f — the display state is derived, and CLOSED is silent whatever the flag says', () => {
@@ -256,6 +280,56 @@ describe('0b326d5f — the new state is FILTERABLE, and Processed keeps its old 
     expect(applyFilters(rows, { ...all, statuses: ['closed'] }).map((r) => r.payPeriod)).toEqual(['2026-08']);
     expect(applyFilters(rows, { ...all, statuses: [] })).toHaveLength(4);
     expect(applyFilters(rows, { ...all, statuses: ['nonsense'] })).toEqual([]);
+  });
+});
+
+// ───────────── a1a80747 r2 — the outstanding count joins the one derivation ─────────────
+
+describe('a1a80747 r2 — new / pending / held employees make a processed run Reprocess Required, counted once', () => {
+  const at = new Date('2026-08-01T02:00:00Z');
+
+  it('a processed run with someone still owed and no mark reads reprocess_required; the count is the outstanding number', () => {
+    const row = { status: 'processed', needsRecalcAt: null, recalcEmploymentIds: null, outstandingCount: 1 };
+    expect(needsReprocess(row)).toBe(true);
+    expect(payrollListState(row)).toBe(REPROCESS_REQUIRED);
+    expect(reprocessAffectedCount(row)).toBe(1);
+    // The mark's own set is still the mark's: nothing here was marked.
+    expect(reprocessEmploymentIds(row)).toEqual([]);
+  });
+
+  it('the outstanding number wins over the raw mark when both exist (each employee once), and zero with no mark is Processed', () => {
+    expect(reprocessAffectedCount({ status: 'processed', needsRecalcAt: at, recalcEmploymentIds: ['e1', 'e2', 'e9'], outstandingCount: 2 })).toBe(2);
+    const clean = { status: 'processed', needsRecalcAt: null, outstandingCount: 0 };
+    expect(needsReprocess(clean)).toBe(false);
+    expect(payrollListState(clean)).toBe('processed');
+    expect(reprocessAffectedCount(clean)).toBe(0);
+    // A leftover id list on a cleared mark names nobody, whatever is outstanding.
+    expect(reprocessEmploymentIds({ status: 'processed', needsRecalcAt: null, recalcEmploymentIds: ['e1'], outstandingCount: 3 })).toEqual([]);
+  });
+
+  it('without a stored answer the count is the mark, exactly as before', () => {
+    expect(reprocessAffectedCount({ status: 'processed', needsRecalcAt: at, recalcEmploymentIds: ['e1', 'e1', 'e2'] })).toBe(2);
+    expect(reprocessAffectedCount({ status: 'processed', needsRecalcAt: at, recalcEmploymentIds: ['e1'], outstandingCount: null })).toBe(1);
+  });
+
+  it('closed and draft runs never show it, whatever is outstanding', () => {
+    for (const status of ['closed', 'draft']) {
+      const row = { status, needsRecalcAt: at, outstandingCount: 4 };
+      expect(needsReprocess(row)).toBe(false);
+      expect(payrollListState(row)).toBe(status);
+      expect(reprocessAffectedCount(row)).toBe(0);
+    }
+  });
+
+  it('the status filter reaches a run that is outstanding but unmarked, and Processed still includes it', () => {
+    const rows = [
+      { payPeriod: '2026-06', companyId: 'c1', runType: 'regular', status: 'processed', needsRecalcAt: null, outstandingCount: 0 },
+      { payPeriod: '2026-07', companyId: 'c1', runType: 'regular', status: 'processed', needsRecalcAt: null, outstandingCount: 1 },
+      { payPeriod: '2026-08', companyId: 'c1', runType: 'regular', status: 'closed', needsRecalcAt: null, outstandingCount: 1 },
+    ];
+    const all = { periods: periodsForYear(2026), companyIds: [], cycles: [], statuses: [] };
+    expect(applyFilters(rows, { ...all, statuses: [REPROCESS_REQUIRED] }).map((r) => r.payPeriod)).toEqual(['2026-07']);
+    expect(applyFilters(rows, { ...all, statuses: ['processed'] }).map((r) => r.payPeriod)).toEqual(['2026-06', '2026-07']);
   });
 });
 
@@ -456,6 +530,43 @@ describe('0b326d5f — the Payroll Process listing renders the state, the count 
     const processed = await renderList('processed');
     expect(processed.hrefs.some((h) => h.startsWith(`/payroll/${stale.batchId}?`))).toBe(true);
     expect(processed.hrefs.some((h) => h.startsWith(`/payroll/${clean.batchId}?`))).toBe(true);
+  });
+
+  it('a1a80747 r2 — a new employee with no payslip and no mark reads Reprocess Required, counted once, linked to the tab', async () => {
+    const a = adminCtx(base);
+    await hire('Paid One');
+    const { batchId } = await createBatch(a, { companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+    // Joins after processing: eligible for May, no payslip on the run, nothing marked (the Fiamma case).
+    const late = await hire('Late Joiner');
+    expect((await batchRow(batchId)).needsRecalcAt).toBeNull();
+
+    // Before the background answer exists the list has only the (empty) mark — and asks for the answer.
+    const before = await renderList();
+    expect(before.row(batchId)).toContain('status.processed');
+    expect(refreshIdsOf(before.tree)).toEqual([batchId]);
+
+    expect(await withTenant(scope.s, (tx) => refreshRunOutstandingTx(tx, scope.s, batchId))).toBe('stored');
+    const shown = await renderList();
+    expect(shown.row(batchId)).toContain('status.reprocessRequired');
+    expect(shown.row(batchId)).not.toContain('status.processed');
+    expect(shown.row(batchId)).toContain('reprocessAffected({"n":1})');
+    const tabLinks = shown.hrefs.filter((h) => h.startsWith(`/payroll/${batchId}/reprocess?tab=required&from=`));
+    expect(tabLinks, 'the label and the count both open the Reprocess Required tab').toHaveLength(2);
+    expect(refreshIdsOf(shown.tree), 'a fresh answer is not asked for again').toEqual([]);
+    // The status filter finds it.
+    expect((await renderList(REPROCESS_REQUIRED)).hrefs.some((h) => h.startsWith(`/payroll/${batchId}?`))).toBe(true);
+    // The tab counts the same person, once.
+    const tab = await reprocessRequiredPage(scope.s, { batchId, page: parsePageQuery() });
+    expect(tab.owedRunTotal).toBe(1);
+    expect(tab.rows.filter((r) => r.owed).map((r) => r.employmentId)).toEqual([late]);
+
+    // Reprocessing the new employee returns the row to Processed straight away, before any refresh.
+    await generatePayslips(a, { batchId, reprocessSubset: { employmentIds: [late], reason: 'add the new joiner' } });
+    const done = await renderList();
+    expect(done.row(batchId)).toContain('status.processed');
+    expect(done.row(batchId)).not.toContain('status.reprocessRequired');
+    expect(done.row(batchId).some((x) => x.startsWith('reprocessAffected('))).toBe(false);
   });
 });
 

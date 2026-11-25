@@ -46,6 +46,7 @@ export * from '../../core/payroll-policy-config';
 export * from '../../core/payroll-individual-txn';
 export * from '../../core/payroll-run-group';
 export * from '../../core/payroll-view';
+export * from '../../core/payroll-run-outstanding';
 export * from '../../core/payroll-self-metadata';
 export * from '../../core/payroll-readiness';
 export * from '../../core/payroll-history-import';

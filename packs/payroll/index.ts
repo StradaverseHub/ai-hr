@@ -276,6 +276,8 @@ export const payrollPack: ModulePack = {
     { table: 'payroll_status_history', note: 'batch status-transition audit trail' },
     { table: 'payroll_employee_result_history', note: 'per-employee reprocess/result history within a batch' },
     { table: 'payroll_reprocess_job', note: 'async reprocess job state (app/api/payroll/reprocess-job)' },
+    // a1a80747 (migration 7450) — written by core/payroll-run-outstanding.ts, read by the Payroll Process list.
+    { table: 'payroll_run_outstanding', note: 'per processed run: the stored close-pending employees the Payroll Process list counts' },
     { table: 'payroll_permission_grant', note: 'per-user payroll operation grants (payroll-permissions-admin)' },
     { table: 'payroll_step_up_challenge', note: 'step-up re-auth challenges guarding sensitive payroll ops' },
     { table: 'payroll_input', note: 'draft-batch input rows: OT/bonus/deductions/claim/allowance/zakat — the PayrollInputContributor write target' },

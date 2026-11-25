@@ -174,7 +174,7 @@ export default async function BorangBbcdPreviewPage({ searchParams }: { searchPa
     // would refuse it, and a framed refusal is not a preview.
     return (
       <div className={pageWideCls}>
-        <PageHeader title={t('title')} description={subtitle} back={{ href: backToCriteria, label: t('viewerBack') }} />
+        <PageHeader title={t('title')} description={subtitle} back={{ href: backToCriteria, label: tf('viewer_back') }} />
         {provenance}
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           <p className="font-medium">{t('notReadyTitle')}</p>
@@ -204,7 +204,10 @@ export default async function BorangBbcdPreviewPage({ searchParams }: { searchPa
         subtitle={subtitle}
         pdfUrl={`/payroll/borang-bbcd/pdf?${documentQuery}&disposition=inline`}
         downloads={[{ href: `/payroll/borang-bbcd/pdf?${documentQuery}`, label: t('downloadPdf') }]}
-        back={{ href: backToCriteria, label: t('viewerBack') }}
+        // 66175cd2 — a clear "← Back" at the top LEFT, to the Open Form step with the same company, year,
+        // month and payroll cycles (`criteriaReturnHref`). A link: going back regenerates nothing.
+        back={{ href: backToCriteria, label: tf('viewer_back') }}
+        backPlacement="leading"
         openInNewTabLabel={tf('viewer_openNewTab')}
         frameTitle={tf('viewer_frameTitle', { form: t('title') })}
         sidePanel={

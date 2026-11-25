@@ -8,6 +8,7 @@
  * `?disposition=inline` is the in-app viewer's frame: the same bytes, only the header differs.
  */
 import { renderBorangBbcdPdf } from '@/lib/borang-bbcd-pdf';
+import { readKwspLogo } from '@/lib/kwsp-logo';
 import { borangBbcdFilename } from '@/lib/borang-bbcd';
 import { NO_CONTRIBUTIONS, describeGaps } from '../../borang-a/shared';
 import { loadBorangBbcd } from '../shared';
@@ -37,7 +38,8 @@ export async function GET(req: Request) {
     return new Response(`Cannot produce BBCD: the Borang A is not ready — ${describeGaps(loaded)}.`, { status: 422 });
   }
 
-  const pdf = await renderBorangBbcdPdf(loaded.bbcd);
+  // 66175cd2 — the official KWSP logo, when the owner has installed it (assets/kwsp/kwsp-logo.png).
+  const pdf = await renderBorangBbcdPdf(loaded.bbcd, { logo: readKwspLogo() });
   const disposition = q.get('disposition') === 'inline' ? 'inline' : 'attachment';
   return new Response(Buffer.from(pdf), {
     headers: {

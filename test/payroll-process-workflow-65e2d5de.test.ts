@@ -218,7 +218,9 @@ describe('65e2d5de · D — the reprocess search cannot shrink the submitted set
   it('every table renders the FILTERED rows, and Select this page ADDS only what is on screen (6aee208b)', () => {
     // a1a80747 — the one Reprocess Required list and the Nothing payable group are both cut from FILTERED rows, so
     // the search still narrows every row on screen.
-    expect(REPROCESS_FORM).toContain('const visibleSkipped = visibleAdditions.filter((c) => !!c.skip);');
+    // a1a80747 r2 — the Nothing payable group is the run's skip decision unless the run says it owes them (`inSkipped`).
+    expect(REPROCESS_FORM).toContain('const visibleSkipped = visibleAdditions.filter(inSkipped);');
+    expect(REPROCESS_FORM).toContain('const inSkipped = (c: ReprocessAddCandidate) => !!c.skip && c.owed !== true;');
     expect(REPROCESS_FORM).toContain('{visibleRequired.map((r) => requiredRow(r))}');
     expect(REPROCESS_FORM).toContain('{visibleSkipped.map((c) => (');
     expect(REPROCESS_FORM).toContain('{visibleEmployees.map((e) => {');
