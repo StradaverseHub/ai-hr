@@ -35,7 +35,11 @@ it('keeps entered values and reports transport rejection while locking controls 
  fireEvent.change(reason,{target:{value:'Keep this entered note'}});fireEvent.change(status,{target:{value:'progress'}});fireEvent.click(screen.getByRole('button',{name:'Save item'}));
  await waitFor(()=>expect(reason).toBeDisabled());expect(status).toBeDisabled();
  reject(Error('Connection lost'));
- await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('not saved'));expect(reason).toHaveValue('Keep this entered note');expect(status).toHaveValue('progress');expect(reason).not.toBeDisabled();
+ await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('not saved'));
+ // The alert and the unlocked controls can land in separate renders (gate 45688764233 saw the alert first), so wait
+ // for the unlock rather than asserting it in the same tick.
+ await waitFor(()=>expect(reason).not.toBeDisabled());expect(status).not.toBeDisabled();
+ expect(reason).toHaveValue('Keep this entered note');expect(status).toHaveValue('progress');
 });
 
 it('shows recorded issuing parties and date, distinguishes manual references, and scopes the summary to visible items',()=>{
