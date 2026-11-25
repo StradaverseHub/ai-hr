@@ -20,7 +20,7 @@ import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { decideLeaveCancellation, decideLeaveDates, requestLeave, requestLeaveCancellation } from '../core/leave';
-import { leaveEntitlementBreakdown, leaveRequestDateBreakdown, listLeaveRequestsPage } from '../core/read';
+import { leaveEntitlementBreakdown, leaveRequestDateBreakdown, leaveRequestDateBreakdowns, listLeaveRequestsPage } from '../core/read';
 import { myLeaveDashboard, ownLeaveApprovalTrails } from '../core/my-leave';
 import { applicationDateOutcomeRows, approvalProgress, isPartiallyApproved, type HistoryLineDeps } from '../lib/my-leave-history';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -143,6 +143,9 @@ describe('1 · a given-back day reads Cancelled on every row of the application'
     rows = (await listLeaveRequestsPage(emp.ctx, { employmentIds: [emp.employmentId], sort: 'start', dir: 'asc', limit: 10, offset: 0 })).rows;
     const trails = await ownLeaveApprovalTrails(emp.ctx, rows.map((r) => r.id));
     const breakdowns = new Map(await Promise.all(rows.map(async (r) => [r.id, await leaveRequestDateBreakdown(emp.ctx, r.id)] as const)));
+    // ADR-0181 1.4: the History page reads these through the set owner; it answers exactly the per-row map.
+    const setBreakdowns = await leaveRequestDateBreakdowns(emp.ctx, rows.map((r) => r.id));
+    expect([...setBreakdowns.entries()]).toEqual([...breakdowns.entries()]);
 
     // The owned History builder's exact per-date expression, with all lineage assertions retained.
     const page = ownHistoryEntries();

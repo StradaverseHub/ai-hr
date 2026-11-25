@@ -57,7 +57,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // See core/module-gate.ts.
 import { assertModuleGate,withPayrollTenant as withTenant } from './module-gate';
 import { pricesChildReliefFromGrid } from './dependents';
-import { actorOf, appendEvent,appendEvents } from '../db/events';
+import { actorOf, appendEvent,appendEvents,type AppendEventArgs } from '../db/events';
 import {
   PAYROLL_PERMISSION_DEFAULTS,
   decidePayrollPermission,
@@ -10708,7 +10708,13 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
     payslipId:after?.id ?? null,versionBefore:before?.version ?? null,
     versionAfter:after?.version ?? null,historyId,at:new Date().toISOString(),
   };
-  const outcomes = [...(prior?.outcomes ?? []),outcome];
+  await saveReprocessCheckpointTx(tx,run,prior,[outcome]);
+  await appendEvent(tx,reprocessOutcomeEvent(ctx,run,currentBatch,outcome));
+}
+/** The job's durable checkpoint after `added` outcomes, with the run's fresh totals and headcount. Shared by the
+ * per-employee transaction and the set-based group, so both record exactly the same result. */
+async function saveReprocessCheckpointTx(tx:Tx,run:SelectiveReprocessRun,prior:ReprocessJobResult|null,added:ReprocessEmployeeOutcome[]){
+  const outcomes = [...(prior?.outcomes ?? []),...added];
   const [freshBatch] = await tx.select({totals:payrollBatch.totals,headcount:payrollBatch.employeeCount})
     .from(payrollBatch).where(eq(payrollBatch.id,run.batchId)).limit(1);
   const checkpoint: ReprocessJobResult = {
@@ -10725,10 +10731,14 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
   };
   await tx.update(payrollReprocessJob).set({result:checkpoint,updatedAt:new Date()})
     .where(eq(payrollReprocessJob.id,run.jobId));
-  await appendEvent(tx,{
+}
+/** One employee's outcome event (the audit row the result screen and the history read). */
+function reprocessOutcomeEvent(ctx:SessionContext,run:SelectiveReprocessRun,batch:{companyId:string;payPeriod:string},outcome:ReprocessEmployeeOutcome):AppendEventArgs{
+  const employmentId=outcome.employmentId;
+  return {
     tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:run.batchId,
     eventType:'payroll-batch.employee-reprocess-outcome',actor:actorOf(ctx),subjectEmploymentId:employmentId,
-    payload:{jobId:run.jobId,batchId:run.batchId,companyId:currentBatch.companyId,payPeriod:currentBatch.payPeriod,
+    payload:{jobId:run.jobId,batchId:run.batchId,companyId:batch.companyId,payPeriod:batch.payPeriod,
       employmentId,employeeName:outcome.name,employeeCode:outcome.employeeCode,
       status:outcome.status,reasonCode:outcome.reasonCode,
       validationCode:outcome.validationCode ?? null,resultRetained:outcome.resultRetained,
@@ -10736,7 +10746,121 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
       configuredTaxScheme:outcome.configuredTaxScheme ?? null,effectiveTaxScheme:outcome.effectiveTaxScheme ?? null,
       payslipId:outcome.payslipId,historyId:outcome.historyId,
       versionBefore:outcome.versionBefore,versionAfter:outcome.versionAfter},
+  };
+}
+/** ADR 0181 J2 — a set-based group of a selective reprocess. What it decides, in this order:
+ *  - `done`:     the first candidate already has an outcome (a resumed job): nothing to do for it;
+ *  - `single`:   the first candidate needs the per-employee transaction (`reprocessEmployeeTx`): it is an addition,
+ *                excluded from the month, unreadable, or alone;
+ *  - `set`:      the longest run of candidates from the first that are ordinary recalculations (already on this run,
+ *                still in the month) was recalculated by ONE pass of the payroll engine (`generatePayslipsTx`, its
+ *                run-wide reads once and its per-employee figures unchanged) and committed with every outcome in one
+ *                checkpoint and one multi-row event insert;
+ *  - `fallback`: that pass refused (a validation outcome, or any other refusal), was rolled back to its savepoint, and the
+ *                caller runs those employees through the per-employee transaction, so every outcome and every stop is
+ *                exactly the per-employee path's.
+ * The run-level checks are the per-employee transaction's own, in its order, taken once for the group under the same
+ * keys and row locks. `isTransient` errors are rethrown (the kernel retries the chunk), never turned into a fallback.
+ * `timing` splits the group's wall time into process CPU (the calculation and the driver) and the rest (database). */
+export type SelectiveReprocessGroup=
+ |{kind:'done'}
+ |{kind:'single'}
+ |{kind:'set';employmentIds:string[];timing:{wallMs:number;cpuMs:number;engineWallMs:number;engineCpuMs:number}}
+ |{kind:'fallback';employmentIds:string[];error:unknown};
+export async function reprocessEmployeeGroupTx(tx:Tx,ctx:SessionContext,run:SelectiveReprocessRun,candidates:readonly string[],
+ opts:{isTransient:(error:unknown)=>boolean;stopped:{current:{employmentId:string;name:string;employeeCode:string|null}|null}}):Promise<SelectiveReprocessGroup>{
+  const started=performance.now(),cpuStarted=process.cpuUsage();
+  await lockPayComponentCatalogReadTx(tx,ctx);
+  const ownedBatch=await lockNativePayrollBatchPeriodTx(tx,ctx,run.batchId);
+  const [currentJob] = await tx.select().from(payrollReprocessJob)
+    .where(eq(payrollReprocessJob.id, run.jobId)).limit(1).for('update');
+  if(currentJob.batchId!==ownedBatch?.id||JSON.stringify(currentJob.employmentIds)!==JSON.stringify(run.employmentIds))throw new Error('Payroll job source changed.');
+  const prior = currentJob.result as ReprocessJobResult | null;
+  if (currentJob.status!=='running' || prior?.workerToken!==run.workerToken)
+    throw new ReprocessRunBlockedError('SUPERSEDED','This payroll processing attempt was superseded by a recovered worker.');
+  if (prior && !decodeReprocessEmployeeOutcomes(prior,currentJob.employmentIds))
+    throw new Error('Stored payroll employee outcomes are invalid.');
+  const done=new Set((prior?.outcomes??[]).map(r=>r.employmentId));
+  if(!candidates.length||done.has(candidates[0]))return {kind:'done'};
+  const pending=[...new Set(candidates.filter(id=>!done.has(id)&&run.employmentIds.includes(id)))];
+  if(pending[0]!==candidates[0]||pending.length<2)return {kind:'single'};
+  await lockPayrollOvertimeBatchContextTx(tx,ctx,run.batchId);
+  const [currentBatchRow] = await tx.select().from(payrollBatch)
+    .where(eq(payrollBatch.id, run.batchId)).limit(1).for('update');
+  const currentBatch=withRunPayPeriod(currentBatchRow,()=>new Error('batch not found'));
+  await assertPayrollPermission(tx, ctx, 'payroll.reprocess.selective', currentBatch.companyId);
+  if (currentBatch.status !== 'processed') throw new BatchNotResettableError();
+  const [period] = await tx.select({status:payPeriod.status}).from(payPeriod)
+    .where(eq(payPeriod.id,currentBatch.payPeriodId)).limit(1).for('share');
+  if (period?.status === 'closed') throw new ReprocessRunBlockedError('PERIOD_CLOSED','This pay period is closed.');
+  const [year,month] = currentBatch.payPeriod.split('-').map(Number);
+  const periodStart = `${currentBatch.payPeriod}-01`;
+  const periodEnd = `${currentBatch.payPeriod}-${String(daysInMonth(year,month)).padStart(2,'0')}`;
+  // The per-employee transaction's identity and membership read, for the whole group in one statement.
+  const identities = new Map((await tx.select({employmentId:employment.id,name:person.fullName,employeeCode:employment.employeeCode,
+    hiredOn:employment.hiredOn,terminatedOn:payrollEmploymentEnd,
+    outstanding:sql<boolean>`${outstandingPaymentPredicate(currentBatch,settingEnabled(ctx,'payroll.individual_txn_pay_enabled'))}`,
+    withCompany:sql<boolean>`${employedByCompanyDuring(currentBatch.companyId,periodStart,periodEnd)}`})
+    .from(employment).innerJoin(person,eq(person.id,employment.personId))
+    .where(inArray(employment.id,pending))).map(row=>[row.employmentId,row]));
+  const before = new Map((await tx.select({employmentId:nativePayrollPayslip.employmentId,id:nativePayrollPayslip.id,version:nativePayrollPayslip.version})
+    .from(nativePayrollPayslip)
+    .where(and(eq(nativePayrollPayslip.batchId,run.batchId),inArray(nativePayrollPayslip.employmentId,pending)))).map(row=>[row.employmentId,row]));
+  // An ordinary recalculation: readable, already on this run, and inside the month by the per-employee rules (an
+  // exclusion or an addition takes the per-employee transaction, with its removal and side-effect owners).
+  const ordinary=(id:string)=>{
+    const identity=identities.get(id);if(!identity||!before.has(id))return false;
+    if(!identity.outstanding && identity.terminatedOn && identity.terminatedOn < periodStart)return false;
+    if(identity.hiredOn > periodEnd)return false;
+    return identity.outstanding || identity.withCompany;
+  };
+  const group:string[]=[];
+  for(const id of pending){if(!ordinary(id))break;group.push(id);}
+  if(group.length<2)return {kind:'single'};
+  const first=identities.get(group[0])!;
+  opts.stopped.current={employmentId:group[0],name:first.name,employeeCode:first.employeeCode};
+  const engineStarted=performance.now(),engineCpuStarted=process.cpuUsage();
+  let result:Awaited<ReturnType<typeof generatePayslipsTx>>;
+  try{
+    // One savepoint for the whole group: a refusal rolls back every figure, ledger and history write of the pass.
+    result = await tx.transaction(groupTx => generatePayslipsTx(groupTx, ctx, {
+      batchId:run.batchId,reprocessSubset:{employmentIds:group,reason:run.reason,actorId:ctx.userId},
+    }));
+  }catch(error){
+    if(opts.isTransient(error))throw error;
+    return {kind:'fallback',employmentIds:group,error};
+  }
+  const engineWallMs=performance.now()-engineStarted,engineCpu=process.cpuUsage(engineCpuStarted);
+  if (!('reprocessed' in result) || result.added) throw new Error('Unexpected selected payroll result.');
+  const pass=result;
+  const after = new Map((await tx.select({employmentId:nativePayrollPayslip.employmentId,id:nativePayrollPayslip.id,version:nativePayrollPayslip.version,statutory:nativePayrollPayslip.statutory})
+    .from(nativePayrollPayslip)
+    .where(and(eq(nativePayrollPayslip.batchId,run.batchId),inArray(nativePayrollPayslip.employmentId,group)))).map(row=>[row.employmentId,row]));
+  const recalculatedTax=new Set(pass.recalculatedTaxEmploymentIds??[]);
+  const at=new Date().toISOString();
+  const outcomes:ReprocessEmployeeOutcome[]=group.map(employmentId=>{
+    const identity=identities.get(employmentId)!,was=before.get(employmentId)!,now=after.get(employmentId);
+    const historyId=pass.snapshotLinks?.[employmentId] ?? null;
+    if (!historyId) throw new Error('Selected payroll result has no history checkpoint.');
+    const repricedItems=pass.repriced?.[employmentId];
+    const savedScheme=(now?.statutory as {pcbMeta?:{calculationScheme?:unknown}} | undefined)?.pcbMeta?.calculationScheme;
+    // Field for field the per-employee outcome of a recalculated employee (status reprocessed, nothing retained).
+    return {
+      employmentId,name:identity.name,employeeCode:identity.employeeCode,status:'reprocessed',reasonCode:null,classification:'recalculated',
+      ...(typeof savedScheme==='string' && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
+      ...(recalculatedTax.has(employmentId) ? {taxBasisRecalculated:true} : {}),
+      resultRetained:false,
+      ...(repricedItems?.length ? {repricedItems} : {}),
+      payslipId:now?.id ?? null,versionBefore:was.version,
+      versionAfter:now?.version ?? null,historyId,at,
+    };
   });
+  await saveReprocessCheckpointTx(tx,run,prior,outcomes);
+  await appendEvents(tx,outcomes.map(outcome=>reprocessOutcomeEvent(ctx,run,currentBatch,outcome)));
+  opts.stopped.current=null;
+  const cpu=process.cpuUsage(cpuStarted);
+  return {kind:'set',employmentIds:group,timing:{wallMs:performance.now()-started,cpuMs:(cpu.user+cpu.system)/1000,
+    engineWallMs,engineCpuMs:(engineCpu.user+engineCpu.system)/1000}};
 }
 /** The reprocess job row the background job claims and follows (row security as the request path). */
 export async function payrollReprocessJobRowTx(tx:Tx,jobId:string){
@@ -11894,20 +12018,54 @@ export async function removeEmployeePayrollTx(
   };
 }
 
-/** All-time dashboard warning/empty-state counts without materialising payroll money and run DTOs.
+/**
+ * The newest pay period that has a run in listBatches' population (same effective-history source, company
+ * inner join, company filter and empty-imported-history exclusion), or null when there is none.
+ *
+ * Measured on staging 24 Nov 2026 (74 companies, 615 runs of which 567 are imported history): the plain
+ * aggregate `max(pay_period) ... where history_import_attempt_id is null or employee_count > 0` took 3.95 s,
+ * because the effective view derives an imported run's employee_count from its payslips (a definer function,
+ * about 7 ms a run) and the filter forced that for every imported run in scope. This walks the runs newest period
+ * first behind OFFSET 0 and reads the view's employee_count only for an imported run, stopping at the first
+ * run that qualifies. The predicate is the same expression over the same view rows, so the answer is unchanged;
+ * a native run, or an imported run with payslips, in the newest period ends the walk at once.
+ */
+export async function latestListedBatchPeriodTx(tx: Tx, companyIds?: string[]) {
+  // The runs come from the plain table: the effective view is security_invoker over payroll_batch, one row per
+  // run, so the rows and their row security are the view's; only employee_count needs the view.
+  const candidates = tx
+    .select({ id: payrollBatch.id, payPeriod: payrollBatch.payPeriod, historyImportAttemptId: payrollBatch.historyImportAttemptId })
+    .from(payrollBatch)
+    .innerJoin(company, eq(company.id, payrollBatch.companyId))
+    .where(companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined);
+  // Drizzle omits `.offset(0)`, so the fence is written out: it keeps the walk ordered and lazy.
+  const [row] = await tx.execute<{ period: string | null }>(sql`select "candidate"."pay_period" as "period"
+     from (${candidates} order by ${payrollBatch.payPeriod} desc offset 0) "candidate"
+     where "candidate"."history_import_attempt_id" is null
+      or (select "effective"."employee_count" from public.payroll_history_effective_batch "effective"
+          where "effective"."id" = "candidate"."id") > 0
+     limit 1`);
+  return row?.period ?? null;
+}
+
+/** All-time dashboard warning/empty-state facts without materialising payroll money and run DTOs.
  * Same effective-history source, company visibility and empty company-filter semantics as listBatches.
- * The unpublished count follows payrollPublicationState, excluding imported history, drafts and closed runs. */
+ * The unpublished count follows payrollPublicationState, excluding imported history, drafts and closed runs;
+ * it reads native runs only, so it never derives an imported run's totals. `hasRuns` is whether listBatches
+ * would return any run: the screen only needs that for its empty state, and an exact all-time count would
+ * derive every imported run's employee_count (about 7 ms a run on staging, 24 Nov 2026). */
 export function payrollDashboardCounts(ctx:SessionContext,companyIds?:string[]){
- return withTenant(ctx,async tx=>{
+ return withTenant(ctx,tx=>payrollDashboardCountsTx(tx,companyIds));
+}
+export async function payrollDashboardCountsTx(tx:Tx,companyIds?:string[]){
   const [row]=await tx.select({
-   totalCount:sql<number>`count(*)`.mapWith(Number),
-   unpublishedCount:sql<number>`count(*) filter (where ${payrollBatch.historyImportAttemptId} is null and ${payrollBatch.status} not in ('draft','closed'))`.mapWith(Number),
-  }).from(payrollHistoryEffectiveBatch)
+   unpublishedCount:sql<number>`count(*)`.mapWith(Number),
+  }).from(payrollBatch)
    .innerJoin(company,eq(company.id,payrollBatch.companyId))
-   .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
-   .where(and(companyIds&&companyIds.length?inArray(payrollBatch.companyId,companyIds):undefined,or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0))));
-  return row??{totalCount:0,unpublishedCount:0};
- });
+   .where(and(companyIds&&companyIds.length?inArray(payrollBatch.companyId,companyIds):undefined,
+    isNull(payrollBatch.historyImportAttemptId),sql`${payrollBatch.status} not in ('draft','closed')`));
+  const unpublishedCount=row?.unpublishedCount??0;
+  return {hasRuns:unpublishedCount>0||await latestListedBatchPeriodTx(tx,companyIds)!==null,unpublishedCount};
 }
 
 // Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
@@ -12014,21 +12172,10 @@ export function listBatches(
  * transaction that inserts its first run (createBatch / createAdditionalRun) and deleted with its last
  * draft run, so "a run exists" is the created-period fact without opening on a month whose list is empty.
  * Null when nothing is visible; the caller then falls back to the tenant's current month.
+ * Read newest period first (latestListedBatchPeriodTx), not as a max over every run.
  */
 export function latestPayrollDashboardPeriod(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .select({ period: sql<string | null>`max(${payrollBatch.payPeriod})` })
-      .from(payrollHistoryEffectiveBatch)
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .where(
-        and(
-          companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
-          or(isNull(payrollBatch.historyImportAttemptId), gt(payrollBatch.employeeCount, 0)),
-        ),
-      );
-    return row?.period ?? null;
-  });
+  return withTenant(ctx, (tx) => latestListedBatchPeriodTx(tx, companyIds));
 }
 
 /**
@@ -12099,7 +12246,10 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
         employmentId: employment.id,
         name: person.fullName,
         employeeCode: employment.employeeCode,
-        terminatedOn: employment.terminatedOn,
+        // 7da649d3 — the payroll last day (least of terminated_on, resignation_date, last_working_date), the
+        // same end the run prorates to, so a leaver whose termination is still scheduled is listed in the
+        // month they leave rather than only after the sweep writes terminated_on.
+        terminatedOn: payrollEmploymentEnd,
         basic: compensation.basicSalary,
       })
       .from(employment)
@@ -12115,8 +12265,8 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
           // reason the plan insisted each of the six be decided on its own rather than replaced together.
           //
           // This is the LEAVERS SWEEP: who is being terminated inside this period, and therefore what
-          // final settlement (notice, leave encashment) their employer owes them. It is keyed on
-          // `terminated_on`, an event that happens ONCE, to the employment as it stands at that moment,
+          // final settlement (notice, leave encashment) their employer owes them. It is keyed on the
+          // exit (the payroll last day since 7da649d3), an event that happens ONCE, to the employment as it stands at that moment,
           // under the entity that holds it then — which is `employment.company_id` by definition.
           //
           // Widening it to the dated history would put a leaver on the advisory of an entity they had
@@ -12126,8 +12276,8 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
           // (which the segmented run pays) and no termination settlement at all. The dated question is
           // the wrong question here; the column is the right answer.
           eq(employment.companyId, batch.companyId),
-          gte(employment.terminatedOn, start),
-          lte(employment.terminatedOn, end),
+          sql`${payrollEmploymentEnd} >= ${start}::date`,
+          sql`${payrollEmploymentEnd} <= ${end}::date`,
         ),
       );
     if (leavers.length === 0) return [];

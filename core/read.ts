@@ -199,6 +199,7 @@ import {
 import { payrollHistoryEffectiveBatch } from '../db/schema';
 import { ALL_ROW_CEILING, cappedTotal, keysetFetchLimit, keysetSlice, listCountCap, type KeysetPageQuery, type KeysetRead } from '../lib/pagination';
 import { anyUuid, uuidArrayParam } from '../db/sql-arrays';
+import { employmentSearchNarrowing } from './employment-search';
 import { daysInMonth } from './payroll';
 import { filterDelegationOrgScopeTx } from './approvals';
 import { payslipReleaseAt } from './payroll-policy-config';
@@ -1428,7 +1429,8 @@ export function listEmployeesPage(
   }, { existingTx });
   const read = async (tx: Tx) => {
     const currentAssignment = currentAssignmentJoin();
-    const where = employeeListWhere(p);
+    // 7320: a name / e-mail / code search narrows to the trigram candidates (a superset of the ILIKE matches).
+    const where = and(employeeListWhere(p), employmentSearchNarrowing(sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
     const rows = (await tx
       .select(employeeListRowSelection())
       .from(employment)
@@ -1478,7 +1480,8 @@ export async function listEmployeesDirectoryPage(
 ): Promise<{ rows: EmployeeListRow[] } & KeysetRead> {
   if (!Number.isSafeInteger(p.limit) || p.limit < 1 || p.limit > ALL_ROW_CEILING) throw new RangeError('Invalid directory page');
   return withTenant(ctx, async tx => {
-    const where = employeeListWhere(p);
+    // 7320: a name / e-mail / code search narrows to the trigram candidates (a superset of the ILIKE matches).
+    const where = and(employeeListWhere(p), employmentSearchNarrowing(sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
     const anchorKey = (id: string) => sql`(select anchor_person.full_name, anchor_employment.id
       from employment anchor_employment join person anchor_person on anchor_person.id = anchor_employment.person_id
       where anchor_employment.id = ${id}::uuid)`;
@@ -2770,6 +2773,51 @@ export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: s
       .where(eq(leaveRequestDate.leaveRequestId, leaveRequestId))
       .orderBy(leaveRequestDate.leaveDate),
   );
+}
+
+export type LeaveRequestDateBreakdownRow = Awaited<ReturnType<typeof leaveRequestDateBreakdown>>[number];
+
+/** ADR-0181 package 1.4 — leaveRequestDateBreakdown for a SET of requests (docs/SCALE-AND-RELEASE-RULES.md
+ *  rule 2: no per-row reads in a request). One tenant transaction and one statement whatever the number of ids,
+ *  with the per-row owner's projection, joins, row-security path (leave_request_date's subject_employment_id
+ *  policy) and per-request ordering (leave date; unique per request by leave_request_date_request_date_uq).
+ *  Every distinct id asked for is a key, in first-asked order; an id with no visible rows (unknown, forbidden or
+ *  not a per-date request) maps to an empty array, exactly what the per-row owner answers. No ids sends no
+ *  statement. */
+export async function leaveRequestDateBreakdowns(
+  ctx: SessionContext,
+  leaveRequestIds: readonly string[],
+): Promise<Map<string, LeaveRequestDateBreakdownRow[]>> {
+  const ids = [...new Set(leaveRequestIds)];
+  const out = new Map<string, LeaveRequestDateBreakdownRow[]>();
+  if (ids.length === 0) return out;
+  const rows = await withTenant(ctx, (tx) =>
+    tx
+      .select({
+        leaveRequestId: leaveRequestDate.leaveRequestId,
+        id: leaveRequestDate.id,
+        leaveDate: leaveRequestDate.leaveDate,
+        days: leaveRequestDate.days,
+        status: leaveRequestDate.status,
+        rejectReason: leaveRequestDate.rejectReason,
+        decidedAt: leaveRequestDate.decidedAt,
+        decidedBy: person.fullName,
+      })
+      .from(leaveRequestDate)
+      .leftJoin(employment, eq(employment.id, leaveRequestDate.decidedByEmploymentId))
+      .leftJoin(person, eq(person.id, employment.personId))
+      .where(inArray(leaveRequestDate.leaveRequestId, ids))
+      .orderBy(leaveRequestDate.leaveRequestId, leaveRequestDate.leaveDate),
+  );
+  const byRequest = new Map<string, LeaveRequestDateBreakdownRow[]>();
+  for (const { leaveRequestId, ...row } of rows) {
+    const group = byRequest.get(leaveRequestId);
+    if (group) group.push(row);
+    else byRequest.set(leaveRequestId, [row]);
+  }
+  // uuid equality ignores case; the database returns the canonical lower-case form.
+  for (const id of ids) out.set(id, [...(byRequest.get(id.toLowerCase()) ?? [])]);
+  return out;
 }
 
 /** Partial Leave Cancellation (ADR-0065): pending cancellation requests for the approvals inbox. Each card

@@ -205,6 +205,35 @@ less than 20% margin above that, and the old 960 s minimum was below it, so the 
 other bulk unit holds a 60 s lease). The limits were set from the slower decoder and are kept: the first tick is now
 far below them (see the decode memory section below).
 
+### Queue-owner deadline
+
+The watchdog is the backstop. Each tick's own steps on the queue-owner connection have a much shorter bound
+(`OWNER_STEP_DEADLINE_SECONDS`, 120 s, in `core/owner-step-deadline.ts`). This covers the Bank & Statutory, Individual
+Transaction and bulk-job ticks. The bounded steps are:
+- reserving the connection;
+- the owner proof;
+- the queue lock (Bank and Individual) or the heartbeat (bulk jobs);
+- the claim;
+- the job-state writes and lease release;
+- the unlock.
+
+Each is one short statement. When one has not finished in time, the tick fails, the worker logs one line and exits
+with status 1, and the lane supervisor and systemd restart it:
+
+    Import worker: The import worker's queue-owner connection did not complete the connection reservation within 120 s. Exiting so systemd restarts it with a new connection.
+
+The connection is then neither unlocked nor returned to the pool; process exit closes it, which frees the advisory
+lock. The job keeps its state, and the restarted worker resumes it. The import work itself (decoding, validating,
+writing rows, a bulk-job unit) is not bounded this way; the watchdog still covers it.
+
+On 24 Nov 2026 (release 5b4359399) the payroll lane logged `stalled in bulk for 1822 s` while no payroll job
+existed and PostgreSQL logged no error or lock wait. The cause was in postgres.js 3.4.9. The lane's one owner
+connection reached the driver's default `max_lifetime` (a random 30-60 min; the lane had run 38 min). That happened
+between two ticks, and the next tick's `reserve()` arrived before the closing socket had closed. The pool reconnected
+for the waiting reservation and then dropped it, so `reserve()` never settled. `patches/postgres@3.4.9.patch` fixes
+the driver (`patches/README.md`); `test/postgres-reserve-recovery.test.ts` reproduces it. The deadline makes any
+future call of this kind fail in minutes, not after the watchdog's limit.
+
 ### Decode memory of the first Bank tick
 
 The first ('queued') tick decodes the whole upload and stores its rows in one transaction, 1,000 rows per insert.

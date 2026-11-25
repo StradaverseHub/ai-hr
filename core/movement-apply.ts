@@ -46,6 +46,21 @@ export type MovementSweepResult = {
 };
 
 /**
+ * The failure line for the sweep log, with the error's causes. A driver wraps the database error ("Failed query: …"),
+ * so the outer message alone hides why (24 November 2026: a row-security refusal was logged only as "Failed query").
+ * Messages only — never the error's detail, parameters or values.
+ */
+export function failureMessage(error: unknown): string {
+  const parts: string[] = [];
+  for (let e: unknown = error; e instanceof Error && parts.length < 4; e = (e as { cause?: unknown }).cause) {
+    // Drop the query text and its parameter list a driver appends after the first line.
+    const line = e.message.split('\n')[0];
+    if (line && !parts.includes(line)) parts.push(line);
+  }
+  return parts.length ? parts.join(' — caused by: ') : String(error);
+}
+
+/**
  * One nightly pass over a tenant. `today` is injectable for tests and defaults to the KL local date —
  * the cron runs 03:00 MYT, which is still "yesterday" in UTC, so a UTC slice would apply every movement
  * a day late. That matters more here than anywhere else in the codebase: "never before, and never
@@ -139,7 +154,7 @@ export async function sweepDueMovements(
     } catch (e) {
       failed += 1;
       console.warn(
-        `movement-apply: employment ${c.employmentId} — scheduled movement could not be applied: ${(e as Error).message}`,
+        `movement-apply: employment ${c.employmentId} — scheduled movement could not be applied: ${failureMessage(e)}`,
       );
     }
   }

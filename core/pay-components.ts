@@ -2678,7 +2678,7 @@ export type TaxableComponentClassification = {
   epfBonus2012?: boolean; includedInEpf: boolean; includedInSocsoEis: boolean;
   includedInPcb: boolean; isNonPayable: boolean; pcbRemunerationType?: string | null;
 };
-export type UnsupportedTaxableReason = 'classification_conflict' | 'unsupported_kind' | 'normal_remuneration_required' | 'unrecognised_taxable_item';
+export type UnsupportedTaxableReason = 'classification_conflict' | 'unsupported_kind' | 'epf_bonus_not_allowed' | 'normal_remuneration_required' | 'unrecognised_taxable_item';
 
 /** The classifier remains the benefit owner; callers retain the reason rather than inventing one. */
 export function unsupportedTaxableReason(c: TaxableComponentClassification): UnsupportedTaxableReason | null {
@@ -2835,6 +2835,9 @@ export type ComponentImportRow = {
   notes: string | null;
   ok: boolean;
   error: string | null;
+  /** Stable non-cash/taxable refusal (8edeef41). The action layer explains it through the shared
+   *  pay-item import message source (lib/pay-item-import-messages.ts) in the reader's language. */
+  taxableReason?: UnsupportedTaxableReason;
 };
 export type ComponentImportResult = { dryRun: boolean; rows: ComponentImportRow[]; valid: number; imported: number };
 
@@ -2894,6 +2897,7 @@ export async function importBatchComponents(
       const comp = byCode.get(code);
       const amount = amountRaw === '' ? NaN : Number(amountRaw);
       let error: string | null = null;
+      let taxableReason: UnsupportedTaxableReason | undefined;
       if (!employee) error = 'Missing employee';
       else if (!emp) error = `Unknown employee: ${employee}`;
       else if (!code) error = 'Missing component';
@@ -2901,16 +2905,11 @@ export async function importBatchComponents(
       else if (comp.pendingInputKind != null) error = `Complete the calculation for ${code} before assigning it.`;
       else if (!Number.isFinite(amount)) error = `Invalid amount: ${amountRaw}`;
       // Same complete classification as the picker and single-row writer, before any import write.
+      // The explanation is not written here: the stable reason travels with the row and the action layer words it
+      // from the same catalogue as the Pay Item screen and workbook import (8edeef41).
       else if (isUnsupportedTaxableComponent(comp)) {
-        const reason = unsupportedTaxableReason(comp);
-        const explanation = reason === 'classification_conflict'
-          ? 'BIK and living accommodation classifications conflict; make Pay Category and EA reporting consistent.'
-          : reason === 'normal_remuneration_required'
-            ? 'Monthly BIK and living accommodation require Normal remuneration and cannot use EPF Bonus 2012.'
-            : reason === 'unsupported_kind'
-              ? 'The category cannot represent a non-cash benefit; review Category and Pay Category.'
-              : 'No supported taxable classification; select the applicable benefit Pay Category and tax settings.';
-        error = `Unsupported component: ${code}. ${explanation}`;
+        taxableReason = unsupportedTaxableReason(comp) ?? 'unrecognised_taxable_item';
+        error = `Unsupported component: ${code}.`;
       }
       return {
         line: i + 2,
@@ -2922,6 +2921,7 @@ export async function importBatchComponents(
         notes: rec.notes || null,
         ok: !error,
         error,
+        ...(taxableReason ? { taxableReason } : {}),
       };
     });
 

@@ -489,6 +489,8 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  {table:'access_department_closure',column:'ancestor_department_id',references:'department',effect:'part',note:'7240 derived department closure (owner-only): a pair goes with either department and is recomputed by the department trigger.'},
+  {table:'access_department_closure',column:'descendant_department_id',references:'department',effect:'part',note:'7240 derived department closure (owner-only): a pair goes with either department and is recomputed by the department trigger.'},
   {table:'company_organisation_mapping',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.approved_feedback_company_in_use',note:'Reviewed dated company mappings retain the actual Business Unit identity, including shared units created by another company.'},
   {table:'contract_role_assignment',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
   {table:'probation_access',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},

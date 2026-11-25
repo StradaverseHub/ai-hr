@@ -45,15 +45,24 @@ describe('multi-company payroll — pure helpers', () => {
   it('typed wizard failures retain safe reasons through result transport and every locale', () => {
     const errors = [
       ...(['confirmation_required','invalid_scheme','citizenship_unknown','not_resident'] as const).map(code=>new TaxSelectionError(code)),
-      ...(['classification_conflict','unsupported_kind','normal_remuneration_required','month_baseline_unavailable'] as const).map(reason=>new NonCashBenefitConfigurationError('PRIVATE_COMPONENT',reason)),
+      ...(['classification_conflict','unsupported_kind','epf_bonus_not_allowed','normal_remuneration_required','month_baseline_unavailable'] as const).map(reason=>new NonCashBenefitConfigurationError('PRIVATE_COMPONENT',reason)),
     ];
-    const expected = ['TAX_SELECTION_CONFIRMATION_REQUIRED','TAX_SELECTION_INVALID_SCHEME','TAX_SELECTION_CITIZENSHIP_UNKNOWN','TAX_SELECTION_NOT_RESIDENT','NON_CASH_CLASSIFICATION_CONFLICT','NON_CASH_UNSUPPORTED_KIND','NON_CASH_NORMAL_REMUNERATION_REQUIRED','NON_CASH_MONTH_BASELINE_UNAVAILABLE'];
+    const expected = ['TAX_SELECTION_CONFIRMATION_REQUIRED','TAX_SELECTION_INVALID_SCHEME','TAX_SELECTION_CITIZENSHIP_UNKNOWN','TAX_SELECTION_NOT_RESIDENT','NON_CASH_CLASSIFICATION_CONFLICT','NON_CASH_UNSUPPORTED_KIND','NON_CASH_EPF_BONUS_NOT_ALLOWED','NON_CASH_NORMAL_REMUNERATION_REQUIRED','NON_CASH_MONTH_BASELINE_UNAVAILABLE'];
+    expect(expected).toHaveLength(errors.length);
     errors.forEach((error,i)=>{
       const reason=reasonForPayrollError(error);expect(reason).toBe(expected[i]);
       const result=summarize('2026-07','s','e',[{companyId:'a',companyName:'A',status:'failed',employeesSelected:1,employeesSucceeded:0,reason}]);
       const encoded=encodeRunGroupResult(result);expect(encoded).not.toContain('PRIVATE_COMPONENT');expect(decodeRunGroupResult(encoded)?.perCompany[0].reason).toBe(reason);
       for(const locale of ['en','ms','zh','ta','th','vi']){const messages=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));expect(messages.payroll.process.reason[reason]).toBeTruthy();}
     });
+    // 8edeef41 — a result written before the EPF Bonus split (stored job reason or ?r= payload) still decodes and renders.
+    const legacy=encodeURIComponent(JSON.stringify({payPeriod:'2026-07',startedAt:'s',finishedAt:'e',overallStatus:'failed',perCompany:[{companyId:'a',companyName:'A',status:'failed',employeesSelected:1,employeesSucceeded:0,reason:'NON_CASH_NORMAL_REMUNERATION_REQUIRED'}]}));
+    expect(decodeRunGroupResult(legacy)?.perCompany[0].reason).toBe('NON_CASH_NORMAL_REMUNERATION_REQUIRED');
+    for(const locale of ['en','ms','zh','ta','th','vi']){
+      const reasons=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8')).payroll.process.reason;
+      expect(reasons.NON_CASH_NORMAL_REMUNERATION_REQUIRED).toBeTruthy();expect(reasons.NON_CASH_NORMAL_REMUNERATION_REQUIRED).not.toContain('2012');
+      expect(reasons.NON_CASH_EPF_BONUS_NOT_ALLOWED).toContain('EPF Bonus 2012');
+    }
     for(const code of ['not_found','invalid_period','stale_context'] as const)expect(reasonForPayrollError(new TaxSelectionError(code))).toBe('SYSTEM_VALIDATION_ERROR');
     expect(reasonForPayrollError(new Error('private SQL failure'))).toBe('SYSTEM_VALIDATION_ERROR');expect(reasonForPayrollError(null)).toBe('SYSTEM_VALIDATION_ERROR');
     expect(reasonForPayrollError(new Error('No localization pack for MY'))).toBe('NO_PAYROLL_CONFIG');

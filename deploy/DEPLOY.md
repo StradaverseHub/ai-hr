@@ -460,6 +460,8 @@ AIHR_ALERT_COMMAND=curl -sS -X POST -d @- https://your-webhook.example/aihr
 30 3 * * * cd /opt/ai-hr && deploy/cron-alert.sh entitlement-alarm /home/ubuntu/aihr-cron-logs/entitlement-alarm.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/entitlement-alarm.ts
 15 * * * * cd /opt/ai-hr && deploy/cron-alert.sh ai-alerts /home/ubuntu/aihr-cron-logs/ai-alerts.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/ai-alerts.ts
 10 0 * * * cd /opt/ai-hr && deploy/cron-alert.sh access-effective-company /home/ubuntu/aihr-cron-logs/access-effective-company.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-effective-company-check.ts
+20 0 * * * cd /opt/ai-hr && deploy/cron-alert.sh access-visible-employment /home/ubuntu/aihr-cron-logs/access-visible-employment.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-visible-employment-check.ts
+*/10 * * * * cd /opt/ai-hr && deploy/cron-alert.sh access-visible-employment-rebuild /home/ubuntu/aihr-cron-logs/access-visible-employment-rebuild.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-visible-employment-check.ts --rebuild-only
 ```
 
 The `ai-alerts` line (WP12, review R20) is **documented here, not installed**; the release owner adds it. It is a
@@ -479,6 +481,18 @@ operator fixes the cause and runs `select app.access_effective_company_retrust('
 means a tenant could not be checked. The installation's mode is `legacy` until changed with
 `select app.access_precompute_set_mode('shadow' | 'precomputed' | 'legacy')`; staging runs `shadow` under the staging
 lease, production stays `legacy` until the pilot is accepted and a separate production request changes it.
+
+The two `access-visible-employment` lines (ADR 0181 employment visibility, migration 7240) are **documented here, not
+installed**. The first runs twenty minutes after midnight Kuala Lumpur time (`20 16 * * *` on a UTC host): it rebuilds
+any tenant that is stale or past its date window, then recomputes each tenant's stored reporting reach, department
+closure and company closure from scratch and compares them with the trigger-maintained rows
+(`app.access_visible_employment_verify`). A difference marks that tenant untrusted, so its employment visibility falls
+back to the legacy walk, and the job exits `3` with the tenant id and counts only until an operator fixes the cause and
+runs `select app.access_visible_employment_retrust('<tenant id>')` as the owner. The second, every ten minutes with
+`--rebuild-only`, rebuilds tenants a large restructure marked stale (above `inline_rebuild_limit` employments in
+`access_employment_precompute_control`), so their reads return to the stored answer soon. The mode is `legacy` until
+changed with `select app.access_visible_employment_set_mode('shadow' | 'precomputed' | 'legacy')`; the same staging and
+production rules as the company pilot apply.
 
 The last line is **readiness 2.1 (r296) and it is a DETECTOR, not a sweep** — it changes nothing, and
 every transaction it opens is `SET TRANSACTION READ ONLY`, so the server refuses a write from it. It is

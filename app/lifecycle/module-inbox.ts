@@ -11,6 +11,9 @@ import { v9EmailHoldInbox } from '@/packs/lifecycle/service';
  * (core/approvals-inbox.ts PACK_TASK_SOURCES, kinds probationApproval and probationTask), so the bell, Home, Today and
  * My Tasks read it once, without the former 20-item cut.
  */
+export type LifecycleModuleInbox = Awaited<ReturnType<typeof lifecycleModuleInbox>>;
+/** No lifecycle module work: what the shell shows when the inbox read failed (ADR 0181 package 1.3). */
+export const EMPTY_LIFECYCLE_MODULE_INBOX: LifecycleModuleInbox = { myTasksCount: 0, queueLinks: [], count: 0, approvalCount: 0, items: [] };
 export async function lifecycleModuleInbox(
   ctx: SessionContext,
   navigation: Awaited<ReturnType<typeof lifecycleModuleNavigation>>,

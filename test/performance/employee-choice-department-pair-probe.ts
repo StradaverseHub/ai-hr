@@ -20,7 +20,16 @@ export function sparseDepartmentFacetBinds(tenant:string,input:Scope){
 }
 
 /** Exact a293 first-witness statement and captured server-scope layout. */
-export function firstWitnessDepartmentFacet(tenantId:string,input:Scope){
+export function firstWitnessDepartmentFacet(tenantId:string,input:Scope){return departmentFacet(tenantId,input);}
+
+/** The product's first-witness statement since 24 Nov 2026: the a293 statement limited to the companies the reader
+ * found represented, ordered by id. A pair needs an in-scope member of its company, so the limit removes no row; it
+ * stops every other company in the tenant being paired with every department. */
+export function representedFirstWitnessDepartmentFacet(tenantId:string,input:Scope,represented:readonly string[]){
+ return departmentFacet(tenantId,input,represented);
+}
+
+function departmentFacet(tenantId:string,input:Scope,represented?:readonly string[]){
  const {companyIds,employmentIds,terminatedAfter,labelMode}=input,labels=labelMode==='labels';
  let scope=sql`${employment.tenantId}=${tenantId}::uuid and ${companyIds.length?sql`${employment.companyId}=any(${uuidArray(companyIds)}::uuid[])`:sql`true`}`;
  if(terminatedAfter!==undefined)scope=sql`${scope} and (${employment.terminatedOn} is null or ${employment.terminatedOn}>${terminatedAfter}::date)`;
@@ -37,5 +46,6 @@ export function firstWitnessDepartmentFacet(tenantId:string,input:Scope){
      on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
      where ${employment.id}=${assignment.employmentId} and ${scope} and ${employment.companyId}=${company.id}
      offset 0)
-   offset 0) order by "companyId","departmentId"`;
+   offset 0)${represented?sql`
+  and ${company.id}=any(${uuidArray(represented)}::uuid[])`:sql``} order by "companyId","departmentId"`;
 }

@@ -21,6 +21,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
 import { closeAll, owner } from './harness';
+import { VISIBILITY_7240, deparsedUsing } from './helpers/reviewed-visibility';
 import { assertTestingFeedbackPolicyGraph,testingFeedbackHistoricalKeys } from './r395-current-feedback-policies';
 import {assertCurrentProfilePolicyGraph,profileHistoricalPolicyKey} from './r395-current-profile-policies';
 
@@ -111,6 +112,17 @@ describe('r395 — per-row visibility functions are gone from every policy USING
     const bankEmploymentQual=await bankPointReadQual(voidNarrowedQual(employmentInitPlanQual(employmentFixture!.newQual)));
     expect(bankEmploymentQual.match(/SELECT unnest\(\( SELECT app\.visible_employment_ids\(\) AS visible_employment_ids\)\) AS unnest/g)).toHaveLength(2);
     const claimMembershipQual = '((tenant_id = app.current_tenant_id()) AND (employment_id IN ( SELECT unnest(app.visible_employment_ids()) AS unnest)))';
+    // 7240 replaced the employment and person USING. The chain above must arrive exactly at 7240's reviewed
+    // predecessors (as PostgreSQL deparses them), and the installed policies are 7240's replacements.
+    const client = owner.client as never;
+    expect(bankEmploymentQual).toBe(await deparsedUsing(client, 'employment', VISIBILITY_7240.employmentBefore));
+    const personFixture = FIXTURE.policies.find((p) => key(p.table, p.policy) === 'person.person_rls');
+    expect(personFixture).toBeTruthy();
+    expect(voidNarrowedQual(personFixture!.newQual)).toBe(await deparsedUsing(client, 'person', VISIBILITY_7240.personBefore));
+    // 7245 restored both to the pre-7240 text (the restatement made the planner reorder the payslip/employment/person
+    // joins): the installed policies are the reviewed predecessors again.
+    const employment7240 = await deparsedUsing(client, 'employment', VISIBILITY_7240.employmentBefore);
+    const person7240 = await deparsedUsing(client, 'person', VISIBILITY_7240.personBefore);
     const reconciledFeedbackKeys = new Set<string>();
     for (const p of FIXTURE.policies) {
       // These historical invariants still apply to all 57 fixture entries, including the five 0560/0561 cases.
@@ -128,7 +140,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
         const r = live.get(historicalKey);
         expect(r, `${historicalKey} exists`).toBeTruthy();
         const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
-        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?bankEmploymentQual:historicalKey==='claim_request.claim_request_rls'?claimMembershipQual:historicalKey==='assignment.assignment_rls'?assignmentInitPlanQual(p.newQual):importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
+        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?employment7240:historicalKey==='person.person_rls'?person7240:historicalKey==='claim_request.claim_request_rls'?claimMembershipQual:historicalKey==='assignment.assignment_rls'?assignmentInitPlanQual(p.newQual):importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
         expect(r!.qual, `${historicalKey} USING`).toBe(expectedQual);
         expect(r!.with_check ?? null, `${historicalKey} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
       }

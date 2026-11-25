@@ -8,6 +8,7 @@ import {isAdmin} from '../lib/authz-model';
 import {isCalendarDate} from '../lib/calendar-date';
 import {ALL_ROW_CEILING} from '../lib/pagination';
 import {employeeChoiceExactAsciiPredicate} from './employee-choice-ascii';
+import {employmentSearchNarrowing} from './employment-search';
 import {EMPLOYEE_CHOICE_PAGE_SIZE,EMPLOYEE_CHOICE_MAX_PAGE_SIZE,type EmployeeChoice,type EmployeeChoiceInput,type EmployeeChoicePage} from '../lib/employee-choice';
 
 export class EmployeeChoiceInputError extends Error{}
@@ -112,7 +113,9 @@ async function readChoicePageTx(
    and ${filters.departmentId?sql`${assignment.departmentId}=${filters.departmentId}::uuid`:sql`true`}
    and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`})) is true
   and ${inStatus}`:where;
-   const pageWhere=exactAscii?sql`${identityWhere} and ${exactAscii}`:identityWhere;
+   // 7320: the trigram candidates (a superset of the matches) let the page fetch matching rows by key.
+   const narrowed=employmentSearchNarrowing(sql`${employment.id}`,q,p.companyIds,{email:false});
+   const pageWhere=exactAscii?sql`${identityWhere} and ${exactAscii}${narrowed?sql` and ${narrowed}`:sql``}`:identityWhere;
    const population=employeeIdentityFrom(ctx.tenantId);
    const page=await tx.execute<EmployeeChoice&{total:number}>(sql`
     with employee_choice_page as materialized(select ${employment.id},(count(*) over())::int as total ${population}
@@ -126,7 +129,7 @@ async function readChoicePageTx(
   }else{
    // PostgreSQL locale lower/ILIKE is not ECMAScript lower/includes. ASCII-only rows
    // admit exact native candidates; every non-ASCII row remains a conservative candidate.
-   const candidate=choiceCandidate(q);
+   const candidate=choiceCandidate(q,p.companyIds);
    // The cursor owns minimal identity facts for both paths. Organisation filters
    // retain native joined membership; only matching page identities get full
    // assignment/label projection afterwards in the same read-only snapshot.
@@ -161,15 +164,19 @@ export async function readEmployeeChoiceIdsTx(tx:Tx,ctx:SessionContext,p:Employe
  signal?.throwIfAborted();await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
  const ids:string[]=[];
  await visitEmployeeChoiceMatches(tx,sql`select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"
-  ${organisationFilter?from:employeeIdentityFrom(ctx.tenantId)} where ${where} and ${q?choiceCandidate(q):sql`true`}
+  ${organisationFilter?from:employeeIdentityFrom(ctx.tenantId)} where ${where} and ${q?choiceCandidate(q,input.companyIds):sql`true`}
   order by ${person.fullName},${employment.id}${organisationFilter?sql`,${assignment.id}`:sql``}`,q,row=>{ids.push(row.employmentId);},signal);
  return ids;
 }
 
-function choiceCandidate(q:string){
+function choiceCandidate(q:string,companyIds:readonly string[]){
  const unicode=sql`(${nonAscii(sql`${person.fullName}`)} or ${nonAscii(sql`coalesce(${employment.employeeCode},'')`)})`;
- return q.includes('\0')?sql`false`:/^[\x00-\x7f]*$/.test(q)?sql`(${unicode} or lower(${person.fullName} collate "C") like ${pattern(q)} escape '\\'
+ const candidate=q.includes('\0')?sql`false`:/^[\x00-\x7f]*$/.test(q)?sql`(${unicode} or lower(${person.fullName} collate "C") like ${pattern(q)} escape '\\'
      or lower(coalesce(${employment.employeeCode},'') collate "C") like ${pattern(q)} escape '\\')`:unicode;
+ // 7320: narrow to the trigram candidates first. They contain every row this candidate admits (the ASCII matches
+ // and every non-ASCII name or code), so the exact JavaScript match below decides the same rows.
+ const narrowed=employmentSearchNarrowing(sql`${employment.id}`,q,companyIds,{email:false});
+ return narrowed?sql`(${narrowed} and ${candidate})`:candidate;
 }
 type ChoiceIdentity=Pick<EmployeeChoice,'employmentId'|'name'|'employeeCode'>;
 async function exactEmployeeChoiceMatches(tx:Tx,query:SQL,q:string,offset:number,limit:number,signal?:AbortSignal){
@@ -211,7 +218,19 @@ async function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string,sparse
  signal?.throwIfAborted();
  // The bounded scope can probe its own current Assignment keys. The other path
  // keeps the department match outside the Employment/Person witness.
- const departments=await tx.execute<ChoiceOptions>(sparseDepartment?sql`with authorized_members as materialized (
+ // The first-witness cross join proves an ABSENT pair by reading every current Assignment of
+ // that Department, once per Company, so its cost grows with companies x assignments. With one
+ // represented Company that is at most one read per Department (the 50k one-company fixture);
+ // across several it is not: staging, 24 Nov 2026, 74 companies x 98 departments for 961
+ // assignments and 104 pairs took 2,151 ms, against 24.6 ms for the per-member probe, which
+ // returned the identical 104 rows and reads each authorized member's Assignment once.
+ // The cross join is also limited to the represented companies found above: a pair needs an in-scope member of
+ // its company, so no other company can contribute a row, and without the limit every company in the tenant
+ // was paired with every department even for a one-company scope (2,978,434 assignment tuples read for one
+ // company of 71 in test/payroll-dashboard-and-choice-multicompany-scale-db.test.ts).
+ const represented=companies.map(row=>row.companyId);
+ const perMember=sparseDepartment||represented.length>1;
+ const departments=await tx.execute<ChoiceOptions>(perMember?sql`with authorized_members as materialized (
   select ${employment.id} as employment_id,${employment.companyId} from ${employment}
   join ${person} on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid where ${scope}
  ), represented_department_pairs as materialized (
@@ -238,7 +257,8 @@ async function readOptions(tx:Tx,scope:SQL,labels:boolean,tenantId:string,sparse
      on ${person.id}=${employment.personId} and ${person.tenantId}=${tenantId}::uuid
      where ${employment.id}=${assignment.employmentId} and ${scope} and ${employment.companyId}=${company.id}
      offset 0)
-   offset 0) order by "companyId","departmentId"`);
+   offset 0)
+  and ${company.id}=any(${'{'+represented.join(',')+'}'}::uuid[]) order by "companyId","departmentId"`);
  signal?.throwIfAborted();
  const units=await tx.execute<ChoiceOptions>(sql`select ${company.id} as "companyId",${company.legalName} as company,null::uuid as "departmentId",null::text as "departmentCode",null::text as department,${businessUnit.id} as "businessUnitId",
   ${labels?sql`${businessUnit.code}`:sql`null::text`} as "businessUnitCode",
