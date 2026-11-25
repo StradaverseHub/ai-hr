@@ -15,7 +15,6 @@
  "app/admin/organization/statutory-tab-actions.ts": 1,
  "app/admin/personnel/[employmentId]/actions.ts": 1,
  "app/admin/personnel/import/bank-statutory/upload/route.ts": 1,
- "app/admin/personnel/import/page.tsx": 1,
  "app/admin/personnel/new/page.tsx": 1,
  "app/admin/personnel/profile-changes/page.tsx": 1,
  "app/admin/rewards/shared/history.tsx": 1,
