@@ -1,3 +1,31 @@
+# ADR 0181 live work queues, Q1: Contract navigation access, 25 November 2026
+
+Reserve `7340_queue_read_contract_navigation`, journal index `10740`, timestamp `1795495007340`, SQL SHA-256
+`675007a187d548b3a387483502f6cece7241f293cad6eeecc38d4b739727c56b`. Taken from `node .github/ci/check-migration-collisions.mjs --local --next` on 25 November
+2026 (main and 399 recent branch journals; next free slot after `7330_queue_read_offboarding_access`, which it must follow:
+it adds a `queue_read_control` row). Recheck the installed ledgers and watermarks at admission.
+
+It renames the 6432 function to `contract_shared_navigation_access_legacy` (guarded by its exact body and 6435's
+`automation_can_configure` body), adds `contract_staff_automation_v2` and `contract_shared_navigation_access_v2` (the 6432
+statement word for word with only its automation arm restated once per statement), and a PL/pgSQL dispatcher at the
+original name and grant. Inert on install (`legacy`). No policy, trigger, column or business row changes. Design:
+`docs/adr/0181-addendum-live-work-queues-and-approvals.md` (PR 319). This entry carries no deployment authority.
+
+# ADR 0181 live work queues, Q1: offboarding posting queue access, 25 November 2026
+
+Reserve `7330_queue_read_offboarding_access`, journal index `10730`, timestamp `1795495007330`, SQL SHA-256
+`6313303feb1ff5a25f959ae2b99987a5aba2ab2b44ec4bfe29f8fe5cb39044a3`. Taken from `node .github/ci/check-migration-collisions.mjs --local --next` (PR 307's
+script, run from its branch) on 25 November 2026, which checked main and 398 recent branch journals and reported the
+next free slot after `7320_employment_search_trigram`. Its timestamp is above every reservation it saw. Staging's ledger
+reached 7250 at the time; production is below it. Recheck the installed ledgers and watermarks at admission.
+
+It installs the per-reader switch `queue_read_control` (owner only, every mode `legacy`), renames the 6302 function to
+`offboarding_posting_queue_access_legacy` (guarded by its exact body), adds the once-per-statement
+`offboarding_posting_queue_access_v2`, a PL/pgSQL dispatcher at the original name and grant, and two operator-only
+functions (mode setter, every-user comparison of any registered reader). Inert on install. No policy, trigger, column or row of business data
+changes. Design: `docs/adr/0181-addendum-live-work-queues-and-approvals.md` (PR 319). This entry carries no deployment
+authority.
+
 # Employee search trigram indexes and candidates (ADR 0181 Phase 4), 25 November 2026
 
 Reserve `7320_employment_search_trigram`, journal index `10720`, timestamp `1795495007320` (SQL SHA-256 recorded in
