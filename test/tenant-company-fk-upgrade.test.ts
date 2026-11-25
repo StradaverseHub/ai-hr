@@ -277,6 +277,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10740,version:'7',when:1795495007340,tag:'7340_queue_read_contract_navigation',breakpoints:true},
  {idx:10860,version:'7',when:1795495007460,tag:'7460_payroll_read_access_switch',breakpoints:true},
  {idx:10870,version:'7',when:1795495007470,tag:'7470_payroll_read_admin_companies',breakpoints:true},
+ {idx:10880,version:'7',when:1795495007480,tag:'7480_payroll_read_own_payslips',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1424,6 +1425,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_admin_company_arm(uuid,jsonb)',app:true},
    {fn:'app.payroll_admin_employment_arm(uuid,jsonb)',app:true},
    {fn:'app.payroll_original_employer_arm(uuid,jsonb)',app:true},
+   // 7480 (payroll read P3): the own-payslip person reader and arm are evaluated by row security.
+   {fn:'app.payroll_self_person_ids()',app:true},
+   {fn:'app.payroll_self_person_arm(uuid,uuid[])',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.

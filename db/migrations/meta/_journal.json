@@ -8107,6 +8107,13 @@
       "when": 1795495007470,
       "tag": "7470_payroll_read_admin_companies",
       "breakpoints": true
+    },
+    {
+      "idx": 10880,
+      "version": "7",
+      "when": 1795495007480,
+      "tag": "7480_payroll_read_own_payslips",
+      "breakpoints": true
     }
   ]
 }

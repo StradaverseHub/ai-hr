@@ -1,3 +1,17 @@
+# ADR 0181 payroll read addendum, P3: own payslips once per statement, 25 November 2026
+
+Reserve `7480_payroll_read_own_payslips`, journal index `10880`, timestamp `1795495007480`, SQL SHA-256 `d446b58e65b6241da5def8c0454eece8c8b5c4a55daca7ee53e97bf8c0bc2e82`. Next free
+slot after this session's `7470_payroll_read_admin_companies`, which it requires (same scan as 7470; recheck at
+admission). Recheck both installations' watermarks and any competing reservation at admission.
+
+Registers step `p3_own_payslips` (legacy), splits 7470's constant `payslip_rls` piece around the own-payslip arm (the
+joined text is unchanged and checked against the installed policy), and adds `app.payroll_self_person_ids` (a definer
+reading what `app.is_self_person` reads, once per statement) and `app.payroll_self_person_arm`, which replaces only the
+`is_self_person` call inside the unchanged EXISTS over employment (so the planner's cost and plan stay), executable by
+every role that evaluates `payslip_rls`. No
+policy, trigger, column or business row changes. Design: PR 308, sections 4, 6 and 11. This entry carries no
+deployment authority.
+
 # ADR 0181 payroll read addendum, P2: payroll administration once per statement, 25 November 2026
 
 Reserve `7470_payroll_read_admin_companies`, journal index `10870`, timestamp `1795495007470`, SQL SHA-256 `0ee21a3c7598c50e14284635910b4d29a469c0d1bf35e3dea5ba8a4633fdb1e9`. Taken
