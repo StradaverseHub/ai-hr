@@ -39,6 +39,14 @@ const assessmentAttachment = {
 // 0676 (ADR-0157) deliberately hides a voided employment/person from every ordinary read. It may only NARROW
 // visibility: the live USING must be exactly `(voided_at IS NULL) AND (<0515 USING>)`, WITH CHECK unchanged.
 const importVoidNarrowed = new Set(['employment.employment_rls', 'person.person_rls']);
+// 7280 replaced the per-row delegation term of five leave policies with a membership check of the once-per-statement delegated set.
+const delegatedLeave = new Set(['leave_request.leave_request_rls','leave_approval_step.leave_approval_step_rls','leave_request_date.leave_request_date_rls',
+ 'replacement_leave_request.replacement_leave_request_rls','replacement_leave_request_date.replacement_leave_request_date_rls']);
+const delegated7280 = (qual: string) => {
+ const m = qual.match(/app\.can_decide_via_delegation\(([a-z_]+)\)/);
+ if (!m || qual.split(m[0]).length !== 2) throw new Error('expected one per-row delegation term');
+ return qual.replace(m[0], `app.delegated_decision_includes(${m[1]}, ( SELECT app.delegated_decision_employment_ids() AS delegated_decision_employment_ids))`);
+};
 const voidNarrowedQual = (qual: string) => `((voided_at IS NULL) AND ${qual})`;
 
 // Pin the reviewed 0691 arm (with 5054's payroll-partner short-circuit) independently of the migration bytes. PostgreSQL normalizes
@@ -138,7 +146,7 @@ describe('r395 — per-row visibility functions are gone from every policy USING
         const r = live.get(historicalKey);
         expect(r, `${historicalKey} exists`).toBeTruthy();
         const attachment=p.table==='performance_attachment'&&p.policy==='performance_attachment_rls';
-        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?employment7240:historicalKey==='person.person_rls'?person7240:historicalKey==='claim_request.claim_request_rls'?claimMembershipQual:historicalKey==='assignment.assignment_rls'?assignmentInitPlanQual(p.newQual):importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
+        const expectedQual=attachment?assessmentAttachment.qual:historicalKey==='employment.employment_rls'?employment7240:historicalKey==='person.person_rls'?person7240:delegatedLeave.has(historicalKey)?delegated7280(p.newQual):historicalKey==='claim_request.claim_request_rls'?claimMembershipQual:historicalKey==='assignment.assignment_rls'?assignmentInitPlanQual(p.newQual):importVoidNarrowed.has(historicalKey)?voidNarrowedQual(p.newQual):p.newQual;
         expect(r!.qual, `${historicalKey} USING`).toBe(expectedQual);
         expect(r!.with_check ?? null, `${historicalKey} WITH CHECK`).toBe(attachment?assessmentAttachment.withCheck:p.withCheck);
       }
