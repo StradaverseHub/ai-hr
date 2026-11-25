@@ -22,7 +22,9 @@ export const LEAVE_IMPORT_CHUNK_BUDGET_MS = Number(process.env.LEAVE_IMPORT_CHUN
 /** ADR 0181 J2, imports: set-based groups of planned rows (core/import-set-group.ts). LEAVE_IMPORT_GROUP_MAX=1
  * restores the per-row path for every row; LEAVE_IMPORT_CHUNK_TARGET_MS / _CEILING_MS / _FIXED_MULTIPLE size them. */
 const groups = importGroupController<LeaveImportPlanRow, boolean>({
-  kind: LEAVE_LEDGER_IMPORT_KIND, envPrefix: 'LEAVE_IMPORT',
+  kind: LEAVE_LEDGER_IMPORT_KIND,
+  settings: () => ({groupMax: process.env.LEAVE_IMPORT_GROUP_MAX, targetMs: process.env.LEAVE_IMPORT_CHUNK_TARGET_MS,
+    ceilingMs: process.env.LEAVE_IMPORT_CHUNK_CEILING_MS, fixedMultiple: process.env.LEAVE_IMPORT_CHUNK_FIXED_MULTIPLE}),
   // At most 64 rows: a group's fixed cost (locks, leave types, the narrowed reads) is spread well before that, and a
   // declined group sends at most 64 rows to the per-row path.
   defaults: {groupMax: 64, targetMs: 200, ceilingMs: 400, fixedMultiple: 2, firstGroup: 16},

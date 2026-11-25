@@ -49,15 +49,18 @@ export function nextImportGroupSize(seen:readonly ImportGroupPass[],last:number,
 /** The last two passes of different sizes (a pass of a size already seen replaces it). */
 export const rememberImportGroupPass=(seen:readonly ImportGroupPass[],pass:ImportGroupPass)=>[...seen.filter(p=>p.rows!==pass.rows),pass].slice(-2);
 
-const envNumber=(name:string,fallback:number)=>{const value=Number(process.env[name]??fallback);return Number.isFinite(value)&&value>0?value:fallback;};
+const settingNumber=(raw:string|undefined,fallback:number)=>{const value=Number(raw??fallback);return Number.isFinite(value)&&value>0?value:fallback;};
 const roundMs=(value:number)=>Math.max(0,Math.round(value));
 const cpuMsSince=(start:NodeJS.CpuUsage)=>{const c=process.cpuUsage(start);return(c.user+c.system)/1000;};
 
 /** What one kind tells the controller. `P` is the step payload, `R` the set writer's per-row outcome. */
 export type ImportGroupKind<P,R>={
- /** The bulk_job kind (the timing line's label) and the environment prefix of its knobs (`<prefix>_GROUP_MAX`,
-  *  `<prefix>_CHUNK_TARGET_MS`, `<prefix>_CHUNK_CEILING_MS`, `<prefix>_CHUNK_FIXED_MULTIPLE`). */
- kind:string;envPrefix:string;
+ /** The bulk_job kind (the timing line's label). */
+ kind:string;
+ /** The kind's knobs as the environment holds them (`<KIND>_GROUP_MAX`, `_CHUNK_TARGET_MS`, `_CHUNK_CEILING_MS`,
+  *  `_CHUNK_FIXED_MULTIPLE`), read by the kind with literal keys so the module catalogue's gate checks see them
+  *  (test/module-catalog-drift.test.ts); unset or invalid values take the defaults. */
+ settings:()=>{groupMax?:string;targetMs?:string;ceilingMs?:string;fixedMultiple?:string};
  defaults:{groupMax:number;targetMs:number;ceilingMs:number;fixedMultiple:number;firstGroup:number};
  /** Per-row steps: the chunk commits once they reach this much wall time or this many steps (the old kernel limits). */
  perRowBudgetMs:()=>number;perRowMaxSteps:number;
@@ -83,12 +86,12 @@ const freshChunk=():ChunkState=>({startedAt:performance.now(),cpu:process.cpuUsa
 /** One controller per kind; its state is per job and process (a resumed or moved job only loses its size estimate). */
 export function importGroupController<P,R>(kind:ImportGroupKind<P,R>){
  const states=new Map<string,GroupState>();
- const limits=():ImportGroupLimits=>({
-  max:Math.max(1,Math.floor(envNumber(`${kind.envPrefix}_GROUP_MAX`,kind.defaults.groupMax))||1),
-  targetMs:envNumber(`${kind.envPrefix}_CHUNK_TARGET_MS`,kind.defaults.targetMs),
-  ceilingMs:envNumber(`${kind.envPrefix}_CHUNK_CEILING_MS`,kind.defaults.ceilingMs),
-  fixedMultiple:envNumber(`${kind.envPrefix}_CHUNK_FIXED_MULTIPLE`,kind.defaults.fixedMultiple),
- });
+ const limits=():ImportGroupLimits=>{const raw=kind.settings();return{
+  max:Math.max(1,Math.floor(settingNumber(raw.groupMax,kind.defaults.groupMax))||1),
+  targetMs:settingNumber(raw.targetMs,kind.defaults.targetMs),
+  ceilingMs:settingNumber(raw.ceilingMs,kind.defaults.ceilingMs),
+  fixedMultiple:settingNumber(raw.fixedMultiple,kind.defaults.fixedMultiple),
+ };};
  const groupMax=()=>limits().max;
  const stateOf=(jobId:string)=>{let s=states.get(jobId);if(!s){s={size:kind.defaults.firstGroup,seen:[],single:new Set(),chunk:freshChunk()};states.set(jobId,s);}return s;};
  /** The pending steps a chunk reads: a group never extends past them. */

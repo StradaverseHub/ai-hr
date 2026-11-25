@@ -29,7 +29,8 @@ export const SECTION_IMPORT_CHUNK_BUDGET_MS=Number(process.env.SECTION_IMPORT_CH
  * core/import-set-group.ts). SECTION_IMPORT_GROUP_MAX=1 restores the per-row path; SECTION_IMPORT_CHUNK_TARGET_MS /
  * _CEILING_MS / _FIXED_MULTIPLE size them. A group still runs every owner writer per row, so it stays small. */
 const groups=importGroupController<SectionRowNomination,{wrote:boolean;personId:string;dependent:boolean}>({
- kind:SECTION_IMPORT_KIND,envPrefix:'SECTION_IMPORT',
+ kind:SECTION_IMPORT_KIND,
+ settings:()=>({groupMax:process.env.SECTION_IMPORT_GROUP_MAX,targetMs:process.env.SECTION_IMPORT_CHUNK_TARGET_MS,ceilingMs:process.env.SECTION_IMPORT_CHUNK_CEILING_MS,fixedMultiple:process.env.SECTION_IMPORT_CHUNK_FIXED_MULTIPLE}),
  defaults:{groupMax:32,targetMs:250,ceilingMs:500,fixedMultiple:2,firstGroup:8},
  perRowBudgetMs:()=>SECTION_IMPORT_CHUNK_BUDGET_MS,perRowMaxSteps:16,
 });
