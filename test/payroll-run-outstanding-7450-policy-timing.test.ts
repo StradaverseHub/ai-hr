@@ -21,8 +21,8 @@
  *  - the run's own state change: forgetRunOutstandingTx's delete by primary key (delete rule).
  * For every plan it asserts: the rows are the authorised ones (non-vacuous), no plan node over payroll_run_outstanding
  * or payroll_batch loops more often than there are stored answers (the policy's EXISTS runs at most once per stored
- * row, never once per employee or per element of the stored id lists), and execution time and shared buffers stay
- * within PLAN_LIMITS. Every plan is printed as one `POLICY_TIMING_7450 {json}` line. All names are invented. */
+ * row, never once per employee or per element of the stored id lists), and execution time, planning time and shared
+ * buffers stay within PLAN_LIMITS. Every plan is printed as one `POLICY_TIMING_7450 {json}` line. All names are invented. */
 import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {client,withTenant,type SessionContext} from '../db/client';
@@ -32,14 +32,18 @@ import {closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from 
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {isIdentityStatement,observeStatements,type Captured} from './helpers/statement-observer';
 
-/** Ceilings per statement kind: execution time (ms, CI runner, EXPLAIN ANALYZE overhead included) and shared buffers
- * (hit + read) of the whole statement. Recorded from the measured plans with headroom for runner variance; a per-row
- * explosion of the policy's EXISTS over 1,000 employees or 700 stored ids would exceed both. */
+/** Ceilings per statement kind: execution and planning time (ms, CI runner, EXPLAIN ANALYZE overhead included) and
+ * shared buffers (hit + read) of the whole statement. Measured on the CI runner (alpha-focused-checks run 45648541265),
+ * worst of the two administrators: read 22 ms / 46 ms planning / 2,055 buffers; claim 44 ms / 163 ms / 2,127; job
+ * upsert 16 ms / 90 ms / 207; delete 4 ms / 35 ms / 71. Time ceilings leave room for runner variance; buffer ceilings
+ * are about 1.5 times the measure, so the policy's EXISTS running once per element of the stored id lists (700 probes)
+ * instead of once per stored row would exceed them. Planning is dominated by payroll_batch's own row-security policies,
+ * which every EXISTS on payroll_batch expands again (about 100 subplan nodes per reference, almost none executed). */
 const PLAN_LIMITS={
- read:{executionMs:150,buffers:6000},
- claim:{executionMs:150,buffers:6000},
- upsert:{executionMs:50,buffers:600},
- delete:{executionMs:50,buffers:600},
+ read:{executionMs:100,planningMs:200,buffers:3000},
+ claim:{executionMs:150,planningMs:400,buffers:3200},
+ upsert:{executionMs:60,planningMs:300,buffers:350},
+ delete:{executionMs:30,planningMs:150,buffers:120},
 } as const;
 type Kind=keyof typeof PLAN_LIMITS;
 /** Stored answers: every processed run holds this many employee ids of its company (fewer where it has fewer). */
@@ -121,6 +125,7 @@ function expectBounded(kind:Kind,label:string,explained:Explained&{profile:{role
  expect(policyNodes.length,`${label}: the plan reads payroll_run_outstanding or payroll_batch`).toBeGreaterThan(0);
  expect(maxLoops,`${label}: a node over payroll_run_outstanding / payroll_batch loops at most once per stored answer`).toBeLessThanOrEqual(storedRows);
  expect(explained.executionMs,`${label}: execution ms`).toBeLessThanOrEqual(PLAN_LIMITS[kind].executionMs);
+ expect(explained.planningMs,`${label}: planning ms`).toBeLessThanOrEqual(PLAN_LIMITS[kind].planningMs);
  expect(buffers,`${label}: shared buffers`).toBeLessThanOrEqual(PLAN_LIMITS[kind].buffers);
  return row;
 }

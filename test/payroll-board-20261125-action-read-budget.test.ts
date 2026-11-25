@@ -49,10 +49,12 @@ type Action='requestPayrollOutstandingRefreshAction'|'readPayrollOutstandingRefr
  * for the save over both of its writing paths (end date only, and a new version). Budgets only go down; raising one
  * needs an ADR note (docs/adr/0181-database-read-cost-architecture.md). */
 const BUDGETS:Record<Action,{transactions:number;statements:number}>={
- requestPayrollOutstandingRefreshAction:{transactions:1,statements:12},
- readPayrollOutstandingRefreshAction:{transactions:1,statements:4},
- saveFixedTransactionDialogAction:{transactions:4,statements:45},
- removeFixedTransactionDialogAction:{transactions:4,statements:35},
+ // Measured on the CI runner (alpha-focused-checks run 45648541265), the same for every persona and scope.
+ requestPayrollOutstandingRefreshAction:{transactions:1,statements:5},
+ readPayrollOutstandingRefreshAction:{transactions:1,statements:2},
+ // The new-version path; the end-date-only path measured 3 transactions and 15 statements.
+ saveFixedTransactionDialogAction:{transactions:3,statements:27},
+ removeFixedTransactionDialogAction:{transactions:3,statements:21},
 };
 
 type Persona='group'|'multi'|'single';
