@@ -56,6 +56,16 @@ export class StatutoryRulesetMalformedError extends Error {
 }
 
 export type PcbCalculationScheme = 'resident' | 'non_resident' | 'rep' | 'knowledge_worker' | 'c_suite' | 'custom_fixed' | 'custom_rate';
+/** ADR 0183 — the `pcbMeta` stamp of a custom PCB payslip: the method, the number HR saved, and the remuneration. */
+export type CustomPcbMeta = {
+  calculationScheme: 'custom_fixed' | 'custom_rate';
+  customPcb: { amount: number } | { rate: number };
+  trace: { remuneration: number; additional: number; amount: number } | { remuneration: number; additional: number; rate: number };
+  taxCircumstance?: SavedTaxCircumstance;
+  taxSelectionId?: string;
+  taxSelectionVersion?: number;
+  taxSelectionSource?: 'income_tax_resident';
+};
 /** Resolve the explicit HR declaration; legacy residency is consulted only when no scheme is saved. */
 export function resolvePcbCalculationScheme(value: string | null | undefined, resident = true): PcbCalculationScheme {
   const scheme = value ?? (resident ? 'resident' : 'non_resident');
@@ -1958,6 +1968,11 @@ export function statutory(
   //   RM10 floor), with the HR-entered percentage in place of 30%.
   // Both refuse rather than fall back when the number is missing: a missing number must never become the
   // standard formula. pcbNormalPreZakat is 0, as for Non-Resident: zakat via salary is not offset here.
+  // ONE NAMED META TYPE AND THE NON-RESIDENT RETURN STATEMENT, ON PURPOSE. A separate return statement adds a
+  // new shape to this function's inferred result, and every spread of that result elsewhere ({...blob, ...})
+  // multiplies against it; the test type check then ran past 30 minutes. Sharing the flat branch's return keeps the
+  // result's shapes as they were and adds one member to `pcbMeta` only.
+  let custom: { pcb: number; pcbBonus: number; meta: CustomPcbMeta } | null = null;
   if (scheme === 'custom_fixed' || scheme === 'custom_rate') {
     const amount = opts?.customPcb?.amount, ratePercent = opts?.customPcb?.rate;
     const fixedOk = amount != null && Number.isFinite(amount) && amount > 0 && round2(amount) === amount;
@@ -1968,35 +1983,21 @@ export function statutory(
     const rate = scheme === 'custom_rate' ? round2(ratePercent!) / 100 : null;
     const pcbAll = rate == null ? amount! : rm10Floor(ceil5sen(trunc2((pcbWage + pcbAdditional) * rate)));
     const pcbBonusOnly = rate == null ? 0 : rm10Floor(ceil5sen(trunc2(pcbAdditional * rate)));
-    return {
-      ...epfTrace,
-      ...traceOut,
-      epfEmployee: e.employee,
-      epfEmployer: e.employer,
-      socsoEmployee: s.employee,
-      socsoEmployer: s.employer,
-      socsoSkbbk: s.skbbk,
-      eisEmployee: i.employee,
-      eisEmployer: i.employer,
-      pcb: pcbAll,
-      pcbBonus: Math.min(pcbBonusOnly, pcbAll),
-      pcbNormalPreZakat: 0,
-      pcbMeta: {
-        ...(opts?.taxCircumstance?{taxCircumstance:opts.taxCircumstance}:{}),
-        calculationScheme: scheme,
-        ...(opts?.taxSelectionId?{taxSelectionId:opts.taxSelectionId,taxSelectionVersion:opts.taxSelectionVersion,taxSelectionSource:opts.taxSelectionSource}:{}),
-        // The number HR saved, as used by this run — the explanation reads it, never today's selection.
-        customPcb: rate == null ? { amount: amount! } : { rate: round2(ratePercent!) },
-        trace: { remuneration: pcbWage, additional: pcbAdditional, ...(rate == null ? { amount: amount! } : { rate }) },
-      },
-      version: rules.version,
+    const meta: CustomPcbMeta = {
+      calculationScheme: scheme,
+      // The number HR saved, as used by this run — the explanation reads it, never today's selection.
+      customPcb: rate == null ? { amount: amount! } : { rate: round2(ratePercent!) },
+      trace: rate == null ? { remuneration: pcbWage, additional: pcbAdditional, amount: amount! } : { remuneration: pcbWage, additional: pcbAdditional, rate },
     };
+    if (opts?.taxCircumstance) meta.taxCircumstance = opts.taxCircumstance;
+    if (opts?.taxSelectionId) Object.assign(meta, { taxSelectionId: opts.taxSelectionId, taxSelectionVersion: opts.taxSelectionVersion, taxSelectionSource: opts.taxSelectionSource });
+    custom = { pcb: pcbAll, pcbBonus: Math.min(pcbBonusOnly, pcbAll), meta };
   }
-  const flatRate = scheme === 'non_resident' || (opts?.calculationScheme == null && opts?.flatTaxRate === 0.3) ? 0.3 : null;
-  if (flatRate != null) {
+  const flatRate = custom ? null : scheme === 'non_resident' || (opts?.calculationScheme == null && opts?.flatTaxRate === 0.3) ? 0.3 : null;
+  if (custom || flatRate != null) {
     // Non-resident MTD, spec §D.a: taxable remuneration × 30%, without resident reliefs.
-    const pcbAll = rm10Floor(ceil5sen(trunc2((pcbWage + pcbAdditional) * flatRate)));
-    const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(pcbAdditional * flatRate)));
+    const pcbAll = custom ? custom.pcb : rm10Floor(ceil5sen(trunc2((pcbWage + pcbAdditional) * flatRate!)));
+    const pcbBonusOnly = custom ? custom.pcbBonus : rm10Floor(ceil5sen(trunc2(pcbAdditional * flatRate!)));
     return {
       ...epfTrace,
       ...traceOut,
@@ -2016,7 +2017,7 @@ export function statutory(
       // for the same reason the MTD trace is: the detail screen must be able to say WHICH remuneration
       // the flat rate was applied to, and RM x % is not checkable without the x. Additive; the three
       // keys that were here are untouched.
-      pcbMeta: {
+      pcbMeta: custom ? custom.meta : {
         ...(opts?.taxCircumstance?{taxCircumstance:opts.taxCircumstance}:{}),
         calculationScheme: 'non_resident',
         ...(opts?.taxSelectionId?{taxSelectionId:opts.taxSelectionId,taxSelectionVersion:opts.taxSelectionVersion,taxSelectionSource:opts.taxSelectionSource}:{}),
