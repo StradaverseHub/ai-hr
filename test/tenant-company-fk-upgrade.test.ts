@@ -267,6 +267,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10640,version:'7',when:1795495007240,tag:'7240_access_visible_employment',breakpoints:true},
  {idx:10645,version:'7',when:1795495007245,tag:'7245_access_visible_employment_policy_restore',breakpoints:true},
  {idx:10650,version:'7',when:1795495007250,tag:'7250_replacement_holiday_queue_voided',breakpoints:true},
+ {idx:10660,version:'7',when:1795495007260,tag:'7260_viewer_access_version',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1369,6 +1370,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // person_rls applies to every role: also every role holding a privilege on person (7240's per-policy grant).
    {fn:'app.employment_partner_companies()',app:true,acl:'{OWNER=X/OWNER,ai_hr_reward_setup_reader=X/OWNER,ai_hr_app=X/OWNER}'},
    {fn:'app.employment_read_companies()',app:true},
+   // 7260 (ADR 0181 Phase 3): the caller's own tenant's access version, for the cached viewer menu profile.
+   {fn:'app.viewer_access_version()',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.

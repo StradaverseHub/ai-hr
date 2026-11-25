@@ -372,6 +372,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/mobile-preview/actions.ts":{"changeMobileDesignAction":"internal:session_and_presentation"},
  "app/notices/actions.ts":{"acknowledgeNoticeAction":"backlog:confirm","dismissNoticePopupAction":"backlog:confirm","markNoticeViewedAction":"backlog:confirm"},
  "app/notification-actions.ts":{"markAllNotificationsReadAction":"backlog:confirm","markNotificationReadAction":"backlog:confirm"},
+ "app/shell-facts-actions.ts":{"refreshShellApprovalFactsAction":"internal:session_and_presentation"},
  "app/onboarding-actions.ts":{"completeOnboardingAction":"internal:session_and_presentation"},
  "app/operator/actions.ts":{"changeCustomerModuleAction":"handoff:platform_operator","createCustomerAction":"handoff:platform_operator","renameCustomerAction":"handoff:platform_operator","requestReissueAction":"handoff:platform_operator","revealActivationUrlAction":"handoff:platform_operator","setCustomerFeedbackMenuAction":"handoff:platform_operator","submitCustomerAction":"handoff:platform_operator"},
  "app/payroll/[batchId]/draft-tax-actions.ts":{"startDraftTaxCheck":"internal:session_and_presentation","getDraftTaxCheck":"internal:session_and_presentation"},
