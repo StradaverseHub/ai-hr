@@ -52,7 +52,7 @@ async function employ(name:string,companyId:string):Promise<Emp>{
 }
 async function event(key:string,e:{aggregateType:string;aggregateId:string;subject?:string;payload?:unknown;actor?:string}){
  await owner.client`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload,subject_employment_id)
-  values(${b.tenantId}::uuid,${e.aggregateType},${e.aggregateId}::uuid,${`${M}.${key}`},'user',${e.actor??null}::uuid,${owner.client.json((e.payload??{}) as never)},${e.subject??null}::uuid)`;
+  values(${b.tenantId}::uuid,${e.aggregateType},${e.aggregateId}::uuid,${`${M}.${key}`},'user',${e.actor??null}::uuid,${JSON.stringify(e.payload??{})}::jsonb,${e.subject??null}::uuid)`;
 }
 const keysOf=(rows:{eventType:string}[])=>rows.filter(r=>r.eventType.startsWith(M+'.')).map(r=>r.eventType.slice(M.length+1)).sort();
 /** The reader this change replaces, verbatim: the same select, join and order with no company scope. */
