@@ -22,6 +22,12 @@
  * a refused pass is narrowed to the employee it names (or halved), and grouping resumes after them.
  * Each chunk records its calculation (process CPU) and database (the rest of its wall time) split on the job's metrics.
  *
+ * Tax readiness in the job (a1a80747). The request no longer checks tax readiness: every ticked employee is enqueued,
+ * and each step applies the readiness rules (`reviewReprocessTaxReadiness`'s, unchanged) in its own transaction, to the
+ * employees it is about to process: a group stops before an employee they hold, and the per-employee transaction records
+ * that employee as a skipped outcome (TAX_RECALC_REQUIRED or TAX_RECALC_IN_PROGRESS) without calculating or writing
+ * anything for them. The others carry on, so one employee never blocks the job. This kind runs on the tax lane.
+ *
  * Audit loop capture once per job (ADR 0181 J2). The passes defer the run-wide inputs capture; the job takes it once, with
  * every employee it reprocessed, in its own finalize unit before it completes (or in its settle, when it stopped after
  * committing employees). Each records `captured` on the plan in the same transaction, so it is never taken twice.
@@ -67,11 +73,13 @@ const FIRST_GROUP=16;
  *  - `size`: the next group size, and `seen` the last passes of two different sizes it was estimated from;
  *  - `cap`: a narrower limit for the group starting at one employee, after a refused pass (see `narrow`);
  *  - `single`: employees a refused pass named, who take the per-employee transaction;
+ *  - `held`: employees a group's tax readiness read held (a1a80747): they take the per-employee transaction, which
+ *    records their skip, and a group stops before them without reading their readiness again;
  *  - `chunk`: the employees the current chunk's group already wrote (their steps only record themselves; the last one
  *    ends the chunk). */
-type GroupState={size:number;seen:{employees:number;wallMs:number}[];cap:{at:string;max:number}|null;single:Set<string>;chunk:{done:Set<string>;last:string|null}};
+type GroupState={size:number;seen:{employees:number;wallMs:number}[];cap:{at:string;max:number}|null;single:Set<string>;held:Set<string>;chunk:{done:Set<string>;last:string|null}};
 const groupStateOf=new Map<string,GroupState>();
-const stateOf=(jobId:string)=>{let state=groupStateOf.get(jobId);if(!state){state={size:FIRST_GROUP,seen:[],cap:null,single:new Set(),chunk:{done:new Set(),last:null}};groupStateOf.set(jobId,state);}return state;};
+const stateOf=(jobId:string)=>{let state=groupStateOf.get(jobId);if(!state){state={size:FIRST_GROUP,seen:[],cap:null,single:new Set(),held:new Set(),chunk:{done:new Set(),last:null}};groupStateOf.set(jobId,state);}return state;};
 const isTransient=(error:unknown)=>error instanceof BulkJobWaiting||isTransientBulkJobError(error);
 /** The next group size from the passes seen so far. Two passes of different sizes give the fixed cost F and the cost per
  * employee m (a straight line); the group then fills max(target, multiple x F). Until then, or when the two passes do not
@@ -107,7 +115,7 @@ function logChunk(mode:'group'|'single',employees:number,wallMs:number,cpuMs:num
 
 /** Web side: the same validation, permission and idempotent enqueue as before, then the background job. A job that
  * already completed returns its stored result; one another worker is running is reported as running. */
-export async function requestSelectiveReprocess(ctx:SessionContext,p:{batchId:string;employmentIds:string[];reason?:string;idempotencyKey?:string;heldEmploymentIds?:string[]})
+export async function requestSelectiveReprocess(ctx:SessionContext,p:{batchId:string;employmentIds:string[];reason?:string;idempotencyKey?:string})
  :Promise<{jobId:string;status:'queued'|'running'|'completed'}&Record<string,unknown>>{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  const enq=await enqueueSelectiveReprocess(ctx,p);
@@ -173,11 +181,16 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
   const run=runOf(job);
   const cap=state.cap?.at===id?state.cap.max:Infinity;
   const limit=Math.min(payrollReprocessGroupMax(),state.size,cap);
-  if(limit>=2&&!state.single.has(id)&&!state.chunk.last){
+  if(limit>=2&&!state.single.has(id)&&!state.held.has(id)&&!state.chunk.last){
    const at=run.employmentIds.indexOf(id);
-   const candidates=at<0?[id]:run.employmentIds.slice(at,at+limit);
+   const window=at<0?[id]:run.employmentIds.slice(at,at+limit);
+   const heldAt=window.findIndex((candidate,i)=>i>0&&state.held.has(candidate));
+   const candidates=heldAt<0?window:window.slice(0,heldAt);
    const group=await reprocessEmployeeGroupTx(tx,ctx,run,candidates,{isTransient,stopped});
    if(group.kind==='done'){stoppedOf.delete(job.id);return{counters:{done:1}};}
+   // a1a80747 — candidates the tax readiness rules hold take the per-employee transaction at their own step (which
+   // re-applies the rules and records the skip), so a later group does not read their readiness again.
+   if((group.kind==='single'||group.kind==='set')&&group.held)for(const employmentId of group.held)if(employmentId!==id)state.held.add(employmentId);
    if(group.kind==='set'){
     const n=group.employmentIds.length,{wallMs,cpuMs}=group.timing;
     logChunk('group',n,wallMs,cpuMs,{wallMs:group.timing.engineWallMs,cpuMs:group.timing.engineCpuMs});
@@ -201,7 +214,7 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
   }
   const started=performance.now(),cpuStarted=process.cpuUsage();
   await reprocessEmployeeTx(tx,ctx,run,id,stopped);
-  state.single.delete(id);if(state.cap?.at===id)state.cap=null;
+  state.single.delete(id);state.held.delete(id);if(state.cap?.at===id)state.cap=null;
   stoppedOf.delete(job.id);
   const cpu=process.cpuUsage(cpuStarted),wallMs=performance.now()-started,cpuMs=(cpu.user+cpu.system)/1000;
   logChunk('single',1,wallMs,cpuMs);

@@ -15,7 +15,7 @@ import type {SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
-import {createBatch,generatePayslips,getReprocessJob,reprocessSelectedEmployees} from '../core/payroll';
+import {createBatch,decodeReprocessEmployeeOutcomes,generatePayslips,getReprocessJob,reprocessSelectedEmployees} from '../core/payroll';
 import {requestSelectiveReprocess,payrollReprocessJobHandler} from '../core/payroll-reprocess-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -87,20 +87,33 @@ describe('selective reprocess as a background job',()=>{
   expect(await requestSelectiveReprocess(job.a,{batchId:job.batchId,employmentIds:pick(job),reason:'salary change'})).toMatchObject({jobId:requested.jobId,status:'completed'});
  },240000);
 
- it('keeps the reviewed remainder available after the ready group commits',async()=>{
+ // a1a80747 — the request no longer carries a tax readiness answer (the job decides it per employee), and a job written
+ // before that, whose result recorded the request's held employees, still runs, completes, decodes and replays.
+ it('enqueues the ticked employees with no readiness answer; an older payload with held employees still decodes',async()=>{
   const t=await tenant(['Aisyah','Bala']);
   const ready=t.employees.Aisyah,held=t.employees.Bala;
-  const request={batchId:t.batchId,employmentIds:[ready],heldEmploymentIds:[held],idempotencyKey:'reviewed-remainder'};
+  const request={batchId:t.batchId,employmentIds:[ready],idempotencyKey:'no-readiness-answer'};
   const queued=await requestSelectiveReprocess(t.a,request);
+  const [row]=await owner.db.select().from(schema.payrollReprocessJob).where(eq(schema.payrollReprocessJob.id,queued.jobId));
+  expect(row.result).toBeNull();
+  // The shape an earlier release wrote at submit: the reviewed remainder on the result.
+  await owner.db.update(schema.payrollReprocessJob).set({result:{outcomes:[],heldEmploymentIds:[held]}}).where(eq(schema.payrollReprocessJob.id,queued.jobId));
   await drain();
   const result=await getReprocessJob(t.a,queued.jobId);
   expect(result).toMatchObject({status:'completed',employmentIds:[ready],result:{
     outcomes:[{employmentId:ready,status:'reprocessed'}],heldEmploymentIds:[held],
   }});
+  expect(decodeReprocessEmployeeOutcomes(result!.result,result!.employmentIds)).toHaveLength(1);
   expect(await requestSelectiveReprocess(t.a,request)).toMatchObject({jobId:queued.jobId,status:'completed'});
   const [heldPayslip]=await owner.db.select().from(schema.payslip).where(
     and(eq(schema.payslip.batchId,t.batchId),eq(schema.payslip.employmentId,held)));
   expect(heldPayslip.version).toBe(1);
+  // Skip outcomes: the older NOTHING_PAYABLE shape and the two tax holds decode; an unknown skip reason does not.
+  const id='11111111-1111-4111-8111-111111111111';
+  const skip=(reasonCode:string)=>({outcomes:[{employmentId:id,name:'Fictional',employeeCode:null,status:'skipped',reasonCode,resultRetained:false,
+   payslipId:null,versionBefore:null,versionAfter:null,historyId:null,at:'2026-05-31T10:00:00.000Z'}]});
+  for(const code of ['NOTHING_PAYABLE','TAX_RECALC_REQUIRED','TAX_RECALC_IN_PROGRESS'])expect(decodeReprocessEmployeeOutcomes(skip(code),[id]),code).toHaveLength(1);
+  expect(decodeReprocessEmployeeOutcomes(skip('TAX_SOMETHING_ELSE'),[id])).toBeNull();
  },240000);
 
  // ADR 0181 J2: PAYROLL_REPROCESS_GROUP_MAX=1 is one employee per chunk (the per-employee transaction only); 2 makes the

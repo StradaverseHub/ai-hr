@@ -23,11 +23,16 @@ export function reprocessStoppedMessageKey(code: string | null | undefined) {
 }
 const REPROCESS_STOPPED_CODES = new Set(['BATCH_NOT_PROCESSED', 'PERIOD_CLOSED', 'PERMISSION_DENIED', 'SUPERSEDED', 'LATER_CYCLE_FINALIZED', 'TAX_BASIS_SOURCE_CHANGED']);
 
+/** a1a80747 — the job held this employee for income tax recalculation (a skipped outcome that still needs a person). */
+export const isReprocessTaxHold = (outcome: Pick<ReprocessEmployeeOutcome, 'status' | 'reasonCode'>) =>
+  outcome.status === 'skipped' && (outcome.reasonCode === 'TAX_RECALC_REQUIRED' || outcome.reasonCode === 'TAX_RECALC_IN_PROGRESS');
+
 /** Displays a recorded attempt; it never recalculates or substitutes a current employee profile. */
 export async function ReprocessOutcomeStatus({ outcome }: { outcome: ReprocessEmployeeOutcome }) {
   const t = await getTranslations('payroll.batch');
-  // 3244584c — an exclusion is the run doing the right thing (neutral); not_eligible still needs a person.
-  return <Badge variant={outcome.status === 'reprocessed' ? 'success' : outcome.status === 'skipped' || outcome.status === 'excluded' ? 'default' : 'warning'}>
+  // 3244584c — an exclusion is the run doing the right thing (neutral); not_eligible still needs a person, and so does
+  // an employee held for income tax recalculation (a1a80747).
+  return <Badge variant={outcome.status === 'reprocessed' ? 'success' : (outcome.status === 'skipped' && !isReprocessTaxHold(outcome)) || outcome.status === 'excluded' ? 'default' : 'warning'}>
     {t(`reprocessOutcomeStatus.${outcome.status}`)}
   </Badge>;
 }
@@ -36,8 +41,10 @@ const PAY_ITEM_REPRICE_REASONS = new Set(['formula_failed', 'not_positive', 'zer
 const PAY_ITEM_QUANTITY_UNITS = new Set(['hours', 'days', 'qty', 'units']);
 
 export async function ReprocessOutcomeRemarks({
-  outcome, batchId, from, jobId, currency = null,
-}: { outcome: ReprocessEmployeeOutcome; batchId: string; from?: string; jobId?: string; currency?: string | null }) {
+  outcome, batchId, from, jobId, currency = null, taxReviewHref = null,
+}: { outcome: ReprocessEmployeeOutcome; batchId: string; from?: string; jobId?: string; currency?: string | null;
+  /** a1a80747 — Income Tax Recalculation for this run, or null when the viewer may not open it. */
+  taxReviewHref?: string | null }) {
   const t = await getTranslations('payroll.batch');
   const tp = await getTranslations('payroll.process');
   const locale = await getLocale();
@@ -48,7 +55,11 @@ export async function ReprocessOutcomeRemarks({
   // leaving date and the way forward, and does not send HR to Payroll Items.
   const leftOn = outcome.reasonCode === 'PAY_ITEM_FORMULA_FAILED' && outcome.formulaFailure?.reason === 'after_leaving_date'
     ? outcome.formulaFailure.leftOn ?? null : null;
+  // a1a80747 — held for income tax recalculation: the tax readiness reason (blocked) is the detail, not a gap code.
+  const taxHold = isReprocessTaxHold(outcome);
+  const taxHoldReason = outcome.reasonCode === 'TAX_RECALC_REQUIRED' ? outcome.validationDetails?.[0]?.gap ?? null : null;
   const fullReason = leftOn ? t('reprocessPayItemAfterLeavingDate', { date: formatDate(leftOn) })
+    : taxHold ? t(outcome.reasonCode === 'TAX_RECALC_IN_PROGRESS' ? 'reprocessTaxRecalcInProgress' : 'reprocessTaxRecalcRequired')
     : outcome.status === 'excluded' || outcome.status === 'not_eligible'
     ? t(`reprocessExclusion_${outcome.reasonCode}${exclusionDate ? 'Dated' : ''}`, exclusionDate ? { date: formatDate(exclusionDate) } : {})
     : outcome.status === 'skipped' ? t('reprocessNothingPayableFull')
@@ -69,7 +80,14 @@ export async function ReprocessOutcomeRemarks({
   const taxHref = `/payroll/${batchId}/tax-configuration/${outcome.employmentId}${query.size ? `?${query}` : ''}`;
   const failure = outcome.reasonCode === 'PAY_ITEM_FORMULA_FAILED' ? outcome.formulaFailure : undefined;
   return <div className="space-y-1 text-xs">
-    <p>{outcome.status === 'skipped' ? t('reprocessNothingPayableShort') : fullReason}</p>
+    <p className={taxHold ? 'font-medium text-amber-800 dark:text-amber-300' : undefined}>
+      {outcome.status === 'skipped' && !taxHold ? t('reprocessNothingPayableShort') : fullReason}
+    </p>
+    {taxHoldReason && <p className="text-muted-foreground" data-testid="reprocess-tax-hold-reason">{taxHoldReason}</p>}
+    {taxHold && <p className="text-muted-foreground">{t('reprocessTaxRecalcNext')}</p>}
+    {taxHold && taxReviewHref && <Link href={taxReviewHref} target="_blank" rel="noopener noreferrer" className="inline-block text-primary hover:underline">
+      {t('reprocessOpenTaxReview')}
+    </Link>}
     {/* 792053e5 — which Pay Item an updated formula re-priced, for how many transactions, old and new amounts. */}
     {outcome.status === 'reprocessed' && outcome.repricedItems?.map(item => <div key={item.componentId} className="rounded-md bg-muted/60 px-2 py-1.5" data-testid="reprocess-repriced-item">
       <p>{t('reprocessPayItemRepriced', { name: item.name })}</p>
@@ -93,7 +111,7 @@ export async function ReprocessOutcomeRemarks({
       {t(outcome.validationCode === 'last_on_run' ? 'reprocessNotEligibleLastOnRun' : 'reprocessNotEligibleRemovalOff')}
     </p>}
     {outcome.resultRetained && outcome.status !== 'not_eligible' && <p className="font-medium text-amber-800 dark:text-amber-300">{t('reprocessPreviousResultRetained')}</p>}
-    {outcome.status === 'skipped' && <details className="text-muted-foreground">
+    {outcome.status === 'skipped' && !taxHold && <details className="text-muted-foreground">
       <summary className="cursor-pointer text-primary">{t('reprocessOutcomeDetails')}</summary>
       <p className="pt-1">{fullReason}</p>
     </details>}
@@ -109,7 +127,7 @@ export async function ReprocessOutcomeRemarks({
   </div>;
 }
 
-export async function ReprocessOutcomePanel({ outcomes, history, slips, run, currency, batchId, from, jobId, selected, stopped, stoppedCode, stoppedEmployee }: {
+export async function ReprocessOutcomePanel({ outcomes, history, slips, run, currency, batchId, from, jobId, selected, stopped, stoppedCode, stoppedEmployee, taxReviewHref = null }: {
   outcomes: readonly ReprocessEmployeeOutcome[];
   history: readonly RecomputeDisclosureRow[];
   slips: readonly { id: string; employmentId: string; version: number }[];
@@ -123,6 +141,8 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
   /** 3244584c — the job's recorded run-level reason (payroll_reprocess_job.error), when it stopped. */
   stoppedCode?: string | null;
   stoppedEmployee?:{employmentId:string;name:string;employeeCode:string|null}|null;
+  /** a1a80747 — Income Tax Recalculation for this run, when the viewer holds payroll.tax-basis.view; else null. */
+  taxReviewHref?: string | null;
 }) {
   const t = await getTranslations('payroll.batch');
   const ts = await getTranslations('people.detail.incentiveDeclarations');
@@ -132,9 +152,19 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
   for (const outcome of outcomes) counts[outcome.status]++;
   return <Card className="overflow-hidden">
     <SectionHeader title={t('reprocessOutcomeTitle')} count={outcomes.length} />
-    <p className="px-4 pb-3 text-sm">{t('reprocessOutcomeSummary', {
-      selected, succeeded: counts.reprocessed, skipped: counts.skipped, failed: counts.validation_failed+(stopped&&stoppedEmployee?1:0),
-    })}</p>
+    {/* a1a80747 — the totals: Selected, Reprocessed, Skipped (nothing payable and held for income tax recalculation)
+        and Failed (configuration incomplete, and the employee a stopped run stopped at). */}
+    <dl className="grid grid-cols-2 gap-2 px-4 pb-3 sm:grid-cols-4" data-testid="reprocess-outcome-totals">
+      {([
+        ['reprocessTotalSelected', selected, 'text-foreground'],
+        ['reprocessTotalReprocessed', counts.reprocessed, 'text-emerald-700 dark:text-emerald-400'],
+        ['reprocessTotalSkipped', counts.skipped, 'text-amber-700 dark:text-amber-400'],
+        ['reprocessTotalFailed', counts.validation_failed+(stopped&&stoppedEmployee?1:0), 'text-red-700 dark:text-red-400'],
+      ] as const).map(([key, value, tone]) => <div key={key} className="flex flex-col-reverse rounded-lg border border-border px-3 py-2">
+        <dt className="text-xs text-muted-foreground">{t(key)}</dt>
+        <dd className={`text-xl font-semibold tabular-nums ${tone}`}>{value}</dd>
+      </div>)}
+    </dl>
     {counts.excluded + counts.not_eligible > 0 && <p className="-mt-2 px-4 pb-3 text-sm">{t('reprocessOutcomeExclusionSummary', {
       excluded: counts.excluded, notEligible: counts.not_eligible,
     })}</p>}
@@ -174,7 +204,7 @@ export async function ReprocessOutcomePanel({ outcomes, history, slips, run, cur
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbBefore!=null?formatMoney(exactSnapshot.pcbBefore,currency):'—'}</td>
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbAfter!=null?formatMoney(exactSnapshot.pcbAfter,currency):'—'}</td>
             <td className="px-3 py-3 text-right tabular-nums">{exactSnapshot?.pcbBefore!=null&&exactSnapshot.pcbAfter!=null?formatMoney(Math.round((exactSnapshot.pcbAfter-exactSnapshot.pcbBefore)*100)/100,currency):'—'}</td>
-            <td className="max-w-sm px-3 py-3"><ReprocessOutcomeRemarks outcome={outcome} batchId={batchId} from={from} jobId={jobId} currency={currency} /></td>
+            <td className="max-w-sm px-3 py-3"><ReprocessOutcomeRemarks outcome={outcome} batchId={batchId} from={from} jobId={jobId} currency={currency} taxReviewHref={taxReviewHref} /></td>
           </tr>;
         })}</tbody>
       </table>

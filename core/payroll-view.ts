@@ -60,6 +60,8 @@ import {
   intendedCycleFilter,
   listPayslipLessEligible,
   payslipLessEligiblePage,
+  reprocessRequiredPage,
+  type ReprocessRequiredEntry,
   payrollCloseCompanyIdsTx,
   resolveBatchScopeFilter,
   resolvePayrollPermission,
@@ -3225,6 +3227,21 @@ export async function payslipLessEligibleWithSkipPage(ctx:SessionContext,p:{batc
  const ids=result.rows.filter(could).map(r=>r.employmentId);
  const pending=ids.length?await pendingBatchMoney(ctx,{batchId:p.batchId,employmentIds:ids}):null;
  return {...result,rows:result.rows.map(r=>({...r,skip:pending&&could(r)?nothingPayableSkipKind(r.employmentId,pending):null}))};
+}
+
+/** a1a80747 — one Reprocess Required row with the run's nothing-payable decision, as New / Pending rows had it. */
+export type ReprocessRequiredWithSkipRow = ReprocessRequiredEntry & {skip: NothingPayableSkipKind | null};
+
+/** a1a80747 — the one Reprocess Required list (`reprocessRequiredPage`: stale payslips and payslip-less eligible people,
+ * de-duplicated, SQL-paged), with the same nothing-payable narrowing `payslipLessEligibleWithSkipPage` applies, read
+ * only for the page's `added` rows that could be skipped. A `recalculated` row is never skipped here: its payslip exists
+ * and the engine decides at reprocess, as before. */
+export async function reprocessRequiredWithSkipPage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string}){
+ const result=await reprocessRequiredPage(ctx,p);
+ const could=(r:ReprocessRequiredEntry)=>r.kind==='added'&&r.blockers.length===0&&!r.outsideScope&&r.warnings.includes('nothingPayable');
+ const ids=result.rows.filter(could).map(r=>r.employmentId);
+ const pending=ids.length?await pendingBatchMoney(ctx,{batchId:p.batchId,employmentIds:ids}):null;
+ return {...result,rows:result.rows.map((r):ReprocessRequiredWithSkipRow=>({...r,skip:pending&&could(r)?nothingPayableSkipKind(r.employmentId,pending):null}))};
 }
 
 // ───────────────────── 9. When a run was processed (dashboard "Processed date") ─────────────────────
