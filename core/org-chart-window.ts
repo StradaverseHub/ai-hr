@@ -7,6 +7,7 @@ import {ORG_WINDOW_SIZE,type OrgWindow,type OrgWindowRequest} from '../lib/org-c
 export {ORG_WINDOW_SIZE} from '../lib/org-chart-window';
 export type {OrgRelation,OrgWindowView,OrgWindowNode,OrgWindowItem,OrgWindowRequest,OrgWindow} from '../lib/org-chart-window';
 import type {OrgWindowNode,OrgWindowItem} from '../lib/org-chart-window';
+import {uuidArrayParam} from '../db/sql-arrays';
 export class OrgWindowUnavailableError extends Error{
  constructor(public reason:'principal'|'focus'|'cursor'){super('The organization view is no longer available.');this.name='OrgWindowUnavailableError';}
 }
@@ -77,7 +78,7 @@ export async function orgChartWindow(ctx:SessionContext,companyIds:string[]|unde
  if(focused&&!request.focusId||!focused&&request.focusId!==undefined||request.view!=='search'&&request.q)throw new RangeError('Invalid organization window');
  const actor={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  const scope=companyIds?.slice();
- const scopeWhere=scope?.length?sql`l.company_id in (${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)})`:sql`true`;
+ const scopeWhere=scope?.length?sql`l.company_id = any(${uuidArrayParam(scope)})`:sql`true`;
  const focus=sql`${request.focusId??null}::uuid`,after=sql`${request.after??null}::uuid`;
  let candidates:SQL;
  if(request.view==='connections')candidates=sql`
