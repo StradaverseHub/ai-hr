@@ -110,6 +110,7 @@ export const IMPORT_OWNERS:readonly ImportOwner[]=Object.freeze(([
 /** Core and pack files named for imports that are not an import a person runs, each with why. Classified here so that a
  * new import owner cannot appear unlisted (test/capability-catalogue-drift.test.ts). */
 export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze({
+ 'core/import-set-group.ts':'ADR 0181 J2 shared group formation, fallback, adaptive size and timing for set-based import jobs; it decides no import outcome and is not an import a person can run.',
  'core/payroll-import-tax-source.ts':'Payroll-owned tax input projection for accepted historical imports; reads canonical rules and retained evidence, admits no import or payroll operation.',
  'core/attendance-clocking-import-job.ts':'Background job that runs the clocking import\'s own decisions and writes employee by employee.',
  'core/assistant-import.ts':'AI Centre file preparation; it hands a draft to the employee import and imports nothing itself.',
