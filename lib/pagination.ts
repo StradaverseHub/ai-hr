@@ -342,7 +342,7 @@ export function isKeysetPageState(state: PageState): state is KeysetPageState {
 }
 
 /** Rows a keyset read fetches: one more than the page, to learn whether another page follows. */
-export function keysetFetchLimit(q: Pick<PageQuery, 'limit'>): number {
+export function keysetReadLimit(q: Pick<PageQuery, 'limit'>): number {
   return q.limit + 1;
 }
 
