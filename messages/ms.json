@@ -3805,6 +3805,7 @@
     "requestsTitle": "Permohonan",
     "requestsCountFiltered": "{status} · {count}",
     "requestsCountTotal": "{count, plural, one {# jumlah} other {# jumlah}}",
+    "requestsCountTotalCapped": "{count, number}+ jumlah",
     "colApplied": "Dimohon",
     "colType": "Jenis",
     "colDates": "Tarikh",

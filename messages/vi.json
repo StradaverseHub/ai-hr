@@ -3805,6 +3805,7 @@
     "requestsTitle": "Yêu cầu",
     "requestsCountFiltered": "{status} · {count}",
     "requestsCountTotal": "{count, plural, one {# tổng} other {# tổng}}",
+    "requestsCountTotalCapped": "{count, number}+ tổng",
     "colApplied": "Ngày gửi",
     "colType": "Loại",
     "colDates": "Ngày",
