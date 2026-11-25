@@ -29,14 +29,14 @@ import {adminComplianceDateOfBirth,adminComplianceEventPayload} from './profile'
 import {packFor} from '../localization/registry';
 import {assertWorkforceCompanyTx} from './workforce-access';
 import {joinWorkforceBarrierTx,lockEmploymentLeaveDependenciesTx} from './workforce-lock-mode';
-import {lockLeaveDependencyConfigurationTx,lockLeaveDependenciesWaitTx} from './leave-dependency-lock';
+// Leave services through the pack facade (ADR-0080 D9/D11; test/leave-pack-drift.test.ts).
+import {leaveTypeRuleColumns,lockLeaveDependencyConfigurationTx,lockLeaveDependenciesWaitTx} from '../packs/leave/service';
 import {lockLabelCriteriaTx,labelUsableByCompany} from './system-labels';
 import {withSystemLabelCompanyTx} from './system-label-selection';
 import {deriveCompanyOrganisationTx} from './company-organisation';
 import {organisationBusinessUnit,organisationManagedTx} from './organisation-write-policy';
 import {requireEmployeeCode} from '../lib/employee-code';
 import {buildTemplateEntitlementResolver} from './entitlement-template';
-import {leaveTypeRuleColumns} from './leave';
 import {lockAccessConfigurationTx,lockProfileValueSharedTx} from './access-configuration-lock';
 import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {isCarrierPrincipalCurrentTx} from './carrier-principal';
