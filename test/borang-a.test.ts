@@ -1040,7 +1040,7 @@ describe('the KWSP 6 page furniture', () => {
   it('prints no small print of ours, and says what it is in its metadata instead', async () => {
     const form = built(1);
     const flat = flatten((await drawnPages(form))[0]);
-    for (const gone of ['bukan borang rasmi KWSP', 'TRANSCRIBED from a filled Borang A', 'our own translation', 'Susun atur kami sendiri', 'bulan upah']) {
+    for (const gone of ['bukan borang rasmi KWSP', 'TRANSCRIBED from a filled Borang A', 'our own translation', 'Susun atur kami sendiri', 'bulan upah 20']) {
       expect(flat, `the sheet still prints "${gone}"`).not.toContain(gone);
     }
     const doc = await PDFDocument.load(await renderBorangAPdf(form));

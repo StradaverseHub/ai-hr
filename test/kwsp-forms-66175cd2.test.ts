@@ -337,7 +337,8 @@ describe('commit 3 — the KWSP logo comes only from the owner-supplied official
     }
     for (const lib of ['lib/borang-a-pdf.ts', 'lib/borang-bbcd-pdf.ts']) {
       const src = code(lib);
-      expect(src, lib).not.toMatch(/node:fs|readFileSync|kwsp-logo/);
+      // No file access and no import of the loader: the bytes are handed in.
+      expect(src, lib).not.toMatch(/node:fs|readFileSync|from ['"][^'"]*kwsp-logo/);
       expect(src, lib).toContain('scaleToFit(LOGO_BOX.w, LOGO_BOX.h)');
     }
     // Borang 8A, 8B, SIP and CP39 do not read it.
@@ -370,7 +371,9 @@ describe('commit 3 — the KWSP logo comes only from the owner-supplied official
       expect(without[n].images).toEqual([]);
     }
     const bytes = Buffer.from(await renderBorangAPdf(form, { logo: WIDE_LOGO })).toString('latin1');
-    expect(bytes.match(/\/Subtype\s*\/Image/g), 'embedded once, drawn on every sheet').toHaveLength(1);
+    // Embedded ONCE for the whole form (pdf-lib writes an RGBA PNG as the image plus its soft mask), however
+    // many sheets draw it.
+    expect(bytes.match(/\/Subtype\s*\/Image/g), 'embedded once, drawn on every sheet').toHaveLength(2);
   });
 
   it('BBCD: draws it top left inside the frame, in proportion, clear of the centred masthead', async () => {
@@ -438,7 +441,9 @@ describe('commit 3 — bold masthead and headings, the KWSP 6 / BORANG / A block
 });
 
 describe('commit 3 — no small print of ours at the foot of Borang A and BBCD', () => {
-  const OURS = /Susun atur kami|Our own layout|bukan borang rasmi|our own translation|Our translation|bulan upah/i;
+  // `bulan upah 2026-10` was our provenance line. CATATAN note 6 ("Bulan caruman bersamaan Bulan Upah + 1")
+  // is the agency's own note and stays.
+  const OURS = /Susun atur kami|Our own layout|bukan borang rasmi|our own translation|Our translation|bulan upah \d{4}-/i;
 
   it('Borang A: PERINGATAN in Malay is the last line on every sheet, with nothing of ours under it', async () => {
     const form = formOf(45);
