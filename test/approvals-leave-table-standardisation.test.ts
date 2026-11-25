@@ -485,7 +485,7 @@ describe('d6429eb4 r80 — the confirm button inside the Review dates pop-out re
     expect(sourceFiles().filter((f) => read(f).includes("t('submitDecisions')"))).toEqual([APPROVALS]);
     // Wording only: the one batch submit, the same action, the same missing-reason guard.
     const modal = read('app/approvals/leave-date-breakdown.tsx');
-    expect(modal).toContain('<form action={decideLeaveDatesAction}');
+    expect(modal).toContain('<ActionNavigateForm action={decideLeaveDatesAction}');
     expect(modal).toContain('disabled={missingReason}');
   });
 });

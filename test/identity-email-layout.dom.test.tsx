@@ -26,6 +26,8 @@ vi.mock('../core/shell-navigation-access',()=>({readShellNavigationAccess:async(
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSummary:async(...args:unknown[])=>{
  const items=await m.tasks(...args);return m.summaryOverride??{items,total:items.length,approvalCount:items.filter((item:{linkPath:string})=>item.linkPath.split(/[?#]/,1)[0]==='/approvals').length,claimTotal:items.filter((item:{kind:string})=>item.kind==='claim').length};
 }}));
+// ADR 0181 Phase 3: no access version in this rendering test, so the frame reads its menu live through the mocks below.
+vi.mock('../app/viewer-menu-profile',async importOriginal=>({...await importOriginal<typeof import('../app/viewer-menu-profile')>(),viewerAccessVersion:async()=>null}));
 vi.mock('../app/lifecycle/workflow-availability',()=>({lifecycleModuleNavigation:async()=>({probation:{page:false,configure:false},contractStaff:{page:false,configure:false}})}));
 vi.mock('../app/lifecycle/module-inbox',()=>({EMPTY_LIFECYCLE_MODULE_INBOX:{myTasksCount:0,queueLinks:[],count:0,approvalCount:0,items:[]},lifecycleModuleInbox:async()=>{if(m.lifecycleFails)throw Error('fictional inbox failure');return {count:m.lifecycleCount,myTasksCount:m.lifecycleCount,queueLinks:[],approvalCount:0,items:[]};}}));
 // AI v2 W11: the rail's "Private cases" row asks the private-case owner (a database read) on every page. Unmocked,

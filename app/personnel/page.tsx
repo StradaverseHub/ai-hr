@@ -2,13 +2,13 @@ import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listDepartments, listEmployeesPage } from '@/core/read';
+import { listCompanies, listDepartments, listEmployeesDirectoryPage } from '@/core/read';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Avatar, Card, EmployeeCode, PageHeader, StatusBadge } from '@/components/ui';
 import { employmentPhotoIds } from '@/core/person-photo';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { Pager } from '@/components/pager';
-import { pageState, parsePageQuery } from '@/lib/pagination';
+import { keysetPageState, parseKeysetPageQuery } from '@/lib/pagination';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -25,6 +25,10 @@ export default async function PersonnelPage({
     q?: string;
     page?: string;
     size?: string;
+    after?: string;
+    before?: string;
+    last?: string;
+    count?: string;
     company?: string;
     dept?: string;
     status?: string;
@@ -40,11 +44,12 @@ export default async function PersonnelPage({
   const { s: session, scopeIds } = await scopedSession();
   const sp = await searchParams;
   const { q, company, dept, status, type } = sp;
-  const pq = parsePageQuery(sp);
+  // ADR 0181 Phase 4: keyset paging (no OFFSET) and a total that is exact below 1,000 and "1,000+" above.
+  const pq = parseKeysetPageQuery(sp);
   const statusFilter = status === 'active' || status === 'terminated' ? status : undefined;
   const hasFilters = !!(q || company || dept || status || type);
-  const [{ rows: employees, total }, companies, departments] = await Promise.all([
-    listEmployeesPage(session, {
+  const [{ rows: employees, ...read }, companies, departments] = await Promise.all([
+    listEmployeesDirectoryPage(session, {
       companyIds: scopeIds,
       q,
       companyId: company || undefined,
@@ -52,7 +57,11 @@ export default async function PersonnelPage({
       status: statusFilter,
       employmentType: type || undefined,
       limit: pq.limit,
-      offset: pq.offset,
+      size: pq.size,
+      after: pq.after,
+      before: pq.before,
+      last: pq.last,
+      exactCount: pq.exactCount,
     }),
     listCompanies(session),
     listDepartments(session),
@@ -66,7 +75,8 @@ export default async function PersonnelPage({
     session,
     employees.map((e) => e.employmentId),
   );
-  const pgState = pageState(pq, total, employees.length);
+  const pgState = keysetPageState(pq, read, employees.map((e) => e.employmentId));
+  const total = read.total.count;
   const EMPLOYMENT_TYPES = [
     { value: 'full_time', labelKey: 'employmentFullTime' },
     { value: 'part_time', labelKey: 'employmentPartTime' },
@@ -144,7 +154,9 @@ export default async function PersonnelPage({
         title={t('title')}
         actions={
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">{t('employeeCount', { count: total })}</span>
+            <span className="text-sm text-muted-foreground">
+              {read.total.capped ? t('employeeCountCapped', { count: total }) : t('employeeCount', { count: total })}
+            </span>
             <FilterPanel action="/personnel" fields={filterFields} values={filterValues} labels={filterLabels} />
           </div>
         }

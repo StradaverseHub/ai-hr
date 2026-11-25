@@ -17,7 +17,7 @@ import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-di
 import { adminCancelLeaveAction } from '@/app/leave/actions';
 import {leaveInquiryPickerInput} from '@/lib/leave-inquiry-picker';
 import { parseInquiryQuery, InquiryQueryError } from '@/lib/leave-inquiry-query';
-import { leaveInquirySnapshot,readLeaveInquiryPickerTx,type LeaveInquiryPickerPage, leaveInquiryRecordsPageTx, type LeaveInquiryContext } from '@/packs/leave/service';
+import { leaveInquirySnapshot,readLeaveInquiryPickerTx,type LeaveInquiryPickerPage, leaveInquiryRecordsKeysetPageTx, type LeaveInquiryContext } from '@/packs/leave/service';
 import { durationLabel } from '@/lib/leave-duration';
 // 4a1abc4a: this screen printed the raw day count ("3") beside Employee Balances' "3.00" — the reported
 // drift, between two tabs of the same Leave Inquiry nav. One formatter for both.
@@ -27,7 +27,7 @@ import { leaveDisplaySplit } from '@/lib/leave-split';
 import { canAdminCancelLeave, LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } from '@/lib/leave-status';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { Pager, type PagerHrefOver } from '@/components/pager';
-import { pageState } from '@/lib/pagination';
+import { keysetPageState, parseKeysetPageQuery } from '@/lib/pagination';
 
 /**
  * Employee Leave Record (feedback 953be4b0) — the transactions behind a balance: every leave request for
@@ -85,6 +85,10 @@ export default async function EmployeeLeaveRecordPage({
     dir?: string;
     page?: string;
     size?: string;
+    after?: string;
+    before?: string;
+    last?: string;
+    count?: string;
     toast?: string;
     error?: string;
   }>;
@@ -99,12 +103,15 @@ export default async function EmployeeLeaveRecordPage({
   let query: ReturnType<typeof parseInquiryQuery>;
   let inquiry: LeaveInquiryContext;
   let picker:LeaveInquiryPickerPage;
-  let result:Awaited<ReturnType<typeof leaveInquiryRecordsPageTx>>;
+  let result:Awaited<ReturnType<typeof leaveInquiryRecordsKeysetPageTx>>;
+  // ADR 0181 Phase 4: the screen pages by key (no OFFSET) with a total exact below 1,000 and "1,000+" above; the
+  // export keeps the exact OFFSET-batched reader.
+  const keyset = parseKeysetPageQuery({ page: sp.page, size: sp.size, after: sp.after, before: sp.before, last: sp.last, count: sp.count });
   try {
     query = parseInquiryQuery(sp, 'records');
     const frame=await leaveInquirySnapshot(session,scopeIds,query,async(tx,scope)=>({
       picker:await readLeaveInquiryPickerTx(tx,session,scope.companyIds,leaveInquiryPickerInput(sp,scope.selected?.employmentId),locale),
-      inquiry:scope,result:await leaveInquiryRecordsPageTx(tx,session,scope,query),
+      inquiry:scope,result:await leaveInquiryRecordsKeysetPageTx(tx,session,scope,query,keyset),
     }),{selectionOnly:true});
     inquiry=frame.inquiry;result=frame.result;picker=frame.picker;
   } catch (error) {
@@ -119,7 +126,9 @@ export default async function EmployeeLeaveRecordPage({
 
   const { typeIds, statuses, q, from, to, sort, dir, pq, dateMode } = query;
   const leaveTypes=await listLeaveTypes(session,{locale});
-  const { rows, total } = result;
+  const { rows, ...read } = result;
+  const total = read.total.count;
+  const pgState = keysetPageState(keyset, read, rows.map((r) => r.id));
 
   const params = () => {
     const p = new URLSearchParams();
@@ -148,10 +157,14 @@ export default async function EmployeeLeaveRecordPage({
   };
   // fc776376 — the shared pager builds its links here: this address carries REPEATED params (the
   // multi-select type / status filters), which a flat key/value builder would flatten.
-  const pagerHref = ({ page: n, size }: PagerHrefOver) => {
+  const pagerHref = ({ page: n, size, after, before, last, count }: PagerHrefOver) => {
     const p = withSort(params());
     if (n > 0) p.set('page', String(n));
     p.set('size', String(size ?? pq.size));
+    if (after) p.set('after', after);
+    if (before) p.set('before', before);
+    if (last) p.set('last', '1');
+    if (count) p.set('count', count);
     return `/leave/employee-records?${p.toString()}`;
   };
   const exportHref = (format: 'csv' | 'xlsx') => {
@@ -314,7 +327,7 @@ export default async function EmployeeLeaveRecordPage({
               />
               <span className="text-xs font-normal text-muted-foreground">{selected.company}</span>
               <span className="text-xs font-normal text-muted-foreground">
-                {t('requestsCountTotal', { count: total })}
+                {read.total.capped ? t('requestsCountTotalCapped', { count: total }) : t('requestsCountTotal', { count: total })}
               </span>
             </div>
           ) : <InquiryScopeSummary heading={tInq('allEmployeesHeader', { count: employeeCount, companies: `${tPeople('company')}: ${inquiry.companies.length}` })} companies={inquiry.companies} />
@@ -418,7 +431,7 @@ export default async function EmployeeLeaveRecordPage({
           <Card className="overflow-hidden">
             <Pager
               hrefFor={pagerHref}
-              state={pageState(pq, total, rows.length)}
+              state={pgState}
               exportHref={exportHref('csv')}
             />
             <TableFullscreen

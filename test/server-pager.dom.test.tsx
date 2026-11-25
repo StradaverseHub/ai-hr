@@ -26,7 +26,7 @@ import th from '../messages/th.json';
 import vi_ from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
-import { pageState, parsePageQuery } from '../lib/pagination';
+import { keysetPageState, pageState, parseKeysetPageQuery, parsePageQuery } from '../lib/pagination';
 import { resolveUiTheme, type UiTheme } from '../lib/ui-theme';
 
 const current = vi.hoisted(() => ({ locale: 'en', messages: {} as Record<string, unknown>, theme: 'classic' as UiTheme }));
@@ -161,5 +161,57 @@ describe('the server pager', () => {
     expect(screen.getByRole('button', { name: en.pagination.previousPage })).toBeDisabled();
     expect(screen.getByRole('button', { name: en.pagination.nextPage })).toBeDisabled();
     expect(screen.getByText('1–20 / 20')).toBeInTheDocument();
+  });
+});
+
+// ADR 0181 Phase 4 — a keyset list: cursors instead of page numbers, "1,000+" and "Count exactly".
+const FIRST_ROW = '0b6f1d1e-3c55-4c6a-9a43-0d2f0c6f1a01';
+const LAST_ROW = '7d1e9b2a-5f0c-4e8b-8a7d-2b9c4e1f3a02';
+async function renderKeysetPager(locale: string, messages: Record<string, unknown>, sp: Record<string, string>, total: { count: number; capped: boolean }, theme: UiTheme = 'classic') {
+  current.locale = locale;
+  current.messages = messages;
+  current.theme = theme;
+  const q = parseKeysetPageQuery(sp);
+  const anchored = q.after !== undefined || q.before !== undefined || q.last;
+  const state = keysetPageState(q, { total, hasPrev: anchored, hasNext: !q.last, anchorFound: true },
+    Array.from({ length: 25 }, (_, i) => (i === 0 ? FIRST_ROW : i === 24 ? LAST_ROW : `row-${i}`)));
+  return render(await Pager({ basePath: '/personnel', params: { q: 'lee' }, state }));
+}
+
+describe('the server pager on a keyset list', () => {
+  it('steps by cursor, offers no numbers, and says "1,000+" with an exact-count action', async () => {
+    await renderKeysetPager('en', en as unknown as Record<string, unknown>, { page: '2', after: FIRST_ROW }, { count: 1000, capped: true });
+    expect(screen.getByText('51–75 of 1,000+')).toBeInTheDocument();
+    const next = screen.getByText('Next →').closest('a')!;
+    expect(next.getAttribute('href')).toBe(`/personnel?q=lee&page=3&size=25&after=${LAST_ROW}`);
+    const previous = screen.getByText('← Previous').closest('a')!;
+    expect(previous.getAttribute('href')).toBe(`/personnel?q=lee&page=1&size=25&before=${FIRST_ROW}`);
+    expect(screen.getByText('« First').closest('a')!.getAttribute('href')).toBe('/personnel?q=lee&size=25');
+    // Last needs the final page's position, which a capped total does not give.
+    expect(screen.getByText('Last »').tagName).toBe('SPAN');
+    expect(screen.queryByRole('link', { name: /^Page / })).not.toBeInTheDocument();
+    expect(screen.getByText('Count exactly').closest('a')!.getAttribute('href'))
+      .toBe(`/personnel?q=lee&page=2&size=25&after=${FIRST_ROW}&count=exact`);
+    // No row's name or other value travels in any link: only identifiers and paging words.
+    for (const link of screen.getAllByRole('link')) expect(link.getAttribute('href')).not.toMatch(/name|email|code/i);
+  });
+
+  it('keeps "Count exactly" on every step once asked, and offers Last on an exact total', async () => {
+    await renderKeysetPager('en', en as unknown as Record<string, unknown>, { page: '1', after: FIRST_ROW, count: 'exact' }, { count: 1234, capped: false });
+    expect(screen.getByText('26–50 of 1,234')).toBeInTheDocument();
+    expect(screen.queryByText('Count exactly')).not.toBeInTheDocument();
+    expect(screen.getByText('Next →').closest('a')!.getAttribute('href')).toContain('count=exact');
+    // From page 1 Previous is simply the first page.
+    expect(screen.getByText('← Previous').closest('a')!.getAttribute('href')).toBe('/personnel?q=lee&size=25&count=exact');
+    expect(screen.getByText('Last »').closest('a')!.getAttribute('href')).toBe('/personnel?q=lee&page=49&size=25&last=1&count=exact');
+  });
+
+  it.each(LOCALES)('%s resolves the capped strings in both themes', async (locale, messages) => {
+    for (const theme of ['classic', resolveUiTheme(undefined)] as UiTheme[]) {
+      const { container, unmount } = await renderKeysetPager(locale, messages as unknown as Record<string, unknown>, { page: '2', after: FIRST_ROW }, { count: 1000, capped: true }, theme);
+      expect(container.textContent).not.toContain('pagination.');
+      expect(container.querySelector('[data-pager-count-exactly]')).not.toBeNull();
+      unmount();
+    }
   });
 });

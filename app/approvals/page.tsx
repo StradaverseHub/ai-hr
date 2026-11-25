@@ -3,6 +3,8 @@ import {resignationInbox} from '@/packs/lifecycle/service';
 import {ResignationCaseCard} from '@/components/resignation/case-card';
 import {contractSharedWorkPage} from '@/packs/contracts/service';
 import {ContractWorkSection} from '@/app/lifecycle/contracts/work-section';
+import {ActionNavigateForm} from '@/components/action-navigate-form';
+import type {ActionNavigation} from '@/lib/action-navigation';
 import { Pager } from '@/components/pager';
 import { parsePageQuery, pageState } from '@/lib/pagination';
 import {AttendanceUnclockedEvidence} from '@/components/attendance-unclocked-evidence';
@@ -123,7 +125,7 @@ function DecideButtons({
   workflowParticipant,
   remarksLabel,
 }: {
-  action: (fd: FormData) => void | Promise<void>;
+  action: (fd: FormData) => Promise<ActionNavigation>;
   id: string;
   disabled?: boolean;
   labels: { yourRequest: string; approve: string; reject: string };
@@ -138,7 +140,7 @@ function DecideButtons({
   }
   return (
     <div data-approval-surface className="flex items-center justify-end gap-2">
-      <form action={action}>
+      <ActionNavigateForm action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
@@ -148,8 +150,8 @@ function DecideButtons({
         <Button type="submit" size="sm" data-action-approval>
           {labels.approve}
         </Button>
-      </form>
-      {rejectReasonLabel ? <details><summary className="cursor-pointer text-sm">{labels.reject}</summary>      <form action={action}>
+      </ActionNavigateForm>
+      {rejectReasonLabel ? <details><summary className="cursor-pointer text-sm">{labels.reject}</summary>      <ActionNavigateForm action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
@@ -159,7 +161,7 @@ function DecideButtons({
         <Button type="submit" size="sm" variant="outline">
           {labels.reject}
         </Button>
-      </form></details> :       <form action={action}>
+      </ActionNavigateForm></details> :       <ActionNavigateForm action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
@@ -168,7 +170,7 @@ function DecideButtons({
         <Button type="submit" size="sm" variant="outline">
           {labels.reject}
         </Button>
-      </form>}
+      </ActionNavigateForm>}
 
     </div>
   );
@@ -972,7 +974,7 @@ export default async function ApprovalsPage({
                       // `requestId` (not the `id` DecideButtons posts), and `returnTo` is read BY VALUE so the
                       // decision lands back on this filtered inbox rather than on My Leave (AGENTS.md rule 17).
                       <div className="flex items-center justify-end gap-2">
-                        <form action={decideReplacementLeaveRequestAction}>
+                        <ActionNavigateForm action={decideReplacementLeaveRequestAction}>
                           <input type="hidden" name="requestId" value={r.id} />
                           <input type="hidden" name="decision" value="approved" />
                           <input type="hidden" name="returnTo" value="approvals" />
@@ -980,8 +982,8 @@ export default async function ApprovalsPage({
                           <Button type="submit" size="sm" disabled={r.dates.some(d=>leaveCreditClaimReviewBlocks(d.claimReview))}>
                             {decideLabels.approve}
                           </Button>
-                        </form>
-                        <form action={decideReplacementLeaveRequestAction}>
+                        </ActionNavigateForm>
+                        <ActionNavigateForm action={decideReplacementLeaveRequestAction}>
                           <input type="hidden" name="requestId" value={r.id} />
                           <input type="hidden" name="decision" value="rejected" />
                           <input type="hidden" name="returnTo" value="approvals" />
@@ -989,7 +991,7 @@ export default async function ApprovalsPage({
                           <Button type="submit" size="sm" variant="outline">
                             {decideLabels.reject}
                           </Button>
-                        </form>
+                        </ActionNavigateForm>
                       </div>
                     )}
                   </td>
@@ -1249,7 +1251,7 @@ export default async function ApprovalsPage({
                     {tReview(`reviewType.${r.reviewType}` as 'reviewType.probation')} · {tReview('dueDate')} {r.dueDate}
                   </span>
                 </div>
-                <form action={submitManagerEvaluationAction} className="flex flex-wrap items-end gap-2">
+                <ActionNavigateForm action={submitManagerEvaluationAction} className="flex flex-wrap items-end gap-2">
                   <input type="hidden" name="id" value={r.id} />
                   <NavFields nav={nav} />
                   <label className="text-xs text-muted-foreground">
@@ -1264,7 +1266,7 @@ export default async function ApprovalsPage({
                   <Button type="submit" size="sm">
                     {tReview('submitEvaluation')}
                   </Button>
-                </form>
+                </ActionNavigateForm>
               </li>
             ))}
           </ul>

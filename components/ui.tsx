@@ -236,16 +236,19 @@ export function SectionHeader({
   // r401 — OPTIONAL extra classes, for a screen whose Monolith branch restyles its section heads with
   // `monolith:` utilities (My Profile). Absent → the className is the literal below, byte for byte.
   className,
+  // ADR 0181 Phase 4 — the count stopped at the list's cap ("1,000+"). Absent → the exact count, unchanged.
+  countCapped,
 }: {
   title: string;
   count?: number;
   subtitle?: string;
   className?: string;
+  countCapped?: boolean;
 }) {
   return (
     <div data-ui-section-header className={className ? cn('border-b border-border px-4 py-3 text-sm font-medium', className) : 'border-b border-border px-4 py-3 text-sm font-medium'}>
       {title}
-      {count !== undefined && <span data-ui-section-count className="ml-2 text-muted-foreground">({count})</span>}
+      {count !== undefined && <span data-ui-section-count className="ml-2 text-muted-foreground">({count}{countCapped ? '+' : ''})</span>}
       {subtitle && <p className="mt-1 text-xs font-normal text-muted-foreground">{subtitle}</p>}
     </div>
   );

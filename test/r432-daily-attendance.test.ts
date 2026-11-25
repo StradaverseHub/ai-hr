@@ -82,7 +82,8 @@ describe('r432 · Daily and Individual are the same eleven columns, drawn by one
 
   it('the page reads through the SQL-paged loader, not the derive-everyone one', () => {
     const src = codeOnly(read(DAILY));
-    expect(src).toContain('attendanceForDatePage(');
+    // ADR 0181 Phase 4: the keyset form of the same SQL-paged loader (test/attendance-daily-keyset-scale.test.ts).
+    expect(src).toContain('attendanceForDateKeysetPage(');
     expect(src).not.toContain('attendanceForDate(');
     expect(src).not.toContain('paginateRows');
   });
