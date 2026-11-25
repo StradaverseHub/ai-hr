@@ -275,6 +275,8 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10720,version:'7',when:1795495007320,tag:'7320_employment_search_trigram',breakpoints:true},
  {idx:10730,version:'7',when:1795495007330,tag:'7330_queue_read_offboarding_access',breakpoints:true},
  {idx:10740,version:'7',when:1795495007340,tag:'7340_queue_read_contract_navigation',breakpoints:true},
+ {idx:10760,version:'7',when:1795495007360,tag:'7360_audit_trail_company_scope',breakpoints:true},
+ {idx:10790,version:'7',when:1795495007390,tag:'7390_custom_pcb_selection',breakpoints:true},
  {idx:10860,version:'7',when:1795495007460,tag:'7460_payroll_read_access_switch',breakpoints:true},
  {idx:10870,version:'7',when:1795495007470,tag:'7470_payroll_read_admin_companies',breakpoints:true},
  {idx:10880,version:'7',when:1795495007480,tag:'7480_payroll_read_own_payslips',breakpoints:true},
@@ -1406,6 +1408,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.contract_shared_navigation_access_legacy()',app:false},
    {fn:'app.contract_shared_navigation_access_v2()',app:false},
    {fn:'app.contract_staff_automation_v2()',app:false},
+   // 7360 (ADR 0182 Phase 1): the Audit Trail company scope's once-per-statement read helpers.
+   {fn:'app.admin_company_ids()',app:true},
+   {fn:'app.audit_admin_aggregates()',app:true},
    // 7460 (ADR 0181 payroll read addendum, P1): the step check and P1's two guard arms are evaluated by row security as
    // the application role; the composer, the policy check, the mode setter and the every-user comparison are owner only.
    {fn:'app.payroll_read_access_on(text)',app:true},
@@ -3133,10 +3138,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    systemPreservePolicies.some(expected=>row.schemaname===expected.schemaname&&row.tablename===expected.tablename&&row.policyname===expected.policyname);
   expect(beforePerformancePrivileges.policies.filter(isSystemPreservePolicy)).toEqual([]);
   expect(afterPerformancePrivileges.policies.filter(isSystemPreservePolicy)).toEqual(systemPreservePolicies);
+  // 7390 (ADR 0183): the application may update the two custom PCB numbers with their tax selection, nothing more.
+  const isCustomPcbGrant=(row:Record<string,unknown>)=>row.rel==='employment_tax_selection_my'&&(row.col==='custom_pcb_amount'||row.col==='custom_pcb_rate');
+  expect(beforePerformancePrivileges.columns.filter(isCustomPcbGrant)).toEqual([]);
+  expect(afterPerformancePrivileges.columns.filter(isCustomPcbGrant).map(row=>[row.col,row.acl])).toEqual([['custom_pcb_amount','{ai_hr_app=w/postgres}'],['custom_pcb_rate','{ai_hr_app=w/postgres}']]);
   const terminalComparable={
    relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)&&!isAccessPilotRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
-   columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)),
+   columns:afterPerformancePrivileges.columns.filter(row=>!isCustomPcbGrant(row)&&row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
    policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)&&!isSixItemPolicy(row)&&!isPayrollReadPolicy(row)&&!isAccessPilotPolicy(row)&&!isSystemPreservePolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:isPersonPolicy(row)?{...row,qual:expectedPersonQuals[0]}:isDelegatedLeavePolicy(row)?{...row,qual:beforeDelegated.get(String(row.policyname))!.qual}:

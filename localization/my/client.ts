@@ -1,6 +1,6 @@
 import {epfUiModeFrom,epfRateToPercent} from '../../lib/epf-mode-map';
 import {TAX_CIRCUMSTANCE_OPTIONS,taxCircumstanceOf,readSavedTaxCircumstance} from './tax-circumstance';
-import {draftTaxResidencyGap,TAX_SELECTION_SCHEMES} from './tax-selection-codes';
+import {CUSTOM_PCB_SCHEMES,draftTaxResidencyGap,TAX_SELECTION_SCHEMES} from './tax-selection-codes';
 /**
  * MY client-safe pack entry (ADR-0080 rung 5b, D4) — the `CountryPackClient` implementation.
  *
@@ -60,7 +60,7 @@ export const myClientPack: CountryPackClient = {
     // hands them straight back here with the counts on screen, so the statutory rule never leaves the pack
     // and the screen cannot work out a different figure from the payslip's.
     childReliefFor,
-    taxCircumstanceOptions:TAX_CIRCUMSTANCE_OPTIONS,taxCircumstanceOf,readSavedTaxCircumstance,taxSelectionSchemes:TAX_SELECTION_SCHEMES,
+    taxCircumstanceOptions:TAX_CIRCUMSTANCE_OPTIONS,taxCircumstanceOf,readSavedTaxCircumstance,taxSelectionSchemes:TAX_SELECTION_SCHEMES,customPcbSchemes:CUSTOM_PCB_SCHEMES,
   },
   // Item ef720d3a — canonical MY bank names for the employee bank picker, in BNM catalog order
   // (the four common banks first). Projection of the shared bank master (lib/my-banks via

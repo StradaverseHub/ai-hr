@@ -46,6 +46,8 @@ const TAX_SELECTION_TEXT:Record<string,string>={
  not_resident:'this residency is not available for a non-resident',
  stale_context:'the employee\'s company or tax selection changed; check the employee and try again',
  not_found:'you cannot change the income tax selection of this employee',
+ custom_value_missing:'a custom PCB option needs its amount or rate; set it on the employee\'s Income Tax (PCB) section',
+ custom_value_invalid:'a custom PCB option needs its amount or rate; set it on the employee\'s Income Tax (PCB) section',
 };
 /** Known owner refusals become row errors; anything else stays a generic "database refused". */
 export function bankStatutoryRefusal(error:unknown):string|null{
@@ -137,7 +139,9 @@ export function bankStatutoryMergedErrors(subject:Pick<BankStatutorySubject,'pac
  if(merged.tax_circumstance==='none'&&has('tax_residency')&&patch.tax_residency)errors.push(`${label('tax_residency')}: leave it blank when ${label('tax_circumstance')} is none`);
  const leavingNone=has('tax_circumstance')&&stored.tax_circumstance==='none'&&merged.tax_circumstance!=='none';
  if(leavingNone&&!merged.tax_residency||leavingNone&&merged.tax_residency==='none')errors.push(`${label('tax_residency')}: required when ${label('tax_circumstance')} changes from none`);
- if((has('tax_residency')||has('epf_citizenship'))&&merged.tax_residency&&merged.tax_residency!=='none'){
+ // ADR 0183 — a saved custom PCB choice cannot be imported, but an unchanged one is not judged again.
+ const keptCustom=!!merged.tax_residency&&merged.tax_residency===stored.tax_residency&&(clientPackFor(subject.country)?.payroll.customPcbSchemes??[]).includes(merged.tax_residency);
+ if((has('tax_residency')||has('epf_citizenship'))&&merged.tax_residency&&merged.tax_residency!=='none'&&!keptCustom){
   const gap=clientPackFor(subject.country)?.statutory.draftTaxResidencyGap?.(merged.tax_residency,merged.epf_citizenship);
   if(gap)errors.push(`${label('tax_residency')}: ${merged.tax_residency==='c_suite'?'C-Suite needs EPF citizenship PR or non-citizen':'this residency is not available'}`);
  }
@@ -150,7 +154,9 @@ export function bankStatutoryMergedErrors(subject:Pick<BankStatutorySubject,'pac
  */
 export function buildBankStatutoryPatch(cell:(c:string)=>string|undefined,subject:Pick<BankStatutorySubject,'pack'|'country'>,stored:BankStatutoryState){
  const patch:Record<string,string>={},errors:string[]=[];
- for(const c of MERGED_STATUTORY_COLUMNS){const raw=cell(c);if(raw===undefined)continue;const parsed=parseBankStatutoryCell(c,raw);if(parsed.error!==undefined)errors.push(parsed.error);else patch[c]=parsed.value;}
+ // ADR 0183 — a file that repeats an employee's saved custom PCB choice (an export re-imported) changes nothing.
+ const customStored=(clientPackFor(subject.country)?.payroll.customPcbSchemes??[]).includes(stored.tax_residency??'');
+ for(const c of MERGED_STATUTORY_COLUMNS){const raw=cell(c);if(raw===undefined)continue;if(c==='tax_residency'&&customStored&&raw.trim().toLowerCase()===stored.tax_residency)continue;const parsed=parseBankStatutoryCell(c,raw);if(parsed.error!==undefined)errors.push(parsed.error);else patch[c]=parsed.value;}
  // Bounded legacy adapters (the full template's old yes/no columns), never a second source of truth.
  const eis=cell('eis_eligible'),resident=cell('is_resident');
  if(eis!==undefined){const parsed=parseBankStatutoryCell('eis_eligible',eis);if(parsed.error!==undefined)errors.push(parsed.error);else{
