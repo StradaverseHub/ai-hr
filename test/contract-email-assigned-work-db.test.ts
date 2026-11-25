@@ -8,6 +8,7 @@ import {contractPostingFixture,finishContractPostingJob} from './helpers/contrac
 import {saveAutomationDocumentTemplate,saveAutomationEmailTemplate,saveAutomationWorkflow,type AutomationWorkflow} from '../packs/automation/service';
 import {startContractSharedManualWorkflow,contractSharedContext,contractSharedWorkPage,contractSharedLetterActions,readContractSharedLetter,readContractSharedForm,saveContractSharedForm,actContractSharedLetter,bindContractSharedEmployee,previewContractSharedDecision,submitContractSharedDecision,readContractSharedApproval,actContractSharedApproval,listContractSharedPostings,approveContractSharedPosting} from '../packs/contracts/service';
 import {historicalEmailPostingFixture} from './helpers/contract-email-work-fixture';
+import {expectContractWorkSharedInRender} from './helpers/render-shared-reads';
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('discovers the exact historical pinned Form after actual posting and links only the uniquely verified employee',async()=>{
  const f=await historicalEmailPostingFixture(),email=f.email;
@@ -20,6 +21,7 @@ it('discovers the exact historical pinned Form after actual posting and links on
  const tasks=await contractSharedWorkPage(employee,{category:'tasks',limit:1,offset:0});expect(tasks.total).toBe(1);expect(tasks.taskTotal).toBe(1);expect(tasks.items).toEqual([expect.objectContaining({id:email.id,action:'bindEmployee',linkPath:'/lifecycle/contracts/letters/'+email.id})]);
  expect((await contractSharedWorkPage(employee,{category:'approvals',limit:1,offset:0})).total).toBe(0);
  expect((await contractSharedWorkPage(employee,{category:'tasks',limit:1,offset:1})).items).toEqual([]);
+ await expectContractWorkSharedInRender(employee);await expectContractWorkSharedInRender(f.employeeActor);
  await expect(contractSharedContext(employee,f.caseId)).rejects.toThrow();expect(await readContractSharedForm(employee,email.id)).toEqual({letterId:email.id,kind:'Form',visible:false});expect((await readContractSharedLetter(employee,email.id)).body).toBeNull();
  expect(await contractSharedLetterActions(employee,email.id)).toMatchObject({canBindEmployee:true,canSelfBind:true,companyActionsAvailable:true,pendingRole:null,purpose:'email',contractDeclineGuidance:false});
  const [otherCompany]=await owner.db.execute<{id:string}>(sql`insert into company(tenant_id,legal_name) values(${f.b.tenantId}::uuid,'Fictional independently enabled company') returning id`);
@@ -31,6 +33,7 @@ it('discovers the exact historical pinned Form after actual posting and links on
  await bindContractSharedEmployee(employee,email.id);
  const bound=await readContractSharedLetter(employee,email.id),answers=await readContractSharedForm(employee,email.id);expect(bound.pendingAction?.kind).toBe('sign');if(!answers?.visible)throw new Error('Bound employee Form body is unavailable');
  expect((await contractSharedWorkPage(employee,{category:'tasks',limit:1,offset:0})).items).toEqual([expect.objectContaining({id:email.id,action:'sign'})]);
+ await expectContractWorkSharedInRender(employee);
  const saved=await saveContractSharedForm(employee,{id:email.id,contentRevision:bound.contentRevision,contentHash:bound.contentHash!,responseRevision:answers.responseRevision,responseHash:answers.responseHash,values:{ack:'true'}});expect(saved?.visible).toBe(true);if(!saved?.visible)throw new Error('Saved employee response is unavailable');
  const latest=await readContractSharedLetter(employee,email.id);await actContractSharedLetter(employee,{id:email.id,actionId:randomUUID(),stepId:latest.pendingAction!.stepId,revision:latest.contentRevision,hash:latest.contentHash!,responseRevision:saved.responseRevision,responseHash:saved.responseHash,action:'signed',method:'typed',value:'Fictional employee',consent:true});
  expect((await contractSharedWorkPage(employee,{category:'tasks',limit:1,offset:0})).total).toBe(0);

@@ -1,4 +1,5 @@
 import {withAccessDisplayRead} from './access-configuration-lock';
+import {inRenderReadScope,perRenderRead} from '../lib/request-memo';
 import type {ProbationOrganisationMapping} from '../lib/probation-organisation';
 import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {validateProbationOfflinePdf} from '../lib/probation-offline-pdf';
@@ -658,16 +659,37 @@ export type ProbationTaskItem={caseId:string;partId:string;companyId:string;empl
 /** `capped`: more than 200 candidates exist; the screens link to the tracker filtered to the caller's work. */
 export type ProbationTaskList={count:number;capped:boolean;items:ProbationTaskItem[]};
 /** The caller's current Probation work, bounded (at most 200 confirmed, `limit` returned) and set-based. */
-export function probationTaskList(ctx:SessionContext,options:{category?:'approval'|'task';limit?:number;companyIds?:readonly string[]}={}):Promise<ProbationTaskList>{
- if(!probationModuleOn(ctx))return Promise.resolve({count:0,capped:false,items:[]});
- const limit=Math.max(1,Math.min(200,Math.floor(options.limit??200)));
- return withAccessDisplayRead(()=>withProbationTenant(ctx,async tx=>{
-  const[row]=await tx.execute<{data:ProbationTaskList}>(sql`select app.probation_task_list(${options.category??null}::text,${limit}::integer) as data`);
-  const data=row.data;
-  if(!options.companyIds)return data;
-  const companies=new Set(options.companyIds),items=data.items.filter(item=>companies.has(item.companyId));
-  return {count:items.length,capped:data.capped,items};
+export async function probationTaskList(ctx:SessionContext,options:{category?:'approval'|'task';limit?:number;companyIds?:readonly string[]}={}):Promise<ProbationTaskList>{
+ if(!probationModuleOn(ctx))return {count:0,capped:false,items:[]};
+ const limit=Math.max(1,Math.min(200,Math.floor(options.limit??200))),category=options.category??null;
+ const read=(readCategory:'approval'|'task'|null,readLimit:number)=>withAccessDisplayRead(()=>withProbationTenant(ctx,async tx=>{
+  const[row]=await tx.execute<{data:ProbationTaskList}>(sql`select app.probation_task_list(${readCategory}::text,${readLimit}::integer) as data`);
+  return row.data;
  },{readOnlySnapshot:true}));
+ // ADR 0181 queues addendum Q0: inside a page render the frame's bell, Home and Approvals ask the owner once, for every
+ // category at its largest page; each derives its own list from that answer when it holds every task, and reads the
+ // owner itself otherwise. Outside a render every call reads the owner, as before.
+ const data=inRenderReadScope()
+  ?deriveProbationTaskList(await perRenderRead(ctx,'probation-task-list:all',()=>read(null,PROBATION_TASK_LIST_SHARED_LIMIT)),category,limit)??await read(category,limit)
+  :await read(category,limit);
+ if(!options.companyIds)return data;
+ const companies=new Set(options.companyIds),items=data.items.filter(item=>companies.has(item.companyId));
+ return {count:items.length,capped:data.capped,items};
+}
+/** The largest list app.probation_task_list returns (6687 `lim`): the render's shared read asks for it. */
+export const PROBATION_TASK_LIST_SHARED_LIMIT=200;
+/**
+ * One category and limit of the caller's Probation tasks, derived from the owner's every-category answer at its largest
+ * limit (`shared`), or null when that answer cannot give it exactly. The owner (6687) builds each category's tasks by
+ * filtering the same review, letter and PBP rows on their category, counts every task in `count`, orders every list by
+ * the same key and caps the review candidates before any category is applied (`capped`). So when `shared` holds every
+ * task (`count` equals the items returned), a category list is its filtered items in order, its `count` their number,
+ * and `capped` unchanged.
+ */
+export function deriveProbationTaskList(shared:ProbationTaskList,category:'approval'|'task'|null,limit:number):ProbationTaskList|null{
+ if(shared.items.length<shared.count)return null;
+ const items=category===null?shared.items:shared.items.filter(item=>item.category===category);
+ return {count:items.length,capped:shared.capped,items:items.slice(0,limit)};
 }
 /** The kind of task label for one Probation task in the shared task list (lib/assigned-work.ts PACK_TASK_KINDS). */
 const probationPackKind=(item:ProbationTaskItem)=>item.category==='approval'?'probationApproval' as const:'probationTask' as const;
