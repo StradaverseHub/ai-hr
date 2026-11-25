@@ -121,7 +121,10 @@ describe('read-cost ratchets on the current tree (allowlists only shrink)',()=>{
   const files=rc.requestPathFiles(root);
   expect(files.length).toBeGreaterThan(1000);
   const sites=files.flatMap(file=>rc.requestLoopSites(file,rc.read(root,file)));
-  expect(sites.some(s=>s.file==='app/admin/personnel/import/page.tsx')).toBe(true);
+  // The scanner must still see known loops. The first canary (the Personnel import page) was fixed by PR 343, so the
+  // canary is now the largest remaining allowlisted site; when it is fixed too, move it to the next one.
+  expect(sites.length).toBeGreaterThan(20);
+  expect(sites.some(s=>s.file==='app/roster/actions.ts')).toBe(true);
   expectRatchet({name:'Request-path loops',file:'request-loops.json',sites,allowed:load('request-loops.json'),
    rule:`Read the set once (one statement with an id array; company lists take one array parameter, db/sql-arrays.ts) instead of one call per company or row; see docs/SCALE-AND-RELEASE-RULES.md rule 2 and ${CONTRACT}.`});
  });
