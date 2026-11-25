@@ -1,1 +1,3 @@
-{}
+{
+ "7450_payroll_run_outstanding.sql": "test/payroll-run-outstanding-7450-policy-timing.test.ts"
+}
