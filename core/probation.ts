@@ -1,4 +1,5 @@
 import {withAccessDisplayRead} from './access-configuration-lock';
+import {inRenderReadScope,perRenderRead} from '../lib/request-memo';
 import type {ProbationOrganisationMapping} from '../lib/probation-organisation';
 import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {validateProbationOfflinePdf} from '../lib/probation-offline-pdf';
@@ -21,6 +22,7 @@ import {DEFAULT_PROBATION_FORM,validateProbationForm,scoreProbationForm,probatio
 import {pendingSigningSteps,signingComplete,signingStepAction,type SigningRoute,type SigningDocument,type SigningGuardrails} from '../lib/document-signing-model';
 import {freezeFormApproversTx} from './probation-form-approvers';
 import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx,reviseSigningDocumentTx,refreshCanonicalProbationSigningRouteTx,declineDocumentAcknowledgementTx} from '../packs/document-signing/service';
+import {uuidArrayParam} from '../db/sql-arrays';
 export {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,ProbationError};
 export type {ProbationCase,ProbationPart,ProbationConfig,ProbationRole,ProbationForm};
 const uuid=(value:string)=>{if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value))throw new ProbationError('invalid','Choose a valid probation record.');return value;};
@@ -159,7 +161,7 @@ export function probationCase(ctx:SessionContext,id:string){return withProbation
 export function probationAutomationHistory(ctx:SessionContext,id:string){return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{companyId:string}>(sql`select company_id as "companyId" from probation_case where id=${uuid(id)}::uuid and tenant_id=${ctx.tenantId}::uuid`);if(!row)return[];companyGate(ctx,row.companyId);const{probationAutomationHistoryTx}=await import('./probation-automation');return probationAutomationHistoryTx(tx,uuid(id));});}
 export function probationCases(ctx:SessionContext){return withProbationTenant(ctx,async tx=>{
  const scoped=ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')?(ctx.entitlements?.scopedModules.lifecycle??[]):null;
- const ids=await tx.execute<{id:string}>(sql`select id from probation_case where tenant_id=${ctx.tenantId}::uuid ${scoped?sql`and company_id=any(array[${sql.join(scoped.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``} order by (data->>'endOn')::date,id limit 1000`);
+ const ids=await tx.execute<{id:string}>(sql`select id from probation_case where tenant_id=${ctx.tenantId}::uuid ${scoped?sql`and company_id=any(${uuidArrayParam(scoped)})`:sql``} order by (data->>'endOn')::date,id limit 1000`);
  return Promise.all(ids.map(r=>caseTx(tx,ctx,r.id)));
 });}
 export function saveProbationDraft(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;rater:'employee'|'lm';patch:Partial<ProbationPart>}){return withProbationTenant(ctx,async tx=>{
@@ -290,7 +292,7 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  kpi_submit:sql`(c.data->>'startOn')::date<=${today}::date and ${anyPart(sql`p.data->>'type'='1' and p.data->>'managerSubmittedAt' is null and p.data->>'state' not in('completed_offline','cancelled')`)}`,
  kpi_ack:anyPart(sql`p.data->>'type'='1' and p.data->>'managerSubmittedAt' is not null and p.data->>'acknowledgedAt' is null and p.data->>'state' not in('completed_offline','cancelled')`),
  overridden:anyPart(sql`p.data->>'override'='true' and p.data->>'state'<>'cancelled'`)};
- const scoped=sql`where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``}`;
+ const scoped=sql`where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(${uuidArrayParam(scope)})`:sql``}`;
  const conditions=sql`${scoped} ${filters.companyId?sql`and c.company_id=${uuid(filters.companyId)}::uuid`:sql``} ${filters.businessGroupId?sql`and c.data->'facts'->>'businessGroupId'=${uuid(filters.businessGroupId)}`:sql``} ${filters.businessUnitId?sql`and c.data->'facts'->>'businessUnitId'=${uuid(filters.businessUnitId)}`:sql``} ${filters.departmentId?sql`and c.data->'facts'->>'departmentId'=${uuid(filters.departmentId)}`:sql``} ${filters.grade?sql`and c.data->>'gradeAtStart'=${filters.grade}`:sql``} ${filters.pbpUserId?sql`and c.data->'facts'->'holders'->>'pbp'=${uuid(filters.pbpUserId)}`:sql``} ${filters.state?sql`and c.data->>'state'=${filters.state}`:sql``} ${filters.search?sql`and position(lower(${filters.search.trim().slice(0,100)}) in lower(c.data->'facts'->>'employeeName'))>0`:sql``} ${filters.mine?sql`and c.id in(select (task->>'caseId')::uuid from jsonb_array_elements(app.probation_task_list(null,200)->'items') task)`:sql``} ${filters.hideClosed?sql`and c.data->>'state' not in('confirmed','not_confirmed','withdrawn')`:sql``}`;
  type Counts={total:number;overdue:number;end_passed:number;ending14:number;low_result:number;kpi_submit:number;kpi_ack:number;overridden:number};
  const[result]=await tx.execute<{counts:Counts;rows:ProbationSummaryRow[];facets:ProbationTrackerFacet[]}>(sql`with vc as materialized (select * from app.probation_tracker_cases()),
@@ -380,7 +382,7 @@ export function downloadProbationFile(ctx:SessionContext,caseId:string,fileId:st
 export type ProbationTrackerOptions={businessGroups:{id:string;name:string}[];businessUnits:{id:string;name:string}[];departments:{id:string;name:string}[];grades:string[];pbps:{id:string;name:string}[];states:string[];facets?:{businessGroupId:string|null;businessUnitId:string|null;departmentId:string|null;grade:string}[]};
 async function trackerOptionsTx(tx:Tx,ctx:SessionContext):Promise<ProbationTrackerOptions>{
  const scope=trackerScope(ctx);
- const rows=await tx.execute<ProbationTrackerFacet>(sql`select distinct ${trackerFacetColumns} from app.probation_tracker_cases() c where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``}`);
+ const rows=await tx.execute<ProbationTrackerFacet>(sql`select distinct ${trackerFacetColumns} from app.probation_tracker_cases() c where c.tenant_id=${ctx.tenantId}::uuid ${scope?sql`and c.company_id=any(${uuidArrayParam(scope)})`:sql``}`);
  return trackerOptionsFrom([...rows]);
 }
 function trackerOptionsFrom(rows:ProbationTrackerFacet[]):ProbationTrackerOptions{
@@ -393,7 +395,7 @@ export function probationEmployeeNameSuggestions(ctx:SessionContext,input:{searc
  return withProbationTenant(ctx,async tx=>{
   const scope=ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')?(ctx.entitlements?.scopedModules.lifecycle??[]):null;
   const rows=await tx.execute<{name:string}>(sql`select distinct c.data->'facts'->>'employeeName' as name from app.probation_tracker_cases() c where c.tenant_id=${ctx.tenantId}::uuid
-   ${scope?sql`and c.company_id=any(array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``}
+   ${scope?sql`and c.company_id=any(${uuidArrayParam(scope)})`:sql``}
    and position(lower(${search}) in lower(c.data->'facts'->>'employeeName'))>0
    ${input.businessGroupId?sql`and c.data->'facts'->>'businessGroupId'=${uuid(input.businessGroupId)}`:sql``}
    ${input.businessUnitId?sql`and c.data->'facts'->>'businessUnitId'=${uuid(input.businessUnitId)}`:sql``}
@@ -658,16 +660,37 @@ export type ProbationTaskItem={caseId:string;partId:string;companyId:string;empl
 /** `capped`: more than 200 candidates exist; the screens link to the tracker filtered to the caller's work. */
 export type ProbationTaskList={count:number;capped:boolean;items:ProbationTaskItem[]};
 /** The caller's current Probation work, bounded (at most 200 confirmed, `limit` returned) and set-based. */
-export function probationTaskList(ctx:SessionContext,options:{category?:'approval'|'task';limit?:number;companyIds?:readonly string[]}={}):Promise<ProbationTaskList>{
- if(!probationModuleOn(ctx))return Promise.resolve({count:0,capped:false,items:[]});
- const limit=Math.max(1,Math.min(200,Math.floor(options.limit??200)));
- return withAccessDisplayRead(()=>withProbationTenant(ctx,async tx=>{
-  const[row]=await tx.execute<{data:ProbationTaskList}>(sql`select app.probation_task_list(${options.category??null}::text,${limit}::integer) as data`);
-  const data=row.data;
-  if(!options.companyIds)return data;
-  const companies=new Set(options.companyIds),items=data.items.filter(item=>companies.has(item.companyId));
-  return {count:items.length,capped:data.capped,items};
+export async function probationTaskList(ctx:SessionContext,options:{category?:'approval'|'task';limit?:number;companyIds?:readonly string[]}={}):Promise<ProbationTaskList>{
+ if(!probationModuleOn(ctx))return {count:0,capped:false,items:[]};
+ const limit=Math.max(1,Math.min(200,Math.floor(options.limit??200))),category=options.category??null;
+ const read=(readCategory:'approval'|'task'|null,readLimit:number)=>withAccessDisplayRead(()=>withProbationTenant(ctx,async tx=>{
+  const[row]=await tx.execute<{data:ProbationTaskList}>(sql`select app.probation_task_list(${readCategory}::text,${readLimit}::integer) as data`);
+  return row.data;
  },{readOnlySnapshot:true}));
+ // ADR 0181 queues addendum Q0: inside a page render the frame's bell, Home and Approvals ask the owner once, for every
+ // category at its largest page; each derives its own list from that answer when it holds every task, and reads the
+ // owner itself otherwise. Outside a render every call reads the owner, as before.
+ const data=inRenderReadScope()
+  ?deriveProbationTaskList(await perRenderRead(ctx,'probation-task-list:all',()=>read(null,PROBATION_TASK_LIST_SHARED_LIMIT)),category,limit)??await read(category,limit)
+  :await read(category,limit);
+ if(!options.companyIds)return data;
+ const companies=new Set(options.companyIds),items=data.items.filter(item=>companies.has(item.companyId));
+ return {count:items.length,capped:data.capped,items};
+}
+/** The largest list app.probation_task_list returns (6687 `lim`): the render's shared read asks for it. */
+export const PROBATION_TASK_LIST_SHARED_LIMIT=200;
+/**
+ * One category and limit of the caller's Probation tasks, derived from the owner's every-category answer at its largest
+ * limit (`shared`), or null when that answer cannot give it exactly. The owner (6687) builds each category's tasks by
+ * filtering the same review, letter and PBP rows on their category, counts every task in `count`, orders every list by
+ * the same key and caps the review candidates before any category is applied (`capped`). So when `shared` holds every
+ * task (`count` equals the items returned), a category list is its filtered items in order, its `count` their number,
+ * and `capped` unchanged.
+ */
+export function deriveProbationTaskList(shared:ProbationTaskList,category:'approval'|'task'|null,limit:number):ProbationTaskList|null{
+ if(shared.items.length<shared.count)return null;
+ const items=category===null?shared.items:shared.items.filter(item=>item.category===category);
+ return {count:items.length,capped:shared.capped,items:items.slice(0,limit)};
 }
 /** The kind of task label for one Probation task in the shared task list (lib/assigned-work.ts PACK_TASK_KINDS). */
 const probationPackKind=(item:ProbationTaskItem)=>item.category==='approval'?'probationApproval' as const:'probationTask' as const;

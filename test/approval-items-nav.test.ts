@@ -146,7 +146,10 @@ describe('accessible count label: nav.approvalsCount', () => {
 
 describe('the count is the viewer\'s own pending queue, computed once', () => {
   it('the layout derives the matching inbox destinations from the same canonical task read — no second query', () => {
-    expect(layout).toContain('approvalCount:approvalSummary.approvalCount');
+    // ADR 0181 decision 4: the composition is shared with the re-read a frame-keeping save asks for.
+    const facts = read('app/shell-approval-facts-read.ts');
+    expect(facts).toContain('approvalCount: approvalSummary.approvalCount + lifecycle.approvalCount');
+    expect(layout).toContain('shellApprovalResult(approvalSummary,lifecycle,canApprove)');
     expect(layout).toContain('pendingTaskSummary(session, scopeIds,');
     expect(layout).not.toContain('await pendingTaskSummary(');
     expect(layout).toContain('<ShellApprovalFactsProvider source={approvalFacts}');
@@ -158,7 +161,7 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
     // Deliberate divergence: the bell counts unread action-severity notifications too, which are not
     // approval records. The nav badge is strictly approval items.
     const bellSlot=readFileSync(new URL('../app/shell-notification-center.tsx',import.meta.url),'utf8');
-    expect(bellSlot).toContain('taskCount={onboardingTasks.length + lifecycle.count + bell.taskCount}');
+    expect(bellSlot).toContain('taskCount={onboardingTasks.length + lifecycle.count + bell.notificationTaskCount}');
     expect(layout).not.toMatch(/approvalCount[:=][^\n]+taskNotifCount/);
     // Onboarding work joins My tasks/the bell, never the legacy Approval Items count. The lifecycle inbox streams into
     // the bell (ADR 0181 package 1.3), which lists the onboarding queue and then the lifecycle items.
@@ -187,15 +190,17 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
 });
 
 describe('post-decision refresh', () => {
-  it('deciding revalidates the ROOT LAYOUT, not just the /approvals page', () => {
-    // The badge (and the bell's task count) live in app/layout.tsx. revalidatePath(back) defaults to
-    // type 'page' and would leave both stale after a decision.
+  it('a decision refreshes the badge: re-read for a frame-keeping form, or the ROOT LAYOUT revalidated for a plain form', () => {
+    // The badge (and the bell's task count) live in the shell. ADR 0181 decision 4: an <ActionNavigateForm> decision
+    // returns refreshShellApprovals and the client re-reads the facts without drawing the frame; a plain form still
+    // revalidates the root layout (revalidatePath(back) alone defaults to type 'page' and would leave both stale).
     expect(actions).toContain("revalidatePath('/', 'layout')");
+    expect(actions).toContain('async function decided(url:string,nav:Nav):Promise<ActionNavigation>{\n  if(nav.client)return{navigate:url,refreshShellApprovals:true};\n  revalidateShell();\n  redirect(url);');
     // Both decrement paths go through the shared helper: the row-level actions via done(), and bulk.
-    expect(actions).toContain('async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>,approvalSeal=false):Promise<never>{\n  revalidateShell();');
-    expect(actions).toContain('redirect(await decisionReturnUrl(s,nav,{toast,approvalSeal}))');
-    expect(actions).toContain('revalidateShell();\n  const summary =');
-    // fail() changes no state, so it must NOT pay for a shell revalidation.
-    expect(actions).toContain('async function fail(e:unknown,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{\n  redirect(await decisionReturnUrl(s,nav,{error:publicErrorMessage(e)}))');
+    expect(actions).toContain('return decided(await decisionReturnUrl(s,nav,{toast,approvalSeal}),nav);');
+    expect(actions).toContain('return decided(await decisionReturnUrl(s, nav, { toast: summary }), nav);');
+    // fail() changes no state, so it must NOT pay for a shell revalidation or a re-read.
+    expect(actions).toContain('async function refused(url:string,nav:Nav):Promise<ActionNavigation>{\n  if(nav.client)return{navigate:url};\n  redirect(url);');
+    expect(actions).toContain('return refused(await decisionReturnUrl(s,nav,{error:publicErrorMessage(e)}),nav);');
   });
 });

@@ -1,5 +1,7 @@
 import { Button, inputCls } from '@/components/ui';
 import type { ReactNode } from 'react';
+import { ActionNavigateForm } from '@/components/action-navigate-form';
+import type { ActionNavigation } from '@/lib/action-navigation';
 
 /**
  * APPROVE / REJECT A PROFILE CHANGE — AND A REJECTION CANNOT BE SUBMITTED WITHOUT A REASON.
@@ -23,6 +25,10 @@ import type { ReactNode } from 'react';
  * server component it is simply rendered by both pages, and the server action is passed the way React
  * passes any prop between server components.
  *
+ * ADR 0181 decision 4: each form is an <ActionNavigateForm> (a client island that receives the server action, a
+ * serialisable reference): the action returns where to go and the badges are re-read, so a decision no longer draws
+ * the whole app frame again.
+ *
  * ── THE REASON BOX IS INSIDE THE REJECT FORM, AND THE APPROVE FORM DOES NOT CARRY ONE ───────────────
  * Two separate `<form>`s, exactly as the buttons were before. The textarea is `required`, so the browser
  * refuses the submit before the round trip; `decideProfileChange` throws
@@ -38,7 +44,7 @@ export function ProfileChangeDecide({
   disabled,
 }: {
   /** The caller's own server action. Both surfaces have one; neither shares the other's redirect. */
-  action: (fd: FormData) => void | Promise<void>;
+  action: (fd: FormData) => Promise<ActionNavigation | void>;
   requestId: string;
   /** `/approvals` posts the request id as `id`; `/admin/personnel` posts it as `requestId`. */
   idFieldName: 'id' | 'requestId';
@@ -54,21 +60,21 @@ export function ProfileChangeDecide({
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex shrink-0 items-center gap-2">
-        <form action={action}>
+        <ActionNavigateForm action={action}>
           <input type="hidden" name={idFieldName} value={requestId} />
           <input type="hidden" name="decision" value="approved" />
           {hidden}
           <Button type="submit" size="sm">
             {labels.approve}
           </Button>
-        </form>
+        </ActionNavigateForm>
         {/* Closed, the summary only OPENS the box — it posts nothing. Open, the submit button sits
             below the textarea, so there is never a way to reject in one click without a reason. */}
         <details className="relative">
           <summary className="inline-flex cursor-pointer select-none items-center rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">
             {labels.reject}
           </summary>
-          <form action={action} className="mt-2 flex flex-col items-end gap-1">
+          <ActionNavigateForm action={action} className="mt-2 flex flex-col items-end gap-1">
             <input type="hidden" name={idFieldName} value={requestId} />
             <input type="hidden" name="decision" value="rejected" />
             {hidden}
@@ -82,7 +88,7 @@ export function ProfileChangeDecide({
             <Button type="submit" size="sm" variant="outline">
               {labels.reject}
             </Button>
-          </form>
+          </ActionNavigateForm>
         </details>
       </div>
     </div>

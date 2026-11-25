@@ -197,7 +197,9 @@ import {
   toilAccrual,
 } from '../db/schema';
 import { payrollHistoryEffectiveBatch } from '../db/schema';
-import { ALL_ROW_CEILING } from '../lib/pagination';
+import { ALL_ROW_CEILING, cappedTotal, keysetFetchLimit, keysetSlice, listCountCap, type KeysetPageQuery, type KeysetRead } from '../lib/pagination';
+import { anyUuid, uuidArrayParam } from '../db/sql-arrays';
+import { employmentSearchNarrowing } from './employment-search';
 import { daysInMonth } from './payroll';
 import { filterDelegationOrgScopeTx } from './approvals';
 import { payslipReleaseAt } from './payroll-policy-config';
@@ -290,7 +292,7 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
-      .where(and(companyIds&&companyIds.length?inArray(employment.companyId,companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
+      .where(and(companyIds&&companyIds.length?anyUuid(employment.companyId, companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
       .orderBy(person.fullName);
 }
 
@@ -321,7 +323,7 @@ export async function listLeaveInquiryEmployeesTx(ctx:SessionContext,tx:Tx,compa
   ${department.name} as department,${assignment.departmentId} as "departmentId",
   ${businessUnit.name} as "businessUnit",${assignment.businessUnitId} as "businessUnitId",
   ${employment.terminatedOn}::text as "terminatedOn"
-  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}
+  ${payrollProcessEmployeeFrom} where ${anyUuid(employment.companyId, companyIds)}
    ${employmentIds?sql`and ${inArray(employment.id,employmentIds)}`:sql``} order by ${person.fullName}`);
 }
 
@@ -340,7 +342,7 @@ export async function listLeaveInquiryPickerIdentitiesTx(ctx:SessionContext,tx:T
    or lower(coalesce(${employment.employeeCode},'') collate "C") like ${escaped} escape '\\')`:unicode;
  return tx.execute<LeaveInquiryPickerIdentity>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
   ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",${assignment.id} as "assignmentId"
-  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}
+  ${payrollProcessEmployeeFrom} where ${anyUuid(employment.companyId, companyIds)}
   and ${filters.companyId?sql`${employment.companyId}=${filters.companyId}::uuid`:sql`true`}
   and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`}
   and ${filters.departmentId?sql`${assignment.departmentId}=${filters.departmentId}::uuid`:sql`true`}
@@ -355,7 +357,7 @@ export async function leaveInquiryPickerFacetsTx(ctx:SessionContext,tx:Tx,compan
  const rows=await tx.execute<LeaveInquiryPickerFacet&{populationTotal:number}>(sql`select distinct
   ${employment.companyId} as "companyId",${company.legalName} as company,${assignment.departmentId} as "departmentId",${department.name} as department,
   ${assignment.businessUnitId} as "businessUnitId",${businessUnit.name} as "businessUnit",(count(*) over())::int as "populationTotal"
-  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}`);
+  ${payrollProcessEmployeeFrom} where ${anyUuid(employment.companyId, companyIds)}`);
  return {populationTotal:rows[0]?.populationTotal??0,rows:rows.map(({populationTotal,...row})=>row)};
 }
 /** Hydrate only retained candidate rows, preserving the legacy join identity. */
@@ -367,7 +369,7 @@ export async function leaveInquiryPickerDisplayRowsTx(ctx:SessionContext,tx:Tx,c
   ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",
   ${department.name} as department,${assignment.departmentId} as "departmentId",${businessUnit.name} as "businessUnit",${assignment.businessUnitId} as "businessUnitId",
   ${employment.terminatedOn}::text as "terminatedOn",${assignment.id} as "assignmentId"
-  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)} and ${or(...identities.map(row=>sql`(${employment.id}=${row.employmentId}::uuid and ${assignment.id} is not distinct from ${row.assignmentId}::uuid)`))}`);
+  ${payrollProcessEmployeeFrom} where ${anyUuid(employment.companyId, companyIds)} and ${or(...identities.map(row=>sql`(${employment.id}=${row.employmentId}::uuid and ${assignment.id} is not distinct from ${row.assignmentId}::uuid)`))}`);
 }
 
 type PayrollTransactionEmployee = Pick<Awaited<ReturnType<typeof listEmployees>>[number],
@@ -388,7 +390,7 @@ export function listPayrollTransactionEmployees(ctx:SessionContext,companyIds:st
       ${businessUnit.code} as "businessUnitCode", ${assignment.businessUnitId} as "businessUnitId",
       ${employment.terminatedOn}::text as "terminatedOn"
     ${payrollProcessEmployeeFrom}
-    ${companyIds.length?sql`where ${inArray(employment.companyId,companyIds)}`:sql``}
+    ${companyIds.length?sql`where ${anyUuid(employment.companyId, companyIds)}`:sql``}
     order by ${person.fullName}
   `));
 }
@@ -569,9 +571,10 @@ const employeeListColumns = (): EmployeeListColumns => ({
 function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = employeeListColumns()) {
   const q = p.q?.trim();
   return and(
-    p.companyIds && p.companyIds.length ? inArray(c.companyId, p.companyIds) : undefined,
+    // One `= any($n::uuid[])` parameter per company list (db/sql-arrays.ts): 10 and 74 companies are one statement.
+    p.companyIds && p.companyIds.length ? anyUuid(c.companyId, p.companyIds) : undefined,
     p.companyId ? eq(c.companyId, p.companyId) : undefined,
-    p.filterCompanyIds && p.filterCompanyIds.length ? inArray(c.companyId, p.filterCompanyIds) : undefined,
+    p.filterCompanyIds && p.filterCompanyIds.length ? anyUuid(c.companyId, p.filterCompanyIds) : undefined,
     p.departmentId ? eq(c.departmentId, p.departmentId) : undefined,
     anyOfOrBlank(c.departmentId, p.departmentIds, !!p.blankChoices?.includes('department')),
     p.employmentStatuses && p.employmentStatuses.length ? inArray(c.status, p.employmentStatuses) : undefined,
@@ -587,7 +590,7 @@ function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = empl
 const workforceListSource = sql`app.access_workforce_list_rows() as workforce_row(value)`;
 const personnelListSource = (companyIds?: string[], asOf = todayInKualaLumpur(), privateFilter = false) => {
   const projection = privateFilter ? sql`app.personnel_list_rows` : sql`app.personnel_filter_rows`;
-  const scope = companyIds ? sql`ARRAY[${sql.join(companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]` : sql`null::uuid[]`;
+  const scope = companyIds ? sql`${uuidArrayParam(companyIds)}` : sql`null::uuid[]`;
   return sql`${projection}(${asOf}::date,${scope}) as workforce_row(value)`;
 };
 // The extended projection verifies private membership. Preserve the ordinary list response shape.
@@ -635,7 +638,7 @@ const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns
    p.probationEndFrom?gte(read.date('probationEndDate'),p.probationEndFrom):undefined,
    p.probationEndTo?lte(read.date('probationEndDate'),p.probationEndTo):undefined,
    p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>flag==='suspected_duplicate'?(duplicateIds.length?inArray(read.uuid('employmentId'),[...duplicateIds]):sql`false`):sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
-   p.privateSearch?sql`app.personnel_column_search_matches(${privateSearchHash(p.privateSearch)??''},${read.uuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`},${read.value('filterRevision')})`:undefined);
+   p.privateSearch?sql`app.personnel_column_search_matches(${privateSearchHash(p.privateSearch)??''},${read.uuid('employmentId')},${columns.companyId},${p.companyIds?sql`${uuidArrayParam(p.companyIds)}`:sql`null::uuid[]`},${read.value('filterRevision')})`:undefined);
 
 export type PersonnelCompanyChoice = {
   id: string; name: string; parentCompanyId: string | null; parentCompany: string | null;
@@ -646,7 +649,7 @@ type PersonnelChoiceRow = { businessUnitId: string | null; businessUnit: string 
 
 async function personnelCompanyChoicesTx(tx: Tx, companyIds: string[], asOf: string) {
   const companies = await tx.execute<PersonnelCompanyChoice>(sql`select * from app.personnel_filter_companies(
-    ARRAY[${sql.join(companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[], ${asOf}::date)`);
+    ${uuidArrayParam(companyIds)}, ${asOf}::date)`);
   const canInspectDuplicates = await personnelDuplicateAuthorityTx(tx, companies.map(company => company.id));
   return { companies: [...companies], canInspectDuplicates };
 }
@@ -654,7 +657,7 @@ async function personnelCompanyChoicesTx(tx: Tx, companyIds: string[], asOf: str
 async function personnelDuplicateAuthorityTx(tx: Tx, companyIds: string[]) {
   const [duplicateAuthority] = await tx.execute<{ allowed: boolean }>(sql`select coalesce(
     bool_or(app.access_workforce_projection_company(id) and app.is_admin_for(id) and app.personnel_identity_search_permitted(id)), false) as allowed
-    from unnest(ARRAY[${sql.join(companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]) id`);
+    from unnest(${uuidArrayParam(companyIds)}) id`);
   return duplicateAuthority.allowed;
 }
 
@@ -823,7 +826,7 @@ function personnelNarrowOverviewQuery(
   // The complete typed draft ships the same page projection with the set-wise organisation resolver.
   const pageRows = typedPageRows ? sql`app.personnel_overview_page_rows_typed` : sql`app.personnel_overview_page_rows`;
   const read = typedWorkforceFieldAccess, columns = workforceListColumns(asOf, read);
-  const scope = sql`array[${sql.join(input.companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
+  const scope = sql`${uuidArrayParam(input.companyIds)}`;
   const key = isEmployeeColumnKey(input.columnSort) ? input.columnSort : undefined;
   const sortValue = key === 'status' ? columns.status
     : key && PERSONNEL_DATE_COLUMNS.has(key) ? read.date(PERSONNEL_COLUMN_SOURCES[key])
@@ -1034,7 +1037,7 @@ function workforcePickerColumns(){return {
 };}
 export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
   return withPersonnelRead(ctx, async tx => {
-    const scope=companyIds===undefined?sql`null::uuid[]`:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+    const scope=companyIds===undefined?sql`null::uuid[]`:sql`${uuidArrayParam(companyIds)}`;
     return tx.select({
       employmentId:sql<string>`workforce_row.employment_id`,name:sql<string>`workforce_row.name`,
       employeeCode:sql<string|null>`workforce_row.employee_code`,companyId:sql<string>`workforce_row.company_id`,
@@ -1057,7 +1060,7 @@ export async function readPresentationWorkforcePickRowsTx(ctx:SessionContext,tx:
 async function workforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[],lock:typeof lockAccessConfigurationWriteTx){
  if(ids.length>500||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new RangeError('Invalid workforce identity selection');
  if(!ids.length)return [];await lock(tx,ctx.tenantId);const columns=workforcePickerColumns();
- const source=sql`app.access_workforce_list_rows_for_ids(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as workforce_row(value)`;
+ const source=sql`app.access_workforce_list_rows_for_ids(${uuidArrayParam(ids)}) as workforce_row(value)`;
  return tx.select(columns).from(source).orderBy(columns.employmentId);
 }
 type WorkforcePickPageInput={companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string};
@@ -1336,6 +1339,72 @@ export function listWorkforcePersonnelPresentationPageTx(
   });
 }
 
+/** The employee listing's row projection, shared by the OFFSET reader and the keyset directory reader. */
+const employeeListRowSelection = () => ({
+  employmentId: employment.id,
+  name: person.fullName,
+  email: person.primaryEmail,
+  employeeCode: employment.employeeCode,
+  department: sql<string|null>`coalesce(nullif(trim(${department.label}), ''), ${department.name})`,
+  departmentId: assignment.departmentId,
+  position: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), ${position.title})`,
+  company: company.legalName,
+  companyId: employment.companyId,
+  hiredOn: employment.hiredOn,
+  terminatedOn: employment.terminatedOn,
+  // R43 c26c3ce5 — lifecycle inputs for the derived status badge.
+  confirmationDate: employment.confirmationDate,
+  finalConfirmationDate: employment.finalConfirmationDate,
+  // R81 — the probation fallbacks. Nothing writes a confirmation date at hire, so without these two
+  // a new hire serving probation derived to "Active" on day one. See core/employment-status.ts.
+  probationEndDate: employment.probationEndDate,
+  provisionalEndOn: employment.provisionalEndOn,
+  resignationDate: employment.resignationDate,
+  lastWorkingDate: employment.lastWorkingDate,
+  blacklistedAt: employment.blacklistedAt,
+  // ── Customize Columns (579255c3) ────────────────────────────────────────────────────────────
+  // The opt-in columns. Four 1:1 master lookups hung off the existing current-assignment join, so
+  // the row count is unchanged and the count query below needs no edit at all.
+  jobGrade: jobGrade.name,
+  employmentType: assignment.employmentType,
+  businessUnit: businessUnit.name,
+  costCenter: costCenter.name,
+  workLocation: location.name,
+  joinDate: employment.joinDate,
+  // "Reporting To". A SUBQUERY, not a join: reporting_line is 0..N per employment (administrative,
+  // functional, project, dotted, delegate), so joining it would return one LIST ROW PER EDGE and
+  // quietly show the same person two or three times — the class of fault that put 1 of 8 rows on
+  // the Companies screen for 24 days. It reads the SAME edge reportingLinesFor and the leave
+  // approver lookup read (administrative, still open, not superseded) rather than inventing a
+  // second notion of "manager" that could drift from the one the profile shows.
+  reportingTo: sql<string | null>`(
+    select mp.full_name from reporting_line rl
+    join employment me on me.id = rl.manager_employment_id
+    join person mp on mp.id = me.person_id
+    where rl.subordinate_employment_id = ${employment.id}
+      and rl.line_type = 'administrative'
+      and rl.valid_to is null and rl.superseded_at is null
+    order by rl.valid_from desc limit 1)`,
+});
+
+/** FROM and joins of the employee listing's rows (every join is ≤1 row per employment: see each comment). */
+function employeeListRowsFrom(tx: Tx) {
+  return tx
+    .select(employeeListRowSelection())
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .leftJoin(assignment, currentAssignmentJoin())
+    .leftJoin(department, eq(department.id, assignment.departmentId))
+    .leftJoin(position, eq(position.id, assignment.positionId))
+    // 579255c3 — the optional columns' masters. All four are FK → one row, so none of them can widen
+    // the result: `grade_id` on the employment, the other three on the CURRENT assignment.
+    .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+    .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
+    .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
+    .leftJoin(location, eq(location.id, assignment.locationId));
+}
+
 /** listEmployeesPage(…, 'workforce') inside a caller's Personnel overview snapshot. */
 export async function listWorkforcePersonnelPageTx(
   tx: Tx, ctx: SessionContext, input: PersonnelListInput & { companyIds: string[] }, overviewSnapshot: PersonnelOverviewSnapshot,
@@ -1360,54 +1429,10 @@ export function listEmployeesPage(
   }, { existingTx });
   const read = async (tx: Tx) => {
     const currentAssignment = currentAssignmentJoin();
-    const where = employeeListWhere(p);
+    // 7320: a name / e-mail / code search narrows to the trigram candidates (a superset of the ILIKE matches).
+    const where = and(employeeListWhere(p), employmentSearchNarrowing(sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
     const rows = (await tx
-      .select({
-        employmentId: employment.id,
-        name: person.fullName,
-        email: person.primaryEmail,
-        employeeCode: employment.employeeCode,
-        department: sql<string|null>`coalesce(nullif(trim(${department.label}), ''), ${department.name})`,
-        departmentId: assignment.departmentId,
-        position: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), ${position.title})`,
-        company: company.legalName,
-        companyId: employment.companyId,
-        hiredOn: employment.hiredOn,
-        terminatedOn: employment.terminatedOn,
-        // R43 c26c3ce5 — lifecycle inputs for the derived status badge.
-        confirmationDate: employment.confirmationDate,
-        finalConfirmationDate: employment.finalConfirmationDate,
-        // R81 — the probation fallbacks. Nothing writes a confirmation date at hire, so without these two
-        // a new hire serving probation derived to "Active" on day one. See core/employment-status.ts.
-        probationEndDate: employment.probationEndDate,
-        provisionalEndOn: employment.provisionalEndOn,
-        resignationDate: employment.resignationDate,
-        lastWorkingDate: employment.lastWorkingDate,
-        blacklistedAt: employment.blacklistedAt,
-        // ── Customize Columns (579255c3) ────────────────────────────────────────────────────────────
-        // The opt-in columns. Four 1:1 master lookups hung off the existing current-assignment join, so
-        // the row count is unchanged and the count query below needs no edit at all.
-        jobGrade: jobGrade.name,
-        employmentType: assignment.employmentType,
-        businessUnit: businessUnit.name,
-        costCenter: costCenter.name,
-        workLocation: location.name,
-        joinDate: employment.joinDate,
-        // "Reporting To". A SUBQUERY, not a join: reporting_line is 0..N per employment (administrative,
-        // functional, project, dotted, delegate), so joining it would return one LIST ROW PER EDGE and
-        // quietly show the same person two or three times — the class of fault that put 1 of 8 rows on
-        // the Companies screen for 24 days. It reads the SAME edge reportingLinesFor and the leave
-        // approver lookup read (administrative, still open, not superseded) rather than inventing a
-        // second notion of "manager" that could drift from the one the profile shows.
-        reportingTo: sql<string | null>`(
-          select mp.full_name from reporting_line rl
-          join employment me on me.id = rl.manager_employment_id
-          join person mp on mp.id = me.person_id
-          where rl.subordinate_employment_id = ${employment.id}
-            and rl.line_type = 'administrative'
-            and rl.valid_to is null and rl.superseded_at is null
-          order by rl.valid_from desc limit 1)`,
-      })
+      .select(employeeListRowSelection())
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -1440,6 +1465,54 @@ export function listEmployeesPage(
     return { rows, total: Number(count) };
   };
   return existingTx ? read(existingTx) : withTenant(ctx,read);
+}
+
+/** The People directory's keyset page (ADR 0181 decision 5, Phase 4): the same rows, filters and row security as
+ *  listEmployeesPage, ordered by name then employment id, paged by the anchor row's key instead of OFFSET, with a
+ *  total that is exact below the count cap and "cap+" above it (`exactCount` lifts the cap).
+ *
+ *  The cursor is an employment id. Its sort key is read in SQL under the viewer's own row security, so a viewer can
+ *  never page relative to a row they cannot see: an invisible or removed anchor yields no rows and the first page is
+ *  served instead (`anchorFound: false`). Two statements, whatever the number of companies in scope. */
+export async function listEmployeesDirectoryPage(
+  ctx: SessionContext,
+  p: EmployeeListFilters & Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>,
+): Promise<{ rows: EmployeeListRow[] } & KeysetRead> {
+  if (!Number.isSafeInteger(p.limit) || p.limit < 1 || p.limit > ALL_ROW_CEILING) throw new RangeError('Invalid directory page');
+  return withTenant(ctx, async tx => {
+    // 7320: a name / e-mail / code search narrows to the trigram candidates (a superset of the ILIKE matches).
+    const where = and(employeeListWhere(p), employmentSearchNarrowing(sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
+    const anchorKey = (id: string) => sql`(select anchor_person.full_name, anchor_employment.id
+      from employment anchor_employment join person anchor_person on anchor_person.id = anchor_employment.person_id
+      where anchor_employment.id = ${id}::uuid)`;
+    const read = (cursor: Pick<KeysetPageQuery, 'after' | 'before' | 'last'>) => {
+      const backwards = cursor.before !== undefined || cursor.last;
+      const seek = cursor.after ? sql`(${person.fullName}, ${employment.id}) > ${anchorKey(cursor.after)}`
+        : cursor.before ? sql`(${person.fullName}, ${employment.id}) < ${anchorKey(cursor.before)}` : undefined;
+      return employeeListRowsFrom(tx)
+        .where(and(where, seek))
+        .orderBy(...(backwards ? [desc(person.fullName), desc(employment.id)] : [asc(person.fullName), asc(employment.id)]))
+        .limit(keysetFetchLimit(p)) as Promise<EmployeeListRow[]>;
+    };
+    const cursor = { after: p.after, before: p.before, last: p.last };
+    let fetched = await read(cursor), anchorFound = true;
+    if (fetched.length === 0 && (p.after || p.before)) {
+      // The anchor is gone or no longer visible to this viewer (or nothing follows it any more): open the first page.
+      anchorFound = false;
+      fetched = await read({ last: false });
+    }
+    const page = keysetSlice(fetched, { ...(anchorFound ? cursor : { last: false }), limit: p.limit }, anchorFound);
+    const cap = listCountCap(p.size);
+    const bounded = tx.select({ one: sql`1` }).from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(assignment, currentAssignmentJoin())
+      .where(where);
+    // The assignment join is at most one row per employment (assignment_no_overlap), so count(*) is the exact count
+    // of employments and needs no DISTINCT, which would have to read every row before the cap could stop it.
+    const counted = (p.exactCount ? bounded : bounded.limit(cap + 1)).as('counted');
+    const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(counted);
+    return { rows: page.rows, total: cappedTotal(Number(count), cap, p.exactCount), hasPrev: page.hasPrev, hasNext: page.hasNext, anchorFound };
+  });
 }
 
 /** Which of `ids` the employee listing would return for these filters (the same FROM, joins and WHERE as
@@ -1481,7 +1554,7 @@ export function listManagerCandidates(
         and(
           isNull(employment.terminatedOn),
           opts.companyIds && opts.companyIds.length
-            ? inArray(employment.companyId, opts.companyIds)
+            ? anyUuid(employment.companyId, opts.companyIds)
             : undefined,
         ),
       )
@@ -1700,7 +1773,7 @@ export type PayrollRunEmployeeRow = {
  * IDs are intentional: do not offer historical-company subjects this CREATE source cannot accept. */
 export function payrollRunCurrentCompanyPeriodPredicate(companyIds:string[],payPeriod:string){
  const [year,month1]=payPeriod.split('-').map(Number),periodStart=`${payPeriod}-01`,periodEnd=`${payPeriod}-${String(daysInMonth(year,month1)).padStart(2,'0')}`;
- return and(inArray(employment.companyId,companyIds),lte(employment.hiredOn,periodEnd),or(isNull(employment.terminatedOn),gte(employment.terminatedOn,periodStart)));
+ return and(anyUuid(employment.companyId, companyIds),lte(employment.hiredOn,periodEnd),or(isNull(employment.terminatedOn),gte(employment.terminatedOn,periodStart)));
 }
 /** Same-Tx minimal period candidates only AFTER the caller's fresh native company/field guard.
  * Literal text search has no filter language/wildcard expansion, contact lookup or salary query. */
@@ -2405,7 +2478,7 @@ export function listLeaveRequests(
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(
         and(
-          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])` : undefined,
+          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(${uuidArrayParam(companyIds)})` : undefined,
           opts?.status ? eq(leaveRequest.status, opts.status) : undefined,
           opts?.requestId ? eq(leaveRequest.id,opts.requestId) : undefined,
           opts?.requestIds === undefined ? undefined : inArray(leaveRequest.id,[...opts.requestIds]),
@@ -2491,14 +2564,14 @@ function leaveRequestPageWhere(p: LeaveRequestPageFilter) {
   const refTerm = q?.replace(/^#/, '');
   const isRef = !!refTerm && /^[0-9a-f-]{6,}$/i.test(refTerm);
   const where = and(
-    p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+    p.companyIds && p.companyIds.length ? anyUuid(employment.companyId, p.companyIds) : undefined,
     p.companyId ? eq(employment.companyId, p.companyId) : undefined,
     p.businessUnitId ? eq(department.businessUnitId, p.businessUnitId) : undefined,
     p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
     p.locationId ? eq(assignment.locationId, p.locationId) : undefined,
     // Multi-select column filters (feedback 8ec63139) — OR within a field, AND across fields, the same
     // shape leaveTypeIds/statuses already had.
-    p.filterCompanyIds?.length ? inArray(employment.companyId, p.filterCompanyIds) : undefined,
+    p.filterCompanyIds?.length ? anyUuid(employment.companyId, p.filterCompanyIds) : undefined,
     p.businessUnitIds?.length ? inArray(department.businessUnitId, p.businessUnitIds) : undefined,
     p.departmentIds?.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
     p.locationIds?.length ? inArray(assignment.locationId, p.locationIds) : undefined,
@@ -2653,6 +2726,89 @@ export async function listLeaveRequestsPageTx(tx: Tx, ctx: SessionContext, p: Le
     return { rows: withDates, total: Number(count) };
 }
 
+/** The leave-request page's sort keys (the same whitelist as listLeaveRequestsPageTx) as comparable row parts. A
+ *  nullable employee code is the pair (code is null, coalesce(code, '')): ordering by the pair in one direction is
+ *  exactly PostgreSQL's default for the code itself (ascending puts blanks last, descending first). */
+function leaveRequestSortKey(sort: string | undefined) {
+  switch (sort ?? 'applied') {
+    case 'start': return { row: [sql`${leaveRequest.startDate}`], anchor: [sql`anchor_request.start_date`] };
+    case 'end': return { row: [sql`${leaveRequest.endDate}`], anchor: [sql`anchor_request.end_date`] };
+    case 'name': return { row: [sql`${person.fullName}`], anchor: [sql`anchor_person.full_name`] };
+    case 'employeeCode': return {
+      row: [sql`(${employment.employeeCode} is null)`, sql`coalesce(${employment.employeeCode}, '')`],
+      anchor: [sql`(anchor_employment.employee_code is null)`, sql`coalesce(anchor_employment.employee_code, '')`],
+    };
+    case 'status': return { row: [sql`${leaveRequest.status}`], anchor: [sql`anchor_request.status`] };
+    default: return { row: [sql`${leaveRequest.createdAt}`], anchor: [sql`anchor_request.created_at`] };
+  }
+}
+
+/** ADR 0181 decision 5 (Phase 4): the leave-request page by key. The same rows, filters, projection and order as
+ *  listLeaveRequestsPageTx (the chosen column in the chosen direction, then newest application first, then id),
+ *  continuing after (or, backwards, before) an anchor request read under the viewer's own row security, with a
+ *  total that is exact below the count cap and "cap+" above it (`exactCount` lifts the cap). An invisible or
+ *  removed anchor serves the first page. Exports and the mobile history keep listLeaveRequestsPageTx. */
+export async function listLeaveRequestsKeysetPageTx(
+  tx: Tx, ctx: SessionContext, p: Omit<LeaveRequestPageOptions, 'limit' | 'offset' | 'before'>,
+  q: Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>,
+): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[] } & KeysetRead> {
+  if (!Number.isSafeInteger(q.limit) || q.limit < 1 || q.limit > ALL_ROW_CEILING) throw new RangeError('Invalid leave request page');
+  const { where, currentAssignment } = leaveRequestPageWhere({ ...p, limit: q.limit, offset: 0 });
+  const ascending = p.dir === 'asc';
+  const key = leaveRequestSortKey(p.sort);
+  const row = (parts: SQL[]) => (parts.length === 1 ? parts[0] : sql`(${sql.join(parts, sql`, `)})`);
+  const anchorValue = (id: string, part: SQL) => sql`(select ${part} from leave_request anchor_request
+    join employment anchor_employment on anchor_employment.id = anchor_request.employment_id
+    join person anchor_person on anchor_person.id = anchor_employment.person_id
+    where anchor_request.id = ${id}::uuid)`;
+  const anchorRow = (id: string) => row(key.anchor.map((part) => anchorValue(id, part)));
+  const tie = sql`(${leaveRequest.createdAt}, ${leaveRequest.id})`;
+  const anchorTie = (id: string) => sql`(${anchorValue(id, sql`anchor_request.created_at`)}, ${anchorValue(id, sql`anchor_request.id`)})`;
+  /** Rows after the anchor in list order (forward) or before it (backward). The tie-break is newest first. */
+  const seek = (id: string, forward: boolean) => {
+    const primaryAfter = forward === ascending ? sql`>` : sql`<`;
+    const tieAfter = forward ? sql`<` : sql`>`;
+    return sql`(${row(key.row)} ${primaryAfter} ${anchorRow(id)} or (${row(key.row)} = ${anchorRow(id)} and ${tie} ${tieAfter} ${anchorTie(id)}))`;
+  };
+  const read = async (cursor: Pick<KeysetPageQuery, 'after' | 'before' | 'last'>) => {
+    const backwards = cursor.before !== undefined || cursor.last;
+    const primaryDir = (ascending !== backwards) ? sql`asc` : sql`desc`;
+    const tieDir = backwards ? sql`asc` : sql`desc`;
+    return tx
+      .select({ ...leaveRequestSelection, company: sql<string>`(select c.legal_name from company c where c.id = ${employment.companyId})`, department: department.name })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(and(where, cursor.after ? seek(cursor.after, true) : cursor.before ? seek(cursor.before, false) : undefined))
+      .orderBy(...key.row.map((part) => sql`${part} ${primaryDir}`), sql`${leaveRequest.createdAt} ${tieDir}`, sql`${leaveRequest.id} ${tieDir}`)
+      .limit(keysetFetchLimit(q));
+  };
+  const cursor = { after: q.after, before: q.before, last: q.last };
+  let fetched = await read(cursor), anchorFound = true;
+  if (fetched.length === 0 && (q.after || q.before)) {
+    anchorFound = false;
+    fetched = await read({ last: false });
+  }
+  const page = keysetSlice(fetched, { ...(anchorFound ? cursor : { last: false }), limit: q.limit }, anchorFound);
+  const cap = listCountCap(q.size);
+  // The current-assignment and department joins are at most one row per request (assignment_no_overlap), so
+  // count(*) needs no DISTINCT, which would have to read every row before the cap could stop it.
+  const bounded = tx.select({ one: sql`1` }).from(leaveRequest)
+    .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+    .leftJoin(assignment, currentAssignment)
+    .leftJoin(department, eq(department.id, assignment.departmentId))
+    .where(where);
+  const counted = (q.exactCount ? bounded : bounded.limit(cap + 1)).as('counted');
+  const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(counted);
+  const rows = await resolveLeaveWorkingDates(tx, page.rows);
+  return { rows, total: cappedTotal(Number(count), cap, q.exactCount), hasPrev: page.hasPrev, hasNext: page.hasNext, anchorFound };
+}
+
 /**
  * Approval Information filter — distinct people who have DECIDED (final approver/rejecter) at least one
  * leave request in scope, so the /leave admin "Approved by" filter can offer a named-person picker.
@@ -2671,7 +2827,7 @@ export function listLeaveApprovers(ctx: SessionContext, companyIds?: string[]) {
       .innerJoin(decider, eq(decider.id, leaveRequest.decidedByEmploymentId))
       .innerJoin(deciderPerson, eq(deciderPerson.id, decider.personId))
       .where(
-        companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        companyIds && companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined,
       );
     return rows.sort((a, b) => a.name.localeCompare(b.name));
   });
@@ -2787,7 +2943,7 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
           eq(leaveCancellationRequest.status, 'pending'),
           requestId?eq(leaveCancellationRequest.id,requestId):undefined,
           requestIds === undefined ? undefined : inArray(leaveCancellationRequest.id,[...requestIds]),
-          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])` : undefined,
+          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(${uuidArrayParam(companyIds)})` : undefined,
         ),
       )
       .orderBy(desc(leaveCancellationRequest.createdAt));
@@ -2986,7 +3142,7 @@ export function plannedAbsences(
       .where(
         and(
           isNull(employment.terminatedOn),
-          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          companyIds && companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined,
           personScope,
         ),
       )
@@ -3039,7 +3195,7 @@ export function plannedAbsences(
           // overlaps the window: starts on/before `to` AND ends on/after `from`
           lte(leaveRequest.startDate, range.to),
           gte(leaveRequest.endDate, range.from),
-          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          companyIds && companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined,
           // eae550e9: same person filter as the emps query (this one already innerJoins employment), so
           // the two selections stay one scope.
           personScope,
@@ -3237,7 +3393,7 @@ export function awayTodayCount(
           lte(leaveRequest.startDate, todayIso),
           gte(leaveRequest.endDate, todayIso),
           isNull(employment.terminatedOn),
-          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          companyIds && companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined,
           excludePersonId ? sql`${employment.personId} <> ${excludePersonId}` : undefined,
           // ADR-0068 §4A parity: a per-date-approval request (has date rows) covers today only when
           // today's own date row is approved — a mid-span rejected date is not an absence.
@@ -3625,7 +3781,7 @@ export function countEmployeesInScope(
       .where(
         and(
           isNull(employment.terminatedOn),
-          companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined,
           gradeIds.length ? inArray(employment.gradeId, gradeIds) : undefined,
         ),
       );
@@ -5792,7 +5948,7 @@ export type ReplacementLeaveSummary = {
 export function replacementLeaveSummary(ctx: SessionContext, companyIds?: string[]): Promise<ReplacementLeaveSummary> {
   return withTenant(ctx, async (tx) => {
     const scope =
-      companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined;
+      companyIds && companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined;
     const rows = await tx
       .select({
         status: toilAccrual.status,
@@ -5847,7 +6003,7 @@ export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async (tx) => {
     const scope = and(
       isNull(employment.terminatedOn),
-      companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+      companyIds && companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined,
     );
     const [rows, pend] = await Promise.all([
       tx
@@ -6497,7 +6653,7 @@ export function employmentPickerList(ctx: SessionContext, companyIds?: string[])
       .where(
         and(
           isNull(employment.terminatedOn),
-          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          companyIds && companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined,
         ),
       )
       .orderBy(person.fullName),
@@ -6577,7 +6733,7 @@ export function orgChartWindowFullData(ctx: SessionContext, companyIds?: string[
       .where(
         and(
           isNull(employment.terminatedOn),
-          companyIds ? inArray(employment.companyId, companyIds) : undefined,
+          companyIds ? anyUuid(employment.companyId, companyIds) : undefined,
         ),
       )
       .orderBy(person.fullName);
@@ -6718,6 +6874,61 @@ export function auditEventsCount(ctx: SessionContext, f: AuditFilters = {}): Pro
       .from(domainEvent)
       .where(auditWhere(f));
     return row?.n ?? 0;
+  });
+}
+
+/** The Audit Trail's keyset page (ADR 0181 decision 5, Phase 4): the same rows, filters, order and row security as
+ *  auditEvents, newest first by (occurred_at, sequence), paged from an anchor event instead of OFFSET, with a total
+ *  that is exact below the count cap and "cap+" above it (`exactCount` lifts the cap). The ledger only grows, so an
+ *  OFFSET page re-read every newer event and an exact count read the whole tenant's history on every page view.
+ *
+ *  The cursor is an event id; its (occurred_at, sequence) is read in SQL under the viewer's own row security, so an
+ *  event the viewer cannot see never anchors a page (the first page is served, `anchorFound: false`). */
+export function auditEventsPage(
+  ctx: SessionContext, f: Omit<AuditFilters, 'limit' | 'offset'>,
+  q: Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>,
+): Promise<{ rows: AuditRow[] } & KeysetRead> {
+  if (!Number.isSafeInteger(q.limit) || q.limit < 1 || q.limit > ALL_ROW_CEILING) throw new RangeError('Invalid audit page');
+  return withTenant(ctx, async (tx) => {
+    const where = auditWhere(f);
+    const anchorKey = (id: string) =>
+      sql`(select anchor_event.occurred_at, anchor_event.sequence from domain_event anchor_event where anchor_event.id = ${id}::uuid)`;
+    const read = (cursor: Pick<KeysetPageQuery, 'after' | 'before' | 'last'>) => {
+      // List order is newest first, so "after" (Next) is older and "before" (Previous) is newer.
+      const backwards = cursor.before !== undefined || cursor.last;
+      const seek = cursor.after ? sql`(${domainEvent.occurredAt}, ${domainEvent.sequence}) < ${anchorKey(cursor.after)}`
+        : cursor.before ? sql`(${domainEvent.occurredAt}, ${domainEvent.sequence}) > ${anchorKey(cursor.before)}` : undefined;
+      return tx
+        .select({
+          id: domainEvent.id,
+          aggregateType: domainEvent.aggregateType,
+          aggregateId: domainEvent.aggregateId,
+          eventType: domainEvent.eventType,
+          actorType: domainEvent.actorType,
+          actorName: person.fullName,
+          payload: domainEvent.payload,
+          occurredAt: domainEvent.occurredAt,
+          sequence: domainEvent.sequence,
+        })
+        .from(domainEvent)
+        .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+        .leftJoin(person, eq(person.id, appUser.personId))
+        .where(and(where, seek))
+        .orderBy(...(backwards ? [asc(domainEvent.occurredAt), asc(domainEvent.sequence)] : [desc(domainEvent.occurredAt), desc(domainEvent.sequence)]))
+        .limit(keysetFetchLimit(q)) as Promise<AuditRow[]>;
+    };
+    const cursor = { after: q.after, before: q.before, last: q.last };
+    let fetched = await read(cursor), anchorFound = true;
+    if (fetched.length === 0 && (q.after || q.before)) {
+      anchorFound = false;
+      fetched = await read({ last: false });
+    }
+    const page = keysetSlice(fetched, { ...(anchorFound ? cursor : { last: false }), limit: q.limit }, anchorFound);
+    const cap = listCountCap(q.size);
+    const bounded = tx.select({ one: sql`1` }).from(domainEvent).where(where);
+    const counted = (q.exactCount ? bounded : bounded.limit(cap + 1)).as('counted');
+    const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(counted);
+    return { rows: page.rows, total: cappedTotal(Number(count), cap, q.exactCount), hasPrev: page.hasPrev, hasNext: page.hasNext, anchorFound };
   });
 }
 
@@ -6868,6 +7079,60 @@ export function approvalHistoryCount(ctx: SessionContext, f: ApprovalHistoryFilt
       ) AS n`);
     const rows = res as unknown as { n: number | string | null }[];
     return Number(rows[0]?.n ?? 0);
+  });
+}
+
+/** Approval History's keyset page (ADR 0181 decision 5, Phase 4, migration 7290): the same decisions, visibility,
+ *  filters, names and order as listApprovalHistory (newest first, ties by sequence), paged from an anchor decision
+ *  inside app.approval_history_page instead of OFFSET, with a total counted by app.approval_history_count_capped up
+ *  to the cap (exact below 1,000, "1,000+" above; `exactCount` lifts the cap). The anchor is looked up among the
+ *  decisions this viewer may see under these filters, so a hidden decision serves the first page instead. */
+export function approvalHistoryPage(
+  ctx: SessionContext,
+  f: Omit<ApprovalHistoryFilters, 'limit' | 'offset'>,
+  q: Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>,
+): Promise<{ rows: ApprovalHistoryRow[] } & KeysetRead> {
+  if (!Number.isSafeInteger(q.limit) || q.limit < 1 || q.limit > ALL_ROW_CEILING) throw new RangeError('Invalid approval history page');
+  const typesCsv = f.module ? aggregateTypesOfModule[f.module].join(',') : null;
+  const action = f.action && isApprovalHistoryAction(f.action) ? f.action : null;
+  const filters = sql`${f.from ?? null}::timestamptz, ${f.to ?? null}::timestamptz, string_to_array(${typesCsv}::text, ','),
+    ${action}::text, ${f.deciderEmploymentId ?? null}::uuid`;
+  return withTenant(ctx, async (tx) => {
+    const read = async (cursor: Pick<KeysetPageQuery, 'after' | 'before' | 'last'>) => {
+      const anchor = cursor.after ?? cursor.before ?? null;
+      const backwards = cursor.before !== undefined || cursor.last;
+      const res = await tx.execute(sql`SELECT * FROM app.approval_history_page(${filters},
+        ${anchor}::uuid, ${backwards}::boolean, ${keysetFetchLimit(q)}::int)`);
+      return (res as unknown as {
+        id: string; aggregate_type: string; aggregate_id: string; event_type: string; occurred_at: Date | string;
+        subject_employment_id: string | null; subject_name: string | null; decider_name: string | null; is_auto: boolean;
+        on_behalf_of_employment_id: string | null; on_behalf_of_name: string | null; payload: unknown;
+      }[]).map((r): ApprovalHistoryRow => ({
+        id: r.id,
+        aggregateType: r.aggregate_type,
+        aggregateId: r.aggregate_id,
+        eventType: r.event_type,
+        occurredAt: r.occurred_at instanceof Date ? r.occurred_at : new Date(r.occurred_at),
+        subjectEmploymentId: r.subject_employment_id,
+        subjectName: r.subject_name,
+        deciderName: r.decider_name,
+        isAuto: r.is_auto,
+        onBehalfOfEmploymentId: r.on_behalf_of_employment_id,
+        onBehalfOfName: r.on_behalf_of_name,
+        payload: r.payload,
+      }));
+    };
+    const cursor = { after: q.after, before: q.before, last: q.last };
+    let fetched = await read(cursor), anchorFound = true;
+    if (fetched.length === 0 && (q.after || q.before)) {
+      anchorFound = false;
+      fetched = await read({ last: false });
+    }
+    const page = keysetSlice(fetched, { ...(anchorFound ? cursor : { last: false }), limit: q.limit }, anchorFound);
+    const cap = listCountCap(q.size);
+    const [{ n }] = (await tx.execute(sql`SELECT app.approval_history_count_capped(${filters},
+      ${q.exactCount ? 2147483646 : cap}::int) AS n`)) as unknown as { n: number | string }[];
+    return { rows: page.rows, total: cappedTotal(Number(n), cap, q.exactCount), hasPrev: page.hasPrev, hasNext: page.hasNext, anchorFound };
   });
 }
 
@@ -7477,7 +7742,7 @@ export function listAllowancePolicies(
       .leftJoin(payComponent, eq(payComponent.id, attendanceAllowancePolicy.payComponentId))
       .where(
         opts.companyIds && opts.companyIds.length
-          ? inArray(attendanceAllowancePolicy.companyId, opts.companyIds)
+          ? anyUuid(attendanceAllowancePolicy.companyId, opts.companyIds)
           : undefined,
       )
       .orderBy(company.legalName, attendanceAllowancePolicy.code);

@@ -53,7 +53,8 @@ import { alias } from 'drizzle-orm/pg-core';
 // list now, so its read and lib/pagination must agree about how many rows "All" can be: a read that
 // stopped at 200 under a pager whose PageState says a 250-row list is complete is a silent partial list.
 // core/read.ts takes the same import for the same reason.
-import { ALL_ROW_CEILING } from '../lib/pagination';
+import { ALL_ROW_CEILING, cappedTotal, keysetFetchLimit, keysetSlice, listCountCap, type KeysetPageQuery, type KeysetRead } from '../lib/pagination';
+import { anyUuid } from '../db/sql-arrays';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withAttendanceTenant` — every exported entry
 // point refuses a tenant without the Attendance module. The pure day-math helpers this file exports to
@@ -2984,6 +2985,27 @@ export function attendanceForDate(
  */
 export const ATTENDANCE_DAILY_Q_MAX = 200;
 
+/** The Daily list's filters and its current-assignment join, shared by the OFFSET and keyset readers so the two
+ *  can never select different people. The open current assignment is at most one row per employment
+ *  (assignment_no_overlap excludes two open-ended rows), so counts need no DISTINCT. */
+function attendanceDailyFilter(companyIds: string[] | undefined, opts: { departmentId?: string; q?: string }) {
+  const q = (opts.q ?? '').trim().slice(0, ATTENDANCE_DAILY_Q_MAX);
+  const like = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+  const where = and(
+    isNull(employment.terminatedOn),
+    // One `= any($n::uuid[])` parameter (db/sql-arrays.ts): 1 and 74 companies are one statement shape.
+    companyIds && companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined,
+    opts.departmentId ? eq(assignment.departmentId, opts.departmentId) : undefined,
+    q ? sql`(${person.fullName} ilike ${like} or ${employment.employeeCode} ilike ${like})` : undefined,
+  );
+  const currentAssignment = and(
+    eq(assignment.employmentId, employment.id),
+    isNull(assignment.validTo),
+    isNull(assignment.supersededAt),
+  );
+  return { where, currentAssignment };
+}
+
 export function attendanceForDatePage(
   ctx: SessionContext,
   date: string,
@@ -2991,19 +3013,7 @@ export function attendanceForDatePage(
   opts: { departmentId?: string; q?: string; limit: number; offset: number },
 ) {
   return withTenant(ctx, async (tx) => {
-    const q = (opts.q ?? '').trim().slice(0, ATTENDANCE_DAILY_Q_MAX);
-    const like = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
-    const where = and(
-      isNull(employment.terminatedOn),
-      companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
-      opts.departmentId ? eq(assignment.departmentId, opts.departmentId) : undefined,
-      q ? sql`(${person.fullName} ilike ${like} or ${employment.employeeCode} ilike ${like})` : undefined,
-    );
-    const currentAssignment = and(
-      eq(assignment.employmentId, employment.id),
-      isNull(assignment.validTo),
-      isNull(assignment.supersededAt),
-    );
+    const { where, currentAssignment } = attendanceDailyFilter(companyIds, opts);
     const [counted] = await tx
       .select({ n: sql<number>`count(distinct ${employment.id})::int` })
       .from(employment)
@@ -3027,6 +3037,67 @@ export function attendanceForDatePage(
     const order = new Map(ids.map((id, i) => [id, i]));
     derived.sort((a, b) => order.get(a.employmentId)! - order.get(b.employmentId)!);
     return { rows: derived, total };
+  });
+}
+
+/**
+ * ADR 0181 decision 5 (Phase 4): the Daily list paged by key. The same people, filters, row security and order
+ * as attendanceForDatePage (employee code with blanks last, then name, then employment id), continuing after
+ * (or, backwards, before) an anchor employment whose sort key is read under the viewer's own row security, with a
+ * total exact below the count cap and "cap+" above it (`exactCount` lifts the cap). The page's days are derived by
+ * the same attendanceDayRowsTx for the page's ids only. An invisible or removed anchor serves the first page.
+ *
+ * The sort key is (code is null, coalesce(code, ''), name, id): ordering by it is exactly `code asc nulls last,
+ * name, id`, and unlike the nullable code it can be compared as a row.
+ */
+export function attendanceForDateKeysetPage(
+  ctx: SessionContext,
+  date: string,
+  companyIds: string[] | undefined,
+  opts: { departmentId?: string; q?: string } & Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>,
+) {
+  if (!Number.isSafeInteger(opts.limit) || opts.limit < 1 || opts.limit > ALL_ROW_CEILING) throw new RangeError('Invalid daily attendance page');
+  return withTenant(ctx, async (tx) => {
+    const { where, currentAssignment } = attendanceDailyFilter(companyIds, opts);
+    const key = sql`(${employment.employeeCode} is null, coalesce(${employment.employeeCode}, ''), ${person.fullName}, ${employment.id})`;
+    const anchorKey = (id: string) => sql`(select anchor_employment.employee_code is null, coalesce(anchor_employment.employee_code, ''),
+      anchor_person.full_name, anchor_employment.id
+      from employment anchor_employment join person anchor_person on anchor_person.id = anchor_employment.person_id
+      where anchor_employment.id = ${id}::uuid)`;
+    const read = async (cursor: Pick<KeysetPageQuery, 'after' | 'before' | 'last'>) => {
+      const backwards = cursor.before !== undefined || cursor.last;
+      const seek = cursor.after ? sql`${key} > ${anchorKey(cursor.after)}` : cursor.before ? sql`${key} < ${anchorKey(cursor.before)}` : undefined;
+      const direction = backwards ? sql`desc` : sql`asc`;
+      return (await tx
+        .select({ id: employment.id })
+        .from(employment)
+        .innerJoin(person, eq(person.id, employment.personId))
+        .leftJoin(assignment, currentAssignment)
+        .where(and(where, seek))
+        .orderBy(sql`${employment.employeeCode} is null ${direction}`, sql`coalesce(${employment.employeeCode}, '') ${direction}`,
+          sql`${person.fullName} ${direction}`, sql`${employment.id} ${direction}`)
+        .limit(keysetFetchLimit(opts))).map((r) => r.id);
+    };
+    const cursor = { after: opts.after, before: opts.before, last: opts.last };
+    let fetched = await read(cursor), anchorFound = true;
+    if (fetched.length === 0 && (opts.after || opts.before)) {
+      anchorFound = false;
+      fetched = await read({ last: false });
+    }
+    const page = keysetSlice(fetched, { ...(anchorFound ? cursor : { last: false }), limit: opts.limit }, anchorFound);
+    const cap = listCountCap(opts.size);
+    const bounded = tx.select({ one: sql`1` }).from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(assignment, currentAssignment)
+      .where(where);
+    const counted = (opts.exactCount ? bounded : bounded.limit(cap + 1)).as('counted');
+    const [{ count }] = await tx.select({ count: sql<number>`count(*)::int` }).from(counted);
+    const state = { total: cappedTotal(Number(count), cap, opts.exactCount), hasPrev: page.hasPrev, hasNext: page.hasNext, anchorFound };
+    if (!page.rows.length) return { rows: [] as Awaited<ReturnType<typeof attendanceDayRowsTx>>, ...state };
+    const derived = await attendanceDayRowsTx(tx, ctx, date, companyIds, { employmentIds: page.rows });
+    const order = new Map(page.rows.map((id, i) => [id, i]));
+    derived.sort((a, b) => order.get(a.employmentId)! - order.get(b.employmentId)!);
+    return { rows: derived, ...state };
   });
 }
 
@@ -3123,7 +3194,7 @@ async function attendanceDayRowsTx(
       .where(
         and(
           isNull(employment.terminatedOn),
-          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          companyIds && companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined,
           opts?.departmentId ? eq(assignment.departmentId, opts.departmentId) : undefined,
           opts?.employmentIds ? inArray(employment.id, opts.employmentIds.length ? opts.employmentIds : ['']) : undefined,
         ),
@@ -3819,7 +3890,7 @@ export function attendanceMonthSummary(
 
 /** This is the original month-summary population: no Assignment join, hire-as-of
  * predicate or stable tie-breaker. Undefined/empty scope retains native RLS only. */
-function attendanceMonthEmployeesSourceTx(tx:Tx,companyIds?:string[]){
+function attendanceMonthEmployeesSourceTx(tx:Tx,companyIds?:string[],extra?:SQL){
   return tx
       .select({
         employmentId: employment.id,
@@ -3834,8 +3905,10 @@ function attendanceMonthEmployeesSourceTx(tx:Tx,companyIds?:string[]){
         and(
           isNull(employment.terminatedOn),
           companyIds && companyIds.length
-            ? inArray(employment.companyId, companyIds)
+            ? anyUuid(employment.companyId, companyIds)
             : undefined,
+          // A keyset read's seek (attendanceMonthSummaryKeysetPage); absent for every other caller.
+          extra,
         ),
       );
 }
@@ -4020,6 +4093,51 @@ export async function attendanceMonthSummaryPage(ctx:SessionContext,
    rows.push(...await hydrateAttendanceMonthEmployeesTx(tx,currentCtx,{},emps.slice(start,start+1000),{monthStart,monthEnd,today}));
   }
   return {rows,state:pageState(p.page,total,rows.length)};
+ });
+}
+
+/**
+ * ADR 0181 decision 5 (Phase 4): the Attendance month summary paged by key. The same people (active employments in
+ * scope, under row security), ordered by name then employment id (the OFFSET reader ordered by name only, so equal
+ * names had no fixed order), continuing after (or, backwards, before) an anchor employment whose key is read under
+ * the viewer's own row security, with a total exact below the count cap and "cap+" above it. The page's month is
+ * hydrated by the same hydrateAttendanceMonthEmployeesTx. An invisible or removed anchor serves the first page.
+ */
+export async function attendanceMonthSummaryKeysetPage(ctx:SessionContext,
+ supplied:{month:string;companyIds?:string[];today?:string;page:Pick<KeysetPageQuery,'limit'|'after'|'before'|'last'|'exactCount'|'size'>}):Promise<{rows:MonthSummaryRow[]}&KeysetRead>{
+ const p={month:supplied.month,companyIds:supplied.companyIds?.slice(),today:supplied.today,page:{...supplied.page}};
+ if(!Number.isSafeInteger(p.page.limit)||p.page.limit<1||p.page.limit>ALL_ROW_CEILING)throw new Error('Invalid attendance month page');
+ return withModulePresentationRead(ctx,'attendance',async(tx,currentCtx)=>{
+  const monthStart=`${p.month}-01`,[y,m]=p.month.split('-').map(Number);
+  const monthEnd=new Date(Date.UTC(y,m,0)).toISOString().slice(0,10),today=p.today??todayInKualaLumpur();
+  await tx.execute(sql`set local jit=off`);
+  const anchorKey=(id:string)=>sql`(select anchor_person.full_name, anchor_employment.id
+   from employment anchor_employment join person anchor_person on anchor_person.id = anchor_employment.person_id
+   where anchor_employment.id = ${id}::uuid)`;
+  const read=async(cursor:Pick<KeysetPageQuery,'after'|'before'|'last'>)=>{
+   const backwards=cursor.before!==undefined||cursor.last;
+   const seek=cursor.after?sql`(${person.fullName}, ${employment.id}) > ${anchorKey(cursor.after)}`
+    :cursor.before?sql`(${person.fullName}, ${employment.id}) < ${anchorKey(cursor.before)}`:undefined;
+   return attendanceMonthEmployeesSourceTx(tx,p.companyIds,seek)
+    .orderBy(...(backwards?[desc(person.fullName),desc(employment.id)]:[asc(person.fullName),asc(employment.id)]))
+    .limit(keysetFetchLimit(p.page));
+  };
+  const cursor={after:p.page.after,before:p.page.before,last:p.page.last};
+  let fetched=await read(cursor),anchorFound=true;
+  if(fetched.length===0&&(p.page.after||p.page.before)){anchorFound=false;fetched=await read({last:false});}
+  const page=keysetSlice(fetched,{...(anchorFound?cursor:{last:false}),limit:p.page.limit},anchorFound);
+  const cap=listCountCap(p.page.size);
+  const bounded=attendanceMonthEmployeesSourceTx(tx,p.companyIds);
+  const counted=(p.page.exactCount?bounded:bounded.limit(cap+1)).as('attendance_month_population');
+  const [{count}]=await tx.select({count:sql<number>`count(*)::int`}).from(counted);
+  const total=cappedTotal(Number(count),cap,p.page.exactCount);
+  // The existing route parser admits 00/13 months: keep the OFFSET reader's native date cast for a nonempty scope.
+  if(total.count>0&&!isCalendarDate(monthStart))await tx.execute(sql`select ${monthStart}::date as "monthStart",${monthEnd}::date as "monthEnd"`);
+  const rows:MonthSummaryRow[]=[];
+  for(let start=0;start<page.rows.length;start+=1000){
+   rows.push(...await hydrateAttendanceMonthEmployeesTx(tx,currentCtx,{},page.rows.slice(start,start+1000),{monthStart,monthEnd,today}));
+  }
+  return {rows,total,hasPrev:page.hasPrev,hasNext:page.hasNext,anchorFound};
  });
 }
 

@@ -63,7 +63,8 @@ describe('the approval surface exists and is wired to the decide action', () => 
   it('and POSTS to decideReplacementLeaveRequestAction — the action that had no caller', () => {
     expect(page).toMatch(/import \{ decideReplacementLeaveRequestAction \} from '@\/app\/leave\/actions'/);
     // Both decisions, both reachable from this page.
-    expect(page).toContain('<form action={decideReplacementLeaveRequestAction}>');
+    // ADR 0181 decision 4: posted through <ActionNavigateForm>, which keeps the app frame.
+    expect(page).toContain('<ActionNavigateForm action={decideReplacementLeaveRequestAction}>');
     for (const decision of ['approved', 'rejected']) {
       expect(page).toContain(`<input type="hidden" name="decision" value="${decision}" />`);
     }

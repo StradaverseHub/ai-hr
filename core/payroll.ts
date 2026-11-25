@@ -930,6 +930,59 @@ export async function markBatchNeedsRecalc(
   });
 }
 
+/**
+ * ADR 0181 (write side) — markBatchNeedsRecalc for several runs in a fixed number of statements instead of three to
+ * four per run. Same outcome as calling markBatchNeedsRecalc once per target, in target order: the same rows locked
+ * FOR UPDATE (all at once, in id order, so two writers cannot deadlock on each other's runs), the same status rules
+ * (only processed, and for processing only employees the run has already paid), the same stored set and instant, and
+ * the same `payroll-batch.recalc-required` events in the same order. A target naming a run twice accumulates exactly
+ * as two sequential calls would. Proven against the sequential calls by test/payroll-recalc-mark-set-equivalence.test.ts.
+ */
+export async function markBatchesNeedRecalcTx(
+  tx: Tx,
+  ctx: SessionContext,
+  targets: readonly { batchId: string; employmentIds: string[]; category?: RecalcChangeCategory }[],
+): Promise<void> {
+  const wanted = targets.map((t) => ({ batchId: t.batchId, adding: asIdArray(t.employmentIds), category: t.category })).filter((t) => t.adding.length > 0);
+  if (wanted.length === 0) return;
+  if (wanted.length === 1) return markBatchNeedsRecalc(tx, ctx, { batchId: wanted[0].batchId, employmentIds: wanted[0].adding, category: wanted[0].category });
+  const batchIds = [...new Set(wanted.map((t) => t.batchId))].sort();
+  const locked = await tx
+    .select({ id: payrollBatch.id, status: payrollBatch.status, ids: payrollBatch.recalcEmploymentIds, at: payrollBatch.needsRecalcAt })
+    .from(payrollBatch)
+    .where(inArray(payrollBatch.id, batchIds))
+    .orderBy(payrollBatch.id)
+    .for('update');
+  const state = new Map(locked.map((r) => [r.id, { status: r.status, ids: asIdArray(r.ids), at: r.at as Date | null, dirty: false }]));
+  // One read of what the processing runs have already paid, for every employee any target names on them.
+  const processing = batchIds.filter((id) => state.get(id)?.status === 'processing');
+  const paid = new Set<string>();
+  if (processing.length > 0) {
+    const named = [...new Set(wanted.filter((t) => processing.includes(t.batchId)).flatMap((t) => t.adding))];
+    const rows = await tx.select({ batchId: nativePayrollPayslip.batchId, employmentId: nativePayrollPayslip.employmentId }).from(nativePayrollPayslip)
+      .where(and(inArray(nativePayrollPayslip.batchId, processing), inArray(nativePayrollPayslip.employmentId, named)));
+    for (const r of rows) paid.add(`${r.batchId}:${r.employmentId}`);
+  }
+  const events: AppendEventArgs[] = [];
+  for (const t of wanted) {
+    const row = state.get(t.batchId);
+    if (!row || (row.status !== 'processed' && row.status !== 'processing')) continue;
+    const adding = row.status === 'processing' ? t.adding.filter((id) => paid.has(`${t.batchId}:${id}`)) : t.adding;
+    if (adding.length === 0) continue;
+    const next = [...new Set([...row.ids, ...adding])];
+    row.ids = next; row.at = row.at ?? new Date(); row.dirty = true;
+    events.push({
+      tenantId: ctx.tenantId, aggregateType: 'payroll-batch', aggregateId: t.batchId, eventType: 'payroll-batch.recalc-required', actor: actorOf(ctx),
+      payload: { employmentIds: next, addedEmploymentIds: adding, ...(t.category ? { changeCategory: t.category } : {}) },
+    });
+  }
+  const updates = batchIds.flatMap((id) => { const row = state.get(id); return row?.dirty ? [{ id, at: row.at!.toISOString(), ids: row.ids }] : []; });
+  if (updates.length === 0) return;
+  await tx.execute(sql`update payroll_batch b set needs_recalc_at=u.at,recalc_employment_ids=u.ids
+    from jsonb_to_recordset(${JSON.stringify(updates)}::jsonb) u(id uuid,at timestamptz,ids jsonb) where b.id=u.id`);
+  await appendEvents(tx, events);
+}
+
 /** Historical-source invalidation under the existing history barrier, before effective source release.
  * One batch-lock set and one update; existing closed artifacts and processing/payment decisions stay owned. */
 export async function markHistoryAffectedPayrollTx(tx:Tx,ctx:SessionContext,targets:readonly {companyId:string;employmentId:string;period:string}[]){
@@ -994,12 +1047,8 @@ export async function markRunsAffectedByEmploymentChangeTx(
     );
   const byBatch = new Map<string, Set<string>>();
   for (const r of rows) byBatch.set(r.batchId, (byBatch.get(r.batchId) ?? new Set<string>()).add(r.employmentId));
-  const marked: { batchId: string; employmentIds: string[] }[] = [];
-  for (const [batchId, set] of [...byBatch].sort(([a], [b]) => a.localeCompare(b))) {
-    const employmentIds = [...set].sort();
-    await markBatchNeedsRecalc(tx, ctx, { batchId, employmentIds, category: p.category });
-    marked.push({ batchId, employmentIds });
-  }
+  const marked = [...byBatch].sort(([a], [b]) => a.localeCompare(b)).map(([batchId, set]) => ({ batchId, employmentIds: [...set].sort() }));
+  await markBatchesNeedRecalcTx(tx, ctx, marked.map((m) => ({ ...m, category: p.category })));
   return marked;
 }
 
@@ -1020,9 +1069,7 @@ export async function markProcessingRunsForEmploymentsTx(
     .from(nativePayrollPayslip)
     .innerJoin(payrollBatch, eq(payrollBatch.id, nativePayrollPayslip.batchId))
     .where(and(inArray(nativePayrollPayslip.employmentId, ids), eq(payrollBatch.status, 'processing'), sql`app.can_admin_payroll_for(${payrollBatch.companyId})`));
-  for (const { batchId } of [...rows].sort((a, b) => a.batchId.localeCompare(b.batchId))) {
-    await markBatchNeedsRecalc(tx, ctx, { batchId, employmentIds: ids, category: p.category });
-  }
+  await markBatchesNeedRecalcTx(tx, ctx, [...rows].sort((a, b) => a.batchId.localeCompare(b.batchId)).map(({ batchId }) => ({ batchId, employmentIds: ids, category: p.category })));
 }
 
 /**
@@ -1130,31 +1177,27 @@ export async function markRunsAffectedByPayComponentTx(
       byBatch.set(batchId, s);
     };
 
-    // (1) the payslip itemises this code. `componentLines` is a jsonb ARRAY of {code,name,amount,buckets},
-    // so the containment operator reads it directly — no per-row unnest, and it uses the jsonb index shape.
-    const itemised = await tx
-      .select({ batchId: nativePayrollPayslip.batchId, employmentId: nativePayrollPayslip.employmentId })
-      .from(nativePayrollPayslip)
-      .where(
-        and(
-          inArray(nativePayrollPayslip.batchId, openIds),
-          sql`${nativePayrollPayslip.statutory} -> 'componentLines' @> ${JSON.stringify([{ code: p.code }])}::jsonb`,
-        ),
-      );
+    // (1) the payslip itemises this code. `componentLines` is a jsonb ARRAY of {code,name,amount,buckets}.
+    // ADR 0181 (write side): the native payslip view is a security barrier, so the containment test (not
+    // leakproof) could only run AFTER the view's per-row authority function, which then ran for every payslip of
+    // every open run in the tenant (the 27 s Pay Item save). app.pay_component_itemised_payslips (7290) applies the
+    // containment first and the same app.payroll_history_native_artifact_allowed check to the matches only: the
+    // same rows the view would return.
+    const itemised = await tx.execute<{ batchId: string; employmentId: string }>(sql`select batch_id as "batchId",employment_id as "employmentId"
+      from app.pay_component_itemised_payslips(${`{${openIds.join(',')}}`}::uuid[],${JSON.stringify([{ code: p.code }])}::jsonb)`);
     for (const r of itemised) add(r.batchId, r.employmentId);
 
-    // (2) a live recurring assignment of this component, on an employment that has a slip on the run.
-    const recurring = await tx
+    // (2) a live recurring assignment of this component, on an employment that has a slip on the run. The
+    // assignments are read first (row security unchanged), so the payslip read names its employments and the
+    // view's authority function runs only for their slips, not for every slip of every open run.
+    const holders = await tx
+      .selectDistinct({ employmentId: employmentPayComponent.employmentId })
+      .from(employmentPayComponent)
+      .where(and(eq(employmentPayComponent.componentId, p.componentId), isNull(employmentPayComponent.supersededAt)));
+    const recurring = holders.length === 0 ? [] : await tx
       .select({ batchId: nativePayrollPayslip.batchId, employmentId: nativePayrollPayslip.employmentId })
       .from(nativePayrollPayslip)
-      .innerJoin(employmentPayComponent, eq(employmentPayComponent.employmentId, nativePayrollPayslip.employmentId))
-      .where(
-        and(
-          inArray(nativePayrollPayslip.batchId, openIds),
-          eq(employmentPayComponent.componentId, p.componentId),
-          isNull(employmentPayComponent.supersededAt),
-        ),
-      );
+      .where(and(inArray(nativePayrollPayslip.batchId, openIds), inArray(nativePayrollPayslip.employmentId, holders.map((h) => h.employmentId))));
     for (const r of recurring) add(r.batchId, r.employmentId);
 
     // (3) a one-off ledger row on the run naming this component.
@@ -1169,12 +1212,8 @@ export async function markRunsAffectedByPayComponentTx(
       );
     for (const r of oneOff) if (r.batchId) add(r.batchId, r.employmentId);
 
-    const marked: { batchId: string; employmentIds: string[] }[] = [];
-    for (const [batchId, set] of byBatch) {
-      const employmentIds = [...set];
-      await markBatchNeedsRecalc(tx, ctx, { batchId, employmentIds });
-      marked.push({ batchId, employmentIds });
-    }
+    const marked = [...byBatch].map(([batchId, set]) => ({ batchId, employmentIds: [...set] }));
+    await markBatchesNeedRecalcTx(tx, ctx, marked);
     return marked;
 }
 
@@ -10993,7 +11032,7 @@ export async function payrollReprocessJobRowTx(tx:Tx,jobId:string){
   const [row]=await tx.select().from(payrollReprocessJob).where(eq(payrollReprocessJob.id,jobId)).limit(1);
   return row??null;
 }
-async function reprocessRunMembersTx(tx:Tx,ctx:SessionContext,batch:PayrollEligibilityRun & {id:string},requested:string[]){
+async function reprocessRunMembersTx(tx:Tx,ctx:SessionContext,batch:PayrollEligibilityRun & {id:string},requested:string[],runSlips?:{id:string;employmentId:string}[]){
   const [ry, rm] = batch.payPeriod.split('-').map(Number);
   const reprocessPeriodStart = `${batch.payPeriod}-01`;
   const reprocessPeriodEnd = `${batch.payPeriod}-${String(daysInMonth(ry, rm)).padStart(2, '0')}`;
@@ -11010,9 +11049,12 @@ async function reprocessRunMembersTx(tx:Tx,ctx:SessionContext,batch:PayrollEligi
   // company membership for it any more, and that is exactly the person whose stale result the loop must
   // reach to exclude. A payslip on this very batch cannot widen anything: it is already on the run.
   const onRun = await tx
-    .select({ id: nativePayrollPayslip.employmentId })
+    .select({ slipId: nativePayrollPayslip.id, id: nativePayrollPayslip.employmentId })
     .from(nativePayrollPayslip)
     .where(and(eq(nativePayrollPayslip.batchId, batch.id), inArray(nativePayrollPayslip.employmentId, requested)));
+  // ADR 0181 (write side): a caller in one REPEATABLE READ snapshot reuses these slips instead of reading the native
+  // view again (its per-row authority function made each read about 3 ms per selected employee).
+  runSlips?.push(...onRun.map(row=>({id:row.slipId,employmentId:row.id})));
   const allowed = new Set([...companyEmps,...onRun].map(row=>row.id));
   return requested.filter(id=>allowed.has(id));
 }
@@ -11047,7 +11089,8 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
     if(batch.status!=='processed')throw new BatchNotResettableError();
     const [period]=await tx.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,batch.payPeriodId));
     if(period?.status==='closed')throw new ReprocessRunBlockedError('PERIOD_CLOSED','This pay period is closed.');
-    const members=await reprocessRunMembersTx(tx,ctx,batch,ids);
+    const runSlips:{id:string;employmentId:string}[]=[];
+    const members=await reprocessRunMembersTx(tx,ctx,batch,ids,runSlips);
     if(members.length!==ids.length)throw new Error('Some selected employees are no longer available on this payroll run.');
     const {employees,canReviewTax}=await reprocessTaxReadinessTx(tx,ctx,batch,members);
     if(employees.length!==members.length)throw new Error('Some selected employees are unavailable.');

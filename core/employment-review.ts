@@ -1192,6 +1192,10 @@ export function pendingReviewCandidatesExistSql(tx:Tx,ctx:SessionContext,stage:'
  * rows (with the due date, without the manager) in its order. */
 export function pendingReviewTaskBundleSql(tx:Tx,ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[],own?:SQL):SQL{
   const roles=ctx.roles??[],admin=roles.includes('super_admin')||roles.includes('hr_admin'),person=ctx.personId??null;
+  // A caller who can decide no header of this stage gets the empty array the aggregate below would return (every row
+  // filtered out), without reading the headers: the HR stage for a non-administrator, and the manager stage for a
+  // non-administrator with no person (ADR 0181 queues addendum Q0).
+  if(!admin&&(stage==='hr'||person==null))return sql`'[]'::jsonb`;
   const allowed=stage==='manager'
     ?admin?sql`true`:person!=null?sql`(review_header.manager_employment_id is not null and ${isCallerOwnEmploymentSql(ctx,sql`review_header.manager_employment_id`,own)})`:sql`false`
     :admin?canDecideSql(ctx,sql`review_header.employment_id`,undefined,undefined,own):sql`false`;

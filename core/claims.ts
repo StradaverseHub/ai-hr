@@ -8,7 +8,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * admin-write); every state change appends a DomainEvent. The lifecycle (submit/decide) + payout live in
  * later slices of this file.
  */
-import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withClaimsTenant` — every one of this file's
@@ -4195,7 +4195,9 @@ function pendingClaimSubjectsSql(ctx:SessionContext,companyIds:string[]|undefine
  * decisionEmploymentAuthorityTx allows them, the exact count of their pending requests and the same bounded preview
  * in the same order. jsonb {snapshot, total, items}; `snapshot` false means the owner's
  * repeatable-read guard would refuse, and the owner then runs itself. */
-export function pendingClaimTaskPreviewBundleSql(ctx:SessionContext,limit:number,companyIds?:string[]){
+/** `own`: the account task statement's caller-own employments (core/approvals.ts callerOwnEmploymentIdsSql), read once
+ * for every section instead of re-reading the subject's employment row in the decision test. */
+export function pendingClaimTaskPreviewBundleSql(ctx:SessionContext,limit:number,companyIds?:string[],own?:SQL){
   if(!Number.isSafeInteger(limit)||limit<1||limit>200)throw new Error('Invalid claim task preview limit');
   // pendingClaimSubjectsTx's delegate org-scope trim (filterDelegationOrgScopeTx), by the same rule and in the same
   // snapshot: administrators keep every subject, anyone else only those they can see or may decide by delegation.
@@ -4204,7 +4206,7 @@ export function pendingClaimTaskPreviewBundleSql(ctx:SessionContext,limit:number
    claim_subjects as materialized (select candidate.* from claim_candidates candidate
     where ${everySubject?sql`true`:sql`(app.can_see_employment(candidate."employmentId") or app.can_decide_via_delegation(candidate."employmentId",NULL,NULL))`}),
    claim_allowed as materialized (select subject.* from claim_subjects subject
-    where ${decisionEmploymentAuthoritySql(ctx,sql`subject."employmentId"`,scopeOf('claims.claim'))}),
+    where ${decisionEmploymentAuthoritySql(ctx,sql`subject."employmentId"`,scopeOf('claims.claim'),own)}),
    claim_preview as (select header.id,header.employment_id,header.created_at from claim_allowed allowed
     cross join lateral (select request.id,request.employment_id,request.created_at from public.claim_request request
      where request.tenant_id=${ctx.tenantId}::uuid and request.status='pending' and request.employment_id=allowed."employmentId"

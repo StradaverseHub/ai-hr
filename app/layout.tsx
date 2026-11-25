@@ -27,7 +27,6 @@ import { Suspense } from 'react';
 import { Providers } from './providers';
 import { OperatorShell } from '@/components/operator-shell';
 import { Sidebar } from '@/components/sidebar';
-import {letterNavigation} from '@/core/letter-navigation';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
@@ -54,7 +53,6 @@ import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator, requireAdmin, requireModule } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
-import {readShellNavigationAccess} from '@/core/shell-navigation-access';
 import { companyContextForPage } from '@/lib/scope';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {requestReadJoinEnabled,withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
@@ -62,13 +60,15 @@ import {requestReadJoinEnabled,withBackgroundReadWork,withSharedReadSnapshot} fr
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
 import {EMPTY_LIFECYCLE_MODULE_INBOX,lifecycleModuleInbox,type LifecycleModuleInbox} from './lifecycle/module-inbox';
-import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
-import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { recruitmentTeamPresence, referralEligible } from '@/packs/recruitment/service';
 import type { NotificationTaskItem } from '@/components/notification-center';
 import { ShellNotificationCenter } from './shell-notification-center';
+import { bellNotificationScope } from './bell-notifications';
+import { shellApprovalResult, shellCanApprove, shellPendingTaskSources } from './shell-approval-facts-read';
+import { viewerAccessVersion, viewerLetterDestinations, viewerMenuProfile } from './viewer-menu-profile';
+import { refreshShellApprovalFactsAction } from './shell-facts-actions';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
@@ -195,13 +195,18 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // same reason as above: `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
-  const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
+  const canApprove = shellCanApprove(session);
   const showNoticePopup=pathname!=='/'||isAdmin(session);
   // Every independent read starts at once either way; inside the render's snapshot only while the read join is on
   // (AIHR_DEFAULT_REQUEST_READ_JOIN=on, db/shared-read.ts). Off, each owner keeps its own transaction, in parallel.
   const readFrame=async()=>{
     const context=companyContextForPage(session);
-    const lifecycleNavigation=lifecycleModuleNavigation(session);
+    // ADR 0181 Phase 3, decision 3: menu visibility comes from the viewer's cached menu profile (app/viewer-menu-profile.ts),
+    // keyed by the session claims and the tenant's access version, and never older than 60 s. Work queues and counts below
+    // are read live on every draw.
+    const accessVersion=viewerAccessVersion(session);
+    const menu=viewerMenuProfile(session,accessVersion);
+    const lifecycleNavigation=menu.then(profile=>profile.lifecycleNavigation);
     // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
     // cycle this OneHR administrator administers. No cycle, a viewer who is not a OneHR administrator, the module off
     // or a failed read all leave the pack's /performance.
@@ -217,17 +222,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     // It starts in the frame's pass and joins the page render's read-only snapshot (lib/request-read-scope.ts), so
     // the owners it shares with the page's own sections are read once; another identity or an incompatible owner
     // keeps its own transaction.
-    const approvalSummary=context.then(({scopeIds})=>withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
-      attendance: isModuleEnabledOrFalse(session, 'attendance'),
-      claims: claimsEnabled,
-      performance: isModuleEnabledOrFalse(session, 'performance'),
-      rewards: isModuleEnabledOrFalse(session, 'rewards'),
-      // Recruitment slice 9: the bell (and the sidebar's My tasks badge, which is this total) asks for the recruitment
-      // to-dos — live, under the viewer's own access; nothing for a viewer with no recruitment role, and no call at all
-      // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
-      recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
-      probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
-      }, { deferClaimPreview: true }),undefined,requestReadScope())));
+    const approvalSummary=context.then(({scopeIds})=>withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, shellPendingTaskSources(session), { deferClaimPreview: true }),undefined,requestReadScope())));
     approvalSummary.catch(()=>undefined);
     // A failed inbox read leaves its rows out of the bell and the badge (logged); it no longer fails the page.
     const lifecycleInbox:Promise<LifecycleModuleInbox>=lifecycleNavigation.then(navigation=>lifecycleModuleInbox(session,navigation))
@@ -241,15 +236,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       // own EMPLOYMENT and PERSON (lib/viewer.ts), never from lib/principals.ts: that list is the dev/demo
       // switcher and is empty on a real deployment. Memoised, so the notice popup shares the employment row.
       viewerIdentity(session),
-      readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
-      isModuleEnabledOrFalse(session,'employees')?context.then(({scopeIds})=>letterNavigation(session,scopeIds)):Promise.resolve([]),
-      isModuleEnabledOrFalse(session, 'rewards')
-        ? import('@/packs/rewards/service').then(({ rewardNavigation }) => rewardNavigation(session)).catch(() => [])
-        : Promise.resolve([]),
+      menu.then(profile=>profile.shellAccess),
+      isModuleEnabledOrFalse(session,'employees')?context.then(({scopeIds})=>viewerLetterDestinations(session,scopeIds,accessVersion)):Promise.resolve([]),
+      menu.then(profile=>profile.rewardDestinations),
       lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
       lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
       lifecycleNavigation,
-      lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
+      menu.then(profile=>profile.offboardingPostingsAccess),
       // Navigation and the floating launcher share the current Assistant grant read.
       assistantShellFor(session),
       handlesPrivateCases(session).catch(() => false),
@@ -287,10 +280,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // just the approvals queue. ADR 0181 decision 3 (package 1.3): a page load never dispatches — the minute
   // notification sweep (scripts/notification-email-sweep.ts) owns projection, so an admin's new notification
   // appears within the sweep interval. Every role only reads here.
-  const notifEnabled = isModuleEnabledOrFalse(session, 'notifications');
-  const letterNotificationCompanies=scopeIds.filter(id=>isModuleEnabledOrFalse(session,'notifications',id));
-  const notificationScope = notifEnabled ? {} :
-    letterNotificationCompanies.length > 0 ? { letterCompanyIds: letterNotificationCompanies } : null;
+  // The bell's mark-read actions read the same scope (app/bell-notifications.ts), so their refreshed bell matches this one.
+  const notificationScope = bellNotificationScope(session, scopeIds);
   // 3-tab bell (feedback 1514d366) — one notification framework for every role, role-scoped by the reads:
   //   • Notification tab: unread informational (non-action) notifications + their unread badge.
   //   • Task tab: the live approvals queue (listPendingTasks — replaces the retired count-only legacy
@@ -300,18 +291,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const onboardingTaskItems:NotificationTaskItem[]=onboardingQueue.map(onboardingNotificationTask);
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
-  const approvalFacts:Promise<ShellApprovalResult> = frame.approvalSummary.then(approvalSummary=>lifecycleInbox.then((lifecycle):ShellApprovalResult=>({
-    state:'ready',
-    items:approvalSummary.items,
-    total:approvalSummary.total,
-    approvalCount:approvalSummary.approvalCount+lifecycle.approvalCount,
-    claimTotal:approvalSummary.claimTotal,
-    // The lifecycle inbox's My tasks share of the rail badge (it streams with these facts, package 1.3).
-    lifecycleTaskCount:lifecycle.myTasksCount,
-    // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
-    hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
-    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycle.approvalCount)>0,
-  }))).then(result=>result,():ShellApprovalResult=>{
+  // One composition with the refresh a frame-keeping save asks for (app/shell-approval-facts-read.ts).
+  const approvalFacts:Promise<ShellApprovalResult> = frame.approvalSummary.then(approvalSummary=>lifecycleInbox.then(lifecycle=>
+    shellApprovalResult(approvalSummary,lifecycle,canApprove))).then(result=>result,():ShellApprovalResult=>{
     console.error('Shared shell approval facts unavailable');
     return {state:'unavailable'};
   });
@@ -332,7 +314,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               float separately on the canvas with gutters between them. */}
           {/* Atelier round 1 — the rail publishes its visible destinations here for the command bar's "Go to"
               list and the Atelier breadcrumb (components/nav-index-context.tsx). */}
-          <ShellApprovalFactsProvider source={approvalFacts} canOpenApprovalsWithoutAssignment={canOpenAdminRail||canApprove}>
+          <ShellApprovalFactsProvider source={approvalFacts} canOpenApprovalsWithoutAssignment={canOpenAdminRail||canApprove} refreshAction={refreshShellApprovalFactsAction}>
           <NavIndexProvider>
           {/* AI v2 W4 — the command bar offers "Ask AI Centre" only to a login with Assistant access (presentation only). */}
           <AiAskAvailability available={assistantAccess}>

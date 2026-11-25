@@ -11,10 +11,16 @@ export type TaxBasisCorrectionRef={id:string;batchId:string;sourceHash:string;ba
 export type TaxBasisSource={id:string;employmentId:string;companyId:string;period:string;source:Record<string,unknown>;batch:Record<string,unknown>;importRevision:string|null;historyAttemptId?:string|null};
 export async function taxBasisSourceRowsTx(tx:Tx,ids:string[]):Promise<TaxBasisSource[]>{
  if(!ids.length)return [];
+ // ADR 0181 (write side): the import revision was a per-row call of app.payroll_tax_import_source_revision, about 3 ms
+ // each (5.6 s of a 6.4 s read of 1,800 slips). 7310's set form calls that same function once per IMPORTED requested
+ // slip (no other slip can have a revision) and returns only its non-null answers; the row-secured join is unchanged.
+ const requested=sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
  return await tx.execute<TaxBasisSource>(sql`select p.id,p.employment_id as "employmentId",b.company_id as "companyId",b.pay_period as period,case when app.payroll_history_native_baseline(p.id) then null else b.history_import_attempt_id end as "historyAttemptId",
    to_jsonb(p) as source,jsonb_build_object('id',b.id,'company_id',b.company_id,'pay_period',b.pay_period,'run_seq',b.run_seq,'run_type',b.run_type,'cycle_id',b.payroll_cycle_id,'batch_date',b.batch_date) as batch,
-   app.payroll_tax_import_source_revision(p.id)::text as "importRevision"
-  from payslip p join payroll_batch b on b.id=p.batch_id where p.id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`);
+   ir.revision_id::text as "importRevision"
+  from payslip p join payroll_batch b on b.id=p.batch_id
+  left join app.payroll_tax_import_source_revisions(${requested}) ir on ir.payslip_id=p.id
+  where p.id=any(${requested}) order by b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`);
 }
 export const hashTaxBasisSource=(row:TaxBasisSource)=>createHash('sha256').update(canonical({source:row.source,batch:row.batch,importRevision:row.importRevision})).digest('hex');
 /** Caller must own the history barrier while computing/validating this identity. */
