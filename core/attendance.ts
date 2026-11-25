@@ -3196,7 +3196,7 @@ async function attendanceDayRowsTx(
           isNull(employment.terminatedOn),
           companyIds && companyIds.length ? anyUuid(employment.companyId, companyIds) : undefined,
           opts?.departmentId ? eq(assignment.departmentId, opts.departmentId) : undefined,
-          opts?.employmentIds ? anyUuid(employment.id, opts.employmentIds) : undefined,
+          opts?.employmentIds ? inArray(employment.id, opts.employmentIds.length ? opts.employmentIds : ['']) : undefined,
         ),
       )
       .orderBy(person.fullName);
@@ -3248,7 +3248,7 @@ async function attendanceDayRowsTx(
       })
       .from(rosterAssignment)
       .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
-      .where(and(anyUuid(rosterAssignment.employmentId, empIds), eq(rosterAssignment.shiftDate, date)))) {
+      .where(and(inArray(rosterAssignment.employmentId, empIds.length ? empIds : ['']), eq(rosterAssignment.shiftDate, date)))) {
       rosterByEmp.set(rr.employmentId, rr);
     }
     // 18504ca6 — THE RETROACTIVE RELABEL THIS CLOSES. This map used to be a plain join on
@@ -3273,7 +3273,7 @@ async function attendanceDayRowsTx(
       for (const g of await tx
         .select({ id: employment.id, ruleId: employment.attendanceRuleId })
         .from(employment)
-        .where(anyUuid(employment.id, empIds))) {
+        .where(inArray(employment.id, empIds))) {
         groupByEmp.set(g.id, g.ruleId);
       }
     }
@@ -3299,7 +3299,7 @@ async function attendanceDayRowsTx(
       .select({ ...gridShiftCols, employmentId: employment.id })
       .from(employment)
       .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
-      .where(anyUuid(employment.id, empIds));
+      .where(inArray(employment.id, empIds.length ? empIds : ['']));
     // ONE rule read for the whole grid. The lookup is per employment (the group is the employee's), so it
     // is built with a null employment group and the employee's own group is applied at the call site.
     const gridWeek = await weekLookupTx(tx, null, [
