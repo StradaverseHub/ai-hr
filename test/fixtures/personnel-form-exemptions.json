@@ -1133,5 +1133,14 @@
       "name": "periodOperation",
       "reason": "Selects the guarded period Edit or Remove command without storing a Personnel value."
     }
+  ],
+  "components/tax-residency-field.tsx": [
+    {
+      "tag": "input",
+      "context": "CustomPcbValueField",
+      "occurrences": 1,
+      "name": "customPcbValue",
+      "reason": "ADR 0183 custom PCB number (RM or %) of the employer-scoped Income Tax Resident selection. It is saved and validated with that selection by the tax-selection service (one owner, one version), never as a separate Personnel fact; not reportable or importable."
+    }
   ]
 }

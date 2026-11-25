@@ -461,6 +461,7 @@ export async function PcbDetailView({
   const mtd = explanation.kind === 'mtd' ? explanation : null;
   const categoryIdentity=pcbTaxCategoryIdentity(explanation);
   const flat = explanation.kind === 'flat' ? explanation : null;
+  const custom = explanation.kind === 'custom' ? explanation : null;
   /** WHY the working and the deduction are different numbers, and the figure the working explains. With
    *  no basis `sys` IS `explanation.pcb` and every line below reads exactly as it always did. */
   const basis = explanation.basis;
@@ -606,6 +607,35 @@ export async function PcbDetailView({
                 so the product above lands within 5 sen of the figure rather than on it. Said, not hidden. */}
             {notes(fb.flat?.notes ?? [])}
             {!flat.trace && <p className="pt-2 text-xs text-muted-foreground">{t('traceNotRecorded')}</p>}
+          </>
+        );
+
+      // ── ADR 0183 — custom PCB set by HR: the number HR entered IS the method; a rate is applied to the
+      //    remuneration the Non-Resident way, a fixed amount is deducted as entered. ──
+      case 'customCard':
+        return custom == null ? null : (
+          <>
+            {custom.method === 'rate'
+              ? <Row label={t('customRate')} value={custom.rate != null ? pct(custom.rate) : <NotRecorded />} />
+              : <Row label={t('customAmount')} value={custom.amount != null ? rm(custom.amount) : <NotRecorded />} />}
+            {custom.method === 'rate' && <Row label={t('flatRemuneration')} value={custom.trace ? rm(custom.trace.remuneration) : <NotRecorded />} />}
+            {custom.method === 'rate' && <Row label={t('flatAdditional')} value={custom.trace ? rm(custom.trace.additional) : <NotRecorded />} />}
+            <Row label={basis ? t(L.netSystem) : t('netMtd')} value={rm(sys)} />
+            {basis && <Row label={t(L.netDeducted)} value={rm(explanation.pcb)} />}
+            {fb.custom && (
+              <div className="mt-3">
+                <Formula
+                  formulaLabel={t('formulaLabel')}
+                  formula={t(fb.custom.formula)}
+                  substitutedLabel={t('substitutedLabel')}
+                  substituted={fb.custom.substituted ?? <NotRecorded />}
+                  resultLabel={t(fb.custom.resultLabel)}
+                  result={rm(sys)}
+                />
+              </div>
+            )}
+            {notes(fb.custom?.notes ?? [])}
+            {custom.method === 'rate' && !custom.trace && <p className="pt-2 text-xs text-muted-foreground">{t('traceNotRecorded')}</p>}
           </>
         );
 
@@ -1009,7 +1039,7 @@ export async function PcbDetailView({
             <Row label={t('sourceTaxYear')} value={taxYear} />
             <Row
               label={t('sourceTaxMethod')}
-              value={explanation.kind==='not_subject'?t('taxCategoryNone'):explanation.kind === 'flat' ? t('methodFlat') : mtd?.calculationScheme ? t(`scheme_${mtd.calculationScheme}`) : t('methodMtd')}
+              value={explanation.kind==='not_subject'?t('taxCategoryNone'):explanation.kind === 'custom' ? t(explanation.method === 'rate' ? 'scheme_custom_rate' : 'scheme_custom_fixed') : explanation.kind === 'flat' ? t('methodFlat') : mtd?.calculationScheme ? t(`scheme_${mtd.calculationScheme}`) : t('methodMtd')}
             />
             <Row label={t('sourceTaxTable')} value={ctx.rulesetVersion ?? <NotRecorded />} />
             <Row label={t('sourcePeriod')} value={ctx.periodLabel} />

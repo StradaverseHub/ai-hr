@@ -11,7 +11,7 @@ export async function savePayrollTaxSelectionAction(form:FormData){
  const q=payrollTaxContextQuery(form.get('payrollFrom'),form.get('payrollJob'));
  const service=packFor('MY')?.statutory.saveTaxSelection;
  if(!service)redirect('/payroll');
- try{await service(session,{employmentId,scheme:String(form.get('taxResidency')??''),expectedCompanyId:String(form.get('expectedCompanyId')??''),expectedVersion:Number(form.get('expectedVersion')),payrollBatchId:batchId,expectedPayPeriod:String(form.get('expectedPayPeriod')??'')});}
- catch(error){const code=error instanceof Error&&error.name==='TaxSelectionError'&&'code' in error&&['confirmation_required','invalid_scheme','citizenship_unknown','not_resident','stale_context','not_found'].includes(String(error.code))?String(error.code):'saveFailed';q.set('taxSelectionError',code);redirect(`/payroll/${batchId}/tax-configuration/${employmentId}?${q}`);}
+ try{await service(session,{employmentId,scheme:String(form.get('taxResidency')??''),...(form.has('customPcbValue')?{customValue:String(form.get('customPcbValue')??'')}:{}),expectedCompanyId:String(form.get('expectedCompanyId')??''),expectedVersion:Number(form.get('expectedVersion')),payrollBatchId:batchId,expectedPayPeriod:String(form.get('expectedPayPeriod')??'')});}
+ catch(error){const code=error instanceof Error&&error.name==='TaxSelectionError'&&'code' in error&&['confirmation_required','invalid_scheme','citizenship_unknown','not_resident','stale_context','not_found','custom_value_missing','custom_value_invalid'].includes(String(error.code))?String(error.code):'saveFailed';q.set('taxSelectionError',code);redirect(`/payroll/${batchId}/tax-configuration/${employmentId}?${q}`);}
  revalidatePath(`/payroll/${batchId}/tax-configuration/${employmentId}`);revalidatePath(`/admin/personnel/${employmentId}`);q.set('toast','Saved');redirect(`/payroll/${batchId}/tax-configuration/${employmentId}?${q}`);
 }

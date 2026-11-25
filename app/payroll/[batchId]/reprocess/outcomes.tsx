@@ -8,7 +8,7 @@ import { formatDate } from '@/lib/utils';
 import type { PayrollResultRun } from '../../payroll-result-href';
 import { reprocessResultHrefs } from './result-links';
 
-const TAX_SELECTION_CODES = new Set(['confirmation_required', 'invalid_scheme', 'not_resident', 'citizenship_unknown']);
+const TAX_SELECTION_CODES = new Set(['confirmation_required', 'invalid_scheme', 'not_resident', 'citizenship_unknown', 'custom_value_missing']);
 const TAX_CODES = new Set([
   'missing_declaration', 'declaration_revoked', 'declaration_outside_period',
   'not_resident', 'citizenship_unknown', 'overlap',

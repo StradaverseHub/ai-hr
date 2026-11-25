@@ -1,3 +1,22 @@
+# Custom PCB on the Income Tax Resident selection (ADR 0183, board d8dc0a8c), 25 November 2026
+
+Reserve `7390_custom_pcb_selection`, journal index `10790`, timestamp `1795495007390`,
+SQL SHA-256 `a840b463c061f47cf7245b393258db8fff8bb2623fb90adc44770d4db4ede175`.
+
+**Renumbered from `7370_custom_pcb_selection` (idx `10770`, when `1795495007370`).** The 7370 slot is abandoned: it
+was never applied on any installation. The owner chose to release PR 326 (`7360_audit_trail_company_scope`) first
+("PR 326 first", confirmed in the board session). During that change PR 326 briefly renumbered to 7380 and withdrew it;
+the staging coordinator reconciled PR 326 at 7360 (f3894d18a) and kept this migration at 7390, above both.
+`check-migration-collisions.mjs --local --next` (from PR 307's commit bbab49168) checked main and 398 recent branch
+journals and named 7390 as free; the coordinator recorded it in the shared map. The SQL bytes are unchanged. Install
+order on staging: release 9 (7330, 7340), then 7360, then 7390; 7370 and 7380 are unused.
+Recheck both installations' watermarks, and any competing reservation, before admission.
+
+Adds nullable `custom_pcb_amount numeric(12,2)` and `custom_pcb_rate numeric(5,2)` to `employment_tax_selection_my`
+(every existing row NULL), widens `employment_tax_selection_my_scheme_check` with `custom_fixed` and `custom_rate`,
+adds `employment_tax_selection_my_custom_pcb_check` (a custom scheme has exactly its own number; other schemes none)
+and grants `ai_hr_app` UPDATE on the two columns. The checks scan the table once under the migration's lock; no
+policy, function or other object changes.
 # Audit Trail company scope (ADR 0182 Phase 1), 25 November 2026
 
 Reserve `7360_audit_trail_company_scope`, journal index `10760`, timestamp `1795495007360`,
