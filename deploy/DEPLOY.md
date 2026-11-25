@@ -469,6 +469,7 @@ AIHR_ALERT_COMMAND=curl -sS -X POST -d @- https://your-webhook.example/aihr
 10 0 * * * cd /opt/ai-hr && deploy/cron-alert.sh access-effective-company /home/ubuntu/aihr-cron-logs/access-effective-company.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-effective-company-check.ts
 20 0 * * * cd /opt/ai-hr && deploy/cron-alert.sh access-visible-employment /home/ubuntu/aihr-cron-logs/access-visible-employment.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-visible-employment-check.ts
 */10 * * * * cd /opt/ai-hr && deploy/cron-alert.sh access-visible-employment-rebuild /home/ubuntu/aihr-cron-logs/access-visible-employment-rebuild.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-visible-employment-check.ts --rebuild-only
+40 0 * * * cd /opt/ai-hr && deploy/cron-alert.sh payroll-read-access /home/ubuntu/aihr-cron-logs/payroll-read-access.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/payroll-read-access-check.ts
 ```
 
 The `ai-alerts` line (WP12, review R20) is **documented here, not installed**; the release owner adds it. It is a
@@ -500,6 +501,18 @@ runs `select app.access_visible_employment_retrust('<tenant id>')` as the owner.
 `access_employment_precompute_control`), so their reads return to the stored answer soon. The mode is `legacy` until
 changed with `select app.access_visible_employment_set_mode('shadow' | 'precomputed' | 'legacy')`; the same staging and
 production rules as the company pilot apply.
+
+The `payroll-read-access` line (ADR 0181 payroll read addendum, migration 7460 and its later steps) is **documented
+here, not installed**. It runs forty minutes after midnight Kuala Lumpur time (`40 16 * * *` on a UTC host). On the
+owner connection it runs `app.payroll_read_access_compare(step, tenant)` for every step whose mode is `shadow` or
+`precomputed` and every tenant: each user of the tenant, under their own role assignments, with and without the payroll
+reader settings, has each of the step's old and new policy pieces evaluated and compared. A difference marks that
+tenant's step untrusted, so its payroll reads use the legacy functions, and the job exits `3` with the step, tenant id
+and counts only until an operator fixes the cause and runs `select app.payroll_read_access_retrust('<step>', '<tenant
+id>')` as the owner (which compares again and trusts only a clean result). Each step is switched on its own with
+`select app.payroll_read_access_set_mode('<step>', 'shadow' | 'precomputed' | 'legacy')` (the swap takes the payroll
+tables' locks for a moment; it waits at most five seconds). `shadow` keeps the old policy text and turns on the nightly
+comparison. Every step is `legacy` until a separate owner request switches it on staging, and production needs its own.
 
 The last line is **readiness 2.1 (r296) and it is a DETECTOR, not a sweep** — it changes nothing, and
 every transaction it opens is `SET TRANSACTION READ ONLY`, so the server refuses a write from it. It is

@@ -73,6 +73,7 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10720,version:'7',when:1795495007320,tag:'7320_employment_search_trigram',breakpoints:true},
  {idx:10730,version:'7',when:1795495007330,tag:'7330_queue_read_offboarding_access',breakpoints:true},
  {idx:10740,version:'7',when:1795495007340,tag:'7340_queue_read_contract_navigation',breakpoints:true},
+ {idx:10860,version:'7',when:1795495007460,tag:'7460_payroll_read_access_switch',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},

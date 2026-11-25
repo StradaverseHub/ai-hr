@@ -1,3 +1,23 @@
+# ADR 0181 payroll read addendum, P1: payroll read switch and reader guards, 25 November 2026
+
+Reserve `7460_payroll_read_access_switch`, journal index `10860`, timestamp `1795495007460`, SQL SHA-256
+`cc8bdfb8ec9a19d26c1e5fa5d37ca3ee1aafea4ff665f8f1c9c19775698ca55b`. First reserved as 7400 (next free after
+`7390_custom_pcb_selection`); renumbered the same day because board batch 20261125b took `7450_payroll_run_outstanding`
+and installs first, and an applied 7450 would make Drizzle skip anything below it. `node
+.github/ci/check-migration-collisions.mjs --local --next` (PR 307's script) then named 7460 as the next free slot after
+7450, and the database revamp session (integrator) gave the same map. P1–F take 7460, 7470, 7480, 7490 and 7500 in
+order; 7400–7440 are permanently unused. Built on alpha `60189ca03` (release 9). Recheck both installations' watermarks
+and any competing reservation at admission.
+
+Installs, inert, the switch every payroll read step uses: owner-only `payroll_read_access_control` (one mode per step,
+all `legacy`), `payroll_read_access_fragment` (each restated policy's USING as ordered pieces) and
+`payroll_read_access_tenant` (per-tenant trust), the operator-only mode setter (swaps a step's policies in one
+transaction, each guarded by PostgreSQL's deparse of its recorded text), the every-user comparison and re-trust, and
+P1's two plain PL/pgSQL guard arms with the step check they read once per statement (EXECUTE to `ai_hr_app`). The
+migration refuses unless both guard functions' bodies and the two guard policies are exactly the reviewed ones. No
+policy, trigger, column or business row changes. Design: `docs/adr/0181-addendum-payroll-read-access-and-read-model.md`
+(PR 308), sections 9 and 11. This entry carries no deployment authority.
+
 # ADR 0181 live work queues, Q1: Contract navigation access, 25 November 2026
 
 Reserve `7340_queue_read_contract_navigation`, journal index `10740`, timestamp `1795495007340`, SQL SHA-256
