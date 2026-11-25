@@ -1,5 +1,9 @@
 {
  "app/approvals/page.tsx": "test/route-read-budget.test.ts",
  "app/page.tsx": "test/route-read-budget.test.ts",
+ "app/payroll/outstanding-actions.ts#readPayrollOutstandingRefreshAction": "test/payroll-board-20261125-action-read-budget.test.ts",
+ "app/payroll/outstanding-actions.ts#requestPayrollOutstandingRefreshAction": "test/payroll-board-20261125-action-read-budget.test.ts",
+ "app/payroll/transactions/fixed/actions.ts#removeFixedTransactionDialogAction": "test/payroll-board-20261125-action-read-budget.test.ts",
+ "app/payroll/transactions/fixed/actions.ts#saveFixedTransactionDialogAction": "test/payroll-board-20261125-action-read-budget.test.ts",
  "app/personnel/page.tsx": "test/route-read-budget.test.ts"
 }

@@ -1517,8 +1517,6 @@
  "app/payroll/transactions/fixed/[id]/page.tsx",
  "app/payroll/transactions/fixed/actions.ts#archiveFixedTransactionAction",
  "app/payroll/transactions/fixed/actions.ts#createFixedTransactionAction",
- "app/payroll/transactions/fixed/actions.ts#endFixedTransactionAction",
- "app/payroll/transactions/fixed/actions.ts#updateFixedTransactionAction",
  "app/payroll/transactions/fixed/imports/[id]/page.tsx",
  "app/payroll/transactions/fixed/imports/page.tsx",
  "app/payroll/transactions/fixed/page.tsx",
