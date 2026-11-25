@@ -68,6 +68,8 @@ describe('ADR-0080 rung 7: payroll pack registration', () => {
       'payroll_status_history',
       'payroll_employee_result_history',
       'payroll_reprocess_job',
+      // a1a80747 (migration 7450) — the Payroll Process list's stored outstanding answer per processed run.
+      'payroll_run_outstanding',
       'payroll_permission_grant',
       'payroll_step_up_challenge',
       'payroll_input',
