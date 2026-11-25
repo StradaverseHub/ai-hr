@@ -7,6 +7,7 @@
  * (app.payroll_read_access_set_mode). So for each step this test switches only that step (with the steps it needs),
  * reads, and switches it back:
  *  - 7460 (P1): the two payslip reader guards.
+ *  - 7470 (P2): payroll administration once per statement (payroll_batch_rls, payslip_rls admin arm, original employer).
  * Later steps add their rows to STEPS below.
  *
  * Statements, each in the application role (ai_hr_app, row security on) under the persona's own identity statement, in
@@ -26,6 +27,7 @@ import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fix
 type Step={migration:string;step:string;needs:readonly string[]};
 const STEPS:readonly Step[]=[
  {migration:'7460',step:'p1_tax_reader_guards',needs:[]},
+ {migration:'7470',step:'p2_admin_companies',needs:[]},
 ];
 const PERIODS=['2025-09','2025-10','2025-11','2025-12'] as const;
 const STATEMENTS:Record<string,ReturnType<typeof sql>>={
