@@ -15,8 +15,8 @@
 --   * app.offboarding_posting_queue_access(): a PL/pgSQL dispatcher at the original name and grants. 'legacy' serves the
 --     legacy body; 'v2' the new one; 'shadow' computes both, serves legacy and logs one line with no values:
 --     queue_read shadow fn=offboarding_posting_queue_access reason=compared differs=<0|1>.
---   * app.queue_read_set_mode(fn, mode) and app.queue_read_compare_offboarding(tenant): operator only. The comparison
---     evaluates both bodies for every user of the tenant under that user's own grants and returns counts only.
+--   * app.queue_read_set_mode(fn, mode) and app.queue_read_compare(fn, tenant): operator only. The comparison evaluates
+--     a reader's legacy and restated bodies for every user of the tenant under that user's own grants, counts only.
 --
 -- How v2 equals the legacy body, for the caller U of tenant T, with principal_snapshot_current() true (otherwise both
 -- are false):
@@ -52,7 +52,8 @@ END;
 $offboarding_queue_predecessor$;
 --> statement-breakpoint
 CREATE TABLE public.queue_read_control(
- function_name text PRIMARY KEY CHECK(function_name IN ('offboarding_posting_queue_access')),
+ -- Each restated reader's migration adds its row; the dispatcher of a reader without a row serves its legacy body.
+ function_name text PRIMARY KEY CHECK(function_name ~ '^[a-z][a-z0-9_]{0,62}$'),
  mode text NOT NULL DEFAULT 'legacy' CHECK(mode IN ('legacy','shadow','v2')),
  -- Set only when an operator changes the mode, so the migration's own rows hold no wall-clock value.
  updated_at timestamptz
@@ -138,27 +139,33 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.queue_read_set_mode(text,text) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
--- Operator only: both bodies for every user of the tenant, each under that user's own role assignments (the claims a
--- sign-in would carry), counts only. The caller's settings are restored before it returns.
-CREATE FUNCTION app.queue_read_compare_offboarding(p_tenant uuid) RETURNS jsonb
+-- Operator only: a registered reader's legacy and restated bodies (app.<fn>_legacy() and app.<fn>_v2(), both without
+-- arguments) for every user of the tenant, each under that user's own role assignments (the claims a sign-in would
+-- carry), counts only. The caller's settings are restored before it returns.
+CREATE FUNCTION app.queue_read_compare(p_function text,p_tenant uuid) RETURNS jsonb
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE
- u record;users integer:=0;granted integer:=0;differs integer:=0;a boolean;b boolean;
+ u record;users integer:=0;differs integer:=0;differ boolean;probe text;
  prior_tenant text:=current_setting('app.tenant_id',true);prior_user text:=current_setting('app.user_id',true);
  prior_roles text:=current_setting('app.roles',true);prior_grants text:=current_setting('app.grants',true);
 BEGIN
+ IF NOT EXISTS(SELECT 1 FROM public.queue_read_control c WHERE c.function_name=p_function)
+  OR to_regprocedure(format('app.%I()',p_function||'_legacy')) IS NULL OR to_regprocedure(format('app.%I()',p_function||'_v2')) IS NULL THEN
+  RAISE EXCEPTION 'Unknown queue reader' USING ERRCODE='22023';
+ END IF;
+ probe:=format('SELECT app.%I() IS DISTINCT FROM app.%I()',p_function||'_legacy',p_function||'_v2');
  FOR u IN SELECT au.id,
    coalesce((SELECT string_agg(DISTINCT r.role::text,',') FROM public.role_assignment r WHERE r.app_user_id=au.id),'') AS roles,
    coalesce((SELECT json_agg(json_build_object('role',r.role,'companyId',r.company_id) ORDER BY r.role,r.company_id)::text FROM public.role_assignment r WHERE r.app_user_id=au.id),'[]') AS grants
   FROM public.app_user au WHERE au.tenant_id=p_tenant ORDER BY au.id LOOP
   PERFORM set_config('app.tenant_id',p_tenant::text,true),set_config('app.user_id',u.id::text,true),set_config('app.roles',u.roles,true),set_config('app.grants',u.grants,true);
-  a:=app.offboarding_posting_queue_access_legacy();b:=app.offboarding_posting_queue_access_v2();
-  users:=users+1;IF a THEN granted:=granted+1; END IF;IF a IS DISTINCT FROM b THEN differs:=differs+1; END IF;
+  EXECUTE probe INTO differ;
+  users:=users+1;IF differ THEN differs:=differs+1; END IF;
  END LOOP;
  PERFORM set_config('app.tenant_id',coalesce(prior_tenant,''),true),set_config('app.user_id',coalesce(prior_user,''),true),set_config('app.roles',coalesce(prior_roles,''),true),set_config('app.grants',coalesce(prior_grants,''),true);
- RAISE LOG 'queue_read compare fn=offboarding_posting_queue_access users=% granted=% differs=%',users,granted,differs;
- RETURN jsonb_build_object('function','offboarding_posting_queue_access','users',users,'granted',granted,'differs',differs);
+ RAISE LOG 'queue_read compare fn=% users=% differs=%',p_function,users,differs;
+ RETURN jsonb_build_object('function',p_function,'users',users,'differs',differs);
 END;
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.queue_read_compare_offboarding(uuid) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app.queue_read_compare(text,uuid) FROM PUBLIC,ai_hr_app;

@@ -74,12 +74,12 @@ describe('offboarding posting queue access once per statement (7330)',()=>{
   expect(await owner.client`select function_name,mode from queue_read_control order by 1`).toEqual([{function_name:'offboarding_posting_queue_access',mode:'legacy'}]);
   const rows=await owner.client<{fn:string;lang:string;app:boolean}[]>`select p.oid::regprocedure::text as fn,l.lanname as lang,has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app
    from pg_proc p join pg_language l on l.oid=p.prolang where p.oid in ('app.offboarding_posting_queue_access()'::regprocedure,'app.offboarding_posting_queue_access_legacy()'::regprocedure,
-    'app.offboarding_posting_queue_access_v2()'::regprocedure,'app.queue_read_set_mode(text,text)'::regprocedure,'app.queue_read_compare_offboarding(uuid)'::regprocedure) order by 1`;
+    'app.offboarding_posting_queue_access_v2()'::regprocedure,'app.queue_read_set_mode(text,text)'::regprocedure,'app.queue_read_compare(text,uuid)'::regprocedure) order by 1`;
   expect(rows).toEqual([
    {fn:'app.offboarding_posting_queue_access()',lang:'plpgsql',app:true},
    {fn:'app.offboarding_posting_queue_access_legacy()',lang:'sql',app:false},
    {fn:'app.offboarding_posting_queue_access_v2()',lang:'plpgsql',app:false},
-   {fn:'app.queue_read_compare_offboarding(uuid)',lang:'plpgsql',app:false},
+   {fn:'app.queue_read_compare(text,uuid)',lang:'plpgsql',app:false},
    {fn:'app.queue_read_set_mode(text,text)',lang:'plpgsql',app:false},
   ]);
   await expect(withTenant(actors['group administrator'],tx=>tx.execute(sql`select app.queue_read_set_mode('offboarding_posting_queue_access','v2')`))).rejects.toThrow();
@@ -99,7 +99,7 @@ describe('offboarding posting queue access once per statement (7330)',()=>{
     for(const [name,ctx] of everyone())expect(await served(ctx),`${state}/${mode}: ${name}`).toBe(expected[name]);
    }
    await setMode('legacy');
-   const [compare]=await owner.client<{result:{users:number;granted:number;differs:number}}[]>`select app.queue_read_compare_offboarding(${b.tenantId}::uuid) as result`;
+   const [compare]=await owner.client<{result:{users:number;differs:number}}[]>`select app.queue_read_compare('offboarding_posting_queue_access',${b.tenantId}::uuid) as result`;
    expect(compare.result.differs).toBe(0);
    expect(compare.result.users).toBeGreaterThan(10);
    if(state!=='none'){
@@ -121,9 +121,9 @@ describe('offboarding posting queue access once per statement (7330)',()=>{
   await owner.db.execute(sql`delete from personnel_posting where tenant_id=${b.tenantId}::uuid and employment_id<>${postingEmployments[0].id}::uuid and source='offboarding'`);
   const self=await both(subjectApprover);expect(self).toEqual({legacy:false,v2:false});
   for(const [name,ctx] of everyone()){const answer=await both(ctx);expect(answer.v2,name).toBe(answer.legacy);}
-  const [compare]=await owner.client<{result:{differs:number}}[]>`select app.queue_read_compare_offboarding(${b.tenantId}::uuid) as result`;
+  const [compare]=await owner.client<{result:{differs:number}}[]>`select app.queue_read_compare('offboarding_posting_queue_access',${b.tenantId}::uuid) as result`;
   expect(compare.result.differs).toBe(0);
-  const [another]=await owner.client<{result:{differs:number}}[]>`select app.queue_read_compare_offboarding(${other.tenantId}::uuid) as result`;
+  const [another]=await owner.client<{result:{differs:number}}[]>`select app.queue_read_compare('offboarding_posting_queue_access',${other.tenantId}::uuid) as result`;
   expect(another.result.differs).toBe(0);
  },300_000);
 
@@ -131,7 +131,7 @@ describe('offboarding posting queue access once per statement (7330)',()=>{
   const ctx=actors['group administrator'];
   const settings=await owner.withTenant(ctx,async tx=>{
    const [before]=await tx.execute<{u:string}>(sql`select current_setting('app.user_id',true) as u`);
-   await tx.execute(sql`select app.queue_read_compare_offboarding(${b.tenantId}::uuid)`);
+   await tx.execute(sql`select app.queue_read_compare('offboarding_posting_queue_access',${b.tenantId}::uuid)`);
    const [after]=await tx.execute<{u:string}>(sql`select current_setting('app.user_id',true) as u`);
    return [before.u,after.u];
   });

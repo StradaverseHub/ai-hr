@@ -1,7 +1,7 @@
 # ADR 0181 live work queues, Q1: offboarding posting queue access, 25 November 2026
 
 Reserve `7330_queue_read_offboarding_access`, journal index `10730`, timestamp `1795495007330`, SQL SHA-256
-`7f14b521555a535c980e4c518d7b9fd5bb508e7579a1a5f423232411a676b535`. Taken from `node .github/ci/check-migration-collisions.mjs --local --next` (PR 307's
+`6313303feb1ff5a25f959ae2b99987a5aba2ab2b44ec4bfe29f8fe5cb39044a3`. Taken from `node .github/ci/check-migration-collisions.mjs --local --next` (PR 307's
 script, run from its branch) on 25 November 2026, which checked main and 398 recent branch journals and reported the
 next free slot after `7320_employment_search_trigram`. Its timestamp is above every reservation it saw. Staging's ledger
 reached 7250 at the time; production is below it. Recheck the installed ledgers and watermarks at admission.
@@ -9,7 +9,7 @@ reached 7250 at the time; production is below it. Recheck the installed ledgers 
 It installs the per-reader switch `queue_read_control` (owner only, every mode `legacy`), renames the 6302 function to
 `offboarding_posting_queue_access_legacy` (guarded by its exact body), adds the once-per-statement
 `offboarding_posting_queue_access_v2`, a PL/pgSQL dispatcher at the original name and grant, and two operator-only
-functions (mode setter, every-user comparison). Inert on install. No policy, trigger, column or row of business data
+functions (mode setter, every-user comparison of any registered reader). Inert on install. No policy, trigger, column or row of business data
 changes. Design: `docs/adr/0181-addendum-live-work-queues-and-approvals.md` (PR 319). This entry carries no deployment
 authority.
 

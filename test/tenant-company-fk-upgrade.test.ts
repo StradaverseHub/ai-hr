@@ -1347,7 +1347,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // comparison are owner only; the dispatcher keeps the original name and its application grant.
    {fn:'app.offboarding_posting_queue_access_legacy()',app:false},
    {fn:'app.offboarding_posting_queue_access_v2()',app:false},
-   {fn:'app.queue_read_compare_offboarding(uuid)',app:false},
+   {fn:'app.queue_read_compare(text,uuid)',app:false},
    {fn:'app.queue_read_set_mode(text,text)',app:false},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
