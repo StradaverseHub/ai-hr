@@ -1,3 +1,21 @@
+# ADR 0181 payroll read addendum, P4: stored payroll history barrier, 25 November 2026
+
+Reserve `7490_payroll_read_history_filter`, journal index `10890`, timestamp `1795495007490`, SQL SHA-256 `563cf49262f7daa248d5a38f041d33c0d81c6746b9e0e713f7ca15a12d51e506`. Next free
+slot after this session's `7480_payroll_read_own_payslips`, which it requires. Recheck both installations' watermarks
+and any competing reservation at admission.
+
+Registers step `p4_history_filter` (legacy) and the pieces of `payroll_history_effective_only`. Adds
+`payroll_history_ineffective_payslip` (the payslips the barrier hides with no stage in flight; owner only, ON DELETE CASCADE from payslip), the owner-only `payroll_history_ineffective_state`
+(per-tenant lock and version) and `payroll_history_ineffective_commit` (one row per writing transaction, whose deferred
+constraint trigger recomputes the noted payslips once at commit), the set-wise recompute, triggers on payslip (insert statement; `UPDATE OF batch_id, employment_id`
+row trigger with WHEN), payroll_batch (`UPDATE OF company_id, pay_period, payroll_cycle_id` with WHEN) and the four
+history tables (statement, transition tables), the once-per-statement touched set of an in-flight stage, the arm, and
+operator verify and rebuild. Builds every existing tenant's set in the migration transaction (one set-wise statement
+per tenant). The migration refuses unless the barrier functions' bodies and the policy are exactly the reviewed ones.
+No existing policy, column or business row changes. Save cost is measured by test/payroll-read-save-cost.test.ts
+against the owner's 2% limit. Design: PR 308, sections 5, 8.3 and 11.4–11.7. This entry carries no deployment
+authority.
+
 # ADR 0181 payroll read addendum, P3: own payslips once per statement, 25 November 2026
 
 Reserve `7480_payroll_read_own_payslips`, journal index `10880`, timestamp `1795495007480`, SQL SHA-256 `d446b58e65b6241da5def8c0454eece8c8b5c4a55daca7ee53e97bf8c0bc2e82`. Next free

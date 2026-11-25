@@ -8114,6 +8114,13 @@
       "when": 1795495007480,
       "tag": "7480_payroll_read_own_payslips",
       "breakpoints": true
+    },
+    {
+      "idx": 10890,
+      "version": "7",
+      "when": 1795495007490,
+      "tag": "7490_payroll_read_history_filter",
+      "breakpoints": true
     }
   ]
 }
