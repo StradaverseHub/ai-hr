@@ -54,7 +54,11 @@ it('coalesces four sparse header owners without omitting any actual assigned wor
  // (2a4de3f53), so drizzle sends no separate SET TRANSACTION.
  expect(phases.statement).toMatchObject({transactions:40,trips:120});
  expect(await sqlState(original(group,['not-a-uuid']))).toBe('22P02');expect(await sqlState(candidate(group,['not-a-uuid']))).toBe('22P02');
- expect(await sqlState(owners(group,['not-a-uuid']))).toBe('22P02');
+ // Every owner still refuses a malformed company id. Since ADR 0181 Phase 4 slice 5 the leave owner checks its company
+ // list in db/sql-arrays.ts uuidArrayParam and refuses before sending a statement (a RangeError, no SQL state); the
+ // other owners still fail the cast in the database (22P02). Which owner answers first decides the error, not whether.
+ const ownersRefusal=await owners(group,['not-a-uuid']).then(()=>'resolved',async(error:unknown)=>error instanceof RangeError?error.message:await sqlState(Promise.reject(error)));
+ expect(['22P02','Invalid identifier list']).toContain(ownersRefusal);
  const [cancel]=await owner.db.insert(s.leaveCancellationRequest).values(cancellation).returning();
  const [resign]=await owner.db.insert(s.resignationRequest).values(resignation).returning();
  const [mgr]=await owner.db.insert(s.employmentReview).values({...review,reviewType:'probation'}).returning();
