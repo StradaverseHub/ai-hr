@@ -18,16 +18,31 @@
 -- employment whose name, code or e-mail is non-ASCII, which the callers' exact matching then decides as before.
 -- The function answers NULL (no narrowing) for a query that is not 3 to 200 printable ASCII characters, where a
 -- trigram index cannot help; callers then read exactly as before.
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- Both are trusted extensions, created by the database owner (deploy/bootstrap-db.sql makes ai_hr_owner the owner of
+-- ai_hr), in their own schema so their support functions stay out of public and app.
+CREATE SCHEMA IF NOT EXISTS extensions;
 --> statement-breakpoint
-CREATE EXTENSION IF NOT EXISTS btree_gin;
+REVOKE ALL ON SCHEMA extensions FROM PUBLIC;
+--> statement-breakpoint
+CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA extensions;
+--> statement-breakpoint
+CREATE EXTENSION IF NOT EXISTS btree_gin SCHEMA extensions;
+--> statement-breakpoint
+DO $extensions$
+BEGIN
+ IF (SELECT n.nspname FROM pg_catalog.pg_extension x JOIN pg_catalog.pg_namespace n ON n.oid=x.extnamespace WHERE x.extname='pg_trgm') IS DISTINCT FROM 'extensions'
+  OR (SELECT n.nspname FROM pg_catalog.pg_extension x JOIN pg_catalog.pg_namespace n ON n.oid=x.extnamespace WHERE x.extname='btree_gin') IS DISTINCT FROM 'extensions' THEN
+  RAISE EXCEPTION 'pg_trgm and btree_gin must be installed in schema extensions' USING ERRCODE='55000';
+ END IF;
+END;
+$extensions$;
 --> statement-breakpoint
 -- Tenant-led: (tenant_id, text) GIN indexes, so a search reads only its own tenant's entries.
-CREATE INDEX person_full_name_search_trgm ON public.person USING gin (tenant_id, lower(full_name COLLATE "C") gin_trgm_ops);
+CREATE INDEX person_full_name_search_trgm ON public.person USING gin (tenant_id, lower(full_name COLLATE "C") extensions.gin_trgm_ops);
 --> statement-breakpoint
-CREATE INDEX person_primary_email_search_trgm ON public.person USING gin (tenant_id, lower(coalesce(primary_email, '') COLLATE "C") gin_trgm_ops);
+CREATE INDEX person_primary_email_search_trgm ON public.person USING gin (tenant_id, lower(coalesce(primary_email, '') COLLATE "C") extensions.gin_trgm_ops);
 --> statement-breakpoint
-CREATE INDEX employment_code_search_trgm ON public.employment USING gin (tenant_id, lower(coalesce(employee_code, '') COLLATE "C") gin_trgm_ops);
+CREATE INDEX employment_code_search_trgm ON public.employment USING gin (tenant_id, lower(coalesce(employee_code, '') COLLATE "C") extensions.gin_trgm_ops);
 --> statement-breakpoint
 -- The always-included non-ASCII rows, read through small partial indexes rather than a scan.
 CREATE INDEX person_full_name_non_ascii_idx ON public.person (tenant_id) WHERE (full_name COLLATE "C") ~ '[^ -~]';

@@ -266,6 +266,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10630,version:'7',when:1795495007230,tag:'7230_assignment_current_department_index',breakpoints:true},
  {idx:10640,version:'7',when:1795495007240,tag:'7240_access_visible_employment',breakpoints:true},
  {idx:10645,version:'7',when:1795495007245,tag:'7245_access_visible_employment_policy_restore',breakpoints:true},
+ {idx:10720,version:'7',when:1795495007320,tag:'7320_employment_search_trigram',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1368,6 +1369,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    // person_rls applies to every role: also every role holding a privilege on person (7240's per-policy grant).
    {fn:'app.employment_partner_companies()',app:true,acl:'{OWNER=X/OWNER,ai_hr_reward_setup_reader=X/OWNER,ai_hr_app=X/OWNER}'},
    {fn:'app.employment_read_companies()',app:true},
+   // 7320 (ADR 0181 Phase 4): the trigram-indexed employee search candidates (ids only, visible set only).
+   {fn:'app.employment_search_candidates(text,uuid[],boolean)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
