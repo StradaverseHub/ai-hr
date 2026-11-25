@@ -1,0 +1,77 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Custom PCB</title><style>
+*{box-sizing:border-box}body{margin:0;padding:28px;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;color:#1f2430;font-size:14px}
+h1{font-size:18px;margin:0 0 4px}p.sub{margin:0 0 20px;color:#6b7280;font-size:13px}
+.row{display:flex;gap:20px;align-items:flex-start}.col{flex:1}
+.card{background:#fff;border:1px solid #e3e5ea;border-radius:10px;padding:18px 20px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.cap{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#4b5563;margin:0 0 10px}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;background:#eef2ff;color:#3730a3;margin-left:6px;vertical-align:1px}
+.sec{font-weight:600;font-size:15px;margin:0 0 2px}.emp{font-size:12px;color:#6b7280;margin:0 0 14px}
+label{display:block;font-size:12px;font-weight:500;color:#6b7280;margin:12px 0 5px}
+.in{height:36px;border:1px solid #d6d9df;border-radius:6px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;background:#fff;font-size:14px}
+.in.dim{background:#f7f7f9;color:#5f6672}.in.focus{border-color:#2563eb;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+.chev{color:#5f6672;font-size:11px}
+.menu{border:1px solid #d6d9df;border-radius:6px;margin-top:4px;background:#fff;box-shadow:0 8px 20px rgba(0,0,0,.08);overflow:hidden}
+.menu div{padding:7px 10px;font-size:13.5px}.menu .new{background:#f0f6ff}.menu .new b{color:#1d4ed8}.menu .sel{background:#2563eb;color:#fff}
+.menu .sep{border-top:1px solid #eceef2;padding:0;margin:3px 0}
+.hint{font-size:12px;color:#6b7280;margin-top:5px;line-height:1.45}
+.unit{color:#6b7280;font-size:13px}
+.note{margin-top:14px;background:#fffbeb;border:1px solid #fde68a;color:#7c5a06;border-radius:6px;padding:9px 11px;font-size:12.5px;line-height:1.45}
+.save{margin-top:16px;display:flex;justify-content:flex-end}.btn{background:#2563eb;color:#fff;border-radius:6px;padding:8px 16px;font-weight:600;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}td{padding:8px 0;border-bottom:1px solid #f0f1f4}td.r{text-align:right;font-variant-numeric:tabular-nums}
+tr.tot td{font-weight:700;border-bottom:none;padding-top:10px}
+.pill{font-size:11px;background:#f1f5f9;color:#334155;padding:2px 7px;border-radius:4px}
+.foot{margin-top:18px;font-size:12px;color:#5f6672}
+</style></head><body>
+<h1>People &rsaquo; Personnel Management &rsaquo; employee &rsaquo; Bank &amp; Statutory &rsaquo; Income Tax (PCB)</h1>
+<p class="sub">Sketch only &mdash; wording, spacing and colours will follow the real screen. New items are highlighted in blue.</p>
+<div class="row">
+ <div class="col card">
+  <p class="cap">1 &middot; Choosing a custom option</p>
+  <p class="sec">Income Tax (PCB)</p><p class="emp">Employer: Example Sdn Bhd</p>
+  <label>Tax Category</label>
+  <div class="in"><span>Married and Spouse Not Working</span><span class="chev">&#9660;</span></div>
+  <div class="hint">Unchanged. Kept on record so switching back to the standard calculation is one click.</div>
+  <label>Income Tax Resident</label>
+  <div class="in focus"><span>Choose a tax category</span><span class="chev">&#9650;</span></div>
+  <div class="menu">
+   <div>Resident</div><div>Non-Resident</div><div>Returning Expert Program (REP)</div><div>Knowledge Worker (IRDA)</div><div>Position C-Suites</div>
+   <div class="sep"></div>
+   <div class="new"><b>Custom &ndash; Fixed Tax Amount (RM)</b></div>
+   <div class="new"><b>Custom &ndash; Tax Rate (%)</b></div>
+  </div>
+ </div>
+ <div class="col card">
+  <p class="cap">2 &middot; Fixed Tax Amount <span class="tag">new</span></p>
+  <p class="sec">Income Tax (PCB)</p><p class="emp">Employer: Example Sdn Bhd</p>
+  <label>Tax Category</label>
+  <div class="in dim"><span>Married and Spouse Not Working</span><span class="chev">&#9660;</span></div>
+  <div class="hint">Not used while a custom option is selected.</div>
+  <label>Income Tax Resident</label>
+  <div class="in"><span>Custom &ndash; Fixed Tax Amount (RM)</span><span class="chev">&#9660;</span></div>
+  <label>Monthly PCB amount</label>
+  <div class="in focus"><span><span class="unit">RM</span>&nbsp; 450.00</span><span></span></div>
+  <div class="hint">Deducted exactly as entered every month this employee is paid. No PCB formula, tax table or relief is applied.</div>
+  <div class="note">Payroll will use this amount from the next payroll you process or reprocess. Closed payrolls are not changed.</div>
+  <div class="save"><span class="btn">Save</span></div>
+ </div>
+ <div class="col card">
+  <p class="cap">3 &middot; Tax Rate <span class="tag">new</span></p>
+  <p class="sec">Income Tax (PCB)</p><p class="emp">Employer: Example Sdn Bhd</p>
+  <label>Tax Category</label>
+  <div class="in dim"><span>Married and Spouse Not Working</span><span class="chev">&#9660;</span></div>
+  <div class="hint">Not used while a custom option is selected.</div>
+  <label>Income Tax Resident</label>
+  <div class="in"><span>Custom &ndash; Tax Rate (%)</span><span class="chev">&#9660;</span></div>
+  <label>Tax rate</label>
+  <div class="in focus"><span>30.00 &nbsp;<span class="unit">%</span></span><span></span></div>
+  <div class="hint">Worked out the same way as Non-Resident today, with this rate instead of the standard 30%.</div>
+  <p class="cap" style="margin-top:20px">PCB detail in the payroll</p>
+  <table>
+   <tr><td>Total monthly remuneration</td><td class="r">RM 3,000.00</td></tr>
+   <tr><td>Custom tax rate <span class="pill">set by HR</span></td><td class="r">30.00%</td></tr>
+   <tr class="tot"><td>PCB / MTD this month</td><td class="r">RM 900.00</td></tr>
+  </table>
+ </div>
+</div>
+<p class="foot">Employees on Resident, Non-Resident, REP, Knowledge Worker or C-Suites see no change at all.</p>
+</body></html>

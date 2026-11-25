@@ -362,6 +362,8 @@ export interface CountryPackClient {
     taxCircumstanceOf?: typeof import('./my/tax-circumstance')['taxCircumstanceOf'];
     readSavedTaxCircumstance?: typeof import('./my/tax-circumstance')['readSavedTaxCircumstance'];
     taxSelectionSchemes?: readonly string[];
+    /** ADR 0183 — the Income Tax Resident choices that carry an HR-entered PCB number (MY: custom_fixed, custom_rate). */
+    customPcbSchemes?: readonly string[];
   };
 
   /**

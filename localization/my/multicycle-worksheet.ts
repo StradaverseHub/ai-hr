@@ -597,9 +597,14 @@ function replayEmployeeMonth(p: {
     : x.kind === 'mtd'
     ? {scheme: x.calculationScheme ?? 'resident', declarationId: x.taxSchemeDeclarationId, selection: x.taxSelection,taxCircumstance:x.taxCircumstance}
     : x.kind === 'flat' && x.nonResident && x.rate === 0.3
-      ? {scheme: 'non_resident' as const, declarationId: undefined, selection: x.taxSelection,taxCircumstance:x.taxCircumstance} : null);
+      ? {scheme: 'non_resident' as const, declarationId: undefined, selection: x.taxSelection,taxCircumstance:x.taxCircumstance}
+    // ADR 0183 — a custom PCB month replays with the number its own payslips recorded, never today's setting.
+    : x.kind === 'custom'
+      ? {scheme: x.method === 'rate' ? 'custom_rate' as const : 'custom_fixed' as const, declarationId: undefined, selection: x.taxSelection,taxCircumstance:x.taxCircumstance,
+         customPcb: {amount: x.amount, rate: x.ratePercent}} : null);
   const saved = schemes[0];
-  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId || JSON.stringify(x.selection) !== JSON.stringify(saved.selection)||JSON.stringify(x.taxCircumstance)!==JSON.stringify(saved.taxCircumstance))) {
+  const customOf = (x: (typeof schemes)[number]) => x && 'customPcb' in x ? x.customPcb : undefined;
+  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId || JSON.stringify(x.selection) !== JSON.stringify(saved.selection)||JSON.stringify(x.taxCircumstance)!==JSON.stringify(saved.taxCircumstance)||JSON.stringify(customOf(x))!==JSON.stringify(customOf(saved)))) {
     return {reason: 'tax_scheme_not_reconstructable', excluded: false};
   }
   if(saved.taxCircumstance){
@@ -608,6 +613,8 @@ function replayEmployeeMonth(p: {
   }
   opts.calculationScheme = saved.scheme;
   opts.taxSchemeDeclarationId = saved.declarationId;
+  const savedCustom = customOf(saved);
+  if (savedCustom) opts.customPcb = savedCustom;
   if (saved.selection) Object.assign(opts, saved.selection);
   const month = Number(first.period.slice(5, 7));
   const priorAcc = p.priorAcc;

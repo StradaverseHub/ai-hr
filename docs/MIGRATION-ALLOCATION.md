@@ -4,7 +4,7 @@ Reserve `7450_payroll_run_outstanding`, journal index `10850`, timestamp `179549
 `da307ecf6fd170778c9b760cd8adac44b09fb58cecf69d32fcc4ada204d7cb13`. Taken from
 `node .github/ci/check-migration-collisions.mjs --local --next` (the script from `claude/migration-collision-check`, run
 from this branch) on 25 November 2026, which checked main and 397 recent branch journals and named 7450 as the next free
-slot, after `7440_payroll_read_history_summary`. Built on alpha `f34f6ff976` (ledger ending `7360`). Neither installation's
+slot, after `7440_payroll_read_history_summary`. Built on alpha `f34f6ff976` (ledger ending `7360`) and merged with alpha `143bde4d5` (ledger ending `7390_custom_pcb_selection`), which 7450 stays above. Neither installation's
 watermark was read from this session; recheck both, and any competing reservation, before admission.
 
 Creates `public.payroll_run_outstanding` (one row per processed run: the close-pending employment ids, when they were
@@ -13,6 +13,25 @@ administrator of the run's company (`app.can_admin_payroll_for`); SELECT, INSERT
 the `payroll_run_outstanding_refresh` bulk-job kind (default lane, no exclusivity). No existing table, row, policy or
 function changes; the new table starts empty. This entry carries no deployment authority.
 
+# Custom PCB on the Income Tax Resident selection (ADR 0183, board d8dc0a8c), 25 November 2026
+
+Reserve `7390_custom_pcb_selection`, journal index `10790`, timestamp `1795495007390`,
+SQL SHA-256 `a840b463c061f47cf7245b393258db8fff8bb2623fb90adc44770d4db4ede175`.
+
+**Renumbered from `7370_custom_pcb_selection` (idx `10770`, when `1795495007370`).** The 7370 slot is abandoned: it
+was never applied on any installation. The owner chose to release PR 326 (`7360_audit_trail_company_scope`) first
+("PR 326 first", confirmed in the board session). During that change PR 326 briefly renumbered to 7380 and withdrew it;
+the staging coordinator reconciled PR 326 at 7360 (f3894d18a) and kept this migration at 7390, above both.
+`check-migration-collisions.mjs --local --next` (from PR 307's commit bbab49168) checked main and 398 recent branch
+journals and named 7390 as free; the coordinator recorded it in the shared map. The SQL bytes are unchanged. Install
+order on staging: release 9 (7330, 7340), then 7360, then 7390; 7370 and 7380 are unused.
+Recheck both installations' watermarks, and any competing reservation, before admission.
+
+Adds nullable `custom_pcb_amount numeric(12,2)` and `custom_pcb_rate numeric(5,2)` to `employment_tax_selection_my`
+(every existing row NULL), widens `employment_tax_selection_my_scheme_check` with `custom_fixed` and `custom_rate`,
+adds `employment_tax_selection_my_custom_pcb_check` (a custom scheme has exactly its own number; other schemes none)
+and grants `ai_hr_app` UPDATE on the two columns. The checks scan the table once under the migration's lock; no
+policy, function or other object changes.
 # Audit Trail company scope (ADR 0182 Phase 1), 25 November 2026
 
 Reserve `7360_audit_trail_company_scope`, journal index `10760`, timestamp `1795495007360`,

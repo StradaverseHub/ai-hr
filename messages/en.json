@@ -865,7 +865,9 @@
         "scheme_resident": "Normal resident",
         "scheme_non_resident": "Non-resident",
         "error_declaration_revoked": "The recorded approval for this employer and payroll period was revoked. Record the applicable approved scheme before recalculating.",
-        "error_declaration_outside_period": "The recorded approval does not cover this payroll period. Complete the applicable approval period before recalculating."
+        "error_declaration_outside_period": "The recorded approval does not cover this payroll period. Complete the applicable approval period before recalculating.",
+        "scheme_custom_fixed": "Custom – fixed tax amount",
+        "scheme_custom_rate": "Custom – tax rate"
       },
       "backToPeople": "People",
       "backToPersonnelAdmin": "Personnel Management",
@@ -2251,7 +2253,15 @@
         "recordOnly": "Record only — closed payroll unchanged",
         "previous": "Previous",
         "next": "Next"
-      }
+      },
+      "taxResidencyCustomFixed": "Custom – Fixed Tax Amount (RM)",
+      "taxResidencyCustomRate": "Custom – Tax Rate (%)",
+      "customPcbAmountLabel": "Monthly PCB amount",
+      "customPcbRateLabel": "Tax rate",
+      "customPcbAmountHint": "Deducted exactly as entered in every month this employee is paid. No PCB formula, tax table or relief is applied.",
+      "customPcbRateHint": "Worked out the same way as Non-Resident: all taxable pay for the month, including bonus, times this rate, with no reliefs.",
+      "customPcbTakesEffect": "Payroll uses this from the next payroll you process or reprocess. Closed payrolls are not changed.",
+      "customPcbCategoryNotUsed": "Kept on record, but not used while a custom option is selected in Income Tax Resident."
     },
     "import": {
       "title": "Import employees",
@@ -8783,7 +8793,8 @@
       "colHeldMonth": "Month",
       "colHeldReason": "Reason",
       "heldForTaxReason": "Income tax history for {period} needs review: {reason}",
-      "heldForTaxReasonGeneric": "Income tax history for {period} needs review."
+      "heldForTaxReasonGeneric": "Income tax history for {period} needs review.",
+      "taxSelection_custom_value_missing": "The custom PCB option has no saved amount or rate. Open the employee’s Income Tax (PCB) section and save it."
     },
     "guide": {
       "title": "Payroll Workflow Guide",
@@ -10171,7 +10182,21 @@
       "taxCategoryNone": "None",
       "taxCategoryLegacy3": "Category 3 — spouse working, divorced or widowed, or single with adopted child",
       "taxCategorySingleHint": "LHDN Category 1 means Single. Married employees follow their spouse’s working status, even when no child relief is claimed.",
-      "taxCategoryNoneExplanation": "Tax Category was None for this payroll attempt. PCB was not calculated; other statutory calculations continue normally."
+      "taxCategoryNoneExplanation": "Tax Category was None for this payroll attempt. PCB was not calculated; other statutory calculations continue normally.",
+      "scheme_custom_fixed": "Custom – fixed tax amount set by HR",
+      "scheme_custom_rate": "Custom – tax rate set by HR",
+      "customHeading": "Custom PCB set by HR",
+      "customRate": "Custom tax rate set by HR",
+      "customAmount": "Fixed monthly PCB set by HR",
+      "customRateFormula": "( remuneration + additional remuneration ) × custom tax rate",
+      "customFixedFormula": "PCB = the fixed monthly amount set by HR",
+      "customRateNote": "HR chose a custom tax rate for this employee. It is applied the way the Non-Resident rate is, with no reliefs, tax table or accumulated totals.",
+      "customFixedNote": "HR chose a fixed monthly PCB for this employee. It is deducted as entered: no PCB formula, tax table, relief or rounding is applied, and a second payroll in the same month does not deduct it again.",
+      "worksheetCustomHeading": "Custom PCB set by HR",
+      "worksheetCustomRate": "Custom tax rate applied",
+      "worksheetCustomAmount": "Fixed monthly amount set by HR",
+      "worksheetCustomRateNote": "HR set a custom tax rate for this employee, applied to this month’s remuneration the way the Non-Resident rate is. LHDN publishes no calculation worksheet for it, so the lines above are the whole calculation.",
+      "worksheetCustomFixedNote": "HR set a fixed monthly PCB for this employee. Nothing was calculated: the amount above is the deduction, so there is no LHDN worksheet to set beside it."
     },
     "multiCycleWorksheet": {
       "title": "Multi-Cycle Statutory Worksheet",
@@ -10569,7 +10594,9 @@
       "error_confirmation_required": "Confirm the applicable category in Income Tax Resident and save once. Older settings need one-time confirmation; no separate declaration or approval reference is required.",
       "error_invalid_scheme": "Select a valid Income Tax Resident category.",
       "error_citizenship_unknown": "The recorded citizenship does not meet the resident non-citizen C-Suite requirement.",
-      "error_not_resident": "The recorded tax residency does not meet this resident scheme requirement."
+      "error_not_resident": "The recorded tax residency does not meet this resident scheme requirement.",
+      "error_custom_value_missing": "Enter the monthly PCB amount or the tax rate for the custom option.",
+      "error_custom_value_invalid": "Enter an amount above RM0, or a rate above 0% and no more than 100%, with up to two decimals."
     },
     "runPicker": {
       "all": "All payroll cycles",
