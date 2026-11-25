@@ -280,6 +280,118 @@ export function resolveProbationMonths(probationMonths: number | null | undefine
   return probationMonths != null && probationMonths > 0 ? probationMonths : 3;
 }
 
+/** The employment row a hire inserts. Shared by hireEmployee and the employee import's set path
+ * (core/employee-import-set.ts), so both write the same columns.
+ *
+ * 89ea527b — the ONE-TIME Group Join Date → Join Date synchronisation. At creation the two dates are by definition
+ * the same day: hiredOn is the employee's first day anywhere in the GROUP, joinDate their first day with the CURRENT
+ * company, and a brand-new employment has only ever had one company. After creation both dates are movement-only.
+ * 8590615a — THE TWO-HOMES FIX: a contract hire seeds contract_end_date = the end date captured and
+ * contract_start_date = hiredOn; provisional_end_on is still written unchanged (full_time and intern hires depend on
+ * it). 2260a06b — the intern twin: internship_end_date from the same end date. */
+export function hireEmploymentValues(tenantId: string, personId: string, p: Pick<HireParams, 'companyId' | 'hiredOn' | 'gradeId' | 'provisionalEndOn' | 'employmentType'>, employeeCode: string) {
+  const provisionalEndOn = p.provisionalEndOn ?? null;
+  const isContractHire = p.employmentType === 'contract';
+  return {
+    tenantId,
+    personId,
+    companyId: p.companyId,
+    hiredOn: p.hiredOn,
+    joinDate: p.hiredOn,
+    employeeCode,
+    gradeId: p.gradeId ?? null,
+    provisionalEndOn,
+    contractStartDate: isContractHire ? p.hiredOn : null,
+    contractEndDate: isContractHire ? provisionalEndOn : null,
+    internshipEndDate: p.employmentType === 'intern' ? provisionalEndOn : null,
+  };
+}
+
+/** The `employment.hired` event payload. `hireInformation` is the employment row as written. Shared with the set
+ * path. Backward-compat: the original keys (personId, companyId, departmentId, hiredOn) are PRESERVED unrenamed
+ * (CP22/CP22A worklist + audit view read them); the hiring enhancement only ADDS keys. R81 (9cbf5e0d):
+ * `assignmentStatus` is the DERIVED status the new hire starts on. */
+export function hiredEventPayload(p: Pick<HireParams, 'companyId' | 'departmentId' | 'businessUnitId' | 'hiredOn' | 'positionId' | 'costCenterId' | 'gradeId' | 'employmentType'>, personId: string, provisionalEndOn: string | null, hireInformation: Record<string, unknown>) {
+  return {
+    employmentInformation: Object.fromEntries(MOVEMENT_INFORMATION_FIELDS.map(field => [field, hireInformation[field] ?? null])),
+    personId,
+    companyId: p.companyId,
+    departmentId: p.departmentId,
+    businessUnitId: p.businessUnitId ?? null,
+    hiredOn: p.hiredOn,
+    positionId: p.positionId ?? null,
+    costCenterId: p.costCenterId ?? null,
+    gradeId: p.gradeId ?? null,
+    employmentType: p.employmentType,
+    assignmentStatus: deriveEmploymentStatus({ provisionalEndOn }, p.hiredOn),
+    provisionalEndOn,
+  };
+}
+
+/** The opening ledger grant of one standing leave type for a new hire, in days, or null when nothing is credited.
+ * Shared by hireEmployee and the employee import's set path, so both credit the same figure. */
+export function hireOpeningGrantDays({ pack, leaveType: lt, templateBand, rules, hiredOn }: {
+  pack: NonNullable<ReturnType<typeof packFor>>;
+  leaveType: { id: string; code: string; yearCycleOverride?: string | null };
+  templateBand: Parameters<typeof composeEntitlement>[0]['templateBand'];
+  rules: Parameters<typeof composeEntitlement>[0]['rules'];
+  hiredOn: string;
+}): number | null {
+  // bc36c768 — THE NOT-CONFIGURED GATE, FIRST, before any method resolution. This is the gate that
+  // makes the reset safe for NEW JOINERS: a cleared type has no accrual_method, an absent method
+  // has always meant the LUMP path, and the lump path would credit this new hire a full (or
+  // month-prorated) year's entitlement on the spot — which nothing in this system can take back.
+  // They are credited +0.00 instead and lose nothing: saving the earning method for the type runs
+  // the cohort catch-up that credits everything owed (reprojectEntitlementForLeaveTypeCohort).
+  if (isAccrualUnconfigured(rules)) return null;
+  // 9816a5ad step 2: the winning template band supplies the DAYS; the leave TYPE supplies every
+  // rule. The SAME `composeEntitlement` openLeaveYear / accrueEarnedLeave / the recalc kernel use —
+  // a hire grant that resolved by any other route would disagree with the very next reprojection
+  // and post a permanent delta. fa3f4ccb: the EA floor is passed for the below-minimum flag only;
+  // it no longer clamps the hire grant.
+  const { days, policy: polFor } = composeEntitlement({
+    floorDays: pack.leave.entitlement(lt.code, 0),
+    // A new hire has 0 completed years of service (explicit — the argument is required so a
+    // band-configured table resolves its 0-year band at hire).
+    templateBand,
+    rules,
+  });
+  // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.
+  if (isEarnedMethod(polFor?.method)) return null;
+  if (days <= 0) return null;
+  // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
+  // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year
+  // entitlement and must not be prorated for mid-year joiners.
+  // Anniversary to Calendar (f3a64d90 → adcdf215): an a2c ANNUAL type does NOT month-lump the hire
+  // year — it grants the full prorated part-year (join → 31 Dec) UP FRONT, so the hire grant opens
+  // at the whole up-front figure (e.g. a 6-Jan, 20-day joiner opens at 19.73, not a growing sliver).
+  // A fresh hire has no terminatedOn, so no serviceEnd is passed and it gets the full up-front value;
+  // reprojectA2cEntitlement / a profile recalc keep it in sync (and would cap a later leaver at their
+  // exit). Non-ANNUAL a2c types keep the existing full grant (s.60F).
+  //
+  // r193 LIFTED THIS OUT VERBATIM into `hireYearGrantDays` (core/leave.ts) — unchanged in every
+  // branch — because `openLeaveYear` now reaches employments hired during the leave year and must
+  // shape their first year IDENTICALLY or the recalc kernel claws the difference back. One
+  // definition, two callers; see that function's header for the argument.
+  const grantRaw = hireYearGrantDays({
+    days,
+    typeCode: lt.code,
+    yearCycleOverride: lt.yearCycleOverride,
+    hiredOn,
+  });
+  // Feedback b81d3c52 — Rounding Method: the reporter's own worked example (a 6-Jan joiner whose
+  // pro-rated entitlement lands on a fraction). Tidy the CALCULATED figure to a whole day as the
+  // FINAL step of the earning calculation and BEFORE the max-balance clamp — the identical point
+  // and order openLeaveYear / accrueEarnedLeave / projectExpectedEntitlement apply it, so the
+  // credited ledger row and the recalc kernel's projection can never disagree. The pro-ration
+  // formula itself (whole months remaining) is unchanged. No method ⇒ pass-through.
+  const grantRounded = applyRounding(grantRaw, polFor?.roundingMethod, polFor?.roundingThreshold, polFor?.roundingBands);
+  // Feedback 9d8cf621 — Maximum Balance Days: a new hire has 0 prior balance, so clamp the initial
+  // grant so it never opens above the resolved band's cap. null ⇒ pass-through (grant unchanged).
+  const { grant } = applyMaxBalance(0, grantRounded, polFor?.maxBalanceDays);
+  return grant > 0 ? grant : null;
+}
+
 export async function hireEmployee(ctx: SessionContext, p: HireParams,
   /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
   outerTx?: Tx) {
@@ -362,25 +474,9 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
     // insert — at creation the contract starts the day the employment does). provisional_end_on is still
     // written unchanged, because full_time and intern hires depend on it and on the
     // computeReviewWindow fallback that reads it. Non-contract hires are byte-identical to before.
-    const isContractHire = p.employmentType === 'contract';
     const [emp] = await tx
       .insert(employment)
-      .values({
-        tenantId: ctx.tenantId,
-        personId,
-        companyId: p.companyId,
-        hiredOn: p.hiredOn,
-        joinDate: p.hiredOn,
-        employeeCode,
-        gradeId: p.gradeId ?? null,
-        provisionalEndOn,
-        contractStartDate: isContractHire ? p.hiredOn : null,
-        contractEndDate: isContractHire ? provisionalEndOn : null,
-        // 2260a06b — the intern twin of the contract fix above: the internship end date keyed in the Draft is
-        // the employment's internship_end_date from activation onwards (the Employment tab, Movement, the
-        // correction workbook and the internship review all read that column). provisional_end_on keeps it too.
-        internshipEndDate: p.employmentType === 'intern' ? provisionalEndOn : null,
-      })
+      .values(hireEmploymentValues(ctx.tenantId, personId, p, employeeCode))
       .returning({ id: employment.id });
 
     // R81 (9cbf5e0d): the `status` column is GONE from `assignment` (migration 0331). A hire used to write
@@ -490,59 +586,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
           .where(inArray(leaveType.id, p.grantLeaveTypes.map((t) => t.id)));
         const typeRulesById = new Map(typeRuleRows.map((r) => [r.id, r]));
         for (const lt of p.grantLeaveTypes) {
-          // bc36c768 — THE NOT-CONFIGURED GATE, FIRST, before any method resolution. This is the gate that
-          // makes the reset safe for NEW JOINERS: a cleared type has no accrual_method, an absent method
-          // has always meant the LUMP path, and the lump path would credit this new hire a full (or
-          // month-prorated) year's entitlement on the spot — which nothing in this system can take back.
-          // They are credited +0.00 instead and lose nothing: saving the earning method for the type runs
-          // the cohort catch-up that credits everything owed (reprojectEntitlementForLeaveTypeCohort).
-          if (isAccrualUnconfigured(typeRulesById.get(lt.id))) continue;
-          // 9816a5ad step 2: the winning template band supplies the DAYS; the leave TYPE supplies every
-          // rule. The SAME `composeEntitlement` openLeaveYear / accrueEarnedLeave / the recalc kernel use —
-          // a hire grant that resolved by any other route would disagree with the very next reprojection
-          // and post a permanent delta. fa3f4ccb: the EA floor is passed for the below-minimum flag only;
-          // it no longer clamps the hire grant.
-          const { days, policy: polFor } = composeEntitlement({
-            floorDays: pack.leave.entitlement(lt.code, 0),
-            // A new hire has 0 completed years of service (explicit — the argument is required so a
-            // band-configured table resolves its 0-year band at hire).
-            templateBand: templates.bandFor(emp.id, lt.id, 0),
-            rules: typeRulesById.get(lt.id),
-          });
-          // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.
-          if (isEarnedMethod(polFor?.method)) continue;
-          if (days <= 0) continue;
-          // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
-          // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year
-          // entitlement and must not be prorated for mid-year joiners.
-          // Anniversary to Calendar (f3a64d90 → adcdf215): an a2c ANNUAL type does NOT month-lump the hire
-          // year — it grants the full prorated part-year (join → 31 Dec) UP FRONT, so the hire grant opens
-          // at the whole up-front figure (e.g. a 6-Jan, 20-day joiner opens at 19.73, not a growing sliver).
-          // A fresh hire has no terminatedOn, so no serviceEnd is passed and it gets the full up-front value;
-          // reprojectA2cEntitlement / a profile recalc keep it in sync (and would cap a later leaver at their
-          // exit). Non-ANNUAL a2c types keep the existing full grant (s.60F).
-          //
-          // r193 LIFTED THIS OUT VERBATIM into `hireYearGrantDays` (core/leave.ts) — unchanged in every
-          // branch — because `openLeaveYear` now reaches employments hired during the leave year and must
-          // shape their first year IDENTICALLY or the recalc kernel claws the difference back. One
-          // definition, two callers; see that function's header for the argument.
-          const grantRaw = hireYearGrantDays({
-            days,
-            typeCode: lt.code,
-            yearCycleOverride: lt.yearCycleOverride,
-            hiredOn: p.hiredOn,
-          });
-          // Feedback b81d3c52 — Rounding Method: the reporter's own worked example (a 6-Jan joiner whose
-          // pro-rated entitlement lands on a fraction). Tidy the CALCULATED figure to a whole day as the
-          // FINAL step of the earning calculation and BEFORE the max-balance clamp — the identical point
-          // and order openLeaveYear / accrueEarnedLeave / projectExpectedEntitlement apply it, so the
-          // credited ledger row and the recalc kernel's projection can never disagree. The pro-ration
-          // formula itself (whole months remaining) is unchanged. No method ⇒ pass-through.
-          const grantRounded = applyRounding(grantRaw, polFor?.roundingMethod, polFor?.roundingThreshold, polFor?.roundingBands);
-          // Feedback 9d8cf621 — Maximum Balance Days: a new hire has 0 prior balance, so clamp the initial
-          // grant so it never opens above the resolved band's cap. null ⇒ pass-through (grant unchanged).
-          const { grant } = applyMaxBalance(0, grantRounded, polFor?.maxBalanceDays);
-          if (grant <= 0) continue;
+          const grant = hireOpeningGrantDays({ pack, leaveType: lt, templateBand: templates.bandFor(emp.id, lt.id, 0), rules: typeRulesById.get(lt.id), hiredOn: p.hiredOn });
+          if (grant === null) continue;
           await tx.insert(leaveLedger).values({
             tenantId: ctx.tenantId,
             employmentId: emp.id,
@@ -563,28 +608,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       eventType: 'employment.hired',
       actor: actorOf(ctx),
       subjectEmploymentId: emp.id,
-      // Backward-compat: the original keys (personId, companyId, departmentId, hiredOn) are PRESERVED
-      // unrenamed (CP22/CP22A worklist + audit view read them). The hiring enhancement only ADDS keys.
-      payload: {
-        employmentInformation:Object.fromEntries(MOVEMENT_INFORMATION_FIELDS.map(field=>[field,hireInformation[field]??null])),
-        personId,
-        companyId: p.companyId,
-        departmentId: p.departmentId,
-        businessUnitId: p.businessUnitId ?? null,
-        hiredOn: p.hiredOn,
-        positionId: p.positionId ?? null,
-        costCenterId: p.costCenterId ?? null,
-        gradeId: p.gradeId ?? null,
-        employmentType: p.employmentType,
-        // R81 (9cbf5e0d): this key used to carry the stored `assignment.status` written on the line above.
-        // With the column dropped there is no stored status to record, so the event carries the DERIVED
-        // status the new hire actually starts on — computed from the very dates this event already reports,
-        // so the audit trail keeps a status without anything having to store one. Historical hire events
-        // keep whatever value they were written with; this is not a rewrite of the past.
-        assignmentStatus: deriveEmploymentStatus({ provisionalEndOn }, p.hiredOn),
-        provisionalEndOn,
-        // Additive only (feedback 38668d9b) — original keys above are preserved for CP22/audit readers.
-      },
+      // Backward-compat keys and the derived status: see hiredEventPayload.
+      payload: hiredEventPayload(p, personId, provisionalEndOn, hireInformation),
     });
 
     const [taxCompany]=await tx.select({country:company.country}).from(company).where(eq(company.id,p.companyId)).limit(1);

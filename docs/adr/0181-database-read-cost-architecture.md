@@ -246,6 +246,52 @@ payroll truth stays in its source tables.
     discards identically. The group tax resolver is compared employee by employee with the single resolver, refusals
     included. `test/payroll-processing-job.test.ts` runs its synchronous-oracle comparison (golden digest and audit
     events) both ways.
+- **J2, imports: employee import (built, 25 November 2026; not yet on staging).** Profiled at the 70-company shape on
+  the hosted runner, a staged hire cost about 105–115 statements and 190–270 ms a row, spread over many small
+  statements (locks and checks repeated per row, about 17 statements per row rebuilding the visible-employment array,
+  five single-row event inserts, deferred work at commit); the calculation was about 20% of it. The first employee
+  step of a chunk of the common shape (a new person hired into one company with the statutory profile, the tax
+  selection, the IC-derived date of birth, the first salary and the opening leave grants; no family, register,
+  allocation or other optional block) now writes the following pending rows of that shape as one group
+  (`applyEmployeeHireGroupTx`, `core/employee-import-set.ts`): the tenant-level locks and checks of each owner once per
+  group, every per-subject lock key and authority check in one statement each, multi-row writes, and the group's events
+  in ONE statement in the per-row order (each row's `employment.hired`, `employee.tax-scheme.selected`,
+  `statutory.my.created`, `person.updated`, `compensation.set`), so the audit chain carries the same events in the same
+  order. The rules stay with their owners: the hire's employment values, event payload and opening grant
+  (`core/org.ts`), the salary terms and event (`core/comp.ts`), the date-of-birth write (`core/profile.ts`) and the
+  country's statutory and tax-selection values (reached through the pack registry, `statutory.hireGroup`) are shared
+  functions both paths call. The set path never decides a refusal: anything the per-row path would refuse or do
+  differently (a failed check, an existing row where a new one is expected, a subject lock another transaction holds,
+  any database refusal) rolls the group's savepoint back, and every row of that group takes the per-row path
+  (`applyEmployeeImportRowTx`), which records exactly its own outcome, error-log row and refusal. The staged-attempt
+  markers, writer locks, release, settle and discard are unchanged; chunk transactions also set the point-read marker
+  (0691). Other rows (family, registers, superiors, every optional block, non-administrator initiators) take the
+  per-row path as before. `COPY` is not used: the steps are staged through the sealed kernel definer
+  (`app.bulk_job_steps_put`, 400 per statement), which measured 44 ms for the whole 60-row file, so loading is not
+  where the time goes; a `COPY` route would need a new definer reading a session table for no measurable gain.
+  - **Group size.** A chunk holds the tenant's exclusive Access lock, so groups aim for a short chunk:
+    `EMPLOYEE_IMPORT_CHUNK_TARGET_MS` (default 300 ms of group work) or `EMPLOYEE_IMPORT_CHUNK_FIXED_MULTIPLE` (default 2) x the
+    measured fixed cost, never above `EMPLOYEE_IMPORT_CHUNK_CEILING_MS` (default 500 ms), estimated from two groups of
+    different sizes as for the reprocess job, starting at 8 rows; `EMPLOYEE_IMPORT_GROUP_MAX` (default 64; `1`
+    restores the per-row path for every row). Per-row steps keep the 100 ms chunk budget. Each chunk logs an
+    `[aihr-timing]` `bulk-chunk` line (mode `group`, `single` or `declined` with a closed reason) and adds
+    `importCalcMs` (process CPU) and `importDbMs` (the rest of the wall time) to `bulk_job.metrics`, with group and
+    single counts and per-chunk maxima.
+  - **Proof.** `test/employee-import-set-equivalence.test.ts`: two tenants built identically at 70 companies and 1,000
+    employments import the same files through the job, per row and set-based: a 120-row file (common rows, family
+    rows, direct superiors, a bad email, a duplicate Employee ID, an Employee ID already in use, a blank name) and an
+    80-row file refused while saving (one row's Employee ID taken after preparation, so its group is declined
+    mid-file). Equal on every saved row, every event in chain order with its payload, the job, the progress view,
+    Import History (attempt, items, events, runs and error rows) and the chain verification.
+  - **Measured** (hosted runner, the equivalence file of 120 rows): 157 ms and 117 statements a row per row against
+    81 ms and 28 statements set-based (run 45478436767; calculation 5.0 s and database 13.9 s against 1.7 s and 8.0 s),
+    and 284 against 126 ms a row on a slower runner (run 45482824672). One group costs about 140 ms fixed plus about
+    20 ms a row; about 15 ms a row more is deferred work at commit, and validation (unchanged) about 20 ms a row. Groups
+    of about 16 rows would save a further 15–20 ms a row at the price of exclusive holds near 1 s, so the target stays
+    at 300 ms. The longest chunk lock hold rose from about 350 ms to about 700 ms (commit included), under the 1 s
+    bound, over about a third as many chunks.
+  - **Maintenance.** A change to a covered owner (the hire, the first salary, the IC-derived date of birth, the MY
+    statutory or tax-selection initialisation) must keep the set path in step; the equivalence test fails otherwise.
 
 ### 8. Guardrails
 

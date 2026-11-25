@@ -653,6 +653,18 @@ export async function profileRequestRejectionContextTx(tx:Tx,ctx:SessionContext,
  * bracket (`employee_statutory_my.taxCategory`) is a separate statutory field and is NOT changed —
  * the UI surfaces this decoupling as an on-screen note.
  */
+/** The `person.updated` payload of an HR-direct compliance write. Provenance: `via:'admin-set'` distinguishes it from
+ * the self path's `via:'profile-change'` and from a plain name/email edit (updatePerson). Shared with the employee
+ * import's set path (core/employee-import-set.ts). */
+export function adminComplianceEventPayload(writeSet: Record<string, string | null>, before: { gender: string | null; maritalStatus: string | null; dateOfBirth: string | null }) {
+  return { via: 'admin-set', fields: Object.keys(writeSet), before, after: { ...before, ...writeSet } };
+}
+/** The date of birth an HR-direct compliance write would store for `dateOfBirth` (sanitised as setPersonComplianceFields
+ * sanitises it); undefined when the sanitiser drops it. Shared with the employee import's set path. */
+export function adminComplianceDateOfBirth(dateOfBirth: string): string | null | undefined {
+  return sanitizeProposed({ dateOfBirth }, EVERY_REQUESTABLE_KEY).dateOfBirth as string | null | undefined;
+}
+
 export async function setPersonComplianceFields(
   ctx: SessionContext,
   p: {
@@ -731,7 +743,6 @@ export async function setPersonComplianceFields(
       .update(person)
       .set({ ...writeSet, ...maritalStatusSourceReset(writeSet) })
       .where(eq(person.id, personId));
-    const after = { ...before, ...writeSet };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'person',
@@ -739,9 +750,7 @@ export async function setPersonComplianceFields(
       eventType: 'person.updated',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      // Provenance: `via:'admin-set'` distinguishes this HR-direct write from the self path's
-      // `via:'profile-change'` and from a plain name/email edit (updatePerson).
-      payload: { via: 'admin-set', fields: Object.keys(writeSet), before, after },
+      payload: adminComplianceEventPayload(writeSet, before),
     });
     return { id: personId };
   };
