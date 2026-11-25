@@ -109,7 +109,7 @@ describe('the walkthrough on a fictional tenant',()=>{
   await setMode('legacy');
   notices.length=0;
   const legacy=await runVisibilityWalkthrough({owner:ownerSql(),app},settingsFor(a.tenantId,10),{hrDate:hrDate(),rotation:0,sleep:noSleep});
-  expect(legacy).toMatchObject({status:'not_shadow',mode:'legacy'});expect(walkthroughExitCode(legacy)).toBe(0);
+  expect(legacy).toMatchObject({status:'not_shadow',mode:'legacy',message:expect.stringMatching(/ \(pool=2 department_heads=2\)$/)});expect(walkthroughExitCode(legacy)).toBe(0);
   expect(notices.filter(n=>SHADOW_LINE.test(n))).toEqual([]);
   const untouchable=new Proxy({},{get(){throw new Error('a database client was used while switched off');}}) as unknown as postgres.Sql;
   const off=await runVisibilityWalkthrough({owner:untouchable,app:untouchable},walkthroughSettings({}),{hrDate:hrDate(),rotation:0});

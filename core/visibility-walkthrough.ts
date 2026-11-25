@@ -190,7 +190,8 @@ export async function runVisibilityWalkthrough(clients:{owner:Sql;app:Sql},setti
  for(const note of settings.notes)log(`visibility-walkthrough ${note}`);
  const pre=await walkthroughPreflight(clients.owner,settings.tenantId,opts.hrDate);
  if(!pre.tenantPresent)return{status:'refused',message:'the demo seed tenant is absent; this is not the demo installation'};
- if(pre.mode!=='shadow')return{status:'not_shadow',mode:pre.mode,message:`employment visibility mode is ${pre.mode}; the walkthrough reads only in shadow`};
+ if(pre.mode!=='shadow')return{status:'not_shadow',mode:pre.mode,message:`employment visibility mode is ${pre.mode}; the walkthrough reads only in shadow`+
+  ` (pool=${pre.pool.length} department_heads=${pre.pool.filter(a=>a.departmentHead).length})`};
  if(pre.pool.length===0)return{status:'refused',message:'the demo tenant has no current line manager with a login; nothing to read as'};
  const plan=walkthroughPlan(pre.pool,settings,opts.rotation);
  const identities=new Map<string,WalkthroughIdentity|null>();
