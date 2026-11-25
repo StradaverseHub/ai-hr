@@ -8016,6 +8016,13 @@
       "when": 1795495007330,
       "tag": "7330_queue_read_offboarding_access",
       "breakpoints": true
+    },
+    {
+      "idx": 10740,
+      "version": "7",
+      "when": 1795495007340,
+      "tag": "7340_queue_read_contract_navigation",
+      "breakpoints": true
     }
   ]
 }

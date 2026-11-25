@@ -264,6 +264,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10610,version:'7',when:1795495007210,tag:'7210_access_effective_company',breakpoints:true},
  {idx:10620,version:'7',when:1795495007220,tag:'7220_movement_system_payroll_snapshot_insert',breakpoints:true},
  {idx:10730,version:'7',when:1795495007330,tag:'7330_queue_read_offboarding_access',breakpoints:true},
+ {idx:10740,version:'7',when:1795495007340,tag:'7340_queue_read_contract_navigation',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1349,6 +1350,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.offboarding_posting_queue_access_v2()',app:false},
    {fn:'app.queue_read_compare(text,uuid)',app:false},
    {fn:'app.queue_read_set_mode(text,text)',app:false},
+   // 7340: the Contract navigation's renamed legacy body, its restated body and the once-per-statement automation arm.
+   {fn:'app.contract_shared_navigation_access_legacy()',app:false},
+   {fn:'app.contract_shared_navigation_access_v2()',app:false},
+   {fn:'app.contract_staff_automation_v2()',app:false},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.

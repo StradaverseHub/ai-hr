@@ -1,3 +1,16 @@
+# ADR 0181 live work queues, Q1: Contract navigation access, 25 November 2026
+
+Reserve `7340_queue_read_contract_navigation`, journal index `10740`, timestamp `1795495007340`, SQL SHA-256
+`675007a187d548b3a387483502f6cece7241f293cad6eeecc38d4b739727c56b`. Taken from `node .github/ci/check-migration-collisions.mjs --local --next` on 25 November
+2026 (main and 399 recent branch journals; next free slot after `7330_queue_read_offboarding_access`, which it must follow:
+it adds a `queue_read_control` row). Recheck the installed ledgers and watermarks at admission.
+
+It renames the 6432 function to `contract_shared_navigation_access_legacy` (guarded by its exact body and 6435's
+`automation_can_configure` body), adds `contract_staff_automation_v2` and `contract_shared_navigation_access_v2` (the 6432
+statement word for word with only its automation arm restated once per statement), and a PL/pgSQL dispatcher at the
+original name and grant. Inert on install (`legacy`). No policy, trigger, column or business row changes. Design:
+`docs/adr/0181-addendum-live-work-queues-and-approvals.md` (PR 319). This entry carries no deployment authority.
+
 # ADR 0181 live work queues, Q1: offboarding posting queue access, 25 November 2026
 
 Reserve `7330_queue_read_offboarding_access`, journal index `10730`, timestamp `1795495007330`, SQL SHA-256
