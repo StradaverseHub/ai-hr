@@ -466,6 +466,11 @@ describe('the catalog entry', () => {
     expect(epfShelf.length).toBeGreaterThanOrEqual(3);
     expect(epfShelf.map(([, o]) => o)).not.toContain(3);
     expect(Object.fromEntries(epfShelf)).toMatchObject({ 'my.epf': 1, 'my.borang-a': 2, 'my.borang-bbcd': 4 });
+    // Board 66175cd2 — `my.epf` is still REGISTERED at its slot (its deadline, audit list and recorded
+    // generations stay), but it is off the shelf: what an operator sees on the EPF shelf is Borang A and BBCD.
+    const visible = MY_REPORTS.filter((r) => r.submission?.body === 'epf' && r.shelf !== false).map((r) => r.id);
+    expect(visible.sort()).toEqual(['my.borang-a', 'my.borang-bbcd']);
+    expect(MY_STATUTORY_LINKS.filter((l) => l.body === 'epf')).toEqual([]);
   });
 
   it('claims `agency-layout` and never `official`', () => {
@@ -798,9 +803,9 @@ describe('the KWSP 6 page furniture', () => {
       BORANG_A_PAYMENT_REF_LABEL,
       // 3 — collection agent's stamp
       'Cop Agen Kutipan',
-      // 4 — form label and page number together, top right
-      'Borang A',
-      'Mukasurat: 1/1',
+      // 4 — form label and page number together, top right. Board 66175cd2: the reference's own block,
+      // KWSP 6 / BORANG / A with Mukasurat under it, drawn in that order.
+      'KWSP 6 BORANG A Mukasurat: 1/1',
       // 5 — the column order, N K included
       'BIL',
       'NO. AHLI',
@@ -819,10 +824,11 @@ describe('the KWSP 6 page furniture', () => {
       // 8 and 9
       'CATATAN',
       BORANG_A_PERINGATAN_MS,
-      BORANG_A_PERINGATAN_EN,
     ]) {
       expect(flat, `the drawn page is missing "${s}"`).toContain(s);
     }
+    // Board 66175cd2 — our English translation of PERINGATAN is no longer printed (the reference has none).
+    expect(flat).not.toContain(BORANG_A_PERINGATAN_EN);
     for (const [i, note] of BORANG_A_CATATAN.entries()) expect(flat, note).toContain(`${i + 1}. ${note}`);
   });
 
@@ -928,7 +934,8 @@ describe('the KWSP 6 page furniture', () => {
     const capacity = borangASheetRowCapacity();
     expect(BORANG_A_ROWS_PER_PAGE).toBeLessThanOrEqual(capacity);
     // …and not wastefully fewer either: one row of headroom is the deliberate margin, a sheet's worth is
-    // a mistake. Measured 2026-08-18: capacity 21, shipped 20.
+    // a mistake. Measured 2026-08-18: capacity 21, shipped 20. Board 66175cd2 removed the provenance band and
+    // gave the room to the logo masthead, the employer band and the signing block: capacity 22, shipped 20.
     expect(capacity - BORANG_A_ROWS_PER_PAGE).toBeLessThanOrEqual(3);
   });
 
@@ -1024,13 +1031,21 @@ describe('the KWSP 6 page furniture', () => {
     expect(form.pages[form.pages.length - 1].carryOutEmployer).toBe(form.totalEmployer);
   });
 
-  it('still says on its own face that it is not the agency’s page', async () => {
-    // FIDELITY STAYS `agency-layout`. Adding the agency's furniture does not make this KWSP's artwork, and
-    // the CATATAN wording is transcribed from another vendor's output — the page has to say so.
-    const flat = flatten((await drawnPages(built(1)))[0]);
-    expect(flat).toContain('bukan borang rasmi KWSP');
-    expect(flat).toContain('TRANSCRIBED from a filled Borang A produced by another payroll system');
-    expect(flat).toContain('the English line under PERINGATAN is our own translation');
+  /**
+   * UPDATED, NOT DELETED (board 66175cd2). This case pinned the provenance band at the foot of every sheet.
+   * The reporter asked for the form to follow their KWSP 6 reference, which carries no small print of ours,
+   * and the approved plan removes it from Borang A and BBCD only. FIDELITY STAYS `agency-layout`, and the
+   * statement moved rather than vanished: it is in the PDF's own metadata (and on the review screen).
+   */
+  it('prints no small print of ours, and says what it is in its metadata instead', async () => {
+    const form = built(1);
+    const flat = flatten((await drawnPages(form))[0]);
+    for (const gone of ['bukan borang rasmi KWSP', 'TRANSCRIBED from a filled Borang A', 'our own translation', 'Susun atur kami sendiri', 'bulan upah 20']) {
+      expect(flat, `the sheet still prints "${gone}"`).not.toContain(gone);
+    }
+    const doc = await PDFDocument.load(await renderBorangAPdf(form));
+    expect(doc.getSubject()).toContain('not a KWSP-printed form');
+    expect(doc.getSubject()).toContain(`bulan upah ${form.payrollPeriodKey}`);
   });
 });
 

@@ -43,6 +43,7 @@ import { borang8AReport } from './borang-8a';
 // this shelf reads) and registers here like every other form. The two files share NO code: their
 // contribution-month rules are opposites, and a shared helper is how one acquires the other's.
 import { borangAReport } from './borang-a';
+import { epfFilablePeriods } from './epf-periods';
 // r412 (item e74af58c, step 2) — the EIS (SIP) contribution schedule is the Borang 8A read re-shaped (no second
 // read, no EIS arithmetic), and Borang 8B reads the employer header only. Both register here like every form.
 import { sipContributionReport } from './sip-contribution';
@@ -457,6 +458,28 @@ export type ReportDef = {
    * it on an 'event' report, and `runSelection` wins on a monthly one that declares both.
    */
   preview?: { action: string };
+  /**
+   * Board 66175cd2 — THE PERIODS THIS FORM CAN ACTUALLY BE PRODUCED FOR, read from processed payroll.
+   *
+   * Declared by a monthly form whose criteria step should list only the payroll months that hold something
+   * to file, instead of the generic last-seven-years / all-twelve-months selects. Returns `YYYY-MM` payroll
+   * months for ONE company, newest first, from ONE set-based statement. The step reaches it through
+   * `reportAvailablePeriods` (core/reporting), which fences the company to the caller's scope first.
+   * my.borang-a and my.borang-bbcd declare it (`epfFilablePeriods`). Every other form keeps the generic
+   * selects, unchanged.
+   */
+  availablePeriods?: (ctx: SessionContext, p: { companyId: string }) => Promise<string[]>;
+  /**
+   * Board 66175cd2 — `false` TAKES THE FORM OFF THE SCREENS THAT OFFER FORMS TO PRODUCE, AND NOTHING ELSE.
+   *
+   * The Statutory Forms shelf, its Open Form step and the Filing history "Report" choice leave it out, and
+   * an old link to it (the step, or `/payroll/statutory-forms/<id>`) lands on its shelf instead. The
+   * definition stays registered on purpose: its `submission` decides the suspended-tenant statutory
+   * override (core/reporting.ts `statutoryCtx`), its id is in the audit's statutory form list
+   * (core/payroll-audit/types.ts) and in `statutory_report` rows already recorded, and Filing history still
+   * lists those. Absent ⇒ on the shelf, which is every form but my.epf.
+   */
+  shelf?: false;
   generate: (ctx: SessionContext, params: ReportParams) => Promise<ReportResult>;
 };
 
@@ -2406,7 +2429,14 @@ export const MY_REPORTS: ReportDef[] = [
   // NOT "Borang A", and it never becomes Borang A by being renamed. What this produces is a contributions
   // listing whose wage column is GROSS PAY; Borang A wants the EPF-liable wage and is a different document
   // that now sits beside this one at shelfOrder 2. This keeps its honest name.
+  //
+  // Board 66175cd2 (plan r1) — OFF THE SCREENS, NOT OUT OF THE REGISTRY. The reporter asked for it to be removed
+  // from the EPF shelf as not useful for the filing workflow; Borang A and BBCD are the EPF forms. `shelf: false`
+  // hides it from the shelf, the Open Form step and Filing history's choice of forms to produce. It stays here:
+  // its `submission` drives the suspended-tenant statutory override, and its id is in the audit form list and
+  // in generations already recorded, which Filing history still lists.
   { id: 'my.epf', label: 'EPF contributions (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: epfReport,
+    shelf: false,
     descriptionKey: 'desc_epf', fidelity: 'figures', outputs: ['pdf', 'xlsx', 'csv', 'print'], shelfOrder: 1,
     submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
   // 9c8dad7a / 3aae0789 — BORANG A, built. It LEFT MY_PLANNED_FORMS and joined this list at the same
@@ -2432,6 +2462,8 @@ export const MY_REPORTS: ReportDef[] = [
     // r407 (item 4f45f9b0) — Open Form asks for the payroll cycles too, and Continue opens the form itself.
     // `borangAReport` honours `runSeqs` (r372/r373), which is the only reason this may be declared.
     runSelection: { action: '/payroll/borang-a/preview' },
+    // Board 66175cd2 — Open Form lists only the payroll months with processed EPF payroll for the company.
+    availablePeriods: epfFilablePeriods,
     submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 } },
   // r411 (item 4f45f9b0) — BBCD, "Borang Bayaran Caruman Bulanan - Pita/Disket": the one-page cover for the
   // month's Borang A payment, laid out like the reporter's October sample.
@@ -2451,6 +2483,8 @@ export const MY_REPORTS: ReportDef[] = [
   { id: 'my.borang-bbcd', label: 'BBCD — Borang Bayaran Caruman Bulanan (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: borangAReport,
     descriptionKey: 'desc_borang_bbcd', fidelity: 'agency-layout', outputs: ['pdf', 'print'], shelfOrder: 4,
     runSelection: { action: '/payroll/borang-bbcd/preview' },
+    // Board 66175cd2 — the SAME list as Borang A: a BBCD is the cover of that month's Borang A.
+    availablePeriods: epfFilablePeriods,
     submission: { body: 'epf', agency: 'EPF (KWSP)', channel: 'KWSP / Ejen Kutipan KWSP', dueDayOfNextMonth: 15 } },
   // SOCSO and EIS go up TOGETHER through ASSIST's combined contribution function — the reporter's words.
   // ONE `perkeso` shelf for the same reason: they are one filing, not two that happen to share a portal.

@@ -1,10 +1,11 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Badge, inputCls } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
+import { EditFixedDialog, type EditFixedDialogLabels } from './edit-fixed-dialog';
+import type { FixedEditCycleOption } from './edit-model';
 
 /**
  * f3ae3245 — the selected employee's recurring items, with the search, sorting and paging the screen has
@@ -48,7 +49,16 @@ export type FixedTxnRow = {
   /** Derived on the SERVER against the tenant timezone — a browser an hour either side of MYT midnight
    *  would otherwise call an item ended a day early or late. */
   ended: boolean;
+  /** cc8bd87f — the linked configured cycle's id (null when unlinked), what the View / Edit pop-up's select
+   *  starts on; and the options it offers, from the cycles the page already read (no extra request). */
+  payrollCycleId: string | null;
+  cycleOptions: FixedEditCycleOption[];
+  /** The select's empty option: the row's old run-type label, or "—". */
+  cyclePlaceholder: string;
 };
+
+/** Query keys that belong to an opened item (cc8bd87f): cleared from the address when the pop-up closes. */
+const EDIT_QUERY_KEYS = ['edit', 'error', 'clashCode', 'clashFrom', 'clashTo', 'clashPeriod', 'nextFirst', 'latestEnd'];
 
 const PAGE_SIZE = 20;
 type SortKey = 'code' | 'amount' | 'validFrom' | 'validTo' | 'status';
@@ -56,11 +66,24 @@ type SortKey = 'code' | 'amount' | 'validFrom' | 'validTo' | 'status';
 export function FixedTxnList({
   rows,
   employmentId,
+  employee,
   cycleLabels,
   cycleUnspecifiedLabel,
+  editLabels,
+  initialEditId = null,
+  initialEditError = null,
 }: {
   rows: FixedTxnRow[];
   employmentId: string;
+  /** The selected employee as the pop-up's read-only facts show them. */
+  employee: { code: string | null; name: string };
+  /** cc8bd87f — the View / Edit pop-up's words, resolved by the server page. */
+  editLabels: EditFixedDialogLabels;
+  /** cc8bd87f — `?edit=<id>` (an old link to the separate page, or a refused removal): the page passes it
+   *  only when it names a live row of this employee, and the pop-up opens on it. */
+  initialEditId?: string | null;
+  /** A localised refusal that came with that `edit`, shown inside the pop-up. */
+  initialEditError?: string | null;
   /** Pre-translated `runType` → label map, resolved on the server. A client component cannot look these
    *  up from the `payroll.transactions.individual` namespace without becoming a second-namespace file,
    *  which is precisely the shape the i18n coverage check skips entirely. */
@@ -72,6 +95,23 @@ export function FixedTxnList({
   const [sortKey, setSortKey] = useState<SortKey>('code');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(0);
+  // cc8bd87f — the row whose View / Edit pop-up is open. The pop-up is MOUNTED only while this names a row,
+  // so closing it discards anything typed and the next open starts from the stored values.
+  const [editingId, setEditingId] = useState<string | null>(initialEditId);
+  const editing = editingId ? (rows.find((r) => r.id === editingId) ?? null) : null;
+  // The refusal that came with `edit=` belongs to that first opening only.
+  const [carriedError, setCarriedError] = useState<string | null>(initialEditError);
+  const closeEdit = () => {
+    setEditingId(null);
+    setCarriedError(null);
+    // An `edit=` the page opened with must not reopen the pop-up on the next refresh, and its error
+    // arguments belong to it. A shallow history edit: the App Router keeps the URL in step without a fetch.
+    const url = new URL(window.location.href);
+    if (EDIT_QUERY_KEYS.some((k) => url.searchParams.has(k))) {
+      for (const k of EDIT_QUERY_KEYS) url.searchParams.delete(k);
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+  };
 
   const sorted = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -194,14 +234,15 @@ export function FixedTxnList({
                   </Badge>
                 </td>
                 <td className="px-3 py-2.5 text-right">
-                  {/* One destination, not three disclosure widgets wedged into the cell. Edit, Stop and
-                      Remove all live on the item's own page now. */}
-                  <Link
-                    href={`/payroll/transactions/fixed/${r.id}?employmentId=${encodeURIComponent(employmentId)}`}
-                    className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  {/* cc8bd87f — opens the item in a pop-up over this list (it used to leave for a separate
+                      page). `cursor-pointer` because Tailwind v4's preflight gives a <button> the arrow. */}
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(r.id)}
+                    className="cursor-pointer rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     {t('viewEdit')}
-                  </Link>
+                  </button>
                 </td>
               </tr>
             ))}
@@ -229,6 +270,18 @@ export function FixedTxnList({
             {t('nextPage')}
           </button>
         </div>
+      )}
+
+      {editing && (
+        <EditFixedDialog
+          key={editing.id}
+          employmentId={employmentId}
+          employee={employee}
+          row={editing}
+          labels={editLabels}
+          initialError={editing.id === initialEditId ? carriedError : null}
+          onClose={closeEdit}
+        />
       )}
     </>
   );

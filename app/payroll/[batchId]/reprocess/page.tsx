@@ -210,7 +210,11 @@ export default async function ReprocessPage({
   // replace that keeps the form (and its selection) mounted. No `tab` ⇒ Reprocess Required when it has anyone.
   const tab = sp.tab === 'required' || sp.tab === 'unchanged' ? sp.tab : 'default';
   const required=await reprocessRequiredWithSkipPage(s,{batchId,page:parsePageQuery(sp),search:sp.q});
-  const current: 'required' | 'unchanged' = tab === 'default' ? (required.runTotal > 0 ? 'required' : 'unchanged') : tab;
+  // a1a80747 r2 — the tab counts and pre-ticks exactly the employees this run OWES processing (`owed`, the rule Close
+  // uses), which is the number the Payroll Process list prints; everyone else on the list (outside a chosen-list run,
+  // removed on purpose, not paid by an additional run) goes to the form's unticked Not owed group. No `tab` ⇒ Reprocess
+  // Required when somebody is owed.
+  const current: 'required' | 'unchanged' = tab === 'default' ? (required.owedRunTotal > 0 ? 'required' : 'unchanged') : tab;
   const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'reprocess',page:parsePageQuery(sp),search:sp.q,tab:'unchanged'});
   const candidates: ReprocessCandidate[] = current === 'required' ? [] : selection.rows.map((sl) => ({
     employmentId: sl.employmentId,
@@ -227,7 +231,8 @@ export default async function ReprocessPage({
   // them (the same period window and readiness checks the engine applies). Plain serialisable data.
   const requiredRows: ReprocessRequiredRow[] = current === 'required' ? required.rows.map((r): ReprocessRequiredRow => r.kind === 'added'
     ? { kind: 'added', employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name, hiredOn: r.hiredOn,
-        outsideScope: r.outsideScope, blockers: r.blockers, warnings: r.warnings, skip: r.skip }
+        outsideScope: r.outsideScope, blockers: r.blockers, warnings: r.warnings, skip: r.skip,
+        owed: r.owed, notOwedReason: r.notOwedReason }
     : { kind: 'recalculated', employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name }) : [];
   /** The same screen on the other tab: page back to 1, every other parameter (search, sizes, from) kept. */
   const tabHref = (to: 'required' | 'unchanged') => {
@@ -344,7 +349,7 @@ export default async function ReprocessPage({
             from={listFrom ?? null}
             paging={{existing:current==='required'?required.state:selection.state,runTotal:selection.runTotal+required.addedRunTotal,
               existingTotal:selection.runTotal,search:sp.q??'',
-              tabs:{current,counts:{required:required.state.total,unchanged:selection.tabCounts.unchanged},
+              tabs:{current,counts:{required:required.owedTotal,unchanged:selection.tabCounts.unchanged},
                 hrefs:{required:tabHref('required'),unchanged:tabHref('unchanged')}}}}
           />
         </div>

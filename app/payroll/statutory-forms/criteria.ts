@@ -145,6 +145,45 @@ export function reportDestination(
  */
 export const CYCLES_ENDPOINT = '/payroll/payment-submission/runs';
 
+/**
+ * Board 66175cd2 — THE PERIOD LIST, FOR A FORM THAT DECLARES `availablePeriods` (Borang A and BBCD).
+ *
+ * The criteria step server-renders the default company's list and re-asks this route when the Company
+ * changes (`open/period-criterion.tsx`). The route answers `{ periods: ['YYYY-MM', …] }`, newest first, and
+ * an EMPTY list for every refusal (see `reportAvailablePeriods`). Year options are the distinct years of the
+ * list; Month options are the months of the chosen year. The server-side Continue gate is unchanged: a
+ * hand-edited link to an unlisted month is still refused by the form's own preview.
+ */
+export const PERIODS_ENDPOINT = '/payroll/statutory-forms/open/periods';
+
+const PERIOD_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** The distinct years of a newest-first period list, newest first. */
+export function periodYears(periods: readonly string[]): string[] {
+  return [...new Set(periods.filter((p) => PERIOD_KEY.test(p)).map((p) => p.slice(0, 4)))];
+}
+
+/** The months (`MM`) of `year` in a newest-first period list, newest first. */
+export function periodMonths(periods: readonly string[], year: string): string[] {
+  return periods.filter((p) => PERIOD_KEY.test(p) && p.slice(0, 4) === year).map((p) => p.slice(5, 7));
+}
+
+/**
+ * Which listed period the step shows: the one asked for (a refusal or Back handing the criteria back) when
+ * it is STILL listed, otherwise the newest. `null` when nothing is listed — the step then says so and keeps
+ * Continue unavailable.
+ */
+export function choosePeriod(
+  periods: readonly string[],
+  asked?: { year?: string; month?: string },
+): { year: string; month: string } | null {
+  const listed = periods.filter((p) => PERIOD_KEY.test(p));
+  if (listed.length === 0) return null;
+  const want = asked?.year && asked?.month ? `${asked.year}-${asked.month}` : '';
+  const hit = listed.includes(want) ? want : listed[0];
+  return { year: hit.slice(0, 4), month: hit.slice(5, 7) };
+}
+
 /** Why the Continue gate sent the operator back. The step shows the matching sentence, nothing else. */
 export const CYCLES_REFUSALS = [
   'cycles_no_runs',

@@ -35,9 +35,13 @@ describe('2f889bae: Pay items rows reach the item page', () => {
     expect(code).toMatch(/tFixed\('actions'\)/);
   });
 
-  it('it builds the SAME href shape as Fixed Transactions, so the two cannot drift', () => {
-    // Both must match the identical pattern — that is the whole point of copying it verbatim.
-    expect(strip(fixedList)).toMatch(HREF);
+  it('the item address it links to opens the SAME pop-up as Fixed Transactions, so the two cannot drift', () => {
+    // cc8bd87f — Fixed Transactions opens an item in a pop-up over its list instead of linking to the item's
+    // page, and that page now redirects to the list with ?edit=<id>, which opens that pop-up. So this link
+    // and the list's View / Edit still land on one destination.
+    const destination = readFileSync(join(root, 'app/payroll/transactions/fixed/[id]/page.tsx'), 'utf8');
+    expect(destination).toContain('/payroll/transactions/fixed?employmentId=${encodeURIComponent(emp.employmentId)}&edit=${encodeURIComponent(id)}');
+    expect(strip(fixedList)).toContain('<EditFixedDialog');
   });
 
   it('it reuses Fixed Transactions own labels rather than minting personnel copies', () => {

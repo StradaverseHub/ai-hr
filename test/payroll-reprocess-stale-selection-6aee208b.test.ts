@@ -27,7 +27,8 @@ import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
-import {batchDetail,createBatch,generatePayslips,payrollEmployeeSelectionPage,payslipLessEligiblePage,reprocessRequiredPage,reprocessStaleSelection} from '../core/payroll';
+import {batchDetail,createBatch,generatePayslips,payrollEmployeeSelectionPage,payslipLessEligiblePage,reprocessRequiredPage,reprocessStaleSelection,runOutstandingTx} from '../core/payroll';
+import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
@@ -234,6 +235,18 @@ it('a1a80747 — one Reprocess Required list: stale payslips and payslip-less el
  for(const r of all.rows)expect({outsideScope:r.outsideScope,blockers:r.blockers,warnings:r.warnings},r.employmentId)
   .toEqual(r.kind==='added'?previous.get(r.employmentId):{outsideScope:false,blockers:[],warnings:[]});
 
+ // ── a1a80747 r2: the owed rows are exactly the owner's set (the Payroll Process list's number), owed rows first ──
+ const owned=await withTenant(root,tx=>runOutstandingTx(tx,root,batchId));
+ expect(owned.staleWithPayslip).toEqual(staleOnRun.map(r=>r.employmentId).sort());
+ for(const id of late)expect(owned.employmentIds).toContain(id);
+ expect(all.owedRunTotal).toBe(owned.employmentIds.length);expect(all.owedTotal).toBe(owned.employmentIds.length);
+ expect(all.rows.filter(r=>r.owed).map(r=>r.employmentId).sort()).toEqual(owned.employmentIds);
+ expect(all.rows.filter(r=>r.kind==='recalculated').every(r=>r.owed&&r.notOwedReason===null)).toBe(true);
+ const firstNotOwed=all.rows.findIndex(r=>!r.owed);
+ if(firstNotOwed>=0)expect(all.rows.slice(firstNotOwed).every(r=>!r.owed),'owed rows come first').toBe(true);
+ // The foreign id in the mark and the stale late hire are not double counted: the hire once, the stranger never.
+ expect(owned.employmentIds.filter(id=>id===late[0])).toHaveLength(1);
+
  // ── Search: name and folded Employee ID, inside the one list; the run totals ignore it ───────────────
  const byName=await reprocessRequiredPage(root,{batchId,page:parsePageQuery({size:'all'}),search:'late hire'});
  expect(byName.rows.map(r=>r.employmentId).sort()).toEqual([...late].sort());expect(byName.state.total).toBe(3);expect(byName.runTotal).toBe(expected.size);
@@ -261,5 +274,5 @@ it('a1a80747 — one Reprocess Required list: stale payslips and payslip-less el
  // ── A run that is not processed lists nobody ─────────────────────────────────────────────────────────
  expect((await reprocessRequiredPage(root,{batchId:draftId,page:parsePageQuery()})).rows).toEqual([]);
  await owner.db.update(s.payrollBatch).set({status:'closed',closedAt:new Date()}).where(eq(s.payrollBatch.id,batchId));
- expect(await reprocessRequiredPage(root,{batchId,page:parsePageQuery()})).toMatchObject({rows:[],runTotal:0,addedRunTotal:0});
+ expect(await reprocessRequiredPage(root,{batchId,page:parsePageQuery()})).toMatchObject({rows:[],runTotal:0,addedRunTotal:0,owedRunTotal:0,owedTotal:0});
 },600000);
