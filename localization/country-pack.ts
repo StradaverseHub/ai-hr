@@ -524,6 +524,9 @@ export interface CountryPack {
      */
     statutory: MyPayrollModule['statutory'];
     resolveTaxScheme?: MyTaxSelectionModule['resolveTaxSelectionMY'];
+    /** ADR 0181 J2 — `resolveTaxScheme` for a group of one employer's employees in a few statements; each employee's
+     *  result or error is returned (not thrown) so the engine raises it where the single call would. */
+    resolveTaxSchemes?: MyTaxSelectionModule['resolveTaxSelectionsMY'];
     /**
      * r356 — fold ONE prior payslip into the year's PCB accumulators (Y, Sigma(Y-K), K, X, Z, sum-LP).
      * On the seam because the kernel's replay and the MY worksheet's replay must be the SAME arithmetic:

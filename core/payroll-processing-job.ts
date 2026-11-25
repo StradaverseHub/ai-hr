@@ -16,6 +16,15 @@
  *   finalize  the remaining overtime-prefill candidates, segment coverage and the full generation's tail (status,
  *             totals summed in the run's order, ledgers, claims, events, audit capture) in one transaction.
  *
+ * Set-based groups (ADR 0181 J2). Steps stay PAYROLL_PROCESS_STEP_EMPLOYEES employees each, but one `employees` step
+ * computes a group: itself and the chunk's following steps, up to an adaptive number of employees
+ * (PAYROLL_PROCESS_GROUP_MAX, sized from the measured fixed cost of a pass like the selective reprocess), through ONE
+ * pass of the same compute path, so the run-wide reads and checks are paid once per group instead of once per four
+ * employees. The step marks the steps it covered applied in the same transaction (kernel outcome `consumed`). A group
+ * pass that refuses is rolled back to its savepoint and its steps then run one per pass exactly as before, so a refusal
+ * and its message are the per-step path's. Each chunk records its calculation (process CPU) and database (the rest of
+ * its wall time) split on the job's metrics and an `[aihr-timing]` line.
+ *
  * A change to an employee's salary, statutory profile, fixed items or policy while the run is processing is either
  * read by that employee's chunk (it has not run yet) or marks the run for recalculation (it has), through the
  * existing needs_recalc_at owner. A failure or cancellation discards: payslips deleted, the prefilled overtime inputs
@@ -26,7 +35,8 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {payrollBatch} from '../db/schema';
 import {bulkJobId,bulkJobProgress,bulkJobWorkerStatusTx,enqueueBulkJobTx,type BulkJobRow} from './bulk-job';
-import {isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobStep,type BulkJobStepInput,type BulkJobUnit} from './bulk-job-worker';
+import {isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobStep,type BulkJobStepInput,type BulkJobStepOutcome,type BulkJobUnit} from './bulk-job-worker';
+import {nextGroupSize,rememberGroupPass,splitChunkTime,type GroupPass} from './bulk-job-group-size';
 import {publicErrorMessage} from '../lib/public-error';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
@@ -46,6 +56,26 @@ export {PAYROLL_PROCESS_JOB_KIND};
  * scripts/performance/payroll-processing-rehearsal.ts, sized both under the 1 s bar). */
 export const payrollProcessStepEmployees=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_STEP_EMPLOYEES??4));
 const payrollProcessChunkBudgetMs=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_CHUNK_BUDGET_MS??100));
+/** Employees per engine pass, at most (1: one step per pass, the steps-of-four path as before). */
+export const payrollProcessGroupMax=()=>Math.max(1,Math.floor(Number(process.env.PAYROLL_PROCESS_GROUP_MAX??200))||1);
+/** The chunk length a group aims for, at least. A chunk holds the run's company/month key and its company's payroll
+ * inputs key exclusively, so this bounds how long a salary or statutory change for that company may wait behind it. */
+export const payrollProcessChunkTargetMs=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_CHUNK_TARGET_MS??500)||500);
+/** A group may last this many times one pass's measured fixed cost (see core/bulk-job-group-size.ts). */
+export const payrollProcessFixedMultiple=()=>Math.max(1,Number(process.env.PAYROLL_PROCESS_CHUNK_FIXED_MULTIPLE??2)||2);
+const FIRST_GROUP=16;
+/** Per job and process: the next group size, the passes it was estimated from, and the last step of a refused group
+ * (its steps run one per pass, as before). */
+type GroupState={size:number;seen:GroupPass[];singleThrough:number};
+const groupStateOf=new Map<string,GroupState>();
+const groupStateFor=(jobId:string)=>{let state=groupStateOf.get(jobId);if(!state){state={size:Math.max(FIRST_GROUP,2*payrollProcessStepEmployees()),seen:[],singleThrough:-1};groupStateOf.set(jobId,state);}return state;};
+const roundMs=(value:number)=>Math.max(0,Math.round(value));
+/** One line per engine pass on the worker's stdout, beside the web's request timing (lib/request-timing.ts, same
+ * prefix and privacy rule: closed labels and numbers only, never a tenant, person, company or value). */
+function logPass(mode:'group'|'single',employees:number,steps:number,time:{wallMs:number;calcMs:number;dbMs:number}){
+ if(process.env.AIHR_TIMING==='off')return;
+ console.info('[aihr-timing] '+JSON.stringify({t:'bulk-chunk',kind:PAYROLL_PROCESS_JOB_KIND,mode,employees,steps,wallMs:roundMs(time.wallMs),calcMs:roundMs(time.calcMs),dbMs:roundMs(time.dbMs)}));
+}
 /** Payslips deleted per discard transaction. */
 const DISCARD_BATCH=500;
 
@@ -127,10 +157,11 @@ async function batchOf(tx:Tx,batchId:string){
 export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string,never>>={
  kind:PAYROLL_PROCESS_JOB_KIND,
  mode:'atomic',
- maxStepsPerChunk:32,
+ // A group's steps must all be loaded in its chunk (plus the begin step).
+ get maxStepsPerChunk(){return Math.max(32,Math.ceil(payrollProcessGroupMax()/payrollProcessStepEmployees())+1);},
  get chunkBudgetMs(){return payrollProcessChunkBudgetMs();},
  phaseOf:kind=>kind==='begin'?'begin':'employees',
- isTransient:error=>error instanceof PayrollRunQueuedError||isTransientBulkJobError(error),
+ isTransient:error=>isTransientRunError(error),
  async prepare(ctx,job){
   const {batchId}=inputOf(job);
   // A refusal before any payslip is written needs no discard: the job ends failed and commitPrepareTx puts the run
@@ -148,18 +179,20 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
    .where(and(eq(payrollBatch.id,inputOf(job).batchId),eq(payrollBatch.processingJobId,job.id)));
  },
  async beginChunkTx(tx,ctx,job){await lockRunUnitTx(tx,ctx,inputOf(job).batchId);await pointReadTx(tx);},
- async applyStepTx(tx,ctx,job,step){
-  return applyRunStepTx(tx,ctx,job,step);
+ async applyStepTx(tx,ctx,job,step,_cache,following){
+  return applyRunStepTx(tx,ctx,job,step,following??[]);
  },
  async finalize(ctx,job,unit){
   return finalizeRun(ctx,job,unit);
  },
  async discard(job,unit){
+  groupStateOf.delete(job.id);
   return discardRun(job,unit);
  },
  // The reason the synchronous wizard's catch gave this error, kept on the plan for the run group's outcome. The
  // kernel merges it into the plan with the failure (describeFailure itself is read only).
- async describeFailure(_job,error){
+ async describeFailure(job,error){
+  groupStateOf.delete(job.id);
   return{error:publicErrorMessage(error),planMerge:{failureReason:reasonForPayrollError(error),transactionFailure:transactionFailureForPayrollError(error)}};
  },
  // A wizard run group waiting for this run settles when its last job finishes (core/payroll-run-group-store.ts);
@@ -194,7 +227,9 @@ async function prepareRun(ctx:SessionContext,job:BulkJobRow,batchId:string):Prom
   });
 }
 
-async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJobStep<EmployeesStep|Record<string,never>>){
+type RunStep=BulkJobStep<EmployeesStep|Record<string,never>>;
+const isTransientRunError=(error:unknown)=>error instanceof PayrollRunQueuedError||isTransientBulkJobError(error);
+async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:RunStep,following:readonly RunStep[]):Promise<BulkJobStepOutcome>{
   const {batchId}=inputOf(job);const plan=planOf(job);
   if(!plan)throw new Error('Payroll processing plan unavailable.');
   if(step.kind==='begin'){
@@ -202,8 +237,59 @@ async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJ
    if(!('processingBegin' in unit)||!unit.processingBegin)throw new Error('Payroll processing begin unavailable.');
    return{result:unit.processingBegin};
   }
-  const ids=(step.payload as EmployeesStep).employmentIds;
-  const run=(unitTx:Tx)=>runPayrollProcessingUnitTx(unitTx,ctx,batchId,{jobId:job.id,phase:'employees',employmentIds:ids,order:Object.fromEntries(ids.map((id,i)=>[id,i])),prefillOvertime:plan.prefillOvertime});
+  const state=groupStateFor(job.id);
+  const max=payrollProcessGroupMax();
+  // The group: this step and the chunk's following employees steps, while the employees fit the group size.
+  const group:RunStep[]=[step];
+  if(max>1&&step.seq>state.singleThrough){
+   const limit=Math.min(max,state.size);let employees=idsOf(step).length;
+   for(const next of following){
+    if(next.kind!=='employees'||employees+idsOf(next).length>limit)break;
+    group.push(next);employees+=idsOf(next).length;
+   }
+  }
+  let refused=false;
+  if(group.length>1){
+   const started=performance.now(),cpuStarted=process.cpuUsage();
+   try{
+    const chunk=await runEmployeesPassTx(tx,ctx,job,batchId,plan,group.flatMap(idsOf));
+    const time=splitChunkTime(started,cpuStarted),n=group.reduce((sum,s)=>sum+idsOf(s).length,0);
+    logPass('group',n,group.length,time);
+    measure(state,max,n,time.wallMs);
+    return{...chunkOutcome(chunk),consumed:group.length-1,metrics:{
+     add:{processGroups:1,processGroupEmployees:n,processCalcMs:roundMs(time.calcMs),processDbMs:roundMs(time.dbMs)},
+     max:{processGroupMaxEmployees:n,processGroupMaxMs:roundMs(time.wallMs),processGroupMaxCalcMs:roundMs(time.calcMs),processGroupMaxDbMs:roundMs(time.dbMs)},
+    }};
+   }catch(error){
+    if(isTransientRunError(error))throw error;
+    // The group's savepoint rolled back every write of the pass. Its steps run one per pass, exactly as before, so a
+    // refusal (and the employees it names) is the per-step path's; grouping resumes after them.
+    state.singleThrough=group[group.length-1].seq;refused=true;
+   }
+  }
+  const started=performance.now(),cpuStarted=process.cpuUsage();
+  const chunk=await runEmployeesPassTx(tx,ctx,job,batchId,plan,idsOf(step));
+  const time=splitChunkTime(started,cpuStarted);
+  logPass('single',idsOf(step).length,1,time);
+  // A one-step pass is a point on the same line, so a group size estimated below two steps can grow again.
+  if(max>1)measure(state,max,idsOf(step).length,time.wallMs);
+  return{...chunkOutcome(chunk),metrics:{
+   // `processRefusedGroups`: group passes that refused and fell back (a one-step pass is otherwise the run's last step
+   // alone, or a group estimated below two steps).
+   add:{processSingles:1,processSingleEmployees:idsOf(step).length,processCalcMs:roundMs(time.calcMs),processDbMs:roundMs(time.dbMs),...(refused?{processRefusedGroups:1}:{})},max:{processSingleMaxMs:roundMs(time.wallMs)},
+  }};
+}
+const idsOf=(step:RunStep)=>(step.payload as EmployeesStep).employmentIds;
+function measure(state:GroupState,max:number,employees:number,wallMs:number){
+  state.seen=rememberGroupPass(state.seen,{employees,wallMs});
+  state.size=nextGroupSize(state.seen,employees,{max,targetMs:payrollProcessChunkTargetMs(),fixedMultiple:payrollProcessFixedMultiple()});
+}
+function chunkOutcome(chunk:PayrollProcessingChunkResult){
+  return{result:chunk,counters:{paid:chunk.paid.length,skipped:chunk.skipped.length,...(chunk.taxHeld?.length?{taxHeld:chunk.taxHeld.length}:{})}};
+}
+/** One pass of the full generation's compute path over `ids` (in the run's planned order), in its own savepoint. */
+async function runEmployeesPassTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,batchId:string,plan:JobPlan,ids:readonly string[]){
+  const run=(unitTx:Tx)=>runPayrollProcessingUnitTx(unitTx,ctx,batchId,{jobId:job.id,phase:'employees',employmentIds:[...ids],order:Object.fromEntries(ids.map((id,i)=>[id,i])),prefillOvertime:plan.prefillOvertime});
   // 016276b7 — the chunk holds the employees whose tax history it cannot read before it calculates anything. A tax
   // correction committed between that check and the chunk's own history read can still make the read refuse: the
   // chunk is then rolled back to its savepoint and run once more, so its check sees the change and holds exactly that
@@ -212,7 +298,7 @@ async function applyRunStepTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,step:BulkJ
   try{unit=await tx.transaction(run);}
   catch(error){if(!(error instanceof PayrollTaxBasisError))throw error;unit=await tx.transaction(run);}
   if(!('processingChunk' in unit)||!unit.processingChunk)throw new Error('Payroll processing chunk unavailable.');
-  return{result:unit.processingChunk,counters:{paid:unit.processingChunk.paid.length,skipped:unit.processingChunk.skipped.length,...(unit.processingChunk.taxHeld?.length?{taxHeld:unit.processingChunk.taxHeld.length}:{})}};
+  return unit.processingChunk;
 }
 
 /** Finalize in two bounded units. First the flip, under the run's keys: status, totals, ledgers, claims and events,
@@ -232,7 +318,9 @@ async function finalizeRun(ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit):P
     await lockRunUnitTx(tx,ctx,batchId);await pointReadTx(tx);
     const batch=await batchOf(tx,batchId);
     if(batch)await assertRunAuthorityTx(tx,batch.companyId);
-    const rows=await tx.execute<{result:PayrollProcessingChunkResult}>(sql`select result from bulk_job_step where job_id=${job.id}::uuid and kind='employees' and state='applied' order by seq`);
+    // A step a group covered carries no result: the group's first step holds its whole chunk.
+    const rows=await tx.execute<{result:PayrollProcessingChunkResult}>(sql`select result from bulk_job_step where job_id=${job.id}::uuid and kind='employees' and state='applied' and result is not null order by seq`);
+    groupStateOf.delete(job.id);
     const done=await completePayrollProcessingTx(tx,ctx,{batchId,jobId:job.id,plannedEmploymentIds:plan.employmentIds,prefillOvertime:plan.prefillOvertime,chunks:rows.map(r=>r.result)});
     const finalized={payslips:done.payslips,totalNet:done.totalNet,skipped:done.skipped.length,...(done.taxHeld.length?{taxHeld:done.taxHeld.length}:{})};
     await unit.set(tx,{planMerge:{finalized}});

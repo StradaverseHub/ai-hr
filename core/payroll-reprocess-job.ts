@@ -37,6 +37,7 @@ import {
  payrollReprocessJobRowTx,type SelectiveReprocessRun,
 } from './payroll';
 import {PAYROLL_REPROCESS_JOB_KIND} from '../lib/payroll-processing-job';
+import {nextGroupSize} from './bulk-job-group-size';
 
 export {PAYROLL_REPROCESS_JOB_KIND};
 type JobInput={reprocessJobId:string;batchId:string;employmentIds:string[];reason?:string};
@@ -76,14 +77,7 @@ const isTransient=(error:unknown)=>error instanceof BulkJobWaiting||isTransientB
  * employee m (a straight line); the group then fills max(target, multiple x F). Until then, or when the two passes do not
  * give a rising line, the size doubles. Always 2..PAYROLL_REPROCESS_GROUP_MAX, and at most double the last group. */
 export function nextReprocessGroupSize(seen:readonly {employees:number;wallMs:number}[],last:number){
- const max=payrollReprocessGroupMax(),grow=Math.max(2,Math.min(max,last*2));
- const [a,b]=seen.slice(-2);
- if(!a||!b||a.employees===b.employees)return grow;
- const perEmployee=(b.wallMs-a.wallMs)/(b.employees-a.employees);
- if(!(perEmployee>0))return grow;
- const fixed=Math.max(0,b.wallMs-b.employees*perEmployee);
- const target=Math.max(payrollReprocessChunkTargetMs(),payrollReprocessFixedMultiple()*fixed);
- return Math.max(2,Math.min(grow,Math.floor((target-fixed)/perEmployee)));
+ return nextGroupSize(seen,last,{max:payrollReprocessGroupMax(),targetMs:payrollReprocessChunkTargetMs(),fixedMultiple:payrollReprocessFixedMultiple()});
 }
 /** After a refused pass of `group` (its first employee then takes the per-employee transaction in this chunk): the
  * employees the refusal names (its `rows[].employmentId` or `employmentId`, as the reprocess refusals carry) take the
