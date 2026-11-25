@@ -11,6 +11,7 @@ import {z} from 'zod';
 import {PERSONNEL_SOCSO_CATEGORIES,PERSONNEL_EIS_CATEGORIES,PERSONNEL_CHILD_RELIEF_MODES,PERSONNEL_TAX_RESIDENCIES} from '../../lib/personnel-choice-vocabulary';
 import { writeTaxCircumstance, type TaxCircumstance } from './tax-circumstance';
 import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionContextMY} from './tax-selection';
+import {isCustomPcbScheme} from './tax-selection-codes';
 /**
  * Malaysia statutory profile (localization pack, per ADR-0008). Per-Person statutory
  * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC format is validated; tenant-wide duplicate admission is enforced by the database policy.
@@ -1275,6 +1276,9 @@ export type TaxInput = {
   taxCategory?: number;
   taxCircumstance?: TaxCircumstance | string | null;
   taxResidency?: TaxResidency | string | null;
+  /** ADR 0183 — the HR-entered number of a custom PCB Income Tax Resident choice (RM or %), as typed. Read only
+   *  with an employmentId: the employer-scoped selection owns it (saveTaxSelectionMYTx validates it). */
+  customPcbValue?: string | null;
   numChildren?: number;
   childReliefMode?: ChildReliefMode | string | null;
   employerBearsTax?: boolean;
@@ -1326,6 +1330,8 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
   outerTx?: Tx) {
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   if(p.taxResidency!=null&&p.taxResidency!=='none'&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('invalid_scheme');
+  // A custom PCB method is an employer decision with its own number; a person-only write has neither.
+  if(!p.employmentId&&isCustomPcbScheme(p.taxResidency))throw new TaxSelectionError('invalid_scheme');
   const residency: TaxResidency =
     p.taxResidency != null && isTaxResidency(String(p.taxResidency)) ? (String(p.taxResidency) as TaxResidency) : 'resident';
   const mode: ChildReliefMode =
@@ -1382,7 +1388,7 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
     await tx.update(employeeStatutoryMy).set(circumstance).where(eq(employeeStatutoryMy.id,existing.id));
     if(p.employmentId){
       if(!p.expectedCompanyId||circumstance.taxCircumstance!=='none'&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('stale_context');
-      await saveTaxSelectionMYTx(tx,ctx,{employmentId:p.employmentId,personId:p.personId,scheme:circumstance.taxCircumstance==='none'?'none':String(p.taxResidency),expectedCompanyId:p.expectedCompanyId,expectedVersion:p.expectedSelectionVersion});
+      await saveTaxSelectionMYTx(tx,ctx,{employmentId:p.employmentId,personId:p.personId,scheme:circumstance.taxCircumstance==='none'?'none':String(p.taxResidency),customValue:p.customPcbValue,expectedCompanyId:p.expectedCompanyId,expectedVersion:p.expectedSelectionVersion});
     }
     // Scoped field owns scheme. Person-only partial writers never alter that owner; scoped edits
     // preserve legacy person provenance rather than silently changing another employer's category.

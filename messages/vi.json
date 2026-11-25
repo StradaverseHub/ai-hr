@@ -865,7 +865,9 @@
         "scheme_resident": "Cư trú thông thường",
         "scheme_non_resident": "Không cư trú",
         "error_declaration_revoked": "Phê duyệt đã ghi nhận cho người sử dụng lao động và kỳ lương này đã bị thu hồi. Ghi nhận chương trình đã được phê duyệt phù hợp trước khi tính lại.",
-        "error_declaration_outside_period": "Phê duyệt đã ghi nhận không bao gồm kỳ lương này. Hoàn tất thời gian phê duyệt phù hợp trước khi tính lại."
+        "error_declaration_outside_period": "Phê duyệt đã ghi nhận không bao gồm kỳ lương này. Hoàn tất thời gian phê duyệt phù hợp trước khi tính lại.",
+        "scheme_custom_fixed": "Tùy chỉnh – số thuế cố định",
+        "scheme_custom_rate": "Tùy chỉnh – thuế suất"
       },
       "backToPeople": "Nhân sự",
       "backToPersonnelAdmin": "Quản lý Nhân sự",
@@ -2251,7 +2253,15 @@
         "recordOnly": "Chỉ ghi nhận — bảng lương đã chốt không thay đổi",
         "previous": "Trước",
         "next": "Tiếp"
-      }
+      },
+      "taxResidencyCustomFixed": "Tùy chỉnh – Số thuế cố định (RM)",
+      "taxResidencyCustomRate": "Tùy chỉnh – Thuế suất (%)",
+      "customPcbAmountLabel": "Số PCB hằng tháng",
+      "customPcbRateLabel": "Thuế suất",
+      "customPcbAmountHint": "Khấu trừ đúng như đã nhập trong mỗi tháng nhân viên này được trả lương. Không áp dụng công thức PCB, bảng thuế hay khoản giảm trừ nào.",
+      "customPcbRateHint": "Tính theo cách giống với Người không cư trú: toàn bộ thu nhập chịu thuế trong tháng, kể cả thưởng, nhân với thuế suất này, không có giảm trừ.",
+      "customPcbTakesEffect": "Bảng lương dùng giá trị này từ kỳ lương tiếp theo bạn xử lý hoặc xử lý lại. Các kỳ lương đã đóng không thay đổi.",
+      "customPcbCategoryNotUsed": "Vẫn được lưu trong hồ sơ, nhưng không được dùng khi chọn tùy chọn tùy chỉnh trong Cư trú thuế thu nhập."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -8776,7 +8786,8 @@
       "colHeldMonth": "Tháng",
       "colHeldReason": "Lý do",
       "heldForTaxReason": "Lịch sử thuế thu nhập của {period} cần được xem xét: {reason}",
-      "heldForTaxReasonGeneric": "Lịch sử thuế thu nhập của {period} cần được xem xét."
+      "heldForTaxReasonGeneric": "Lịch sử thuế thu nhập của {period} cần được xem xét.",
+      "taxSelection_custom_value_missing": "Tùy chọn PCB tùy chỉnh chưa có số tiền hoặc thuế suất đã lưu. Mở mục Thuế thu nhập (PCB) của nhân viên và lưu lại."
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",
@@ -10164,7 +10175,21 @@
       "taxCategoryNone": "Không",
       "taxCategoryLegacy3": "Nhóm 3 — vợ hoặc chồng làm việc, ly hôn, góa hoặc độc thân có con nuôi",
       "taxCategorySingleHint": "Nhóm 1 của LHDN là độc thân. Người đã kết hôn vẫn theo tình trạng làm việc của vợ hoặc chồng, dù không yêu cầu giảm trừ con.",
-      "taxCategoryNoneExplanation": "Nhóm thuế là Không trong lần xử lý lương này. PCB không được tính; các khoản theo luật khác tiếp tục bình thường."
+      "taxCategoryNoneExplanation": "Nhóm thuế là Không trong lần xử lý lương này. PCB không được tính; các khoản theo luật khác tiếp tục bình thường.",
+      "scheme_custom_fixed": "Tùy chỉnh – số thuế cố định do HR đặt",
+      "scheme_custom_rate": "Tùy chỉnh – thuế suất do HR đặt",
+      "customHeading": "PCB tùy chỉnh do HR đặt",
+      "customRate": "Thuế suất tùy chỉnh do HR đặt",
+      "customAmount": "PCB hằng tháng cố định do HR đặt",
+      "customRateFormula": "( thù lao + thù lao bổ sung ) × thuế suất tùy chỉnh",
+      "customFixedFormula": "PCB = số tiền cố định hằng tháng do HR đặt",
+      "customRateNote": "HR đã chọn thuế suất tùy chỉnh cho nhân viên này. Áp dụng giống như thuế suất Người không cư trú, không có giảm trừ, bảng thuế hay tổng lũy kế.",
+      "customFixedNote": "HR đã chọn PCB hằng tháng cố định cho nhân viên này. Khấu trừ đúng như đã nhập: không áp dụng công thức PCB, bảng thuế, giảm trừ hay làm tròn, và kỳ lương thứ hai trong cùng tháng không khấu trừ lại.",
+      "worksheetCustomHeading": "PCB tùy chỉnh do HR đặt",
+      "worksheetCustomRate": "Thuế suất tùy chỉnh đã áp dụng",
+      "worksheetCustomAmount": "Số tiền cố định hằng tháng do HR đặt",
+      "worksheetCustomRateNote": "HR đã đặt thuế suất tùy chỉnh cho nhân viên này, áp dụng cho thù lao tháng này giống như thuế suất Người không cư trú. LHDN không công bố bảng tính cho trường hợp này, nên các dòng trên là toàn bộ phép tính.",
+      "worksheetCustomFixedNote": "HR đã đặt PCB hằng tháng cố định cho nhân viên này. Không có phép tính nào: số tiền trên chính là khoản khấu trừ, nên không có bảng tính LHDN để đối chiếu."
     },
     "multiCycleWorksheet": {
       "title": "Bảng tính pháp định cho nhiều kỳ trả lương",
@@ -10562,7 +10587,9 @@
       "error_confirmation_required": "Xác nhận phân loại phù hợp trong trường Cư trú thuế thu nhập và lưu một lần. Cài đặt cũ cần xác nhận một lần; không cần khai báo riêng hay tham chiếu phê duyệt.",
       "error_invalid_scheme": "Chọn phân loại Cư trú thuế thu nhập hợp lệ.",
       "error_citizenship_unknown": "Quốc tịch đã ghi nhận không đáp ứng yêu cầu C-Suite dành cho người cư trú không phải công dân.",
-      "error_not_resident": "Tình trạng cư trú thuế đã ghi nhận không đáp ứng yêu cầu của chương trình cư trú này."
+      "error_not_resident": "Tình trạng cư trú thuế đã ghi nhận không đáp ứng yêu cầu của chương trình cư trú này.",
+      "error_custom_value_missing": "Nhập số PCB hằng tháng hoặc thuế suất cho tùy chọn tùy chỉnh.",
+      "error_custom_value_invalid": "Nhập số tiền lớn hơn RM0, hoặc thuế suất lớn hơn 0% và không quá 100%, tối đa hai chữ số thập phân."
     },
     "runPicker": {
       "all": "Tất cả chu kỳ trả lương",

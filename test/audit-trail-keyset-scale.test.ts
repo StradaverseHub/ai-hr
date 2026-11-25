@@ -33,6 +33,16 @@ beforeAll(async()=>{
  const [other]=await owner.db.insert(schema.domainEvent).values({tenantId:tenant.id,aggregateType:'holiday',aggregateId:randomUUID(),
   eventType:'holiday.replacement.reconciled',actorType:'system',payload:{hidden:true}}).returning({id:schema.domainEvent.id});
  otherTenantEventId=other.id;
+ // ADR 0182 (Phase 1): a company-scoped administrator's Audit Trail holds only events anchored to their companies, and
+ // the shared fixture's payroll, feedback and holiday events name no company (group-level, decision 2a). Record
+ // company-anchored events of the same kinds (payload companyId) so every persona and filter has a nonempty source and
+ // the single-company administrator has several pages to walk.
+ const anchored=fixture.companyIds.flatMap(companyId=>Array.from({length:companyId===fixture.singleCompanyId?48:8},(_,i)=>{
+  const [aggregateType,eventType]=i%2===0?['holiday','holiday.replacement.reconciled']:['payroll','payroll.anomaly.flagged'];
+  return {tenantId:b.tenantId,aggregateType,aggregateId:randomUUID(),eventType,actorType:'system' as const,payload:{companyId,anchored:i},
+   occurredAt:new Date(Date.now()-(3+i)*37*60_000)};
+ }));
+ for(let i=0;i<anchored.length;i+=2000)await owner.db.insert(schema.domainEvent).values(anchored.slice(i,i+2000));
 },300_000);
 afterAll(closeAll);
 
