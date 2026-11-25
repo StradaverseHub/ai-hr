@@ -272,6 +272,8 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10690,version:'7',when:1795495007290,tag:'7290_approval_history_keyset',breakpoints:true},
  {idx:10700,version:'7',when:1795495007300,tag:'7300_pay_component_itemised_payslips',breakpoints:true},
  {idx:10710,version:'7',when:1795495007310,tag:'7310_payroll_tax_import_source_revisions',breakpoints:true},
+ {idx:10690,version:'7',when:1795495007290,tag:'7290_approval_history_keyset',breakpoints:true},
+ {idx:10720,version:'7',when:1795495007320,tag:'7320_employment_search_trigram',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1386,6 +1388,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.pay_component_itemised_payslips(uuid[],jsonb)',app:true},
    // 7310 (ADR 0181 write side): the reprocess tax review's import revisions, asked only for imported payslips.
    {fn:'app.payroll_tax_import_source_revisions(uuid[])',app:true},
+   // 7320 (ADR 0181 Phase 4): the trigram-indexed employee search candidates (ids only, visible set only).
+   {fn:'app.employment_search_candidates(text,uuid[],boolean)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
