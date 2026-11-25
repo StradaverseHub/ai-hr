@@ -50,7 +50,7 @@ import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
 
 /** Recorded page budget at "All companies" on the 71-company fixture: one read-only snapshot transaction for every
  * catalog. Budgets only go down; raising one needs an ADR note (docs/plans/2026-11-24-database-read-cost-phase-0-1.md). */
-const BUDGET={transactions:1,statements:12};
+const BUDGET={transactions:1,statements:9};
 
 let b:Base,fixture:ScaleFixture;
 let personas:Record<'group'|'multi'|'single',SessionContext>;

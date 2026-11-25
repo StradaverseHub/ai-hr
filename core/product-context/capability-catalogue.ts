@@ -143,6 +143,7 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/personnel-import-assistance.ts':'Header-mapping assistance of the employee import.',
  'core/personnel-import-evaluation.ts':'Evaluation custody of the employee import.',
  'core/personnel-import-operations.ts':'Operational field writes inside the employee import.',
+ 'core/personnel-import-reference.ts':'ADR 0181 one-transaction read of the catalogs the Personnel import page shows as template guidance; it reads, decides no import outcome and is not an import a person can run.',
  // Recruitment slice 16: candidates are imported per company by recruitment administrators and the company's recruiters (the
  // recruitment service decides, not an admin guard). Kept out of the AI Centre's import catalogue on purpose: the AI Centre's
  // recruitment read stays counts only (docs/recruitment-reconstruction slice 16 case 113).
