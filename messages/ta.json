@@ -3805,6 +3805,7 @@
     "requestsTitle": "கோரிக்கைகள்",
     "requestsCountFiltered": "{status} · {count}",
     "requestsCountTotal": "{count, plural, one {# மொத்தம்} other {# மொத்தம்}}",
+    "requestsCountTotalCapped": "{count, number}+ மொத்தம்",
     "colApplied": "விண்ணப்பித்தது",
     "colType": "வகை",
     "colDates": "தேதிகள்",
