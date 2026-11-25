@@ -4,6 +4,7 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { leaveSelfReturnUrl,withLeaveEmploymentContext } from '@/lib/leave-return-context';
 import { redirect } from 'next/navigation';
+import { requestsClientNavigation, type ActionNavigation } from '@/lib/action-navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { isOwnProfileEditEmploymentTx, listLeaveTypes, myEmployment, myOwnEmploymentSubjects } from '@/core/read';
@@ -565,6 +566,9 @@ export async function decideReplacementLeaveRequestAction(formData: FormData) {
   const requestId = String(formData.get('requestId') ?? '');
   const decision = String(formData.get('decision') ?? '') === 'approved' ? ('approved' as const) : ('rejected' as const);
   const toApprovals = String(formData.get('returnTo') ?? '') === 'approvals';
+  // ADR 0181 decision 4: from an <ActionNavigateForm> the action returns where to go; the client navigates in-app and
+  // re-reads the shell's approval facts, so the app frame is not drawn again. A plain form keeps the redirects below.
+  const client = requestsClientNavigation(formData);
   const nav = {
     category: String(formData.get('category') || '') || undefined,
     sort: String(formData.get('sort') || '') || undefined,
@@ -577,8 +581,18 @@ export async function decideReplacementLeaveRequestAction(formData: FormData) {
     });
   } catch (e) {
     const message = publicErrorMessage(e);
-    if (toApprovals) redirect(approvalsReturnUrl({ ...nav, error: message }));
-    redirect(`/leave?error=${encodeURIComponent(message)}`);
+    const failed = toApprovals ? approvalsReturnUrl({ ...nav, error: message }) : `/leave?error=${encodeURIComponent(message)}`;
+    if (client) return { navigate: failed } satisfies ActionNavigation;
+    redirect(failed);
+  }
+  if (client) {
+    const tApprovals = await getTranslations('approvals');
+    return {
+      navigate: toApprovals
+        ? approvalsReturnUrl({ ...nav, toast: tApprovals(decision === 'approved' ? 'replacementApproved' : 'replacementRejected') })
+        : '/leave',
+      refreshShellApprovals: true,
+    } satisfies ActionNavigation;
   }
   // The employee's own My Leave card shows the pending figure, so it goes stale on every decision too.
   revalidatePath('/leave');

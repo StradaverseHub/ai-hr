@@ -18,7 +18,7 @@ describe('last assigned Attendance task retains feedback without broadening inbo
         expect(destination).toContain('listPendingTasks(s,scopeIds,');
         expect(destination).toContain('!tasks.length&&!rewards.length');
         expect(destination).toContain('return `/?${query.toString()}`');
-        expect(destination).toContain('return approvalsReturnUrl({ ...nav, ...feedback })');
+        expect(destination).toContain('return approvalsReturnUrl({ category: nav.category, sort: nav.sort, ...feedback })');
         expect(destination).toContain("query.set('toast', feedback.toast)");
         expect(destination).toContain("query.set('error', feedback.error)");
     });
@@ -26,7 +26,7 @@ describe('last assigned Attendance task retains feedback without broadening inbo
         const action = actionSection('export async function approveCorrectionAction', '/**');
         expect(action.indexOf('await decideAttendanceCorrection')).toBeLessThan(action.indexOf('decisionReturnUrl'));
         expect(action).toContain("decisionReturnUrl(s, nav, { toast, approvalSeal: outcomeStatus === 'approved' })");
-        expect(actions).toContain('redirect(await decisionReturnUrl(s, nav, { toast: summary }))');
+        expect(actions).toContain('return decided(await decisionReturnUrl(s, nav, { toast: summary }), nav)');
         expect(shell).toContain('<ToastFromQuery />');
         expect(toast).toContain("params.get('toast')");
         expect(toast).toContain("params.get('error')");

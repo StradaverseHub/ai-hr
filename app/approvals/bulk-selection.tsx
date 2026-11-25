@@ -5,6 +5,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Button, inputCls } from '@/components/ui';
 import { bulkDecideAction, selectPendingClaimsAction } from './actions';
+import { ActionNavigateForm } from '@/components/action-navigate-form';
 import {
   bulkRowKey,
   computeBulkBreakdown,
@@ -336,7 +337,7 @@ function BulkActionBar({ sort, category }: { sort?: string; category?: string })
               {/* One POST for the whole batch; the server action dispatches each id to its decide* service
                   (per-item try/catch + own transaction) and redirects with the N-approved/M-skipped toast.
                   Clear the selection + close as it posts (same optimistic pattern as the per-date dialog). */}
-              <form
+              <ActionNavigateForm
                 action={bulkDecideAction}
                 onSubmit={() => {
                   clearAll();
@@ -351,7 +352,7 @@ function BulkActionBar({ sort, category }: { sort?: string; category?: string })
                 <Button type="submit" size="sm" disabled={missingReason}>
                   {t('bulkConfirm')}
                 </Button>
-              </form>
+              </ActionNavigateForm>
             </div>
           </Dialog.Content>
         </Dialog.Portal>

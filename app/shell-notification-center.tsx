@@ -1,7 +1,6 @@
 import type { SessionContext } from '@/db/client';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
-import { notificationBellSummary } from '@/core/notifications';
-import { onboardingNoticeSummary } from '@/packs/lifecycle/service';
+import { readBellNotifications } from './bell-notifications';
 import type { LifecycleModuleInbox } from './lifecycle/module-inbox';
 
 /** The shell's bell. It streams behind the layout's Suspense boundary and only reads: a page load never dispatches
@@ -17,21 +16,20 @@ export async function ShellNotificationCenter({ session, scope, lifecycleEnabled
   claimPreviewRevision?: string;
   canApprove: boolean;
 }) {
-  const [notices, bell, lifecycle] = await Promise.all([
-    lifecycleEnabled ? onboardingNoticeSummary(session) : { unread: [], read: [], unreadCount: 0 },
-    scope ? notificationBellSummary(session, scope)
-      : { unread: 0, taskCount: 0, items: [], tasks: [], read: [] },
+  const [bell, lifecycle] = await Promise.all([
+    readBellNotifications(session, scope, lifecycleEnabled),
     lifecycleInbox,
   ]);
   return <NotificationCenter
-    unread={bell.unread + notices.unreadCount}
-    items={[...bell.items, ...notices.unread]}
+    unread={bell.unread}
+    items={bell.items}
     tasks={[...onboardingTasks, ...lifecycle.items]}
     taskQueueLinks={lifecycle.queueLinks}
-    taskNotifications={bell.tasks}
+    taskNotifications={bell.taskNotifications}
+    notificationTaskCount={bell.notificationTaskCount}
     claimPreviewRevision={claimPreviewRevision}
-    taskCount={onboardingTasks.length + lifecycle.count + bell.taskCount}
-    readItems={[...bell.read, ...notices.read]}
+    taskCount={onboardingTasks.length + lifecycle.count + bell.notificationTaskCount}
+    readItems={bell.readItems}
     canApprove={canApprove}
   />;
 }

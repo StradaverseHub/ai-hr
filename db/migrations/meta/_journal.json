@@ -8037,6 +8037,13 @@
       "when": 1795495007250,
       "tag": "7250_replacement_holiday_queue_voided",
       "breakpoints": true
+    },
+    {
+      "idx": 10660,
+      "version": "7",
+      "when": 1795495007260,
+      "tag": "7260_viewer_access_version",
+      "breakpoints": true
     }
   ]
 }
