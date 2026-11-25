@@ -1,3 +1,18 @@
+# Leave delegated decisions once per statement, 25 November 2026 (7280)
+
+Reserve `7280_leave_delegated_decision_set`, journal index `10680`, timestamp `1795495007280`,
+SQL SHA-256 `7793e230fe94c533afb2d2261ca652ee5459082c884b1fb031089a221a2fe6ae`. Renumbered from 7260 on 25 November 2026: Phase 3's `7260_viewer_access_version`
+(branch `claude/db-read-cost-phase-3`) reserved 7260 first, and Phase 4 holds `7270_approval_history_keyset`. A scan of
+the 400 most recent remote heads and every registered worktree journal found nothing above 7270. Install order stays
+ascending: release 6 (7230, 7240), 7250 (PR 299), 7260 (Phase 3), 7270 (Phase 4), then this. Neither installation's
+watermark was read from this session; recheck both and any competing reservation before admission.
+
+Step (d) of the approved employment-visibility addendum. Adds `app.delegated_decision_employment_ids()` (EXECUTE to
+`ai_hr_app`), the 0109 `can_decide_via_delegation` predicate as one set per statement, and replaces only the per-row
+delegation term in the USING of `leave_request_rls`, `leave_approval_step_rls`, `leave_request_date_rls`,
+`replacement_leave_request_rls` and `replacement_leave_request_date_rls` (each guarded by its exact installed text).
+WITH CHECK, roles and commands are unchanged. No table or row changes.
+
 # Cached viewer menu profile (ADR 0181 Phase 3), 25 November 2026
 
 Reserve `7260_viewer_access_version`, journal index `10660`, timestamp `1795495007260`,

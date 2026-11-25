@@ -66,6 +66,7 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10645,version:'7',when:1795495007245,tag:'7245_access_visible_employment_policy_restore',breakpoints:true},
  {idx:10650,version:'7',when:1795495007250,tag:'7250_replacement_holiday_queue_voided',breakpoints:true},
  {idx:10660,version:'7',when:1795495007260,tag:'7260_viewer_access_version',breakpoints:true},
+ {idx:10680,version:'7',when:1795495007280,tag:'7280_leave_delegated_decision_set',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},
