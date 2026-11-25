@@ -1812,6 +1812,10 @@ export function statutory(
     pcbAdditionalOverride?: number;
     /** PCB-only taxable normal remuneration; never an agency/cash wage. */
     pcbNonCashNormal?: NonCashAmounts;
+    /** Board 8edeef41 (2026-11-25 amendment of ADR-0090) — PCB-only taxable BIK/VOLA on the ADDITIONAL stream. It
+     *  joins Yt (`pcbAdditional`, the section D.2 P2 path) and nothing else: it is not in `additional`, so it adds no
+     *  EPF, SOCSO, EIS or SKBBK, and therefore nothing to Kt. Absent ⇒ byte-identical for every existing caller. */
+    pcbNonCashAdditional?: NonCashAmounts;
     /** Item 69d6ed3c — ask for `statutoryTrace` v1 on the result. Absent ⇒ no trace key at all, so every
      *  caller that does not ask gets a byte-identical result. Read by no arithmetic. */
     trace?: StatutoryTraceRequest;
@@ -1859,9 +1863,15 @@ export function statutory(
   for (const override of [opts?.pcbCashNormalOverride,opts?.pcbAdditionalOverride])
     if (override!==undefined && (!Number.isFinite(override)||override<0)) throw new StatutoryRulesetMalformedError('Invalid reviewed PCB remuneration basis');
   const pcbCashWage = opts?.pcbCashNormalOverride ?? Math.max(0, round2(cashWage - Math.max(0, opts?.pcbWageDeduction ?? 0)));
-  const pcbAdditional = opts?.pcbAdditionalOverride ?? additional;
   const benefit = opts?.pcbNonCashNormal;
   if (benefit && (![benefit.bik,benefit.vola].every(n=>Number.isFinite(n)&&n>=0))) throw new StatutoryRulesetMalformedError('Invalid PCB non-cash normal remuneration');
+  const additionalBenefit = opts?.pcbNonCashAdditional;
+  if (additionalBenefit && (![additionalBenefit.bik,additionalBenefit.vola].every(n=>Number.isFinite(n)&&n>=0))) throw new StatutoryRulesetMalformedError('Invalid PCB non-cash additional remuneration');
+  // Yt: the cash additional remuneration (or its reviewed override) plus any additional-stream benefit. The benefit
+  // never reaches `epfAdditional` above, so `epfOnBonus` (Kt) below is the EPF on the cash bonus alone.
+  const pcbAdditional = additionalBenefit
+    ? round2((opts?.pcbAdditionalOverride ?? additional) + additionalBenefit.bik + additionalBenefit.vola)
+    : opts?.pcbAdditionalOverride ?? additional;
   const pcbWage = round2(pcbCashWage + (benefit?.bik ?? 0) + (benefit?.vola ?? 0));
   // EPF by age + citizenship (Part A / Part E senior / non-citizen 2%/2%; #95). Bonus IS subject to
   // EPF; overtime is NOT.

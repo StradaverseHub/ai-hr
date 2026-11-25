@@ -73,7 +73,8 @@ describe('r382 recorded processing outcome presentation',()=>{
     const messages=JSON.parse(fs.readFileSync(path.resolve(__dirname,`../messages/${locale}.json`),'utf8')).payroll.process;
     const tax={...base,status:'validation_failed' as const,reasonCode:'TAX_SCHEME_CONFIGURATION_INCOMPLETE' as const,validationCode:'confirmation_required'};
     expect(await html([tax])).toContain(messages.taxSelection_confirmation_required.replaceAll('&','&amp;'));
-    for(const gap of ['classification_conflict','unsupported_kind','epf_bonus_not_allowed','normal_remuneration_required','month_baseline_unavailable','private component secret']){
+    // 8edeef41 — `remuneration_type_not_supported` is the new refusal; the retired Normal-only reason still renders.
+    for(const gap of ['classification_conflict','unsupported_kind','epf_bonus_not_allowed','remuneration_type_not_supported','normal_remuneration_required','month_baseline_unavailable','private component secret']){
       const row={...base,status:'validation_failed' as const,reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE' as const,validationCode:'pcb_non_cash_configuration_invalid',validationDetails:[{gap}]};
       const expected=messages[gap==='private component secret'?'nonCash_configuration_invalid':`nonCash_${gap}`];
       expect(await html([row])).toContain(expected.replaceAll('&','&amp;'));
