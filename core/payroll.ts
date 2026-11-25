@@ -135,6 +135,7 @@ import {
   payrollPermissionGrant,
   payrollPolicy,
   payrollReprocessJob,
+  payrollRunOutstanding,
   payrollStatusHistory,
   payrollStepUpChallenge,
   payslip,
@@ -9220,6 +9221,9 @@ export async function completeFullGenerationTx(tx: Tx, ctx: SessionContext, run:
     .update(payrollBatch)
     .set({ status: 'processed', employeeCount: run.employmentIds.length, totals: run.totals, ...(run.processingJobId ? { processingJobId: null, processingStartedAt: null } : {}) })
     .where(and(eq(payrollBatch.id, run.batchId), run.processingJobId ? eq(payrollBatch.processingJobId, run.processingJobId) : undefined));
+  // a1a80747 — the run's stored outstanding answer (if a reset left one) described figures that no longer exist: the
+  // Payroll Process list falls back to the live mark until the refresh works this processing out.
+  await forgetRunOutstandingTx(tx, run.batchId);
   // 49e7e0a2 — a full draft→processed generation writes every payslip on the run from the current
   // inputs, so nothing on it can still be stale. (Reaching here means the run was draft, and a draft is
   // never marked; this clears the mark a reset→regenerate cycle would otherwise have to remember to.)
@@ -9924,6 +9928,39 @@ async function assertNoOutstandingCloseWorkTx(tx: Tx, ctx: SessionContext, batch
 }
 
 /**
+ * a1a80747 — WHO ON THIS RUN STILL NEEDS PROCESSING, by the rule Close already uses. The ONE owner of the number the
+ * Payroll Process list prints under "Reprocess Required" and of the set the Reprocess Required tab counts and pre-ticks:
+ *
+ *   - `staleWithPayslip`: the run's own recalculation mark (`staleEmploymentIdsSql`), narrowed to the employees who have
+ *     a payslip on it — what "Changed" means on the tab;
+ *   - `pending`: `closePendingEmployeesTx`, unchanged — employees held for income tax review on any run, and on a regular
+ *     run every eligible employee with no payslip, inside the run's chosen list, not removed since the latest reset and
+ *     not a nothing-payable skip;
+ *   - `employmentIds`: their union, each employee once, sorted.
+ *
+ * Empty unless the run is PROCESSED (a draft owes nothing yet; a closed run never shows it). Reads only, no event, in the
+ * caller's transaction. The Close rule and its refusals are untouched: this only asks the same question.
+ */
+export type RunOutstanding = { processed: boolean; staleWithPayslip: string[]; pending: CloseBlockingEmployee[]; employmentIds: string[] };
+export async function runOutstandingTx(tx: Tx, ctx: SessionContext, batchId: string): Promise<RunOutstanding> {
+  const [run] = await tx.select({ status: payrollBatch.status }).from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+  if (run?.status !== 'processed') return { processed: false, staleWithPayslip: [], pending: [], employmentIds: [] };
+  const stale = await tx.execute<{ id: string }>(sql`select s.id from (${staleEmploymentIdsSql(batchId)}) s
+    where exists (select 1 from ${payslip} p where p.batch_id=${batchId}::uuid and p.employment_id::text=s.id) order by s.id`);
+  const pending = await closePendingEmployeesTx(tx, ctx, batchId);
+  const staleWithPayslip = stale.map((r) => r.id);
+  const employmentIds = [...new Set([...staleWithPayslip, ...pending.map((r) => r.employmentId)])].sort();
+  return { processed: true, staleWithPayslip, pending, employmentIds };
+}
+
+/** a1a80747 — drop a run's stored outstanding answer (`payroll_run_outstanding`) when its figures are replaced: the run
+ * went back to draft, was processed again or reopened. One statement by primary key; row security limits it to payroll
+ * administrators of the run's company, and the list falls back to the live mark until the answer is worked out again. */
+export async function forgetRunOutstandingTx(tx: Tx, batchId: string): Promise<void> {
+  await tx.delete(payrollRunOutstanding).where(eq(payrollRunOutstanding.batchId, batchId));
+}
+
+/**
  * cdb1c6ca — the companies, of those given, where this caller may CLOSE payroll: payroll scope for the
  * company (`app.can_admin_payroll_for`) AND the granular `payroll.close` key — the same two questions the
  * reviewed close path asks. One transaction for the whole list, resolved per COMPANY rather than per row,
@@ -10365,6 +10402,8 @@ export async function resetProcessedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:
       .update(payrollBatch)
       .set({ status: 'draft', totals: null, employeeCount: 0 })
       .where(eq(payrollBatch.id, p.batchId));
+    // a1a80747 — a draft owes nobody: drop the stored outstanding answer with the payslips it described.
+    await forgetRunOutstandingTx(tx, p.batchId);
 
     // Audit visibility (not a gate): statutory-report artefacts already recorded for this
     // company+month — the resetting admin's cue that agency files may need regenerating.
@@ -10637,6 +10676,8 @@ export async function unlockClosedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:st
     // Flip status via the 0011 escape hatch (transaction-local; cleared at COMMIT — see migration 0163).
     await tx.execute(sql`select set_config('app.unlock_batch', ${p.batchId}, true)`);
     await tx.update(payrollBatch).set({ status: 'processed' }).where(eq(payrollBatch.id, p.batchId));
+    // a1a80747 — reopened: whatever was stored before Close is stale; the list works it out again.
+    await forgetRunOutstandingTx(tx, p.batchId);
 
     // Reopen the parent pay_period (closeBatch cascaded it closed once all runs closed).
     const [period] = await tx
@@ -11881,7 +11922,15 @@ export function reprocessStaleSelection(ctx:SessionContext,batchId:string):Promi
  * (`recalculated`, "Changed") or an employee eligible for this month with no payslip on it yet (`added`, "New"). */
 export type ReprocessRequiredEntry={employmentId:string;name:string;employeeCode:string|null;kind:'added'|'recalculated';hiredOn:string;
  /** `added` rows only (empty / false on `recalculated`): the payslip-less readiness columns, as New / Pending had them. */
- outsideScope:boolean;blockers:string[];warnings:string[]};
+ outsideScope:boolean;blockers:string[];warnings:string[];
+ /** a1a80747 r2 — this run owes them processing (`runOutstandingTx`, the Close rule): counted on the tab and on the Payroll
+  * Process list, and pre-ticked. Always true for `recalculated`. */
+ owed:boolean;
+ /** a1a80747 r2 — why an `added` row is NOT owed on this run (null when owed): outside the run's chosen list, removed from
+  * it on purpose since its latest reset, or an additional run that does not pay them. A nothing-payable skip is decided
+  * beside this (`reprocessRequiredWithSkipPage`) and keeps its own group; `other` covers anything else. */
+ notOwedReason:ReprocessNotOwedReason|null};
+export type ReprocessNotOwedReason='outsideScope'|'removed'|'notPaidByRun'|'other';
 
 /**
  * a1a80747 — THE ONE REPROCESS REQUIRED LIST, as one set-based, paged statement.
@@ -11892,27 +11941,36 @@ export type ReprocessRequiredEntry={employmentId:string;name:string;employeeCode
  * window and the same no-payslip test). Their union is DE-DUPLICATED by employment, so an employee named by both (a
  * stale mark on somebody who has no payslip here) is one row, and each row says which kind it is.
  *
- * Search, count, order and page are SQL (SCALE-AND-RELEASE-RULES 2): one statement, bounded by the page. Order is name,
- * then employment id. `total` is the search-filtered count; `runTotal` and `addedRunTotal` (its New rows) ignore the
- * search. Only the page's `added` rows
- * are then given their readiness columns, by its owner (`payslipLessReadinessTx`, set-based over the page); the
- * nothing-payable decision is added in core/payroll-view.ts (`reprocessRequiredWithSkipPage`). A run that is not
- * processed lists nobody. Read only, no event.
+ * r2 — EACH ROW SAYS WHETHER THIS RUN OWES IT, from `runOutstandingTx` (the rule Close uses), so the tab counts and
+ * pre-ticks exactly the employees the Payroll Process list counts: `owedRunTotal` (search ignored) is that list's number
+ * and `owedTotal` the search-filtered one. Owed rows come first; everyone else on the list (outside a chosen-list run,
+ * removed on purpose, not paid by an additional run, a nothing-payable skip) follows, with `notOwedReason`. An owed
+ * employee the eligibility window no longer covers (held for income tax review and since ended) is still listed.
+ *
+ * Search, count, order and page are SQL (SCALE-AND-RELEASE-RULES 2): one statement, bounded by the page. Order is owed
+ * first, then name, then employment id. `total` is the search-filtered count; `runTotal` and `addedRunTotal` (its New
+ * rows) ignore the search. Only the page's `added` rows are then given their readiness columns, by its owner
+ * (`payslipLessReadinessTx`, set-based over the page); the nothing-payable decision is added in core/payroll-view.ts
+ * (`reprocessRequiredWithSkipPage`). A run that is not processed lists nobody. Read only, no event.
  */
 export function reprocessRequiredPage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string})
- :Promise<{rows:ReprocessRequiredEntry[];state:PageState;runTotal:number;addedRunTotal:number}>{
+ :Promise<{rows:ReprocessRequiredEntry[];state:PageState;runTotal:number;addedRunTotal:number;owedRunTotal:number;owedTotal:number}>{
  const page=parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
  return withTenant(ctx,async tx=>{
   const [batch]=await tx.select({id:payrollBatch.id,runType:payrollBatch.runType,payrollCycleId:payrollBatch.payrollCycleId,
    companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,scope:payrollBatch.scope,status:payrollBatch.status})
    .from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1);
-  if(!batch||batch.status!=='processed')return {rows:[],state:pageState(page,0,0),runTotal:0,addedRunTotal:0};
+  if(!batch||batch.status!=='processed')return {rows:[],state:pageState(page,0,0),runTotal:0,addedRunTotal:0,owedRunTotal:0,owedTotal:0};
+  // The owner's answer for the whole run (not the page): the same question the list's stored count asks.
+  const outstanding=await runOutstandingTx(tx,ctx,p.batchId);
+  const pendingIds=JSON.stringify(outstanding.pending.map(r=>r.employmentId));
   const needle=(p.search??'').trim().toLowerCase(),folded=foldEmployeeCode(p.search??'');
   const matched=needle===''?sql`true`:sql`position(${needle} in lower(u.name))>0
    or position(${needle} in lower(coalesce(u."employeeCode",'')))>0
    or (${folded}<>'' and position(${folded} in regexp_replace(lower(coalesce(u."employeeCode",'')),'[[:space:]._-]','','g'))>0)`;
-  const entries=await tx.execute<{runTotal:number;addedRunTotal:number;total:number;employmentId:string|null;name:string|null;employeeCode:string|null;kind:'added'|'recalculated'|null;hiredOn:string|null}>(sql`
+  const entries=await tx.execute<{runTotal:number;addedRunTotal:number;total:number;owedRunTotal:number;owedTotal:number;employmentId:string|null;name:string|null;employeeCode:string|null;kind:'added'|'recalculated'|null;hiredOn:string|null;owed:boolean|null}>(sql`
    with stale_ids as materialized (${staleEmploymentIdsSql(p.batchId)}),
+   pending_ids as materialized (select jsonb_array_elements_text(${pendingIds}::jsonb) as id),
    changed as (
     select ${payslip.employmentId} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode",
      ${employment.hiredOn}::text as "hiredOn",'recalculated'::text as kind
@@ -11922,25 +11980,44 @@ export function reprocessRequiredPage(ctx:SessionContext,p:{batchId:string;page:
     select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode",
      ${employment.hiredOn}::text as "hiredOn",'added'::text as kind
     from ${employment} join ${person} on ${person.id}=${employment.personId}
-    where ${payrollEmploymentPredicate({...batch,id:p.batchId},settingEnabled(ctx,'payroll.individual_txn_pay_enabled'))}
+    where (${payrollEmploymentPredicate({...batch,id:p.batchId},settingEnabled(ctx,'payroll.individual_txn_pay_enabled'))}
+      or ${employment.id}::text in (select id from pending_ids))
      and not exists (select 1 from ${nativePayrollPayslip} where ${nativePayrollPayslip.batchId}=${p.batchId}::uuid and ${nativePayrollPayslip.employmentId}=${employment.id})),
    unioned as materialized (
     select distinct on ("employmentId") * from (select * from changed union all select * from added) both_kinds
     order by "employmentId",(kind='recalculated') desc),
-   matched as materialized (select u.*,(${matched}) as matches from unioned u),
+   matched as materialized (select u.*,(${matched}) as matches,
+    (u.kind='recalculated' or u."employmentId"::text in (select id from pending_ids)) as owed from unioned u),
    totals as (select count(*)::int as "runTotal",count(*) filter(where kind='added')::int as "addedRunTotal",
-    count(*) filter(where matches)::int as total from matched),
-   selected_page as (select * from matched where matches order by name,"employmentId"
+    count(*) filter(where matches)::int as total,count(*) filter(where owed)::int as "owedRunTotal",
+    count(*) filter(where owed and matches)::int as "owedTotal" from matched),
+   selected_page as (select * from matched where matches order by owed desc,name,"employmentId"
     limit ${page.limit} offset ${Math.min(page.offset,Number.MAX_SAFE_INTEGER)})
-   select totals."runTotal",totals."addedRunTotal",totals.total,v."employmentId",v.name,v."employeeCode",v.kind,v."hiredOn"
-   from totals left join selected_page v on true order by v.name,v."employmentId"`);
+   select totals."runTotal",totals."addedRunTotal",totals.total,totals."owedRunTotal",totals."owedTotal",
+    v."employmentId",v.name,v."employeeCode",v.kind,v."hiredOn",v.owed
+   from totals left join selected_page v on true order by v.owed desc,v.name,v."employmentId"`);
   const listed=entries.flatMap(row=>row.employmentId===null||row.name===null||row.kind===null||row.hiredOn===null?[]:[{
-   employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode,kind:row.kind,hiredOn:row.hiredOn}]);
+   employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode,kind:row.kind,hiredOn:row.hiredOn,owed:row.owed===true}]);
   const readiness=new Map((await payslipLessReadinessTx(tx,ctx,batch,listed.filter(row=>row.kind==='added'))).map(row=>[row.employmentId,row]));
+  // Why a New row is not owed, for the page's rows only: the run type, its chosen list, then removals since its latest reset.
+  const notOwed=listed.filter(row=>row.kind==='added'&&!row.owed&&batch.runType==='regular'&&!readiness.get(row.employmentId)?.outsideScope);
+  let removed=new Set<string>();
+  if(notOwed.length>0){
+   const [reset]=await tx.select({at:sql<Date|null>`max(${payrollStatusHistory.createdAt})`}).from(payrollStatusHistory)
+    .where(and(eq(payrollStatusHistory.batchId,p.batchId),eq(payrollStatusHistory.action,'rollback')));
+   removed=new Set((await tx.select({employmentId:payrollEmployeeResultHistory.employmentId}).from(payrollEmployeeResultHistory)
+    .where(and(eq(payrollEmployeeResultHistory.batchId,p.batchId),eq(payrollEmployeeResultHistory.action,'remove'),
+     inArray(payrollEmployeeResultHistory.employmentId,notOwed.map(row=>row.employmentId)),
+     ...(reset?.at?[gt(payrollEmployeeResultHistory.createdAt,new Date(reset.at))]:[])))).map(row=>row.employmentId));
+  }
+  const reasonOf=(row:{employmentId:string;kind:string;owed:boolean},outsideScope:boolean):ReprocessNotOwedReason|null=>
+   row.owed||row.kind!=='added'?null:batch.runType!=='regular'?'notPaidByRun':outsideScope?'outsideScope':removed.has(row.employmentId)?'removed':'other';
   const rows:ReprocessRequiredEntry[]=listed.map(row=>{const r=readiness.get(row.employmentId);
-   return {...row,outsideScope:r?.outsideScope??false,blockers:r?.blockers??[],warnings:r?.warnings??[]};});
+   return {...row,outsideScope:r?.outsideScope??false,blockers:r?.blockers??[],warnings:r?.warnings??[],
+    notOwedReason:reasonOf(row,r?.outsideScope??false)};});
   const head=entries[0];
-  return {rows,state:pageState(page,head.total,rows.length),runTotal:head.runTotal,addedRunTotal:head.addedRunTotal};
+  return {rows,state:pageState(page,head.total,rows.length),runTotal:head.runTotal,addedRunTotal:head.addedRunTotal,
+   owedRunTotal:head.owedRunTotal,owedTotal:head.owedTotal};
  });
 }
 
