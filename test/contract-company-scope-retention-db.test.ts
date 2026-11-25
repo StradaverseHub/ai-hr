@@ -54,6 +54,10 @@ it('retains genuine scheduled Contract provenance and its scoped company without
   for(const entry of journal.entries.slice(0,boundary))copyFileSync('db/migrations/'+entry.tag+'.sql',join(directory,entry.tag+'.sql'));
   writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,boundary)}));
   await migrate(drizzle(storage),{migrationsFolder:directory});
+  // 7390 (ADR 0183) adds two nullable columns that today's tax-selection writer lists in every insert. This fixture
+  // seeds with today's kernel at the 6501 prefix, so the columns exist only while it seeds; they are dropped before the
+  // first snapshot, and the ordinary journal migration below adds them for real. No snapshotted table carries them.
+  await storage.unsafe('ALTER TABLE employment_tax_selection_my ADD COLUMN custom_pcb_amount numeric(12,2), ADD COLUMN custom_pcb_rate numeric(5,2)');
   // The application and harness singleton must first resolve against this owned disposable database.
   for(const key of keys){const target=new URL(original[key]!);target.pathname='/'+name;process.env[key]=target.toString();}
   const h=await import('./harness');close=h.closeAll;
@@ -187,6 +191,7 @@ it('retains genuine scheduled Contract provenance and its scoped company without
    audit:await h.owner.client`select to_jsonb(e) as row from domain_event e where tenant_id=${b.tenantId} order by id`,
   });
   const proc=async()=>(await h.owner.client<{metadata:Record<string,unknown>;body:string;definition:string}[]>`select to_jsonb(p)-'prosrc' as metadata,prosrc as body,pg_get_functiondef(p.oid) as definition from pg_proc p where p.oid='app.replan_retained_company_in_use(uuid)'::regprocedure`)[0];
+  await storage.unsafe('ALTER TABLE employment_tax_selection_my DROP COLUMN custom_pcb_amount, DROP COLUMN custom_pcb_rate');
   const before=await snapshot(),functionBefore=await proc(),ledger=await storage`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`;
   expect(functionBefore.body).toBe(oldBody);expect(ledger).toHaveLength(boundary);expect(before.sources.length).toBeGreaterThan(0);
   const code=async(work:()=>Promise<unknown>)=>{try{await work();return 'accepted';}catch(error){return pgSqlState(error);}};

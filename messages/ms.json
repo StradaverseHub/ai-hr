@@ -865,7 +865,9 @@
         "scheme_resident": "Pemastautin biasa",
         "scheme_non_resident": "Bukan pemastautin",
         "error_declaration_revoked": "Kelulusan yang direkodkan untuk majikan dan tempoh penggajian ini telah dibatalkan. Rekodkan skim diluluskan yang terpakai sebelum mengira semula.",
-        "error_declaration_outside_period": "Kelulusan yang direkodkan tidak meliputi tempoh penggajian ini. Lengkapkan tempoh kelulusan yang terpakai sebelum mengira semula."
+        "error_declaration_outside_period": "Kelulusan yang direkodkan tidak meliputi tempoh penggajian ini. Lengkapkan tempoh kelulusan yang terpakai sebelum mengira semula.",
+        "scheme_custom_fixed": "Tersuai – amaun cukai tetap",
+        "scheme_custom_rate": "Tersuai – kadar cukai"
       },
       "backToPeople": "Kakitangan",
       "backToPersonnelAdmin": "Pengurusan Kakitangan",
@@ -2251,7 +2253,15 @@
         "recordOnly": "Rekod sahaja — gaji yang ditutup tidak berubah",
         "previous": "Sebelumnya",
         "next": "Seterusnya"
-      }
+      },
+      "taxResidencyCustomFixed": "Tersuai – Amaun Cukai Tetap (RM)",
+      "taxResidencyCustomRate": "Tersuai – Kadar Cukai (%)",
+      "customPcbAmountLabel": "Amaun PCB bulanan",
+      "customPcbRateLabel": "Kadar cukai",
+      "customPcbAmountHint": "Dipotong tepat seperti yang dimasukkan pada setiap bulan pekerja ini dibayar. Tiada formula PCB, jadual cukai atau pelepasan digunakan.",
+      "customPcbRateHint": "Dikira dengan cara yang sama seperti Bukan Pemastautin: semua gaji bercukai bulan itu, termasuk bonus, didarab dengan kadar ini, tanpa pelepasan.",
+      "customPcbTakesEffect": "Penggajian menggunakan ini mulai penggajian seterusnya yang anda proses atau proses semula. Penggajian yang telah ditutup tidak berubah.",
+      "customPcbCategoryNotUsed": "Disimpan dalam rekod, tetapi tidak digunakan semasa pilihan tersuai dipilih dalam Pemastautin Cukai Pendapatan."
     },
     "import": {
       "title": "Import pekerja",
@@ -8779,7 +8789,8 @@
       "colHeldMonth": "Bulan",
       "colHeldReason": "Sebab",
       "heldForTaxReason": "Sejarah cukai pendapatan bagi {period} perlu disemak: {reason}",
-      "heldForTaxReasonGeneric": "Sejarah cukai pendapatan bagi {period} perlu disemak."
+      "heldForTaxReasonGeneric": "Sejarah cukai pendapatan bagi {period} perlu disemak.",
+      "taxSelection_custom_value_missing": "Pilihan PCB tersuai tiada amaun atau kadar yang disimpan. Buka bahagian Cukai Pendapatan (PCB) pekerja dan simpannya."
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",
@@ -10167,7 +10178,21 @@
       "taxCategoryNone": "Tiada",
       "taxCategoryLegacy3": "Kategori 3 — pasangan bekerja, bercerai, balu/duda atau bujang dengan anak angkat",
       "taxCategorySingleHint": "Kategori 1 LHDN bermaksud bujang. Kategori pekerja berkahwin mengikut status pekerjaan pasangan, walaupun pelepasan anak tidak dituntut.",
-      "taxCategoryNoneExplanation": "Kategori Cukai ialah Tiada untuk pemprosesan gaji ini. PCB tidak dikira; pengiraan berkanun lain diteruskan seperti biasa."
+      "taxCategoryNoneExplanation": "Kategori Cukai ialah Tiada untuk pemprosesan gaji ini. PCB tidak dikira; pengiraan berkanun lain diteruskan seperti biasa.",
+      "scheme_custom_fixed": "Tersuai – amaun cukai tetap ditetapkan oleh HR",
+      "scheme_custom_rate": "Tersuai – kadar cukai ditetapkan oleh HR",
+      "customHeading": "PCB tersuai ditetapkan oleh HR",
+      "customRate": "Kadar cukai tersuai ditetapkan oleh HR",
+      "customAmount": "PCB bulanan tetap ditetapkan oleh HR",
+      "customRateFormula": "( saraan + saraan tambahan ) × kadar cukai tersuai",
+      "customFixedFormula": "PCB = amaun bulanan tetap yang ditetapkan oleh HR",
+      "customRateNote": "HR memilih kadar cukai tersuai untuk pekerja ini. Ia digunakan seperti kadar Bukan Pemastautin, tanpa pelepasan, jadual cukai atau jumlah terkumpul.",
+      "customFixedNote": "HR memilih PCB bulanan tetap untuk pekerja ini. Ia dipotong seperti yang dimasukkan: tiada formula PCB, jadual cukai, pelepasan atau pembundaran digunakan, dan penggajian kedua dalam bulan yang sama tidak memotongnya lagi.",
+      "worksheetCustomHeading": "PCB tersuai ditetapkan oleh HR",
+      "worksheetCustomRate": "Kadar cukai tersuai yang digunakan",
+      "worksheetCustomAmount": "Amaun bulanan tetap ditetapkan oleh HR",
+      "worksheetCustomRateNote": "HR menetapkan kadar cukai tersuai untuk pekerja ini, digunakan pada saraan bulan ini seperti kadar Bukan Pemastautin. LHDN tidak menerbitkan lembaran kerja pengiraan untuknya, jadi baris di atas ialah keseluruhan pengiraan.",
+      "worksheetCustomFixedNote": "HR menetapkan PCB bulanan tetap untuk pekerja ini. Tiada apa yang dikira: amaun di atas ialah potongannya, jadi tiada lembaran kerja LHDN untuk dibandingkan."
     },
     "multiCycleWorksheet": {
       "title": "Lembaran Kerja Berkanun Berbilang Kitaran",
@@ -10565,7 +10590,9 @@
       "error_confirmation_required": "Sahkan kategori yang terpakai dalam Pemastautin Cukai Pendapatan dan simpan sekali. Tetapan terdahulu memerlukan pengesahan sekali sahaja; tiada pengisytiharan berasingan atau rujukan kelulusan diperlukan.",
       "error_invalid_scheme": "Pilih kategori Pemastautin Cukai Pendapatan yang sah.",
       "error_citizenship_unknown": "Kewarganegaraan yang direkodkan tidak memenuhi syarat C-Suite bagi pemastautin bukan warganegara.",
-      "error_not_resident": "Status pemastautin cukai yang direkodkan tidak memenuhi syarat skim pemastautin ini."
+      "error_not_resident": "Status pemastautin cukai yang direkodkan tidak memenuhi syarat skim pemastautin ini.",
+      "error_custom_value_missing": "Masukkan amaun PCB bulanan atau kadar cukai untuk pilihan tersuai.",
+      "error_custom_value_invalid": "Masukkan amaun melebihi RM0, atau kadar melebihi 0% dan tidak melebihi 100%, dengan sehingga dua tempat perpuluhan."
     },
     "runPicker": {
       "all": "Semua kitaran gaji",

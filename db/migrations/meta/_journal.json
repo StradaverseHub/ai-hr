@@ -8100,6 +8100,13 @@
       "when": 1795495007360,
       "tag": "7360_audit_trail_company_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 10790,
+      "version": "7",
+      "when": 1795495007390,
+      "tag": "7390_custom_pcb_selection",
+      "breakpoints": true
     }
   ]
 }

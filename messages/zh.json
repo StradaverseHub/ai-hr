@@ -865,7 +865,9 @@
         "scheme_resident": "普通居民",
         "scheme_non_resident": "非居民",
         "error_declaration_revoked": "此雇主和工资期间的批准记录已撤销。重新计算前，请记录适用的已获批准方案。",
-        "error_declaration_outside_period": "批准记录未涵盖此工资期间。重新计算前，请补全适用的批准期间。"
+        "error_declaration_outside_period": "批准记录未涵盖此工资期间。重新计算前，请补全适用的批准期间。",
+        "scheme_custom_fixed": "自定义 – 固定税额",
+        "scheme_custom_rate": "自定义 – 税率"
       },
       "backToPeople": "员工",
       "backToPersonnelAdmin": "员工管理",
@@ -2251,7 +2253,15 @@
         "recordOnly": "仅作记录 — 已关闭的薪资保持不变",
         "previous": "上一页",
         "next": "下一页"
-      }
+      },
+      "taxResidencyCustomFixed": "自定义 – 固定税额 (RM)",
+      "taxResidencyCustomRate": "自定义 – 税率 (%)",
+      "customPcbAmountLabel": "每月 PCB 金额",
+      "customPcbRateLabel": "税率",
+      "customPcbAmountHint": "在该员工每个领薪月份按输入金额原样扣除。不使用任何 PCB 公式、税表或减免。",
+      "customPcbRateHint": "按非居民的方式计算：当月全部应税薪酬（包括奖金）乘以此税率，不计任何减免。",
+      "customPcbTakesEffect": "从您下一次处理或重新处理的薪资开始使用。已关闭的薪资不会更改。",
+      "customPcbCategoryNotUsed": "保留在记录中，但在“所得税居民”中选择自定义选项期间不会使用。"
     },
     "import": {
       "title": "导入员工",
@@ -8779,7 +8789,8 @@
       "colHeldMonth": "月份",
       "colHeldReason": "原因",
       "heldForTaxReason": "{period} 的所得税历史需要审核：{reason}",
-      "heldForTaxReasonGeneric": "{period} 的所得税历史需要审核。"
+      "heldForTaxReasonGeneric": "{period} 的所得税历史需要审核。",
+      "taxSelection_custom_value_missing": "自定义 PCB 选项没有已保存的金额或税率。请打开该员工的所得税 (PCB) 部分并保存。"
     },
     "guide": {
       "title": "薪资工作流程指南",
@@ -10167,7 +10178,21 @@
       "taxCategoryNone": "无",
       "taxCategoryLegacy3": "类别 3 — 配偶工作、离婚、丧偶，或有收养子女的单身人士",
       "taxCategorySingleHint": "LHDN 类别 1 指单身。已婚员工的类别仍按配偶工作状态确定，即使未申报子女减免。",
-      "taxCategoryNoneExplanation": "本次工资处理的税务类别为无。未计算 PCB；其他法定计算照常进行。"
+      "taxCategoryNoneExplanation": "本次工资处理的税务类别为无。未计算 PCB；其他法定计算照常进行。",
+      "scheme_custom_fixed": "自定义 – 由 HR 设定的固定税额",
+      "scheme_custom_rate": "自定义 – 由 HR 设定的税率",
+      "customHeading": "由 HR 设定的自定义 PCB",
+      "customRate": "由 HR 设定的自定义税率",
+      "customAmount": "由 HR 设定的每月固定 PCB",
+      "customRateFormula": "( 薪酬 + 额外薪酬 ) × 自定义税率",
+      "customFixedFormula": "PCB = 由 HR 设定的每月固定金额",
+      "customRateNote": "HR 为该员工选择了自定义税率。其计算方式与非居民税率相同，不计减免、税表或累计总额。",
+      "customFixedNote": "HR 为该员工选择了每月固定 PCB。按输入金额扣除：不使用 PCB 公式、税表、减免或进位，同月的第二次薪资不会重复扣除。",
+      "worksheetCustomHeading": "由 HR 设定的自定义 PCB",
+      "worksheetCustomRate": "所用的自定义税率",
+      "worksheetCustomAmount": "由 HR 设定的每月固定金额",
+      "worksheetCustomRateNote": "HR 为该员工设定了自定义税率，按非居民税率的方式用于本月薪酬。LHDN 没有为此发布计算工作表，因此上面各行就是完整的计算。",
+      "worksheetCustomFixedNote": "HR 为该员工设定了每月固定 PCB。没有进行任何计算：上面的金额就是扣除额，因此没有可对照的 LHDN 工作表。"
     },
     "multiCycleWorksheet": {
       "title": "多次发薪法定核对表",
@@ -10565,7 +10590,9 @@
       "error_confirmation_required": "请在“所得税居民身份”字段确认适用类别并保存一次。旧设置需要一次性确认，无需另行填写声明或批准参考编号。",
       "error_invalid_scheme": "请选择有效的所得税居民类别。",
       "error_citizenship_unknown": "已记录的国籍不符合 C-Suite 方案针对非公民居民的要求。",
-      "error_not_resident": "已记录的税务居民身份不符合此居民方案的要求。"
+      "error_not_resident": "已记录的税务居民身份不符合此居民方案的要求。",
+      "error_custom_value_missing": "请为自定义选项输入每月 PCB 金额或税率。",
+      "error_custom_value_invalid": "请输入高于 RM0 的金额，或高于 0% 且不超过 100% 的税率，最多两位小数。"
     },
     "runPicker": {
       "all": "所有薪资周期",

@@ -1987,7 +1987,10 @@ export async function cp21Particulars(
       ? 'non_resident'
       : extra.profile.taxResidency ?? (extra.profile.isResident === false ? 'non_resident' : 'resident')
     : null;
-  const scheme = extra.selection?.scheme ?? legacy;
+  // ADR 0183 — a custom PCB method (custom_fixed / custom_rate) says how much tax to deduct, not whether the person
+  // is resident, so A4 then reads the person's recorded residency, which a custom choice never changes.
+  const selected = extra.selection?.scheme;
+  const scheme = selected && selected !== 'custom_fixed' && selected !== 'custom_rate' ? selected : legacy;
   const resident = scheme === 'non_resident' ? false : scheme && RESIDENT_SCHEMES.has(scheme) ? true : null;
   const bearsTax = extra.profile ? extra.profile.bearsTax : null;
 

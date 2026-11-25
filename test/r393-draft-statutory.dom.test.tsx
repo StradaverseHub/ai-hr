@@ -476,6 +476,9 @@ function BeforeResidencySelect({ none, taxResidency }: { none: boolean; taxResid
       <option value="rep">{t('taxResidencyRep')}</option>
       <option value="knowledge_worker">{t('taxResidencyKnowledgeWorker')}</option>
       <option value="c_suite">{t('taxResidencyCSuite')}</option>
+      {/* ADR 0183 (board d8dc0a8c) — the two custom PCB choices, offered by the Active card only. */}
+      <option value="custom_fixed">{t('taxResidencyCustomFixed')}</option>
+      <option value="custom_rate">{t('taxResidencyCustomRate')}</option>
     </select>
   );
 }
@@ -518,7 +521,7 @@ describe('§5 the Active EPF election and Income Tax Resident select retain the 
     });
     it(`${loc}: Income Tax Resident, every choice, with and without "Not subject to income tax"`, () => {
       for (const none of [false, true])
-        for (const taxResidency of ['', 'resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite']) {
+        for (const taxResidency of ['', 'resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite', 'custom_fixed', 'custom_rate']) {
           const before = html(<BeforeResidencySelect none={none} taxResidency={taxResidency} />, msgs as Msgs, loc);
           const after = html(<AfterResidencySelect none={none} taxResidency={taxResidency} />, msgs as Msgs, loc);
           expect(before.length).toBeGreaterThan(200);
