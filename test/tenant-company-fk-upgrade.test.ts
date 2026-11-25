@@ -270,6 +270,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10660,version:'7',when:1795495007260,tag:'7260_viewer_access_version',breakpoints:true},
  {idx:10680,version:'7',when:1795495007280,tag:'7280_leave_delegated_decision_set',breakpoints:true},
  {idx:10700,version:'7',when:1795495007300,tag:'7300_pay_component_itemised_payslips',breakpoints:true},
+ {idx:10710,version:'7',when:1795495007310,tag:'7310_payroll_tax_import_source_revisions',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1378,6 +1379,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.delegated_decision_employment_ids()',app:true},
    // 7300 (ADR 0181 write side): the Pay Item stale-run marker's itemised slips, containment before authority.
    {fn:'app.pay_component_itemised_payslips(uuid[],jsonb)',app:true},
+   // 7310 (ADR 0181 write side): the reprocess tax review's import revisions, asked only for imported payslips.
+   {fn:'app.payroll_tax_import_source_revisions(uuid[])',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.

@@ -8058,6 +8058,13 @@
       "when": 1795495007300,
       "tag": "7300_pay_component_itemised_payslips",
       "breakpoints": true
+    },
+    {
+      "idx": 10710,
+      "version": "7",
+      "when": 1795495007310,
+      "tag": "7310_payroll_tax_import_source_revisions",
+      "breakpoints": true
     }
   ]
 }
