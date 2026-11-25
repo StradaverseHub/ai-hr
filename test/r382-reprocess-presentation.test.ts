@@ -59,7 +59,10 @@ describe('r382 recorded processing outcome presentation',()=>{
     const tax={...base,employmentId:jobId,name:'Missing REP approval',status:'validation_failed' as const,reasonCode:'TAX_SCHEME_CONFIGURATION_INCOMPLETE' as const,validationCode:'missing_declaration',configuredTaxScheme:'rep' as const,resultRetained:false,payslipId:null,versionBefore:null,versionAfter:null};
     const success={...base,employmentId:run.companyId,name:'Successful Employee',status:'reprocessed' as const,reasonCode:null,resultRetained:false,versionBefore:1,versionAfter:2};
     const output=await html([success,base,tax]);
-    expect(output).toContain('Reprocessed: 1');expect(output).toContain('Skipped: 1');expect(output).toContain('Configuration incomplete: 1');
+    // a1a80747 — the totals: Selected / Reprocessed / Skipped / Failed.
+    const tile=(label:string)=>output.match(new RegExp(`<dt[^>]*>${label}</dt><dd[^>]*>([^<]*)</dd>`))?.[1];
+    expect([tile('Selected'),tile('Reprocessed'),tile('Skipped'),tile('Failed')]).toEqual(['3','1','1','1']);
+    expect(output).toContain('Configuration incomplete');
     expect(output).toContain('REP');expect(output).toContain('no applicable approval');
     expect(output).toContain(`/payroll/${run.companyId}/tax-configuration/${jobId}`);
     expect(output).toContain(`job=${jobId}`);expect(output).toContain('from=%2Fpayroll');

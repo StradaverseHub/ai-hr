@@ -5,7 +5,7 @@ import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
-import type {ReprocessTaxReadiness} from '../lib/payroll-reprocess-readiness';
+import type {ReprocessTaxEmployee,ReprocessTaxReadiness} from '../lib/payroll-reprocess-readiness';
 import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
 import {payFormulaRowInputs} from '../lib/pay-formula-input';
 import {repriceIndividualLedgerTx,PayItemFormulaRepriceError,type RepricedPayItem} from '../packs/payroll/individual-calculation';
@@ -468,6 +468,10 @@ export class ReprocessEmploymentNotInPeriodError extends Error {
 }
 
 export type ReprocessTaxScheme = 'resident'|'non_resident'|'rep'|'knowledge_worker'|'c_suite';
+/** a1a80747 — why the job held an employee for income tax recalculation instead of reprocessing them: their tax
+ * history needs recalculation (readiness 'blocked'), or a recalculation of it is still running ('recalculating'). */
+export type ReprocessTaxHoldReason = 'TAX_RECALC_REQUIRED' | 'TAX_RECALC_IN_PROGRESS';
+const REPROCESS_SKIP_REASONS: ReadonlySet<string> = new Set(['NOTHING_PAYABLE','TAX_RECALC_REQUIRED','TAX_RECALC_IN_PROGRESS']);
 const REPROCESS_TAX_SCHEMES = ['resident','non_resident','rep','knowledge_worker','c_suite'] as const;
 
 export type ReprocessEmployeeOutcome = {
@@ -478,7 +482,9 @@ export type ReprocessEmployeeOutcome = {
    *  'not_eligible': no longer in this month, but removal is switched off or not permitted, so the old
    *  result is kept for an administrator to remove. */
   status: 'reprocessed' | 'skipped' | 'validation_failed' | 'excluded' | 'not_eligible';
-  reasonCode: 'NOTHING_PAYABLE' | 'PAYROLL_CONFIGURATION_INCOMPLETE' | 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' | 'PAY_ITEM_FORMULA_FAILED' | ReprocessExclusionReason | null;
+  /** a1a80747 — 'skipped' also carries TAX_RECALC_REQUIRED / TAX_RECALC_IN_PROGRESS: the job's own tax-readiness check
+   *  (the rules of `reviewReprocessTaxReadiness`, unchanged) held this employee for income tax recalculation. */
+  reasonCode: 'NOTHING_PAYABLE' | ReprocessTaxHoldReason | 'PAYROLL_CONFIGURATION_INCOMPLETE' | 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' | 'PAY_ITEM_FORMULA_FAILED' | ReprocessExclusionReason | null;
   validationCode?: string;
   /** 3244584c — an exclusion carries its cause and the effective date (`gap` = the cause, `date` = ISO). */
   validationDetails?: { gap: string; date?: string }[];
@@ -503,6 +509,7 @@ export type ReprocessEmployeeOutcome = {
 export type ReprocessJobResult = {
   /** Fences an abandoned worker from changing a reclaimed job; never a payroll business fact. */
   workerToken?: string;
+  /** Written by jobs enqueued before a1a80747 (the request's readiness answer); never written now, still decoded. */
   heldEmploymentIds?: string[];
   outcomes: ReprocessEmployeeOutcome[];
   selected: number;
@@ -10746,7 +10753,16 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
   let outcomeState: Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'validationCode'|'validationDetails'|'configuredTaxScheme'|'effectiveTaxScheme'|'formulaFailure'>;
   let repricedItems: RepricedPayItem[] | undefined;
   let taxBasisRecalculated = false;
-  try {
+  // a1a80747 — TAX READINESS, AT THE MOMENT THIS EMPLOYEE IS PROCESSED. The rules are `reviewReprocessTaxReadiness`'s,
+  // unchanged; they used to run in the web request (a Check Tax Readiness step, then again on submit, refusing the whole
+  // submit if any answer had moved). An employee whose tax history needs income tax recalculation, or whose
+  // recalculation is still running, is a skipped outcome: nothing is calculated or written for them, and they stay held
+  // for the add path (no payslip) or stale (a payslip) exactly as before, so they come back on Reprocess Required. The
+  // others carry on. An employee leaving the month is not calculated, so the exclusion needs no tax answer.
+  const hold = exclusion ? undefined : (await reprocessTaxHoldsTx(tx,ctx,currentBatch,[employmentId])).get(employmentId);
+  if (hold) {
+    outcomeState = {status:'skipped',reasonCode:hold.reasonCode,...(hold.reason ? {validationDetails:[{gap:hold.reason}]} : {})};
+  } else try {
     if (exclusion) throw exclusion;
     // Nested drizzle transaction is a SAVEPOINT on this same connection, never another tenant
     // transaction. Collection, snapshot/delete, money, ledger and coverage all roll back together.
@@ -10855,6 +10871,8 @@ function reprocessOutcomeEvent(ctx:SessionContext,run:SelectiveReprocessRun,batc
  *                still in the month) was recalculated by ONE pass of the payroll engine (`generatePayslipsTx`, its
  *                run-wide reads once and its per-employee figures unchanged) and committed with every outcome in one
  *                checkpoint and one multi-row event insert;
+ *  - a1a80747: `single` and `set` may name `held`: candidates the tax readiness rules hold for income tax recalculation
+ *                (the group stops before the first of them; each is recorded by the per-employee transaction);
  *  - `fallback`: that pass refused (a validation outcome, or any other refusal), was rolled back to its savepoint, and the
  *                caller runs those employees through the per-employee transaction, so every outcome and every stop is
  *                exactly the per-employee path's.
@@ -10863,8 +10881,8 @@ function reprocessOutcomeEvent(ctx:SessionContext,run:SelectiveReprocessRun,batc
  * `timing` splits the group's wall time into process CPU (the calculation and the driver) and the rest (database). */
 export type SelectiveReprocessGroup=
  |{kind:'done'}
- |{kind:'single'}
- |{kind:'set';employmentIds:string[];timing:{wallMs:number;cpuMs:number;engineWallMs:number;engineCpuMs:number}}
+ |{kind:'single';held?:string[]}
+ |{kind:'set';employmentIds:string[];timing:{wallMs:number;cpuMs:number;engineWallMs:number;engineCpuMs:number};held?:string[]}
  |{kind:'fallback';employmentIds:string[];error:unknown};
 export async function reprocessEmployeeGroupTx(tx:Tx,ctx:SessionContext,run:SelectiveReprocessRun,candidates:readonly string[],
  opts:{isTransient:(error:unknown)=>boolean;stopped:{current:{employmentId:string;name:string;employeeCode:string|null}|null}}):Promise<SelectiveReprocessGroup>{
@@ -10913,9 +10931,18 @@ export async function reprocessEmployeeGroupTx(tx:Tx,ctx:SessionContext,run:Sele
     if(identity.hiredOn > periodEnd)return false;
     return identity.outstanding || identity.withCompany;
   };
+  const ordinaryRun:string[]=[];
+  for(const id of pending){if(!ordinary(id))break;ordinaryRun.push(id);}
+  if(ordinaryRun.length<2)return {kind:'single'};
+  // a1a80747 — the tax readiness rules, for the whole run of candidates in one set-based read and in this transaction.
+  // The group stops before the first employee they hold: that employee takes the per-employee transaction, which
+  // records them as a skipped outcome, and grouping resumes after them.
+  const holds=await reprocessTaxHoldsTx(tx,ctx,currentBatch,ordinaryRun);
   const group:string[]=[];
-  for(const id of pending){if(!ordinary(id))break;group.push(id);}
-  if(group.length<2)return {kind:'single'};
+  for(const id of ordinaryRun){if(holds.has(id))break;group.push(id);}
+  // `held` names the candidates the rules hold, so the job sends them straight to the per-employee transaction.
+  const held=[...holds.keys()];
+  if(group.length<2)return {kind:'single',...(held.length?{held}:{})};
   const first=identities.get(group[0])!;
   opts.stopped.current={employmentId:group[0],name:first.name,employeeCode:first.employeeCode};
   const engineStarted=performance.now(),engineCpuStarted=process.cpuUsage();
@@ -10959,7 +10986,7 @@ export async function reprocessEmployeeGroupTx(tx:Tx,ctx:SessionContext,run:Sele
   opts.stopped.current=null;
   const cpu=process.cpuUsage(cpuStarted);
   return {kind:'set',employmentIds:group,timing:{wallMs:performance.now()-started,cpuMs:(cpu.user+cpu.system)/1000,
-    engineWallMs,engineCpuMs:(engineCpu.user+engineCpu.system)/1000}};
+    engineWallMs,engineCpuMs:(engineCpu.user+engineCpu.system)/1000},...(held.length?{held}:{})};
 }
 /** The reprocess job row the background job claims and follows (row security as the request path). */
 export async function payrollReprocessJobRowTx(tx:Tx,jobId:string){
@@ -11022,18 +11049,34 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
     if(period?.status==='closed')throw new ReprocessRunBlockedError('PERIOD_CLOSED','This pay period is closed.');
     const members=await reprocessRunMembersTx(tx,ctx,batch,ids);
     if(members.length!==ids.length)throw new Error('Some selected employees are no longer available on this payroll run.');
+    const {employees,canReviewTax}=await reprocessTaxReadinessTx(tx,ctx,batch,members);
+    if(employees.length!==members.length)throw new Error('Some selected employees are unavailable.');
+    const [year,month]=batch.payPeriod.split('-').map(Number);
+    return {taxReviewHref:canReviewTax?`/payroll/income-tax-recalculation?company=${batch.companyId}&year=${year}&month=${month}`:null,employees};
+  },{readOnlySnapshot:true});
+}
+
+/** The run fields the tax readiness rules read. */
+type ReprocessTaxReadinessRun=PayrollEligibilityRun&{id:string;companyId:string;payPeriod:string;payPeriodId:string;runType:string;runSeq:number};
+
+/** The tax readiness rules, for `members` of one run, inside the caller's transaction (a1a80747: shared by the
+ * read-only review above and by each reprocess step, which applies them at the moment it processes the employee).
+ * Set-based: one read per concern for the whole set. An employee this reader cannot see is absent from the answer. */
+async function reprocessTaxReadinessTx(tx:Tx,ctx:SessionContext,batch:ReprocessTaxReadinessRun,members:readonly string[])
+ :Promise<{employees:ReprocessTaxEmployee[];canReviewTax:boolean}>{
+    if(!members.length)return {employees:[],canReviewTax:false};
     const identities=await tx.select({employmentId:employment.id,name:person.fullName,employeeCode:employment.employeeCode,
       outstanding:sql<boolean>`${outstandingPaymentPredicate(batch,settingEnabled(ctx,'payroll.individual_txn_pay_enabled'))}`})
-      .from(employment).innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,members))
+      .from(employment).innerJoin(person,eq(person.id,employment.personId)).where(inArray(employment.id,[...members]))
       .orderBy(employment.employeeCode,employment.id);
-    if(identities.length!==members.length)throw new Error('Some selected employees are unavailable.');
-    const [year,month]=batch.payPeriod.split('-').map(Number);
+    if(!identities.length)return {employees:[],canReviewTax:false};
+    const [year]=batch.payPeriod.split('-').map(Number);
     const prior=await tx.select({id:payslip.id}).from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId))
-      .where(and(inArray(payslip.employmentId,members),eq(payrollBatch.companyId,batch.companyId),
+      .where(and(inArray(payslip.employmentId,[...members]),eq(payrollBatch.companyId,batch.companyId),
         like(payrollBatch.payPeriod,`${year}-%`),lt(payrollBatch.payPeriod,batch.payPeriod)));
     const priorIds=prior.map(source=>source.id);
     const failures=await readTaxBasisFailuresTx(tx,ctx,priorIds,{includeImported:true,reprocess:reprocessHistoryTaxBasisRead(tx,ctx)});
-    const earlierMembers=batch.runType!=='regular'||batch.runSeq>1 ? members : identities.filter(e=>e.outstanding).map(e=>e.employmentId);
+    const earlierMembers=batch.runType!=='regular'||batch.runSeq>1 ? [...members] : identities.filter(e=>e.outstanding).map(e=>e.employmentId);
     if(earlierMembers.length){
       const earlier=await tx.select({id:payslip.id}).from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId))
         .where(and(inArray(payslip.employmentId,earlierMembers),eq(payrollBatch.companyId,batch.companyId),
@@ -11044,7 +11087,7 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
       }
     }
     const current=await tx.select({id:nativePayrollPayslip.id}).from(nativePayrollPayslip)
-      .where(and(eq(nativePayrollPayslip.batchId,batchId),inArray(nativePayrollPayslip.employmentId,members)));
+      .where(and(eq(nativePayrollPayslip.batchId,batch.id),inArray(nativePayrollPayslip.employmentId,[...members])));
     for(const [id,reason] of await readTaxBasisFailuresTx(tx,ctx,current.map(source=>source.id),{reprocess:{kind:'current',recordCorrection:()=>{}}})){
       if(!failures.has(id))failures.set(id,reason);
     }
@@ -11074,15 +11117,27 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
         bool_or(active) over(partition by employment_id) as active
       from entries order by employment_id,created_at desc`) : [];
     const lastReview=new Map(reviewRows.map(e=>[e.employmentId,e]));
-    return {taxReviewHref:canReviewTax?`/payroll/income-tax-recalculation?company=${batch.companyId}&year=${year}&month=${month}`:null,
-      employees:identities.map(({outstanding:_,...identity})=>{
+    return {canReviewTax,employees:identities.map(({outstanding:_,...identity}):ReprocessTaxEmployee=>{
         const reason=failures.get(identity.employmentId),review=lastReview.get(identity.employmentId);
         if(review?.active)return {...identity,status:'recalculating'};
         if(reason)return {...identity,status:'blocked',reason,
           previousReviewReason:review?.status==='blocked'?review.reason:null};
         return {...identity,status:'ready'};
       })};
-  },{readOnlySnapshot:true});
+}
+
+/** a1a80747 — the employees of `ids` the tax readiness rules hold back right now, with why. A reprocess step asks this
+ * for the employees it is about to recalculate or add, in its own transaction, so the answer is the one at the moment
+ * each employee is processed (there is no separate check step whose answer can go stale before the submit). */
+async function reprocessTaxHoldsTx(tx:Tx,ctx:SessionContext,batch:ReprocessTaxReadinessRun,ids:readonly string[])
+ :Promise<Map<string,{reasonCode:ReprocessTaxHoldReason;reason:string|null}>>{
+  const {employees}=await reprocessTaxReadinessTx(tx,ctx,batch,ids);
+  const holds=new Map<string,{reasonCode:ReprocessTaxHoldReason;reason:string|null}>();
+  for(const e of employees){
+    if(e.status==='blocked')holds.set(e.employmentId,{reasonCode:'TAX_RECALC_REQUIRED',reason:e.reason});
+    else if(e.status==='recalculating')holds.set(e.employmentId,{reasonCode:'TAX_RECALC_IN_PROGRESS',reason:null});
+  }
+  return holds;
 }
 
 /** 016276b7 — every id is an employee this run held for income tax review who is still outstanding on it. Fails closed:
@@ -11096,7 +11151,7 @@ async function onlyTaxHeldTx(tx: Tx, batchId: string, ids: readonly string[]): P
 /** Phase 1 of a selective reprocess — validate, permission-check and enqueue (idempotent). */
 export async function enqueueSelectiveReprocess(
   ctx: SessionContext,
-  p: { batchId: string; employmentIds: string[]; reason?: string; idempotencyKey?: string; heldEmploymentIds?: string[] },
+  p: { batchId: string; employmentIds: string[]; reason?: string; idempotencyKey?: string },
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   // 016276b7 — without multiple runs a month, a selective reprocess may still ADD the employees this run held for
@@ -11115,7 +11170,7 @@ export async function enqueueSelectiveReprocess(
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     const batch=withRunPayPeriod(batchRow,()=>new Error('batch not found'));
-    if (!multiCycle && !(await onlyTaxHeldTx(tx, p.batchId, [...requested, ...(p.heldEmploymentIds ?? [])]))) {
+    if (!multiCycle && !(await onlyTaxHeldTx(tx, p.batchId, requested))) {
       throw new ModuleNotEnabledError('multi_cycle_payroll', 'Multiple payroll runs per month are not enabled.');
     }
     await assertPayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId);
@@ -11143,12 +11198,10 @@ export async function enqueueSelectiveReprocess(
     const employmentIds = await reprocessRunMembersTx(tx,ctx,batch,requested);
     if (employmentIds.length === 0) throw new Error('None of the selected employees belong to this run.');
 
-    const heldEmploymentIds=[...new Set(p.heldEmploymentIds??[])].sort();
-    if(heldEmploymentIds.length){
-      if(heldEmploymentIds.some(id=>employmentIds.includes(id))
-        || (await reprocessRunMembersTx(tx,ctx,batch,heldEmploymentIds)).length!==heldEmploymentIds.length)
-        throw new Error('Some selected employees are no longer available on this payroll run.');
-    }
+    // a1a80747 — the job decides tax readiness per employee as it processes them (reprocessEmployeeTx), so the
+    // request carries no readiness answer: the job and its idempotency identity are the selection, the run's tax
+    // corrections and the reason only. Jobs enqueued before this may still hold `result.heldEmploymentIds`; it is kept
+    // on their checkpoints and ignored here.
 
     // Idempotency: default key binds batch + exact selection + reason so an identical resubmit dedupes,
     // while a genuinely different request (different pick) enqueues its own job.
@@ -11170,7 +11223,6 @@ export async function enqueueSelectiveReprocess(
         employmentIds,
         reason: p.reason ?? null,
         requestedBy: ctx.userId ?? null,
-        ...(heldEmploymentIds.length ? {result:{outcomes:[],heldEmploymentIds}} : {}),
       })
       .onConflictDoNothing({ target: [payrollReprocessJob.tenantId, payrollReprocessJob.idempotencyKey] });
     const [job] = await tx
@@ -11179,8 +11231,7 @@ export async function enqueueSelectiveReprocess(
       .where(and(eq(payrollReprocessJob.tenantId, ctx.tenantId), eq(payrollReprocessJob.idempotencyKey, idempotencyKey)))
       .limit(1);
     if (job.batchId !== p.batchId || JSON.stringify(job.employmentIds) !== JSON.stringify(employmentIds)
-      || (job.reason ?? '') !== (p.reason ?? '')
-      || JSON.stringify((job.result as ReprocessJobResult|null)?.heldEmploymentIds??[])!==JSON.stringify(heldEmploymentIds))
+      || (job.reason ?? '') !== (p.reason ?? ''))
       throw new Error('This payroll request key belongs to a different selection.');
     return { job, employmentIds };
   });
@@ -11248,7 +11299,8 @@ export function decodeReprocessEmployeeOutcomes(result: unknown, selection: read
       ? r.versionBefore!==null || r.versionAfter!==1
       : r.versionBefore===null || r.versionAfter!==r.versionBefore+1)) return null;
     if (r.taxBasisRecalculated !== undefined && (r.taxBasisRecalculated !== true || r.status !== 'reprocessed')) return null;
-    if (r.status === 'skipped' && r.reasonCode !== 'NOTHING_PAYABLE') return null;
+    // a1a80747 — a tax hold is a skip too; jobs written before it only ever carry NOTHING_PAYABLE, which still decodes.
+    if (r.status === 'skipped' && !REPROCESS_SKIP_REASONS.has(r.reasonCode ?? '')) return null;
     if (r.status === 'validation_failed' && (!['PAYROLL_CONFIGURATION_INCOMPLETE','TAX_SCHEME_CONFIGURATION_INCOMPLETE','PAY_ITEM_FORMULA_FAILED'].includes(r.reasonCode ?? '')
       || typeof r.validationCode !== 'string')) return null;
     // 792053e5 — a formula failure names its Pay Item and dates; a re-priced item carries finite figures.
@@ -11364,6 +11416,9 @@ export type ReprocessEligibility = {
   processed: boolean;
   /** The parent pay period is closed, so nothing in it may be recomputed. */
   periodClosed: boolean;
+  /** a1a80747 — Income Tax Recalculation for this run's company and month, when the caller holds
+   *  `payroll.tax-basis.view` there; null otherwise (a held employee's reason is then shown without the link). */
+  taxReviewHref: string | null;
 };
 
 export async function reprocessEligibility(
@@ -11372,7 +11427,7 @@ export async function reprocessEligibility(
 ): Promise<ReprocessEligibility | null> {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriodId: payrollBatch.payPeriodId })
+      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriodId: payrollBatch.payPeriodId, payPeriod: payrollBatch.payPeriod })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
@@ -11382,10 +11437,13 @@ export async function reprocessEligibility(
       .from(payPeriod)
       .where(eq(payPeriod.id, batch.payPeriodId))
       .limit(1);
+    const [year, month] = batch.payPeriod.split('-').map(Number);
     return {
       permitted: await resolvePayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId),
       processed: batch.status === 'processed',
       periodClosed: period?.status === 'closed',
+      taxReviewHref: await resolvePayrollPermission(tx, ctx, 'payroll.tax-basis.view', batch.companyId)
+        ? `/payroll/income-tax-recalculation?company=${batch.companyId}&year=${year}&month=${month}` : null,
     };
   });
 }
@@ -11755,6 +11813,73 @@ export function reprocessStaleSelection(ctx:SessionContext,batchId:string):Promi
   const rows=entries.flatMap(row=>row.employmentId===null||row.name===null?[]:[{employmentId:row.employmentId,employeeCode:row.employeeCode,name:row.name}]);
   return {rows,withoutPayslip:Math.max(0,head.staleTotal-head.onRun)};
  },{readOnlySnapshot:true});
+}
+
+/** a1a80747 — one row of the Reprocess Required list: an employee whose payslip on this run is out of date
+ * (`recalculated`, "Changed") or an employee eligible for this month with no payslip on it yet (`added`, "New"). */
+export type ReprocessRequiredEntry={employmentId:string;name:string;employeeCode:string|null;kind:'added'|'recalculated';hiredOn:string;
+ /** `added` rows only (empty / false on `recalculated`): the payslip-less readiness columns, as New / Pending had them. */
+ outsideScope:boolean;blockers:string[];warnings:string[]};
+
+/**
+ * a1a80747 — THE ONE REPROCESS REQUIRED LIST, as one set-based, paged statement.
+ *
+ * It replaces the two populations the screen used to show in two places: the payslips the run marked stale (the
+ * `required` tab of `payrollEmployeeSelectionPage`, the same `staleEmploymentIdsSql` rule) and everyone eligible for the
+ * month with no payslip on the run (`listPayslipLessEligibleTx`'s population: the same `payrollEmploymentPredicate`
+ * window and the same no-payslip test). Their union is DE-DUPLICATED by employment, so an employee named by both (a
+ * stale mark on somebody who has no payslip here) is one row, and each row says which kind it is.
+ *
+ * Search, count, order and page are SQL (SCALE-AND-RELEASE-RULES 2): one statement, bounded by the page. Order is name,
+ * then employment id. `total` is the search-filtered count; `runTotal` and `addedRunTotal` (its New rows) ignore the
+ * search. Only the page's `added` rows
+ * are then given their readiness columns, by its owner (`payslipLessReadinessTx`, set-based over the page); the
+ * nothing-payable decision is added in core/payroll-view.ts (`reprocessRequiredWithSkipPage`). A run that is not
+ * processed lists nobody. Read only, no event.
+ */
+export function reprocessRequiredPage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string})
+ :Promise<{rows:ReprocessRequiredEntry[];state:PageState;runTotal:number;addedRunTotal:number}>{
+ const page=parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
+ return withTenant(ctx,async tx=>{
+  const [batch]=await tx.select({id:payrollBatch.id,runType:payrollBatch.runType,payrollCycleId:payrollBatch.payrollCycleId,
+   companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,scope:payrollBatch.scope,status:payrollBatch.status})
+   .from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1);
+  if(!batch||batch.status!=='processed')return {rows:[],state:pageState(page,0,0),runTotal:0,addedRunTotal:0};
+  const needle=(p.search??'').trim().toLowerCase(),folded=foldEmployeeCode(p.search??'');
+  const matched=needle===''?sql`true`:sql`position(${needle} in lower(u.name))>0
+   or position(${needle} in lower(coalesce(u."employeeCode",'')))>0
+   or (${folded}<>'' and position(${folded} in regexp_replace(lower(coalesce(u."employeeCode",'')),'[[:space:]._-]','','g'))>0)`;
+  const entries=await tx.execute<{runTotal:number;addedRunTotal:number;total:number;employmentId:string|null;name:string|null;employeeCode:string|null;kind:'added'|'recalculated'|null;hiredOn:string|null}>(sql`
+   with stale_ids as materialized (${staleEmploymentIdsSql(p.batchId)}),
+   changed as (
+    select ${payslip.employmentId} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode",
+     ${employment.hiredOn}::text as "hiredOn",'recalculated'::text as kind
+    from ${payslip} join ${employment} on ${employment.id}=${payslip.employmentId} join ${person} on ${person.id}=${employment.personId}
+    where ${payslip.batchId}=${p.batchId}::uuid and ${payslip.employmentId}::text in (select id from stale_ids)),
+   added as (
+    select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode",
+     ${employment.hiredOn}::text as "hiredOn",'added'::text as kind
+    from ${employment} join ${person} on ${person.id}=${employment.personId}
+    where ${payrollEmploymentPredicate({...batch,id:p.batchId},settingEnabled(ctx,'payroll.individual_txn_pay_enabled'))}
+     and not exists (select 1 from ${nativePayrollPayslip} where ${nativePayrollPayslip.batchId}=${p.batchId}::uuid and ${nativePayrollPayslip.employmentId}=${employment.id})),
+   unioned as materialized (
+    select distinct on ("employmentId") * from (select * from changed union all select * from added) both_kinds
+    order by "employmentId",(kind='recalculated') desc),
+   matched as materialized (select u.*,(${matched}) as matches from unioned u),
+   totals as (select count(*)::int as "runTotal",count(*) filter(where kind='added')::int as "addedRunTotal",
+    count(*) filter(where matches)::int as total from matched),
+   selected_page as (select * from matched where matches order by name,"employmentId"
+    limit ${page.limit} offset ${Math.min(page.offset,Number.MAX_SAFE_INTEGER)})
+   select totals."runTotal",totals."addedRunTotal",totals.total,v."employmentId",v.name,v."employeeCode",v.kind,v."hiredOn"
+   from totals left join selected_page v on true order by v.name,v."employmentId"`);
+  const listed=entries.flatMap(row=>row.employmentId===null||row.name===null||row.kind===null||row.hiredOn===null?[]:[{
+   employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode,kind:row.kind,hiredOn:row.hiredOn}]);
+  const readiness=new Map((await payslipLessReadinessTx(tx,ctx,batch,listed.filter(row=>row.kind==='added'))).map(row=>[row.employmentId,row]));
+  const rows:ReprocessRequiredEntry[]=listed.map(row=>{const r=readiness.get(row.employmentId);
+   return {...row,outsideScope:r?.outsideScope??false,blockers:r?.blockers??[],warnings:r?.warnings??[]};});
+  const head=entries[0];
+  return {rows,state:pageState(page,head.total,rows.length),runTotal:head.runTotal,addedRunTotal:head.addedRunTotal};
+ });
 }
 
 /** Result-link identities for the explicitly recorded job selection, without loading discarded money detail. */
@@ -12928,7 +13053,16 @@ function listPayslipLessEligibleTx(
       total=entries[0].total;runTotal=entries[0].runTotal;rows=entries.flatMap(e=>e.row?.employmentId?[e.row]:[]);
     }else rows=await population.orderBy(desc(employment.createdAt),person.fullName,employment.id);
     if (rows.length === 0) return result([]);
+    return result(await payslipLessReadinessTx(tx, ctx, batch, rows));
+  })();
+}
 
+/** fbcf706d — the readiness columns of payslip-less rows (blockers, warnings, outside the run's chosen list), from the
+ * native owner `preProcessChecksTx` scoped to exactly these employments. Shared by `listPayslipLessEligibleTx` and the
+ * one Reprocess Required list (a1a80747), which hydrates only its page's `added` rows. Rows keep their order. */
+export async function payslipLessReadinessTx<R extends {employmentId:string}>(tx:Tx,ctx:SessionContext,
+  batch:PayrollEligibilityRun&{scope:unknown},rows:readonly R[]):Promise<(R&{outsideScope:boolean;blockers:string[];warnings:string[]})[]>{
+    if (rows.length === 0) return [];
     const ids = rows.map((r) => r.employmentId);
     const checks = await preProcessChecksTx(
       tx,
@@ -12967,17 +13101,12 @@ function listPayslipLessEligibleTx(
     const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, (batch.scope ?? null) as BatchScope | null);
     const inScope = scopeIds ? new Set(scopeIds) : null;
 
-    return result(rows.map((r) => ({
-      employmentId: r.employmentId,
-      name: r.name,
-      employeeCode: r.employeeCode,
-      hiredOn: r.hiredOn,
-      recordCreatedAt: r.recordCreatedAt,
+    return rows.map((r) => ({
+      ...r,
       outsideScope: inScope ? !inScope.has(r.employmentId) : false,
       blockers: blockerBy.get(r.employmentId) ?? [],
       warnings: warningBy.get(r.employmentId) ?? [],
-    })));
-  })();
+    }));
 }
 
 /** Read-only pre-processing advisory for a PROSPECTIVE run that has no batch yet (R37 70764928 — the
