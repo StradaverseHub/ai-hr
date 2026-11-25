@@ -1315,6 +1315,30 @@ export async function capturePayrollProcessingInputsTx(tx: Tx, ctx: SessionConte
   return true;
 }
 
+/** ADR 0181 J2 — a selective reprocess job's Audit loop capture, ONCE for the job: the inputs and results of the whole run
+ * as they stand after the job's last committed employee, with every employee the job recalculated or added
+ * (`reprocessedEmploymentIds`, outcome status `reprocessed`). Its passes defer their own capture (`deferAuditCapture`), so
+ * the run-wide hashing is paid once per job instead of once per pass. Taken by the job's finalize before the job completes,
+ * and by its settle when it stopped after committing employees; by the request-path loop after its last employee.
+ * Read-only over owner rows plus the capture record, so it holds none of the run's keys (as the processing job's capture).
+ * Only the worker that holds the reprocess job (`workerToken`) captures for it. Never throws for the capture itself: a
+ * capture that cannot be read or written is recorded as `payroll-audit.inputs-not-captured` (core/payroll-audit/inputs.ts). */
+export async function captureSelectiveReprocessInputsTx(tx: Tx, ctx: SessionContext, reprocessJobId: string, workerToken: string) {
+  const [job] = await tx.select({ batchId: payrollReprocessJob.batchId, employmentIds: payrollReprocessJob.employmentIds, result: payrollReprocessJob.result })
+    .from(payrollReprocessJob).where(eq(payrollReprocessJob.id, reprocessJobId)).limit(1);
+  if (!job || (job.result as ReprocessJobResult | null)?.workerToken !== workerToken) return false;
+  const reprocessed = (decodeReprocessEmployeeOutcomes(job.result, job.employmentIds) ?? [])
+    .filter((outcome) => outcome.status === 'reprocessed').map((outcome) => outcome.employmentId);
+  // No employee's result was written by this job: no pass ran, so there is nothing new to record (as before).
+  if (!reprocessed.length) return false;
+  const [batch] = await tx.select({ id: payrollBatch.id, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, status: payrollBatch.status })
+    .from(payrollBatch).where(eq(payrollBatch.id, job.batchId)).limit(1);
+  // A run reset since the job's last employee has no reprocessed results left to record.
+  if (!batch || batch.status === 'draft' || batch.status === 'processing') return false;
+  await captureAuditInputsTx(tx, ctx, { batchId: batch.id, companyId: batch.companyId, payPeriod: batch.payPeriod }, 'reprocessed', reprocessed);
+  return true;
+}
+
 async function markIndividualTxnsConsumed(
   tx: Tx,
   p: { batchId: string; employmentIds: string[];postEmploymentIds?:string[];postEmploymentTxnIds?:string[] },
@@ -4083,7 +4107,10 @@ export async function runPayrollProcessingUnitTx(tx:Tx,ctx:SessionContext,batchI
  return generatePayslipsTx(tx,ctx,{batchId,processing:unit});
 }
 
-async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams & {processing?:PayrollProcessingUnit}) {
+/** `deferAuditCapture` (ADR 0181 J2): a selective reprocess JOB's pass leaves the Audit loop's inputs capture to the job,
+ * which takes it once for every employee the job reprocessed (`captureSelectiveReprocessInputsTx`). Internal only: every
+ * other caller of the subset path (statutory adjustments, the public generatePayslips) still captures in its own pass. */
+async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePayslipsParams & {processing?:PayrollProcessingUnit;deferAuditCapture?:true}) {
   await lockPayrollOvertimeBatchContextTx(tx,ctx,p.batchId);
   const subset = p.reprocessSubset ?? null;
   const processing = subset ? null : p.processing ?? null;
@@ -8773,10 +8800,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // this screen's own result panel. It is RECOUNTED off the payslips rather than incremented by the
       // number of additions, so the stored figure is a fact about the run and not a running total that a
       // failed job could leave one out.
+      // ADR 0181 J2 — counted through the run's write portal, the one this pass just wrote its payslips through and
+      // the one the run's reset and removal owners read the whole run through: per row it asks the write authority
+      // (payroll administration of the employment, the run still writable), never the effective-history chain the
+      // read view evaluates. Same rows for the administrator who may reprocess (equivalence test), about 16 ms instead
+      // of 300 ms for a 100-payslip run on the hosted runner; it was a fixed cost of every engine pass.
       const [{ n: payslipCount } = { n: 0 }] = await tx
         .select({ n: sql<number>`count(*)::int` })
-        .from(nativePayrollPayslip)
-        .where(eq(nativePayrollPayslip.batchId, p.batchId));
+        .from(nativePayrollPayslipWrite)
+        .where(eq(nativePayrollPayslipWrite.batchId, p.batchId));
       await tx
         .update(payrollBatch)
         .set({ totals: deltaTotals, employeeCount: Number(payslipCount) })
@@ -9003,7 +9035,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       });
       // AI v2 P2-2b — the inputs as this reprocess used them, captured for the Audit loop in this same transaction.
       // Read-only (core/payroll-audit/inputs.ts): it hashes owner rows, never changes a figure, never stops the run.
-      await captureAuditInputsTx(tx, ctx, { batchId: p.batchId, companyId: batch.companyId, payPeriod: batch.payPeriod }, 'reprocessed',
+      // A selective reprocess job's pass defers it: the job captures once for all its employees (ADR 0181 J2).
+      if (!p.deferAuditCapture) await captureAuditInputsTx(tx, ctx, { batchId: p.batchId, companyId: batch.companyId, payPeriod: batch.payPeriod }, 'reprocessed',
         emps.map((e) => e.employmentId));
       // 49e7e0a2 — these employees' figures now match their transactions again, so the recalculation mark
       // is cleared FOR THEM ONLY. A reprocess that covers some of the waiting employees leaves the rest
@@ -10574,9 +10607,13 @@ export async function reprocessSelectedEmployees(
       stopped.current=null;
       await withTenant(ctx, (tx) => reprocessEmployeeTx(tx, ctx, run, employmentId, stopped));
     }
+    // ADR 0181 J2 — the Audit loop's capture, once for every employee this run reprocessed (its passes defer theirs).
+    await withTenant(ctx, (tx) => captureSelectiveReprocessInputsTx(tx, ctx, job.id, workerToken));
     const result = await completeSelectiveReprocess(ctx, job.id, workerToken);
     return {jobId:job.id,status:'completed' as const,...result};
   } catch (e) {
+    // A stop keeps the employees already committed, so their capture is still taken (it never throws for itself).
+    await withTenant(ctx, (tx) => captureSelectiveReprocessInputsTx(tx, ctx, job.id, workerToken)).catch(() => undefined);
     await failSelectiveReprocess(ctx, job.id, workerToken, e, stopped.current);
     throw new PayrollReprocessStoppedError(job.id,e);
   }
@@ -10656,7 +10693,7 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
     // Nested drizzle transaction is a SAVEPOINT on this same connection, never another tenant
     // transaction. Collection, snapshot/delete, money, ledger and coverage all roll back together.
     const result = await tx.transaction(employeeTx => generatePayslipsTx(employeeTx, ctx, {
-      batchId:run.batchId,reprocessSubset:{employmentIds:[employmentId],reason:run.reason,actorId:ctx.userId},
+      batchId:run.batchId,reprocessSubset:{employmentIds:[employmentId],reason:run.reason,actorId:ctx.userId},deferAuditCapture:true,
     }));
     if (!('reprocessed' in result)) throw new Error('Unexpected selected payroll result.');
     classification = result.added ? 'added' : 'recalculated';
@@ -10828,7 +10865,7 @@ export async function reprocessEmployeeGroupTx(tx:Tx,ctx:SessionContext,run:Sele
   try{
     // One savepoint for the whole group: a refusal rolls back every figure, ledger and history write of the pass.
     result = await tx.transaction(groupTx => generatePayslipsTx(groupTx, ctx, {
-      batchId:run.batchId,reprocessSubset:{employmentIds:group,reason:run.reason,actorId:ctx.userId},
+      batchId:run.batchId,reprocessSubset:{employmentIds:group,reason:run.reason,actorId:ctx.userId},deferAuditCapture:true,
     }));
   }catch(error){
     if(opts.isTransient(error))throw error;

@@ -21,15 +21,19 @@
  * (`reprocessEmployeeTx`) in a chunk of their own, exactly as before, so every outcome and stop is the request path's;
  * a refused pass is narrowed to the employee it names (or halved), and grouping resumes after them.
  * Each chunk records its calculation (process CPU) and database (the rest of its wall time) split on the job's metrics.
+ *
+ * Audit loop capture once per job (ADR 0181 J2). The passes defer the run-wide inputs capture; the job takes it once, with
+ * every employee it reprocessed, in its own finalize unit before it completes (or in its settle, when it stopped after
+ * committing employees). Each records `captured` on the plan in the same transaction, so it is never taken twice.
  */
 
 import {sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {enqueueBulkJobTx,type BulkJobRow} from './bulk-job';
-import {BulkJobWaiting,isTransientBulkJobError,type BulkJobHandler,type BulkJobStepOutcome} from './bulk-job-worker';
+import {BulkJobAuthorityLost,BulkJobWaiting,isTransientBulkJobError,type BulkJobHandler,type BulkJobStepOutcome,type BulkJobUnit} from './bulk-job-worker';
 import {publicErrorMessage} from '../lib/public-error';
 import {
- claimSelectiveReprocess,completeSelectiveReprocess,enqueueSelectiveReprocess,reprocessEmployeeGroupTx,reprocessEmployeeTx,reprocessRunErrorCode,
+ captureSelectiveReprocessInputsTx,claimSelectiveReprocess,completeSelectiveReprocess,enqueueSelectiveReprocess,reprocessEmployeeGroupTx,reprocessEmployeeTx,reprocessRunErrorCode,
  payrollReprocessJobRowTx,type SelectiveReprocessRun,
 } from './payroll';
 import {PAYROLL_REPROCESS_JOB_KIND} from '../lib/payroll-processing-job';
@@ -39,7 +43,7 @@ type JobInput={reprocessJobId:string;batchId:string;employmentIds:string[];reaso
 type Stopped={current:{employmentId:string;name:string;employeeCode:string|null}|null};
 /** `stopped`: what a failure recorded for the settle (the run-level stop code and the employee it stopped at). A
  * failure before the plan exists leaves a plan that holds only this key. */
-type JobPlan=JobInput&{completed?:Record<string,unknown>;stopped?:{code:string;employee:Stopped['current']}};
+type JobPlan=JobInput&{completed?:Record<string,unknown>;stopped?:{code:string;employee:Stopped['current']};captured?:true};
 type Step={employmentId:string};
 const inputOf=(job:BulkJobRow)=>job.input as JobInput|null;
 const planOf=(job:BulkJobRow)=>job.plan as JobPlan|null;
@@ -51,8 +55,9 @@ export const payrollReprocessGroupMax=()=>Math.max(1,Math.floor(Number(process.e
 /** The chunk length the group size aims for, at least. The chunk holds the run's company/month key and its company's
  * payroll inputs key, so this bounds how long a salary or statutory change for that company may wait behind it. */
 export const payrollReprocessChunkTargetMs=()=>Math.max(1,Number(process.env.PAYROLL_REPROCESS_CHUNK_TARGET_MS??1000)||1000);
-/** One engine pass has a fixed cost whatever its size (the run-wide reads: on the hosted runner about 2.6 s of a
- * one-employee pass, against about 50 ms per further employee). A chunk may last this many times that fixed cost, so the
+/** One engine pass has a fixed cost whatever its size (the run-wide reads: on the hosted runner about 0.3 s, against
+ * about 30 ms per further employee, since the Audit loop capture moved to the job and the headcount recount to the write
+ * portal; it was about 2.6 s, ADR 0181 J2). A chunk may last this many times that fixed cost, so the
  * fixed cost is spread over a group instead of paid per employee; the per-employee path held the same keys for one fixed
  * cost per employee. */
 export const payrollReprocessFixedMultiple=()=>Math.max(1,Number(process.env.PAYROLL_REPROCESS_CHUNK_FIXED_MULTIPLE??2)||2);
@@ -125,6 +130,21 @@ export async function requestSelectiveReprocess(ctx:SessionContext,p:{batchId:st
  return{jobId:job.id,status:'queued'};
 }
 
+const label=(tx:Tx,phase:string)=>tx.execute(sql`select set_config('application_name',${`aihr-bulk:${PAYROLL_REPROCESS_JOB_KIND}:${phase}`},true)`);
+/** A stopped job's capture, under its creator's re-checked authority and exactly once (the plan marker commits with it).
+ * The creator's access gone: nothing is captured, as when the pass itself had no login (the daily Audit loop's
+ * `inputs_now` capture still shows the inputs). */
+async function captureStoppedOnceTx(ctx:SessionContext,job:BulkJobRow,unit:Pick<BulkJobUnit,'fenceTx'|'set'>,reprocessJobId:string){
+ await withTenant(ctx,async tx=>{
+  await label(tx,'capture');
+  try{await unit.fenceTx(tx);}catch(error){if(error instanceof BulkJobAuthorityLost)return;throw error;}
+  const [fresh]=await tx.execute<{captured:boolean}>(sql`select coalesce((plan->>'captured')::boolean,false) as captured from bulk_job where id=${job.id}::uuid`);
+  if(fresh?.captured)return;
+  await captureSelectiveReprocessInputsTx(tx,ctx,reprocessJobId,job.id);
+  await unit.set(tx,{planMerge:{captured:true} satisfies Pick<JobPlan,'captured'>});
+ });
+}
+
 export const payrollReprocessJobHandler:BulkJobHandler<Step>={
  kind:PAYROLL_REPROCESS_JOB_KIND,
  mode:'atomic',
@@ -195,10 +215,22 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
    add:{reprocessSingles:1,reprocessCalcMs:ms(cpuMs),reprocessDbMs:ms(wallMs-cpuMs)},max:{reprocessSingleMaxMs:ms(wallMs)},
   }};
  },
- async finalize(ctx,job){
+ async finalize(ctx,job,unit){
   groupStateOf.delete(job.id);
   const plan=planOf(job)!;
   if(plan.completed)return{result:plan.completed};
+  // First unit: the Audit loop's capture for every employee this job reprocessed, with no run key held.
+  if(!plan.captured){
+   const started=performance.now();
+   await withTenant(ctx,async tx=>{
+    await label(tx,'capture');
+    await unit.fenceTx(tx);
+    await captureSelectiveReprocessInputsTx(tx,ctx,plan.reprocessJobId,job.id);
+    await unit.set(tx,{planMerge:{captured:true} satisfies Pick<JobPlan,'captured'>});
+   });
+   unit.metric('captureTxMs',performance.now()-started);
+   return'more';
+  }
   return{result:await completeSelectiveReprocess(ctx,plan.reprocessJobId,job.id)};
  },
  // Nothing to undo: every committed employee stays, exactly as when the request path stopped.
@@ -213,10 +245,13 @@ export const payrollReprocessJobHandler:BulkJobHandler<Step>={
  // own code and employee, or, for a job stopped at its creator's request (or one that failed before its failure was
  // described), what the request path left on a stopped one. Idempotent: only a row still running under this job's
  // token changes, and the kernel retries a settle that fails.
- async settle(_ctx,job,unit){
+ async settle(ctx,job,unit){
   if(job.state==='completed')return;
   const plan=planOf(job);
   const reprocessJobId=plan?.reprocessJobId??inputOf(job)?.reprocessJobId;if(!reprocessJobId)return;
+  // The employees committed before the stop keep their results, so the Audit loop's capture is taken for them (once:
+  // the marker commits with it). Before the stop record, which ends this job's hold on the reprocess job.
+  if(ctx&&!plan?.captured)await captureStoppedOnceTx(ctx,job,unit,reprocessJobId);
   const stop=plan?.stopped;
   await unit.ownerTx(async owner=>{
    await owner`update payroll_reprocess_job set status='failed',error=${stop?.code??'REPROCESS_STOPPED'},updated_at=now(),
