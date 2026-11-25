@@ -35,7 +35,7 @@ import {
 import { lockPayrollOvertimeBatchContextTx, readPayrollOvertimePatternCashTx, readPayrollOvertimeCoverageTx, composePayrollOvertime, OvertimePayrollError } from './payroll-overtime-pattern';
 import { releaseOvertimeSettlementsForDraftTeardownTx } from '../packs/attendance/service';
 import {readPcbExemptions, type PcbExemptionRow} from './pcb-exemptions';
-import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash, totalNonCash, taxableNonCash, type NonCashEntry, type NonCashEaEntry, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
+import { classifyNonCashBenefit, nonCashBenefitStream, NonCashBenefitConfigurationError, readPcbNonCash, totalNonCash, taxableNonCash, taxableNonCashByStream, versionedPcbNonCash, withNonCashStream, type NonCashEntry, type NonCashEaEntry } from '../localization/noncash-benefits';
 import { businessUnit, payslipInformationSetting } from '../db/schema';
 import { attendanceOvertimeSource, overtimeSourceSettlement, payrollAttendanceAllowanceSource, payrollHistoryEffectiveBatch } from '../db/schema';
 /**
@@ -5576,10 +5576,11 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
             retained.push({code:entry.exemptionCode!,annualLimit:row?.annualLimit??null,item:row?.payItems.length===1?row.payItems[0]:entry.code,amount:entry.exemptAmount});
           }
           retainedOneOffExemptions.set(r.employmentId,retained);
-          nc.ownedEntries.push(...saved.ownedEntries);
+          // 8edeef41 — saved entries keep the stream their run saved; a version 1 entry is normal (Y1).
+          nc.ownedEntries.push(...saved.ownedEntries.map(withNonCashStream));
           nc.ownedEaEntries.push(...saved.ownedEaEntries);
           if(r.runType==='regular')nc.regularEaEntries=saved.ownedEaEntries.filter(x=>x.source==='recurring');
-          if(r.runType==='regular') nc.regularEntries=saved.ownedEntries.filter(x=>x.source==='recurring');
+          if(r.runType==='regular') nc.regularEntries=saved.ownedEntries.filter(x=>x.source==='recurring').map(withNonCashStream);
           // Annual exemption is consumed by each owned non-cash entry exactly once.
           const used=exemptUsedByEmp.get(r.employmentId) ?? {};
           for(const x of saved.ownedEaEntries) if(x.exemptionCode && x.exemptAmount>0) used[x.exemptionCode]=round2((used[x.exemptionCode]??0)+x.exemptAmount);
@@ -6471,12 +6472,14 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           if(savedEa){
             if(c.pcb && c.pcbExemptionCode)recordExemption(c.pcbExemptionCode,'pcb',earlierExemptionLimits.get(e.employmentId)?.get(c.pcbExemptionCode)??null,c.name,savedEa.exemptAmount);
             nonCashEaEntries.push({...savedEa});
+            // The saved regular run owns this recurring benefit's stream too; today's setting does not re-route it.
             if(c.pcb && savedRecurring) nonCashEntries.push({...savedRecurring});
           } else {
             const code=c.pcbExemptionCode;
             if(code && c.pcb){const cap=exemptionTables.pcb[code]??0;recordExemption(code,'pcb',cap,c.name);exempt=cap===0?0:round2(Math.min(applied,roomFor(code,cap)));taxable=round2(applied-exempt);if(exempt>0)useRoom(code,exempt);}
             const source={kind:benefitKind,code:c.code,source:c.oneOff?'one_off' as const:'recurring' as const,...(c.sourceId?{sourceId:c.sourceId}:{}),...(code?{exemptionCode:code}:{})};
-            if(c.pcb) nonCashEntries.push({...source,entered:applied,exempt,taxable});
+            // 8edeef41 — the item's own Remuneration Type decides Y1 (Normal) or Yt (Additional).
+            if(c.pcb) nonCashEntries.push({...source,entered:applied,exempt,taxable,stream:nonCashBenefitStream(c)});
             nonCashEaEntries.push({...source,entered:applied,exemptAmount:exempt,reportableAmount:taxable,eaFormLine:c.eaFormLine??null,subjectPCB:c.pcb});
           }
           recordLines.push({code:c.code,name:c.name,amount:applied,nonPayable:true});
@@ -7424,6 +7427,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const cumulativeEntries=[...priorEntries,...ownedEntries,...projectionEntries];
       const nonCashCumulative=taxableNonCash(cumulativeEntries),nonCashOwned=taxableNonCash(ownedEntries);
       const nonCashBefore={bik:round2(nonCashCumulative.bik-nonCashOwned.bik),vola:round2(nonCashCumulative.vola-nonCashOwned.vola)};
+      // 8edeef41 (2026-11-25 amendment of ADR-0090) — the same figures split by PCB stream. Normal benefits are Y1
+      // (`pcbNonCashNormal`), Additional benefits are Yt (`pcbNonCashAdditional`, Kt = 0). With no Additional entry the
+      // normal split equals the totals above and the additional split is absent, so the option bags are unchanged.
+      const nonCashStreamsCumulative=taxableNonCashByStream(cumulativeEntries),nonCashStreamsOwned=taxableNonCashByStream(ownedEntries);
+      const nonCashRecurringStreams=taxableNonCashByStream(en.nonCashEntries.filter(x=>x.source==='recurring'));
+      const hasAdditionalNonCash=[...cumulativeEntries,...en.nonCashEntries].some(x=>x.stream==='additional');
+      const plusAmounts=(a:{bik:number;vola:number},b:{bik:number;vola:number})=>({bik:round2(a.bik+b.bik),vola:round2(a.vola+b.vola)});
+      const minusAmounts=(a:{bik:number;vola:number},b:{bik:number;vola:number})=>({bik:round2(a.bik-b.bik),vola:round2(a.vola-b.vola)});
+      /** The benefit options for one side of a delta: Normal into Y1, Additional into Yt. Never moves money across. */
+      const nonCashOptions=(normal:{bik:number;vola:number},additional:{bik:number;vola:number}):{pcbNonCashNormal:{bik:number;vola:number};pcbNonCashAdditional?:{bik:number;vola:number}}=>hasAdditionalNonCash?{pcbNonCashNormal:normal,pcbNonCashAdditional:additional}:{pcbNonCashNormal:normal};
+      const nonCashBeforeStreams={normal:minusAmounts(nonCashStreamsCumulative.normal,nonCashStreamsOwned.normal),additional:minusAmounts(nonCashStreamsCumulative.additional,nonCashStreamsOwned.additional)};
       const wagesExOt = Math.max(0, round2(basic + en.allowanceApplied - unpaidDeduction));
       // Bonus is additional remuneration: EPF + PCB (difference method), excluded from SOCSO/EIS.
       // LP₁ — this month's optional deductions: the approved TP1 amounts PLUS the declared
@@ -7624,7 +7638,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         epfWageDeduction: en.epfWageDeduction,
         socsoWageDeduction: en.socsoWageDeduction,
         pcbWageDeduction: en.pcbWageDeduction,
-        pcbNonCashNormal: nonCashCumulative,
+        ...nonCashOptions(nonCashStreamsCumulative.normal,nonCashStreamsCumulative.additional),
       };
       // 1.2.4 Zakat — resolve THIS month's zakat at generate time so percent never goes stale (declared up
       // front so `computeMonth`'s default can read it; the percent branch is filled in after the closure):
@@ -7776,7 +7790,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // regular run owns and stays on both sides, as before.)
         const ownOneOffExempt = isAdditionalRun ? en.exemptCarry : { epfWage: 0, epfAdditional: 0, socsoWage: 0 };
         const baseline = {
-          ...bases, epfAdditionalExcluded: 0, socsoWageExtra: 0, epfWageExtra: 0, pcbNonCashNormal: nonCashBefore,
+          // 8edeef41 — "before this run" keeps each benefit on its own stream: this run's Additional benefit is on the
+          // now side only, and an earlier run's Additional benefit stays Yt on both sides, never re-folded as normal.
+          ...bases, epfAdditionalExcluded: 0, socsoWageExtra: 0, epfWageExtra: 0, ...nonCashOptions(nonCashBeforeStreams.normal,nonCashBeforeStreams.additional),
           exemptEpfWage: Math.max(0, round2(bases.exemptEpfWage - ownOneOffExempt.epfWage)),
           exemptEpfAdditional: Math.max(0, round2(bases.exemptEpfAdditional - ownOneOffExempt.epfAdditional)),
           exemptSocsoWage: Math.max(0, round2(bases.exemptSocsoWage - ownOneOffExempt.socsoWage)),
@@ -7791,10 +7807,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           if (bases === stOpts) traceHolder.delta = { kind: 'additional', before, charged: before };
           result = deltaStat(computeMonth(earlierRun.additional + bonus, earlierRun.overtime, undefined, nowBases), before);
         } else if (restatesMonth) {
-          const before = computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, {...earlierBaseline,pcbNonCashNormal:{bik:round2(nonCashBefore.bik+taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring')).bik),vola:round2(nonCashBefore.vola+taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring')).vola)}});
+          // The month as the earlier runs left it (they projected this run's recurring benefits), and the month with no
+          // additional pay at all. Both keep each benefit on its own stream (8edeef41).
+          const before = computeMonth(earlierRun.additional, earlierRun.overtime, effectiveZakat, {...earlierBaseline,...nonCashOptions(plusAmounts(nonCashBeforeStreams.normal,nonCashRecurringStreams.normal),plusAmounts(nonCashBeforeStreams.additional,nonCashRecurringStreams.additional))});
           const charged = chargedByEarlierRuns(
             before,
-            computeMonth(0, 0, effectiveZakat, {...baseline,pcbNonCashNormal:taxableNonCash(en.nonCashEntries.filter(x=>x.source==='recurring'))}, false),
+            computeMonth(0, 0, effectiveZakat, {...baseline,...nonCashOptions(nonCashRecurringStreams.normal,nonCashRecurringStreams.additional)}, false),
           );
           if (bases === stOpts) traceHolder.delta = { kind: 'restate', before, charged };
           result = deltaStat(computeMonth(earlierRun.additional + bonus, round2(earlierRun.overtime + otStat), undefined, nowBases), charged);
@@ -7910,8 +7928,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         for(const line of patternLines) { const amount = allocations.get(line.settlementId+':'+line.lineId) ?? 0;
           if(amount>0) stampComponentLines.push({code:line.earningItemCode,name:line.earningItemName,amount,buckets:[{bucket:'ot',amount}],...line.treatment}); }
       }
-      const nonCashSnapshot:PcbNonCashSnapshot={version:1,current:totalNonCash(cumulativeEntries),ownedCurrent:totalNonCash(ownedEntries),owned:nonCashOwned,cumulative:nonCashCumulative,before:nonCashBefore,
-        accumulated:accumulatedNonCashByEmp.get(e.employmentId) ?? {bik:0,vola:0,complete:true},cashNormal:earlierTaxBasis?.corrected && earlierTaxBasis.normal!==undefined ? earlierTaxBasis.normal : Math.max(0,round2(wagesExOt+statOvertime-en.pcbWageDeduction)),entries:cumulativeEntries,ownedEntries,eaEntries:cumulativeEaEntries,ownedEaEntries};
+      // Version 1 (byte for byte as before) unless an entry is Additional, then version 2 with every stream explicit.
+      const nonCashSnapshot=versionedPcbNonCash({current:totalNonCash(cumulativeEntries),ownedCurrent:totalNonCash(ownedEntries),owned:nonCashOwned,cumulative:nonCashCumulative,before:nonCashBefore,
+        accumulated:accumulatedNonCashByEmp.get(e.employmentId) ?? {bik:0,vola:0,complete:true},cashNormal:earlierTaxBasis?.corrected && earlierTaxBasis.normal!==undefined ? earlierTaxBasis.normal : Math.max(0,round2(wagesExOt+statOvertime-en.pcbWageDeduction)),entries:cumulativeEntries,ownedEntries,eaEntries:cumulativeEaEntries,ownedEaEntries});
       if(!readPcbNonCash(nonCashSnapshot))throw new NonCashBenefitConfigurationError('month','month_baseline_unavailable');
       const stComputed = {
         ...stCore,

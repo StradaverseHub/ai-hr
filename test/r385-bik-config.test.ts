@@ -68,16 +68,25 @@ describe('r385 full pay-item classification through actual maintenance actions a
     expect((await listSupportedBatchComponents(ctx)).map(c => c.id)).toContain(row.id);
   });
 
-  it('an item saved earlier as Additional still opens and is edited back to Normal with other settings kept', async () => {
-    await upsertPayComponent(ctx, { label: 'BIK-Buyout Payment', code: 'BKBOP', name: 'BIK-Buyout Payment', kind: 'non_payable', isNonPayable: true,
-      displayCategory: 'bik', prorates: false, includedInPcb: true, includedInEpf: false, includedInSocsoEis: false,
-      includedInHrdfBase: false, pcbRemunerationType: 'additional', pcbExemptionCode: 'PCB_TAXABLE' });
-    const before = (await listPayComponents(ctx)).find(c => c.code === 'BKBOP')!;
-    expect(unsupportedTaxableReason(before)).toBe('normal_remuneration_required');
+  // 8edeef41 (owner decision 2026-11-25) — BKBOP saves as Additional, keeps it through an unrelated edit, and can be
+  // switched back to Normal; every other setting is kept exactly.
+  it('saves BKBOP as Additional, retains it on reopen and edit, and switches back to Normal with other settings kept', async () => {
     const fd = form('bik', 'BKBOP'); fd.set('name', 'BIK-Buyout Payment'); fd.set('label', 'BIK-Buyout Payment'); fd.set('eaFormLine', '');
+    fd.set('pcbRemunerationType', 'additional');
+    expect(await location(createComponentAction, fd)).toContain('toast=toastSaved');
+    const before = (await listPayComponents(ctx)).find(c => c.code === 'BKBOP')!;
+    expect(before).toMatchObject({ kind: 'non_payable', displayCategory: 'bik', includedInPcb: true, pcbRemunerationType: 'additional',
+      pcbExemptionCode: 'PCB_TAXABLE', includedInEpf: false, epfBonus2012: false });
+    expect(unsupportedTaxableReason(before)).toBeNull();
+    expect((await listSupportedBatchComponents(ctx)).map(c => c.id)).toContain(before.id);
+    fd.set('name', 'BIK-Buyout Payment (renamed)');
+    expect(await location(updateComponentAction, fd)).toContain('toast=toastSaved');
+    const renamed = (await listPayComponents(ctx)).find(c => c.id === before.id)!;
+    expect(renamed.pcbRemunerationType).toBe('additional'); expect(renamed.name).toBe('BIK-Buyout Payment (renamed)');
+    fd.set('pcbRemunerationType', 'normal');
     expect(await location(updateComponentAction, fd)).toContain('toast=toastSaved');
     const after = (await listPayComponents(ctx)).find(c => c.id === before.id)!;
-    const kept = ['code', 'name', 'label', 'kind', 'isNonPayable', 'displayCategory', 'eaFormLine', 'includedInPcb', 'pcbExemptionCode',
+    const kept = ['code', 'label', 'kind', 'isNonPayable', 'displayCategory', 'eaFormLine', 'includedInPcb', 'pcbExemptionCode',
       'includedInEpf', 'epfBonus2012', 'includedInSocsoEis', 'includedInHrdfBase', 'prorates', 'archivedAt'] as const;
     expect(Object.fromEntries(kept.map(k => [k, after[k]]))).toEqual(Object.fromEntries(kept.map(k => [k, before[k]])));
     expect(after.pcbRemunerationType).toBe('normal');
@@ -110,7 +119,6 @@ describe('r385 full pay-item classification through actual maintenance actions a
       ['pcbExemptionCode', '', 'errorStatutory_pcbExemptionTypeRequired'],
       ['pcbExemptionCode', 'INVALID', 'errorStatutory_pcbExemptionTypeInvalid'],
       ['eaFormLine', 'EA_B4', 'errorBenefit_classification_conflict'],
-      ['pcbRemunerationType', 'additional', 'errorBenefit_normal_remuneration_required'],
     ];
     for (const [key, value, expected] of cases) {
       const fd = form('bik'); fd.set(key, value);
@@ -118,7 +126,7 @@ describe('r385 full pay-item classification through actual maintenance actions a
       await assertRetained();
     }
     const optional = form('bik'); optional.set('pcbRemunerationType', 'optional_deduction'); optional.set('pcbExemptionCode', 'LP_VOLUNTARY_EPF');
-    expect(await location(action, optional)).toContain('error=errorBenefit_normal_remuneration_required');
+    expect(await location(action, optional)).toContain('error=errorBenefit_remuneration_type_not_supported');
     await assertRetained();
     // 8edeef41 — EPF Bonus 2012 is its own reason, reported only when that box is ticked; it is checked first.
     const bonus = form('bik'); bonus.set('includedInEpf', 'on'); bonus.set('epfBonus2012', 'on');
@@ -126,11 +134,6 @@ describe('r385 full pay-item classification through actual maintenance actions a
     await assertRetained();
     bonus.set('pcbRemunerationType', 'additional');
     expect(await location(action, bonus)).toContain('error=errorBenefit_epf_bonus_not_allowed');
-    await assertRetained();
-    const additionalOnly = form('bik'); additionalOnly.set('pcbRemunerationType', 'additional');
-    const additionalLocation = await location(action, additionalOnly);
-    expect(additionalLocation).toContain('error=errorBenefit_normal_remuneration_required');
-    expect(additionalLocation).not.toContain('epf_bonus');
     await assertRetained();
     const unknown = form('bik'); unknown.set('displayCategory', ''); unknown.set('eaFormLine', '');
     expect(await location(action, unknown)).toContain('error=errorUnsupportedTaxable');
@@ -240,6 +243,42 @@ describe('r385 full pay-item classification through actual maintenance actions a
     expect(JSON.stringify(unchanged.statutory)).toBe(frozen);
   });
 
+  // 8edeef41 (2026-11-25) — the same journey with BKBOP saved as Additional: PCB takes it through Yt (Kt 0), cash and the
+  // agency bases do not move, the payslip saves a version 2 snapshot, and switching the item back to Normal later never
+  // rewrites that saved working.
+  it('an Additional benefit saved by the action reaches Yt with Kt 0, saves a v2 snapshot and keeps it frozen', async () => {
+    const employee = await hireEmployee(ctx, { person: { fullName: 'Synthetic Additional Benefit', primaryEmail: `${randomUUID()}@r385.test` }, companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2025-01-01' });
+    await requirePackFor('MY').statutory.set(ctx, { personId: employee.personId, icNumber: '900101880001' });
+    await setCompensation(ctx, { employmentId: employee.employmentId, basicSalary: 12000, monthlyAllowance: 0, effectiveFrom: '2025-01-01' });
+    const fd = form('bik', 'BKBOP'); fd.set('pcbRemunerationType', 'additional');
+    expect(await location(createComponentAction, fd)).toContain('toast=toastSaved');
+    const row = (await listPayComponents(ctx)).find(c => c.code === 'BKBOP')!;
+    const baseline = await createBatch(ctx, { companyId: base.companyId, payPeriod: '2026-06' });
+    await generatePayslips(ctx, { batchId: baseline.batchId });
+    const batch = await createBatch(ctx, { companyId: base.companyId, payPeriod: '2026-07' });
+    await setPayrollBatchComponent(ctx, { batchId: batch.batchId, employmentId: employee.employmentId, componentId: row.id, amount: 800 });
+    await generatePayslips(ctx, { batchId: batch.batchId });
+    const slips = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, employee.employmentId));
+    const before = slips.find(s => s.batchId === baseline.batchId)!, after = slips.find(s => s.batchId === batch.batchId)!;
+    const statutory = after.statutory as Record<string, any>, prior = before.statutory as Record<string, any>;
+    const saved = readPcbNonCash(statutory.pcbNonCash)!;
+    expect(saved.version).toBe(2); expect(saved.owned.bik).toBe(800);
+    expect(saved.ownedEntries).toEqual([expect.objectContaining({ code: 'BKBOP', taxable: 800, stream: 'additional' })]);
+    expect(statutory.pcbMeta.trace.Y1).toBe(12000); expect(statutory.pcbMeta.trace.Yt).toBe(800); expect(statutory.pcbMeta.trace.Kt).toBe(0);
+    expect(Number(statutory.pcbBonus)).toBeGreaterThan(0);
+    expect(after.grossPay).toBe(before.grossPay); expect(Number(after.bonus)).toBe(0);
+    for (const key of ['epfEmployee', 'epfEmployer', 'socsoEmployee', 'socsoEmployer', 'eisEmployee', 'eisEmployer'] as const) expect(statutory[key]).toBe(prior[key]);
+    expect(statutory.bases.epf).toBe(prior.bases.epf); expect(statutory.bases.epfAdditional).toBe(prior.bases.epfAdditional); expect(statutory.bases.socsoEis).toBe(prior.bases.socsoEis);
+    expect(statutory.bases.pcb).toBe(12800);
+    // The month's Normal-only payslip is still written as version 1, with no stream key anywhere.
+    expect(prior.pcbNonCash.version).toBe(1); expect(JSON.stringify(prior.pcbNonCash)).not.toContain('stream');
+    const frozen = JSON.stringify(after.statutory);
+    fd.set('pcbRemunerationType', 'normal');
+    expect(await location(updateComponentAction, fd)).toContain('toast=toastSaved');
+    const [unchanged] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id, after.id));
+    expect(JSON.stringify(unchanged.statutory)).toBe(frozen);
+  });
+
   it('CSV preview and import recognise configured BIK/VOLA while preserving generic noncash refusal', async () => {
     const email = `${randomUUID()}@r385.test`;
     const employee = await hireEmployee(ctx, { person: { fullName: 'Synthetic Benefit Import', primaryEmail: email }, companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2025-01-01' });
@@ -248,23 +287,25 @@ describe('r385 full pay-item classification through actual maintenance actions a
     await upsertPayComponent(ctx, { label: 'Unclassified', code: 'UNKNOWN', name: 'Unclassified', kind: 'non_payable', isNonPayable: true,
       prorates: false, includedInPcb: true, includedInEpf: false, includedInSocsoEis: false, includedInHrdfBase: false,
       pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' });
-    for (const [code, eaFormLine, pcbRemunerationType] of [
-      ['CONFLICT', 'EA_B4', 'normal'], ['ADDITIONAL', 'EA_B3', 'additional'],
+    for (const [code, eaFormLine, pcbRemunerationType, pcbExemptionCode] of [
+      ['CONFLICT', 'EA_B4', 'normal', 'PCB_TAXABLE'], ['ADDITIONAL', 'EA_B3', 'additional', 'PCB_TAXABLE'], ['OPTIONAL', 'EA_B3', 'optional_deduction', 'LP_VOLUNTARY_EPF'],
     ] as const) await upsertPayComponent(ctx, { label: code, code, name: code, kind: 'non_payable', isNonPayable: true,
       displayCategory: 'bik', eaFormLine, prorates: false, includedInPcb: true, includedInEpf: false,
-      includedInSocsoEis: false, includedInHrdfBase: false, pcbRemunerationType, pcbExemptionCode: 'PCB_TAXABLE' });
+      includedInSocsoEis: false, includedInHrdfBase: false, pcbRemunerationType, pcbExemptionCode });
     const refused = await importBatchComponents(ctx, { batchId: batch.batchId,
-      csvText: `employee,component,amount\n${email},CONFLICT,700\n${email},ADDITIONAL,800`, dryRun: true });
-    expect(refused.valid).toBe(0);
-    // 8edeef41 — the service keeps the stable reason; the action words it from the shared import catalogue.
-    expect(refused.rows.map(r => [r.error, r.taxableReason])).toEqual([
-      ['Unsupported component: CONFLICT.', 'classification_conflict'],
-      ['Unsupported component: ADDITIONAL.', 'normal_remuneration_required'],
+      csvText: `employee,component,amount\n${email},CONFLICT,700\n${email},ADDITIONAL,800\n${email},OPTIONAL,600`, dryRun: true });
+    // 8edeef41 (2026-11-25) — an Additional BIK is a valid PCB input now; Optional Deduction stays refused.
+    expect(refused.valid).toBe(1);
+    // The service keeps the stable reason; the action words it from the shared import catalogue.
+    expect(refused.rows.map(r => [r.code, r.ok, r.error, r.taxableReason])).toEqual([
+      ['CONFLICT', false, 'Unsupported component: CONFLICT.', 'classification_conflict'],
+      ['ADDITIONAL', true, null, undefined],
+      ['OPTIONAL', false, 'Unsupported component: OPTIONAL.', 'remuneration_type_not_supported'],
     ]);
-    const explained = await dryRunComponentImportAction(batch.batchId, `employee,component,amount\n${email},CONFLICT,700\n${email},ADDITIONAL,800\n${email},UNKNOWN,900`);
+    const explained = await dryRunComponentImportAction(batch.batchId, `employee,component,amount\n${email},CONFLICT,700\n${email},OPTIONAL,800\n${email},UNKNOWN,900`);
     expect(explained.rows.map(r => r.error)).toEqual([
       'Unsupported component: CONFLICT. importIssue_classification_conflict',
-      'Unsupported component: ADDITIONAL. importIssue_normal_remuneration_required',
+      'Unsupported component: OPTIONAL. importIssue_remuneration_type_not_supported',
       'Unsupported component: UNKNOWN. importIssue_unrecognised_taxable_item',
     ]);
     const csvText = `employee,component,amount\n${email},BIK,700\n${email},VOLA,800\n${email},UNKNOWN,900`;
@@ -280,12 +321,12 @@ describe('r385 full pay-item classification through actual maintenance actions a
   });
 });
 
-it('8edeef41: EPF Bonus 2012 and Remuneration Type are separate refusals', () => {
+it('8edeef41: EPF Bonus 2012 and Remuneration Type are separate refusals; Normal and Additional are both valid', () => {
   const bik = { code: 'BKBOP', kind: 'non_payable', displayCategory: 'bik', isNonPayable: true, includedInPcb: true,
     includedInEpf: false, includedInSocsoEis: false, pcbRemunerationType: 'normal', epfBonus2012: false };
   expect(unsupportedTaxableReason(bik)).toBeNull();
-  expect(unsupportedTaxableReason({ ...bik, pcbRemunerationType: 'additional' })).toBe('normal_remuneration_required');
-  expect(unsupportedTaxableReason({ ...bik, pcbRemunerationType: 'optional_deduction' })).toBe('normal_remuneration_required');
+  expect(unsupportedTaxableReason({ ...bik, pcbRemunerationType: 'additional' })).toBeNull();
+  expect(unsupportedTaxableReason({ ...bik, pcbRemunerationType: 'optional_deduction' })).toBe('remuneration_type_not_supported');
   expect(unsupportedTaxableReason({ ...bik, includedInEpf: true, epfBonus2012: true })).toBe('epf_bonus_not_allowed');
   expect(unsupportedTaxableReason({ ...bik, includedInEpf: true, epfBonus2012: true, pcbRemunerationType: 'additional' })).toBe('epf_bonus_not_allowed');
   // Not subject to PCB: neither refusal applies (the benefit is not a PCB input).

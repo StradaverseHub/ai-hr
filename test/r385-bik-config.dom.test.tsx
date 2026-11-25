@@ -67,22 +67,26 @@ describe('r385 real statutory form payload and six-locale explanation', () => {
     expect(form.checkValidity()).toBe(false);
   });
   it('all precise benefit messages retain the pay-code context in every catalogue', () => {
-    for (const catalogue of Object.values(catalogues)) for (const key of ['errorUnsupportedTaxable', 'errorBenefit_classification_conflict', 'errorBenefit_unsupported_kind', 'errorBenefit_epf_bonus_not_allowed', 'errorBenefit_normal_remuneration_required'] as const) {
+    for (const catalogue of Object.values(catalogues)) for (const key of ['errorUnsupportedTaxable', 'errorBenefit_classification_conflict', 'errorBenefit_unsupported_kind', 'errorBenefit_epf_bonus_not_allowed', 'errorBenefit_normal_remuneration_required', 'errorBenefit_remuneration_type_not_supported'] as const) {
       expect(catalogue.payComponents[key]).toContain('{code}');
     }
   });
   it('8edeef41: the Remuneration Type messages no longer mention EPF Bonus 2012; the EPF Bonus messages do, in every catalogue', () => {
     for (const catalogue of Object.values(catalogues)) {
       const c = catalogue.payComponents, p = catalogue.payroll.process;
-      for (const text of [c.errorBenefit_normal_remuneration_required, c.importIssue_normal_remuneration_required, p.nonCash_normal_remuneration_required, p.reason.NON_CASH_NORMAL_REMUNERATION_REQUIRED]) {
+      // The retired Normal-only reason stays decodable; the new Normal-or-Additional reason replaces it.
+      for (const text of [c.errorBenefit_normal_remuneration_required, c.importIssue_normal_remuneration_required, p.nonCash_normal_remuneration_required, p.reason.NON_CASH_NORMAL_REMUNERATION_REQUIRED,
+        c.errorBenefit_remuneration_type_not_supported, c.importIssue_remuneration_type_not_supported, p.nonCash_remuneration_type_not_supported, p.reason.NON_CASH_REMUNERATION_TYPE_NOT_SUPPORTED]) {
         expect(text).toBeTruthy(); expect(text).not.toMatch(/2012|EPF/);
       }
       for (const text of [c.errorBenefit_epf_bonus_not_allowed, c.importIssue_epf_bonus_not_allowed, p.nonCash_epf_bonus_not_allowed, p.reason.NON_CASH_EPF_BONUS_NOT_ALLOWED]) {
         expect(text).toContain('EPF Bonus 2012');
       }
-      expect(c.benefitNormalLockedNote).toBeTruthy();
+      for (const text of [c.benefitNormalNote, c.benefitAdditionalNote]) { expect(text).toBeTruthy(); expect(text).not.toContain('2012'); }
+      expect(c.benefitEpfBonusNote).toContain('EPF Bonus 2012');
+      expect(c).not.toHaveProperty('benefitNormalLockedNote');
     }
-    expect(en.payComponents.benefitNormalLockedNote).toBe('BIK and living accommodation are taxed as normal remuneration in the monthly tax deduction.');
+    expect(en.payComponents.benefitAdditionalNote).toBe('Additional: PCB uses the additional-remuneration formula for the month it is paid. No EPF is deducted on a benefit.');
   });
 });
 
@@ -98,63 +102,98 @@ function PayItemForm(p: { kind: string; displayCategory: string; eaFormLine?: st
 }
 const remSelect = (form: HTMLFormElement) => Array.from(form.querySelectorAll('select')).find(el => el.querySelector('option[value="additional"]'))!;
 
-describe('8edeef41 BIK/VOLA subject to PCB lock Remuneration Type to Normal before Save', () => {
-  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('the reporter\'s BKBOP saved as Additional opens locked to Normal and posts Normal with its other settings in %s', locale => {
+const remRadios = (form: HTMLFormElement) => Array.from(form.querySelectorAll<HTMLInputElement>('input[type="radio"][name="pcbRemunerationType"]'));
+const radio = (form: HTMLFormElement, value: string) => remRadios(form).find(el => el.value === value)!;
+
+describe('8edeef41 (owner decision 2026-11-25) BIK/VOLA subject to PCB choose Normal or Additional', () => {
+  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('the reporter\'s BKBOP saved as Additional reopens on Additional, both choices are selectable and post, in %s', locale => {
     const errors: unknown[] = [];
     const { container } = render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} onError={error => errors.push(error)}>
       <PayItemForm editing kind="non_payable" displayCategory="bik" remType="additional" exemption="PCB_TAXABLE" />
     </NextIntlClientProvider>);
     const form = container.querySelector('form')!;
-    const rem = remSelect(form);
-    expect(rem.disabled).toBe(true); expect(rem.value).toBe('normal'); expect(rem.name).toBe('');
-    expect(screen.getByText(catalogues[locale].payComponents.benefitNormalLockedNote)).toBeTruthy();
-    expect(rem.getAttribute('aria-describedby')).toBeTruthy();
+    const c = catalogues[locale].payComponents;
+    // Exactly two choices for a benefit, no Optional Deduction and no select for the type.
+    expect(remRadios(form).map(r => r.value)).toEqual(['normal', 'additional']);
+    expect(remSelect(form)).toBeUndefined();
+    expect(radio(form, 'additional').checked).toBe(true); expect(radio(form, 'normal').checked).toBe(false);
+    expect(screen.getByText(c.benefitAdditionalNote)).toBeTruthy();
+    expect(screen.queryByText(c.benefitNormalNote)).toBeNull();
+    expect(screen.getByRole('radiogroup').closest('fieldset')!.getAttribute('aria-describedby')).toBeTruthy();
     expect(form.checkValidity()).toBe(true);
-    const posted = new FormData(form);
-    expect(posted.getAll('pcbRemunerationType')).toEqual(['normal']);
+    let posted = new FormData(form);
+    expect(posted.getAll('pcbRemunerationType')).toEqual(['additional']);
     expect(posted.get('pcbExemptionCode')).toBe('PCB_TAXABLE');
     expect(posted.get('includedInPcb')).toBe('on'); expect(posted.get('kind')).toBe('non_payable'); expect(posted.get('displayCategory')).toBe('bik');
     expect(posted.get('includedInEpf')).toBeNull(); expect(posted.get('epfBonus2012')).toBeNull();
     expect(posted.get('includedInSocsoEis')).toBeNull(); expect(posted.get('includedInHrdfBase')).toBeNull();
+    // Normal is selectable and posts Normal with the exemption kept.
+    fireEvent.click(radio(form, 'normal'));
+    posted = new FormData(form);
+    expect(posted.getAll('pcbRemunerationType')).toEqual(['normal']); expect(posted.get('pcbExemptionCode')).toBe('PCB_TAXABLE');
+    expect(screen.getByText(c.benefitNormalNote)).toBeTruthy(); expect(screen.queryByText(c.benefitAdditionalNote)).toBeNull();
+    // …and back to Additional.
+    fireEvent.click(radio(form, 'additional'));
+    expect(new FormData(form).getAll('pcbRemunerationType')).toEqual(['additional']);
+    // No EPF Bonus 2012 explanation while that box is not ticked.
+    expect(screen.queryByText(c.benefitEpfBonusNote)).toBeNull();
     expect(errors).toEqual([]);
   });
 
-  it('VOLA locks too; changing Payroll Category away releases the field, and back locks it again', () => {
+  it('a saved Normal item reopens on Normal; a new benefit defaults to Normal', () => {
+    for (const remType of ['normal', null] as const) {
+      const { container, unmount } = render(<NextIntlClientProvider locale="en" messages={en}>
+        <PayItemForm kind="non_payable" displayCategory="vola" eaFormLine="EA_B4" remType={remType} exemption="PCB_TAXABLE" />
+      </NextIntlClientProvider>);
+      const form = container.querySelector('form')!;
+      expect(radio(form, 'normal').checked).toBe(true); expect(radio(form, 'additional').checked).toBe(false);
+      expect(new FormData(form).getAll('pcbRemunerationType')).toEqual(['normal']);
+      expect(screen.getByText(en.payComponents.benefitNormalNote)).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it('changing Payroll Category never changes the chosen type; leaving the benefit shows the full list again', () => {
     const { container } = render(<NextIntlClientProvider locale="en" messages={en}>
       <PayItemForm kind="non_payable" displayCategory="vola" eaFormLine="EA_B4" remType="normal" exemption="PCB_TAXABLE" />
     </NextIntlClientProvider>);
     const form = container.querySelector('form')!;
-    expect(remSelect(form).disabled).toBe(true);
+    fireEvent.click(radio(form, 'additional'));
+    fireEvent.change(form.querySelector('select[name="displayCategory"]')!, { target: { value: 'bik' } });
+    fireEvent.change(form.querySelector('select[name="eaFormLine"]')!, { target: { value: 'EA_B3' } });
+    expect(radio(form, 'additional').checked).toBe(true);
+    expect(new FormData(form).getAll('pcbRemunerationType')).toEqual(['additional']);
+    // Not a benefit any more: the ordinary select returns with the same saved choice.
     fireEvent.change(form.querySelector('select[name="displayCategory"]')!, { target: { value: '' } });
     fireEvent.change(form.querySelector('select[name="eaFormLine"]')!, { target: { value: '' } });
-    expect(remSelect(form).disabled).toBe(false); expect(remSelect(form).name).toBe('pcbRemunerationType');
-    expect(screen.queryByText(en.payComponents.benefitNormalLockedNote)).toBeNull();
-    fireEvent.change(remSelect(form), { target: { value: 'additional' } });
-    expect(new FormData(form).get('pcbRemunerationType')).toBe('additional');
+    expect(remRadios(form)).toEqual([]);
+    expect(remSelect(form).value).toBe('additional');
+    expect(Array.from(remSelect(form).options).map(o => o.value)).toEqual(['', 'normal', 'additional', 'optional_deduction']);
     fireEvent.change(form.querySelector('select[name="displayCategory"]')!, { target: { value: 'bik' } });
-    expect(remSelect(form).disabled).toBe(true); expect(new FormData(form).getAll('pcbRemunerationType')).toEqual(['normal']);
+    expect(radio(form, 'additional').checked).toBe(true);
   });
 
-  it('a cash item (not Non-Payable) or PCB unticked is not locked; switching Category to Non-Payable locks', () => {
+  it('a cash item (not Non-Payable) keeps the full select; switching Category to Non-Payable offers the two choices; PCB unticked posts none', () => {
     const { container } = render(<NextIntlClientProvider locale="en" messages={en}>
       <PayItemForm kind="allowance" displayCategory="bik" remType="additional" exemption="PCB_TAXABLE" />
     </NextIntlClientProvider>);
     const form = container.querySelector('form')!;
     expect(remSelect(form).disabled).toBe(false); expect(new FormData(form).get('pcbRemunerationType')).toBe('additional');
     fireEvent.change(form.querySelector('select[name="kind"]')!, { target: { value: 'non_payable' } });
-    expect(remSelect(form).disabled).toBe(true); expect(new FormData(form).getAll('pcbRemunerationType')).toEqual(['normal']);
+    expect(remRadios(form).map(r => r.value)).toEqual(['normal', 'additional']);
+    expect(new FormData(form).getAll('pcbRemunerationType')).toEqual(['additional']);
     fireEvent.click(form.querySelector<HTMLInputElement>('[name="includedInPcb"]')!);
     expect(new FormData(form).get('pcbRemunerationType')).toBeNull();
-    expect(screen.queryByText(en.payComponents.benefitNormalLockedNote)).toBeNull();
+    expect(screen.queryByText(en.payComponents.benefitAdditionalNote)).toBeNull();
   });
 
-  it('an older optional-deduction item opens locked to Normal and asks for a valid exemption before Save', () => {
+  it('an older optional-deduction item opens on Normal and asks for a valid exemption before Save', () => {
     const { container } = render(<NextIntlClientProvider locale="en" messages={en}>
       <PayItemForm editing kind="non_payable" displayCategory="bik" remType="optional_deduction" exemption="LP_VOLUNTARY_EPF" />
     </NextIntlClientProvider>);
     const form = container.querySelector('form')!;
     const exemption = form.querySelector<HTMLSelectElement>('[name="pcbExemptionCode"]')!;
-    expect(remSelect(form).value).toBe('normal'); expect(exemption.value).toBe('');
+    expect(radio(form, 'normal').checked).toBe(true); expect(exemption.value).toBe('');
     expect(Array.from(exemption.options).map(o => o.value)).toContain('PCB_TAXABLE');
     expect(form.checkValidity()).toBe(false);
     fireEvent.change(exemption, { target: { value: 'PCB_TAXABLE' } });
@@ -163,7 +202,27 @@ describe('8edeef41 BIK/VOLA subject to PCB lock Remuneration Type to Normal befo
     expect(new FormData(form).get('pcbExemptionCode')).toBe('PCB_TAXABLE');
   });
 
-  it('an untouched legacy blank pair keeps its preservation; a statutory edit then applies the lock', () => {
+  it('the EPF Bonus 2012 explanation appears only while EPF Bonus 2012 is ticked on a taxable benefit', () => {
+    const { container } = render(<NextIntlClientProvider locale="en" messages={en}>
+      <PayItemForm kind="non_payable" displayCategory="bik" remType="additional" exemption="PCB_TAXABLE" />
+    </NextIntlClientProvider>);
+    const form = container.querySelector('form')!;
+    const note = () => screen.queryByText(en.payComponents.benefitEpfBonusNote);
+    expect(note()).toBeNull();
+    fireEvent.click(form.querySelector<HTMLInputElement>('[name="includedInEpf"]')!);
+    expect(note()).toBeNull();
+    fireEvent.click(form.querySelector<HTMLInputElement>('[name="epfBonus2012"]')!);
+    expect(note()).toBeTruthy();
+    // Not a taxable benefit: no explanation.
+    fireEvent.click(form.querySelector<HTMLInputElement>('[name="includedInPcb"]')!);
+    expect(note()).toBeNull();
+    fireEvent.click(form.querySelector<HTMLInputElement>('[name="includedInPcb"]')!);
+    expect(note()).toBeTruthy();
+    fireEvent.click(form.querySelector<HTMLInputElement>('[name="epfBonus2012"]')!);
+    expect(note()).toBeNull();
+  });
+
+  it('an untouched legacy blank pair keeps its preservation; a statutory edit then offers the benefit choice on Normal', () => {
     const { container } = render(<NextIntlClientProvider locale="en" messages={en}>
       <PayItemForm editing kind="non_payable" displayCategory="bik" remType={null} exemption={null} />
     </NextIntlClientProvider>);
@@ -171,7 +230,7 @@ describe('8edeef41 BIK/VOLA subject to PCB lock Remuneration Type to Normal befo
     expect(remSelect(form).disabled).toBe(false); expect(form.checkValidity()).toBe(true);
     expect(new FormData(form).get('pcbRemunerationType')).toBe('');
     fireEvent.click(form.querySelector<HTMLInputElement>('[name="includedInEpf"]')!);
-    expect(remSelect(form).disabled).toBe(true); expect(form.checkValidity()).toBe(false);
+    expect(radio(form, 'normal').checked).toBe(true); expect(form.checkValidity()).toBe(false);
     expect(new FormData(form).getAll('pcbRemunerationType')).toEqual(['normal']);
   });
 });
