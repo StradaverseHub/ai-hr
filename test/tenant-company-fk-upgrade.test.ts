@@ -269,6 +269,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10650,version:'7',when:1795495007250,tag:'7250_replacement_holiday_queue_voided',breakpoints:true},
  {idx:10660,version:'7',when:1795495007260,tag:'7260_viewer_access_version',breakpoints:true},
  {idx:10680,version:'7',when:1795495007280,tag:'7280_leave_delegated_decision_set',breakpoints:true},
+ {idx:10700,version:'7',when:1795495007300,tag:'7300_pay_component_itemised_payslips',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1375,6 +1376,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.viewer_access_version()',app:true},
    // 7280 (ADR 0181 step (d)): the delegated-decision set the five leave read policies ask once per statement.
    {fn:'app.delegated_decision_employment_ids()',app:true},
+   // 7300 (ADR 0181 write side): the Pay Item stale-run marker's itemised slips, containment before authority.
+   {fn:'app.pay_component_itemised_payslips(uuid[],jsonb)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.

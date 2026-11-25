@@ -8051,6 +8051,13 @@
       "when": 1795495007280,
       "tag": "7280_leave_delegated_decision_set",
       "breakpoints": true
+    },
+    {
+      "idx": 10700,
+      "version": "7",
+      "when": 1795495007300,
+      "tag": "7300_pay_component_itemised_payslips",
+      "breakpoints": true
     }
   ]
 }
