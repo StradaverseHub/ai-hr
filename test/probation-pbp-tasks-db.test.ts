@@ -5,6 +5,7 @@ import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {adminCtx,closeAll,setModule,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {probationOutcomeFixture} from './helpers/probation-outcome-fixture';
+import {expectProbationTasksSharedInRender} from './helpers/render-shared-reads';
 import {newProbationLetterTemplate} from '../lib/probation-letter-template';
 import type {SessionContext,Tx} from '../db/client';
 import type {DocumentRouting} from '../lib/document-signing-routing';
@@ -38,6 +39,7 @@ describe('letter steps by kind (I2)',()=>{
   // The reviewer's Review step is an Approval Item, not a task.
   expect(onCase(ids.caseId,await probationTaskList(peer.ctx,{category:'approval'}))).toEqual([expect.objectContaining({partId:prepared.partId,kind:'letter_review',category:'approval',href})]);
   expect(onCase(ids.caseId,await probationTaskList(peer.ctx,{category:'task'}))).toEqual([]);
+  await expectProbationTasksSharedInRender(peer.ctx,[b.companyId]);await expectProbationTasksSharedInRender(admin,[b.companyId]);
   // The HR signer's step is not pending yet.
   expect(onCase(ids.caseId,await probationTaskList(admin,{category:'approval'})).filter(item=>item.partId===prepared.partId)).toEqual([]);
   let letter=await readProbationLetter(peer.ctx,ids.caseId,prepared.partId);
@@ -46,6 +48,7 @@ describe('letter steps by kind (I2)',()=>{
   // Now the Sign step is a task for the HR signer, never an Approval Item.
   expect(onCase(ids.caseId,await probationTaskList(admin,{category:'task'})).filter(item=>item.partId===prepared.partId)).toEqual([expect.objectContaining({kind:'letter_sign',category:'task',href})]);
   expect(onCase(ids.caseId,await probationTaskList(admin,{category:'approval'})).filter(item=>item.partId===prepared.partId)).toEqual([]);
+  await expectProbationTasksSharedInRender(admin,[b.companyId]);await expectProbationTasksSharedInRender(peer.ctx);
   letter=await readProbationLetter(admin,ids.caseId,prepared.partId);
   expect(letter.state).toBe('pending_approval');
  });
@@ -58,6 +61,7 @@ describe('the PBP\'s low-result task (I3)',()=>{
   expect(part.band).toBe(1);
   expect(onCase(ids.caseId,await probationTaskList(admin,{category:'task'})).filter(item=>item.kind==='low_result_action')).toEqual([expect.objectContaining({partId:ids.part,category:'task',href:'/lifecycle/probation/'+ids.caseId})]);
   expect(onCase(ids.caseId,await probationTaskList(admin,{category:'approval'})).filter(item=>item.kind==='low_result_action')).toEqual([]);
+  await expectProbationTasksSharedInRender(admin,[b.companyId]);await expectProbationTasksSharedInRender(staff.ctx);await expectProbationTasksSharedInRender(peer.ctx);
   const row=async()=>(await probationSummaryRows(admin,{})).rows.find(r=>r.id===ids.caseId)!;
   expect((await row()).action).toBe('record_action');
   // Only the case's PBP or GBS records it, with a note.
