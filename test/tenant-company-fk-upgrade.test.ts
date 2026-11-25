@@ -1379,6 +1379,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.viewer_access_version()',app:true},
    // 7280 (ADR 0181 step (d)): the delegated-decision set the five leave read policies ask once per statement.
    {fn:'app.delegated_decision_employment_ids()',app:true},
+   // 7280: the non-inlinable membership check those policies apply to that set (keeps the predecessor's row estimate).
+   {fn:'app.delegated_decision_includes(uuid,uuid[])',app:true},
    // 7290 (ADR 0181 Phase 4): Approval History keyset page and capped count; the event filter stays owner-only.
    {fn:'app.approval_history_events(timestamp with time zone,timestamp with time zone,text[],text,uuid,uuid,boolean,integer)',app:false},
    {fn:'app.approval_history_page(timestamp with time zone,timestamp with time zone,text[],text,uuid,uuid,boolean,integer)',app:true},
@@ -1625,7 +1627,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   for(const row of afterPerformancePrivileges.policies.filter(isDelegatedLeavePolicy)){
    const before=beforeDelegated.get(String(row.policyname))!,m=String(before.qual).match(/app\.can_decide_via_delegation\(([a-z_]+)\)/);
    expect(m,String(row.policyname)).toBeTruthy();
-   expect(row.qual).toBe(String(before.qual).replace(m![0],`(${m![1]} = ANY (( SELECT app.delegated_decision_employment_ids() AS delegated_decision_employment_ids)::uuid[]))`));
+   expect(row.qual).toBe(String(before.qual).replace(m![0],`app.delegated_decision_includes(${m![1]}, ( SELECT app.delegated_decision_employment_ids() AS delegated_decision_employment_ids))`));
    expect({...row,qual:before.qual}).toEqual(before);
   }
   expect(beforeEmployment).toMatchObject({permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'ALL',with_check:'((tenant_id = app.current_tenant_id()) AND app.is_admin_for(company_id))'});

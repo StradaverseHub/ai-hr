@@ -39,13 +39,13 @@ const assessmentAttachment = {
 // 0676 (ADR-0157) deliberately hides a voided employment/person from every ordinary read. It may only NARROW
 // visibility: the live USING must be exactly `(voided_at IS NULL) AND (<0515 USING>)`, WITH CHECK unchanged.
 const importVoidNarrowed = new Set(['employment.employment_rls', 'person.person_rls']);
-// 7280 replaced the per-row delegation term of five leave policies with the once-per-statement delegated set.
+// 7280 replaced the per-row delegation term of five leave policies with a membership check of the once-per-statement delegated set.
 const delegatedLeave = new Set(['leave_request.leave_request_rls','leave_approval_step.leave_approval_step_rls','leave_request_date.leave_request_date_rls',
  'replacement_leave_request.replacement_leave_request_rls','replacement_leave_request_date.replacement_leave_request_date_rls']);
 const delegated7280 = (qual: string) => {
  const m = qual.match(/app\.can_decide_via_delegation\(([a-z_]+)\)/);
  if (!m || qual.split(m[0]).length !== 2) throw new Error('expected one per-row delegation term');
- return qual.replace(m[0], `(${m[1]} = ANY (( SELECT app.delegated_decision_employment_ids() AS delegated_decision_employment_ids)::uuid[]))`);
+ return qual.replace(m[0], `app.delegated_decision_includes(${m[1]}, ( SELECT app.delegated_decision_employment_ids() AS delegated_decision_employment_ids))`);
 };
 const voidNarrowedQual = (qual: string) => `((voided_at IS NULL) AND ${qual})`;
 
