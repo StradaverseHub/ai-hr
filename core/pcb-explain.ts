@@ -217,6 +217,19 @@ export type PcbExplanation =
       trace: PcbFlatTrace | null;
     } & PcbFigures)
   | ({
+      /** ADR 0183 (board d8dc0a8c) — an HR-chosen custom PCB method. 'fixed': the payslip's PCB is the amount HR
+       *  entered, with no working at all. 'rate': the Non-Resident working with HR's percentage. The number is
+       *  read from the payslip's own stamp (the selection as this run used it), never from today's setting. */
+      kind: 'custom';
+      method: 'fixed' | 'rate';
+      /** RM, 'fixed' only. */
+      amount: number | null;
+      /** Percent (30 = 30%), 'rate' only. */
+      ratePercent: number | null;
+      /** The remuneration the rate was applied to. NULL when not recorded; 'fixed' records it for reference. */
+      trace: { remuneration: number; additional: number } | null;
+    } & PcbFigures)
+  | ({
       kind: 'mtd';
       calculationScheme?: PcbCalculationScheme;
       /** Immutable employer-scoped approval used by this run; absent on legacy/normal snapshots. */
@@ -536,7 +549,7 @@ export function explainPcb(
     taxSelectionSource: 'income_tax_resident' as const,
   }});
   const scheme = metaObj.calculationScheme;
-  const knownSchemes = ['resident', 'rep', 'knowledge_worker', 'c_suite', 'non_resident'];
+  const knownSchemes = ['resident', 'rep', 'knowledge_worker', 'c_suite', 'non_resident', 'custom_fixed', 'custom_rate'];
   if ((hasSelection && scheme === undefined) || scheme !== undefined && !knownSchemes.includes(scheme as string)) return {kind: 'unavailable', ...figures};
   const incentive = scheme === 'rep' || scheme === 'knowledge_worker' || scheme === 'c_suite';
   if (incentive) {
@@ -564,6 +577,17 @@ export function explainPcb(
           (scheme !== 'c_suite' && (!hasRecordedNumbers(raw, ['T2']) || (raw.T2 as number) < 0))))) {
       return {kind: 'unavailable', ...figures};
     }
+  }
+  if (scheme === 'custom_fixed' || scheme === 'custom_rate') {
+    const custom = metaObj.customPcb as Record<string, unknown> | null | undefined;
+    const fixed = scheme === 'custom_fixed';
+    if (!custom || typeof custom !== 'object' || Array.isArray(custom) || !hasRecordedNumbers(custom, [fixed ? 'amount' : 'rate'])) return {kind: 'unavailable', ...figures};
+    const value = custom[fixed ? 'amount' : 'rate'] as number;
+    if (value <= 0 || (!fixed && value > 100)) return {kind: 'unavailable', ...figures};
+    const raw = metaObj.trace as Record<string, unknown> | null | undefined;
+    const trace = raw && typeof raw === 'object' && !Array.isArray(raw) && hasRecordedNumbers(raw, ['remuneration', 'additional'])
+      ? { remuneration: raw.remuneration as number, additional: raw.additional as number } : null;
+    return { kind: 'custom', method: fixed ? 'fixed' : 'rate', amount: fixed ? value : null, ratePercent: fixed ? null : value, trace, ...figures };
   }
   if (scheme === 'non_resident' && (!hasRecordedNumbers(metaObj, ['flatRate']) || metaObj.flatRate !== 0.3)) return {kind: 'unavailable', ...figures};
   const flat = metaObj as FlatMeta;
@@ -804,6 +828,30 @@ function flatWorksheet(x: Extract<PcbExplanation, { kind: 'flat' }>): PcbWorkshe
 }
 
 /**
+ * ADR 0183 — THE CUSTOM PCB SHEET. Like the flat sheet, there is no LHDN computerised-calculation worksheet for
+ * these payees, and the sheet says so rather than drawing empty P/M/R/B rows. A custom rate shows the remuneration
+ * and the HR-entered rate; a fixed amount shows the amount HR entered, which IS the month's working.
+ */
+function customWorksheet(x: Extract<PcbExplanation, { kind: 'custom' }>): PcbWorksheet {
+  const t = x.trace;
+  const rows: PcbWorksheetRow[] = x.method === 'rate'
+    ? [
+        { symbol: 'Y', caption: 'worksheetFlatY', value: t ? money(t.remuneration) : { kind: 'notRecorded' } },
+        { symbol: 'Yt', caption: 'worksheetFlatYt', value: t ? money(t.additional) : { kind: 'notRecorded' } },
+        { symbol: '', caption: 'worksheetCustomRate', value: { kind: 'rate', rate: (x.ratePercent ?? 0) / 100 } },
+      ]
+    : [{ symbol: '', caption: 'worksheetCustomAmount', value: money(x.amount ?? 0) }];
+  return {
+    shape: 'flat',
+    sections: [
+      { heading: 'worksheetCustomHeading', rows },
+      { heading: 'worksheetResultHeading', rows: resultRows(x) },
+    ],
+    note: x.method === 'rate' ? 'worksheetCustomRateNote' : 'worksheetCustomFixedNote',
+  };
+}
+
+/**
  * The last rows of every sheet: what the working lands on, and — only when they are different numbers —
  * what the payslip actually deducted.
  *
@@ -872,6 +920,7 @@ export function pcbWorksheet(x: PcbExplanation, previous: PcbPreviousEmployment 
   if (x.kind === 'not_subject') return {shape:'unavailable',sections:[],note:'taxCategoryNoneExplanation'};
   if (x.kind === 'unavailable') return { shape: 'unavailable', sections: [], note: 'unavailable' };
   if (x.kind === 'flat') return flatWorksheet(x);
+  if (x.kind === 'custom') return customWorksheet(x);
 
   const t = x.trace;
   const income: PcbWorksheetRow[] = [
@@ -1993,6 +2042,7 @@ export type PcbDetailBodySlot =
   | 'traceBanner'
   | 'unavailableCard'
   | 'flatCard'
+  | 'customCard'
   | 'mtdBand'
   | 'mtdCategory'
   | 'mtdReliefs'
@@ -2122,6 +2172,7 @@ export function pcbDetailLayout(p: {
 
   if (x.kind === 'unavailable'||x.kind==='not_subject') body('unavailableCard', null, 'card', 'summaryHeading');
   if (x.kind === 'flat') body('flatCard', null, 'card', 'flatHeading');
+  if (x.kind === 'custom') body('customCard', null, 'card', 'customHeading');
   if (x.kind === 'mtd') {
     body('mtdBand', '9', 'sequence', 'mtdCalculationHeading');
     for (const s of PCB_MTD_STEPS) body(s.slot, s.label, 'step', s.heading);

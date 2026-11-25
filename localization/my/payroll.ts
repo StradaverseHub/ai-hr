@@ -55,11 +55,11 @@ export class StatutoryRulesetMalformedError extends Error {
   }
 }
 
-export type PcbCalculationScheme = 'resident' | 'non_resident' | 'rep' | 'knowledge_worker' | 'c_suite';
+export type PcbCalculationScheme = 'resident' | 'non_resident' | 'rep' | 'knowledge_worker' | 'c_suite' | 'custom_fixed' | 'custom_rate';
 /** Resolve the explicit HR declaration; legacy residency is consulted only when no scheme is saved. */
 export function resolvePcbCalculationScheme(value: string | null | undefined, resident = true): PcbCalculationScheme {
   const scheme = value ?? (resident ? 'resident' : 'non_resident');
-  if (!['resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite'].includes(scheme)) {
+  if (!['resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite', 'custom_fixed', 'custom_rate'].includes(scheme)) {
     throw new StatutoryRulesetMalformedError('Unknown PCB calculation scheme');
   }
   return scheme as PcbCalculationScheme;
@@ -1742,6 +1742,9 @@ export function statutory(
     taxSelectionId?: string;
     taxSelectionVersion?: number;
     taxSelectionSource?: 'income_tax_resident';
+    /** ADR 0183 — the HR-entered number of a custom PCB scheme, from the employer-scoped selection: `amount`
+     *  (RM) for custom_fixed, `rate` (percent) for custom_rate. Required by those two schemes, read by no other. */
+    customPcb?: { amount: number | null; rate: number | null };
     epfElection?: EpfElection;
     /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
     epfAge?: number | null;
@@ -1936,6 +1939,48 @@ export function statutory(
   // Only the legacy 30% non-resident option remains valid. 15% alone cannot identify an approved scheme.
   if (opts?.flatTaxRate != null && opts.flatTaxRate !== 0.3) {
     throw new StatutoryRulesetMalformedError('Select an explicit approved PCB scheme instead of a flat incentive rate');
+  }
+  // ── ADR 0183 (board d8dc0a8c) — THE TWO HR-CHOSEN CUSTOM PCB METHODS ──────────────────────────────
+  // custom_fixed: the month's PCB IS the HR-entered amount. No table, relief, TP1/TP3, rebate, zakat offset or
+  //   RM10 floor touches it. It is the same figure for the month however many runs pay it, so the kernel's
+  //   additional-run delta charges it once: the regular run carries it and a bonus run's increment is 0.
+  // custom_rate: the Non-Resident working (taxable remuneration × rate, the same truncation, 5-sen round-up and
+  //   RM10 floor), with the HR-entered percentage in place of 30%.
+  // Both refuse rather than fall back when the number is missing: a missing number must never become the
+  // standard formula. pcbNormalPreZakat is 0, as for Non-Resident: zakat via salary is not offset here.
+  if (scheme === 'custom_fixed' || scheme === 'custom_rate') {
+    const amount = opts?.customPcb?.amount, ratePercent = opts?.customPcb?.rate;
+    const fixedOk = amount != null && Number.isFinite(amount) && amount > 0 && round2(amount) === amount;
+    const rateOk = ratePercent != null && Number.isFinite(ratePercent) && ratePercent > 0 && ratePercent <= 100 && round2(ratePercent) === ratePercent;
+    if (scheme === 'custom_fixed' ? !fixedOk : !rateOk) {
+      throw new StatutoryRulesetMalformedError('A custom PCB method needs its saved amount or rate');
+    }
+    const rate = scheme === 'custom_rate' ? round2(ratePercent!) / 100 : null;
+    const pcbAll = rate == null ? amount! : rm10Floor(ceil5sen(trunc2((pcbWage + pcbAdditional) * rate)));
+    const pcbBonusOnly = rate == null ? 0 : rm10Floor(ceil5sen(trunc2(pcbAdditional * rate)));
+    return {
+      ...epfTrace,
+      ...traceOut,
+      epfEmployee: e.employee,
+      epfEmployer: e.employer,
+      socsoEmployee: s.employee,
+      socsoEmployer: s.employer,
+      socsoSkbbk: s.skbbk,
+      eisEmployee: i.employee,
+      eisEmployer: i.employer,
+      pcb: pcbAll,
+      pcbBonus: Math.min(pcbBonusOnly, pcbAll),
+      pcbNormalPreZakat: 0,
+      pcbMeta: {
+        ...(opts?.taxCircumstance?{taxCircumstance:opts.taxCircumstance}:{}),
+        calculationScheme: scheme,
+        ...(opts?.taxSelectionId?{taxSelectionId:opts.taxSelectionId,taxSelectionVersion:opts.taxSelectionVersion,taxSelectionSource:opts.taxSelectionSource}:{}),
+        // The number HR saved, as used by this run — the explanation reads it, never today's selection.
+        customPcb: rate == null ? { amount: amount! } : { rate: round2(ratePercent!) },
+        trace: { remuneration: pcbWage, additional: pcbAdditional, ...(rate == null ? { amount: amount! } : { rate }) },
+      },
+      version: rules.version,
+    };
   }
   const flatRate = scheme === 'non_resident' || (opts?.calculationScheme == null && opts?.flatTaxRate === 0.3) ? 0.3 : null;
   if (flatRate != null) {

@@ -258,6 +258,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
   const trace = x.kind === 'mtd' ? x.trace : null;
   const mtd = x.kind === 'mtd' ? x : null;
   const flat = x.kind === 'flat' ? x : null;
+  const custom = x.kind === 'custom' ? x : null;
   const L = pcbBasisLabels(x.basis);
   const na = t('notRecordedShort');
   const wholeMonth = x.basis != null && x.basis.prior != null;
@@ -359,6 +360,24 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         ];
         if (fb.flat) for (const r of formulaRows(fb.flat)) rows.push(r);
         return { columns: AMOUNT, rows, note: noteOf(fb.flat) };
+      }
+
+      // ADR 0183 — the custom PCB card, the same rows the screen paints.
+      case 'customCard': {
+        if (custom == null) return { rows: [] };
+        const rows: PcbSlipPdfRow[] = [
+          ...(custom.method === 'rate'
+            ? [
+                figure(t('customRate'), custom.ratePercent != null ? pctOf(custom.ratePercent / 100) : na),
+                figure(t('flatRemuneration'), custom.trace ? money(custom.trace.remuneration) : na),
+                figure(t('flatAdditional'), custom.trace ? money(custom.trace.additional) : na),
+              ]
+            : [figure(t('customAmount'), custom.amount != null ? money(custom.amount) : na)]),
+          figure(basis ? t(L.netSystem) : t('netMtd'), money(x.pcbSystem), true),
+          ...(basis ? [figure(t(L.netDeducted), money(x.pcb), true)] : []),
+        ];
+        if (fb.custom) for (const r of formulaRows(fb.custom)) rows.push(r);
+        return { columns: AMOUNT, rows, note: noteOf(fb.custom) };
       }
 
       // Sequence 9's own heading: the container the reporter asked for, with 9.1 to 9.9 beneath it.
@@ -598,7 +617,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
           columns: [],
           rows: [
             kv(t('sourceTaxYear'), String(Number.isFinite(taxYear) ? taxYear : row.payPeriod)),
-            kv(t('sourceTaxMethod'), x.kind==='not_subject'?t('taxCategoryNone'):x.kind === 'flat' ? t('methodFlat') : x.kind === 'mtd' && x.calculationScheme ? t(`scheme_${x.calculationScheme}`) : t('methodMtd')),
+            kv(t('sourceTaxMethod'), x.kind==='not_subject'?t('taxCategoryNone'):x.kind === 'custom' ? t(x.method === 'rate' ? 'scheme_custom_rate' : 'scheme_custom_fixed') : x.kind === 'flat' ? t('methodFlat') : x.kind === 'mtd' && x.calculationScheme ? t(`scheme_${x.calculationScheme}`) : t('methodMtd')),
             kv(t('sourceTaxTable'), prov?.rulesetVersion ?? null),
             kv(t('sourcePeriod'), periodLabel),
             kv(t('sourceCycle'), cycleKey ? t(cycleKey) : row.runType),

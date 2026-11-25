@@ -71,6 +71,7 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10700,version:'7',when:1795495007300,tag:'7300_pay_component_itemised_payslips',breakpoints:true},
  {idx:10710,version:'7',when:1795495007310,tag:'7310_payroll_tax_import_source_revisions',breakpoints:true},
  {idx:10720,version:'7',when:1795495007320,tag:'7320_employment_search_trigram',breakpoints:true},
+ {idx:10770,version:'7',when:1795495007370,tag:'7370_custom_pcb_selection',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},

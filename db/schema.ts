@@ -6196,7 +6196,11 @@ export const employmentTaxSelectionMy = pgTable('employment_tax_selection_my', {
   id: id(), tenantId: tenantId(),
   employmentId: uuid('employment_id').notNull().references(() => employment.id),
   companyId: uuid('company_id').notNull().references(() => company.id),
-  scheme: text('scheme').$type<'resident'|'non_resident'|'rep'|'knowledge_worker'|'c_suite'>(),
+  scheme: text('scheme').$type<'resident'|'non_resident'|'rep'|'knowledge_worker'|'c_suite'|'custom_fixed'|'custom_rate'>(),
+  /** ADR 0183 (7370) — the HR-entered monthly PCB in RM; present exactly when scheme is custom_fixed. */
+  customPcbAmount: numeric('custom_pcb_amount', { precision: 12, scale: 2 }),
+  /** ADR 0183 (7370) — the HR-entered tax rate in percent (0 < rate <= 100); present exactly when scheme is custom_rate. */
+  customPcbRate: numeric('custom_pcb_rate', { precision: 5, scale: 2 }),
   transitionState: text('transition_state').notNull().$type<'resolved'|'confirmation_required'>(),
   version: integer('version').notNull().default(1),
   taxApplicabilityEpoch: integer('tax_applicability_epoch').notNull().default(0),

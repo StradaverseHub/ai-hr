@@ -467,8 +467,8 @@ export class ReprocessEmploymentNotInPeriodError extends Error {
   }
 }
 
-export type ReprocessTaxScheme = 'resident'|'non_resident'|'rep'|'knowledge_worker'|'c_suite';
-const REPROCESS_TAX_SCHEMES = ['resident','non_resident','rep','knowledge_worker','c_suite'] as const;
+export type ReprocessTaxScheme = 'resident'|'non_resident'|'rep'|'knowledge_worker'|'c_suite'|'custom_fixed'|'custom_rate';
+const REPROCESS_TAX_SCHEMES = ['resident','non_resident','rep','knowledge_worker','c_suite','custom_fixed','custom_rate'] as const;
 
 export type ReprocessEmployeeOutcome = {
   employmentId: string;
@@ -554,7 +554,7 @@ function employeeReprocessValidation(error: unknown): Pick<ReprocessEmployeeOutc
       status:'validation_failed',reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE',
       validationCode:'pcb_child_relief_configuration_invalid'};
   if(error instanceof NonCashBenefitConfigurationError) return {status:'validation_failed',reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE',validationCode:error.code,validationDetails:[{gap:error.reason}]};
-  if(error instanceof Error && error.name==='TaxSelectionError'){const code=(error as Error&{code?:string}).code;if(code&&['confirmation_required','invalid_scheme','citizenship_unknown','not_resident'].includes(code))return {status:'validation_failed',reasonCode:'TAX_SCHEME_CONFIGURATION_INCOMPLETE',validationCode:code,...taxSchemeOutcomeDetails(error)};}
+  if(error instanceof Error && error.name==='TaxSelectionError'){const code=(error as Error&{code?:string}).code;if(code&&['confirmation_required','invalid_scheme','citizenship_unknown','not_resident','custom_value_missing'].includes(code))return {status:'validation_failed',reasonCode:'TAX_SCHEME_CONFIGURATION_INCOMPLETE',validationCode:code,...taxSchemeOutcomeDetails(error)};}
   if (error instanceof Error && error.name === 'TaxSchemeDeclarationError') {
     const code = (error as Error & {code?:string}).code;
     if (code && EMPLOYEE_TAX_VALIDATION_CODES.has(code)) return {status:'validation_failed',
@@ -7247,7 +7247,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
 
     // Resolve and lock employer-period declarations in stable employment order, before producing money.
     // Save/revoke uses the same lock; an approval decision remains valid until this payroll commits.
-    const resolvedTaxSchemes = new Map<string, {scheme:string;declarationId?:string;selectionId?:string;selectionVersion?:number;selectionSource?:'income_tax_resident';taxCircumstance?:NonNullable<Parameters<typeof pack.payroll.statutory>[5]>['taxCircumstance']}>();
+    const resolvedTaxSchemes = new Map<string, {scheme:string;declarationId?:string;selectionId?:string;selectionVersion?:number;selectionSource?:'income_tax_resident';customPcb?:{amount:number|null;rate:number|null};taxCircumstance?:NonNullable<Parameters<typeof pack.payroll.statutory>[5]>['taxCircumstance']}>();
     // ADR 0181 J2 — the pack's group resolver answers every employee of the pass in a few statements (instead of four
     // per employee), each employee's result or refusal decided by the single call's rules. A full generation raises the
     // first refusal in this stable order, as the per-employee loop did; a selective reprocess raises an employee's
@@ -7623,6 +7623,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         taxSelectionId:resolvedTaxScheme.selectionId,
         taxSelectionVersion:resolvedTaxScheme.selectionVersion,
         taxSelectionSource:resolvedTaxScheme.selectionSource,
+        // ADR 0183 — the custom PCB number saved with the selection this run resolved (custom schemes only).
+        ...('customPcb' in resolvedTaxScheme && resolvedTaxScheme.customPcb ? {customPcb:resolvedTaxScheme.customPcb} : {}),
         taxCircumstance:resolvedTaxSchemes.get(e.employmentId)?.taxCircumstance,
         // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
         epfWageMonth: payPeriod,

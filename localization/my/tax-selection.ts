@@ -9,15 +9,25 @@ import {actorOf,appendEvent} from '../../db/events';
 import {assignment,company,employment,employeeStatutoryMy,employmentTaxSchemeMy,employmentTaxSelectionMy,payrollBatch} from '../../db/schema';
 import {employedByCompanyDuring} from '../../core/employment-company';
 import type {PcbCalculationScheme} from './payroll';
-import {schemeCitizenshipOk,TAX_SELECTION_SCHEMES} from './tax-selection-codes';
+import {customPcbValueOf,isCustomPcbScheme,schemeCitizenshipOk,TAX_SELECTION_SCHEMES,type CustomPcbValue} from './tax-selection-codes';
 export {TAX_SELECTION_SCHEMES} from './tax-selection-codes';
-export type TaxSelectionCode='confirmation_required'|'invalid_scheme'|'citizenship_unknown'|'not_resident'|'not_found'|'invalid_period'|'stale_context';
+export type TaxSelectionCode='confirmation_required'|'invalid_scheme'|'citizenship_unknown'|'not_resident'|'not_found'|'invalid_period'|'stale_context'|'custom_value_missing'|'custom_value_invalid';
 export class TaxSelectionError extends Error {
  constructor(public readonly code:TaxSelectionCode,public readonly details?:{configuredScheme:PcbCalculationScheme;effectiveScheme?:PcbCalculationScheme}){super(`PCB selected category: ${code}`);this.name='TaxSelectionError';}
 }
 const idOk=(s:string)=>/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(s);
 const periodOk=(s:string)=>/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(s);
 export const selectedSchemeOk=(s:unknown):s is PcbCalculationScheme=>typeof s==='string'&&(TAX_SELECTION_SCHEMES as readonly string[]).includes(s);
+/**
+ * ADR 0183 — the saved custom PCB number of a selection row, or null when the row is not a complete custom
+ * selection. The 7370 check makes an incomplete one unrepresentable; null here is the refusal, never a default.
+ */
+export function savedCustomPcbMY(row:{scheme:string|null;customPcbAmount?:string|null;customPcbRate?:string|null}|undefined):CustomPcbValue|null{
+ if(!row||!isCustomPcbScheme(row.scheme))return null;
+ const amount=row.customPcbAmount==null?null:Number(row.customPcbAmount),rate=row.customPcbRate==null?null:Number(row.customPcbRate);
+ if(row.scheme==='custom_fixed')return amount!=null&&Number.isFinite(amount)&&amount>0&&rate==null?{amount,rate:null}:null;
+ return rate!=null&&Number.isFinite(rate)&&rate>0&&rate<=100&&amount==null?{amount:null,rate}:null;
+}
 function legacyOf(value:string|null|undefined,resident:boolean|null|undefined){return value==='resident'&&resident===false?'non_resident':value??(resident===false?'non_resident':'resident');}
 async function lock(tx:Tx,tenantId:string,employmentId:string){await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${tenantId+employmentId+'tax-scheme'},0))`);}
 export async function taxSelectionContextMY(tx:Tx,ctx:SessionContext,employmentId:string,write=false,payrollBatchId?:string,readOnlySnapshot=false){
@@ -89,7 +99,8 @@ export async function getTaxSelectionMY(ctx:SessionContext,employmentId:string,p
 }
 type TaxSelectionContextMY=Awaited<ReturnType<typeof taxSelectionContextMY>>;
 function taxSelectionViewMY(e:TaxSelectionContextMY,profile:{key:string|null;epoch:number}|undefined,selection:typeof employmentTaxSelectionMy.$inferSelect|undefined){
- return {...e,scheme:profile?.key==='none'?'none':selection?.scheme??null,transitionState:profile?.key==='none'?'resolved':selection?.taxApplicabilityEpoch!==(profile?.epoch??0)?'confirmation_required':selection?.transitionState??'confirmation_required',version:selection?.version??0,taxApplicabilityEpoch:profile?.epoch??0};
+ const custom=savedCustomPcbMY(selection);
+ return {...e,scheme:profile?.key==='none'?'none':selection?.scheme??null,customPcbAmount:custom?.amount??null,customPcbRate:custom?.rate??null,transitionState:profile?.key==='none'?'resolved':selection?.taxApplicabilityEpoch!==(profile?.epoch??0)?'confirmation_required':selection?.transitionState??'confirmation_required',version:selection?.version??0,taxApplicabilityEpoch:profile?.epoch??0};
 }
 /** Set-wise form of the BORROWED read-only getTaxSelectionMY, for a caller-held scoped snapshot (the
  * Personnel export). The same employment, authority, company, profile and selection reads, each issued once
@@ -125,7 +136,13 @@ export async function getTaxSelectionsMY(ctx:SessionContext,employmentIds:readon
   return taxSelectionViewMY(context,profileBy.get(e.personId),selectionBy.get(e.employmentId+'|'+e.currentCompanyId));
  };
 }
-export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;personId?:string;scheme:string;expectedCompanyId:string;expectedVersion?:number;payrollBatchId?:string;expectedPayPeriod?:string}){
+/**
+ * ADR 0183 — `customValue` is the HR-entered number of a custom PCB scheme (RM for custom_fixed, % for custom_rate),
+ * as text from the form. Absent or blank on a custom scheme keeps the number already saved for the SAME scheme (a
+ * re-save of the same choice, or an import that repeats it); with no such number the save is refused
+ * (custom_value_missing). A malformed number is refused (custom_value_invalid). Other schemes clear both numbers.
+ */
+export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;personId?:string;scheme:string;customValue?:string|number|null;expectedCompanyId:string;expectedVersion?:number;payrollBatchId?:string;expectedPayPeriod?:string}){
  ctx=captureStatutoryContext(ctx);p=structuredClone(p);await statutoryWriteIntervalMYTx(tx,ctx,{employmentId:p.employmentId,personId:p.personId??null});
  if(p.scheme!=='none'&&!selectedSchemeOk(p.scheme))throw new TaxSelectionError('invalid_scheme');
  const e=await taxSelectionContextMY(tx,ctx,p.employmentId,true,p.payrollBatchId);
@@ -137,12 +154,20 @@ export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmen
  if(p.scheme==='c_suite'&&!schemeCitizenshipOk(p.scheme,profile?.citizenship))throw new TaxSelectionError('citizenship_unknown',{configuredScheme:p.scheme});
  const before=await initialize(tx,ctx,e);
  if(p.expectedVersion!==undefined&&p.expectedVersion!==before.version)throw new TaxSelectionError('stale_context');
- const [after]=await tx.update(employmentTaxSelectionMy).set({...(p.scheme==='none'?{}:{scheme:p.scheme as PcbCalculationScheme}),taxApplicabilityEpoch:profile?.epoch??0,transitionState:'resolved',version:before.version+1,updatedAt:sql`now()`,updatedByUserId:ctx.userId}).where(eq(employmentTaxSelectionMy.id,before.id)).returning();
- await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment-tax-selection',aggregateId:after.id,eventType:'employee.tax-scheme.selected',actor:actorOf(ctx),subjectEmploymentId:e.employmentId,payload:{employmentId:e.employmentId,companyId:e.companyId,selectionId:after.id,before:{scheme:before.scheme,transitionState:before.transitionState,version:before.version},after:{scheme:after.scheme,transitionState:after.transitionState,version:after.version},eligibilityDecision:p.scheme==='none'?'person_not_subject_to_income_tax':'income_tax_resident_selection',taxApplicabilityEpoch:profile?.epoch??0,effectiveScheme:p.scheme}});
+ let custom:CustomPcbValue={amount:null,rate:null};
+ if(isCustomPcbScheme(p.scheme)){
+  const supplied=p.customValue!=null&&String(p.customValue).trim()!=='';
+  const value=supplied?customPcbValueOf(p.scheme,p.customValue):p.scheme===before.scheme?savedCustomPcbMY(before):null;
+  if(!value)throw new TaxSelectionError(supplied?'custom_value_invalid':'custom_value_missing');
+  custom=value;
+ }
+ const customColumns={customPcbAmount:custom.amount==null?null:custom.amount.toFixed(2),customPcbRate:custom.rate==null?null:custom.rate.toFixed(2)};
+ const [after]=await tx.update(employmentTaxSelectionMy).set({...(p.scheme==='none'?{}:{scheme:p.scheme as PcbCalculationScheme,...customColumns}),taxApplicabilityEpoch:profile?.epoch??0,transitionState:'resolved',version:before.version+1,updatedAt:sql`now()`,updatedByUserId:ctx.userId}).where(eq(employmentTaxSelectionMy.id,before.id)).returning();
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment-tax-selection',aggregateId:after.id,eventType:'employee.tax-scheme.selected',actor:actorOf(ctx),subjectEmploymentId:e.employmentId,payload:{employmentId:e.employmentId,companyId:e.companyId,selectionId:after.id,before:{scheme:before.scheme,transitionState:before.transitionState,version:before.version,customPcbAmount:before.customPcbAmount??null,customPcbRate:before.customPcbRate??null},after:{scheme:after.scheme,transitionState:after.transitionState,version:after.version,customPcbAmount:after.customPcbAmount??null,customPcbRate:after.customPcbRate??null},eligibilityDecision:p.scheme==='none'?'person_not_subject_to_income_tax':'income_tax_resident_selection',taxApplicabilityEpoch:profile?.epoch??0,effectiveScheme:p.scheme}});
  return after;
 }
 export async function saveTaxSelectionMY(ctx:SessionContext,p:Parameters<typeof saveTaxSelectionMYTx>[2]){ctx=captureStatutoryContext(ctx);p=structuredClone(p);return withTenant(ctx,tx=>saveTaxSelectionMYTx(tx,ctx,p));}
-export async function resolveTaxSelectionMY(tx:Tx,p:{tenantId:string;employmentId:string;companyId:string;payPeriod:string;legacyScheme?:string|null;resident?:boolean;epfCitizenship?:string|null}):Promise<{scheme:PcbCalculationScheme|'none';declarationId?:string;selectionId?:string;selectionVersion?:number;selectionSource?:'income_tax_resident';taxCircumstance:ReturnType<typeof savedTaxCircumstance>}>{
+export async function resolveTaxSelectionMY(tx:Tx,p:{tenantId:string;employmentId:string;companyId:string;payPeriod:string;legacyScheme?:string|null;resident?:boolean;epfCitizenship?:string|null}):Promise<{scheme:PcbCalculationScheme|'none';declarationId?:string;selectionId?:string;selectionVersion?:number;selectionSource?:'income_tax_resident';customPcb?:CustomPcbValue;taxCircumstance:ReturnType<typeof savedTaxCircumstance>}>{
  if(!periodOk(p.payPeriod))throw new TaxSelectionError('invalid_period');
  const [identity]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,p.tenantId))).limit(1);
  if(!identity)throw new TaxSelectionError('not_found');
@@ -159,6 +184,11 @@ export async function resolveTaxSelectionMY(tx:Tx,p:{tenantId:string;employmentI
   if(!identity)throw new TaxSelectionError('not_found');
   const [profile]=await tx.select({citizenship:employeeStatutoryMy.epfCitizenship}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,identity.personId),eq(employeeStatutoryMy.tenantId,p.tenantId))).limit(1).for('share');
   if(!['pr','non_citizen'].includes(profile?.citizenship??''))throw new TaxSelectionError('citizenship_unknown',{configuredScheme:row.scheme});
+ }
+ if(isCustomPcbScheme(row.scheme)){
+  const customPcb=savedCustomPcbMY(row);
+  if(!customPcb)throw new TaxSelectionError('custom_value_missing',details);
+  return {scheme:row.scheme,selectionId:row.id,selectionVersion:row.version,selectionSource:'income_tax_resident',customPcb,taxCircumstance};
  }
  return {scheme:row.scheme,selectionId:row.id,selectionVersion:row.version,selectionSource:'income_tax_resident',taxCircumstance};
 }
@@ -209,6 +239,11 @@ export async function resolveTaxSelectionsMY(tx:Tx,p:{tenantId:string;companyId:
   if(!selectedSchemeOk(row.scheme)){fail(e.employmentId,new TaxSelectionError('invalid_scheme',details));continue;}
   // The single call re-reads the same identity and the same share-locked statutory row here: the values cannot differ.
   if(row.scheme==='c_suite'&&!['pr','non_citizen'].includes(citizenship??'')){fail(e.employmentId,new TaxSelectionError('citizenship_unknown',{configuredScheme:row.scheme}));continue;}
+  if(isCustomPcbScheme(row.scheme)){
+   const customPcb=savedCustomPcbMY(row);
+   if(!customPcb){fail(e.employmentId,new TaxSelectionError('custom_value_missing',details));continue;}
+   out.set(e.employmentId,{ok:true,value:{scheme:row.scheme,selectionId:row.id,selectionVersion:row.version,selectionSource:'income_tax_resident',customPcb,taxCircumstance}});continue;
+  }
   out.set(e.employmentId,{ok:true,value:{scheme:row.scheme,selectionId:row.id,selectionVersion:row.version,selectionSource:'income_tax_resident',taxCircumstance}});
  }
  return out;

@@ -2271,6 +2271,8 @@ async function applyTaxSection(
     taxCategory: Number(formData.get('taxCategory')) || 1,
     ...(formData.has('taxCircumstance')&&!['1','2','3'].includes(String(formData.get('taxCircumstance')))?{taxCircumstance:String(formData.get('taxCircumstance'))}:{}),
     taxResidency: String(formData.get('taxResidency')??''),
+    // ADR 0183 — the custom PCB number, posted only while a custom Income Tax Resident choice is shown.
+    ...(formData.has('customPcbValue')?{customPcbValue:String(formData.get('customPcbValue')??'')}:{}),
     numChildren: Number(formData.get('numChildren')) || 0,
     childReliefMode: (formData.get('childReliefMode') as string) || 'manual',
     employerBearsTax: formData.get('employerBearsTax') === 'on',
@@ -2291,7 +2293,7 @@ async function applyTaxSection(
   }); } catch(error){
     if(error instanceof Error&&error.name==='TaxSelectionError'&&'code' in error){
       const t=await getTranslations('payroll.taxConfiguration');
-      const code=['confirmation_required','invalid_scheme','citizenship_unknown','not_resident','stale_context','not_found'].includes(String(error.code))?String(error.code):'saveFailed';
+      const code=['confirmation_required','invalid_scheme','citizenship_unknown','not_resident','stale_context','not_found','custom_value_missing','custom_value_invalid'].includes(String(error.code))?String(error.code):'saveFailed';
       throw new Error(t(`error_${code}`));
     }
     throw error;

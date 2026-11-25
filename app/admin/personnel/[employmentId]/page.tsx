@@ -2916,7 +2916,7 @@ export default async function EmployeePage({
         action={setTaxAction}
         employmentId={emp.employmentId}
         personId={emp.personId}
-        taxSelection={taxSelection ? {companyId:taxSelection.companyId,companyName:taxSelection.companyName,version:taxSelection.version,confirmationRequired:taxSelection.transitionState==='confirmation_required'} : undefined}
+        taxSelection={taxSelection ? {companyId:taxSelection.companyId,companyName:taxSelection.companyName,version:taxSelection.version,confirmationRequired:taxSelection.transitionState==='confirmation_required',customPcbAmount:taxSelection.customPcbAmount??null,customPcbRate:taxSelection.customPcbRate??null} : undefined}
         childRelief={qualifyingChildRelief}
         taxNumberSharedWith={taxNumberSharedWith}
         defaults={{

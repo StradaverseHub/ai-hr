@@ -1,3 +1,17 @@
+# Custom PCB on the Income Tax Resident selection (ADR 0183, board d8dc0a8c), 25 November 2026
+
+Reserve `7370_custom_pcb_selection`, journal index `10770`, timestamp `1795495007370`,
+SQL SHA-256 `a840b463c061f47cf7245b393258db8fff8bb2623fb90adc44770d4db4ede175`. `check-migration-collisions.mjs --local
+--next` (from PR 307's commit bbab49168) checked main and 399 recent branch journals and named 7370 as the next free
+slot, after `7360_audit_trail_company_scope`. Built on alpha's 7320. Neither installation's watermark was read from this
+session; recheck both, and any competing reservation, before admission.
+
+Adds nullable `custom_pcb_amount numeric(12,2)` and `custom_pcb_rate numeric(5,2)` to `employment_tax_selection_my`
+(every existing row NULL), widens `employment_tax_selection_my_scheme_check` with `custom_fixed` and `custom_rate`,
+adds `employment_tax_selection_my_custom_pcb_check` (a custom scheme has exactly its own number; other schemes none)
+and grants `ai_hr_app` UPDATE on the two columns. The checks scan the table once under the migration's lock; no
+policy, function or other object changes.
+
 # Employee search trigram indexes and candidates (ADR 0181 Phase 4), 25 November 2026
 
 Reserve `7320_employment_search_trigram`, journal index `10720`, timestamp `1795495007320` (SQL SHA-256 recorded in

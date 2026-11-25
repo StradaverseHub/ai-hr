@@ -67,7 +67,7 @@ export type PcbFormulaFormat = {
  * document iterates the same list in the same order, so neither can carry a step the other does not.
  */
 export type PcbFormulaBlock = {
-  key: 'p1' | 'p2' | 'mtd' | 'net' | 'year' | 'flat' | 'schemeAnnual';
+  key: 'p1' | 'p2' | 'mtd' | 'net' | 'year' | 'flat' | 'custom' | 'schemeAnnual';
   /** The specification's own step letter, '' for a step it letters differently or not at all. */
   step: string;
   /** Block heading caption key. */
@@ -113,6 +113,35 @@ export function pcbFormulaBlocks(x: PcbExplanation, f: PcbFormulaFormat): PcbFor
         result: x.pcbSystem,
         notes: ['flatRoundingNote', x.legacy === false ? 'nonresidentWorkingNote' : 'flatNote'],
       },
+    ];
+  }
+
+  // ADR 0183 — custom PCB. A custom rate is the Non-Resident working with HR's percentage; a fixed amount has no
+  // working at all, so its block states the amount HR entered and nothing is multiplied.
+  if (x.kind === 'custom') {
+    const tr = x.trace;
+    return [
+      x.method === 'rate'
+        ? {
+            key: 'custom',
+            step: '',
+            heading: 'customHeading',
+            formula: 'customRateFormula',
+            substituted: tr && x.ratePercent != null ? `( ${f.b2(tr.remuneration)} + ${f.b2(tr.additional)} ) × ${f.pct(x.ratePercent / 100)}` : null,
+            resultLabel: 'resultLabel',
+            result: x.pcbSystem,
+            notes: ['flatRoundingNote', 'customRateNote'],
+          }
+        : {
+            key: 'custom',
+            step: '',
+            heading: 'customHeading',
+            formula: 'customFixedFormula',
+            substituted: x.amount != null ? f.b2(x.amount) : null,
+            resultLabel: 'resultLabel',
+            result: x.pcbSystem,
+            notes: ['customFixedNote'],
+          },
     ];
   }
 
