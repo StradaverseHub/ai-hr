@@ -1,3 +1,17 @@
+# Audit Trail company scope (ADR 0182 Phase 1), 25 November 2026
+
+Reserve `7360_audit_trail_company_scope`, journal index `10760`, timestamp `1795495007360`,
+SQL SHA-256 `9208657d57e69b13a9a4bea1058dc4f66798b943ee21875eeadb74669c88b02b`. Main had 1,144 entries through `7220` (`1795495007220`). The reservation scan covered the 500
+most recently committed remote and local branch heads and every registered worktree journal: the highest entries found
+were `7330_queue_read_offboarding_access` and `7340_queue_read_contract_navigation` (`1795495007340`, branch
+`claude/queues-q1b-contract-navigation`) and the release 8 trial entries `7230`-`7320`; `7350` is left free for
+in-flight work. Neither installation's watermark was read from this session (staging ledger reads were not authorised);
+recheck both and any competing reservation before admission.
+
+Adds `app.admin_company_ids()` and `app.audit_admin_aggregates()` (SECURITY DEFINER, STABLE, search_path pinned,
+EXECUTE to `ai_hr_app` only), read once per statement by the Audit Trail company scope in core/read.ts. No table,
+row, policy, grant on a table or existing function changes.
+
 # Movement sweep system payroll snapshot policies, 24 November 2026
 
 Reserve `7220_movement_system_payroll_snapshot_insert`, journal index `10620`, timestamp `1795495007220`,
