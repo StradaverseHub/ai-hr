@@ -345,13 +345,14 @@ export function ReprocessForm({
       </tr>
     );
   };
-  /** The table header's selection controls, shared by both lists. Select this page ADDS the rows on screen. */
-  const selectionControls = (onSelectPage: () => void) => (
+  /** The table header's selection controls, shared by both lists. Select this page ADDS the rows on screen. The
+   * "n of total selected" count is stated once, on the first list shown. */
+  const selectionControls = (onSelectPage: () => void, withSummary = true) => (
     <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
       <span>{t('colEmployee')}</span>
-      <span className="normal-case tracking-normal text-foreground">
+      {withSummary && <span className="normal-case tracking-normal text-foreground">
         {t('reprocessSummary', { n: selected.size, total })}
-      </span>
+      </span>}
       <button type="button" onClick={onSelectPage} className="font-medium normal-case tracking-normal text-primary hover:underline">
         {t('reprocessSelectAll')}
       </button>
@@ -496,7 +497,7 @@ export function ReprocessForm({
               <th className="px-3 py-2 font-medium">
                 {/* 65e2d5de / 6aee208b — SELECT THIS PAGE ADDS THE ROWS ON SCREEN TO THE SELECTION. Under a search it
                     adds only what the search shows. Clear empties everything. */}
-                {selectionControls(() => {setSelected(prev=>new Map([...prev,...visibleEmployees.map((e) => [e.employmentId,e] as [string,Selected])]));})}
+                {selectionControls(() => {setSelected(prev=>new Map([...prev,...visibleEmployees.map((e) => [e.employmentId,e] as [string,Selected])]));}, !showRequired)}
               </th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColStatus')}</th>
               <th className="px-3 py-2 font-medium">{t('reprocessColReason')}</th>
