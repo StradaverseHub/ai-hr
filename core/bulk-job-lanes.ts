@@ -24,13 +24,15 @@ export const BULK_JOB_LANES:Readonly<Record<WorkerLane,readonly string[]>>=Objec
  import:Object.freeze(['employee_import','employee_import_revert','register_import','leave_ledger','movement_import','movement_check',
   'movement_import_revert','clocking_import','fixed_transaction_import']),
  export:Object.freeze(['payroll_transaction_export']),
- // Everything else: leave and TOIL sweeps, rosters, attendance recompute, lifecycle recovery, rewards, contracts and
- // the smaller imports.
+ // Everything else: leave and TOIL sweeps, rosters, attendance recompute, lifecycle recovery, rewards, contracts, the
+ // smaller imports and the Payroll Process list's outstanding-employee refresh.
  default:Object.freeze(['lifecycle_personnel_completion_preview','lifecycle_personnel_completion_recovery','lifecycle_manager_recovery',
   'reward_plan_reviews','reward_person_history','leave_generation','leave_accrual','leave_recalc','leave_a2c','toil_expiry','toil_year_close',
   'roster_bulk','schedule_group_bulk','attendance_recompute_preview','attendance_recompute','system_label_import','section_import',
   'recruitment_candidate_import','contract_preview','contract_automation','contract_setup','contract_schedule','contract_scheduled_automation',
-  'contract_posting_apply']),
+  'contract_posting_apply',
+  // a1a80747 — the Payroll Process list's stored outstanding answer: upkeep, never ahead of payroll processing.
+  'payroll_run_outstanding_refresh']),
 });
 
 export const WORKER_LANE_ENV='AIHR_WORKER_LANE';

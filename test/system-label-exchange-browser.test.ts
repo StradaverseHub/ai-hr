@@ -357,7 +357,21 @@ describe('System Labels authenticated Excel browser journey',()=>{
   // the first combined capture exhausted runner headroom after the six-language loop (44573956115).
   // Fresh processes retain the isolated database and sessions while releasing compiled dev-route graphs.
   // Turbopack, like `next dev` and `next build` for this app; webpack dev compiles were the bulk of this test's ~800 s.
+  // A freshly spawned dev server can exit before it ever answers: Next 16 takes an OS lock on its dev dist directory
+  // and retries it for only 1 s (build/lockfile.js), so a helper of the server just stopped by recycleNext can still
+  // hold it ("Another next dev server is already running"). Gate 45623795247 failed this way after locale-en-stopped.
+  // Relaunch a server that exited before answering, a bounded number of times; a server that keeps exiting still fails,
+  // now with its own output in the error.
   async function startOwnedNext(){
+   for(let launch=1;;launch++){
+    const early=await spawnOwnedNext();
+    if(!early)return;
+    if(launch>=4)throw new Error(`Owned preview server stopped before answering (launch ${launch}): `+early);
+    console.log(`SYSTEM_LABEL_SERVER_RELAUNCH ${JSON.stringify({launch,reason:early.slice(-400)})}`);
+    await delay(2000*launch);
+   }
+  }
+  async function spawnOwnedNext():Promise<string|undefined>{
    signal.throwIfAborted();
    serverClosed=false;serverSpawnFailed=false;serverStartTicks=undefined;
    server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--hostname','127.0.0.1','--port',String(port)],{
@@ -370,10 +384,15 @@ describe('System Labels authenticated Excel browser journey',()=>{
    server.stdout?.pipe(stream,{end:false});server.stderr?.pipe(stream,{end:false});
    let ready=false;
    for(let attempt=0;attempt<120;attempt++){
-    if(serverSpawnFailed||server.exitCode!==null||server.signalCode!==null)throw new Error('Owned preview server stopped: '+logTail(log,5000));
+    if(serverSpawnFailed||server.exitCode!==null||server.signalCode!==null){
+     // Let the exited child's piped output reach the log before reading its tail.
+     await delay(500);
+     return `exit=${server.exitCode} signal=${server.signalCode} spawnFailed=${serverSpawnFailed}: `+logTail(log,5000);
+    }
     try{await fetch(origin+'/login',{signal:AbortSignal.timeout(2000)});ready=true;break;}catch{await delay(500);}
    }
    expect(ready,'Owned preview server is reachable').toBe(true);sampleCapacity?.('login-ready');
+   return undefined;
   }
   async function recycleNext(phase:string,currentPage:Page){
    // Prevent the old page's hot-reload client from recompiling its route during the next phase.

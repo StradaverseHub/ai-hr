@@ -43,10 +43,14 @@ vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => scope) }));
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
-import { listPayComponents, seedPayComponentCatalog } from '../core/pay-components';
+import { listPayComponents, seedPayComponentCatalog, setEmploymentPayComponent } from '../core/pay-components';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { createFixedTransactionAction } from '../app/payroll/transactions/fixed/actions';
+import {
+  createFixedTransactionAction,
+  removeFixedTransactionDialogAction,
+  saveFixedTransactionDialogAction,
+} from '../app/payroll/transactions/fixed/actions';
 
 const fd = (o: Record<string, string>) => {
   const f = new FormData();
@@ -159,5 +163,62 @@ describe('Fixed Transaction action — scope guard', () => {
     // 4fffe638 — the run type is the chosen cycle's own, and the row is linked to that exact cycle.
     expect(rows[0].runType).toBe('bonus');
     expect(rows[0].payrollCycleId).toBe(bonusA);
+  });
+
+  it('cc8bd87f — the View / Edit pop-up actions refuse an out-of-scope employment and change nothing', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const emp = await hireEmployee(a, {
+      person: { fullName: 'Beta Two', primaryEmail: `beta${randomUUID()}@acme.test` },
+      companyId: companyB,
+      departmentId: deptB,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const { id } = await setEmploymentPayComponent(a, {
+      employmentId: emp.employmentId, componentId: await codeId(a, 'ALLOWANCE'), amount: 100, effectiveFrom: '2026-01-01',
+    });
+    scope.s = a;
+    scope.scopeIds = [base.companyId]; // company B is out of scope
+
+    const post = { employmentId: emp.employmentId, id, amount: '100', effectiveFrom: '2026-01-01', effectiveTo: '2026-06-30' };
+    await expect(saveFixedTransactionDialogAction(null, fd(post))).resolves.toEqual({ ok: false, error: 'outOfScope', args: {} });
+    await expect(removeFixedTransactionDialogAction(null, fd(post))).resolves.toEqual({ ok: false, error: 'outOfScope', args: {} });
+    const [row] = await owner.db.select().from(schema.employmentPayComponent).where(eq(schema.employmentPayComponent.id, id));
+    expect(row.validTo).toBeNull();
+    expect(row.supersededAt).toBeNull();
+    // The pop-up's actions answer with a value; neither redirects.
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it('cc8bd87f — an in-scope pop-up save answers with the refusal key and its arguments, and then saves', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const emp = await hireEmployee(a, {
+      person: { fullName: 'Alpha Two', primaryEmail: `alpha${randomUUID()}@acme.test` },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const first = await setEmploymentPayComponent(a, {
+      employmentId: emp.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-01-01', effectiveTo: '2026-03-31',
+    });
+    await setEmploymentPayComponent(a, { employmentId: emp.employmentId, componentId: allowId, amount: 200, effectiveFrom: '2026-05-01' });
+    scope.s = a;
+    scope.scopeIds = [base.companyId];
+
+    const post = { employmentId: emp.employmentId, id: first.id, amount: '100', effectiveFrom: '2026-01-01' };
+    await expect(saveFixedTransactionDialogAction(null, fd({ ...post, effectiveTo: '2026-06-30' }))).resolves.toEqual({
+      ok: false,
+      error: 'overlap',
+      args: { code: 'ALLOWANCE', from: '2026-05-01' },
+    });
+    await expect(saveFixedTransactionDialogAction(null, fd({ ...post, effectiveTo: '2026-04-30' }))).resolves.toEqual({ ok: true, changed: true });
+    await expect(saveFixedTransactionDialogAction(null, fd({ ...post, effectiveTo: '2026-04-30' }))).resolves.toEqual({ ok: true, changed: false });
+    const [row] = await owner.db.select().from(schema.employmentPayComponent).where(eq(schema.employmentPayComponent.id, first.id));
+    expect(row.validTo).toBe('2026-04-30');
+    expect(redirect).not.toHaveBeenCalled();
   });
 });

@@ -19,8 +19,9 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { client, type SessionContext } from '../db/client';
-import { listBatchProcessedDates, payrollDashboardBatchMetadata } from '../core/payroll-view';
+import { client, withTenant, type SessionContext } from '../db/client';
+import { listBatchProcessedDates, payrollDashboardBatchMetadata, payrollRunOutstandingCounts } from '../core/payroll-view';
+import { refreshRunOutstandingTx } from '../core/payroll-run-outstanding';
 import * as s from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -35,6 +36,7 @@ import {
   createBatch,
   generatePayslips,
   payrollCloseCompanyIds,
+  runOutstandingTx,
   setPayrollInput,
   setPayrollPermissionGrant,
 } from '../packs/payroll/service';
@@ -234,6 +236,11 @@ describe('cdb1c6ca · C — outstanding work refuses the close and changes nothi
     const err = await refused(batchId, BatchHasPendingEmployeesError);
     expect(err.employees.map((e) => [e.employeeCode, e.name])).toEqual([['CB002', 'Fictional Late Joiner']]);
     expect(Object.keys(err.employees[0]).sort()).toEqual(['employeeCode', 'employmentId', 'name']);
+    // a1a80747 r2 — the Payroll Process list counts exactly the people Close refuses for (plus the run's own mark).
+    expect(await withTenant(ctx, (tx) => refreshRunOutstandingTx(tx, ctx, batchId))).toBe('stored');
+    const listed = (await payrollRunOutstandingCounts(ctx, [batchId])).get(batchId);
+    expect(listed).toMatchObject({ count: err.employees.length, known: true, marked: false });
+    expect((await withTenant(ctx, (tx) => runOutstandingTx(tx, ctx, batchId))).employmentIds).toEqual(err.employees.map((e) => e.employmentId).sort());
   });
 
   it('a deliberate nothing-payable skip does not block, and neither does someone outside the run’s chosen list', async () => {

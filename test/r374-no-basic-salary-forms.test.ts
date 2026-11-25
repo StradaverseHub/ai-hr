@@ -356,7 +356,8 @@ describe('§2 the forms, read from source', () => {
     //    than listed, so a new one has to be looked at.
     const all = [
       'app/payroll/transactions/fixed/add-fixed-dialog.tsx',
-      'app/payroll/transactions/fixed/[id]/page.tsx',
+      // cc8bd87f — the fixed item's amount moved from its own page into the View / Edit pop-up.
+      'app/payroll/transactions/fixed/edit-fixed-dialog.tsx',
       'components/claim-form.tsx',
       'components/loan-new-form.tsx',
     ];

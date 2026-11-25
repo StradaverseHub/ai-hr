@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import { PDFDocument } from 'pdf-lib';
 import { borangAFrom, borangATextExport, money, type BorangARow } from '../lib/borang-a';
 import { renderBorangAPdf } from '../lib/borang-a-pdf';
 import {
@@ -135,8 +136,10 @@ describe('Borang A, to the October sample', () => {
     const drawn = drawnPages(Buffer.from(await renderBorangAPdf(form))).flat();
     expect(drawn.length).toBeGreaterThan(100);
     expect(drawn.filter((d) => CLAIM.test(d.text)).map((d) => d.text)).toEqual([]);
-    // The foot note's sentence that carried it is still there, without it.
-    expect(drawn.some((d) => d.text.startsWith('Our own layout, drawn to match Borang A. The CATATAN notes'))).toBe(true);
+    // Board 66175cd2 — the foot note that carried it is gone altogether (the reference has no small print of
+    // ours); the PDF's metadata says what the page is instead, and makes no such claim either.
+    expect(drawn.some((d) => d.text.startsWith('Our own layout'))).toBe(false);
+    expect((await PDFDocument.load(await renderBorangAPdf(form))).getSubject()).not.toMatch(CLAIM);
     expect(borangATextExport(form)).not.toMatch(CLAIM);
     for (const f of [
       'lib/borang-a.ts',
@@ -253,7 +256,9 @@ describe('the drawn BBCD, laid out like the sample', () => {
     expect(sheet.filter((d) => /^[\d,]+\.\d\d$/.test(d.text)).map((d) => d.text)).toEqual([money(form.totalContribution)]);
   });
 
-  it('prints no logo and fills none of the blanks: ticks, cheque number, signature, Cop Agen Kutipan', async () => {
+  // Board 66175cd2 — "no logo" now means: none WITHOUT the owner-supplied official file. With it, the logo is
+  // drawn top left (test/kwsp-forms-66175cd2.test.ts); without it, nothing is invented in its place.
+  it('prints no logo without the official file, and fills none of the blanks: ticks, cheque number, signature, Cop Agen Kutipan', async () => {
     const buf = Buffer.from(await renderBorangBbcdPdf(borangBbcdFrom(formOf(3))));
     expect(buf.toString('latin1')).not.toMatch(/\/Subtype\s*\/Image/);
     const [sheet] = drawnPages(buf);

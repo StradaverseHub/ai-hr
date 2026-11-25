@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RunPicker, type RunPickerStrings } from '@/components/run-picker';
+import { HOLD_CYCLES, holdContinue } from './criteria-submit';
 
 /**
  * r407 (item 4f45f9b0) — THE `cycles` CRITERION ON THE CRITERIA STEP.
@@ -61,9 +62,9 @@ export function CyclesCriterion({
     return () => form.removeEventListener('change', read);
   }, [companyField, yearField, monthField]);
 
+  // 66175cd2 — through the shared hold, so this list can never re-enable a Continue the period list holds.
   const onPickedChange = useCallback(({ available, picked }: { available: number; picked: number }) => {
-    const button = ref.current?.closest('form')?.querySelector<HTMLButtonElement>('[data-criteria-submit]');
-    if (button) button.disabled = available > 0 && picked === 0;
+    holdContinue(ref.current?.closest('form'), HOLD_CYCLES, available > 0 && picked === 0);
   }, []);
 
   return (

@@ -298,8 +298,11 @@ export default async function StatutoryFormsPage({
   const catalog = await listStatutoryCatalog(s, scopeIds);
   // Only the pack entries that ARE submissions. The monthly contributions overview has no `submission`
   // and is correctly absent here: it is an internal reconciliation view, not a form anybody files.
-  const submissions = catalog.reports.filter((r) => r.submission != null);
-  const catalogSize = catalog.reports.length + catalog.links.length + catalog.planned.length;
+  // Board 66175cd2 — and only the ones ON the shelf: `EPF contributions (KWSP)` is registered (its filing
+  // deadline, audit list and recorded generations stay) but no longer offered here (`ReportDef.shelf`).
+  const shelfReports = catalog.reports.filter((r) => r.onShelf);
+  const submissions = shelfReports.filter((r) => r.submission != null);
+  const catalogSize = shelfReports.length + catalog.links.length + catalog.planned.length;
 
   // `q` rides in the address beside the shelf pills so a searched view can be sent to somebody. Appended
   // rather than always present: an empty `?q=` in every pill link is noise in the bar and in the history.
