@@ -367,6 +367,13 @@ cannot provision a tenant itself, and that is the point, not a limitation to wor
 * * * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/provision-runner.ts >> /home/ubuntu/aihr-cron-logs/provision.log 2>&1
 ```
 
+**Preferred on an installed host: the resident service.** `deploy/scheduled-jobs/` runs this runner and the workflow
+notification sweep in one long-running user service, `aihr-scheduled-jobs.service`. It runs as the same user with
+the same `.env.production`, keeps each job's once-only lock, cadence, log file, heartbeat and failure alerts, and
+avoids the cold `node --import tsx` start and new database connections each minute. An administrator installs it with
+`deploy/scheduled-jobs/install.sh` (it comments out this crontab line); see [its README](scheduled-jobs/README.md).
+The crontab line below remains the fallback, and it takes the same advisory lock, so the two never overlap.
+
 **Env contract: `MIGRATION_DATABASE_URL` only.** It runs as the table owner, which is exactly why it is a
 separate process — the credentials that can create a tenant are kept out of the application. It does not
 read `DATABASE_URL`; no app-role service is called. `NEXT_PUBLIC_APP_URL` is read if set, to build an
@@ -524,6 +531,10 @@ cd /opt/ai-hr && deploy/cron-alert.sh selftest /home/ubuntu/aihr-cron-logs/selft
 echo "exit=$?"                                        # 7 — the status survives
 journalctl -t aihr-cron -p err -n 5 --no-pager        # the alert line
 ```
+
+The resident `aihr-scheduled-jobs.service` (deploy/scheduled-jobs/README.md) applies this same contract to the
+provisioning runner and the notification sweep from inside its process: the same log files and heartbeat files,
+and on failure the same `logger -t aihr-cron -p user.err` line, stdout summary and `AIHR_ALERT_COMMAND`.
 
 **A job that stops running has no exit code**, so no wrapper can see it — and `scripts/review-sweep.ts`
 records that it was absent from this crontab for six weeks while every log looked fine. Each successful

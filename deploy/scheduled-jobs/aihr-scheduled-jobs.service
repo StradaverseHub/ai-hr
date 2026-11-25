@@ -1,0 +1,50 @@
+# AI HR resident scheduled jobs: a systemd USER unit for the deploy user (the account that owns /opt/ai-hr and ran the
+# crontab), installed by deploy/scheduled-jobs/install.sh into ~/.config/systemd/user/. Never copy it to
+# /etc/systemd/system: it must run as that same user, with that user's .env.production, as the crontab line did.
+# deploy.sh restarts it after every release (try-restart: a host without it is untouched).
+[Unit]
+Description=AI HR resident scheduled jobs (provisioning runner, workflow notification sweep)
+After=network-online.target
+
+[Service]
+# Ready only after every job's code has loaded and the scheduler has started (scripts/scheduled-jobs.ts calls
+# systemd-notify), so `systemctl --user restart` fails instead of reporting a process that cannot start.
+Type=notify
+NotifyAccess=all
+TimeoutStartSec=180s
+WorkingDirectory=/opt/ai-hr
+# The server's default node predates --env-file. Pinned, as the crontab lines are.
+Environment=PATH=/opt/node20/bin:/usr/local/bin:/usr/bin:/bin
+# Connection budget (db/capacity.ts): direct connections counted in AIHR_DB_BACKGROUND_CONNECTIONS. The app pool is the
+# two jobs' former per-process pools added together (2 + 2); each job keeps its own owner pool of 2, plus one lock
+# connection. Unit values win over .env.production (--env-file never overrides a variable that is already set).
+Environment=AIHR_DB_PROCESS_ROLE=worker
+Environment=AIHR_DB_POOL_MAX=4
+Environment=NODE_OPTIONS=--max-old-space-size=512
+# Cadence per job, as the crontab line (provision, every minute) and the staging timer (notification sweep, two minutes
+# after each run ended; its alerts carried no output tail) gave them. An installation whose sweep ran every minute
+# from cron changes `after-120s` to `every-minute` here.
+ExecStart=/opt/node20/bin/node --env-file=.env.production --import tsx scripts/scheduled-jobs.ts --log-dir %h/aihr-cron-logs --job provision=every-minute --job notification-email=after-120s,alert-tail=0
+# Stop: SIGTERM to the main process only; it forwards it, lets runs in flight finish, and exits 0. A run still going
+# after 60 s is killed, as the notification timer's own 45 s stop limit did.
+KillMode=mixed
+TimeoutStopSec=60s
+Restart=always
+RestartSec=10
+# 2 is a configuration refusal (bad arguments, no MIGRATION_DATABASE_URL): restarting cannot fix it.
+RestartPreventExitStatus=2
+CPUAccounting=yes
+CPUQuota=50%
+CPUWeight=10
+Nice=10
+IOWeight=10
+MemoryAccounting=yes
+MemoryHigh=640M
+MemoryMax=896M
+MemorySwapMax=256M
+TasksMax=64
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
