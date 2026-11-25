@@ -8058,6 +8058,13 @@
       "when": 1795495007290,
       "tag": "7290_approval_history_keyset",
       "breakpoints": true
+    },
+    {
+      "idx": 10700,
+      "version": "7",
+      "when": 1795495007300,
+      "tag": "7300_pay_component_itemised_payslips",
+      "breakpoints": true
     }
   ]
 }
