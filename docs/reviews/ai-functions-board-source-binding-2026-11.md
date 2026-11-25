@@ -1757,3 +1757,26 @@ The repository owner approved carrying forward the 28 existing approvals to exac
 ## Staging release 8 r2 (adds PRs 327 and 328), 25 November 2026
 
 The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `313b0ac0690ce9db8645630889ea5f1a0acca5a56d0d466b8733aafc521b71ae` (owner, 12 November 2026, as above; on 25 November 2026 the owner approved adding PRs 327 and 328 to release 8: "Add them to release 8"). The candidate adds PRs 327 (Employee Leave Record keyset paging) and 328 (Attendance month keyset paging) to the release 8 candidate re-bound at `a983ac51b54a4e3f55d0ed4dd235fe09e039854e2f579509e2bc5cc9a892ab35`. The covered files that change are `core/attendance.ts`, `core/leave-inquiry.ts`, `core/read.ts` and the six `messages/*.json` locale files: list paging and capped totals reached through imports. No provider root changes; no provider transform, outbound field, approved purpose, endpoint or transport changes. Exactly 28 digest literals change; the pending record is untouched. The module-agent manifest was regenerated afterwards (`41b72769f972dd222a6e744b5abf120248e741def2b3ffc192e7268c6f80df1f` -> `a5cc7de7f9b7493a675b88e778d7ca6ea2f1aec14ca3a60e97035482bf99bfb8`). Staging only; no production authority.
+
+## Board batch 20261125 (PRs 329, 330, 331, 332) on release 8 r2 666eda4b7, 25 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `f6d4c0f0b4bcd35504085e521165974bf5a94fd8813ca47ea5d2415ffb8ead2f` across 1,852 files. The approvals are the owner's standing approval of 12 November 2026 ("I approve fully on the rebinding and the AI approval, dont have to wait for my decision") and, on 25 November 2026, the owner's approval of these four board items for staging in this session ("Yes, deploy to staging").
+
+The candidate merges four board builds onto release 8 r2's candidate `666eda4b7` (fingerprint `313b0ac0690ce9db8645630889ea5f1a0acca5a56d0d466b8733aafc521b71ae`):
+- 7da649d3 r2: leaver pay ends on the employment end date;
+- a1a80747: one Reprocess Required list, with tax readiness inside the job;
+- 74a7a074: readable Audit Trail details;
+- 8edeef41 r2: BIK/VOLA Normal or Additional remuneration through the existing PCB additional path.
+
+31 existing covered files change, all application read, write, calculation and presentation paths reached through imports:
+- core: `core/hire-employment-information.ts`, `core/movement.ts`, `core/org.ts`, `core/pay-components.ts`, `core/pay-formula-runtime.ts`, `core/payroll-audit/controls.ts`, `core/payroll-employment-eligibility.ts`, `core/payroll-individual-txn.ts`, `core/payroll-run-group-result.ts`, `core/payroll-tax-basis.ts`, `core/payroll-view.ts`, `core/payroll.ts`, `core/pcb-explain.ts`;
+- lib: `lib/audit-format.ts`, `lib/employment-information-date-order.ts`, `lib/payroll-leaving-date.ts`, `lib/personnel-field-registry.ts`;
+- localization: `localization/my/multicycle-worksheet.ts`, `localization/my/multicycle.ts`, `localization/my/payroll.ts`, `localization/my/tax-basis-replay.ts`, `localization/noncash-benefits.ts`;
+- messages: six `messages/*.json` locale files, plus `messages/ai-centre/en.json` (the display wording of the `pay_after_last_day` audit finding);
+- `lib/ai/agent-capability-inventory.ts`, which drops the removed `reviewReprocessTaxAction` server action.
+
+One file is new to the covered set: `lib/audit-fields.ts`, a pure Audit Trail field-label registry.
+
+No file under `lib/ai/providers/`, `lib/ai/provider-*` or any other provider root changes. No provider transform, outbound field, approved purpose, endpoint or transport changes.
+
+Exactly 28 digest literals change (`313b0ac0…` -> `f6d4c0f0…`), and reversing those substitutions restores release 8 r2's registry byte for byte. The pending record is untouched. The module-agent manifest was regenerated afterwards (`a5cc7de7f9b7493a675b88e778d7ca6ea2f1aec14ca3a60e97035482bf99bfb8` -> `7008217441c7aa491300ff037abea38f63088b8e6ddbac07687a650e1626d190`, 497 files). Staging only; no production authority.
