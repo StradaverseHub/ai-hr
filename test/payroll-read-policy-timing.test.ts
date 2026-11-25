@@ -10,6 +10,9 @@
  *  - 7470 (P2): payroll administration once per statement (payroll_batch_rls, payslip_rls admin arm, original employer).
  *  - 7480 (P3): the payslip_rls own-payslip arm.
  *  - 7490 (P4): the stored payroll history barrier (payroll_history_effective_only).
+ *  - 7500 (F): the effective-run view served from imported-history run summaries (with P2 and P4 switched in both
+ *    measures; the fixture's runs are native, so this times the view's added check; serving itself is proven with real
+ *    imports in test/payroll-read-access-f.test.ts).
  * Later steps add their rows to STEPS below.
  *
  * Statements, each in the application role (ai_hr_app, row security on) under the persona's own identity statement, in
@@ -32,6 +35,7 @@ const STEPS:readonly Step[]=[
  {migration:'7470',step:'p2_admin_companies',needs:[]},
  {migration:'7480',step:'p3_own_payslips',needs:[]},
  {migration:'7490',step:'p4_history_filter',needs:[]},
+ {migration:'7500',step:'f_history_summary',needs:['p2_admin_companies','p4_history_filter']},
 ];
 const PERIODS=['2025-09','2025-10','2025-11','2025-12'] as const;
 const STATEMENTS:Record<string,ReturnType<typeof sql>>={

@@ -8,7 +8,10 @@
  *   - a payroll processing run (payslip inserts);
  *   - a selective reprocess (payslip money updates);
  *   - a history confirm that imports records and adopts a processed payslip (history writes);
- *   - an employment movement import: no step attaches upkeep to the tables it writes (checked from the catalogue).
+ *   - entity transfers of employees with imported payroll history (the employment company change F probes), the
+ *     per-employee unit of an employment movement import (a movement file holds at most 50 employees, so a 1,000-
+ *     employee import is twenty such files with the same per-employee share);
+ *   - and no step attaches upkeep to any other table an employment movement import writes (checked from the catalogue).
  * Fictional people only.
  */
 import {performance} from 'node:perf_hooks';
@@ -22,6 +25,8 @@ import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {createBatch,generatePayslips,closeBatch,reprocessSelectedEmployees} from '../core/payroll';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
+import {createMovementEvent} from '../core/movement';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {historyRecordKey} from '../lib/payroll-history-revisions';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
@@ -32,7 +37,7 @@ import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from '.
 const SAVE_COST_LIMIT=0.02;
 /** The read steps' trigger functions (their nested work is inside their recorded time). */
 const UPKEEP=['payroll_history_ineffective_payslip_inserted','payroll_history_ineffective_payslip_moved','payroll_history_ineffective_batch_moved','payroll_history_ineffective_history_changed',
- 'payroll_history_ineffective_commit'];
+ 'payroll_history_ineffective_commit','payroll_batch_summary_employment_moved'];
 /** Tables an employment movement import writes. */
 const MOVEMENT_TABLES=['employment','employment_movement','compensation','assignment','reporting_line','personnel_posting','person'];
 const EMPLOYEES=30,year=2026;
@@ -58,7 +63,7 @@ afterAll(async()=>{try{await owner.client.unsafe(`alter system reset track_funct
 async function upkeepMs(){
  await new Promise(resolve=>setTimeout(resolve,1500));
  await owner.client`select pg_stat_clear_snapshot()`;
- const [row]=await owner.client<{ms:number;calls:number}[]>`select coalesce(sum(total_time),0)::float8 as ms,coalesce(sum(calls),0)::int as calls from pg_stat_user_functions where schemaname='app' and funcname = any(${UPKEEP}::text[])`;
+ const [row]=await owner.client<{ms:number;calls:number}[]>`select coalesce(sum(total_time),0)::float8 as ms,coalesce(sum(calls),0)::int as calls from pg_stat_user_functions where schemaname='app' and funcname in ${owner.client(UPKEEP)}`;
  return row;
 }
 async function measure(label:string,save:()=>Promise<unknown>){
@@ -114,9 +119,20 @@ describe(`payroll saves pay at most ${SAVE_COST_LIMIT*100}% for the read steps' 
   expect(median).toBeLessThanOrEqual(SAVE_COST_LIMIT);
  },1_800_000);
 
- it('an employment movement import meets no read-step upkeep',async()=>{
+ it('entity transfers of employees with imported history',async()=>{
+  const [other]=await owner.client<{id:string}[]>`insert into company(tenant_id,legal_name) values(${b.tenantId}::uuid,'Fictional Cost Other Sdn Bhd') returning id`;
+  const [dept]=await owner.client<{id:string}[]>`insert into department(tenant_id,company_id,name) values(${b.tenantId}::uuid,${other.id}::uuid,'Fictional') returning id`;
+  const movers=employments.slice(1,11);
+  const r=await measure('entity transfers (10 employees with imported history)',async()=>{
+   for(const employmentId of movers)await createMovementEvent(ctx,{employmentId,kind:'entityTransfer',effectiveDate:todayInKualaLumpur(),companyId:other.id,departmentId:dept.id,managerEmploymentId:null,remarks:'Fictional'});
+  });
+  expect(r.share).toBeLessThanOrEqual(SAVE_COST_LIMIT);
+ },600_000);
+
+ it('an employment movement import meets no other read-step upkeep',async()=>{
   const triggers=await owner.client<{t:string}[]>`select tgrelid::regclass::text||'.'||tgname as t from pg_trigger t join pg_proc p on p.oid=t.tgfoid
-   where not t.tgisinternal and p.proname = any(${UPKEEP}::text[]) and tgrelid::regclass::text = any(${MOVEMENT_TABLES}::text[])`;
-  expect(triggers).toEqual([]);
+   where not t.tgisinternal and p.proname in ${owner.client(UPKEEP)} and tgrelid::regclass::text in ${owner.client(MOVEMENT_TABLES)} order by 1`;
+  // F's probe on an employment company change is measured above; nothing else.
+  expect(triggers.map(r=>r.t)).toEqual(['employment.payroll_batch_summary_employment_moved']);
  });
 });

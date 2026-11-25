@@ -13,6 +13,9 @@ export type WorkerSingletonTicks={
  individual(owner:postgres.Sql):Promise<boolean>;
  rewardPlans(owner:postgres.Sql):Promise<boolean>;
  probation(owner:postgres.Sql,probationOwner:ReturnType<typeof createDb>):Promise<boolean>;
+ /** ADR 0181 payroll read change F: imported-history run summaries (core/payroll-batch-summary.ts). Optional, so a
+  * process without it (and the kernel test) runs exactly as before. */
+ payrollSummaries?(owner:postgres.Sql):Promise<boolean>;
 };
 export type WorkerLaneProcess={
  owner:postgres.Sql;
@@ -25,12 +28,12 @@ export type WorkerLaneProcess={
  /** The stall watchdog's phase marker (lib/import-worker-watchdog.ts). */
  enter?(phase:ImportWorkerPhase):void;
 };
-export type WorkerLaneIteration={bank:boolean;individual:boolean;bulk:boolean;rewardPlans:boolean;probation:boolean};
+export type WorkerLaneIteration={bank:boolean;individual:boolean;bulk:boolean;rewardPlans:boolean;probation:boolean;payrollSummaries:boolean};
 
 export async function runWorkerLaneIteration(p:WorkerLaneProcess):Promise<WorkerLaneIteration>{
  const enter=p.enter??(()=>undefined);
  const singletons=lanesRunSingletonTicks(p.lanes)&&p.probationOwner!==null;
- const out:WorkerLaneIteration={bank:false,individual:false,bulk:false,rewardPlans:false,probation:false};
+ const out:WorkerLaneIteration={bank:false,individual:false,bulk:false,rewardPlans:false,probation:false,payrollSummaries:false};
  if(singletons){
   enter('bank');out.bank=await p.ticks.bank(p.owner);
   enter('individual');out.individual=await p.ticks.individual(p.owner);
@@ -39,6 +42,7 @@ export async function runWorkerLaneIteration(p:WorkerLaneProcess):Promise<Worker
  if(singletons){
   enter('reward-plan-companies');out.rewardPlans=await p.ticks.rewardPlans(p.owner);
   enter('probation-personnel');out.probation=await p.ticks.probation(p.owner,p.probationOwner!);
+  if(p.ticks.payrollSummaries){enter('payroll-summaries');out.payrollSummaries=await p.ticks.payrollSummaries(p.owner);}
  }
  return out;
 }
