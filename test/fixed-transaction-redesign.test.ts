@@ -27,7 +27,9 @@ const read = (...p: string[]) => readFileSync(join(...p), 'utf8');
 const codeOnly = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 const listSrc = read(FIXED, 'page.tsx');
+// cc8bd87f — the separate View/Edit page is a redirect now; the item opens in a pop-up over the list.
 const detailSrc = read(FIXED, '[id]', 'page.tsx');
+const dialogSrc = read(FIXED, 'edit-fixed-dialog.tsx');
 const rowsSrc = read(FIXED, 'fixed-list.tsx');
 const actionsSrc = read(FIXED, 'actions.ts');
 const workspaceSrc = read(INDIVIDUAL, 'txn-workspace.tsx');
@@ -59,45 +61,74 @@ describe('f3ae3245 — the employee panel is a SIDE panel, and the collapse is b
   });
 });
 
-describe('f3ae3245 — View/Edit is a dedicated page, not a form inside a table cell', () => {
-  it('the row links to the [id] route and no longer unfolds a <details> form in the Action cell', () => {
-    expect(rowsSrc).toContain('/payroll/transactions/fixed/${r.id}');
+describe('cc8bd87f — View/Edit is a POP-UP over the list (was f3ae3245\'s separate page), not a form inside a table cell', () => {
+  it('the row opens the pop-up in place, and still unfolds no <details> form in the Action cell', () => {
+    // f3ae3245 moved the cramped in-cell form to its own page; cc8bd87f keeps that room but over the list.
+    expect(rowsSrc).not.toContain('/payroll/transactions/fixed/${r.id}');
+    expect(rowsSrc).toContain('onClick={() => setEditingId(r.id)}');
+    expect(rowsSrc).toContain('<EditFixedDialog');
     expect(listSrc).not.toContain('<details');
-    expect(listSrc).not.toContain('updateFixedTransactionAction');
     expect(rowsSrc).not.toContain('<details');
+    expect(listSrc).not.toContain('updateFixedTransactionAction');
   });
 
-  it('the dedicated route is registered in the permissions matrix', () => {
-    // test/function-access.test.ts fails the build for a guarded page.tsx with no matrix column — this
-    // states the registration at the point a reader is looking at the route.
+  it('the pop-up is mounted only while open, so Cancel and the cross discard the typing', () => {
+    expect(rowsSrc).toContain('{editing && (');
+    expect(dialogSrc).toContain('<Dialog.Root open onOpenChange=');
+  });
+
+  it('it copies the holiday-dialog shape: value-returning actions, no form `action` prop, startTransition', () => {
+    // React 19 resets a <form action={…}> when the action settles; a refused save must keep the typing.
+    expect(dialogSrc).toContain('useActionState');
+    expect(dialogSrc).toContain('startTransition(() => action(formData))');
+    expect(dialogSrc).not.toMatch(/<form[^>]*\saction=/);
+    expect(dialogSrc).toContain('disabled={pending}');
+    expect(dialogSrc).toContain('r.refresh();');
+    // No service layer in the browser bundle.
+    expect(dialogSrc).not.toMatch(/from '@\/core\//);
+    expect(dialogSrc).not.toMatch(/from '@\/packs\//);
+  });
+
+  it('ONE end-date field: the separate Stop box and its action are gone', () => {
+    expect(dialogSrc).toContain('name="effectiveTo"');
+    expect(dialogSrc.match(/name="effectiveTo"/g)).toHaveLength(1);
+    expect(dialogSrc).toContain('labels.endDateHint');
+    expect(actionsSrc).not.toContain('endFixedTransactionAction');
+    expect(actionsSrc).not.toContain('endEmploymentPayComponent');
+    expect(actionsSrc).not.toContain('updateFixedTransactionAction');
+    expect(actionsSrc).toContain('export async function saveFixedTransactionDialogAction');
+    expect(actionsSrc).toContain('editFixedTransaction(s,');
+    for (const src of [dialogSrc, listSrc, rowsSrc]) {
+      expect(src).not.toContain("'fixed.stop'");
+      expect(src).not.toContain('stopConfirm');
+    }
+  });
+
+  it('the old address is a scope-checked redirect to the list with ?edit=, and keeps its permissions entry', () => {
+    // test/function-access.test.ts fails the build for a guarded page.tsx with no matrix column.
     expect(permsSrc).toContain("'/payroll/transactions/fixed/[id]'");
     expect(detailSrc).toContain('scopedAdmin');
-  });
-
-  it('the detail page carries Edit, Stop and Remove, and scope-guards the employment', () => {
-    expect(detailSrc).toContain('updateFixedTransactionAction');
-    expect(detailSrc).toContain('endFixedTransactionAction');
-    expect(detailSrc).toContain('archiveFixedTransactionAction');
     // RLS isolates tenants, not company scope: an out-of-scope employmentId must not resolve.
     expect(detailSrc).toContain('notFound()');
+    expect(detailSrc).toContain('&edit=${encodeURIComponent(id)}');
+    // The list opens it only for a LIVE row of the selected, in-scope employee.
+    expect(listSrc).toContain('const editId = edit && rows.some((r) => r.id === edit) ? edit : null;');
   });
 
-  it('the effective-dating warning survives onto the new page, MORE prominent than the one line it replaces', () => {
-    // This is the single most important sentence on the screen and it had the least room. The redesign
-    // would have made the extra rows more visible while explaining them less, which is worse than the
-    // cramped version it replaces.
-    expect(detailSrc).toContain("fixed.versioningTitle");
-    expect(detailSrc).toContain("fixed.versioningBody");
+  it('Remove stays inside the pop-up behind the same confirmation, and a refused removal reopens it', () => {
+    expect(dialogSrc).toContain('<ConfirmSubmit');
+    expect(dialogSrc).toContain('removeFixedTransactionDialogAction');
+    const start = actionsSrc.indexOf('export async function archiveFixedTransactionAction');
+    expect(start).toBeGreaterThan(-1);
+    expect(actionsSrc.slice(start)).toContain('back(employmentId, `edit=${encodeURIComponent(id)}&${fixedErrorQs(e)}`)');
+  });
+
+  it('the effective-dating warning survives into the pop-up, beside the list\'s own one-line note', () => {
+    expect(listSrc).toContain("t('fixed.versioningTitle')");
+    expect(listSrc).toContain("t('fixed.versioningBody')");
+    expect(dialogSrc).toContain('labels.versioningTitle');
+    expect(dialogSrc).toContain('labels.versioningBody');
     expect(listSrc).toContain("fixed.versioningNote");
-  });
-
-  it('a successful Save returns to the LIST, because the id the user opened is not the id that comes back', () => {
-    // updateEmploymentPayComponent closes the edited row and INSERTS a new one, so re-rendering
-    // /fixed/[id] afterwards would show a closed historical value and invite a second edit of it.
-    const start = actionsSrc.indexOf('export async function updateFixedTransactionAction');
-    const body = actionsSrc.slice(start, actionsSrc.indexOf('export async function endFixedTransactionAction'));
-    expect(body).toContain("back(employmentId, 'toast=saved')");
-    expect(body).not.toContain('/payroll/transactions/fixed/${id}');
   });
 });
 
@@ -115,11 +146,11 @@ describe('f3ae3245 — the listing gains search, sorting and paging', () => {
     // The old table printed `Number(r.amount).toFixed(2)` — a bare number with no currency, on rows that
     // carry a stored one.
     expect(rowsSrc).toContain('formatMoney(r.amount, r.currency)');
-    expect(detailSrc).toContain('formatMoney(row.amount');
+    expect(dialogSrc).toContain('formatMoney(row.amount, row.currency)');
     for (const [label, src] of [
       ['fixed-list.tsx', rowsSrc],
       ['page.tsx', listSrc],
-      ['[id]/page.tsx', detailSrc],
+      ['edit-fixed-dialog.tsx', dialogSrc],
     ] as const) {
       expect(codeOnly(src), `${label} renders money without a raw toFixed`).not.toContain('toFixed(');
     }
@@ -131,7 +162,7 @@ describe('f3ae3245 — what the redesign deliberately did NOT do', () => {
     // Those four are the ONE-OFF ledger's quantity/unit (payroll_individual_txn). A recurring item is a
     // flat amount, so there is nothing to calculate and no quantity to enter; empty columns would be
     // worse than absent ones. The sister screen documents the same refusal for the same reason.
-    for (const src of [rowsSrc, detailSrc, listSrc]) {
+    for (const src of [rowsSrc, dialogSrc, listSrc]) {
       expect(src).not.toContain('inputType');
       expect(src).not.toContain('calculatedAmount');
       expect(src).not.toContain('inputValue');
@@ -148,11 +179,11 @@ describe('f3ae3245 — what the redesign deliberately did NOT do', () => {
   it('KEEPS the Payroll Cycle field the request sketch omitted', () => {
     // It is mandatory on Add, so a redesign that dropped it from view would hide a required field.
     expect(rowsSrc).toContain('cycleLabels');
-    // 4fffe638 — the Edit page's cycle field moved into a client island (cycle-select.tsx) so it can
-    // carry the hidden cycleTouched flag, and it now posts a CONFIGURED cycle id, not a run type. Both
-    // halves of the contract are pinned: the page renders the island, the island posts both fields.
+    // 4fffe638 — the Edit cycle field is a client island (cycle-select.tsx) so it can carry the hidden
+    // cycleTouched flag, and it posts a CONFIGURED cycle id, not a run type. Both halves of the contract
+    // are pinned: the pop-up (cc8bd87f; was the [id] page) renders the island, the island posts both fields.
     const cycleSelectSrc = read(FIXED, 'cycle-select.tsx');
-    expect(detailSrc).toContain('<FixedCycleSelect');
+    expect(dialogSrc).toContain('<FixedCycleSelect');
     expect(cycleSelectSrc).toContain('name="payrollCycleId"');
     expect(cycleSelectSrc).toContain('name="cycleTouched"');
     expect(actionsSrc).toContain("formData.get('cycleTouched')");

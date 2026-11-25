@@ -268,7 +268,8 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
     // One-record previews and forms — section C's category.
     'app/payroll/cp22/[employmentId]/preview/page.tsx',
     'app/payroll/reports/ea/[employmentId]/page.tsx',
-    'app/payroll/transactions/fixed/[id]/page.tsx',
+    // cc8bd87f — the fixed-transaction item page STOOD HERE. It is a redirect now (the item opens in a pop-up
+    // over the list), with no layout and nothing to cap, so it belongs in no list — like the TP1 `[year]` stub.
     // 7ad37961's TP1 month page STOOD HERE for two rounds and is now in WIDENED_LATER instead — r210
     // withdrew the exception for that ONE page, on the reporter's request, and the reasoning is recorded
     // in NARROW_FORMS below. Its `[year]` sibling is a REDIRECT (47 lines, no layout, nothing to cap), so
@@ -371,12 +372,14 @@ describe('152fea7f · B — widening the SCREEN did not widen the PRINTOUT', () 
  * the TP1 page out.
  *
  * ⚠️ AND THIS CASE IS UPDATED RATHER THAN DELETED, DELIBERATELY. The guard pinned a decision the reporter
- * has now reversed for ONE screen, and the other five entries below still hold — a fixed-transaction row,
- * a zakat election, an EA document, and the two loan forms are all still the first kind. Deleting the
- * case to make a red gate green would have retired the rule for all six.
+ * has now reversed for ONE screen, and the other entries below still hold — a zakat election, an EA
+ * document, and the two loan forms are all still the first kind (the fixed-transaction row left in cc8bd87f,
+ * when it became a pop-up over its list). Deleting the case to make a red gate green would have retired the
+ * rule for all of them.
  */
 const NARROW_FORMS = [
-  'app/payroll/transactions/fixed/[id]/page.tsx',
+  // cc8bd87f — 'app/payroll/transactions/fixed/[id]/page.tsx' left this list: the reporter asked for the item
+  // in a pop-up over the list, and that page is now only a redirect to it.
   'app/payroll/transactions/zakat/election/page.tsx',
   'app/payroll/reports/ea/[employmentId]/page.tsx',
   'app/admin/loans/new/page.tsx',
