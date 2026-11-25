@@ -8009,6 +8009,13 @@
       "when": 1795495007220,
       "tag": "7220_movement_system_payroll_snapshot_insert",
       "breakpoints": true
+    },
+    {
+      "idx": 10730,
+      "version": "7",
+      "when": 1795495007330,
+      "tag": "7330_queue_read_offboarding_access",
+      "breakpoints": true
     }
   ]
 }
