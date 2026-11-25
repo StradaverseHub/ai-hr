@@ -3,15 +3,18 @@ import { notFound, redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
-import { listStatutoryCatalog } from '@/core/reporting';
+import { listStatutoryCatalog, reportAvailablePeriods } from '@/core/reporting';
 import { Card, PageHeader, btnPrimary, inputCls, pageWideCls } from '@/components/ui';
 import { Field } from '@/components/monolith/field';
 import { MONO_LABEL, MONO_UNDERLINE_FIELD as MONO_FIELD } from '@/components/monolith/classes';
 import { todayInKualaLumpur, yearOptions } from '@/lib/hr-date';
 import { parseRunSelection } from '@/lib/payroll-run-selection';
 import { CyclesCriterion } from './cycles-criterion';
+import { PeriodCriterion } from './period-criterion';
 import {
   CYCLES_ENDPOINT,
+  PERIODS_ENDPOINT,
+  choosePeriod,
   cyclesRefusalFrom,
   defaultCriteria,
   defaultVersion,
@@ -81,6 +84,15 @@ import {
  * year, month and ticks, with the refusal said in words, and nothing was produced. The prefill is honoured
  * for every form (a company outside this admin's scope, a malformed year or month are ignored, never
  * echoed); the error is allowlisted by `cyclesRefusalFrom`.
+ *
+ * BOARD 66175cd2 — ONLY THE PERIODS THE FORM CAN BE PRODUCED FOR. A form that declares `availablePeriods`
+ * (Borang A and BBCD) gets `PeriodCriterion` instead of the generic Year and Month selects: the Payroll Year
+ * list holds only years with processed EPF payroll for the chosen company, the Payroll Month list only that
+ * year's such months, both refresh when the Company changes, and the step opens on the newest such month
+ * (a handed-back period wins while it is still listed). A company with none sees one plain sentence and
+ * Continue stays unavailable. Every other form keeps `yearOptions` and the twelve MONTHS, unchanged. The list
+ * is read through `reportAvailablePeriods` (core/reporting) — a list of months, not a form: nothing is
+ * generated here.
  *
  * AN UNKNOWN OR UNBUILT FORM 404s. `form` comes from the URL, so it is attacker-controlled; it is
  * resolved against the catalog of the jurisdictions this admin's OWN company scope reaches, and a
@@ -190,6 +202,19 @@ export default async function StatutoryFormCriteriaPage({
   const defaultMonth = MONTHS.includes(sp.month as (typeof MONTHS)[number]) ? sp.month! : defaults.month;
   const defaultCompany = backCompany || companies[0]?.id || '';
   const years = yearOptions(today, defaultYear);
+  const field = (kind: CriterionKind) => parsed.criteria.find((c) => c.kind === kind);
+  // 66175cd2 — a form that lists only the periods it can be produced for. Server-rendered with the default
+  // company's list, so nothing flickers; `PeriodCriterion` re-asks for another company.
+  const periodsFromPayroll = Boolean(report?.periodsFromPayroll && field('company') && field('year') && field('month'));
+  const initialPeriods =
+    periodsFromPayroll && defaultCompany
+      ? await reportAvailablePeriods(s, { companyIds: scopeIds, companyId: defaultCompany, reportId: report!.id })
+      : [];
+  const chosenPeriod = periodsFromPayroll ? choosePeriod(initialPeriods, { year: sp.year, month: sp.month }) : null;
+  const noPeriods = periodsFromPayroll && chosenPeriod === null;
+  // What the Payroll Cycle list starts on: the listed period for these forms, the generic default otherwise.
+  const startYear = periodsFromPayroll ? (chosenPeriod?.year ?? '') : defaultYear;
+  const startMonth = periodsFromPayroll ? (chosenPeriod?.month ?? '') : defaultMonth;
   const backRuns = parseRunSelection(
     new URLSearchParams((Array.isArray(sp.run) ? sp.run : sp.run ? [sp.run] : []).map((v) => ['run', v])),
   );
@@ -210,7 +235,6 @@ export default async function StatutoryFormCriteriaPage({
   const continues = parsed.criteria.some((c) => c.kind === 'cycles') || Boolean(report?.preview);
   const buttonLabel = t((continues ? 'criteria_continue' : (link?.criteriaLabelKey ?? 'criteria_generate')) as 'criteria_generate');
   const backHref = `/payroll/statutory-forms${sp.body ? `?body=${encodeURIComponent(sp.body)}` : ''}`;
-  const field = (kind: CriterionKind) => parsed.criteria.find((c) => c.kind === kind);
   // r402 — the Version options are the ENTRY's, so the step offers exactly what the destination allowlists.
   const versions = link?.versions ?? [];
   const chosenVersion = defaultVersion(versions, sp.lang);
@@ -225,6 +249,12 @@ export default async function StatutoryFormCriteriaPage({
           <div className="text-sm font-medium">{name}</div>
           {description && <p className="text-xs text-muted-foreground">{description}</p>}
           {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+          {/* 66175cd2 — the form comes straight from processed payroll; nothing has to be generated first. */}
+          {periodsFromPayroll && (
+            <p className="text-xs text-muted-foreground" data-criteria-from-payroll>
+              {t('criteria_fromPayroll')}
+            </p>
+          )}
         </div>
 
         {/* AGENTS 28b — the SAME status and the SAME sentence the shelf card carried, so nobody arrives
@@ -243,7 +273,11 @@ export default async function StatutoryFormCriteriaPage({
             criteria end up in the address bar of the screen that uses them, so the generated view is
             refreshable, bookmarkable and can be sent to somebody — which is the property every existing
             deep link into `[formId]` depends on. */}
-        <form method="get" action={parsed.action} className="space-y-4 px-4 py-4 monolith:px-0">
+        <form method="get" action={parsed.action}
+          className="group/criteria space-y-4 px-4 py-4 monolith:px-0"
+          data-periods-empty={noPeriods ? 'true' : undefined}
+          data-hold-periods={noPeriods ? 'true' : undefined}
+        >
           {parsed.hidden.map((h) => (
             <input key={h.name} type="hidden" name={h.name} value={h.value} />
           ))}
@@ -261,7 +295,28 @@ export default async function StatutoryFormCriteriaPage({
               </select>
             </Field>
           )}
-          {field('year') && (
+          {periodsFromPayroll && (
+            <PeriodCriterion
+              formId={report!.id}
+              endpoint={PERIODS_ENDPOINT}
+              companyField={field('company')!.field}
+              yearField={field('year')!.field}
+              monthField={field('month')!.field}
+              initialCompanyId={defaultCompany}
+              initialPeriods={initialPeriods}
+              initialYear={startYear}
+              initialMonth={startMonth}
+              monthNames={Object.fromEntries(MONTHS.map((m) => [m, monthName(m)]))}
+              selectClassName={selectCls}
+              strings={{
+                year: t('year'),
+                month: t('month'),
+                hint: t('periods_hint'),
+                none: t('periods_none'),
+              }}
+            />
+          )}
+          {field('year') && !periodsFromPayroll && (
             <Field label={t('year')}>
               <select name={field('year')!.field} defaultValue={defaultYear} className={selectCls} required>
                 {years.map((y) => (
@@ -275,7 +330,7 @@ export default async function StatutoryFormCriteriaPage({
           {/* NO MONTH BOX WHEN THE DESTINATION DOES NOT TAKE ONE. The annual C.P.8A (EA) is the row this
               was written for: a month select on it is a question with no answer, and the reporter said so
               in as many words. */}
-          {field('month') && (
+          {field('month') && !periodsFromPayroll && (
             <Field label={t('month')}>
               <select name={field('month')!.field} defaultValue={defaultMonth} className={selectCls} required>
                 {MONTHS.map((m) => (
@@ -306,7 +361,11 @@ export default async function StatutoryFormCriteriaPage({
             // A FIELDSET, NOT `Field`: `Field` is a <label> that contains its control, and a label around a
             // list of checkboxes and a Clear button turns a click on any of its text into a click on the
             // FIRST control — Select all. One legend names the group instead.
-            <fieldset data-criterion="cycles" className="space-y-2 monolith:border-t monolith:border-ink monolith:pt-4">
+            // 66175cd2 — hidden while the company has no period to list: there is no month to list cycles of.
+            <fieldset
+              data-criterion="cycles"
+              className="space-y-2 group-data-[periods-empty=true]/criteria:hidden monolith:border-t monolith:border-ink monolith:pt-4"
+            >
               <legend className={`text-sm font-medium ${MONO_LABEL} monolith:text-mid`}>{t('cycles')}</legend>
               <p className="text-xs text-muted-foreground monolith:text-[12px] monolith:text-mid">{t('cycles_hint')}</p>
               <CyclesCriterion
@@ -314,10 +373,15 @@ export default async function StatutoryFormCriteriaPage({
                 yearField={field('year')!.field}
                 monthField={field('month')!.field}
                 initialCompanyId={defaultCompany}
-                initialYear={defaultYear}
-                initialMonth={defaultMonth}
+                initialYear={startYear}
+                initialMonth={startMonth}
                 endpoint={CYCLES_ENDPOINT}
-                initialRunSeqs={backRuns.ok ? backRuns.runSeqs : undefined}
+                // The handed-back ticks belong to the handed-back month; a different listed month starts at Select all.
+                initialRunSeqs={
+                  backRuns.ok && (!periodsFromPayroll || (startYear === sp.year && startMonth === sp.month))
+                    ? backRuns.runSeqs
+                    : undefined
+                }
                 strings={{
                   noRuns: t('cycles_noRuns'),
                   nonePicked: t('cycles_nonePicked'),
@@ -345,6 +409,7 @@ export default async function StatutoryFormCriteriaPage({
             </Link>
             <button
               data-criteria-submit
+              disabled={noPeriods}
               className={`${btnPrimary} disabled:cursor-not-allowed disabled:opacity-50 monolith:h-11 monolith:rounded-full monolith:bg-ink monolith:px-5 monolith:text-bone`}
             >
               {buttonLabel}
