@@ -3121,7 +3121,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(beforePerformancePrivileges.policies.filter(isSystemPreservePolicy)).toEqual([]);
   expect(afterPerformancePrivileges.policies.filter(isSystemPreservePolicy)).toEqual(systemPreservePolicies);
   // 7390 (ADR 0183): the application may update the two custom PCB numbers with their tax selection, nothing more.
-  const isCustomPcbGrant=(row:{rel:string;col:string})=>row.rel==='employment_tax_selection_my'&&['custom_pcb_amount','custom_pcb_rate'].includes(row.col);
+  const isCustomPcbGrant=(row:Record<string,unknown>)=>row.rel==='employment_tax_selection_my'&&(row.col==='custom_pcb_amount'||row.col==='custom_pcb_rate');
   expect(beforePerformancePrivileges.columns.filter(isCustomPcbGrant)).toEqual([]);
   expect(afterPerformancePrivileges.columns.filter(isCustomPcbGrant).map(row=>[row.col,row.acl])).toEqual([['custom_pcb_amount','{ai_hr_app=w/postgres}'],['custom_pcb_rate','{ai_hr_app=w/postgres}']]);
   const terminalComparable={
