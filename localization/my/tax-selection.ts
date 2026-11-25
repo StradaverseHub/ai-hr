@@ -20,7 +20,7 @@ const periodOk=(s:string)=>/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(s);
 export const selectedSchemeOk=(s:unknown):s is PcbCalculationScheme=>typeof s==='string'&&(TAX_SELECTION_SCHEMES as readonly string[]).includes(s);
 /**
  * ADR 0183 — the saved custom PCB number of a selection row, or null when the row is not a complete custom
- * selection. The 7370 check makes an incomplete one unrepresentable; null here is the refusal, never a default.
+ * selection. The 7390 check makes an incomplete one unrepresentable; null here is the refusal, never a default.
  */
 export function savedCustomPcbMY(row:{scheme:string|null;customPcbAmount?:string|null;customPcbRate?:string|null}|undefined):CustomPcbValue|null{
  if(!row||!isCustomPcbScheme(row.scheme))return null;

@@ -1,7 +1,7 @@
 /**
  * Board d8dc0a8c / ADR 0183 — custom PCB on the employer-scoped Income Tax Resident selection, against the database.
  *
- * Covers the writer (validation, keep-the-saved-number rule, audit), the 7370 constraint, the single and group
+ * Covers the writer (validation, keep-the-saved-number rule, audit), the 7390 constraint, the single and group
  * resolvers, the person-only refusal, and real payroll runs: a regular run deducts the fixed amount, a bonus run in
  * the same month deducts nothing more, a custom rate follows the Non-Resident working, and a missing number stops
  * payroll instead of falling back to the standard formula. Fictional fixtures only.
@@ -149,7 +149,7 @@ describe('custom PCB in payroll runs (board d8dc0a8c)', () => {
 
   it('refuses a selection whose number is missing rather than falling back to the standard formula', async () => {
     const saved = await save('custom_fixed', '450');
-    // Only a pre-7370 row could lose its number. Build one inside a transaction that is always rolled back, so the
+    // Only a pre-7390 row could lose its number. Build one inside a transaction that is always rolled back, so the
     // constraint is never absent outside it, and ask the payroll resolver about it there.
     const rolledBack = new Error('roll back');
     await expect(owner.db.transaction(async tx => {
