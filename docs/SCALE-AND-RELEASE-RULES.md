@@ -85,3 +85,12 @@ last-resort guard with automatic retry.
 20. Follow docs/STAGING-RELEASE-QUEUE.md. The staging box is small (2 CPUs, 3.9 GB). Staging runs PgBouncer
     (`DATABASE_POOLED_URL`) and the bulk-job worker. A worker that predates managed install receipts is taken over with
     the reviewed `adopt-stopped` mode of `bank_import_worker_upgrade_v1.py` (deploy/systemd/BANK-IMPORT.md).
+
+## Read-cost standard (ADR 0181)
+
+21. **New work follows the database read-cost standard** in `docs/architecture/FUTURE-BUILD-CONTRACT.md`
+    ("Database read cost"): precomputed access for new access rules, a timing comparison at scale for any change
+    to access-rule text, keyset lists with capped counts, saves that keep the frame, a worker lane for every job
+    kind, a measured read budget for every new page and server action, and no per-company or per-row loop in a
+    request. `test/read-cost-ratchets.test.ts` and `test/read-cost-policy-authority.test.ts` fail any PR that adds
+    an old pattern. Their allowlists (`test/read-cost-ratchets/`) only shrink.

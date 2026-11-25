@@ -135,6 +135,8 @@ const ALWAYS_ALLOWED = [
   'core/payroll-reprocess-job.ts',
   'core/payroll-tax-basis-group.ts',
   'core/payroll-draft-tax-readiness.ts',
+  // a1a80747 — the Payroll Process list's stored outstanding answer and its refresh job (pack implementation).
+  'core/payroll-run-outstanding.ts',
   'core/payroll-tax-holds.ts',
   'core/payroll-permissions-admin.ts',
   'core/pay-components.ts',

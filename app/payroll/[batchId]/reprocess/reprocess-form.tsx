@@ -9,6 +9,7 @@ import { matchesEmployeeSearch } from '@/lib/employee-search';
 import { formatMoney } from '@/lib/money';
 import { withPayrollFrom } from '@/lib/return-to';
 import type { NothingPayableSkipKind } from '@/core/payroll-view';
+import type { ReprocessNotOwedReason } from '@/core/payroll';
 import {ClientPager} from '@/components/client-pager';
 import {pageCount, type PageState} from '@/lib/pagination';
 import {PayrollSelectionSearch} from '../../selection-search';
@@ -76,6 +77,14 @@ export type ReprocessAddCandidate = {
    * fee for them moves them back into Reprocess Required. Absent/null ⇒ a New row of Reprocess Required.
    */
   skip?: NothingPayableSkipKind | null;
+  /**
+   * a1a80747 r2 — whether this run OWES them processing (core/payroll.ts `runOutstandingTx`, the rule Close uses): owed
+   * rows are counted on the tab and on the Payroll Process list, and arrive ticked when ready. `false` ⇒ the unticked
+   * Not owed on this run group (outside a chosen-list run, removed on purpose, not paid by an additional run), with
+   * `notOwedReason`. Absent ⇒ the screen's earlier rule (in-scope and ready rows ticked), for callers that do not say.
+   */
+  owed?: boolean;
+  notOwedReason?: ReprocessNotOwedReason | null;
 };
 
 /**
@@ -171,10 +180,16 @@ export function ReprocessForm({
   const requiredRows = required ?? [];
   // The New rows of this page (with their readiness), and among them the people the run has nothing to pay.
   const additions = requiredRows.filter((r): r is Extract<ReprocessRequiredRow,{kind:'added'}> => r.kind === 'added');
-  const skippedAdditions = additions.filter((c) => !!c.skip);
-  const addable = additions.filter((c) => !c.skip && c.blockers.length === 0);
-  /** The one list: every Changed row and every New row that is not Nothing payable, in the server's order. */
-  const requiredList = requiredRows.filter((r) => r.kind === 'recalculated' || !r.skip);
+  // a1a80747 r2 — three places for a New row: Nothing payable (the run's skip decision, unless the run says it is owed),
+  // Not owed on this run (the run says it owes them nothing), or the one Reprocess Required list.
+  const inSkipped = (c: ReprocessAddCandidate) => !!c.skip && c.owed !== true;
+  const inNotOwed = (c: ReprocessAddCandidate) => c.owed === false && !c.skip;
+  const skippedAdditions = additions.filter(inSkipped);
+  const notOwedAdditions = additions.filter(inNotOwed);
+  /** Ticked on arrival: ready New rows the run owes (or, when the server does not say, ready rows inside its chosen list). */
+  const addable = additions.filter((c) => !inSkipped(c) && !inNotOwed(c) && !c.skip && c.blockers.length === 0);
+  /** The one list: every Changed row and every New row the run owes, in the server's order (owed rows come first). */
+  const requiredList = requiredRows.filter((r) => r.kind === 'recalculated' || (!inSkipped(r) && !inNotOwed(r)));
   type Selected=ReprocessCandidate|ReprocessAddCandidate|ReprocessStaleRow;
   const staleRows = stale?.rows ?? [];
   /**
@@ -192,7 +207,7 @@ export function ReprocessForm({
    ? addable.filter(c=>focusIds.includes(c.employmentId)).map(c=>[c.employmentId,c] as [string,Selected])
    : [
    ...staleRows.map(e=>[e.employmentId,e] as [string,Selected]),
-   ...addable.filter(c=>!c.outsideScope).map(c=>[c.employmentId,c] as [string,Selected]),
+   ...addable.filter(c=>c.owed===true||(c.owed===undefined&&!c.outsideScope)).map(c=>[c.employmentId,c] as [string,Selected]),
   ]));
   /**
    * Idempotency token, minted ONCE PER MOUNT and posted with the form, so a double-clicked or retried
@@ -238,11 +253,12 @@ export function ReprocessForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `requiredList` is derived from `required`
     [required, needle,paging],
   );
-  const visibleSkipped = visibleAdditions.filter((c) => !!c.skip);
+  const visibleSkipped = visibleAdditions.filter(inSkipped);
+  const visibleNotOwed = visibleAdditions.filter(inNotOwed);
   // a1a80747 — which lists this view shows. With tabs: Reprocess Required (and its Nothing payable group) or
   // Processed / No Change. Without tabs: the one list when anyone is on it, then every payslip.
   const onTab = paging?.tabs?.current;
-  const showRequired = onTab ? onTab === 'required' : requiredList.length > 0 || skippedAdditions.length > 0;
+  const showRequired = onTab ? onTab === 'required' : requiredList.length > 0 || skippedAdditions.length > 0 || notOwedAdditions.length > 0;
   const showEmployees = onTab ? onTab === 'unchanged' : true;
 
   const toggle = (id: string) => {
@@ -307,6 +323,17 @@ export function ReprocessForm({
       {!blocked && otherWarnings.length > 0 && ` ${t('reprocessReasonMissing', { gaps: gaps(otherWarnings) })}`}
     </>;
   };
+  /** a1a80747 r2 — why the run owes a Not owed row nothing, in the run's own terms. */
+  const notOwedReason = (c: ReprocessAddCandidate) => <>
+    {c.notOwedReason === 'outsideScope'
+      ? t('reprocessReasonOutsideScope')
+      : c.notOwedReason === 'removed'
+        ? t('reprocessNotOwedRemoved')
+        : c.notOwedReason === 'notPaidByRun'
+          ? t('reprocessNotOwedNotPaidByRun')
+          : t('reprocessNotOwedOther')}
+    {c.blockers.length > 0 && ` ${t('reprocessReasonNotReady', { gaps: gaps(c.blockers) })}`}
+  </>;
   /** The tick box and name of one row. A New row that is not ready yet cannot be ticked. */
   const tickCell = (row: {employmentId:string;employeeCode:string|null;name:string}, blocked = false) => {
     const on = selected.has(row.employmentId);
@@ -462,6 +489,30 @@ export function ReprocessForm({
                 : <tr><td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">{t('reprocessNoRequired')}</td></tr>)}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* a1a80747 r2 — NOT OWED ON THIS RUN: on the list (eligible, no payslip here) but this run owes them nothing —
+          outside a run set up for a chosen list, removed from it on purpose, or not paid by an additional run. Neither
+          counted nor ticked, so the tab's number is the Payroll Process list's number; still tickable by hand. */}
+      {showRequired && notOwedAdditions.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[36rem] text-sm">
+            <caption className="bg-muted px-3 py-2 text-left text-xs font-semibold text-foreground">
+              {t('reprocessGroupNotOwedTitle', { n: notOwedAdditions.length })}
+            </caption>
+            <tbody className="divide-y divide-border">
+              {visibleNotOwed.map((c) => (
+                <tr key={c.employmentId} className={selected.has(c.employmentId) ? 'bg-primary/5' : undefined}>
+                  {tickCell(c, c.blockers.length > 0)}
+                  <td className="whitespace-nowrap px-3 py-2 font-medium text-muted-foreground">{t('reprocessStatusNotOwed')}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{notOwedReason(c)}</td>
+                </tr>
+              ))}
+              {visibleNotOwed.length === 0 && noMatchRow(3)}
+            </tbody>
+          </table>
+          <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{t('reprocessGroupNotOwedNote')}</p>
         </div>
       )}
 

@@ -9,6 +9,9 @@
  *  - Another company's cycle, an inactive cycle, and a non-existent id are refused with a typed error and
  *    nothing is written.
  *  - The Edit screen offers exactly the employee's company's ACTIVE cycles; none from another company.
+ *    (cc8bd87f: the Edit screen is the View / Edit pop-up now; its options come from the list page through
+ *    `fixedEditCycleOptions`, over the same `listPayrollCycles(activeOnly)` read, and its save is
+ *    `saveFixedTransactionDialogAction`.)
  *  - An edit that does not touch the cycle keeps the cycle and run type the row had — even though the
  *    select is always submitted (CLAUDE.md §8) and even when that cycle has since been made inactive. A
  *    touched edit moves both.
@@ -46,7 +49,6 @@ vi.mock('next-intl', () => ({
   useLocale: () => 'en',
 }));
 
-import { renderToStaticMarkup } from 'react-dom/server';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -70,8 +72,9 @@ import {
 } from '../core/payroll-cycle';
 import { listFixedTransactionsAcross } from '../core/payroll-view';
 import { commitTxnImport, type TxnImportRecord } from '../core/payroll-txn-import';
-import { createFixedTransactionAction, updateFixedTransactionAction } from '../app/payroll/transactions/fixed/actions';
-import FixedTransactionDetailPage from '../app/payroll/transactions/fixed/[id]/page';
+import { createFixedTransactionAction, saveFixedTransactionDialogAction } from '../app/payroll/transactions/fixed/actions';
+import { fixedEditCycleOptions } from '../app/payroll/transactions/fixed/edit-model';
+import { listPayrollCycles } from '../core/payroll-cycle';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -230,23 +233,15 @@ describe('4fffe638 — Add links the exact configured cycle', () => {
 });
 
 describe('4fffe638 — the Edit screen and the untouched-edit rule', () => {
-  const render = async (id: string, employmentId: string) =>
-    renderToStaticMarkup(
-      (await FixedTransactionDetailPage({
-        params: Promise.resolve({ id }),
-        searchParams: Promise.resolve({ employmentId }),
-      })) as never,
-    );
-  /** The <option>s of the payrollCycleId select, as [value, label, selected]. */
-  const cycleOptions = (html: string) => {
-    const m = html.match(/<select[^>]*name="payrollCycleId"[^>]*>([\s\S]*?)<\/select>/);
-    expect(m, 'the payrollCycleId select is rendered').not.toBeNull();
-    return [...m![1].matchAll(/<option([^>]*)value="([^"]*)"([^>]*)>([^<]*)<\/option>/g)].map((o) => ({
-      value: o[2],
-      label: o[4],
-      selected: /selected/.test(o[1] + o[3]),
-    }));
+  /** The pop-up's cycle options for one row, built exactly as the list page builds them (cc8bd87f). */
+  const optionsFor = async (ctx: SessionContext, id: string, employmentId: string, companyId = base.companyId) => {
+    const row = await getEmploymentPayComponent(ctx, { id, employmentId });
+    expect(row, 'the row is live').not.toBeNull();
+    const active = (await listPayrollCycles(ctx, companyId, { activeOnly: true })).map((c) => ({ id: c.id, name: c.name }));
+    const options = fixedEditCycleOptions(active, row!, (name) => `fixed.cycleInactive:${JSON.stringify({ name })}`);
+    return options.map((o) => ({ value: o.id, label: o.label, selected: o.id === row!.payrollCycleId }));
   };
+  const save = (o: Record<string, string>) => saveFixedTransactionDialogAction(null, fd(o));
 
   it('offers exactly the employee\'s company\'s ACTIVE cycles, in order, none from another company', async () => {
     const a = adminCtx(base);
@@ -258,7 +253,7 @@ describe('4fffe638 — the Edit screen and the untouched-edit rule', () => {
       employmentId: emp.employmentId, componentId: await codeId(a, 'ALLOWANCE'), amount: 100, effectiveFrom: '2026-01-01', payrollCycleId: mine['Monthly'],
     });
 
-    const opts = cycleOptions(await render(id, emp.employmentId)).filter((o) => o.value !== '');
+    const opts = await optionsFor(a, id, emp.employmentId);
     const expected = await owner.db
       .select({ id: schema.payrollCycle.id })
       .from(schema.payrollCycle)
@@ -281,19 +276,18 @@ describe('4fffe638 — the Edit screen and the untouched-edit rule', () => {
     });
 
     // The select is always submitted; here it carries Bonus, but the flag says the operator never touched it.
-    await updateFixedTransactionAction(
-      fd({ employmentId: emp.employmentId, id, amount: '200', effectiveFrom: '2026-03-01', payrollCycleId: cyc['Bonus'], cycleTouched: '0' }),
-    );
-    expect(redirect).toHaveBeenLastCalledWith(expect.stringContaining('toast=saved'));
+    await expect(
+      save({ employmentId: emp.employmentId, id, amount: '200', effectiveFrom: '2026-03-01', payrollCycleId: cyc['Bonus'], cycleTouched: '0' }),
+    ).resolves.toEqual({ ok: true, changed: true });
     let rows = await liveRows(emp.employmentId);
     expect(rows.map((r) => [r.validFrom, r.amount, r.payrollCycleId, r.runType])).toEqual([
       ['2026-01-01', '100.00', cyc['Mid-Month'], 'off_cycle'],
       ['2026-03-01', '200.00', cyc['Mid-Month'], 'off_cycle'],
     ]);
 
-    await updateFixedTransactionAction(
-      fd({ employmentId: emp.employmentId, id: rows[1].id, amount: '200', effectiveFrom: '2026-05-01', payrollCycleId: cyc['Bonus'], cycleTouched: '1' }),
-    );
+    await expect(
+      save({ employmentId: emp.employmentId, id: rows[1].id, amount: '200', effectiveFrom: '2026-05-01', payrollCycleId: cyc['Bonus'], cycleTouched: '1' }),
+    ).resolves.toEqual({ ok: true, changed: true });
     rows = await liveRows(emp.employmentId);
     expect(rows.map((r) => [r.validFrom, r.payrollCycleId, r.runType])).toEqual([
       ['2026-01-01', cyc['Mid-Month'], 'off_cycle'],
@@ -311,14 +305,14 @@ describe('4fffe638 — the Edit screen and the untouched-edit rule', () => {
     });
     await setPayrollCycleActive(a, { id: cyc['Mid-Month'], active: false });
 
-    const sel = cycleOptions(await render(id, emp.employmentId)).find((o) => o.selected);
+    const sel = (await optionsFor(a, id, emp.employmentId)).find((o) => o.selected);
     expect(sel?.value).toBe(cyc['Mid-Month']);
     expect(sel?.label).toContain('fixed.cycleInactive');
     expect(sel?.label).toContain('Mid-Month');
 
-    await updateFixedTransactionAction(
-      fd({ employmentId: emp.employmentId, id, amount: '300', effectiveFrom: '2026-02-01', payrollCycleId: cyc['Mid-Month'], cycleTouched: '0' }),
-    );
+    await expect(
+      save({ employmentId: emp.employmentId, id, amount: '300', effectiveFrom: '2026-02-01', payrollCycleId: cyc['Mid-Month'], cycleTouched: '0' }),
+    ).resolves.toEqual({ ok: true, changed: true });
     const rows = await liveRows(emp.employmentId);
     expect(rows.map((r) => [r.validFrom, r.payrollCycleId])).toEqual([
       ['2026-01-01', cyc['Mid-Month']],

@@ -21,6 +21,7 @@ import {leaveA2cJobHandler,leaveRecalcJobHandler} from './leave-follow-up-worker
 import {toilExpiryJobHandler,toilYearCloseJobHandler} from './toil-sweep-worker';
 import {payrollHistoryJobHandler} from './payroll-history-job';
 import {payrollReprocessJobHandler} from './payroll-reprocess-job';
+import {payrollRunOutstandingRefreshJobHandler} from './payroll-run-outstanding';
 import {movementImportJobHandler} from './movement-import-worker';
 import {movementCheckJobHandler} from './movement-import-check-worker';
 import {movementImportRevertJobHandler} from './movement-import-revert-job';
@@ -34,4 +35,4 @@ export const BULK_JOB_HANDLERS:BulkJobWorkerOptions['handlers']= [lifecyclePerso
  earnedAccrualJobHandler,rosterBulkJobHandler,scheduleGroupBulkJobHandler,clockingImportJobHandler,attendanceRecomputePreviewJobHandler,
  attendanceRecomputeJobHandler,payrollProcessJobHandler,draftTaxReadinessJobHandler,taxBasisGroupJobHandler,systemLabelImportJobHandler,employeeImportRevertJobHandler,sectionImportJobHandler,fixedTransactionImportJobHandler,
  registerImportJobHandler,leaveRecalcJobHandler,leaveA2cJobHandler,toilExpiryJobHandler,toilYearCloseJobHandler,payrollHistoryJobHandler,
- payrollReprocessJobHandler,movementImportJobHandler,movementCheckJobHandler,movementImportRevertJobHandler,recruitmentCandidateImportJobHandler,rewardPersonHistoryJobHandler,contractPreviewJobHandler,contractAutomationJobHandler,contractSetupJobHandler,contractScheduleJobHandler,contractScheduledAutomationJobHandler,contractPostingApplyJobHandler,transactionExportJobHandler];
+ payrollReprocessJobHandler,movementImportJobHandler,movementCheckJobHandler,movementImportRevertJobHandler,recruitmentCandidateImportJobHandler,rewardPersonHistoryJobHandler,contractPreviewJobHandler,contractAutomationJobHandler,contractSetupJobHandler,contractScheduleJobHandler,contractScheduledAutomationJobHandler,contractPostingApplyJobHandler,transactionExportJobHandler,payrollRunOutstandingRefreshJobHandler];

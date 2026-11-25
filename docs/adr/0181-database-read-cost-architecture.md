@@ -327,6 +327,10 @@ payroll truth stays in its source tables.
 - `pg_stat_statements` and sampled `auto_explain` run on staging now. Production gets them only in one planned
   window, together with memory sizing, under a separate explicit production permission.
 - Targets, read from the timing logs: page p95 under 1 s, save p95 under 300 ms, search and filter p95 under 300 ms.
+- Standard for new work (owner, 25 November 2026, "Read models + standard"): the rules in
+  `docs/architecture/FUTURE-BUILD-CONTRACT.md` ("Database read cost"). They are enforced by shrink-only ratchets,
+  `test/read-cost-ratchets.test.ts` and `test/read-cost-policy-authority.test.ts`, with allowlists in
+  `test/read-cost-ratchets/`. A raised route budget is recorded here or in the area's ADR, in the same PR.
 
 ## Order of work
 
