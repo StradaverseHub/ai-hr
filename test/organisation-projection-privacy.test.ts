@@ -10,7 +10,8 @@ it('does not register the raw audit ledger as an assistant semantic read owner',
  expect(owners).not.toContain('core/read.ts#auditEvents');
  expect(owners).not.toContain('core/read.ts#employeeAudit');
  expect(owners).not.toContain('core/read.ts#auditEventsCount');
- expect(SEMANTIC_READS.some(read=>['auditEvents','employeeAudit','audit_events','employee_audit'].includes(read.name))).toBe(false);
+ expect(owners).not.toContain('core/read.ts#auditEventsPage');
+ expect(SEMANTIC_READS.some(read=>['auditEvents','auditEventsPage','employeeAudit','audit_events','employee_audit'].includes(read.name))).toBe(false);
 });
 it('keeps undeclared projection values out of the actual employee-profile disclosure',()=>{
  const disclosed=discloseToolOutput('employee_profile','employment_profile',{ok:true,employee:{projection}},new DisclosureLedger('fictional-review'));

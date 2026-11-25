@@ -258,6 +258,7 @@ import {
 import { holidayCalendarPeriodsByEmploymentTx, holidayCalendarWindows } from './holiday-calendar-read';
 import { companySegmentsForPeriod } from './employment-company';
 import { applyLeavePayrollEffectsTx, lockPayrollForLeaveChangeTx, markPayrollAfterLeaveApprovalTx, LeavePayrollClosedError } from '../packs/payroll/service';
+import {uuidArrayParam} from '../db/sql-arrays';
 
 /** ADR-0069: the set of "employmentId|leaveTypeId" keys with an ACTIVE frozen encashment snapshot, for the
  *  year-boundary sweeps (openLeaveYear, accrueEarnedLeave, expireCarriedLeave) to skip — the ad-hoc/festive
@@ -12465,7 +12466,7 @@ export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]
   const source=pendingLeaveCandidateSource(ctx);
   const id=sql<string>`pending_leave.id`,createdAt=sql<Date>`pending_leave.created_at`.mapWith(leaveRequest.createdAt);
   const candidates=await tx.select({id,employmentId:sql<string>`pending_leave.employment_id`,personId:sql<string>`pending_leave.person_id`,employee:sql<string>`pending_leave.employee`,createdAt}).from(source)
-   .where(and(sql`NOT app.is_self_person(pending_leave.person_id)`,companyIds===undefined?undefined:sql`pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
+   .where(and(sql`NOT app.is_self_person(pending_leave.person_id)`,companyIds===undefined?undefined:sql`pending_leave.company_id=ANY(${uuidArrayParam(companyIds)})`))
    .orderBy(desc(createdAt),asc(id));
   const result:AssignedApprovalMetadata[]=[];
   for(let offset=0;offset<candidates.length;offset+=1000){
@@ -12623,7 +12624,7 @@ export function pendingLeaveDecisionCandidatesSql(tx:Tx,ctx:SessionContext,compa
      left join lateral (select step.id,step.approver_kind,step.approver_employment_id,step.approver_alternates from public.leave_approval_step step
        where step.leave_request_id=pending_leave.id and step.status='pending' order by step.step_index,step.id limit 1) leave_current on true
      where not app.is_self_person(pending_leave.person_id)
-      ${companyIds===undefined?sql``:sql`and pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
+      ${companyIds===undefined?sql``:sql`and pending_leave.company_id=ANY(${uuidArrayParam(companyIds)})`}
     union all
     select 'cancellations'::text,cancel_header.id,cancel_header.employment_id,cancel_header.person_id,cancel_header.employee,cancel_header.created_at,
       'leave.cancellation'::text,cancel_chain.present,cancel_current.id,cancel_current.approver_kind,cancel_current.approver_employment_id,cancel_current.approver_alternates
@@ -12657,7 +12658,7 @@ function pendingLeaveCancellationHeadersQuery(tx:Tx,ctx:SessionContext,companyId
    employee:sql<string>`approval_subject.employee`,createdAt:leaveCancellationRequest.createdAt}).from(leaveCancellationRequest)
    .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveCancellationRequest.employmentId},'leave','leave.cancellation') AS approval_subject`,sql`true`)
    .where(and(eq(leaveCancellationRequest.tenantId,ctx.tenantId),eq(leaveCancellationRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
-    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
+    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(${uuidArrayParam(companyIds)})`))
    .orderBy(desc(leaveCancellationRequest.createdAt),asc(leaveCancellationRequest.id));
 }
 

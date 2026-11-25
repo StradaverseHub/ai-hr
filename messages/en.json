@@ -640,6 +640,7 @@
       "title": "Team Directory",
       "adminTitle": "Personnel Management",
       "employeeCount": "{count, plural, one {# employee} other {# employees}}",
+      "employeeCountCapped": "{count, number}+ employees",
       "importCsv": "Import employees",
       "duplicateRecords": "Duplicate records",
       "profileChangeRequests": "Profile change requests",
@@ -18119,6 +18120,9 @@
     "truncated": "Showing the first {shown, number} of {total, number} rows.",
     "truncatedHint": "Use Reports → Export for the complete set.",
     "truncatedExport": "Export the complete set",
+    "rangeCapped": "{from}–{to} of {total, number}+",
+    "truncatedCapped": "Showing the first {shown, number} of more than {total, number} rows.",
+    "countExactly": "Count exactly",
     "previousPage": "Previous page",
     "nextPage": "Next page"
   },

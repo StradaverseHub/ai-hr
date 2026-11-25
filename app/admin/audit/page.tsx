@@ -5,8 +5,7 @@ import { requireAdmin } from '@/lib/authz';
 import {
   auditActors,
   auditAggregateTypes,
-  auditEvents,
-  auditEventsCount,
+  auditEventsPage,
   listCompanies,
   listLeaveTypes,
 } from '@/core/read';
@@ -14,7 +13,7 @@ import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/
 import { AuditTable } from '@/components/audit-table';
 import { aggregateLabel, isModuleKey, moduleKeyOf, MODULE_KEYS, type ModuleKey } from '@/lib/audit-format';
 import { Pager } from '@/components/pager';
-import { pageState, parsePageQuery } from '@/lib/pagination';
+import { keysetPageState, parseKeysetPageQuery } from '@/lib/pagination';
 
 /**
  * The ONE audit page (f1b994e3 — "the Audit submenu under Leave Configuration is unnecessary because
@@ -61,6 +60,10 @@ export default async function AuditPage({
     to?: string;
     page?: string;
     size?: string;
+    after?: string;
+    before?: string;
+    last?: string;
+    count?: string;
     action?: string;
     user?: string;
     company?: string;
@@ -73,7 +76,8 @@ export default async function AuditPage({
   // are one string in six languages rather than two free to drift.
   const tm = await getTranslations('components.auditTable');
   const sp = await searchParams;
-  const pq = parsePageQuery(sp);
+  // ADR 0181 Phase 4: keyset paging (no OFFSET) and a total that is exact below 1,000 and "1,000+" above.
+  const pq = parseKeysetPageQuery(sp);
 
   // An out-of-set ?module= is IGNORED (the whole log), never narrowed to nothing — the leave page's
   // treatment of an out-of-set ?type=, applied to the new control.
@@ -117,11 +121,9 @@ export default async function AuditPage({
     from: /^\d{4}-\d{2}-\d{2}$/.test(sp.from ?? '') ? sp.from : undefined,
     to: /^\d{4}-\d{2}-\d{2}$/.test(sp.to ?? '') ? sp.to : undefined,
   };
-  const [rows, total] = await Promise.all([
-    auditEvents(s, { ...filters, limit: pq.limit, offset: pq.offset }),
-    auditEventsCount(s, filters),
-  ]);
-  const pgState = pageState(pq, total, rows.length);
+  // One read for the page and its (capped) total, so the two come from one snapshot.
+  const { rows, ...read } = await auditEventsPage(s, filters, pq);
+  const pgState = keysetPageState(pq, read, rows.map((r) => r.id));
   const nowMs = Date.now();
 
   // Timeline grouping — bucket the (already occurredAt-desc) rows by KL calendar day, preserving order.
