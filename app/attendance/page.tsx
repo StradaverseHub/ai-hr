@@ -4,12 +4,12 @@ import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { attendanceMonthSummaryPage } from '@/packs/attendance/service';
+import { attendanceMonthSummaryKeysetPage } from '@/packs/attendance/service';
 import { Card, EmployeeName, ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { OtReportExport } from '@/components/ot-report-export';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { Pager } from '@/components/pager';
-import { parsePageQuery } from '@/lib/pagination';
+import { keysetPageState, parseKeysetPageQuery } from '@/lib/pagination';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
 
@@ -47,6 +47,10 @@ export default async function AttendancePage({
     month?: string;
     page?: string;
     size?: string;
+    after?: string;
+    before?: string;
+    last?: string;
+    count?: string;
   }>;
 }) {
   const t = await getTranslations('attendance');
@@ -59,7 +63,10 @@ export default async function AttendancePage({
   const sp = await searchParams;
   const todayIso = todayInKualaLumpur();
   const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : todayIso.slice(0, 7);
-  const summaryPage = await attendanceMonthSummaryPage(s, { month, companyIds: scopeIds, today: todayIso, page: parsePageQuery(sp) });
+  // ADR 0181 Phase 4: keyset paging (no OFFSET) and a total that is exact below 1,000 and "1,000+" above.
+  const pq = parseKeysetPageQuery(sp);
+  const { rows: summaryRows, ...summaryRead } = await attendanceMonthSummaryKeysetPage(s, { month, companyIds: scopeIds, today: todayIso, page: pq });
+  const summaryPage = { rows: summaryRows, state: keysetPageState(pq, summaryRead, summaryRows.map((r) => r.employmentId)) };
   const monthHref = (m: string) => `/attendance?month=${m}`;
   const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
 
