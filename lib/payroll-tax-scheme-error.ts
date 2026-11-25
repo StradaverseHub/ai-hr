@@ -5,7 +5,7 @@ import { getTranslations } from 'next-intl/server';
 export async function payrollTaxSchemeErrorMessage(error: unknown): Promise<string> {
   if(error instanceof Error && error.name==='TaxSelectionError'&&'code' in error){
     const t=await getTranslations('payroll.process');
-    if(['confirmation_required','invalid_scheme','not_resident','citizenship_unknown'].includes(String(error.code)))return t(`taxSelection_${String(error.code)}`);
+    if(['confirmation_required','invalid_scheme','not_resident','citizenship_unknown','custom_value_missing'].includes(String(error.code)))return t(`taxSelection_${String(error.code)}`);
   }
   if (error instanceof Error && error.name === 'TaxSchemeDeclarationError') {
     const t = await getTranslations('payroll.process');

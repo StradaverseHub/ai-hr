@@ -496,6 +496,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10720,when:1795495007320,tag:'7320_employment_search_trigram'},
  {idx:10730,when:1795495007330,tag:'7330_queue_read_offboarding_access'},
  {idx:10740,when:1795495007340,tag:'7340_queue_read_contract_navigation'},
+ {idx:10760,when:1795495007360,tag:'7360_audit_trail_company_scope'},
+ {idx:10790,when:1795495007390,tag:'7390_custom_pcb_selection'},
  {idx:10860,when:1795495007460,tag:'7460_payroll_read_access_switch'},
  {idx:10870,when:1795495007470,tag:'7470_payroll_read_admin_companies'},
 ] as const;
@@ -521,6 +523,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7320_employment_search_trigram':'894759d783678ab4344ef836083938e1af40e29b6198cfadd6a91d54d72729d7',
  '7330_queue_read_offboarding_access':'6313303feb1ff5a25f959ae2b99987a5aba2ab2b44ec4bfe29f8fe5cb39044a3',
  '7340_queue_read_contract_navigation':'675007a187d548b3a387483502f6cece7241f293cad6eeecc38d4b739727c56b',
+ '7360_audit_trail_company_scope':'9208657d57e69b13a9a4bea1058dc4f66798b943ee21875eeadb74669c88b02b',
+ '7390_custom_pcb_selection':'a840b463c061f47cf7245b393258db8fff8bb2623fb90adc44770d4db4ede175',
  '7460_payroll_read_access_switch':'cc8bdfb8ec9a19d26c1e5fa5d37ca3ee1aafea4ff665f8f1c9c19775698ca55b',
  '7470_payroll_read_admin_companies':'0ee21a3c7598c50e14284635910b4d29a469c0d1bf35e3dea5ba8a4633fdb1e9',
  '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',
@@ -969,6 +973,7 @@ async function table(db:Database,name:string):Promise<Row[]>{return (await db.cl
  * may hold a value there. migrateApprovedUpgrade proves each column present and null on every row once its
  * migration is applied; a retained row is then compared without it (withoutCombinedReleaseNulls). */
 export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;columns:readonly string[]}[]=Object.freeze([
+ {tag:'7390_custom_pcb_selection',table:'employment_tax_selection_my',columns:['custom_pcb_amount','custom_pcb_rate']},
  {tag:'6420_contract_historical_email_recovery',table:'contract_shared_event',columns:['email_reconciliation']},
  {tag:'6420_contract_historical_email_recovery',table:'contract_shared_posting',columns:['after_period_revision']},
  {tag:'6420_contract_historical_email_recovery',table:'app.contract_email_prerequisite_resume',columns:['disposition','begun_xid','begun_backend','begun_login']},

@@ -33,6 +33,40 @@ migration refuses unless both guard functions' bodies and the two guard policies
 policy, trigger, column or business row changes. Design: `docs/adr/0181-addendum-payroll-read-access-and-read-model.md`
 (PR 308), sections 9 and 11. This entry carries no deployment authority.
 
+# Custom PCB on the Income Tax Resident selection (ADR 0183, board d8dc0a8c), 25 November 2026
+
+Reserve `7390_custom_pcb_selection`, journal index `10790`, timestamp `1795495007390`,
+SQL SHA-256 `a840b463c061f47cf7245b393258db8fff8bb2623fb90adc44770d4db4ede175`.
+
+**Renumbered from `7370_custom_pcb_selection` (idx `10770`, when `1795495007370`).** The 7370 slot is abandoned: it
+was never applied on any installation. The owner chose to release PR 326 (`7360_audit_trail_company_scope`) first
+("PR 326 first", confirmed in the board session). During that change PR 326 briefly renumbered to 7380 and withdrew it;
+the staging coordinator reconciled PR 326 at 7360 (f3894d18a) and kept this migration at 7390, above both.
+`check-migration-collisions.mjs --local --next` (from PR 307's commit bbab49168) checked main and 398 recent branch
+journals and named 7390 as free; the coordinator recorded it in the shared map. The SQL bytes are unchanged. Install
+order on staging: release 9 (7330, 7340), then 7360, then 7390; 7370 and 7380 are unused.
+Recheck both installations' watermarks, and any competing reservation, before admission.
+
+Adds nullable `custom_pcb_amount numeric(12,2)` and `custom_pcb_rate numeric(5,2)` to `employment_tax_selection_my`
+(every existing row NULL), widens `employment_tax_selection_my_scheme_check` with `custom_fixed` and `custom_rate`,
+adds `employment_tax_selection_my_custom_pcb_check` (a custom scheme has exactly its own number; other schemes none)
+and grants `ai_hr_app` UPDATE on the two columns. The checks scan the table once under the migration's lock; no
+policy, function or other object changes.
+# Audit Trail company scope (ADR 0182 Phase 1), 25 November 2026
+
+Reserve `7360_audit_trail_company_scope`, journal index `10760`, timestamp `1795495007360`,
+SQL SHA-256 `9208657d57e69b13a9a4bea1058dc4f66798b943ee21875eeadb74669c88b02b`. Rebased onto the release 9 staging head
+`60189ca03` (1,156 entries through `7340_queue_read_contract_navigation`, `1795495007340`), so the ledger becomes 1,157
+entries ending `7360`. The original reservation scan covered the 500 most recently committed branch heads and every
+registered worktree journal; a fresh scan of 700 heads on 25 November found only `7370_custom_pcb_selection` above it.
+The owner decided on 25 November 2026 that this releases before `7370` (board d8dc0a8c), so `7370` installs after
+`7360` and keeps its higher timestamp; `7350` stays unused. A short-lived renumbering to `7380` (commit `032c75a47`)
+was withdrawn before merge and never applied. Recheck both installation watermarks before admission.
+
+Adds `app.admin_company_ids()` and `app.audit_admin_aggregates()` (SECURITY DEFINER, STABLE, search_path pinned,
+EXECUTE to `ai_hr_app` only), read once per statement by the Audit Trail company scope in core/read.ts. No table,
+row, policy, grant on a table or existing function changes.
+
 # ADR 0181 live work queues, Q1: Contract navigation access, 25 November 2026
 
 Reserve `7340_queue_read_contract_navigation`, journal index `10740`, timestamp `1795495007340`, SQL SHA-256

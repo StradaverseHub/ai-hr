@@ -17,7 +17,7 @@ import { CHILD_RELIEF_CATEGORIES } from '@/lib/dependent-vocabulary';
 import { clientPackFor } from '@/localization/registry.client';
 import type { ChildReliefPrice } from '@/localization/country-pack';
 import { TaxCategoryField } from './tax-category-field';
-import { TaxResidencySelect } from './tax-residency-field';
+import { CustomPcbValueField, isCustomPcbChoice, TaxResidencySelect } from './tax-residency-field';
 import {
   ChildReliefModeField,
   ChildReliefModeHint,
@@ -208,7 +208,7 @@ export function IdentityTaxCard({
   employmentId: string;
   personId: string;
   defaults: IdentityTaxDefaults;
-  taxSelection?:{companyId:string;companyName:string;version:number;confirmationRequired:boolean};
+  taxSelection?:{companyId:string;companyName:string;version:number;confirmationRequired:boolean;customPcbAmount?:number|null;customPcbRate?:number|null};
   /**
    * 04b88724 — the pack's prices AND the pack's figure for the saved record; null when no pack / no PCB
    * reliefs can be resolved, and the card then names no relief figure rather than inventing a rate.
@@ -524,12 +524,15 @@ export function IdentityTaxCard({
             {/* 35b7af0a group 6 — the SAME control the Create Employee wizard now renders. The option
                 list and mapping are country-owned; the integer and detailed circumstance post separately. */}
             <input type="hidden" name="expectedTaxApplicabilityEpoch" value={defaults.taxApplicabilityEpoch??0}/><TaxCategoryField key={taxContextKey} mode="form" defaultValue={defaults.taxCategory} circumstance={defaults.taxCircumstance} onChange={onTaxCircumstance} />
+            {/* ADR 0183 — Tax Category stays saved (switching back is one click) but no formula reads it meanwhile. */}
+            {!none&&isCustomPcbChoice(taxResidency)&&<span className="text-xs text-muted-foreground" data-custom-pcb-category-note>{t('customPcbCategoryNotUsed')}</span>}
             <PersonnelField fieldId="bank_statutory.income_tax_pcb.taxresidency">
               {/* Reset only this draft when its employer owner/revision/confirmation changes. */}
               {none&&<input {...personnelCarry('bank_statutory.income_tax_pcb.taxresidency')} value="none"/>}
               {/* r393 (685d2380 step 3b) — the SAME select the Create New Employee draft renders, in its
                   form branch (components/tax-residency-field.tsx); markup unchanged. */}
               <TaxResidencySelect key={taxContextKey} mode="form" none={none} value={taxResidency} onChange={setTaxResidency} />
+              {!none&&<CustomPcbValueField scheme={taxResidency} savedAmount={taxSelection?.customPcbAmount??null} savedRate={taxSelection?.customPcbRate??null} />}
               {taxSelection && <><span className="text-xs text-muted-foreground">{t('taxSelectionEmployer',{employer:taxSelection.companyName})}</span><span className="text-xs text-muted-foreground">{t('taxSelectionEligibilityHint')}</span>{taxSelection.confirmationRequired&&<span className="text-xs text-amber-700">{t('taxSelectionConfirmationRequired')}</span>}</>}
             </PersonnelField>
             {/* Item d64d0df4 — Disabled Individual and Disabled Spouse (OKU). Yes/No, defaulting to No,
