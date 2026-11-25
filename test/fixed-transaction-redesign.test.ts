@@ -81,7 +81,8 @@ describe('cc8bd87f — View/Edit is a POP-UP over the list (was f3ae3245\'s sepa
     // React 19 resets a <form action={…}> when the action settles; a refused save must keep the typing.
     expect(dialogSrc).toContain('useActionState');
     expect(dialogSrc).toContain('startTransition(() => action(formData))');
-    expect(dialogSrc).not.toMatch(/<form[^>]*\saction=/);
+    // Code only: the file header quotes the `<form action={…}>` shape it avoids.
+    expect(codeOnly(dialogSrc)).not.toMatch(/<form[^>]*\saction=/);
     expect(dialogSrc).toContain('disabled={pending}');
     expect(dialogSrc).toContain('r.refresh();');
     // No service layer in the browser bundle.
@@ -93,9 +94,11 @@ describe('cc8bd87f — View/Edit is a POP-UP over the list (was f3ae3245\'s sepa
     expect(dialogSrc).toContain('name="effectiveTo"');
     expect(dialogSrc.match(/name="effectiveTo"/g)).toHaveLength(1);
     expect(dialogSrc).toContain('labels.endDateHint');
-    expect(actionsSrc).not.toContain('endFixedTransactionAction');
-    expect(actionsSrc).not.toContain('endEmploymentPayComponent');
-    expect(actionsSrc).not.toContain('updateFixedTransactionAction');
+    // Code only: the new action's doc comment names the two it replaced.
+    const actionsCode = codeOnly(actionsSrc);
+    expect(actionsCode).not.toContain('endFixedTransactionAction');
+    expect(actionsCode).not.toContain('endEmploymentPayComponent');
+    expect(actionsCode).not.toContain('updateFixedTransactionAction');
     expect(actionsSrc).toContain('export async function saveFixedTransactionDialogAction');
     expect(actionsSrc).toContain('editFixedTransaction(s,');
     for (const src of [dialogSrc, listSrc, rowsSrc]) {
