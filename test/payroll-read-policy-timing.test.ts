@@ -9,6 +9,7 @@
  *  - 7460 (P1): the two payslip reader guards.
  *  - 7470 (P2): payroll administration once per statement (payroll_batch_rls, payslip_rls admin arm, original employer).
  *  - 7480 (P3): the payslip_rls own-payslip arm.
+ *  - 7490 (P4): the stored payroll history barrier (payroll_history_effective_only).
  * Later steps add their rows to STEPS below.
  *
  * Statements, each in the application role (ai_hr_app, row security on) under the persona's own identity statement, in
@@ -30,6 +31,7 @@ const STEPS:readonly Step[]=[
  {migration:'7460',step:'p1_tax_reader_guards',needs:[]},
  {migration:'7470',step:'p2_admin_companies',needs:[]},
  {migration:'7480',step:'p3_own_payslips',needs:[]},
+ {migration:'7490',step:'p4_history_filter',needs:[]},
 ];
 const PERIODS=['2025-09','2025-10','2025-11','2025-12'] as const;
 const STATEMENTS:Record<string,ReturnType<typeof sql>>={

@@ -79,6 +79,7 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10860,version:'7',when:1795495007460,tag:'7460_payroll_read_access_switch',breakpoints:true},
  {idx:10870,version:'7',when:1795495007470,tag:'7470_payroll_read_admin_companies',breakpoints:true},
  {idx:10880,version:'7',when:1795495007480,tag:'7480_payroll_read_own_payslips',breakpoints:true},
+ {idx:10890,version:'7',when:1795495007490,tag:'7490_payroll_read_history_filter',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},

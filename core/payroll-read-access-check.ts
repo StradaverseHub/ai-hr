@@ -31,6 +31,11 @@ export async function payrollReadAccessCheck(owner:Db,log:(line:string)=>void=()
   out.stepsCompared++;
   for(const {id} of tenants){
    try{
+    // P4's stored set is recomputed from scratch first (section 8.3); a difference marks the tenant's step untrusted.
+    if(step==='p4_history_filter'){
+     const [row]=await owner.transaction(tx=>tx.execute<{r:{missing:number;extra:number}}>(sql`select app.payroll_history_ineffective_verify(${id}::uuid) as r`));
+     if(Number(row.r.missing)+Number(row.r.extra)>0)log(`payroll-read-access REBUILD DIFFERENCE step=${step} tenant=${id} missing=${row.r.missing} extra=${row.r.extra} (rebuild with app.payroll_history_ineffective_rebuild, then re-trust)`);
+    }
     const c=await comparePayrollReadAccess(owner,step,id);
     if(!c.trusted)out.untrusted++;
     if(c.valuesDiffer+c.raisesDiffer>0){
