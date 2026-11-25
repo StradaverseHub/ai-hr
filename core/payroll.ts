@@ -10906,7 +10906,7 @@ export async function payrollReprocessJobRowTx(tx:Tx,jobId:string){
   const [row]=await tx.select().from(payrollReprocessJob).where(eq(payrollReprocessJob.id,jobId)).limit(1);
   return row??null;
 }
-async function reprocessRunMembersTx(tx:Tx,ctx:SessionContext,batch:PayrollEligibilityRun & {id:string},requested:string[]){
+async function reprocessRunMembersTx(tx:Tx,ctx:SessionContext,batch:PayrollEligibilityRun & {id:string},requested:string[],runSlips?:{id:string;employmentId:string}[]){
   const [ry, rm] = batch.payPeriod.split('-').map(Number);
   const reprocessPeriodStart = `${batch.payPeriod}-01`;
   const reprocessPeriodEnd = `${batch.payPeriod}-${String(daysInMonth(ry, rm)).padStart(2, '0')}`;
@@ -10923,9 +10923,12 @@ async function reprocessRunMembersTx(tx:Tx,ctx:SessionContext,batch:PayrollEligi
   // company membership for it any more, and that is exactly the person whose stale result the loop must
   // reach to exclude. A payslip on this very batch cannot widen anything: it is already on the run.
   const onRun = await tx
-    .select({ id: nativePayrollPayslip.employmentId })
+    .select({ slipId: nativePayrollPayslip.id, id: nativePayrollPayslip.employmentId })
     .from(nativePayrollPayslip)
     .where(and(eq(nativePayrollPayslip.batchId, batch.id), inArray(nativePayrollPayslip.employmentId, requested)));
+  // ADR 0181 (write side): a caller in one REPEATABLE READ snapshot reuses these slips instead of reading the native
+  // view again (its per-row authority function made each read about 3 ms per selected employee).
+  runSlips?.push(...onRun.map(row=>({id:row.slipId,employmentId:row.id})));
   const allowed = new Set([...companyEmps,...onRun].map(row=>row.id));
   return requested.filter(id=>allowed.has(id));
 }
@@ -10960,7 +10963,8 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
     if(batch.status!=='processed')throw new BatchNotResettableError();
     const [period]=await tx.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,batch.payPeriodId));
     if(period?.status==='closed')throw new ReprocessRunBlockedError('PERIOD_CLOSED','This pay period is closed.');
-    const members=await reprocessRunMembersTx(tx,ctx,batch,ids);
+    const runSlips:{id:string;employmentId:string}[]=[];
+    const members=await reprocessRunMembersTx(tx,ctx,batch,ids,runSlips);
     if(members.length!==ids.length)throw new Error('Some selected employees are no longer available on this payroll run.');
     const identities=await tx.select({employmentId:employment.id,name:person.fullName,employeeCode:employment.employeeCode,
       outstanding:sql<boolean>`${outstandingPaymentPredicate(batch,settingEnabled(ctx,'payroll.individual_txn_pay_enabled'))}`})
@@ -10983,8 +10987,8 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
         if(!failures.has(id))failures.set(id,reason);
       }
     }
-    const current=await tx.select({id:nativePayrollPayslip.id}).from(nativePayrollPayslip)
-      .where(and(eq(nativePayrollPayslip.batchId,batchId),inArray(nativePayrollPayslip.employmentId,members)));
+    // The same run's slips for the members, read once above in this read-only REPEATABLE READ snapshot.
+    const memberSet=new Set(members),current=runSlips.filter(slip=>memberSet.has(slip.employmentId));
     for(const [id,reason] of await readTaxBasisFailuresTx(tx,ctx,current.map(source=>source.id),{reprocess:{kind:'current',recordCorrection:()=>{}}})){
       if(!failures.has(id))failures.set(id,reason);
     }
