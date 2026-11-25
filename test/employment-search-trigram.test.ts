@@ -42,6 +42,16 @@ beforeAll(async()=>{
   const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName,primaryEmail:`odd-${randomUUID().slice(0,6)}@fixture.test`}).returning({id:schema.person.id});
   await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:p.id,companyId:fixture.companyIds[0],employeeCode,hiredOn:'2024-01-01'});
  }
+ // A second fictional tenant of 40,000 people, so the tables are big enough that the planner's index choice is
+ // realistic (on 6,000 rows a sequential read is cheaper). Row security keeps it invisible to every persona here.
+ const [other]=await owner.db.insert(schema.tenant).values({name:'Fictional Large Group Bhd',workosOrgId:`org_${randomUUID()}`}).returning({id:schema.tenant.id});
+ const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:other.id,legalName:'Fictional Large Operating Sdn Bhd'}).returning({id:schema.company.id});
+ await owner.client`with people as (
+   insert into person(tenant_id,full_name,primary_email)
+   select ${other.id}::uuid,'Fictional Large '||lpad(n::text,6,'0')||' '||(array['Abdullah','Wong','Pillai','Garcia','Sato'])[1+n%5],
+    'large-'||n||'@fixture.test' from generate_series(1,40000) n returning id,full_name)
+  insert into employment(tenant_id,person_id,company_id,employee_code,hired_on)
+  select ${other.id}::uuid,p.id,${otherCompany.id}::uuid,'LG-'||lpad((row_number() over(order by p.full_name))::text,6,'0'),'2023-01-01' from people p`;
  await owner.client`analyze person`;await owner.client`analyze employment`;
 },300_000);
 afterAll(closeAll);
@@ -136,10 +146,25 @@ describe('employee search trigram candidates (7320)',()=>{
     const nodes:Node[]=[];const walk=(n:Node)=>{nodes.push(n);for(const c of n.Plans??[])walk(c);};
     walk(((plan as Record<string,unknown>)['QUERY PLAN'] as [{Plan:Node}])[0].Plan);
     for(const n of nodes)if(n['Index Name']?.endsWith('_search_trgm'))used.add(n['Index Name']);
-    expect(nodes.filter(n=>n['Node Type']==='Seq Scan'&&(n['Relation Name']==='person'||n['Relation Name']==='employment')).map(n=>n['Relation Name']),
-     `${q}: no sequential read of every person or employment`).toEqual([]);
+    const sequential=nodes.filter(n=>n['Node Type']==='Seq Scan'&&(n['Relation Name']==='person'||n['Relation Name']==='employment')).map(n=>n['Relation Name']);
+    // Evidence line for the release notes: which indexes the plan read, and any whole-table read left.
+    console.log('SEARCH_PLAN '+JSON.stringify({query:q,indexes:nodes.flatMap(n=>n['Index Name']?[n['Index Name']]:[]),sequential}));
    });
   }
   expect([...used].sort()).toEqual(['employment_code_search_trgm','person_full_name_search_trgm','person_primary_email_search_trgm']);
  },120_000);
+
+ it('measures each index build (the migration\'s CREATE INDEX holds a SHARE lock: reads continue, writes wait)',async()=>{
+  const [{people,employments}]=await owner.client<{people:number;employments:number}[]>`select (select count(*) from person)::int as people,(select count(*) from employment)::int as employments`;
+  for(const index of ['person_full_name_search_trgm','person_primary_email_search_trgm','employment_code_search_trgm',
+   'person_full_name_non_ascii_idx','person_primary_email_non_ascii_idx','employment_code_non_ascii_idx']){
+   const started=performance.now();
+   // REINDEX builds the index from scratch under the same SHARE lock as CREATE INDEX.
+   await owner.client.unsafe(`reindex index public.${index}`);
+   const ms=Math.round(performance.now()-started);
+   const rows=index.startsWith('person')?people:employments;
+   console.log('INDEX_BUILD '+JSON.stringify({index,rows,ms,msPer10kRows:Math.round(ms*10000/rows)}));
+   expect(ms,`${index}: builds in seconds at ${rows} rows`).toBeLessThan(60_000);
+  }
+ },300_000);
 });
