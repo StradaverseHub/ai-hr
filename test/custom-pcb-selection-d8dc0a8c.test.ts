@@ -93,13 +93,21 @@ describe('custom PCB selection writer (board d8dc0a8c)', () => {
 
   it('cannot store a custom scheme without its number, or a number on any other scheme', async () => {
     const id = (await row()).id;
-    const attempt = (set: Record<string, unknown>) => owner.db.update(schema.employmentTaxSelectionMy)
+    const attempt = (set: Partial<typeof schema.employmentTaxSelectionMy.$inferInsert>) => owner.db.update(schema.employmentTaxSelectionMy)
       .set({...set, version: sql`${schema.employmentTaxSelectionMy.version} + 1`}).where(eq(schema.employmentTaxSelectionMy.id, id));
-    await expect(attempt({scheme: 'custom_fixed'})).rejects.toThrow(/employment_tax_selection_my_custom_pcb_check/);
-    await expect(attempt({scheme: 'custom_rate', customPcbRate: '100.01'})).rejects.toThrow(/custom_pcb_check|numeric field overflow/);
-    await expect(attempt({customPcbAmount: '450.00'})).rejects.toThrow(/employment_tax_selection_my_custom_pcb_check/);
-    await expect(attempt({scheme: 'custom_fixed', customPcbAmount: '450.00', customPcbRate: '10.00'})).rejects.toThrow(/employment_tax_selection_my_custom_pcb_check/);
-    await expect(attempt({scheme: 'flat_rate'})).rejects.toThrow(/employment_tax_selection_my_scheme_check/);
+    // drizzle wraps the driver error; the violated constraint is named on its cause.
+    const violated = async (write: Promise<unknown>) => {
+      try { await write; return null; } catch (error) {
+        const cause = (error as {cause?: {constraint_name?: string}}).cause;
+        return cause?.constraint_name ?? String(error);
+      }
+    };
+    expect(await violated(attempt({scheme: 'custom_fixed'}))).toBe('employment_tax_selection_my_custom_pcb_check');
+    expect(await violated(attempt({scheme: 'custom_rate', customPcbRate: '100.01'}))).toBe('employment_tax_selection_my_custom_pcb_check');
+    expect(await violated(attempt({customPcbAmount: '450.00'}))).toBe('employment_tax_selection_my_custom_pcb_check');
+    expect(await violated(attempt({scheme: 'custom_fixed', customPcbAmount: '450.00', customPcbRate: '10.00'}))).toBe('employment_tax_selection_my_custom_pcb_check');
+    expect(await violated(attempt({scheme: 'flat_rate' as never}))).toBe('employment_tax_selection_my_scheme_check');
+    expect(await violated(attempt({scheme: 'custom_fixed', customPcbAmount: '450.00'}))).toBeNull();
   });
 
   it('answers the group resolver exactly as the single resolver', async () => {

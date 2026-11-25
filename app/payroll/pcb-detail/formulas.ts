@@ -127,7 +127,7 @@ export function pcbFormulaBlocks(x: PcbExplanation, f: PcbFormulaFormat): PcbFor
             step: '',
             heading: 'customHeading',
             formula: 'customRateFormula',
-            substituted: tr && x.ratePercent != null ? `( ${f.b2(tr.remuneration)} + ${f.b2(tr.additional)} ) × ${f.pct(x.ratePercent / 100)}` : null,
+            substituted: tr && x.rate != null ? `( ${f.b2(tr.remuneration)} + ${f.b2(tr.additional)} ) × ${f.pct(x.rate)}` : null,
             resultLabel: 'resultLabel',
             result: x.pcbSystem,
             notes: ['flatRoundingNote', 'customRateNote'],

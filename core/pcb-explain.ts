@@ -224,8 +224,10 @@ export type PcbExplanation =
       method: 'fixed' | 'rate';
       /** RM, 'fixed' only. */
       amount: number | null;
-      /** Percent (30 = 30%), 'rate' only. */
+      /** Percent (30 = 30%), 'rate' only: the number HR entered. */
       ratePercent: number | null;
+      /** 'rate' only: the fraction the engine multiplied by (0.3), as its trace recorded it. NULL when not recorded. */
+      rate: number | null;
       /** The remuneration the rate was applied to. NULL when not recorded; 'fixed' records it for reference. */
       trace: { remuneration: number; additional: number } | null;
     } & PcbFigures)
@@ -587,7 +589,8 @@ export function explainPcb(
     const raw = metaObj.trace as Record<string, unknown> | null | undefined;
     const trace = raw && typeof raw === 'object' && !Array.isArray(raw) && hasRecordedNumbers(raw, ['remuneration', 'additional'])
       ? { remuneration: raw.remuneration as number, additional: raw.additional as number } : null;
-    return { kind: 'custom', method: fixed ? 'fixed' : 'rate', amount: fixed ? value : null, ratePercent: fixed ? null : value, trace, ...figures };
+    const rate = !fixed && raw && typeof raw === 'object' && !Array.isArray(raw) && hasRecordedNumbers(raw, ['rate']) ? raw.rate as number : null;
+    return { kind: 'custom', method: fixed ? 'fixed' : 'rate', amount: fixed ? value : null, ratePercent: fixed ? null : value, rate, trace, ...figures };
   }
   if (scheme === 'non_resident' && (!hasRecordedNumbers(metaObj, ['flatRate']) || metaObj.flatRate !== 0.3)) return {kind: 'unavailable', ...figures};
   const flat = metaObj as FlatMeta;
@@ -838,7 +841,7 @@ function customWorksheet(x: Extract<PcbExplanation, { kind: 'custom' }>): PcbWor
     ? [
         { symbol: 'Y', caption: 'worksheetFlatY', value: t ? money(t.remuneration) : { kind: 'notRecorded' } },
         { symbol: 'Yt', caption: 'worksheetFlatYt', value: t ? money(t.additional) : { kind: 'notRecorded' } },
-        { symbol: '', caption: 'worksheetCustomRate', value: { kind: 'rate', rate: (x.ratePercent ?? 0) / 100 } },
+        { symbol: '', caption: 'worksheetCustomRate', value: x.rate != null ? { kind: 'rate', rate: x.rate } : { kind: 'notRecorded' } },
       ]
     : [{ symbol: '', caption: 'worksheetCustomAmount', value: money(x.amount ?? 0) }];
   return {

@@ -616,7 +616,7 @@ export async function PcbDetailView({
         return custom == null ? null : (
           <>
             {custom.method === 'rate'
-              ? <Row label={t('customRate')} value={custom.ratePercent != null ? pct(custom.ratePercent / 100) : <NotRecorded />} />
+              ? <Row label={t('customRate')} value={custom.rate != null ? pct(custom.rate) : <NotRecorded />} />
               : <Row label={t('customAmount')} value={custom.amount != null ? rm(custom.amount) : <NotRecorded />} />}
             {custom.method === 'rate' && <Row label={t('flatRemuneration')} value={custom.trace ? rm(custom.trace.remuneration) : <NotRecorded />} />}
             {custom.method === 'rate' && <Row label={t('flatAdditional')} value={custom.trace ? rm(custom.trace.additional) : <NotRecorded />} />}

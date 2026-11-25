@@ -113,14 +113,14 @@ describe('custom PCB explanation', () => {
   const f = {b2: (v: number) => v.toFixed(2), pct: (r: number) => `${(r * 100).toFixed(2)}%`, int: (v: number) => `${v}`};
   it('explains a custom rate from the payslip stamp, with its worksheet and formula', () => {
     const x = explainPcb(statutory(3000, profile, 0, 0, month, rated(30)), null);
-    expect(x).toMatchObject({kind: 'custom', method: 'rate', ratePercent: 30, amount: null, trace: {remuneration: 3000, additional: 0}, pcb: 900, pcbSystem: 900, basis: null});
+    expect(x).toMatchObject({kind: 'custom', method: 'rate', ratePercent: 30, rate: 0.3, amount: null, trace: {remuneration: 3000, additional: 0}, pcb: 900, pcbSystem: 900, basis: null});
     expect(pcbWorksheet(x, null)).toMatchObject({shape: 'flat', note: 'worksheetCustomRateNote'});
     expect(pcbFormulaBlocks(x, f)).toEqual([expect.objectContaining({key: 'custom', formula: 'customRateFormula', substituted: '( 3000.00 + 0.00 ) × 30.00%', result: 900})]);
   });
 
   it('explains a fixed amount as the amount HR entered, with nothing calculated', () => {
     const x = explainPcb(statutory(3000, profile, 0, 0, month, fixed(450)), null);
-    expect(x).toMatchObject({kind: 'custom', method: 'fixed', amount: 450, ratePercent: null, pcb: 450});
+    expect(x).toMatchObject({kind: 'custom', method: 'fixed', amount: 450, ratePercent: null, rate: null, pcb: 450});
     expect(pcbWorksheet(x, null).sections[0].rows).toEqual([{symbol: '', caption: 'worksheetCustomAmount', value: {kind: 'money', amount: 450}}]);
     expect(pcbFormulaBlocks(x, f)).toEqual([expect.objectContaining({key: 'custom', formula: 'customFixedFormula', substituted: '450.00', result: 450})]);
   });

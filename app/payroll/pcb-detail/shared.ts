@@ -368,7 +368,7 @@ export async function pcbDetailPdfResponse(req: Request, disposition: PcbDetailD
         const rows: PcbSlipPdfRow[] = [
           ...(custom.method === 'rate'
             ? [
-                figure(t('customRate'), custom.ratePercent != null ? pctOf(custom.ratePercent / 100) : na),
+                figure(t('customRate'), custom.rate != null ? pctOf(custom.rate) : na),
                 figure(t('flatRemuneration'), custom.trace ? money(custom.trace.remuneration) : na),
                 figure(t('flatAdditional'), custom.trace ? money(custom.trace.additional) : na),
               ]
