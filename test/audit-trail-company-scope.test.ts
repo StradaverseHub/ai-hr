@@ -32,7 +32,7 @@ const M=`scope${randomUUID().slice(0,8)}`;
 let b:Base,root:string,child:string,foreign:string,fillers:string[],all:string[];
 let foreignDept:string,localSubject:Emp,childSubject:Emp,foreignSubject:Emp,mover:Emp;
 let localLogin:string,foreignLogin:string;
-let scoped:SessionContext,group:SessionContext,superScoped:SessionContext,foreignActor:SessionContext,employee:SessionContext;
+let scoped:SessionContext,group:SessionContext,superAdmin:SessionContext,foreignActor:SessionContext,employee:SessionContext;
 type Emp={employmentId:string;personId:string};
 const companyOf=new Map<string,string>(); // employment id -> company id, as the fixture assigned it
 const scaleEvents:{id:string;employmentId?:string;companyId?:string}[]=[];
@@ -90,7 +90,7 @@ beforeAll(async()=>{
   scaleEvents.push({id:r.id,companyId:r.company_id});
 
  scoped=await user('hr_admin',root);group={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]} as SessionContext;
- superScoped=await user('super_admin',foreign);foreignActor=await user('hr_admin',foreign);
+ superAdmin=await user('super_admin',null);/* super_admin grants are group-wide by constraint */foreignActor=await user('hr_admin',foreign);
  employee=await user('employee',null,localSubject.personId);localLogin=employee.userId!;
  const foreignEmployee=await user('employee',null,foreignSubject.personId);foreignLogin=foreignEmployee.userId!;
 
@@ -173,7 +173,7 @@ describe('Audit Trail company scope for a company-scoped HR administrator',()=>{
 
 describe('Unchanged readers',()=>{
  it('group administrators and super administrators read exactly what the previous reader returned',async()=>{
-  for(const ctx of [group,superScoped]){
+  for(const ctx of [group,superAdmin]){
    const before=await previousReader(ctx),after=(await auditEvents(ctx,{limit:2000})).map(r=>r.id);
    expect(after.length).toBeGreaterThan(1090);expect(after).toEqual(before);
    expect(await auditEventsCount(ctx,{})).toBe(await previousCount(ctx));

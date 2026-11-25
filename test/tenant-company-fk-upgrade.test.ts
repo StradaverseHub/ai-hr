@@ -1404,6 +1404,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.contract_shared_navigation_access_legacy()',app:false},
    {fn:'app.contract_shared_navigation_access_v2()',app:false},
    {fn:'app.contract_staff_automation_v2()',app:false},
+   // 7360 (ADR 0182 Phase 1): the Audit Trail company scope's once-per-statement read helpers.
+   {fn:'app.admin_company_ids()',app:true},
+   {fn:'app.audit_admin_aggregates()',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
