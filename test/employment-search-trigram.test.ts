@@ -42,18 +42,18 @@ beforeAll(async()=>{
   const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName,primaryEmail:`odd-${randomUUID().slice(0,6)}@fixture.test`}).returning({id:schema.person.id});
   await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:p.id,companyId:fixture.companyIds[0],employeeCode,hiredOn:'2024-01-01'});
  }
- // A second fictional tenant of 40,000 people, so the tables are big enough that the planner's index choice is
+ // A second fictional tenant of 15,000 people, so the tables are big enough that the planner's index choice is
  // realistic (on 6,000 rows a sequential read is cheaper). Row security keeps it invisible to every persona here.
  const [other]=await owner.db.insert(schema.tenant).values({name:'Fictional Large Group Bhd',workosOrgId:`org_${randomUUID()}`}).returning({id:schema.tenant.id});
  const [otherCompany]=await owner.db.insert(schema.company).values({tenantId:other.id,legalName:'Fictional Large Operating Sdn Bhd'}).returning({id:schema.company.id});
  await owner.client`with people as (
    insert into person(tenant_id,full_name,primary_email)
    select ${other.id}::uuid,'Fictional Large '||lpad(n::text,6,'0')||' '||(array['Abdullah','Wong','Pillai','Garcia','Sato'])[1+n%5],
-    'large-'||n||'@fixture.test' from generate_series(1,40000) n returning id,full_name)
+    'large-'||n||'@fixture.test' from generate_series(1,15000) n returning id,full_name)
   insert into employment(tenant_id,person_id,company_id,employee_code,hired_on)
   select ${other.id}::uuid,p.id,${otherCompany.id}::uuid,'LG-'||lpad((row_number() over(order by p.full_name))::text,6,'0'),'2023-01-01' from people p`;
  await owner.client`analyze person`;await owner.client`analyze employment`;
-},300_000);
+},600_000); // The 21,000-employment fixture with 7240's visibility maintenance; hosted runners took >300 s at 46,000.
 afterAll(closeAll);
 
 const TERMS=['tan','TAN','Bulk 0123','bk-0042','fictional person 01','fx-0','rahman','zzzz-none','a%c','b_l','am','tâm','ⅰ'];
