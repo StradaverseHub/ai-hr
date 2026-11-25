@@ -2,7 +2,8 @@
 
 Date: 25 November 2026
 
-Status: **Draft for owner review.** Nothing in it is built. No migration is reserved: each migration-bearing step takes the
+Status: **Approved by the owner on 25 November 2026** ("Approve as recommended"): all six decisions of section 8 as
+written. Nothing in it is built yet. No migration is reserved: each migration-bearing step takes the
 next free number at build time from `node .github/ci/check-migration-collisions.mjs --local --next` (currently 7320 or
 above) and is recorded in `docs/MIGRATION-ALLOCATION.md`. ADR 0181 Phase 3 (PR 302) deliberately left these reads
 uncached; this addendum makes them cheap instead. It applies ADR 0181 decisions 1 and 5 (per-row authority, per-row loops)
@@ -396,6 +397,9 @@ Each step ships as its own PR with green `alpha-focused-checks.yml`. It goes to 
 through the shared staging queue (coordinator "ORCHESTRATOR"). Production follows only by a separate explicit request.
 
 ## 8. Owner decisions
+
+Approved on 25 November 2026 ("Approve as recommended"), all six as written below. Each staging release and each
+switch from `legacy` still needs its own go-ahead; production needs a separate explicit request.
 
 1. **Approach.** Restate these families' rules once per statement and plan policies only for the roles they can admit,
    instead of new stored access tables (section 3). Stored module answers are reconsidered only if the
