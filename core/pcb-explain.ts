@@ -1,6 +1,6 @@
 import {clientPackFor} from '../localization/registry.client';
 import type {SavedTaxCircumstance} from '../localization/country-pack';
-import { readPcbNonCash, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
+import { readPcbNonCash, pcbNonCashStreams, type NonCashFigures, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 const taxCircumstanceOf=clientPackFor('MY')!.payroll.taxCircumstanceOf!;
 const readSavedTaxCircumstance=clientPackFor('MY')!.payroll.readSavedTaxCircumstance!;
 /**
@@ -532,7 +532,9 @@ export function explainPcb(
   const nonCash = readPcbNonCash(st.pcbNonCash);
   const savedTrace = metaObj.trace as Record<string, unknown> | null;
   const savedNormal = savedTrace?.Y1 ?? savedTrace?.remuneration;
-  const benefitNormal = nonCash ? nonCash.cashNormal + nonCash.cumulative.bik + nonCash.cumulative.vola : NaN;
+  // 8edeef41 — Y1 holds the Normal-stream benefits only; an Additional benefit is in Yt (version 1 is all Normal).
+  const normalBenefits = nonCash ? pcbNonCashStreams(nonCash).cumulative.normal : null;
+  const benefitNormal = nonCash && normalBenefits ? nonCash.cashNormal + normalBenefits.bik + normalBenefits.vola : NaN;
   figures.nonCash = nonCash && typeof savedNormal === 'number' && Number.isFinite(savedNormal) &&
     Number.isSafeInteger(Math.round(savedNormal * 100)) && Math.abs(savedNormal * 100 - Math.round(savedNormal * 100)) < 0.000001 &&
     Number.isSafeInteger(Math.round(benefitNormal * 100)) && Math.round(benefitNormal * 100) === Math.round(savedNormal * 100)
@@ -1309,12 +1311,22 @@ const slipComponentRows = (captions: readonly string[]): PcbSlipRow[] =>
     first: { kind: 'notSeparatelyRecorded' } as PcbWorksheetValue,
   }));
 
+/** The month's Normal-stream benefits (Y1). A version 1 snapshot is all Normal, so this is `current` exactly. */
 function recordedBenefitRows(benefits: PcbNonCashSnapshot): PcbSlipRow[] {
+  return benefitFigureRows(pcbNonCashStreams(benefits).current.normal, 'slipCompBenefitsInKind', 'slipCompLivingAccommodation');
+}
+function benefitFigureRows(current: NonCashFigures, bikCaption: string, volaCaption: string): PcbSlipRow[] {
   return (['bik','vola'] as const).flatMap(kind => [
-    {line:'',caption:kind==='bik'?'slipCompBenefitsInKind':'slipCompLivingAccommodation',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].taxable)},
-    {line:'',caption:kind==='bik'?'slipBikEntered':'slipVolaEntered',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].entered)},
-    {line:'',caption:kind==='bik'?'slipBikExempt':'slipVolaExempt',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].exempt)},
+    {line:'',caption:kind==='bik'?bikCaption:volaCaption,ns:'pcbDetail' as const,first:slipMoney(current[kind].taxable)},
+    {line:'',caption:kind==='bik'?'slipBikEntered':'slipVolaEntered',ns:'pcbDetail' as const,first:slipMoney(current[kind].entered)},
+    {line:'',caption:kind==='bik'?'slipBikExempt':'slipVolaExempt',ns:'pcbDetail' as const,first:slipMoney(current[kind].exempt)},
   ]);
+}
+/** 8edeef41 — the month's Additional-stream benefits (part of Yt), shown only when the saved snapshot has one, so
+ *  every existing payslip's breakdown is unchanged. */
+function additionalBenefitRows(benefits?: PcbNonCashSnapshot | null): PcbSlipRow[] {
+  if (!benefits || !benefits.entries.some(entry => entry.stream === 'additional')) return [];
+  return benefitFigureRows(pcbNonCashStreams(benefits).current.additional, 'slipAddBenefitsInKind', 'slipAddLivingAccommodation');
 }
 function accumulatedBenefitRows(benefits?: PcbNonCashSnapshot | null): PcbSlipRow[] {
   return (['bik','vola'] as const).map(kind => ({line:'',caption:kind==='bik'?'slipAccBik':'slipAccVola',ns:'pcbDetail' as const,
@@ -1346,9 +1358,11 @@ export function pcbCurrentRemunerationSection(y1: PcbWorksheetValue, k1: PcbWork
 export function pcbAdditionalRemunerationSection(
   yt: PcbWorksheetValue,
   kt: PcbWorksheetValue,
+  benefits?: PcbNonCashSnapshot | null,
 ): PcbSlipSection {
   const rows: PcbSlipRow[] = [{ line: 'Yt', caption: 'slipAdditionalTotal', ns: 'pcbDetail', first: yt }];
   for (const r of slipComponentRows(SLIP_ADDITIONAL_COMPONENTS)) rows.push(r);
+  rows.push(...additionalBenefitRows(benefits));
   rows.push({ line: 'Kt', caption: 'slipAdditionalEpf', ns: 'pcbDetail', first: kt });
   return { heading: 'slipAdditionalRemHeading', firstColumn: 'slipColAmount', rows, note: 'slipAdditionalRemNote' };
 }
@@ -1642,6 +1656,7 @@ export function pcbSlipSections(
   if (x.kind === 'flat' && x.nonCash) return [
     {heading:'slipAccHeading',firstColumn:'slipColAmount',rows:accumulatedBenefitRows(x.nonCash),note:'slipAccNote'},
     {heading:'slipCurrentHeading',firstColumn:'slipColAmount',rows:recordedBenefitRows(x.nonCash),note:'slipCurrentNote'},
+    ...(additionalBenefitRows(x.nonCash).length ? [{heading:'slipAdditionalRemHeading',firstColumn:'slipColAmount',rows:additionalBenefitRows(x.nonCash),note:'slipAdditionalRemNote'}] : []),
   ];
   if (x.kind !== 'mtd') return [];
   const t = x.trace;
@@ -1676,7 +1691,7 @@ export function pcbSlipSections(
     }),
     // 5 and 6 — the component split payroll does not persist. See the block above `SLIP_CURRENT_COMPONENTS`.
     pcbCurrentRemunerationSection(fromTrace(t, (v) => v.Y1), t ? slipMoney(t.K1) : slipMoney(x.epfThisMonth), x.nonCash),
-    pcbAdditionalRemunerationSection(fromTrace(t, (v) => v.Yt), fromTrace(t, (v) => v.Kt)),
+    pcbAdditionalRemunerationSection(fromTrace(t, (v) => v.Yt), fromTrace(t, (v) => v.Kt), x.nonCash),
     // 7 — this month's declaration, itemised, beside the year it accumulates into.
     pcbReliefScheduleSection({
       heading: 'slipCurrentDeductionHeading',

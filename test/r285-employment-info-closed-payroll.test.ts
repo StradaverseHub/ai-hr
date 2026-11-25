@@ -220,8 +220,9 @@ describe('setEmploymentInfo — the gate is scoped by FIELD, so legitimate edits
 
     const row = await employmentRow(id);
     expect(row.confirmationDate).toBe('2026-05-14');
-    await createMovementEvent(adminCtx(b),{employmentId:id,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-03-01',resignationEffectiveDate:'2026-03-01',endDate:'2026-03-31'});
-    expect((await employmentRow(id)).resignationDate).toBe('2026-03-01');
+    // 7da649d3 rev 2 — the last working day may precede the Resignation Date (tender <= last working <= resignation).
+    await createMovementEvent(adminCtx(b),{employmentId:id,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-03-01',resignationEffectiveDate:'2026-03-31',endDate:'2026-03-01'});
+    expect((await employmentRow(id)).resignationDate).toBe('2026-03-31');
   });
 });
 

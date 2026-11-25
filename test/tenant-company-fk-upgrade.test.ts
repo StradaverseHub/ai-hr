@@ -273,6 +273,8 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10700,version:'7',when:1795495007300,tag:'7300_pay_component_itemised_payslips',breakpoints:true},
  {idx:10710,version:'7',when:1795495007310,tag:'7310_payroll_tax_import_source_revisions',breakpoints:true},
  {idx:10720,version:'7',when:1795495007320,tag:'7320_employment_search_trigram',breakpoints:true},
+ {idx:10730,version:'7',when:1795495007330,tag:'7330_queue_read_offboarding_access',breakpoints:true},
+ {idx:10740,version:'7',when:1795495007340,tag:'7340_queue_read_contract_navigation',breakpoints:true},
  {idx:10770,version:'7',when:1795495007370,tag:'7370_custom_pcb_selection',breakpoints:true},
 ];
 
@@ -1392,6 +1394,16 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_tax_import_source_revisions(uuid[])',app:true},
    // 7320 (ADR 0181 Phase 4): the trigram-indexed employee search candidates (ids only, visible set only).
    {fn:'app.employment_search_candidates(text,uuid[],boolean)',app:true},
+   // 7330 (ADR 0181 live work queues, Q1): the renamed legacy body, the restated body, the mode setter and the every-user
+   // comparison are owner only; the dispatcher keeps the original name and its application grant.
+   {fn:'app.offboarding_posting_queue_access_legacy()',app:false},
+   {fn:'app.offboarding_posting_queue_access_v2()',app:false},
+   {fn:'app.queue_read_compare(text,uuid)',app:false},
+   {fn:'app.queue_read_set_mode(text,text)',app:false},
+   // 7340: the Contract navigation's renamed legacy body, its restated body and the once-per-statement automation arm.
+   {fn:'app.contract_shared_navigation_access_legacy()',app:false},
+   {fn:'app.contract_shared_navigation_access_v2()',app:false},
+   {fn:'app.contract_staff_automation_v2()',app:false},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
@@ -3024,9 +3036,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // 7210 (ADR 0181 Phase 2 pilot): four owner-only tables with their owner policies, and the Job descriptions read
   // policies restated once per statement (job_document_read, job_document_revision_read and the FOR ALL
   // job_document_revision_write). Each expected text is normalised by PostgreSQL under a temporary name.
-  // 7240 adds four more owner-only tables with the same owner policy.
+  // 7240 adds four more owner-only tables with the same owner policy; 7330 adds queue_read_control (ADR 0181 live work
+  // queues), owner only with the same owner policy shape.
   const accessPilotTables=['access_company_closure','access_company_state','access_effective_company','access_precompute_control',
-   'access_department_closure','access_employment_precompute_control','access_employment_state','access_reporting_reach'];
+   'access_department_closure','access_employment_precompute_control','access_employment_state','access_reporting_reach','queue_read_control'];
   const accessPilotOwner='for all using(app.acting_as_owner()) with check(app.acting_as_owner())';
   const accessPilotView="j.company_id=ANY((SELECT app.access_workforce_companies('workforce.view'))::uuid[])";
   const accessPilotRevision=(extra:string)=>`tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.job_document j WHERE j.tenant_id=job_document_revision.tenant_id AND j.id=job_document_revision.job_id AND ${accessPilotView}${extra})`;
@@ -3052,7 +3065,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {table:'job_document_revision',name:'job_document_revision_read',sql:'for select to ai_hr_app using(app.job_document_scope(tenant_id,job_id))'},
    {table:'job_document_revision',name:'job_document_revision_write',sql:`for all to ai_hr_app using(${accessPilotOldWrite}) with check(${accessPilotOldWrite})`},
   ]));
-  expect(accessPilotAfter).toHaveLength(11);expect(accessPilotBefore).toHaveLength(3);
+  expect(accessPilotAfter).toHaveLength(12);expect(accessPilotBefore).toHaveLength(3);
   const isAccessPilotPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>row.schemaname==='public'&&accessPilotAfter.some(expected=>accessPilotKey(expected)===accessPilotKey(row));
   const isAccessPilotReplaced=(row:(typeof beforePerformancePrivileges.policies)[number])=>row.schemaname==='public'&&accessPilotBefore.some(expected=>accessPilotKey(expected)===accessPilotKey(row));
   const isAccessPilotRelation=(rel:string)=>accessPilotTables.includes(rel);

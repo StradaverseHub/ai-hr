@@ -3163,7 +3163,7 @@
     "what": {
       "bank_change_before_pay_day": "Tài khoản ngân hàng đổi vào {changed}, {days} ngày trước ngày trả lương {payDay} (nay kết thúc bằng {last4}).",
       "shared_bank_account": "Một tài khoản kết thúc bằng {last4} thuộc {people} người; {paid} người do công ty này trả lương.",
-      "pay_after_last_day": "Lương thực nhận trên phiếu lương bắt đầu sau ngày làm việc cuối cùng, {lastDay}.",
+      "pay_after_last_day": "Lương thực nhận trên phiếu lương bắt đầu sau khi chấm dứt việc làm, {lastDay}.",
       "pay_without_attendance": "Có lương thực nhận nhưng không có chấm công và không có nghỉ phép được duyệt trong kỳ.",
       "preparer_closed_run": "Cùng một người đã xử lý và đóng lần chạy {seq}. Chỉ đánh dấu: không có người duyệt thứ hai.",
       "adjustment_without_reason": "Một điều chỉnh thủ công trên {threshold} được nhập mà không có lý do.",

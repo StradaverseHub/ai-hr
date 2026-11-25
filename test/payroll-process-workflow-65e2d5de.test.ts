@@ -203,23 +203,24 @@ describe('65e2d5de · C — Recalculation History arrives closed, the fresh resu
 });
 
 describe('65e2d5de · D — the reprocess search cannot shrink the submitted set', () => {
-  it('carries hidden selections across both groups and posts only ready ids after tax review', () => {
+  it('carries hidden selections across every list and posts every ticked id (a1a80747: no tax review step)', () => {
     expect(REPROCESS_FORM).toMatch(
-      /\(review \? ready : picked\)\.map\(row\s*=>\s*<input key=\{row\.employmentId\} type="hidden" name="employmentIds" value=\{row\.employmentId\} \/>/,
+      /\{picked\.map\(row\s*=>\s*<input key=\{row\.employmentId\} type="hidden" name="employmentIds" value=\{row\.employmentId\} \/>/,
     );
-    expect(REPROCESS_FORM).toMatch(/held\.map\(row\s*=>\s*<input[^>]+name="heldEmploymentIds"/);
+    // a1a80747 — the readiness answer is no longer posted: the job decides it per employee.
+    expect(REPROCESS_FORM).not.toContain('heldEmploymentIds');
+    expect(REPROCESS_FORM).not.toContain('reviewReprocessTaxAction');
     // 6aee208b — the review NAMES at most REVIEW_NAME_CAP people; the hidden inputs above still carry everyone.
     expect(REPROCESS_FORM).toContain('{picked.slice(0, REVIEW_NAME_CAP).map((e) => (');
     expect(REPROCESS_FORM).not.toMatch(/type="checkbox"\s+name="employmentIds"/);
   });
 
-  it('both tables render the FILTERED rows, and Select this page ADDS only what is on screen (6aee208b)', () => {
-    // c3258a72 — the additions table now renders in two groups, New / Pending and Skipped, both cut from the
-    // FILTERED additions, so the search still narrows every row on screen.
-    expect(REPROCESS_FORM).toContain('const visiblePending = visibleAdditions.filter((c) => !c.skip);');
+  it('every table renders the FILTERED rows, and Select this page ADDS only what is on screen (6aee208b)', () => {
+    // a1a80747 — the one Reprocess Required list and the Nothing payable group are both cut from FILTERED rows, so
+    // the search still narrows every row on screen.
     expect(REPROCESS_FORM).toContain('const visibleSkipped = visibleAdditions.filter((c) => !!c.skip);');
-    expect(REPROCESS_FORM).toContain('{visiblePending.map((c) => additionRow(c))}');
-    expect(REPROCESS_FORM).toContain('{visibleSkipped.map((c) => additionRow(c))}');
+    expect(REPROCESS_FORM).toContain('{visibleRequired.map((r) => requiredRow(r))}');
+    expect(REPROCESS_FORM).toContain('{visibleSkipped.map((c) => (');
     expect(REPROCESS_FORM).toContain('{visibleEmployees.map((e) => {');
     expect(REPROCESS_FORM).toContain('setSelected(prev=>new Map([...prev,...visibleEmployees.map((e) => [e.employmentId,e] as [string,Selected])]))');
     expect(REPROCESS_FORM, 'Select this page replaces the selection again').not.toContain('setSelected(new Map(visibleEmployees');
@@ -234,6 +235,7 @@ describe('65e2d5de · D — the reprocess search cannot shrink the submitted set
     expect(REPROCESS_FORM).toContain("import { matchesEmployeeSearch } from '@/lib/employee-search'");
     expect(REPROCESS_FORM).toContain('employees.filter((e) => matchesEmployeeSearch(e, needle))');
     expect(REPROCESS_FORM).toContain('additions.filter((e) => matchesEmployeeSearch(e, needle))');
+    expect(REPROCESS_FORM).toContain('requiredList.filter((e) => matchesEmployeeSearch(e, needle))');
     expect(
       REPROCESS_FORM,
       'the hand-rolled predicate is back — it does not fold separators, so an Employee ID typed as it is spoken finds nobody',
@@ -321,7 +323,7 @@ describe('65e2d5de · E — the new copy resolves in every catalogue', () => {
 describe('6aee208b — Reprocess Required tabs and the all-pages selection', () => {
   const KEYS = ['reprocessPageDefaultsNote','reprocessPagingNote','reprocessTabsLabel','reprocessTabRequired','reprocessTabUnchanged',
     'reprocessStatusRequired','reprocessReasonRequired','reprocessStaleAllSelected','reprocessStalePartSelected','reprocessStaleOthers',
-    'reprocessStaleWithoutPayslip','reprocessStaleSelectAgain','reprocessClearSelection','reprocessNoRequired','reprocessNoUnchanged',
+    'reprocessStaleWithoutPayslipNew','reprocessStaleSelectAgain','reprocessClearSelection','reprocessNoRequired','reprocessNoUnchanged',
     'reprocessReviewMore','reprocessReviewStaleLeftOut'] as const;
   const read = (loc: string) => JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8')).payroll.batch as Record<string, unknown>;
   const args = (v: string) => [...v.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
@@ -346,7 +348,9 @@ describe('6aee208b — Reprocess Required tabs and the all-pages selection', () 
 
   it('the tab rides the same route: links built on the server, page reset, search kept', () => {
     expect(REPROCESS_PAGE).toContain("const tab = sp.tab === 'required' || sp.tab === 'unchanged' ? sp.tab : 'default';");
-    expect(REPROCESS_PAGE).toMatch(/payrollEmployeeSelectionPage\(s,\{batchId,kind:'reprocess',page:parsePageQuery\(sp\),search:sp\.q,tab\}\)/);
+    // a1a80747 — Reprocess Required is the one union list; Processed / No Change stays the payslip reader's tab.
+    expect(REPROCESS_PAGE).toContain('reprocessRequiredWithSkipPage(s,{batchId,page:parsePageQuery(sp),search:sp.q})');
+    expect(REPROCESS_PAGE).toMatch(/payrollEmployeeSelectionPage\(s,\{batchId,kind:'reprocess',page:parsePageQuery\(sp\),search:sp\.q,tab:'unchanged'\}\)/);
     expect(REPROCESS_PAGE).toContain("!['page', 'tab', 'error'].includes(k)");
     expect(REPROCESS_FORM).toMatch(/<Link key=\{key\} href=\{paging\.tabs!\.hrefs\[key\]\} replace scroll=\{false\}/);
     // The form keeps its one mount per job, which is what keeps the ticks across a tab change.

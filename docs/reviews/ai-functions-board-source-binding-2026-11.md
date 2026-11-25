@@ -1761,3 +1761,26 @@ The repository owner approved carrying forward the 28 existing approvals to exac
 ## Staging release 8 r3 (gate-fix members), 25 November 2026
 
 The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `6edc9ba2caf1dd0002e819ba4c8f9edeb0ebc2fce4ebc95e3e7791c3ec40ef9a` (owner, 12 November 2026, as above; release 8 staging approval as above). After release 8 r2's gate, the members fixed their failures: Phase 4 renamed `keysetFetchLimit` to `keysetReadLimit` (`core/attendance.ts`, `core/read.ts`, `lib/pagination.ts`); the other fixes are test-only or migration SQL (7280's membership check). Those three covered files are the only covered changes since `313b0ac0690ce9db8645630889ea5f1a0acca5a56d0d466b8733aafc521b71ae`: list paging reached through imports. No provider root changes; no provider transform, outbound field, approved purpose, endpoint or transport changes. Exactly 28 digest literals change; the pending record is untouched. The module-agent manifest was regenerated afterwards (`a5cc7de7f9b7493a675b88e778d7ca6ea2f1aec14ca3a60e97035482bf99bfb8` -> `f99ed1659fe076a67fbf81bc625ab09efb45774451a1720984526d9be6081941`). Staging only; no production authority.
+
+## Board batch 20261125 (PRs 329, 330, 331, 332) on release 8 r3 738a7df28, 25 November 2026
+
+The repository owner approved carrying forward the 28 existing approvals to exact source fingerprint `0dbdd78cd95f91d49c0919a7957489edebc3403da9f309acc10a54c72d1cd508` across 1,852 files. The approvals are the owner's standing approval of 12 November 2026 ("I approve fully on the rebinding and the AI approval, dont have to wait for my decision") and, on 25 November 2026, the owner's approval of these four board items for staging in this session ("Yes, deploy to staging").
+
+The candidate merges four board builds onto release 8 r3's candidate `738a7df28` (fingerprint `6edc9ba2caf1dd0002e819ba4c8f9edeb0ebc2fce4ebc95e3e7791c3ec40ef9a`):
+- 7da649d3 r2: leaver pay ends on the employment end date;
+- a1a80747: one Reprocess Required list, with tax readiness inside the job;
+- 74a7a074: readable Audit Trail details;
+- 8edeef41 r2: BIK/VOLA Normal or Additional remuneration through the existing PCB additional path.
+
+31 existing covered files change, all application read, write, calculation and presentation paths reached through imports:
+- core: `core/hire-employment-information.ts`, `core/movement.ts`, `core/org.ts`, `core/pay-components.ts`, `core/pay-formula-runtime.ts`, `core/payroll-audit/controls.ts`, `core/payroll-employment-eligibility.ts`, `core/payroll-individual-txn.ts`, `core/payroll-run-group-result.ts`, `core/payroll-tax-basis.ts`, `core/payroll-view.ts`, `core/payroll.ts`, `core/pcb-explain.ts`;
+- lib: `lib/audit-format.ts`, `lib/employment-information-date-order.ts`, `lib/payroll-leaving-date.ts`, `lib/personnel-field-registry.ts`;
+- localization: `localization/my/multicycle-worksheet.ts`, `localization/my/multicycle.ts`, `localization/my/payroll.ts`, `localization/my/tax-basis-replay.ts`, `localization/noncash-benefits.ts`;
+- messages: six `messages/*.json` locale files, plus `messages/ai-centre/en.json` (the display wording of the `pay_after_last_day` audit finding);
+- `lib/ai/agent-capability-inventory.ts`, which drops the removed `reviewReprocessTaxAction` server action.
+
+One file is new to the covered set: `lib/audit-fields.ts`, a pure Audit Trail field-label registry.
+
+No file under `lib/ai/providers/`, `lib/ai/provider-*` or any other provider root changes. No provider transform, outbound field, approved purpose, endpoint or transport changes.
+
+Exactly 28 digest literals change (`6edc9ba2…` -> `0dbdd78c…`), and reversing those substitutions restores release 8 r3's registry byte for byte. The pending record is untouched. The module-agent manifest was regenerated afterwards (`f99ed1659fe076a67fbf81bc625ab09efb45774451a1720984526d9be6081941` -> `dcc31d0c31fec758b97548b508421b93791dc28c358b4b65701ce61cb10a9fdd`, 497 files). Staging only; no production authority.

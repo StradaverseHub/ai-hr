@@ -26,7 +26,8 @@ afterAll(closeAll);
 async function hire(code='EXIT') {return hireEmployee(ctx,{companyId:b.companyId,departmentId:b.deptA,employeeCode:code,person:{fullName:'Resignation fixture',primaryEmail:`${randomUUID()}@resignation-owner.test`},employmentType:'full_time',hiredOn:day(-365)});}
 async function row(id:string){return (await owner.db.select().from(schema.employment).where(eq(schema.employment.id,id)))[0];}
 const dates=(record:Awaited<ReturnType<typeof row>>)=>({tenderResignationDate:record.tenderResignationDate,resignationDate:record.resignationDate,lastWorkingDate:record.lastWorkingDate});
-const input=(employmentId:string,effectiveDate=day(-4))=>({employmentId,kind:'resignation',effectiveDate,tenderResignationDate:day(-20),resignationEffectiveDate:day(-10),endDate:day(-5),remarks:'Fictional resignation information'});
+// 7da649d3 rev 2 (owner decision 2026-11-25) — the order is tender, last working day, then Resignation Date.
+const input=(employmentId:string,effectiveDate=day(-4))=>({employmentId,kind:'resignation',effectiveDate,tenderResignationDate:day(-20),resignationEffectiveDate:day(-5),endDate:day(-10),remarks:'Fictional resignation information'});
 async function resignation(id:string,status='applied'){const rows=await movementHistory(ctx,id);const selected=rows.filter(r=>r.kind==='resignation'&&r.status===status);expect(selected).toHaveLength(1);return selected[0];}
 async function closePayroll(id:string,period:string){
  const [p]=await owner.db.insert(schema.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period,status:'closed'}).returning();
@@ -46,11 +47,11 @@ describe('884ea42d one resignation information owner',()=>{
  });
  it('Movement records all three dates, actor/before/after provenance and exactly one history row without ending employment',async()=>{
   const {employmentId}=await hire();const before=await row(employmentId);await createMovementEvent(ctx,input(employmentId));
-  const saved=await row(employmentId);expect(dates(saved)).toEqual({tenderResignationDate:day(-20),resignationDate:day(-10),lastWorkingDate:day(-5)});expect(saved.terminatedOn).toBe(before.terminatedOn);
+  const saved=await row(employmentId);expect(dates(saved)).toEqual({tenderResignationDate:day(-20),resignationDate:day(-5),lastWorkingDate:day(-10)});expect(saved.terminatedOn).toBe(before.terminatedOn);
   const history=await resignation(employmentId);expect(history.effectiveDate).toBe(day(-4));expect(history.canEdit).toBe(true);expect(history.canReverse).toBe(true);
   const summary=await resignationInformation(ctx,employmentId);expect((await movementHistoryWithTypes(ctx,employmentId,{includeResignation:true})).resignation).toEqual(summary);for(const field of ['tenderResignationDate','resignationDate','lastWorkingDate'] as const)expect(summary[field].source).toMatchObject({kind:'movement',movementId:history.id});
-  const [event]=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.id,history.id));expect(event.actorId).toBe(ctx.userId);expect(event.payload).toMatchObject({before:{resignationDate:null},after:{resignationDate:day(-10)}});
-  expect((await movementPendingEditInput(ctx,employmentId,history.id))?.values).toMatchObject({tenderResignationDate:day(-20),resignationEffectiveDate:day(-10)});
+  const [event]=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.id,history.id));expect(event.actorId).toBe(ctx.userId);expect(event.payload).toMatchObject({before:{resignationDate:null},after:{resignationDate:day(-5)}});
+  expect((await movementPendingEditInput(ctx,employmentId,history.id))?.values).toMatchObject({tenderResignationDate:day(-20),resignationEffectiveDate:day(-5)});
  });
  // 7da649d3 — a future Resignation writes its dates when it is saved (Serving Notice, payroll's last day),
  // owned as "scheduled" by the pending intent; on its effective date the sweep finds nothing left to change.
@@ -58,20 +59,20 @@ describe('884ea42d one resignation information owner',()=>{
   const {employmentId}=await hire();const legacy={tenderResignationDate:day(-60),resignationDate:day(-50),lastWorkingDate:day(-40)};
   await owner.db.update(schema.employment).set(legacy).where(eq(schema.employment.id,employmentId));
   for(const value of Object.values(await resignationInformation(ctx,employmentId)))expect(value.source.kind).toBe('legacy');
-  const future={...input(employmentId,day(10)),tenderResignationDate:today,resignationEffectiveDate:day(8),endDate:day(9)};await createMovementEvent(ctx,future);
-  const pending=await resignation(employmentId,'pending');expect(dates(await row(employmentId))).toEqual({tenderResignationDate:today,resignationDate:day(8),lastWorkingDate:day(9)});
+  const future={...input(employmentId,day(10)),tenderResignationDate:today,resignationEffectiveDate:day(9),endDate:day(8)};await createMovementEvent(ctx,future);
+  const pending=await resignation(employmentId,'pending');expect(dates(await row(employmentId))).toEqual({tenderResignationDate:today,resignationDate:day(9),lastWorkingDate:day(8)});
   expect((await resignationInformation(ctx,employmentId)).resignationDate.source).toEqual({kind:'scheduled',movementId:pending.id,effectiveDate:day(10)});
-  const intent=await movementPendingEditInput(ctx,employmentId,pending.id);expect(intent?.values).toMatchObject({tenderResignationDate:today,resignationEffectiveDate:day(8)});
+  const intent=await movementPendingEditInput(ctx,employmentId,pending.id);expect(intent?.values).toMatchObject({tenderResignationDate:today,resignationEffectiveDate:day(9)});
   expect(await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(9)))).toMatchObject({applied:0,noop:0});
   expect(await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(10)))).toMatchObject({applied:0,noop:1});
   expect(await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(10)))).toMatchObject({applied:0,noop:0});
   expect((await resignation(employmentId)).id).toBe(pending.id);expect((await resignationInformation(ctx,employmentId)).resignationDate.source).toMatchObject({kind:'movement',movementId:pending.id});expect((await row(employmentId)).terminatedOn).toBeNull();
-  expect(dates(await row(employmentId))).toEqual({tenderResignationDate:today,resignationDate:day(8),lastWorkingDate:day(9)});
+  expect(dates(await row(employmentId))).toEqual({tenderResignationDate:today,resignationDate:day(9),lastWorkingDate:day(8)});
  });
  it('corrects and cancels pending intent through the existing reversal lifecycle, the current dates following the live intent',async()=>{
-  const {employmentId}=await hire();await createMovementEvent(ctx,{...input(employmentId,day(10)),tenderResignationDate:today,resignationEffectiveDate:day(8),endDate:day(9)});
-  const pending=await resignation(employmentId,'pending');await editMovementEvent(ctx,{employmentId,movementId:pending.id,kind:'resignation',effectiveDate:day(12),endDate:day(11),resignationEffectiveDate:day(10),reason:'Corrected future dates'});
-  const corrected=await resignation(employmentId,'pending');expect(corrected.id).not.toBe(pending.id);expect(dates(await row(employmentId))).toEqual({tenderResignationDate:today,resignationDate:day(10),lastWorkingDate:day(11)});
+  const {employmentId}=await hire();await createMovementEvent(ctx,{...input(employmentId,day(10)),tenderResignationDate:today,resignationEffectiveDate:day(9),endDate:day(8)});
+  const pending=await resignation(employmentId,'pending');await editMovementEvent(ctx,{employmentId,movementId:pending.id,kind:'resignation',effectiveDate:day(12),endDate:day(10),resignationEffectiveDate:day(11),reason:'Corrected future dates'});
+  const corrected=await resignation(employmentId,'pending');expect(corrected.id).not.toBe(pending.id);expect(dates(await row(employmentId))).toEqual({tenderResignationDate:today,resignationDate:day(11),lastWorkingDate:day(10)});
   await reverseMovementEvent(ctx,{employmentId,movementId:corrected.id,reason:'Withdraw future record'});
   expect(dates(await row(employmentId))).toEqual({tenderResignationDate:null,resignationDate:null,lastWorkingDate:null});
   expect((await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(30)))).applied).toBe(0);expect((await row(employmentId)).resignationDate).toBeNull();
@@ -81,7 +82,7 @@ describe('884ea42d one resignation information owner',()=>{
   const {employmentId}=await hire();const legacy={tenderResignationDate:day(-70),resignationDate:day(-60),lastWorkingDate:day(-50)};await owner.db.update(schema.employment).set(legacy).where(eq(schema.employment.id,employmentId));
   await createMovementEvent(ctx,input(employmentId));const original=await resignation(employmentId);
   await editMovementEvent(ctx,{...input(employmentId),movementId:original.id,resignationEffectiveDate:day(-9),reason:'Correct actual resignation date'});
-  const corrected=await resignation(employmentId);expect((await row(employmentId)).resignationDate).toBe(day(-9));const history=await movementHistory(ctx,employmentId);expect(history.find(r=>r.id===original.id)?.reversed?.corrected).toBe(true);expect(history.find(r=>r.id===original.id)?.recordedResignation?.resignationDate).toEqual({known:true,value:day(-10)});expect(history.find(r=>r.id===corrected.id)?.recordedResignation?.resignationDate).toEqual({known:true,value:day(-9)});
+  const corrected=await resignation(employmentId);expect((await row(employmentId)).resignationDate).toBe(day(-9));const history=await movementHistory(ctx,employmentId);expect(history.find(r=>r.id===original.id)?.reversed?.corrected).toBe(true);expect(history.find(r=>r.id===original.id)?.recordedResignation?.resignationDate).toEqual({known:true,value:day(-5)});expect(history.find(r=>r.id===corrected.id)?.recordedResignation?.resignationDate).toEqual({known:true,value:day(-9)});
   await reverseMovementEvent(ctx,{employmentId,movementId:corrected.id,reason:'Restore prior historical record'});expect(dates(await row(employmentId))).toEqual(legacy);expect((await resignationInformation(ctx,employmentId)).resignationDate.source.kind).toBe('legacy');
  });
  it('permits closed-payroll correction, rollback and create while retaining every issued financial value',async()=>{
@@ -89,8 +90,8 @@ describe('884ea42d one resignation information owner',()=>{
   await closePayroll(employmentId,today.slice(0,7));
   const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,employmentId));
   const batches=await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id);
-  await editMovementEvent(ctx,{...input(employmentId),movementId:history.id,endDate:day(-3),reason:'Correct fictional exit information'});
-  const corrected=await resignation(employmentId);expect((await row(employmentId)).lastWorkingDate).toBe(day(-3));
+  await editMovementEvent(ctx,{...input(employmentId),movementId:history.id,endDate:day(-6),reason:'Correct fictional exit information'});
+  const corrected=await resignation(employmentId);expect((await row(employmentId)).lastWorkingDate).toBe(day(-6));
   await reverseMovementEvent(ctx,{employmentId,movementId:corrected.id,reason:'Remove fictional incorrect exit'});
   await createMovementEvent(ctx,{...input(employmentId),resignationEffectiveDate:day(-9)});
   expect((await row(employmentId)).resignationDate).toBe(day(-9));
@@ -115,10 +116,10 @@ describe('884ea42d one resignation information owner',()=>{
  });
  it('Movement import rehearses and commits the same lifecycle dates without premature preview effects',async()=>{
   const {employmentId}=await hire('MOVE-IMPORT');
-  const csv=`employee_code,event_type,effective_date,tender_resignation_date,resignation_effective_date,end_date\nMOVE-IMPORT,resignation,${today},${day(-20)},${day(-10)},${day(-5)}`;
+  const csv=`employee_code,event_type,effective_date,tender_resignation_date,resignation_effective_date,end_date\nMOVE-IMPORT,resignation,${today},${day(-20)},${day(-5)},${day(-10)}`;
   const preview=await previewMovementImport(ctx,{companyId:b.companyId,csv});expect(preview.valid).toBe(1);expect((await row(employmentId)).resignationDate).toBeNull();
   const fingerprints=Object.fromEntries(preview.employees.filter(employee=>employee.fingerprint).map(employee=>[employee.employeeCode,employee.fingerprint!]));
-  const result=await commitMovementImport(ctx,{companyId:b.companyId,csv,inputHash:preview.inputHash,selection:preview.selection,fingerprints,acknowledgeExcluded:true});expect(result.imported).toBe(1);expect((await row(employmentId)).resignationDate).toBe(day(-10));
+  const result=await commitMovementImport(ctx,{companyId:b.companyId,csv,inputHash:preview.inputHash,selection:preview.selection,fingerprints,acknowledgeExcluded:true});expect(result.imported).toBe(1);expect((await row(employmentId)).resignationDate).toBe(day(-5));
  });
  it('generic employee imports refuse historical exit columns; Movement transport retains all three exact dates',async()=>{
   const records=[{full_name:'Historical import',email:'history@resignation-owner.test',department:'Finance',hired_on:day(-100),employee_code:'IMPORT-HISTORY',basic_salary:'4000',resignation_date:day(-10)}];

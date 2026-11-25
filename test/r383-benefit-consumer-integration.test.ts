@@ -59,4 +59,40 @@ describe('r383 generated saved benefit consumers',()=>{
   }
   expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,saved[0].id)))[0]).toEqual(saved[0]);
  });
+ // 8edeef41 (owner decision 2026-11-25) — the same month with the VOLA item saved as Additional: the bonus run charges it
+ // through Yt, the worksheet still reconciles the month, and the PCB detail lists it under Additional remuneration.
+ it('an Additional-stream VOLA is replayed by the worksheet and shown under Additional remuneration on screen and download',async()=>{
+  const ctx=await entitledCtx(base);
+  const e=await hireEmployee(ctx,{person:{fullName:'Synthetic Additional Benefit',primaryEmail:`${randomUUID()}@test.local`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});
+  await pack.statutory.set(ctx,{personId:e.personId,icNumber:'900101145678',taxCategory:3});
+  await setCompensation(ctx,{employmentId:e.employmentId,basicSalary:14000,effectiveFrom:'2025-01-01'});
+  const flags={kind:'non_payable' as const,isNonPayable:true,prorates:false,includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,includedInHrdfBase:false,pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:false};
+  const bik=await upsertPayComponent(ctx,{...flags,pcbRemunerationType:'normal',code:'SYNTH_CAR',label:'Synthetic BIK',name:'Synthetic BIK',displayCategory:'bik',eaFormLine:'EA_B3'});
+  const vola=await upsertPayComponent(ctx,{...flags,pcbRemunerationType:'additional',code:'SYNTH_HOME',label:'Synthetic VOLA',name:'Synthetic VOLA',displayCategory:'vola',eaFormLine:'EA_B4'});
+  await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:bik.id,amount:600,effectiveFrom:'2026-01-01'});
+  const regular=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-05'});await generatePayslips(ctx,{batchId:regular.batchId});
+  const additional=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:'2026-05',runType:'bonus'});
+  const cash=await upsertPayComponent(ctx,{ label: 'Synthetic Cash Bonus',code:'SYNTH_BONUS',name:'Synthetic Cash Bonus',kind:'allowance',isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:true});
+  await setPayrollBatchComponent(ctx,{batchId:additional.batchId,employmentId:e.employmentId,componentId:cash.id,amount:3000});
+  await createIndividualTxn(ctx,{batchId:additional.batchId,employmentId:e.employmentId,kind:'earning',componentId:vola.id,txnDate:'2026-05-15',amount:900});
+  await generatePayslips(ctx,{batchId:additional.batchId});
+  const saved=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,additional.batchId));expect(saved).toHaveLength(1);
+  const st=saved[0].statutory as any;
+  expect(st.pcbNonCash.version).toBe(2);expect(st.pcbNonCash.owned).toEqual({bik:0,vola:900});expect(st.pcbNonCash.cumulative).toEqual({bik:600,vola:900});
+  expect(st.pcbMeta.trace.Y1).toBe(14600);expect(st.pcbMeta.trace.Yt).toBe(3900);
+  const month=pack.payroll.statutory(14000,{category:3,children:0},3000,0,{month:5},{pcbNonCashNormal:{bik:600,vola:0},pcbNonCashAdditional:{bik:0,vola:900}});
+  const [regularSlip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,regular.batchId));
+  expect(Number((regularSlip.statutory as any).pcb)+Number(st.pcb)).toBeCloseTo(month.pcb,2);
+  const sheet=await multiCycleWorksheetMY(ctx,{companyIds:[base.companyId]});expect(sheet.employeeMonthsCompared).toBe(1);expect(sheet.employeeMonthsFlagged).toBe(0);expect(sheet.rows[0].verdict).toBe('already_aggregated');
+  const row=await payslipForReview(ctx,{companyIds:[base.companyId],payslipId:saved[0].id});expect(row).toBeTruthy();
+  const x=explainPcb(row!.statutory,null);expect(x.kind).toBe('mtd');expect(x.nonCash?.version).toBe(2);
+  const additionalSection=pcbSlipSections(x,sides).find(section=>section.heading==='slipAdditionalRemHeading')!;
+  expect(additionalSection.rows.find(r=>r.caption==='slipAddLivingAccommodation')?.first).toEqual({kind:'money',amount:900});
+  state.auth={s:ctx,scopeIds:[base.companyId]};state.locale='en';
+  const captions=JSON.parse(fs.readFileSync('messages/en.json','utf8')).payroll.pcbDetail;
+  const html=renderToStaticMarkup(await PcbDetailView({ctx:{employeeCode:'SYNTH',employeeName:'Synthetic Additional Benefit',company:'Synthetic Company',periodLabel:'May 2026',payPeriod:'2026-05',runType:'bonus',runSeq:2,currency:'MYR',rulesetVersion:null,identityNumber:null,identityIsPassport:false,taxNumber:null,taxCategory:3},explanation:x,worksheet:pcbWorksheet(x,null),slip:pcbSlipSections(x,sides),closing:pcbClosingSections(x)}));
+  expect(html).toContain(captions.slipAddLivingAccommodation);expect(html).toContain(captions.slipVolaEntered);expect(html).toContain('900.00');expect(html).toContain('600.00');
+  const response=await pcbDetailPdfResponse(new Request(`http://test.local/payroll/pcb-detail/pdf?payslipId=${saved[0].id}&lang=en`),'attachment');expect(response.status).toBe(200);
+  const text=await extractedText(new Uint8Array(await response.arrayBuffer()));expect(text).toContain(captions.slipVolaEntered);expect(text).toContain('900.00');
+ });
 });

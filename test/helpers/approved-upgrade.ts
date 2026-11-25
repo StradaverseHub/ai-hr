@@ -494,6 +494,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10700,when:1795495007300,tag:'7300_pay_component_itemised_payslips'},
  {idx:10710,when:1795495007310,tag:'7310_payroll_tax_import_source_revisions'},
  {idx:10720,when:1795495007320,tag:'7320_employment_search_trigram'},
+ {idx:10730,when:1795495007330,tag:'7330_queue_read_offboarding_access'},
+ {idx:10740,when:1795495007340,tag:'7340_queue_read_contract_navigation'},
  {idx:10770,when:1795495007370,tag:'7370_custom_pcb_selection'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
@@ -516,6 +518,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7300_pay_component_itemised_payslips':'b078a1a609def1043736cdd4f27e165aa7fc62720f0ec71fe3dee441fb91e9cf',
  '7310_payroll_tax_import_source_revisions':'a1b6a4708f8596d4801f88980ccca2a838ea6c2ce36477b8299a42e1a7ad18c0',
  '7320_employment_search_trigram':'894759d783678ab4344ef836083938e1af40e29b6198cfadd6a91d54d72729d7',
+ '7330_queue_read_offboarding_access':'6313303feb1ff5a25f959ae2b99987a5aba2ab2b44ec4bfe29f8fe5cb39044a3',
+ '7340_queue_read_contract_navigation':'675007a187d548b3a387483502f6cece7241f293cad6eeecc38d4b739727c56b',
  '7370_custom_pcb_selection':'a840b463c061f47cf7245b393258db8fff8bb2623fb90adc44770d4db4ede175',
  '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',
  '7100_payroll_run_company_review':'558adf2530aa3961163841b6df000b3dbcc9af30d21e309258e3b2a72f2b5ec6',

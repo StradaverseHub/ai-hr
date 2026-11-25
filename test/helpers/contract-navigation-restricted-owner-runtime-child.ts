@@ -58,7 +58,10 @@ async function main(){
   }
   const[identity]=await owner.client<{session:string;current:string;super:boolean;bypass:boolean;createRole:boolean}[]>`select session_user::text as session,current_user::text as current,(select rolsuper from pg_roles where rolname=current_user) as super,(select rolbypassrls from pg_roles where rolname=current_user) as bypass,(select rolcreaterole from pg_roles where rolname=current_user) as "createRole"`;
   assert.deepEqual({...identity},{session:'ai_hr_owner',current:'ai_hr_owner',super:false,bypass:false,createRole:false});
-  const signatures=['app.contract_shared_configuration_company_scope()','app.contract_shared_navigation_access()','app.contract_shared_tracker_subjects()','app.contract_shared_tracker_company_scope()','app.contract_shared_tracker_managed_subjects()'];
+  // Migration 7340 (ADR 0181 live work queues, Q1) moved the reviewed 6432 statement, byte for byte, to
+  // contract_shared_navigation_access_legacy(); the original name is now a PL/pgSQL dispatcher that serves it in the
+  // installed 'legacy' mode. The plan measured is that statement's.
+  const signatures=['app.contract_shared_configuration_company_scope()','app.contract_shared_navigation_access_legacy()','app.contract_shared_tracker_subjects()','app.contract_shared_tracker_company_scope()','app.contract_shared_tracker_managed_subjects()'];
   const definitions=await owner.client<{signature:string;owner:string;body:string}[]>`select oid::regprocedure::text as signature,proowner::regrole::text as owner,prosrc as body from pg_proc where oid::regprocedure::text=any(${signatures}::text[]) order by 1`;
   assert.equal(definitions.length,signatures.length);assert.ok(definitions.every(d=>d.owner==='ai_hr_owner'));
   for(const signature of ['app.contract_shared_tracker_company_scope()','app.contract_shared_tracker_managed_subjects()'])assert.equal((await owner.client`select has_function_privilege('ai_hr_app',${signature},'EXECUTE') as allowed`)[0].allowed,false);

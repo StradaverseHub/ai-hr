@@ -11,7 +11,8 @@
  *     month. The account is kept as its last four digits and a hash, never in full. ONE finding per account and set of
  *     people, whatever the month (Phase 2 hardening): the same people sharing the same account are not found again every
  *     month; someone new joining the account is a new finding.
- *  3. pay_after_last_day: net pay on a payslip whose coverage starts after the employment's last working day.
+ *  3. pay_after_last_day: net pay on a payslip whose coverage starts after the employment ended (payroll's last day:
+ *     the earlier of termination and Resignation Date, else the last working day — 7da649d3).
  *  4. pay_without_attendance: the payroll anomaly layer's own pure detector (core/payroll-anomaly-detectors.ts
  *     `pay-without-attendance`) over the same context the anomaly evaluator builds, for salary runs.
  *  5. preparer_closed_run: one login both processed and closed a run. Never blocked (owner decision 2: there is no second
@@ -68,7 +69,7 @@ export async function detectControlFindingsTx(tx:Tx,reader:SessionContext,p:Read
  for(const batch of batches){
   const batchId=String(batch.id),runType=String(batch.run_type),status=String(batch.status);
   const payDay=runType==='regular'?defaultPaymentDate(payPeriod,typeof config?.pay_day==='number'?config.pay_day:null):dayOf(batch.batch_date);
-  const slips=status==='draft'?[]:await rows(tx,sql`select s.employment_id,s.net_pay,s.days_worked,s.coverage_from,e.person_id,e.last_working_date,e.terminated_on
+  const slips=status==='draft'?[]:await rows(tx,sql`select s.employment_id,s.net_pay,s.days_worked,s.coverage_from,e.person_id,coalesce(least(e.terminated_on,e.resignation_date),e.last_working_date) as payroll_end
    from public.payslip s join public.employment e on e.id=s.employment_id where s.batch_id=${batchId}::uuid order by s.employment_id`);
   // 1. Bank details changed within the window before pay day.
   if(slips.length){
@@ -95,9 +96,12 @@ export async function detectControlFindingsTx(tx:Tx,reader:SessionContext,p:Read
       accountAfterLast4:last4(payload.after?.bankAccountNo),netPay:slip.net_pay,runType,runSeq:batch.run_seq}});
    }
   }
-  // 3. Pay after the last working day.
+  // 3. Pay after the employment ended. 7da649d3 (owner decision 2026-11-25): the end is payroll's last day, the same
+  // rule as payrollEmploymentEnd (the earlier of termination and Resignation Date; the last working day only when both
+  // are empty). Annual leave cleared after the last working day is correctly paid and is not a finding. The evidence
+  // key stays `lastWorkingDay` so findings already recorded keep rendering.
   for(const slip of slips){
-   const lastDay=(slip.last_working_date??slip.terminated_on)?dayOf(slip.last_working_date??slip.terminated_on):null;
+   const lastDay=slip.payroll_end?dayOf(slip.payroll_end):null;
    const coverageFrom=slip.coverage_from?dayOf(slip.coverage_from):`${payPeriod}-01`;
    if(!lastDay||!(lastDay<coverageFrom)||!(Number(slip.net_pay)>0))continue;
    push({controlId:'pay_after_last_day',batchId,employmentId:String(slip.employment_id),subjectKey:`pay_after_last_day:${batchId}:${slip.employment_id}`,

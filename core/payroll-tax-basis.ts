@@ -4,7 +4,7 @@ import {maintenanceTaxInput} from '../lib/payroll-history-maintenance-tax-input'
 import {effectiveHistoryItems} from '../lib/payroll-history-maintenance-lineage';
 import type {HistoryRevisionRow} from '../lib/payroll-history-revisions';
 import {importedTaxInput,SYSTEM_BASIC_TAX_SETTING,type ImportedTaxSetting} from '../lib/payroll-import-tax-input';
-import {readPcbNonCash} from '../localization/noncash-benefits';
+import {readPcbNonCash,nonCashComparisonInputs} from '../localization/noncash-benefits';
 import {resolveTaxOpeningEvidence} from '../lib/payroll-tax-opening-evidence';
 import {readTaxOpeningRowsTx,resolveTaxOpeningRow} from './payroll-tax-opening';
 import {summarizeExemptionLedger,taxOpeningDigestRow,type TaxOpeningRow} from '../lib/payroll-tax-opening-tp3';
@@ -29,7 +29,7 @@ const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&
 const canonical=(v:unknown):string=>JSON.stringify(v,(_key,item)=>object(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 const hash=(v:unknown)=>createHash('sha256').update(canonical(v)).digest('hex');
 function fail(s:string):never{throw new PayrollTaxBasisError(s);}
-const nonCashInputs=(value:unknown)=>{const saved=readPcbNonCash(value);return saved?{owned:saved.owned,entries:saved.ownedEntries.map(({sourceId,source,...entry})=>entry),ea:saved.ownedEaEntries.map(({sourceId,source,...entry})=>entry)}:{owned:{bik:0,vola:0},entries:[],ea:[]};};
+const nonCashInputs=nonCashComparisonInputs;
 const round=(n:number)=>Math.round(n*100)/100;
 const money=(v:unknown):number|null=>{if(typeof v!=='number'&&typeof v!=='string')return null;if(typeof v==='string'&&!v.trim())return null;const n=Number(v);return Number.isFinite(n)&&n>=0&&Number.isSafeInteger(Math.round(n*100))&&Math.abs(n*100-Math.round(n*100))<1e-6?n:null;};
 function validateSelection(v:TaxBasisSelection,allowEmptySelection=false){if(!v||!uuid.test(v.companyId)||!Number.isInteger(v.year)||v.year<1900||v.year>2999||!Number.isInteger(v.upToMonth)||v.upToMonth<1||v.upToMonth>12||v.employmentIds!==null&&(!Array.isArray(v.employmentIds)||(!allowEmptySelection&&!v.employmentIds.length)||v.employmentIds.length>1000||v.employmentIds.some(id=>!uuid.test(id))||new Set(v.employmentIds).size!==v.employmentIds.length))fail('Choose a company, assessment year, final month and valid employees.');}
