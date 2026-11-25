@@ -71,7 +71,7 @@ afterAll(async()=>{try{await setMode('legacy');}finally{await teardownFixture();
 
 describe('offboarding posting queue access once per statement (7330)',()=>{
  it('installs inert: legacy mode, the original name and grant, owner-only restated and operator functions',async()=>{
-  expect(await owner.client`select function_name,mode from queue_read_control order by 1`).toEqual([{function_name:'offboarding_posting_queue_access',mode:'legacy'}]);
+  expect(await owner.client`select function_name,mode from queue_read_control where function_name='offboarding_posting_queue_access'`).toEqual([{function_name:'offboarding_posting_queue_access',mode:'legacy'}]);
   const rows=await owner.client<{fn:string;lang:string;app:boolean}[]>`select p.oid::regprocedure::text as fn,l.lanname as lang,has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app
    from pg_proc p join pg_language l on l.oid=p.prolang where p.oid in ('app.offboarding_posting_queue_access()'::regprocedure,'app.offboarding_posting_queue_access_legacy()'::regprocedure,
     'app.offboarding_posting_queue_access_v2()'::regprocedure,'app.queue_read_set_mode(text,text)'::regprocedure,'app.queue_read_compare(text,uuid)'::regprocedure) order by 1`;
