@@ -12,6 +12,7 @@ import {
 } from '@/core/read';
 import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { AuditTable } from '@/components/audit-table';
+import { resolveAuditLabels } from '@/core/audit-labels';
 import { aggregateLabel, isModuleKey, moduleKeyOf, MODULE_KEYS, type ModuleKey } from '@/lib/audit-format';
 import { Pager } from '@/components/pager';
 import { pageState, parsePageQuery } from '@/lib/pagination';
@@ -122,6 +123,7 @@ export default async function AuditPage({
     auditEventsCount(s, filters),
   ]);
   const pgState = pageState(pq, total, rows.length);
+  const labels = await resolveAuditLabels(s, rows); // 74a7a074: names for this page's rows only
   const nowMs = Date.now();
 
   // Timeline grouping — bucket the (already occurredAt-desc) rows by KL calendar day, preserving order.
@@ -283,14 +285,14 @@ export default async function AuditPage({
         <SectionHeader title={t('events')} count={rows.length} />
         <Pager basePath="/admin/audit" params={activeParams} state={pgState} exportHref={exportHref('csv')} />
         {groups.length === 0 ? (
-          <AuditTable rows={rows} nowMs={nowMs} />
+          <AuditTable rows={rows} nowMs={nowMs} labels={labels} />
         ) : (
           groups.map((g) => (
             <div key={g.key}>
               <div className="border-y border-border/60 bg-muted/40 px-4 py-1.5 text-xs font-medium text-muted-foreground">
                 {g.label}
               </div>
-              <AuditTable rows={g.rows} nowMs={nowMs} />
+              <AuditTable rows={g.rows} nowMs={nowMs} labels={labels} />
             </div>
           ))
         )}
