@@ -186,6 +186,10 @@ describe('recording a termination dated today or in the past', () => {
     const row = await employmentRow(employmentId);
     expect(row.terminatedOn).toBe(TODAY);
     expect(row.lastWorkingDate).toBe(plusDays(TODAY, -2));
+    // 7da649d3 rev 2 — every termination makes its effective date the Resignation Date (payroll's last day), and a
+    // dismissal records no tender date.
+    expect(row.resignationDate).toBe(TODAY);
+    expect(row.tenderResignationDate).toBeNull();
     expect(row.terminationReasonCode).toBe('misconduct');
     // DERIVED from the reason, never submitted alongside it.
     expect(row.terminationType).toBe('involuntary');
@@ -224,6 +228,7 @@ describe('recording a termination dated today or in the past', () => {
     );
     const row = await employmentRow(employmentId);
     expect(row.tenderResignationDate).toBe(plusDays(TODAY, -30));
+    expect(row.resignationDate).toBe(TODAY);
     expect(row.terminationType).toBe('voluntary');
   });
 
@@ -493,6 +498,13 @@ describe('the downstream effects that were already wired', () => {
   it('login blocking still reads the lifecycle end dates the termination writes', () => {
     const src = readFileSync(`${process.cwd()}/core/employment-status.ts`, 'utf8');
     expect(src).toContain('earliest(emp.resignationDate, emp.lastWorkingDate, emp.terminatedOn)');
+  });
+
+  /** 7da649d3 rev 2 (owner decision 2026-11-25) — payroll's last day is the employment end date; the last working
+   *  day only when it is the only date recorded. Status and login (above) keep the last working day. */
+  it("payroll's last day is the employment end date, not the last working day", () => {
+    const src = readFileSync(`${process.cwd()}/core/payroll-employment-eligibility.ts`, 'utf8');
+    expect(src).toContain('coalesce(least(${employment.terminatedOn},${employment.resignationDate}),${employment.lastWorkingDate})');
   });
 
   /**

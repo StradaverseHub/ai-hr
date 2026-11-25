@@ -54,6 +54,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { movementExitVersion } from '../lib/movement-exit-version';
 import {isCalendarDate} from '../lib/calendar-date';
+import {payrollLeavingDate} from '../lib/payroll-leaving-date';
 import {MOVEMENT_FLAT_FIELDS,MOVEMENT_END_DATE_FIELDS,movementEndDateFieldFor,MOVEMENT_PENDING_COMPARISON_FIELDS,MOVEMENT_PENDING_INPUT_FIELDS,movementPendingFormValues,type MovementFlatField,type MovementEndDateField,type MovementPendingFormValues} from '../lib/movement-pending-input';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
@@ -3386,24 +3387,28 @@ function resignationFinancialDates(group:RawEvent[]):string[]{return group.flatM
 /**
  * 7da649d3 — the exit DATES of a scheduled Termination or Resignation, written when it is saved.
  *
- * Employee Status and payroll both read least(resignationDate, lastWorkingDate, terminatedOn) against the HR
- * date, so writing the dates now gives Active — Serving Notice and a prorated final month at once, while
+ * Employee Status reads least(resignationDate, lastWorkingDate, terminatedOn) against the HR date, and payroll reads
+ * the employment end date (payrollEmploymentEnd: the earlier of terminatedOn and resignationDate; the last working
+ * day only when both are empty), so writing the dates now gives Active — Serving Notice and a prorated final month at once, while
  * terminated_on and the assignment/reporting-line closure still wait for the sweep on the effective date.
  * A SECONDARY leg under the scheduled event's groupId: one history row, and a cancel or correction undoes it
  * through the ordinary info-leg inverse. Only changed fields are written. Closed payroll is never rewritten:
  * its issued documents are retained first, and processed (not closed) runs are marked for reprocessing.
+ * 7da649d3 (owner decision 2026-11-25) — the threshold is payroll's last day, before and after the write. A last
+ * working day that moves while the Resignation Date stays put changes status timing, not pay, so it marks nothing.
  */
 async function writeScheduledExitDatesTx(
   tx:Tx,ctx:SessionContext,employmentId:string,
   dates:Partial<Record<typeof RESIGNATION_INFO_FIELDS[number],string|null>>,tag:MovementTag,
 ){
-  const [current]=await tx.select({tenderResignationDate:employment.tenderResignationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate}).from(employment).where(eq(employment.id,employmentId));
+  const [current]=await tx.select({tenderResignationDate:employment.tenderResignationDate,resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,terminatedOn:employment.terminatedOn}).from(employment).where(eq(employment.id,employmentId));
   if(!current)throw new Error('Employment not found.');
   const set:Partial<Record<typeof RESIGNATION_INFO_FIELDS[number],string|null>>={};
   for(const field of RESIGNATION_INFO_FIELDS)if(dates[field]!==undefined&&(dates[field]??null)!==(current[field]??null))set[field]=dates[field]??null;
   if(!Object.keys(set).length)return;
-  // Only the two threshold dates move payroll; the tender date is display information.
-  const thresholds=(['resignationDate','lastWorkingDate'] as const).filter(field=>field in set).flatMap(field=>[current[field],set[field]]).filter((date):date is string=>!!date).sort();
+  // Only payroll's last day moves payroll; the tender date is display information.
+  const endBefore=payrollLeavingDate(current),endAfter=payrollLeavingDate({...current,...set});
+  const thresholds=endBefore===endAfter?[]:[endBefore,endAfter].filter((date):date is string=>!!date).sort();
   if(thresholds.length&&overlapsClosedPeriod(await closedPeriodsTx(tx,employmentId),thresholds[0],null))await preserveMovementPayrollTx(tx,employmentId,message=>new MovementNotCorrectableError(message));
   await withExitDateAuthorityTx(tx,employmentId,()=>setEmploymentInfo(ctx,{employmentId,...set,movement:{...tag,secondary:true}},tx));
   // A no-op inside a Movement correction/delete plan, which invalidates its own final windows.
@@ -3417,7 +3422,9 @@ async function resignationValuesTx(tx:Tx,p:CreateMovementInput){
   const value=(raw:string|null|undefined,current:string|null)=>raw===undefined?current:raw?.trim()||null;
   const next={tenderResignationDate:value(p.tenderResignationDate,p.effectiveDate),resignationDate:value(p.resignationEffectiveDate,before.resignationDate),lastWorkingDate:value(p.endDate,before.lastWorkingDate)};
   for(const date of Object.values(next))if(date!==null&&(!isCalendarDate(date)||date<before.hiredOn))throw new Error('Resignation dates must be valid dates on or after the hire date.');
-  if(next.tenderResignationDate&&next.resignationDate&&next.tenderResignationDate>next.resignationDate||next.resignationDate&&next.lastWorkingDate&&next.resignationDate>next.lastWorkingDate||next.tenderResignationDate&&next.lastWorkingDate&&next.tenderResignationDate>next.lastWorkingDate)throw new Error('Resignation dates must follow tender date, resignation date, then last working date.');
+  // 7da649d3 (owner decision 2026-11-25) — the Last Working Day is the final physical working day and may be earlier
+  // than the Resignation Date (annual leave cleared after it); payroll pays to the Resignation Date.
+  if(next.tenderResignationDate&&next.resignationDate&&next.tenderResignationDate>next.resignationDate||next.lastWorkingDate&&next.resignationDate&&next.lastWorkingDate>next.resignationDate||next.tenderResignationDate&&next.lastWorkingDate&&next.tenderResignationDate>next.lastWorkingDate)throw new Error('Resignation dates must follow tender date, last working date, then resignation date.');
   const changes=RESIGNATION_INFO_FIELDS.filter(field=>before[field]!==next[field]).map(field=>({field,before:before[field],after:next[field]}));
   const thresholds=changes.filter(change=>change.field!=='tenderResignationDate');
   const from=[p.effectiveDate,...thresholds.flatMap(change=>[change.before,change.after]).filter((date):date is string=>!!date)].sort()[0];
@@ -3492,7 +3499,8 @@ type TerminationPlan = {
   reasonCode: string;
   terminationType: TerminationType;
   noticeDays: number | null;
-  /** The tendered-resignation date, when the reason is a resignation. */
+  /** The TENDER resignation date (the day notice was given), when the reason is a resignation. Stored in
+   *  tender_resignation_date. 7da649d3 — the employee's Resignation Date (resignation_date) is the effective date. */
   resignationDate: string | null;
   remarks: string | null;
   /**
@@ -3556,18 +3564,19 @@ async function planTerminationTx(
   if (!reason) throw new Error('Unknown termination reason.');
   const terminationType: TerminationType = reason.terminationType;
 
-  // "Resignation Date — mandatory for resignation cases."
+  // "Resignation Date — mandatory for resignation cases." 7da649d3 — this field is the TENDER resignation date
+  // (relabelled on the form); the order is tender <= last working day <= effective date (the Resignation Date).
   const resignationDate = p.resignationDate?.trim() || null;
   if (reasonCode === 'resignation') {
-    if (!isIsoDate(resignationDate)) throw new Error('A resignation date (YYYY-MM-DD) is required for a resignation.');
+    if (!isIsoDate(resignationDate)) throw new Error('A tender resignation date (YYYY-MM-DD) is required for a resignation.');
     if (resignationDate > lastWorkingDate) {
-      throw new Error('Resignation date cannot be later than the last working day.');
+      throw new Error('Tender resignation date cannot be later than the last working day.');
     }
     if (resignationDate < emp.hiredOn) {
-      throw new Error('Resignation date cannot be earlier than the hire date.');
+      throw new Error('Tender resignation date cannot be earlier than the hire date.');
     }
   } else if (resignationDate !== null && !isIsoDate(resignationDate)) {
-    throw new Error('A valid resignation date (YYYY-MM-DD) is required.');
+    throw new Error('A valid tender resignation date (YYYY-MM-DD) is required.');
   }
 
   const rawNotice = p.terminationNoticeDays;
@@ -3618,10 +3627,10 @@ async function planTerminationTx(
   }
 
   // "Pending payroll cycle must be checked before termination." FLAG, not refuse (see the field comment).
-  // 7da649d3 — from the LAST WORKING DAY (never after the termination date): payroll prorates the final month
-  // to it, so a processed or closed month holding it is affected even when the termination date is later.
+  // 7da649d3 (owner decision 2026-11-25) — from payroll's last day, which a termination makes its effective date
+  // (it writes resignation_date = effective date). The last working day can be earlier without cutting pay short.
   const processed = await processedPeriodsTx(tx, p.employmentId);
-  const payrollFlaggedPeriods = processed.filter((period) => overlapsClosedPeriod([period], lastWorkingDate, null));
+  const payrollFlaggedPeriods = processed.filter((period) => overlapsClosedPeriod([period], p.effectiveDate, null));
 
   return {
     typeCode: p.typeCode ?? 'termination',
@@ -3701,15 +3710,18 @@ async function applyTerminationTx(
   // (deriveEmploymentStatus reads the EARLIEST of the three end dates).
   // 7da649d3 — a scheduled termination already wrote them when it was saved, so the sweep normally finds
   // them in place: write only what differs, and record what was actually there before.
+  // Owner decision 2026-11-25: every termination behaviour (any reason, any tenant type) makes its effective date
+  // the employee's Resignation Date, which payroll pays up to; only a resignation reason carries a tender date.
   const [exitBefore] = await tx
-    .select({ lastWorkingDate: employment.lastWorkingDate, tenderResignationDate: employment.tenderResignationDate })
+    .select({ lastWorkingDate: employment.lastWorkingDate, tenderResignationDate: employment.tenderResignationDate, resignationDate: employment.resignationDate })
     .from(employment)
     .where(eq(employment.id, employmentId));
-  const exitDates: { lastWorkingDate?: string; tenderResignationDate?: string } = {
+  const exitDates: { lastWorkingDate?: string; tenderResignationDate?: string; resignationDate?: string } = {
     ...((exitBefore?.lastWorkingDate ?? null) !== plan.lastWorkingDate ? { lastWorkingDate: plan.lastWorkingDate } : {}),
     ...(plan.resignationDate && (exitBefore?.tenderResignationDate ?? null) !== plan.resignationDate
       ? { tenderResignationDate: plan.resignationDate }
       : {}),
+    ...((exitBefore?.resignationDate ?? null) !== plan.effectiveDate ? { resignationDate: plan.effectiveDate } : {}),
   };
   if (Object.keys(exitDates).length) {
     await withExitDateAuthorityTx(tx,employmentId,()=>setEmploymentInfo(
@@ -3723,6 +3735,9 @@ async function applyTerminationTx(
     { field: 'terminatedOn', before: null, after: plan.effectiveDate },
     ...(exitDates.lastWorkingDate !== undefined
       ? [{ field: 'lastWorkingDate', before: exitBefore?.lastWorkingDate ?? null, after: plan.lastWorkingDate }]
+      : []),
+    ...(exitDates.resignationDate !== undefined
+      ? [{ field: 'resignationDate', before: exitBefore?.resignationDate ?? null, after: plan.effectiveDate }]
       : []),
     { field: 'terminationReasonCode', before: null, after: plan.reasonCode },
   ];
@@ -3775,13 +3790,14 @@ async function scheduleTerminationTx(
       } satisfies MovementTag,
     },
   });
-  // 7da649d3 — the exit dates are written NOW (Serving Notice, payroll prorates to the last working day);
-  // terminated_on and the assignment/reporting-line closure stay with the sweep on the effective date.
+  // 7da649d3 — the exit dates are written NOW (Serving Notice until the last working day; payroll prorates to the
+  // Resignation Date, which is this termination's effective date — owner decision 2026-11-25); terminated_on and
+  // the assignment/reporting-line closure stay with the sweep on the effective date.
   await writeScheduledExitDatesTx(
     tx,
     ctx,
     employmentId,
-    { lastWorkingDate: plan.lastWorkingDate, ...(plan.resignationDate ? { tenderResignationDate: plan.resignationDate } : {}) },
+    { lastWorkingDate: plan.lastWorkingDate, resignationDate: plan.effectiveDate, ...(plan.resignationDate ? { tenderResignationDate: plan.resignationDate } : {}) },
     { type: plan.typeCode, groupId, remarks: plan.remarks, endDate: plan.lastWorkingDate },
   );
   return {
