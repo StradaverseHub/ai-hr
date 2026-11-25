@@ -29,6 +29,7 @@ import {
 } from '@/core/employment-review';
 import { myEmployment } from '@/core/read';
 import { followLeaveRecommendation } from '@/app/assistant/centre/recommendation';
+import { requestsClientNavigation, type ActionNavigation } from '@/lib/action-navigation';
 
 // Thin wrappers around the same decide services the source pages use (authz lives in the
 // services: assertCanDecide / admin-only) — these just land back on /approvals.
@@ -37,11 +38,15 @@ const back = '/approvals';
 // Category panel (2dec6406): every decide form posts its current category + sort, and BOTH the success and
 // the error redirect preserve them (via the shared approvalsReturnUrl builder) — so a decision never dumps
 // the approver back on the unfiltered, default-sorted inbox.
-type Nav = { category?: string; sort?: string };
+// `client`: the form is an <ActionNavigateForm> (ADR 0181 decision 4), so the action returns where to go and the
+// client navigates in-app, drawing only the page and re-reading the shell's approval facts. A plain form posts no
+// mark and keeps the revalidate-and-redirect below, which draws the whole tree including the app frame.
+type Nav = { category?: string; sort?: string; client?: boolean };
 function navOf(formData: FormData): Nav {
   return {
     category: String(formData.get('category') || '') || undefined,
     sort: String(formData.get('sort') || '') || undefined,
+    client: requestsClientNavigation(formData),
   };
 }
 // Shell refresh after a decision (feedback 836118c4). revalidatePath(back) defaults to type 'page', which
@@ -83,14 +88,24 @@ async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav:
       return neutralDestination();
     }
   }
-  return approvalsReturnUrl({ ...nav, ...feedback });
+  return approvalsReturnUrl({ category: nav.category, sort: nav.sort, ...feedback });
 }
-async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>,approvalSeal=false):Promise<never>{
+/** A decision that changed the queue: the badges and the bell's Task tab must follow it. */
+async function decided(url:string,nav:Nav):Promise<ActionNavigation>{
+  if(nav.client)return{navigate:url,refreshShellApprovals:true};
   revalidateShell();
-  redirect(await decisionReturnUrl(s,nav,{toast,approvalSeal}));
+  redirect(url);
 }
-async function fail(e:unknown,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<never>{
-  redirect(await decisionReturnUrl(s,nav,{error:publicErrorMessage(e)}));
+/** A refusal changed nothing: no revalidation, no re-read. */
+async function refused(url:string,nav:Nav):Promise<ActionNavigation>{
+  if(nav.client)return{navigate:url};
+  redirect(url);
+}
+async function done(toast:string,nav:Nav,s:Awaited<ReturnType<typeof getSession>>,approvalSeal=false):Promise<ActionNavigation>{
+  return decided(await decisionReturnUrl(s,nav,{toast,approvalSeal}),nav);
+}
+async function fail(e:unknown,nav:Nav,s:Awaited<ReturnType<typeof getSession>>):Promise<ActionNavigation>{
+  return refused(await decisionReturnUrl(s,nav,{error:publicErrorMessage(e)}),nav);
 }
 
 export async function approveLeaveAction(formData: FormData) {
@@ -106,12 +121,12 @@ export async function approveLeaveAction(formData: FormData) {
   } catch (e) {
     // Partial Leave Approval (0131): re-localize the new MissingRejectReasonError (and the existing typed
     // leave errors) into the viewer's language, like the /me + leave-tab flows do.
-    await fail(new Error(await localizeLeaveError(e)), nav, s);
+    return fail(new Error(await localizeLeaveError(e)), nav, s);
   }
   // AI v2 W6: after the decision committed, whether the approver followed the recommendation shown beside it.
   await followLeaveRecommendation(s, formData.get('recommendationRecordId'), decision);
   const message = outcome?.status === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Leave ${decision}`;
-  await done(message, nav, s, outcome?.status === 'approved');
+  return done(message, nav, s, outcome?.status === 'approved');
 }
 
 // Partial Leave Approval — single-request model (ADR-0068 §4D): decide ONE requested date of a per-date
@@ -132,10 +147,10 @@ export async function decideLeaveDateAction(formData: FormData) {
       rejectReason,
     });
   } catch (e) {
-    await fail(new Error(await localizeLeaveError(e)), nav, s);
+    return fail(new Error(await localizeLeaveError(e)), nav, s);
   }
   await followPerDateRecommendation(s, formData, outcome);
-  await done(`Date ${decision}`, nav, s, outcome?.status === 'approved');
+  return done(`Date ${decision}`, nav, s, outcome?.status === 'approved');
 }
 
 // Partial Leave Approval — single-request model (R17 600be8ac): decide MANY requested dates in ONE submit
@@ -158,7 +173,7 @@ export async function decideLeaveDatesAction(formData: FormData) {
       };
     });
   } catch (e) {
-    await fail(e, nav, s);
+    return fail(e, nav, s);
   }
   let outcome: { status: 'pending' | 'approved' | 'rejected' } | undefined;
   try {
@@ -169,10 +184,10 @@ export async function decideLeaveDatesAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId,
     });
   } catch (e) {
-    await fail(new Error(await localizeLeaveError(e)), nav, s);
+    return fail(new Error(await localizeLeaveError(e)), nav, s);
   }
   await followPerDateRecommendation(s, formData, outcome);
-  await done('Leave decided', nav, s, outcome?.status === 'approved');
+  return done('Leave decided', nav, s, outcome?.status === 'approved');
 }
 
 /** AI v2 slice 3 follow-up: the per-date path records whether the approver followed the recommendation, as the
@@ -199,10 +214,10 @@ export async function decideLeaveCancellationAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId,
     });
   } catch (e) {
-    await fail(new Error(await localizeLeaveError(e)), nav, s);
+    return fail(new Error(await localizeLeaveError(e)), nav, s);
   }
   const message = outcome?.status === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Cancellation ${decision}`;
-  await done(message, nav, s, outcome?.status === 'approved');
+  return done(message, nav, s, outcome?.status === 'approved');
 }
 
 export async function approveCorrectionAction(formData: FormData) {
@@ -215,11 +230,10 @@ export async function approveCorrectionAction(formData: FormData) {
     outcomeStatus = outcome.status;
   } catch (e) {
     const error = e instanceof AttendanceLevelError ? await attendanceWorkflowErrorMessage(e) : e instanceof MissingAttendanceRejectReasonError ? (await getTranslations('attendance'))('rejectRequired') : publicErrorMessage(e);
-    redirect(await decisionReturnUrl(s, nav, { error }));
+    return refused(await decisionReturnUrl(s, nav, { error }), nav);
   }
   const toast = outcomeStatus === 'pending' ? (await getTranslations('attendanceHistory'))('stageRecorded') : `Correction ${decision}`;
-  revalidateShell();
-  redirect(await decisionReturnUrl(s, nav, { toast, approvalSeal: outcomeStatus === 'approved' }));
+  return decided(await decisionReturnUrl(s, nav, { toast, approvalSeal: outcomeStatus === 'approved' }), nav);
 }
 
 /**
@@ -248,9 +262,9 @@ export async function decideResignationAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId,
     });
   } catch (e) {
-    await fail(e, nav, s);
+    return fail(e, nav, s);
   }
-  await done(`Resignation ${accepted ? 'accepted' : 'rejected'}`, nav, s);
+  return done(`Resignation ${accepted ? 'accepted' : 'rejected'}`, nav, s);
 }
 
 export async function submitManagerEvaluationAction(formData: FormData) {
@@ -263,9 +277,9 @@ export async function submitManagerEvaluationAction(formData: FormData) {
       comments: String(formData.get('comments') || '') || null,
     });
   } catch (e) {
-    await fail(e, nav, s);
+    return fail(e, nav, s);
   }
-  await done('Evaluation submitted', nav, s);
+  return done('Evaluation submitted', nav, s);
 }
 
 export async function decideReviewAction(formData: FormData) {
@@ -282,9 +296,9 @@ export async function decideReviewAction(formData: FormData) {
       deciderEmploymentId: me?.employmentId ?? null,
     });
   } catch (e) {
-    await fail(e, nav, s);
+    return fail(e, nav, s);
   }
-  await done('Decision recorded', nav, s);
+  return done('Decision recorded', nav, s);
 }
 
 // Bulk approve/reject (feedback fb99474b). Accepts a JSON `items` list of {type,id} the approver selected
@@ -350,7 +364,7 @@ export async function bulkDecideAction(formData: FormData) {
   const items = parseBulkItems(String(formData.get('items') || '[]'));
 
   const t = await getTranslations('approvals');
-  if (items.length === 0) redirect(approvalsReturnUrl(nav));
+  if (items.length === 0) return refused(approvalsReturnUrl({ category: nav.category, sort: nav.sort }), nav);
 
   const me = await myEmployment(s);
   const deciderEmploymentId = me?.employmentId ?? undefined;
@@ -362,7 +376,6 @@ export async function bulkDecideAction(formData: FormData) {
     dispatchBulkItem(s, item, decision, rejectReason, deciderEmploymentId),
   );
 
-  revalidateShell();
   const summary =
     decision === 'rejected'
       ? skipped > 0
@@ -371,7 +384,7 @@ export async function bulkDecideAction(formData: FormData) {
       : skipped > 0
         ? t('bulkApprovedPartial', { done: approved, skipped })
         : t('bulkApprovedAll', { done: approved });
-  redirect(await decisionReturnUrl(s, nav, { toast: summary }));
+  return decided(await decisionReturnUrl(s, nav, { toast: summary }), nav);
 }
 
 export async function approveClaimAction(formData: FormData) {
@@ -391,7 +404,7 @@ export async function approveClaimAction(formData: FormData) {
       rejectReason: approved ? null : rejectReason,
     });
   } catch (e) {
-    await fail(e, nav, s);
+    return fail(e, nav, s);
   }
-  await done(`Claim ${approved ? 'approved' : 'rejected'}`, nav, s, approved);
+  return done(`Claim ${approved ? 'approved' : 'rejected'}`, nav, s, approved);
 }
