@@ -22,12 +22,70 @@ import {personnelControl,personnelFormLabel,personnelFormChoices} from '@/lib/pe
 const inputCls =
   'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
 
-function TaxResidencyOptions() {
+export function TaxResidencyOptions() {
   const t = useTranslations('people.detail');
   return (
     <>
       {personnelFormChoices('bank_statutory.income_tax_pcb.taxresidency').map(({value,labelKey})=><option key={value} value={value}>{t(labelKey.slice(14))}</option>)}
     </>
+  );
+}
+
+/**
+ * ADR 0183 (board d8dc0a8c) — the two custom PCB choices. Offered only where the employer-scoped selection is
+ * saved with its number (the Active Income Tax card and the payroll tax set-up page), never in the Create New
+ * Employee draft or an import, which have nowhere to carry the amount or rate.
+ */
+export const CUSTOM_PCB_CHOICES = ['custom_fixed', 'custom_rate'] as const;
+export const isCustomPcbChoice = (value: string | null | undefined) =>
+  value === 'custom_fixed' || value === 'custom_rate';
+export function CustomPcbOptions() {
+  const t = useTranslations('people.detail');
+  return (
+    <>
+      <option value="custom_fixed">{t('taxResidencyCustomFixed')}</option>
+      <option value="custom_rate">{t('taxResidencyCustomRate')}</option>
+    </>
+  );
+}
+
+/**
+ * ADR 0183 — the number a custom choice needs, posted as `customPcbValue` (RM for Fixed Tax Amount, % for Tax
+ * Rate). Rendered only while a custom choice is selected, so no other save posts it. The saved number prefills
+ * the box for its own choice; switching between the two starts empty. The service is the validator; the input's
+ * pattern only catches a typo before the round trip.
+ */
+export function CustomPcbValueField(props: {
+  scheme: string;
+  savedAmount: number | null;
+  savedRate: number | null;
+}) {
+  const t = useTranslations('people.detail');
+  if (!isCustomPcbChoice(props.scheme)) return null;
+  const fixed = props.scheme === 'custom_fixed';
+  const saved = fixed ? props.savedAmount : props.savedRate;
+  return (
+    <label className="flex flex-col gap-1.5" data-custom-pcb={props.scheme}>
+      <span className="text-xs font-medium text-muted-foreground">{fixed ? t('customPcbAmountLabel') : t('customPcbRateLabel')}</span>
+      <span className="flex items-center gap-2">
+        {fixed && <span className="text-sm text-muted-foreground">RM</span>}
+        <input
+          key={props.scheme}
+          name="customPcbValue"
+          type="text"
+          inputMode="decimal"
+          required
+          pattern={'[0-9]{1,10}([.][0-9]{1,2})?'}
+          defaultValue={saved != null ? saved.toFixed(2) : ''}
+          placeholder="0.00"
+          aria-label={fixed ? t('customPcbAmountLabel') : t('customPcbRateLabel')}
+          className={inputCls}
+        />
+        {!fixed && <span className="text-sm text-muted-foreground">%</span>}
+      </span>
+      <span className="text-xs text-muted-foreground">{fixed ? t('customPcbAmountHint') : t('customPcbRateHint')}</span>
+      <span className="text-xs text-muted-foreground">{t('customPcbTakesEffect')}</span>
+    </label>
   );
 }
 
@@ -46,6 +104,7 @@ export function TaxResidencySelect(
         {none&&<option value="none">{t('taxCategoryNone')}</option>}
         <option value="" disabled>{t('taxSelectionChoose')}</option>
         <TaxResidencyOptions />
+        <CustomPcbOptions />
       </select>
     );
   }

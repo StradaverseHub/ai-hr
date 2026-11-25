@@ -1,0 +1,67 @@
+VERDICT: Not built yet   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Today every employee's monthly PCB is worked out by the system from one of five Income Tax Resident choices: Resident, Non-Resident, REP, Knowledge Worker or C-Suites. HR has no way to say "for this person, deduct exactly RM450 a month" or "tax this person at 25% flat".
+
+When an employee has an arrangement that doesn't fit the standard formula, HR has to work around the system instead of recording the decision in it.
+
+WHAT WE'LL CHANGE
+
+- Two new choices in the Income Tax Resident list on the employee's Bank & Statutory, Income Tax (PCB) section: "Custom - Fixed Tax Amount (RM)" and "Custom - Tax Rate (%)". They sit below the five existing choices (see the sketch).
+
+- Fixed Tax Amount: when chosen, a box appears for the monthly PCB amount in RM. Payroll deducts exactly that amount. No PCB formula, tax table, relief, TP1, TP3 or rate is applied, and nothing recalculates or adjusts it.
+
+- Tax Rate: when chosen, a box appears for the percentage. Payroll works out PCB exactly the way it does for Non-Resident today (all taxable pay for the month, including bonus, times the rate, no reliefs), but uses your percentage instead of 30%. Example: RM3,000 at 30% gives RM900.
+
+- You can't save without a valid number: the amount must be more than RM0, the rate must be more than 0% and no more than 100%, both to two decimal places. If a value is somehow missing, payroll stops for that one employee with a clear message telling HR where to fix it. It never quietly falls back to the standard formula.
+
+- The payroll's PCB detail screen and the payslip show the PCB amount as normal. The PCB detail also explains where it came from: "Custom fixed amount set by HR", or the pay figure times the custom rate.
+
+- The PCB file for LHDN, the EA form and the other year-end reports carry the custom PCB amount just like any other PCB amount.
+
+- Every change is recorded: who changed it, when, and the old and new option and number.
+
+WHAT YOU'LL GET
+
+HR gets a per-employee manual PCB control for exceptional cases, with the decision recorded on the employee's record and in every payroll that uses it. Everyone else carries on exactly as today.
+
+GOOD TO KNOW
+
+- One difference from your request: we've put the two custom options under Income Tax Resident instead of adding "Custom (Manual Entry)" to Tax Category. Income Tax Resident is the setting that decides which formula runs, and it is set separately for each employer. Tax Category describes the person's family situation (single, married and so on), is shared across all their employers and feeds reliefs and forms. Keeping it untouched means one fewer step for HR, a custom setting at one company never leaks to another, and switching the employee back to standard is one click with nothing to re-enter. If you'd rather have it exactly as written, reject this plan and say so.
+
+- Nothing changes for employees on the five existing choices. The standard PCB formula, the Non-Resident formula, reliefs, exemptions, TP1 and TP3 are not touched, and we'll prove that by checking existing results come out identical.
+
+- When it takes effect: the next payroll you process or reprocess after saving. Closed payrolls are never changed, and each payroll keeps the exact option and number it used.
+
+- The fixed amount is deducted in full in every month the employee is paid, including part months and bonus months. If an employee is paid more than once in the same month, the fixed amount is deducted once for the month in total, not once per run. If the amount is more than the employee's pay that month, payroll shows a warning for HR to review; it does not change the amount.
+
+- As with Non-Resident today, zakat paid through salary is not offset against a custom PCB amount.
+
+- Who can change it: the same HR administrators who can change Income Tax Resident for that employer today. Employees can see their own setting but cannot change or request it.
+
+- In this round the custom options are set on the employee's record (and on the payroll's tax set-up screen, which uses the same control). The Create New Employee screen and the Excel import will get them as a follow-up; until then, create the employee and then set the custom option on their record.
+
+- HR remains responsible for the amount or rate entered. LHDN normally expects PCB to follow its schedule, so this is best kept for cases where you have a clear basis for the figure. The system records who set it and when.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Owner: the employer-scoped tax selection (ADR-0090), employment_tax_selection_my. Do not add Custom to the person-owned tax circumstance (ADR-0091, TAX_CIRCUMSTANCE_OPTIONS); that would make one person-wide value carry an employer decision. Write a new ADR amending ADR-0090 for the two custom schemes.
+
+Data: append a migration (allocate per docs/MIGRATION-ALLOCATION.md, check timestamp watermark) adding custom_pcb_amount numeric(12,2) and custom_pcb_rate numeric(5,2) to employment_tax_selection_my, both nullable, with a check that custom_fixed has an amount above zero and no rate, custom_rate has a rate above zero and at most 100 and no amount, and every other scheme has neither. Review all writers of employment_tax_selection_my before adding the check (initialize legacy conversion, saveTaxSelectionMYTx, hire/transfer paths, bulk conversion 0505). Extend any scheme check constraint. No backfill; existing rows keep both null.
+
+Vocabulary: add custom_fixed and custom_rate to TAX_SELECTION_SCHEMES (tax-selection-codes.ts) and PcbCalculationScheme / resolvePcbCalculationScheme (localization/my/payroll.ts). Audit every exhaustive use of the scheme union (about 27 non_resident references across app, components, core, lib plus localization/my: reports, multicycle-worksheet, statutory, pcb-explain, payroll-tax-basis, payroll-anomaly-detectors, pcb-detail view and slip-data, tax-configuration page). C-Suite citizenship rule is unchanged.
+
+Writer: saveTaxSelectionMYTx takes customAmount / customRate, validates per scheme (two decimals, ranges above), stores them, bumps version, and the employee.tax-scheme.selected event payload carries before/after amount and rate. Same permission as today (app.is_admin_for both companies), same advisory lock, statutory write interval, expected version and stale-context checks.
+
+Resolver: resolveTaxSelectionMY and the set-wise resolveTaxSelectionsMY (ADR 0181 J2) return customAmount / customRate with the scheme; a custom scheme without its value refuses with a new TaxSelectionError code (custom_value_missing) that payroll surfaces per employee like confirmation_required. Keep single/set-wise parity tests.
+
+Engine (localization/my/payroll.ts, statutory calculation before the flatRate branch): custom_fixed returns pcb = amount (minus PCB already deducted for the same employee and month in earlier cycles, never below 0, via the existing multicycle accumulators), pcbBonus 0, pcbNormalPreZakat 0, pcbMeta {calculationScheme:'custom_fixed', customAmount, taxSelectionId/Version/Source}. custom_rate reuses the non-resident flat path with rate = customRate/100 and the same rounding (trunc2, ceil5sen, rm10Floor), pcbMeta calculationScheme 'custom_rate', flatRate, trace. Do not relax the existing flatTaxRate guard; custom rate arrives only through calculationScheme plus the resolved rate. Anomaly detector: amount above the month's taxable pay is a review warning, not a change. Money stays in deterministic services; no AI path.
+
+Screens: TaxResidencySelect (components/tax-residency-field.tsx) form mode gains the two choices and a conditional amount or rate input on the identity tax card and the payroll tax-configuration page; draft mode (Create New Employee wizard) excludes the custom choices this round. TaxCategoryField shows the "Not used while a custom option is selected" hint. Personnel field registry: add the two value fields (statutory owner, HR only, ESS visible read-only, not importable yet); keep inventory tests in step. PCB detail and payslip explain the source. Six-locale messages.
+
+Reports: CP39 / e-PCB, EA, CP8D and multicycle worksheet read the saved PCB amount; confirm none re-derive PCB from the scheme.
+
+Tests: engine unit cases (RM3,000 x 30% = RM900; fixed RM450 with and without bonus; two cycles in one month; rounding edges; missing value refuses), writer validation/permission/version race, migration rehearsal on a populated baseline, golden parity proving resident, non-resident, REP, KW and C-Suite outputs are byte-identical before and after, rendered screens for the card, tax-configuration page, PCB detail and payslip, focused inventory tests (capability, nav catalogue, pack drift, field registry). Verify on GitHub Actions (alpha-focused-checks).

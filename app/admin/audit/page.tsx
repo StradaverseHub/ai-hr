@@ -95,7 +95,8 @@ export default async function AuditPage({
 
   const [allTypes, companies, leaveTypes, actors] = await Promise.all([
     auditAggregateTypes(s),
-    listCompanies(s),
+    // ADR-0182: offer only the companies this administrator administers (all of them for a group administrator).
+    listCompanies(s, { adminOnly: true }),
     chosenModule === 'leave' ? listLeaveTypes(s, { includeArchived: true }) : Promise.resolve([]),
     auditActors(s, { module: chosenModule }),
   ]);
