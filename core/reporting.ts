@@ -115,6 +115,11 @@ export type StatutoryReportCard = {
    * never leaves this seam — a catalog card is metadata only.
    */
   periodsFromPayroll: boolean;
+  /**
+   * Board 66175cd2 — false for a form taken off the screens that offer forms to produce (`ReportDef.shelf`).
+   * The card is still returned, so a screen can send an old link to the form's shelf rather than a 404.
+   */
+  onShelf: boolean;
 };
 
 function reportCard(r: ReportDef): StatutoryReportCard {
@@ -138,6 +143,7 @@ function reportCard(r: ReportDef): StatutoryReportCard {
     runSelection: r.runSelection ?? null,
     preview: r.preview ?? null,
     periodsFromPayroll: typeof r.availablePeriods === 'function',
+    onShelf: r.shelf !== false,
   };
 }
 

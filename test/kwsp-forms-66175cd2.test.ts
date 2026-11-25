@@ -5,11 +5,16 @@
  * only; every other form keeps the generic Year and Month selects. The query itself is pinned against a real
  * database in test/kwsp-periods-66175cd2.test.ts and the browser behaviour in
  * test/kwsp-period-criterion-66175cd2.dom.test.tsx.
+ *
+ * Commit 2 — a clear Back at the top left of both forms (viewer behaviour in
+ * test/kwsp-viewer-back-66175cd2.dom.test.tsx), and "EPF contributions (KWSP)" off the shelf, its Open Form
+ * step and Filing history's forms to produce — while staying registered for everything else that reads it.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { MY_REPORTS } from '../localization/my/reports';
+import { STATUTORY_FORM_TYPES } from '../core/payroll-audit/types';
 import { PERIODS_ENDPOINT } from '../app/payroll/statutory-forms/criteria';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -111,5 +116,77 @@ describe('commit 1 — the period lists', () => {
         if (l !== 'en') expect(ns[k], `${l} ${k} is still English`).not.toBe(catalog('en').payroll.statutoryForms[k]);
       }
     }
+  });
+});
+
+describe('commit 2 — Back, at the top left of Borang A and BBCD', () => {
+  it.each(['app/payroll/borang-a/preview/page.tsx', 'app/payroll/borang-bbcd/preview/page.tsx'])(
+    '%s: the viewer and the not-ready screen both go back to the step with the same selection',
+    (file) => {
+      const page = code(file);
+      expect(page).toContain('const criteria = { companyId, year, month, runSeqs };');
+      expect(page).toContain('const backToCriteria = criteriaReturnHref(');
+      const viewer = slice(page, '<StatutoryPdfViewer', 'openInNewTabLabel=', 100);
+      expect(viewer).toContain("back={{ href: backToCriteria, label: tf('viewer_back') }}");
+      expect(viewer).toContain('backPlacement="leading"');
+      expect(page).toContain("<PageHeader title={t('title')} description={subtitle} back={{ href: backToCriteria, label: tf('viewer_back') }} />");
+      expect(page).not.toContain("t('viewerBack')");
+    },
+  );
+
+  it('leaves every other form on the trailing link it had', () => {
+    for (const f of [
+      'app/payroll/borang-8a/preview/page.tsx',
+      'app/payroll/borang-8b/preview/page.tsx',
+      'app/payroll/cp39/preview/page.tsx',
+      'app/payroll/cp8d/preview/page.tsx',
+      'app/payroll/sip-contribution/preview/page.tsx',
+    ]) {
+      expect(code(f), f).not.toContain('backPlacement');
+    }
+    expect(code('components/statutory-pdf-viewer.tsx')).toContain("backPlacement = 'trailing',");
+  });
+});
+
+describe('commit 2 — "EPF contributions (KWSP)" off the screens, not out of the registry', () => {
+  const epf = MY_REPORTS.find((r) => r.id === 'my.epf')!;
+
+  it('is the one form off the shelf, and keeps its definition, deadline and audit identity', () => {
+    expect(MY_REPORTS.filter((r) => r.shelf === false).map((r) => r.id)).toEqual(['my.epf']);
+    expect(epf).toBeTruthy();
+    // The submission drives the suspended-tenant statutory override (core/reporting.ts statutoryCtx).
+    expect(epf.submission).toEqual({ body: 'epf', agency: 'EPF (KWSP)', channel: 'i-Akaun (Employer)', dueDayOfNextMonth: 15 });
+    expect(typeof epf.generate).toBe('function');
+    expect(STATUTORY_FORM_TYPES.epf).toContain('my.epf');
+    expect(code('core/reporting.ts')).toContain('if (!def.submission) return ctx;');
+    expect(code('core/reporting.ts')).toContain('onShelf: r.shelf !== false,');
+  });
+
+  it('the shelf, the Open Form step, the figures screen and Filing history all honour it', () => {
+    const shelf = code('app/payroll/statutory-forms/page.tsx');
+    expect(shelf).toContain('const shelfReports = catalog.reports.filter((r) => r.onShelf);');
+    expect(shelf).toContain('const submissions = shelfReports.filter((r) => r.submission != null);');
+    expect(shelf).toContain('const catalogSize = shelfReports.length + catalog.links.length + catalog.planned.length;');
+
+    const open = code('app/payroll/statutory-forms/open/page.tsx');
+    const guard = slice(open, 'if (report && !report.onShelf) {', 'if (!report && !link) {', 60);
+    expect(guard).toContain("redirect(`/payroll/statutory-forms${report.submission ? `?body=${encodeURIComponent(report.submission.body)}` : ''}`);");
+
+    const figures = code('app/payroll/statutory-forms/[formId]/page.tsx');
+    expect(figures).toContain('if (!def.onShelf) {');
+    expect(figures.indexOf('if (!def.onShelf) {')).toBeLessThan(figures.indexOf('reportPreview(s, {'));
+
+    const history = code('app/payroll/statutory-forms/filing-history/page.tsx');
+    expect(history).toContain('const reports = allReports.filter((r) => r.onShelf);');
+    expect(history).toContain('const retired = allReports.find((r) => r.id === sp.reportId && !r.onShelf);');
+    // Generations already recorded are still listed: the recent list is not filtered by the shelf.
+    expect(history).toContain('const recent = companyId ? await recentReports(s, companyId) : [];');
+    expect(history.indexOf('if (retired) {')).toBeLessThan(history.indexOf('reportPreview(s, { companyId, reportId, periodKey })'));
+  });
+
+  it('keeps the Recent generations and Worksheet links on the shelf page', () => {
+    const shelf = code('app/payroll/statutory-forms/page.tsx');
+    expect(shelf).toContain('href="/payroll/statutory-forms/filing-history"');
+    expect(shelf).toContain('href="/payroll/multi-cycle-worksheet"');
   });
 });

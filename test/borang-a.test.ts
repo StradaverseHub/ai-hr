@@ -466,6 +466,11 @@ describe('the catalog entry', () => {
     expect(epfShelf.length).toBeGreaterThanOrEqual(3);
     expect(epfShelf.map(([, o]) => o)).not.toContain(3);
     expect(Object.fromEntries(epfShelf)).toMatchObject({ 'my.epf': 1, 'my.borang-a': 2, 'my.borang-bbcd': 4 });
+    // Board 66175cd2 — `my.epf` is still REGISTERED at its slot (its deadline, audit list and recorded
+    // generations stay), but it is off the shelf: what an operator sees on the EPF shelf is Borang A and BBCD.
+    const visible = MY_REPORTS.filter((r) => r.submission?.body === 'epf' && r.shelf !== false).map((r) => r.id);
+    expect(visible.sort()).toEqual(['my.borang-a', 'my.borang-bbcd']);
+    expect(MY_STATUTORY_LINKS.filter((l) => l.body === 'epf')).toEqual([]);
   });
 
   it('claims `agency-layout` and never `official`', () => {

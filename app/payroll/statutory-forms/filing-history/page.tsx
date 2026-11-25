@@ -4,6 +4,7 @@ import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
 import Link from 'next/link';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { getTranslations } from 'next-intl/server';
+import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listReports, recentReports, reportPreview } from '@/core/reporting';
@@ -37,7 +38,15 @@ export default async function ReportsPage({
   const sp = await searchParams;
   const companies = (await listCompanies(s)).filter((c) => !c.archivedAt);
   const companyId = sp.companyId || companies[0]?.id || '';
-  const reports = companyId ? await listReports(s, companyId) : [];
+  // Board 66175cd2 — the forms you can PRODUCE here leave out one taken off the shelf (`EPF contributions
+  // (KWSP)`). Generations of it already recorded are still listed below; an old link that asks to produce
+  // it lands on its shelf.
+  const allReports = companyId ? await listReports(s, companyId) : [];
+  const retired = allReports.find((r) => r.id === sp.reportId && !r.onShelf);
+  if (retired) {
+    redirect(`/payroll/statutory-forms${retired.submission ? `?body=${encodeURIComponent(retired.submission.body)}` : ''}`);
+  }
+  const reports = allReports.filter((r) => r.onShelf);
   const reportId = sp.reportId || reports[0]?.id || '';
   const periodKey = sp.periodKey || '';
   const canPreview = Boolean(companyId && reportId && periodKey);

@@ -159,6 +159,11 @@ export default async function StatutoryFormCriteriaPage({
   const catalog = await listStatutoryCatalog(s, scopeIds);
   const report = catalog.reports.find((r) => r.id === formId);
   const link = catalog.links.find((l) => l.id === formId);
+  // Board 66175cd2 — a form taken off the shelf (`EPF contributions (KWSP)`) has no Open Form step any more: an
+  // old link lands on its shelf, never a 404 and never a step that would still produce it.
+  if (report && !report.onShelf) {
+    redirect(`/payroll/statutory-forms${report.submission ? `?body=${encodeURIComponent(report.submission.body)}` : ''}`);
+  }
   if (!report && !link) {
     // r402 — a former id (a bookmark to `my.ea.ms`) lands on the merged entry with its version chosen.
     const moved = formerIdRedirect(catalog.links, formId, sp.body);
