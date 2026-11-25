@@ -2781,7 +2781,7 @@ export async function listLeaveRequestsKeysetPageTx(
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .where(and(where, cursor.after ? seek(cursor.after, true) : cursor.before ? seek(cursor.before, false) : undefined))
       .orderBy(...key.row.map((part) => sql`${part} ${primaryDir}`), sql`${leaveRequest.createdAt} ${tieDir}`, sql`${leaveRequest.id} ${tieDir}`)
-      .limit(keysetFetchLimit(q));
+      .limit(keysetReadLimit(q));
   };
   const cursor = { after: q.after, before: q.before, last: q.last };
   let fetched = await read(cursor), anchorFound = true;
