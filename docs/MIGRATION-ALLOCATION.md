@@ -1,3 +1,16 @@
+# Cached viewer menu profile (ADR 0181 Phase 3), 25 November 2026
+
+Reserve `7260_viewer_access_version`, journal index `10660`, timestamp `1795495007260`,
+SQL SHA-256 `ebc0519c213da029769b94e88156cb26f9d9cff8540b1cc6fed85744fb657be0`. The reservation scan covered every remote branch head's journal and every registered worktree:
+the highest entries found were `7220_movement_system_payroll_snapshot_insert` (10620), `7230_assignment_current_department_index`
+(10630), `7240_access_visible_employment` (10640) and `7250_replacement_holiday_queue_voided` (10650, `1795495007250`), all
+on unmerged branches when reserved (7220 has since merged to main with release 3); this entry installs after 7250 and before 7270 (staging coordinator's order). Neither installation's watermark was read from this
+session; recheck both and any competing reservation before admission.
+
+Adds `app.viewer_access_version()` only: a STABLE SECURITY DEFINER SQL function returning the caller's own tenant's
+`access_company_state.access_version` (0 before the tenant's first maintenance), EXECUTE to `ai_hr_app`. No table,
+policy, trigger or grant on data changes.
+
 # Replacement-holiday queue skips voided employments, 25 November 2026
 
 Reserve `7250_replacement_holiday_queue_voided`, journal index `10650`, timestamp `1795495007250`,

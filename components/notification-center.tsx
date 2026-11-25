@@ -11,6 +11,7 @@ import {useShellApprovalFacts} from '@/components/shell-approval-facts';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
+import type { BellNotifications } from '@/lib/bell-notifications';
 type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>&Partial<Pick<StoredNotificationRow,'kind'>>;
 import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
 export type NotificationTaskQueueLink={href:string;label:string;count:number};
@@ -60,15 +61,16 @@ function relTime(d: Date): string {
 }
 
 export function NotificationCenter({
-  unread,
-  items,
+  unread:shellUnread,
+  items:shellItems,
   tasks:baseTasks = [],
-  taskNotifications = [],
+  taskNotifications:shellTaskNotifications = [],
+  notificationTaskCount:shellNotificationTaskCount,
   taskQueueLinks = [],
-  taskCount:baseTaskCount = 0,
+  taskCount:shellTaskCount = 0,
   claimTaskCount:baseClaimTaskCount=0,
   claimPreviewRevision,
-  readItems = [],
+  readItems:shellReadItems = [],
   canApprove = false,
 }: {
   /** Unread informational (non-action) notifications — the Notification tab badge. */
@@ -79,6 +81,8 @@ export function NotificationCenter({
   tasks?: NotificationTaskItem[];
   /** Unread severity-'action' notifications — "complete this" items outside the approvals queue. */
   taskNotifications?: NotificationRow[];
+  /** Exact unread severity-'action' count included in taskCount (defaults to the bounded list's length). */
+  notificationTaskCount?: number;
   /** Full native owner queues, with exact counts independent of their bounded bell previews. */
   taskQueueLinks?:NotificationTaskQueueLink[];
   /** Full open-task count (queue + action notices) — the Task tab badge. */
@@ -91,6 +95,16 @@ export function NotificationCenter({
   readItems?: NotificationRow[];
   canApprove?: boolean;
 }) {
+  // ADR 0181 decision 4: a mark-read returns the bell's fresh notification half (app/notification-actions.ts) instead
+  // of redrawing the app frame. It applies until the shell renders new props (a navigation, scope change or reload).
+  const shellBell=useMemo<BellNotifications>(()=>({unread:shellUnread,items:shellItems,taskNotifications:shellTaskNotifications,
+    notificationTaskCount:shellNotificationTaskCount??shellTaskNotifications.length,readItems:shellReadItems}),
+  [shellUnread,shellItems,shellTaskNotifications,shellNotificationTaskCount,shellReadItems]);
+  const [refreshedBell,setRefreshedBell]=useState<{shell:BellNotifications;bell:BellNotifications}>();
+  const bell=refreshedBell?.shell===shellBell?refreshedBell.bell:shellBell;
+  const {unread,items,taskNotifications,readItems}=bell;
+  // The shell's task count includes its notification share; swap in the refreshed share.
+  const baseTaskCount=shellTaskCount-shellBell.notificationTaskCount+bell.notificationTaskCount;
   const approvals=useShellApprovalFacts()?.result;
   const tasksKnown=!approvals||approvals.state==='ready';
   const tasks=useMemo(()=>approvals?.state==='ready'?[...approvals.items,...baseTasks]:baseTasks,[approvals,baseTasks]);
@@ -179,8 +193,10 @@ export function NotificationCenter({
 
   const [marking, start] = useTransition();
 
-  const markRead = (id: string) => start(async () => { await markNotificationReadAction(id); router.refresh(); });
-  const markAll = () => start(async () => { await markAllNotificationsReadAction(); router.refresh(); });
+  // A failed re-read (null) falls back to refreshing the route, as every mark-read did before.
+  const applyBell = (fresh: BellNotifications | null) => { if (fresh) setRefreshedBell({ shell: shellBell, bell: fresh }); else router.refresh(); };
+  const markRead = (id: string) => start(async () => { applyBell(await markNotificationReadAction(id)); });
+  const markAll = () => start(async () => { applyBell(await markAllNotificationsReadAction()); });
 
   // ── Task tab: merge the approvals queue with the action notifications, newest first. ──
   const taskEntries = useMemo(() => {

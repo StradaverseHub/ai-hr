@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, inputCls } from '@/components/ui';
 import { decideReviewAction } from './actions';
+import { ActionNavigateForm } from '@/components/action-navigate-form';
 import {
   REVIEW_DECISIONS,
   TERMINATION_REASONS,
@@ -37,7 +38,7 @@ export function ReviewDecideForm({
   const fields = fieldsForDecision(decision);
 
   return (
-    <form action={decideReviewAction} className="flex flex-wrap items-end gap-2">
+    <ActionNavigateForm action={decideReviewAction} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="id" value={reviewId} />
       {nav && (
         <>
@@ -95,6 +96,6 @@ export function ReviewDecideForm({
       <Button type="submit" size="sm">
         {t('recordDecision')}
       </Button>
-    </form>
+    </ActionNavigateForm>
   );
 }
