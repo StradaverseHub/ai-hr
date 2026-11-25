@@ -68,7 +68,6 @@ async function fixture(): Promise<Fixture> {
     ...adminCtx(b),
     userId,
     personId: admin.personId,
-    employmentIds: [admin.employmentId],
     grants: [{ role: 'hr_admin' as const, companyId: b.companyId }],
   };
   return {
