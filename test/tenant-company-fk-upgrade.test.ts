@@ -270,6 +270,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10660,version:'7',when:1795495007260,tag:'7260_viewer_access_version',breakpoints:true},
  {idx:10680,version:'7',when:1795495007280,tag:'7280_leave_delegated_decision_set',breakpoints:true},
  {idx:10690,version:'7',when:1795495007290,tag:'7290_approval_history_keyset',breakpoints:true},
+ {idx:10700,version:'7',when:1795495007300,tag:'7300_pay_component_itemised_payslips',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1380,6 +1381,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.approval_history_events(timestamp with time zone,timestamp with time zone,text[],text,uuid,uuid,boolean,integer)',app:false},
    {fn:'app.approval_history_page(timestamp with time zone,timestamp with time zone,text[],text,uuid,uuid,boolean,integer)',app:true},
    {fn:'app.approval_history_count_capped(timestamp with time zone,timestamp with time zone,text[],text,uuid,integer)',app:true},
+   // 7300 (ADR 0181 write side): the Pay Item stale-run marker's itemised slips, containment before authority.
+   {fn:'app.pay_component_itemised_payslips(uuid[],jsonb)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
