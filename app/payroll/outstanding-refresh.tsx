@@ -27,8 +27,14 @@ export function PayrollOutstandingRefresh({ batchIds }: { batchIds: string[] }) 
   const router = useRouter();
   const t = useTranslations('payroll.list');
   const [busy, setBusy] = useState(false);
-  // The one request per set of runs, kept across a remount of the effect so following the job never asks twice.
-  const request = useRef<{ key: string; job: Promise<string | null> } | null>(null);
+  // The one request per set of runs, kept across a remount of the effect so following the job never asks twice, and
+  // marked settled once the job has ended so a later render does not follow it again.
+  const request = useRef<{ key: string; job: Promise<string | null>; settled: boolean } | null>(null);
+  // The router is read through a ref: following the job must not restart whenever the router object changes.
+  const routerRef = useRef(router);
+  useEffect(() => {
+    routerRef.current = router;
+  }, [router]);
   const key = batchIds.join(',');
 
   useEffect(() => {
@@ -39,14 +45,20 @@ export function PayrollOutstandingRefresh({ batchIds }: { batchIds: string[] }) 
         job: requestPayrollOutstandingRefreshAction(key.split(','))
           .then((r) => r.jobId)
           .catch(() => null),
+        settled: false,
       };
     }
-    const pending = request.current.job;
+    const current = request.current;
+    if (current.settled) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
-      const jobId = await pending;
-      if (!jobId || cancelled) return;
+      const jobId = await current.job;
+      if (cancelled) return;
+      if (!jobId) {
+        current.settled = true;
+        return;
+      }
       setBusy(true);
       const started = Date.now();
       const poll = async () => {
@@ -57,8 +69,9 @@ export function PayrollOutstandingRefresh({ batchIds }: { batchIds: string[] }) 
           timer = setTimeout(poll, POLL_MS);
           return;
         }
+        current.settled = true;
         setBusy(false);
-        if (state === 'done') router.refresh();
+        if (state === 'done') routerRef.current.refresh();
       };
       timer = setTimeout(poll, POLL_MS);
     })();
@@ -66,7 +79,7 @@ export function PayrollOutstandingRefresh({ batchIds }: { batchIds: string[] }) 
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [key, router]);
+  }, [key]);
 
   return busy ? (
     <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
