@@ -1,3 +1,21 @@
+# Employee search trigram indexes and candidates (ADR 0181 Phase 4), 25 November 2026
+
+Reserve `7320_employment_search_trigram`, journal index `10720`, timestamp `1795495007320` (SQL SHA-256 recorded in
+`test/helpers/approved-upgrade.ts`). `node .github/ci/check-migration-collisions.mjs --local --next` (PR 307) checked
+main and 398 recent branch journals, found no collision and named 7320 as the next free slot, after
+`7310_payroll_tax_import_source_revisions`. The database revamp session named 7320 as the next free slot the same
+day. Built on alpha's 7245, because the candidate function reads 7240's `app.visible_employment_ids()` body and
+`app.employment_read_companies()`. Neither installation's watermark was read from this session; recheck both, and any
+competing reservation, before admission. Staging order follows the coordinator's queue, after 7290, 7300 and 7310.
+
+Creates schema `extensions` (no PUBLIC privilege) with the trusted `pg_trgm` and `btree_gin` extensions, created by
+the database owner. Adds tenant-led GIN trigram indexes on `person` (lower full name, lower primary e-mail) and
+`employment` (lower employee code), each led by `tenant_id`, plus three small partial indexes for non-ASCII values.
+Adds the SECURITY DEFINER `app.employment_search_candidates(text, uuid[], boolean)` (EXECUTE to `ai_hr_app`), which
+returns the ids of employments in the caller's visible set whose name, code or e-mail matches, or that are non-ASCII.
+No table, column, policy or existing object changes. The index builds take a SHARE lock on `person` and `employment`
+for their duration inside the migration transaction.
+
 # Reprocess tax review import revisions, asked only for imported payslips (ADR 0181 write side), 25 November 2026
 
 Reserve `7310_payroll_tax_import_source_revisions`, journal index `10710`, timestamp `1795495007310`,

@@ -8072,6 +8072,13 @@
       "when": 1795495007310,
       "tag": "7310_payroll_tax_import_source_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 10720,
+      "version": "7",
+      "when": 1795495007320,
+      "tag": "7320_employment_search_trigram",
+      "breakpoints": true
     }
   ]
 }
