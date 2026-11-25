@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {createElement,type ReactNode} from 'react';
+import {createElement,type ComponentProps,type ReactNode} from 'react';
 import {createTranslator,NextIntlClientProvider} from 'next-intl';
 import {describe,it,expect,vi} from 'vitest';
 const state=vi.hoisted(()=>({locale:'en',get:vi.fn()}));
@@ -14,7 +14,10 @@ const batchId='11111111-1111-4111-8111-111111111111';
 const employmentId='22222222-2222-4222-8222-222222222222';
 // ADR 0183 — the Income Tax Resident control is a client component (it shows the custom PCB number box beside the
 // choice), so the page renders inside the app's translation provider here, as it does under the root layout.
-const render=async(page:Promise<ReactNode>)=>renderToStaticMarkup(createElement(NextIntlClientProvider,{locale:state.locale,messages:JSON.parse(fs.readFileSync(`messages/${state.locale}.json`,'utf8'))},await page));
+const render=async(page:Promise<ReactNode>)=>{
+ const props:ComponentProps<typeof NextIntlClientProvider>={locale:state.locale,messages:JSON.parse(fs.readFileSync(`messages/${state.locale}.json`,'utf8')),children:await page};
+ return renderToStaticMarkup(createElement(NextIntlClientProvider,props));
+};
 const props=(batch=batchId)=>({params:Promise.resolve({batchId:batch,employmentId}),searchParams:Promise.resolve({})});
 describe('direct payroll tax selection route',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('loads a valid employer-period context and the seven choices in %s',async locale=>{
