@@ -9,7 +9,9 @@ import {
   payrollDashboardCounts,
   payrollDashboardCycleNames,
 } from '@/core/payroll';
-import { payrollDashboardBatchMetadata } from '@/core/payroll-view';
+import { payrollDashboardBatchMetadata, payrollRunOutstandingCounts } from '@/core/payroll-view';
+import { RUN_OUTSTANDING_FRESH_MS, RUN_OUTSTANDING_MAX_RUNS } from '@/core/payroll-run-outstanding';
+import { PayrollOutstandingRefresh } from './outstanding-refresh';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -36,7 +38,7 @@ import {
   monthCells,
   needsReprocess,
   periodsForYear,
-  reprocessEmploymentIds,
+  reprocessAffectedCount,
   resolveDashboardPeriod,
   selectedPeriods,
   summarise,
@@ -186,12 +188,23 @@ export default async function PayrollPage({
     payrollDashboardCycleNames(s, scopeIds),
   ]);
 
+  // a1a80747 r2 — WHO IS STILL OWED PROCESSING ON EACH PROCESSED RUN, read BEFORE any filter so the badge, the count and
+  // the status filter below all see the same number. One statement for the year's processed runs in scope
+  // (SCALE-AND-RELEASE-RULES 2): the run's mark read live, plus the stored new / pending / held employees the background
+  // refresh keeps (core/payroll-run-outstanding.ts). Closed and draft runs get no entry, so they can never show it.
+  const outstanding = await payrollRunOutstandingCounts(
+    s,
+    yearBatches.filter((b) => b.status === 'processed').map((b) => b.id),
+    RUN_OUTSTANDING_FRESH_MS,
+  );
+  const yearRows = yearBatches.map((b) => ({ ...b, outstandingCount: outstanding.get(b.id)?.count ?? null }));
+
   // TWO passes, and the split is what makes the timeline honest. The counts on the month cells are
   // taken AFTER company / cycle / status but BEFORE the month selection: after, so ticking a company
   // shows you which months that company actually ran in (a badge of 2 that yields an empty table when
   // you click it is worse than no badge); before, so unticking a month does not blank out the very
   // counts you use to choose the next one.
-  const scopeMatched = applyFilters(yearBatches, {
+  const scopeMatched = applyFilters(yearRows, {
     periods: periodsForYear(filters.year),
     companyIds: filters.companyIds,
     cycles: filters.cycles,
@@ -217,6 +230,16 @@ export default async function PayrollPage({
   );
 
   const unpublishedCount = allTimeCounts.unpublishedCount;
+  // a1a80747 r2 — the runs whose stored answer is missing or more than a minute old: the list asks for them to be worked
+  // out again in the background and refreshes itself when that finishes. The runs on this page first, then the rest of
+  // the year's processed runs in scope, so the status filter finds them too.
+  const pageIds = new Set(batchPage.map((b) => b.id));
+  const refreshIds = [
+    ...batchPage.filter((b) => outstanding.get(b.id)?.due),
+    ...yearBatches.filter((b) => !pageIds.has(b.id) && outstanding.get(b.id)?.due),
+  ]
+    .map((b) => b.id)
+    .slice(0, RUN_OUTSTANDING_MAX_RUNS);
 
   // Month names are CALENDAR DATA, not product copy — Intl already knows them in every locale this app
   // ships, so putting twelve more strings × six catalogs into the message files would be inventing a
@@ -250,8 +273,11 @@ export default async function PayrollPage({
     const totals = b.totals as { net?: number } | null;
     // 0b326d5f — the run's own mark, read through the shared derivation so the badge, the
     // count and the status filter cannot disagree about which runs are stale.
+    // a1a80747 r2 — and everyone else still owed processing on it (new / pending with no payslip, held for income tax
+    // review), counted once each: the same number its Reprocess Required tab shows, which is where both links go.
     const stale = needsReprocess(b);
-    const staleIds = reprocessEmploymentIds(b);
+    const affected = reprocessAffectedCount(b);
+    const requiredHref = `/payroll/${b.id}/reprocess?tab=required&from=${fromQuery}`;
     return (
       <tr key={b.id} className="hover:bg-muted/40">
         <td className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
@@ -296,12 +322,24 @@ export default async function PayrollPage({
               never reaches this branch — `needsReprocess` keys on 'processed' — so the
               "Closed remains protected" rule holds however the flag was left. */}
           {stale ? (
-            <span
-              className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${REPROCESS_PILL}`}
-              title={t('reprocessBadgeNote')}
-            >
-              {t('status.reprocessRequired')}
-            </span>
+            // a1a80747 r2 — the label is a way in too, to the same Reprocess Required tab as the count below, under
+            // the same multi-cycle gate (plain text without it).
+            multiCycleOn ? (
+              <Link
+                href={requiredHref}
+                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium hover:underline ${REPROCESS_PILL}`}
+                title={t('reprocessBadgeNote')}
+              >
+                {t('status.reprocessRequired')}
+              </Link>
+            ) : (
+              <span
+                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${REPROCESS_PILL}`}
+                title={t('reprocessBadgeNote')}
+              >
+                {t('status.reprocessRequired')}
+              </span>
+            )
           ) : (
             <span
               className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[b.status]}`}
@@ -327,11 +365,12 @@ export default async function PayrollPage({
               ⋯ menu below, written from the same flag, so this screen never offers a door
               the destination will refuse. Without the module the count still shows, because
               "your figures are stale" is true whether or not you can act on it here. */}
-          {stale && staleIds.length > 0 && (
+          {stale && affected > 0 && (
             <div className="mt-1">
               {multiCycleOn ? (
                 <Link
-                  href={`/payroll/${b.id}/reprocess?from=${fromQuery}`}
+                  // a1a80747 r2 — straight onto the Reprocess Required tab, which counts exactly these people.
+                  href={requiredHref}
                   // The count is the STATEMENT; the destination is the title, borrowed from
                   // the run-detail banner's own action label (payroll.batch) rather than
                   // written twice, so the two ways into the same screen read the same. A link
@@ -340,11 +379,11 @@ export default async function PayrollPage({
                   title={tb('recalcBannerAction')}
                   className="text-xs font-medium text-primary hover:underline"
                 >
-                  {t('reprocessAffected', { n: staleIds.length })}
+                  {t('reprocessAffected', { n: affected })}
                 </Link>
               ) : (
                 <span className="text-xs text-muted-foreground">
-                  {t('reprocessAffected', { n: staleIds.length })}
+                  {t('reprocessAffected', { n: affected })}
                 </span>
               )}
             </div>
@@ -565,6 +604,12 @@ export default async function PayrollPage({
 
       <Card className="overflow-hidden" data-tour="payroll-batches">
         <SectionHeader title={t('batches')} count={rows.length} />
+        {/* a1a80747 r2 — keeps the Reprocess Required counts current: says so while it works, otherwise nothing. */}
+        {refreshIds.length > 0 && (
+          <div className="px-4">
+            <PayrollOutstandingRefresh batchIds={refreshIds} />
+          </div>
+        )}
         {/* Paging must carry the whole filter state, so page 2 of a four-month selection is still that
             selection. hrefFor (rather than `params`) because the address holds REPEATED params. */}
         <Pager
