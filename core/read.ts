@@ -197,7 +197,7 @@ import {
   toilAccrual,
 } from '../db/schema';
 import { payrollHistoryEffectiveBatch } from '../db/schema';
-import { ALL_ROW_CEILING, cappedTotal, keysetFetchLimit, keysetSlice, listCountCap, type KeysetPageQuery, type KeysetRead } from '../lib/pagination';
+import { ALL_ROW_CEILING, cappedTotal, keysetReadLimit, keysetSlice, listCountCap, type KeysetPageQuery, type KeysetRead } from '../lib/pagination';
 import { anyUuid, uuidArrayParam } from '../db/sql-arrays';
 import { daysInMonth } from './payroll';
 import { filterDelegationOrgScopeTx } from './approvals';
@@ -1489,7 +1489,7 @@ export async function listEmployeesDirectoryPage(
       return employeeListRowsFrom(tx)
         .where(and(where, seek))
         .orderBy(...(backwards ? [desc(person.fullName), desc(employment.id)] : [asc(person.fullName), asc(employment.id)]))
-        .limit(keysetFetchLimit(p)) as Promise<EmployeeListRow[]>;
+        .limit(keysetReadLimit(p)) as Promise<EmployeeListRow[]>;
     };
     const cursor = { after: p.after, before: p.before, last: p.last };
     let fetched = await read(cursor), anchorFound = true;
@@ -6784,7 +6784,7 @@ export function auditEventsPage(
         .leftJoin(person, eq(person.id, appUser.personId))
         .where(and(where, seek))
         .orderBy(...(backwards ? [asc(domainEvent.occurredAt), asc(domainEvent.sequence)] : [desc(domainEvent.occurredAt), desc(domainEvent.sequence)]))
-        .limit(keysetFetchLimit(q)) as Promise<AuditRow[]>;
+        .limit(keysetReadLimit(q)) as Promise<AuditRow[]>;
     };
     const cursor = { after: q.after, before: q.before, last: q.last };
     let fetched = await read(cursor), anchorFound = true;
@@ -6971,7 +6971,7 @@ export function approvalHistoryPage(
       const anchor = cursor.after ?? cursor.before ?? null;
       const backwards = cursor.before !== undefined || cursor.last;
       const res = await tx.execute(sql`SELECT * FROM app.approval_history_page(${filters},
-        ${anchor}::uuid, ${backwards}::boolean, ${keysetFetchLimit(q)}::int)`);
+        ${anchor}::uuid, ${backwards}::boolean, ${keysetReadLimit(q)}::int)`);
       return (res as unknown as {
         id: string; aggregate_type: string; aggregate_id: string; event_type: string; occurred_at: Date | string;
         subject_employment_id: string | null; subject_name: string | null; decider_name: string | null; is_auto: boolean;

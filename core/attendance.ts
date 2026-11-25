@@ -53,7 +53,7 @@ import { alias } from 'drizzle-orm/pg-core';
 // list now, so its read and lib/pagination must agree about how many rows "All" can be: a read that
 // stopped at 200 under a pager whose PageState says a 250-row list is complete is a silent partial list.
 // core/read.ts takes the same import for the same reason.
-import { ALL_ROW_CEILING, cappedTotal, keysetFetchLimit, keysetSlice, listCountCap, type KeysetPageQuery } from '../lib/pagination';
+import { ALL_ROW_CEILING, cappedTotal, keysetReadLimit, keysetSlice, listCountCap, type KeysetPageQuery } from '../lib/pagination';
 import { anyUuid } from '../db/sql-arrays';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withAttendanceTenant` — every exported entry
@@ -3076,7 +3076,7 @@ export function attendanceForDateKeysetPage(
         .where(and(where, seek))
         .orderBy(sql`${employment.employeeCode} is null ${direction}`, sql`coalesce(${employment.employeeCode}, '') ${direction}`,
           sql`${person.fullName} ${direction}`, sql`${employment.id} ${direction}`)
-        .limit(keysetFetchLimit(opts))).map((r) => r.id);
+        .limit(keysetReadLimit(opts))).map((r) => r.id);
     };
     const cursor = { after: opts.after, before: opts.before, last: opts.last };
     let fetched = await read(cursor), anchorFound = true;
