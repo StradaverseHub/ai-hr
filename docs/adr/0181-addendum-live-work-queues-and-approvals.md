@@ -3,7 +3,13 @@
 Date: 25 November 2026
 
 Status: **Approved by the owner on 25 November 2026** ("Approve as recommended"): all six decisions of section 8 as
-written. Nothing in it is built yet. No migration is reserved: each migration-bearing step takes the
+written. Built, not installed:
+
+- Q0 is PR 320 (no migration).
+- The first two Q1 readers are PR 321 (`7330_queue_read_offboarding_access`) and PR 322
+  (`7340_queue_read_contract_navigation`, stacked on 321).
+
+Each reader installs in `legacy`. Staging follows release 8 in the shared queue. No migration is reserved: each migration-bearing step takes the
 next free number at build time from `node .github/ci/check-migration-collisions.mjs --local --next` (currently 7320 or
 above) and is recorded in `docs/MIGRATION-ALLOCATION.md`. ADR 0181 Phase 3 (PR 302) deliberately left these reads
 uncached; this addendum makes them cheap instead. It applies ADR 0181 decisions 1 and 5 (per-row authority, per-row loops)
