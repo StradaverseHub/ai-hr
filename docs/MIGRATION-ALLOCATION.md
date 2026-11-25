@@ -1,3 +1,18 @@
+# Audit Trail company scope (ADR 0182 Phase 1), 25 November 2026
+
+Reserve `7360_audit_trail_company_scope`, journal index `10760`, timestamp `1795495007360`,
+SQL SHA-256 `9208657d57e69b13a9a4bea1058dc4f66798b943ee21875eeadb74669c88b02b`. Rebased onto the release 9 staging head
+`60189ca03` (1,156 entries through `7340_queue_read_contract_navigation`, `1795495007340`), so the ledger becomes 1,157
+entries ending `7360`. The original reservation scan covered the 500 most recently committed branch heads and every
+registered worktree journal; a fresh scan of 700 heads on 25 November found only `7370_custom_pcb_selection` above it.
+The owner decided on 25 November 2026 that this releases before `7370` (board d8dc0a8c), so `7370` installs after
+`7360` and keeps its higher timestamp; `7350` stays unused. A short-lived renumbering to `7380` (commit `032c75a47`)
+was withdrawn before merge and never applied. Recheck both installation watermarks before admission.
+
+Adds `app.admin_company_ids()` and `app.audit_admin_aggregates()` (SECURITY DEFINER, STABLE, search_path pinned,
+EXECUTE to `ai_hr_app` only), read once per statement by the Audit Trail company scope in core/read.ts. No table,
+row, policy, grant on a table or existing function changes.
+
 # ADR 0181 live work queues, Q1: Contract navigation access, 25 November 2026
 
 Reserve `7340_queue_read_contract_navigation`, journal index `10740`, timestamp `1795495007340`, SQL SHA-256

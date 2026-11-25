@@ -8093,6 +8093,13 @@
       "when": 1795495007340,
       "tag": "7340_queue_read_contract_navigation",
       "breakpoints": true
+    },
+    {
+      "idx": 10760,
+      "version": "7",
+      "when": 1795495007360,
+      "tag": "7360_audit_trail_company_scope",
+      "breakpoints": true
     }
   ]
 }

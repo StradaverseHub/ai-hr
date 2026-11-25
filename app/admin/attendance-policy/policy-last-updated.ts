@@ -16,6 +16,8 @@ import { auditEvents } from '@/core/read';
  * events have NO subject employment. `app.is_admin()` is true for ANY hr_admin or super_admin grant, group-wide
  * or company-scoped — the same people requireAdmin() lets onto the Schedule screen. Anyone else reads nothing,
  * which is fail-closed, and the screen is admin-only anyway.
+ * ADR-0182 (migration 7360): auditEvents also applies the Audit Trail company scope, so a company-scoped
+ * administrator reads these events only for companies they administer (each carries its companyId).
  *
  * ── WHAT A MISSING EVENT MEANS ─────────────────────────────────────────────────────────────────────────────
  * A company can have a SAVED row and no event: provisioning (db/provision.ts seedCompanyCatalogs) inserts the

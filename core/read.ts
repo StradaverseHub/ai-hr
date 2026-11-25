@@ -6791,10 +6791,43 @@ export type AuditFilters = {
   offset?: number;
 };
 
+/**
+ * Audit Trail company scope, Phase 1 (ADR-0182, owner decision 25 Nov 2026; migration 7360).
+ *
+ * The shared domain_event read policy admits ANY administrator to the whole tenant's ledger, a company-scoped
+ * hr_admin included. Every Audit Trail read (rows, count, record-type and user dropdowns, download, the per-record
+ * History reads built on auditEvents) ANDs this predicate on, so such an administrator sees only events that
+ * belong to the companies they administer. It is a no-op for:
+ *   - group administrators (group-wide hr_admin, super_admin): they see exactly what they saw before;
+ *   - non-administrators: row security alone decides, as before (subject employments they may see).
+ * For a company-scoped administrator an event is in scope when ANY anchor holds:
+ *   1. its subject employment is one they may see (app.visible_employment_ids: CURRENT company, owner decision 3);
+ *   2. its payload records one of their companies as `companyId` (a JSON null companyId is group-level);
+ *   3. its aggregate is one of their companies, a company-owned row of theirs, or the login account, person,
+ *      statutory or compensation record of someone employed there (app.audit_admin_aggregates);
+ *   4. they performed it themselves (owner decision 4).
+ * Anything else, group-level records with no company in particular, is for group administrators only (decision 2a).
+ * Every sub-select is uncorrelated, so it is evaluated once per statement (InitPlan / hashed SubPlan), never per row;
+ * the group-administrator arm short-circuits before any of them run.
+ */
+function auditCompanyScope() {
+  return sql`(
+    not (select app.is_admin()) or (select app.is_group_admin())
+    or ${domainEvent.actorId} = app.current_user_id()
+    or ${domainEvent.subjectEmploymentId} in (select unnest(app.visible_employment_ids()))
+    or (${domainEvent.payload}->>'companyId') in (select unnest(app.admin_company_ids())::text)
+    or (${domainEvent.aggregateType}, ${domainEvent.aggregateId}) in (select scoped.aggregate_type, scoped.aggregate_id from app.audit_admin_aggregates() scoped)
+  )`;
+}
+
 /** The audit filter predicate, shared by the row page and its COUNT so the two can never disagree
- *  about what "matching" means (fc776376 — the pager's "26–50 of 312" needs a real total). */
+ *  about what "matching" means (fc776376 — the pager's "26–50 of 312" needs a real total).
+ *  ADR-0182: it always carries the company scope, except when a Personnel subject is named — that clause is itself
+ *  the authorization (the caller must hold Workforce visibility of that employment), and it also admits the subject's
+ *  person, statutory and compensation events, which carry no subject column of their own. */
 function auditWhere(f: AuditFilters) {
   return and(
+    f.employmentId ? undefined : auditCompanyScope(),
     f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
     f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
     f.eventType ? eq(domainEvent.eventType, f.eventType) : undefined,
@@ -6938,6 +6971,7 @@ export function auditAggregateTypes(ctx: SessionContext): Promise<{ aggregateTyp
     tx
       .selectDistinct({ aggregateType: domainEvent.aggregateType })
       .from(domainEvent)
+      .where(auditCompanyScope())
       .orderBy(domainEvent.aggregateType),
   );
 }
