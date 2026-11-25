@@ -26,7 +26,11 @@ const PAGES = [
 
 describe('Personnel filter panel: both pages use the consolidated component', () => {
   for (const { file, action } of PAGES) {
-    const src = read(file);
+    // ADR 0181 Phase 4: the directory's list (panel, chips, pager, table) is a list-only island rendered from one
+    // server view, so its contract is the page plus those two modules.
+    const src = file === 'app/personnel/page.tsx'
+      ? read(file) + read('app/personnel/directory-list.tsx') + read('app/personnel/directory-view.ts')
+      : read(file);
 
     it(`${file} retains consolidated filters and removable chips`, () => {
       if(file.startsWith('app/admin/'))expect(src).toContain('<PersonnelOrganisationFilters');else expect(src).toContain('<FilterPanel');
