@@ -7623,8 +7623,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         taxSelectionId:resolvedTaxScheme.selectionId,
         taxSelectionVersion:resolvedTaxScheme.selectionVersion,
         taxSelectionSource:resolvedTaxScheme.selectionSource,
-        // ADR 0183 — the custom PCB number saved with the selection this run resolved (custom schemes only).
-        ...('customPcb' in resolvedTaxScheme && resolvedTaxScheme.customPcb ? {customPcb:resolvedTaxScheme.customPcb} : {}),
+        // ADR 0183 — the custom PCB number saved with the selection this run resolved (custom schemes only; the
+        // engine reads it for no other scheme). A plain property, never a conditional spread: this bag's type is
+        // copied and extended throughout the run, and a spread would make it a union of two whole bags.
+        customPcb:resolvedTaxSchemes.get(e.employmentId)?.customPcb,
         taxCircumstance:resolvedTaxSchemes.get(e.employmentId)?.taxCircumstance,
         // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
         epfWageMonth: payPeriod,
