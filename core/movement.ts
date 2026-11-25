@@ -1440,8 +1440,9 @@ const KIND_SCOPED_INFO_DATE_FIELDS: Readonly<Record<string, readonly string[]>> 
   groupJoinDateCorrection: ['hiredOn','joinDate'],
   resignation: ['tenderResignationDate','resignationDate','lastWorkingDate'],
   entityTransfer: ['joinDate'],
-  // 646355e5 — the exit-dates leg applyTerminationTx writes beside the termination itself.
-  termination: ['lastWorkingDate','tenderResignationDate'],
+  // 646355e5 — the exit-dates leg applyTerminationTx writes beside the termination itself. 7da649d3 rev 2 — it
+  // also writes the Resignation Date (the termination's effective date, payroll's last day).
+  termination: ['lastWorkingDate','tenderResignationDate','resignationDate'],
 };
 
 /** A flat-column leg is undone field by field, and since 3ced1040 so is the confirmation date a
@@ -4839,7 +4840,8 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
             if(behaviour==='termination') input.resignationDate=p.after?.[f] ?? null;
             else input.tenderResignationDate=p.after?.[f] ?? null;
           }
-          if (f === 'resignationDate') input.resignationEffectiveDate = p.after?.[f] ?? null;
+          // 7da649d3 rev 2 — a termination's Resignation Date is its own effective date, not a separate input.
+          if (f === 'resignationDate' && behaviour !== 'termination') input.resignationEffectiveDate = p.after?.[f] ?? null;
           if (f === 'lastWorkingDate' && (behaviour === 'resignation' || behaviour === 'termination')) input.endDate = p.after?.[f] ?? null;
         }
         break;
