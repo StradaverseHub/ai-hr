@@ -214,6 +214,13 @@ export type RecalcMarkedRow = {
   status: string;
   needsRecalcAt?: Date | string | null;
   recalcEmploymentIds?: unknown;
+  /**
+   * a1a80747 r2 — how many employees this processed run still owes processing, each once, as the Payroll Process list
+   * reads it (core/payroll-view.ts `payrollRunOutstandingCounts`): the mark narrowed to payslips on the run, plus new or
+   * pending employees with no payslip and employees held for income tax review (the rule Close uses). Absent ⇒ the run's
+   * own mark is all there is to go on, exactly as before this item.
+   */
+  outstandingCount?: number | null;
 };
 
 /**
@@ -227,7 +234,9 @@ export type RecalcMarkedRow = {
  * `status !== 'draft'`) makes closed silent by construction.
  */
 export function needsReprocess(b: RecalcMarkedRow): boolean {
-  return b.status === 'processed' && b.needsRecalcAt != null;
+  // a1a80747 r2 — OR anyone still owed processing on it (a new or pending employee with no payslip yet, or one held for
+  // income tax review): the run is not finished, and Close already refuses it for exactly those people.
+  return b.status === 'processed' && (b.needsRecalcAt != null || (b.outstandingCount ?? 0) > 0);
 }
 
 /** What the listing SHOWS for a run: the stored status, or the derived state when the mark is set. */
@@ -244,10 +253,23 @@ export function payrollListState(b: RecalcMarkedRow): string {
  * comes back is whatever was written, not a checked `string[]`.
  */
 export function reprocessEmploymentIds(b: RecalcMarkedRow): string[] {
-  if (!needsReprocess(b)) return [];
+  // The MARK's own set: a leftover id list on a run whose mark is cleared names nobody, whatever else it owes.
+  if (b.status !== 'processed' || b.needsRecalcAt == null) return [];
   const ids = b.recalcEmploymentIds;
   if (!Array.isArray(ids)) return [];
   return [...new Set(ids.filter((x): x is string => typeof x === 'string' && x.length > 0))];
+}
+
+/**
+ * a1a80747 r2 — THE NUMBER UNDER "Reprocess Required": employees still owed processing on this run, each once. It is the
+ * number the run's Reprocess Required tab counts (core/payroll.ts `runOutstandingTx` is the one owner of both). Zero for a
+ * run that is not stale, so a closed or draft run can never carry a count. Without a stored answer it is the mark's own
+ * set (`reprocessEmploymentIds`), as before.
+ */
+export function reprocessAffectedCount(b: RecalcMarkedRow): number {
+  if (!needsReprocess(b)) return 0;
+  if (typeof b.outstandingCount === 'number' && Number.isFinite(b.outstandingCount)) return Math.max(0, Math.trunc(b.outstandingCount));
+  return reprocessEmploymentIds(b).length;
 }
 
 /**
@@ -351,6 +373,8 @@ export function applyFilters<
     payrollCycleName?: string | null;
     status: string;
     needsRecalcAt?: Date | string | null;
+    /** a1a80747 r2 — the outstanding count, so the status filter and the badge read one derivation. */
+    outstandingCount?: number | null;
   },
 >(
   rows: readonly T[],

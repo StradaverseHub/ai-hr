@@ -29,6 +29,8 @@ describe('every bulk-job kind is in exactly one lane',()=>{
   for(const kind of ['employee_import','register_import','leave_ledger','movement_import','clocking_import','fixed_transaction_import'])expect(bulkJobLaneOf(kind)).toBe('import');
   // The Contract schedule admission runs inside the bulk tick only where contract_schedule is registered.
   expect(bulkJobLaneOf('contract_schedule')).toBe('default');
+  // a1a80747 — the Payroll Process list's outstanding refresh is upkeep: it never waits in front of payroll processing.
+  expect(bulkJobLaneOf('payroll_run_outstanding_refresh')).toBe('default');
  });
  it('partitions the handlers: the lanes together register every handler once, in registration order',()=>{
   const perLane=WORKER_LANES.map(lane=>laneHandlers(BULK_JOB_HANDLERS,[lane]));

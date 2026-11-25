@@ -5,7 +5,7 @@ import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDo
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
 import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
 import {payPeriodBounds, payslipCoverage} from './payslip-segment';
-import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch } from '../db/schema';
+import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch, payrollRunOutstanding } from '../db/schema';
 /**
  * Payroll Transaction View (feedback a4a05174) — the centralized, READ-ONLY transaction inquiry.
  *
@@ -3319,6 +3319,66 @@ export function payrollDashboardBatchMetadata(
     const processedOn = await listBatchProcessedDatesTx(tx, batchIds);
     const closeCompanies = await payrollCloseCompanyIdsTx(tx, ctx, processedCompanyIds);
     return { processedOn, closeCompanies };
+  });
+}
+
+/**
+ * a1a80747 — one processed run's "Reprocess Required" answer as the Payroll Process list prints it.
+ *
+ *   count     employees still owed processing, each once: the run's recalculation mark narrowed to employees with a
+ *             payslip on it (read live), together with the stored close-pending employees (payroll_run_outstanding,
+ *             worked out in the background by core/payroll-run-outstanding.ts) who still have no payslip on it (also
+ *             live, so somebody added by a reprocess drops out at once). Until the run's first refresh (`known` false)
+ *             it is the mark alone, exactly as before this item: every distinct id the mark names.
+ *   marked    whether the recalculation mark is set (Close refuses it whatever the count says).
+ *   due       the stored answer is missing or older than `freshMs`, and no refresh was asked for within `freshMs`: the
+ *             list asks for one (app/payroll/outstanding-refresh.tsx).
+ */
+export type PayrollRunOutstandingCount = { count: number; marked: boolean; known: boolean; due: boolean };
+
+/**
+ * a1a80747 — the Payroll Process list's outstanding counts for the given runs, ONE statement for all of them
+ * (SCALE-AND-RELEASE-RULES 2: no per-run work in the request). Only PROCESSED runs get an entry: a draft owes nothing
+ * and a closed run never shows Reprocess Required. Row security decides what the caller sees: the stored row is visible
+ * exactly where its run is. Read only, no event. Fails closed on an empty id set.
+ */
+export function payrollRunOutstandingCounts(
+  ctx: SessionContext,
+  batchIds: readonly string[],
+  freshMs = 60_000,
+): Promise<Map<string, PayrollRunOutstandingCount>> {
+  const ids = [...new Set(batchIds)].filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+  if (ids.length === 0) return Promise.resolve(new Map());
+  const fresh = Math.max(0, Math.floor(freshMs));
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx.execute<{ id: string; count: number; marked: boolean; known: boolean; due: boolean }>(sql`
+     with runs as materialized (
+      select b.id,b.needs_recalc_at,b.recalc_employment_ids from ${payrollBatch} b
+      where b.id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid) and b.status='processed'),
+     mark_ids as (
+      select r.id as batch_id,elem #>> '{}' as eid from runs r
+      cross join lateral jsonb_array_elements(case when r.needs_recalc_at is not null and jsonb_typeof(r.recalc_employment_ids)='array'
+       then r.recalc_employment_ids else '[]'::jsonb end) elem
+      where jsonb_typeof(elem)='string' and length(elem #>> '{}')>0),
+     stored_ids as (
+      select o.batch_id,elem #>> '{}' as eid from ${payrollRunOutstanding} o join runs r on r.id=o.batch_id
+      cross join lateral jsonb_array_elements(case when jsonb_typeof(o.employment_ids)='array' then o.employment_ids else '[]'::jsonb end) elem
+      where jsonb_typeof(elem)='string'),
+     owed as (
+      select m.batch_id,m.eid from mark_ids m where exists (select 1 from ${payslip} p where p.batch_id=m.batch_id
+       and p.employment_id=case when m.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then m.eid::uuid end)
+      union
+      select s.batch_id,s.eid from stored_ids s where not exists (select 1 from ${payslip} p where p.batch_id=s.batch_id
+       and p.employment_id=case when s.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then s.eid::uuid end))
+     select r.id::text as id,
+      (o.employment_ids is not null) as known,
+      (r.needs_recalc_at is not null) as marked,
+      case when o.employment_ids is not null then (select count(*) from owed w where w.batch_id=r.id)
+       else (select count(distinct m.eid) from mark_ids m where m.batch_id=r.id) end::int as count,
+      ((o.refreshed_at is null or o.refreshed_at < now() - ${fresh}::int * interval '1 millisecond')
+       and (o.requested_at is null or o.requested_at < now() - ${fresh}::int * interval '1 millisecond')) as due
+     from runs r left join ${payrollRunOutstanding} o on o.batch_id=r.id`);
+    return new Map(rows.map((r) => [r.id, { count: Number(r.count), marked: r.marked, known: r.known, due: r.due }]));
   });
 }
 

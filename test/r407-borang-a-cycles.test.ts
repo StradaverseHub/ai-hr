@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import { PDFDocument } from 'pdf-lib';
 import {
   borangADocumentPairs,
   borangADocumentQuery,
@@ -367,10 +368,15 @@ describe('the drawn page totals reconcile to the rows drawn on it', () => {
     expect(sheet.filter((d) => d.text === '0.00').map((d) => `${d.text}@${d.x},${d.y}`)).toEqual([]);
   });
 
-  it('drops the "Bulan Upah" box the specimen does not have, and keeps the payroll month in the foot line', async () => {
-    const [sheet] = await drawnPages(borangAFrom({ header, rows: [rowN(1)] }));
+  // Board 66175cd2 — the foot line that carried the payroll month is gone (the reference has no small print of
+  // ours); the month moved into the PDF's metadata, where the +1 is still checkable.
+  it('drops the "Bulan Upah" box the specimen does not have, and keeps the payroll month in the PDF metadata', async () => {
+    const form = borangAFrom({ header, rows: [rowN(1)] });
+    const [sheet] = await drawnPages(form);
     expect(sheet.some((d) => d.text.startsWith('Bulan Upah'))).toBe(false);
-    expect(sheet.some((d) => d.text === 'Bulan caruman 08 / 2026 · bulan upah 2026-07'.replace('·', '\xb7'))).toBe(true);
+    expect(sheet.some((d) => d.text.includes('bulan upah'))).toBe(false);
+    const doc = await PDFDocument.load(await renderBorangAPdf(form));
+    expect(doc.getSubject()).toContain('Bulan caruman 08 / 2026 · bulan upah 2026-07');
     // The Bulan Caruman box carries the specimen's MMYY and nothing else.
     expect(sheet.some((d) => d.text === '0826')).toBe(true);
   });
