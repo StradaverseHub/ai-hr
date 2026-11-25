@@ -1,0 +1,43 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+Saving BKBOP (BIK-Buyout Payment) with Remuneration Type set to Additional is refused with a message about EPF Bonus 2012, even though EPF is not ticked. The EPF part of that message is misleading. EPF Bonus 2012 is not the problem here; the only thing stopping the save is Remuneration Type.
+
+Behind the message: the monthly tax deduction (PCB) calculation treats every Benefit in Kind and living accommodation line as normal monthly remuneration. It has no way to treat them as Additional remuneration. If we simply let the setting save as Additional, the screen would say Additional while the payslip still taxed it as Normal. That would be wrong, and hard to spot.
+
+WHAT WE'LL CHANGE
+
+- When Payroll category is Benefit in Kind (BIK) or Value of Living Accommodation (VOLA) and Subject to PCB is ticked, Remuneration Type is set to Normal and cannot be changed. A short note beside it explains why: "BIK and living accommodation are taxed as normal remuneration in the monthly tax deduction." You see this before you press Save, not as an error afterwards.
+
+- The error messages are separated. The Remuneration Type message no longer mentions EPF Bonus 2012. An EPF Bonus 2012 message appears only when EPF Bonus 2012 is actually ticked on that item.
+
+- Your BKBOP item will save with Remuneration Type Normal. All its other settings stay exactly as you chose them.
+
+- The same clearer messages appear in the Pay Item import and when payroll is processed.
+
+WHAT YOU'LL GET
+
+The Pay Item screen shows you the rule up front and the message tells you the real reason. BIK items save without confusing EPF warnings, and what the screen says always matches how the payslip is taxed.
+
+GOOD TO KNOW
+
+- We're not changing how PCB is calculated, and we're not changing any EPF tables, rates or settings. EPF Bonus 2012 is already switched off automatically when Subject to EPF is not ticked.
+
+- Treating a one-off benefit (such as a buyout) as Additional remuneration would mean changing the tax calculation itself. That needs a confirmed tax basis first, so it is a separate, larger piece of work and is not part of this plan. If you need it, please raise a separate request with the LHDN reference you rely on (for example the relevant part of the PCB computerised calculation specification) and a worked example of the PCB you expect for one employee and month. We would build and check it against that example.
+
+- Existing BIK or VOLA items already saved as Additional can still be opened and changed back to Normal.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Root cause (verified at 7909f0c43). classifyNonCashBenefit in localization/noncash-benefits.ts (about 44-46) throws one reason, normal_remuneration_required, when pcb is ticked and either epfBonus2012 is ticked or pcbRemunerationType is anything other than normal. For BKBOP only the remuneration branch fires (the form already forces EPF Bonus off when EPF is off: app/admin/pay-components/statutory-config.tsx about 50). The message key errorBenefit_normal_remuneration_required mentions both. Governing decision: ADR-0090 (docs/adr/0090-employment-owned-my-tax-selection.md, line 18): "BIK and VOLA are noncash normal-remuneration tax inputs". The engine has no additional route: computeMonth takes only pcbNonCashNormal (localization/my/payroll.ts about 1814 and 1863-1865), and the kernel classifies BIK/VOLA by category before reading the remuneration type (core/payroll.ts about 6400-6424). Owner decision 24 Nov 2026: keep BIK/VOLA Normal and fix the messages; an Additional route is a separate, owner-approved statutory change.
+
+1. Split the reason. Add epf_bonus_not_allowed to NonCashBenefitConfigurationError reasons in localization/noncash-benefits.ts. Check the EPF Bonus branch first and on its own; keep normal_remuneration_required for the remuneration branch only. Thread the new reason through: core/pay-components.ts (unsupportedTaxableReason about 2681, batch and CSV writer about 2905-2912; replace the hard-coded English copy with the shared import message source), lib/payroll-noncash-error.ts, lib/pay-item-import-messages.ts, and core/payroll-run-group-result.ts (about 145: new NON_CASH_EPF_BONUS_NOT_ALLOWED code; keep old payloads decodable). Reword errorBenefit_normal_remuneration_required so it no longer mentions EPF Bonus 2012. Add errorBenefit_epf_bonus_not_allowed and the matching import issue key. All six locales; translations need review.
+
+2. Form guard. In app/admin/pay-components/statutory-config.tsx (and component-form.tsx if the payroll category lives there): when the noncash category is BIK or VOLA and PCB is ticked, set Remuneration Type to normal, disable it, and show the note. An existing item saved with another type must still open and be editable back to valid. The server check stays the authority.
+
+3. No migration and no PCB engine change. Other users of classifyNonCashBenefit (lib/payroll-import-tax-input.ts, localization/my/tax-basis-replay.ts, core/payroll.ts 6400) only gain the clearer reason.
+
+Tests: update test/r385-bik-config.test.ts (EPF-bonus case gets its own expected key; Additional alone gives the reworded remuneration message without EPF wording), test/r385-bik-config.dom.test.tsx (locale key coverage; field locked for BIK/VOLA with PCB; legacy Additional item editable back to Normal), test/r383-bik-vola.test.ts, test/r382-reprocess-presentation.test.ts and test/payroll-multi-company-process.test.ts for the new run code. Add a rendered check that BKBOP's configuration saves as Normal with the other settings unchanged.

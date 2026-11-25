@@ -172,7 +172,9 @@ describe('fbf6abd0 — the app shell actually renders it, and Log out is still r
   it('the header mounts the account menu with the viewer’s resolved name + Employee ID', () => {
     expect(LAYOUT).toContain("import { UserMenu } from '@/components/user-menu';");
     expect(LAYOUT).toContain("import { viewerIdentity } from '@/lib/viewer';");
-    expect(LAYOUT).toMatch(/const \[viewer,\s*\{accessConfigurationAvailable,\s*workforceAvailable,\s*onboarded,\s*peopleGeneralConfigurable\}\]\s*=\s*await Promise\.all\(\[\s*viewerIdentity\(session\),\s*readShellNavigationAccess\(session,\s*!isAdmin\(session\),\s*isAdmin\(session\)\)/);
+    // ADR 0181 package 1.2: one frame read pass; the viewer and the shell's navigation access are read side by side in it.
+    expect(LAYOUT).toMatch(/\[principals,\{allowed,scopeIds\},viewer,shellAccess,[\s\S]*?\]=await Promise\.all\(\[\s*listPrincipals\(\),\s*context,[\s\S]*?viewerIdentity\(session\),\s*readShellNavigationAccess\(session,\s*!isAdmin\(session\),\s*isAdmin\(session\)\)/);
+    expect(LAYOUT).toContain('const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=frame.shellAccess;');
     expect(LAYOUT).toContain(
       '<UserMenu name={viewer.name} employeeCode={viewer.employeeCode} employed={viewer.employed} canConfigureAccess={accessConfigurationAvailable} canViewWorkforce={workforceAvailable}/>',
     );

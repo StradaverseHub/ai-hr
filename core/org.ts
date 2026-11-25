@@ -22,6 +22,7 @@ import {lockAccessAdministratorSetTx,lockAccessConfigurationTx,lockProfileValueW
 import {joinWorkforceBarrierTx,lockEmploymentLeaveDependenciesTx,lockOrgReportingTx,lockPersonValueWritesTx} from './workforce-lock-mode';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
 import {assertContractPostingHistoryWriteTx} from './contract-posting-history-source';
+import {blockingAssignmentSourceTx,type AssignmentRecordField,type AssignmentRecordSource} from './assignment-record-source';
 import {setWorkforceEmployeeCode} from './workforce-code';
 import {personnelField} from '../lib/personnel-field-registry';
 import {personnelScalarIssue} from '../lib/personnel-import-contract';
@@ -113,12 +114,26 @@ export class CrossCompanyError extends Error {
 /** A dated assignment change earlier than the version in force. Carries that version's start date so the
  *  Movement import can say which record blocks it (production 13 Nov 2026: the generic refusal hid it). */
 export class AssignmentBeforeCurrentStartError extends Error {
-  constructor(readonly currentStart: string, readonly effectiveDate?: string) {
+  /** Board eb01800b — `source` names the later record (correction, mapping, movement or untagged change), its date,
+   *  fields and actor (core/assignment-record-source.ts). Screens translate it (people.detail.assignmentBlocked). */
+  constructor(readonly currentStart: string, readonly effectiveDate?: string, readonly source: AssignmentRecordSource | null = null) {
     // Board 2026-11-14 (production DB-V-55964A / 079831 / D6EDA6): the screen showed only a database reference
     // when a termination predated the record in force. Name both dates, as the date pickers show them.
-    super(`${effectiveDate ? `The date ${displayCalendarDate(effectiveDate)} is` : 'This date is'} before the current assignment record, which starts on ${displayCalendarDate(currentStart)}. Check the effective date against your HR records. If it is correct, review and correct the later assignment in Employment History before retrying.`);
+    super(`${effectiveDate ? `The date ${displayCalendarDate(effectiveDate)} is` : 'This date is'} before the current assignment record, which starts on ${displayCalendarDate(currentStart)}. Check the effective date against your HR records. If it is correct, review and correct the later assignment in Employment History before retrying.${source ? assignmentRecordSentence(source) : ''}`);
     this.name = 'AssignmentBeforeCurrentStartError';
   }
+}
+const ASSIGNMENT_RECORD_FIELD_NAMES: Record<AssignmentRecordField, string> = {
+  companyId: 'Company', employmentType: 'Employment Type', businessUnitId: 'Business Unit', departmentId: 'Department', positionId: 'Position',
+};
+/** The English sentence naming the later record (logs, imports and any screen that does not translate it). */
+function assignmentRecordSentence(source: AssignmentRecordSource): string {
+  const fields = source.fields.length ? ` (${source.fields.map((f) => ASSIGNMENT_RECORD_FIELD_NAMES[f]).join(', ')})` : '';
+  const what = source.kind === 'correction' ? `an Information-Only Correction${fields}`
+    : source.kind === 'mapping' ? `an organisation structure update${fields}`
+    : source.kind === 'movement' ? 'a recorded movement'
+    : `an assignment record change${fields}`;
+  return ` The later record is ${what} dated ${displayCalendarDate(source.effectiveDate)}, listed in Employment History.`;
 }
 /** A termination dated before a reporting line (as manager or subordinate) that is still open began. */
 export class ReportingLineAfterTerminationError extends Error {
@@ -692,7 +707,7 @@ export async function transferEmployee(
 
     const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:emp!.companyId,asOf:p.effectiveDate});
     // CLOSE current (set valid_to), then INSERT the new version — ranges don't overlap.
-    if (p.effectiveDate < cur.validFrom) throw new AssignmentBeforeCurrentStartError(cur.validFrom, p.effectiveDate);
+    if (p.effectiveDate < cur.validFrom) throw new AssignmentBeforeCurrentStartError(cur.validFrom, p.effectiveDate, await blockingAssignmentSourceTx(tx, ctx.tenantId, p.employmentId, p.effectiveDate));
     await tx.update(assignment).set({ validTo: p.effectiveDate }).where(eq(assignment.id, cur.id));
     const [next] = await tx
       .insert(assignment)
@@ -842,7 +857,7 @@ export async function terminateEmploymentTx(
     .limit(1);
   if (cur) {
     // Board 2026-11-14: a termination dated before the version in force would end it before it began.
-    if (p.terminationDate < cur.validFrom) throw new AssignmentBeforeCurrentStartError(cur.validFrom, p.terminationDate);
+    if (p.terminationDate < cur.validFrom) throw new AssignmentBeforeCurrentStartError(cur.validFrom, p.terminationDate, await blockingAssignmentSourceTx(tx, ctx.tenantId, p.employmentId, p.terminationDate));
     await tx.update(assignment).set({ validTo: p.terminationDate }).where(eq(assignment.id, cur.id));
   }
 
@@ -2404,7 +2419,7 @@ async function setEmploymentAssignmentBody(
     if (!cur) throw new Error('No open assignment to change');
     // Effective date cannot predate the current version's start (would invert the dated range).
     if (p.effectiveDate < cur.validFrom) {
-      throw new AssignmentBeforeCurrentStartError(cur.validFrom, p.effectiveDate);
+      throw new AssignmentBeforeCurrentStartError(cur.validFrom, p.effectiveDate, await blockingAssignmentSourceTx(tx, ctx.tenantId, p.employmentId, p.effectiveDate));
     }
 
     const nextDepartmentId = p.departmentId ?? cur.departmentId;

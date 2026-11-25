@@ -28,7 +28,10 @@ export class SharedReadIncompatibleError extends Error{
  * outstanding, so a busy period can hold many statements; this is a lower bound on waits, not a round-trip count. */
 export type SharedReadStats={joins:number;fallbacks:number;statements:number;memoHits:number;refused:Record<string,number>;failures:Record<string,number>;carriers:number;flights:number;
  /** Carriers that read a request preamble, and the owner statements it answered ahead (statement memo entries). */
- preambles:number;seeded:number};
+ preambles:number;seeded:number;
+ /** Default joins (package 1.1), and those of them that kept their own transaction because the open carrier predates
+  * a completed fallback and another owner was still inside it. */
+ defaultJoins:number;staleSkips:number};
 type Join={tainted:boolean};
 const sessions=new AsyncLocalStorage<SharedReadSession<unknown>>();
 const joins=new AsyncLocalStorage<Join>();
@@ -76,6 +79,41 @@ let requestScopePreamble:SharedReadPreamble|undefined;
  * process that never loads it, a request scope's carriers read none and every owner reads as before. */
 export function registerRequestScopePreamble(preamble:SharedReadPreamble){requestScopePreamble=preamble;}
 export function scopePreamble():SharedReadPreamble|undefined{return requestScopePreamble;}
+
+/** ── The default request join (ADR 0181 decision 2, plan package 1.1) ─────────────────────────────────────────────
+ * During a server render, a `withTenant` read that is inside no shared session joins its identity's session of the
+ * render's request read scope (lib/request-read-scope.ts) instead of opening its own transaction. The scope module
+ * registers its resolver when loaded (by the root layout); a process that never loads it (a job, a script, the
+ * worker) has no scope, and every owner keeps its own transaction exactly as before. Route handlers, server actions
+ * and tests have no request scope (React `cache` is a passthrough there) unless a test models one explicitly.
+ *
+ * Every refusal and fallback rule of this module still applies to a default join. Two additions keep it at least as
+ * fresh as the owner's own transaction would have been:
+ *  - a default join never reads the request preamble (its carrier is plain: the preamble is a Home composition's), and
+ *  - after an owner of the session has completed a fallback in its own transaction (which may have written), a default
+ *    join never joins a carrier opened before that: an idle one is committed and a fresh snapshot begins; one still in
+ *    use by another owner is left to it, and this owner reads in its own transaction, as before this package.
+ * OPT-IN (owner decision, 24 November 2026): the join runs only while the web process has
+ * `AIHR_DEFAULT_REQUEST_READ_JOIN=on` (read per call). Unset or any other value, every owner keeps its own transaction
+ * exactly as before. One carrier is one connection, so owners that ran in parallel queue behind each other; on hardware
+ * with many cores that can cost more wall time than the transactions it saves, so it stays off in production until it
+ * is measured there. `withoutDefaultRequestJoin` and `withIndependentTransactions` switch it off for their work. No
+ * switch changes an explicit shared snapshot (Home, Today, the shell's approval summary). */
+let requestScopeResolver:(()=>object|undefined)|undefined;
+export function registerRequestScopeResolver(resolve:()=>object|undefined){requestScopeResolver=resolve;}
+const noDefaultJoin=new AsyncLocalStorage<true>();
+/** Every owner inside `work` joins only a shared snapshot that is explicitly installed (equivalence proofs). */
+export function withoutDefaultRequestJoin<T>(work:()=>Promise<T>):Promise<T>{return noDefaultJoin.run(true,work);}
+/** Whether a render's reads share its read snapshot: `AIHR_DEFAULT_REQUEST_READ_JOIN=on` and not switched off for
+ * this work. It also decides whether the root layout reads its frame inside the render's snapshot (package 1.2). */
+export function requestReadJoinEnabled():boolean{
+ return process.env.AIHR_DEFAULT_REQUEST_READ_JOIN==='on'&&!independent.getStore()&&!noDefaultJoin.getStore();
+}
+/** The request read scope a `withTenant` read outside any shared session may join, or undefined. */
+export function defaultRequestReadScope():object|undefined{
+ if(!requestScopeResolver||sessions.getStore()||!requestReadJoinEnabled())return undefined;
+ return requestScopeResolver();
+}
 /** What a carrier lets its opener do before any owner joins: answer statements ahead, and record a held setting. */
 export type SharedReadCarrierControl={seed(seeds:readonly SharedReadSeed[]):number;hold(setting:'jit',value:'on'|'off'):void};
 
@@ -93,7 +131,12 @@ export class SharedReadSession<Tx>{
  private works=0;
  /** True only while a carrier sets its own transaction-local identity, before any owner can join it. */
  bootstrapping=false;
- readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0,flights:0,preambles:0,seeded:0};
+ readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0,flights:0,preambles:0,seeded:0,defaultJoins:0,staleSkips:0};
+ /** Fallbacks completed so far, and how many had completed when the current carrier began. */
+ private settledFallbacks=0;
+ private carrierFallbacks=0;
+ /** True only while `begin` opens a carrier for a default join: the opener reads it synchronously (plain carrier). */
+ openingPlain=false;
  /** The request preamble each new carrier reads (decision 12), if its request declared one. */
  preamble?:SharedReadPreamble;
  /** Statements sent on the current carrier and not yet answered (diagnostic flight count only). */
@@ -110,19 +153,30 @@ export class SharedReadSession<Tx>{
  admits(owner:object,identity:string,deadline?:AbortSignal){return !this.closed&&owner===this.owner&&identity===this.identity&&deadline===this.deadline;}
  poison(){this.poisoned=true;}
  /** The preamble a carrier opening now reads for `ctx`, or null (none declared, switched off, or not buildable). */
- openPreamble(ctx:SessionContext,tx:unknown):SharedReadPreambleRead|null{
-  if(!this.preamble||ownerPreambleReads())return null;
+ openPreamble(ctx:SessionContext,tx:unknown,plain=false):SharedReadPreambleRead|null{
+  if(plain||!this.preamble||ownerPreambleReads())return null;
   try{return this.preamble.build(ctx,tx);}catch{return null;}
  }
 
- async join<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal?:AbortSignal):Promise<T>{
+ join<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal?:AbortSignal):Promise<T>{return this.joinCarrier(fn,ownTransaction,signal,false);}
+ /** A `withTenant` read that joins this request-scoped session by default (package 1.1; see the module notes above). */
+ joinDefault<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal?:AbortSignal):Promise<T>{
+  signal?.throwIfAborted();
+  this.stats.defaultJoins++;
+  if(this.carrier&&this.carrierFallbacks!==this.settledFallbacks){
+   if(this.active>0){this.stats.staleSkips++;return this.fallback(ownTransaction);}
+   this.release();
+  }
+  return this.joinCarrier(fn,ownTransaction,signal,true);
+ }
+ private async joinCarrier<T>(fn:(tx:Tx)=>Promise<T>,ownTransaction:()=>Promise<T>,signal:AbortSignal|undefined,plain:boolean):Promise<T>{
   signal?.throwIfAborted();
   if(this.poisoned||this.closed)return this.fallback(ownTransaction);
   this.active++;
   let tainted=false,result:{ok:true;value:T}|{ok:false;error:unknown}|undefined;
   try{
    let tx:Tx;
-   try{tx=await (this.carrier??=this.begin()).tx;}
+   try{tx=await (this.carrier??=this.begin(plain)).tx;}
    catch{this.poisoned=true;tainted=true;}
    if(!tainted){
     signal?.throwIfAborted();
@@ -139,7 +193,13 @@ export class SharedReadSession<Tx>{
   if(!result!.ok)throw result!.error;
   return result!.value;
  }
- private begin(){this.stats.carriers++;this.bootstrapping=true;const carrier=this.open();this.carriers.push(carrier.done);return carrier;}
+ private begin(plain=false){
+  this.stats.carriers++;this.bootstrapping=true;this.carrierFallbacks=this.settledFallbacks;
+  this.openingPlain=plain;
+  let carrier:SharedReadCarrier<Tx>;
+  try{carrier=this.open();}finally{this.openingPlain=false;}
+  this.carriers.push(carrier.done);return carrier;
+ }
  private leave(){this.active--;if(this.active===0&&(this.waitingOwn>0||this.idleRelease&&this.works===0))this.release();}
  /** One request-scoped composition: while it runs, its owners join this session; when the last one settles and no
   * owner is inside, the carrier commits. Results and failures are the composition's own. */
@@ -156,7 +216,7 @@ export class SharedReadSession<Tx>{
  private async fallback<T>(ownTransaction:()=>Promise<T>){
   this.stats.fallbacks++;this.waitingOwn++;
   if(this.active===0)this.release();
-  try{return await ownTransaction();}finally{this.waitingOwn--;}
+  try{return await ownTransaction();}finally{this.waitingOwn--;this.settledFallbacks++;}
  }
  /** After the request's reads settle: commit every carrier and wait for each to finish. */
  async close(){this.closed=true;this.release();await Promise.all(this.carriers.map(done=>done.catch(()=>undefined)));}
@@ -220,6 +280,11 @@ const REFUSE=[
 ] as const;
 /** SQL functions that write even when called from a SELECT. A statement calling one keeps its own transaction. */
 const WRITING_FUNCTIONS=/\bapp\.reward_access_observe\s*\(/i;
+/** SQL functions that take an advisory barrier inside their body and refuse any transaction but read-only Read
+ * Committed (db/migrations/2135_profile_presentation_read_lock.sql). Sent to the carrier, the call raises and aborts
+ * the shared transaction, so every later owner of the request would rerun alone; refused before sending, only its own
+ * owner reruns, exactly as a barrier in the statement text does. */
+const BARRIER_FUNCTIONS=/\bapp\.access_profile_policy_read_lock\s*\(/i;
 /** Statement texts (never parameters or rows) that a read-only carrier refused with 25006 in this process. They
  * are refused before sending from then on; the first refusal already reran every affected owner. */
 const learnedWriters=new Set<string>();
@@ -232,6 +297,7 @@ export function classifySharedStatement(query:string):SharedStatementClass{
  if(CONTROL.test(query))return {kind:'refuse',reason:'control'};
  if(!/^\s*\(?\s*(select|with|values|table)\b/i.test(query))return {kind:'refuse',reason:'unknown'};
  if(WRITING_FUNCTIONS.test(query)||learnedWriters.has(query))return {kind:'refuse',reason:'write'};
+ if(BARRIER_FUNCTIONS.test(query))return {kind:'refuse',reason:'barrier'};
  for(const [reason,pattern] of REFUSE)if(pattern.test(query))return {kind:'refuse',reason};
  return VOLATILE.test(query)?{kind:'pass'}:{kind:'memo'};
 }
