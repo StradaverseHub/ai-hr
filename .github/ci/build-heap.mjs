@@ -15,6 +15,7 @@ import {readFileSync,writeFileSync,mkdirSync,appendFileSync,existsSync} from 'no
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createBuildProcessObserver} from './build-process-memory.mjs';
+import {createTypecheckHandoff,HANDOFF_POLL_MS} from './build-typecheck-handoff.mjs';
 
 export const BUILD_HEAP_DEFAULT_MB=6144;
 export const BUILD_HEAP_CEILING_MB=8192; // Hard ceiling. Changing it needs owner review.
@@ -129,22 +130,25 @@ async function measure(dir,argv){
  sample();const timer=setInterval(sample,2000);
  const startedAt=new Date().toISOString();
  const child=spawn('/usr/bin/time',['-v','-o',timeFile,...argv],{stdio:'inherit',env:e});
- let observer,processTimer,exit,observerFailure=false;
+ let observer,processTimer,exit,observerFailure=false,handoff,handoffTimer;
+ // Scheduling only: pause Next's tsc child while Turbopack still holds its compiler graph (build-typecheck-handoff.mjs).
+ try{handoff=createTypecheckHandoff(child.pid);handoffTimer=setInterval(()=>handoff.poll(),HANDOFF_POLL_MS);}catch{}
  const observe=()=>{try{observer?.sample();}catch{observerFailure=true;try{observer?.noteFailure();}catch{}}};
  try{
   try{observer=createBuildProcessObserver(child.pid);observe();processTimer=setInterval(observe,500);}catch{observerFailure=true;}
   exit=await new Promise((done,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>done({code,signal}));});
  }finally{
-  clearInterval(timer);clearInterval(processTimer);sample();
+  clearInterval(timer);clearInterval(processTimer);clearInterval(handoffTimer);sample();
   try{observe();const attribution=observer?.report()??{kind:'OBSERVED_BUILD_PROCESS_MEMORY_NOT_ACCEPTANCE',attributionComplete:false,error:'observer_unavailable'};attribution.observerFailure=observerFailure;writeFileSync(join(dir,'build-process-memory.json'),JSON.stringify(attribution,null,2)+'\n',{flag:'wx',mode:0o600});}
   catch{console.log('::warning::Optional build-process attribution unavailable; GNU time verdict remains authoritative');}
  }
+ const handoffReport=handoff?.release('build_exited')??null;
  const report={kind:'NEXT_BUILD_MEMORY_TELEMETRY_NOT_RELEASE',releaseAuthorized:false,source:e.AIHR_CI_HEAD??null,controller:e.AIHR_CI_CONTROL_HEAD??e.GITHUB_SHA??null,
   runId:e.GITHUB_RUN_ID??null,job:e.GITHUB_JOB??null,command:argv,nodeOptions:e.NODE_OPTIONS,heapProfile:e.AIHR_CI_BUILD_HEAP_PROFILE??'default-6144',
   memTotalKiB:parseMemTotalKiB(readFileSync('/proc/meminfo','utf8')),startedAt,endedAt:new Date().toISOString(),exitCode:exit.code,signal:exit.signal,
   peakRssKiB:null,peakRssMeasure:'GNU time ru_maxrss: largest single waited descendant process, not the sum of concurrent processes',
   minMemAvailableKiB:Number.isFinite(minAvailable)?minAvailable:null,memAvailableSamples:samples.length,rssBudgetKiB:{warn:BUILD_RSS_WARN_KIB,fail:rssFailKiB},
-  minMemAvailableBudgetKiB:bounded?BUILD_MEM_AVAILABLE_MIN_KIB:null,availableMemoryVerdict:bounded?availableMemoryVerdict(Number.isFinite(minAvailable)?minAvailable:null):'not_applicable',verdict:null};
+  minMemAvailableBudgetKiB:bounded?BUILD_MEM_AVAILABLE_MIN_KIB:null,availableMemoryVerdict:bounded?availableMemoryVerdict(Number.isFinite(minAvailable)?minAvailable:null):'not_applicable',verdict:null,typecheckHandoff:handoffReport};
  try{report.peakRssKiB=parseMaxRssKiB(readFileSync(timeFile,'utf8'));Object.assign(report,buildMemoryVerdict(bounded?BUILD_HEAP_CEILING_MB:BUILD_HEAP_DEFAULT_MB,report.peakRssKiB,report.minMemAvailableKiB));}catch(error){report.telemetryError=String(error);}
  writeFileSync(join(dir,'build-memory.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});
  const line=`next build memory: exit=${exit.code}${exit.signal?' signal='+exit.signal:''}; heap=${report.nodeOptions} (${report.heapProfile}); peak RSS=${report.peakRssKiB?gib(report.peakRssKiB):'unknown'}; `
