@@ -22,11 +22,13 @@ export function validateCompilerPhase({code,signal,timedOut},text,expectedErrorP
  return {files,expectedError:expectedErrorPath!==null,processExitCode:code};
 }
 /** Retain actual exits, and bound termination of only the newly owned process group. */
-export async function measuredCommand(command,args,{cwd,env,log,timeoutMs=600000,graceMs=10000}){
+export async function measuredCommand(command,args,{cwd,env,log,timeoutMs=600000,graceMs=10000,onSpawn}){
  const fd=openSync(log,'wx',0o600);let child,timer,timedOut=false,killDone=Promise.resolve();
  const start=Date.now();
  try{
   child=spawn(command,args,{cwd,env,stdio:['ignore',fd,fd],detached:true});
+  // Optional observation hook (a scheduling-only watcher); it never replaces the exit/timeout semantics.
+  if(onSpawn&&child.pid)onSpawn(child.pid);
   timer=setTimeout(()=>{
    timedOut=true;if(child.pid)try{process.kill(-child.pid,'SIGTERM');}catch{}
    killDone=new Promise(done=>setTimeout(()=>{if(child.pid)try{process.kill(-child.pid,'SIGKILL');}catch{}done();},graceMs));

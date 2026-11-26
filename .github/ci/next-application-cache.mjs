@@ -12,6 +12,7 @@ import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,NEXT_APPLICATION_SEED,NE
 import {measuredCommand} from './diagnostics/compiler-incremental.mjs';
 import {cacheArtifactCandidates} from './cache-artifact-discovery.mjs';
 import {createMemorySeries} from './build-memory-series.mjs';
+import {createTypecheckHandoff,HANDOFF_POLL_MS} from './build-typecheck-handoff.mjs';
 import {assertBuildHeapEnvironment,parseMaxRssKiB,parseMemAvailableKiB,buildMemoryBudget,buildMemoryVerdict,BUILD_RSS_WARN_KIB} from './build-heap.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const REPO='StradaverseHub/ai-hr';
@@ -107,7 +108,13 @@ export async function managedApplicationBuild(){
  const command=async(name,bin,args,timeoutMs)=>{
   const row={name,startedAt:new Date().toISOString()};report.phases.push(row);
   const log=join(out,name+'.log');
-  Object.assign(row,await measuredCommand('/usr/bin/time',['-v','/usr/bin/prlimit','--fsize=1073741824','--',bin,...args],{cwd:source,env:e,log,timeoutMs}),{endedAt:new Date().toISOString()});
+  // Only the canonical build gets the compile-to-typecheck handoff (build-typecheck-handoff.mjs).
+  let handoff,handoffTimer;
+  const onSpawn=name==='canonical-build'?pid=>{try{handoff=createTypecheckHandoff(pid);handoffTimer=setInterval(()=>handoff.poll(),HANDOFF_POLL_MS);}catch{}}:undefined;
+  try{Object.assign(row,await measuredCommand('/usr/bin/time',['-v','/usr/bin/prlimit','--fsize=1073741824','--',bin,...args],{cwd:source,env:e,log,timeoutMs,onSpawn}),{endedAt:new Date().toISOString()});}
+  finally{clearInterval(handoffTimer);if(handoff){report.handoff=handoff.release('build_exited');const h=report.handoff;
+   const line=`next build typecheck handoff: state=${h.state}${h.releaseReason?' reason='+h.releaseReason:''}; held=${h.holdMs??0} ms; next RSS at hold=${h.parentRssAtHoldKiB??h.parentRssAtSpawnKiB??'n/a'} KiB; tsc RSS at hold=${h.typecheckRssAtHoldKiB??'n/a'} KiB; next RSS at release=${h.parentRssAtReleaseKiB??'n/a'} KiB`;
+   console.log(line);if(e.GITHUB_STEP_SUMMARY)try{appendFileSync(e.GITHUB_STEP_SUMMARY,line+'\n');}catch{}}}
   const text=bounded(log).toString('utf8');
   // GNU time -v appends ru_maxrss: the largest single waited descendant, recorded even when the build fails.
   try{row.peakRssKiB=parseMaxRssKiB(text);}catch(error){row.peakRssError=String(error);}
