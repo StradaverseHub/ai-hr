@@ -174,6 +174,16 @@ describe('employee search trigram candidates (7320)',()=>{
   const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:`user_${randomUUID()}`,personId:p.id}).returning({id:schema.appUser.id});
   await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,companyId:null,role:'employee'});
   const employee:SessionContext={...await entitledCtx(b,['employee']),userId:u.id,personId:p.id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  // Authority on the employee's own company (7530's direct path when that scope is small): only visible ids, every
+  // visible match.
+  const employeeVisible=new Set((await withTenant(employee,tx=>tx.select({id:schema.employment.id}).from(schema.employment))).map(r=>r.id));
+  for(const q of ['tan','fictional','fx-emp']){
+   const [row]=await withTenant(employee,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates(${q}::text,${'{'+b.companyId+'}'}::uuid[],true) as ids`));
+   console.log('SEARCH_EMPLOYEE_SCOPE_7530 '+JSON.stringify({q,narrowed:row.ids!==null,candidates:row.ids?.length??null}));
+   if(row.ids===null)continue;
+   expect(row.ids.every(id=>employeeVisible.has(id)),`employee/${q}: only visible employments`).toBe(true);
+   for(const id of await directoryExpected(employee,[b.companyId],q))expect(row.ids.includes(id),`employee/${q}: visible match ${id}`).toBe(true);
+  }
   // core/employment-search.ts: the candidates statement, and the narrowing clause it adds to the caller's statements.
   const CANDIDATES=/^select app\.employment_search_candidates\(/i;
   const CLAUSE=/"employment"\."id" = any\((\$\d+)::uuid\[\]\)/;

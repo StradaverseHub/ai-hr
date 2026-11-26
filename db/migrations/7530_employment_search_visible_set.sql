@@ -25,7 +25,9 @@
 -- checked it on every row in scope): the caller names companies holding at most 1,000 employments (the tenant-wide
 -- trigram search costs more than reading them), or the term is broad: more than 2,000 name or code matches in the
 -- tenant (a bounded count before the search), or more than 2,000 matches all in companies the caller administers or
--- partners (fetching thousands by key costs more than the read). From 7530 the application asks the
+-- partners (fetching thousands by key costs more than the read). A caller with costly row security who names
+-- companies holding at most 1,000 employments has the patterns tested on those employments directly rather than
+-- by the tenant-wide trigram search. From 7530 the application asks the
 -- function once per search and passes the ids as a list. Signature, volatility, owner, search_path, grants, the
 -- NULL answer for unnarrowed terms and the sorted result are unchanged. The single statement between the $search$
 -- markers is the one test/employment-search-trigram explains, now with the read companies as $4.
@@ -69,6 +71,18 @@ DECLARE
   WHERE e.tenant_id = app.current_tenant_id() AND e.voided_at IS NULL
    AND ($2 IS NULL OR e.company_id = ANY ($2))
  $search$;
+ -- A small named scope for a caller with costly row security: test the same patterns on the scope's employments
+ -- directly instead of searching the whole tenant. Same columns, patterns and non-ASCII rule as $search$.
+ v_scoped constant text := $scoped$
+  SELECT coalesce(array_agg(e.id ORDER BY e.id) FILTER (WHERE e.company_id = ANY ($4)), '{}'::uuid[]),
+   coalesce(array_agg(e.id ORDER BY e.id) FILTER (WHERE NOT (e.company_id = ANY ($4))), '{}'::uuid[])
+  FROM public.employment e JOIN public.person p ON p.id = e.person_id AND p.tenant_id = e.tenant_id
+  WHERE e.tenant_id = app.current_tenant_id() AND e.voided_at IS NULL AND e.company_id = ANY ($2)
+   AND (lower(p.full_name COLLATE "C") LIKE $1 OR lower(coalesce(e.employee_code, '') COLLATE "C") LIKE $1
+    OR ($3 AND lower(coalesce(p.primary_email, '') COLLATE "C") LIKE $1)
+    OR (p.full_name COLLATE "C") ~ '[^ -~]' OR (coalesce(e.employee_code, '') COLLATE "C") ~ '[^ -~]'
+    OR ($3 AND (coalesce(p.primary_email, '') COLLATE "C") ~ '[^ -~]'))
+ $scoped$;
  -- Name or code matches in the tenant, counted up to v_match_limit + 1 in all, before the search itself.
  v_broad constant text := $broad$
   SELECT count(*) FROM (SELECT 1 FROM (
@@ -107,26 +121,31 @@ BEGIN
  SELECT count(*) INTO v_scope_outside FROM (SELECT 1 FROM public.employment e
   WHERE e.tenant_id = app.current_tenant_id() AND e.company_id = ANY (v_out_companies) AND e.voided_at IS NULL
   LIMIT v_outside_limit + 1) s;
- IF p_companies IS NOT NULL AND v_scope_outside <= v_outside_limit THEN
+ IF p_companies IS NOT NULL THEN
   SELECT count(*) INTO v_scope FROM (SELECT 1 FROM public.employment e
    WHERE e.tenant_id = app.current_tenant_id() AND e.company_id = ANY (p_companies) AND e.voided_at IS NULL
    LIMIT v_scope_limit + 1) s;
-  IF v_scope <= v_scope_limit THEN
+ END IF;
+ IF v_scope IS NOT NULL AND v_scope <= v_scope_limit THEN
+  -- A small named scope: cheap row security reads it as before 7320; otherwise test the patterns on it directly.
+  IF v_scope_outside <= v_outside_limit THEN
+   RETURN NULL;
+  END IF;
+  EXECUTE v_scoped INTO v_inside, v_outside USING v_pattern, p_companies, coalesce(p_email, false), v_read;
+ ELSE
+  IF v_scope_outside <= v_outside_limit THEN
+   -- A broad term for a caller with cheap row security: decide before paying for the search.
+   EXECUTE v_broad INTO v_matches USING v_pattern, v_match_limit + 1;
+   IF v_matches > v_match_limit THEN
+    RETURN NULL;
+   END IF;
+  END IF;
+  EXECUTE v_search INTO v_inside, v_outside USING v_pattern, p_companies, coalesce(p_email, false), v_read;
+  IF cardinality(v_outside) = 0 AND cardinality(v_inside) > v_match_limit AND v_scope_outside <= v_outside_limit THEN
    RETURN NULL;
   END IF;
  END IF;
- IF v_scope_outside <= v_outside_limit THEN
-  -- A broad term for a caller with cheap row security: decide before paying for the search.
-  EXECUTE v_broad INTO v_matches USING v_pattern, v_match_limit + 1;
-  IF v_matches > v_match_limit THEN
-   RETURN NULL;
-  END IF;
- END IF;
- EXECUTE v_search INTO v_inside, v_outside USING v_pattern, p_companies, coalesce(p_email, false), v_read;
  IF cardinality(v_outside) = 0 THEN
-  IF cardinality(v_inside) > v_match_limit AND v_scope_outside <= v_outside_limit THEN
-   RETURN NULL;
-  END IF;
   RETURN v_inside;
  END IF;
  -- Only matches outside the caller's administrator and partner companies need the relationship part of visibility.
