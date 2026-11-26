@@ -58,6 +58,7 @@ import {applicationDatabaseUrl} from '../db/pooling';
 import {preparedReadCounts} from '../db/prepared-read';
 import * as schema from '../db/schema';
 import {MODULE_CATALOG} from '../packs/catalog';
+import {resignationRuntimeKey} from '../lib/resignation-runtime-proof';
 import {withRequestReadScope} from '../lib/request-read-scope';
 import Layout from '../app/layout';
 import HomePage from '../app/page';
@@ -93,7 +94,11 @@ beforeAll(async()=>{
  process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';
  process.env.AIHR_VIEWER_MENU_CACHE='off';
  await migrateTestDb();await resetDb();b=await seedBase();
- // Every pack module on, as on staging: each Today section and the bell's recruitment to-dos are read.
+ // Every pack module on, as on staging: each Today section and the bell's recruitment to-dos are read. The Approvals
+ // resignation owner signs a runtime proof: a fictional key and its verifier, as the resignation tests set them.
+ vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://planning.example.test');vi.stubEnv('AUTH_SESSION_KEY','7'.repeat(64));
+ await owner.db.execute(sql`delete from app.resignation_runtime_state`);await owner.db.execute(sql`delete from app.resignation_runtime_verifier`);
+ await owner.db.execute(sql`insert into app.resignation_runtime_verifier(singleton,secret) values(true,${resignationRuntimeKey('7'.repeat(64))})`);
  await owner.db.insert(schema.tenantModule).values(MODULE_CATALOG.filter(m=>!m.isCore&&m.packBacked).map(m=>({tenantId:b.tenantId,moduleCode:m.code,status:'active' as const}))).onConflictDoNothing();
  fixture=await buildScaleFixture(b,{employments:1000});
  const base=await entitledCtx(b,['hr_admin']);
@@ -121,6 +126,7 @@ beforeAll(async()=>{
  await owner.db.insert(schema.domainEvent).values(events);
 },300_000);
 afterAll(async()=>{
+ vi.unstubAllEnvs();
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'planning-cost-prepared-reads.json'),
   JSON.stringify({kind:'PLANNING_COST_PREPARED_READS',fictional:true,source:process.env.AIHR_CI_HEAD??null,measurements:evidence},null,1));
  delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;delete process.env.AIHR_VIEWER_MENU_CACHE;delete process.env.AIHR_PREPARED_READS;await closeAll();});
