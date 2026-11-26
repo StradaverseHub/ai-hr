@@ -10,7 +10,7 @@ export const NEXT_APPLICATION_SEED=Object.freeze({kind:'seed',runId:40251838329,
 export const NEXT_APPLICATION_CODE=['.github/ci/cache-artifact-discovery.mjs',
  '.github/ci/next-application-cache.mjs','.github/ci/next-application-cache-protocol.mjs','.github/ci/next-build-cache.mjs','.github/ci/next-build-cache-policy.mjs',
  '.github/ci/build-production.mjs','.github/ci/build-bundle.py','.github/ci/runner-capacity.mjs','.github/ci/prepare-runner.sh',
- '.github/ci/extract-artifact.py','.github/ci/build-heap.mjs','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml'
+ '.github/ci/extract-artifact.py','.github/ci/build-heap.mjs','.github/ci/build-typecheck-handoff.mjs','.github/ci/diagnostics/compiler-incremental.mjs','.github/actions/setup-alpha/action.yml','.github/workflows/alpha-staging.yml'
 ];
 const sha=v=>typeof v==='string'&&/^[a-f0-9]{40}$/.test(v);
 const id=v=>Number.isSafeInteger(v)&&v>0;
