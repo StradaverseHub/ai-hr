@@ -11849,10 +11849,9 @@ const staleEmploymentIdsSql=(batchId:string)=>sql`select distinct elem #>> '{}' 
  * `unchanged` otherwise; omitted, the page spans both, exactly as before. The stale mark, both search-filtered
  * tab counts, the page and its total come from this ONE statement, and the tab filters BEFORE the money join.
  * `runTotal` stays independent of search and of the tab. Kind 'remove' never splits and never reads the mark. */
-export function payrollEmployeeSelectionPage(ctx:SessionContext,p:{batchId:string;kind:'remove'|'reprocess';page:PageQuery;search?:string;tab?:PayrollSelectionTab|'default';ceiling?:number}) {
- const parsed=parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
- // a1a80747 r3 — Select all's higher ceiling (`reprocessSelectAll`); screen pages are unchanged.
- const page=p.ceiling&&parsed.size==='all'?{...parsed,limit:p.ceiling}:parsed;
+export function payrollEmployeeSelectionPage(ctx:SessionContext,p:{batchId:string;kind:'remove'|'reprocess';search?:string;tab?:PayrollSelectionTab|'default'}&({page:PageQuery;ceiling?:undefined}|{page?:undefined;ceiling:number})) {
+ // a1a80747 r3 — a whole-tab read (Select all) takes a ceiling instead of a page; screen pages are unchanged.
+ const page:PageQuery=p.ceiling!==undefined?wholeTab(p.ceiling):parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
  const reprocess=p.kind==='reprocess';
  const tabSql=!reprocess||p.tab===undefined?sql`'all'`:p.tab==='default'?sql`case when "requiredRunTotal">0 then 'required' else 'unchanged' end`
   :p.tab==='required'?sql`'required'`:sql`'unchanged'`;
@@ -11929,6 +11928,8 @@ export function reprocessStaleSelection(ctx:SessionContext,batchId:string):Promi
 
 /** a1a80747 r3 — the most people one "Select all" ticks. Above it the screen says so and ticks nobody. */
 export const REPROCESS_SELECT_ALL_CEILING=20_000;
+/** a1a80747 r3 — the bounds of a whole-tab read: every row from the first, up to `ceiling`. Not a page list. */
+const wholeTab=(ceiling:number):PageQuery=>({page:0,size:'all',limit:ceiling,offset:0});
 
 /**
  * a1a80747 r3 — "SELECT ALL N EMPLOYEES": everyone on the open tab, across every page, who can be ticked, with the
@@ -11943,17 +11944,29 @@ export const REPROCESS_SELECT_ALL_CEILING=20_000;
  */
 export async function reprocessSelectAll(ctx:SessionContext,p:{batchId:string;tab:'required'|'unchanged';search?:string})
  :Promise<{rows:ReprocessStaleRow[];total:number;tooMany:boolean}>{
- const all=parsePageQuery({size:'all'});
  if(p.tab==='required'){
-  const r=await reprocessRequiredPage(ctx,{batchId:p.batchId,page:all,search:p.search,tab:'required',ceiling:REPROCESS_SELECT_ALL_CEILING});
+  const r=await reprocessRequiredPage(ctx,{batchId:p.batchId,search:p.search,tab:'required',ceiling:REPROCESS_SELECT_ALL_CEILING});
   if(r.requiredTotal>REPROCESS_SELECT_ALL_CEILING)return {rows:[],total:r.requiredTotal,tooMany:true};
   const rows=r.rows.filter(x=>x.kind==='recalculated'||x.blockers.length===0)
    .map(x=>({employmentId:x.employmentId,employeeCode:x.employeeCode,name:x.name}));
   return {rows,total:r.requiredTotal,tooMany:false};
  }
- const r=await payrollEmployeeSelectionPage(ctx,{batchId:p.batchId,kind:'reprocess',page:all,search:p.search,tab:'unchanged',ceiling:REPROCESS_SELECT_ALL_CEILING});
+ const r=await payrollEmployeeSelectionPage(ctx,{batchId:p.batchId,kind:'reprocess',search:p.search,tab:'unchanged',ceiling:REPROCESS_SELECT_ALL_CEILING});
  if(r.tabCounts.unchanged>REPROCESS_SELECT_ALL_CEILING)return {rows:[],total:r.tabCounts.unchanged,tooMany:true};
  return {rows:r.rows.map(x=>({employmentId:x.employmentId,employeeCode:x.employeeCode,name:x.name})),total:r.tabCounts.unchanged,tooMany:false};
+}
+
+/**
+ * a1a80747 r3 — "PROCESS HELD EMPLOYEES": every employee skipped for income tax whom the run still owes and who can be
+ * added or recalculated (a New row's readiness gaps leave it out), across the whole Skipped tab, identity only. A
+ * whole-tab read under REPROCESS_SELECT_ALL_CEILING; `onlyIds` narrows it (without the multi-cycle module only the
+ * processing holds may be added, 016276b7).
+ */
+export async function reprocessHeldSelection(ctx:SessionContext,p:{batchId:string;onlyIds?:readonly string[]}):Promise<ReprocessStaleRow[]>{
+ const r=await reprocessRequiredPage(ctx,{batchId:p.batchId,tab:'skipped',ceiling:REPROCESS_SELECT_ALL_CEILING});
+ const only=p.onlyIds?new Set(p.onlyIds):null;
+ return r.rows.filter(x=>x.taxSkipped&&x.owed&&(x.kind==='recalculated'||x.blockers.length===0)&&(!only||only.has(x.employmentId)))
+  .map(x=>({employmentId:x.employmentId,employeeCode:x.employeeCode,name:x.name}));
 }
 
 /** a1a80747 — one row of the Reprocess Required list: an employee whose payslip on this run is out of date
@@ -12002,11 +12015,11 @@ export type ReprocessRequiredPageResult={rows:ReprocessRequiredEntry[];state:Pag
  /** a1a80747 r3 — the two tabs: Reprocess Required = owed and not skipped for income tax; Skipped = everyone else on the
   * list (skipped for income tax, nothing payable, not owed). `*RunTotal` ignores the search, `*Total` applies it. */
  requiredRunTotal:number;requiredTotal:number;skippedRunTotal:number;skippedTotal:number};
-export function reprocessRequiredPage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string;tab?:ReprocessListTab;ceiling?:number})
+export function reprocessRequiredPage(ctx:SessionContext,p:{batchId:string;search?:string;tab?:ReprocessListTab}&({page:PageQuery;ceiling?:undefined}|{page?:undefined;ceiling:number}))
  :Promise<ReprocessRequiredPageResult>{
- const parsed=parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
- // r3 — Select all reads the whole tab under its own, higher ceiling (`reprocessSelectAll`); every screen page is unchanged.
- const page=p.ceiling&&parsed.size==='all'?{...parsed,limit:p.ceiling}:parsed;
+ // r3 — a screen page is parsed as always; a WHOLE-TAB read (Select all, Process held employees) is not a page list: it
+ // takes no page, reads every row under its own ceiling, and is refused above that ceiling by its caller.
+ const page:PageQuery=p.ceiling!==undefined?wholeTab(p.ceiling):parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
  return withTenant(ctx,async tx=>{
   const [batch]=await tx.select({id:payrollBatch.id,runType:payrollBatch.runType,payrollCycleId:payrollBatch.payrollCycleId,
    companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,scope:payrollBatch.scope,status:payrollBatch.status})
