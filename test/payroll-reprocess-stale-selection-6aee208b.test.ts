@@ -17,12 +17,18 @@
  *     the previous reader lets it see.
  *
  * Neither read changes any figure: detection, the reprocess job, tax readiness and calculations are untouched.
+ *
+ * a1a80747 — the one Reprocess Required list (`reprocessRequiredPage`) is proved here too, at the same shape: it is
+ * exactly the stale payslips (`reprocessStaleSelection`) plus everyone eligible with no payslip
+ * (`payslipLessEligiblePage`), each employee once, labelled, ordered and paged in SQL with no duplicate and no gap,
+ * with the previous reader's readiness columns on its New rows, for every native role group-wide and per company.
  */
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
-import {batchDetail,createBatch,generatePayslips,payrollEmployeeSelectionPage,reprocessStaleSelection} from '../core/payroll';
+import {batchDetail,createBatch,generatePayslips,payrollEmployeeSelectionPage,payslipLessEligiblePage,reprocessRequiredPage,reprocessStaleSelection,runOutstandingTx} from '../core/payroll';
+import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
@@ -163,4 +169,110 @@ it('ticks every stale employee once across pages, splits the tabs exactly and re
  await owner.db.update(s.payrollBatch).set({status:'closed',closedAt:new Date(),needsRecalcAt:new Date()}).where(eq(s.payrollBatch.id,batchId));
  expect(await reprocessStaleSelection(root,batchId)).toEqual({rows:[],withoutPayslip:0});
  expect((await payrollEmployeeSelectionPage(root,{batchId,kind:'reprocess',page:parsePageQuery(),tab:'required'})).state.total).toBe(0);
+},600000);
+
+it('a1a80747 — one Reprocess Required list: stale payslips and payslip-less eligible people, once each, paged in SQL',async()=>{
+ await resetDb();const b=await seedBase(),root=adminCtx(b);
+ const target=await hireEmployee(root,{person:{fullName:'Fictional union person',primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employeeCode:'0001',employmentType:'full_time',hiredOn:'2020-01-01'});
+ await setCompensation(root,{employmentId:target.employmentId,basicSalary:3000,effectiveFrom:'2020-01-01'});
+ await setStatutoryProfileMY(root,{personId:target.personId,icNumber:'900101015553',taxCategory:1,numChildren:0});
+ const {batchId}=await createBatch(root,{companyId:b.companyId,payPeriod:'2026-01'});await generatePayslips(root,{batchId});
+ const {batchId:draftId}=await createBatch(root,{companyId:b.companyId,payPeriod:'2026-02'});
+ const [actual]=await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId,batchId));
+ // 999 more fictional payslips cloned from the real one: 1,000 on the run.
+ const extra=Array.from({length:999},(_,i)=>({personId:randomUUID(),employmentId:randomUUID(),i}));
+ for(let i=0;i<extra.length;i+=200){
+  const members=extra.slice(i,i+200);
+  await owner.db.insert(s.person).values(members.map(m=>({id:m.personId,tenantId:b.tenantId,fullName:'Fictional payee '+String(m.i%950).padStart(4,'0'),primaryEmail:m.personId+'@example.invalid'})));
+  await owner.db.insert(s.employment).values(members.map(m=>({id:m.employmentId,tenantId:b.tenantId,personId:m.personId,companyId:b.companyId,hiredOn:'2020-01-01',employeeCode:'FX-'+String(m.i).padStart(4,'0')})));
+  await owner.db.insert(s.payslip).values(members.map(m=>({...actual,id:randomUUID(),employmentId:m.employmentId})));
+ }
+ await owner.db.insert(s.company).values(Array.from({length:69},(_,i)=>({tenantId:b.tenantId,legalName:'Fictional union group '+i})));
+ const [otherCompany]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional union other company'}).returning({id:s.company.id});
+ // Hired after the run was processed: eligible for January with no payslip on it (New rows).
+ const late:string[]=[];
+ for(let k=0;k<3;k++){
+  const e=await hireEmployee(root,{person:{fullName:'Fictional late hire '+k,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employeeCode:'LATE-'+k,employmentType:'full_time',hiredOn:'2020-01-01'});
+  await setCompensation(root,{employmentId:e.employmentId,basicSalary:3100,effectiveFrom:'2020-01-01'});
+  late.push(e.employmentId);
+ }
+ const exact=await batchDetail(root,batchId);expect(exact?.slips).toHaveLength(1000);
+ const ordered=[...exact!.slips].sort((x,y)=>x.name<y.name?-1:x.name>y.name?1:x.id.localeCompare(y.id));
+ const staleOnRun=ordered.filter((_,i)=>i%5===2);expect(staleOnRun.length).toBe(200);
+ // The first late hire is ALSO marked stale (stale with no payslip): one row, as New. A foreign id names nobody.
+ await owner.db.update(s.payrollBatch).set({needsRecalcAt:new Date(),recalcEmploymentIds:sql`${JSON.stringify([...staleOnRun.map(r=>r.employmentId),late[0],randomUUID()])}::jsonb`}).where(eq(s.payrollBatch.id,batchId));
+ for(const name of ['person','employment','payslip','payroll_batch','role_assignment','assignment','compensation'])await owner.client.unsafe('analyze public.'+name);
+
+ // ── Expected, from the two previous readers ──────────────────────────────────────────────────────────
+ const stale=await reprocessStaleSelection(root,batchId);
+ expect(stale.rows.map(r=>r.employmentId)).toEqual(staleOnRun.map(r=>r.employmentId));expect(stale.withoutPayslip).toBe(2);
+ const pending=(await payslipLessEligiblePage(root,{batchId,page:parsePageQuery({size:'all'})})).rows;
+ for(const id of late)expect(pending.map(r=>r.employmentId)).toContain(id);
+ const expected=new Map<string,{employmentId:string;name:string;kind:'added'|'recalculated'}>();
+ for(const r of stale.rows)expected.set(r.employmentId,{employmentId:r.employmentId,name:r.name,kind:'recalculated'});
+ for(const r of pending)if(!expected.has(r.employmentId))expected.set(r.employmentId,{employmentId:r.employmentId,name:r.name,kind:'added'});
+ expect(expected.size).toBe(200+pending.length);
+ const expectedOrder=[...expected.values()].sort((x,y)=>x.name<y.name?-1:x.name>y.name?1:x.employmentId<y.employmentId?-1:1);
+
+ // ── Every page at every offered size: no duplicate, no gap, the right label ──────────────────────────
+ for(const size of ['25','50','200']){
+  const seen:{employmentId:string;kind:string}[]=[];
+  for(let page=0;page<100;page++){
+   const r=await reprocessRequiredPage(root,{batchId,page:parsePageQuery({page:String(page),size})});
+   expect(r.state.total,`total @${size}`).toBe(expected.size);expect(r.runTotal).toBe(expected.size);expect(r.addedRunTotal).toBe(pending.length);
+   seen.push(...r.rows.map(row=>({employmentId:row.employmentId,kind:row.kind})));
+   if(!r.state.hasNext)break;
+  }
+  expect(seen,`order @${size}`).toEqual(expectedOrder.map(e=>({employmentId:e.employmentId,kind:e.kind})));
+  expect(new Set(seen.map(e=>e.employmentId)).size).toBe(seen.length);
+ }
+ // The stale late hire is ONE row, labelled New; every stale payslip is Changed.
+ const all=await reprocessRequiredPage(root,{batchId,page:parsePageQuery({size:'all'})});
+ expect(all.rows.filter(r=>r.employmentId===late[0]).map(r=>r.kind)).toEqual(['added']);
+ expect(all.rows.filter(r=>r.kind==='recalculated').map(r=>r.employmentId).sort()).toEqual(staleOnRun.map(r=>r.employmentId).sort());
+ // The New rows carry exactly the previous reader's readiness columns; Changed rows carry none.
+ const previous=new Map(pending.map(r=>[r.employmentId,{outsideScope:r.outsideScope,blockers:r.blockers,warnings:r.warnings}]));
+ for(const r of all.rows)expect({outsideScope:r.outsideScope,blockers:r.blockers,warnings:r.warnings},r.employmentId)
+  .toEqual(r.kind==='added'?previous.get(r.employmentId):{outsideScope:false,blockers:[],warnings:[]});
+
+ // ── a1a80747 r2: the owed rows are exactly the owner's set (the Payroll Process list's number), owed rows first ──
+ const owned=await withTenant(root,tx=>runOutstandingTx(tx,root,batchId));
+ expect(owned.staleWithPayslip).toEqual(staleOnRun.map(r=>r.employmentId).sort());
+ for(const id of late)expect(owned.employmentIds).toContain(id);
+ expect(all.owedRunTotal).toBe(owned.employmentIds.length);expect(all.owedTotal).toBe(owned.employmentIds.length);
+ expect(all.rows.filter(r=>r.owed).map(r=>r.employmentId).sort()).toEqual(owned.employmentIds);
+ expect(all.rows.filter(r=>r.kind==='recalculated').every(r=>r.owed&&r.notOwedReason===null)).toBe(true);
+ const firstNotOwed=all.rows.findIndex(r=>!r.owed);
+ if(firstNotOwed>=0)expect(all.rows.slice(firstNotOwed).every(r=>!r.owed),'owed rows come first').toBe(true);
+ // The foreign id in the mark and the stale late hire are not double counted: the hire once, the stranger never.
+ expect(owned.employmentIds.filter(id=>id===late[0])).toHaveLength(1);
+
+ // ── Search: name and folded Employee ID, inside the one list; the run totals ignore it ───────────────
+ const byName=await reprocessRequiredPage(root,{batchId,page:parsePageQuery({size:'all'}),search:'late hire'});
+ expect(byName.rows.map(r=>r.employmentId).sort()).toEqual([...late].sort());expect(byName.state.total).toBe(3);expect(byName.runTotal).toBe(expected.size);
+ const byCode=await reprocessRequiredPage(root,{batchId,page:parsePageQuery(),search:'late1'});
+ expect(byCode.rows.map(r=>r.employmentId)).toEqual([late[1]]);
+
+ // ── Every native role, group-wide and company-scoped: the union of what the previous readers let it see ─
+ for(const role of s.roleEnum.enumValues)for(const companyId of (role==='super_admin'?[null]:[null,b.companyId,otherCompany.id])){
+  const userId=await createAppUser(b.tenantId,null,'employee');
+  await owner.db.update(s.roleAssignment).set({role,companyId}).where(eq(s.roleAssignment.appUserId,userId));
+  const who:SessionContext={...root,userId,personId:null,roles:[role],grants:[{role,companyId}]};
+  const label=`${role}:${companyId??'all'}`;
+  const outcome=async<T>(read:()=>Promise<T>)=>{try{return{value:await read()};}catch(e){return{error:String(e)};}};
+  const oldStale=await outcome(()=>reprocessStaleSelection(who,batchId));
+  const oldPending=await outcome(()=>payslipLessEligiblePage(who,{batchId,page:parsePageQuery({size:'all'})}));
+  const now=await outcome(()=>reprocessRequiredPage(who,{batchId,page:parsePageQuery({size:'all'})}));
+  if('error' in oldStale||'error' in oldPending){expect('error' in now,label).toBe(true);continue;}
+  expect('value' in now,label).toBe(true);
+  const want=new Set([...oldStale.value.rows.map(r=>r.employmentId),...oldPending.value.rows.map(r=>r.employmentId)]);
+  const got=(now as {value:Awaited<ReturnType<typeof reprocessRequiredPage>>}).value;
+  expect(new Set(got.rows.map(r=>r.employmentId)),label).toEqual(want);
+  expect(got.state.total,label).toBe(want.size);
+ }
+
+ // ── A run that is not processed lists nobody ─────────────────────────────────────────────────────────
+ expect((await reprocessRequiredPage(root,{batchId:draftId,page:parsePageQuery()})).rows).toEqual([]);
+ await owner.db.update(s.payrollBatch).set({status:'closed',closedAt:new Date()}).where(eq(s.payrollBatch.id,batchId));
+ expect(await reprocessRequiredPage(root,{batchId,page:parsePageQuery()})).toMatchObject({rows:[],runTotal:0,addedRunTotal:0,owedRunTotal:0,owedTotal:0});
 },600000);

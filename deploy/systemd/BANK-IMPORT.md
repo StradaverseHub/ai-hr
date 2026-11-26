@@ -95,11 +95,62 @@ Include both import paths in staging worker acceptance.
 
 The same protected worker also runs every kind on the shared bulk-job kernel (migration 5011,
 `core/bulk-job-handlers.ts`), starting with the staged employee import (EMPLOYEE-IMPORT.md). Each loop
-iteration runs one Bank tick, one Individual Transaction tick and one bounded bulk-job unit. The worker records a
+iteration of the all-lane worker runs one Bank tick, one Individual Transaction tick and one bounded bulk-job unit
+(lanes: below). The worker records a
 heartbeat with the kinds it serves; `scripts/check-import-worker.ts` (run by `deploy/deploy.sh`) reports a kind
 without a live worker. Include the employee import journey in staging worker acceptance.
 Section and register imports (kinds `section_import` and `register_import`, draft migration 5060) run on the same
 worker; include a Profile file and a Qualification file in staging worker acceptance.
+
+### Lanes (ADR 0181 J1)
+
+Every kind belongs to exactly one lane (`core/bulk-job-lanes.ts`): `payroll`, `tax`, `import`, `export` or
+`default`. A worker started with `AIHR_WORKER_LANE=<lane>` registers only that lane's handlers, so its claim and its
+heartbeat cover exactly that lane, and a payroll run no longer waits behind an import's units. Only a process that
+serves the default lane runs the Bank, Individual Transaction, reward plan and probation ticks; they stay single-runner
+through their existing advisory locks and `SKIP LOCKED` claims. With `AIHR_WORKER_LANE` unset the worker serves every
+lane, which is what `aihr-bank-import.service` does and what every worker did before lanes; that is also the rollback.
+
+A lane worker also advertises a `lane:<name>` marker in its heartbeat. Admission (`enqueueBulkJobTx`) uses it, through
+the existing `app.bulk_job_worker_ready`, to tell two cases apart:
+
+- the kind's lane worker is live but does not advertise the kind: it runs an older release (the web is installed
+  first, the worker next). The web refuses the job with "This feature is still being installed. Nothing was started.
+  Try again in a few minutes." and queues nothing;
+- no live worker serves the lane (a restart, or a worker from before lanes): the job is queued as before and the screen
+  shows that it waits for the background service.
+
+`scripts/check-import-worker.ts` also checks lane coverage: a live lane worker must serve every kind of its lane, and
+every lane listed in `AIHR_WORKER_LANES` must have a live worker. Each dedicated lane process holds 3 database
+connections (queue owner and an app pool of 2; the default service holds 4), counted on top of
+`AIHR_DB_BACKGROUND_CONNECTIONS` once declared in `AIHR_WORKER_LANES` (`db/capacity.ts`), so the deploy budget check
+refuses a server that cannot hold them.
+
+#### Turning lanes on (child processes of this unit; owner decision 24 November 2026)
+
+Lanes run as child processes of `aihr-bank-import.service`, not as separate units, so the unit file, its pool setting
+and every root worker tool (first install, staging update, CI runtime, prepared and published recovery, production)
+stay exactly as they are, and a drain, update or rollback of the unit covers every lane.
+
+- Add `AIHR_WORKER_LANES="payroll,tax,import,export"` (any subset, comma separated, no spaces) to
+  `/etc/aihr/import-worker.env` in the installer's format, through the reviewed-key flow
+  (`--previous-worker-env-sha256`, below). `AIHR_WORKER_LANES` is a reviewed key (`ENV_KEYS`); the installer refuses
+  any other value. Add the same line to `.env.production`, so the deploy budget check counts the lanes.
+- The main process then opens no database connection and loads no job handler. It starts one child that serves every
+  lane (it alone runs the Bank, Individual Transaction, reward and probation ticks, and covers any lane whose child is
+  restarting) and one child per listed lane. The journal shows `Import worker supervisor started` and one
+  `Import worker serves ...` line per child.
+- Rollback: remove the key from both files and restart the unit. The main process is the worker again.
+
+Exit status, so `Restart=on-failure` always brings a broken worker back:
+
+- `0` only after a stop request (SIGTERM/SIGINT; the main process forwards it and waits for every child), or after a
+  `--once` pass.
+- `75`: a child exited without a stop request (any status, even 0), or a worker's loop ended without one. The second
+  is the 24 November staging case: after a PostgreSQL restart a database call never settled, nothing else kept Node
+  running, and the worker exited 0, so systemd left it down. After a child failure the other children get 120 s to
+  finish their unit before they are killed.
+- `70`: the stall watchdog (below). `1`: the loop failed (for example the database refused connections).
 
 The leave family runs on the same worker (draft 5030, docs/adr/2026-11-10-leave-family-bulk-jobs.md): leave ledger
 import (`leave_ledger`), Generate Entitlement (`leave_generation`) and Run Earned Accrual (`leave_accrual`). The
@@ -153,6 +204,35 @@ less than 20% margin above that, and the old 960 s minimum was below it, so the 
 1200 s. The minimum also stays above the 900 s bulk-job prepare lease, the longest unit the kernel allows (every
 other bulk unit holds a 60 s lease). The limits were set from the slower decoder and are kept: the first tick is now
 far below them (see the decode memory section below).
+
+### Queue-owner deadline
+
+The watchdog is the backstop. Each tick's own steps on the queue-owner connection have a much shorter bound
+(`OWNER_STEP_DEADLINE_SECONDS`, 120 s, in `core/owner-step-deadline.ts`). This covers the Bank & Statutory, Individual
+Transaction and bulk-job ticks. The bounded steps are:
+- reserving the connection;
+- the owner proof;
+- the queue lock (Bank and Individual) or the heartbeat (bulk jobs);
+- the claim;
+- the job-state writes and lease release;
+- the unlock.
+
+Each is one short statement. When one has not finished in time, the tick fails, the worker logs one line and exits
+with status 1, and the lane supervisor and systemd restart it:
+
+    Import worker: The import worker's queue-owner connection did not complete the connection reservation within 120 s. Exiting so systemd restarts it with a new connection.
+
+The connection is then neither unlocked nor returned to the pool; process exit closes it, which frees the advisory
+lock. The job keeps its state, and the restarted worker resumes it. The import work itself (decoding, validating,
+writing rows, a bulk-job unit) is not bounded this way; the watchdog still covers it.
+
+On 24 Nov 2026 (release 5b4359399) the payroll lane logged `stalled in bulk for 1822 s` while no payroll job
+existed and PostgreSQL logged no error or lock wait. The cause was in postgres.js 3.4.9. The lane's one owner
+connection reached the driver's default `max_lifetime` (a random 30-60 min; the lane had run 38 min). That happened
+between two ticks, and the next tick's `reserve()` arrived before the closing socket had closed. The pool reconnected
+for the waiting reservation and then dropped it, so `reserve()` never settled. `patches/postgres@3.4.9.patch` fixes
+the driver (`patches/README.md`); `test/postgres-reserve-recovery.test.ts` reproduces it. The deadline makes any
+future call of this kind fail in minutes, not after the watchdog's limit.
 
 ### Decode memory of the first Bank tick
 

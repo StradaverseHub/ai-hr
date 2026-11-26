@@ -16,10 +16,15 @@ import {
   FixedTransactionPaidError,
   UnsupportedFixedCurrencyError,
   archiveEmploymentPayComponent,
-  endEmploymentPayComponent,
   addFixedTransaction,
-  updateEmploymentPayComponent,
 } from '@/core/pay-components';
+// cc8bd87f — the View / Edit pop-up's service entry point and its two refusals, through the pack facade.
+import {
+  FixedTransactionEndClosedMonthError,
+  FixedTransactionEndSameMonthError,
+  editFixedTransaction,
+} from '@/packs/payroll/service';
+import { FIXED_ERROR_KEYS, FIXED_ERROR_QS, type FixedErrorArgs } from './edit-model';
 
 const back = (employmentId: string | null, qs: string) =>
   redirect(
@@ -113,46 +118,81 @@ function fixedErrorKey(e: unknown): string {
                 : // 4fffe638 — the chosen Payroll Cycle is missing, inactive or another company's.
                   e instanceof FixedTransactionCycleError
                   ? 'cycleInvalid'
-                  : publicErrorMessage(e);
+                  : // cc8bd87f — the pop-up's in-place end-date change refusals.
+                    e instanceof FixedTransactionEndClosedMonthError
+                    ? 'endClosedMonth'
+                    : e instanceof FixedTransactionEndSameMonthError
+                      ? 'endSameMonth'
+                      : publicErrorMessage(e);
 }
 
 /**
- * The full `error=…` query fragment for a failed write, including the clashing row's identity when the
- * error carries one. The banner messages for `overlap` / `backwards` / `paidOnPayslip` take ICU
- * arguments; a key on its own would render "{code}" literally, so the values travel with the key.
+ * The refusal as a key plus its ICU arguments. The messages for `overlap` / `backwards` / `paidOnPayslip` /
+ * `midMonth` / `endClosedMonth` / `endSameMonth` take arguments; a key on its own would render "{code}"
+ * literally, so the values travel with the key.
  *
- * Only ever built from a TYPED error's own fields (a catalog code and two ISO dates), never from raw
- * form input, and every value is encoded — the page re-reads them as opaque strings and passes them
- * straight to next-intl.
+ * Only ever built from a TYPED error's own fields (a catalog code, ISO dates and a pay period), never from
+ * raw form input. cc8bd87f split this out of `fixedErrorQs` so the pop-up's value-returning actions and the
+ * redirecting ones describe a refusal identically.
+ */
+function fixedErrorResult(e: unknown): { error: string; args: FixedErrorArgs } {
+  const error = fixedErrorKey(e);
+  const args: FixedErrorArgs = {};
+  if (e instanceof FixedTransactionOverlapError || e instanceof FixedTransactionBackwardsError) {
+    args.code = e.code;
+    args.from = e.validFrom;
+    if (e.validTo != null) args.to = e.validTo;
+  }
+  if (e instanceof FixedTransactionPaidError || e instanceof FixedTransactionEndClosedMonthError) {
+    args.code = e.code;
+    args.period = e.payPeriod;
+  }
+  // a3d485f6 — the mid-month refusal names the pay item AND the date to use instead (computed in core
+  // from the tenant's MYT calendar day).
+  if (e instanceof FixedTransactionMidMonthError) {
+    args.code = e.code;
+    args.nextFirst = e.nextFirstOfMonth;
+  }
+  // cc8bd87f — the next line's start and the latest end date that pays once.
+  if (e instanceof FixedTransactionEndSameMonthError) {
+    args.code = e.code;
+    args.from = e.nextFrom;
+    args.latestEnd = e.latestEnd;
+  }
+  return { error, args };
+}
+
+/**
+ * The full `error=…` query fragment for a failed write: the key, then each argument under the name the
+ * list page reads (FIXED_ERROR_QS). Every value is encoded; the page re-reads them as opaque strings and
+ * passes them straight to next-intl.
  */
 function fixedErrorQs(e: unknown): string {
-  const key = fixedErrorKey(e);
-  const qs = new URLSearchParams({ error: key });
-  if (e instanceof FixedTransactionOverlapError || e instanceof FixedTransactionBackwardsError) {
-    qs.set('clashCode', e.code);
-    qs.set('clashFrom', e.validFrom);
-    if (e.validTo != null) qs.set('clashTo', e.validTo);
-  }
-  if (e instanceof FixedTransactionPaidError) qs.set('clashPeriod', e.payPeriod);
-  // a3d485f6 — the mid-month refusal names the pay item AND the date to use instead. `clashCode` is
-  // reused for the code (the banner already passes it to every key) and `nextFirst` is its own argument,
-  // an ISO date computed in core from the tenant's MYT calendar day.
-  if (e instanceof FixedTransactionMidMonthError) {
-    qs.set('clashCode', e.code);
-    qs.set('nextFirst', e.nextFirstOfMonth);
+  const { error, args } = fixedErrorResult(e);
+  const qs = new URLSearchParams({ error });
+  for (const name of Object.keys(FIXED_ERROR_QS) as (keyof FixedErrorArgs)[]) {
+    const value = args[name];
+    if (value != null) qs.set(FIXED_ERROR_QS[name], value);
   }
   return qs.toString();
 }
 
 /**
- * Re-validate that the supplied employmentId is in the admin's company scope (RLS isolates tenants, not
- * company scope — so a URL-tampered out-of-scope id must be rejected here, exactly like the create action).
- * Returns the session on success; on failure returns null after issuing the redirect (caller returns early).
+ * The admin's session when the supplied employmentId is in their company scope, else null. RLS isolates
+ * tenants, not company scope — so a URL-tampered out-of-scope id must be rejected here, exactly like the
+ * create action. Does not redirect: the pop-up's actions answer with a value, the archive action redirects.
  */
-async function requireScopedEmployment(employmentId: string) {
+async function scopedEmploymentSession(employmentId: string) {
   const { s, scopeIds } = await scopedAdmin();
   const employees = await listEmployees(s, scopeIds);
-  if (!employmentId || !employees.some((e) => e.employmentId === employmentId)) {
+  if (!employmentId || !employees.some((e) => e.employmentId === employmentId)) return null;
+  return s;
+}
+
+/** Re-validate the employment's scope; on failure issue the out-of-scope redirect and return null. */
+async function requireScopedEmployment(employmentId: string) {
+  const s = await scopedEmploymentSession(employmentId);
+  if (!s) {
     back(null, 'error=outOfScope');
     return null;
   }
@@ -160,73 +200,92 @@ async function requireScopedEmployment(employmentId: string) {
 }
 
 /**
- * Enhancement (feedback 1e2704f2) — EDIT an existing fixed transaction by versioning (see
- * updateEmploymentPayComponent). Repeats the scope-guard, maps typed errors to the localised keys, and
- * re-reads the list on success. Additive: the Add form and its action are untouched.
+ * cc8bd87f — what the View / Edit pop-up's two actions answer with. A refusal carries the localised key and
+ * its ICU arguments (the island resolves them under payroll.transactions.fixed), or the public error text
+ * when the key is not one the screen has a sentence for.
  */
-export async function updateFixedTransactionAction(formData: FormData) {
+export type FixedDialogResult =
+  | { ok: true; changed: boolean }
+  | { ok: false; error: string; args: FixedErrorArgs };
+
+const refused = (e: unknown): FixedDialogResult => {
+  const { error, args } = fixedErrorResult(e);
+  return { ok: false, error, args: FIXED_ERROR_KEYS.has(error) ? args : {} };
+};
+
+/**
+ * cc8bd87f — SAVE from the View / Edit pop-up (app/payroll/transactions/fixed/edit-fixed-dialog.tsx). It
+ * replaces the old page's two forms, Edit (updateFixedTransactionAction) and Stop
+ * (endFixedTransactionAction), which both wrote the same stored end date. `editFixedTransaction` decides how:
+ * nothing changed writes nothing; only the End Date (Last Date to Pay) changed updates the same row; anything
+ * else versions it exactly as Edit did.
+ *
+ * VALUE-RETURNING, not redirecting: a refused save must leave the pop-up open with the typing intact and the
+ * message inside it. The scope guard is the create action's, repeated here.
+ */
+export async function saveFixedTransactionDialogAction(
+  _prev: FixedDialogResult | null,
+  formData: FormData,
+): Promise<FixedDialogResult> {
   const employmentId = String(formData.get('employmentId') ?? '');
-  const s = await requireScopedEmployment(employmentId);
-  if (!s) return;
+  const s = await scopedEmploymentSession(employmentId);
+  if (!s) return { ok: false, error: 'outOfScope', args: {} };
 
   const id = String(formData.get('id') ?? '');
   const effectiveFrom = String(formData.get('effectiveFrom') ?? '');
   // 4fffe638 — THE SELECT IS ALWAYS SUBMITTED, so its presence says nothing about whether the operator
-  // changed it (CLAUDE.md §8). The hidden `cycleTouched` flag is flipped to '1' by the select's onChange
-  // (fixed/cycle-select.tsx); only then is the cycle sent. Untouched, the service carries the edited
-  // row's own payroll_cycle_id and run_type forward — including a link to a cycle since made inactive.
+  // changed it (CLAUDE.md §8). The hidden `cycleTouched` flag is flipped to '1' by the select's onChange;
+  // only then is the cycle sent. Untouched, the service keeps the row's own payroll_cycle_id and run_type —
+  // including a link to a cycle since made inactive.
   const cycleTouched = String(formData.get('cycleTouched') ?? '') === '1';
   const payrollCycleId = String(formData.get('payrollCycleId') ?? '');
   const amount = Number(formData.get('amount'));
   const effectiveTo = String(formData.get('effectiveTo') ?? '').trim() || null;
   const remarks = String(formData.get('remarks') ?? '').trim() || null;
 
-  if (!id || !effectiveFrom || !(amount > 0)) {
-    return back(employmentId, 'error=required');
-  }
+  if (!id || !effectiveFrom || !(amount > 0)) return { ok: false, error: 'required', args: {} };
 
+  let changed: boolean;
   try {
-    await updateEmploymentPayComponent(s, {
+    ({ changed } = await editFixedTransaction(s, {
       id,
       employmentId,
       amount,
       effectiveFrom,
       effectiveTo,
       remarks,
-      maintainStartDate: true,
       ...(cycleTouched && payrollCycleId ? { payrollCycleId } : {}),
-    });
+    }));
   } catch (e) {
-    return back(employmentId, fixedErrorQs(e));
+    return refused(e);
   }
 
-  revalidatePath('/payroll/transactions/fixed');
-  return back(employmentId, 'toast=saved');
+  // Saving with nothing changed wrote nothing, so there is nothing to re-read.
+  if (changed) revalidatePath('/payroll/transactions/fixed');
+  return { ok: true, changed };
 }
 
 /**
- * Enhancement (feedback 1e2704f2) — STOP a fixed transaction from a date (end-date it). The row keeps paying
- * through the end date, then drops out of the payroll calculation. Scope-guarded, error-mapped.
+ * cc8bd87f — REMOVE from inside the View / Edit pop-up, behind the same confirmation question as before
+ * (ConfirmSubmit). The same service as archiveFixedTransactionAction, answering with a value so a refusal
+ * (a CLOSED run covers the item) shows inside the pop-up.
  */
-export async function endFixedTransactionAction(formData: FormData) {
+export async function removeFixedTransactionDialogAction(
+  _prev: FixedDialogResult | null,
+  formData: FormData,
+): Promise<FixedDialogResult> {
   const employmentId = String(formData.get('employmentId') ?? '');
-  const s = await requireScopedEmployment(employmentId);
-  if (!s) return;
-
+  const s = await scopedEmploymentSession(employmentId);
+  if (!s) return { ok: false, error: 'outOfScope', args: {} };
   const id = String(formData.get('id') ?? '');
-  const effectiveTo = String(formData.get('effectiveTo') ?? '').trim();
-  if (!id || !effectiveTo) {
-    return back(employmentId, 'error=required');
-  }
-
+  if (!id) return { ok: false, error: 'required', args: {} };
   try {
-    await endEmploymentPayComponent(s, { id, employmentId, effectiveTo });
+    await archiveEmploymentPayComponent(s, { id, employmentId });
   } catch (e) {
-    return back(employmentId, fixedErrorQs(e));
+    return refused(e);
   }
-
   revalidatePath('/payroll/transactions/fixed');
-  return back(employmentId, 'toast=saved');
+  return { ok: true, changed: true };
 }
 
 /**
@@ -246,16 +305,14 @@ export async function archiveFixedTransactionAction(formData: FormData) {
   try {
     await archiveEmploymentPayComponent(s, { id, employmentId });
   } catch (e) {
-    // f1123afd — a REFUSED removal goes back to the item's own page, not to the list. The message tells
-    // the operator to end it from a date instead, and that form is on that page; bouncing them to the
-    // list would make them find their way back to the thing they were told to do.
-    return redirect(
-      `/payroll/transactions/fixed/${encodeURIComponent(id)}?employmentId=${encodeURIComponent(employmentId)}&${fixedErrorQs(e)}`,
-    );
+    // f1123afd — a REFUSED removal goes back to the item, not to a bare list: the message tells the
+    // operator to end it from a date instead, and that field is on the item. cc8bd87f — the item is a
+    // pop-up over the list now, so `edit=<id>` reopens it with the message inside.
+    return back(employmentId, `edit=${encodeURIComponent(id)}&${fixedErrorQs(e)}`);
   }
 
   revalidatePath('/payroll/transactions/fixed');
-  // A successful removal DOES go to the list: the item's page no longer has an item to show (the read
-  // excludes superseded rows), so returning to it would be a 404.
+  // A successful removal goes to the list without `edit`: the item no longer exists to show (the read
+  // excludes superseded rows).
   return back(employmentId, 'toast=deleted');
 }

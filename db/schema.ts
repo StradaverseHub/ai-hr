@@ -6196,7 +6196,11 @@ export const employmentTaxSelectionMy = pgTable('employment_tax_selection_my', {
   id: id(), tenantId: tenantId(),
   employmentId: uuid('employment_id').notNull().references(() => employment.id),
   companyId: uuid('company_id').notNull().references(() => company.id),
-  scheme: text('scheme').$type<'resident'|'non_resident'|'rep'|'knowledge_worker'|'c_suite'>(),
+  scheme: text('scheme').$type<'resident'|'non_resident'|'rep'|'knowledge_worker'|'c_suite'|'custom_fixed'|'custom_rate'>(),
+  /** ADR 0183 (7390) — the HR-entered monthly PCB in RM; present exactly when scheme is custom_fixed. */
+  customPcbAmount: numeric('custom_pcb_amount', { precision: 12, scale: 2 }),
+  /** ADR 0183 (7390) — the HR-entered tax rate in percent (0 < rate <= 100); present exactly when scheme is custom_rate. */
+  customPcbRate: numeric('custom_pcb_rate', { precision: 5, scale: 2 }),
   transitionState: text('transition_state').notNull().$type<'resolved'|'confirmation_required'>(),
   version: integer('version').notNull().default(1),
   taxApplicabilityEpoch: integer('tax_applicability_epoch').notNull().default(0),
@@ -6908,6 +6912,24 @@ export const payrollReprocessJob = pgTable(
   },
   (t) => [uniqueIndex('payroll_reprocess_job_idem_uq').on(t.tenantId, t.idempotencyKey)],
 );
+
+/**
+ * a1a80747 (migration 7450) — the stored answer "who on this PROCESSED run is still owed processing" that the Payroll
+ * Process list reads, worked out in the background by core/payroll-run-outstanding.ts from the Close rule
+ * (core/payroll.ts `runOutstandingTx`). Holds the close-pending employments only (new / pending with no payslip, and
+ * people held for income tax review); the recalculation mark stays on payroll_batch and is read live beside it.
+ * `employmentIds` NULL = not worked out yet. Cascades with the run. RLS: visible where the run is; written only by a
+ * payroll administrator of the run's company.
+ */
+export const payrollRunOutstanding = pgTable('payroll_run_outstanding', {
+  batchId: uuid('batch_id')
+    .primaryKey()
+    .references(() => payrollBatch.id, { onDelete: 'cascade' }),
+  tenantId: tenantId(),
+  employmentIds: jsonb('employment_ids').$type<string[]>(),
+  refreshedAt: timestamp('refreshed_at', { withTimezone: true }),
+  requestedAt: timestamp('requested_at', { withTimezone: true }),
+});
 
 // ─────────────── ADR-0076: the payroll anomaly layer (the ADR-0074 control-tower keystone) ───────────────
 //
@@ -11807,7 +11829,9 @@ export const bulkJobStep=pgTable('bulk_job_step',{
 },t=>[primaryKey({columns:[t.jobId,t.seq]}),index('bulk_job_step_pending').on(t.jobId,t.seq).where(sql`${t.state}='pending'`)]);
 
 /** Canonical row meaning approved by the import preview; codes and names are only lookup inputs. */
-export type PayrollTxnImportBinding={employmentId:string;companyId:string;departmentId:string|null;componentId:string;intendedCycleId:string|null;targetBatchId:string|null;targetCycle:string;payPeriod:string;txnDate:string;kind:string;quantity:number|null;unit:string|null;sourceRef:string;notes:string|null;dailyRuleHash?:string};
+export type PayrollTxnImportBinding={employmentId:string;companyId:string;departmentId:string|null;componentId:string;intendedCycleId:string|null;targetBatchId:string|null;targetCycle:string;payPeriod:string;txnDate:string;kind:string;quantity:number|null;unit:string|null;sourceRef:string;notes:string|null;dailyRuleHash?:string;
+ /** 7b5b1665 — the ledger input method a One Total for the Month row was validated with (absent = none). */
+ calculationMethod?:'amount'|'formula'};
 /** Individual transaction import attempts retain original row outcomes after reversal. */
 export const payrollTxnImportAttempt=pgTable('payroll_txn_import_attempt',{
  id:id(),tenantId:tenantId(),operationId:uuid('operation_id').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),

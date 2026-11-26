@@ -55,11 +55,21 @@ export class StatutoryRulesetMalformedError extends Error {
   }
 }
 
-export type PcbCalculationScheme = 'resident' | 'non_resident' | 'rep' | 'knowledge_worker' | 'c_suite';
+export type PcbCalculationScheme = 'resident' | 'non_resident' | 'rep' | 'knowledge_worker' | 'c_suite' | 'custom_fixed' | 'custom_rate';
+/** ADR 0183 — the `pcbMeta` stamp of a custom PCB payslip: the method, the number HR saved, and the remuneration. */
+export type CustomPcbMeta = {
+  calculationScheme: 'custom_fixed' | 'custom_rate';
+  customPcb: { amount: number } | { rate: number };
+  trace: { remuneration: number; additional: number; amount: number } | { remuneration: number; additional: number; rate: number };
+  taxCircumstance?: SavedTaxCircumstance;
+  taxSelectionId?: string;
+  taxSelectionVersion?: number;
+  taxSelectionSource?: 'income_tax_resident';
+};
 /** Resolve the explicit HR declaration; legacy residency is consulted only when no scheme is saved. */
 export function resolvePcbCalculationScheme(value: string | null | undefined, resident = true): PcbCalculationScheme {
   const scheme = value ?? (resident ? 'resident' : 'non_resident');
-  if (!['resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite'].includes(scheme)) {
+  if (!['resident', 'non_resident', 'rep', 'knowledge_worker', 'c_suite', 'custom_fixed', 'custom_rate'].includes(scheme)) {
     throw new StatutoryRulesetMalformedError('Unknown PCB calculation scheme');
   }
   return scheme as PcbCalculationScheme;
@@ -1742,6 +1752,9 @@ export function statutory(
     taxSelectionId?: string;
     taxSelectionVersion?: number;
     taxSelectionSource?: 'income_tax_resident';
+    /** ADR 0183 — the HR-entered number of a custom PCB scheme, from the employer-scoped selection: `amount`
+     *  (RM) for custom_fixed, `rate` (percent) for custom_rate. Required by those two schemes, read by no other. */
+    customPcb?: { amount: number | null; rate: number | null };
     epfElection?: EpfElection;
     /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
     epfAge?: number | null;
@@ -1812,6 +1825,10 @@ export function statutory(
     pcbAdditionalOverride?: number;
     /** PCB-only taxable normal remuneration; never an agency/cash wage. */
     pcbNonCashNormal?: NonCashAmounts;
+    /** Board 8edeef41 (2026-11-25 amendment of ADR-0090) — PCB-only taxable BIK/VOLA on the ADDITIONAL stream. It
+     *  joins Yt (`pcbAdditional`, the section D.2 P2 path) and nothing else: it is not in `additional`, so it adds no
+     *  EPF, SOCSO, EIS or SKBBK, and therefore nothing to Kt. Absent ⇒ byte-identical for every existing caller. */
+    pcbNonCashAdditional?: NonCashAmounts;
     /** Item 69d6ed3c — ask for `statutoryTrace` v1 on the result. Absent ⇒ no trace key at all, so every
      *  caller that does not ask gets a byte-identical result. Read by no arithmetic. */
     trace?: StatutoryTraceRequest;
@@ -1859,9 +1876,15 @@ export function statutory(
   for (const override of [opts?.pcbCashNormalOverride,opts?.pcbAdditionalOverride])
     if (override!==undefined && (!Number.isFinite(override)||override<0)) throw new StatutoryRulesetMalformedError('Invalid reviewed PCB remuneration basis');
   const pcbCashWage = opts?.pcbCashNormalOverride ?? Math.max(0, round2(cashWage - Math.max(0, opts?.pcbWageDeduction ?? 0)));
-  const pcbAdditional = opts?.pcbAdditionalOverride ?? additional;
   const benefit = opts?.pcbNonCashNormal;
   if (benefit && (![benefit.bik,benefit.vola].every(n=>Number.isFinite(n)&&n>=0))) throw new StatutoryRulesetMalformedError('Invalid PCB non-cash normal remuneration');
+  const additionalBenefit = opts?.pcbNonCashAdditional;
+  if (additionalBenefit && (![additionalBenefit.bik,additionalBenefit.vola].every(n=>Number.isFinite(n)&&n>=0))) throw new StatutoryRulesetMalformedError('Invalid PCB non-cash additional remuneration');
+  // Yt: the cash additional remuneration (or its reviewed override) plus any additional-stream benefit. The benefit
+  // never reaches `epfAdditional` above, so `epfOnBonus` (Kt) below is the EPF on the cash bonus alone.
+  const pcbAdditional = additionalBenefit
+    ? round2((opts?.pcbAdditionalOverride ?? additional) + additionalBenefit.bik + additionalBenefit.vola)
+    : opts?.pcbAdditionalOverride ?? additional;
   const pcbWage = round2(pcbCashWage + (benefit?.bik ?? 0) + (benefit?.vola ?? 0));
   // EPF by age + citizenship (Part A / Part E senior / non-citizen 2%/2%; #95). Bonus IS subject to
   // EPF; overtime is NOT.
@@ -1937,11 +1960,44 @@ export function statutory(
   if (opts?.flatTaxRate != null && opts.flatTaxRate !== 0.3) {
     throw new StatutoryRulesetMalformedError('Select an explicit approved PCB scheme instead of a flat incentive rate');
   }
-  const flatRate = scheme === 'non_resident' || (opts?.calculationScheme == null && opts?.flatTaxRate === 0.3) ? 0.3 : null;
-  if (flatRate != null) {
+  // ── ADR 0183 (board d8dc0a8c) — THE TWO HR-CHOSEN CUSTOM PCB METHODS ──────────────────────────────
+  // custom_fixed: the month's PCB IS the HR-entered amount. No table, relief, TP1/TP3, rebate, zakat offset or
+  //   RM10 floor touches it. It is the same figure for the month however many runs pay it, so the kernel's
+  //   additional-run delta charges it once: the regular run carries it and a bonus run's increment is 0.
+  // custom_rate: the Non-Resident working (taxable remuneration × rate, the same truncation, 5-sen round-up and
+  //   RM10 floor), with the HR-entered percentage in place of 30%.
+  // Both refuse rather than fall back when the number is missing: a missing number must never become the
+  // standard formula. pcbNormalPreZakat is 0, as for Non-Resident: zakat via salary is not offset here.
+  // ONE NAMED META TYPE AND THE NON-RESIDENT RETURN STATEMENT, ON PURPOSE. A separate return statement adds a
+  // new shape to this function's inferred result, and every spread of that result elsewhere ({...blob, ...})
+  // multiplies against it; the test type check then ran past 30 minutes. Sharing the flat branch's return keeps the
+  // result's shapes as they were and adds one member to `pcbMeta` only.
+  let custom: { pcb: number; pcbBonus: number; meta: CustomPcbMeta } | null = null;
+  if (scheme === 'custom_fixed' || scheme === 'custom_rate') {
+    const amount = opts?.customPcb?.amount, ratePercent = opts?.customPcb?.rate;
+    const fixedOk = amount != null && Number.isFinite(amount) && amount > 0 && round2(amount) === amount;
+    const rateOk = ratePercent != null && Number.isFinite(ratePercent) && ratePercent > 0 && ratePercent <= 100 && round2(ratePercent) === ratePercent;
+    if (scheme === 'custom_fixed' ? !fixedOk : !rateOk) {
+      throw new StatutoryRulesetMalformedError('A custom PCB method needs its saved amount or rate');
+    }
+    const rate = scheme === 'custom_rate' ? round2(ratePercent!) / 100 : null;
+    const pcbAll = rate == null ? amount! : rm10Floor(ceil5sen(trunc2((pcbWage + pcbAdditional) * rate)));
+    const pcbBonusOnly = rate == null ? 0 : rm10Floor(ceil5sen(trunc2(pcbAdditional * rate)));
+    const meta: CustomPcbMeta = {
+      calculationScheme: scheme,
+      // The number HR saved, as used by this run — the explanation reads it, never today's selection.
+      customPcb: rate == null ? { amount: amount! } : { rate: round2(ratePercent!) },
+      trace: rate == null ? { remuneration: pcbWage, additional: pcbAdditional, amount: amount! } : { remuneration: pcbWage, additional: pcbAdditional, rate },
+    };
+    if (opts?.taxCircumstance) meta.taxCircumstance = opts.taxCircumstance;
+    if (opts?.taxSelectionId) Object.assign(meta, { taxSelectionId: opts.taxSelectionId, taxSelectionVersion: opts.taxSelectionVersion, taxSelectionSource: opts.taxSelectionSource });
+    custom = { pcb: pcbAll, pcbBonus: Math.min(pcbBonusOnly, pcbAll), meta };
+  }
+  const flatRate = custom ? null : scheme === 'non_resident' || (opts?.calculationScheme == null && opts?.flatTaxRate === 0.3) ? 0.3 : null;
+  if (custom || flatRate != null) {
     // Non-resident MTD, spec §D.a: taxable remuneration × 30%, without resident reliefs.
-    const pcbAll = rm10Floor(ceil5sen(trunc2((pcbWage + pcbAdditional) * flatRate)));
-    const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(pcbAdditional * flatRate)));
+    const pcbAll = custom ? custom.pcb : rm10Floor(ceil5sen(trunc2((pcbWage + pcbAdditional) * flatRate!)));
+    const pcbBonusOnly = custom ? custom.pcbBonus : rm10Floor(ceil5sen(trunc2(pcbAdditional * flatRate!)));
     return {
       ...epfTrace,
       ...traceOut,
@@ -1961,7 +2017,7 @@ export function statutory(
       // for the same reason the MTD trace is: the detail screen must be able to say WHICH remuneration
       // the flat rate was applied to, and RM x % is not checkable without the x. Additive; the three
       // keys that were here are untouched.
-      pcbMeta: {
+      pcbMeta: custom ? custom.meta : {
         ...(opts?.taxCircumstance?{taxCircumstance:opts.taxCircumstance}:{}),
         calculationScheme: 'non_resident',
         ...(opts?.taxSelectionId?{taxSelectionId:opts.taxSelectionId,taxSelectionVersion:opts.taxSelectionVersion,taxSelectionSource:opts.taxSelectionSource}:{}),

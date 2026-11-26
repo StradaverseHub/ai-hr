@@ -240,8 +240,8 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
 /**
  * ad6ed930 — `options.workDate` is a one-off transaction's own Effective Date, when the caller prices one.
  *
- * THE LAST DAY BOUNDS EVERY PRICE. The employee's last day is payrollEmploymentEnd (least of terminated_on,
- * resignation_date and last_working_date). A work date — or, without one, the evaluation date — after it is refused
+ * THE LAST DAY BOUNDS EVERY PRICE. The employee's last day is payrollEmploymentEnd (the earlier of terminated_on
+ * and resignation_date, else last_working_date — 7da649d3). A work date — or, without one, the evaluation date — after it is refused
  * with the named PayFormulaAfterLeavingDateError, never priced and never reported as a Pay Item set-up fault.
  *
  * A FORMER EMPLOYEE'S LATE CLAIM. When the employment ended before the selected payroll month starts and the work date
@@ -273,7 +273,7 @@ export async function simulatePayFormulaTx(tx:Tx,ctx:SessionContext,formula:Acti
  // A selected Native run owns its compensation at period end; standalone previews use the chosen record date.
  const salaryDate=departed?leftOn!:batch?end:asOf;
  const salaryRows=await tx.execute<{id:string;basic:string;payMode:string;rateAmount:string|null;validFrom:string;validTo:string|null}>(sql`select id,basic_salary as basic,pay_mode as "payMode",rate_amount as "rateAmount",valid_from::text as "validFrom",valid_to::text as "validTo" from compensation where employment_id=${context.employmentId}::uuid and valid_from<=${salaryDate}::date and (valid_to is null or valid_to>${salaryDate}::date) and superseded_at is null`);if(salaryRows.length!==1)throw unavailable('effective compensation');const salary=salaryRows[0];
- const [dates]=await tx.execute<{companyId:string;hiredOn:string;terminatedOn:string|null}>(sql`select company_id as "companyId",${employmentInformationAt('hiredOn',sql`${asOf}::date`,sql`${employment.hiredOn}`)}::text as "hiredOn",terminated_on::text as "terminatedOn" from employment where id=${context.employmentId}::uuid`);if(!dates)throw unavailable('employment dates');
+ const [dates]=await tx.execute<{companyId:string;hiredOn:string;terminatedOn:string|null}>(sql`select company_id as "companyId",${employmentInformationAt('hiredOn',sql`${asOf}::date`,sql`${employment.hiredOn}`)}::text as "hiredOn",${payrollEmploymentEnd}::text as "terminatedOn" from employment where id=${context.employmentId}::uuid`);if(!dates)throw unavailable('employment dates');
  const segments=await companySegmentsForPeriodBulk(tx,[context.employmentId],start,end,new Map([[context.employmentId,dates.companyId]])),mine=segmentForCompany(segments.get(context.employmentId)??[],context.companyId);if(!mine||mine.split||asOf<mine.from||asOf>mine.to)throw unavailable('employer segment for the selected payroll month');
  const hired=mine&&mine.from>dates.hiredOn?mine.from:dates.hiredOn,terminated=mine&&mine.to<end?dates.terminatedOn&&dates.terminatedOn<mine.to?dates.terminatedOn:mine.to:dates.terminatedOn;
  const policy=await resolveAssignedPolicy(tx,context.employmentId),cfg=policy?.config??null,[companyCfg]=await tx.select().from(companyPayrollConfig).where(eq(companyPayrollConfig.companyId,context.companyId));

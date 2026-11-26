@@ -1,4 +1,5 @@
 import type { MovementHistoryRow } from '@/core/movement';
+import { PendingExitNotice, ResignationSourceNote, type PendingExit } from './pending-exit-notice';
 import {isContractPostingMovementKind} from '@/core/movement-kinds';
 import { MovementComparisonTable } from './movement-comparison-table';
 import {HIRE_SCALAR_INFORMATION_FIELDS} from '@/core/hire-employment-information';
@@ -19,6 +20,9 @@ import {latestPersonnelHistory} from '@/lib/personnel-history';
 import {movementHistoryHref,movementPageHref} from '@/lib/personnel-movement-navigation';
 import {MovementActionShell} from './movement-action-shell';
 import {MovementHistoryActions} from './movement-history-actions';
+// Board eb01800b — dated records that are not career movements, listed in Employment History.
+import {MovementRecordChangeActions,MovementRecordChangeSummary,type MovementRecordChangeLabels} from './movement-record-change';
+import {movementRecordAnchor} from '@/lib/assignment-blocked-message';
 import {movementScreenAccess} from '../../../../lib/movement-screen-access';
 import {informationCorrectionHistory} from '@/core/information-correction';
 import {InformationCorrectionAudit} from '../information-correction-form';
@@ -610,16 +614,19 @@ export default async function EmployeePage({
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
   // Only the history table, the pending banner, and the edit lookup need the full projection.
   const movementProjection = admin && (!movementPage || movementPage === 'history' || movementPage === 'edit')
-    ? await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards || directMovementHistory })
+    ? await movementHistoryWithTypes(s, employmentId, { includeResignation: readProfileCards || directMovementHistory, includeRecordChanges: true })
     : null;
   const movements = movementProjection?.movements ?? [];
+  // Board eb01800b — correction, mapping and untagged record lines. Drawn in the TABLE only; `movements` (the Edit
+  // lookup, the salary candidates, the pending banner) never contains them.
+  const recordChanges = movementProjection?.recordChanges ?? [];
   // 95d17761 — the DEFAULT view drops the correction artefacts (rolled back / corrected / cancelled /
   // superseded) so the tab reads as a career rather than a list of mistakes. Nothing is deleted and the
   // projection above is untouched: `movements` stays the complete history and is what the Edit lookup,
   // the pending-movement banner and the detail view keep reading. Only the TABLE draws `visibleMovements`.
   const showCorrectedMovements = spShowCorrected === '1';
   const { visible: visibleMovements, hiddenCount: correctedMovementCount } = partitionMovementRows(
-    latestPersonnelHistory(movements),
+    latestPersonnelHistory([...movements, ...recordChanges]),
     showCorrectedMovements,
   );
   // The Show / Hide link keeps the reader exactly where they are: same tab, same open detail view, same
@@ -2909,7 +2916,7 @@ export default async function EmployeePage({
         action={setTaxAction}
         employmentId={emp.employmentId}
         personId={emp.personId}
-        taxSelection={taxSelection ? {companyId:taxSelection.companyId,companyName:taxSelection.companyName,version:taxSelection.version,confirmationRequired:taxSelection.transitionState==='confirmation_required'} : undefined}
+        taxSelection={taxSelection ? {companyId:taxSelection.companyId,companyName:taxSelection.companyName,version:taxSelection.version,confirmationRequired:taxSelection.transitionState==='confirmation_required',customPcbAmount:taxSelection.customPcbAmount??null,customPcbRate:taxSelection.customPcbRate??null} : undefined}
         childRelief={qualifyingChildRelief}
         taxNumberSharedWith={taxNumberSharedWith}
         defaults={{
@@ -3195,6 +3202,28 @@ export default async function EmployeePage({
     />
   ) : null;
 
+  // Board eb01800b — captions for the record lines. Field names are the Information-Only Correction's own; a viewer of
+  // this table already sees these placements in its columns and in each row's detail view.
+  const recordFieldLabels: Record<string, string> = Object.fromEntries(
+    (['companyId', 'employmentType', 'businessUnitId', 'departmentId', 'positionId'] as const).map((f) => [f, tPersonnel(`people.informationCorrection.fields.${f}`)]),
+  );
+  const recordChangeLabels = (record: NonNullable<MovementHistoryRow['recordChange']>): MovementRecordChangeLabels => ({
+    title: t(`movement.recordChange.kind.${record.kind === 'movement' ? 'untagged' : record.kind}`),
+    badge: t('movement.recordChange.badge'),
+    recorded: record.recordedAt
+      ? record.actorName
+        ? t('movement.recordChange.recordedBy', { name: record.actorName, date: formatDmy(record.recordedAt) })
+        : t('movement.recordChange.recordedOn', { date: formatDmy(record.recordedAt) })
+      : '',
+    noFields: t('movement.recordChange.noFields'),
+    view: t('movement.view'),
+    changed: t('movement.recordChange.changed'),
+    before: t('movement.detail.beforeChanges'),
+    after: t('movement.detail.afterChanges'),
+    effectiveDate: tPersonnel('people.informationCorrection.effectiveDate'),
+    correct: t('movement.recordChange.correct'),
+    hint: t(record.kind === 'mapping' ? 'movement.recordChange.mappingHint' : record.kind === 'untagged' ? 'movement.recordChange.untaggedHint' : 'movement.recordChange.correctHint'),
+  });
   const employmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
       <SectionHeader title={t('movement.title')} />
@@ -3281,9 +3310,11 @@ export default async function EmployeePage({
             <tr
               key={m.id}
               data-movement-id={m.id}
-              className={m.reversed || m.status === 'superseded' ? 'text-muted-foreground' : undefined}
+              {...(m.recordChange ? { id: movementRecordAnchor(m.recordChange.versionId), 'data-record-change': m.recordChange.kind } : {})}
+              className={m.recordChange ? 'bg-amber-50/60 dark:bg-amber-500/5' : m.reversed || m.status === 'superseded' ? 'text-muted-foreground' : undefined}
             >
               <td className="px-4 py-2.5 font-medium text-foreground">
+                {m.recordChange ? <MovementRecordChangeSummary record={m.recordChange} fieldLabels={recordFieldLabels} labels={recordChangeLabels(m.recordChange)} /> : <>
                 <span className={m.reversed || m.status === 'superseded' ? 'line-through' : undefined}>
                   {movementRecordLabel(m.kind, m.superiorChange)}
                 </span>
@@ -3374,6 +3405,7 @@ export default async function EmployeePage({
                     </details>
                   </div>
                 )}
+                </>}
               </td>
               <td className="px-4 py-2.5 font-mono text-xs">{formatDmy(m.effectiveDate)}</td>
               {/* Reconstructed AS OF the row's effective date in core/movement.ts — never a live read of the
@@ -3384,6 +3416,8 @@ export default async function EmployeePage({
               <td className="px-4 py-2.5 text-muted-foreground">{m.jobTitle ?? '—'}</td>
               <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{m.basic ?? '—'}</td>
               <td className="px-4 py-2.5">
+                {m.recordChange ? <MovementRecordChangeActions employmentId={employmentId} record={m.recordChange} fieldLabels={recordFieldLabels}
+                  labels={recordChangeLabels(m.recordChange)} effectiveDateText={formatDmy(m.effectiveDate)} canCorrect={canCorrectMovement} /> : <>
                 <MovementHistoryActions context={movementContext} employmentId={employmentId} row={m} standalone={movementPage==='history'}
                   eventLabel={`${movementRecordLabel(m.kind, m.superiorChange)} · ${formatDmy(m.effectiveDate)}`}
                   canCorrect={canCorrectMovement} canDelete={canDeleteMovement} reverseAction={reverseMovementEventAction}
@@ -3403,6 +3437,7 @@ export default async function EmployeePage({
                     closedAcknowledge:t('movement.form.closedPayrollAcknowledge'), processedWarning:t('movement.form.payrollWarning'),
                   }}/>
                 {m.payrollLocked && <p className="mt-1 text-xs text-muted-foreground">{t('movement.payrollClosedBadge', {periods:m.payrollClosedPeriods.join(', ')})}</p>}
+                </>}
               </td>
             </tr>
           ))}
@@ -4051,15 +4086,36 @@ export default async function EmployeePage({
   const pendingMovements = movements
     .filter((m) => m.status === 'pending')
     .sort((a, b) => (a.effectiveDate < b.effectiveDate ? -1 : a.effectiveDate > b.effectiveDate ? 1 : 0));
+  // 7da649d3 — a scheduled exit (any type with Termination or Resignation behaviour) has already written its
+  // dates, so it gets its own notice: Resignation Date and last working day, placement kept until then, and payroll
+  // to the Resignation Date (owner decision 2026-11-25). A Termination's Resignation Date is its effective date.
+  const pendingExitBehaviour = (m: MovementHistoryRow): PendingExit['behaviour'] | null => {
+    const behaviour = movementTypeByCode.get(m.correctionKind ?? m.kind)?.behaviourKind ?? m.correctionKind ?? m.kind;
+    return behaviour === 'termination' || behaviour === 'resignation' ? behaviour : null;
+  };
+  const scheduledResignationDate = (movementId: string): string | null => {
+    const recorded = resignationInfo?.resignationDate;
+    return recorded && recorded.source.kind === 'scheduled' && recorded.source.movementId === movementId ? recorded.value : null;
+  };
+  const pendingExits: PendingExit[] = pendingMovements.flatMap((m) => {
+    const behaviour = pendingExitBehaviour(m);
+    return behaviour
+      ? [{ id: m.id, label: movementRecordLabel(m.kind, m.superiorChange), behaviour, effectiveDate: m.effectiveDate, lastWorkingDate: m.endDate,
+          resignationDate: scheduledResignationDate(m.id) ?? (behaviour === 'termination' ? m.effectiveDate : null) }]
+      : [];
+  });
+  const pendingOtherMovements = pendingMovements.filter((m) => !pendingExitBehaviour(m));
   const employmentInfoCard = admin ? (
     <Card id="section-employment-info">
       <SectionHeader title={t('employmentInfo.title')} />
       {pendingMovements.length > 0 && (
-        <div className="border-b border-border px-4 py-3">
+        <div className="space-y-2 border-b border-border px-4 py-3">
+          {pendingExits.map((exit) => <PendingExitNotice key={exit.id} exit={exit} />)}
+          {pendingOtherMovements.length > 0 && (
           <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
             <p className="font-medium">{t('employmentInfo.pendingMovementTitle')}</p>
             <ul className="mt-1 space-y-0.5 text-muted-foreground">
-              {pendingMovements.map((m) => (
+              {pendingOtherMovements.map((m) => (
                 <li key={m.id}>
                   {t('employmentInfo.pendingMovementItem', {
                     kind: movementRecordLabel(m.kind, m.superiorChange),
@@ -4072,6 +4128,7 @@ export default async function EmployeePage({
               {t('employmentInfo.pendingMovementNote')}
             </p>
           </div>
+          )}
         </div>
       )}
       {/* 9464bd56 — Company change before any transaction. A SELF-CONTAINED block ABOVE the consolidated
@@ -4475,15 +4532,15 @@ export default async function EmployeePage({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <PersonnelField fieldId="employment.employment_dates_and_service.tenderresignationdate" mode="record">
                 {readOnlyValue("employment.employment_dates_and_service.tenderresignationdate", resignationInfo?.tenderResignationDate.value ? formatDmy(resignationInfo.tenderResignationDate.value) : null)}
-                {resignationInfo?.tenderResignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={movementPageHref(emp.employmentId, 'view', resignationInfo.tenderResignationDate.source.movementId)}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.tenderResignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.tenderResignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+                <ResignationSourceNote source={resignationInfo?.tenderResignationDate.source} href={(movementId) => movementPageHref(emp.employmentId, 'view', movementId)} />
               </PersonnelField>
               <PersonnelField fieldId="employment.employment_dates_and_service.resignationdate" mode="record">
                 {readOnlyValue("employment.employment_dates_and_service.resignationdate", resignationInfo?.resignationDate.value ? formatDmy(resignationInfo.resignationDate.value) : null)}
-                {resignationInfo?.resignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={movementPageHref(emp.employmentId, 'view', resignationInfo.resignationDate.source.movementId)}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.resignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.resignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+                <ResignationSourceNote source={resignationInfo?.resignationDate.source} href={(movementId) => movementPageHref(emp.employmentId, 'view', movementId)} />
               </PersonnelField>
               <PersonnelField fieldId="employment.employment_dates_and_service.lastworkingdate" mode="record">
                 {readOnlyValue("employment.employment_dates_and_service.lastworkingdate", resignationInfo?.lastWorkingDate.value ? formatDmy(resignationInfo.lastWorkingDate.value) : null)}
-                {resignationInfo?.lastWorkingDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={movementPageHref(emp.employmentId, 'view', resignationInfo.lastWorkingDate.source.movementId)}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.lastWorkingDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.lastWorkingDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+                <ResignationSourceNote source={resignationInfo?.lastWorkingDate.source} href={(movementId) => movementPageHref(emp.employmentId, 'view', movementId)} />
               </PersonnelField>
             </div>
             <p className="text-xs text-muted-foreground">{t('employmentInfo.resignationMovementNote')}</p>

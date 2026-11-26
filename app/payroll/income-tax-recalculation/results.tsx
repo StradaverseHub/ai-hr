@@ -10,7 +10,7 @@ import {TaxBasisExemptionLimits} from './exemption-limits';
 const cell='p-3 text-left align-top';
 const numeric='p-3 text-right align-top tabular-nums whitespace-nowrap';
 
-function noncashBasis(basis:TaxBasisValue):PcbNonCashSnapshot|null{const value=basis.pcbNonCash;return value&&typeof value==='object'&&(value as {version?:unknown}).version===1?value as PcbNonCashSnapshot:null;}
+function noncashBasis(basis:TaxBasisValue):PcbNonCashSnapshot|null{const value=basis.pcbNonCash;return value&&typeof value==='object'&&[1,2].includes((value as {version?:unknown}).version as number)?value as PcbNonCashSnapshot:null;}
 
 /** Values are calculated by the authorized service. This surface only formats saved results. */
 export function TaxBasisResults({employees}:{employees:TaxBasisEmployee[]}){

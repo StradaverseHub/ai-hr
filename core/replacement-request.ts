@@ -44,7 +44,7 @@ import {leaveCreditClaimReviewTx} from './toil';
  * if that is ever wanted it is a different ticket with a different answer for what a partial approval of
  * a multi-date request would even mean.
  */
-import { and, desc, eq, inArray, isNull, ne,sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne,sql,type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
@@ -1425,11 +1425,13 @@ export function listPendingReplacementLeaveTasks(ctx:SessionContext,opts:{compan
 
 /** listPendingReplacementLeaveTasks(ctx, {companyIds}) in one statement (core/account-task-bundle.ts): the same
  * candidates in the same order, kept where decisionEmploymentAuthorityTx would allow their subject. */
-export function pendingReplacementLeaveTaskBundleSql(ctx:SessionContext,companyIds?:string[]){
+/** `own`: the account task statement's caller-own employments (core/approvals.ts callerOwnEmploymentIdsSql), so the
+ * decision test reads them once for every section instead of re-reading the subject's employment row. */
+export function pendingReplacementLeaveTaskBundleSql(ctx:SessionContext,companyIds?:string[],own?:SQL){
   return sql`(select coalesce(jsonb_agg(jsonb_build_object('id',candidate.id,'personId',candidate."personId",'employee',candidate.employee,
     'createdAt',candidate."createdAt") order by candidate."createdAt" desc,candidate.id),'[]'::jsonb)
    from (${pendingReplacementLeaveCandidatesSql(ctx,{companyIds})}) candidate
-   where ${decisionEmploymentAuthoritySql(ctx,sql`candidate."employmentId"`,scopeOf('leave.replacement'))})`;
+   where ${decisionEmploymentAuthoritySql(ctx,sql`candidate."employmentId"`,scopeOf('leave.replacement'),own)})`;
 }
 export function pendingReplacementLeaveTasksFromBundle(value:unknown):{id:string;personId:string;employee:string|null;createdAt:Date}[]{
   return (value as {id:string;personId:string;employee:string|null;createdAt:string}[]).map(({id,personId,employee,createdAt})=>{

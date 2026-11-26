@@ -2,18 +2,27 @@
 // Only node builtins are imported statically. The parent process exists to respawn under the server runtime,
 // and static imports would make it load and transpile the whole HR graph each minute before the child loads it again.
 import { spawn } from 'node:child_process';
-import type { SessionContext } from '../db/client';
+import type { SessionContext, createDb } from '../db/client';
 import type { StartedJobRun } from '../core/job-run';
-async function main(){
- const [{createDb},{loadSweepScope,describeSkips},{resolveEntitlementsTx,isModuleEnabled},{sweepOnboarding,refreshOnboardingPersonnel,v9Sweep,v9DeliverEmails,sweepResignationJourneys},{sweepProbation},{sweepContractManagement},{sweepAssessmentReminders},{dispatchNotificationsFromSweep},{deliverNotificationEmails,deliverAttendanceCcEmails},{deliverLetterEmailsFromSweep},{sweepLetterAutomationFromSweep},{projectLetterNotificationsFromSweep},{createNoticeSweepAccess},{NOTIFICATION_ROLE_MISSING,notificationDowngradeReady},{startJobRun,completeJobRun,jobOutcome},{notificationProjectionCounters,recordCommittedProjectionBatch,NOTIFICATION_PROJECTION_JOB_KEY},{drainNotificationProjection},{readNotificationProjectionBacklog},{deliverAutomationEmails}]=await Promise.all([
-  import('../db/client'),import('../core/sweep-scope'),import('../core/entitlements'),import('../packs/lifecycle/service'),import('../packs/probation/service'),
+type SweepOwner=ReturnType<typeof createDb>;
+function loadModules(){
+ return Promise.all([
+  import('../core/sweep-scope'),import('../core/entitlements'),import('../packs/lifecycle/service'),import('../packs/probation/service'),
   import('../packs/contracts/service'),import('../packs/performance/service'),import('../core/notifications'),import('../core/notification-email-delivery'),
   import('../core/letter-email-delivery'),import('../core/letter-automation'),import('../core/letter-notifications'),import('../core/notice-projection'),import('./lib/notification-sweep-role'),
-  import('../core/job-run'),import('../lib/notification-scheduling-evidence'),import('../core/orchestrator-harness'),import('./lib/notification-projection-backlog'),import('../core/automation-email-delivery')]);
- const {sweepProbationEmailHolds}=await import('../core/probation-automation');
- const {deliverCandidateEmails}=await import('../packs/recruitment/service');
- const url=process.env.MIGRATION_DATABASE_URL;if(!url)throw new Error('Migration database required');
- const owner=createDb(url);let failed=0,tenantsProcessed=0,tenantsFailed=0,tenantsSkipped=0,fatal=false;
+  import('../core/job-run'),import('../lib/notification-scheduling-evidence'),import('../core/orchestrator-harness'),import('./lib/notification-projection-backlog'),import('../core/automation-email-delivery'),
+  import('../core/probation-automation'),import('../packs/recruitment/service')]);
+}
+let loaded:ReturnType<typeof loadModules>|undefined;
+/** Every module a pass uses, loaded once. The resident process (scripts/scheduled-jobs.ts) loads it at start, so a later
+ * pass never reads a half-copied release; this CLI loads it before validating its connection. */
+export function loadNotificationSweepModules(){return loaded??=loadModules();}
+
+/** One sweep pass on the given owner connection: 1 when anything failed, 0 otherwise. Shared by this CLI and the resident
+ * process. It never exits or ends the pool, so the resident process keeps its connections warm between passes. */
+export async function runNotificationSweepPass(owner:SweepOwner):Promise<number>{
+ const [{loadSweepScope,describeSkips},{resolveEntitlementsTx,isModuleEnabled},{sweepOnboarding,refreshOnboardingPersonnel,v9Sweep,v9DeliverEmails,sweepResignationJourneys},{sweepProbation},{sweepContractManagement},{sweepAssessmentReminders},{dispatchNotificationsFromSweep},{deliverNotificationEmails,deliverAttendanceCcEmails},{deliverLetterEmailsFromSweep},{sweepLetterAutomationFromSweep},{projectLetterNotificationsFromSweep},{createNoticeSweepAccess},{NOTIFICATION_ROLE_MISSING,notificationDowngradeReady},{startJobRun,completeJobRun,jobOutcome},{notificationProjectionCounters,recordCommittedProjectionBatch,NOTIFICATION_PROJECTION_JOB_KEY},{drainNotificationProjection},{readNotificationProjectionBacklog},{deliverAutomationEmails},{sweepProbationEmailHolds},{deliverCandidateEmails}]=await loadNotificationSweepModules();
+ let failed=0,tenantsProcessed=0,tenantsFailed=0,tenantsSkipped=0,fatal=false;
  const counters=notificationProjectionCounters();let run:StartedJobRun|undefined;
  // The old accepted-artifact interface does not cover this worker. Do not infer identity from cwd,
  // environment SHA strings, a configured timer, or a successful process exit.
@@ -83,13 +92,32 @@ async function main(){
    outcome:fatal?'failed':jobOutcome(tenantsProcessed,tenantsFailed),tenantsProcessed,tenantsFailed,
    result:{...counters,skipped:tenantsSkipped},error:fatal?'Scheduled sweep interrupted before completion.':failed?'Scheduled sweep has incomplete work; inspect protected logs.':null,
   });}catch{failed++;console.error('Workflow sweep completion evidence unavailable.');}}
-  await owner.client.end();
  }
- process.exit(failed?1:0);
+ return failed?1:0;
 }
+
+async function main(){
+ await loadNotificationSweepModules();
+ const [{createDb},{openScheduledJobLocks}]=await Promise.all([import('../db/client'),import('./lib/scheduled-job-lock')]);
+ const url=process.env.MIGRATION_DATABASE_URL;if(!url)throw new Error('Migration database required');
+ // The same once-only lock as the resident process: while an installation still has this timer or crontab line,
+ // whichever starts second skips, as `flock -n -E 0` did on one host.
+ const locks=openScheduledJobLocks(url);const owner=createDb(url);let status=0;
+ try{
+  const held=await locks.tryLock('notification-email');
+  if(!held)console.log('Workflow sweep skipped: another run holds the notification sweep lock.');
+  else try{status=await runNotificationSweepPass(owner);}
+  finally{if(!await held.release()){status=1;console.error('Workflow sweep lock connection was lost during the run.');}}
+ }finally{await locks.end().catch(()=>undefined);await owner.client.end();}
+ process.exit(status);
+}
+// Only as a command: the resident process (scripts/scheduled-jobs.ts) imports runNotificationSweepPass and runs nothing here.
+const invokedDirectly=process.argv[1]?.endsWith('notification-email-sweep.ts')===true;
 // Honor the installed marker package's official server export in this standalone worker.
 // Other lifecycle scripts keep their ordinary Node runtime through the lazy facade.
-if (!process.execArgv.includes('--conditions=react-server')) {
+if (!invokedDirectly) {
+ // Imported as a module.
+} else if (!process.execArgv.includes('--conditions=react-server')) {
  const worker=spawn(process.execPath,['--conditions=react-server',...process.execArgv,...process.argv.slice(1)],{stdio:'inherit',env:process.env});
  worker.once('error',()=>{console.error('Workflow email server runtime unavailable.');process.exitCode=1;});
  worker.once('exit',(code,signal)=>{process.exitCode=code??(signal?1:0);});

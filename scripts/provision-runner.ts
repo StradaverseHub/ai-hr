@@ -398,35 +398,58 @@ async function main() {
   if(mode==='installedInternalReportsOnly'){await runInstalledInternalReportTick();return;}
   loadEnv();
   const {createDb,client}=await import('../db/client');
-  const {sweepReplacementHolidayQueue}=await import('./replacement-holiday-sweep');
   const url = process.env.MIGRATION_DATABASE_URL;
   if (!url) {
     console.error('\n✗ MIGRATION_DATABASE_URL is not set (run this from /opt/ai-hr on the server).\n');
     process.exit(1);
   }
+  // The same once-only lock as the resident process (scripts/scheduled-jobs.ts): while an installation still has
+  // the crontab line, whichever of the two starts second skips, as `flock -n` did on one host.
+  const {openScheduledJobLocks}=await import('./lib/scheduled-job-lock');
+  const locks=openScheduledJobLocks(url);
   const owner = createDb(url, { max: 2 });
   try {
-    // Independent minute jobs must still run when another job fails.
-    try {
-      const r = await runProvisionTick(owner);
-      if (r.reclaimed) console.log(`· reclaimed ${r.reclaimed} stale request(s)`);
-      if (!r.provisioned && !r.reclaimed && !r.reissued) console.log('· no provisioning work');
-    } catch { console.error('Provisioning tick failed.'); process.exitCode=1; }
-    try {
-      const holidays=await sweepReplacementHolidayQueue(owner);
-      if(holidays.processed||holidays.failed)console.log(`· replacement holidays: ${holidays.processed} processed, ${holidays.review} need review, ${holidays.failed} failed`);
-      if(holidays.failed)process.exitCode=1;
-    } catch { console.error('Replacement holiday tick failed.'); process.exitCode=1; }
-    try {
-      const reports=await runProvisionReportStage(owner);
-      if(reports?.attempted)console.log(`· employee master reports: ${reports.attempted} attempted, ${reports.sent} sent, ${reports.failed} failed, ${reports.uncertain} uncertain`);
-      // An uninstalled optional renderer leaves schedules untouched. Transport failures after a claim are failures.
-      if(reports?.tenantsFailed)process.exitCode=1;
-    } catch { console.error('Employee master report tick failed.'); process.exitCode=1; }
+    const held=await locks.tryLock('provision');
+    if(!held){console.log('· another provisioning runner holds the provisioning lock; skipped');return;}
+    try{if(await runProvisionPass(owner))process.exitCode=1;}
+    finally{if(!await held.release())console.error('Provisioning lock connection was lost during the run.');}
   } finally {
+    await locks.end().catch(()=>undefined);
     await owner.client.end({ timeout: 5 });
     await client.end({timeout:5});
   }
+}
+
+/** One pass of the default minute job, shared by this CLI and the resident process (scripts/scheduled-jobs.ts).
+ * Independent stages must still run when another fails; the status is 1 when any stage failed, 0 otherwise. It never
+ * sets process.exitCode, ends a pool or exits: the resident process keeps its connections warm between passes. */
+export async function runProvisionPass(owner: ReturnType<typeof createDb>): Promise<number> {
+  const {sweepReplacementHolidayQueue}=await import('./replacement-holiday-sweep');
+  let status=0;
+  try {
+    const r = await runProvisionTick(owner);
+    if (r.reclaimed) console.log(`· reclaimed ${r.reclaimed} stale request(s)`);
+    if (!r.provisioned && !r.reclaimed && !r.reissued) console.log('· no provisioning work');
+  } catch { console.error('Provisioning tick failed.'); status=1; }
+  try {
+    const holidays=await sweepReplacementHolidayQueue(owner);
+    if(holidays.processed||holidays.failed||holidays.dropped)console.log(`· replacement holidays: ${holidays.processed} processed, ${holidays.review} need review, ${holidays.failed} failed, ${holidays.dropped} dropped (voided or removed employment)`);
+    if(holidays.failed)status=1;
+  } catch { console.error('Replacement holiday tick failed.'); status=1; }
+  try {
+    const reports=await runProvisionReportStage(owner);
+    if(reports?.attempted)console.log(`· employee master reports: ${reports.attempted} attempted, ${reports.sent} sent, ${reports.failed} failed, ${reports.uncertain} uncertain`);
+    // An uninstalled optional renderer leaves schedules untouched. Transport failures after a claim are failures.
+    if(reports?.tenantsFailed)status=1;
+  } catch { console.error('Employee master report tick failed.'); status=1; }
+  return status;
+}
+
+/** Loads every module a pass imports lazily, so a resident process holds one code version from its start and never
+ * picks up a half-copied release file on a later pass (deploy.sh restarts it after a release). */
+export async function preloadProvisionPass(): Promise<void> {
+  await Promise.all([import('../db/schema'),import('drizzle-orm'),import('../db/provision'),import('../db/events'),import('../lib/internal-auth/config'),
+    import('./module-change-runner'),import('./replacement-holiday-sweep'),import('../lib/employee-master-dispatch'),import('../core/employee-master-delivery')]);
 }
 
 // Run only when invoked directly (not when imported by a test).

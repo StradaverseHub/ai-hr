@@ -6,6 +6,7 @@
 - **Status:** Accepted; production verified in r382–r383.
 - **Supersedes:** ADR-0089 prospectively; its historical declaration facts remain retained.
 - **Related:** ADR-0006, ADR-0009, ADR-0020 and ADR-0085.
+- **Amended:** 25 November 2026 by [BIK and VOLA may be Additional remuneration for PCB](2026-11-25-noncash-additional-remuneration.md): a taxable BIK/VOLA item may be Normal (default) or Additional.
 
 ## Decision
 

@@ -1,3 +1,313 @@
+# Payroll Process outstanding employees (board a1a80747, plan r2), 25 November 2026
+
+Reserve `7450_payroll_run_outstanding`, journal index `10850`, timestamp `1795495007450`, SQL SHA-256
+`da307ecf6fd170778c9b760cd8adac44b09fb58cecf69d32fcc4ada204d7cb13`. Taken from
+`node .github/ci/check-migration-collisions.mjs --local --next` (the script from `claude/migration-collision-check`, run
+from this branch) on 25 November 2026, which checked main and 397 recent branch journals and named 7450 as the next free
+slot, after `7440_payroll_read_history_summary`. Built on alpha `f34f6ff976` (ledger ending `7360`) and merged with alpha `143bde4d5` (ledger ending `7390_custom_pcb_selection`), which 7450 stays above. Neither installation's
+watermark was read from this session; recheck both, and any competing reservation, before admission.
+
+Creates `public.payroll_run_outstanding` (one row per processed run: the close-pending employment ids, when they were
+worked out and when a refresh was asked for), with RLS forced: read where the run is visible, written only by a payroll
+administrator of the run's company (`app.can_admin_payroll_for`); SELECT, INSERT, UPDATE and DELETE to `ai_hr_app`. Adds
+the `payroll_run_outstanding_refresh` bulk-job kind (default lane, no exclusivity). No existing table, row, policy or
+function changes; the new table starts empty. This entry carries no deployment authority.
+
+# Custom PCB on the Income Tax Resident selection (ADR 0183, board d8dc0a8c), 25 November 2026
+
+Reserve `7390_custom_pcb_selection`, journal index `10790`, timestamp `1795495007390`,
+SQL SHA-256 `a840b463c061f47cf7245b393258db8fff8bb2623fb90adc44770d4db4ede175`.
+
+**Renumbered from `7370_custom_pcb_selection` (idx `10770`, when `1795495007370`).** The 7370 slot is abandoned: it
+was never applied on any installation. The owner chose to release PR 326 (`7360_audit_trail_company_scope`) first
+("PR 326 first", confirmed in the board session). During that change PR 326 briefly renumbered to 7380 and withdrew it;
+the staging coordinator reconciled PR 326 at 7360 (f3894d18a) and kept this migration at 7390, above both.
+`check-migration-collisions.mjs --local --next` (from PR 307's commit bbab49168) checked main and 398 recent branch
+journals and named 7390 as free; the coordinator recorded it in the shared map. The SQL bytes are unchanged. Install
+order on staging: release 9 (7330, 7340), then 7360, then 7390; 7370 and 7380 are unused.
+Recheck both installations' watermarks, and any competing reservation, before admission.
+
+Adds nullable `custom_pcb_amount numeric(12,2)` and `custom_pcb_rate numeric(5,2)` to `employment_tax_selection_my`
+(every existing row NULL), widens `employment_tax_selection_my_scheme_check` with `custom_fixed` and `custom_rate`,
+adds `employment_tax_selection_my_custom_pcb_check` (a custom scheme has exactly its own number; other schemes none)
+and grants `ai_hr_app` UPDATE on the two columns. The checks scan the table once under the migration's lock; no
+policy, function or other object changes.
+# Audit Trail company scope (ADR 0182 Phase 1), 25 November 2026
+
+Reserve `7360_audit_trail_company_scope`, journal index `10760`, timestamp `1795495007360`,
+SQL SHA-256 `9208657d57e69b13a9a4bea1058dc4f66798b943ee21875eeadb74669c88b02b`. Rebased onto the release 9 staging head
+`60189ca03` (1,156 entries through `7340_queue_read_contract_navigation`, `1795495007340`), so the ledger becomes 1,157
+entries ending `7360`. The original reservation scan covered the 500 most recently committed branch heads and every
+registered worktree journal; a fresh scan of 700 heads on 25 November found only `7370_custom_pcb_selection` above it.
+The owner decided on 25 November 2026 that this releases before `7370` (board d8dc0a8c), so `7370` installs after
+`7360` and keeps its higher timestamp; `7350` stays unused. A short-lived renumbering to `7380` (commit `032c75a47`)
+was withdrawn before merge and never applied. Recheck both installation watermarks before admission.
+
+Adds `app.admin_company_ids()` and `app.audit_admin_aggregates()` (SECURITY DEFINER, STABLE, search_path pinned,
+EXECUTE to `ai_hr_app` only), read once per statement by the Audit Trail company scope in core/read.ts. No table,
+row, policy, grant on a table or existing function changes.
+
+# ADR 0181 live work queues, Q1: Contract navigation access, 25 November 2026
+
+Reserve `7340_queue_read_contract_navigation`, journal index `10740`, timestamp `1795495007340`, SQL SHA-256
+`675007a187d548b3a387483502f6cece7241f293cad6eeecc38d4b739727c56b`. Taken from `node .github/ci/check-migration-collisions.mjs --local --next` on 25 November
+2026 (main and 399 recent branch journals; next free slot after `7330_queue_read_offboarding_access`, which it must follow:
+it adds a `queue_read_control` row). Recheck the installed ledgers and watermarks at admission.
+
+It renames the 6432 function to `contract_shared_navigation_access_legacy` (guarded by its exact body and 6435's
+`automation_can_configure` body), adds `contract_staff_automation_v2` and `contract_shared_navigation_access_v2` (the 6432
+statement word for word with only its automation arm restated once per statement), and a PL/pgSQL dispatcher at the
+original name and grant. Inert on install (`legacy`). No policy, trigger, column or business row changes. Design:
+`docs/adr/0181-addendum-live-work-queues-and-approvals.md` (PR 319). This entry carries no deployment authority.
+
+# ADR 0181 live work queues, Q1: offboarding posting queue access, 25 November 2026
+
+Reserve `7330_queue_read_offboarding_access`, journal index `10730`, timestamp `1795495007330`, SQL SHA-256
+`6313303feb1ff5a25f959ae2b99987a5aba2ab2b44ec4bfe29f8fe5cb39044a3`. Taken from `node .github/ci/check-migration-collisions.mjs --local --next` (PR 307's
+script, run from its branch) on 25 November 2026, which checked main and 398 recent branch journals and reported the
+next free slot after `7320_employment_search_trigram`. Its timestamp is above every reservation it saw. Staging's ledger
+reached 7250 at the time; production is below it. Recheck the installed ledgers and watermarks at admission.
+
+It installs the per-reader switch `queue_read_control` (owner only, every mode `legacy`), renames the 6302 function to
+`offboarding_posting_queue_access_legacy` (guarded by its exact body), adds the once-per-statement
+`offboarding_posting_queue_access_v2`, a PL/pgSQL dispatcher at the original name and grant, and two operator-only
+functions (mode setter, every-user comparison of any registered reader). Inert on install. No policy, trigger, column or row of business data
+changes. Design: `docs/adr/0181-addendum-live-work-queues-and-approvals.md` (PR 319). This entry carries no deployment
+authority.
+
+# Employee search trigram indexes and candidates (ADR 0181 Phase 4), 25 November 2026
+
+Reserve `7320_employment_search_trigram`, journal index `10720`, timestamp `1795495007320` (SQL SHA-256 recorded in
+`test/helpers/approved-upgrade.ts`). `node .github/ci/check-migration-collisions.mjs --local --next` (PR 307) checked
+main and 398 recent branch journals, found no collision and named 7320 as the next free slot, after
+`7310_payroll_tax_import_source_revisions`. The database revamp session named 7320 as the next free slot the same
+day. Built on alpha's 7245, because the candidate function reads 7240's `app.visible_employment_ids()` body and
+`app.employment_read_companies()`. Neither installation's watermark was read from this session; recheck both, and any
+competing reservation, before admission. Staging order follows the coordinator's queue, after 7290, 7300 and 7310.
+
+Creates schema `extensions` (no PUBLIC privilege) with the trusted `pg_trgm` and `btree_gin` extensions, created by
+the database owner. Adds tenant-led GIN trigram indexes on `person` (lower full name, lower primary e-mail) and
+`employment` (lower employee code), each led by `tenant_id`, plus three small partial indexes for non-ASCII values.
+Adds the SECURITY DEFINER `app.employment_search_candidates(text, uuid[], boolean)` (EXECUTE to `ai_hr_app`), which
+returns the ids of employments in the caller's visible set whose name, code or e-mail matches, or that are non-ASCII.
+No table, column, policy or existing object changes. The index builds take a SHARE lock on `person` and `employment`
+for their duration inside the migration transaction.
+
+# Reprocess tax review import revisions, asked only for imported payslips (ADR 0181 write side), 25 November 2026
+
+Reserve `7310_payroll_tax_import_source_revisions`, journal index `10710`, timestamp `1795495007310`,
+SQL SHA-256 `a1b6a4708f8596d4801f88980ccca2a838ea6c2ce36477b8299a42e1a7ad18c0`. Same scan as `7300_pay_component_itemised_payslips` (claude/write-path-save-cost), the
+entry just below this one in allocation order: the highest held were 7260, 7270/7290 and 7280. Recheck both installations'
+watermarks and any competing reservation before admission.
+
+Adds the definer `app.payroll_tax_import_source_revisions(uuid[])` (EXECUTE to `ai_hr_app` only): the 6660/7051
+`app.payroll_tax_import_source_revision` answer for a set of payslips in one statement, non-null answers only. Its body
+is restated set-wise (principal once, payroll administration per company, the effective rule through
+`app.payroll_history_effective_ids`), and the migration refuses unless that function's and `app.payroll_history_effective`'s
+installed bodies are exactly the restated ones. `taxBasisSourceRowsTx` joins it instead of calling the per-row function for every payslip.
+Measured cause: production reprocess tax review 18.9 s (24 November 2026); focused diagnostic: the per-row column was
+5.6 s of a 6.4 s read of 1,800 payslips for a group administrator (17 s of 24 s for one holding 70 company grants).
+
+# Pay Item stale-run marker, containment before authority (ADR 0181 write side), 25 November 2026
+
+Reserve `7300_pay_component_itemised_payslips`, journal index `10700`, timestamp `1795495007300`,
+SQL SHA-256 `b078a1a609def1043736cdd4f27e165aa7fc62720f0ec71fe3dee441fb91e9cf`. The reservation scan covered the 500 most recently committed remote and local
+branch heads, every registered worktree's migration folder and journal, and every branch's copy of this file: the
+highest entries held were `7260_viewer_access_version`, `7270`/`7290_approval_history_keyset` (Phase 4 lists) and
+`7280_leave_delegated_decision_set`. Main ends at `7220`; staging runs J2 `3fe15c9cc` (ledger ending `7220`). Neither
+installation's watermark was read from this session beyond that; recheck both and any competing reservation before admission.
+
+Adds the definer `app.pay_component_itemised_payslips(uuid[],jsonb)` (EXECUTE to `ai_hr_app` only): the tenant's payslips
+in the given runs whose `statutory->'componentLines'` contain the given element, admitted by the same
+`app.payroll_history_native_artifact_allowed` call the 6693 `payroll_history_native_payslip` view makes, applied after the
+containment instead of before it. The view, its function and every grant are unchanged. Measured cause: production Pay
+Item saves up to 27.2 s (24 November 2026 request timing); the view ran the authority function for every slip of every
+open run because the containment test is not leakproof.
+
+# Approval History keyset page and capped count (ADR 0181 Phase 4), 25 November 2026
+
+Reserve `7290_approval_history_keyset`, journal index `10690`, timestamp `1795495007290`,
+SQL SHA-256 `c29c31fda4ed91e258c9b07884ddab16e8db040a3118d3d0adace495722122f8` (unchanged from 7270).
+
+**Renumbered from `7270_approval_history_keyset` (idx `10670`, when `1795495007270`).** The 7270 slot is abandoned:
+it was never applied on any installation. The staging coordinator moved `7280_leave_delegated_decision_set` ahead of
+this release, and a lower timestamp than an applied one would be silently skipped, so this migration takes `7290`.
+The database revamp session confirmed 7290 free on 25 November 2026, after a scan of the 400 most recent remote
+branches. This session's scan found nothing above 7280 among the 300 most recent remote heads and every registered
+worktree's migration folder. Neither installation's watermark was read from this session; recheck both, and any
+competing reservation, before admission.
+
+Staging order (coordinator, 25 November 2026): R6 (7230 + 7240), 7250, 7260, 7280, then this one (7290). Deploy the
+web app and the migration only, without a worker restart, and coordinate the ticket with the ORCHESTRATOR session.
+
+Adds three SECURITY DEFINER functions beside the unchanged `app.approval_history` (0818) and
+`app.approval_history_count` (0320), which keep serving the bell's History tab:
+- `app.approval_history_events`: the 0818 visibility and filter predicates as a keyset slice, owner-only.
+- `app.approval_history_page`: that slice with the 0818 names and "on behalf of" projection. EXECUTE to `ai_hr_app`.
+- `app.approval_history_count_capped`: counts up to cap + 1 matching decisions, with no projection. EXECUTE to `ai_hr_app`.
+
+The functions add no table, column, policy or grant on existing objects and replace no object.
+
+# Leave delegated decisions once per statement, 25 November 2026 (7280)
+
+Reserve `7280_leave_delegated_decision_set`, journal index `10680`, timestamp `1795495007280`,
+SQL SHA-256 `a41cb49410cef8b80c0443939367de24d8959e0ee2a6e20faa77c626f477d8b3`. Renumbered from 7260 on 25 November 2026: Phase 3's `7260_viewer_access_version`
+(branch `claude/db-read-cost-phase-3`) reserved 7260 first, and Phase 4 holds `7270_approval_history_keyset`. A scan of
+the 400 most recent remote heads and every registered worktree journal found nothing above 7270. Install order stays
+ascending: release 6 (7230, 7240), 7250 (PR 299), 7260 (Phase 3), 7270 (Phase 4), then this. Neither installation's
+watermark was read from this session; recheck both and any competing reservation before admission.
+
+Step (d) of the approved employment-visibility addendum. Adds `app.delegated_decision_employment_ids()` (EXECUTE to
+`ai_hr_app`), the 0109 `can_decide_via_delegation` predicate as one set per statement, and
+`app.delegated_decision_includes(uuid, uuid[])` (PL/pgSQL membership check, EXECUTE to `ai_hr_app`), and replaces only
+the per-row delegation term in the USING of `leave_request_rls`, `leave_approval_step_rls`, `leave_request_date_rls`,
+`replacement_leave_request_rls` and `replacement_leave_request_date_rls` (each guarded by its exact installed text).
+WITH CHECK, roles and commands are unchanged. No table or row changes.
+Rewritten before any installation (25 November 2026, previous SHA-256 `7793e230…`, never applied): release 8's gate
+showed the bare `= ANY ((SELECT set)::uuid[])` arm lowered the planner's row estimate for these tables, turning the
+Leave approvals candidate query's CTE join into a nested loop. The membership check keeps the predecessor's estimate.
+
+# Cached viewer menu profile (ADR 0181 Phase 3), 25 November 2026
+
+Reserve `7260_viewer_access_version`, journal index `10660`, timestamp `1795495007260`,
+SQL SHA-256 `ebc0519c213da029769b94e88156cb26f9d9cff8540b1cc6fed85744fb657be0`. The reservation scan covered every remote branch head's journal and every registered worktree:
+the highest entries found were `7220_movement_system_payroll_snapshot_insert` (10620), `7230_assignment_current_department_index`
+(10630), `7240_access_visible_employment` (10640) and `7250_replacement_holiday_queue_voided` (10650, `1795495007250`), all
+on unmerged branches when reserved (7220 has since merged to main with release 3); this entry installs after 7250 and before 7270 (staging coordinator's order). Neither installation's watermark was read from this
+session; recheck both and any competing reservation before admission.
+
+Adds `app.viewer_access_version()` only: a STABLE SECURITY DEFINER SQL function returning the caller's own tenant's
+`access_company_state.access_version` (0 before the tenant's first maintenance), EXECUTE to `ai_hr_app`. No table,
+policy, trigger or grant on data changes.
+
+# Replacement-holiday queue skips voided employments, 25 November 2026
+
+Reserve `7250_replacement_holiday_queue_voided`, journal index `10650`, timestamp `1795495007250`,
+SQL SHA-256 `9562ead496a248b27dc6484541071272db724cf3d099070a20932d63005fdb0a`. Main ends at `7210` (`1795495007210`). The
+reservation scan covered the 400 most recently committed remote and local branch heads and every registered worktree
+journal; the highest entries found were `7220_movement_system_payroll_snapshot_insert` (`claude/j2-staging-on-release4`)
+and `7230`/`7240` (`claude/employment-visibility-reach`), so this entry takes `7250` above them. The production
+watermark was not read from this session; recheck both installations and competing reservations before admission.
+
+Replaces the body of `app.enqueue_replacement_holidays()` only: an employment's own void deletes its
+`replacement_holiday_queue` row in the void's transaction, and no change queues a voided employment again. Signature,
+owner, SECURITY DEFINER, search_path, the 0547 triggers and REVOKE are unchanged; guarded by the exact 5010 body and its
+owner. Then one set-based DELETE removes the queue rows of already-voided employments (queue rows only; allocations and
+revisions stay). Measured cause: on staging the minute sweep failed 10 such rows a minute from 24 November 2026 19:53,
+after an employee import was reverted. Staging had applied 1,144 entries through `1795495007220` (25 November).
+
+# Restore the pre-7240 employment and person policies, 25 November 2026
+
+Reserve `7245_access_visible_employment_policy_restore`, journal index `10645`, timestamp `1795495007245`, SQL SHA-256 `a6c56530bedd086ccaa8e3287d2e00180307b12509ed376e8e92ff042a56160a`.
+Between the applied `7240_access_visible_employment` (staging release 6, `fbcb4128c`) and
+`7250_replacement_holiday_queue_voided` (`1795495007250`, not yet applied anywhere), reserved by the database revamp
+session; a scan of the 400 most recent remote heads found nothing else between them. It rides inside 7250's release,
+installed before 7250, or Drizzle would skip it.
+
+Puts `employment_rls` and `person_rls` USING back to their exact pre-7240 text (as 7240's own guard recorded it),
+guarded by the installed 7240 text. Found by release 6's gate (`test/transaction-view-history-scale-db.test.ts` History
+rows 23 s -> 169 s) and isolated by a diagnostic to these two restatements (History reads 2,309 / 404 / 290 ms with the
+7240 text against 330 / 168 / 110 ms with the pre-7240 text, group administrator / Payroll partner / employee). Everything
+else of 7240 is unchanged. WITH CHECK, roles and commands are unchanged.
+
+# Precomputed employment visibility, 24 November 2026
+
+Reserve `7240_access_visible_employment`, journal index `10640`, timestamp `1795495007240`,
+SQL SHA-256 `dbece9c5d10ca36cfc4bdd2a8c3aad1df6feaa1843eb38892889170f9a9cee74`. It follows `7230_assignment_current_department_index` (index `10630`), on which its
+department-head read relies; the reservation scan for 7230 found nothing above `7220_movement_system_payroll_snapshot_insert`
+(release 3 candidate `41482ceb0`). Neither installation's watermark was read from this session; recheck both and any
+competing reservation before admission.
+
+Step (c) of the approved employment-visibility addendum (docs/adr/0181-addendum-precomputed-employment-visibility.md).
+Adds `access_reporting_reach`, `access_department_closure`, `access_employment_state` and
+`access_employment_precompute_control` (owner-only: RLS forced with the `app.acting_as_owner()` policy, no `ai_hr_app`
+privilege), statement triggers on `reporting_line`, `employment` (update, delete), `department` and
+`access_company_closure` (insert), the compute, maintenance, verify, re-trust and mode functions, and the readers
+`app.access_visible_employment_ids()`, `app.access_visible_person_ids()`, `app.employment_read_companies()` and
+`app.employment_partner_companies()` (never PUBLIC: EXECUTE to exactly the roles that evaluate the policies calling
+them, derived from the catalogue as 5070 does). Replaces the body of `app.visible_employment_ids()`
+(guarded by the exact 5144 body) and the USING of `employment_rls` and `person_rls` (guarded by their deparsed
+predecessors); WITH CHECK, roles and commands are unchanged. Installation mode starts as `legacy`. Builds every tenant
+in the migration transaction (rows bounded by employments x reporting depth).
+
+# Current assignments by department index, 24 November 2026
+
+Reserve `7230_assignment_current_department_index`, journal index `10630`, timestamp `1795495007230`,
+SQL SHA-256 `09cfad9849af9981f5be010625aecaba17c667c791eed79e57ea59238f7e39d9`. The reservation scan covered the 400 most
+recently committed remote branch heads and every registered worktree journal: the highest entry found was
+`7220_movement_system_payroll_snapshot_insert` (index `10620`, when `1795495007220`, staging release 3 candidate
+`41482ceb0`, not yet on main). This entry is above it. Neither installation's watermark was read from this session;
+recheck both and any competing reservation before admission.
+
+Adds the partial index `assignment_current_department_idx` on `assignment (department_id) INCLUDE
+(employment_id) WHERE valid_to IS NULL AND superseded_at IS NULL AND department_id IS NOT NULL`, step (b) of the
+approved employment-visibility addendum (docs/adr/0181-addendum-precomputed-employment-visibility.md). No rows,
+policies, grants or functions change. The build holds a SHARE lock on `assignment` (writes wait) with `lock_timeout` 5 s.
+
+# Movement sweep system payroll snapshot policies, 24 November 2026
+
+Reserve `7220_movement_system_payroll_snapshot_insert`, journal index `10620`, timestamp `1795495007220`,
+SQL SHA-256 `544c15edadb827658cb8d182a7dc6ae4c1872992d199ef8c72bd6bc311123470`. Re-allocated from `7210` / `10610` / `1795495007210`, which collided with
+`7210_access_effective_company` (PR 280, merged to main 24 November 2026 at 85fb894a0, same index and timestamp);
+this entry was never applied anywhere under its old tuple. A fresh scan of the 400 most recently committed remote and
+local branch heads and every registered worktree journal found nothing above `1795495007210`. Production reported
+1,140 applied entries through `1795280007150`; staging runs `1e3388f25` (ledger ending `7200`). This entry must be
+installed after `7210_access_effective_company` on every installation, or that lower timestamp is skipped. Recheck
+both watermarks and competing reservations before admission.
+
+Adds two policies on `information_payslip_snapshot`, both `TO ai_hr_owner`, for the system path that 5777 introduced
+(nightly movement sweep: storage-owner session, no user, workforce maintain): `information_snapshot_system_preserve_read`
+(SELECT) and `information_snapshot_system_preserve_insert` (INSERT of an unattributed system row for a closed payslip
+paid by a company the sweep administers). Without them a restricted owner refuses every due movement for an employee
+with closed payroll (staging sweep, 24 November 2026). Rows, grants, functions and the user and Contract policies are
+unchanged.
+
+# Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
+
+Reserve `7210_access_effective_company`, journal index `10610`, timestamp `1795495007210`,
+SQL SHA-256 `b69dafe700e795d50f7d664ac17dfef6d7daffa7f0966ad8ef9c71d5a886eb9a`. The reservation scan covered the 300 most recently committed remote branch heads
+and every registered worktree journal: the highest entry found was `7200_information_documents_planned_with_values`
+(index `10600`, when `1795495007200`, branch `claude/txn-view-slow-load-af9f97`), and `7160`–`7190` are held by the
+import and tax-basis branches. This entry is above all of them. Neither installation's watermark was read from this
+session; recheck both and any competing reservation before admission.
+
+Adds `access_company_closure`, `access_effective_company`, `access_company_state` and `access_precompute_control`
+(owner-only: RLS forced with the `app.acting_as_owner()` policy, no `ai_hr_app` privilege), statement triggers on
+`role_assignment`, `access_membership`, `access_user_override`, `access_group`, `access_group_grant`,
+`access_configuration`, `access_capability`, `company`, `company_organisation_run` and `company_organisation_mapping`,
+the maintenance, verify, re-trust and mode functions, and `app.access_workforce_companies(text)` (EXECUTE to
+`ai_hr_app`). Replaces the `job_document_read`, `job_document_revision_read` and (FOR ALL, so it also governs reads)
+`job_document_revision_write` policies with once-per-statement forms of the same predicates; the `job_document`
+insert, update and delete policies are unchanged. Installation mode starts as `legacy`. Builds every existing tenant in the
+migration transaction (rows bounded by admin role holders × companies × 2).
+# Retained payroll documents planned with their values, 24 November 2026
+
+Reserve `7200_information_documents_planned_with_values`, journal index `10600`, timestamp `1795495007200`,
+SQL SHA-256 `1346b1797640e36cb3c9af83aaa96b39bdd5a4b91b99411778e606128680c01e`. Staging had applied 1,140 entries
+through `1795280007150`. The reservation scan covered the 400 most recently committed remote branch heads, every local
+branch and every registered worktree journal; the highest entry found above `7150` was `7190_bank_import_worksheet_reservation`
+(`1795494980900`), with `7160` to `7180` reserved on other branches. The production watermark was not read from this
+session; recheck it and competing reservations before admission.
+
+Replaces the body of `app.information_payslip_documents(uuid[],integer,integer,text,uuid,boolean)` only: the 5129
+statement runs through `RETURN QUERY EXECUTE ... USING`, so it is planned with its argument values. Signature, owner,
+SECURITY DEFINER, search_path, the 0698 EXECUTE grant, rows and order are unchanged; it is guarded by the exact 5129 body.
+Measured cause (staging, 2,010 retained documents): one month's call took 441 ms against 15 ms for the same statement
+planned with its values, and Transaction View's History tab makes it on every load.
+
+# Recalculation opening source digest without per-row policies, 24 November 2026
+Reserve `7170_payroll_tax_basis_source_digest`, journal index `10570`, timestamp `1795488671170`,
+SQL SHA-256 `cdc4bbc16f68ff86c0964e3b480dd183c5c1fb98ab5847135dde158cf356b1a9`. Main had 1,140 entries through
+`7150` (`1795280007150`). The reservation scan of the 300 most recently committed remote branch heads found
+`7160_import_source_worksheet` (idx `10560`, timestamp `1795488671000`) on unmerged Codex branches, so this entry takes
+`7170` with a timestamp above it and cannot be skipped whichever lands first. The production watermark was not read
+from this session; recheck both installations and competing reservations before admission.
+Adds the definer `app.payroll_tax_basis_source_digest(uuid,integer)` (EXECUTE to `ai_hr_app` only), used by the locked
+income-tax recalculation opening. It returns the same md5 over the same rows the reader's row security admitted, after
+requiring the same authority, and is guarded by the exact SELECT/ALL policy list of the six relations it reads.
+Measured cause: production openings held the payroll-history and Access locks for 18-37 s per company in this digest
+(20 ms without row security); focused diagnostic run 45320620220.
+
 # Contract list company rights once per company, 23 November 2026
 
 Reserve `7150_contract_list_company_rights_once`, journal index `10550`, timestamp `1795280007150`,

@@ -8,7 +8,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { isUnsupportedTaxableComponent } from '../core/pay-components';
 import { requirePackFor } from '../localization/registry';
-import { classifyNonCashBenefit, NonCashBenefitConfigurationError, readPcbNonCash } from '../localization/noncash-benefits';
+import { classifyNonCashBenefit, nonCashBenefitStream, NonCashBenefitConfigurationError, readPcbNonCash } from '../localization/noncash-benefits';
 import { createBatch, createAdditionalRun, generatePayslips, reprocessSelectedEmployees, getReprocessJob, setPayrollInput, createIndividualTxn, upsertPayComponent, setEmploymentPayComponent, setPayrollBatchComponent, isStatutoryRelevantChange } from '../packs/payroll/service';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, setSetting, type Base } from './harness';
 
@@ -21,12 +21,34 @@ describe('r383 canonical BIK/VOLA classification and pack cash isolation',()=>{
   expect(classifyNonCashBenefit({...kindInput,pcb:false})).toBe('bik');
   expect(classifyNonCashBenefit({...kindInput,nonPayable:false})).toBeNull();
  });
- it('refuses conflicts, unsupported sign/kind and additional normal-benefit declarations',()=>{
-  for(const c of [{...kindInput,eaFormLine:'EA_B4'},{...kindInput,kind:'deduction'},{...kindInput,pcbRemunerationType:'additional'}])expect(()=>classifyNonCashBenefit(c)).toThrow(NonCashBenefitConfigurationError);
+ it('refuses conflicts, unsupported sign/kind and an optional-deduction benefit declaration',()=>{
+  for(const c of [{...kindInput,eaFormLine:'EA_B4'},{...kindInput,kind:'deduction'},{...kindInput,pcbRemunerationType:'optional_deduction'}])expect(()=>classifyNonCashBenefit(c)).toThrow(NonCashBenefitConfigurationError);
+ });
+ it('8edeef41 (2026-11-25): Normal and Additional are both accepted; EPF Bonus 2012 and Optional Deduction are separate reasons',()=>{
+  const reason=(c:Parameters<typeof classifyNonCashBenefit>[0])=>{try{classifyNonCashBenefit(c);return null;}catch(error){return (error as NonCashBenefitConfigurationError).reason;}};
+  expect(reason({...kindInput,pcbRemunerationType:'additional'})).toBeNull();
+  expect(classifyNonCashBenefit({...kindInput,pcbRemunerationType:'additional'})).toBe('bik');
+  expect(nonCashBenefitStream({pcbRemunerationType:'additional'})).toBe('additional');
+  expect(nonCashBenefitStream({pcbRemunerationType:'normal'})).toBe('normal');
+  expect(nonCashBenefitStream({pcbRemunerationType:null})).toBe('normal');
+  expect(reason({...kindInput,pcbRemunerationType:'optional_deduction'})).toBe('remuneration_type_not_supported');
+  expect(reason({...kindInput,pcbRemunerationType:'normal',epfBonus2012:true})).toBe('epf_bonus_not_allowed');
+  expect(reason({...kindInput,pcbRemunerationType:'additional',epfBonus2012:true})).toBe('epf_bonus_not_allowed');
+  expect(reason({...kindInput,pcbRemunerationType:'normal',epfBonus2012:false})).toBeNull();
+  expect(reason({...kindInput,pcb:false,pcbRemunerationType:'optional_deduction',epfBonus2012:true})).toBeNull();
  });
  it('unknown PCB-subject nonpayable items remain refused even when a normal stream is declared',()=>{
   expect(isUnsupportedTaxableComponent({code:'UNKNOWN',kind:'non_payable',includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,isNonPayable:true,pcbRemunerationType:'normal'})).toBe(true);
   expect(isUnsupportedTaxableComponent({code:'KNOWN',kind:'non_payable',displayCategory:'vola',includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,isNonPayable:true,pcbRemunerationType:'normal'})).toBe(false);
+ });
+ it('8edeef41: an additional-stream benefit joins Yt only, with Kt 0 and no agency base',()=>{
+  const profile={category:1 as const,children:0};
+  const a=pack.payroll.statutory(12000,profile,0,0,{month:7});
+  const b=pack.payroll.statutory(12000,profile,0,0,{month:7},{pcbNonCashAdditional:{bik:2000,vola:1500}});
+  for(const k of ['epfEmployee','epfEmployer','socsoEmployee','socsoEmployer','socsoSkbbk','eisEmployee','eisEmployer'] as const)expect(b[k]).toBe(a[k]);
+  expect((b.pcbMeta as any).trace.Y1).toBe(12000);expect((b.pcbMeta as any).trace.Yt).toBe(3500);expect((b.pcbMeta as any).trace.Kt).toBe(0);
+  expect(b.pcbBonus).toBeGreaterThan(0);expect(b.pcb).toBeGreaterThan(a.pcb);
+  expect(()=>pack.payroll.statutory(12000,profile,0,0,{month:7},{pcbNonCashAdditional:{bik:-1,vola:0}})).toThrow();
  });
  it('PCB-only input increases Y1 without increasing any cash agency base',()=>{
   const profile={category:1 as const,children:0};

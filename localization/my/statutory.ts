@@ -11,6 +11,7 @@ import {z} from 'zod';
 import {PERSONNEL_SOCSO_CATEGORIES,PERSONNEL_EIS_CATEGORIES,PERSONNEL_CHILD_RELIEF_MODES,PERSONNEL_TAX_RESIDENCIES} from '../../lib/personnel-choice-vocabulary';
 import { writeTaxCircumstance, type TaxCircumstance } from './tax-circumstance';
 import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionContextMY} from './tax-selection';
+import {isCustomPcbScheme} from './tax-selection-codes';
 /**
  * Malaysia statutory profile (localization pack, per ADR-0008). Per-Person statutory
  * identity: IC, EPF, SOCSO, tax, EIS eligibility, bank. IC format is validated; tenant-wide duplicate admission is enforced by the database policy.
@@ -346,8 +347,16 @@ async function prepareStatutoryProfileMYTx(tx:Tx,p:StatutoryInput,normalized=nor
     Object.assign(values,circumstance);
     return {values,epf,zakat,existing};
 }
+/** prepareStatutoryProfileMYTx for a person known to have no statutory row yet (the employee import's set path,
+ * core/employee-import-set.ts, reads that none exists under the same row locks): the same values, no `existing`. */
+export function prepareNewStatutoryProfileMY(p:StatutoryInput):Awaited<ReturnType<typeof prepareStatutoryProfileMYTx>>{
+  const {values,epf,zakat}=normalizeStatutoryInputMY(p);
+  Object.assign(values,writeTaxCircumstance({key:p.taxCircumstance,category:p.taxCategory,beforeKey:undefined,beforeCategory:undefined,epoch:undefined}));
+  // As prepareStatutoryProfileMYTx returns when its read finds no row (the select's element type omits undefined).
+  return {values,epf,zakat,existing:undefined as unknown as Awaited<ReturnType<typeof prepareStatutoryProfileMYTx>>['existing']};
+}
 async function writeStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,p:StatutoryInput,prepared:Awaited<ReturnType<typeof prepareStatutoryProfileMYTx>>){
-    const {values,epf,zakat,existing}=prepared;
+    const {values,existing}=prepared;
     let id: string;
     if (existing) {
       await tx
@@ -369,11 +378,18 @@ async function writeStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,p:StatutoryInp
       eventType: existing ? 'statutory.my.updated' : 'statutory.my.created',
       actor: actorOf(ctx),
       subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
-      // Carry the resolved EPF + zakat election on the event so a mode change is reconstructable from the
-      // log alone (CLAUDE.md substrate discipline). Rates are decimals (e.g. '0.1500') or null. The zakat
-      // percent/fixed are config rates, not per-payslip cleartext pay (ADR-0030), so they may be recorded.
-      payload: {
-        personId: p.personId,
+      payload: statutoryProfileEventPayloadMY(p.personId, prepared),
+    },{returnId:true});
+    return finishStatutoryProfileWriteMYTx(tx, ctx, p, prepared, id, eventId as string);
+}
+
+/** The `statutory.my.created` / `statutory.my.updated` payload. Shared with the employee import's set path
+ * (core/employee-import-set.ts). Carry the resolved EPF + zakat election on the event so a mode change is
+ * reconstructable from the log alone (CLAUDE.md substrate discipline). Rates are decimals (e.g. '0.1500') or null.
+ * The zakat percent/fixed are config rates, not per-payslip cleartext pay (ADR-0030), so they may be recorded. */
+export function statutoryProfileEventPayloadMY(personId: string, {values, epf, zakat, existing}: Awaited<ReturnType<typeof prepareStatutoryProfileMYTx>>) {
+  return {
+        personId,
         // AFTER-ONLY, AND KEPT. These three were the whole EPF record on this event before item 70b14723,
         // and `test/epf-modes.test.ts` pins them as the substrate-discipline claim; a reader of the event
         // stream would break if they moved. The reconstructable before/after lives in `epfElection` below —
@@ -447,8 +463,9 @@ async function writeStatutoryProfileMYTx(tx:Tx,ctx:SessionContext,p:StatutoryInp
             employerBearsEpf: values.employerBearsEpf,
           },
         },
-      },
-    },{returnId:true});
+  };
+}
+async function finishStatutoryProfileWriteMYTx(tx:Tx,ctx:SessionContext,p:StatutoryInput,{values,existing}:Awaited<ReturnType<typeof prepareStatutoryProfileMYTx>>,id:string,eventId:string){
     // 3244584c — a changed EPF election or SOCSO/EIS control changes what a processed run computed. These
     // settings carry no effective date, so every processed run that paid the person is marked. A save that
     // leaves them as they were (an IC or address edit on the same form) marks nothing.
@@ -1259,6 +1276,9 @@ export type TaxInput = {
   taxCategory?: number;
   taxCircumstance?: TaxCircumstance | string | null;
   taxResidency?: TaxResidency | string | null;
+  /** ADR 0183 — the HR-entered number of a custom PCB Income Tax Resident choice (RM or %), as typed. Read only
+   *  with an employmentId: the employer-scoped selection owns it (saveTaxSelectionMYTx validates it). */
+  customPcbValue?: string | null;
   numChildren?: number;
   childReliefMode?: ChildReliefMode | string | null;
   employerBearsTax?: boolean;
@@ -1310,6 +1330,8 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
   outerTx?: Tx) {
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
   if(p.taxResidency!=null&&p.taxResidency!=='none'&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('invalid_scheme');
+  // A custom PCB method is an employer decision with its own number; a person-only write has neither.
+  if(!p.employmentId&&isCustomPcbScheme(p.taxResidency))throw new TaxSelectionError('invalid_scheme');
   const residency: TaxResidency =
     p.taxResidency != null && isTaxResidency(String(p.taxResidency)) ? (String(p.taxResidency) as TaxResidency) : 'resident';
   const mode: ChildReliefMode =
@@ -1366,7 +1388,7 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
     await tx.update(employeeStatutoryMy).set(circumstance).where(eq(employeeStatutoryMy.id,existing.id));
     if(p.employmentId){
       if(!p.expectedCompanyId||circumstance.taxCircumstance!=='none'&&!selectedSchemeOk(p.taxResidency))throw new TaxSelectionError('stale_context');
-      await saveTaxSelectionMYTx(tx,ctx,{employmentId:p.employmentId,personId:p.personId,scheme:circumstance.taxCircumstance==='none'?'none':String(p.taxResidency),expectedCompanyId:p.expectedCompanyId,expectedVersion:p.expectedSelectionVersion});
+      await saveTaxSelectionMYTx(tx,ctx,{employmentId:p.employmentId,personId:p.personId,scheme:circumstance.taxCircumstance==='none'?'none':String(p.taxResidency),customValue:p.customPcbValue,expectedCompanyId:p.expectedCompanyId,expectedVersion:p.expectedSelectionVersion});
     }
     // Scoped field owns scheme. Person-only partial writers never alter that owner; scoped edits
     // preserve legacy person provenance rather than silently changing another employer's category.

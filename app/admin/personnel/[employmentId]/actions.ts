@@ -12,6 +12,9 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { amendDirectSuperior } from '@/core/information-correction';
 import { correctDirectSuperiorPeriod } from '@/core/direct-superior-periods';
 import { DirectSuperiorAlreadySavedError, DirectSuperiorUnchangedError, ReportingCycleError } from '@/core/org';
+// Board eb01800b — a refusal that names the later assignment record and links to its line.
+import { AssignmentBeforeCurrentStartError } from '@/core/org';
+import { assignmentBlockedMessage, withMovementRecordMarker } from '@/lib/assignment-blocked-message';
 import { reportingLinesFor } from '@/core/read';
 import { isCalendarDate } from '@/lib/calendar-date';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
@@ -603,7 +606,7 @@ export async function createMovementEventAction(formData: FormData) {
       });
     }
   } catch (e) {
-    if(formData.get('movementPage'))throw new Error(await compensationErrorMessage(e));
+    if(formData.get('movementPage'))throw new Error(withBlockedRecordLink(e, await compensationErrorMessage(e)));
     // r374 (item 7dbaf677) — THROUGH THE ONE TRANSLATOR, because this path reaches `setCompensation`.
     //
     // `core/movement.ts` writes compensation whenever the pay STRUCTURE changed, not only when an amount
@@ -962,7 +965,27 @@ async function compensationErrorMessage(e: unknown): Promise<string> {
     const t = await getTranslations('people.detail');
     return t('salaryBeforeCurrentRecordError', { date: formatDmy((e as SalaryBeforeCurrentRecordError).currentStart) });
   }
+  // Board eb01800b — a later assignment record blocks the date: name it (what, its date, what it changed).
+  const blocked = assignmentBlockedSource(e);
+  if (blocked) {
+    const t = await getTranslations('people.detail');
+    const fields = await getTranslations('people.informationCorrection.fields');
+    return assignmentBlockedMessage(blocked.source, blocked.date, t as unknown as Parameters<typeof assignmentBlockedMessage>[2],
+      (field) => fields(field as 'departmentId'), (date) => formatDmy(date));
+  }
   return publicErrorMessage(e);
+}
+/** The named record behind an AssignmentBeforeCurrentStartError, when the writer resolved one. */
+function assignmentBlockedSource(e: unknown) {
+  if (!(e instanceof AssignmentBeforeCurrentStartError) && (e as Error)?.name !== 'AssignmentBeforeCurrentStartError') return null;
+  const error = e as AssignmentBeforeCurrentStartError;
+  return error.source ? { source: error.source, date: error.effectiveDate ?? error.currentStart } : null;
+}
+/** The inline New Event refusal: the ONE translator's message, plus a link to the line of a named correction,
+ *  mapping or untagged record (board eb01800b). Not a second translator — it only marks the translated text. */
+function withBlockedRecordLink(e: unknown, message: string): string {
+  const blocked = assignmentBlockedSource(e);
+  return blocked && blocked.source.kind !== 'movement' ? withMovementRecordMarker(message, blocked.source.versionId) : message;
 }
 
 /** Salary Add and Edit share an explicit recording choice. The canonical composite command saves salary,
@@ -2248,6 +2271,8 @@ async function applyTaxSection(
     taxCategory: Number(formData.get('taxCategory')) || 1,
     ...(formData.has('taxCircumstance')&&!['1','2','3'].includes(String(formData.get('taxCircumstance')))?{taxCircumstance:String(formData.get('taxCircumstance'))}:{}),
     taxResidency: String(formData.get('taxResidency')??''),
+    // ADR 0183 — the custom PCB number, posted only while a custom Income Tax Resident choice is shown.
+    ...(formData.has('customPcbValue')?{customPcbValue:String(formData.get('customPcbValue')??'')}:{}),
     numChildren: Number(formData.get('numChildren')) || 0,
     childReliefMode: (formData.get('childReliefMode') as string) || 'manual',
     employerBearsTax: formData.get('employerBearsTax') === 'on',
@@ -2268,7 +2293,7 @@ async function applyTaxSection(
   }); } catch(error){
     if(error instanceof Error&&error.name==='TaxSelectionError'&&'code' in error){
       const t=await getTranslations('payroll.taxConfiguration');
-      const code=['confirmation_required','invalid_scheme','citizenship_unknown','not_resident','stale_context','not_found'].includes(String(error.code))?String(error.code):'saveFailed';
+      const code=['confirmation_required','invalid_scheme','citizenship_unknown','not_resident','stale_context','not_found','custom_value_missing','custom_value_invalid'].includes(String(error.code))?String(error.code):'saveFailed';
       throw new Error(t(`error_${code}`));
     }
     throw error;

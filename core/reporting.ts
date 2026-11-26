@@ -109,6 +109,17 @@ export type StatutoryReportCard = {
   runSelection: { action: string } | null;
   /** r409 (item 79f3f64d) — see `ReportDef.preview`. Null for a form that opens the generic figures screen. */
   preview: { action: string } | null;
+  /**
+   * Board 66175cd2 — the form declares `availablePeriods`: its criteria step lists only the payroll months
+   * `reportAvailablePeriods` returns, instead of the generic year and month selects. The function itself
+   * never leaves this seam — a catalog card is metadata only.
+   */
+  periodsFromPayroll: boolean;
+  /**
+   * Board 66175cd2 — false for a form taken off the screens that offer forms to produce (`ReportDef.shelf`).
+   * The card is still returned, so a screen can send an old link to the form's shelf rather than a 404.
+   */
+  onShelf: boolean;
 };
 
 function reportCard(r: ReportDef): StatutoryReportCard {
@@ -131,6 +142,8 @@ function reportCard(r: ReportDef): StatutoryReportCard {
     shelfOrder: r.shelfOrder ?? null,
     runSelection: r.runSelection ?? null,
     preview: r.preview ?? null,
+    periodsFromPayroll: typeof r.availablePeriods === 'function',
+    onShelf: r.shelf !== false,
   };
 }
 
@@ -296,6 +309,32 @@ async function resolveDef(ctx: SessionContext, companyId: string, reportId: stri
 function statutoryCtx(ctx: SessionContext, def: { id: string; submission?: { agency: string } }): SessionContext {
   if (!def.submission) return ctx;
   return { ...ctx, statutoryOverride: `statutory submission ${def.id} to ${def.submission.agency}` };
+}
+
+/**
+ * Board 66175cd2 — THE PAYROLL MONTHS ONE FORM CAN BE PRODUCED FOR, for one company, newest first.
+ *
+ * The criteria step's Year and Month lists for a form that declares `availablePeriods` (Borang A and BBCD).
+ * FAILS CLOSED, and answers the SAME empty list for every refusal: no scope, a company outside the caller's
+ * scope, a malformed id, a form this company's jurisdiction does not register, or a form that declares no
+ * period list. So the parameter cannot be used to enumerate companies or forms — the rule
+ * `listFilableRunsForPeriod` applies to the Payroll Cycle list beside it.
+ *
+ * Nothing is written and no generator runs: this is the list of months, not a form.
+ */
+export async function reportAvailablePeriods(
+  ctx: SessionContext,
+  p: { companyIds: readonly string[]; companyId: string; reportId: string },
+): Promise<string[]> {
+  if (p.companyIds.length === 0 || !p.companyIds.includes(p.companyId)) return [];
+  let def: ReportDef;
+  try {
+    def = await resolveDef(ctx, p.companyId, p.reportId);
+  } catch {
+    return [];
+  }
+  if (!def.availablePeriods) return [];
+  return def.availablePeriods(ctx, { companyId: p.companyId });
 }
 
 /** Generate a report for preview — pure, no artefact persisted. */
@@ -1948,7 +1987,10 @@ export async function cp21Particulars(
       ? 'non_resident'
       : extra.profile.taxResidency ?? (extra.profile.isResident === false ? 'non_resident' : 'resident')
     : null;
-  const scheme = extra.selection?.scheme ?? legacy;
+  // ADR 0183 — a custom PCB method (custom_fixed / custom_rate) says how much tax to deduct, not whether the person
+  // is resident, so A4 then reads the person's recorded residency, which a custom choice never changes.
+  const selected = extra.selection?.scheme;
+  const scheme = selected && selected !== 'custom_fixed' && selected !== 'custom_rate' ? selected : legacy;
   const resident = scheme === 'non_resident' ? false : scheme && RESIDENT_SCHEMES.has(scheme) ? true : null;
   const bearsTax = extra.profile ? extra.profile.bearsTax : null;
 

@@ -6,6 +6,7 @@ import {useTranslations,useFormatter} from 'next-intl';
 import {informationContextAction,previewInformationAction,saveInformationAction} from './information-correction-actions';
 import {personnelWorkflowControl,personnelWorkflowInput} from '@/lib/personnel-form-contract';
 import {INFORMATION_SCREEN_FIELDS,INFORMATION_FIELD_IDS,type InformationPreview,type InformationChanges} from '@/lib/information-correction';
+import {Drawer} from '@/components/ui/drawer';
 const control='w-full rounded-md border border-input bg-card px-3 py-2 text-sm';
 const button='rounded-md border px-4 py-2 text-sm font-medium disabled:opacity-50 active:scale-[.98]';
 type CorrectionContext = Exclude<Awaited<ReturnType<typeof informationContextAction>>, { correctionError: string }>;
@@ -51,11 +52,12 @@ export function InformationConflicts({preview}:{preview:InformationPreview}){
  return <div role="alert" className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"><p className="font-semibold">{t('conflictTitle')}</p><ul className="list-disc space-y-1 pl-5">{preview.conflicts.map(c=><li key={c.movementId+c.field}>{t('conflict',{record:c.label??c.kind,date:c.date,field:t(`fields.${c.field}`),id:c.movementId})}</li>)}</ul></div>;
 }
 const ORGANISATION_KIND:Record<string,'business_unit'|'department'|'position'|undefined>={businessUnitId:'business_unit',departmentId:'department',positionId:'position'};
-function InformationForm({employmentId,onPendingChange,returnHref}:{employmentId:string;onPendingChange:(pending:boolean)=>void;returnHref?:string}){
+function InformationForm({employmentId,onPendingChange,returnHref,initialEffectiveOn}:{employmentId:string;onPendingChange:(pending:boolean)=>void;returnHref?:string;initialEffectiveOn?:string}){
  const t=useTranslations('people.informationCorrection'),router=useRouter();
- const [context,setContext]=useState<CorrectionContext|null>(null),[changes,setChanges]=useState<InformationChanges>({}),[reason,setReason]=useState(''),[review,setReview]=useState<InformationPreview|null>(null),[pending,setPending]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),[effectiveOn,setEffectiveOn]=useState(''),[acknowledged,setAcknowledged]=useState(false);
+ const [context,setContext]=useState<CorrectionContext|null>(null),[changes,setChanges]=useState<InformationChanges>({}),[reason,setReason]=useState(''),[review,setReview]=useState<InformationPreview|null>(null),[pending,setPending]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),[effectiveOn,setEffectiveOn]=useState(initialEffectiveOn??''),[acknowledged,setAcknowledged]=useState(false);
  useEffect(()=>{onPendingChange(pending);return()=>onPendingChange(false);},[pending,onPendingChange]);
- useEffect(()=>{let active=true;informationContextAction(employmentId).then(data=>{if(active)setContext(correctionValue<CorrectionContext>(data));}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[employmentId]);
+ // Board eb01800b — opened from a record's line, the form starts on that record's Effective Date (still editable).
+ useEffect(()=>{let active=true;informationContextAction(employmentId,initialEffectiveOn).then(data=>{if(active)setContext(correctionValue<CorrectionContext>(data));}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[employmentId,initialEffectiveOn]);
  // Board 4604dccc r2 — the earliest Effective Date follows the Group Join Date entered in this form, so the
  // three dates can move earlier together in one save. The server check (the corrected Group Join Date) stays the authority.
  const enteredStart=typeof changes.hiredOn==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(changes.hiredOn)?changes.hiredOn:'';
@@ -83,6 +85,13 @@ function InformationForm({employmentId,onPendingChange,returnHref}:{employmentId
   {context&&<DerivedOrganisationFields state={derivedOrganisation}/>}
   {context&&<InformationCorrectionAudit history={context.history}/>}
  </section>;
+}
+/** Board eb01800b — Correct on an Employment History record line: the same Information-Only Correction (same server
+ *  actions, same maintain authority in core/information-correction.ts), opened on that record's Effective Date. */
+export function InformationCorrectionDrawer({employmentId,effectiveOn,label}:{employmentId:string;effectiveOn:string;label:string}){
+ const t=useTranslations('people.informationCorrection'),[open,setOpen]=useState(false),[busy,setBusy]=useState(false);
+ return <><button type="button" data-record-correct={effectiveOn} className="text-primary hover:underline" onClick={()=>setOpen(true)}>{label}</button>
+  <Drawer open={open} onOpenChange={next=>{if(!busy)setOpen(next);}} title={t('title')}>{open&&<InformationForm employmentId={employmentId} onPendingChange={setBusy} initialEffectiveOn={effectiveOn}/>}</Drawer></>;
 }
 /** Explicit mode selection keeps the existing operational correction form intact. */
 export function HireCorrectionModes({employmentId,children,returnHref}:{employmentId:string;children:ReactNode;returnHref?:string}){

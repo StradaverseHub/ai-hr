@@ -144,4 +144,21 @@ describe('Wave 2C — three runs (regular + two additional)', () => {
     expect(sum([r1.pcb, r2.pcb, r3.pcb])).toBeCloseTo(oneBatch.pcb, 2);
     expect(monthly.pcb).toBeCloseTo(oneBatch.pcb, 2);
   });
+
+  // 8edeef41 (2026-11-25 amendment of ADR-0090) — a benefit saved on the Additional stream joins Yt on the run that owns
+  // it (Kt 0, no agency contribution); the runs still sum to the month computed as one, and a later run does not
+  // re-fold it as normal remuneration.
+  it('8edeef41: an Additional-stream benefit on a bonus run is charged once through Yt and sums to the month', () => {
+    const { runs, monthly } = computeMonthlyRuns({ month: 7, profile, runs: [
+      { runType: 'regular', payment: 9000, pcbNonCashNormal: { bik: 0, vola: 600 } },
+      { runType: 'bonus', payment: 3000, pcbNonCashNormal: { bik: 0, vola: 0 }, pcbNonCashAdditional: { bik: 4111, vola: 0 } },
+      { runType: 'off_cycle', payment: 500, pcbNonCashNormal: { bik: 0, vola: 0 }, pcbNonCashAdditional: { bik: 0, vola: 0 } },
+    ] });
+    const oneBatch = statutory(9000, profile, 3500, 0, { month: 7 }, { pcbNonCashNormal: { bik: 0, vola: 600 }, pcbNonCashAdditional: { bik: 4111, vola: 0 } });
+    expect(sum(runs.map(r => r.pcb))).toBeCloseTo(oneBatch.pcb, 2);
+    expect(monthly.pcb).toBe(oneBatch.pcb);
+    expect(sum(runs.map(r => r.epfEmployee))).toBe(statutory(9000, profile, 3500, 0, { month: 7 }).epfEmployee);
+    expect(runs[1].socsoEmployee).toBe(0); expect(runs[1].eisEmployee).toBe(0);
+    expect((oneBatch.pcbMeta as any).trace).toMatchObject({ Y1: 9600, Yt: 7611 });
+  });
 });

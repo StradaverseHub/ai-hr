@@ -637,6 +637,8 @@ describe('7f251381 — every caption the sheet resolves exists in all six catalo
     'worksheetResultHeading', 'worksheetZ', 'worksheetX', 'worksheetZ1', 'worksheetA', 'worksheetE',
     'worksheetMtd', 'worksheetMtdSystem', 'worksheetMtdDeducted',
     'worksheetFlatHeading', 'worksheetFlatY', 'worksheetFlatYt', 'worksheetFlatRate', 'worksheetFlatNote',
+    // ADR 0183 (board d8dc0a8c) — the custom PCB sheet.
+    'worksheetCustomHeading', 'worksheetCustomRate', 'worksheetCustomAmount', 'worksheetCustomRateNote', 'worksheetCustomFixedNote',
   ];
 
   it('the list above is EXHAUSTIVE — every key the builder can emit is on it', () => {

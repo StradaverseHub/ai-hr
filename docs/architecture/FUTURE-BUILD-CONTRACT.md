@@ -68,6 +68,65 @@ or applying a migration does not establish a valid backfill or an installed read
 projection. Startup and release admission must verify required schema/read-model
 versions before admitting traffic.
 
+## Database read cost (ADR 0181 standard)
+
+On 25 November 2026 the owner made the read patterns of ADR 0181 (`docs/adr/0181-database-read-cost-architecture.md`)
+the standard for all new work. Existing screens move over area by area. These rules stop the old patterns from
+growing back in the meantime. Each rule names the check that enforces it. The checks only tighten: their
+allowlists in `test/read-cost-ratchets/` were seeded from `alpha` at release 9 and may only shrink. A false
+positive is fixed by restructuring the code, never by adding an entry. `test/read-cost-ratchets/README.md` explains
+how to shrink each list.
+
+1. **Access rules use precomputed access.** A new or rewritten access rule (row-security policy) reads a stored
+   answer once per statement, in the form `= any ((select app.<answer>(…)))`. Follow 7210 (company access), 7240
+   (employment visibility) and 7280 (leave delegation). The answer is stored in an owner-only table that every
+   writer maintains in its own transaction. Each tenant has an access version. A mode switch runs
+   legacy → shadow → precomputed. A nightly rebuild-and-compare falls back, closed, to the legacy answer for any
+   tenant that differs. A rule never calls a `SECURITY DEFINER` or plpgsql function with a row's columns, because
+   that runs the whole authority chain once per row. Check: `test/read-cost-policy-authority.test.ts` reads the
+   installed policies and holds `policy-authority.json`.
+2. **A change to access-rule text needs a timing comparison at scale.** This applies to any migration that creates
+   or alters a policy, or redefines a function a policy calls. It times the old and new rule text with
+   `EXPLAIN (ANALYZE)` on the 70-company / 1,000-employment fixture (`test/helpers/ai-centre-scale-fixture.ts`, or
+   the access pilot fixture for that family). It runs under "All companies" and under one company, using the
+   screens' real statements, including the joins whose row estimates move the plan: payslip, employment and person.
+   An equivalence test alone is not enough. Releases 6 (7240) and 8 (7280) returned the right rows and still
+   regressed, because the new rule text changed the planner's join order. The planner estimates a bare
+   `= any(<initplan array>)` at about 1% of the table, whatever the array holds, so compare plan shapes as well as
+   totals. Check: `test/read-cost-ratchets.test.ts` requires the migration to be listed in
+   `policy-rewrite-evidence.json` with a test that names it, uses a scale fixture and runs `EXPLAIN ANALYZE`.
+3. **Lists page by key and cap their counts.** Use `parseKeysetPageQuery`, `keysetSlice`, `keysetPageState` and
+   `cappedTotal` (`lib/pagination.ts`) with the Pager's keyset mode. A total above 1,000 shows as "1,000+", with a
+   "Count exactly" option (`count=exact`). Exports, payroll, statutory and report totals stay exact. New lists use
+   no `OFFSET`, no numbered pages, and never read every row to page in memory. Company lists have one query shape:
+   one `uuid[]` parameter (`anyUuid`, `db/sql-arrays.ts`), whatever the number of companies. Other id lists, such
+   as a page's row ids, take the parameter shape a scale test chooses. A single array parameter hides the list
+   length from a prepared statement's generic plan, and Phase 4 kept page-id lists expanded for that reason. Check:
+   the page-by-number ratchet (`page-by-number.json`).
+4. **Saves keep the frame.** A new save form uses the shared save helper (`lib/action-navigation.ts` with
+   `components/action-navigate-form.tsx`). The action writes, returns its result and the next address, and the
+   client navigates in-app. It calls no `revalidatePath`, `refresh()` or `redirect()`: from a server action, any of
+   these redraws the whole tree, including the frame. Writes for many rows are set-based, as the import groups are
+   (`core/import-set-group.ts`). Check: the layout-wide `revalidatePath` ratchet (`layout-revalidate.json`). Page-level
+   `revalidatePath` calls are not counted yet.
+5. **Every background job kind declares a worker lane.** Place the kind in `core/bulk-job-lanes.ts` when its handler
+   is added. Long or bulk work runs on the bulk-job kernel, not in the request (scale rule 4). Check:
+   `test/bulk-job-lanes.test.ts`, which already fails a handler kind that is in no lane or in two.
+6. **Every new page route and server action has a read budget.** Register it in
+   `test/read-cost-ratchets/read-budget-registry.json` under its `page.tsx` path or `file#action`. The entry names
+   the test that counts its transactions and statements (`observeStatements`, `test/helpers/statement-observer.ts`)
+   on the scale fixture and asserts recorded numbers, as `test/route-read-budget.test.ts` does. Budgets only go
+   down. Raising one needs an ADR note, in ADR 0181 or the area's ADR, in the same PR. Check: the unbudgeted
+   ratchet (`unbudgeted-routes.json`).
+7. **No per-company or per-row loop in a request** (scale rule 2). Read the set in one statement per concern and
+   group it in memory. Never call a reader once per company or once per row, whether in a loop or through
+   `Promise.all(rows.map(…))`. Check: the request-loop ratchet (`request-loops.json`). It scans `app/`,
+   `components/` and the mobile API for loops and array callbacks that make a data call for each element.
+
+The checks are static or read the installed schema. They prove that no new use of an old pattern appeared in the
+places they scan. They do not prove a screen is fast. `core/` readers are also run by workers, so they are not in
+the loop scan. Route budgets and scale tests cover them, and the rules above still apply to them.
+
 ## Reference workflow proofs
 
 Attendance approval uses the Attendance service from the Approvals adapter. The workflow owner still enforces current stage/participant, delegated authority, rejection reasons, no self-approval and final-effect uniqueness. Corrected punches and deferred overtime preserve their original semantics. `attendance-workflow-v4-owner`, `attendance-workflow`, `attendance-pack` and the actual browser correction/approval/punch witness test these distinct claims.

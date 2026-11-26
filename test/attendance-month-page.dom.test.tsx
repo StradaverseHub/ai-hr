@@ -1,14 +1,14 @@
 import type {ReactNode} from 'react';
 import {render,screen,within,cleanup} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {pageState,parsePageQuery} from '../lib/pagination';
+import {parseKeysetPageQuery} from '../lib/pagination';
 const ports=vi.hoisted(()=>({read:vi.fn(),module:vi.fn(),pager:vi.fn(),export:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>(key:string)=>key}));
 vi.mock('next/link',()=>({default:({href,children,...props}:{href:string;children:ReactNode})=><a href={href} {...props}>{children}</a>}));
 vi.mock('../lib/authz',()=>({requireModule:ports.module}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture-tenant',userId:'fixture-user',roles:['hr_admin']},scopeIds:['fixture-company']})}));
 vi.mock('../lib/hr-date',()=>({todayInKualaLumpur:()=> '2026-05-19'}));
-vi.mock('../packs/attendance/service',()=>({attendanceMonthSummaryPage:ports.read}));
+vi.mock('../packs/attendance/service',()=>({attendanceMonthSummaryKeysetPage:ports.read}));
 vi.mock('../components/ui',()=>({
  Card:({children,...props}:{children:ReactNode})=><section {...props}>{children}</section>,
  EmployeeName:({name,code}:{name:string;code:string|null})=><span>{code} {name}</span>,
@@ -21,20 +21,22 @@ vi.mock('../components/pager',()=>({Pager:(props:{state:{total:number;limit:numb
 }}));
 vi.mock('../components/formula-overtime-record',()=>({OvertimeSummaryValue:({summary}:{summary:{knownMinutes:{numerator:string}}})=><span>stored minutes {summary.knownMinutes.numerator}</span>}));
 import AttendancePage from '../app/attendance/page';
-afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();ports.read.mockImplementation(async(_ctx,p)=>({
+const CURSOR='0b6f1d1e-3c55-4c6a-9a43-0d2f0c6f1a01';
+afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();ports.read.mockImplementation(async()=>({
  rows:Array.from({length:25},(_,i)=>({employmentId:'known-'+i,name:'Known monthly employee '+i,employeeCode:'MONTH-'+i,present:7,late:1,halfDay:2,absent:3,leaveDays:4,workedMinutes:480,
   overtimeSummary:{knownMinutes:{unit:'minutes',numerator:'121',denominator:'2'},complete:true},overtimeCapState:'within',over45hWeek:false})),
- state:pageState(p.page,40000,25),
+ // ADR 0181 Phase 4: a keyset read with a capped total ("1,000+").
+ total:{count:1000,capped:true},hasPrev:true,hasNext:true,anchorFound:true,
 }));});
 it('renders the actual nine-column month grid with one bounded service and exact independent count/month/scope/page',async()=>{
- render(await AttendancePage({searchParams:Promise.resolve({month:'2026-04',page:'3',size:'25'})}));
+ render(await AttendancePage({searchParams:Promise.resolve({month:'2026-04',page:'3',size:'25',after:CURSOR})}));
  expect(ports.module).toHaveBeenCalledWith('attendance');expect(ports.read).toHaveBeenCalledTimes(1);
  expect(ports.read).toHaveBeenCalledWith(expect.objectContaining({tenantId:'fixture-tenant',userId:'fixture-user'}),{
-  month:'2026-04',today:'2026-05-19',companyIds:['fixture-company'],page:parsePageQuery({page:'3',size:'25'}),
+  month:'2026-04',today:'2026-05-19',companyIds:['fixture-company'],page:parseKeysetPageQuery({page:'3',size:'25',after:CURSOR}),
  });
  const table=screen.getByRole('table');expect(within(table).getAllByRole('columnheader')).toHaveLength(9);
  expect(within(table).getAllByRole('row')).toHaveLength(26);expect(screen.getByText('MONTH-0 Known monthly employee 0')).toBeTruthy();
- expect(screen.getByTestId('month-pager').textContent).toBe('76–100 of 40000');expect(screen.getAllByText('stored minutes 121')).toHaveLength(25);
+ expect(screen.getByTestId('month-pager').textContent).toBe('76–100 of 1000');expect(screen.getAllByText('stored minutes 121')).toHaveLength(25);
  expect(ports.export).toHaveBeenCalledWith(expect.objectContaining({month:'2026-04'}));
  expect(screen.getByRole('link',{name:'previousMonth'}).getAttribute('href')).toBe('/attendance?month=2026-03');
  expect(screen.getByRole('link',{name:'nextMonth'}).getAttribute('href')).toBe('/attendance?month=2026-05');

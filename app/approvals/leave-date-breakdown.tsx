@@ -8,6 +8,7 @@ import { Button, inputCls } from '@/components/ui';
 // (LeaveDaysCell). Leaving one of them raw would put the drift INSIDE a single screen.
 import { formatDays } from '@/lib/day-format';
 import { decideLeaveDatesAction } from './actions';
+import { ActionNavigateForm } from '@/components/action-navigate-form';
 
 // ADR-0068 §6 / R17 600be8ac / R18 7e532d23 — the per-date DECISION TABLE of ONE per-date-approval leave
 // request. R18 restyled the presentation from an inline <details> expander into a MODAL opened from an
@@ -220,7 +221,7 @@ export function LeaveDateBreakdown({
               // The single batch submit — the whole per-date decision set posts in ONE action. Close the
               // dialog as the form posts (same optimistic pattern as cancel-dates-dialog); the server action
               // then revalidates the inbox.
-              <form action={decideLeaveDatesAction} onSubmit={() => setOpen(false)}>
+              <ActionNavigateForm action={decideLeaveDatesAction} onSubmit={() => setOpen(false)}>
                 <input type="hidden" name="id" value={requestId} />
                 <input type="hidden" name="decisions" value={JSON.stringify(payload)} />
                 {recommendationRecordId && <input type="hidden" name="recommendationRecordId" value={recommendationRecordId} />}
@@ -233,7 +234,7 @@ export function LeaveDateBreakdown({
                 <Button type="submit" size="sm" disabled={missingReason}>
                   {labels.submitDecisions}
                 </Button>
-              </form>
+              </ActionNavigateForm>
             )}
           </div>
         </Dialog.Content>

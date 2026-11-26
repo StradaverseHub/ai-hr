@@ -3,6 +3,8 @@ import {resignationInbox} from '@/packs/lifecycle/service';
 import {ResignationCaseCard} from '@/components/resignation/case-card';
 import {contractSharedWorkPage} from '@/packs/contracts/service';
 import {ContractWorkSection} from '@/app/lifecycle/contracts/work-section';
+import {ActionNavigateForm} from '@/components/action-navigate-form';
+import type {ActionNavigation} from '@/lib/action-navigation';
 import { Pager } from '@/components/pager';
 import { parsePageQuery, pageState } from '@/lib/pagination';
 import {AttendanceUnclockedEvidence} from '@/components/attendance-unclocked-evidence';
@@ -21,7 +23,7 @@ import {isCurrentAssignedApproval} from '@/core/assigned-approval-focus';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
+import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdowns } from '@/core/read';
 // 1e9145d4 adds dayTypesForPairs to this EXISTING direct import. app/approvals/page.tsx is already an
 // audited kernel-contract entry on the attendance pack's drift allowlist (the approvals inbox is
 // cross-module substrate awaiting an approvals contract, ADR-0080 open decision 6) — this widens no
@@ -123,7 +125,7 @@ function DecideButtons({
   workflowParticipant,
   remarksLabel,
 }: {
-  action: (fd: FormData) => void | Promise<void>;
+  action: (fd: FormData) => Promise<ActionNavigation>;
   id: string;
   disabled?: boolean;
   labels: { yourRequest: string; approve: string; reject: string };
@@ -138,7 +140,7 @@ function DecideButtons({
   }
   return (
     <div data-approval-surface className="flex items-center justify-end gap-2">
-      <form action={action}>
+      <ActionNavigateForm action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
@@ -148,8 +150,8 @@ function DecideButtons({
         <Button type="submit" size="sm" data-action-approval>
           {labels.approve}
         </Button>
-      </form>
-      {rejectReasonLabel ? <details><summary className="cursor-pointer text-sm">{labels.reject}</summary>      <form action={action}>
+      </ActionNavigateForm>
+      {rejectReasonLabel ? <details><summary className="cursor-pointer text-sm">{labels.reject}</summary>      <ActionNavigateForm action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
@@ -159,7 +161,7 @@ function DecideButtons({
         <Button type="submit" size="sm" variant="outline">
           {labels.reject}
         </Button>
-      </form></details> :       <form action={action}>
+      </ActionNavigateForm></details> :       <ActionNavigateForm action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="workflowStage" value={workflowStage ?? ''} />
         <input type="hidden" name="workflowParticipant" value={workflowParticipant ?? ''} />
@@ -168,7 +170,7 @@ function DecideButtons({
         <Button type="submit" size="sm" variant="outline">
           {labels.reject}
         </Button>
-      </form>}
+      </ActionNavigateForm>}
 
     </div>
   );
@@ -323,12 +325,9 @@ export default async function ApprovalsPage({
   // ADR-0068 §6: eagerly fetch the per-date breakdown for each visible PENDING leave row. A non-empty result
   // means this is a per-date-approval request → render the per-date decision modal trigger instead of the
   // whole-request approve/reject. An empty result → the ordinary single control. RLS scopes each breakdown
-  // to the viewer.
-  const breakdowns = new Map(
-    await Promise.all(
-      pendingLeave.map(async (r) => [r.id, await leaveRequestDateBreakdown(s, r.id)] as const),
-    ),
-  );
+  // to the viewer. ADR-0181 1.4: one set read for every pending row (one transaction, one statement), not one
+  // read per row; a failed read still fails the page.
+  const breakdowns = await leaveRequestDateBreakdowns(s, pendingLeave.map((r) => r.id));
   // Partial Leave Approval — single-request model (ADR-0068): the per-date expander's label set.
   const locale = await getLocale();
   const dateBreakdownLabels = {
@@ -975,7 +974,7 @@ export default async function ApprovalsPage({
                       // `requestId` (not the `id` DecideButtons posts), and `returnTo` is read BY VALUE so the
                       // decision lands back on this filtered inbox rather than on My Leave (AGENTS.md rule 17).
                       <div className="flex items-center justify-end gap-2">
-                        <form action={decideReplacementLeaveRequestAction}>
+                        <ActionNavigateForm action={decideReplacementLeaveRequestAction}>
                           <input type="hidden" name="requestId" value={r.id} />
                           <input type="hidden" name="decision" value="approved" />
                           <input type="hidden" name="returnTo" value="approvals" />
@@ -983,8 +982,8 @@ export default async function ApprovalsPage({
                           <Button type="submit" size="sm" disabled={r.dates.some(d=>leaveCreditClaimReviewBlocks(d.claimReview))}>
                             {decideLabels.approve}
                           </Button>
-                        </form>
-                        <form action={decideReplacementLeaveRequestAction}>
+                        </ActionNavigateForm>
+                        <ActionNavigateForm action={decideReplacementLeaveRequestAction}>
                           <input type="hidden" name="requestId" value={r.id} />
                           <input type="hidden" name="decision" value="rejected" />
                           <input type="hidden" name="returnTo" value="approvals" />
@@ -992,7 +991,7 @@ export default async function ApprovalsPage({
                           <Button type="submit" size="sm" variant="outline">
                             {decideLabels.reject}
                           </Button>
-                        </form>
+                        </ActionNavigateForm>
                       </div>
                     )}
                   </td>
@@ -1252,7 +1251,7 @@ export default async function ApprovalsPage({
                     {tReview(`reviewType.${r.reviewType}` as 'reviewType.probation')} · {tReview('dueDate')} {r.dueDate}
                   </span>
                 </div>
-                <form action={submitManagerEvaluationAction} className="flex flex-wrap items-end gap-2">
+                <ActionNavigateForm action={submitManagerEvaluationAction} className="flex flex-wrap items-end gap-2">
                   <input type="hidden" name="id" value={r.id} />
                   <NavFields nav={nav} />
                   <label className="text-xs text-muted-foreground">
@@ -1267,7 +1266,7 @@ export default async function ApprovalsPage({
                   <Button type="submit" size="sm">
                     {tReview('submitEvaluation')}
                   </Button>
-                </form>
+                </ActionNavigateForm>
               </li>
             ))}
           </ul>

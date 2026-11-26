@@ -5,7 +5,11 @@ import {and,or,sql,lte,isNull,eq,inArray,type SQL} from 'drizzle-orm';
 import {employment,compensation,payrollCycle} from '../db/schema';
 import {employedByCompanyDuring} from './employment-company';
 export type PayrollEligibilityRun={companyId:string;payPeriod:string;id?:string;batchId?:string;runType?:string;payrollCycleId?:string|null};
-export const payrollEmploymentEnd=sql<string|null>`least(${employment.terminatedOn},${employment.resignationDate},${employment.lastWorkingDate})`;
+/** 7da649d3 (owner decision 2026-11-25) — payroll's last day is the EMPLOYMENT END DATE: the earlier of the termination
+ * date and the Resignation Date. The Last Working Day is only the final physical working day (annual leave can be
+ * cleared after it), so it is used only when both are empty (legacy records). PostgreSQL's least() ignores NULLs.
+ * Employee Status and login keep reading the Last Working Day (app.employment_status_on); this is payroll only. */
+export const payrollEmploymentEnd=sql<string|null>`coalesce(least(${employment.terminatedOn},${employment.resignationDate}),${employment.lastWorkingDate})`;
 export function payrollPeriodBounds(period:string){const[y,m]=period.split('-').map(Number);return{start:period+'-01',end:period+'-'+String(new Date(Date.UTC(y,m,0)).getUTCDate()).padStart(2,'0')};}
 /** Only committed explicit positive cash transactions can admit a former employee.
  * Exact cycle, employer, source date and consumption custody are checked again at calculation. */

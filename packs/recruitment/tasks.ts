@@ -14,8 +14,8 @@
  * (public.recruitment_task_read_marker, 5859, D-032).
  *
  * Cost. The bell provider (`pendingRecruitmentTasks`) runs on every authenticated render (and My tasks): it reads only the
- * viewer's personal to-dos, starting from the viewer's own rows through indexes, under a BELL_TIMEOUT_MS statement
- * timeout. The per-job counts (`recruitmentJobTodos`, Overview only, D-035) read at most TODO_JOB_LIMIT Open or On hold
+ * viewer's personal to-dos, starting from the viewer's own rows through indexes, then (only when there are any) the names
+ * they need, two statements in one read-only snapshot under a BELL_TIMEOUT_MS statement timeout (personalTodosTx says why). The per-job counts (`recruitmentJobTodos`, Overview only, D-035) read at most TODO_JOB_LIMIT Open or On hold
  * jobs, stop at TODO_COUNT_CAP per job and carry their own JOB_TODOS_TIMEOUT_MS timeout. The updates
  * read each job's events newest first through (job, time) indexes, at most one page per job, and page by keyset
  * (time, id); unread counts start each category's read at the viewer's own read-up-to time.
@@ -45,7 +45,7 @@ import { WAITING_SCAN_LIMIT } from './waiting-model';
 import {
   BELL_TIMEOUT_MS, JOB_TODOS_TIMEOUT_MS, WAITING_TODOS_TIMEOUT_MS, TASK_CATEGORIES, TODO_COUNT_CAP, TODO_JOB_LIMIT, TODO_LIMIT, UNREAD_CAP, UPDATES_PAGE_SIZE, byNewest, decodeUpdatesCursor,
   encodeUpdatesCursor, isTaskCategory, parseUpdatesPage, readCategories, todoHref, todoToPackTask, updateHref, updatesHasMore, updatesSince,
-  type RecruitmentTodo, type RecruitmentUpdate, type TaskCategory, type TodoKind, type UpdateKind,
+  type PersonalTodoKind, type RecruitmentTodo, type RecruitmentUpdate, type TaskCategory, type TodoKind, type UpdateKind,
 } from './tasks-model';
 
 const iso = (v: Date | string) => (v instanceof Date ? v : new Date(v)).toISOString();
@@ -67,131 +67,192 @@ const todoOf = (r: TodoRow): RecruitmentTodo => ({
 });
 const scopedBy = (scope: readonly string[] | undefined) => (column: SQL) => (scope ? sql`${column} = any(${uuidArray(scope)}::uuid[])` : sql`true`);
 
-/** The viewer's personal to-dos: approval steps (tenant-wide) and interview feedback due. Starts from the viewer's own
- *  rows through indexes (pending-approver expression indexes, the interviewer's user index). */
+/** One personal to-do as the first statement reads it: the viewer's own row only, before any job, application, candidate
+ *  or agency is looked up. */
+type PersonalRow = {
+  kind: PersonalTodoKind; id: string; company_id: string; job_id: string | null; application_id: string | null;
+  title: string | null; number: string | null; candidate_name: string | null; position: number | null; steps: number | null;
+  at: string | Date; ends_on: string | Date | null; agency_id: string | null;
+};
+/** One name the second statement looks up: a job's title and number, an application's candidate, an agency's name. */
+type NameRow = { source: 'job' | 'application' | 'agency'; id: string; label: string | null; number: string | null; destroyed: boolean };
+
+/** The administration grants the session carries (hr_admin, super_admin, recruiting_partner). Only they make
+ *  app.can_admin_recruitment_for true: it reads nothing but these grants (app.is_admin_for, app.has_role_for). */
+function recruitmentAdminGrants(s: SessionContext) {
+  const grants = s.grants ?? (s.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
+  return grants.filter((g) => g.role === 'hr_admin' || g.role === 'super_admin' || g.role === 'recruiting_partner');
+}
+
+/**
+ * The viewer's personal to-dos: approval steps (tenant-wide), interview feedback due, agency submissions to review and
+ * contracts expiring (administrators only), open screening requests and the recorder's background checks.
+ *
+ * Cost (bell, every authenticated render). The reads are cheap to RUN; what cost was PLANNING. Every recruitment table
+ * carries several permissive policies whose functions are inlined SQL, so each job, application and candidate join of the
+ * earlier single statement (`test/helpers/recruitment-personal-todos-original.ts`) expanded into a large policy tree, and
+ * the planner paid for that on every render (PgBouncer transaction mode: no prepared statements). On staging (24 Nov 2026)
+ * that statement planned in 11–12 ms warm and 33–35 ms on a fresh backend, up to 2 s under memory pressure, and was
+ * cancelled at BELL_TIMEOUT_MS 28 times in three days with empty recruitment tables. So the read is two statements in one
+ * read-only snapshot:
+ *  1. the viewer's own rows, each branch on its own table through the viewer's own index (no names joined): 1.6–2.4 ms to
+ *     plan warm, 10–15 ms fresh. A viewer with no recruitment work stops here.
+ *  2. only when (1) returned rows, the names it needs, one primary-key read per job, application or agency, and only the
+ *     sources some row needs.
+ * Branches the session cannot have are not sent: agency review and contract expiry need a recruitment administration grant.
+ * The items, their names and their order are those of the earlier single statement (test/recruitment-bell-two-step.test.ts):
+ * the joins were left joins on primary keys, so they never added, removed or reordered a row, except the background checks'
+ * removed-candidate filter, applied here to the same at most TODO_LIMIT rows the inner read kept.
+ */
 async function personalTodosTx(tx: Tx, s: SessionContext, scope: readonly string[] | undefined, now: Date): Promise<RecruitmentTodo[]> {
   const scoped = scopedBy(scope);
   const today = todayInKualaLumpur(now);
-  // Slice 10: only a session holding a recruitment administration grant can have agency submissions to review. The
-  // administered companies come from the session's grants once (group-wide: every company in scope; else the granted
-  // companies and their descendants), not from a per-company predicate over the tenant; the database predicate is then
-  // applied only to the few rows returned.
-  const grants = s.grants ?? (s.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
-  const adminGrants = grants.filter((g) => g.role === 'hr_admin' || g.role === 'super_admin' || g.role === 'recruiting_partner');
+  // Slice 10: only a session holding a recruitment administration grant can have agency submissions to review or a contract
+  // to renew. The administered companies come from the session's grants once (group-wide: every company in scope; else the
+  // granted companies and their descendants), not from a per-company predicate over the tenant; the database predicate is
+  // then applied only to the few rows returned.
+  const adminGrants = recruitmentAdminGrants(s);
   const groupWide = adminGrants.some((g) => g.companyId == null);
   const grantedCompanies = [...new Set(adminGrants.map((g) => g.companyId).filter((c): c is string => !!c && isUuid(c)))];
   const adminCompanies = groupWide ? sql`true`
     : grantedCompanies.length ? sql`(co.id = any(${uuidArray(grantedCompanies)}::uuid[])
         or exists (select 1 from unnest(${uuidArray(grantedCompanies)}::uuid[]) g(id) where app.is_company_descendant(co.id, g.id)))` : sql`false`;
-  const reviewBranch = adminGrants.length ? sql`
+  const adminBranches = adminGrants.length ? sql`
     union all
     -- Slice 10: an agency submission waiting for review, one per submission, for the administrators of its company.
-    (select 'agencyReview', w.id, w.company_id, w.job_id, j.title, j.job_number, w.full_name, w.full_name is null, null, null, null, w.created_at, null, null, null
+    (select 'agencyReview', w.id, w.company_id, w.job_id, null, null, null, w.full_name, null, null, w.created_at, null, null
      from (select co.id from company co where co.tenant_id = ${s.tenantId}::uuid and ${scoped(sql`co.id`)} and ${adminCompanies}) ac
      cross join lateral (select x.id, x.company_id, x.job_id, x.full_name, x.created_at from recruitment_agency_submission x
        where x.tenant_id = ${s.tenantId}::uuid and x.company_id = ac.id and x.outcome = 'waiting' order by x.created_at desc limit ${TODO_LIMIT}) w
-     left join recruitment_job_opening j on j.id = w.job_id
      where app.can_admin_recruitment_for(w.company_id)
-     order by w.created_at desc limit ${TODO_LIMIT})` : sql``;
-  const rows = await tx.execute<TodoRow>(sql`
+     order by w.created_at desc limit ${TODO_LIMIT})
+    union all
+    -- Slice 10: the HR contact's Enabled contracts from 30 days before their end date until the end date (Kuala Lumpur
+    -- dates), through the contact's own index; the item's date is the contract's END date (what My tasks and the bell show).
+    (select 'contractExpiry', c.id, c.company_id, null, null, c.name, null, null, null, null,
+       (c.ends_on::timestamp at time zone 'Asia/Kuala_Lumpur'), c.ends_on, c.agency_id
+     from recruitment_agency_contract c
+     where c.tenant_id = ${s.tenantId}::uuid and c.hr_contact_user_id = ${me} and c.status = 'enabled'
+       and c.ends_on between ${today}::date and ${today}::date + ${CONTRACT_EXPIRY_NOTICE_DAYS}::int and ${scoped(sql`c.company_id`)}
+       -- …while the contact still administers the company (a demoted contact gets no to-do and cannot read the contract).
+       and app.can_admin_recruitment_for(c.company_id)
+     order by c.ends_on, c.id limit ${TODO_LIMIT})` : sql``;
+  const own = await tx.execute<PersonalRow>(sql`
     -- Approval steps are tenant-wide, like the Approvals page and its badge: they do not follow the company switcher.
-    (select 'requisitionApproval'::text as kind, r.id, r.company_id, null::uuid as job_id, r.title, r.req_number as number,
-       null::text as candidate_name, false as candidate_removed, null::int as count, r.pending_position as position,
-       cardinality(r.approver_user_ids) as steps, r.updated_at as at, null::uuid as stage_id, null::date as ends_on, null::uuid as application_id
+    (select 'requisitionApproval'::text as kind, r.id, r.company_id, null::uuid as job_id, null::uuid as application_id, r.title,
+       r.req_number as number, null::text as candidate_name, r.pending_position as position, cardinality(r.approver_user_ids) as steps,
+       r.updated_at as at, null::date as ends_on, null::uuid as agency_id
      from recruitment_requisition r
      where r.tenant_id = ${s.tenantId}::uuid and r.approval_status = 'pending' and r.approver_user_ids[r.pending_position] = ${me}
      order by r.updated_at desc limit ${TODO_LIMIT})
     union all
     -- An approver who is not on the job's team cannot read the job, application or candidate rows: the names stay null,
     -- exactly as on the Approvals page (packs/recruitment/offers.ts offerForApprover).
-    (select 'offerApproval', o.id, o.company_id, o.job_id, j.title, j.job_number,
-       case when c.destroyed_at is null then c.full_name end, c.destroyed_at is not null, null, o.pending_position,
-       cardinality(o.approver_user_ids), o.updated_at, null, null, null
+    (select 'offerApproval', o.id, o.company_id, o.job_id, o.application_id, null, null, null, o.pending_position,
+       cardinality(o.approver_user_ids), o.updated_at, null, null
      from recruitment_offer o
-     left join recruitment_job_opening j on j.id = o.job_id
-     left join recruitment_application a on a.id = o.application_id
-     left join recruitment_candidate c on c.id = a.candidate_id
      where o.tenant_id = ${s.tenantId}::uuid and o.status = 'pending' and o.approver_user_ids[o.pending_position] = ${me}
      order by o.updated_at desc limit ${TODO_LIMIT})
     union all
     -- Feedback is due from the interview's start (an instant; Kuala Lumpur wall time is only how it is shown), on an
     -- interview that is not cancelled, that the candidate has not declined, that the viewer interviews and has not given
     -- feedback on.
-    (select 'feedback', i.id, i.company_id, i.job_id, j.title, j.job_number,
-       case when c.destroyed_at is null then c.full_name end, c.destroyed_at is not null, null, null, null, i.starts_at, null, null, null
+    (select 'feedback', i.id, i.company_id, i.job_id, i.application_id, null, null, null, null, null, i.starts_at, null, null
      from recruitment_interview_interviewer ii
      join recruitment_interview i on i.id = ii.interview_id and i.tenant_id = ii.tenant_id
-     left join recruitment_job_opening j on j.id = i.job_id
-     left join recruitment_application a on a.id = i.application_id
-     left join recruitment_candidate c on c.id = a.candidate_id
      where ii.tenant_id = ${s.tenantId}::uuid and ii.app_user_id = ${me} and i.cancelled_at is null and i.candidate_response <> 'declined'
        and i.starts_at <= ${now.toISOString()}::timestamptz and ${scoped(sql`ii.company_id`)}
        and not exists (select 1 from recruitment_scorecard sc where sc.interview_id = i.id and sc.interviewer_user_id = ${me})
      order by i.starts_at desc limit ${TODO_LIMIT})
-    ${reviewBranch}
-    union all
-    -- Slice 10: the HR contact's Enabled contracts from 30 days before their end date until the end date (Kuala Lumpur
-    -- dates), through the contact's own index; the item's date is the contract's END date (what My tasks and the bell show).
-    (select 'contractExpiry', c.id, c.company_id, null, concat_ws(' · ', a.name, c.name), null, null, false, null, null, null,
-       (c.ends_on::timestamp at time zone 'Asia/Kuala_Lumpur'), null, c.ends_on, null
-     from recruitment_agency_contract c
-     left join recruitment_agency a on a.id = c.agency_id
-     where c.tenant_id = ${s.tenantId}::uuid and c.hr_contact_user_id = ${me} and c.status = 'enabled'
-       and c.ends_on between ${today}::date and ${today}::date + ${CONTRACT_EXPIRY_NOTICE_DAYS}::int and ${scoped(sql`c.company_id`)}
-       -- …while the contact still administers the company (a demoted contact gets no to-do and cannot read the contract).
-       and app.can_admin_recruitment_for(c.company_id)
-     order by c.ends_on, c.id limit ${TODO_LIMIT})
+    ${adminBranches}
     union all
     -- Slice 11: the viewer's OPEN screening requests, through the reviewer's own index; row security admits them only while the
     -- viewer is a hiring manager of the job. Gone once answered with Advance or Reject, withdrawn, or closed by itself when the
     -- application is archived or hired or the reviewer leaves the job's hiring managers (5861). The note is not read.
-    (select 'screening', q.id, q.company_id, q.job_id, j.title, j.job_number,
-       case when c.destroyed_at is null then c.full_name end, coalesce(c.destroyed_at is not null, false), null, null, null, q.sent_at, null, null, null
+    (select 'screening', q.id, q.company_id, q.job_id, q.application_id, null, null, null, null, null, q.sent_at, null, null
      from recruitment_screening_request q
-     left join recruitment_application a on a.id = q.application_id
-     left join recruitment_job_opening j on j.id = q.job_id
-     left join recruitment_candidate c on c.id = a.candidate_id
      where q.tenant_id = ${s.tenantId}::uuid and q.reviewer_user_id = ${me} and q.closed_at is null and ${scoped(sql`q.company_id`)}
      order by q.sent_at desc limit ${TODO_LIMIT})
     union all
     -- Slice 12: the viewer's OWN background checks (as recorder) waiting for the candidate's authorisation, newest first, dated
-    -- when the check was added. The inner read walks the recorder's partial index in order and keeps a row only while the
-    -- viewer still operates its job (the predicate is evaluated on each row the walk reaches, inside the LIMIT), so checks on
-    -- jobs the recorder no longer runs are skipped and never crowd out real ones; the walk stops at TODO_LIMIT kept rows. A
-    -- removed candidate's open checks were cancelled by the removal (5862), so they are not in the index at all. Only those
-    -- few rows are then joined (one primary-key probe each). Only the check's own columns are read — never its restricted
-    -- details.
-    (select 'backgroundCheckAuthorisation', b.id, b.company_id, b.job_id, j.title, j.job_number, c.full_name, false, null, null, null, b.created_at, null, null,
-       b.application_id
-     from (select x.id, x.company_id, x.job_id, x.application_id, x.created_at from recruitment_background_check x
-       where x.tenant_id = ${s.tenantId}::uuid and x.created_by_user_id = ${me} and x.status = 'awaiting_authorisation' and ${scoped(sql`x.company_id`)}
-         and app.can_operate_recruitment_job(x.company_id, x.job_id)
-       order by x.created_at desc limit ${TODO_LIMIT}) b
-     -- One primary-key probe per kept row (LIMIT keeps the planner from joining the job's whole pipeline first).
-     left join lateral (select c.full_name, c.destroyed_at from recruitment_application a join recruitment_candidate c on c.id = a.candidate_id
-       where a.id = b.application_id limit 1) c on true
-     left join recruitment_job_opening j on j.id = b.job_id
-     where c.destroyed_at is null
-     order by b.created_at desc limit ${TODO_LIMIT})
+    -- when the check was added. The read walks the recorder's partial index in order and keeps a row only while the viewer
+    -- still operates its job (the predicate is evaluated on each row the walk reaches, inside the LIMIT), so checks on jobs the
+    -- recorder no longer runs are skipped and never crowd out real ones; the walk stops at TODO_LIMIT kept rows. A removed
+    -- candidate's open checks were cancelled by the removal (5862), so they are not in the index at all. Only the check's own
+    -- columns are read — never its restricted details.
+    (select 'backgroundCheckAuthorisation', x.id, x.company_id, x.job_id, x.application_id, null, null, null, null, null, x.created_at, null, null
+     from recruitment_background_check x
+     where x.tenant_id = ${s.tenantId}::uuid and x.created_by_user_id = ${me} and x.status = 'awaiting_authorisation' and ${scoped(sql`x.company_id`)}
+       and app.can_operate_recruitment_job(x.company_id, x.job_id)
+     order by x.created_at desc limit ${TODO_LIMIT})
     union all
     -- …and theirs In progress for MORE than 14 Kuala Lumpur days: started before the start of the Kuala Lumpur day 14 days before
     -- today (started on KL day S, due from KL day S + 15 — background-check-model.ts checkOverdue), oldest first through the
     -- recorder's in-progress index, filtered and bounded the same way; dated from the start of the day it became overdue.
-    (select 'backgroundCheckOverdue', b.id, b.company_id, b.job_id, j.title, j.job_number, c.full_name, false, null, null, null,
-       (((b.started_at at time zone 'Asia/Kuala_Lumpur')::date + ${CHECK_OVERDUE_DAYS + 1}::int)::timestamp at time zone 'Asia/Kuala_Lumpur'), null, null,
-       b.application_id
-     from (select x.id, x.company_id, x.job_id, x.application_id, x.started_at from recruitment_background_check x
-       where x.tenant_id = ${s.tenantId}::uuid and x.created_by_user_id = ${me} and x.status = 'in_progress'
-         and x.started_at < ((${today}::date - ${CHECK_OVERDUE_DAYS}::int)::timestamp at time zone 'Asia/Kuala_Lumpur') and ${scoped(sql`x.company_id`)}
-         and app.can_operate_recruitment_job(x.company_id, x.job_id)
-       order by x.started_at limit ${TODO_LIMIT}) b
-     -- One primary-key probe per kept row (LIMIT keeps the planner from joining the job's whole pipeline first).
-     left join lateral (select c.full_name, c.destroyed_at from recruitment_application a join recruitment_candidate c on c.id = a.candidate_id
-       where a.id = b.application_id limit 1) c on true
-     left join recruitment_job_opening j on j.id = b.job_id
-     where c.destroyed_at is null
-     order by b.started_at, b.id limit ${TODO_LIMIT})`);
-  return rows.map(todoOf).sort(byNewest);
+    (select 'backgroundCheckOverdue', x.id, x.company_id, x.job_id, x.application_id, null, null, null, null, null,
+       (((x.started_at at time zone 'Asia/Kuala_Lumpur')::date + ${CHECK_OVERDUE_DAYS + 1}::int)::timestamp at time zone 'Asia/Kuala_Lumpur'), null, null
+     from recruitment_background_check x
+     where x.tenant_id = ${s.tenantId}::uuid and x.created_by_user_id = ${me} and x.status = 'in_progress'
+       and x.started_at < ((${today}::date - ${CHECK_OVERDUE_DAYS}::int)::timestamp at time zone 'Asia/Kuala_Lumpur') and ${scoped(sql`x.company_id`)}
+       and app.can_operate_recruitment_job(x.company_id, x.job_id)
+     order by x.started_at limit ${TODO_LIMIT})`);
+  if (!own.length) return [];
+  const names = await personalTodoNamesTx(tx, own);
+  return own.flatMap((r) => personalTodoOf(r, names)).sort(byNewest);
+}
+
+const NAMED_JOB: ReadonlySet<PersonalTodoKind> = new Set(['offerApproval', 'feedback', 'agencyReview', 'screening', 'backgroundCheckAuthorisation', 'backgroundCheckOverdue']);
+const NAMED_CANDIDATE: ReadonlySet<PersonalTodoKind> = new Set(['offerApproval', 'feedback', 'screening', 'backgroundCheckAuthorisation', 'backgroundCheckOverdue']);
+type PersonalNames = { jobs: Map<string, NameRow>; applications: Map<string, NameRow>; agencies: Map<string, NameRow> };
+
+/** The second statement: the jobs, candidates (through their applications) and agencies the rows name, as the viewer may
+ *  read them (a row the viewer cannot read is simply absent: the name stays null), one primary-key read each, only the
+ *  sources some row needs. */
+async function personalTodoNamesTx(tx: Tx, own: readonly PersonalRow[]): Promise<PersonalNames> {
+  const ids = (pick: (r: PersonalRow) => string | null, kinds: ReadonlySet<PersonalTodoKind> | PersonalTodoKind) =>
+    [...new Set(own.filter((r) => (typeof kinds === 'string' ? r.kind === kinds : kinds.has(r.kind))).map(pick).filter((v): v is string => !!v))];
+  const jobIds = ids((r) => r.job_id, NAMED_JOB);
+  const applicationIds = ids((r) => r.application_id, NAMED_CANDIDATE);
+  const agencyIds = ids((r) => r.agency_id, 'contractExpiry');
+  const parts: SQL[] = [
+    ...(jobIds.length ? [sql`select 'job'::text as source, j.id, j.title as label, j.job_number as number, false as destroyed
+      from recruitment_job_opening j where j.id = any(${uuidArray(jobIds)}::uuid[])`] : []),
+    ...(applicationIds.length ? [sql`select 'application'::text, a.id, c.full_name, null::text, c.destroyed_at is not null
+      from recruitment_application a join recruitment_candidate c on c.id = a.candidate_id where a.id = any(${uuidArray(applicationIds)}::uuid[])`] : []),
+    ...(agencyIds.length ? [sql`select 'agency'::text, g.id, g.name, null::text, false
+      from recruitment_agency g where g.id = any(${uuidArray(agencyIds)}::uuid[])`] : []),
+  ];
+  const out: PersonalNames = { jobs: new Map(), applications: new Map(), agencies: new Map() };
+  if (!parts.length) return out;
+  const rows = await tx.execute<NameRow>(sql.join(parts, sql` union all `));
+  for (const r of rows) (r.source === 'job' ? out.jobs : r.source === 'application' ? out.applications : out.agencies).set(r.id, r);
+  return out;
+}
+
+/** A first-statement row with its names, exactly as the earlier single statement's left joins gave it; a background check
+ *  whose candidate was removed gives nothing (its `where c.destroyed_at is null`). */
+function personalTodoOf(r: PersonalRow, names: PersonalNames): RecruitmentTodo[] {
+  const job = r.job_id ? names.jobs.get(r.job_id) : undefined;
+  const candidate = r.application_id ? names.applications.get(r.application_id) : undefined;
+  const base = { kind: r.kind, id: r.id, company_id: r.company_id, job_id: r.job_id, count: null, position: r.position, steps: r.steps,
+    at: r.at, stage_id: null, ends_on: r.ends_on, application_id: null } satisfies Partial<TodoRow>;
+  const jobTitle = { title: job?.label ?? null, number: job?.number ?? null };
+  switch (r.kind) {
+    case 'requisitionApproval':
+      return [todoOf({ ...base, title: r.title, number: r.number, candidate_name: null, candidate_removed: false })];
+    case 'offerApproval':
+    case 'feedback':
+    case 'screening':
+      return [todoOf({ ...base, ...jobTitle, candidate_name: candidate && !candidate.destroyed ? candidate.label : null, candidate_removed: candidate?.destroyed === true })];
+    case 'agencyReview':
+      return [todoOf({ ...base, ...jobTitle, candidate_name: r.candidate_name, candidate_removed: r.candidate_name == null })];
+    case 'contractExpiry':
+      return [todoOf({ ...base, title: [names.agencies.get(r.agency_id ?? '')?.label ?? null, r.title].filter((v) => v != null).join(' · '), number: null,
+        candidate_name: null, candidate_removed: false })];
+    case 'backgroundCheckAuthorisation':
+    case 'backgroundCheckOverdue':
+      return candidate?.destroyed ? [] : [todoOf({ ...base, ...jobTitle, candidate_name: candidate?.label ?? null, candidate_removed: false, application_id: r.application_id })];
+  }
 }
 
 /** The per-job counts for the viewer's Open or On hold jobs as recruiter or assistant (D-035: Overview only). */
@@ -317,10 +378,11 @@ async function waitingTodosTx(tx: Tx, s: SessionContext, scope: readonly string[
 export async function recruitmentTodos(s: SessionContext, scopeIds: readonly string[] | undefined, opts: { now?: Date; timeoutMs?: number } = {}): Promise<RecruitmentTodo[]> {
   if (!s.userId) return [];
   const scope = scopeIds ? scopeIds.filter(isUuid) : undefined;
+  // One read-only snapshot: the names the second statement reads are those of the moment the first one read the rows.
   return withRecruitmentTenant(s, async (tx) => {
     if (opts.timeoutMs) await tx.execute(sql`select set_config('statement_timeout', ${String(Math.max(1, Math.trunc(opts.timeoutMs)))}, true)`);
     return personalTodosTx(tx, s, scope, opts.now ?? new Date());
-  });
+  }, { readOnlySnapshot: true });
 }
 
 export type RecruitmentJobTodos = { status: 'ok'; items: RecruitmentTodo[] } | { status: 'unavailable' };

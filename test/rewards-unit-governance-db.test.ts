@@ -147,23 +147,36 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   const agentId=await ensureAgentPrincipal(owner.db,b.tenantId),entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,b.tenantId));
   const agent=agentContext(b.tenantId,agentId,entitlements);
   await expect(saveRewardUnitInputs(agent,unitId,(await view()).unit.revision,inputs,'Agent must not write private PAT')).rejects.toThrow();
-  const [current]=await owner.db.execute<{name:string}>(sql`select current_user as name`);
-  await owner.db.execute(sql`DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='aihr_test_rewards_owner') THEN CREATE ROLE aihr_test_rewards_owner NOLOGIN NOSUPERUSER NOBYPASSRLS INHERIT; END IF; END $$`);
-  await owner.db.execute(sql`GRANT ai_hr_app TO aihr_test_rewards_owner`);
-  await owner.db.execute(sql`ALTER TABLE reward_governance OWNER TO aihr_test_rewards_owner`);
-  await owner.db.execute(sql`ALTER TABLE reward_senior_award OWNER TO aihr_test_rewards_owner`);
+  // The restricted owner role, its ai_hr_app membership and the table ownership exist only inside this one
+  // transaction, which is always rolled back. Roles are cluster-wide: a committed GRANT ai_hr_app would be seen
+  // by every other test file in the same CI batch (the draft-discard role fixture requires ai_hr_app's exact
+  // membership graph), so the membership is never committed. The membership is kept because it is what makes the
+  // application's row policies apply to the physical owner; without it the empty result would prove less.
+  class RollbackRestrictedOwner extends Error {}
   try{
-   for(const actor of [outsider,agent])await owner.db.transaction(async tx=>{
-    await tx.execute(sql`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${actor.userId??''},true),set_config('app.roles','employee',true),set_config('app.grants','[]',true),set_config('app.agent_principal_id',${actor.agent?.principalId??''},true)`);
-    await tx.execute(sql`SET LOCAL ROLE aihr_test_rewards_owner`);
-    expect(await tx.select().from(schema.rewardGovernance).where(eq(schema.rewardGovernance.unitId,unitId))).toEqual([]);
-    expect(await tx.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,unitId))).toEqual([]);
+   await owner.db.transaction(async tx=>{
+    await tx.execute(sql`DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='aihr_test_rewards_owner') THEN CREATE ROLE aihr_test_rewards_owner NOLOGIN NOSUPERUSER NOBYPASSRLS INHERIT; END IF; END $$`);
+    await tx.execute(sql`GRANT ai_hr_app TO aihr_test_rewards_owner`);
+    await tx.execute(sql`ALTER TABLE reward_governance OWNER TO aihr_test_rewards_owner`);
+    await tx.execute(sql`ALTER TABLE reward_senior_award OWNER TO aihr_test_rewards_owner`);
+    for(const actor of [outsider,agent]){
+     await tx.execute(sql`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${actor.userId??''},true),set_config('app.roles','employee',true),set_config('app.grants','[]',true),set_config('app.agent_principal_id',${actor.agent?.principalId??''},true)`);
+     await tx.execute(sql`SET LOCAL ROLE aihr_test_rewards_owner`);
+     expect(await tx.select().from(schema.rewardGovernance).where(eq(schema.rewardGovernance.unitId,unitId))).toEqual([]);
+     expect(await tx.select().from(schema.rewardSeniorAward).where(eq(schema.rewardSeniorAward.unitId,unitId))).toEqual([]);
+     await tx.execute(sql`RESET ROLE`);
+    }
+    throw new RollbackRestrictedOwner();
    });
-   const [role]=await owner.db.execute<{canAssume:boolean}>(sql`select pg_has_role('ai_hr_app','ai_hr_rewards_post_reader','MEMBER') as "canAssume"`);expect(role.canAssume).toBe(false);
+  }catch(error){
+   if(!(error instanceof RollbackRestrictedOwner))throw error;
   }finally{
-   await owner.db.execute(sql`ALTER TABLE reward_governance OWNER TO ${sql.identifier(current.name)}`);
-   await owner.db.execute(sql`ALTER TABLE reward_senior_award OWNER TO ${sql.identifier(current.name)}`);
+   // Belt and braces: a role left by an older run of this file is removed (dropping it removes its memberships).
+   await owner.db.execute(sql`DO $$ BEGIN IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='aihr_test_rewards_owner') THEN DROP ROLE aihr_test_rewards_owner; END IF; EXCEPTION WHEN dependent_objects_still_exist THEN RAISE WARNING 'aihr_test_rewards_owner still owns objects'; END $$`);
   }
+  const [left]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from pg_auth_members m join pg_roles p on p.oid=m.roleid join pg_roles c on c.oid=m.member where p.rolname='ai_hr_app' and c.rolname='aihr_test_rewards_owner'`);expect(left.n).toBe(0);
+  const [tableOwners]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from pg_tables where tablename in ('reward_governance','reward_senior_award') and tableowner='aihr_test_rewards_owner'`);expect(tableOwners.n).toBe(0);
+  const [role]=await owner.db.execute<{canAssume:boolean}>(sql`select pg_has_role('ai_hr_app','ai_hr_rewards_post_reader','MEMBER') as "canAssume"`);expect(role.canAssume).toBe(false);
  });
 
  it('posts confirmed Senior amounts once through the dedicated reader, preserving unrelated input and historical provenance',async()=>{

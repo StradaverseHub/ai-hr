@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState, useTransition, type KeyboardEvent } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { Button, EmployeeCode } from '@/components/ui';
@@ -9,11 +9,11 @@ import { matchesEmployeeSearch } from '@/lib/employee-search';
 import { formatMoney } from '@/lib/money';
 import { withPayrollFrom } from '@/lib/return-to';
 import type { NothingPayableSkipKind } from '@/core/payroll-view';
+import type { ReprocessNotOwedReason } from '@/core/payroll';
 import {ClientPager} from '@/components/client-pager';
 import {pageCount, type PageState} from '@/lib/pagination';
 import {PayrollSelectionSearch} from '../../selection-search';
-import { reprocessSelectedAction, reviewReprocessTaxAction } from '../../actions';
-import type { ReprocessTaxReadiness } from '@/lib/payroll-reprocess-readiness';
+import { reprocessSelectedAction } from '../../actions';
 
 export type ReprocessCandidate = {
   employmentId: string;
@@ -39,10 +39,11 @@ export type ReprocessCandidate = {
 /** 6aee208b — one person the run marked stale, as `reprocessStaleSelection` names them: identity, no money. */
 export type ReprocessStaleRow = { employmentId: string; employeeCode: string | null; name: string };
 
-/** 6aee208b — the review names at most this many people, then "and N more"; the tax readiness result lists all. */
+/** 6aee208b — the review names at most this many people, then "and N more"; every ticked id is still posted. */
 const REVIEW_NAME_CAP = 20;
 
-/** 6aee208b — the two lists over the run's payslips, with their (search-filtered) counts and their addresses. */
+/** 6aee208b / a1a80747 — the two lists, with their (search-filtered) counts and their addresses: Reprocess Required
+ * (out-of-date payslips and eligible people with no payslip yet, one list) and Processed / No Change. */
 export type ReprocessTabs = {
   current: 'required' | 'unchanged';
   counts: { required: number; unchanged: number };
@@ -71,12 +72,29 @@ export type ReprocessAddCandidate = {
   warnings: string[];
   /**
    * c3258a72 — the run has nothing to pay them this month (no monthly basic, no positive money keyed), in
-   * the kernel's own reason code. Non-null ⇒ the Skipped group: unticked, not pending, still tickable.
-   * Worked out from current data on every load (`listPayslipLessEligibleWithSkip`), so keying a fee for
-   * them moves them back to New / Pending. Absent/null ⇒ New / Pending as before.
+   * the kernel's own reason code. Non-null ⇒ the Nothing payable group: unticked, not in Reprocess Required,
+   * still tickable. Worked out from current data on every load (`reprocessRequiredWithSkipPage`), so keying a
+   * fee for them moves them back into Reprocess Required. Absent/null ⇒ a New row of Reprocess Required.
    */
   skip?: NothingPayableSkipKind | null;
+  /**
+   * a1a80747 r2 — whether this run OWES them processing (core/payroll.ts `runOutstandingTx`, the rule Close uses): owed
+   * rows are counted on the tab and on the Payroll Process list, and arrive ticked when ready. `false` ⇒ the unticked
+   * Not owed on this run group (outside a chosen-list run, removed on purpose, not paid by an additional run), with
+   * `notOwedReason`. Absent ⇒ the screen's earlier rule (in-scope and ready rows ticked), for callers that do not say.
+   */
+  owed?: boolean;
+  notOwedReason?: ReprocessNotOwedReason | null;
 };
+
+/**
+ * a1a80747 — ONE ROW OF THE ONE REPROCESS REQUIRED LIST. `recalculated` ("Changed"): the run marked this payslip out of
+ * date. `added` ("New"): eligible for this month with no payslip on this run yet, with its readiness columns. The
+ * server lists each employee once, in its own order (`reprocessRequiredWithSkipPage`).
+ */
+export type ReprocessRequiredRow =
+  | ({ kind: 'recalculated' } & ReprocessStaleRow)
+  | ({ kind: 'added' } & ReprocessAddCandidate);
 
 /** The gap codes the server sends → the payroll.batch key that names them. Exhaustive by construction:
  *  an unknown code falls back to itself rather than rendering `undefined` at an operator. */
@@ -107,108 +125,100 @@ const DELIBERATE_SKIP = 'nothingPayable';
  * is the workflow the reporter rejected: the calculation was right and in weekly use, the route to it
  * was not.
  *
- * The submit enqueues a background job (core/payroll-reprocess-job.ts) and lands back on this screen with its id;
- * the page then shows the job's progress (./reprocess-progress.tsx, polling /api/payroll/reprocess-job/<id>) and
- * replaces it with the results panel when the job ends.
+ * a1a80747 — ONE LIST, ONE BUTTON. Everyone who needs processing is in Reprocess Required, each once, labelled New
+ * (no payslip on this run yet) or Changed (their payslip is out of date). Nobody with nothing to pay is mixed into
+ * it: they keep their own Nothing payable group. There is no Check Tax Readiness step any more: the ticked employees
+ * are posted as they are, and the job applies the tax readiness rules to each employee as it processes them.
+ *
+ * The submit enqueues a background job and lands back on this screen with its id; the page then shows the job's
+ * progress (./reprocess-progress.tsx) and replaces it with the results panel when the job ends.
  */
 export function ReprocessForm({
   batchId,
   employees,
-  newCandidates,
+  required,
   stale,
   focusIds,
-  pendingIds = [],
-  previousJobId,
   jobRunning = false,
   currency,
   from,
   paging,
 }: {
-  paging?:{existing:PageState;additions:PageState;runTotal:number;existingTotal:number;search:string;tabs?:ReprocessTabs};
+  paging?:{existing:PageState;runTotal:number;existingTotal:number;search:string;tabs?:ReprocessTabs};
   batchId: string;
+  /** The run's payslips on Processed / No Change (or, with no tabs, every payslip), with their money. */
   employees: ReprocessCandidate[];
   /**
-   * fbcf706d — the New / Pending group, rendered ABOVE the people already paid and arriving ALREADY
-   * TICKED, because being on this list is itself the finding: nothing else on the system says that a
-   * person eligible for the month is absent from the run that pays it. Two exceptions arrive unticked
-   * and are stated on the row rather than hidden — somebody the run's chosen list does not cover
-   * (ticking them widens it, which must be a decision, not a default) and somebody whose Personnel
-   * record cannot be paid yet (the engine would refuse the whole submit).
-   *
-   * Absent/empty ⇒ the group is not rendered at all, and this screen is exactly what it was before.
-   *
-   * c3258a72 — a candidate with `skip` set is NOT in that group: it renders under Skipped, unticked.
+   * a1a80747 — the one Reprocess Required list (this page of it): Changed and New rows in the server's order. A New
+   * row arrives ALREADY TICKED when it is ready and inside the run's chosen list, because being on this list is
+   * itself the finding (fbcf706d); somebody outside the chosen list (ticking them widens it) or not ready yet (the
+   * row cannot be ticked) is stated on the row. A New row with `skip` set goes to the Nothing payable group instead.
    */
-  newCandidates?: ReprocessAddCandidate[];
+  required?: ReprocessRequiredRow[];
   /**
    * 49e7e0a2 / 6aee208b — EVERY employment the run itself says is stale and that has a payslip here
    * (`reprocessStaleSelection`, ordered as the list is), ticked on arrival on every page — not only the ones
-   * the first page shows. Editing a one-off transaction on a processed run is what produces this list, and
-   * making the operator re-derive by hand which people they just changed is how the wrong subset gets
-   * reprocessed. `withoutPayslip` counts the stale people with no payslip on the run: they are not in this
-   * list (New / Pending is where they appear), and the selection line says so, so its total reconciles with
-   * the count on Payroll Process. Plain data, resolved on the server; the ticks stay editable.
+   * the first page shows. `withoutPayslip` counts the stale people with no payslip on the run: they are New rows
+   * of the same list, and the selection line says so, so its total reconciles with the count on Payroll Process.
    */
   stale?: { rows: ReprocessStaleRow[]; withoutPayslip: number };
-  /** 016276b7 — "Process held employees": tick exactly these New / Pending employees (the run's employees held for
+  /** 016276b7 — "Process held employees": tick exactly these New employees (the run's employees held for
    * income tax review) and nothing else on arrival. The ticks stay editable. */
   focusIds?: string[];
-  pendingIds?: string[];
-  previousJobId?: string;
   jobRunning?: boolean;
   currency: string | null;
   /**
    * b372e923 — the Payroll Process list's filter query, already whitelisted by shape on the server, or
    * null when the operator arrived without one. It rides the SUBMIT rather than only the address bar:
    * the action redirects back here with the finished job's id, and a redirect builds a brand-new URL, so
-   * anything not posted is gone by the time the result table renders — taking the filters off every
-   * Payroll Result link on it, and off this screen's own Back. The Remove form carries it the same way.
+   * anything not posted is gone by the time the result table renders.
    */
   from?: string | null;
 }) {
   const t = useTranslations('payroll.batch');
   const td=useTranslations('derivedOrganisation');
-  const additions = newCandidates ?? [];
-  // c3258a72 — the run has already decided there is nothing to pay these people, so they are not pending:
-  // their own group, never pre-ticked, never in the New / Pending count. `total` below still spans both.
-  const pendingAdditions = additions.filter((c) => !c.skip);
-  const skippedAdditions = additions.filter((c) => !!c.skip);
-  const addable = pendingAdditions.filter((c) => c.blockers.length === 0);
+  const requiredRows = required ?? [];
+  // The New rows of this page (with their readiness), and among them the people the run has nothing to pay.
+  const additions = requiredRows.filter((r): r is Extract<ReprocessRequiredRow,{kind:'added'}> => r.kind === 'added');
+  // a1a80747 r2 — three places for a New row: Nothing payable (the run's skip decision, unless the run says it is owed),
+  // Not owed on this run (the run says it owes them nothing), or the one Reprocess Required list.
+  const inSkipped = (c: ReprocessAddCandidate) => !!c.skip && c.owed !== true;
+  const inNotOwed = (c: ReprocessAddCandidate) => c.owed === false && !c.skip;
+  const skippedAdditions = additions.filter(inSkipped);
+  const notOwedAdditions = additions.filter(inNotOwed);
+  /** Ticked on arrival: ready New rows the run owes (or, when the server does not say, ready rows inside its chosen list). */
+  const addable = additions.filter((c) => !inSkipped(c) && !inNotOwed(c) && !c.skip && c.blockers.length === 0);
+  /** The one list: every Changed row and every New row the run owes, in the server's order (owed rows come first). */
+  const requiredList = requiredRows.filter((r) => r.kind === 'recalculated' || (!inSkipped(r) && !inNotOwed(r)));
   type Selected=ReprocessCandidate|ReprocessAddCandidate|ReprocessStaleRow;
   const staleRows = stale?.rows ?? [];
   /**
    * 6aee208b — THE SELECTION: the ticked employment ids (the keys) plus the last record seen for each, so an
    * off-page tick can still be named in the review and posted as a hidden input. Seeded ONCE PER MOUNT:
-   *   - every stale payslip on the run, on every page (board item 6aee208b settles the 17 November open
-   *     assumption: the people the run already knows are out of date all arrive ticked);
-   *   - ready, in-scope New / Pending people on the INITIAL page only (unchanged: that rule is not reopened);
+   *   - every stale payslip on the run, on every page;
+   *   - ready, in-scope New people on the INITIAL page only;
    *   - nobody on Processed / No Change, ever.
    * Page, rows-per-page, search and tab changes are router replaces under the same form key, so they keep
-   * this state; a later server render cannot add anyone to it (a person who becomes stale while the screen is
-   * open is counted on the selection line, unticked, and stays Reprocess Required on the run afterwards).
+   * this state; a later server render cannot add anyone to it.
    * 016276b7 — "Process held employees" (`focusIds`) instead ticks exactly the run's employees held for income tax
-   * review among the ready New / Pending people, and nobody else. The ticks stay editable.
+   * review among the ready New people, and nobody else. The ticks stay editable.
    */
   const [selected,setSelected]=useState<Map<string,Selected>>(()=>new Map(focusIds
    ? addable.filter(c=>focusIds.includes(c.employmentId)).map(c=>[c.employmentId,c] as [string,Selected])
    : [
    ...staleRows.map(e=>[e.employmentId,e] as [string,Selected]),
-   ...addable.filter(c=>!c.outsideScope).map(c=>[c.employmentId,c] as [string,Selected]),
+   ...addable.filter(c=>c.owed===true||(c.owed===undefined&&!c.outsideScope)).map(c=>[c.employmentId,c] as [string,Selected]),
   ]));
   /**
    * Idempotency token, minted ONCE PER MOUNT and posted with the form, so a double-clicked or retried
-   * submit reuses the same `payroll_reprocess_job` row instead of enqueuing a second run.
-   *
-   * It must NOT be reminted when the review block appears: the review is rendered inside this same form
-   * from this same state, precisely so that confirming is the same submit as the one being reviewed. A
-   * separate confirm step with its own mount would hand the service a fresh key, and a double confirm
-   * would then enqueue two jobs — which is the guard this token exists to provide.
+   * submit reuses the same `payroll_reprocess_job` row instead of enqueuing a second run. It must NOT be
+   * reminted when the review block appears: the review is rendered inside this same form from this same state.
    */
   const [idempotencyKey] = useState(() =>
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${batchId}-${Date.now()}`,
   );
   const total = paging?.runTotal ?? employees.length + additions.length;
-  const currentById=new Map<string,Selected>([...employees,...additions].map(e=>[e.employmentId,e]));
+  const currentById=new Map<string,Selected>([...employees,...requiredRows].map(e=>[e.employmentId,e]));
   const pickedRows=[...selected.values()].map(e=>currentById.get(e.employmentId)??e);
   const pickedNew=pickedRows.filter((e):e is ReprocessAddCandidate=>'hiredOn' in e);
   // A stale row the operator has not seen yet is still an EXISTING payslip: it is a recalculation, not an add.
@@ -221,47 +231,13 @@ export function ReprocessForm({
   const staleLeftOut=staleRows.length-staleSelected;
   const picked = [...pickedNew, ...pickedExisting];
 
-  const [checking,startCheck] = useTransition();
-  const [reviewPending,setReviewPending] = useState(false);
-  const [checked,setChecked] = useState<{key:string;result:ReprocessTaxReadiness|null}|null>(null);
-  const selectedIds = picked.map(row=>row.employmentId);
-  const reviewIds = reviewPending ? pendingIds : selectedIds;
-  const selectionKey = (ids:string[]) => [...ids].sort().join(',');
-  const reviewKey = selectionKey(reviewIds);
-  const review = !checking && checked?.key===reviewKey ? checked.result : null;
-  const ready = review?.employees.filter(row=>row.status==='ready') ?? [];
-  const held = review?.employees.filter(row=>row.status!=='ready') ?? [];
-
-  function checkTax(ids:string[],pending:boolean){
-    setReviewPending(pending);
-    setChecked(null);
-    startCheck(async ()=>{
-      try {
-        const result=await reviewReprocessTaxAction(batchId,ids);
-        setChecked({key:selectionKey(ids),result:result.ok ? result.review : null});
-      } catch {
-        setChecked({key:selectionKey(ids),result:null});
-      }
-    });
-  }
-
   /**
-   * 65e2d5de — SEARCH BY EMPLOYEE ID OR NAME, through the ONE SHARED RULE in `lib/employee-search.ts`.
-   *
-   * The obvious move was to port the predicate out of the sibling Remove Employee Payroll screen
-   * (remove-form.tsx), and the first cut of this file did exactly that. It is the wrong copy to spread:
-   * that one compares raw strings, so it answers "emp0008" with nobody, while the Personnel switcher, the
-   * Payroll Process wizard's Step-2 picker, Transaction Detail and Individual Payslip all find EMP-0008
-   * because they go through `matchesEmployeeSearch`, which FOLDS the separators an Employee ID carries.
-   * The ask here is literally "search by Employee ID", and an ID typed the way it is spoken has to work.
-   * (remove-form.tsx still carries the older, weaker copy — pre-existing, and not this round's to move.)
-   *
-   * Applied to BOTH groups: filtering the people already paid while leaving the New / Pending list
-   * unfiltered would answer "where is Siti?" with silence on one table and a row on the other.
+   * 65e2d5de — SEARCH BY EMPLOYEE ID OR NAME, through the ONE SHARED RULE in `lib/employee-search.ts`, which FOLDS
+   * the separators an Employee ID carries (so "emp0008" finds EMP-0008). Applied to every list on screen. Under
+   * server paging the rows ARE the server's filtered page, so nothing is filtered here.
    */
   const [q, setQ] = useState('');
-  // NOT lowercased here — `matchesEmployeeSearch` owns the trimming, casing and separator folding, and
-  // pre-mangling the query would silently defeat the fold it exists for.
+  // NOT lowercased here — `matchesEmployeeSearch` owns the trimming, casing and separator folding.
   const needle = q.trim();
   const visibleEmployees = useMemo(
     () => (paging || needle === '' ? employees : employees.filter((e) => matchesEmployeeSearch(e, needle))),
@@ -269,15 +245,23 @@ export function ReprocessForm({
   );
   const visibleAdditions = useMemo(
     () => (paging || needle === '' ? additions : additions.filter((e) => matchesEmployeeSearch(e, needle))),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `additions` is derived from `newCandidates`
-    [newCandidates, needle,paging],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `additions` is derived from `required`
+    [required, needle,paging],
   );
-  const visiblePending = visibleAdditions.filter((c) => !c.skip);
-  const visibleSkipped = visibleAdditions.filter((c) => !!c.skip);
-  // One hidden input per reviewed row, independent of paging, filtering or a now-disabled checkbox.
+  const visibleRequired = useMemo(
+    () => (paging || needle === '' ? requiredList : requiredList.filter((e) => matchesEmployeeSearch(e, needle))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `requiredList` is derived from `required`
+    [required, needle,paging],
+  );
+  const visibleSkipped = visibleAdditions.filter(inSkipped);
+  const visibleNotOwed = visibleAdditions.filter(inNotOwed);
+  // a1a80747 — which lists this view shows. With tabs: Reprocess Required (and its Nothing payable group) or
+  // Processed / No Change. Without tabs: the one list when anyone is on it, then every payslip.
+  const onTab = paging?.tabs?.current;
+  const showRequired = onTab ? onTab === 'required' : requiredList.length > 0 || skippedAdditions.length > 0 || notOwedAdditions.length > 0;
+  const showEmployees = onTab ? onTab === 'unchanged' : true;
 
   const toggle = (id: string) => {
-    setReviewPending(false);
     setSelected((prev) => {
       const next = new Map(prev);
       if (next.has(id)) next.delete(id);
@@ -315,72 +299,98 @@ export function ReprocessForm({
     e.preventDefault();
   };
 
-  const additionHead = (
-    <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-      <tr>
-        <th className="px-3 py-2 font-medium">{t('colEmployee')}</th>
-        <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColStatus')}</th>
-        <th className="px-3 py-2 font-medium">{t('reprocessColReason')}</th>
-        <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColJoined')}</th>
-      </tr>
-    </thead>
-  );
-  const noMatchRow = (
+  const noMatchRow = (cols: number) => (
     <tr>
-      <td colSpan={4} className="px-4 py-6 text-center text-muted-foreground">
+      <td colSpan={cols} className="px-4 py-6 text-center text-muted-foreground">
         {t('reprocessNoMatches')}
       </td>
     </tr>
   );
-  /** One payslip-less row, for either group. `skip` decides its status and sentence; see the groups. */
-  const additionRow = (c: ReprocessAddCandidate) => {
-    const on = selected.has(c.employmentId);
+  const gaps = (codes: string[]) => codes.map((g) => g==='organisationGrouping'?td('groupingBlocked'):t(GAP_LABEL[g] ?? g)).join(', ');
+  /** The reason sentence of a New row (fbcf706d), and its warning-only gaps. */
+  const addReason = (c: ReprocessAddCandidate) => {
     const blocked = c.blockers.length > 0;
-    const gaps = (codes: string[]) => codes.map((g) => g==='organisationGrouping'?td('groupingBlocked'):t(GAP_LABEL[g] ?? g)).join(', ');
     // The no-monthly-basic code is never an "Also missing" gap — see DELIBERATE_SKIP.
     const otherWarnings = c.warnings.filter((w) => w !== DELIBERATE_SKIP);
+    return <>
+      {c.skip
+        ? t(`skipped.reason.${c.skip}`)
+        : blocked
+          ? t('reprocessReasonNotReady', { gaps: gaps(c.blockers) })
+          : c.outsideScope
+            ? t('reprocessReasonOutsideScope')
+            : t('reprocessReasonNew')}
+      {!blocked && otherWarnings.length > 0 && ` ${t('reprocessReasonMissing', { gaps: gaps(otherWarnings) })}`}
+    </>;
+  };
+  /** a1a80747 r2 — why the run owes a Not owed row nothing, in the run's own terms. */
+  const notOwedReason = (c: ReprocessAddCandidate) => <>
+    {c.notOwedReason === 'outsideScope'
+      ? t('reprocessReasonOutsideScope')
+      : c.notOwedReason === 'removed'
+        ? t('reprocessNotOwedRemoved')
+        : c.notOwedReason === 'notPaidByRun'
+          ? t('reprocessNotOwedNotPaidByRun')
+          : t('reprocessNotOwedOther')}
+    {c.blockers.length > 0 && ` ${t('reprocessReasonNotReady', { gaps: gaps(c.blockers) })}`}
+  </>;
+  /** The tick box and name of one row. A New row that is not ready yet cannot be ticked. */
+  const tickCell = (row: {employmentId:string;employeeCode:string|null;name:string}, blocked = false) => {
+    const on = selected.has(row.employmentId);
     return (
-      <tr key={c.employmentId} className={on ? 'bg-primary/5' : undefined}>
-        <td className="px-3 py-2">
-          <label className={`flex items-center gap-2 ${blocked ? 'opacity-60' : ''}`}>
-            <input
-              type="checkbox"
-              value={c.employmentId}
-              checked={on}
-              disabled={blocked}
-              onChange={() => toggle(c.employmentId)}
-              className="size-4 rounded"
-            />
-            <EmployeeCode code={c.employeeCode} />
-            <span>{c.name}</span>
-          </label>
+      <td className="px-3 py-2">
+        <label className={`flex items-center gap-2 ${blocked ? 'opacity-60' : ''}`}>
+          <input
+            type="checkbox"
+            value={row.employmentId}
+            checked={on}
+            disabled={blocked}
+            onChange={() => toggle(row.employmentId)}
+            className="size-4 rounded"
+          />
+          <EmployeeCode code={row.employeeCode} />
+          <span>{row.name}</span>
+        </label>
+      </td>
+    );
+  };
+  /** a1a80747 — one row of the one list: its label says whether it is a first payslip or a recalculated one. */
+  const requiredRow = (r: ReprocessRequiredRow) => {
+    const on = selected.has(r.employmentId);
+    const isNew = r.kind === 'added';
+    return (
+      <tr key={r.employmentId} className={on ? 'bg-primary/5' : undefined}>
+        {tickCell(r, isNew && r.blockers.length > 0)}
+        <td className="whitespace-nowrap px-3 py-2">
+          <span className={isNew
+            ? 'rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800 dark:bg-sky-500/15 dark:text-sky-300'
+            : 'rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground'}>
+            {isNew ? t('reprocessLabelNew') : t('reprocessLabelChanged')}
+          </span>
         </td>
-        {c.skip ? (
-          <td className="whitespace-nowrap px-3 py-2 font-medium text-muted-foreground">{t('reprocessStatusSkipped')}</td>
-        ) : (
-          <td className="whitespace-nowrap px-3 py-2 font-medium text-amber-700 dark:text-amber-400">
-            {t('reprocessStatusNew')}
-          </td>
-        )}
-        <td className="px-3 py-2 text-xs text-muted-foreground">
-          {c.skip
-            ? t(`skipped.reason.${c.skip}`)
-            : blocked
-              ? t('reprocessReasonNotReady', { gaps: gaps(c.blockers) })
-              : c.outsideScope
-                ? t('reprocessReasonOutsideScope')
-                : t('reprocessReasonNew')}
-          {!blocked &&
-            otherWarnings.length > 0 &&
-            ` ${t('reprocessReasonMissing', { gaps: gaps(otherWarnings) })}`}
-        </td>
-        <td className="whitespace-nowrap px-3 py-2 text-muted-foreground tabular-nums">{c.hiredOn}</td>
+        <td className="px-3 py-2 text-xs text-muted-foreground">{isNew ? addReason(r) : t('reprocessReasonRequired')}</td>
       </tr>
     );
   };
+  /** The table header's selection controls, shared by both lists. Select this page ADDS the rows on screen. The
+   * "n of total selected" count is stated once, on the first list shown. */
+  const selectionControls = (onSelectPage: () => void, withSummary = true) => (
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <span>{t('colEmployee')}</span>
+      {withSummary && <span className="normal-case tracking-normal text-foreground">
+        {t('reprocessSummary', { n: selected.size, total })}
+      </span>}
+      <button type="button" onClick={onSelectPage} className="font-medium normal-case tracking-normal text-primary hover:underline">
+        {t('reprocessSelectAll')}
+      </button>
+      <button type="button" onClick={() => setSelected(new Map())} className="font-medium normal-case tracking-normal text-primary hover:underline">
+        {t('reprocessClear')}
+      </button>
+    </span>
+  );
 
   return (
-    <form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit} onSubmit={event=>{if(!ready.length || jobRunning)event.preventDefault();}} className="space-y-4">
+    <form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit} onSubmit={event=>{if(!picked.length || jobRunning)event.preventDefault();}} className="space-y-4">
       <input type="hidden" name="batchId" value={batchId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {/* See the `from` prop: the submit is the ordinary way off this screen, and it used to strip the
@@ -393,55 +403,15 @@ export function ReprocessForm({
       {paging?<PayrollSelectionSearch query={paging.search} placeholder={t('reprocessSearchPlaceholder')}/>:<input
         type="search" value={q} onChange={e=>setQ(e.target.value)} placeholder={t('reprocessSearchPlaceholder')}
         className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-1.5 text-sm"/>}
-      {paging&&<>
-       <p className="text-xs text-muted-foreground">{t('reprocessPageDefaultsNote')}</p>
-       <ClientPager state={paging.additions} paramNames={{page:'newPage',size:'newSize'}} note={t('reprocessPageGroupNote')} rememberAs="payroll-reprocess-new"/>
-      </>}
+      {paging&&<p className="text-xs text-muted-foreground">{t('reprocessPageDefaultsNote')}</p>}
 
+      {/* One hidden input per ticked employee, independent of paging, filtering, tab or a disabled checkbox. */}
+      {picked.map(row=><input key={row.employmentId} type="hidden" name="employmentIds" value={row.employmentId} />)}
 
-      {previousJobId && <input type="hidden" name="previousReprocessJob" value={previousJobId} />}
-      {(review ? ready : picked).map(row=><input key={row.employmentId} type="hidden" name="employmentIds" value={row.employmentId} />)}
-      {held.map(row=><input key={row.employmentId} type="hidden" name="heldEmploymentIds" value={row.employmentId} />)}
-
-      {/* fbcf706d — THE NEW / PENDING GROUP, above the people already paid. Rendered only when there is
-          somebody in it, so a run with nobody waiting looks exactly as it did. */}
-      {pendingAdditions.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-amber-300 dark:border-amber-500/40">
-          <table className="w-full min-w-[42rem] text-sm">
-            <caption className="bg-amber-50 px-3 py-2 text-left text-xs font-semibold text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-              {t('reprocessGroupNewTitle', { n: pendingAdditions.length })}
-            </caption>
-            {additionHead}
-            <tbody className="divide-y divide-border">
-              {visiblePending.map((c) => additionRow(c))}
-              {visiblePending.length === 0 && noMatchRow}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* c3258a72 — THE SKIPPED GROUP. Payroll already evaluated these people and had nothing to pay, so
-          this is a completed outcome, not a to-do: neutral colours, unticked, outside the pending count,
-          with the run page's own reason sentence. Ticking one by hand still tries them again. */}
-      {skippedAdditions.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full min-w-[42rem] text-sm">
-            <caption className="bg-muted px-3 py-2 text-left text-xs font-semibold text-foreground">
-              {t('reprocessGroupSkippedTitle', { n: skippedAdditions.length })}
-            </caption>
-            {additionHead}
-            <tbody className="divide-y divide-border">
-              {visibleSkipped.map((c) => additionRow(c))}
-              {visibleSkipped.length === 0 && noMatchRow}
-            </tbody>
-          </table>
-          <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{t('reprocessGroupSkippedNote')}</p>
-        </div>
-      )}
-
-      {/* 6aee208b — TWO LISTS over the run's payslips, each with its own count: the people whose data changed
-          and everybody else. Links, not buttons: the tab is the page's own `?tab=` (built on the server with the
-          page reset to 1 and the search kept), and the replace keeps this form mounted, so the ticks survive. */}
+      {/* 6aee208b / a1a80747 — TWO LISTS, each with its own count: Reprocess Required (everyone who needs processing,
+          New and Changed, once each) and Processed / No Change. Links, not buttons: the tab is the page's own `?tab=`
+          (built on the server with the page reset to 1 and the search kept), and the replace keeps this form mounted,
+          so the ticks survive. */}
       {paging?.tabs&&(
         <nav aria-label={t('reprocessTabsLabel')}
           className="flex max-w-full flex-wrap gap-1 rounded-[1.25rem] border border-border bg-card p-1.5 shadow-[var(--shadow-card)] sm:w-fit">
@@ -462,9 +432,8 @@ export function ReprocessForm({
       )}
 
       {/* 6aee208b — THE SELECTION LINE. How many of the people needing reprocess are ticked, across how many
-          pages, with the way back to all of them and the way to none. People needing reprocess who have no
-          payslip on this run are stated separately (they are in New / Pending), so the numbers on this line add
-          up to the count Payroll Process showed. */}
+          pages, with the way back to all of them and the way to none. Stale people with no payslip on this run are
+          stated separately (they are New rows of the same list), so the numbers add up to Payroll Process's count. */}
       {(staleRows.length>0 || (stale?.withoutPayslip ?? 0)>0) && (
         <div role="status" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
           <p className="min-w-0 flex-1">
@@ -476,18 +445,18 @@ export function ReprocessForm({
               </span>
             )}
             {staleOthers>0 && <> {t('reprocessStaleOthers',{n:staleOthers})}</>}
-            {(stale?.withoutPayslip ?? 0)>0 && <> {t('reprocessStaleWithoutPayslip',{n:stale!.withoutPayslip})}</>}
+            {(stale?.withoutPayslip ?? 0)>0 && <> {t('reprocessStaleWithoutPayslipNew',{n:stale!.withoutPayslip})}</>}
           </p>
           <span className="flex flex-wrap gap-x-4 gap-y-1">
             {staleSelected<staleRows.length && (
               <button type="button"
-                onClick={()=>{setReviewPending(false);setSelected(prev=>new Map([...prev,...staleRows.map(e=>[e.employmentId,prev.get(e.employmentId)??e] as [string,Selected])]));}}
+                onClick={()=>{setSelected(prev=>new Map([...prev,...staleRows.map(e=>[e.employmentId,prev.get(e.employmentId)??e] as [string,Selected])]));}}
                 className="font-medium text-primary hover:underline">
                 {t('reprocessStaleSelectAgain',{n:staleRows.length})}
               </button>
             )}
             {selected.size>0 && (
-              <button type="button" onClick={()=>{setReviewPending(false);setSelected(new Map());}}
+              <button type="button" onClick={()=>{setSelected(new Map());}}
                 className="font-medium text-primary hover:underline">
                 {t('reprocessClearSelection')}
               </button>
@@ -497,39 +466,90 @@ export function ReprocessForm({
       )}
 
       {paging&&<ClientPager state={paging.existing} note={t('reprocessPagingNote')} rememberAs="payroll-reprocess-existing"/>}
+
+      {/* a1a80747 — THE ONE REPROCESS REQUIRED LIST: New and Changed, each employee once. */}
+      {showRequired && (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[36rem] text-sm" aria-label={t('reprocessTabRequired')}>
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 font-medium">
+                  {selectionControls(() => {setSelected(prev=>new Map([...prev,...visibleRequired
+                    .filter((r) => r.kind === 'recalculated' || r.blockers.length === 0)
+                    .map((r) => [r.employmentId,r] as [string,Selected])]));})}
+                </th>
+                <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColStatus')}</th>
+                <th className="px-3 py-2 font-medium">{t('reprocessColWhy')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {visibleRequired.map((r) => requiredRow(r))}
+              {visibleRequired.length === 0 && ((paging ? paging.search.trim() !== '' : needle !== '' && requiredList.length > 0)
+                ? noMatchRow(3)
+                : <tr><td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">{t('reprocessNoRequired')}</td></tr>)}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* a1a80747 r2 — NOT OWED ON THIS RUN: on the list (eligible, no payslip here) but this run owes them nothing —
+          outside a run set up for a chosen list, removed from it on purpose, or not paid by an additional run. Neither
+          counted nor ticked, so the tab's number is the Payroll Process list's number; still tickable by hand. */}
+      {showRequired && notOwedAdditions.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[36rem] text-sm">
+            <caption className="bg-muted px-3 py-2 text-left text-xs font-semibold text-foreground">
+              {t('reprocessGroupNotOwedTitle', { n: notOwedAdditions.length })}
+            </caption>
+            <tbody className="divide-y divide-border">
+              {visibleNotOwed.map((c) => (
+                <tr key={c.employmentId} className={selected.has(c.employmentId) ? 'bg-primary/5' : undefined}>
+                  {tickCell(c, c.blockers.length > 0)}
+                  <td className="whitespace-nowrap px-3 py-2 font-medium text-muted-foreground">{t('reprocessStatusNotOwed')}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{notOwedReason(c)}</td>
+                </tr>
+              ))}
+              {visibleNotOwed.length === 0 && noMatchRow(3)}
+            </tbody>
+          </table>
+          <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{t('reprocessGroupNotOwedNote')}</p>
+        </div>
+      )}
+
+      {/* c3258a72 / a1a80747 — THE NOTHING PAYABLE GROUP, never mixed into Reprocess Required. Payroll already
+          evaluated these people and had nothing to pay, so this is a completed outcome, not a to-do: neutral colours,
+          unticked, with the run page's own reason sentence. Ticking one by hand still tries them again. */}
+      {showRequired && skippedAdditions.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[36rem] text-sm">
+            <caption className="bg-muted px-3 py-2 text-left text-xs font-semibold text-foreground">
+              {t('reprocessGroupNothingPayableTitle', { n: skippedAdditions.length })}
+            </caption>
+            <tbody className="divide-y divide-border">
+              {visibleSkipped.map((c) => (
+                <tr key={c.employmentId} className={selected.has(c.employmentId) ? 'bg-primary/5' : undefined}>
+                  {tickCell(c)}
+                  <td className="whitespace-nowrap px-3 py-2 font-medium text-muted-foreground">{t('reprocessStatusSkipped')}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{addReason(c)}</td>
+                </tr>
+              ))}
+              {visibleSkipped.length === 0 && noMatchRow(3)}
+            </tbody>
+          </table>
+          <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{t('reprocessGroupNothingPayableNote')}</p>
+        </div>
+      )}
+
+      {showEmployees && (
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-[42rem] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-3 py-2 font-medium">
-                <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span>{t('colEmployee')}</span>
-                  <span className="normal-case tracking-normal text-foreground">
-                    {t('reprocessSummary', { n: selected.size, total })}
-                  </span>
-                  {/* 65e2d5de / 6aee208b — SELECT THIS PAGE ADDS THE ROWS ON SCREEN TO THE SELECTION. It used
-                      to replace it, so pressing it on page 2 quietly dropped the people needing reprocess
-                      that arrived ticked on page 1. Under a search it adds only what the search shows. The
-                      count, the review list and the button label all move with it, and every ticked id is
-                      still submitted (the complete hidden selection below). Clear empties everything. */}
-                  <button
-                    type="button"
-                    onClick={() => {setReviewPending(false);setSelected(prev=>new Map([...prev,...visibleEmployees.map((e) => [e.employmentId,e] as [string,Selected])]));}}
-                    className="font-medium normal-case tracking-normal text-primary hover:underline"
-                  >
-                    {t('reprocessSelectAll')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {setReviewPending(false);setSelected(new Map());}}
-                    className="font-medium normal-case tracking-normal text-primary hover:underline"
-                  >
-                    {t('reprocessClear')}
-                  </button>
-                </span>
+                {/* 65e2d5de / 6aee208b — SELECT THIS PAGE ADDS THE ROWS ON SCREEN TO THE SELECTION. Under a search it
+                    adds only what the search shows. Clear empties everything. */}
+                {selectionControls(() => {setSelected(prev=>new Map([...prev,...visibleEmployees.map((e) => [e.employmentId,e] as [string,Selected])]));}, !showRequired)}
               </th>
-              {/* fbcf706d — the same two columns the group above carries, so the two lists read as one
-                  screen and the answer to "why is this person here" is in the same place on both. */}
               <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColStatus')}</th>
               <th className="px-3 py-2 font-medium">{t('reprocessColReason')}</th>
               <th className="whitespace-nowrap px-3 py-2 font-medium">{t('reprocessColAlready')}</th>
@@ -542,19 +562,7 @@ export function ReprocessForm({
               const on = selected.has(e.employmentId);
               return (
                 <tr key={e.employmentId} className={on ? 'bg-primary/5' : undefined}>
-                  <td className="px-3 py-2">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        value={e.employmentId}
-                        checked={on}
-                        onChange={() => toggle(e.employmentId)}
-                        className="size-4 rounded"
-                      />
-                      <EmployeeCode code={e.employeeCode} />
-                      <span>{e.name}</span>
-                    </label>
-                  </td>
+                  {tickCell(e)}
                   {e.stale ? (
                     <td className="whitespace-nowrap px-3 py-2">
                       <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
@@ -582,34 +590,31 @@ export function ReprocessForm({
             {visibleEmployees.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                  {/* An empty RUN and an empty SEARCH RESULT are different facts, and saying "No employees
-                      on this run" to somebody who has just typed a name is a false statement about the
-                      payroll run. Same split as remove-form.tsx. */}
-                  {/* 6aee208b — under paging the rows ARE the server's filtered page, so the search text, not
-                      the row count, says whether this is an empty search; an empty TAB names its own list. */}
+                  {/* An empty RUN and an empty SEARCH RESULT are different facts. 6aee208b — under paging the rows ARE
+                      the server's filtered page, so the search text, not the row count, says whether this is an empty
+                      search; an empty TAB names its own list. */}
                   {(paging ? paging.search.trim() !== '' : employees.length > 0)
                     ? t('reprocessNoMatches')
-                    : paging?.tabs?.current === 'required'
-                      ? t('reprocessNoRequired')
-                      : paging?.tabs?.current === 'unchanged' && paging.existingTotal > 0
-                        ? t('reprocessNoUnchanged')
-                        : t('reprocessNoEmployees')}
+                    : onTab === 'unchanged' && paging!.existingTotal > 0
+                      ? t('reprocessNoUnchanged')
+                      : t('reprocessNoEmployees')}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+      )}
 
       {/* THE REVIEW STEP. Reprocessing is not destructive, but it does move somebody's pay, so what is
           about to happen is restated in names — and, just as importantly, what is NOT about to happen.
           Rendered from the same state as the ticks above, in the same form: see `idempotencyKey`. */}
-      {picked.length > 0 && !reviewPending && !review && (
+      {picked.length > 0 && (
         <div className="rounded-xl border border-dashed border-primary/45 bg-primary/5 px-4 py-3">
           <p className="text-sm font-medium">{t('reprocessReviewTitle', { n: picked.length, total })}</p>
           <p className="mt-1 text-sm">
             {/* 6aee208b — capped, so a long selection does not fill the screen: the first names, then "and N
-                more". Every ticked id is still posted, and the tax readiness result lists everyone. */}
+                more". Every ticked id is still posted. */}
             {picked.slice(0, REVIEW_NAME_CAP).map((e) => (
               <span key={e.employmentId} className="mr-3 inline-flex items-baseline gap-1.5">
                 <EmployeeCode code={e.employeeCode} />
@@ -626,7 +631,7 @@ export function ReprocessForm({
           <p className="mt-1.5 text-xs text-muted-foreground">
             {/* "The other N payslips are not touched" counts PAYSLIPS, so it is the unpicked people who
                 already have one — an addition has no payslip to leave alone. */}
-            {t('reprocessReviewNote', { n: (paging?.existingTotal ?? employees.length) - pickedExisting.length })}
+            {t('reprocessReviewNote', { n: Math.max(0, (paging?.existingTotal ?? employees.length) - pickedExisting.length) })}
           </p>
           {pickedNew.length > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -634,53 +639,6 @@ export function ReprocessForm({
             </p>
           )}
         </div>
-      )}
-
-      {(pendingIds.length>0 || selectedIds.length>0) && (
-        <div className="flex flex-wrap gap-2">
-          {selectedIds.length>0 && <Button type="button" variant="outline" disabled={checking || jobRunning}
-            onClick={()=>checkTax(selectedIds,false)}>
-            {t('reprocessCheckTax', {n:selectedIds.length})}
-          </Button>}
-          {pendingIds.length>0 && <Button type="button" variant="outline" disabled={checking || jobRunning}
-            onClick={()=>checkTax(pendingIds,true)}>
-            {t('reprocessCheckPending', {n:pendingIds.length})}
-          </Button>}
-        </div>
-      )}
-      {checking && <p role="status" className="text-sm text-muted-foreground">{t('reprocessCheckingTax')}</p>}
-      {!checking && checked?.key===reviewKey && !checked.result &&
-        <p role="alert" className="text-sm text-destructive">{t('reprocessCheckTaxError')}</p>}
-      {review && (
-        <section aria-label={t('reprocessTaxReadiness')} className="space-y-3 rounded-xl border border-border p-4 text-sm">
-          <h3 className="font-semibold">{t('reprocessTaxReadiness')}</h3>
-          <p role="status">
-            {t('reprocessTaxReadinessSummary', {ready:ready.length,recalculating:held.filter(row=>row.status==='recalculating').length,
-              blocked:held.filter(row=>row.status==='blocked').length})}
-          </p>
-          {ready.length>0 && <details>
-            <summary className="cursor-pointer font-medium">{t('reprocessTaxReadyList')}</summary>
-            <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-              {ready.map(row=><li key={row.employmentId} className="flex items-baseline gap-1.5">
-                <EmployeeCode code={row.employeeCode}/>{row.name}
-              </li>)}
-            </ul>
-          </details>}
-          {held.length>0 && <ul className="divide-y divide-border">
-            {held.map(row=><li key={row.employmentId} className="py-2">
-              <p className="flex items-baseline gap-1.5 font-medium"><EmployeeCode code={row.employeeCode}/>{row.name}</p>
-              <p className="text-muted-foreground">
-                {row.status==='blocked' ? row.reason : t('reprocessTaxRecalculating')}
-              </p>
-              {row.status==='blocked' && row.previousReviewReason && row.previousReviewReason!==row.reason &&
-                <p className="text-muted-foreground">{t('reprocessPreviousTaxReason',{reason:row.previousReviewReason})}</p>}
-            </li>)}
-          </ul>}
-          {review.taxReviewHref && held.some(row=>row.status==='blocked') &&
-            <Link href={review.taxReviewHref} target="_blank" rel="noopener noreferrer" className="inline-block font-medium text-primary underline">
-              {t('reprocessOpenTaxReview')}
-            </Link>}
-        </section>
       )}
 
       <label className="block">
@@ -703,11 +661,13 @@ export function ReprocessForm({
           {t('reprocessCancel')}
         </Link>
         <SubmitButton
-          count={jobRunning ? 0 : ready.length}
-          label={review ? t('reprocessSubmitTaxReady', { n: ready.length }) : t('reprocessSubmitN', { n: picked.length })}
+          count={jobRunning ? 0 : picked.length}
+          label={t('reprocessSubmitN', { n: picked.length })}
           pendingLabel={t('reprocessRunning')}
         />
       </div>
+      {/* a1a80747 — there is no separate tax check to press: say where it went. */}
+      <p className="text-xs text-muted-foreground">{t('reprocessTaxCheckAutomatic')}</p>
     </form>
   );
 }

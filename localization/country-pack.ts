@@ -362,6 +362,8 @@ export interface CountryPackClient {
     taxCircumstanceOf?: typeof import('./my/tax-circumstance')['taxCircumstanceOf'];
     readSavedTaxCircumstance?: typeof import('./my/tax-circumstance')['readSavedTaxCircumstance'];
     taxSelectionSchemes?: readonly string[];
+    /** ADR 0183 — the Income Tax Resident choices that carry an HR-entered PCB number (MY: custom_fixed, custom_rate). */
+    customPcbSchemes?: readonly string[];
   };
 
   /**
@@ -418,6 +420,11 @@ export interface CountryPack {
   statutory: {
     set: MyStatutoryModule['setStatutoryProfileMY'];
     initializeForHire?:MyStatutoryModule['initializeHiredStatutoryMY'];
+    /** The pure parts of initializeForHire and initializeHiredTaxSelectionTx for a person with no profile yet, for the
+     * employee import's set path (ADR 0181 J2): the values the owner writes and the events' payloads. A pack without
+     * them imports every row through the per-row owners. */
+    hireGroup?:{prepareNewProfile:MyStatutoryModule['prepareNewStatutoryProfileMY'];profileEventPayload:MyStatutoryModule['statutoryProfileEventPayloadMY'];
+     taxSelectionValues:MyTaxSelectionModule['hiredTaxSelectionValuesMY'];taxSelectionEventPayload:MyTaxSelectionModule['hiredTaxSelectionEventPayloadMY']};
     /** Actual country-owned one-Tx read/modify/write interval for split-card pass-through. */
     withWrite?:MyStatutoryModule['withStatutoryProfileWriteMY'];
     /** Optional trusted human full-row reviewed source; never a generic model executor. */
@@ -524,6 +531,9 @@ export interface CountryPack {
      */
     statutory: MyPayrollModule['statutory'];
     resolveTaxScheme?: MyTaxSelectionModule['resolveTaxSelectionMY'];
+    /** ADR 0181 J2 — `resolveTaxScheme` for a group of one employer's employees in a few statements; each employee's
+     *  result or error is returned (not thrown) so the engine raises it where the single call would. */
+    resolveTaxSchemes?: MyTaxSelectionModule['resolveTaxSelectionsMY'];
     /**
      * r356 — fold ONE prior payslip into the year's PCB accumulators (Y, Sigma(Y-K), K, X, Z, sum-LP).
      * On the seam because the kernel's replay and the MY worksheet's replay must be the SAME arithmetic:

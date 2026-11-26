@@ -4,7 +4,7 @@ import {maintenanceTaxInput} from '../lib/payroll-history-maintenance-tax-input'
 import {effectiveHistoryItems} from '../lib/payroll-history-maintenance-lineage';
 import type {HistoryRevisionRow} from '../lib/payroll-history-revisions';
 import {importedTaxInput,SYSTEM_BASIC_TAX_SETTING,type ImportedTaxSetting} from '../lib/payroll-import-tax-input';
-import {readPcbNonCash} from '../localization/noncash-benefits';
+import {readPcbNonCash,nonCashComparisonInputs} from '../localization/noncash-benefits';
 import {resolveTaxOpeningEvidence} from '../lib/payroll-tax-opening-evidence';
 import {readTaxOpeningRowsTx,resolveTaxOpeningRow} from './payroll-tax-opening';
 import {summarizeExemptionLedger,taxOpeningDigestRow,type TaxOpeningRow} from '../lib/payroll-tax-opening-tp3';
@@ -29,7 +29,7 @@ const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&
 const canonical=(v:unknown):string=>JSON.stringify(v,(_key,item)=>object(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 const hash=(v:unknown)=>createHash('sha256').update(canonical(v)).digest('hex');
 function fail(s:string):never{throw new PayrollTaxBasisError(s);}
-const nonCashInputs=(value:unknown)=>{const saved=readPcbNonCash(value);return saved?{owned:saved.owned,entries:saved.ownedEntries.map(({sourceId,source,...entry})=>entry),ea:saved.ownedEaEntries.map(({sourceId,source,...entry})=>entry)}:{owned:{bik:0,vola:0},entries:[],ea:[]};};
+const nonCashInputs=nonCashComparisonInputs;
 const round=(n:number)=>Math.round(n*100)/100;
 const money=(v:unknown):number|null=>{if(typeof v!=='number'&&typeof v!=='string')return null;if(typeof v==='string'&&!v.trim())return null;const n=Number(v);return Number.isFinite(n)&&n>=0&&Number.isSafeInteger(Math.round(n*100))&&Math.abs(n*100-Math.round(n*100))<1e-6?n:null;};
 function validateSelection(v:TaxBasisSelection,allowEmptySelection=false){if(!v||!uuid.test(v.companyId)||!Number.isInteger(v.year)||v.year<1900||v.year>2999||!Number.isInteger(v.upToMonth)||v.upToMonth<1||v.upToMonth>12||v.employmentIds!==null&&(!Array.isArray(v.employmentIds)||(!allowEmptySelection&&!v.employmentIds.length)||v.employmentIds.length>1000||v.employmentIds.some(id=>!uuid.test(id))||new Set(v.employmentIds).size!==v.employmentIds.length))fail('Choose a company, assessment year, final month and valid employees.');}
@@ -385,12 +385,9 @@ async function taxBasisInputsDigestTx(tx:Tx,ctx:SessionContext,selection:TaxBasi
   const period=`${selection.year}-${String(month).padStart(2,'0')}`;
   rules.push(hash(await lap(laps,'rules',()=>pack.payroll.loadRulesetResolved(tx,{asOf:period+'-01'})).catch((error:unknown)=>({unavailable:error instanceof Error?error.message:String(error)}))));
  }
- const year=selection.year+'-%';
- const [rows]=await lap(laps,'sourceRows',()=>tx.execute<{d:string}>(sql`select md5(coalesce(string_agg(x,',' order by x),'')) as d from (
-   select 'p:'||p.id||':'||p.xmin||':'||b.id||':'||b.xmin as x from payslip p join payroll_batch b on b.id=p.batch_id where b.company_id=${selection.companyId}::uuid and b.pay_period like ${year}
-   union all select 'r:'||r.id||':'||r.xmin from payroll_tax_basis_revision r where r.company_id=${selection.companyId}::uuid and r.period like ${year}
-   union all select 's:'||s.id from payroll_history_import_snapshot s join payroll_history_import_record h on h.id=s.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}
-   union all select 'v:'||v.id from payroll_history_import_revision v join payroll_history_import_record h on h.id=v.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}) q`));
+ // Set-wise under the same authority (migration 7170): the reader's row security ran the payslip policy stack once per
+ // tax-basis revision and held the locks for 18-37 s on production; the definer returns the same digest of the same rows.
+ const [rows]=await lap(laps,'sourceRows',()=>tx.execute<{d:string}>(sql`select app.payroll_tax_basis_source_digest(${selection.companyId}::uuid,${selection.year}::integer) as d`));
  // The opening source, TP3 identity/revision, projection and declared answer invalidate a preview when any of them changes.
  const openings=[...(await lap(laps,'openingEvidence',()=>readTaxOpeningRowsTx(tx,ctx,selection.year,(selection.employmentIds===null?subjects:selectedSubjects).map(subject=>subject.id)))).values()].map(taxOpeningDigestRow);
  return hash({settings,subjects:[...subjects],selectedSubjects:[...selectedSubjects],company:company?.row??null,rules,rows:rows?.d??null,openings});

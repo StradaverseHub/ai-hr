@@ -191,10 +191,12 @@ describe('33bf1a2d — the Attachment column costs no extra query', () => {
 
   it('the approvals page reads it off the row it already has (no per-row fetch)', () => {
     expect(approvals).toContain('r.hasDocument ? `/me/leave/attachment/${r.id}?inline=1` : null');
-    // An N+1 would look like a per-row loader. The ONE eager per-row await on this page is the ADR-0068
-    // date breakdown, which predates this round; nothing else may join it.
+    // An N+1 would look like a per-row loader. UPDATED BY ADR-0181 1.4: the one eager per-row await this page
+    // had (the ADR-0068 date breakdown) became one set read, so no per-row async map remains, and none may be
+    // added for the attachment column.
     const perRowAwaits = [...approvals.matchAll(/pendingLeave\.map\(async/g)];
-    expect(perRowAwaits, 'no NEW per-row async map may be added for the attachment column').toHaveLength(1);
+    expect(perRowAwaits, 'no per-row async map may be added for the attachment column').toHaveLength(0);
+    expect(approvals).toContain('leaveRequestDateBreakdowns(s, pendingLeave.map((r) => r.id))');
   });
 
   it('the icon links at the existing RLS-scoped attachment route, opened in a new tab', () => {
@@ -483,7 +485,7 @@ describe('d6429eb4 r80 — the confirm button inside the Review dates pop-out re
     expect(sourceFiles().filter((f) => read(f).includes("t('submitDecisions')"))).toEqual([APPROVALS]);
     // Wording only: the one batch submit, the same action, the same missing-reason guard.
     const modal = read('app/approvals/leave-date-breakdown.tsx');
-    expect(modal).toContain('<form action={decideLeaveDatesAction}');
+    expect(modal).toContain('<ActionNavigateForm action={decideLeaveDatesAction}');
     expect(modal).toContain('disabled={missingReason}');
   });
 });

@@ -14,6 +14,8 @@ import { queueFixedTransactionImportAction } from '../import-excel/fixed-actions
 import { FIXED_TXN_IMPORT_LOG } from '@/lib/fixed-transaction-import-log';
 import { buildTxnTemplateReference } from '../import-excel/reference';
 import { FixedTxnList, type FixedTxnRow } from './fixed-list';
+import type { EditFixedDialogLabels } from './edit-fixed-dialog';
+import { FIXED_ERROR_KEYS, fixedErrorValues, fixedEditCycleOptions } from './edit-model';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -27,9 +29,11 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
  *    built once for both screens because NEITHER had one).
  *  - The item list had no search, no sorting and no paging. It has all three now, which matters most on
  *    this screen precisely because every edit ADDS a row (see the versioning note below).
- *  - Edit unfolded a form INSIDE the Action cell of the row you clicked. It is now a dedicated page,
- *    `fixed/[id]`, where the effective-dating warning can be stated properly rather than as one line
- *    squeezed beside a Save button.
+ *  - Edit unfolded a form INSIDE the Action cell of the row you clicked. It became a dedicated page,
+ *    `fixed/[id]`, where the effective-dating warning could be stated properly rather than as one line
+ *    squeezed beside a Save button. cc8bd87f then made it a POP-UP over this list (edit-fixed-dialog.tsx)
+ *    with the same room, one End Date (Last Date to Pay) field in place of the separate Stop box, and
+ *    `fixed/[id]` reduced to a redirect here with `?edit=<id>`.
  *
  * WHAT WAS DELIBERATELY NOT CHANGED, though "match Individual Transaction" could be read as asking for it:
  *  - ADD still opens a MODAL. That was an approved decision of its own (ee21508c: the always-on add form
@@ -64,12 +68,16 @@ export default async function FixedTransactionPage({
     clashPeriod?: string;
     // a3d485f6 — the first-of-month the mid-month refusal offers instead.
     nextFirst?: string;
+    // cc8bd87f — the latest end date the same-month refusal offers instead.
+    latestEnd?: string;
+    // cc8bd87f — open the View / Edit pop-up on this row (an old link to fixed/[id], or a refused removal).
+    edit?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
   const tImport = await getTranslations('payroll.individualImport');
-  const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod, nextFirst } = await searchParams;
+  const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod, nextFirst, latestEnd, edit } = await searchParams;
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(FIXED_PANEL_COOKIE)?.value !== '0';
@@ -113,6 +121,9 @@ export default async function FixedTransactionPage({
   // ENDED is derived against the TENANT timezone, on the server. Deriving it in the browser would call an
   // item ended a day early or late for anyone whose device clock sits either side of MYT midnight.
   const today = todayInKualaLumpur();
+  // 4fffe638 — the View / Edit pop-up's cycle choices: this company's ACTIVE cycles (read above for Add),
+  // with a row's since-inactivated linked cycle prepended and marked. No extra read per row.
+  const activeCycles = cycles.map((c) => ({ id: c.id, name: c.name }));
   const rows: FixedTxnRow[] = existing.map((r) => ({
     id: r.id,
     code: r.code,
@@ -127,6 +138,9 @@ export default async function FixedTransactionPage({
     cycleName: r.payrollCycleName ?? null,
     remarks: r.remarks,
     ended: r.validTo != null && r.validTo < today,
+    payrollCycleId: r.payrollCycleId ?? null,
+    cycleOptions: fixedEditCycleOptions(activeCycles, r, (name) => t('fixed.cycleInactive', { name })),
+    cyclePlaceholder: !r.payrollCycleId && r.runType ? t(`individual.cycle.${r.runType}` as never) : '—',
   }));
   // Pre-translated cycle labels: the list is a client component and these live in a DIFFERENT namespace
   // (`payroll.transactions.individual.cycle.*`), so resolving them there would make it a two-namespace
@@ -135,37 +149,49 @@ export default async function FixedTransactionPage({
     FIXED_TRANSACTION_CYCLES.map((c) => [c, t(`individual.cycle.${c}` as never)]),
   ) as Record<string, string>;
 
-  // Friendly error keys thrown by the action → localised; anything else is a raw message.
-  const errorKeys = new Set([
-    'dateError',
-    'currencyUnsupported',
-    'amountError',
-    'required',
-    'outOfScope',
-    'notFound',
-    // 2aed39d4 — removal/edit refused because a CLOSED run covers the row's window (was: paid on a
-    // processed payslip; the reporter's point 7 asks for processed-but-open to stay editable).
-    'paidOnPayslip',
-    // 2aed39d4 — the two overlap refusals. Both name the clashing record via ICU arguments.
-    'overlap',
-    'backwards',
-    // a3d485f6 — the change lands part-way through a month a live record already covers, which pays
-    // both in full. Names the pay item and the first-of-month to use instead.
-    'midMonth',
-    // 4fffe638 — the chosen Payroll Cycle is missing, inactive or another company's.
-    'cycleInvalid',
-  ]);
-  // Clash arguments are passed to every key; next-intl ignores the ones a message does not use.
+  // Friendly error keys thrown by an action → localised; anything else is a raw message. The key set and
+  // the argument filling are shared with the View / Edit pop-up (edit-model.ts).
   const errorMessage =
-    error && errorKeys.has(error)
-      ? t(`fixed.${error}`, {
-          code: clashCode ?? '—',
-          from: clashFrom ?? '—',
-          to: clashTo ?? t('fixed.openEnded'),
-          period: clashPeriod ?? '—',
-          nextFirst: nextFirst ?? '—',
-        })
+    error && FIXED_ERROR_KEYS.has(error)
+      ? t(
+          `fixed.${error}` as never,
+          fixedErrorValues(
+            { code: clashCode, from: clashFrom, to: clashTo, period: clashPeriod, nextFirst, latestEnd },
+            t('fixed.openEnded'),
+          ) as never,
+        )
       : error;
+  // cc8bd87f — `?edit=` opens the pop-up only when it names a LIVE row of the selected, in-scope employee
+  // (`rows` is already that); anything else is ignored. A refusal that came with it is shown inside it.
+  const editId = edit && rows.some((r) => r.id === edit) ? edit : null;
+  const editLabels: EditFixedDialogLabels = {
+    subtitle: t('fixed.detailSubtitle'),
+    notChangedHere: t('fixed.notChangedHere'),
+    employee: t('fixed.colEmployee'),
+    currentAmount: t('fixed.currentAmount'),
+    status: t('fixed.status'),
+    statusActive: t('fixed.statusActive'),
+    statusEnded: t('fixed.statusEnded'),
+    versioningTitle: t('fixed.versioningTitle'),
+    versioningBody: t('fixed.versioningBody'),
+    amount: t('fixed.amount'),
+    payrollCycle: t('fixed.payrollCycle'),
+    startDate: t('fixed.startDate'),
+    endDate: t('fixed.endDate'),
+    endDateHint: t('fixed.endDateHint'),
+    remarks: t('fixed.remarks'),
+    requiredField: t('fixed.requiredField'),
+    save: t('fixed.save'),
+    saving: t('fixed.saving'),
+    cancel: t('fixed.cancel'),
+    close: t('fixed.close'),
+    remove: t('fixed.delete'),
+    removeTitle: t('fixed.deleteTitle'),
+    removeBody: t('fixed.deleteBody'),
+    saved: t('fixed.savedToast'),
+    removed: t('fixed.removedToast'),
+    openEnded: t('fixed.openEnded'),
+  };
 
   return (
     <div className={pageWideCls}>
@@ -192,7 +218,8 @@ export default async function FixedTransactionPage({
         </div>
       )}
 
-      <ErrorBanner message={errorMessage} />
+      {/* A refusal for the item being reopened is shown inside its pop-up instead (cc8bd87f). */}
+      <ErrorBanner message={editId ? undefined : errorMessage} />
 
       <CollapsibleEmployeePanel
         defaultOpen={panelDefaultOpen}
@@ -266,7 +293,7 @@ export default async function FixedTransactionPage({
                 header row instead, on the same horizontal line as the Hide/Show control. */}
             <SectionHeader title={t('fixed.title')} count={rows.length} />
 
-            {/* A CHANGE ADDS A LINE — said here, and again in full on the item's own page. Editing a
+            {/* A CHANGE ADDS A LINE — said here, and again in the item's View / Edit pop-up. Editing a
                 recurring item closes the current value from the chosen date and starts a new one, so the
                 history stays intact and nobody is paid twice for the same period. A bigger screen makes
                 the extra rows MORE visible, so saying nothing would have made the redesign harder to
@@ -278,8 +305,12 @@ export default async function FixedTransactionPage({
             <FixedTxnList
               rows={rows}
               employmentId={selected!}
+              employee={{ code: selectedEmp.employeeCode ?? null, name: selectedEmp.name }}
               cycleLabels={cycleLabels}
               cycleUnspecifiedLabel={t('fixed.cycleUnspecified')}
+              editLabels={editLabels}
+              initialEditId={editId}
+              initialEditError={editId ? (errorMessage ?? null) : null}
             />
           </Card>
         )}

@@ -29,15 +29,16 @@ import {
   ReprocessForm,
   type ReprocessAddCandidate,
   type ReprocessCandidate,
+  type ReprocessRequiredRow,
 } from '../app/payroll/[batchId]/reprocess/reprocess-form';
 
 // The server action, stubbed. It is a 'use server' module that reaches Postgres on import; what this file
 // is about is the screen in front of it, and the action's own behaviour is proved against a real database
 // in test/payroll-reprocess-route-e440991b.test.ts.
-vi.mock('../app/payroll/actions', () => ({ reprocessSelectedAction: vi.fn(), reviewReprocessTaxAction: vi.fn() }));
+vi.mock('../app/payroll/actions', () => ({ reprocessSelectedAction: vi.fn() }));
 // Imported so the Enter cases below can assert the recalculation was never enqueued — the same mock the
 // form is rendered against, not a second one.
-import { reprocessSelectedAction, reviewReprocessTaxAction } from '../app/payroll/actions';
+import { reprocessSelectedAction } from '../app/payroll/actions';
 
 // Navigation is tested separately; these tests retain the real selection/review/form state.
 vi.mock('../components/client-pager', () => ({ ClientPager: ({rememberAs}:{rememberAs?:string}) => <nav aria-label={rememberAs}/> }));
@@ -79,16 +80,7 @@ const form = (over: Partial<Parameters<typeof ReprocessForm>[0]> = {}) =>
   wrap(<ReprocessForm batchId="b1" employees={PEOPLE} currency="MYR" {...over} />);
 
 const boxes = () => screen.getAllByRole('checkbox') as HTMLInputElement[];
-const submit = () => screen.getByRole('button', { name: /Reprocess \d+ (ready )?employee/ });
-
-async function checkReady(user:ReturnType<typeof userEvent.setup>){
-  vi.mocked(reviewReprocessTaxAction).mockImplementationOnce(async (_batch,ids)=>({ok:true,review:{
-    employees:ids.map(employmentId=>({employmentId,employeeCode:null,name:employmentId,status:'ready'})),
-    taxReviewHref:null,
-  }}));
-  await user.click(screen.getByRole('button',{name:/Check tax readiness/}));
-  await screen.findByRole('region',{name:'Tax readiness for this reprocess'});
-}
+const submit = () => screen.getByRole('button', { name: /Reprocess \d+ employee/ });
 
 describe('e440991b — the selection screen renders', () => {
   it('lists every payslip on the run with its gross, net and prior-reprocess count', () => {
@@ -139,8 +131,7 @@ describe('e440991b — the review step restates what will and will not happen', 
     // selection, the operator would be reading a reassurance the run is not honouring.
     expect(within(review).queryByText('Alice Lim')).not.toBeInTheDocument();
     expect(review.textContent).toContain('The other 1 payslip(s) are not touched');
-    expect(submit()).toBeDisabled();
-    await checkReady(user);
+    // a1a80747 — no tax readiness step in between: the ticked selection is submittable as it is.
     expect(submit()).toBeEnabled();
     expect(submit().textContent).toContain('2');
   });
@@ -234,23 +225,25 @@ const add = (over: Partial<ReprocessAddCandidate> & { employmentId: string }): R
   warnings: [],
   ...over,
 });
+/** a1a80747 — the same person as a New row of the one Reprocess Required list. */
+const added = (over: Partial<ReprocessAddCandidate> & { employmentId: string }): ReprocessRequiredRow => ({ kind: 'added', ...add(over) });
 
 describe('fbcf706d — people eligible for the month with no payslip on the run', () => {
   it('is not rendered at all when nobody is waiting — the screen is exactly what it was', () => {
-    const { container } = form({ newCandidates: [] });
+    const { container } = form({ required: [] });
     expect(container.querySelectorAll('tbody tr')).toHaveLength(3);
-    expect(screen.queryByText(/New \/ Pending/)).not.toBeInTheDocument();
+    expect(container.querySelectorAll('table'), 'no Reprocess Required list without anyone on it').toHaveLength(1);
   });
 
   it('lists them above the people already paid, ready-ticked, with the reason on the row', () => {
-    const { container } = form({ newCandidates: [add({ employmentId: 'n1' })] });
+    const { container } = form({ required: [added({ employmentId: 'n1' })] });
     const tables = [...container.querySelectorAll('table')];
     // ORDER IS THE POINT: the finding goes above the list you already knew about.
     expect(tables[0]!.textContent).toContain('Siti Aminah');
     expect(tables[1]!.textContent).toContain('John Tan');
-    expect(tables[0]!.textContent).toContain('New / Pending');
+    // a1a80747 — a New row of the one Reprocess Required list, labelled as such.
+    expect(within(tables[0] as HTMLElement).getByText('New')).toBeInTheDocument();
     expect(tables[0]!.textContent).toContain('Eligible for this month and has no payslip on this run.');
-    expect(tables[0]!.textContent).toContain('2026-01-06');
     // Being on this list is itself the finding, so paying them is one press.
     const box = screen.getAllByRole('checkbox')[0] as HTMLInputElement;
     expect(box.checked, 'the waiting employee arrived unticked').toBe(true);
@@ -259,7 +252,7 @@ describe('fbcf706d — people eligible for the month with no payslip on the run'
   });
 
   it('somebody the run’s chosen list does not cover arrives UNTICKED, and the row says why', () => {
-    form({ newCandidates: [add({ employmentId: 'n1', outsideScope: true })] });
+    form({ required: [added({ employmentId: 'n1', outsideScope: true })] });
     expect((screen.getAllByRole('checkbox')[0] as HTMLInputElement).checked).toBe(false);
     expect(
       screen.getByText(/This run was set up for a chosen list of people and this person is not on it/),
@@ -267,7 +260,7 @@ describe('fbcf706d — people eligible for the month with no payslip on the run'
   });
 
   it('somebody whose record cannot be paid yet is named and CANNOT be ticked', () => {
-    form({ newCandidates: [add({ employmentId: 'n1', blockers: ['missingCompensation'], warnings: ['missingBank'] })] });
+    form({ required: [added({ employmentId: 'n1', blockers: ['missingCompensation'], warnings: ['missingBank'] })] });
     const box = screen.getAllByRole('checkbox')[0] as HTMLInputElement;
     expect(box.checked).toBe(false);
     expect(box.disabled, 'a blocked employee could still be submitted').toBe(true);
@@ -275,7 +268,7 @@ describe('fbcf706d — people eligible for the month with no payslip on the run'
   });
 
   it('a warning-only gap is stated but never prevents the add', () => {
-    form({ newCandidates: [add({ employmentId: 'n1', warnings: ['missingStatutory', 'missingBank'] })] });
+    form({ required: [added({ employmentId: 'n1', warnings: ['missingStatutory', 'missingBank'] })] });
     const box = screen.getAllByRole('checkbox')[0] as HTMLInputElement;
     expect(box.checked).toBe(true);
     expect(box.disabled).toBe(false);
@@ -284,7 +277,7 @@ describe('fbcf706d — people eligible for the month with no payslip on the run'
 
   it('the review restates the addition separately from the recalculation', async () => {
     const user = userEvent.setup();
-    form({ newCandidates: [add({ employmentId: 'n1' })] });
+    form({ required: [added({ employmentId: 'n1' })] });
     await user.click(screen.getAllByRole('checkbox')[1]!); // John Tan, already paid
     const review = screen.getByText(/Before you submit/).closest('div') as HTMLElement;
     expect(review.textContent).toContain('2 of 4 employee(s)');
@@ -294,19 +287,19 @@ describe('fbcf706d — people eligible for the month with no payslip on the run'
   });
 
   it('posts the additions alongside the recalculations, in one id list', () => {
-    const { container } = form({ newCandidates: [add({ employmentId: 'n1' })], stale: staleOf(['e3']) });
+    const { container } = form({ required: [added({ employmentId: 'n1' })], stale: staleOf(['e3']) });
     const data = new FormData(container.querySelector('form') as HTMLFormElement);
     expect(data.getAll('employmentIds').sort()).toEqual(['e3', 'n1']);
   });
 
-  it('both groups carry the same Status and Reason columns', () => {
-    const { container } = form({ newCandidates: [add({ employmentId: 'n1' })] });
-    for (const table of [...container.querySelectorAll('table')]) {
-      const head = table.querySelector('thead')!.textContent!;
-      expect(head).toContain('Status');
-      expect(head).toContain('Reason');
-    }
-    expect(container.querySelectorAll('table')[1]!.textContent).toContain('Already paid on this run');
+  it('the one list says Status and Why; the payslip list keeps Status and Reason', () => {
+    const { container } = form({ required: [added({ employmentId: 'n1' })] });
+    const [one, paid] = [...container.querySelectorAll('table')];
+    expect(one!.querySelector('thead')!.textContent).toContain('Status');
+    expect(one!.querySelector('thead')!.textContent).toContain('Why');
+    expect(paid!.querySelector('thead')!.textContent).toContain('Status');
+    expect(paid!.querySelector('thead')!.textContent).toContain('Reason');
+    expect(paid!.textContent).toContain('Already paid on this run');
   });
 });
 
@@ -331,10 +324,10 @@ const posted = (container: HTMLElement): string[] =>
 describe('65e2d5de — the submitted set IS the reviewed set, filtered or not', () => {
   it('filters BOTH groups on employee ID or name, partially and case-insensitively', async () => {
     const user = userEvent.setup();
-    const { container } = form({ newCandidates: [add({ employmentId: 'n1' }), add({ employmentId: 'n2', employeeCode: 'A0002', name: 'Raj Perumal' })] });
+    const { container } = form({ required: [added({ employmentId: 'n1' }), added({ employmentId: 'n2', employeeCode: 'A0002', name: 'Raj Perumal' })] });
     const search = screen.getByRole('searchbox');
 
-    // A name fragment, lower case against a capitalised name — and it reaches the New / Pending group as
+    // A name fragment, lower case against a capitalised name — and it reaches the Reprocess Required list as
     // well as the people already paid. Filtering one table and not the other would answer "where is Raj?"
     // with a row on one list and silence on the other.
     await user.type(search, 'raj');
@@ -345,7 +338,7 @@ describe('65e2d5de — the submitted set IS the reviewed set, filtered or not', 
     expect(tables[1]!.textContent).not.toContain('John Tan');
 
     // …and the employee ID, partially. T100002 is Alice Lim, on the second table (the first is the
-    // New / Pending group, which is still rendered — with its own "no matches" row).
+    // Reprocess Required list, which is still rendered — with its own "no matches" row).
     await user.clear(search);
     await user.type(search, '00002');
     const paid = container.querySelectorAll('table')[1]!;
@@ -371,7 +364,7 @@ describe('65e2d5de — the submitted set IS the reviewed set, filtered or not', 
 
   it('an ADDITION hidden by the search is carried too — the hidden inputs span both groups', async () => {
     const user = userEvent.setup();
-    const { container } = form({ newCandidates: [add({ employmentId: 'n1' })] });
+    const { container } = form({ required: [added({ employmentId: 'n1' })] });
     // n1 arrives ticked (it is the finding), and 'Alice' hides its ROW.
     expect(posted(container)).toEqual(['n1']);
     await user.type(screen.getByRole('searchbox'), 'Alice');
@@ -501,22 +494,20 @@ describe('65e2d5de — Enter cannot submit this form', () => {
     return spy;
   };
 
-  it('the search box is inside the reprocess form and the submit becomes live after review', async () => {
+  it('the search box is inside the reprocess form and the submit is live on arrival', async () => {
     // Both halves matter. Outside the form, Enter would be harmless; with an empty selection the button
     // would be disabled and the click would do nothing. Neither is true here — the `stale` rows are the
-    // employments the run itself marked stale, and they arrive ticked.
+    // employments the run itself marked stale, and they arrive ticked (a1a80747: with no tax check before it).
     const { container } = form({ stale: staleOf(['e1', 'e3']) });
     expect(screen.getByRole('searchbox').closest('form')).toBe(container.querySelector('form'));
-    await checkReady(userEvent.setup());
     expect(submit()).toBeEnabled();
   });
 
   it('typing a name and pressing Enter filters the list and submits NOTHING', async () => {
     const user = userEvent.setup();
     vi.mocked(reprocessSelectedAction).mockClear();
-    const { container } = form({ stale: staleOf(['e1', 'e3']), newCandidates: [add({ employmentId: 'n1' })] });
+    const { container } = form({ stale: staleOf(['e1', 'e3']), required: [added({ employmentId: 'n1' })] });
     const spy = submitSpy(container);
-    await checkReady(user);
 
     await user.type(screen.getByRole('searchbox'), 'Alice{Enter}');
 
@@ -533,7 +524,6 @@ describe('65e2d5de — Enter cannot submit this form', () => {
     const user = userEvent.setup();
     const { container } = form({ stale: staleOf(['e1']) });
     const spy = submitSpy(container);
-    await checkReady(user);
     const box = boxes()[0]!;
     box.focus();
     await user.keyboard('{Enter}');
@@ -544,7 +534,6 @@ describe('65e2d5de — Enter cannot submit this form', () => {
     const user = userEvent.setup();
     const { container } = form({ stale: staleOf(['e1']) });
     const spy = submitSpy(container);
-    await checkReady(user);
     await user.click(submit());
     expect(spy, 'the harness cannot see a submit at all — the guard cases prove nothing').toHaveBeenCalledTimes(1);
   });
@@ -553,29 +542,32 @@ describe('65e2d5de — Enter cannot submit this form', () => {
 /**
  * c3258a72 — EMPLOYEES WITH NOTHING TO PAY ARE "SKIPPED", NOT "NEW / PENDING".
  *
- * Before this, a no-monthly-basic employee with nothing payable sat in the amber New / Pending group,
+ * Before this, a no-monthly-basic employee with nothing payable sat in the amber New / Pending group (now the New
+ * rows of the one Reprocess Required list, a1a80747),
  * pre-ticked, so every reprocess tried them again, skipped them again, and left them looking pending. The
  * server now states the run's decision on the row (`skip`); these cases pin what the screen does with it.
  */
-describe('c3258a72 — the Skipped group', () => {
+describe('c3258a72 / a1a80747 — the Nothing payable group', () => {
+  // The one list is named by its label; the Nothing payable group by its caption.
   const tableWith = (container: HTMLElement, text: string) =>
-    [...container.querySelectorAll('table')].find((tb) => tb.querySelector('caption')?.textContent?.includes(text)) as
+    [...container.querySelectorAll('table')].find((tb) => tb.getAttribute('aria-label') === text
+      || tb.querySelector('caption')?.textContent?.includes(text)) as
       | HTMLTableElement
       | undefined;
-  const skipRow = add({ employmentId: 's1', employeeCode: 'D0001', name: 'Dato Lim', warnings: ['nothingPayable'], skip: 'NOTHING_PAYABLE_THIS_PERIOD' });
-  const pendingRow = add({ employmentId: 'n1' });
+  const skipRow = added({ employmentId: 's1', employeeCode: 'D0001', name: 'Dato Lim', warnings: ['nothingPayable'], skip: 'NOTHING_PAYABLE_THIS_PERIOD' });
+  const pendingRow = added({ employmentId: 'n1' });
 
-  it('a skip row goes to its own Skipped group with the reporter’s sentence, not to New / Pending', () => {
-    const { container } = form({ newCandidates: [pendingRow, skipRow] });
-    const pending = tableWith(container, 'New / Pending')!;
-    const skipped = tableWith(container, 'Skipped')!;
-    expect(pending, 'New / Pending group').toBeTruthy();
-    expect(skipped, 'Skipped group').toBeTruthy();
+  it('a skip row goes to its own Nothing payable group with the reporter’s sentence, not into Reprocess Required', () => {
+    const { container } = form({ required: [pendingRow, skipRow] });
+    const pending = tableWith(container, 'Reprocess Required')!;
+    const skipped = tableWith(container, 'Nothing payable')!;
+    expect(pending, 'Reprocess Required list').toBeTruthy();
+    expect(skipped, 'Nothing payable group').toBeTruthy();
     expect(pending.textContent).toContain('Siti Aminah');
     expect(pending.textContent).not.toContain('Dato Lim');
     expect(skipped.textContent).toContain('Dato Lim');
     expect(skipped.textContent).toContain('No monthly basic salary and nothing was payable this month.');
-    expect(skipped.querySelector('tbody')!.textContent).not.toContain('New / Pending');
+    expect(skipped.querySelector('tbody')!.textContent).not.toContain('New');
     // Neither "deliberately left out" nor an "Also missing" gap: nothing is missing.
     expect(container.textContent).not.toContain('Deliberately left out');
     expect(container.textContent).not.toContain('Also missing');
@@ -585,14 +577,14 @@ describe('c3258a72 — the Skipped group', () => {
     expect(tables[tables.length - 1]!.textContent).toContain('John Tan');
   });
 
-  it('is NOT counted as pending: the New / Pending caption counts only the pending row', () => {
-    const { container } = form({ newCandidates: [pendingRow, skipRow] });
-    expect(tableWith(container, 'New / Pending')!.querySelector('caption')!.textContent).toContain('New / Pending — 1 employee(s)');
-    expect(tableWith(container, 'Skipped')!.querySelector('caption')!.textContent).toContain('Skipped — 1 employee(s)');
+  it('is NOT mixed into Reprocess Required: the list holds only the pending row, the group counts the skip', () => {
+    const { container } = form({ required: [pendingRow, skipRow] });
+    expect(tableWith(container, 'Reprocess Required')!.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(tableWith(container, 'Nothing payable')!.querySelector('caption')!.textContent).toContain('Nothing payable — 1 employee(s) on this page');
   });
 
   it('arrives UNTICKED while the pending row is pre-ticked; the total still spans every group', () => {
-    const { container } = form({ newCandidates: [pendingRow, skipRow] });
+    const { container } = form({ required: [pendingRow, skipRow] });
     const data = new FormData(container.querySelector('form') as HTMLFormElement);
     expect(data.getAll('employmentIds')).toEqual(['n1']);
     const box = boxes().find((b) => b.value === 's1')!;
@@ -601,21 +593,20 @@ describe('c3258a72 — the Skipped group', () => {
     expect(screen.getByText('1 of 5 selected')).toBeInTheDocument();
   });
 
-  it('only skipped people waiting ⇒ no New / Pending group at all, and nothing pre-ticked', () => {
-    const { container } = form({ newCandidates: [skipRow] });
-    expect(tableWith(container, 'New / Pending')).toBeUndefined();
-    expect(tableWith(container, 'Skipped')).toBeTruthy();
+  it('only skipped people waiting ⇒ Reprocess Required says nobody needs it, and nothing is pre-ticked', () => {
+    const { container } = form({ required: [skipRow] });
+    expect(tableWith(container, 'Reprocess Required')!.textContent).toContain('Nobody on this run needs reprocessing.');
+    expect(tableWith(container, 'Nothing payable')).toBeTruthy();
     expect(submit()).toBeDisabled();
   });
 
   it('can still be ticked by hand, and is then reviewed and posted as an addition', async () => {
     const user = userEvent.setup();
-    const { container } = form({ newCandidates: [skipRow] });
+    const { container } = form({ required: [skipRow] });
     await user.click(boxes().find((b) => b.value === 's1')!);
     const review = screen.getByText(/Before you submit/).closest('div') as HTMLElement;
     expect(review.textContent).toContain('Dato Lim');
     expect(review.textContent).toContain('1 of them are being added to this run for the first time');
-    await checkReady(user);
     expect(submit()).toBeEnabled();
     const data = new FormData(container.querySelector('form') as HTMLFormElement);
     expect(data.getAll('employmentIds')).toEqual(['s1']);
@@ -623,30 +614,30 @@ describe('c3258a72 — the Skipped group', () => {
 
   it('a deduction-only skip carries its own sentence', () => {
     const { container } = form({
-      newCandidates: [add({ employmentId: 's2', name: 'Loan Lee', warnings: ['nothingPayable'], skip: 'DEDUCTION_ONLY_THIS_PERIOD' })],
+      required: [added({ employmentId: 's2', name: 'Loan Lee', warnings: ['nothingPayable'], skip: 'DEDUCTION_ONLY_THIS_PERIOD' })],
     });
-    const skipped = tableWith(container, 'Skipped')!;
+    const skipped = tableWith(container, 'Nothing payable')!;
     expect(skipped.textContent).toContain(messages.payroll.batch.skipped.reason.DEDUCTION_ONLY_THIS_PERIOD);
     expect(skipped.textContent).not.toContain('No monthly basic salary and nothing was payable this month.');
   });
 
-  it('a no-basic row the server did NOT skip (money keyed since) is plain New / Pending, ticked', () => {
-    const { container } = form({ newCandidates: [add({ employmentId: 'f1', name: 'Fee Fong', warnings: ['nothingPayable'], skip: null })] });
-    expect(tableWith(container, 'Skipped')).toBeUndefined();
-    const pending = tableWith(container, 'New / Pending')!;
+  it('a no-basic row the server did NOT skip (money keyed since) is a plain New row, ticked', () => {
+    const { container } = form({ required: [added({ employmentId: 'f1', name: 'Fee Fong', warnings: ['nothingPayable'], skip: null })] });
+    expect(tableWith(container, 'Nothing payable')).toBeUndefined();
+    const pending = tableWith(container, 'Reprocess Required')!;
     expect(pending.textContent).toContain('Eligible for this month and has no payslip on this run.');
     expect(boxes().find((b) => b.value === 'f1')!.checked).toBe(true);
   });
 
-  it('search filters the Skipped group too, and says so when it hides every skipped row', async () => {
+  it('search filters the Nothing payable group too, and says so when it hides every skipped row', async () => {
     const user = userEvent.setup();
-    const { container } = form({ newCandidates: [pendingRow, skipRow] });
+    const { container } = form({ required: [pendingRow, skipRow] });
     await user.type(screen.getByPlaceholderText('Search by employee ID or name'), 'D0001');
-    expect(tableWith(container, 'Skipped')!.textContent).toContain('Dato Lim');
-    expect(tableWith(container, 'New / Pending')!.textContent).toContain('No employee matches your search.');
+    expect(tableWith(container, 'Nothing payable')!.textContent).toContain('Dato Lim');
+    expect(tableWith(container, 'Reprocess Required')!.textContent).toContain('No employee matches your search.');
     await user.clear(screen.getByPlaceholderText('Search by employee ID or name'));
     await user.type(screen.getByPlaceholderText('Search by employee ID or name'), 'Siti');
-    expect(tableWith(container, 'Skipped')!.textContent).toContain('No employee matches your search.');
+    expect(tableWith(container, 'Nothing payable')!.textContent).toContain('No employee matches your search.');
   });
 });
 
@@ -654,7 +645,7 @@ describe('c3258a72 — the Skipped group', () => {
 /**
  * 6aee208b — "Reprocess Required" selection across pages. The reporter approved: everybody the run marked
  * stale arrives ticked on EVERY page (this settles the 17 November open assumption that only the first page
- * was ticked); ready New / Pending keep the first-page rule; Processed / No Change rows are never seeded;
+ * was ticked); ready New rows keep the first-page rule; Processed / No Change rows are never seeded;
  * Select this page ADDS; Clear empties; the ticks survive page, size, search and tab changes (all of which
  * are re-renders of this same mounted form); the review names at most 20 people, then "and N more".
  */
@@ -665,11 +656,16 @@ describe('6aee208b — server-paged Reprocess defaults and selection', () => {
   const UNCHANGED=Array.from({length:3},(_,i)=>emp({employmentId:'u'+i,employeeCode:'U000'+i,name:'Unchanged person '+i}));
   const staleSet={rows:STALE.map(({employmentId,employeeCode,name})=>({employmentId,employeeCode,name})),withoutPayslip:0};
   type View={rows:ReprocessCandidate[];total:number;page:number;size?:string;tab:'required'|'unchanged';search?:string;newCandidates?:ReprocessAddCandidate[];stale?:typeof staleSet};
+  /** a1a80747 — the Reprocess Required tab is the one list (its New rows first here, then the Changed ones); the
+   * Processed / No Change tab is the payslip list with its money. */
+  const requiredOf=(v:View):ReprocessRequiredRow[]=>v.tab!=='required'?[]:[
+    ...(v.newCandidates??[]).map(c=>({kind:'added' as const,...c})),
+    ...v.rows.map(r=>({kind:'recalculated' as const,employmentId:r.employmentId,employeeCode:r.employeeCode,name:r.name})),
+  ];
   const view=(v:View)=>(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <ReprocessForm key="selection" batchId="b1" employees={v.rows} newCandidates={v.newCandidates??[]} currency="MYR" stale={v.stale??staleSet}
+      <ReprocessForm key="selection" batchId="b1" employees={v.tab==='unchanged'?v.rows:[]} required={requiredOf(v)} currency="MYR" stale={v.stale??staleSet}
         paging={{existing:pageState(parsePageQuery({page:String(v.page),size:v.size}),v.total,v.rows.length),
-          additions:pageState(parsePageQuery(),(v.newCandidates??[]).length,(v.newCandidates??[]).length),
           runTotal:30+(v.newCandidates??[]).length,existingTotal:30,search:v.search??'',
           tabs:{current:v.tab,counts:{required:27,unchanged:3},hrefs:{required:'/payroll/b1/reprocess?tab=required',unchanged:'/payroll/b1/reprocess?tab=unchanged'}}}} />
     </NextIntlClientProvider>
@@ -700,9 +696,9 @@ describe('6aee208b — server-paged Reprocess defaults and selection', () => {
     expect(required.textContent).toContain('27');expect(unchanged.textContent).toContain('3');
     expect(required.getAttribute('aria-current')).toBe('page');expect(unchanged.getAttribute('aria-current')).toBeNull();
     expect(unchanged.getAttribute('href')).toBe('/payroll/b1/reprocess?tab=unchanged');
-    // Rows on the Reprocess Required tab say so in Status and Reason.
+    // Rows on the Reprocess Required tab carry the Changed label and say why.
     const row=document.body.querySelector('tbody tr')!;
-    expect(row.textContent).toContain('Reprocess Required');
+    expect(row.textContent).toContain('Changed');
     expect(row.textContent).toContain('changed after the run was processed');
   });
 
@@ -763,10 +759,9 @@ describe('6aee208b — server-paged Reprocess defaults and selection', () => {
     expect(review.textContent).toContain('and 6 more');
     expect(review.textContent).toContain('The other 4 payslip(s) are not touched');
     expect(review.textContent).toContain('1 employee(s) needing reprocess are not ticked');
-    // The tax check and the submit still cover everyone ticked, not just the names shown.
-    await checkReady(user);
-    expect(reviewReprocessTaxAction).toHaveBeenLastCalledWith('b1',expect.arrayContaining(['s26','s25']));
+    // The submit still covers everyone ticked, not just the names shown.
     expect(posted(container)).toHaveLength(26);
+    expect(posted(container)).toEqual(expect.arrayContaining(['s26','s25']));
     expect(submit().textContent).toContain('26');
   });
 
@@ -774,7 +769,7 @@ describe('6aee208b — server-paged Reprocess defaults and selection', () => {
     render(view({...firstPage,stale:{...staleSet,withoutPayslip:2}}));
     const line=screen.getByRole('status').textContent!;
     expect(line).toContain('All 27 employee(s) needing reprocess are selected');
-    expect(line).toContain('2 more employee(s) needing reprocess have no payslip on this run yet; they are listed under New / Pending.');
+    expect(line).toContain('2 more employee(s) needing reprocess have no payslip on this run yet; they are in this list as New.');
   });
 
   it('a person who becomes stale after arrival is counted, never silently ticked', () => {
@@ -789,7 +784,7 @@ describe('6aee208b — server-paged Reprocess defaults and selection', () => {
     render(
       <NextIntlClientProvider locale="en" messages={messages}>
         <ReprocessForm batchId="b1" employees={[]} currency="MYR" stale={{rows:[],withoutPayslip:0}}
-          paging={{existing:pageState(parsePageQuery(),0,0),additions:pageState(parsePageQuery(),0,0),runTotal:3,existingTotal:3,search:'',
+          paging={{existing:pageState(parsePageQuery(),0,0),runTotal:3,existingTotal:3,search:'',
             tabs:{current:'required',counts:{required:0,unchanged:3},hrefs:{required:'?tab=required',unchanged:'?tab=unchanged'}}}} />
       </NextIntlClientProvider>,
     );
@@ -799,46 +794,143 @@ describe('6aee208b — server-paged Reprocess defaults and selection', () => {
   });
 });
 
-describe('tax readiness review',()=>{
-  it('posts only ready employees and keeps the others pending with their specific reasons',async ()=>{
-    const user=userEvent.setup();
-    const {container}=form({stale:staleOf(['e1','e2','e3'])});
-    vi.mocked(reviewReprocessTaxAction).mockResolvedValueOnce({ok:true,review:{
-      taxReviewHref:'/payroll/income-tax-recalculation',
-      employees:[
-        {employmentId:'e1',employeeCode:'T100001',name:'John Tan',status:'ready'},
-        {employmentId:'e2',employeeCode:'T100002',name:'Alice Lim',status:'recalculating'},
-        {employmentId:'e3',employeeCode:'T100003',name:'Raj Kumar',status:'blocked',
-          reason:'Imported wage inputs require review for 2026-01.',previousReviewReason:'Prior-employer exemption evidence is missing.'},
-      ],
-    }});
-    expect(submit()).toBeDisabled();
-    await user.click(screen.getByRole('button',{name:'Check tax readiness (3)'}));
-    const review=await screen.findByRole('region',{name:'Tax readiness for this reprocess'});
-    expect(within(review).getByText('1 ready · 1 recalculating · 1 blocked')).toBeInTheDocument();
-    expect(within(review).getByText(/Prior-employer exemption evidence is missing/)).toBeInTheDocument();
-    const data=new FormData(container.querySelector('form')!);
-    expect(data.getAll('employmentIds')).toEqual(['e1']);
-    expect(data.getAll('heldEmploymentIds')).toEqual(['e2','e3']);
-    expect(submit()).toBeEnabled();
-    await user.click(boxes()[0]!);
-    expect(submit()).toBeDisabled();
+/**
+ * a1a80747 — ONE LIST, ONE BUTTON. Reprocess Required holds everyone who needs processing, each employee once, as a
+ * New or a Changed row; there is no Check Tax Readiness step: the ticked employees are posted as they are, and the job
+ * applies the tax readiness rules to each employee as it processes them.
+ */
+describe('a1a80747 — one Reprocess Required list, no tax readiness step', () => {
+  const required: ReprocessRequiredRow[] = [
+    { kind: 'recalculated', employmentId: 'c1', employeeCode: 'EMP0001', name: 'Sample A' },
+    { kind: 'recalculated', employmentId: 'c2', employeeCode: 'EMP0002', name: 'Sample B' },
+    added({ employmentId: 'n3', employeeCode: 'EMP0003', name: 'Sample C' }),
+    added({ employmentId: 'n4', employeeCode: 'EMP0004', name: 'Sample D', outsideScope: true }),
+    { kind: 'recalculated', employmentId: 'c5', employeeCode: 'EMP0005', name: 'Sample E' },
+    added({ employmentId: 'b6', employeeCode: 'EMP0006', name: 'Sample F', blockers: ['missingCompensation'] }),
+    added({ employmentId: 's7', employeeCode: 'EMP0007', name: 'Sample G', warnings: ['nothingPayable'], skip: 'NOTHING_PAYABLE_THIS_PERIOD' }),
+  ];
+  const stale = { rows: required.filter((r) => r.kind === 'recalculated').map(({ employmentId, employeeCode, name }) => ({ employmentId, employeeCode, name })), withoutPayslip: 0 };
+  const paged = (tab: 'required' | 'unchanged') => (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <ReprocessForm batchId="b1" employees={tab === 'unchanged' ? PEOPLE : []} required={tab === 'required' ? required : []} currency="MYR" stale={stale}
+        paging={{existing:pageState(parsePageQuery(),6,6),runTotal:PEOPLE.length+4,existingTotal:PEOPLE.length,search:'',
+          tabs:{current:tab,counts:{required:7,unchanged:3},hrefs:{required:'?tab=required',unchanged:'?tab=unchanged'}}}} />
+    </NextIntlClientProvider>
+  );
+
+  it('renders every employee who needs processing ONCE, in the server order, labelled New or Changed', () => {
+    const { container } = render(paged('required'));
+    const list = screen.getByRole('table', { name: 'Reprocess Required' });
+    const rows = [...list.querySelectorAll('tbody tr')] as HTMLElement[];
+    // Six rows: the nothing-payable employee is not mixed in.
+    expect(rows.map((r) => r.querySelector('input[type="checkbox"]')!.getAttribute('value'))).toEqual(['c1', 'c2', 'n3', 'n4', 'c5', 'b6']);
+    expect(rows.map((r) => r.querySelectorAll('td')[1]!.textContent)).toEqual(['Changed', 'Changed', 'New', 'New', 'Changed', 'New']);
+    expect(rows[0]!.textContent).toContain('Data used by this payslip changed after the run was processed.');
+    expect(rows[2]!.textContent).toContain('Eligible for this month and has no payslip on this run.');
+    // The New row states (outside the chosen list, not ready yet) are kept: unticked, and a not-ready row cannot be ticked.
+    expect(rows[3]!.textContent).toContain('This run was set up for a chosen list of people');
+    expect(rows[5]!.textContent).toContain('Cannot be paid yet — no salary record');
+    expect((rows[5]!.querySelector('input[type="checkbox"]') as HTMLInputElement).disabled).toBe(true);
+    // Each employee once, across the list and the Nothing payable group.
+    const values = [...container.querySelectorAll('input[type="checkbox"]')].map((b) => (b as HTMLInputElement).value);
+    expect(new Set(values).size).toBe(values.length);
+    const nothing = [...container.querySelectorAll('table')].find((tb) => tb.querySelector('caption')?.textContent?.includes('Nothing payable'))!;
+    expect(nothing.textContent).toContain('Sample G');
+    // The payslip list is the other tab: not on this one.
+    expect(container.textContent).not.toContain('Already paid on this run');
+    // Ticked on arrival: the three Changed rows and the ready, in-scope New row; nobody else.
+    expect(posted(container).sort()).toEqual(['c1', 'c2', 'c5', 'n3']);
   });
 
-  it('rechecks the exact pending set even when the employees are off the current page',async ()=>{
-    const user=userEvent.setup();
-    const {container}=form({pendingIds:['later'],previousJobId:'previous'});
-    await checkPending();
-    expect(reviewReprocessTaxAction).toHaveBeenLastCalledWith('b1',['later']);
-    const data=new FormData(container.querySelector('form')!);
-    expect(data.getAll('employmentIds')).toEqual(['later']);
-    expect(data.get('previousReprocessJob')).toBe('previous');
+  it('has no Check Tax Readiness step: the ticked employees are posted as they are, and one button does the work', async () => {
+    const user = userEvent.setup();
+    vi.mocked(reprocessSelectedAction).mockClear();
+    const { container } = render(paged('required'));
+    expect(screen.queryByRole('button', { name: /Check tax readiness/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /pending employees/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Tax readiness for this reprocess' })).not.toBeInTheDocument();
+    expect(container.textContent).toContain('The tax-readiness check runs automatically when you press Reprocess.');
+    const data = new FormData(container.querySelector('form')!);
+    expect(data.getAll('employmentIds').sort()).toEqual(['c1', 'c2', 'c5', 'n3']);
+    expect(data.has('heldEmploymentIds')).toBe(false);
+    expect(data.has('previousReprocessJob')).toBe(false);
+    expect(submit()).toBeEnabled();
+    expect(submit().textContent).toBe('Reprocess 4 employee(s)');
+    const spy = vi.fn();
+    container.querySelector('form')!.addEventListener('submit', spy);
+    await user.click(submit());
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
 
-    async function checkPending(){
-      vi.mocked(reviewReprocessTaxAction).mockResolvedValueOnce({ok:true,review:{taxReviewHref:null,
-        employees:[{employmentId:'later',employeeCode:null,name:'Off-page employee',status:'ready'}]}});
-      await user.click(screen.getByRole('button',{name:'Review 1 pending employees'}));
-      await screen.findByRole('region',{name:'Tax readiness for this reprocess'});
+  it('the Processed / No Change tab shows the payslips with their money and no Reprocess Required rows', () => {
+    const { container } = render(paged('unchanged'));
+    expect(screen.queryByRole('table', { name: 'Reprocess Required' })).not.toBeInTheDocument();
+    expect(container.textContent).toContain('MYR 4,100.00');
+    // The Changed rows stay ticked from arrival on the other tab.
+    expect(posted(container).sort()).toEqual(['c1', 'c2', 'c5']);
+  });
+});
+
+/**
+ * a1a80747 r2 — THE TAB COUNTS AND PRE-TICKS EXACTLY WHO THE RUN OWES. The server marks each row `owed` from the rule
+ * Close uses (core/payroll.ts `runOutstandingTx`), which is the number the Payroll Process list prints. Everyone else who
+ * is eligible with no payslip here — outside a chosen-list run, removed on purpose, not paid by an additional run — is
+ * in their own unticked Not owed on this run group, with the reason, and can still be ticked by hand. Nothing payable
+ * stays its own group.
+ */
+describe('a1a80747 r2 — owed rows are the list; the rest are Not owed on this run', () => {
+  const required: ReprocessRequiredRow[] = [
+    { kind: 'recalculated', employmentId: 'c1', employeeCode: 'EMP0101', name: 'Owed Changed' },
+    added({ employmentId: 'n2', employeeCode: 'EMP0102', name: 'Owed New', owed: true, notOwedReason: null }),
+    // Held for income tax review on a chosen-list run, outside that list: still owed, so ticked.
+    added({ employmentId: 'h3', employeeCode: 'EMP0103', name: 'Owed Held', owed: true, notOwedReason: null, outsideScope: true }),
+    added({ employmentId: 'o4', employeeCode: 'EMP0104', name: 'Outside List', owed: false, notOwedReason: 'outsideScope', outsideScope: true }),
+    added({ employmentId: 'r5', employeeCode: 'EMP0105', name: 'Removed One', owed: false, notOwedReason: 'removed' }),
+    added({ employmentId: 'p6', employeeCode: 'EMP0106', name: 'Bonus Nonrecipient', owed: false, notOwedReason: 'notPaidByRun' }),
+    added({ employmentId: 's7', employeeCode: 'EMP0107', name: 'Nothing Due', owed: false, notOwedReason: 'other', warnings: ['nothingPayable'], skip: 'NOTHING_PAYABLE_THIS_PERIOD' }),
+  ];
+  const stale = { rows: [{ employmentId: 'c1', employeeCode: 'EMP0101', name: 'Owed Changed' }], withoutPayslip: 0 };
+  const paged = () => (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <ReprocessForm batchId="b1" employees={[]} required={required} currency="MYR" stale={stale}
+        paging={{existing:pageState(parsePageQuery(),7,7),runTotal:PEOPLE.length+6,existingTotal:PEOPLE.length,search:'',
+          tabs:{current:'required',counts:{required:3,unchanged:3},hrefs:{required:'?tab=required',unchanged:'?tab=unchanged'}}}} />
+    </NextIntlClientProvider>
+  );
+  const valuesOf = (table: Element) =>
+    [...table.querySelectorAll('tbody tr input[type="checkbox"]')].map((b) => (b as HTMLInputElement).value);
+
+  it('lists only the owed employees under Reprocess Required, with the tab count the server gave', () => {
+    const { container } = render(paged());
+    expect(valuesOf(screen.getByRole('table', { name: 'Reprocess Required' }))).toEqual(['c1', 'n2', 'h3']);
+    const tab = screen.getByRole('link', { name: /Reprocess Required/ });
+    expect(tab.textContent).toContain('3');
+    // Pre-ticked: exactly the owed set.
+    expect(posted(container).sort()).toEqual(['c1', 'h3', 'n2']);
+  });
+
+  it('puts everyone else in an unticked Not owed on this run group with the reason, still tickable by hand', async () => {
+    const user = userEvent.setup();
+    const { container } = render(paged());
+    const group = [...container.querySelectorAll('table')].find((tb) => tb.querySelector('caption')?.textContent?.includes('Not owed on this run'))!;
+    expect(group, 'the Not owed on this run group is rendered').toBeTruthy();
+    expect(group.querySelector('caption')!.textContent).toBe('Not owed on this run — 3 employee(s) on this page');
+    expect(valuesOf(group)).toEqual(['o4', 'r5', 'p6']);
+    const rows = [...group.querySelectorAll('tbody tr')] as HTMLElement[];
+    expect(rows.map((r) => r.querySelectorAll('td')[1]!.textContent)).toEqual(['Not owed', 'Not owed', 'Not owed']);
+    expect(rows[0]!.textContent).toContain('This run was set up for a chosen list of people');
+    expect(rows[1]!.textContent).toContain('Removed from this run on purpose.');
+    expect(rows[2]!.textContent).toContain('This run does not pay them.');
+    expect(container.textContent).toContain('Not ticked and not counted in Reprocess Required');
+    for (const box of group.querySelectorAll('input[type="checkbox"]')) {
+      expect((box as HTMLInputElement).checked).toBe(false);
+      expect((box as HTMLInputElement).disabled).toBe(false);
     }
+    // The Nothing payable group is unchanged: the skipped employee is there, not in either list above.
+    const nothing = [...container.querySelectorAll('table')].find((tb) => tb.querySelector('caption')?.textContent?.includes('Nothing payable'))!;
+    expect(valuesOf(nothing)).toEqual(['s7']);
+    // Ticking a Not owed row by hand adds exactly that person.
+    await user.click(rows[0]!.querySelector('input[type="checkbox"]')!);
+    expect(posted(container).sort()).toEqual(['c1', 'h3', 'n2', 'o4']);
   });
 });

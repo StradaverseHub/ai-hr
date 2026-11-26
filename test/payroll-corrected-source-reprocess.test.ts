@@ -7,18 +7,22 @@ import * as S from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
-import {closeBatch,createAdditionalRun,createBatch,generatePayslips,reprocessSelectedEmployees,getReprocessJob,reviewReprocessTaxReadiness} from '../core/payroll';
+import {closeBatch,createAdditionalRun,createBatch,decodeReprocessEmployeeOutcomes,generatePayslips,reprocessSelectedEmployees,getReprocessJob,reviewReprocessTaxReadiness,type ReprocessJobResult} from '../core/payroll';
+import {requestSelectiveReprocess,payrollReprocessJobHandler} from '../core/payroll-reprocess-job';
+import {runBulkJobTick} from '../core/bulk-job-worker';
 import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,getTaxBasisBatch} from '../core/payroll-tax-basis';
 import {readEffectiveTaxBasesTx,hashTaxBasisSource,taxBasisSourceRowsTx} from '../core/payroll-tax-basis-read';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,employmentId:string,travelId:string,batchId:string;
 const slip=async(runId=batchId,employee=employmentId)=> (await owner.db.select().from(S.payslip).where(and(eq(S.payslip.batchId,runId),eq(S.payslip.employmentId,employee))))[0];
-async function anotherEmployee(){
- const subject=await hireEmployee(ctx,{person:{fullName:'Fictional comparison employee',primaryEmail:'comparison@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});
+async function anotherEmployee(name='Fictional comparison employee',email='comparison@example.test',ic='850202025556'){
+ const subject=await hireEmployee(ctx,{person:{fullName:name,primaryEmail:email},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});
  await setCompensation(ctx,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:'2025-01-01'});
- await setStatutoryProfileMY(ctx,{personId:subject.personId,icNumber:'850202025556',taxCategory:1,numChildren:0});
+ await setStatutoryProfileMY(ctx,{personId:subject.personId,icNumber:ic,taxCategory:1,numChildren:0});
  return subject.employmentId;
 }
+/** Runs the payroll_reprocess jobs to the end, as the worker does. */
+async function drain(){for(let i=0;i<500;i++){if(!await runBulkJobTick(owner.client,{handlers:[payrollReprocessJobHandler]})){const [row]=await owner.client<{n:number}[]>`select count(*)::int as n from bulk_job where kind='payroll_reprocess' and (state not in ('completed','failed','cancelled') or notified_at is null)`;if(!row.n)return;await new Promise(r=>setTimeout(r,20));}}throw new Error('reprocess job did not finish');}
 const tax=(row:Awaited<ReturnType<typeof slip>>)=>(row.statutory as {pcb:number;bases:{pcb:number};replayedTaxSources?:unknown});
 async function correct(){const p=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:[employmentId]});expect(p.blockedCount).toBe(0);expect(p.eligibleCount).toBe(1);const result=await confirmTaxBasisRecalculation(ctx,{previewId:p.previewId,previewHash:p.previewHash});const batch=await getTaxBasisBatch(ctx,result.id);expect(batch?.employees.map(e=>({status:e.status,reason:e.reason}))).toEqual([{status:'completed',reason:null}]);return result;}
 beforeEach(async()=>{
@@ -153,7 +157,11 @@ describe('corrected native payslip replacement custody',()=>{
   expect(await slip()).toEqual(closed);
   expect(closed.id).toBe(before.id);
  });
- it('keeps a prior result on genuine missing evidence and continues the selected employees',async()=>{
+ // a1a80747 — the tax readiness rules now run inside each reprocess step: an employee whose earlier payslip lost its
+ // original Pay Item detail (readiness 'blocked') is held for income tax recalculation as a skipped outcome, with the
+ // readiness reason, and nothing is calculated or written for them. It used to reach the engine and come back as a
+ // validation failure; the other employee carries on either way.
+ it('holds an employee whose tax history needs recalculation as a skipped outcome and continues the selected employees',async()=>{
   await correct();
   const comparison=await anotherEmployee();
   const feb=(await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-02'})).batchId;
@@ -167,13 +175,67 @@ describe('corrected native payslip replacement custody',()=>{
   ]));
   const result=await reprocessSelectedEmployees(ctx,{batchId:feb,employmentIds:[employmentId,comparison],idempotencyKey:randomUUID()});
   expect(result.status).toBe('completed');
-  expect((await getReprocessJob(ctx,result.jobId))?.result).toMatchObject({validationFailed:1,reprocessed:1,outcomes:expect.arrayContaining([
-   expect.objectContaining({employmentId,status:'validation_failed',resultRetained:true,validationCode:'payroll_tax_evidence',validationDetails:[{gap:expect.stringContaining('original Pay Item detail')}] }),
+  expect((await getReprocessJob(ctx,result.jobId))?.result).toMatchObject({skipped:1,validationFailed:0,reprocessed:1,outcomes:expect.arrayContaining([
+   expect.objectContaining({employmentId,status:'skipped',reasonCode:'TAX_RECALC_REQUIRED',resultRetained:true,payslipId:oldFeb.id,
+    versionBefore:oldFeb.version,versionAfter:oldFeb.version,historyId:null,validationDetails:[{gap:expect.stringContaining('original Pay Item detail')}] }),
    expect.objectContaining({employmentId:comparison,status:'reprocessed'}),
   ])});
   expect(await slip(feb)).toEqual(oldFeb);
   expect((await slip(feb,comparison)).version).toBe(2);
  });
+ /**
+  * a1a80747 — ONE JOB, FOUR OUTCOMES, NOBODY BLOCKS ANYBODY. Readiness runs in the payroll_reprocess job (not in the
+  * request), per employee or group, with the same rules: the tax-held employee is skipped with TAX_RECALC_REQUIRED
+  * and keeps their payslip and stale mark; the nothing-payable employee is skipped as before; the employee with no
+  * salary record fails with their reason; the ready employee is reprocessed. The job completes.
+  */
+ it('one background job: a tax-held, a nothing-payable and a failed employee beside a reprocessed one',async()=>{
+  await correct();
+  const ready=await anotherEmployee();
+  const nothing=await anotherEmployee('Fictional nothing payable employee','nothing-payable@example.test','850202025557');
+  const feb=(await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-02'})).batchId;
+  await generatePayslips(ctx,{batchId:feb});
+  // Hired after Feb was processed and given no salary record: their add fails on its own.
+  const failed=(await hireEmployee(ctx,{person:{fullName:'Fictional missing salary employee',primaryEmail:'missing-salary@example.test'},
+   companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01'})).employmentId;
+  const old=await slip();
+  await owner.db.execute(sql`update payslip set statutory=statutory - 'componentLines' where id=${old.id}::uuid`);
+  await owner.db.update(S.compensation).set({basicSalary:'0.00',remarks:'No monthly salary'})
+   .where(and(eq(S.compensation.employmentId,nothing),sql`${S.compensation.validTo} is null`));
+  const heldBefore=await slip(feb),nothingBefore=await slip(feb,nothing),readyBefore=await slip(feb,ready);
+  const [batchBefore]=await owner.db.select().from(S.payrollBatch).where(eq(S.payrollBatch.id,feb));
+  const selection=[employmentId,ready,nothing,failed];
+  const queued=await requestSelectiveReprocess(ctx,{batchId:feb,employmentIds:selection,idempotencyKey:randomUUID()});
+  expect(queued.status).toBe('queued');
+  // The request decided nothing about tax: no outcome exists until the job runs.
+  expect((await getReprocessJob(ctx,queued.jobId))?.result).toBeNull();
+  await drain();
+  const job=await getReprocessJob(ctx,queued.jobId);
+  expect(job?.status).toBe('completed');
+  const result=job!.result as ReprocessJobResult;
+  expect({selected:result.selected,reprocessed:result.reprocessed,skipped:result.skipped,validationFailed:result.validationFailed})
+   .toEqual({selected:4,reprocessed:1,skipped:2,validationFailed:1});
+  const by=new Map(result.outcomes.map(o=>[o.employmentId,o]));
+  expect(by.size).toBe(4);
+  expect(by.get(employmentId)).toMatchObject({status:'skipped',reasonCode:'TAX_RECALC_REQUIRED',resultRetained:true,payslipId:heldBefore.id,
+   versionBefore:heldBefore.version,versionAfter:heldBefore.version,historyId:null,validationDetails:[{gap:expect.stringContaining('original Pay Item detail')}]});
+  expect(by.get(nothing)).toMatchObject({status:'skipped',reasonCode:'NOTHING_PAYABLE',resultRetained:true,payslipId:nothingBefore.id});
+  expect(by.get(failed)).toMatchObject({status:'validation_failed',reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE',payslipId:null});
+  expect(by.get(ready)).toMatchObject({status:'reprocessed',classification:'recalculated',versionBefore:readyBefore.version,versionAfter:readyBefore.version+1});
+  expect(decodeReprocessEmployeeOutcomes(result,job!.employmentIds)).toHaveLength(4);
+  // Nothing was written for the skipped employees; the failed one got no payslip; the ready one moved on.
+  expect(await slip(feb)).toEqual(heldBefore);
+  expect(await slip(feb,nothing)).toEqual(nothingBefore);
+  expect(await slip(feb,failed)).toBeUndefined();
+  expect((await slip(feb,ready)).version).toBe(readyBefore.version+1);
+  // The held employee is still owed a recalculation on this run when they were already marked: the hold clears nothing.
+  const [batchAfter]=await owner.db.select().from(S.payrollBatch).where(eq(S.payrollBatch.id,feb));
+  for(const id of (batchBefore.recalcEmploymentIds??[]) as string[])if(id!==ready)expect(batchAfter.recalcEmploymentIds).toContain(id);
+  // One outcome event per employee, the hold among them with its reason code.
+  const events=await owner.db.select().from(S.domainEvent).where(and(eq(S.domainEvent.aggregateId,feb),eq(S.domainEvent.eventType,'payroll-batch.employee-reprocess-outcome')));
+  expect(events).toHaveLength(4);
+  expect(events.find(e=>e.subjectEmploymentId===employmentId)?.payload).toMatchObject({status:'skipped',reasonCode:'TAX_RECALC_REQUIRED',jobId:queued.jobId});
+ },240000);
  it('makes lineage immutable, tenant-bound and impossible to invent without a real replacement history',async()=>{
   await correct();await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()});
   await withTenant(ctx,tx=>tx.execute(sql`delete from payroll_tax_basis_replacement`));expect(await owner.db.execute(sql`select id from payroll_tax_basis_replacement`)).toHaveLength(1);

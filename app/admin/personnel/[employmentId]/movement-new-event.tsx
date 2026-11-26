@@ -25,6 +25,7 @@ import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { personnelWorkflowControl, personnelWorkflowInput, personnelFormLabel, personnelFormCatalog, personnelFormChoices } from '@/lib/personnel-form-contract';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { DatabaseErrorText } from '@/components/database-error-text';
+import { MovementRefusalText } from './movement-refusal-text';
 import { DateField } from '@/components/ui/date-field';
 import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
@@ -554,8 +555,10 @@ export function MovementNewEvent({
     dateContext('joinDate',tRoot('people.detail.employmentInfo.joinDate'),current.joinDate,['joinDateChange','entityTransfer'].includes(behaviour)?correctionDate:current.joinDate),
     dateContext('contractStartDate',label('employment.employment_dates_and_service.contractstartdate'),current.contractStartDate,afterType==='contract'&&current.employmentType!=='contract'?correctionDate:current.contractStartDate),
     dateContext('extendedConfirmationDate',tRoot('people.import.movement.currentFields.extendedConfirmationDate'),current.extendedConfirmationDate,behaviour==='probationExtension'?lifecycleTargets.endDate??edit?.endDate??null:current.extendedConfirmationDate),
-    dateContext('tenderResignationDate',label('employment.employment_dates_and_service.tenderresignationdate'),current.tenderResignationDate,behaviour==='resignation'?lifecycleTargets.tenderResignationDate??saved?.tenderResignationDate??edit?.effectiveDate??null:current.tenderResignationDate),
-    dateContext('resignationDate',label('employment.employment_dates_and_service.resignationdate'),current.resignationDate,behaviour==='resignation'?lifecycleTargets.resignationEffectiveDate??saved?.resignationEffectiveDate??null:current.resignationDate),
+    // 7da649d3 — a Termination's "Tender Resignation Date" box fills the tender date, and its Effective Date becomes the
+    // employee's Resignation Date (owner decision 2026-11-25), so the comparison shows both before saving.
+    dateContext('tenderResignationDate',label('employment.employment_dates_and_service.tenderresignationdate'),current.tenderResignationDate,behaviour==='resignation'?lifecycleTargets.tenderResignationDate??saved?.tenderResignationDate??edit?.effectiveDate??null:showResignationDate?lifecycleTargets.resignationDate??saved?.resignationDate??current.tenderResignationDate:current.tenderResignationDate),
+    dateContext('resignationDate',label('employment.employment_dates_and_service.resignationdate'),current.resignationDate,behaviour==='resignation'?lifecycleTargets.resignationEffectiveDate??saved?.resignationEffectiveDate??null:isTermination?correctionDate:current.resignationDate),
     dateContext('lastWorkingDate',label('employment.employment_dates_and_service.lastworkingdate'),current.lastWorkingDate,['resignation','termination'].includes(behaviour)?lifecycleTargets.endDate??lifecycleTargets.lastWorkingDate??edit?.endDate??correctionDate:current.lastWorkingDate),
     /**
      * b7b22514 — THE ONE PLACE COMPANY IS EDITABLE, and only on this one event type. Everywhere else it
@@ -775,7 +778,7 @@ export function MovementNewEvent({
         }
       }}>
       {pageContext&&<><input type="hidden" name="movementPage" value={edit?'edit':'new'}/><input type="hidden" name="showCorrected" value={pageContext.showCorrected??''}/><input type="hidden" name="from" value={pageContext.from??''}/></>}
-      {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive"><DatabaseErrorText message={pageError}/></p>}
+      {pageError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive"><MovementRefusalText message={pageError} employmentId={employmentId} context={pageContext}/></p>}
       {postingError&&<p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive"><DatabaseErrorText message={postingError}/></p>}
       {posting&&<>
         <input type="hidden" name="postingId" value={posting.id}/>
@@ -843,6 +846,9 @@ export function MovementNewEvent({
               className={inputCls}
               label={label(movementField('effectiveDate'))}
             />
+            {!historyMode && isTermination && (
+              <span className="text-xs text-muted-foreground">{t('form.terminationEffectiveDateHint')}</span>
+            )}
             {!historyMode && DATE_VALUE_KINDS.includes(behaviour) && (
               <span className="text-xs text-muted-foreground">
                 {behaviour === 'joinDateChange'
@@ -880,6 +886,7 @@ export function MovementNewEvent({
               className={inputCls}
               label={label((isTermination||isResignation) ? 'employment_history.event_information.lastworkingdate' : movementField('endDate'))}
             />
+            {(isTermination||isResignation) && <span className="text-xs text-muted-foreground">{t('form.lastWorkingDayHint')}</span>}
           </label>
         )}
 
@@ -887,6 +894,7 @@ export function MovementNewEvent({
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {label(movementField('tenderResignationDate'))}
             <DateField {...personnelWorkflowControl(movementField('tenderResignationDate'),'movement','record')} defaultValue={saved?.tenderResignationDate ?? edit?.effectiveDate ?? ''} className={inputCls} label={label(movementField('tenderResignationDate'))} />
+            <span className="text-xs text-muted-foreground">{t('form.tenderResignationDateHint')}</span>
           </label>
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {label(movementField('resignationEffectiveDate'))}
@@ -933,6 +941,8 @@ export function MovementNewEvent({
               <label className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {label(movementField('resignationDate'))}
                 <DateField {...personnelWorkflowControl(movementField('resignationDate'), 'movement', 'record')} defaultValue={saved?.resignationDate ?? ''} className={inputCls} label={label(movementField('resignationDate'))} />
+                {/* 7da649d3 — this box stores the TENDER resignation date; its label key now reads so. */}
+                <span className="text-xs text-muted-foreground">{t('form.tenderResignationDateHint')}</span>
               </label>
             )}
 

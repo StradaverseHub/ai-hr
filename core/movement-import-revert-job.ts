@@ -78,6 +78,12 @@ const SCOPED:readonly {table:string;by:string}[]=[
  * reconciliation intent queue): their writes
  * are not replayed, only counted. */
 const TRIGGER_MAINTAINED=new Set(['domain_event_chain_pending','notification_event_processing','access_configuration','company_organisation_source_epoch','performance_assessment_reminder_epoch','reward_access_source_epoch','system_label_criteria_epoch','replacement_holiday_queue','probation_reconciliation_intent']);
+/** Precomputed employment visibility (7240): statement triggers on employment and reporting_line recompute these from
+ * the final rows, once per triggering statement, so their write counts depend on how the writes are grouped, not on
+ * what was written. The release's own statements maintain them exactly, and the scheduled check
+ * (app.access_visible_employment_verify) compares them with a from-scratch rebuild. They are neither replayed nor
+ * counted. */
+const DERIVED_ACCESS=new Set(['access_reporting_reach','access_department_closure','access_employment_state']);
 /** Columns the database assigns to an appended event (sequence, chain, time): never copied. */
 const EVENT_ASSIGNED=new Set(['sequence','chain_seq','prev_hash','hash','occurred_at']);
 /** True for a row this transaction (or one of its savepoints) wrote: its creating transaction id lies at or above this
@@ -138,7 +144,7 @@ export async function captureMovementRevertTx(tx:Tx,ctx:SessionContext,employmen
    const events=[...await rehearsal.execute<{row:Row}>(sql`select to_jsonb(t) as row from domain_event t where t.tenant_id=${tenantId}::uuid and t.subject_employment_id=${employmentId}::uuid and t.sequence>${marker}::bigint and ${OURS('t')} order by t.sequence`)].map(r=>r.row);
    // Only the employee's own movement records: a write that reaches another employee's row falls back.
    for(const w of writes){const scope=SCOPED.find(x=>x.table===w.table);if(!scope||String((w.new??w.old)?.[scope.by])!==employmentId)throw new Captured({fallback:'outside:'+w.table});}
-   const unknown=Object.keys(counts).filter(t=>t!=='domain_event'&&!SCOPED.some(x=>x.table===t)&&!TRIGGER_MAINTAINED.has(t));
+   const unknown=Object.keys(counts).filter(t=>t!=='domain_event'&&!SCOPED.some(x=>x.table===t)&&!TRIGGER_MAINTAINED.has(t)&&!DERIVED_ACCESS.has(t));
    if(unknown.length)throw new Captured({fallback:'table:'+unknown.sort().join(',')});
    for(const [table,[i,u,d]] of Object.entries(counts)){
     if(table==='domain_event'){if(i!==events.length||u||d)throw new Captured({fallback:'events'});continue;}
@@ -260,6 +266,7 @@ async function releaseTx(tx:Tx,ctx:SessionContext,job:BulkJobRow,unit:BulkJobUni
  const planned:Record<string,[number,number,number]>={};
  for(const c of captures)for(const [t,[i,u,d]] of Object.entries(c.counts)){const x=planned[t]??[0,0,0];planned[t]=[x[0]+i,x[1]+u,x[2]+d];}
  for(const table of new Set([...Object.keys(written),...Object.keys(planned)])){
+  if(DERIVED_ACCESS.has(table))continue;
   const w=written[table]??[0,0,0];
   if(SCOPED.some(s=>s.table===table)||table==='domain_event'){if(!same(w,replayed[table]??[0,0,0]))throw new ReleaseRefused('count:'+table);continue;}
   // A table the database maintains: the replay writes it through the same triggers exactly as often as the rehearsal.

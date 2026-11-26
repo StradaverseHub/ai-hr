@@ -196,6 +196,10 @@ describe('fc776376 — one implementation, not a sixth', () => {
       expect(read(file)).toContain("query = parseInquiryQuery(sp, 'records')");
       expect(read('lib/leave-inquiry-query.ts')).toContain("import { parsePageQuery } from './pagination'");
       expect(read('lib/leave-inquiry-query.ts')).toContain('const pq = parsePageQuery({ size, page })');
+    } else if (['app/personnel/page.tsx', 'app/admin/audit/page.tsx', 'app/approvals/history/page.tsx'].includes(file)) {
+      // ADR 0181 Phase 4: these lists page by key; parseKeysetPageQuery reads ?size= through parsePageQuery.
+      expect(read(file)).toContain('parseKeysetPageQuery(sp)');
+      expect(read('lib/pagination.ts')).toContain('const base = parsePageQuery(sp);');
     } else expect(read(file)).toContain('parsePageQuery(sp)');
   });
 
@@ -222,6 +226,10 @@ describe('fc776376 — one implementation, not a sixth', () => {
         'truncated',
         'truncatedHint',
         'truncatedExport',
+        // ADR 0181 Phase 4 — capped totals ("1,000+") and the explicit exact count.
+        'rangeCapped',
+        'truncatedCapped',
+        'countExactly',
       ]) {
         expect(cat.pagination?.[key], `${locale}.pagination.${key}`).toBeTruthy();
       }

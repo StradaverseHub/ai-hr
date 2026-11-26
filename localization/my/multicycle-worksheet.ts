@@ -65,6 +65,7 @@ import {
 import { explainPcb } from '../../core/pcb-explain';
 import { pricesChildReliefFromGrid } from '../../core/dependents';
 import { computeMonthlyRuns, type MonthRunInput, type RunType } from './multicycle';
+import { pcbNonCashStreams } from '../noncash-benefits';
 import { getActiveStatutoryMY } from './statutory-config';
 import { todayInKualaLumpur } from '../../lib/hr-date';
 import { DEFAULT_MY_STATUTORY, type StatutoryRuleset } from './statutory-tables';
@@ -596,9 +597,14 @@ function replayEmployeeMonth(p: {
     : x.kind === 'mtd'
     ? {scheme: x.calculationScheme ?? 'resident', declarationId: x.taxSchemeDeclarationId, selection: x.taxSelection,taxCircumstance:x.taxCircumstance}
     : x.kind === 'flat' && x.nonResident && x.rate === 0.3
-      ? {scheme: 'non_resident' as const, declarationId: undefined, selection: x.taxSelection,taxCircumstance:x.taxCircumstance} : null);
+      ? {scheme: 'non_resident' as const, declarationId: undefined, selection: x.taxSelection,taxCircumstance:x.taxCircumstance}
+    // ADR 0183 — a custom PCB month replays with the number its own payslips recorded, never today's setting.
+    : x.kind === 'custom'
+      ? {scheme: x.method === 'rate' ? 'custom_rate' as const : 'custom_fixed' as const, declarationId: undefined, selection: x.taxSelection,taxCircumstance:x.taxCircumstance,
+         customPcb: {amount: x.amount, rate: x.ratePercent}} : null);
   const saved = schemes[0];
-  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId || JSON.stringify(x.selection) !== JSON.stringify(saved.selection)||JSON.stringify(x.taxCircumstance)!==JSON.stringify(saved.taxCircumstance))) {
+  const customOf = (x: (typeof schemes)[number]) => x && 'customPcb' in x ? x.customPcb : undefined;
+  if (!saved || schemes.some(x => !x || x.scheme !== saved.scheme || x.declarationId !== saved.declarationId || JSON.stringify(x.selection) !== JSON.stringify(saved.selection)||JSON.stringify(x.taxCircumstance)!==JSON.stringify(saved.taxCircumstance)||JSON.stringify(customOf(x))!==JSON.stringify(customOf(saved)))) {
     return {reason: 'tax_scheme_not_reconstructable', excluded: false};
   }
   if(saved.taxCircumstance){
@@ -607,6 +613,8 @@ function replayEmployeeMonth(p: {
   }
   opts.calculationScheme = saved.scheme;
   opts.taxSchemeDeclarationId = saved.declarationId;
+  const savedCustom = customOf(saved);
+  if (savedCustom) opts.customPcb = savedCustom;
   if (saved.selection) Object.assign(opts, saved.selection);
   const month = Number(first.period.slice(5, 7));
   const priorAcc = p.priorAcc;
@@ -617,15 +625,21 @@ function replayEmployeeMonth(p: {
   // after it and the two are folded back together for the per-run view. The month's total is unaffected
   // either way (it depends only on the cumulative normal/additional/overtime), and the per-run view stays
   // 1:1 with the runs that were really written.
+  // 8edeef41 — each run's saved benefits on the stream that run saved: Normal as Y1, Additional as Yt (Kt = 0).
+  // A version 1 snapshot is all Normal, which is exactly the input this worksheet passed before.
+  const benefitStreams = benefits.map(value => value ? pcbNonCashStreams(value) : null);
+  const anyAdditionalBenefit = benefitStreams.some(value => !!value && (value.owned.additional.bik > 0 || value.owned.additional.vola > 0));
+  const benefitInputs = (i: number) => !hasBenefitStamp ? {} : {pcbNonCashNormal: benefitStreams[i]!.owned.normal,
+    ...(anyAdditionalBenefit ? {pcbNonCashAdditional: benefitStreams[i]!.owned.additional} : {})};
   const model: MonthRunInput[] = [];
   const foldInto: number[][] = [];
   for (let i = 0; i < runs.length; i++) {
     const mine: number[] = [];
     if (i === 0) {
-      mine.push(model.push({ runType: 'regular', payment: normal, overtime, ...(hasBenefitStamp ? {pcbNonCashNormal:benefits[i]!.owned} : {}) }) - 1);
+      mine.push(model.push({ runType: 'regular', payment: normal, overtime, ...benefitInputs(i) }) - 1);
       if (ownAdditional[0] > 0) mine.push(model.push({ runType: 'adjustment', payment: ownAdditional[0] }) - 1);
     } else {
-      mine.push(model.push({ runType: runs[i].runType, payment: ownAdditional[i], ...(hasBenefitStamp ? {pcbNonCashNormal:benefits[i]!.owned} : {}) }) - 1);
+      mine.push(model.push({ runType: runs[i].runType, payment: ownAdditional[i], ...benefitInputs(i) }) - 1);
     }
     foldInto.push(mine);
   }
@@ -637,7 +651,7 @@ function replayEmployeeMonth(p: {
 
   // ── Reading RUNS: every run computed on its own, re-entering the bands from the bottom.
   const perRunPerRun = runs.map((_r, i) => {
-    const runOpts = hasBenefitStamp ? {...opts,pcbNonCashNormal:benefits[i]!.owned} : opts;
+    const runOpts = hasBenefitStamp ? {...opts,...benefitInputs(i)} : opts;
     const s =
       i === 0
         ? statutory(normal, profile, ownAdditional[0], overtime, { month, acc: priorAcc }, runOpts, rules)

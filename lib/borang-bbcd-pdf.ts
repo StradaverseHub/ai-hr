@@ -2,13 +2,22 @@
  * r411 (item 4f45f9b0) — draw a BBCD (Borang Bayaran Caruman Bulanan - Pita/Disket), ONE A4 page, with
  * pdf-lib. The house pattern of `lib/borang-a-pdf.ts`, which this mirrors helper for helper.
  *
- * ⚠️ NOT KWSP ARTWORK, AND THE PAGE SAYS SO. The reporter's sample is a filled BBCD printed by another
- * payroll system (US Letter, with that system's KWSP logo). We hold no KWSP blank, so every rule and
- * heading below is drawn on our own A4 page, laid out like the sample: the masthead and its four lines,
- * the three-box strip (No. Rujukan Majikan · Bulan Caruman · Amaun Caruman), the payment instruction and
- * its two ticks, Nama and Alamat on dotted lines with their labels in the left margin, Cop Agen Kutipan on
- * the right, then the declaration, the signatory lines and CATATAN 1-3. NO LOGO: the sample's is the
- * agency's mark reproduced by another vendor, and printing it would borrow the agency's authority.
+ * ⚠️ DRAWN BY US TO KWSP'S LAYOUT, NOT PRINTED ONTO A KWSP BLANK. The reporter's sample is a filled BBCD
+ * printed by another payroll system (US Letter, with that system's reproduction of the KWSP logo). We hold
+ * no KWSP blank, so every rule and heading below is drawn on an A4 page, laid out like the sample: the
+ * masthead and its four lines, the three-box strip (No. Rujukan Majikan · Bulan Caruman · Amaun Caruman),
+ * the payment instruction and its two ticks, Nama and Alamat on dotted lines with their labels in the left
+ * margin, Cop Agen Kutipan on the right, then the declaration, the signatory lines and CATATAN 1-3.
+ *
+ * ── BOARD 66175cd2 (plan r1): THE KWSP LOGO, BOLD HEADINGS, NO FOOTNOTES OF OURS ───────────────────────
+ * Reverses r411's "no logo" at the reporter's explicit request (docs/adr/2026-11-25-kwsp-forms-official-logo-and-no-footer.md):
+ *   • THE KWSP LOGO, TOP LEFT, drawn ONLY from the owner-supplied official file (lib/kwsp-logo.ts reads
+ *     `assets/kwsp/kwsp-logo.png`; the route passes its bytes as `opts.logo`), scaled to fit its box with its
+ *     proportions kept. Never the other vendor's reproduction, never traced. Without the file the box is
+ *     left blank and nothing else moves.
+ *   • A bigger bold masthead; the form's name, the system line and the schedule line stay bold.
+ *   • NO PROVENANCE LINES UNDER THE FRAME: the reference has none. The same facts are in the PDF's metadata
+ *     (Subject / Keywords) and on the review screen beside the preview.
  *
  * Every value comes off `BorangBbcdForm`, which is a projection of the Borang A this same request built
  * (lib/borang-bbcd.ts) — so the Amaun Caruman box is the Borang A total, not a figure computed here.
@@ -16,7 +25,7 @@
  * DRAWN EMPTY, ON PURPOSE: both payment ticks and the cheque number line, the signature, Cop Agen
  * Kutipan. An absent signatory value leaves its dotted line empty — never a placeholder.
  */
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFImage } from 'pdf-lib';
 import { money } from './borang-a';
 import {
   BBCD_CATATAN,
@@ -61,6 +70,8 @@ const SIG_COLON_X = M + 92;
 const SIG_LINE_L = M + 104;
 const SIG_LINE_R = M + 316;
 const CATATAN_X = M + 340;
+/** 66175cd2 — the logo box, top left inside the frame, clear of the centred masthead (top-down `t`). */
+const LOGO_BOX = { x: M + 10, top: 34, w: 62, h: 62 } as const;
 
 /** Published for the tests, so they read the renderer's geometry rather than restating it. */
 export const BBCD_GEOMETRY = {
@@ -73,18 +84,43 @@ export const BBCD_GEOMETRY = {
   sigLineRight: SIG_LINE_R,
   catatanX: CATATAN_X,
   frameBottom: Y(FRAME_BOT),
+  /** 66175cd2 — where the official logo is fitted (pdf-lib y of its bottom edge), when supplied. */
+  logoBox: { x: LOGO_BOX.x, y: Y(LOGO_BOX.top + LOGO_BOX.h), w: LOGO_BOX.w, h: LOGO_BOX.h },
 } as const;
 
-export async function renderBorangBbcdPdf(form: BorangBbcdForm): Promise<Uint8Array> {
+/** 66175cd2 — what the PDF says about itself in its metadata, now that the page carries no small print of ours. */
+export function borangBbcdProvenance(form: Pick<BorangBbcdForm, 'contributionMonthCode' | 'contributionPeriodKey' | 'payrollPeriodKey'>): string {
+  return (
+    `Drawn by AI HR to the layout of KWSP's BBCD; not a KWSP-printed form. Amaun Caruman is the Borang A total for ` +
+    `the same payroll month and payroll cycles, taken from the processed payroll, never recalculated. ` +
+    `Bulan caruman ${form.contributionMonthCode.slice(0, 2)} / ${form.contributionPeriodKey.slice(0, 4)} · bulan upah ${form.payrollPeriodKey}.`
+  );
+}
+
+/**
+ * Draw the BBCD. `opts.logo` is the official KWSP logo's PNG bytes (lib/kwsp-logo.ts `readKwspLogo()`), or
+ * absent/null when the owner has not supplied one. Pass only bytes `readKwspLogo()` accepted:
+ * pdf-lib does not return on a truncated PNG, and that function refuses one before it gets here — the page is then the same, with the logo box empty.
+ */
+export async function renderBorangBbcdPdf(form: BorangBbcdForm, opts: { logo?: Uint8Array | null } = {}): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   doc.setTitle(`BBCD — ${form.employerName} — ${form.contributionMonthName}`);
   doc.setProducer('AI HR');
+  doc.setSubject(borangBbcdProvenance(form));
+  doc.setKeywords(['KWSP', 'BBCD', `bulan caruman ${form.contributionPeriodKey}`, `bulan upah ${form.payrollPeriodKey}`]);
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const page = doc.addPage([W, H]);
+  let logo: PDFImage | null = null;
+  if (opts.logo) {
+    try {
+      logo = await doc.embedPng(opts.logo);
+    } catch {
+      console.warn('[kwsp-logo] the supplied logo could not be embedded; the BBCD is drawn without it.');
+    }
+  }
 
   const ink = rgb(0.09, 0.09, 0.11);
-  const muted = rgb(0.42, 0.42, 0.47);
   const rule = rgb(0.25, 0.25, 0.28);
   const hair = rgb(0.45, 0.45, 0.5);
 
@@ -139,13 +175,24 @@ export async function renderBorangBbcdPdf(form: BorangBbcdForm): Promise<Uint8Ar
   box(M, M, RIGHT - M, FRAME_BOT - M, 0.9);
   hline(M, RIGHT, DIVIDER, 0.9);
 
+  // ── 66175cd2: the official logo, top left, fitted to its box with its proportions kept ───────────────
+  if (logo) {
+    const fit = logo.scaleToFit(LOGO_BOX.w, LOGO_BOX.h);
+    page.drawImage(logo, {
+      x: LOGO_BOX.x + (LOGO_BOX.w - fit.width) / 2,
+      y: Y(LOGO_BOX.top + LOGO_BOX.h) + (LOGO_BOX.h - fit.height) / 2,
+      width: fit.width,
+      height: fit.height,
+    });
+  }
+
   // ── Masthead, centred: the agency's name, the regulation, the form's name, the system, the schedule ─
-  // NO LOGO (see the header).
+  // 66175cd2 — the masthead larger and bold, as on the reference; the other headings stay bold.
   const cx = (M + RIGHT) / 2;
-  atC(BBCD_MASTHEAD, cx, 52, 11, bold);
-  atC(BBCD_CITATION, cx, 64, 7.5);
-  atC(BBCD_TITLE, cx, 75, 7.5, bold);
-  atC(BBCD_SYSTEM, cx, 96, 7.5, bold);
+  atC(BBCD_MASTHEAD, cx, 54, 14, bold);
+  atC(BBCD_CITATION, cx, 67, 7.5);
+  atC(BBCD_TITLE, cx, 78, 7.5, bold);
+  atC(BBCD_SYSTEM, cx, 97, 7.5, bold);
   // "JADUAL CARUMAN BULAN September 2026" — the Borang A CONTRIBUTION month, in the sample's words.
   atC(`${BBCD_SCHEDULE_PREFIX} ${form.contributionMonthName}`, cx, 118, 8, bold);
 
@@ -248,21 +295,6 @@ export async function renderBorangBbcdPdf(form: BorangBbcdForm): Promise<Uint8Ar
     ct += 5;
   }
 
-  // ── Provenance, under the frame ─────────────────────────────────────────────────────────────────────
-  let pt = FRAME_BOT + 14;
-  const band = [
-    'Susun atur kami sendiri, dilukis mengikut BBCD — bukan borang rasmi KWSP.',
-    'Our own layout, drawn to match a filled BBCD produced by another payroll system; the declaration and ' +
-      'CATATAN are transcribed from it, not taken from a KWSP page. Amaun Caruman is the Borang A total ' +
-      'for the same payroll month and payroll cycles, taken from the payroll run, never recalculated.',
-    `Bulan caruman ${form.contributionMonthCode.slice(0, 2)} / ${form.contributionPeriodKey.slice(0, 4)} · bulan upah ${form.payrollPeriodKey}`,
-  ];
-  for (const paragraph of band) {
-    for (const l of wrap(paragraph, 6.2, RIGHT - M)) {
-      at(l, M, pt, 6.2, font, muted);
-      pt += 7.8;
-    }
-  }
-
+  // 66175cd2 — no provenance lines under the frame any more (see the header): they are in the metadata.
   return doc.save();
 }

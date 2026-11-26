@@ -100,6 +100,9 @@ let workCompanyId:string;
 beforeAll(async()=>{
  // The read join is opt-in (production default off); `default` below measures it switched on.
  process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';
+ // The budgets are the uncached frame's (its worst case, and independent of render order). The cached viewer menu
+ // (ADR 0181 Phase 3, app/viewer-menu-profile.ts) is measured by test/viewer-menu-profile.test.ts.
+ process.env.AIHR_VIEWER_MENU_CACHE='off';
  await migrateTestDb();await resetDb();b=await seedBase();
  fixture=await buildScaleFixture(b,{employments:1000,events:2000});
  const base=await entitledCtx(b,['hr_admin']);
@@ -124,7 +127,7 @@ beforeAll(async()=>{
   .orderBy(sql`${schema.employment.employeeCode} desc`).limit(1);
  personas.base=await own(inBase.id,['hr_admin'],workCompanyId);
 },240_000);
-afterAll(async()=>{delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;await closeAll();});
+afterAll(async()=>{delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;delete process.env.AIHR_VIEWER_MENU_CACHE;await closeAll();});
 
 const normalize=(key:string,value:unknown)=>key==='claimPreviewRevision'&&typeof value==='string'?'<revision>':value;
 const WRITE=/^\s*(insert\s+into|update\s+("?[a-z_][a-z0-9_.]*"?\.)?"?[a-z_][a-z0-9_]*"?\s+set\b|delete\s+from)|\bpg_(try_)?advisory_xact_lock\s*\(/i;

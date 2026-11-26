@@ -9,6 +9,7 @@ import {promisify} from 'node:util';
 import {mkdirSync,mkdtempSync,readFileSync,rmSync,symlinkSync,writeFileSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
+import {withFrozenPostgresPatchHash} from './helpers/approved-phone-dependency';
 import postgres from 'postgres';
 import {getTableName,sql} from 'drizzle-orm';
 import {drizzle} from 'drizzle-orm/postgres-js';
@@ -56,6 +57,25 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10530,version:'7',when:1795280007130,tag:'7130_contract_users_person_first',breakpoints:true},
  {idx:10540,version:'7',when:1795280007140,tag:'7140_payroll_individual_import_steps',breakpoints:true},
  {idx:10550,version:'7',when:1795280007150,tag:'7150_contract_list_company_rights_once',breakpoints:true},
+ {idx:10570,version:'7',when:1795488671170,tag:'7170_payroll_tax_basis_source_digest',breakpoints:true},
+ {idx:10600,version:'7',when:1795495007200,tag:'7200_information_documents_planned_with_values',breakpoints:true},
+ {idx:10610,version:'7',when:1795495007210,tag:'7210_access_effective_company',breakpoints:true},
+ {idx:10620,version:'7',when:1795495007220,tag:'7220_movement_system_payroll_snapshot_insert',breakpoints:true},
+ {idx:10630,version:'7',when:1795495007230,tag:'7230_assignment_current_department_index',breakpoints:true},
+ {idx:10640,version:'7',when:1795495007240,tag:'7240_access_visible_employment',breakpoints:true},
+ {idx:10645,version:'7',when:1795495007245,tag:'7245_access_visible_employment_policy_restore',breakpoints:true},
+ {idx:10650,version:'7',when:1795495007250,tag:'7250_replacement_holiday_queue_voided',breakpoints:true},
+ {idx:10660,version:'7',when:1795495007260,tag:'7260_viewer_access_version',breakpoints:true},
+ {idx:10680,version:'7',when:1795495007280,tag:'7280_leave_delegated_decision_set',breakpoints:true},
+ {idx:10690,version:'7',when:1795495007290,tag:'7290_approval_history_keyset',breakpoints:true},
+ {idx:10700,version:'7',when:1795495007300,tag:'7300_pay_component_itemised_payslips',breakpoints:true},
+ {idx:10710,version:'7',when:1795495007310,tag:'7310_payroll_tax_import_source_revisions',breakpoints:true},
+ {idx:10720,version:'7',when:1795495007320,tag:'7320_employment_search_trigram',breakpoints:true},
+ {idx:10730,version:'7',when:1795495007330,tag:'7330_queue_read_offboarding_access',breakpoints:true},
+ {idx:10740,version:'7',when:1795495007340,tag:'7340_queue_read_contract_navigation',breakpoints:true},
+ {idx:10760,version:'7',when:1795495007360,tag:'7360_audit_trail_company_scope',breakpoints:true},
+ {idx:10790,version:'7',when:1795495007390,tag:'7390_custom_pcb_selection',breakpoints:true},
+ {idx:10850,version:'7',when:1795495007450,tag:'7450_payroll_run_outstanding',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},
@@ -176,7 +196,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
     expect(archived.includes(addition),file+' leaf is absent from the frozen runtime').toBe(false);
     expect(prepared.split(addition)).toHaveLength(2);prepared=prepared.replace(addition,'');
    }
-   expect(prepared,file+' only the exact approved additive leaf differs').toBe(archived);
+   expect(withFrozenPostgresPatchHash(file,prepared,archived,root),file+' only the exact approved additive leaf differs').toBe(archived);
   }
   symlinkSync(realpathSync(join(root,'node_modules')),join(source,'node_modules'),'dir');
   const currentJournal=JSON.parse(readFileSync(join(root,'db/migrations/meta/_journal.json'),'utf8')) as Journal;

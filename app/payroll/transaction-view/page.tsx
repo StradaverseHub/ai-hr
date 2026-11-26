@@ -2,7 +2,6 @@ import { ExportDownloadLink } from '@/components/export-download-link';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
 import { BulkJobAuthorityLost } from '@/core/bulk-job-worker';
 import { BulkJobError, BULK_JOB_ALREADY_RUNNING } from '@/core/bulk-job';
 import { enqueueTransactionExport } from '@/core/payroll-transaction-export';
@@ -40,7 +39,9 @@ import { IndividualTxnTable } from './individual-table';
 import {Pager} from '@/components/pager';
 import {pageState,parsePageQuery} from '@/lib/pagination';
 import { OutstandingTable } from './outstanding-table';
+import { ResettingSelect } from './resetting-select';
 import { HistoryTable } from './history-table';
+import { WorkbookExportForm } from './workbook-export-form';
 import { HistoryGrid } from './history-grid';
 import { cleanMonths, pivotHistoryGrid, type PayItemSubjectMap } from './history-pivot';
 // 6b4ca488 — the Statutory Explanation tab. The DISPLAY is the same component /payroll/statutory-detail
@@ -279,25 +280,23 @@ export default async function TransactionViewPage({
     : { kind: 'individual' as const, filters: individualFilters };
   const workbookTab = tab === 'fixed' ? 'fixed' : 'individual';
   const workbooksHref = `/payroll/transaction-view/workbooks?tab=${workbookTab}`;
-  async function startWorkbookExport() {
+  // Both workbook actions RETURN the list's address and WorkbookExportForm navigates there in-app. A redirect()
+  // here would make Next re-render the whole tree, app shell included, inside the action (workbook-export-form.tsx).
+  async function startWorkbookExport(): Promise<string> {
     'use server';
     const { s: actor, scopeIds: allowed } = await scopedAdmin();
     if (!transactionQuery.filters.companyIds.length ||
         transactionQuery.filters.companyIds.some((id) => !allowed.includes(id))) {
-      redirect(`${workbooksHref}&unavailable=1`);
+      return `${workbooksHref}&unavailable=1`;
     }
-    let jobId: string;
     try {
       const { row } = await enqueueTransactionExport(actor, transactionQuery);
-      jobId = row.id;
+      return `${workbooksHref}&job=${row.id}`;
     } catch (error) {
-      if (error instanceof BulkJobAuthorityLost) redirect(`${workbooksHref}&unavailable=1`);
-      if (error instanceof BulkJobError && error.message === BULK_JOB_ALREADY_RUNNING) {
-        redirect(workbooksHref);
-      }
+      if (error instanceof BulkJobAuthorityLost) return `${workbooksHref}&unavailable=1`;
+      if (error instanceof BulkJobError && error.message === BULK_JOB_ALREADY_RUNNING) return workbooksHref;
       throw error;
     }
-    redirect(`${workbooksHref}&job=${jobId}`);
   }
 
   const workbookControls = companyIds.length > 0 ? (
@@ -305,9 +304,9 @@ export default async function TransactionViewPage({
       <Button asChild variant="ghost" size="sm">
         <Link href={workbooksHref}>{t('view.workbooks.title')}</Link>
       </Button>
-      <form action={startWorkbookExport}>
+      <WorkbookExportForm action={startWorkbookExport}>
         <Button type="submit" variant="outline" size="sm">{t('view.workbooks.export')}</Button>
-      </form>
+      </WorkbookExportForm>
     </>
   ) : null;
 
@@ -591,7 +590,7 @@ export default async function TransactionViewPage({
     statusLabels: { draft: tList('status.draft'), processed: tList('status.processed'), closed: tList('status.closed') },
   };
   const historyWorkbooksHref = '/payroll/transaction-view/workbooks?tab=history';
-  async function startHistoryWorkbookExport(formData: FormData) {
+  async function startHistoryWorkbookExport(formData: FormData): Promise<string> {
     'use server';
     const { s: actor, scopeIds: allowed } = await scopedAdmin();
     const exportScope: HistoryWorkbookScope = formData.get('scope') === 'all' ? 'all' : 'current';
@@ -599,20 +598,18 @@ export default async function TransactionViewPage({
     // rendered refuses rather than falling back to every company.
     if (!allowed.length ||
         (exportScope === 'current' && historyWorkbookView.companyId && !allowed.includes(historyWorkbookView.companyId))) {
-      redirect(`${historyWorkbooksHref}&unavailable=1`);
+      return `${historyWorkbooksHref}&unavailable=1`;
     }
-    let jobId: string;
     try {
       const { row } = await enqueueTransactionExport(
         actor, historyWorkbookQuery(exportScope, allowed, historyWorkbookView, historyWorkbookStrings),
       );
-      jobId = row.id;
+      return `${historyWorkbooksHref}&job=${row.id}`;
     } catch (error) {
-      if (error instanceof BulkJobAuthorityLost) redirect(`${historyWorkbooksHref}&unavailable=1`);
-      if (error instanceof BulkJobError && error.message === BULK_JOB_ALREADY_RUNNING) redirect(historyWorkbooksHref);
+      if (error instanceof BulkJobAuthorityLost) return `${historyWorkbooksHref}&unavailable=1`;
+      if (error instanceof BulkJobError && error.message === BULK_JOB_ALREADY_RUNNING) return historyWorkbooksHref;
       throw error;
     }
-    redirect(`${historyWorkbooksHref}&job=${jobId}`);
   }
   const historyExportChoices: { scope: 'current' | 'all'; label: string; hint: string }[] = [
     { scope: 'current', label: t('view.history.exportCurrent'), hint: t('view.history.exportCurrentHint') },
@@ -629,23 +626,23 @@ export default async function TransactionViewPage({
   const shownMonth = tab === 'history' ? historyMonth : month;
   const cycleSelect = (
     <Field label={t('view.filters.cycle')}>
-      <select name="payrollCycleId" defaultValue={payrollCycleId ?? ''} className={inputCls}>
+      <ResettingSelect name="payrollCycleId" defaultValue={payrollCycleId ?? ''} className={inputCls}>
         <option value="">{t('view.filters.all')}</option>
         {cycleChoices.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-      </select>
+      </ResettingSelect>
     </Field>
   );
 
   const companySelect = (
     <Field label={t('view.filters.company')}>
-      <select name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
+      <ResettingSelect name="companyId" defaultValue={companyId ?? ''} className={inputCls}>
         <option value="">{t('view.filters.all')}</option>
         {scopedCompanies.map((c) => (
           <option key={c.id} value={c.id}>
             {c.name}
           </option>
         ))}
-      </select>
+      </ResettingSelect>
     </Field>
   );
   // bd14b7e2 — the long employee <select> that used to sit here is GONE from all four inquiry tabs; the
@@ -654,24 +651,24 @@ export default async function TransactionViewPage({
   const yearMonthSelects = (
     <>
       <Field label={t('view.filters.year')}>
-        <select name="year" defaultValue={shownYear != null ? String(shownYear) : ''} className={inputCls}>
+        <ResettingSelect name="year" defaultValue={shownYear != null ? String(shownYear) : ''} className={inputCls}>
           <option value="">{t('view.filters.all')}</option>
           {years.map((y) => (
             <option key={y} value={y}>
               {y}
             </option>
           ))}
-        </select>
+        </ResettingSelect>
       </Field>
       <Field label={t('view.filters.month')}>
-        <select name="month" defaultValue={shownMonth != null ? String(shownMonth).padStart(2, '0') : ''} className={inputCls}>
+        <ResettingSelect name="month" defaultValue={shownMonth != null ? String(shownMonth).padStart(2, '0') : ''} className={inputCls}>
           <option value="">{t('view.filters.all')}</option>
           {MONTHS.map((m) => (
             <option key={m} value={m}>
               {m}
             </option>
           ))}
-        </select>
+        </ResettingSelect>
       </Field>
     </>
   );
@@ -1015,13 +1012,13 @@ export default async function TransactionViewPage({
                   <div className="absolute end-0 top-full z-20 mt-1 w-80 rounded-md border border-border bg-background p-1 shadow-lg">
                     {historyExportChoices.map((choice) => (
                       // Queues the workbook and opens the Transaction workbooks list, where it downloads when ready.
-                      <form key={choice.scope} action={startHistoryWorkbookExport}>
+                      <WorkbookExportForm key={choice.scope} action={startHistoryWorkbookExport}>
                         <input type="hidden" name="scope" value={choice.scope} />
                         <button type="submit" className="block w-full rounded px-3 py-2 text-start transition-colors hover:bg-muted">
                           <span className="block text-sm font-medium text-foreground">{choice.label}</span>
                           <span className="block text-xs text-muted-foreground">{choice.hint}</span>
                         </button>
-                      </form>
+                      </WorkbookExportForm>
                     ))}
                   </div>
                 </details>
@@ -1237,13 +1234,13 @@ export default async function TransactionViewPage({
                 {employmentId && <input type="hidden" name="employmentId" value={employmentId} />}
                 {companyId && <input type="hidden" name="companyId" value={companyId} />}
                 <Field label={t('view.filters.year')}>
-                  <select name="year" defaultValue={String(gridYear)} className={inputCls}>
+                  <ResettingSelect name="year" defaultValue={String(gridYear)} className={inputCls}>
                     {years.map((y) => (
                       <option key={y} value={y}>
                         {y}
                       </option>
                     ))}
-                  </select>
+                  </ResettingSelect>
                 </Field>
                 <fieldset className="min-w-0">
                   <legend className="mb-1 text-xs font-medium text-muted-foreground">

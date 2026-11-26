@@ -15,7 +15,7 @@ import { classifyNonCashBenefit, NonCashBenefitConfigurationError } from '../loc
  * helpers that seed components from the legacy compensation + payroll_input so the gated kernel path
  * is byte-identical. Every state-changing method appends a DomainEvent (substrate discipline).
  */
-import { and, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gte, ilike, inArray, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -2648,6 +2648,226 @@ export function archiveEmploymentPayComponent(
   };return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
+// ───────────────────── cc8bd87f: the View / Edit pop-up's one save ─────────────────────
+
+/**
+ * cc8bd87f — an END DATE change would flip whether a CLOSED month pays this item.
+ *
+ * The in-place end-date write (`editFixedTransaction`, end date only) does not version the row, so the
+ * versioning path's closed-run guard (FixedTransactionPaidError over the whole window) is the wrong test:
+ * it would refuse ending an item AFTER a closed month, which is the very thing that message tells people to
+ * do. The right test is narrower. Only the months between the old and the new end date change their answer
+ * to "is this item paid", so only a CLOSED month in that span is refused. `payPeriod` is the earliest such
+ * month, so the message is stable.
+ */
+export class FixedTransactionEndClosedMonthError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly payPeriod: string,
+  ) {
+    super(
+      `Pay run ${payPeriod} is closed. This end date would change whether pay item "${code}" is paid in ${payPeriod}, so it cannot be saved. Choose an end date that leaves ${payPeriod} as it was, or reopen the run.`,
+    );
+    this.name = 'FixedTransactionEndClosedMonthError';
+  }
+}
+
+/**
+ * cc8bd87f — the new end date falls in the SAME calendar month as the start of the next line for the same
+ * pay item. The two windows do not overlap, so the 0426 EXCLUDE constraint and the overlap refusal both stay
+ * silent, but the kernel pays every row that touches a month in full (core/payroll.ts), so that month would
+ * pay both lines. Same reasoning as the a3d485f6 month scan (FixedTransactionMidMonthError), from the other
+ * side. `latestEnd` is the last day of the month before the next line starts: the latest end date that pays
+ * once.
+ */
+export class FixedTransactionEndSameMonthError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly nextFrom: string,
+    public readonly latestEnd: string,
+  ) {
+    super(
+      `The next "${code}" record starts on ${nextFrom}, in the same month as this end date, so both records would be paid in full for that month. End this record on or before ${latestEnd}.`,
+    );
+    this.name = 'FixedTransactionEndSameMonthError';
+  }
+}
+
+const cleanRemarks = (v: string | null | undefined): string | null => (v ?? '').trim() || null;
+
+/**
+ * cc8bd87f — the ONE save of the Fixed Transaction View / Edit pop-up, which replaces the old page's two
+ * boxes (Edit and Stop) with one form and one End Date (Last Date to Pay) field. Screen-only: the Excel
+ * import keeps calling `updateEmploymentPayComponent` (core/payroll-txn-import.ts) and movement ending keeps
+ * calling `endEmploymentPayComponent` (core/org.ts), both unchanged.
+ *
+ * Both old boxes already wrote the same column, `employment_pay_component.valid_to` (INCLUSIVE). What
+ * differed was HOW: Edit versions the row through `writeEmploymentPayComponent` (closed-run guard over the
+ * whole window), Stop updated it in place with no closed-run check at all. So this routes, after comparing
+ * the input with the live row:
+ *   a) nothing changed            → writes nothing, not even the processing-run mark;
+ *   b) only the end date changed  → updates valid_to IN PLACE on the same row (`endDateInPlaceTx`), so an item
+ *                                   can still be ended after a closed month, now with the checks Stop lacked;
+ *   c) anything else changed      → delegates unchanged to `updateEmploymentPayComponent` with the arguments
+ *                                   the old Edit action passed (maintainStartDate, cycle only when touched).
+ *
+ * `payrollCycleId` is present ONLY when the operator touched the cycle select (the cycleTouched flag,
+ * CLAUDE.md §8); undefined means "keep the row's own link", exactly as before.
+ */
+export function editFixedTransaction(
+  ctx: SessionContext,
+  p: {
+    id: string;
+    employmentId: string;
+    amount: number;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+    remarks: string | null;
+    payrollCycleId?: string;
+  },
+): Promise<{ id: string; changed: boolean }> {
+  return withTenant(ctx, async (tx) => {
+    await lockFixedItemWriterTx(tx, ctx, p.employmentId);
+    // Matched on employmentId as well as id (company scope is the caller's fence; RLS only fences the
+    // tenant) and on supersededAt IS NULL, so a removed or stale row is not found rather than resurrected.
+    const [row] = await tx
+      .select({
+        componentId: employmentPayComponent.componentId,
+        code: payComponent.code,
+        amount: employmentPayComponent.amount,
+        validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+        remarks: employmentPayComponent.remarks,
+        payrollCycleId: employmentPayComponent.payrollCycleId,
+      })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .where(
+        and(
+          eq(employmentPayComponent.id, p.id),
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new FixedTransactionNotFoundError();
+
+    const effectiveTo = p.effectiveTo || null;
+    const sameAmount = Number.isFinite(p.amount) && money(p.amount) === row.amount;
+    const sameStart = p.effectiveFrom === row.validFrom;
+    const sameRemarks = cleanRemarks(p.remarks) === cleanRemarks(row.remarks);
+    const sameCycle = p.payrollCycleId === undefined || p.payrollCycleId === row.payrollCycleId;
+    const sameEnd = effectiveTo === row.validTo;
+
+    if (sameAmount && sameStart && sameRemarks && sameCycle) {
+      if (sameEnd) return { id: p.id, changed: false };
+      await endDateInPlaceTx(tx, ctx, { id: p.id, employmentId: p.employmentId, ...row }, effectiveTo);
+      return { id: p.id, changed: true };
+    }
+    const written = await updateEmploymentPayComponent(
+      ctx,
+      {
+        id: p.id,
+        employmentId: p.employmentId,
+        amount: p.amount,
+        effectiveFrom: p.effectiveFrom,
+        effectiveTo,
+        remarks: p.remarks,
+        maintainStartDate: true,
+        ...(p.payrollCycleId !== undefined ? { payrollCycleId: p.payrollCycleId } : {}),
+      },
+      tx,
+    );
+    return { id: written.id, changed: true };
+  });
+}
+
+/**
+ * cc8bd87f — set (or clear) the INCLUSIVE end date of ONE live row in place, after the checks the old Stop
+ * box never made. Internal to `editFixedTransaction`; `endEmploymentPayComponent` is deliberately left as it
+ * was (movement ending and migration 0950's contract-management SQL depend on it).
+ *
+ * Every check is one indexed lookup scoped to this one employee (SCALE rule 2: no loops in a request), and
+ * every refusal is raised BEFORE the write. Event: `employment-pay-component.ended`, the same event Stop
+ * appended, now also carrying the previous end date (null = was open-ended; effectiveTo null = cleared).
+ * No amount and no remarks in the payload (ADR-0030 Layer 0).
+ */
+async function endDateInPlaceTx(
+  tx: Tx,
+  ctx: SessionContext,
+  row: { id: string; employmentId: string; componentId: string; code: string; validFrom: string; validTo: string | null },
+  effectiveTo: string | null,
+) {
+  // The caller already holds the writer lock; the mark is taken only now that something will change.
+  await markProcessingRunsForFixedItemTx(tx, ctx, row.employmentId);
+  if (effectiveTo != null && (!isTransactionEffectiveDate(effectiveTo) || effectiveTo < row.validFrom)) {
+    throw new FixedTransactionDateError();
+  }
+
+  // CLOSED MONTHS WHOSE ANSWER FLIPS. With null as "open-ended" (later than any date), the months whose
+  // "is this item paid" answer changes are exactly those whose first day P-01 satisfies lo < P-01 <= hi.
+  // Ending part-way through a closed month keeps that month paid in full, so it stays allowed.
+  const lo = row.validTo == null ? effectiveTo! : effectiveTo == null ? row.validTo : row.validTo < effectiveTo ? row.validTo : effectiveTo;
+  const hi = row.validTo == null || effectiveTo == null ? null : row.validTo > effectiveTo ? row.validTo : effectiveTo;
+  const flipped = (await closedPeriodsTx(tx, row.employmentId))
+    .filter((period) => `${period}-01` > lo && (hi == null || `${period}-01` <= hi))
+    .sort();
+  if (flipped.length) throw new FixedTransactionEndClosedMonthError(row.code, flipped[0]);
+
+  // OVERLAP with another live line of the same pay item. Only the end moves, so only a LATER line can
+  // newly be touched; the 0426 EXCLUDE constraint stays the backstop, but no raw 23P01 reaches the user.
+  const [clash] = await tx
+    .select({ validFrom: employmentPayComponent.validFrom, validTo: employmentPayComponent.validTo })
+    .from(employmentPayComponent)
+    .where(
+      and(
+        eq(employmentPayComponent.employmentId, row.employmentId),
+        eq(employmentPayComponent.componentId, row.componentId),
+        isNull(employmentPayComponent.supersededAt),
+        ne(employmentPayComponent.id, row.id),
+        lte(employmentPayComponent.validFrom, effectiveTo ?? '9999-12-31'),
+        or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, row.validFrom)),
+      ),
+    )
+    .orderBy(employmentPayComponent.validFrom)
+    .limit(1);
+  if (clash) throw new FixedTransactionOverlapError(row.code, clash.validFrom, clash.validTo);
+
+  // SAME-MONTH DOUBLE PAY: the next line starts later in the very month this one now ends.
+  if (effectiveTo != null) {
+    const month = monthOf(effectiveTo);
+    const [next] = await tx
+      .select({ validFrom: employmentPayComponent.validFrom })
+      .from(employmentPayComponent)
+      .where(
+        and(
+          eq(employmentPayComponent.employmentId, row.employmentId),
+          eq(employmentPayComponent.componentId, row.componentId),
+          isNull(employmentPayComponent.supersededAt),
+          ne(employmentPayComponent.id, row.id),
+          gte(employmentPayComponent.validFrom, `${month}-01`),
+          lte(employmentPayComponent.validFrom, monthRange(month).to),
+        ),
+      )
+      .orderBy(employmentPayComponent.validFrom)
+      .limit(1);
+    if (next) {
+      throw new FixedTransactionEndSameMonthError(row.code, next.validFrom, monthRange(addMonths(month, -1)).to);
+    }
+  }
+
+  await tx.update(employmentPayComponent).set({ validTo: effectiveTo }).where(eq(employmentPayComponent.id, row.id));
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employment-pay-component',
+    aggregateId: row.id,
+    eventType: 'employment-pay-component.ended',
+    actor: actorOf(ctx),
+    subjectEmploymentId: row.employmentId,
+    payload: { employmentId: row.employmentId, effectiveTo, previousEffectiveTo: row.validTo },
+  });
+}
+
 // ───────────────────── Per-batch one-off ─────────────────────
 
 /**
@@ -2678,7 +2898,9 @@ export type TaxableComponentClassification = {
   epfBonus2012?: boolean; includedInEpf: boolean; includedInSocsoEis: boolean;
   includedInPcb: boolean; isNonPayable: boolean; pcbRemunerationType?: string | null;
 };
-export type UnsupportedTaxableReason = 'classification_conflict' | 'unsupported_kind' | 'normal_remuneration_required' | 'unrecognised_taxable_item';
+/** `normal_remuneration_required` is retired (8edeef41, 2026-11-25): a taxable BIK/VOLA may be Normal or Additional, and
+ *  only another type is refused, as `remuneration_type_not_supported`. The old value stays in the union for stored rows. */
+export type UnsupportedTaxableReason = 'classification_conflict' | 'unsupported_kind' | 'epf_bonus_not_allowed' | 'remuneration_type_not_supported' | 'normal_remuneration_required' | 'unrecognised_taxable_item';
 
 /** The classifier remains the benefit owner; callers retain the reason rather than inventing one. */
 export function unsupportedTaxableReason(c: TaxableComponentClassification): UnsupportedTaxableReason | null {
@@ -2835,6 +3057,9 @@ export type ComponentImportRow = {
   notes: string | null;
   ok: boolean;
   error: string | null;
+  /** Stable non-cash/taxable refusal (8edeef41). The action layer explains it through the shared
+   *  pay-item import message source (lib/pay-item-import-messages.ts) in the reader's language. */
+  taxableReason?: UnsupportedTaxableReason;
 };
 export type ComponentImportResult = { dryRun: boolean; rows: ComponentImportRow[]; valid: number; imported: number };
 
@@ -2894,6 +3119,7 @@ export async function importBatchComponents(
       const comp = byCode.get(code);
       const amount = amountRaw === '' ? NaN : Number(amountRaw);
       let error: string | null = null;
+      let taxableReason: UnsupportedTaxableReason | undefined;
       if (!employee) error = 'Missing employee';
       else if (!emp) error = `Unknown employee: ${employee}`;
       else if (!code) error = 'Missing component';
@@ -2901,16 +3127,11 @@ export async function importBatchComponents(
       else if (comp.pendingInputKind != null) error = `Complete the calculation for ${code} before assigning it.`;
       else if (!Number.isFinite(amount)) error = `Invalid amount: ${amountRaw}`;
       // Same complete classification as the picker and single-row writer, before any import write.
+      // The explanation is not written here: the stable reason travels with the row and the action layer words it
+      // from the same catalogue as the Pay Item screen and workbook import (8edeef41).
       else if (isUnsupportedTaxableComponent(comp)) {
-        const reason = unsupportedTaxableReason(comp);
-        const explanation = reason === 'classification_conflict'
-          ? 'BIK and living accommodation classifications conflict; make Pay Category and EA reporting consistent.'
-          : reason === 'normal_remuneration_required'
-            ? 'Monthly BIK and living accommodation require Normal remuneration and cannot use EPF Bonus 2012.'
-            : reason === 'unsupported_kind'
-              ? 'The category cannot represent a non-cash benefit; review Category and Pay Category.'
-              : 'No supported taxable classification; select the applicable benefit Pay Category and tax settings.';
-        error = `Unsupported component: ${code}. ${explanation}`;
+        taxableReason = unsupportedTaxableReason(comp) ?? 'unrecognised_taxable_item';
+        error = `Unsupported component: ${code}.`;
       }
       return {
         line: i + 2,
@@ -2922,6 +3143,7 @@ export async function importBatchComponents(
         notes: rec.notes || null,
         ok: !error,
         error,
+        ...(taxableReason ? { taxableReason } : {}),
       };
     });
 

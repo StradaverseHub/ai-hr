@@ -1,6 +1,6 @@
 import {clientPackFor} from '../localization/registry.client';
 import type {SavedTaxCircumstance} from '../localization/country-pack';
-import { readPcbNonCash, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
+import { readPcbNonCash, pcbNonCashStreams, type NonCashFigures, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
 const taxCircumstanceOf=clientPackFor('MY')!.payroll.taxCircumstanceOf!;
 const readSavedTaxCircumstance=clientPackFor('MY')!.payroll.readSavedTaxCircumstance!;
 /**
@@ -215,6 +215,21 @@ export type PcbExplanation =
       nonResident: boolean;
       /** NULL for a run predating 45df860a — "not recorded", never zero. */
       trace: PcbFlatTrace | null;
+    } & PcbFigures)
+  | ({
+      /** ADR 0183 (board d8dc0a8c) — an HR-chosen custom PCB method. 'fixed': the payslip's PCB is the amount HR
+       *  entered, with no working at all. 'rate': the Non-Resident working with HR's percentage. The number is
+       *  read from the payslip's own stamp (the selection as this run used it), never from today's setting. */
+      kind: 'custom';
+      method: 'fixed' | 'rate';
+      /** RM, 'fixed' only. */
+      amount: number | null;
+      /** Percent (30 = 30%), 'rate' only: the number HR entered. */
+      ratePercent: number | null;
+      /** 'rate' only: the fraction the engine multiplied by (0.3), as its trace recorded it. NULL when not recorded. */
+      rate: number | null;
+      /** The remuneration the rate was applied to. NULL when not recorded; 'fixed' records it for reference. */
+      trace: { remuneration: number; additional: number } | null;
     } & PcbFigures)
   | ({
       kind: 'mtd';
@@ -517,7 +532,9 @@ export function explainPcb(
   const nonCash = readPcbNonCash(st.pcbNonCash);
   const savedTrace = metaObj.trace as Record<string, unknown> | null;
   const savedNormal = savedTrace?.Y1 ?? savedTrace?.remuneration;
-  const benefitNormal = nonCash ? nonCash.cashNormal + nonCash.cumulative.bik + nonCash.cumulative.vola : NaN;
+  // 8edeef41 — Y1 holds the Normal-stream benefits only; an Additional benefit is in Yt (version 1 is all Normal).
+  const normalBenefits = nonCash ? pcbNonCashStreams(nonCash).cumulative.normal : null;
+  const benefitNormal = nonCash && normalBenefits ? nonCash.cashNormal + normalBenefits.bik + normalBenefits.vola : NaN;
   figures.nonCash = nonCash && typeof savedNormal === 'number' && Number.isFinite(savedNormal) &&
     Number.isSafeInteger(Math.round(savedNormal * 100)) && Math.abs(savedNormal * 100 - Math.round(savedNormal * 100)) < 0.000001 &&
     Number.isSafeInteger(Math.round(benefitNormal * 100)) && Math.round(benefitNormal * 100) === Math.round(savedNormal * 100)
@@ -536,7 +553,7 @@ export function explainPcb(
     taxSelectionSource: 'income_tax_resident' as const,
   }});
   const scheme = metaObj.calculationScheme;
-  const knownSchemes = ['resident', 'rep', 'knowledge_worker', 'c_suite', 'non_resident'];
+  const knownSchemes = ['resident', 'rep', 'knowledge_worker', 'c_suite', 'non_resident', 'custom_fixed', 'custom_rate'];
   if ((hasSelection && scheme === undefined) || scheme !== undefined && !knownSchemes.includes(scheme as string)) return {kind: 'unavailable', ...figures};
   const incentive = scheme === 'rep' || scheme === 'knowledge_worker' || scheme === 'c_suite';
   if (incentive) {
@@ -564,6 +581,18 @@ export function explainPcb(
           (scheme !== 'c_suite' && (!hasRecordedNumbers(raw, ['T2']) || (raw.T2 as number) < 0))))) {
       return {kind: 'unavailable', ...figures};
     }
+  }
+  if (scheme === 'custom_fixed' || scheme === 'custom_rate') {
+    const custom = metaObj.customPcb as Record<string, unknown> | null | undefined;
+    const fixed = scheme === 'custom_fixed';
+    if (!custom || typeof custom !== 'object' || Array.isArray(custom) || !hasRecordedNumbers(custom, [fixed ? 'amount' : 'rate'])) return {kind: 'unavailable', ...figures};
+    const value = custom[fixed ? 'amount' : 'rate'] as number;
+    if (value <= 0 || (!fixed && value > 100)) return {kind: 'unavailable', ...figures};
+    const raw = metaObj.trace as Record<string, unknown> | null | undefined;
+    const trace = raw && typeof raw === 'object' && !Array.isArray(raw) && hasRecordedNumbers(raw, ['remuneration', 'additional'])
+      ? { remuneration: raw.remuneration as number, additional: raw.additional as number } : null;
+    const rate = !fixed && raw && typeof raw === 'object' && !Array.isArray(raw) && hasRecordedNumbers(raw, ['rate']) ? raw.rate as number : null;
+    return { kind: 'custom', method: fixed ? 'fixed' : 'rate', amount: fixed ? value : null, ratePercent: fixed ? null : value, rate, trace, ...figures };
   }
   if (scheme === 'non_resident' && (!hasRecordedNumbers(metaObj, ['flatRate']) || metaObj.flatRate !== 0.3)) return {kind: 'unavailable', ...figures};
   const flat = metaObj as FlatMeta;
@@ -804,6 +833,30 @@ function flatWorksheet(x: Extract<PcbExplanation, { kind: 'flat' }>): PcbWorkshe
 }
 
 /**
+ * ADR 0183 — THE CUSTOM PCB SHEET. Like the flat sheet, there is no LHDN computerised-calculation worksheet for
+ * these payees, and the sheet says so rather than drawing empty P/M/R/B rows. A custom rate shows the remuneration
+ * and the HR-entered rate; a fixed amount shows the amount HR entered, which IS the month's working.
+ */
+function customWorksheet(x: Extract<PcbExplanation, { kind: 'custom' }>): PcbWorksheet {
+  const t = x.trace;
+  const rows: PcbWorksheetRow[] = x.method === 'rate'
+    ? [
+        { symbol: 'Y', caption: 'worksheetFlatY', value: t ? money(t.remuneration) : { kind: 'notRecorded' } },
+        { symbol: 'Yt', caption: 'worksheetFlatYt', value: t ? money(t.additional) : { kind: 'notRecorded' } },
+        { symbol: '', caption: 'worksheetCustomRate', value: x.rate != null ? { kind: 'rate', rate: x.rate } : { kind: 'notRecorded' } },
+      ]
+    : [{ symbol: '', caption: 'worksheetCustomAmount', value: money(x.amount ?? 0) }];
+  return {
+    shape: 'flat',
+    sections: [
+      { heading: 'worksheetCustomHeading', rows },
+      { heading: 'worksheetResultHeading', rows: resultRows(x) },
+    ],
+    note: x.method === 'rate' ? 'worksheetCustomRateNote' : 'worksheetCustomFixedNote',
+  };
+}
+
+/**
  * The last rows of every sheet: what the working lands on, and — only when they are different numbers —
  * what the payslip actually deducted.
  *
@@ -872,6 +925,7 @@ export function pcbWorksheet(x: PcbExplanation, previous: PcbPreviousEmployment 
   if (x.kind === 'not_subject') return {shape:'unavailable',sections:[],note:'taxCategoryNoneExplanation'};
   if (x.kind === 'unavailable') return { shape: 'unavailable', sections: [], note: 'unavailable' };
   if (x.kind === 'flat') return flatWorksheet(x);
+  if (x.kind === 'custom') return customWorksheet(x);
 
   const t = x.trace;
   const income: PcbWorksheetRow[] = [
@@ -1257,12 +1311,22 @@ const slipComponentRows = (captions: readonly string[]): PcbSlipRow[] =>
     first: { kind: 'notSeparatelyRecorded' } as PcbWorksheetValue,
   }));
 
+/** The month's Normal-stream benefits (Y1). A version 1 snapshot is all Normal, so this is `current` exactly. */
 function recordedBenefitRows(benefits: PcbNonCashSnapshot): PcbSlipRow[] {
+  return benefitFigureRows(pcbNonCashStreams(benefits).current.normal, 'slipCompBenefitsInKind', 'slipCompLivingAccommodation');
+}
+function benefitFigureRows(current: NonCashFigures, bikCaption: string, volaCaption: string): PcbSlipRow[] {
   return (['bik','vola'] as const).flatMap(kind => [
-    {line:'',caption:kind==='bik'?'slipCompBenefitsInKind':'slipCompLivingAccommodation',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].taxable)},
-    {line:'',caption:kind==='bik'?'slipBikEntered':'slipVolaEntered',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].entered)},
-    {line:'',caption:kind==='bik'?'slipBikExempt':'slipVolaExempt',ns:'pcbDetail' as const,first:slipMoney(benefits.current[kind].exempt)},
+    {line:'',caption:kind==='bik'?bikCaption:volaCaption,ns:'pcbDetail' as const,first:slipMoney(current[kind].taxable)},
+    {line:'',caption:kind==='bik'?'slipBikEntered':'slipVolaEntered',ns:'pcbDetail' as const,first:slipMoney(current[kind].entered)},
+    {line:'',caption:kind==='bik'?'slipBikExempt':'slipVolaExempt',ns:'pcbDetail' as const,first:slipMoney(current[kind].exempt)},
   ]);
+}
+/** 8edeef41 — the month's Additional-stream benefits (part of Yt), shown only when the saved snapshot has one, so
+ *  every existing payslip's breakdown is unchanged. */
+function additionalBenefitRows(benefits?: PcbNonCashSnapshot | null): PcbSlipRow[] {
+  if (!benefits || !benefits.entries.some(entry => entry.stream === 'additional')) return [];
+  return benefitFigureRows(pcbNonCashStreams(benefits).current.additional, 'slipAddBenefitsInKind', 'slipAddLivingAccommodation');
 }
 function accumulatedBenefitRows(benefits?: PcbNonCashSnapshot | null): PcbSlipRow[] {
   return (['bik','vola'] as const).map(kind => ({line:'',caption:kind==='bik'?'slipAccBik':'slipAccVola',ns:'pcbDetail' as const,
@@ -1294,9 +1358,11 @@ export function pcbCurrentRemunerationSection(y1: PcbWorksheetValue, k1: PcbWork
 export function pcbAdditionalRemunerationSection(
   yt: PcbWorksheetValue,
   kt: PcbWorksheetValue,
+  benefits?: PcbNonCashSnapshot | null,
 ): PcbSlipSection {
   const rows: PcbSlipRow[] = [{ line: 'Yt', caption: 'slipAdditionalTotal', ns: 'pcbDetail', first: yt }];
   for (const r of slipComponentRows(SLIP_ADDITIONAL_COMPONENTS)) rows.push(r);
+  rows.push(...additionalBenefitRows(benefits));
   rows.push({ line: 'Kt', caption: 'slipAdditionalEpf', ns: 'pcbDetail', first: kt });
   return { heading: 'slipAdditionalRemHeading', firstColumn: 'slipColAmount', rows, note: 'slipAdditionalRemNote' };
 }
@@ -1590,6 +1656,7 @@ export function pcbSlipSections(
   if (x.kind === 'flat' && x.nonCash) return [
     {heading:'slipAccHeading',firstColumn:'slipColAmount',rows:accumulatedBenefitRows(x.nonCash),note:'slipAccNote'},
     {heading:'slipCurrentHeading',firstColumn:'slipColAmount',rows:recordedBenefitRows(x.nonCash),note:'slipCurrentNote'},
+    ...(additionalBenefitRows(x.nonCash).length ? [{heading:'slipAdditionalRemHeading',firstColumn:'slipColAmount',rows:additionalBenefitRows(x.nonCash),note:'slipAdditionalRemNote'}] : []),
   ];
   if (x.kind !== 'mtd') return [];
   const t = x.trace;
@@ -1624,7 +1691,7 @@ export function pcbSlipSections(
     }),
     // 5 and 6 — the component split payroll does not persist. See the block above `SLIP_CURRENT_COMPONENTS`.
     pcbCurrentRemunerationSection(fromTrace(t, (v) => v.Y1), t ? slipMoney(t.K1) : slipMoney(x.epfThisMonth), x.nonCash),
-    pcbAdditionalRemunerationSection(fromTrace(t, (v) => v.Yt), fromTrace(t, (v) => v.Kt)),
+    pcbAdditionalRemunerationSection(fromTrace(t, (v) => v.Yt), fromTrace(t, (v) => v.Kt), x.nonCash),
     // 7 — this month's declaration, itemised, beside the year it accumulates into.
     pcbReliefScheduleSection({
       heading: 'slipCurrentDeductionHeading',
@@ -1993,6 +2060,7 @@ export type PcbDetailBodySlot =
   | 'traceBanner'
   | 'unavailableCard'
   | 'flatCard'
+  | 'customCard'
   | 'mtdBand'
   | 'mtdCategory'
   | 'mtdReliefs'
@@ -2122,6 +2190,7 @@ export function pcbDetailLayout(p: {
 
   if (x.kind === 'unavailable'||x.kind==='not_subject') body('unavailableCard', null, 'card', 'summaryHeading');
   if (x.kind === 'flat') body('flatCard', null, 'card', 'flatHeading');
+  if (x.kind === 'custom') body('customCard', null, 'card', 'customHeading');
   if (x.kind === 'mtd') {
     body('mtdBand', '9', 'sequence', 'mtdCalculationHeading');
     for (const s of PCB_MTD_STEPS) body(s.slot, s.label, 'step', s.heading);

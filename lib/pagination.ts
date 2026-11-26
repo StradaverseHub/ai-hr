@@ -226,3 +226,134 @@ export function pageOfIndex(index: number, size: PageSize): number {
   if (size === 'all' || index < 0) return 0;
   return Math.floor(index / size);
 }
+
+// ── Capped totals and keyset paging (ADR 0181 decision 5, Phase 4) ─────────────────────────────────────────────────
+//
+// An on-screen list total is exact below LIST_COUNT_CAP rows and "1,000+" above it, with an explicit "Count exactly"
+// action (`?count=exact`) for the reader who needs the number. Exports, payroll, statutory and report totals are never
+// capped: this contract is for on-screen list totals only.
+//
+// A keyset list pages by the last (or first) row it showed rather than by OFFSET: `?after=<id>` continues after that
+// row, `?before=<id>` steps back before it, and `?last=1` opens the final page (offered only when the total is exact).
+// The cursor is the row's own identifier, never its sort values, so names and other personal data never travel in the
+// address; the reader resolves the anchor row's sort key in SQL under the same row security as the list. `page` rides
+// along for the position counter only ("26–50 of 1,000+"); it never decides which rows are read.
+
+/** On-screen list totals are exact below this and "1,000+" at or above it (owner decision, 24 November 2026). */
+export const LIST_COUNT_CAP = 1000;
+
+/** A list total: `count` is exact unless `capped`, when the list holds more than `count` rows. */
+export type ListTotal = { count: number; capped: boolean };
+
+/** The count cap a page read uses: the on-screen cap, or the "All" ceiling when that is larger. */
+export function listCountCap(size: PageSize): number {
+  return size === 'all' ? Math.max(LIST_COUNT_CAP, ALL_ROW_CEILING) : LIST_COUNT_CAP;
+}
+
+/** Turn "how many rows the bounded count saw" into a ListTotal. The bounded count reads at most `cap + 1` rows. */
+export function cappedTotal(seen: number, cap: number, exact = false): ListTotal {
+  return !exact && seen > cap ? { count: cap, capped: true } : { count: Math.max(0, seen), capped: false };
+}
+
+const ROW_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** What the address asked a keyset list for. `offset` is always 0: a keyset read never skips rows. */
+export type KeysetPageQuery = PageQuery & {
+  /** Continue after this row (Next). */
+  after?: string;
+  /** Step back before this row (Previous). */
+  before?: string;
+  /** The final page (Last). */
+  last: boolean;
+  /** "Count exactly" was asked for. */
+  exactCount: boolean;
+};
+
+/** Read `?page=&size=&after=&before=&last=&count=` into a keyset query. A malformed cursor opens the first page. */
+export function parseKeysetPageQuery(
+  sp: { page?: string; size?: string; after?: string; before?: string; last?: string; count?: string } = {},
+): KeysetPageQuery {
+  const base = parsePageQuery(sp);
+  const exactCount = sp.count === 'exact';
+  if (base.size === 'all') return { ...base, offset: 0, last: false, exactCount };
+  const after = sp.after && ROW_ID.test(sp.after) ? sp.after.toLowerCase() : undefined;
+  const before = !after && sp.before && ROW_ID.test(sp.before) ? sp.before.toLowerCase() : undefined;
+  const last = !after && !before && sp.last === '1';
+  // Without a cursor the list opens on its first rows, so the counter must say page 0 whatever `page` claims.
+  const page = after || before ? Math.max(after ? 1 : 0, base.page) : 0;
+  return { ...base, page, offset: 0, after, before, last, exactCount };
+}
+
+/** What a keyset reader returns besides its rows. */
+export type KeysetRead = {
+  total: ListTotal;
+  /** Rows exist before the first row shown. */
+  hasPrev: boolean;
+  /** Rows exist after the last row shown. */
+  hasNext: boolean;
+  /** False when the cursor's row is no longer visible; the reader then served the first page. */
+  anchorFound: boolean;
+};
+
+export type KeysetPageState = PageState & Pick<KeysetPageQuery, 'after' | 'before' | 'last'> & {
+  mode: 'keyset';
+  capped: boolean;
+  exactCount: boolean;
+  /** Identifier of the first and last row shown, the cursors for Previous and Next. */
+  firstId: string | null;
+  lastId: string | null;
+  /** Last is offered only when the total is exact (the final page's position is then known). */
+  canLast: boolean;
+};
+
+/** Resolve the pager chrome for a keyset list from its query, its read and the identifiers of the rows shown. */
+export function keysetPageState(q: KeysetPageQuery, read: KeysetRead, shownIds: readonly string[]): KeysetPageState {
+  const shown = shownIds.length;
+  const total = read.total.count;
+  let page = read.anchorFound ? q.page : 0;
+  if (q.last && !read.total.capped && q.size !== 'all') page = Math.max(0, pageCount(total, q.size) - 1);
+  const size = q.size === 'all' ? 0 : q.size;
+  // Before-reads near the start can leave the counter ahead of the rows (rows were deleted meanwhile): clamp it.
+  if (!read.hasPrev) page = 0;
+  let from = shown > 0 ? page * size + 1 : 0;
+  let to = shown > 0 ? from + shown - 1 : 0;
+  if (!read.total.capped && to > total) { to = total; from = Math.max(1, total - shown + 1); }
+  return {
+    ...q,
+    page,
+    total,
+    from,
+    to,
+    hasPrev: q.size !== 'all' && read.hasPrev,
+    hasNext: q.size !== 'all' && read.hasNext,
+    truncated: q.size === 'all' && read.hasNext,
+    ceiling: ALL_ROW_CEILING,
+    mode: 'keyset',
+    capped: read.total.capped,
+    exactCount: q.exactCount,
+    firstId: shownIds[0] ?? null,
+    lastId: shownIds[shown - 1] ?? null,
+    canLast: !read.total.capped && q.size !== 'all' && read.hasNext,
+  };
+}
+
+export function isKeysetPageState(state: PageState): state is KeysetPageState {
+  return (state as Partial<KeysetPageState>).mode === 'keyset';
+}
+
+/** Rows a keyset read fetches: one more than the page, to learn whether another page follows. */
+export function keysetReadLimit(q: Pick<PageQuery, 'limit'>): number {
+  return q.limit + 1;
+}
+
+/** Trim a keyset read's rows to the page and work out which neighbours exist. Rows of a `before` or `last` read
+ *  arrive in reverse order and are put back in list order here. */
+export function keysetSlice<T>(
+  rows: readonly T[], q: Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last'>, anchorFound: boolean,
+): { rows: T[]; hasPrev: boolean; hasNext: boolean } {
+  const more = rows.length > q.limit;
+  const page = rows.slice(0, q.limit);
+  const backwards = (q.before !== undefined && anchorFound) || q.last;
+  if (backwards) return { rows: page.reverse(), hasPrev: more, hasNext: q.before !== undefined };
+  return { rows: page, hasPrev: q.after !== undefined && anchorFound, hasNext: more };
+}

@@ -367,6 +367,13 @@ cannot provision a tenant itself, and that is the point, not a limitation to wor
 * * * * * cd /opt/ai-hr && /opt/node20/bin/node --env-file=.env.production --import tsx scripts/provision-runner.ts >> /home/ubuntu/aihr-cron-logs/provision.log 2>&1
 ```
 
+**Preferred on an installed host: the resident service.** `deploy/scheduled-jobs/` runs this runner and the workflow
+notification sweep in one long-running user service, `aihr-scheduled-jobs.service`. It runs as the same user with
+the same `.env.production`, keeps each job's once-only lock, cadence, log file, heartbeat and failure alerts, and
+avoids the cold `node --import tsx` start and new database connections each minute. An administrator installs it with
+`deploy/scheduled-jobs/install.sh` (it comments out this crontab line); see [its README](scheduled-jobs/README.md).
+The crontab line below remains the fallback, and it takes the same advisory lock, so the two never overlap.
+
 **Env contract: `MIGRATION_DATABASE_URL` only.** It runs as the table owner, which is exactly why it is a
 separate process — the credentials that can create a tenant are kept out of the application. It does not
 read `DATABASE_URL`; no app-role service is called. `NEXT_PUBLIC_APP_URL` is read if set, to build an
@@ -459,6 +466,10 @@ AIHR_ALERT_COMMAND=curl -sS -X POST -d @- https://your-webhook.example/aihr
 * * * * * cd /opt/ai-hr && deploy/cron-alert.sh provision /home/ubuntu/aihr-cron-logs/provision.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/provision-runner.ts
 30 3 * * * cd /opt/ai-hr && deploy/cron-alert.sh entitlement-alarm /home/ubuntu/aihr-cron-logs/entitlement-alarm.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/entitlement-alarm.ts
 15 * * * * cd /opt/ai-hr && deploy/cron-alert.sh ai-alerts /home/ubuntu/aihr-cron-logs/ai-alerts.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/ai-alerts.ts
+10 0 * * * cd /opt/ai-hr && deploy/cron-alert.sh access-effective-company /home/ubuntu/aihr-cron-logs/access-effective-company.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-effective-company-check.ts
+20 0 * * * cd /opt/ai-hr && deploy/cron-alert.sh access-visible-employment /home/ubuntu/aihr-cron-logs/access-visible-employment.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-visible-employment-check.ts
+*/10 * * * * cd /opt/ai-hr && deploy/cron-alert.sh access-visible-employment-rebuild /home/ubuntu/aihr-cron-logs/access-visible-employment-rebuild.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/access-visible-employment-check.ts --rebuild-only
+5-55/10 * * * * cd /opt/ai-hr && AIHR_VISIBILITY_WALKTHROUGH=on flock -n /tmp/aihr-visibility-walkthrough.lock deploy/cron-alert.sh visibility-walkthrough /home/ubuntu/aihr-cron-logs/visibility-walkthrough.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/visibility-walkthrough.ts
 ```
 
 The `ai-alerts` line (WP12, review R20) is **documented here, not installed**; the release owner adds it. It is a
@@ -467,6 +478,64 @@ tenant could not be checked) and writes a `job_run` row (`ai.alerts`) each run. 
 hours, refusals under the scheduled agent principal, this month's USD allocation against the tenant cap (and a
 breach), and stale AI switch overrides that disagree with the real switch. Allowance meters and module- or
 platform-held switches are shown only on the AI management banner (they need a signed-in session's entitlements).
+
+The `access-effective-company` line (ADR 0181 Phase 2 pilot, migration 7210) is **documented here, not installed**.
+It runs ten minutes after midnight Kuala Lumpur time (on a host whose clock is UTC, use `10 16 * * *`). On the
+owner connection it recomputes each tenant's precomputed company access from scratch and compares it with the
+trigger-maintained rows (`app.access_effective_company_verify`). A future-dated restructure whose day has come is
+recomputed, not reported. A difference marks that tenant untrusted, so its Job descriptions reads fall back to the
+legacy per-company check, and the job exits `3` with the tenant id and counts only. It stays `3` every night until an
+operator fixes the cause and runs `select app.access_effective_company_retrust('<tenant id>')` as the owner. Exit `2`
+means a tenant could not be checked. The installation's mode is `legacy` until changed with
+`select app.access_precompute_set_mode('shadow' | 'precomputed' | 'legacy')`; staging runs `shadow` under the staging
+lease, production stays `legacy` until the pilot is accepted and a separate production request changes it.
+
+The two `access-visible-employment` lines (ADR 0181 employment visibility, migration 7240) are **documented here, not
+installed**. The first runs twenty minutes after midnight Kuala Lumpur time (`20 16 * * *` on a UTC host): it rebuilds
+any tenant that is stale or past its date window, then recomputes each tenant's stored reporting reach, department
+closure and company closure from scratch and compares them with the trigger-maintained rows
+(`app.access_visible_employment_verify`). A difference marks that tenant untrusted, so its employment visibility falls
+back to the legacy walk, and the job exits `3` with the tenant id and counts only until an operator fixes the cause and
+runs `select app.access_visible_employment_retrust('<tenant id>')` as the owner. The second, every ten minutes with
+`--rebuild-only`, rebuilds tenants a large restructure marked stale (above `inline_rebuild_limit` employments in
+`access_employment_precompute_control`), so their reads return to the stored answer soon. The mode is `legacy` until
+changed with `select app.access_visible_employment_set_mode('shadow' | 'precomputed' | 'legacy')`; the same staging and
+production rules as the company pilot apply.
+
+The `visibility-walkthrough` line is **staging only, documented here, not installed**, and never goes on a production
+or customer crontab. It supplies the employment visibility shadow period's manager and department-head reads
+(addendum section 10 decision 5: 20,000 `reason=compared` reader calls in seven days, at least 2,000 with
+`relationship=1`), which administrator traffic does not produce. Every ten minutes, offset five minutes from the rebuild
+pass, it reads as the demo seed tenant's fictional line managers and department heads (current employments with a
+login that manage at least one current administrative line), through the row policies their screens use: My Team,
+Personnel, assignments, leave, approvals, people and the organisation chart, as counts only. Its guards
+(`core/visibility-walkthrough.ts`):
+
+- it does nothing unless `AIHR_VISIBILITY_WALKTHROUGH=on`, which only this crontab line sets (keep it out of
+  `.env.production`);
+- the tenant is fixed in code to the demo seed's (`db/seed-guard.ts`); if that tenant is absent, or `DEV_TENANT_ID`
+  names another one, it exits `2` without reading;
+- it reads only while the 7240 mode is `shadow` (in `legacy` or `precomputed` it exits `0` at once), so it may be
+  installed before the switch and left in place after it;
+- every transaction is `BEGIN READ ONLY` and checked before its statement; it writes nothing, not even a `job_run`
+  row, and its log carries counts only;
+- 40 statements per run by default (`AIHR_VISIBILITY_WALKTHROUGH_STATEMENTS`, at most 120), at least 100 ms apart
+  (`AIHR_VISIBILITY_WALKTHROUGH_PAUSE_MS`, default 250), over up to 6 actors (`AIHR_VISIBILITY_WALKTHROUGH_ACTORS`,
+  at most 12), a 5 s statement timeout and a 240 s run budget; `flock -n` stops a second copy. It opens one owner
+  connection (preflight only) and one application connection.
+
+Exit `2` means it refused (not the demo installation, no actor) or a read failed. Remove the line when the shadow
+period is accepted. Count the period from the PostgreSQL log, per day, with counts only:
+
+```bash
+cd /opt/ai-hr && sudo cat /var/log/postgresql/postgresql-*-main.log | /opt/node20/bin/node --import tsx scripts/access-visible-employment-shadow-report.ts -
+cd /opt/ai-hr && /opt/node20/bin/node --import tsx scripts/access-visible-employment-shadow-report.ts --through=2026-12-02 /path/to/postgresql-*.log*
+```
+
+It prints compared lines per day by `relationship=0/1`, the summed `missing` and `extra`, the fallback reasons
+(`untrusted`, `stale`, `outside_window`, `clock`), and the seven-day window against the minimum. It exits `3` if any
+compared call had a difference (each needs an explanation before the period counts), `2` if a file could not be
+read, and `0` otherwise, whether or not the minimum is met yet.
 
 The last line is **readiness 2.1 (r296) and it is a DETECTOR, not a sweep** — it changes nothing, and
 every transaction it opens is `SET TRANSACTION READ ONLY`, so the server refuses a write from it. It is
@@ -499,6 +568,10 @@ echo "exit=$?"                                        # 7 — the status survive
 journalctl -t aihr-cron -p err -n 5 --no-pager        # the alert line
 ```
 
+The resident `aihr-scheduled-jobs.service` (deploy/scheduled-jobs/README.md) applies this same contract to the
+provisioning runner and the notification sweep from inside its process: the same log files and heartbeat files,
+and on failure the same `logger -t aihr-cron -p user.err` line, stdout summary and `AIHR_ALERT_COMMAND`.
+
 **A job that stops running has no exit code**, so no wrapper can see it — and `scripts/review-sweep.ts`
 records that it was absent from this crontab for six weeks while every log looked fine. Each successful
 run therefore touches `/home/ubuntu/aihr-cron-logs/heartbeat/<job>`, and staleness is the signal for that
@@ -508,6 +581,7 @@ class. Schedule the check separately, against whatever interval each job should 
 7 * * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name provision -mmin +10 -exec sh -c 'echo "AI HR: provision runner has not succeeded in 10 minutes" | logger -t aihr-cron -p user.err' \;
 17 6 * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name entitlement-alarm -mmin +2880 -exec sh -c 'echo "AI HR: the entitlement alarm has not completed cleanly in 48 hours" | logger -t aihr-cron -p user.err' \;
 27 7 * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name ai-alerts -mmin +2880 -exec sh -c 'echo "AI HR: the AI alert check has not completed cleanly in 48 hours" | logger -t aihr-cron -p user.err' \;
+37 7 * * * find /home/ubuntu/aihr-cron-logs/heartbeat -name access-effective-company -mmin +2880 -exec sh -c 'echo "AI HR: the precomputed access check has not completed cleanly in 48 hours" | logger -t aihr-cron -p user.err' \;
 ```
 
 `heartbeat/ai-alerts` also means "last CHECKED AND CLEAN": a standing AI alert keeps it stale while the hourly

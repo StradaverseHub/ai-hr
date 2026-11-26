@@ -24,6 +24,8 @@ const candidate=async(ctx:SessionContext,scope?:string[])=>{
 /** The same preview with every owner reading on its own (core/account-task-bundle.ts withOwnerTaskReads). */
 const owners=(ctx:SessionContext,scope?:string[])=>withOwnerTaskReads(()=>candidate(ctx,scope));
 const sqlState=async(p:Promise<unknown>)=>{try{await p;}catch(error){let e=error as {code?:string;cause?:unknown};while(e&&!e.code)e=e.cause as typeof e;return e?.code;}return undefined;};
+/** A refused read's SQL state, or the message of an application-side identifier refusal; 'resolved' if it was not refused. */
+const refusal=(p:Promise<unknown>)=>p.then(()=>'resolved',(error:unknown)=>error instanceof RangeError?error.message:sqlState(Promise.reject(error)));
 it('coalesces four sparse header owners without omitting any actual assigned work or error',async()=>{
  await resetDb();const b=await seedBase(),foreign=await seedBase(),group=adminCtx(b),today=todayInKualaLumpur();
  const hire=(name:string)=>hireEmployee(group,{person:{fullName:name,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
@@ -53,8 +55,10 @@ it('coalesces four sparse header owners without omitting any actual assigned wor
  // statements are the identity, the JIT setting and the statement. BEGIN itself carries repeatable read, read only
  // (2a4de3f53), so drizzle sends no separate SET TRANSACTION.
  expect(phases.statement).toMatchObject({transactions:40,trips:120});
- expect(await sqlState(original(group,['not-a-uuid']))).toBe('22P02');expect(await sqlState(candidate(group,['not-a-uuid']))).toBe('22P02');
- expect(await sqlState(owners(group,['not-a-uuid']))).toBe('22P02');
+ // Every read still refuses a malformed company id. Since ADR 0181 Phase 4 slice 5 (PR 311) the leave owner checks its
+ // company list in db/sql-arrays.ts uuidArrayParam and refuses before sending a statement (a RangeError, no SQL state);
+ // an owner that casts in the database fails with 22P02. Which check answers first decides the error, not whether.
+ for(const read of [original,candidate,owners])expect(['22P02','Invalid identifier list']).toContain(await refusal(read(group,['not-a-uuid'])));
  const [cancel]=await owner.db.insert(s.leaveCancellationRequest).values(cancellation).returning();
  const [resign]=await owner.db.insert(s.resignationRequest).values(resignation).returning();
  const [mgr]=await owner.db.insert(s.employmentReview).values({...review,reviewType:'probation'}).returning();
