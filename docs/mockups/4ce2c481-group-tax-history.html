@@ -1,0 +1,73 @@
+<meta charset="utf-8"><title>4ce2c481 — income tax history across group companies</title>
+<!-- Board 4ce2c481, plan revision 1. Fictional companies, people and figures only.
+     PROMISED: the read-only "Year to date from other group companies" section in Recalculate Income Tax Value, per earlier
+     company: months, source, taxable pay, PCB deducted, EPF, exemption usage and remaining limit, missing months; the
+     November PCB at the new company counting it as previous-employer information; EA stays per company.
+     NOT DRAWN: exact columns, wording, colours; PCB figures are illustrative, not computed. -->
+<style>
+ :root{--bg:#f6f6f7;--fg:#18181b;--mf:#6b6b73;--border:#e6e6ea;--muted:#f3f3f5;--red:#b91c1c;--green:#15803d;--amber:#92400e}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1280px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .tag{display:inline-block;border:1px dashed #a1a1aa;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;letter-spacing:.04em;color:#52525b;margin-bottom:14px}
+ .crumb{font-size:12px;color:var(--mf);margin-bottom:6px}
+ h1{font-size:20px;margin:0 0 12px}
+ .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px}
+ h2{font-size:15px;margin:0 0 4px}
+ .sub{font-size:12.5px;color:var(--mf);margin:0 0 10px}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th{text-align:left;font-weight:500;color:#52525b;background:#fafafa;padding:8px 10px;font-size:12px;border-bottom:1px solid var(--border)}
+ td{padding:8px 10px;border-bottom:1px solid var(--border)}
+ .r{text-align:right}
+ .src{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;background:var(--muted);color:#3f3f46}
+ .new{background:#dcfce7;color:var(--green)}
+ .tot td{font-weight:700;background:#fafafa}
+ .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+ .kv{display:grid;grid-template-columns:1fr auto;gap:4px 16px;font-size:13px}
+ .kv .k{color:#52525b}
+ .ok{color:var(--green);font-weight:600} .miss{color:var(--red);font-weight:600}
+ .note{font-size:12.5px;color:var(--mf);margin:8px 0 0}
+ .lbl{font-size:12px;font-weight:700;color:#3f3f46;margin:12px 0 6px}
+</style>
+
+<div class="tag">SKETCH · WORDING, SPACING AND COLOURS WILL DIFFER · EXAMPLE COMPANIES, NOT REAL DATA</div>
+<div class="crumb">Payroll › Payroll Settings › Recalculate Income Tax Value › Preview</div>
+<h1>EMP-3007 Nur Aina · Assessment year 2026 · current company Contoh Logistik Sdn Bhd</h1>
+
+<div class="card">
+  <h2>Year to date from other group companies <span class="src new">New</span></h2>
+  <p class="sub">Used as previous-employer information for Contoh Logistik's PCB, the way a TP3 form is. Totals only; each month stays with the company that paid it.</p>
+  <table>
+    <tr><th>Earlier company</th><th>Months</th><th>Source</th><th class="r">Taxable pay (RM)</th><th class="r">PCB deducted (RM)</th><th class="r">EPF employee (RM)</th><th class="r">Zakat (RM)</th></tr>
+    <tr><td>Contoh Holdings Berhad</td><td>Jan – Apr 2026</td><td><span class="src">Imported history</span></td><td class="r">28,400.00</td><td class="r">1,212.40</td><td class="r">3,124.00</td><td class="r">0.00</td></tr>
+    <tr><td>Contoh Teknologi Sdn Bhd</td><td>May – Sep 2026</td><td><span class="src">Processed payroll</span></td><td class="r">36,250.00</td><td class="r">1,704.75</td><td class="r">3,987.50</td><td class="r">0.00</td></tr>
+    <tr class="tot"><td>Total from other group companies</td><td>9 months</td><td></td><td class="r">64,650.00</td><td class="r">2,917.15</td><td class="r">7,111.50</td><td class="r">0.00</td></tr>
+  </table>
+  <div class="grid">
+    <div>
+      <div class="lbl">Exemption limits so far this year (all companies)</div>
+      <div class="kv">
+        <span class="k">Petrol / travel allowance: used 4,500.00 of 6,000.00</span><span>1,500.00 left</span>
+        <span class="k">Childcare allowance: used 1,200.00 of 3,000.00</span><span>1,800.00 left</span>
+      </div>
+    </div>
+    <div>
+      <div class="lbl">Checks</div>
+      <div class="kv">
+        <span class="k">Months January – September</span><span class="ok">All available</span>
+        <span class="k">TP3 entry for Contoh Teknologi</span><span>Replaced by its history (not added twice)</span>
+        <span class="k">TP3 entry for an employer outside the group</span><span>Still counted</span>
+      </div>
+    </div>
+  </div>
+  <p class="note">If a month were missing (for example an imported month still awaiting review), it would be named here in red and the employee held for income tax review. Nothing is guessed or treated as zero.</p>
+</div>
+
+<div class="card">
+  <h2>November 2026 PCB at Contoh Logistik</h2>
+  <table>
+    <tr><th>Months counted</th><th>Today</th><th>After this plan</th></tr>
+    <tr><td>Contoh Holdings Jan – Apr, Contoh Teknologi May – Sep</td><td class="miss">Not counted</td><td class="ok">Counted as previous-employer information</td></tr>
+    <tr><td>Contoh Logistik Oct – Nov</td><td class="ok">Counted</td><td class="ok">Counted, unchanged</td></tr>
+  </table>
+  <p class="note">EA forms stay per company: each of the three companies issues its own EA for the months it paid. No LHDN table, rate or formula changes.</p>
+</div>
