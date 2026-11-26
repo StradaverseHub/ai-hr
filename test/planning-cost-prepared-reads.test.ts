@@ -55,6 +55,7 @@ import type {SessionContext} from '../db/client';
 import {applicationDatabaseUrl} from '../db/pooling';
 import {preparedReadCounts} from '../db/prepared-read';
 import * as schema from '../db/schema';
+import {MODULE_CATALOG} from '../packs/catalog';
 import {withRequestReadScope} from '../lib/request-read-scope';
 import Layout from '../app/layout';
 import HomePage from '../app/page';
@@ -89,6 +90,8 @@ beforeAll(async()=>{
  process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';
  process.env.AIHR_VIEWER_MENU_CACHE='off';
  await migrateTestDb();await resetDb();b=await seedBase();
+ // Every pack module on, as on staging: each Today section and the bell's recruitment to-dos are read.
+ await owner.db.insert(schema.tenantModule).values(MODULE_CATALOG.filter(m=>!m.isCore&&m.packBacked).map(m=>({tenantId:b.tenantId,moduleCode:m.code,status:'active' as const}))).onConflictDoNothing();
  fixture=await buildScaleFixture(b,{employments:1000});
  const base=await entitledCtx(b,['hr_admin']);
  const own=async(employmentId:string,roles:string[]):Promise<SessionContext>=>{
