@@ -403,3 +403,32 @@ describe('bc6b5490 — the Effective to data step', () => {
     expect((await listCp38EffectiveToCandidates(owner.db)).filter((c) => c.tenantId === base.tenantId).map((c) => c.validTo).sort()).toEqual(['2026-06-01', '2026-08-01']);
   });
 });
+
+// Integration review (26 Nov 2026): the master report reads the same exclusive valid_to, so its CP38 "Effective to" must
+// be the last month deducted and the record ends after it — it used to show the month after (core/employee-master-projection.ts).
+describe('bc6b5490 — the master report shows the last month deducted', () => {
+  it('Effective to January–July 2026 reports July 2026 and reads ended in August', async () => {
+    const e = await hire(a, 'Master Report Employee');
+    await setCp38(a, { employmentId: e.employmentId, cp38Ref: 'CP38/MR/1', amount: 300, validFrom: '2026-01', validTo: '2026-07' });
+    const { masterReportFieldsTx } = await import('../core/employee-master-access');
+    const { employeeMasterSubjectsTx } = await import('../core/employee-master-projection');
+    const { withPersonnelPresentationReadTx } = await import('../core/personnel-read-bounds');
+    const { defaultMasterColumn } = await import('../lib/employee-master-report');
+    const read = (asAt: string) => withTenant(a, (outer) => withPersonnelPresentationReadTx(a, outer, async (tx, current) => {
+      const catalogue = await masterReportFieldsTx(tx, current, [base.companyId]);
+      const fields = catalogue.filter((f) => f.owner === 'cp38');
+      expect(fields.length).toBeGreaterThan(0);
+      const spec = { v: 2 as const, asAt, companyIds: [base.companyId], includeDrafts: false, columns: fields.map(defaultMasterColumn),
+        expression: { id: 'root', type: 'group' as const, logic: 'and' as const, children: [] }, sorts: [], groups: [],
+        pdf: { paper: 'A4' as const, orientation: 'portrait' as const, margins: 'normal' as const, logo: false, pageBreakGroups: false } };
+      const [subject] = await employeeMasterSubjectsTx(tx, current, spec, fields, catalogue, { employmentIds: [e.employmentId] });
+      return subject.owners.cp38 ?? [];
+    }));
+    const july = await read('2026-07-15');
+    expect(july).toHaveLength(1);
+    expect(july[0].effectiveTo).toBe('2026-07-31');
+    expect(Object.values(july[0].values).some((cell) => cell.value === 'active')).toBe(true);
+    const august = await read('2026-08-15');
+    expect(august.length === 0 || Object.values(august[0].values).some((cell) => cell.value === 'ended')).toBe(true);
+  });
+});

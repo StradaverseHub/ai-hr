@@ -37,6 +37,9 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:leave.adjustment.apply','action:notifications.email_preferences.save',
  ],
  'semantic,corpus':[
+ // 038c304b (owner exception, 26 Nov 2026, "List it like its siblings"): the CP38 Deduction page ships with its guide link;
+ // its semantic read would be a new AI guidance purpose, so it waits beside Zakat, Fixed, TP1 and TP3 until one is approved.
+ 'page:/payroll/transactions/cp38',
  // Existing guide links now cover these routes; their remaining requirements stay explicit.
  'page:/lifecycle/v9','page:/tasks',
  // AI Centre restructure (owner decisions 26–29, 4 Nov 2026), truthfully: the setup co-pilot's page was this one by mistake

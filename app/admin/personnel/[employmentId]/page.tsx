@@ -534,10 +534,16 @@ export default async function EmployeePage({
   const payComps = readProfileCards && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
   const componentCatalog = readProfileCards && payrollOn ? await listPayComponents(s, { readyOnly: true }) : [];
   // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data). r298 — Payroll-owned.
-  // bc6b5490 — a deleted record (supersededAt set) leaves the card; its correction history stays readable below.
-  const cp38Records = readProfileCards && payrollOn ? (await listCp38(s, { employmentId })).filter((r) => r.supersededAt == null) : [];
   const cp38History: Cp38HistoryEntry[] = readProfileCards && payrollOn && admin
     ? (await listCp38Revisions(s, { employmentId })).map((h) => ({ id: h.id, cp38Id: h.cp38Id, action: h.action, before: h.before, after: h.after, actorName: h.actorName, byUser: h.byUser, at: h.at.toISOString() }))
+    : [];
+  // bc6b5490 — a deleted record (supersededAt set, with its delete in the correction history) leaves the card; its history
+  // stays readable below. A record the OLD Terminate stamped (supersededAt set, no delete in history: it predates history)
+  // was never a deletion: it stays on the card, read-only and Closed, as it showed before this change.
+  const cp38Deleted = new Set(cp38History.filter((h) => h.action === 'delete').map((h) => h.cp38Id));
+  const cp38Records = readProfileCards && payrollOn
+    ? (await listCp38(s, { employmentId })).filter((r) => r.supersededAt == null || !cp38Deleted.has(r.id))
+      .map((r) => ({ ...r, legacyEnded: r.supersededAt != null }))
     : [];
   // ADR-0069 — leave encashment snapshot, admin-only card. Null when no resignation has been frozen
   // (policy off, or the employment was terminated directly bypassing the resignation flow).
@@ -1631,7 +1637,7 @@ export default async function EmployeePage({
               <tbody>
                 {cp38Records.map((r) => {
                   // CLOSED once its inclusive Effective to is before this month. Otherwise ACTIVE.
-                  const closed = r.validTo != null && r.validTo < thisMonthStart;
+                  const closed = r.legacyEnded || (r.validTo != null && r.validTo < thisMonthStart);
                   const rowHistory = cp38History.filter((h) => h.cp38Id === r.id);
                   return (
                     <tr key={r.id} className="border-b border-border/60 align-top">
@@ -1661,7 +1667,9 @@ export default async function EmployeePage({
                           >
                             {cp38ViewBody(r)}
                           </FamilyFormDialog>
-                          {/* bc6b5490 — Edit and Delete are offered on every record, ended ones included. */}
+                          {/* bc6b5490 — Edit and Delete are offered on every record, ended ones included (not on a record
+                              the old Terminate ended: it applies to no payroll and has nothing to correct). */}
+                          {!r.legacyEnded && (
                           <FamilyFormDialog
                             triggerLabel={t('cp38Edit')}
                             triggerVariant="outline"
@@ -1669,6 +1677,7 @@ export default async function EmployeePage({
                           >
                             {cp38DialogForm(r)}
                           </FamilyFormDialog>
+                          )}
                           <FamilyFormDialog triggerLabel={tCp38('history.button')} triggerVariant="outline" title={tCp38('history.title')}>
                             <Cp38HistoryList entries={rowHistory} labels={cp38HistoryLabels} />
                           </FamilyFormDialog>
@@ -1684,6 +1693,7 @@ export default async function EmployeePage({
                           )}
                           {/* 038c304b / bc6b5490 — Delete, behind a confirmation that names the record. Inside the
                               tab shell, so the shell injects the tab like Terminate. */}
+                          {!r.legacyEnded && (
                           <form action={deleteCp38Action}>
                             <input type="hidden" name="employmentId" value={emp.employmentId} />
                             <input type="hidden" name="id" value={r.id} />
@@ -1701,6 +1711,7 @@ export default async function EmployeePage({
                               {tCp38('delete')}
                             </ConfirmSubmit>
                           </form>
+                          )}
                         </div>
                       </td>
                     </tr>
