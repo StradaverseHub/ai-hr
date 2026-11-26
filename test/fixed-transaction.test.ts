@@ -29,6 +29,7 @@
  * so the pre-test state this file starts from is already "off" — and `resetDb()` truncates
  * `tenant_module` between tests, so a grant cannot leak into the next one.
  */
+import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -36,7 +37,7 @@ import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { closeBatch, createBatch, generatePayslips } from '../core/payroll';
+import { closeBatch, createBatch, generatePayslips, reprocessSelectedEmployees } from '../core/payroll';
 import {
   FixedTransactionAmountError,
   FixedTransactionBackwardsError,
@@ -1134,6 +1135,12 @@ describe('1.2.1 Fixed Transaction', () => {
 
     // Now close the run and try again with a second item covering the same month.
     const { id: second } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-01-01', prorateOverride: false });
+    // 124a979e — both changes flag the employee as Reprocess Required on the processed run, and Close waits for the
+    // reprocess: the reporter's own sequence "delete -> reprocess", then close.
+    const [marked] = await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id, batchId));
+    expect(marked.recalcEmploymentIds).toEqual([e.employmentId]);
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    await reprocessSelectedEmployees(await typedComponentsCtx(base), { batchId, employmentIds: [e.employmentId], idempotencyKey: randomUUID() });
     await closeBatch(a, { batchId });
     const err = await archiveEmploymentPayComponent(a, { id: second, employmentId: e.employmentId }).catch((x) => x);
     expect(err).toBeInstanceOf(FixedTransactionPaidError);

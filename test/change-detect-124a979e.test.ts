@@ -117,7 +117,9 @@ describe('124a979e — payroll changes after processing flag Reprocess Required'
   it('a fixed item starting after the run month marks nothing; ending or removing one that paid the month marks it', async () => {
     const e = await hire('Fixed Window');
     const { id } = await setEmploymentPayComponent(ctx, { employmentId: e.employmentId, componentId: await codeId('ALLOWANCE'), amount: 200, effectiveFrom: '2026-01-01', prorateOverride: false });
+    const { id: cola } = await setEmploymentPayComponent(ctx, { employmentId: e.employmentId, componentId: await codeId('COLA'), amount: 80, effectiveFrom: '2026-01-01', prorateOverride: false });
     const batchId = await processed('2026-10');
+    const reset = () => owner.db.update(schema.payrollBatch).set({ needsRecalcAt: null, recalcEmploymentIds: null }).where(eq(schema.payrollBatch.id, batchId));
 
     await addFixedTransaction(ctx, { employmentId: e.employmentId, componentId: await codeId('HOUSING'), amount: 50, effectiveFrom: '2026-12-01' });
     expect((await batchRow(batchId)).needsRecalcAt).toBeNull();
@@ -130,8 +132,11 @@ describe('124a979e — payroll changes after processing flag Reprocess Required'
     await endEmploymentPayComponent(ctx, { id, employmentId: e.employmentId, effectiveTo: '2026-09-30' });
     expect((await batchRow(batchId)).recalcEmploymentIds).toEqual([e.employmentId]);
 
-    await owner.db.update(schema.payrollBatch).set({ needsRecalcAt: null, recalcEmploymentIds: null }).where(eq(schema.payrollBatch.id, batchId));
+    // Removing the item that now ends in September does not move October; removing one that paid October does.
+    await reset();
     await archiveEmploymentPayComponent(ctx, { id, employmentId: e.employmentId });
+    expect((await batchRow(batchId)).needsRecalcAt).toBeNull();
+    await archiveEmploymentPayComponent(ctx, { id: cola, employmentId: e.employmentId });
     expect((await batchRow(batchId)).recalcEmploymentIds).toEqual([e.employmentId]);
   });
 

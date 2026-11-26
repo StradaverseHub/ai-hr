@@ -1954,9 +1954,6 @@ export function setEmploymentPayComponent(
     // already-ended record CHANGE it rather than add a copy of it. Every other live row that the new
     // window runs into is still refused.
     replacesId?: string;
-    // 124a979e — INTERNAL to updateEmploymentPayComponent: the opened row's window before the edit, so the one mark
-    // this write makes covers the months the old version paid as well as the new ones.
-    replacedWindow?: FixedItemWindow;
     // 2aed39d4 — backfill-only opt-out of the overlap refusal: SUPERSEDE every live row this write
     // overlaps instead of refusing. Only backfillEmploymentComponentsFromCompensation passes this. It
     // re-states BASIC/ALLOWANCE from the compensation record, which is the system of record for both, so
@@ -2203,14 +2200,14 @@ function writeEmploymentPayComponent(
         payrollCycleId,
       })
       .returning({ id: employmentPayComponent.id });
-    // 124a979e — the new row's window, every clash this write closed or superseded (each changes from the new start
-    // date onward, through its own end) and, on an edit, the row the admin opened (its whole window may change). Not
+    // 124a979e — the new row's window and every clash this write closed or superseded: a closed row changes from the
+    // new start date onward, a superseded one over its whole window (an edit's own row is one of the clashes whenever
+    // the write touches it, so an edit from June leaves a processed May unmarked). Not
     // for the compensation backfill (supersedeOverlaps, backfill-only): it re-states BASIC/ALLOWANCE from the salary
     // record, whose own writer marked the runs when the salary changed, and re-running it moves no figure.
     if (!p.supersedeOverlaps) await markFixedItemWindowsTx(tx, ctx, p.employmentId, [
       { from: p.effectiveFrom, to: effectiveTo },
       ...clashes.map((c) => ({ from: p.effectiveFrom > c.validFrom ? p.effectiveFrom : c.validFrom, to: c.validTo })),
-      ...(p.replacedWindow ? [p.replacedWindow] : []),
     ]);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -2398,8 +2395,6 @@ export function updateEmploymentPayComponent(
         // 2aed39d4 — THE row the admin opened. Without this an edit of an ended row reads as a clash
         // with itself and is either refused or cloned; with it, the row is versioned.
         replacesId: p.id,
-        // 124a979e — the writer marks the opened row's old window together with the new one.
-        replacedWindow: { from: row.validFrom, to: row.validTo },
       },
       tx,
       { maintainStartDate: dateOnly, rejectOverlap: p.expectedStartDate !== undefined },
