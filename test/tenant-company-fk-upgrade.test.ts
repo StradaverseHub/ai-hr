@@ -1463,6 +1463,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_batch_summary_verify(uuid)',app:false},
    {fn:'app.payroll_read_access_view_installed_as(text,text)',app:false},
    {fn:'app.payroll_read_access_swap_views(text,text,text)',app:false},
+   // 7520 (board 4ce2c481): the totals-only group tax opening, executed by the application's payroll calculation.
+   {fn:'app.payroll_group_tax_opening(uuid,text,uuid[])',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
