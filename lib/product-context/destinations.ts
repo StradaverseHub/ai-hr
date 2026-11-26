@@ -171,6 +171,9 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  // Export artifacts and import outcomes are scoped to the initiating user and current Payroll grants.
  '/payroll/transaction-view/workbooks',
  '/payroll/transactions/fixed/imports',
+ // 5084d02e: the Form TP3 Import Log shows an import only to an administrator of every one of its companies
+ // (app.tp3_import_log); a coarse administrator role does not say which imports that is.
+ '/payroll/transactions/tp3/imports',
  '/admin/rewards/access/view-as',
  '/admin/rewards/earlier-plans',
  '/admin/rewards/bonus-matrices',

@@ -47,6 +47,8 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  toil_year_close:{messages:'toilSweep',linkPath:'/admin/leave-config/leave-credit'},
  payroll_history:{messages:'payrollHistory',linkPath:'/payroll/history-import/logs'},
  fixed_transaction_import:{messages:'fixedTransactionImport',linkPath:'/payroll/transactions/fixed/imports'},
+ // Board 5084d02e. Only the save half notifies; the check half is watched on the Form TP3 screen (quietNotice).
+ tp3_import:{messages:'tp3Import',linkPath:'/payroll/transactions/tp3/imports'},
  payroll_reprocess:{messages:'payrollReprocess',linkPath:'/payroll'},
  movement_import:{messages:'movementImport',linkPath:'/admin/personnel/import/history?kind=movement'},
  movement_check:{messages:'movementCheck',linkPath:'/admin/personnel/import/history?kind=movement'},

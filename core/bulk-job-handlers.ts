@@ -17,6 +17,7 @@ import {employeeImportRevertJobHandler} from './employee-import-revert-job';
 import {registerImportJobHandler} from './register-import-worker';
 import {sectionImportJobHandler} from './section-import-worker';
 import {fixedTransactionImportJobHandler} from './fixed-transaction-import-job';
+import {tp3ImportJobHandler} from './tp3-import-job';
 import {leaveA2cJobHandler,leaveRecalcJobHandler} from './leave-follow-up-worker';
 import {toilExpiryJobHandler,toilYearCloseJobHandler} from './toil-sweep-worker';
 import {payrollHistoryJobHandler} from './payroll-history-job';
@@ -33,6 +34,6 @@ import {transactionExportJobHandler} from './payroll-transaction-export';
 
 export const BULK_JOB_HANDLERS:BulkJobWorkerOptions['handlers']= [lifecyclePersonnelCompletionPreviewHandler,lifecyclePersonnelCompletionRecoveryHandler,lifecycleManagerRecoveryHandler,rewardPlanReviewsJobHandler,employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,
  earnedAccrualJobHandler,rosterBulkJobHandler,scheduleGroupBulkJobHandler,clockingImportJobHandler,attendanceRecomputePreviewJobHandler,
- attendanceRecomputeJobHandler,payrollProcessJobHandler,draftTaxReadinessJobHandler,taxBasisGroupJobHandler,systemLabelImportJobHandler,employeeImportRevertJobHandler,sectionImportJobHandler,fixedTransactionImportJobHandler,
+ attendanceRecomputeJobHandler,payrollProcessJobHandler,draftTaxReadinessJobHandler,taxBasisGroupJobHandler,systemLabelImportJobHandler,employeeImportRevertJobHandler,sectionImportJobHandler,fixedTransactionImportJobHandler,tp3ImportJobHandler,
  registerImportJobHandler,leaveRecalcJobHandler,leaveA2cJobHandler,toilExpiryJobHandler,toilYearCloseJobHandler,payrollHistoryJobHandler,
  payrollReprocessJobHandler,movementImportJobHandler,movementCheckJobHandler,movementImportRevertJobHandler,recruitmentCandidateImportJobHandler,rewardPersonHistoryJobHandler,contractPreviewJobHandler,contractAutomationJobHandler,contractSetupJobHandler,contractScheduleJobHandler,contractScheduledAutomationJobHandler,contractPostingApplyJobHandler,transactionExportJobHandler,payrollRunOutstandingRefreshJobHandler];
