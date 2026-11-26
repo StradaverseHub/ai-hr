@@ -32,6 +32,111 @@ export function importedPayItemLines(statutory: unknown): StoredComponentLine[] 
   return Array.isArray(st.importedLines) ? (st.importedLines as StoredComponentLine[]) : [];
 }
 
+/** 289634a6 — one imported Non-Payable pay item (a BIK, a VOLA) as an imported month saved it. */
+export type ImportedNonPayableLine = {
+  code: string;
+  name: string;
+  amount: number;
+  /** Always true: the import only routes a pay item marked Non-Payable here, so the shared filter
+   *  (`isNonPayableRecordLine`) and the name rule (`recordLineIdentity`) read it as the run's own stamp. */
+  nonPayable: true;
+  /** The pay item's "Subject to PCB" setting AS THE IMPORT STAMPED IT (`importedTaxBasis.settings`), never
+   *  today's catalogue. `null` when the month saved no stamped setting for the item. */
+  countsForPcb: boolean | null;
+  imported: true;
+};
+
+const objectOf = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+const codeKey = (value: unknown) => (typeof value === 'string' ? value.trim().toUpperCase() : '');
+const cents = (value: unknown): number | null => {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim()) ? Number(value) : NaN;
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+};
+
+/**
+ * 289634a6 — THE NON-PAYABLE PAY ITEMS AN IMPORTED PAYROLL-HISTORY MONTH SAVED, for display only.
+ *
+ * The history import routes a Non-Payable pay item (BKCAR benefit-in-kind car, BKDRV driver) to its own
+ * `noncash` destination: it is never in gross, net or any cash figure, and it is never written to
+ * `recordLines` (the kernel's run-time record). It is saved in two places on the imported month, both owned
+ * by the import: `statutory.historyMaintenance.items` (the effective item totals after every listed update)
+ * and `statutory.importedTaxBasis.lines` (the tax input the import stamped, with the pay item settings it
+ * used). Every Transaction View reader only looked at `recordLines`, so these items were saved and counted
+ * for PCB but shown nowhere.
+ *
+ * Read order: the effective maintenance items first (they reflect every later update), then the stamped tax
+ * lines for a month imported before maintenance existed. Repeated rows of one code are added in cents. The
+ * PCB marker comes from the setting the import stamped. A code the run's own `recordLines` already lists as
+ * non-payable is left out, so a line can never be shown twice. Nothing here changes a figure.
+ */
+export function importedNonPayableLines(statutory: unknown): ImportedNonPayableLine[] {
+  const st = objectOf(statutory);
+  if (!st) return [];
+  const stamp = objectOf(st.importedTaxBasis);
+  const rawSettings: unknown = stamp ? stamp.settings : undefined;
+  const settings = (Array.isArray(rawSettings) ? rawSettings : []).map(objectOf).filter((s): s is Record<string, unknown> => s !== null);
+  const settingById = (id: unknown) => (typeof id === 'string' ? settings.find((s) => s.id === id) : undefined);
+  const settingByCode = (code: string) => settings.find((s) => codeKey(s.code) === code);
+  const pcbOf = (setting: Record<string, unknown> | undefined) => {
+    const included: unknown = setting ? setting.includedInPcb : undefined;
+    return typeof included === 'boolean' ? included : null;
+  };
+  const nameOf = (setting: Record<string, unknown> | undefined) => {
+    const name: unknown = setting ? setting.name : undefined;
+    return typeof name === 'string' ? name : '';
+  };
+
+  const out = new Map<string, { code: string; name: string; cents: number; countsForPcb: boolean | null }>();
+  const add = (code: string, name: string, amount: number, countsForPcb: boolean | null) => {
+    const key = codeKey(code);
+    if (!key) return;
+    const prior = out.get(key);
+    if (prior) {
+      prior.cents += amount;
+      if (!prior.name && name) prior.name = name;
+      if (prior.countsForPcb === null) prior.countsForPcb = countsForPcb;
+    } else out.set(key, { code: code.trim(), name, cents: amount, countsForPcb });
+  };
+
+  const maintained = objectOf(st.historyMaintenance);
+  if (maintained && maintained.version === 1 && Array.isArray(maintained.items)) {
+    for (const raw of maintained.items) {
+      const item = objectOf(raw);
+      if (!item || (item.direction !== 'noncash' && item.destination !== 'noncash')) continue;
+      const code: unknown = item.code, key: unknown = item.key, label: unknown = item.label;
+      const amount = cents(item.amount);
+      if (typeof code !== 'string' || amount === null) continue;
+      const owner = typeof key === 'string' && key.startsWith('component:') ? settingById(key.slice('component:'.length)) : undefined;
+      const setting = owner ?? settingByCode(codeKey(code));
+      add(code, typeof label === 'string' && label.trim() ? label.trim() : nameOf(setting), amount, pcbOf(setting));
+    }
+  } else if (stamp && Array.isArray(stamp.lines)) {
+    for (const raw of stamp.lines) {
+      const line = objectOf(raw);
+      if (!line || line.direction !== 'noncash') continue;
+      const code: unknown = line.code;
+      const amount = cents(line.amount);
+      if (typeof code !== 'string' || amount === null) continue;
+      const setting = settingById(line.settingId) ?? settingByCode(codeKey(code));
+      add(code, nameOf(setting), amount, pcbOf(setting));
+    }
+  }
+  if (!out.size) return [];
+
+  // Shown once: a code the run itself recorded as non-payable stays with that record line.
+  const recorded = new Set(
+    (Array.isArray(st.recordLines) ? st.recordLines : [])
+      .map(objectOf)
+      .filter((l): l is Record<string, unknown> => l !== null && l.nonPayable === true)
+      .map((l) => codeKey(l.code)),
+  );
+  return [...out.entries()]
+    .filter(([key]) => !recorded.has(key))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, l]) => ({ code: l.code, name: l.name, amount: l.cents / 100, nonPayable: true as const, countsForPcb: l.countsForPcb, imported: true as const }));
+}
+
 /**
  * The lines a payslip SCREEN or DOCUMENT itemises its figures from: the kernel's stamp plus, for imported
  * history, the file's own lines. Display only — never hand this to an EA, statutory or comparison reader.

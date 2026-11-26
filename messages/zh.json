@@ -8293,6 +8293,9 @@
           "itemsNote": "一次性项目已包含在上述合计中。仅记录项目不是现金收入；应税福利可能影响 PCB 和实发工资。",
           "nonPayableHeading": "不支付金额",
           "nonPayableNote": "不支付给员工，也不计入总薪资或实发工资。",
+          "nonPayableFromImport": "来自薪资历史导入",
+          "countsForPcb": "计入 PCB",
+          "notTaxed": "不征税",
           "itemRemark": "录入时写作“{remark}”",
           "sourceHeading": "这些来自哪里",
           "sourceNote": "此员工及本次薪资运行的原始交易输入。这些是来源金额，并非已付薪资的分配。以上保存的薪资总额为准；来源记录可能在处理后更改。",
@@ -46646,6 +46649,12 @@
     "after": "更改后",
     "removed": "已移除",
     "resetChanges": "重置编辑",
+    "rowOperations": {
+      "create": "新增",
+      "replace": "已更新",
+      "unchanged": "无变化 — 这些总额已保存",
+      "invalid": "未导入 — 请在记录列表中查看原因"
+    },
     "itemOperations": {
       "add": "新增薪资项目",
       "change": "更改所列总额",

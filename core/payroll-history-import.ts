@@ -251,9 +251,11 @@ const issue = (
  *   1. STATUTORY_IMPORT_CODES — built in, so a tenant provisioned after migration 0427 (which has no
  *      payroll_import_code rows at all) can still import. This is the floor, not a seed dependency.
  *   2. the live pay_component catalog — the earning/deduction codes an admin already maintains, mapped
- *      by kind and display category. A non-payable component (a BIK/perquisite: taxable but never paid
- *      in cash) is deliberately NOT accepted — it has no cash destination and guessing one would inflate
- *      the employee's gross.
+ *      by kind and display category. A non-payable component (a BIK/VOLA perquisite: taxable but never
+ *      paid in cash) IS accepted, under its own `noncash` destination: it never enters gross, net or any
+ *      cash figure, and is saved only as the month's imported tax input (`importedTaxBasis.lines`,
+ *      `pcbNonCash` when the stamp is ready) and maintained item total (`historyMaintenance.items`).
+ *      Transaction View reads it back from there (core/payslip-imported-lines.ts `importedNonPayableLines`).
  *   3. payroll_import_code — the override layer: adds a code, aliases one onto another, or (active
  *      false) removes one.
  *

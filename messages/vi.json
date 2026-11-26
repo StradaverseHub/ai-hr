@@ -8293,6 +8293,9 @@
           "itemsNote": "Các khoản một lần đã được tính trong tổng ở trên. Các khoản chỉ ghi nhận không phải thu nhập tiền mặt; phúc lợi chịu thuế có thể ảnh hưởng đến PCB và lương thực nhận.",
           "nonPayableHeading": "Các khoản không chi trả",
           "nonPayableNote": "Không chi trả cho nhân viên và không tính vào tổng lương hoặc lương thực nhận.",
+          "nonPayableFromImport": "Từ việc nhập lịch sử lương",
+          "countsForPcb": "Tính vào PCB",
+          "notTaxed": "Không chịu thuế",
           "itemRemark": "Được nhập là “{remark}”",
           "sourceHeading": "Các khoản này đến từ đâu",
           "sourceNote": "Dữ liệu giao dịch gốc của nhân viên và kỳ chạy này. Đây là số tiền nguồn, không phải phân bổ lương đã trả. Tổng lương đã lưu ở trên là số liệu chính thức; các mục nguồn có thể đã đổi sau khi xử lý.",
@@ -46646,6 +46649,12 @@
     "after": "Sau",
     "removed": "Đã xóa",
     "resetChanges": "Đặt lại chỉnh sửa",
+    "rowOperations": {
+      "create": "Mới",
+      "replace": "Đã cập nhật",
+      "unchanged": "Không thay đổi — các tổng này đã được lưu",
+      "invalid": "Không được nhập — xem lý do trong danh sách bản ghi"
+    },
     "itemOperations": {
       "add": "Thêm Khoản lương",
       "change": "Đổi tổng được liệt kê",

@@ -245,7 +245,9 @@ export function buildHistoryExport(input: HistoryExportInput): ReportData {
     // `.label`: `dynamicColumns` below already appends the code itself when two items share a description,
     // and heading a column "Recorded: A0040 · MEAL ALLOWANCE" would state the code twice. A stamped BIK
     // line is returned untouched by the rule — its stored name is the item's own description, not a remark.
-    for (const l of b.recordLines) {
+    // 289634a6 — plus an imported month's Non-Payable items, which the import keeps outside `recordLines`.
+    // Same "Recorded item:" block, so the file agrees with the screen; never in a cash column.
+    for (const l of [...b.recordLines, ...b.importedNonPayableLines]) {
       if (!recordedNames.get(l.code)) {
         recordedNames.set(l.code, recordLineIdentity(l, input.payItemNames).name || '');
       }
@@ -272,7 +274,7 @@ export function buildHistoryExport(input: HistoryExportInput): ReportData {
     // 3c473773 issue 2 — the employee-borne figures, NOT the raw blob. See the header note.
     const emp = b.employerBorne.employee;
     const named = amountsByCode(b.componentLines);
-    const recorded = amountsByCode(b.recordLines);
+    const recorded = amountsByCode([...b.recordLines, ...b.importedNonPayableLines]);
     return [
       row.payPeriod,
       // b240c0ff — imported payroll history is labelled by its Pay Cycle ("Monthly - By Import").

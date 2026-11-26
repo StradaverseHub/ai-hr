@@ -1,4 +1,4 @@
-import { payslipDeductionBreakdown } from '@/core/payslip-imported-lines';
+import { importedNonPayableLines, payslipDeductionBreakdown } from '@/core/payslip-imported-lines';
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 // 6b134681 — the ONE answer to "may these named rows replace the figure they sit under?", shared with the
@@ -39,7 +39,13 @@ import { payslipCp38Carve } from '@/core/payslip-cp38-line';
  *  stale remark, and is repaired) from a record-only BIK (whose stored name is the pay item's own
  *  description, and is not). Dropping it here would silently disable that branch on three screens.
  *  Absent ⇒ written before the stamp (f35f758a / r185) — see core/payroll.ts `PayslipRecordLine`. */
-export type RecordLine = { code: string; name: string; amount: number; detail?: PayItemRateDetail | null; inputQuantity?: PayItemInputQuantity; nonPayable?: boolean };
+export type RecordLine = {
+  code: string; name: string; amount: number; detail?: PayItemRateDetail | null; inputQuantity?: PayItemInputQuantity; nonPayable?: boolean;
+  /** 289634a6 — set only on an IMPORTED non-payable line (core/payslip-imported-lines.ts `importedNonPayableLines`):
+   *  the pay item's "Subject to PCB" setting as the import stamped it, or null when none was stamped. */
+  countsForPcb?: boolean | null;
+  imported?: true;
+};
 
 /** 5a5309d5 — a named line under a figure, plus what the run multiplied to reach it when it recorded that.
  *  `otLeg` is set only on a statutory overtime leg from `statutory.otDetail` (core/payslip-earning-lines.ts
@@ -215,6 +221,14 @@ export type HistoryBreakdown = {
    * never said it was non-payable, and asking today's catalogue would answer about last month's pay.
    */
   nonPayableLines: RecordLine[];
+  /**
+   * 289634a6 — an IMPORTED payroll-history month's Non-Payable pay items (BKCAR, BKDRV), read from what the
+   * import saved (`importedNonPayableLines`). The import never writes `recordLines`, so these were saved and
+   * counted for PCB but shown nowhere. They are already inside `nonPayableLines` above (once, after the run's
+   * own lines); this list is the same lines again for the Grid and the spreadsheet export, which read
+   * `recordLines` and need the imported ones beside it. Never part of gross, net or any reconciling sum.
+   */
+  importedNonPayableLines: RecordLine[];
   /** 5a5309d5 — the TOTAL printed under `nonPayableLines`: their stored amounts summed, nothing else. */
   nonPayableTotal: number;
   /** 5a5309d5 — every other record line, in stored order: what "Itemised payroll items" now lists.
@@ -305,7 +319,10 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow, sources: re
   const { absence, deductionLines } = payslipDeductionBreakdown(row.statutory, row.otherDeductions, sources);
   const recordLines = st.recordLines ?? [];
   // 5a5309d5 — one pass, so a line is in exactly one of the two sections and none is lost or repeated.
-  const nonPayableLines = recordLines.filter(isNonPayableRecordLine);
+  // 289634a6 — plus an imported month's Non-Payable items, which live only in what the import saved. The
+  // helper leaves out any code the run's own record lines already list, so each line appears once.
+  const importedNonPayable: RecordLine[] = importedNonPayableLines(row.statutory);
+  const nonPayableLines = [...recordLines.filter(isNonPayableRecordLine), ...importedNonPayable];
   const itemisedRecordLines = recordLines.filter((l) => !isNonPayableRecordLine(l));
   return {
     st,
@@ -330,6 +347,7 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow, sources: re
     employerBorne: payslipEmployerBorne(row.statutory),
     recordLines,
     nonPayableLines,
+    importedNonPayableLines: importedNonPayable,
     nonPayableTotal: round2(nonPayableLines.reduce((t, l) => t + num(l.amount), 0)),
     itemisedRecordLines,
     componentLines,

@@ -8293,6 +8293,9 @@
           "itemsNote": "One-off items are included in the totals above. Record-only items are not cash earnings; taxable benefits can affect PCB and net pay.",
           "nonPayableHeading": "Non-payable amounts",
           "nonPayableNote": "Not paid to the employee and not included in gross or net pay.",
+          "nonPayableFromImport": "From the payroll history import",
+          "countsForPcb": "Counts for PCB",
+          "notTaxed": "Not taxed",
           "itemRemark": "Entered as “{remark}”",
           "sourceHeading": "Where these came from",
           "sourceNote": "Original transaction inputs for this employee and run. These are source amounts, not an allocation of paid payroll. Saved payroll totals above remain authoritative; source entries may have changed since processing.",
@@ -46646,6 +46649,12 @@
     "after": "After",
     "removed": "Removed",
     "resetChanges": "Reset edits",
+    "rowOperations": {
+      "create": "New",
+      "replace": "Updated",
+      "unchanged": "No change — these totals were already saved",
+      "invalid": "Not imported — see the reason in the record list"
+    },
     "itemOperations": {
       "add": "Add Pay Item",
       "change": "Change listed total",

@@ -573,3 +573,72 @@ it('groups repeated lines of any deduction code into one row, adding days and re
   // And a residual the grouped rows do not explain still shows the bare total, as before.
   expect(deriveHistoryBreakdown(row({ otherDeductions: '300.00', statutory: slip.statutory })).deductionLines).toEqual([]);
 });
+
+// 289634a6 — an imported payroll-history month's Non-Payable pay items (BKCAR, BKDRV) were saved by the import but
+// shown nowhere: the import never writes `recordLines`. They are read back from what the import saved.
+describe('imported Non-Payable items (289634a6)', () => {
+  const settings = [
+    { id: 'pc-bkcar', code: 'BKCAR', name: 'Benefit-in-kind car', includedInPcb: true, isNonPayable: true },
+    { id: 'pc-bkdrv', code: 'BKDRV', name: 'Benefit-in-kind driver', includedInPcb: false, isNonPayable: true },
+  ];
+  const importedTaxBasis = {
+    version: 1, state: 'ready', year: 2026, settingsHash: 'x', missing: [], settings,
+    lines: [
+      { rowNum: 4, originalCode: 'BKCAR', code: 'BKCAR', settingId: 'pc-bkcar', amount: 2083.33, direction: 'noncash' },
+      { rowNum: 5, originalCode: 'BKDRV', code: 'BKDRV', settingId: 'pc-bkdrv', amount: 600, direction: 'noncash' },
+      { rowNum: 2, originalCode: 'BASIC', code: 'BASIC', settingId: 'system-basic-salary', amount: 90000, direction: 'earning' },
+    ],
+  };
+  const imported = (statutory: Record<string, unknown>) => row({
+    historyImportAttemptId: '00000000-0000-0000-0000-0000000000a1', historyImportCycleName: 'Monthly',
+    basic: '90000.00', allowance: '0.00', overtime: '0.00', gross: '90000.00', otherDeductions: '0.00',
+    totalDeductions: '32774.70', net: '57225.30',
+    statutory: { epfEmployee: 9900, pcb: 22874.7, ...statutory },
+  });
+
+  it('lists the maintained items once, with the stamped PCB setting, and never in gross or net', () => {
+    const b = deriveHistoryBreakdown(imported({
+      importedTaxBasis,
+      historyMaintenance: { version: 1, items: [
+        { key: 'destination:basic', code: 'BASIC', label: 'Basic salary', originalCodes: ['BASIC'], amount: '90000.00', destination: 'basic', direction: 'earning', sourceRows: [2] },
+        { key: 'component:pc-bkdrv', code: 'BKDRV', label: 'Benefit-in-kind driver', originalCodes: ['BKDRV'], amount: '600.00', destination: 'noncash', direction: 'noncash', sourceRows: [5] },
+        { key: 'component:pc-bkcar', code: 'BKCAR', label: 'Benefit-in-kind car', originalCodes: ['BKCAR'], amount: '2083.33', destination: 'noncash', direction: 'noncash', sourceRows: [4] },
+      ] },
+    }));
+    expect(b.nonPayableLines).toEqual([
+      { code: 'BKCAR', name: 'Benefit-in-kind car', amount: 2083.33, nonPayable: true, countsForPcb: true, imported: true },
+      { code: 'BKDRV', name: 'Benefit-in-kind driver', amount: 600, nonPayable: true, countsForPcb: false, imported: true },
+    ]);
+    expect(b.importedNonPayableLines).toEqual(b.nonPayableLines);
+    expect(b.nonPayableTotal).toBe(2683.33);
+    // Display only: the cash figures are the stored ones, untouched, and the benefits are in no other list.
+    expect([b.gross, b.net, b.basic]).toEqual([90000, 57225.3, 90000]);
+    expect(b.basic + b.allowanceNet + b.overtime + b.bonus).toBe(b.gross);
+    expect(b.itemisedRecordLines).toEqual([]);
+    expect(b.recordLines).toEqual([]);
+    expect(b.componentLines.map((l) => l.code)).not.toContain('BKCAR');
+  });
+
+  it('falls back to the stamped tax lines for a month imported before item maintenance, adding repeated rows once', () => {
+    const b = deriveHistoryBreakdown(imported({ importedTaxBasis: { ...importedTaxBasis, lines: [
+      ...importedTaxBasis.lines,
+      { rowNum: 6, originalCode: 'BKCAR', code: 'BKCAR', settingId: 'pc-bkcar', amount: 0.01, direction: 'noncash' },
+    ] } }));
+    expect(b.nonPayableLines.map((l) => [l.code, l.amount, l.countsForPcb])).toEqual([['BKCAR', 2083.34, true], ['BKDRV', 600, false]]);
+  });
+
+  it('shows a code the run itself recorded as non-payable once, from the run, never twice', () => {
+    const b = deriveHistoryBreakdown(imported({
+      importedTaxBasis,
+      recordLines: [{ code: 'BKCAR', name: 'Benefit-in-kind car', amount: 2083.33, nonPayable: true }],
+    }));
+    expect(b.nonPayableLines.map((l) => [l.code, l.imported ?? false])).toEqual([['BKCAR', false], ['BKDRV', true]]);
+    expect(b.nonPayableTotal).toBe(2683.33);
+  });
+
+  it('a kernel run with no import stamp gains nothing', () => {
+    const b = deriveHistoryBreakdown(row({ statutory: { pcbNonCash: { version: 1 }, recordLines: [] } }));
+    expect(b.importedNonPayableLines).toEqual([]);
+    expect(b.nonPayableLines).toEqual([]);
+  });
+});

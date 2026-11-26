@@ -1199,3 +1199,63 @@ describe('3c88d593 — a transferred employee’s month is split by company, not
     ]);
   });
 });
+
+// 289634a6 — an imported month's Non-Payable items (BKCAR, BKDRV) are Recorded Items on the import's own row.
+describe('289634a6 — imported Non-Payable items in the Grid', () => {
+  const IMPORT = '00000000-0000-0000-0000-0000000000a1';
+  const importedJan = () => slip({
+    payPeriod: '2026-01',
+    runType: 'adjustment',
+    historyImportAttemptId: IMPORT,
+    historyImportCycleName: 'Monthly',
+    statutory: {
+      epfEmployee: 330, socsoEmployee: 18.65, eisEmployee: 7.9, pcb: 73.45,
+      importedTaxBasis: {
+        version: 1, state: 'ready', year: 2026, settingsHash: 'x', missing: [],
+        settings: [
+          { id: 'pc-bkcar', code: 'BKCAR', name: 'Benefit-in-kind car', includedInPcb: true },
+          { id: 'pc-bkdrv', code: 'BKDRV', name: 'Benefit-in-kind driver', includedInPcb: true },
+        ],
+        lines: [
+          { rowNum: 3, originalCode: 'BKCAR', code: 'BKCAR', settingId: 'pc-bkcar', amount: 2083.33, direction: 'noncash' },
+          { rowNum: 4, originalCode: 'BKDRV', code: 'BKDRV', settingId: 'pc-bkdrv', amount: 600, direction: 'noncash' },
+        ],
+      },
+      historyMaintenance: { version: 1, items: [
+        { key: 'component:pc-bkcar', code: 'BKCAR', label: 'Benefit-in-kind car', originalCodes: ['BKCAR'], amount: '2083.33', destination: 'noncash', direction: 'noncash', sourceRows: [3] },
+        { key: 'component:pc-bkdrv', code: 'BKDRV', label: 'Benefit-in-kind driver', originalCodes: ['BKDRV'], amount: '600.00', destination: 'noncash', direction: 'noncash', sourceRows: [4] },
+      ] },
+    },
+  });
+  // The system's own processed February: its run recorded a BKCAR line of 0.00 (the reporter's "Regular" row).
+  const processedFeb = () => slip({
+    payPeriod: '2026-02',
+    statutory: {
+      epfEmployee: 330, socsoEmployee: 18.65, eisEmployee: 7.9, pcb: 73.45,
+      recordLines: [{ code: 'BKCAR', name: 'Benefit-in-kind car', amount: 0, nonPayable: true }],
+    },
+  });
+
+  it('puts each imported item once under the import run key, in its month, outside every reconciling sum', () => {
+    const payslips = [importedJan(), processedFeb()];
+    const grid = pivotHistoryGrid({ rows: payslips, year: 2026 });
+    const items = grid.rows.filter((r) => r.kind === 'item' && r.group === 'item');
+    const imported = items.filter((r) => r.historyImportAttemptId === IMPORT);
+    expect(imported.map((r) => [r.code, r.name, r.months[0], r.total])).toEqual([
+      ['BKCAR', 'Benefit-in-kind car', 2083.33, 2083.33],
+      ['BKDRV', 'Benefit-in-kind driver', 600, 600],
+    ]);
+    for (const r of imported) {
+      expect(r.key).toContain(':import:Monthly:');
+      expect(r.historyImportCycleName).toBe('Monthly');
+      expect(r.reconciling).toBe(false);
+    }
+    // The processed run's own line stays its own row; the two are never summed into one.
+    const regular = items.filter((r) => r.code === 'BKCAR' && !r.historyImportAttemptId);
+    expect(regular.map((r) => [r.runType, r.months[1], r.total])).toEqual([['regular', 0, 0]]);
+    // Not in gross: the reconciling earnings still make each payslip's stored gross exactly.
+    for (const [i, p] of payslips.entries()) expect(sumMonth(grid.rows, 'earning', i)).toBe(Number(p.gross));
+    // Shown once: the maintained item total and the stamped tax line describe the same money and make one row.
+    expect(items.filter((r) => r.code === 'BKDRV')).toHaveLength(1);
+  });
+});
