@@ -1,0 +1,53 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+At the bottom of the main menu there is one section called System Configuration. Inside it are two dropdowns: another "System Configuration" (holidays, email settings, scheduled actions, audit trail and so on) and "Security Center". So an administrator opens System Configuration, then opens System Configuration or Security Center again before reaching the page they want.
+
+Inside the Security Center dropdown, the first entry is also called "Security Center" (the overview page), which repeats the name of the menu it sits in.
+
+WHAT WE'LL CHANGE
+
+- System Configuration and Security Center become two separate sections in the main menu, each with its own icon: a gear for System Configuration and a shield for Security Center.
+
+- Opening System Configuration shows its pages straight away (Holidays, Approval Delegation, Email delivery, Email templates, Workflow notifications, Scheduled actions, Data Privacy, Audit trail and the rest, as today). There is no second "System Configuration" dropdown inside it any more.
+
+- Opening Security Center shows its pages straight away, in this order: Security & Permissions, Password Policy, Function Access, Users, Create a Login Manually, Invite a User. These are the pages that are in Security Center today; nothing is removed.
+
+- The repeated "Security Center" entry inside the Security Center menu is removed. The overview page itself stays, and is still reached from the page heading trail and the "Back to Security Center" links on each security page.
+
+- Each person sees exactly the same pages as today. Who can open each page does not change, and no user, role or security setting is reset or touched. Someone who may only see some security pages sees only those, now under Security Center.
+
+- The new layout works the same in every screen style, on mobile, in search and in the page heading trail.
+
+WHAT YOU'LL GET
+
+Administrators reach configuration and security pages in one step from two clearly named menu sections, with no repeated entries.
+
+GOOD TO KNOW
+
+- Data Permission Access: this page does not exist yet. It is part of your separate request "Enhancement of Security Center - Role and User Groups, Data Permission Access and User Access Assignment", which is still being built. When that request is delivered, Data Permission Access will appear in this new Security Center section, after Password Policy, as you listed. This plan only rearranges the menu; it does not build that page.
+
+- Function Access, Create a Login Manually and Invite a User were not in your suggested list, but they are Security Center pages today. We keep them there so nothing becomes harder to find. If you would rather move or hide any of them, reject this plan and say which.
+
+- This changes only the menu. No page, setting or permission changes.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Verified at main a8f7255df1. Renderer components/sidebar.tsx about 225-235 builds groups; the third group is labelKey systemConfiguration containing two collapsibles: systemConfiguration (Settings2, otherSystemRows) and securityCenter (ShieldCheck, breadcrumbHref SECURITY_CENTER, securityRows from isSecurityDestination). Inventory lib/navigation/shell-inventory.ts (admin GROUPS about 425-490; hub row about 487; SECURITY_PAGES about 488). Placement owner lib/navigation-workspaces.ts (system area about 39-41; ADR-0132). Security pages and gates lib/security-center-navigation.ts about 2-21; resolver lib/navigation/shell-resolver.ts about 136-151.
+
+1. Split the bottom group into two groups in sidebar.tsx: { labelKey systemConfiguration, items: otherSystemRows rendered directly } and { labelKey securityCenter, icon ShieldCheck, items: security rows rendered directly }. No nested collapsible with the same label as its section. Keep both groups pinned to the bottom of the rail (replace the gi===2 mt-auto index checks at about 474 and 740 with a flag on the group). Remove the securityCenter-specific flyout and hover special cases (about 344, 383-387, 561, 566, 807) or move them to the new group consistently across monolith, atelier and classic and mobile drawers.
+
+2. Order security rows as SECURITY_PAGES reordered: Security & Permissions, Password Policy, Function Access, Users, Create a Login Manually, Invite a User. Leave a slot for a9cfdca9 data permissions (insert after Password Policy when that route exists; do not add a placeholder row).
+
+3. Remove the hub row from the menu (shell-inventory.ts about 487 or exclude SECURITY_CENTER from the rendered rows). Keep the route app/admin/security-center/page.tsx, its guard, and the Back links in app/admin/users/security-page.tsx. Breadcrumb: give the securityCenter group a landing href of SECURITY_CENTER only when the viewer may open it (securityDestinationAllowed), per docs/adr/2026-11-16-breadcrumb-task-ancestry.md. Configure-only viewers keep the hub reachable by breadcrumb and Back link.
+
+4. Navigation coverage: retire or re-point REVIEWED_SHELL_BINDINGS shell.securityCenter (lib/navigation/catalogue.ts about 69) and its ledger entry (scripts/performance/navigation-coverage-ledger.json about 484) per docs/adr/2026-11-07-navigation-coverage.md; keep ids for moved rows. Product destinations (lib/product-context/destinations.ts about 130) and capability catalogue keep the hub destination for search. Amend ADR-0132 with a dated note: shared administration is two sections, System Configuration and Security Center.
+
+5. Permissions unchanged: no guard, capability or placement-area change (keep area system for all these routes unless a separate security area is cleaner; if added, update navigation-workspaces tests). i18n: reuse nav.systemConfiguration and nav.securityCenter in all six locales.
+
+6. Tests to update: test/security-center-sidebar.dom.test.tsx, test/atelier-mobile-navigation.browser.test.tsx, test/sidebar-section-collapse.dom.test.tsx, test/navigation-shell-resolver.test.ts, test/r398-monolith-shell.test.ts, test/sidebar-sections-fit.test.ts, test/breadcrumb-hierarchy.test.ts, navigation catalogue/coverage/application-catalogue tests, test/combined-release-shell.browser.test.tsx. Add a rendered check per theme (desktop and mobile) that both sections render, the duplicate hub row is gone, a configure-only user sees only their security rows, and a hr_admin sees the same set of destinations as before (set equality against the pre-change inventory). No migration.
+
+Coordination: a9cfdca9 (building, not on main) also edits the Security Center destination registry. Whichever lands second rebases onto the other; do not build both in parallel on the same files.

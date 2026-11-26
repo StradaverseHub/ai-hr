@@ -1,0 +1,43 @@
+VERDICT: Partly there already   ·   SIZE: Quick
+
+THE SITUATION TODAY
+
+When HR opens Payroll > Individual Payslip and picks an employee, the Net Pay line is actually on the page, but it cannot be seen. It sits in a coloured band near the bottom, under Earnings, Deductions and the PCB and Statutory links. The current screen style paints that band white with white writing, so it looks empty.
+
+The amount in that band is already the employee's real Net Pay, taken straight from the processed payroll result. It is the same figure the downloaded payslip shows. Nothing is missing except the colour.
+
+The "Matching payroll runs" row appears under the filters when one month has more than one run, for example a normal run and a bonus run. Today it is also the only way to open the second run's payslip.
+
+WHAT WE'LL CHANGE
+
+- Net Pay becomes clearly visible: a dark band with light writing, readable in every screen style the system offers (including dark mode). The figure, its position on the page and the downloaded payslip stay exactly as they are.
+
+- The same fix is applied to the employee's own payslip page (My Payslip), which uses the same band and has the same problem.
+
+- The "Matching payroll runs" row is removed. The Company, Year, Month and Payroll Cycle filters and the View Payslip button stay as they are.
+
+- So that no payslip becomes unreachable when it is removed: if one month has more than one run that the Payroll Cycle box cannot tell apart (for example two bonus runs in the same month), the existing Payroll Cycle box lists each run separately, such as "Bonus - run 1" and "Bonus - run 2". This is the same box, not a new filter. For the usual one-run-per-month case, nothing changes.
+
+WHAT YOU'LL GET
+
+HR sees the employee's final payable amount at a glance, matching the payslip document, and the page is shorter and cleaner without the extra runs row. Every payslip that can be opened today can still be opened.
+
+GOOD TO KNOW
+
+- We're not touching how anything is calculated. Net Pay is shown exactly as payroll saved it - no recalculation, no change to payroll processing, approval, closing, payment, payslip contents, PDF or history.
+
+- The Payroll Cycle box only grows extra entries in the uncommon month that has two runs of the same kind. If you would rather we simply always open the latest run in that case (and leave the earlier one reachable only from other screens), reject this plan and say so.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Verified at main a8f7255df1. Net pay is loaded and rendered: payslipForReview selects net: payslip.netPay (core/payroll-view.ts about 1836), deriveHistoryBreakdown passes it through (app/payroll/transaction-view/history-breakdown.ts about 326), and app/payroll/individual-payslip/page.tsx about 932 renders it in Card className "bg-primary text-primary-foreground". The PDF reads the same field (lib/payslip-pdf.ts about 476). Cause of invisibility: Card adds data-ui-card; app/atelier.css about 429 sets :root[data-ui-theme='atelier'] main [data-ui-card] background var(--card), which beats .bg-primary, so the band is #ffffff text on #ffffff in Atelier light (Atelier is DEFAULT_UI_THEME, lib/ui-theme.ts). Monolith has the same clash via MONO_SECTION monolith:bg-transparent and primary-foreground equal to the page colour. Same band at app/me/payslip/statement.tsx about 48.
+
+1. Replace the Card in both places with one shared NetPayBand (plain div, not data-ui-card) in components/payslip-sections, with explicit tokens that survive Atelier, Monolith and Classic, light and dark. Presentation only; the figure is b.net / data.net unchanged.
+
+2. Remove the Matching payroll runs nav (page.tsx about 600-613) and its now-dead matchingRuns, runScope, runHref and cycleName wiring (about 395-404). Keep the i18n keys matchingRuns and cycleRun (reused for the option label; do not delete keys).
+
+3. Keep sibling runs reachable without a new filter: in the Payroll Cycle select, when matchingPayslipRuns for the shown company/year/month returns more than one run that the cycle option cannot distinguish (same payrollCycleId, or null cycle with different runType/runSeq), emit one option per run labelled with cycleRun and carry the payslipId in the option value (or a hidden payslipId set from it). resolvePayslipSelection already honours payslipId within the company fence. Single-run months render exactly today's options.
+
+4. Tests: update test/individual-payslip-period-options.test.ts (about 118-124) and test/individual-payslip-selection.test.ts (about 311, 356, 396) to assert the nav is gone and that bonus-beside-regular, re-issue and configured-cycle siblings are each reachable through the cycle select. Add a rendered check (browser test) that the Net pay band text has contrast against its background under atelier, monolith and classic, on both the admin page and app/me/payslip. Update the stale r210 header comment (page.tsx about 88-122). No migration, no permission change (scopedAdmin unchanged).

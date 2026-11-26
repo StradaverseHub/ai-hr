@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Main menu — sketch</title><style>
+body{margin:0;background:#fff;color:#1c1c1f;font:14px/1.5 system-ui}main{padding:24px 32px;max-width:1100px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:40px}.tag{font-size:12px;color:#66666e;text-transform:uppercase;letter-spacing:.04em;margin:0 0 10px}
+.rail{width:300px;background:#f8f8f9;border:1px solid #e8e8eb;border-radius:14px;padding:12px}
+.sec{font-size:12px;color:#66666e;text-transform:uppercase;letter-spacing:.05em;font-weight:600;padding:8px 8px 4px;display:flex;justify-content:space-between}
+.item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;color:#4b4b52}.item.open{color:#1c1c1f;font-weight:600}
+.kids{margin-left:18px;border-left:1px solid #e1e1e5;padding-left:8px}.kid{padding:4px 8px;color:#4b4b52;font-size:13px;border-radius:6px}
+.ico{width:18px;text-align:center}.dup{outline:2px dashed #b91c1c;outline-offset:1px;color:#b91c1c}.xn{color:#b91c1c;font-size:12px;font-weight:600;margin:6px 8px}
+.new{color:#66666e;font-style:italic}.ok{color:#166534;font-size:12px;font-weight:600;margin:6px 8px}.gap{height:10px}
+.note{color:#66666e;font-size:12px;margin-top:16px}
+</style><main>
+<div class="cols">
+<section><p class="tag">Today</p><div class="rail">
+<div class="sec"><span>System Configuration</span><span>▾</span></div>
+<div class="item open"><span class="ico">⚙</span>System Configuration ▾</div>
+<div class="kids"><div class="kid">Holidays</div><div class="kid">Approval Delegation</div><div class="kid">Email delivery</div><div class="kid">Email templates</div><div class="kid">Scheduled actions</div><div class="kid">Data Privacy</div><div class="kid">Audit trail</div><div class="kid">…</div></div>
+<div class="item open"><span class="ico">🛡</span>Security Center ▾</div>
+<div class="kids"><div class="kid dup">Security Center</div><div class="kid">Security &amp; Permissions</div><div class="kid">Function Access</div><div class="kid">Create a Login Manually</div><div class="kid">Invite a User</div><div class="kid">Users</div><div class="kid">Password Policy</div></div>
+<div class="xn">Two dropdowns inside one section, and "Security Center" listed inside itself</div>
+</div></section>
+<section><p class="tag">After</p><div class="rail">
+<div class="sec"><span>⚙ System Configuration</span><span>▾</span></div>
+<div class="kids"><div class="kid">Holidays</div><div class="kid">Approval Delegation</div><div class="kid">Email delivery</div><div class="kid">Email templates</div><div class="kid">Scheduled actions</div><div class="kid">Data Privacy</div><div class="kid">Audit trail</div><div class="kid">…</div></div>
+<div class="gap"></div>
+<div class="sec"><span>🛡 Security Center</span><span>▾</span></div>
+<div class="kids"><div class="kid">Security &amp; Permissions</div><div class="kid">Password Policy</div><div class="kid new">Data Permission Access — arrives with the separate Security Center request</div><div class="kid">Function Access</div><div class="kid">Users</div><div class="kid">Create a Login Manually</div><div class="kid">Invite a User</div></div>
+<div class="ok">Two sections, pages one click away, no repeated entry</div>
+</div></section>
+</div>
+<p class="note">Sketch only. Each person still sees only the pages they are allowed to open; the System Configuration list is shortened here.</p>
+</main></html>

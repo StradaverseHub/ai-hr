@@ -1,0 +1,57 @@
+VERDICT: Not built yet   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Payroll > Transaction Entry > Form TP3 lets HR enter one employee's TP3 at a time: previous employers, previous remuneration, tax-exempt allowances, EPF, zakat, PCB already paid and the Section D reliefs. When many new joiners bring a TP3 at the start of the year, HR has to type each form by hand. There is no Excel import for TP3 today.
+
+WHAT WE'LL CHANGE
+
+- The Form TP3 page gets the same Import buttons as Individual Transaction: Download Template, Sample Reference, Import Excel and Import Log.
+
+- Download Template gives a TP3-only Excel file, separate from the Individual Transaction template. Each row is one employee's TP3 for one assessment year. The columns are: Employee ID, Assessment Year, the month TP3 deductions start, up to two previous employers (name and tax reference number), then one column for every figure on the TP3 form - Section C (C1 to C5, including each C2 and C4 sub-line) and Section D (D1 to D17, including their sub-lines), plus Remarks. Column headings use the TP3 form's own numbering and wording. An Instructions sheet marks which columns are required, the accepted formats (amounts in RM with two decimals, year as 2026) and the limits for each relief, and lists the employees you look after.
+
+- Sample Reference gives the same file filled in with fictional example employees, so users can see how each section is entered.
+
+- Import Excel: the file is checked first. Users see how many rows are ready and how many have problems, with each problem shown as row number, Employee ID, column and reason (for example "Row 7, C0123, D2: above the RM 6,000 limit" or "Row 9: Employee ID not found in the companies you look after"). They then confirm, and every ready row is saved. Rows with problems are not saved and do not stop the others.
+
+- Each row goes through exactly the same checks as saving the TP3 screen by hand: the same limits, the same rules for previous employers and the same totals worked out by the system. A row is never saved half-way.
+
+- Importing a corrected file for an employee and year that already has a TP3 replaces that TP3 with the new row. It never creates a second one. The same employee and year appearing twice in one file is rejected as a row problem. Uploading the same file twice, refreshing the page or pressing confirm twice does not save anything twice.
+
+- Import Log lists every TP3 import for the companies you look after: file name, uploaded by, date and time, total rows, saved, failed and status. Opening one shows each row's result and its reason. The history stays after users leave the page or log out.
+
+- Every saved or replaced TP3 is recorded in the change history with who imported it, from which import, and the values before and after.
+
+WHAT YOU'LL GET
+
+HR can load the TP3 for many new joiners from one Excel file, see exactly which rows need fixing, and correct them by importing again, with a full record of every import.
+
+GOOD TO KNOW
+
+- An imported TP3 does exactly what a TP3 saved by hand on the screen does today. It becomes the employee's TP3 for that year, and the next time payroll is processed for that employee it is used for PCB, as a hand-entered TP3 is. The import itself does not reprocess any payroll, and it never changes payroll that is already processed, closed or paid, issued payslips, or filed statutory records. Recalculate Income Tax Value uses it the same way it uses a hand-entered TP3. If you would rather imported TP3s were stored without being used by payroll until someone reviews each one, reject this plan and say so.
+
+- We're not touching how anything is calculated, the TP3 form's fields, the LHDN rules, or the Individual Transaction import.
+
+- A TP3 belongs to the person, not to one job, so an employee who moved between your companies has one TP3 per year, as today.
+
+- Employees whose bank and statutory details have not been set up yet cannot hold a TP3 today; those rows are reported as problems with that reason.
+
+- The log keeps the details and the row results of every import. It does not keep a copy of the uploaded file itself, because TP3 files contain personal tax details. Please keep your own copy.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Verified at main a8f7255df1. TP3 screen app/payroll/transactions/tp3/page.tsx (scopedAdmin; year via ?year=), actions.ts (saveTp3Action, requireAdmin) through packs/payroll/service (core/tp3 direct import fails test/payroll-pack-drift.test.ts). Owner: core/tp3.ts saveTp3 (about 1090) -> prepareTp3 (about 1068) -> savePreparedTp3Tx (about 1095): advisory lock tp3|tenant|person|year, upsert on employee_tp3_person_year_uq (tenant, person, assessment_year), event employee.tp3form.updated with before/after, projectSeedOntoStatutory (about 849-955) rewrites the six tp3_* opening columns on employee_statutory_my (skips with laterYearHoldsColumns; throwIfNowhereToLand when no statutory row). Fields from localization/my/statutory-tables.ts about 1265-1373 (Section A max 2 employers, C1, C2 i-v, C3, C4 i-ii, C5) and MY_TP1_2026_ITEMS for Section D. Form reader lib/tp3-form-input.ts. No TP3 import exists.
+
+1. Run on the shared bulk-job kernel (FUTURE-BUILD-CONTRACT; docs/adr/2026-11-10-employee-import-staged-job.md), not the bespoke individual-import queue: new kind tp3_import (migration inserting bulk_job_kind; allocate per docs/MIGRATION-ALLOCATION.md), admission with operation key (hash, file name, companies re-checked on resubmit, Fixed Transaction pattern core/fixed-transaction-import-job.ts), handler in core/bulk-job-handlers.ts with prepare = parse and validate every row through prepareTp3 without writing (the preview counts and row errors), then per-step apply after confirm, one savePreparedTp3Tx per row in its own short transaction. Lane in core/bulk-job-lanes.ts; BULK_JOB_NOTICES entry and bulkJobs.notification keys in all six locales.
+
+2. Row identity: Employee ID resolves to an employment within the importer's company scope (app.is_admin_for), then to person_id. Duplicate (person, year) inside one file: both rows invalid. Replacement semantics: each row is the complete form; blank amount = 0, blank employer = none. Pass import job id and row number into the event payload (source tp3-import). laterYearHoldsColumns rows succeed as form-only with that note in the row result.
+
+3. Template and sample: build in the browser via lib/spreadsheet.ts buildXlsx, columns generated from the statutory-tables catalogue and MY_TP1_2026_ITEMS (never a hand list), headings from taxRelief.tp3 messages; Instructions sheet with required flags, formats and limits; Employees sheet from the scoped list. Sample Reference: separate download with fictional rows only.
+
+4. Import Log under app/payroll/transactions/tp3/imports (list, batch detail with progress and confirm, row results, errors CSV). bulk_job RLS is creator-only; the log must list jobs of this kind for companies the viewer covers, so add a scoped read (security-definer listing bounded by app.is_admin_for, totals and row outcomes only) rather than widening bulk_job RLS. Kernel clears source bytes on finish, which is intended here. Register routes under screenKey payroll in lib/permissions.ts (test/function-access.test.ts).
+
+5. No change to saveTp3 semantics, payroll, markBatchNeedsRecalc or the Individual Transaction import. Regenerate AI source manifests if core files change.
+
+Tests: real-database kernel tests for prepare/apply (valid and invalid rows, scope refusal, missing statutory row, limits, duplicate rows in file, corrected re-import replaces with one row and before/after event, resubmit with same operation key is a no-op, changed file under same key refused, double confirm no double write, laterYearHoldsColumns form-only); template column set equals catalogue; rendered check of the four buttons, the preview with row errors and the log. Add bulk-job-lanes, i18n coverage and function-access inventory to the focused run.

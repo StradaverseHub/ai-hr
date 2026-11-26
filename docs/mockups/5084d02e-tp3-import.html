@@ -1,0 +1,38 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Form TP3 import — sketch</title><style>
+body{margin:0;background:#fff;color:#1c1c1f;font:14px/1.55 system-ui}main{padding:24px 32px;max-width:1240px}
+.tag{font-size:12px;color:#66666e;text-transform:uppercase;letter-spacing:.04em;margin:22px 0 8px}h1{font-size:20px;margin:0}
+.head{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e8e8eb;padding-bottom:12px}
+.btns{display:flex;gap:8px}.b{border:1px solid #d9d9de;border-radius:8px;padding:6px 12px;font-size:13px;background:#fff}.p{background:#c2410c;color:#fff;border-color:#c2410c;font-weight:600}
+table{width:100%;border-collapse:collapse;border:1px solid #e8e8eb;font-size:13px}th{background:#f6f6f7;color:#66666e;font-weight:500;text-align:left;padding:7px 9px}td{padding:7px 9px;border-top:1px solid #eeeef0;vertical-align:top}
+.ok{color:#166534}.bad{color:#b91c1c}.mono{font-variant-numeric:tabular-nums}.muted{color:#66666e;font-size:12px}
+.sum{display:flex;gap:12px;margin:0 0 10px}.box{border:1px solid #e8e8eb;border-radius:10px;padding:8px 14px}.box b{font-size:18px;display:block}
+.grid{display:grid;grid-template-columns:1.25fr 1fr;gap:24px}
+</style><main>
+<div class="head"><h1>Form TP3</h1><div class="btns"><span class="b">Download Template</span><span class="b">Sample Reference</span><span class="b p">Import Excel</span><span class="b">Import Log</span></div></div>
+<p class="muted">New: the four import buttons on the existing Form TP3 page. The employee picker and form below stay as they are.</p>
+
+<div class="grid">
+<section>
+<p class="tag">Template — one row per employee and year (first columns shown)</p>
+<table><tr><th>Employee ID *</th><th>Assessment Year *</th><th>Deduction start month</th><th>Employer 1 name</th><th>Employer 1 tax no.</th><th>C1</th><th>C3</th><th>C5</th><th>D1 …</th></tr>
+<tr><td>C0101</td><td>2026</td><td>4</td><td>Example Trading Sdn Bhd</td><td>C 1234567890</td><td class="mono">24,000.00</td><td class="mono">2,640.00</td><td class="mono">310.00</td><td>…</td></tr></table>
+<p class="muted">* required. Instructions sheet lists formats and each relief's limit. Sample Reference is the same file filled with fictional employees.</p>
+
+<p class="tag">After upload — checked before anything is saved</p>
+<div class="sum"><div class="box"><b class="ok">46</b>ready</div><div class="box"><b class="bad">3</b>with problems</div><div class="box"><b>49</b>rows</div></div>
+<table><tr><th>Row</th><th>Employee ID</th><th>Column</th><th>Reason</th></tr>
+<tr><td>7</td><td>C0123</td><td>D2</td><td class="bad">Above the RM 6,000 limit</td></tr>
+<tr><td>9</td><td>C9999</td><td>Employee ID</td><td class="bad">Not found in the companies you look after</td></tr>
+<tr><td>14, 31</td><td>C0150</td><td>—</td><td class="bad">Same employee and year appears twice in this file</td></tr></table>
+<p style="margin-top:10px"><span class="b p">Save 46 ready rows</span> <span class="b">Cancel</span></p>
+</section>
+<section>
+<p class="tag">Import Log</p>
+<table><tr><th>File</th><th>Uploaded by</th><th>When</th><th>Rows</th><th>Saved</th><th>Failed</th><th>Status</th></tr>
+<tr><td>tp3-new-joiners.xlsx</td><td>HR Admin A</td><td>26-Nov-2026 10:42</td><td class="mono">49</td><td class="mono ok">46</td><td class="mono bad">3</td><td>Completed</td></tr>
+<tr><td>tp3-corrections.xlsx</td><td>HR Admin B</td><td>26-Nov-2026 11:05</td><td class="mono">3</td><td class="mono ok">3</td><td class="mono">0</td><td>Completed</td></tr></table>
+<p class="muted">Opening an import shows every row's result. A corrected row replaces that employee's TP3 for the year — never a second copy.</p>
+</section>
+</div>
+<p class="muted" style="margin-top:18px">Sketch only. Names, codes and amounts are fictional examples.</p>
+</main></html>

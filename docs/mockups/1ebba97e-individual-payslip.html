@@ -1,0 +1,40 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Individual Payslip — sketch</title><style>
+body{margin:0;background:#fff;color:#1c1c1f;font:14px/1.55 system-ui}main{padding:24px 32px;max-width:1240px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:28px}.tag{font-size:12px;color:#66666e;text-transform:uppercase;letter-spacing:.04em;margin:0 0 10px}
+.frame{border:1px solid #e8e8eb;border-radius:14px;padding:16px;background:#fff}
+.filters{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}.f{border:1px solid #d9d9de;border-radius:8px;padding:6px 8px;font-size:12px}.f b{display:block;font-size:12px;color:#66666e;font-weight:500}
+.btn{display:inline-block;background:#c2410c;color:#fff;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600}
+.runs{display:flex;gap:6px;align-items:center;margin:10px 0;font-size:12px;color:#66666e}.pill{border:1px solid #d9d9de;border-radius:8px;padding:3px 9px;color:#1c1c1f}.pill.on{background:#1c1c1f;color:#fff;border-color:#1c1c1f}
+.x{outline:2px dashed #b91c1c;outline-offset:3px;position:relative}.xn{color:#b91c1c;font-size:12px;font-weight:600;margin-top:6px}
+.card{border:1px solid #e8e8eb;border-radius:12px;padding:10px 12px;margin-top:10px}.card h4{margin:0 0 6px;font-size:12px;color:#66666e;font-weight:600}
+.row{display:flex;justify-content:space-between;font-size:12px;padding:2px 0}.mono{font-variant-numeric:tabular-nums}
+.band{display:flex;justify-content:space-between;align-items:baseline;border-radius:12px;padding:14px 18px;margin-top:12px}
+.band .l{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}.band .v{font-size:20px;font-weight:700}
+.invisible{background:#fff;color:#fff;border:1px solid #e8e8eb}.visible{background:#1c1c1f;color:#fff}
+.ok{color:#166534;font-size:12px;font-weight:600;margin-top:6px}
+.sel{border:1px solid #c2410c;border-radius:8px;padding:6px 8px;font-size:12px;margin-top:10px;background:#fff}.sel div{padding:2px 0}.sel .h{color:#66666e;font-size:12px}
+.note{color:#66666e;font-size:12px;margin-top:14px}
+</style><main>
+<div class="cols">
+<section><p class="tag">Today</p><div class="frame">
+<div class="filters"><div class="f"><b>Company</b>Sample Sdn Bhd</div><div class="f"><b>Year</b>2026</div><div class="f"><b>Month</b>October</div><div class="f"><b>Payroll cycle</b>All</div></div>
+<span class="btn">View Payslip</span>
+<div class="runs x"><span>Matching payroll runs</span><span class="pill on">Monthly run 1</span><span class="pill">Bonus run 1</span></div>
+<div class="xn">Extra row under the filters</div>
+<div class="card"><h4>Earnings</h4><div class="row"><span>Basic salary</span><span class="mono">5,000.00</span></div><div class="row"><b>Total earnings</b><b class="mono">5,000.00</b></div></div>
+<div class="card"><h4>Deductions</h4><div class="row"><span>EPF employee</span><span class="mono">550.00</span></div><div class="row"><b>Total deductions</b><b class="mono">650.75</b></div></div>
+<div class="band invisible x"><span class="l">Net pay</span><span class="v">RM 4,349.25</span></div>
+<div class="xn">Net pay is here, but white on white — it looks blank</div>
+</div></section>
+<section><p class="tag">After</p><div class="frame">
+<div class="filters"><div class="f"><b>Company</b>Sample Sdn Bhd</div><div class="f"><b>Year</b>2026</div><div class="f"><b>Month</b>October</div><div class="f"><b>Payroll cycle</b>All</div></div>
+<span class="btn">View Payslip</span>
+<div class="card"><h4>Earnings</h4><div class="row"><span>Basic salary</span><span class="mono">5,000.00</span></div><div class="row"><b>Total earnings</b><b class="mono">5,000.00</b></div></div>
+<div class="card"><h4>Deductions</h4><div class="row"><span>EPF employee</span><span class="mono">550.00</span></div><div class="row"><b>Total deductions</b><b class="mono">650.75</b></div></div>
+<div class="band visible"><span class="l">Net pay</span><span class="v">RM 4,349.25</span></div>
+<div class="ok">Same figure as the payslip document, now readable</div>
+<div class="sel"><div class="h">Payroll cycle box — only in a month with two runs of the same kind</div><div>All</div><div>Monthly</div><div>Bonus - run 1</div><div>Bonus - run 2</div></div>
+</div></section>
+</div>
+<p class="note">Sketch only. Amounts and names are examples; the rest of the payslip page stays as it is.</p>
+</main></html>
