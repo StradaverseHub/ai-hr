@@ -126,7 +126,8 @@ describe('r385 authoritative tax circumstance transactions',()=>{
   expect(flagged.at).toBeTruthy();expect(flagged.ids).toEqual([e.employmentId]);
   expect(await multiCycleWorksheetMY(ctx,{companyIds:[b.companyId]})).toMatchObject({employeeMonthsCompared:0,employeeMonthsExcluded:1,skipCounts:{needs_recalc:1}});
   // Still the r385 claim: once the run is taken as reviewed, the worksheet replays the SAVED None, not today's taxable profile.
-  await owner.db.update(schema.payrollBatch).set({needsRecalcAt:null,recalcEmploymentIds:null}).where(eq(schema.payrollBatch.id,regular.batchId));
+  // Both runs of the month carry the flag (the change reaches every unclosed processed run of the employee).
+  await owner.db.update(schema.payrollBatch).set({needsRecalcAt:null,recalcEmploymentIds:null}).where(eq(schema.payrollBatch.tenantId,b.tenantId));
   expect(await multiCycleWorksheetMY(ctx,{companyIds:[b.companyId]})).toEqual(before);
  });
  it('cross-employer saved None bypasses and present malformed or mixed history is unavailable',async()=>{
