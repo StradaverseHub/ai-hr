@@ -212,6 +212,9 @@ describe('Recalculate Income Tax Value opens from the same group usage as proces
     await seedPayComponentCatalog(ctx);
     await upsertPayComponent(ctx, {label: 'Travel allowance', code: 'TRV', name: 'Travel allowance', kind: 'allowance', includedInEpf: true, includedInSocsoEis: true,
       includedInPcb: true, includedInHrdfBase: false, isNonPayable: false, prorates: false, pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TRA_BUSINESS'});
+    // The catalogue's BASIC carries no PCB classification; give it the system basic salary's (normal remuneration, no exemption code).
+    await owner.db.update(schema.payComponent).set({includedInPcb: true, pcbRemunerationType: 'normal', pcbExemptionCode: null})
+      .where(and(eq(schema.payComponent.tenantId, b.tenantId), eq(schema.payComponent.code, 'BASIC')));
     await setModule(b.tenantId, 'typed_pay_components', 'active');
     ctx = await entitledCtx(b);
     const idOf = async (code: string) => (await listPayComponents(ctx, {includeArchived: true})).find(c => c.code === code)!.id;
