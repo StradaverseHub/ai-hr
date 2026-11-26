@@ -38,11 +38,13 @@ describe('durable Individual Transaction import',()=>{
  const historicalReceipt=async()=>{
   const input=await validate('monthly',[monthly()]);const saved=await confirm(input.id);
   const [original]=await owner.db.select().from(schema.payrollTxnImportAttempt).where(eq(schema.payrollTxnImportAttempt.id,input.id));
-  const outcomes=structuredClone(original.outcomes);
+  // 0ec0ee00 — a step-written attempt keeps its outcomes in payroll_txn_import_outcome; a pre-3900 receipt held them inline.
+  expect(original.outcomes).toEqual([]);expect(saved.outcomes).toHaveLength(1);
+  const outcomes=structuredClone(saved.outcomes);
   for(const outcome of outcomes)if(outcome.snapshot){expect(outcome.snapshot.calculationMethod).toBeNull();delete outcome.snapshot.calculationMethod;}
   // A physical pre-3900 receipt preserves every original field and event ID. No trigger is
   // disabled and no stored completed receipt is rewritten to manufacture this witness.
-  const [legacy]=await owner.withTenant(adminCtx(base),tx=>tx.insert(schema.payrollTxnImportAttempt).values({...original,id:randomUUID(),operationId:randomUUID(),outcomes}).returning());
+  const [legacy]=await owner.withTenant(adminCtx(base),tx=>tx.insert(schema.payrollTxnImportAttempt).values({...original,id:randomUUID(),operationId:randomUUID(),outcomes,processed:0}).returning());
   return {legacy,transactionId:saved.outcomes[0].transactionId!};
  };
  it('reverses an unchanged pre-method import while preserving its original receipt',async()=>{
@@ -151,8 +153,9 @@ describe('durable Individual Transaction import',()=>{
   const saved=await confirm(a.id);expect(saved.written).toBe(1);
   expect(saved.outcomes[3].snapshot).toMatchObject({quantity:null,unit:'amount',amount:'151.50'});
   await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:10}}).where(eq(schema.payComponent.id,componentId));
+  // 7b5b1665 (owner, 24 Nov 2026: aac17dd0 kept) — still refused, now pointing an amount to One Total for the Month.
   const blocked=await validate('daily',[daily('2026-08-06','amount','999')]);
-  expect(blocked.preview.rows[0]).toMatchObject({reason:'dailyInputTypeMismatch',detail:{value:'hours'}});
+  expect(blocked.preview.rows[0]).toMatchObject({reason:'dailyAmountUseMonthly',detail:{value:'hours'}});
  });
  it('34062f81: a Day by Day import prices calendar_days from each row\'s own date, in preview and on confirmation',async()=>{
   // basic / calendar_days x days, paid in October (31 days). Expected figures are independent literals for RM5,000 and 1 day.

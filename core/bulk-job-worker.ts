@@ -18,9 +18,12 @@ import {appendEvent,actorOf} from '../db/events';
 import {pgSqlState} from '../lib/db-error';
 import {publicErrorMessage} from '../lib/public-error';
 import {BULK_JOB_FINISHED_EVENT,type BulkJobRowError,type BulkJobState} from '../lib/bulk-job';
+import {recordUnitTiming} from '../lib/bulk-job-timing';
 import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {freshImportContext} from './bank-import-worker';
 import type {BulkJobRow} from './bulk-job';
+import {laneMarker,type WorkerLane} from './bulk-job-lanes';
+import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reservedWithin} from './owner-step-deadline';
 
 export type BulkJobStepInput={kind:string;rowNum?:number|null;payload:unknown};
 export type BulkJobStep<P=unknown>={seq:number;kind:string;row_num:number|null;payload:P};
@@ -155,65 +158,83 @@ const report=(kind:string,phase:string,ms:number,jobId:string)=>(globalThis as W
 async function label(tx:Tx,kind:string,phase:string){await tx.execute(sql`select set_config('application_name',${`aihr-bulk:${kind}:${phase}`},true)`);}
 const merge=(a:Record<string,number>,b?:Record<string,number>)=>{if(!b)return a;const out={...a};for(const [k,v] of Object.entries(b))out[k]=(out[k]??0)+v;return out;};
 
-export type BulkJobWorkerOptions={workerId?:string;handlers:readonly WorkerHandler[]};
+/** lanes: the lanes this process was started for (scripts/bank-import-runner.ts). Its heartbeat then also advertises
+ * one marker per lane (core/bulk-job-lanes.ts), which admission reads to refuse a kind the live lane worker lacks. */
+export type BulkJobWorkerOptions={workerId?:string;handlers:readonly WorkerHandler[];lanes?:readonly WorkerLane[];
+ /** Test hook: the owner step deadline (core/owner-step-deadline.ts) in milliseconds. */
+ ownerDeadlineMs?:number};
 type Uuid=`${string}-${string}-${string}-${string}-${string}`;
 /** One claim: the lease token (visible on the row) and its capability (only here and as a digest in app.bulk_job_seal). */
 type Claimed={job:BulkJobRow;token:string;capability:string;metrics:Record<string,number>;ownerPool:postgres.Sql;ownerOpen?:boolean};
 const caches=new Map<string,Map<string,unknown>>();
 const cacheOf=(id:string)=>{let c=caches.get(id);if(!c){c=new Map();caches.set(id,c);}return c;};
-let beatAt=0;const processWorker:Uuid=randomUUID();
+// Last heartbeat per worker id: one process normally has one id, and tests run several lane workers in one process.
+const beatAt=new Map<string,number>();const processWorker:Uuid=randomUUID();
 
-/** Heartbeat for readiness checks (deploy and the queued screen state). Throttled; owner connection only. */
+/** Heartbeat for readiness checks (deploy, admission and the queued screen state). Throttled per worker; owner
+ * connection only. The kinds are exactly the handlers this worker registers, so a lane worker advertises its lane. */
 export async function beatBulkJobWorker(owner:postgres.Sql|postgres.ReservedSql,kinds:readonly string[],workerId:string=processWorker,force=false){
- if(!force&&Date.now()-beatAt<15000)return;
- beatAt=Date.now();
+ if(!force&&Date.now()-(beatAt.get(workerId)??0)<15000)return;
+ beatAt.set(workerId,Date.now());
  await owner`insert into bulk_job_worker(id,kinds,host,pid) values(${workerId}::uuid,${kinds as string[]},${hostname().slice(0,255)},${process.pid})
   on conflict(id) do update set kinds=excluded.kinds,beat_at=now()`;
  await owner`delete from bulk_job_worker where beat_at<now()-interval '1 day'`;
 }
-export async function retireBulkJobWorker(owner:postgres.Sql,workerId:string=processWorker){await owner`delete from bulk_job_worker where id=${workerId}::uuid`;}
+export async function retireBulkJobWorker(owner:postgres.Sql,workerId:string=processWorker){beatAt.delete(workerId);await owner`delete from bulk_job_worker where id=${workerId}::uuid`;}
 
 /** One bounded unit of one job (fair across tenants: least recently touched first). Owner credential stays here. */
 export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOptions):Promise<boolean>{
  const handlers=new Map(options.handlers.map(h=>[h.kind,h]));
  const kinds=[...handlers.keys()];
- const connection=await owner.reserve();
+ // The owner steps around the unit are bounded (core/owner-step-deadline.ts): one deadline for the whole claim
+ // (reservation to claimed row), and a fresh one for each lease-clearing statement. A reservation whose statement
+ // missed its deadline is never returned to the pool; the worker exits.
+ const deadlineMs=ownerDeadlineMs(options.ownerDeadlineMs);
+ const claimStep=ownerClaimDeadline(deadlineMs);
+ const connection=await reservedWithin(owner.reserve(),deadlineMs);
+ let unresponsive=false;
  try{
-  const [proof]=await connection<{ok:boolean}[]>`select exists(select 1 from pg_roles r join pg_class c on c.oid='public.bulk_job'::regclass where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid)) as ok`;
+  const [proof]=await claimStep(connection<{ok:boolean}[]>`select exists(select 1 from pg_roles r join pg_class c on c.oid='public.bulk_job'::regclass where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid)) as ok`,'the owner proof');
   if(!proof?.ok)throw new Error('The bulk job worker requires the physical queue owner connection.');
-  await beatBulkJobWorker(connection,kinds,options.workerId??processWorker);
-  if(handlers.has('contract_schedule'))await connection`select app.contract_shared_schedule_admit()`;
+  await claimStep(beatBulkJobWorker(connection,[...kinds,...(options.lanes??[]).map(laneMarker)],options.workerId??processWorker),'the heartbeat');
+  if(handlers.has('contract_schedule'))await claimStep(connection`select app.contract_shared_schedule_admit()`,'the contract schedule admission');
   const token=randomUUID();
   // Active work first, through the partial queue index (literal state list so the index predicate applies); then a
   // terminal job whose completion notice is still owed (its own partial index). History rows are never scanned.
   // A queued job of a 'tenant_queue' kind (draft 5041) waits until every earlier active job of its kind in its
   // tenant has ended, so jobs of that kind run one after another without ever refusing an admission.
-  let [job]=await connection<BulkJobRow[]>`update bulk_job set lease_token=${token}::uuid,lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS})
+  let [job]=await claimStep(connection<BulkJobRow[]>`update bulk_job set lease_token=${token}::uuid,lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS})
    where id=(select j.id from bulk_job j where j.state in ('queued','preparing','running','finalizing','discarding') and j.kind=any(${kinds})
     and (j.lease_expires_at is null or j.lease_expires_at<now()) and (j.not_before is null or j.not_before<=now())
     and not (j.state='queued' and exists(select 1 from bulk_job_kind k where k.kind=j.kind and k.exclusive='tenant_queue')
      and exists(select 1 from bulk_job o where o.tenant_id=j.tenant_id and o.kind=j.kind and o.id<>j.id
       and o.state in ('queued','preparing','running','finalizing','discarding') and (o.created_at,o.id)<(j.created_at,j.id)))
-    order by j.updated_at,j.created_at limit 1 for update of j skip locked) returning *`;
-  if(!job)[job]=await connection<BulkJobRow[]>`update bulk_job set lease_token=${token}::uuid,lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS})
+    order by j.updated_at,j.created_at limit 1 for update of j skip locked) returning *`,'the claim');
+  if(!job)[job]=await claimStep(connection<BulkJobRow[]>`update bulk_job set lease_token=${token}::uuid,lease_expires_at=now()+make_interval(secs=>${LEASE_SECONDS})
    where id=(select id from bulk_job where notified_at is null and state in ('completed','failed','cancelled') and kind=any(${kinds})
     and finished_at>now()-interval '1 day' and (lease_expires_at is null or lease_expires_at<now()) and (not_before is null or not_before<=now())
-    order by finished_at limit 1 for update skip locked) returning *`;
+    order by finished_at limit 1 for update skip locked) returning *`,'the notice claim');
   if(!job)return false;
   const claimed:Claimed={job,token,capability:randomBytes(32).toString('hex'),metrics:{},ownerPool:owner};
   try{
    // Bind a fresh capability to this lease: only this worker can now write the job through the definers.
-   const [bound]=await connection<{ok:boolean}[]>`select app.bulk_job_lease_capability(${job.id}::uuid,${token}::uuid,${claimed.capability}) as ok`;
-   if(bound?.ok)await withBackgroundDatabaseWork(()=>processClaimed(connection,handlers.get(job.kind)!,claimed));
-  }finally{
-   await connection`update app.bulk_job_seal set lease_token=null,capability_digest=null where job_id=${job.id}::uuid and lease_token=${token}::uuid`;
+   const [bound]=await claimStep(connection<{ok:boolean}[]>`select app.bulk_job_lease_capability(${job.id}::uuid,${token}::uuid,${claimed.capability}) as ok`,'the lease capability');
+   if(bound?.ok){
+    const unitStarted=performance.now();
+    try{await withBackgroundDatabaseWork(()=>processClaimed(connection,handlers.get(job.kind)!,claimed));}
+    finally{recordUnitTiming(job,claimed.metrics,performance.now()-unitStarted);}
+   }
+  }catch(error){if(error instanceof OwnerConnectionUnresponsive)unresponsive=true;throw error;}
+  finally{if(!unresponsive){
+   await ownerStep(connection`update app.bulk_job_seal set lease_token=null,capability_digest=null where job_id=${job.id}::uuid and lease_token=${token}::uuid`,'the lease release',deadlineMs);
    // updated_at moves on every unit, so the least recently touched job is always next (fair across tenants).
-   await connection`update bulk_job set lease_token=null,lease_expires_at=null,updated_at=now(),
+   await ownerStep(connection`update bulk_job set lease_token=null,lease_expires_at=null,updated_at=now(),
      metrics=metrics||coalesce((select jsonb_object_agg(k,greatest(coalesce((metrics->>k)::numeric,0),v::numeric)) from jsonb_each_text(${JSON.stringify(claimed.metrics)}::text::jsonb) m(k,v)),'{}'::jsonb)
-    where id=${job.id}::uuid and lease_token=${token}::uuid`;
-  }
+    where id=${job.id}::uuid and lease_token=${token}::uuid`,'the lease release',deadlineMs);
+  }}
   return true;
- }finally{connection.release();}
+ }catch(error){if(error instanceof OwnerConnectionUnresponsive)unresponsive=true;throw error;}
+ finally{if(!unresponsive)connection.release();}
 }
 
 /** The creator's session as the web had it: database-captured grants with freshly resolved entitlements, and the

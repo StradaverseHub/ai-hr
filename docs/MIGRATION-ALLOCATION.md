@@ -1,3 +1,96 @@
+# Movement sweep system payroll snapshot policies, 24 November 2026
+
+Reserve `7220_movement_system_payroll_snapshot_insert`, journal index `10620`, timestamp `1795495007220`,
+SQL SHA-256 `544c15edadb827658cb8d182a7dc6ae4c1872992d199ef8c72bd6bc311123470`. Re-allocated from `7210` / `10610` / `1795495007210`, which collided with
+`7210_access_effective_company` (PR 280, merged to main 24 November 2026 at 85fb894a0, same index and timestamp);
+this entry was never applied anywhere under its old tuple. A fresh scan of the 400 most recently committed remote and
+local branch heads and every registered worktree journal found nothing above `1795495007210`. Production reported
+1,140 applied entries through `1795280007150`; staging runs `1e3388f25` (ledger ending `7200`). This entry must be
+installed after `7210_access_effective_company` on every installation, or that lower timestamp is skipped. Recheck
+both watermarks and competing reservations before admission.
+
+Adds two policies on `information_payslip_snapshot`, both `TO ai_hr_owner`, for the system path that 5777 introduced
+(nightly movement sweep: storage-owner session, no user, workforce maintain): `information_snapshot_system_preserve_read`
+(SELECT) and `information_snapshot_system_preserve_insert` (INSERT of an unattributed system row for a closed payslip
+paid by a company the sweep administers). Without them a restricted owner refuses every due movement for an employee
+with closed payroll (staging sweep, 24 November 2026). Rows, grants, functions and the user and Contract policies are
+unchanged.
+
+# Precomputed company access pilot (ADR 0181 Phase 2), 24 November 2026
+
+Reserve `7210_access_effective_company`, journal index `10610`, timestamp `1795495007210`,
+SQL SHA-256 `b69dafe700e795d50f7d664ac17dfef6d7daffa7f0966ad8ef9c71d5a886eb9a`. The reservation scan covered the 300 most recently committed remote branch heads
+and every registered worktree journal: the highest entry found was `7200_information_documents_planned_with_values`
+(index `10600`, when `1795495007200`, branch `claude/txn-view-slow-load-af9f97`), and `7160`–`7190` are held by the
+import and tax-basis branches. This entry is above all of them. Neither installation's watermark was read from this
+session; recheck both and any competing reservation before admission.
+
+Adds `access_company_closure`, `access_effective_company`, `access_company_state` and `access_precompute_control`
+(owner-only: RLS forced with the `app.acting_as_owner()` policy, no `ai_hr_app` privilege), statement triggers on
+`role_assignment`, `access_membership`, `access_user_override`, `access_group`, `access_group_grant`,
+`access_configuration`, `access_capability`, `company`, `company_organisation_run` and `company_organisation_mapping`,
+the maintenance, verify, re-trust and mode functions, and `app.access_workforce_companies(text)` (EXECUTE to
+`ai_hr_app`). Replaces the `job_document_read`, `job_document_revision_read` and (FOR ALL, so it also governs reads)
+`job_document_revision_write` policies with once-per-statement forms of the same predicates; the `job_document`
+insert, update and delete policies are unchanged. Installation mode starts as `legacy`. Builds every existing tenant in the
+migration transaction (rows bounded by admin role holders × companies × 2).
+# Retained payroll documents planned with their values, 24 November 2026
+
+Reserve `7200_information_documents_planned_with_values`, journal index `10600`, timestamp `1795495007200`,
+SQL SHA-256 `1346b1797640e36cb3c9af83aaa96b39bdd5a4b91b99411778e606128680c01e`. Staging had applied 1,140 entries
+through `1795280007150`. The reservation scan covered the 400 most recently committed remote branch heads, every local
+branch and every registered worktree journal; the highest entry found above `7150` was `7190_bank_import_worksheet_reservation`
+(`1795494980900`), with `7160` to `7180` reserved on other branches. The production watermark was not read from this
+session; recheck it and competing reservations before admission.
+
+Replaces the body of `app.information_payslip_documents(uuid[],integer,integer,text,uuid,boolean)` only: the 5129
+statement runs through `RETURN QUERY EXECUTE ... USING`, so it is planned with its argument values. Signature, owner,
+SECURITY DEFINER, search_path, the 0698 EXECUTE grant, rows and order are unchanged; it is guarded by the exact 5129 body.
+Measured cause (staging, 2,010 retained documents): one month's call took 441 ms against 15 ms for the same statement
+planned with its values, and Transaction View's History tab makes it on every load.
+
+# Recalculation opening source digest without per-row policies, 24 November 2026
+Reserve `7170_payroll_tax_basis_source_digest`, journal index `10570`, timestamp `1795488671170`,
+SQL SHA-256 `cdc4bbc16f68ff86c0964e3b480dd183c5c1fb98ab5847135dde158cf356b1a9`. Main had 1,140 entries through
+`7150` (`1795280007150`). The reservation scan of the 300 most recently committed remote branch heads found
+`7160_import_source_worksheet` (idx `10560`, timestamp `1795488671000`) on unmerged Codex branches, so this entry takes
+`7170` with a timestamp above it and cannot be skipped whichever lands first. The production watermark was not read
+from this session; recheck both installations and competing reservations before admission.
+Adds the definer `app.payroll_tax_basis_source_digest(uuid,integer)` (EXECUTE to `ai_hr_app` only), used by the locked
+income-tax recalculation opening. It returns the same md5 over the same rows the reader's row security admitted, after
+requiring the same authority, and is guarded by the exact SELECT/ALL policy list of the six relations it reads.
+Measured cause: production openings held the payroll-history and Access locks for 18-37 s per company in this digest
+(20 ms without row security); focused diagnostic run 45320620220.
+
+# Contract list company rights once per company, 23 November 2026
+
+Reserve `7150_contract_list_company_rights_once`, journal index `10550`, timestamp `1795280007150`,
+SQL SHA-256 `780626af53f87077421ff3ba94c174239c52fd4ab3ab9368243027a3edf10e3c`. Staging had applied 1,139 entries through `1795280007140` (release be980b458, which installed
+`7140_payroll_individual_import_steps`); this entry follows it. The reservation scan covered the 300 most recently committed
+remote branch heads and every registered worktree journal, and none held an entry above `7140`.
+The production watermark was not read from this session; recheck it and competing reservations before admission.
+
+Replaces the body of `app.contract_shared_page(text,integer,integer)` only. The company-level Contract grant is evaluated
+once per company, and the per-employment check runs only for cases the company grant does not already permit. Rows,
+order, signature, owner and the 6314 EXECUTE grant are unchanged; it is guarded by the exact 6314 list body and the
+exact 6308 permission body. Measured cause: with 1,000 cases in 70 companies one list call took about 1.6 s, nearly
+all of it in the per-case permission check (focused diagnostic runs 45192349790 and 45192363574).
+
+# Individual Transaction import written in steps (board 0ec0ee00, stage 2), 23 November 2026
+
+Reserve `7140_payroll_individual_import_steps`, journal index `10540`, timestamp `1795280007140`,
+SQL SHA-256 `c2f75af90ad00c779e3447311ba8efb25ad06066ab46dc744810fba720223d5f`. `7120` and `7130` (idx `10520`–`10530`) are
+installed on staging with release 13877b505 (board a16382b4); this entry follows them and was reconciled with them
+when combined into the 016276b7 + 0ec0ee00 release on 23 November 2026. The timestamp is above every entry on this branch's journal
+(`1795280007110`). Recheck both installations' watermarks and competing reservations before admission.
+
+Raises the Individual Transaction attempt and queue limits from 2,000 to 10,000 rows, adds the importing, stopped,
+reverting and reverted states with a replacement transition trigger, summary and revert-progress columns, the
+append-only `payroll_txn_import_outcome` table (RLS forced, `ai_hr_app` SELECT and INSERT only; the default UPDATE, DELETE and TRUNCATE are revoked), the step-scoped
+`app.payroll_txn_import_lock_step_bindings` and the bounded `app.payroll_individual_import_request_revert`. Existing
+rows are not rewritten; the looser records CHECK is added NOT VALID and validated separately. The Fixed Transaction
+import does not use these tables.
+
 # Contract account lookup, Person first, 23 November 2026
 
 Reserve `7130_contract_users_person_first`, journal index `10530`, timestamp `1795280007130`,

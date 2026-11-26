@@ -11,12 +11,28 @@ import { leaveSplitReview } from '../core/leave-split-review';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
-const today = todayInKualaLumpur();
 const addDays = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-const monday = (() => {
-  let date = addDays(today, 35);
-  while (new Date(`${date}T00:00:00Z`).getUTCDay() !== 1) date = addDays(date, 1);
-  return date;
+const isMonday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() === 1;
+/**
+ * A future Monday-to-Friday week inside the current leave year. An employee may not apply for a FUTURE leave year
+ * until HR opens it (core/leave.ts LeaveYearNotOpenError), and this suite tests split preservation, not that gate.
+ * The week starts about five weeks ahead; in the last weeks of the year it starts at the latest whole week still left,
+ * and from the last whole week onwards the suite's HR date moves back to 1 November so the week stays in this year.
+ */
+const { today, monday } = (() => {
+  const real = todayInKualaLumpur();
+  const weekIn = (from: string) => {
+    const year = from.slice(0, 4);
+    const options: string[] = [];
+    for (let d = addDays(from, 1); d.slice(0, 4) === year; d = addDays(d, 1)) {
+      if (isMonday(d) && addDays(d, 4).slice(0, 4) === year) options.push(d);
+    }
+    return options.find((d) => d >= addDays(from, 35)) ?? options.at(-1);
+  };
+  const week = weekIn(real);
+  if (week) return { today: real, monday: week };
+  const anchor = `${real.slice(0, 4)}-11-01`;
+  return { today: anchor, monday: weekIn(anchor)! };
 })();
 const dates = Array.from({ length: 5 }, (_, i) => addDays(monday, i));
 let b: Base;

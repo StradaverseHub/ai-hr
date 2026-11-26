@@ -1,0 +1,53 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+When a One Total for the Month import has a row with Input Type set to Amount for a pay item worked out by a formula, such as ONOR - Normal OT, the system saves the number but not the fact that it is an amount. Payroll then treats 105.40 as a quantity and runs the overtime formula on it, so MYR 105.40 becomes MYR 2,468.79. The Edit screen shows the same mistake: Input type Qty, Quantity 105.4.
+
+Importing the corrected file does not help. The duplicate check compares only the number, so the row is refused with "already has ONOR 105.40" even though one line is an amount and the other a quantity.
+
+WHAT WE'LL CHANGE
+
+- One Total for the Month keeps the Input Type from the Excel file on every row. Amount pays exactly the amount typed, and the formula is not used. Qty (or Hours, Days or Units) runs the pay item's formula, giving the same figure as Add new transaction.
+
+- Before you confirm, the import log shows each row's Input Type and the amount it will pay.
+
+- Rows that cannot be imported get a clear message on that row, naming the row and the pay item. This covers an Input Type the pay item does not accept, and a row with both Amount and Quantity filled in. Nothing is ever quietly changed to another Input Type.
+
+- The duplicate check compares Input Type as well as the value, and the message says both. For example: "already has ONOR as Qty 105.40 (pays MYR 2,468.79)".
+
+- If an earlier import already saved the same value the old, wrong way, the new row is refused with "an earlier import saved this as Qty - correct that transaction first". This stops the employee being paid twice.
+
+- Lines already saved the wrong way are not changed automatically. We will run a check and attach to this request a list of imported lines in months that are not yet closed, showing what each pays now and what it would pay as an Amount. HR corrects each one with Edit, which already lets you choose Amount. Closed months stay as they are.
+
+WHAT YOU'LL GET
+
+What you type in the Excel file is what gets paid. An overtime amount stays an amount, a quantity still goes through the formula, and the import tells you clearly when a row cannot be accepted.
+
+GOOD TO KNOW
+
+- Day by Day stays as agreed earlier for this screen: it takes quantities (hours, days or units) only. A Day by Day row with Amount gets a clear message telling you to use One Total for the Month for amounts. Formula-built pay items such as ONOR stay unavailable in Day by Day. If you need either of these, please raise it as a separate request.
+
+- Adding or editing a single transaction by hand already lets you choose Amount for formula pay items. That stays as it is.
+
+- We're not changing formulas, pay item settings, default input types, the Excel templates, or how payroll, PCB, EPF, SOCSO or EIS are calculated.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Root cause (verified at 7909f0c43). Nothing rewrites amount to qty. The import never writes calculationMethod. lib/individual-txn-import-contract.ts:20 maps Input Type to __input_unit. Monthly analysis (core/payroll-txn-import.ts about 811-814) accepts 'amount' for a formula_builder item, because it has no required unit (payRuleInputUnit, core/pay-rule.ts about 392-403). deriveIndividualTxnAmountTx returns not-derived for formula_builder, so the stored amount is the typed 105.40 with unit amount. Both writers (confirm path core/individual-txn-import.ts about 141-175, legacy commitTxnImport core/payroll-txn-import.ts about 1100-1125) omit calculationMethod. That was deliberate: docs/adr/payroll-individual-entry-calculation.md says old import writers keep existing behaviour. With the method empty, payroll keeps the formula active (core/payroll.ts about 5806), and lib/pay-formula-input.ts feeds the amount in as {#Input}. The Edit dialog draws a method-empty formula_builder row as Qty (app/payroll/transactions/individual/txn-workspace.tsx about 1270-1276). dupKey (core/payroll-txn-import.ts about 396-404) compares run, employee, pay item and amount only.
+
+1. analyzeIndividual (monthly). For formula and formula_builder items, set calculationMethod from the row. 'amount' clears quantity and requires a positive amount. A quantity unit maps to 'formula' and requires a quantity with Amount blank; preview the figure with priceIndividualTxnInputTx (same pricing as manual entry). Both cells filled, or a unit the item refuses, gives a per-row reason. Inline 'formula' items now accept Amount in monthly mode (decision aac17dd0 already allows typed Amount on the single form).
+
+2. Confirm path. Carry the method through ResolvedIndividual, canonicalBinding and the write rows in core/individual-txn-import.ts, including the confirm re-check (about 162-165) and the reversal snapshot rule (about 30-38). The legacy commitTxnImport gets the same treatment, or is routed to the confirm path if it is still reachable. The bulk writer already accepts a per-row method (core/payroll-individual-txn.ts about 1226-1301).
+
+3. Duplicate check. Make dupKey and dailyKey method-aware: the method plus the entered value (quantity or amount). Message names the type and what it pays. Legacy exception: a method-empty formula_builder row with the same value refuses the new row with a specific reason, so no double pay.
+
+4. Day by Day unchanged (owner, 24 Nov 2026: keep aac17dd0). Make sure the dailyInputTypeMismatch message points to One Total for the Month for amounts.
+
+5. Messages. New reason keys in all six locales; translations need review.
+
+6. Existing rows. No backfill (the ADR rules it out). Add a read-only report modelled on scripts/report-formula-keyed-input-impact.ts: open-run import rows where the method is empty, the unit is 'amount' and the item is formula_builder, showing what each pays now and as Amount. Run it on the reporter's installation with permission and attach the output to the item.
+
+Tests: formula_builder Amount stores method 'amount' and the processed payslip pays 105.40; formula_builder Qty stores 'formula' with the same figure as manual entry; inline-formula Amount in monthly mode; unsupported type and both cells filled are refused per row; duplicate across types; legacy-row refusal; reversal of a method-'amount' import; Day by Day Amount still refused with the new pointer. Update the calculationMethod-null snapshot assertion in test/individual-txn-import.test.ts (about 44). Add a rendered import-log check.

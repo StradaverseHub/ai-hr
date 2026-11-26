@@ -41,7 +41,7 @@ function alignMessage(code:string){
  return 'The employee\'s dated records could not be aligned to the Group Join Date.';
 }
 const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-async function administratorTx(tx:Tx,ctx:SessionContext,companyId:string){
+export async function administratorTx(tx:Tx,ctx:SessionContext,companyId:string){
  await assertWorkforceCompanyTx(tx,ctx,companyId,'maintain');
  const [gate]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.is_admin_for(${companyId}::uuid) as ok`);
  if(!ctx.userId||!gate?.ok)fail('You do not have permission to correct this company.');

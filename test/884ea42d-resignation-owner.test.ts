@@ -52,23 +52,28 @@ describe('884ea42d one resignation information owner',()=>{
   const [event]=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.id,history.id));expect(event.actorId).toBe(ctx.userId);expect(event.payload).toMatchObject({before:{resignationDate:null},after:{resignationDate:day(-10)}});
   expect((await movementPendingEditInput(ctx,employmentId,history.id))?.values).toMatchObject({tenderResignationDate:day(-20),resignationEffectiveDate:day(-10)});
  });
- it('future intent preserves legacy dates until due, applies once, and links the completed scheduled event',async()=>{
+ // 7da649d3 — a future Resignation writes its dates when it is saved (Serving Notice, payroll's last day),
+ // owned as "scheduled" by the pending intent; on its effective date the sweep finds nothing left to change.
+ it('future intent writes its dates at once, completes once when due, and links the scheduled event',async()=>{
   const {employmentId}=await hire();const legacy={tenderResignationDate:day(-60),resignationDate:day(-50),lastWorkingDate:day(-40)};
   await owner.db.update(schema.employment).set(legacy).where(eq(schema.employment.id,employmentId));
   for(const value of Object.values(await resignationInformation(ctx,employmentId)))expect(value.source.kind).toBe('legacy');
   const future={...input(employmentId,day(10)),tenderResignationDate:today,resignationEffectiveDate:day(8),endDate:day(9)};await createMovementEvent(ctx,future);
-  const pending=await resignation(employmentId,'pending');expect(dates(await row(employmentId))).toEqual(legacy);expect((await resignationInformation(ctx,employmentId)).resignationDate.source.kind).toBe('legacy');
+  const pending=await resignation(employmentId,'pending');expect(dates(await row(employmentId))).toEqual({tenderResignationDate:today,resignationDate:day(8),lastWorkingDate:day(9)});
+  expect((await resignationInformation(ctx,employmentId)).resignationDate.source).toEqual({kind:'scheduled',movementId:pending.id,effectiveDate:day(10)});
   const intent=await movementPendingEditInput(ctx,employmentId,pending.id);expect(intent?.values).toMatchObject({tenderResignationDate:today,resignationEffectiveDate:day(8)});
-  expect((await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(9)))).applied).toBe(0);
-  expect((await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(10)))).applied).toBe(1);
-  expect((await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(10)))).applied).toBe(0);
+  expect(await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(9)))).toMatchObject({applied:0,noop:0});
+  expect(await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(10)))).toMatchObject({applied:0,noop:1});
+  expect(await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(10)))).toMatchObject({applied:0,noop:0});
   expect((await resignation(employmentId)).id).toBe(pending.id);expect((await resignationInformation(ctx,employmentId)).resignationDate.source).toMatchObject({kind:'movement',movementId:pending.id});expect((await row(employmentId)).terminatedOn).toBeNull();
+  expect(dates(await row(employmentId))).toEqual({tenderResignationDate:today,resignationDate:day(8),lastWorkingDate:day(9)});
  });
- it('corrects and cancels pending intent through the existing reversal lifecycle without changing current dates',async()=>{
+ it('corrects and cancels pending intent through the existing reversal lifecycle, the current dates following the live intent',async()=>{
   const {employmentId}=await hire();await createMovementEvent(ctx,{...input(employmentId,day(10)),tenderResignationDate:today,resignationEffectiveDate:day(8),endDate:day(9)});
   const pending=await resignation(employmentId,'pending');await editMovementEvent(ctx,{employmentId,movementId:pending.id,kind:'resignation',effectiveDate:day(12),endDate:day(11),resignationEffectiveDate:day(10),reason:'Corrected future dates'});
-  const corrected=await resignation(employmentId,'pending');expect(corrected.id).not.toBe(pending.id);expect((await row(employmentId)).resignationDate).toBeNull();
+  const corrected=await resignation(employmentId,'pending');expect(corrected.id).not.toBe(pending.id);expect(dates(await row(employmentId))).toEqual({tenderResignationDate:today,resignationDate:day(10),lastWorkingDate:day(11)});
   await reverseMovementEvent(ctx,{employmentId,movementId:corrected.id,reason:'Withdraw future record'});
+  expect(dates(await row(employmentId))).toEqual({tenderResignationDate:null,resignationDate:null,lastWorkingDate:null});
   expect((await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(30)))).applied).toBe(0);expect((await row(employmentId)).resignationDate).toBeNull();
   expect((await movementHistory(ctx,employmentId)).filter(r=>r.kind==='resignation'&&r.reversed)).toHaveLength(2);
  });

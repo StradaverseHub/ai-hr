@@ -70,3 +70,23 @@ correction records are read-only. Genuine missing evidence, invalid lineage and
 unprovable annual allocation produce a named employee outcome, rolling back that
 employee's calculation and retaining their previous result while the job
 continues. Other consumers keep the strict original source policy.
+
+## Amendment, 23 November 2026: hold the employee, not the company (board 016276b7)
+
+The reporter approved a plan that isolates historical tax holds to the affected
+employee during payroll processing. Each processing chunk asks the canonical
+historical tax-basis reader which of its employees it cannot read, using the same
+options and source rows as the chunk's own calculation. Those employees are held
+for income tax review: no payslip, nothing of theirs calculated, and their loan
+reservations and reserved claims stay on the run. Everyone else is processed. The
+run's `payroll-batch.processed` event records each held employee, the month and
+the reader's reason. The live list is that record intersected with the employees
+who still have no payslip on the run and were not removed from it.
+
+The hold criteria, the reader, the statutory engine and every other refusal are
+unchanged. Any other error still fails and discards the whole run. Held employees
+keep a regular run's Close shut, as any payslip-less eligible employee already
+did, and now also keep an additional run's Close shut. They join the same run
+through the existing selective reprocess add path once their history is
+corrected. Without the multi-cycle module, that path admits exactly the run's
+outstanding held employees and nothing else.

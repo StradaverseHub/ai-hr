@@ -71,6 +71,22 @@ describe('durable Bank & Statutory jobs',()=>{
   await processBankImportJob(ctx,id);expect((await getBankImportJob(ctx,id)).job.saved).toBe(1);
   expect((await createBankImportJob(ctx,{name:'again.csv',bytes:content(['BANK001,TNEW']).length,hash:createHash('sha256').update(content(['BANK001,TNEW'])).digest('hex')})).existing).toBe(false);
  });
+ it('hands the worker loop back once its time budget is spent and resumes at the next row',async()=>{
+  const records=parseCsvRecords('full_name,email,department,hired_on,ic_number,basic_salary,employee_code\n'+
+   ['BANK001','BANK002','BANK003'].map((code,i)=>`Budget Subject ${i+1},budget${i+1}@example.test,Finance,2026-01-05,90010110555${i},5000,${code}`).join('\n')).records;
+  expect((await commitEmployeeImport(ctx,{companyId:b.companyId,records})).imported).toBe(3);
+  const id=await admit(content(['BANK001,TB1','BANK002,TB2','BANK003,TB3']));
+  expect(await ready(id)).toMatchObject({valid:3,total:3});
+  await bankImportCommand(ctx,id,'confirm');await processBankImportJob(ctx,id);
+  // A spent budget still saves one row per tick (progress), then returns so other queues run.
+  for(const expected of [1,2])
+   {await processBankImportJob(ctx,id,{budgetMs:0});expect((await getBankImportJob(ctx,id)).job).toMatchObject({state:'importing',processed:expected,saved:expected});}
+  await processBankImportJob(ctx,id,{budgetMs:0});
+  const done=(await getBankImportJob(ctx,id)).job;expect(done).toMatchObject({state:'completed',processed:3,saved:3,failed:0});
+  const saved=await owner.client`select e.employee_code,s.tax_number from employee_statutory_my s join employment e on e.person_id=s.person_id where e.tenant_id=${b.tenantId}::uuid and e.employee_code like 'BANK00%' order by e.employee_code`;
+  expect(saved.map(r=>[r.employee_code,r.tax_number])).toEqual([['BANK001','TB1'],['BANK002','TB2'],['BANK003','TB3']]);
+  expect(await owner.db.select().from(schema.importAttemptItem).where(eq(schema.importAttemptItem.attemptId,done.attemptId!))).toHaveLength(3);
+ });
  it('rolls back the domain change and audit item together if a row transaction crashes, then resumes once',async()=>{
   const e=await employee(),id=await admit(content(['BANK001,TRECOVER']));await ready(id);await bankImportCommand(ctx,id,'confirm');await processBankImportJob(ctx,id);
   const job=(await getBankImportJob(ctx,id)).job;

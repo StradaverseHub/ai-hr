@@ -18,6 +18,7 @@ import {payrollProrationRatio} from '../lib/payroll-proration';
 import {payrollProrationFactor as prorationFactor} from '../lib/payroll-proration';
 import {z} from 'zod';
 import {ReviewedPayrollReopenSourceReceipt} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
+import {processingTaxHoldsTx,taxHeldRowsTx,type TaxHeldEmployee} from './payroll-tax-holds';
 import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx,readTaxBasisFailuresTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef,type EffectiveTaxBasis,type ReprocessTaxBasisRead,type TaxBasisSource} from './payroll-tax-basis-read';
 import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
@@ -1295,6 +1296,8 @@ export async function completePayrollProcessingTx(tx: Tx, ctx: SessionContext, p
     appliedLoanCentsByEmp: new Map(byRank(p.chunks.flatMap((c) => c.appliedLoanCents), ([id]) => id)),
     deductionClampsByEmp: new Map(byRank(p.chunks.flatMap((c) => c.clamps), ([id]) => id)),
     skippedEmployees, runFrequency, runSchedule, perCycle, processingJobId: p.jobId,
+    // 016276b7 — the employees held for income tax review, in the run's order.
+    taxHeld: byRank(p.chunks.flatMap((c) => c.taxHeld ?? []), (r) => r.employmentId),
   });
 }
 
@@ -4070,6 +4073,8 @@ export type PayrollProcessingChunkResult={
  skipped:SkippedEmployee[];segments:{employmentId:string;currentCompanyId:string}[];
  /** payroll_input rows of the chunk before the overtime prefill rewrote them (restored by a discard). */
  inputSnapshots:PayrollProcessingInputSnapshot[];
+ /** 016276b7 — the chunk's employees held for income tax review (no payslip, nothing of theirs calculated). */
+ taxHeld?:TaxHeldEmployee[];
 };
 /** The run is no longer owned by this processing job (discarded, or another job took it). */
 export class PayrollProcessingLeaseError extends Error{constructor(){super('This payroll run is no longer being processed by this job.');this.name='PayrollProcessingLeaseError';}}
@@ -4531,6 +4536,23 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // ...and in the run's planned order (the order the whole-run read returned them in the job's prepare), so the
     // payslip loop, its skip lists and the run totals see every employee in the same sequence a full generation does.
     if (processing?.phase === 'employees') emps.sort((a, b) => (processing.order[a.employmentId] ?? 0) - (processing.order[b.employmentId] ?? 0));
+    // 016276b7 — HOLD, DON'T FAIL. A chunk employee whose historical tax inputs the tax-basis reader cannot read is left
+    // out of the run (held for income tax review) BEFORE anything of theirs is re-priced, prefilled or calculated, instead
+    // of the history read below throwing for the whole company. Same reader, options and source rows as those reads
+    // (core/payroll-tax-holds.ts); every other refusal is unchanged. The held are recorded by the job's finalize.
+    let chunkTaxHeld: TaxHeldEmployee[] = [];
+    if (processing?.phase === 'employees' && emps.length) {
+      const holds = await processingTaxHoldsTx(tx, ctx, batch, emps.map((e) => e.employmentId), settingEnabled(ctx, 'payroll.individual_txn_pay_enabled'));
+      if (holds.size) {
+        chunkTaxHeld = emps.filter((e) => holds.has(e.employmentId)).map((e) => holds.get(e.employmentId)!);
+        emps = emps.filter((e) => !holds.has(e.employmentId));
+        if (emps.length === 0) {
+          const chunk: PayrollProcessingChunkResult = { paid: [], postEmploymentIds: [], postEmploymentTxnIds: [], appliedLoanCents: [], clamps: [],
+            skipped: [], segments: [], inputSnapshots: [], taxHeld: chunkTaxHeld };
+          return { processingChunk: chunk };
+        }
+      }
+    }
     if (processing?.phase === 'plan') {
       const employmentIds = emps.map((e) => e.employmentId);
       const planSchedule = await loadBatchCutOffSchedule(tx, batch.companyId);
@@ -5389,8 +5411,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         })
         .from(payslip)
         .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+        // 016276b7 — a processing chunk reads only its own employees' earlier runs too (every use below is keyed by
+        // employment), so one held employee's earlier-run source cannot fail every other chunk of the company.
         .where(and(eq(payrollBatch.companyId,batch.companyId),eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq),
-          subset ? inArray(payslip.employmentId,empIds) : undefined));
+          subset || processing?.phase === 'employees' ? inArray(payslip.employmentId,empIds) : undefined));
       for(const source of await taxBasisSourceRowsTx(tx,earlier.map(slip=>slip.id)))if(!taxOpeningPrefix.some(saved=>saved.id===source.id))taxOpeningPrefix.push(source);
       const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id),{includeImported:true,sameMonth:true,reprocess:reprocessTaxRead});
       for (const r of earlier) {
@@ -8675,6 +8699,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         skipped: skippedEmployees,
         segments: [...segmentByEmp.keys()].map((employmentId) => ({ employmentId, currentCompanyId: currentCompanyById.get(employmentId)! })),
         inputSnapshots,
+        ...(chunkTaxHeld.length ? { taxHeld: chunkTaxHeld } : {}),
       };
       return { processingChunk: chunk };
     }
@@ -9025,7 +9050,10 @@ export type PayrollGenerationCompletion={batchId:string;companyId:string;payPeri
  runFrequency:ReturnType<typeof payrollFrequencyOf>;runSchedule:ReturnType<typeof payrollScheduleFor>;perCycle:boolean;
  /** Set by the processing job: the status flip also releases its lease, and the recalculation mark is kept. The
   * job takes the audit-loop capture in its own following unit (capturePayrollProcessingInputsTx). */
- processingJobId?:string|null};
+ processingJobId?:string|null;
+ /** 016276b7 — employees the processing job held for income tax review: no payslip on this run, and their claims and
+  * loan reservations stay attached to it so the selective reprocess that later adds them finds them as it left them. */
+ taxHeld?:TaxHeldEmployee[]};
 export async function completeFullGenerationTx(tx: Tx, ctx: SessionContext, run: PayrollGenerationCompletion) {
   // r226 — `run.employmentIds.length` IS THE PAYSLIP COUNT, and after the skip block above that is no longer a
   // restatement of "everyone selected". `employeeCount` is the run's headcount on every screen and in
@@ -9061,7 +9089,10 @@ export async function completeFullGenerationTx(tx: Tx, ctx: SessionContext, run:
   // against a now-processed batch, and `prefillLoansForBatch` only ever picks up 'scheduled' rows, so
   // it would be stranded until the run was reset. Left alone, the existing shortfall path re-schedules
   // the full due and the instalment survives to the next cycle.
-  await applyLoansForBatch(tx, ctx, run.batchId, run.appliedLoanCentsByEmp);
+  // 016276b7 — except a held employee's: they have no payslip YET, and the reprocess that adds them applies their
+  // reservation itself (it refuses an add whose reservation was already applied or rescheduled).
+  const taxHeldIds = (run.taxHeld ?? []).map((h) => h.employmentId);
+  await applyLoansForBatch(tx, ctx, run.batchId, run.appliedLoanCentsByEmp, undefined, taxHeldIds);
 
   // Money-safety fix (Payroll Process wizard plan): taxable claims prefilled into this batch are marked
   // paid ONLY for employments that actually received a payslip in THIS run — not every claim reserved on
@@ -9081,7 +9112,9 @@ export async function completeFullGenerationTx(tx: Tx, ctx: SessionContext, run:
     .from(claimRequest)
     .where(and(eq(claimRequest.payrollBatchId, run.batchId), eq(claimRequest.status, 'approved')));
   const toMarkPaid = reservedClaims.filter((c) => paidEmploymentIds.has(c.employmentId)).map((c) => c.id);
-  const toRequeue = reservedClaims.filter((c) => !paidEmploymentIds.has(c.employmentId)).map((c) => c.id);
+  // 016276b7 — a held employee's claims stay reserved on this run for the add that pays them (it refuses otherwise).
+  const heldEmploymentIds = new Set(taxHeldIds);
+  const toRequeue = reservedClaims.filter((c) => !paidEmploymentIds.has(c.employmentId) && !heldEmploymentIds.has(c.employmentId)).map((c) => c.id);
   const paidClaims = toMarkPaid.length
     ? await tx
         .update(claimRequest)
@@ -9141,6 +9174,11 @@ export async function completeFullGenerationTx(tx: Tx, ctx: SessionContext, run:
             skipped: run.skippedEmployees.map((s) => ({ employmentId: s.employmentId, reason: s.reason })),
           }
         : {}),
+      // 016276b7 — the employees held for income tax review, with the month and the tax reader's reason. The durable
+      // record the result screen, the run page and Close read (core/payroll-view.ts listTaxHeldEmployees).
+      ...(taxHeldIds.length > 0
+        ? { taxHeldCount: taxHeldIds.length, taxHeld: run.taxHeld!.map((h) => ({ employmentId: h.employmentId, period: h.period, reason: h.reason })) }
+        : {}),
       // c7fdfcf6 gap-fix — the resolved payroll frequency + generated cut-off periods for this run. When the
       // frequency is weekly/biweekly (`disbursedPerCycle`), each payslip carries a per-cycle disbursement
       // schedule (statutory.paymentSchedule) so the run is FUNCTIONALLY processed per cycle, not audit-only.
@@ -9153,7 +9191,7 @@ export async function completeFullGenerationTx(tx: Tx, ctx: SessionContext, run:
   // r226 — `payslips` is the number of payslips WRITTEN (it always was; the skip is what made the
   // distinction visible), and `skipped` names everyone this run had nothing to pay. The subset-reprocess
   // branch returns its own shape above and never carries a skip: it recomputes existing payslips.
-  return { payslips: run.employmentIds.length, totalNet: run.totals.net, skipped: run.skippedEmployees };
+  return { payslips: run.employmentIds.length, totalNet: run.totals.net, skipped: run.skippedEmployees, taxHeld: run.taxHeld ?? [] };
 }
 
 /** 1b0943d5 — the cross-batch segment coverage of a run with split months (see the call site in generatePayslipsTx).
@@ -9584,7 +9622,13 @@ async function closePendingEmployeesTx(tx: Tx, ctx: SessionContext, batchId: str
   // off-cycle, adjustment) pays only the people it has something for and deliberately leaves everyone else
   // without a payslip (r226), so "eligible with no payslip" there is the run working, not work outstanding.
   const [run] = await tx.select({ runType: payrollBatch.runType }).from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
-  if (run?.runType !== 'regular') return [];
+  // 016276b7 — employees the processing held for income tax review are owed pay on THIS run, whatever its type: until
+  // they are added (or deliberately removed) they hold Close shut, and the refusal names them as held.
+  const taxHeld = (await taxHeldRowsTx(tx, [batchId])).filter((r) => r.outstanding);
+  const heldIds = new Set(taxHeld.map((r) => r.employmentId));
+  if (run?.runType !== 'regular') {
+    return taxHeld.map((r) => ({ employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name, heldForTax: true }));
+  }
   const eligible = (await listPayslipLessEligibleTx(tx, ctx, { batchId })).filter((r) => !r.outsideScope);
   if (eligible.length === 0) return [];
   // cdb1c6ca (owner ruling 2026-10-30) — somebody REMOVED from this run ("Remove employee payroll", or an
@@ -9626,7 +9670,7 @@ async function closePendingEmployeesTx(tx: Tx, ctx: SessionContext, batchId: str
   }
   return rows
     .filter((r) => !skipped.has(r.employmentId))
-    .map((r) => ({ employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name }));
+    .map((r) => ({ employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name, ...(heldIds.has(r.employmentId) ? { heldForTax: true } : {}) }));
 }
 
 /**
@@ -10262,7 +10306,9 @@ export class BatchNotCloseableError extends Error {
  * cdb1c6ca — WHO a close refusal is about. Employee code and name only: the refusal is shown to the
  * operator and carried in a redirect, so it names people and never carries an amount or a payslip figure.
  */
-export type CloseBlockingEmployee = { employmentId: string; employeeCode: string | null; name: string };
+export type CloseBlockingEmployee = { employmentId: string; employeeCode: string | null; name: string;
+  /** 016276b7 — held for income tax review by the run's processing. */
+  heldForTax?: boolean };
 
 /**
  * cdb1c6ca — Close refused: somebody eligible for this run is still New / Pending — period-eligible, in
@@ -10740,11 +10786,13 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
   const selection=z.array(z.string().uuid()).nonempty().safeParse(requested);
   if (!z.string().uuid().safeParse(batchId).success || !selection.success) throw new Error('Invalid payroll selection.');
   const ids=[...new Set(selection.data)];
-  if (!isModuleEnabled(ctx,'multi_cycle_payroll')) throw new ModuleNotEnabledError('multi_cycle_payroll','Multiple payroll runs per month are not enabled.');
+  // 016276b7 — without multiple runs a month, only the employees this run held for income tax review may be checked.
+  const multiCycle=isModuleEnabled(ctx,'multi_cycle_payroll');
 
   return withTenant(ctx,async tx=>{
     const [row]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);
     const batch=withRunPayPeriod(row,()=>new Error('batch not found'));
+    if(!multiCycle&&!await onlyTaxHeldTx(tx,batchId,ids))throw new ModuleNotEnabledError('multi_cycle_payroll','Multiple payroll runs per month are not enabled.');
     await assertPayrollPermission(tx,ctx,'payroll.reprocess.selective',batch.companyId);
     if(batch.status!=='processed')throw new BatchNotResettableError();
     const [period]=await tx.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,batch.payPeriodId));
@@ -10814,15 +10862,23 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
   },{readOnlySnapshot:true});
 }
 
+/** 016276b7 — every id is an employee this run held for income tax review who is still outstanding on it. Fails closed:
+ * a reader who cannot read the run's processed event gets false. */
+async function onlyTaxHeldTx(tx: Tx, batchId: string, ids: readonly string[]): Promise<boolean> {
+  if (ids.length === 0) return false;
+  const held = new Set((await taxHeldRowsTx(tx, [batchId])).filter((r) => r.outstanding).map((r) => r.employmentId));
+  return ids.every((id) => held.has(id));
+}
+
 /** Phase 1 of a selective reprocess — validate, permission-check and enqueue (idempotent). */
 export async function enqueueSelectiveReprocess(
   ctx: SessionContext,
   p: { batchId: string; employmentIds: string[]; reason?: string; idempotencyKey?: string; heldEmploymentIds?: string[] },
 ) {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
-  if (!isModuleEnabled(ctx, 'multi_cycle_payroll')) {
-    throw new ModuleNotEnabledError('multi_cycle_payroll', 'Multiple payroll runs per month are not enabled.');
-  }
+  // 016276b7 — without multiple runs a month, a selective reprocess may still ADD the employees this run held for
+  // income tax review (checked below, inside the run's transaction): otherwise they could only leave by a full reset.
+  const multiCycle = isModuleEnabled(ctx, 'multi_cycle_payroll');
   const requested = [...new Set(p.employmentIds.filter(Boolean))].sort();
   if (requested.length === 0) throw new Error('Select at least one employee to reprocess.');
 
@@ -10836,6 +10892,9 @@ export async function enqueueSelectiveReprocess(
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     const batch=withRunPayPeriod(batchRow,()=>new Error('batch not found'));
+    if (!multiCycle && !(await onlyTaxHeldTx(tx, p.batchId, [...requested, ...(p.heldEmploymentIds ?? [])]))) {
+      throw new ModuleNotEnabledError('multi_cycle_payroll', 'Multiple payroll runs per month are not enabled.');
+    }
     await assertPayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId);
     if (batch.status !== 'processed') throw new BatchNotResettableError();
     const [period] = await tx
@@ -11835,20 +11894,54 @@ export async function removeEmployeePayrollTx(
   };
 }
 
-/** All-time dashboard warning/empty-state counts without materialising payroll money and run DTOs.
+/**
+ * The newest pay period that has a run in listBatches' population (same effective-history source, company
+ * inner join, company filter and empty-imported-history exclusion), or null when there is none.
+ *
+ * Measured on staging 24 Nov 2026 (74 companies, 615 runs of which 567 are imported history): the plain
+ * aggregate `max(pay_period) ... where history_import_attempt_id is null or employee_count > 0` took 3.95 s,
+ * because the effective view derives an imported run's employee_count from its payslips (a definer function,
+ * about 7 ms a run) and the filter forced that for every imported run in scope. This walks the runs newest period
+ * first behind OFFSET 0 and reads the view's employee_count only for an imported run, stopping at the first
+ * run that qualifies. The predicate is the same expression over the same view rows, so the answer is unchanged;
+ * a native run, or an imported run with payslips, in the newest period ends the walk at once.
+ */
+export async function latestListedBatchPeriodTx(tx: Tx, companyIds?: string[]) {
+  // The runs come from the plain table: the effective view is security_invoker over payroll_batch, one row per
+  // run, so the rows and their row security are the view's; only employee_count needs the view.
+  const candidates = tx
+    .select({ id: payrollBatch.id, payPeriod: payrollBatch.payPeriod, historyImportAttemptId: payrollBatch.historyImportAttemptId })
+    .from(payrollBatch)
+    .innerJoin(company, eq(company.id, payrollBatch.companyId))
+    .where(companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined);
+  // Drizzle omits `.offset(0)`, so the fence is written out: it keeps the walk ordered and lazy.
+  const [row] = await tx.execute<{ period: string | null }>(sql`select "candidate"."pay_period" as "period"
+     from (${candidates} order by ${payrollBatch.payPeriod} desc offset 0) "candidate"
+     where "candidate"."history_import_attempt_id" is null
+      or (select "effective"."employee_count" from public.payroll_history_effective_batch "effective"
+          where "effective"."id" = "candidate"."id") > 0
+     limit 1`);
+  return row?.period ?? null;
+}
+
+/** All-time dashboard warning/empty-state facts without materialising payroll money and run DTOs.
  * Same effective-history source, company visibility and empty company-filter semantics as listBatches.
- * The unpublished count follows payrollPublicationState, excluding imported history, drafts and closed runs. */
+ * The unpublished count follows payrollPublicationState, excluding imported history, drafts and closed runs;
+ * it reads native runs only, so it never derives an imported run's totals. `hasRuns` is whether listBatches
+ * would return any run: the screen only needs that for its empty state, and an exact all-time count would
+ * derive every imported run's employee_count (about 7 ms a run on staging, 24 Nov 2026). */
 export function payrollDashboardCounts(ctx:SessionContext,companyIds?:string[]){
- return withTenant(ctx,async tx=>{
+ return withTenant(ctx,tx=>payrollDashboardCountsTx(tx,companyIds));
+}
+export async function payrollDashboardCountsTx(tx:Tx,companyIds?:string[]){
   const [row]=await tx.select({
-   totalCount:sql<number>`count(*)`.mapWith(Number),
-   unpublishedCount:sql<number>`count(*) filter (where ${payrollBatch.historyImportAttemptId} is null and ${payrollBatch.status} not in ('draft','closed'))`.mapWith(Number),
-  }).from(payrollHistoryEffectiveBatch)
+   unpublishedCount:sql<number>`count(*)`.mapWith(Number),
+  }).from(payrollBatch)
    .innerJoin(company,eq(company.id,payrollBatch.companyId))
-   .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
-   .where(and(companyIds&&companyIds.length?inArray(payrollBatch.companyId,companyIds):undefined,or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0))));
-  return row??{totalCount:0,unpublishedCount:0};
- });
+   .where(and(companyIds&&companyIds.length?inArray(payrollBatch.companyId,companyIds):undefined,
+    isNull(payrollBatch.historyImportAttemptId),sql`${payrollBatch.status} not in ('draft','closed')`));
+  const unpublishedCount=row?.unpublishedCount??0;
+  return {hasRuns:unpublishedCount>0||await latestListedBatchPeriodTx(tx,companyIds)!==null,unpublishedCount};
 }
 
 // Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
@@ -11955,21 +12048,10 @@ export function listBatches(
  * transaction that inserts its first run (createBatch / createAdditionalRun) and deleted with its last
  * draft run, so "a run exists" is the created-period fact without opening on a month whose list is empty.
  * Null when nothing is visible; the caller then falls back to the tenant's current month.
+ * Read newest period first (latestListedBatchPeriodTx), not as a max over every run.
  */
 export function latestPayrollDashboardPeriod(ctx: SessionContext, companyIds?: string[]) {
-  return withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .select({ period: sql<string | null>`max(${payrollBatch.payPeriod})` })
-      .from(payrollHistoryEffectiveBatch)
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .where(
-        and(
-          companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
-          or(isNull(payrollBatch.historyImportAttemptId), gt(payrollBatch.employeeCount, 0)),
-        ),
-      );
-    return row?.period ?? null;
-  });
+  return withTenant(ctx, (tx) => latestListedBatchPeriodTx(tx, companyIds));
 }
 
 /**
@@ -12040,7 +12122,10 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
         employmentId: employment.id,
         name: person.fullName,
         employeeCode: employment.employeeCode,
-        terminatedOn: employment.terminatedOn,
+        // 7da649d3 — the payroll last day (least of terminated_on, resignation_date, last_working_date), the
+        // same end the run prorates to, so a leaver whose termination is still scheduled is listed in the
+        // month they leave rather than only after the sweep writes terminated_on.
+        terminatedOn: payrollEmploymentEnd,
         basic: compensation.basicSalary,
       })
       .from(employment)
@@ -12056,8 +12141,8 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
           // reason the plan insisted each of the six be decided on its own rather than replaced together.
           //
           // This is the LEAVERS SWEEP: who is being terminated inside this period, and therefore what
-          // final settlement (notice, leave encashment) their employer owes them. It is keyed on
-          // `terminated_on`, an event that happens ONCE, to the employment as it stands at that moment,
+          // final settlement (notice, leave encashment) their employer owes them. It is keyed on the
+          // exit (the payroll last day since 7da649d3), an event that happens ONCE, to the employment as it stands at that moment,
           // under the entity that holds it then — which is `employment.company_id` by definition.
           //
           // Widening it to the dated history would put a leaver on the advisory of an entity they had
@@ -12067,8 +12152,8 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
           // (which the segmented run pays) and no termination settlement at all. The dated question is
           // the wrong question here; the column is the right answer.
           eq(employment.companyId, batch.companyId),
-          gte(employment.terminatedOn, start),
-          lte(employment.terminatedOn, end),
+          sql`${payrollEmploymentEnd} >= ${start}::date`,
+          sql`${payrollEmploymentEnd} <= ${end}::date`,
         ),
       );
     if (leavers.length === 0) return [];

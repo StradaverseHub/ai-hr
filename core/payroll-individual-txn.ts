@@ -30,7 +30,7 @@ import {payrollEmploymentEnd,payrollEmploymentPredicate,type PayrollEligibilityR
  */
 import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvent, appendEvents } from '../db/events';
 import { assertPayComponentReady } from '../lib/pay-component-contract';
 import {
   company,
@@ -1627,6 +1627,45 @@ export async function deleteIndividualTxnTx(tx: Tx, ctx: SessionContext, p: {id:
     });
     return { id: p.id };
 
+}
+
+/**
+ * Board 0ec0ee00 — one revert step of an Individual Transaction import: the same removal controls as
+ * deleteIndividualTxnTx, set-based. The caller already owns every row's payroll period, holds the runs and the rows
+ * FOR UPDATE (runs first, as payroll processing does) and has proved each row unchanged since the import wrote it.
+ * A closed run still refuses; a processed run is marked for recalculation in the same transaction; every removed row
+ * keeps its own deleted event.
+ */
+export async function deleteImportedIndividualTxnsTx(
+  tx: Tx, ctx: SessionContext, rows: readonly (typeof payrollIndividualTxn.$inferSelect)[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  const batchIds = [...new Set(rows.map((row) => row.batchId).filter((id): id is string => id != null))].sort();
+  const batches = batchIds.length === 0 ? [] : await tx
+    .select({ id: payrollBatch.id, status: payrollBatch.status })
+    .from(payrollBatch).where(inArray(payrollBatch.id, batchIds)).orderBy(asc(payrollBatch.id)).for('update');
+  const status = new Map(batches.map((batch) => [batch.id, batch.status]));
+  if (batchIds.some((id) => !WRITABLE_BATCH_STATUSES.includes(status.get(id) as WritableBatchStatus))) throw new BatchNotDraftError();
+  await tx.delete(payrollIndividualTxn).where(inArray(payrollIndividualTxn.id, rows.map((row) => row.id)));
+  for (const batchId of batchIds) {
+    if (status.get(batchId) !== 'processed') continue;
+    const employmentIds = [...new Set(rows.filter((row) => row.batchId === batchId).map((row) => row.employmentId))];
+    await markBatchNeedsRecalc(tx, ctx, { batchId, employmentIds });
+  }
+  await appendEvents(tx, rows.map((existing) => ({
+    tenantId: ctx.tenantId,
+    aggregateType: 'payroll-individual-txn',
+    aggregateId: existing.id,
+    eventType: 'payroll.individual-txn.deleted',
+    actor: actorOf(ctx),
+    subjectEmploymentId: existing.employmentId,
+    payload: {
+      batchId: existing.batchId,
+      payPeriod: existing.payPeriod,
+      employmentId: existing.employmentId,
+      kind: existing.kind,
+    },
+  })));
 }
 
 /** One unattached (period-keyed) ledger row for the "awaiting payroll run" view. */

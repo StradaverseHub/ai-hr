@@ -174,7 +174,13 @@ describe('e440991b — the new screen refuses before it offers', () => {
   });
 
   it('re-asserts the module gate, so the route does not exist where the button does not', () => {
-    expect(REPROCESS_PAGE).toMatch(/if \(!isModuleEnabledOrFalse\(s, 'multi_cycle_payroll'\)\) notFound\(\);/);
+    // 016276b7 narrows the gate by exactly one case: without multi_cycle_payroll the route exists only while the run
+    // has employees held for income tax review who are still outstanding ("Process held employees" on the run
+    // screen), and then it ticks exactly them. The service admits only those ids without the module (onlyTaxHeldTx).
+    expect(REPROCESS_PAGE).toContain("const multiCycle = isModuleEnabledOrFalse(s, 'multi_cycle_payroll');");
+    expect(REPROCESS_PAGE).toMatch(/\(await listTaxHeldEmployees\(s, \[batchId\]\)\)\.filter\(\(r\) => r\.outstanding\)/);
+    expect(REPROCESS_PAGE).toMatch(/if \(!multiCycle && taxHeldIds\.length === 0\) notFound\(\);/);
+    expect(REPROCESS_PAGE).toMatch(/const focusIds = sp\.held === '1' \|\| !multiCycle \? taxHeldIds : undefined;/);
   });
 
   it('reads the three service-side refusals and names each one on screen', () => {

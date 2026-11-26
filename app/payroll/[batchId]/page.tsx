@@ -34,6 +34,7 @@ import { packFor } from '@/localization/registry';
 import { payrollPublicationState, type PayrollPublicationState } from '@/lib/payroll-publication';
 import {
   listSkippedEmployees,
+  listTaxHeldEmployees,
   listUnattachedTxnSummary,
   narrowToNothingPayable,
   pendingBatchMoney,
@@ -318,6 +319,10 @@ export default async function BatchPage({
   const resetOn = settingEnabledOrDefault(s, 'payroll.reset_enabled');
   // Selective reprocessing (feedback 9bc442bc, reporter ask #3) needs same-month adjustment runs.
   const multiCycleOn = isModuleEnabledOrFalse(s, 'multi_cycle_payroll');
+  // 016276b7 — employees this run's processing held for income tax review and who are still not on it.
+  const taxHeld = batch.status === 'processed' || batch.status === 'closed'
+    ? (await listTaxHeldEmployees(s, [batch.id])).filter((r) => r.outstanding)
+    : [];
   // Unlock Closed run (feedback 9bc442bc, reporter ask #2) — gated so an environment can keep Closed
   // permanently frozen. Single-confirm + mandatory reason + warnings live in the service; the page is
   // requireAdmin-gated and unlockClosedBatch re-asserts the granular payroll.unlock permission
@@ -566,6 +571,39 @@ export default async function BatchPage({
       />
 
       <ErrorBanner message={error} />
+      {taxHeld.length > 0 && (
+        <section aria-label={t('taxHeldTitle', { n: taxHeld.length })} className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950">
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-foreground">{t('taxHeldTitle', { n: taxHeld.length })}</p>
+              <p className="mt-1 text-amber-900 dark:text-amber-200">{t(batch.status === 'processed' ? 'taxHeldBody' : 'taxHeldClosedBody')}</p>
+            </div>
+            {batch.status === 'processed' && (
+              <Link href={`/payroll/${batch.id}/reprocess?held=1${fromSuffix ? '&' + fromSuffix.slice(1) : ''}`}
+                className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90">
+                {t('taxHeldProcess')}
+              </Link>
+            )}
+          </div>
+          <ul className="divide-y divide-amber-200 rounded-md border border-amber-200 bg-background dark:divide-amber-800 dark:border-amber-800">
+            {taxHeld.slice(0, 50).map((h) => (
+              <li key={h.employmentId} className="flex flex-wrap gap-x-4 gap-y-1 px-3 py-2">
+                <span className="font-medium text-foreground"><EmployeeCode code={h.employeeCode} /> {h.name}</span>
+                <span className="text-muted-foreground">
+                  {h.canReviewTax && h.reason ? t('taxHeldReason', { period: h.period, reason: h.reason }) : t('taxHeldReasonGeneric', { period: h.period })}
+                </span>
+                {h.canReviewTax && (
+                  <Link className="font-medium text-primary hover:underline"
+                    href={`/payroll/income-tax-recalculation?${new URLSearchParams({ company: batch.companyId, year: h.period.slice(0, 4), month: String(Number(h.period.slice(5, 7))) })}`}>
+                    {t('taxHeldOpenRecalculation')}
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+          {taxHeld.length > 50 && <p className="text-muted-foreground">{t('taxHeldMore', { n: taxHeld.length - 50 })}</p>}
+        </section>
+      )}
       {batch.status === 'draft' && !retiredFormulaInputs && <DraftTaxReadiness batchId={batch.id} companyId={batch.companyId} payPeriod={batch.payPeriod} />}
       {showProcessing && processingStatus && <PayrollProcessingPanel batchId={batch.id} initial={processingStatus} />}
       {retiredFormulaInputs && (

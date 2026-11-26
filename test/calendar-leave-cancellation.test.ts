@@ -29,9 +29,25 @@ import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase } from './harness';
 
-const today = todayInKualaLumpur();
 const add = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-const start = (() => { let date = add(today, 35); while (new Date(`${date}T00:00:00Z`).getUTCDay() !== 1) date = add(date, 1); return date; })();
+/**
+ * The request starts on a future Monday inside the current leave year: an employee may not apply for a FUTURE leave
+ * year until HR opens it (core/leave.ts LeaveYearNotOpenError), and this suite tests partial cancellation, not that gate.
+ * It starts about five weeks ahead, or on the last Monday still left this year; after that Monday the suite's HR date
+ * moves back to 1 November. The 98 dates may run into the next year, as they always could.
+ */
+const { today, start } = (() => {
+  const real = todayInKualaLumpur();
+  const mondayIn = (from: string) => {
+    const options: string[] = [];
+    for (let d = add(from, 1); d.slice(0, 4) === from.slice(0, 4); d = add(d, 1)) if (new Date(`${d}T00:00:00Z`).getUTCDay() === 1) options.push(d);
+    return options.find((d) => d >= add(from, 35)) ?? options.at(-1);
+  };
+  const monday = mondayIn(real);
+  if (monday) return { today: real, start: monday };
+  const anchor = `${real.slice(0, 4)}-11-01`;
+  return { today: anchor, start: mondayIn(anchor)! };
+})();
 const dates = Array.from({ length: 98 }, (_, i) => add(start, i));
 let employmentId: string;
 let companyId: string;

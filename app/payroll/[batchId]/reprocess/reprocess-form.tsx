@@ -116,6 +116,7 @@ export function ReprocessForm({
   employees,
   newCandidates,
   stale,
+  focusIds,
   pendingIds = [],
   previousJobId,
   jobRunning = false,
@@ -149,6 +150,9 @@ export function ReprocessForm({
    * the count on Payroll Process. Plain data, resolved on the server; the ticks stay editable.
    */
   stale?: { rows: ReprocessStaleRow[]; withoutPayslip: number };
+  /** 016276b7 — "Process held employees": tick exactly these New / Pending employees (the run's employees held for
+   * income tax review) and nothing else on arrival. The ticks stay editable. */
+  focusIds?: string[];
   pendingIds?: string[];
   previousJobId?: string;
   jobRunning?: boolean;
@@ -182,8 +186,12 @@ export function ReprocessForm({
    * Page, rows-per-page, search and tab changes are router replaces under the same form key, so they keep
    * this state; a later server render cannot add anyone to it (a person who becomes stale while the screen is
    * open is counted on the selection line, unticked, and stays Reprocess Required on the run afterwards).
+   * 016276b7 — "Process held employees" (`focusIds`) instead ticks exactly the run's employees held for income tax
+   * review among the ready New / Pending people, and nobody else. The ticks stay editable.
    */
-  const [selected,setSelected]=useState<Map<string,Selected>>(()=>new Map([
+  const [selected,setSelected]=useState<Map<string,Selected>>(()=>new Map(focusIds
+   ? addable.filter(c=>focusIds.includes(c.employmentId)).map(c=>[c.employmentId,c] as [string,Selected])
+   : [
    ...staleRows.map(e=>[e.employmentId,e] as [string,Selected]),
    ...addable.filter(c=>!c.outsideScope).map(c=>[c.employmentId,c] as [string,Selected]),
   ]));

@@ -93,9 +93,9 @@ describe('Direct Superior — UI drift guards (dce55aff)', () => {
     expect(PAGE.includes('setDirectSuperiorAction')).toBe(true);
   });
 
-  it('keeps prior superiors visible read-only (history disclosure) and the header ID + name', () => {
-    expect(PAGE.includes('directSuperiorHistoryFor')).toBe(true);
-    expect(PAGE.includes("t('directSuperiorHistory')")).toBe(true);
+  it('lists every superior period on the card (8f959c7a r2: Edit/Remove) and the header ID + name', () => {
+    expect(PAGE.includes('directSuperiorPeriodsFor')).toBe(true);
+    expect(PAGE.includes('<DirectSuperiorPeriods action={correctDirectSuperiorPeriodAction}')).toBe(true);
     // Employee Information header card: Direct Superior Employee ID + full name.
     expect(PAGE.includes("t('headerSuperior')")).toBe(true);
     expect(PAGE.includes('superiorLabel(currentSuperior.employeeCode, currentSuperior.name)')).toBe(true);

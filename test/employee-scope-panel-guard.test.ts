@@ -74,6 +74,7 @@ import { CollapsibleEmployeePanel } from '../components/collapsible-employee-pan
 // merge kept both copies. Keep a single import here.
 import TransactionViewPage from '../app/payroll/transaction-view/page';
 import { HistoryGrid } from '../app/payroll/transaction-view/history-grid';
+import { ResettingSelect } from '../app/payroll/transaction-view/resetting-select';
 // 9949f91a (r369) — the two Leave Inquiry tabs join the file. Their fence is company SCOPE (`scopedAdmin` +
 // `listEmployees(s, scopeIds)`), the same as Zakat's, so the foreign id used against them is a real
 // employment in a real second company that scope excludes.
@@ -103,7 +104,11 @@ function findByType(node: unknown, type: unknown, acc: any[] = []): any[] {
 /** Every host element of `tag` in a tree carrying the given form-field name — i.e. the controls that post. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function controlsNamed(tree: unknown, tag: string, name: string): any[] {
-  return findByType(tree, tag).filter((el) => el.props?.name === name);
+  // The tree is not rendered, so a <ResettingSelect> (Transaction View's server-defaulted filter selects since
+  // PR 287) is still the component here, not the <select> it renders. Count it as a select.
+  const found = findByType(tree, tag);
+  if (tag === 'select') found.push(...findByType(tree, ResettingSelect));
+  return found.filter((el) => el.props?.name === name);
 }
 
 /** The single `selectedId` the screen handed the shared panel — i.e. the guard's verdict. */

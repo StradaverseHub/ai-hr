@@ -14,6 +14,7 @@ import {PersonnelCsvError} from '../lib/personnel-csv';
 import {BANK_IMPORT_STAGE_ROWS,bankImportStagedRecords,stageBankImportSource} from '../lib/bank-import-stream-source.server';
 import {BANK_IMPORT_BATCH_ROWS,BANK_IMPORT_VALIDATION_ROWS} from '../lib/bank-import-job';
 import {analyzeBankImportBatch,applyBankImportRowTx,BankImportRowRejectedError} from './import-sections';
+import {OwnerConnectionUnresponsive,ownerClaimDeadline,ownerDeadlineMs,ownerStep,reservedWithin} from './owner-step-deadline';
 import {createImportAttemptTx,recordImportEventTx,sealImportPlan} from './import-history';
 import type {ImportPlanBase} from '../lib/import-history';
 import type {ImportRecord} from '../lib/import-schema';
@@ -27,11 +28,19 @@ export async function freshImportContext(context:SessionContext):Promise<Session
  ctx.entitlements=await withBackgroundDatabaseWork(()=>withPoolWork(ctx.tenantId,()=>client.begin(async transaction=>resolveEntitlementsInTenantTx(async(q,params)=>[...await transaction.unsafe(q,params as postgres.ParameterOrJSON<never>[])],ctx.tenantId))));
  return ctx;
 }
+/** How long one import tick keeps saving rows before it hands the worker loop back. The worker runs every queue in
+ * one loop (scripts/bank-import-runner.ts), so a tick that saves a full BANK_IMPORT_BATCH_ROWS batch made every other
+ * background job wait for it: on production on 24 Nov 2026 rows took about 5.3 s each, so one 100-row batch held the
+ * loop for about 9 minutes and a queued payroll history commit sat at "Submitting…" with the worker shown as not
+ * running. Each row is its own committed checkpoint, so stopping early loses nothing; the next tick resumes at the
+ * next valid row. At least one row is always attempted, so a slow row still makes progress. */
+export const BANK_IMPORT_TICK_BUDGET_MS=10_000;
+export type BankImportPhaseOptions={budgetMs?:number;now?:()=>number};
 /** One bounded phase. Exported for real DB recovery/concurrency tests. */
-export function processBankImportJob(ctx:SessionContext,id:string):Promise<void>{
- return withBackgroundDatabaseWork(()=>processBankImportPhase(ctx,id));
+export function processBankImportJob(ctx:SessionContext,id:string,options:BankImportPhaseOptions={}):Promise<void>{
+ return withBackgroundDatabaseWork(()=>processBankImportPhase(ctx,id,options));
 }
-async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void>{
+async function processBankImportPhase(ctx:SessionContext,id:string,options:BankImportPhaseOptions):Promise<void>{
  const job=await withTenant(ctx,tx=>bankJobTx(tx,id));
  if(job.state==='queued'){
   // The parts stay separate: the hash and the decoder read them in order, and a CSV decode releases each one.
@@ -86,8 +95,10 @@ async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void
    await tx.execute(sql`update bank_import_job set attempt_id=${attempt.attemptId}::uuid,processed=total-valid,updated_at=now() where id=${id}::uuid`);
   });return;
  }
+ const now=options.now??(()=>performance.now()),deadline=now()+(options.budgetMs??BANK_IMPORT_TICK_BUDGET_MS);
  const pending=await withTenant(ctx,tx=>tx.execute<QueueRow>(sql`select * from bank_import_row where job_id=${id}::uuid and state='valid' order by ordinal limit ${BANK_IMPORT_BATCH_ROWS}`));
- for(const row of pending){
+ for(const [index,row] of pending.entries()){
+  if(index>0&&now()>=deadline)break;
   try{
    await withTenant(ctx,async tx=>{
     const [current]=await tx.execute<QueueRow>(sql`select * from bank_import_row where job_id=${id}::uuid and ordinal=${row.ordinal} for update`);
@@ -120,16 +131,23 @@ async function processBankImportPhase(ctx:SessionContext,id:string):Promise<void
   await tx.execute(sql`delete from bank_import_chunk where job_id=${id}::uuid`);
  });
 }
-/** Owner credential stays in the dedicated worker. Never passed to a domain writer. */
-export async function runBankImportTick(owner:postgres.Sql):Promise<boolean>{
- const connection=await owner.reserve();
+/** Owner credential stays in the dedicated worker. Never passed to a domain writer. The owner steps (reservation,
+ * proof, lock, claim, failure record, unlock) are bounded by core/owner-step-deadline.ts; processing the job is not.
+ * A reservation whose statement missed its deadline is neither unlocked nor released: the worker exits, and the
+ * session's end frees the advisory lock. ownerDeadlineMs is a test hook. */
+export async function runBankImportTick(owner:postgres.Sql,options:{ownerDeadlineMs?:number}={}):Promise<boolean>{
+ const deadlineMs=ownerDeadlineMs(options.ownerDeadlineMs);
+ const claimStep=ownerClaimDeadline(deadlineMs);
+ const connection=await reservedWithin(owner.reserve(),deadlineMs);
+ let unresponsive=false;
+ const lost=(error:unknown)=>{if(error instanceof OwnerConnectionUnresponsive)unresponsive=true;throw error;};
  try{
-  const [proof]=await connection<{ok:boolean}[]>`select exists(select 1 from pg_roles r join pg_class c on c.oid='public.bank_import_job'::regclass where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid)) as ok`;
+  const [proof]=await claimStep(connection<{ok:boolean}[]>`select exists(select 1 from pg_roles r join pg_class c on c.oid='public.bank_import_job'::regclass where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid)) as ok`,'the Bank import owner proof');
   if(!proof?.ok)throw new Error('The import worker requires the physical queue owner connection.');
-  const [lock]=await connection<{ok:boolean}[]>`select pg_try_advisory_lock(hashtextextended('bank-import-worker',0)) as ok`;
+  const [lock]=await claimStep(connection<{ok:boolean}[]>`select pg_try_advisory_lock(hashtextextended('bank-import-worker',0)) as ok`,'the Bank import lock');
   if(!lock?.ok)return false;
   try{
-   const [job]=await connection<BankImportJobRow[]>`select * from bank_import_job where state in ('queued','validating','importing') order by updated_at,created_at limit 1`;
+   const [job]=await claimStep(connection<BankImportJobRow[]>`select * from bank_import_job where state in ('queued','validating','importing') order by updated_at,created_at limit 1`,'the Bank import claim');
    if(!job)return false;
    try{await processBankImportJob(await freshImportContext(job.context),job.id);}
    catch(error){
@@ -139,9 +157,11 @@ export async function runBankImportTick(owner:postgres.Sql):Promise<boolean>{
      // d3ba1e9f: an unexpected stop carries a short reference (full error in the worker log) for the Error Log.
      `Import stopped. Rows already saved are retained. Review the result and your access before trying again. Reference ${unexpectedErrorReference(error,'bank import job')}.`;
     // Bounded message only; raw DB failures can contain employee values. Already saved rows stay saved.
-    await connection`update bank_import_job set state='failed',error=${message},updated_at=now() where id=${job.id}::uuid`;
+    await ownerStep(connection`update bank_import_job set state='failed',error=${message},updated_at=now() where id=${job.id}::uuid`,'the Bank import failure record',deadlineMs);
    }
    return true;
-  }finally{await connection`select pg_advisory_unlock(hashtextextended('bank-import-worker',0))`;}
- }finally{await connection.release();}
+  }catch(error){return lost(error);}
+  finally{if(!unresponsive)await ownerStep(connection`select pg_advisory_unlock(hashtextextended('bank-import-worker',0))`,'the Bank import unlock',deadlineMs);}
+ }catch(error){return lost(error);}
+ finally{if(!unresponsive)connection.release();}
 }

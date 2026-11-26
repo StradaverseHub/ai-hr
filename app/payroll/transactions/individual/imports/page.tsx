@@ -4,6 +4,7 @@ import {scopedAdmin} from '@/lib/scope';
 import {listIndividualImportJobs, listIndividualImports} from '@/packs/payroll/service';
 import {PageHeader, pageWideCls} from '@/components/ui';
 import {formatImportActor, formatImportBatch} from '@/lib/import-reference';
+import {individualImportPercent} from '@/lib/individual-import-job';
 
 const log = '/payroll/transactions/individual/imports';
 
@@ -25,7 +26,9 @@ export default async function IndividualImportLogPage({searchParams}: {
       id: job.id, source: job.source_name, method: job.method, at: new Date(job.created_at).toISOString(),
       by: formatImportActor(labels, job.created_by_actor), written: job.written, failed: job.failed_rows, total: job.total,
       status: job.state === 'completed' && job.failed_rows ? t('completedWithErrors') : t(`batchState.${job.state}`),
-      progress: job.state === 'completed' ? 100 : job.total ? Math.min(99, Math.floor(job.processed * 100 / job.total)) : 0,
+      // 0ec0ee00 — a revert reports its own progress: imported rows removed so far.
+      progress: job.state === 'reverting' ? individualImportPercent(job.reverted_rows, job.written, false)
+        : individualImportPercent(job.processed, job.total, job.state === 'completed' || job.state === 'reverted'),
       href: `${log}/batches/${job.id}`,
     })),
     ...legacy.map(item => ({

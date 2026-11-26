@@ -1,0 +1,32 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Payroll Processing Result — sketch</title><style>
+body{margin:0;background:#fff;color:#1c1c1f;font:14px/1.5 system-ui}main{padding:28px 40px;max-width:1100px}
+a{color:#c2410c;text-decoration:none;font-weight:500}.back{color:#66666e;font-weight:400}
+h1{font-size:22px;margin:8px 0 2px}.sub{color:#66666e;margin:0 0 16px;padding-bottom:16px;border-bottom:1px solid #e8e8eb}
+.card{border:1px solid #e8e8eb;border-radius:12px;padding:16px;margin-bottom:24px}
+.badge{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;font-weight:500}
+.warn{background:#fef3c7;color:#92400e}.ok{background:#dcfce7;color:#166534}.muted{color:#66666e;font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px}.stat{border:1px solid #e8e8eb;border-radius:10px;padding:12px}
+.stat b{display:block;font-size:20px}.stat span{color:#66666e;font-size:12px}.hl{border-color:#f59e0b;background:#fffbeb}
+table{width:100%;border-collapse:collapse}th{background:#f8f8f9;text-align:left;font-size:12px;color:#66666e;font-weight:500;padding:10px 12px}td{white-space:normal;border-top:1px solid #e8e8eb;padding:10px 12px;vertical-align:top}
+h2{font-size:15px;margin:0 0 4px}.note{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;margin:10px 0 12px;color:#78350f}
+</style><main>
+<a class="back">← Payroll</a><h1>Payroll Processing Result</h1><p class="sub">Summary and status of the payroll run.</p>
+<div class="card"><strong>Overall status</strong> <span class="badge warn">Partly processed</span> <span class="muted">Pay period 2026-11</span>
+<div class="grid">
+<div class="stat"><span>Total employees selected</span><b>159</b></div>
+<div class="stat"><span>Successfully processed</span><b>157</b></div>
+<div class="stat hl"><span>Held for income tax review</span><b>2</b></div>
+<div class="stat"><span>Failed to process</span><b>0</b></div>
+</div></div>
+<h2>Per-company outcome</h2>
+<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Company</th><th>Selected</th><th>Processed</th><th>Held</th><th>Status</th><th>Detail</th></tr></thead>
+<tbody><tr><td><b>EXAMPLE TRADING SDN BHD</b></td><td>159</td><td>157</td><td>2</td><td><span class="badge warn">Partly processed</span></td><td><a>View payroll run</a></td></tr></tbody></table></div>
+<h2>Employees held for income tax review (2)</h2>
+<p class="muted" style="margin:0">These employees are not in this payroll yet. Everyone else has been processed.</p>
+<div class="note">Fix them in Recalculate Income Tax Value, then open the payroll run and press <b>Process held employees</b>. Employees already processed will not be changed.</div>
+<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Employee</th><th>Month</th><th>Reason</th><th></th></tr></thead><tbody>
+<tr><td style="white-space:nowrap">100901 · SAMPLE EMPLOYEE ONE</td><td style="white-space:nowrap">2026-01</td><td>Imported wages for 2026-01 need review: taxable deductions exceed normal pay.</td><td><a>Open Income Tax Recalculation</a></td></tr>
+<tr><td style="white-space:nowrap">100902 · SAMPLE EMPLOYEE TWO</td><td style="white-space:nowrap">2026-03</td><td>Imported wages for 2026-03 need review: missing historical tax evidence.</td><td><a>Open Income Tax Recalculation</a></td></tr>
+</tbody></table></div>
+<a>Back to Payroll Process</a>
+</main></html>

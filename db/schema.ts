@@ -11807,7 +11807,9 @@ export const bulkJobStep=pgTable('bulk_job_step',{
 },t=>[primaryKey({columns:[t.jobId,t.seq]}),index('bulk_job_step_pending').on(t.jobId,t.seq).where(sql`${t.state}='pending'`)]);
 
 /** Canonical row meaning approved by the import preview; codes and names are only lookup inputs. */
-export type PayrollTxnImportBinding={employmentId:string;companyId:string;departmentId:string|null;componentId:string;intendedCycleId:string|null;targetBatchId:string|null;targetCycle:string;payPeriod:string;txnDate:string;kind:string;quantity:number|null;unit:string|null;sourceRef:string;notes:string|null;dailyRuleHash?:string};
+export type PayrollTxnImportBinding={employmentId:string;companyId:string;departmentId:string|null;componentId:string;intendedCycleId:string|null;targetBatchId:string|null;targetCycle:string;payPeriod:string;txnDate:string;kind:string;quantity:number|null;unit:string|null;sourceRef:string;notes:string|null;dailyRuleHash?:string;
+ /** 7b5b1665 — the ledger input method a One Total for the Month row was validated with (absent = none). */
+ calculationMethod?:'amount'|'formula'};
 /** Individual transaction import attempts retain original row outcomes after reversal. */
 export const payrollTxnImportAttempt=pgTable('payroll_txn_import_attempt',{
  id:id(),tenantId:tenantId(),operationId:uuid('operation_id').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),
@@ -11815,9 +11817,20 @@ export const payrollTxnImportAttempt=pgTable('payroll_txn_import_attempt',{
  bindings:jsonb('bindings').$type<Record<string,PayrollTxnImportBinding>>().notNull().default({}),
  records:jsonb('records').$type<Record<string,string>[]>().notNull(),preview:jsonb('preview').$type<import('../lib/payroll-txn-import-schema').TxnImportPreview>().notNull(),
  outcomes:jsonb('outcomes').$type<import('../lib/individual-txn-import-model').IndividualImportOutcome[]>().notNull().default([]),
- state:text('state').$type<'validated'|'completed'|'reverted'>().notNull().default('validated'),written:integer('written').notNull().default(0),recalcBatchIds:jsonb('recalc_batch_ids').$type<string[]>().notNull().default([]),
+ state:text('state').$type<import('../lib/individual-txn-import-model').IndividualImportAttemptState>().notNull().default('validated'),written:integer('written').notNull().default(0),recalcBatchIds:jsonb('recalc_batch_ids').$type<string[]>().notNull().default([]),
  createdAt:createdAt(),revertedAt:timestamp('reverted_at',{withTimezone:true}),revertedBy:uuid('reverted_by').references(()=>appUser.id),
+ // 0ec0ee00 (7140) — summary counts set at validation (NULL on older attempts) and step progress of writing and reverting.
+ totalRows:integer('total_rows'),invalidRows:integer('invalid_rows'),processed:integer('processed').notNull().default(0),
+ revertedCount:integer('reverted_count').notNull().default(0),revertCursor:integer('revert_cursor').notNull().default(0),
+ revertRequestedBy:uuid('revert_requested_by').references(()=>appUser.id),revertConfirmProcessed:boolean('revert_confirm_processed').notNull().default(false),
 },t=>[uniqueIndex('payroll_txn_import_operation').on(t.tenantId,t.createdBy,t.operationId)]);
+/** 0ec0ee00 (7140) — one append-only outcome per Excel row of a step-written import. */
+export const payrollTxnImportOutcome=pgTable('payroll_txn_import_outcome',{
+ attemptId:uuid('attempt_id').notNull().references(()=>payrollTxnImportAttempt.id),rowNum:integer('row_num').notNull(),tenantId:tenantId(),
+ state:text('state').$type<'invalid'|'imported'|'failed'>().notNull(),transactionId:uuid('transaction_id'),
+ outcome:jsonb('outcome').$type<import('../lib/individual-txn-import-model').IndividualImportOutcome>().notNull(),
+ recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().defaultNow(),
+},t=>[primaryKey({columns:[t.attemptId,t.rowNum]}),index('payroll_txn_import_outcome_imported').on(t.attemptId,t.rowNum).where(sql`${t.state}='imported'`)]);
 
 /** Immutable pre-correction metadata. Money and payroll transaction rows are never rewritten. */
 export const informationPayslipSnapshot=pgTable('information_payslip_snapshot',{

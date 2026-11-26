@@ -1,14 +1,15 @@
 /** Privileged helper controls execute without root operations or live services, only in Actions. */
 import {spawnSync} from 'node:child_process';
 import {expect,it} from 'vitest';
+import {workerFixtureEnv} from './helpers/worker-fixture-tmp';
 it('preserves managed drain, production first activation, production update and rollback, immutable bytes and privileged refusal boundaries',()=>{
- const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-upgrade-tests.py'],{encoding:'utf8',maxBuffer:1024**2});
+ const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-upgrade-tests.py'],{env:workerFixtureEnv('upgrade'),encoding:'utf8',maxBuffer:1024**2});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
- expect(result.stderr).toContain('Ran 90 tests');
+ expect(result.stderr).toContain('Ran 93 tests');
 });
 
 it('admits only the root-pinned live CI runtime and monotonic native finish, with unchanged quarantine',()=>{
- const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-ci-runtime-tests.py'],{encoding:'utf8',maxBuffer:1024**2});
+ const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-ci-runtime-tests.py'],{env:workerFixtureEnv('ci-runtime'),encoding:'utf8',maxBuffer:1024**2});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
  expect(result.stderr).toContain('Ran 46 tests');
  // Gate 44354971179 timed out at 136.205 s; allow about 3x headroom while retaining native runtime controls.
@@ -33,9 +34,11 @@ it('keeps the real all-kind heartbeat predicate and bounds only selected CI to t
   // Execute the actual checker with its SQL/live-kind predicate unchanged; only the DB and clock are deterministic ports.
   mkdirSync(join(dir,'node_modules/postgres'),{recursive:true});
   writeFileSync(join(dir,'node_modules/postgres/package.json'),JSON.stringify({name:'postgres',type:'module',exports:'./index.mjs'}));
-  writeFileSync(join(dir,'node_modules/postgres/index.mjs'),`export default function(){const db=async strings=>{if(!strings.join('').includes('from bulk_job_kind k left join bulk_job_worker'))throw Error('wrong predicate');return [{kind:'ordinary',live:true,beat_at:new Date(Date.now())},{kind:'new-approved-kind',live:Date.now()>=Number(process.env.FIXTURE_HEARTBEAT_MS),beat_at:null}];};db.end=async()=>{};return db;}`);
+  writeFileSync(join(dir,'node_modules/postgres/index.mjs'),`export default function(){const db=async strings=>{if(strings.join('')==="select kinds from bulk_job_worker where beat_at>now()-interval '90 seconds' order by id")return [{kinds:['ordinary']}];if(!strings.join('').includes('from bulk_job_kind k left join bulk_job_worker'))throw Error('wrong predicate');return [{kind:'ordinary',live:true,beat_at:new Date(Date.now())},{kind:'new-approved-kind',live:Date.now()>=Number(process.env.FIXTURE_HEARTBEAT_MS),beat_at:null}];};db.end=async()=>{};return db;}`);
   writeFileSync(join(dir,'clock.mjs'),`let now=0;Date.now=()=>now;globalThis.setTimeout=(fn,ms)=>{now+=ms;queueMicrotask(fn);return 0;};`);
-  const checker=join(dir,'check-import-worker.ts');writeFileSync(checker,readFileSync('scripts/check-import-worker.ts','utf8'));
+  // The checker reads the lane catalogue (core/bulk-job-lanes.ts, ADR 0181 J1) beside it, as in the release checkout.
+  mkdirSync(join(dir,'scripts'));mkdirSync(join(dir,'core'));writeFileSync(join(dir,'core/bulk-job-lanes.ts'),readFileSync('core/bulk-job-lanes.ts','utf8'));
+  const checker=join(dir,'scripts/check-import-worker.ts');writeFileSync(checker,readFileSync('scripts/check-import-worker.ts','utf8'));
   for(const [wait,heartbeat,expected]of [[45,60000,2],[600,60000,0],[600,601000,2]]as const){
    const r=spawnSync(process.execPath,['--import','tsx','--import',join(dir,'clock.mjs'),checker,'--wait',String(wait)],{env:{...process.env,MIGRATION_DATABASE_URL:'postgres://fixture@localhost/unused',FIXTURE_HEARTBEAT_MS:String(heartbeat)},encoding:'utf8'});
    expect(r.status,r.stderr).toBe(expected);if(expected===0)expect(r.stdout).toContain('Import worker ready for: ordinary, new-approved-kind.');else expect(r.stderr).toContain('new-approved-kind');

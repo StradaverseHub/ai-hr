@@ -10,7 +10,11 @@ import { movementImportIssueText } from '@/lib/movement-import-issues';
 import {setEmploymentBlacklist,setEmploymentInfo,setReportingLine} from '@/core/workforce-commands';
 import { publicErrorMessage } from '@/lib/public-error';
 import { amendDirectSuperior } from '@/core/information-correction';
+import { correctDirectSuperiorPeriod } from '@/core/direct-superior-periods';
 import { DirectSuperiorAlreadySavedError, DirectSuperiorUnchangedError, ReportingCycleError } from '@/core/org';
+// Board eb01800b — a refusal that names the later assignment record and links to its line.
+import { AssignmentBeforeCurrentStartError } from '@/core/org';
+import { assignmentBlockedMessage, withMovementRecordMarker } from '@/lib/assignment-blocked-message';
 import { reportingLinesFor } from '@/core/read';
 import { isCalendarDate } from '@/lib/calendar-date';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
@@ -602,7 +606,7 @@ export async function createMovementEventAction(formData: FormData) {
       });
     }
   } catch (e) {
-    if(formData.get('movementPage'))throw new Error(await compensationErrorMessage(e));
+    if(formData.get('movementPage'))throw new Error(withBlockedRecordLink(e, await compensationErrorMessage(e)));
     // r374 (item 7dbaf677) — THROUGH THE ONE TRANSLATOR, because this path reaches `setCompensation`.
     //
     // `core/movement.ts` writes compensation whenever the pay STRUCTURE changed, not only when an amount
@@ -824,6 +828,41 @@ export async function setDirectSuperiorAction(_previous: DirectSuperiorSaveOutco
 
 class DirectSuperiorFormRefusal extends Error {}
 
+/** Board 8f959c7a r2 — correct one Direct Superior period from the card (Edit, clear its end date, or Remove).
+ * Same typed outcome as the card's Save: a refusal is answered beside the button with the entries kept, and the
+ * page refreshes in the background after a saved correction. The service owns every rule and permission. */
+export async function correctDirectSuperiorPeriodAction(_previous: DirectSuperiorSaveOutcome, formData: FormData): Promise<DirectSuperiorSaveOutcome> {
+  const session = await requireAdmin();
+  const t = await getTranslations('people.detail');
+  const submissionId = String(formData.get('submissionId') ?? '');
+  const employmentId = String(formData.get('employmentId') ?? '');
+  const operation = formData.get('periodOperation');
+  const reason = String(formData.get('reason') ?? '').trim();
+  const managerEmploymentId = String(formData.get('superiorEmploymentId') ?? '').trim();
+  try {
+    if (operation !== 'edit' && operation !== 'remove') throw new DirectSuperiorFormRefusal(t('directSuperiorChooseMode'));
+    if (!reason || reason.length > 200) throw new DirectSuperiorFormRefusal(t('directSuperiorReasonRequired'));
+    const common = { employmentId, reason, revision: String(formData.get('periodRevision') ?? ''),
+      lineId: String(formData.get('periodLineId') ?? '') };
+    if (operation === 'remove') {
+      await correctDirectSuperiorPeriod(session, { ...common, operation });
+    } else {
+      const validFrom = String(formData.get('validFrom') ?? '').trim();
+      const validToInclusive = String(formData.get('validToInclusive') ?? '').trim() || null;
+      if (!managerEmploymentId) throw new DirectSuperiorFormRefusal(t('directSuperiorPeriodSuperiorRequired'));
+      if (!isCalendarDate(validFrom) || (validToInclusive !== null && !isCalendarDate(validToInclusive))) {
+        throw new DirectSuperiorFormRefusal(t('directSuperiorDateRequired'));
+      }
+      await correctDirectSuperiorPeriod(session, { ...common, operation, managerEmploymentId, validFrom, validToInclusive });
+    }
+  } catch (error) {
+    unstable_rethrow(error);
+    return { status: 'refused', submissionId, message: directSuperiorRefusalText(error, t, managerEmploymentId === employmentId) };
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  return { status: 'saved', submissionId, message: t(operation === 'remove' ? 'directSuperiorPeriodRemoved' : 'directSuperiorPeriodSaved') };
+}
+
 /** Plain sentences for the refusals HR can act on; database errors keep their reference sentence. */
 function directSuperiorRefusalText(error: unknown, t: (key: string, values?: Record<string, string>) => string, self: boolean): string {
   if (error instanceof DirectSuperiorFormRefusal) return error.message;
@@ -926,7 +965,27 @@ async function compensationErrorMessage(e: unknown): Promise<string> {
     const t = await getTranslations('people.detail');
     return t('salaryBeforeCurrentRecordError', { date: formatDmy((e as SalaryBeforeCurrentRecordError).currentStart) });
   }
+  // Board eb01800b — a later assignment record blocks the date: name it (what, its date, what it changed).
+  const blocked = assignmentBlockedSource(e);
+  if (blocked) {
+    const t = await getTranslations('people.detail');
+    const fields = await getTranslations('people.informationCorrection.fields');
+    return assignmentBlockedMessage(blocked.source, blocked.date, t as unknown as Parameters<typeof assignmentBlockedMessage>[2],
+      (field) => fields(field as 'departmentId'), (date) => formatDmy(date));
+  }
   return publicErrorMessage(e);
+}
+/** The named record behind an AssignmentBeforeCurrentStartError, when the writer resolved one. */
+function assignmentBlockedSource(e: unknown) {
+  if (!(e instanceof AssignmentBeforeCurrentStartError) && (e as Error)?.name !== 'AssignmentBeforeCurrentStartError') return null;
+  const error = e as AssignmentBeforeCurrentStartError;
+  return error.source ? { source: error.source, date: error.effectiveDate ?? error.currentStart } : null;
+}
+/** The inline New Event refusal: the ONE translator's message, plus a link to the line of a named correction,
+ *  mapping or untagged record (board eb01800b). Not a second translator — it only marks the translated text. */
+function withBlockedRecordLink(e: unknown, message: string): string {
+  const blocked = assignmentBlockedSource(e);
+  return blocked && blocked.source.kind !== 'movement' ? withMovementRecordMarker(message, blocked.source.versionId) : message;
 }
 
 /** Salary Add and Edit share an explicit recording choice. The canonical composite command saves salary,

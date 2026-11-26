@@ -30,3 +30,27 @@ The successful path is unchanged. `test/pgbouncer-transaction-pool.test.ts` repr
 against a real PgBouncer and fails without the patch.
 
 Remove it once an upstream release handles the rejection; rerun that test before removing it.
+
+# postgres.js reserve() across a closing connection
+
+FACT: On 24 Nov 2026 the import worker's payroll lane waited in `reserve()` for 1,822 s with nothing running in
+PostgreSQL. Its one owner connection (`db/worker-connection.ts`, `max: 1`) had reached the driver's default
+`max_lifetime` between two bulk-job ticks. postgres.js 3.4.9 then ended that connection, which waits for its socket to
+close. A `reserve()` arriving in that window waits in the pool's `queries`. When the socket closed, `onclose` shifted
+the request out of `queries` and reconnected with it. The connection answers a reserve request only through `onopen`
+reading `queries` (it drops one it was started with), so the request was lost and `reserve()` never settled.
+
+The patch, in `src`, `cjs/src` and `cf/src`:
+- `onclose` reconnects for a waiting reserve request without removing it from `queries` (`Queue.peek`), as
+  `reserve()` itself does when it starts a closed connection;
+- a reserve request that fails (its connection attempt errored) leaves `queries`, so it is never answered after
+  failing, which would strand the connection outside every pool queue;
+- `release()` returns the connection only if that reservation still holds it. When the connection closed while
+  reserved, `onclose` has already returned it to the pool; unpatched, `release()` put the closed connection, with no
+  socket, in the open queue, and the next query threw an uncaught `TypeError` from a timer;
+- a reservation whose connection closed (or that was released) refuses further statements with `CONNECTION_CLOSED`
+  instead of writing to a connection it no longer holds.
+
+`test/postgres-reserve-recovery.test.ts` reproduces each case against a fake server
+(`test/helpers/fake-postgres-server.ts`) and fails without the patch. Remove these hunks once an upstream release
+fixes `reserve()`; rerun that test, with the type-fetch test above, before removing them.

@@ -752,7 +752,10 @@ export async function closeAction(formData: FormData) {
                   e instanceof BatchReprocessInProgressError
                   ? t('closeBlockedReprocessRunning')
                   : e instanceof BatchHasPendingEmployeesError
-                    ? t('closeBlockedPending', { n: e.employees.length, names: named(e.employees) })
+                    ? // 016276b7 — employees held for income tax review are named as such, with what to do.
+                      e.employees.some((x) => x.heldForTax)
+                      ? t('closeBlockedTaxHeld', { n: e.employees.filter((x) => x.heldForTax).length, names: named(e.employees.filter((x) => x.heldForTax)) })
+                      : t('closeBlockedPending', { n: e.employees.length, names: named(e.employees) })
                     : e instanceof BatchHasFailedReprocessError
                       ? t('closeBlockedReprocessFailed', { n: e.employees.length, names: named(e.employees) })
                       : publicErrorMessage(e);

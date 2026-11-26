@@ -602,7 +602,7 @@ export default async function PayrollPage({
                   <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                     {/* `year` is passed as a STRING: ICU formats a number argument with grouping, and
                         "2,026" is not a year. */}
-                    {allTimeCounts.totalCount === 0 ? t('empty') : t('filteredEmpty', { year: String(filters.year) })}
+                    {!allTimeCounts.hasRuns ? t('empty') : t('filteredEmpty', { year: String(filters.year) })}
                   </td>
                 </tr>
               )}

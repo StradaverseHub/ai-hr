@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Import log — sketch</title><style>
+body{margin:0;background:#fff;color:#1c1c1f;font:14px/1.55 system-ui}main{padding:24px 32px;max-width:1240px}
+.tag{font-size:12px;color:#66666e;text-transform:uppercase;letter-spacing:.04em;margin:18px 0 8px}h1{font-size:19px;margin:0 0 10px}
+table{width:100%;border-collapse:collapse;border:1px solid #e8e8eb}th{background:#f6f6f7;color:#66666e;font-weight:500;text-align:left;padding:8px 10px;font-size:13px}
+td{padding:9px 10px;border-top:1px solid #eeeef0;vertical-align:top}.ok{color:#166534}.bad{color:#b91c1c}.muted{color:#66666e;font-size:12px}.b{font-weight:600}.mono{font-family:ui-monospace,monospace}
+</style><main>
+<h1>individual-monthly-transactions.xlsx</h1>
+<div class="tag">Today</div>
+<table><tr><th>Row</th><th>Employee</th><th>Pay item</th><th>Month</th><th>Input Type</th><th>Value</th><th>Result</th></tr>
+<tr><td>305</td><td>C000 · SAMPLE EMPLOYEE</td><td>ONOR · NORMAL OT</td><td>2026-11</td><td>amount</td><td class="mono">105.40</td><td class="bad">Invalid<br>The pay run already has ONOR 105.40 for this employee — it is already there</td></tr></table>
+<p class="muted">The earlier line was saved without its Input Type, so payroll ran the overtime formula on 105.40 and pays MYR 2,468.79.</p>
+
+<div class="tag" style="margin-top:26px">After</div>
+<table><tr><th>Row</th><th>Employee</th><th>Pay item</th><th>Month</th><th>Input Type</th><th>Value</th><th>Will pay</th><th>Result</th></tr>
+<tr><td>12</td><td>C001 · SAMPLE EMPLOYEE A</td><td>ONOR · NORMAL OT</td><td>2026-11</td><td class="b">Amount</td><td class="mono">105.40</td><td class="mono">MYR 105.40</td><td class="ok">Ready · amount used as typed, formula not used</td></tr>
+<tr><td>13</td><td>C002 · SAMPLE EMPLOYEE B</td><td>ONOR · NORMAL OT</td><td>2026-11</td><td class="b">Hours</td><td class="mono">12.00</td><td class="mono">MYR 281.08</td><td class="ok">Ready · worked out by the pay item's formula</td></tr>
+<tr><td>14</td><td>C003 · SAMPLE EMPLOYEE C</td><td>ONOR · NORMAL OT</td><td>2026-11</td><td class="b">Amount</td><td class="mono">80.00 / 4.00</td><td>—</td><td class="bad">Row 14: fill in either Amount or Quantity for ONOR, not both</td></tr>
+<tr><td>305</td><td>C000 · SAMPLE EMPLOYEE</td><td>ONOR · NORMAL OT</td><td>2026-11</td><td class="b">Amount</td><td class="mono">105.40</td><td>—</td><td class="bad">An earlier import saved ONOR 105.40 as Qty (pays MYR 2,468.79). Correct that transaction first, so the employee is not paid twice.</td></tr></table>
+<p class="muted">Figures are illustrative. Day by Day still takes hours, days or units only.</p>
+</main></html>

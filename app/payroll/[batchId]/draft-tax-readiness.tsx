@@ -31,12 +31,11 @@ export function DraftTaxReadiness({batchId, companyId, payPeriod}: {batchId: str
   const [busy, setBusy] = useState(true);
   const [failed, setFailed] = useState(false);
   const [offset, setOffset] = useState(0);
-  // A failed refresh must not silently unlock a Process button that a prior check blocked.
-  const lastBlocked = useRef(false);
-
+  // 016276b7 — a blocker no longer disables Process: processing holds exactly those employees for income tax review and
+  // processes everyone else. Process still waits for a running check, so its answer is on screen before the click.
   useEffect(() => {
     setProcessDisabled(busy || Boolean(job && !status && !failed)
-      || status?.state === 'checking' || status?.state === 'waiting' || lastBlocked.current);
+      || status?.state === 'checking' || status?.state === 'waiting');
   }, [busy, failed, job, setProcessDisabled, status]);
 
   useEffect(() => {
@@ -51,7 +50,6 @@ export function DraftTaxReadiness({batchId, companyId, payPeriod}: {batchId: str
         setStatus(null);
         return;
       }
-      if (result.state === 'done') lastBlocked.current = result.blockers > 0;
       setStatus(result);
       if (result.state !== 'done') timer = setTimeout(poll, 1500);
     }
