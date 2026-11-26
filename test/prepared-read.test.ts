@@ -5,7 +5,7 @@ import {afterEach,describe,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {PREPARED_READ_OPTIONS,executePrepared,genericPlanSettingsStatement,preparedReadCounts,preparedReadsEnabled} from '../db/prepared-read';
-import {classifySharedStatement,passedSettings,sharedReadDriver,type SharedReadCarrierControl} from '../db/shared-read';
+import {classifySharedStatement,passedSettings,sharedReadDriver,type SharedReadCarrierControl,type SharedReadCarrierState} from '../db/shared-read';
 
 type Sent={query:string;params:unknown[]|undefined;options:unknown};
 function fakeDriver(){
@@ -17,8 +17,10 @@ function fakeDriver(){
  };
  return {sent,driver:{unsafe}};
 }
-const fakeSession=()=>({stats:{statements:0,flights:0,memoHits:0,seeded:0},inFlight:0,bootstrapping:false,
+const fakeSession=()=>({stats:{statements:0,flights:0,memoHits:0,seeded:0},
  refuse:(reason:string)=>new Error('refused '+reason),failed:()=>{}});
+/** One open carrier's state (db/shared-read.ts SharedReadCarrierState): past its identity statement. */
+const openCarrier=():SharedReadCarrierState=>({bootstrapping:false,plain:false,inFlight:0});
 
 afterEach(()=>{delete process.env.AIHR_PREPARED_READS;});
 
@@ -51,7 +53,7 @@ describe('the shared read snapshot driver and prepared reads',()=>{
  it('memoizes a prepared read as the same read as its unnamed statement, and copies its rows',async()=>{
   const {sent,driver}=fakeDriver();
   const session=fakeSession();
-  const carrier=sharedReadDriver(driver,session as never) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
+  const carrier=sharedReadDriver(driver,session as never,openCarrier()) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
   const first=await carrier.unsafe('select 1 as n where $1::int=1',[1],PREPARED_READ_OPTIONS);
   const again=await carrier.unsafe('select 1 as n where $1::int=1',[1],PREPARED_READ_OPTIONS);
   const unnamed=await carrier.unsafe('select 1 as n where $1::int=1',[1]);
@@ -66,14 +68,14 @@ describe('the shared read snapshot driver and prepared reads',()=>{
  });
  it('still passes any other driver option through, unmemoized',async()=>{
   const {sent,driver}=fakeDriver();
-  const carrier=sharedReadDriver(driver,fakeSession() as never) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
+  const carrier=sharedReadDriver(driver,fakeSession() as never,openCarrier()) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
   await carrier.unsafe('select 2',[],{prepare:true});
   await carrier.unsafe('select 2',[],{prepare:true});
   expect(sent.map(row=>row.options)).toEqual([{prepare:true},{prepare:true}]);
  });
  it('refuses a prepared statement that is not a plain read, as it refuses the unnamed one',async()=>{
   const {sent,driver}=fakeDriver();
-  const carrier=sharedReadDriver(driver,fakeSession() as never) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
+  const carrier=sharedReadDriver(driver,fakeSession() as never,openCarrier()) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
   await expect(carrier.unsafe(`select set_config('x','y',true)`,[],PREPARED_READ_OPTIONS)).rejects.toThrow('refused setting');
   expect(sent).toEqual([]);
  });
@@ -96,20 +98,20 @@ describe('generic plan settings for a prepared read',()=>{
  it('sends the settings once per carrier and answers them when the carrier already holds both',async()=>{
   const {sent,driver}=fakeDriver();
   const control:{current?:SharedReadCarrierControl}={};
-  const carrier=sharedReadDriver(driver,fakeSession() as never,control) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
+  const carrier=sharedReadDriver(driver,fakeSession() as never,openCarrier(),control) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
   const settings=genericPlanSettingsStatement({});
   await carrier.unsafe(settings,[]);
   await carrier.unsafe(settings,[]);
   expect(sent.map(row=>row.query)).toEqual([settings]);
   // A Today carrier's identity statement set both: the owner's statement is not sent at all.
   const held=fakeDriver(),heldControl:{current?:SharedReadCarrierControl}={};
-  const today=sharedReadDriver(held.driver,fakeSession() as never,heldControl) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
+  const today=sharedReadDriver(held.driver,fakeSession() as never,openCarrier(),heldControl) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
   heldControl.current!.hold('jit','off');heldControl.current!.hold('plan_cache_mode','force_generic_plan');
   await today.unsafe(settings,[]);
   expect(held.sent).toEqual([]);
   // Only jit held: the combined statement is sent.
   const partial=fakeDriver(),partialControl:{current?:SharedReadCarrierControl}={};
-  const other=sharedReadDriver(partial.driver,fakeSession() as never,partialControl) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
+  const other=sharedReadDriver(partial.driver,fakeSession() as never,openCarrier(),partialControl) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
   partialControl.current!.hold('jit','off');
   await other.unsafe(settings,[]);
   expect(partial.sent.map(row=>row.query)).toEqual([settings]);
