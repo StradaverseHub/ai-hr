@@ -22,12 +22,11 @@ import type {HistoryRevisionPlan,HistoryRevisionRow} from '../lib/payroll-histor
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
 afterEach(cleanup);
 const base=maintenancePlan.rows[0];
-const keep=(item:NonNullable<HistoryRevisionRow['itemChanges']>[number])=>({...item,after:item.before,operation:'keep' as const,laterCorrection:undefined});
 const plan=(rows:HistoryRevisionRow[]):HistoryRevisionPlan=>({...maintenancePlan,rows,counts:{created:rows.filter(r=>r.operation==='create').length,replaced:rows.filter(r=>r.operation==='replace').length,unchanged:rows.filter(r=>r.operation==='unchanged').length,invalid:rows.filter(r=>r.operation==='invalid').length}});
 const unchanged:HistoryRevisionRow={...base,employeeNo:'BD0098',period:'2026-01',operation:'unchanged',itemChanges:[
  {key:'component:bkdrv',code:'BKDRV',label:'Benefit-in-kind driver',before:'600.00',after:'600.00',operation:'keep'},
  {key:'component:bkcar',code:'BKCAR',label:'Benefit-in-kind car',before:'2083.33',after:'2083.33',operation:'keep'},
-].map(keep)};
+]};
 const updated:HistoryRevisionRow={...base,employeeNo:'BD0098',period:'2026-02',operation:'replace'};
 const created:HistoryRevisionRow={...base,employeeNo:'BD0099',period:'2026-01',operation:'create',recordId:null,expectedRevisionId:null,expectedSnapshotId:null,beforeValues:null,itemChanges:[{key:'component:bkcar',code:'BKCAR',label:'Benefit-in-kind car',before:null,after:'2083.33',operation:'add'}]};
 

@@ -26,7 +26,7 @@ import {createBatch} from '../core/payroll';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload, confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {previewTaxBasisRecalculation, confirmTaxBasisRecalculation} from '../core/payroll-tax-basis';
-import {readEffectiveTaxBasesTx, readTaxBasisFailureDetailsTx} from '../core/payroll-tax-basis-read';
+import {readEffectiveTaxBasesTx, readTaxBasisFailureDetailsTx, type EffectiveTaxBasis} from '../core/payroll-tax-basis-read';
 import {payrollProcessJobHandler, requestPayrollProcessing} from '../core/payroll-processing-job';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
@@ -52,7 +52,7 @@ const january = async () => {
   return rows[0].id;
 };
 const effective = (id: string) => withTenant(ctx, tx => readEffectiveTaxBasesTx(tx, ctx, [id], {includeImported: true}));
-const ownedBik = (value: {basis: {pcbNonCash?: unknown}} | undefined) => (value?.basis.pcbNonCash as {owned: {bik: number}}).owned.bik;
+const ownedBik = (value: EffectiveTaxBasis | undefined) => (value?.basis.pcbNonCash as {owned: {bik: number}}).owned.bik;
 const revisionCount = async () => (await owner.db.select().from(schema.payrollHistoryImportRevision)).length;
 const tick = () => runBulkJobTick(owner.client, {handlers: [payrollProcessJobHandler]});
 async function runJob(id: string, max = 400) {
