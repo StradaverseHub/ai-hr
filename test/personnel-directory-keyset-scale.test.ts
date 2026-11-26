@@ -156,7 +156,10 @@ describe('People directory keyset paging at group scale',()=>{
   for(const [name,ctx] of [['group',fixture.personas.group],['multi',fixture.personas.multi]] as const){
    const run=async(scope:Scope,cursor:Record<string,string>={})=>{
     const companyIds=scope==='one'?[fixture.companyIds[0]]:await scopeIds(ctx,'all');
-    const filters:EmployeeListFilters={companyIds,q:'person',status:'active'};
+    // A two-character term: 7530 decides from the data whether a 3+ character search is narrowed (and asks the
+    // candidates in a statement of their own), which test/employment-search-trigram.test.ts covers; this test keeps
+    // the directory's own statements independent of the scope.
+    const filters:EmployeeListFilters={companyIds,q:'pe',status:'active'};
     return observeStatements(()=>directory(ctx,filters,parseKeysetPageQuery({size:'25',...cursor})));
    };
    const all=await run('all'),one=await run('one');

@@ -15,7 +15,6 @@
  *    show the visible-set cost 7530 removes.
  * All names are invented. */
 import {randomUUID} from 'node:crypto';
-import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {client,withTenant,type SessionContext} from '../db/client';
@@ -121,19 +120,18 @@ describe('employee search trigram candidates (7320)',()=>{
    const visible=new Set((await withTenant(ctx,tx=>tx.select({id:schema.employment.id}).from(schema.employment))).map(r=>r.id));
    for(const q of ['tan','bulk 01','bk-00','fictional']){
     const [row]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates(${q}::text,null::uuid[],true) as ids`));
-    const candidates=row.ids??[];
+    // NULL: 7530 declines to narrow (more than 1,000 matches, all in companies the caller administers); the caller
+    // then reads as before 7320, which the directory and picker equivalence tests cover.
+    if(row.ids===null)continue;
+    const candidates=row.ids;
     expect(candidates.every(id=>visible.has(id)),`${name}/${q}: only visible employments`).toBe(true);
     for(const id of await directoryExpected(ctx,[...fixture.companyIds,...await allCompanies(ctx)],q))
      expect(candidates.includes(id),`${name}/${q}: visible match ${id} is a candidate`).toBe(true);
    }
-   // A caller naming one company (at most 1,000 employments) takes 7530's direct path: the same two guarantees there.
-   const scoped=[fixture.singleCompanyId];
-   const scopedVisible=new Set((await withTenant(ctx,tx=>tx.select({id:schema.employment.id}).from(schema.employment).where(sql`${schema.employment.companyId}=${fixture.singleCompanyId}`))).map(r=>r.id));
+   // A caller naming one company they administer (at most 1,000 employments) is not narrowed (7530): NULL.
    for(const q of ['tan','fictional','fx-0']){
-    const [row]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates(${q}::text,${'{'+scoped.join(',')+'}'}::uuid[],true) as ids`));
-    const candidates=row.ids??[];
-    expect(candidates.every(id=>scopedVisible.has(id)),`${name}/${q}: one company, only visible employments of it`).toBe(true);
-    for(const id of await directoryExpected(ctx,scoped,q))expect(candidates.includes(id),`${name}/${q}: one company, visible match ${id} is a candidate`).toBe(true);
+    const [row]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates(${q}::text,${'{'+fixture.singleCompanyId+'}'}::uuid[],true) as ids`));
+    expect(row.ids,`${name}/${q}: one administered company is read as before 7320`).toBeNull();
    }
    expect(isNarrowableEmploymentSearch('am')).toBe(false);
    const [none]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates('am',null::uuid[],true) as ids`));
@@ -170,44 +168,37 @@ describe('employee search trigram candidates (7320)',()=>{
  },120_000);
 
  it('7530: a search costs no more than the read without candidates (before 7320), for administrators and an employee',async()=>{
-  // The 7320 body, kept under another name only as the diagnosis reference (the visible set built in every call).
-  const src=readFileSync('db/migrations/7320_employment_search_trigram.sql','utf8');
-  const created=/CREATE FUNCTION app\.employment_search_candidates\([\s\S]*?\$function\$;/.exec(src)?.[0];
-  expect(created,'the 7320 function text').toBeTruthy();
-  await owner.client.unsafe(created!.replace('app.employment_search_candidates(','app.employment_search_candidates_7320_reference('));
-  await owner.client.unsafe('grant execute on function app.employment_search_candidates_7320_reference(text,uuid[],boolean) to ai_hr_app');
   // An employee of the group company with no grant beyond their own record: the relationship part only.
   const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Employee EMP1',primaryEmail:`${randomUUID()}@fixture.test`}).returning({id:schema.person.id});
   await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:p.id,companyId:b.companyId,employeeCode:'FX-EMP1',hiredOn:'2020-01-01'});
   const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:`user_${randomUUID()}`,personId:p.id}).returning({id:schema.appUser.id});
   await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,companyId:null,role:'employee'});
   const employee:SessionContext={...await entitledCtx(b,['employee']),userId:u.id,personId:p.id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
-  const CLAUSE=/"employment"\."id" = any\(\(select app\.employment_search_candidates\((\$\d+)::text, (\$\d+::uuid\[\]|null::uuid\[\]), (\$\d+)::boolean\)\)::uuid\[\]\)/g;
-  const variants={
-   before7320:(text:string)=>text.replace(CLAUSE,'($1::text is not null or $2 is null or $3::boolean is not null or true)'),
-   body7320:(text:string)=>text.replaceAll('app.employment_search_candidates(','app.employment_search_candidates_7320_reference('),
-   body7530:(text:string)=>text};
-  type Variant=keyof typeof variants;
-  /** The search's statements (those that call the candidates) for this caller and screen. */
+  // core/employment-search.ts: the candidates statement, and the narrowing clause it adds to the caller's statements.
+  const CANDIDATES=/^select app\.employment_search_candidates\(/i;
+  const CLAUSE=/"employment"\."id" = any\((\$\d+)::uuid\[\]\)/;
+  /** The search transaction's reads, as the app sends them (7530) and as before 7320 (no candidates statement, no clause). */
   const searchStatements=async(work:()=>Promise<unknown>)=>{
    const observed=await observeStatements(work);
-   const out=observed.statements.filter(s=>s.sql.includes('app.employment_search_candidates('));
-   expect(out.length,'the search statements').toBeGreaterThan(0);
-   for(const s of out)expect(variants.before7320(s.sql),'the candidates clause is recognised').not.toContain('employment_search_candidates');
-   return out;
+   const reads=observed.statements.filter(s=>!isIdentityStatement(s.sql)&&/^(select|with|\()/i.test(s.sql.trim()));
+   expect(reads.filter(s=>CANDIDATES.test(s.sql.trim())).length,'one candidates statement per search').toBe(1);
+   const narrowed=reads.some(s=>CLAUSE.test(s.sql));
+   const before=reads.filter(s=>!CANDIDATES.test(s.sql.trim())).map(s=>({...s,sql:s.sql.replace(CLAUSE,'($1::uuid[] is not null or true)')}));
+   for(const s of before)expect(s.sql,'one narrowing clause per statement').not.toMatch(CLAUSE);
+   return {now:reads,before,narrowed};
   };
   const identityOf=async(ctx:SessionContext):Promise<Captured>=>{
    const observed=await observeStatements(()=>withTenant(ctx,tx=>tx.execute(sql`select 1`)));
    return observed.statements.find(s=>isIdentityStatement(s.sql))!;
   };
   /** Execution plus planning ms and shared buffers of the statements, one EXPLAIN (ANALYZE, BUFFERS) each, as the caller. */
-  const timed=async(identity:Captured,statements:Captured[],variant:Variant)=>{
+  const timed=async(identity:Captured,statements:readonly Captured[])=>{
    let ms=0,buffers=0,jit='';
    await client.begin(async tx=>{
     await tx.unsafe(identity.sql,identity.params as never[]);
     jit=((await tx.unsafe(`select current_setting('jit') as jit`))[0] as {jit:string}).jit;
     for(const s of statements){
-     const [row]=await tx.unsafe(`explain (analyze, buffers, format json) ${variants[variant](s.sql)}`,s.params as never[]);
+     const [row]=await tx.unsafe(`explain (analyze, buffers, format json) ${s.sql}`,s.params as never[]);
      const [plan]=(row as Record<string,unknown>)['QUERY PLAN'] as [{Plan:{'Shared Hit Blocks'?:number;'Shared Read Blocks'?:number};'Execution Time':number;'Planning Time':number}];
      ms+=plan['Execution Time']+plan['Planning Time'];buffers+=(plan.Plan['Shared Hit Blocks']??0)+(plan.Plan['Shared Read Blocks']??0);
     }
@@ -216,41 +207,42 @@ describe('employee search trigram candidates (7320)',()=>{
   };
   const median=(xs:number[])=>[...xs].sort((x,y)=>x-y)[Math.floor(xs.length/2)];
   const ROUNDS=9;
-  const cases:{caller:string;ctx:SessionContext;screen:string;statements:Captured[]}[]=[];
+  type Search={now:Captured[];before:Captured[];narrowed:boolean};
+  const cases:{caller:string;ctx:SessionContext;screen:string;search:Search}[]=[];
+  const page=parseKeysetPageQuery({size:'25'});
+  const directory=(ctx:SessionContext,companyIds:string[],q:string)=>searchStatements(()=>listEmployeesDirectoryPage(ctx,{companyIds,q,limit:page.limit,size:page.size,after:page.after,before:page.before,last:page.last,exactCount:false}));
   for(const q of ['tan','rahman','bulk 0123','bk-0042','fictional']){
    for(const [caller,ctx] of [['group',fixture.personas.group],['multi',fixture.personas.multi],['single',fixture.personas.single]] as const){
     const companyIds=await allCompanies(ctx);
-    const page=parseKeysetPageQuery({size:'25'});
-    const directory=await searchStatements(()=>listEmployeesDirectoryPage(ctx,{companyIds,q,limit:page.limit,size:page.size,after:page.after,before:page.before,last:page.last,exactCount:false}));
-    cases.push({caller,ctx,screen:`directory ${q}`,statements:directory});
-    if(caller!=='multi')cases.push({caller,ctx,screen:`picker ${q}`,statements:await searchStatements(()=>readEmployeeChoices(ctx,{companyIds,query:q,offset:0,limit:50}))});
-    // The employee asks the group administrator's statements under their own identity: row security and the
-    // candidates both narrow to their own record.
-    if(caller==='group')cases.push({caller:'employee',ctx:employee,screen:`directory ${q}`,statements:directory});
+    cases.push({caller,ctx,screen:`directory ${q}`,search:await directory(ctx,companyIds,q)});
+    if(caller!=='multi')cases.push({caller,ctx,screen:`picker ${q}`,search:await searchStatements(()=>readEmployeeChoices(ctx,{companyIds,query:q,offset:0,limit:50}))});
    }
+   // The employee in the whole group (every company asked) and in their own company (what their screens ask).
+   cases.push({caller:'employee',ctx:employee,screen:`directory ${q} (all companies)`,search:await directory(employee,fixture.companyIds as string[],q)});
+   cases.push({caller:'employee',ctx:employee,screen:`directory ${q} (own company)`,search:await directory(employee,[b.companyId],q)});
   }
   const failures:string[]=[];
   for(const c of cases){
    const identity=await identityOf(c.ctx);
-   const runs:Record<Variant,{ms:number[];buffers:number[]}>={before7320:{ms:[],buffers:[]},body7320:{ms:[],buffers:[]},body7530:{ms:[],buffers:[]}};
+   const runs={before7320:{ms:[] as number[],buffers:[] as number[]},now7530:{ms:[] as number[],buffers:[] as number[]}};
    const jit=new Set<string>();
-   const order:Variant[]=['before7320','body7320','body7530'];
-   for(let round=0;round<ROUNDS;round++)for(let i=0;i<order.length;i++){
-    const variant=order[(round+i)%order.length];
-    const r=await timed(identity,c.statements,variant);
-    runs[variant].ms.push(r.ms);runs[variant].buffers.push(r.buffers);jit.add(r.jit);
+   for(let round=0;round<ROUNDS;round++){
+    for(const variant of (round%2?['now7530','before7320']:['before7320','now7530']) as (keyof typeof runs)[]){
+     const r=await timed(identity,variant==='now7530'?c.search.now:c.search.before);
+     runs[variant].ms.push(r.ms);runs[variant].buffers.push(r.buffers);jit.add(r.jit);
+    }
    }
-   const row=Object.fromEntries(order.map(v=>[v,{medianMs:Math.round(median(runs[v].ms)*100)/100,buffers:median(runs[v].buffers)}])) as Record<Variant,{medianMs:number;buffers:number}>;
-   // The app's identity statement turns JIT off for every transaction (db/client.ts), so every variant runs as the app runs it.
+   // The app's identity statement turns JIT off for every transaction (db/client.ts), so both run as the app runs.
    expect([...jit],`${c.caller} ${c.screen}: JIT as the app sets it`).toEqual(['off']);
-   console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,statements:c.statements.length,jit:[...jit].join(','),...row}));
+   const row={before7320:{medianMs:Math.round(median(runs.before7320.ms)*100)/100,buffers:median(runs.before7320.buffers)},
+    now7530:{medianMs:Math.round(median(runs.now7530.ms)*100)/100,buffers:median(runs.now7530.buffers)}};
+   console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,narrowed:c.search.narrowed,statements:c.search.now.length,jit:[...jit].join(','),...row}));
    // No slower than before 7320, with 1 ms (or 10 %) for runner noise between interleaved medians.
    const allowance=Math.max(1,row.before7320.medianMs*0.1);
-   if(row.body7530.medianMs>row.before7320.medianMs+allowance)failures.push(`${c.caller} ${c.screen}: ${row.body7530.medianMs} ms > ${row.before7320.medianMs} ms before 7320`);
+   if(row.now7530.medianMs>row.before7320.medianMs+allowance)failures.push(`${c.caller} ${c.screen}: ${row.now7530.medianMs} ms > ${row.before7320.medianMs} ms before 7320`);
   }
   expect(failures).toEqual([]);
-  await owner.client.unsafe('drop function app.employment_search_candidates_7320_reference(text,uuid[],boolean)');
- },600_000);
+ },900_000);
 
  it('measures each index build (the migration\'s CREATE INDEX holds a SHARE lock: reads continue, writes wait)',async()=>{
   const [{people,employments}]=await owner.client<{people:number;employments:number}[]>`select (select count(*) from person)::int as people,(select count(*) from employment)::int as employments`;

@@ -1,7 +1,7 @@
 # ADR 0181 search follow-up: employee search visible-set cost, 26 November 2026
 
 Reserve `7530_employment_search_visible_set`, journal index `10930`, timestamp `1795495007530`, SQL SHA-256
-`b63003466ae643ae01f4229b84b0c2cd1d4d01ae748df4c83ec1973b4285f292`. Assigned by the coordinator: 7510 and 7520 are reserved by the board session, so 7530 is the
+`6d710cf6f508b43661759d5a495ec4d4a6f5a5643e0f13564b56f3f1c4e687c9`. Assigned by the coordinator: 7510 and 7520 are reserved by the board session, so 7530 is the
 next slot not held. Built on slot 5 `c0f6cf5b9` (alpha after release 4). Because Drizzle skips a pending migration whose
 timestamp is below the highest applied one, 7510 and 7520 must install before 7530 on every installation, or be
 renumbered above it. Recheck both installations' watermarks and any competing reservation at admission.
@@ -9,8 +9,8 @@ renumbered above it. Recheck both installations' watermarks and any competing re
 Replaces only the body of `app.employment_search_candidates` (7320), guarded by the 7320 body's md5. Same signature,
 grants and answer set. It tests trigram matches against `app.employment_read_companies()` first and asks
 `app.access_visible_employment_ids()` only for matches outside those companies, instead of materialising
-`app.visible_employment_ids()` on every call; a caller naming companies with at most 1,000 employments is tested on
-those employments directly. The owner held the production release for this on 26 November 2026.
+`app.visible_employment_ids()` on every call. It answers NULL (the caller reads as before 7320) for a small named scope
+or a broad administrator search, and the application asks it once per search (core/employment-search.ts). The owner held the production release for this on 26 November 2026.
 
 # ADR 0181 payroll read addendum, F: imported-history run summary, 25 November 2026
 
