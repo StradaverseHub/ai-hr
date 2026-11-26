@@ -1,0 +1,47 @@
+VERDICT: Partly there already   ·   SIZE: Moderate
+
+THE SITUATION TODAY
+
+When Payroll History is imported with Update Listed Pay Item Totals, Non-Payable pay items such as BKCAR (Benefit-in-kind car) and BKDRV (Benefit-in-kind driver) are accepted and saved. The system keeps them as the employee's taxable history for that month, and they are counted in the employee's year-to-date income tax when later months are processed, according to each pay item's own PCB setting.
+
+The problem is that they are never shown. Transaction View only lists Non-Payable items that came from payroll processed in the system, so an imported month shows Earnings, Deductions and Net pay but no Non-Payable amounts. The BKCAR and BKDRV rows you saw marked "Regular" with 0.00 come from the monthly payroll processed in the system, not from your import. So the import looks as if it was lost.
+
+Two messages add to the confusion. "Keep existing total" on every line of the import log means those exact amounts were already saved for that month by an earlier upload, so nothing needed to change. It does not mean the line was skipped. And "The previous Income Tax Correction was retained" on reprocessing is a general note that a saved Income Tax Correction for this employee is still in force; it says nothing about the imported items.
+
+WHAT WE'LL CHANGE
+
+- Transaction View, History tab: each imported month shows a "Non-payable amounts" section with every imported Non-Payable item: Pay Item Code, description and amount, for example BKCAR 2,083.33 and BKDRV 600.00. Each line says whether it counts for income tax (PCB), following the pay item's own setting.
+
+- Transaction View, Grid tab: imported Non-Payable items appear under Recorded Items on the same "Monthly - By Import" (or "Bonus - By Import") row as the rest of that import, in the right month, so they sit beside the other imported codes and can be searched and exported.
+
+- Import log: each employee and month shows a plain result above its lines - "Updated", or "No change - these totals were already saved" - so a repeat upload is clearly recognised as already done rather than ignored.
+
+- Income tax: when imported taxable amounts for a month change after an Income Tax Correction was saved for that month, the next recalculation uses the newly imported amounts. The correction stays in the history, and the screen says it was replaced by the new import. If the imported tax details cannot be confirmed, the employee is held with a clear reason instead. The system never quietly keeps the old figure. This is how the system is designed to work today; we will prove it on a copy of your case and fix any path that does otherwise.
+
+WHAT YOU'LL GET
+
+Imported Benefit-in-Kind and other Non-Payable items can be found in Transaction View exactly where the rest of the imported month is, with their tax treatment visible, and the import log says plainly whether anything changed.
+
+GOOD TO KNOW
+
+- We're not touching how anything is calculated, the pay item settings, the PCB tables or rules, the import template or the payroll workflows. Imported amounts are shown as they were saved, never added twice.
+
+- Already imported months show their Non-Payable items as soon as this is released. Nothing needs to be imported again.
+
+- The "Regular" rows showing 0.00 are the system's own processed monthly payroll for this employee. We will check on a copy whether those zero amounts are expected for BD0098, and tell you what we find with the release.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Verified at origin/main 76f56f7e92. Import: app/payroll/history-import/upload/route.ts (mode update_listed) -> previewPayrollHistoryUpload (core/payroll-history-revisions.ts about 360); plan core/payroll-history-maintenance-plan.ts about 26-91; item label keep when amounts equal (lib/payroll-history-maintenance-lineage.ts about 21); row operation unchanged only when state and value hash equal (revisions.ts about 321-322), confirm applies create/replace (about 437). Noncash codes map to destination noncash (core/payroll-history-import.ts about 293); gross excludes noncash (about 760); importedComponentLines has no noncash bucket (about 202-216); recordLines is never written by history import. Noncash persists only in payslip.statutory.importedTaxBasis.lines (direction noncash), statutory.pcbNonCash (stamp ready, about 981-983) and statutory.historyMaintenance.items, plus the snapshot. Display reads only recordLines: deriveHistoryBreakdown (app/payroll/transaction-view/history-breakdown.ts about 306-309) and history-pivot.ts cellsFor (about 519-534; file has a NUL byte, use grep -a). Tax: readEffectiveTaxBasesTx (core/payroll-tax-basis-read.ts about 195-266) uses a reviewed correction while the source hash is unchanged; a changed source is replayed in history mode or refused (held) otherwise; imported stamps need state ready and unchanged settings/rules evidence. Remark key payroll.batch.reprocessTaxBasisUpdated (app/payroll/[batchId]/reprocess/outcomes.tsx about 66).
+
+1. Read-side display, no data migration: derive imported noncash lines for a payslip with historyAttemptId or importedTaxBasis from statutory.historyMaintenance.items (fallback importedTaxBasis.lines direction noncash), with code, name from the pay item, amount, and includedInPcb from the stamped settings. Add them to nonPayableLines in deriveHistoryBreakdown and as group item cells in history-pivot cellsFor keyed under runKey import:<cycleName>. Never also count them in gross or net. Check history-export.ts and core/payslip-imported-lines.ts readers for the same lines. Show a per-line counts-for-PCB marker (en.json plus five locales).
+
+2. Import log: in revision-preview.tsx show the row operation (Updated / No change - already saved) above the item list. Fix the stale comment at core/payroll-history-import.ts about 254-255.
+
+3. Tax proof: DB test - import Jan with BKCAR taxable; save an Income Tax Correction for Jan; re-import Jan with a changed BKCAR; reprocess a later month: assert the new BIK is in YTD (replay) or the employee is held with the named reason; never the old correction silently retained. Fix any path that retains. Also identical re-upload gives row operation unchanged and no new revision.
+
+4. Investigate on a staging copy (fictional fixture or authorized copy, never production writes) why processed regular slips carry BKCAR/BKDRV recordLines with applied 0 (core/payroll.ts about 6532, 6555, 6613); report, do not change unless it is a display bug.
+
+Tests: history-breakdown and history-pivot tests for imported noncash lines (shown once, under the import run key, not in gross); revision-preview row-operation render; history import DB tests above. Inventory and i18n coverage in the focused run. No migration.

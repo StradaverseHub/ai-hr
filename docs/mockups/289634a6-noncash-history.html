@@ -1,0 +1,43 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Imported non-payable items — sketch</title><style>
+body{margin:0;background:#fff;color:#1c1c1f;font:14px/1.55 system-ui}main{padding:24px 32px;max-width:1240px}
+.tag{font-size:12px;color:#66666e;text-transform:uppercase;letter-spacing:.04em;margin:22px 0 8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.card{border:1px solid #e8e8eb;border-radius:12px;padding:12px 16px}
+.h{font-size:12px;color:#66666e;text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin:10px 0 6px}
+.row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0f2;font-size:13px}.mono{font-variant-numeric:tabular-nums}
+.new{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:8px 12px;margin-top:8px}
+.pill{font-size:12px;border-radius:999px;padding:1px 8px;background:#ecfdf5;color:#166534;margin-left:8px}
+table{width:100%;border-collapse:collapse;border:1px solid #e8e8eb;font-size:13px}th{background:#f6f6f7;color:#66666e;font-weight:500;text-align:left;padding:7px 9px}td{padding:7px 9px;border-top:1px solid #eeeef0}
+.sec td{background:#f6f6f7;color:#66666e;font-size:12px;text-transform:uppercase;letter-spacing:.04em}.hl td{background:#fff7ed}
+.ok{color:#166534;font-weight:600}.muted{color:#66666e;font-size:12px}
+</style><main>
+<div class="grid">
+<section>
+<p class="tag">Transaction View · History · 2026-01 Monthly - By Import (after)</p>
+<div class="card">
+<div class="h">Earnings</div><div class="row"><span>Basic salary</span><span class="mono">90,000.00</span></div><div class="row"><b>Gross pay</b><b class="mono">90,000.00</b></div>
+<div class="h">Deductions</div><div class="row"><span>EPF / KWSP</span><span class="mono">9,900.00</span></div><div class="row"><span>PCB / MTD (income tax)</span><span class="mono">22,874.70</span></div>
+<div class="new"><div class="h" style="margin-top:2px">Non-payable amounts · from import</div>
+<div class="row"><span>BKCAR · Benefit-in-kind car<span class="pill">Counts for PCB</span></span><span class="mono">2,083.33</span></div>
+<div class="row" style="border:0"><span>BKDRV · Benefit-in-kind driver<span class="pill">Counts for PCB</span></span><span class="mono">600.00</span></div>
+<p class="muted" style="margin:6px 0 0">Not paid in cash, so not in gross or net pay.</p></div>
+<div class="row" style="margin-top:8px;border:0"><b>Net pay</b><b class="mono">57,183.65</b></div>
+</div>
+</section>
+<section>
+<p class="tag">Import log · result per employee and month (after)</p>
+<div class="card"><div class="row" style="border:0"><span><b>BD0098</b> · 2026-01 · Monthly</span><span class="ok">No change — these totals were already saved</span></div>
+<div class="row"><span>BKDRV · Benefit-in-kind driver</span><span class="mono">600.00 → 600.00</span></div>
+<div class="row" style="border:0"><span>BKCAR · Benefit-in-kind car</span><span class="mono">2,083.33 → 2,083.33</span></div></div>
+
+<p class="tag">Transaction View · Grid (after)</p>
+<table><tr><th>Code</th><th>Run</th><th>Jan</th><th>Feb</th><th>Mar</th></tr>
+<tr class="sec"><td colspan="5">Recorded items</td></tr>
+<tr class="hl"><td>BKCAR</td><td>Monthly - By Import</td><td class="mono">2,083.33</td><td class="mono">2,083.33</td><td class="mono">2,083.33</td></tr>
+<tr class="hl"><td>BKDRV</td><td>Monthly - By Import</td><td class="mono">600.00</td><td class="mono">600.00</td><td class="mono">600.00</td></tr>
+<tr><td>BKCAR</td><td>Regular</td><td class="mono">0.00</td><td class="mono">0.00</td><td class="mono">0.00</td></tr></table>
+<p class="muted">Highlighted rows are new. Feb and Mar amounts are examples only.</p>
+</section>
+</div>
+<p class="muted" style="margin-top:18px">Sketch only. Wording, spacing and colours will differ.</p>
+</main></html>
