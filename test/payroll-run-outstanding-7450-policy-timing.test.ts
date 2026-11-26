@@ -35,7 +35,9 @@ import {isIdentityStatement,observeStatements,type Captured} from './helpers/sta
 /** Ceilings per statement kind: execution and planning time (ms, CI runner, EXPLAIN ANALYZE overhead included) and
  * shared buffers (hit + read) of the whole statement. Measured on the CI runner (alpha-focused-checks run 45648541265),
  * worst of the two administrators: read 22 ms / 46 ms planning / 2,055 buffers; claim 44 ms / 163 ms / 2,127; job
- * upsert 16 ms / 90 ms / 207; delete 4 ms / 35 ms / 71. Time ceilings leave room for runner variance; buffer ceilings
+ * upsert 16 ms / 90 ms / 207; delete 4 ms / 35 ms / 71. Re-measured 26 Nov 2026 on both SHAs (runs 45748576040,
+ * 45748594554, 45748603419): claim group 2,107-2,111 buffers, company-scoped 1,053; the 4,775 of gate 45745276929 was
+ * stale payslip statistics (see the analyze in beforeAll), not the rules, so the bound is unchanged. Time ceilings leave room for runner variance; buffer ceilings
  * are about 1.5 times the measure, so the policy's EXISTS running once per element of the stored id lists (700 probes)
  * instead of once per stored row would exceed them. Planning is dominated by payroll_batch's own row-security policies,
  * which every EXISTS on payroll_batch expands again (about 100 subplan nodes per reference, almost none executed). */
@@ -77,7 +79,12 @@ beforeAll(async()=>{
  // Every run's stored answer, written through the rules as the group administrator (as the refresh job would).
  await withTenant(group,tx=>tx.insert(schema.payrollRunOutstanding).values(runs.map(r=>({batchId:r.id,tenantId:b.tenantId,
   employmentIds:(staffOf.get(r.companyId)??[]).slice(0,IDS_PER_RUN),refreshedAt:new Date()}))));
- await owner.client.unsafe('analyze public.payroll_run_outstanding, public.payroll_batch, public.pay_period, public.employment');
+ // payslip is in every plan here (payroll_batch's own policy probes it per run), so it is analysed too: TRUNCATE between
+ // files keeps pg_statistic, and gate 45745276929 inherited an earlier file's payslip statistics, so the planner probed
+ // payslip by employment_id = ANY(<visible employments>) once per foreign run (60 loops) and the company-scoped claim
+ // read 4,775 buffers instead of 1,053 (same nodes, loops and times otherwise). Fresh statistics make the plan this
+ // fixture's own rather than the previous file's.
+ await owner.client.unsafe('analyze public.payroll_run_outstanding, public.payroll_batch, public.pay_period, public.employment, public.payslip');
 },300_000);
 afterAll(closeAll);
 
