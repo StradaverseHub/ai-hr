@@ -8,20 +8,24 @@
  *    narrowed terms (3+ ASCII characters, mixed case, LIKE wildcards) and unnarrowed ones (short, non-ASCII);
  *  - authority: the candidates never contain an employment the caller cannot see, and never miss a visible match;
  *  - plans: under the caller's own session claims, the candidate search uses the trigram indexes (a bitmap index
- *    scan on person_full_name_search_trgm / employment_code_search_trigram) rather than reading every person.
+ *    scan on person_full_name_search_trgm / employment_code_search_trigram) rather than reading every person;
+ *  - cost (7530): the People directory and picker searches, timed with EXPLAIN (ANALYZE, BUFFERS) under each caller's
+ *    own identity (group, multi-company and single-company administrators, and an employee), are no slower than the
+ *    same statements without the candidates (the reads before 7320), and the 7320 body is kept as a reference to
+ *    show the visible-set cost 7530 removes.
  * All names are invented. */
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {client,withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {allowedCompanies,listEmployeesDirectoryPage} from '../core/read';
 import {readEmployeeChoices} from '../core/employee-choice';
 import {isNarrowableEmploymentSearch} from '../core/employment-search';
 import {parseKeysetPageQuery} from '../lib/pagination';
-import {closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
-import {observeStatements} from './helpers/statement-observer';
+import {isIdentityStatement,observeStatements,type Captured} from './helpers/statement-observer';
 
 let b:Base,fixture:ScaleFixture;
 beforeAll(async()=>{
@@ -112,19 +116,32 @@ describe('employee search trigram candidates (7320)',()=>{
  },300_000);
 
  it('the candidates never contain an employment the caller cannot see, and contain every visible match',async()=>{
+  const narrowed:string[]=[];
   for(const [name,ctx] of Object.entries(fixture.personas)){
    const visible=new Set((await withTenant(ctx,tx=>tx.select({id:schema.employment.id}).from(schema.employment))).map(r=>r.id));
    for(const q of ['tan','bulk 01','bk-00','fictional']){
     const [row]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates(${q}::text,null::uuid[],true) as ids`));
-    const candidates=row.ids??[];
+    // NULL: 7530 declines to narrow (at most 1,000 employments in scope outside the caller's administered and
+    // partner companies); the caller then reads as before 7320, which the equivalence tests cover.
+    if(row.ids===null)continue;
+    narrowed.push(`${name}/${q}`);
+    const candidates=row.ids;
     expect(candidates.every(id=>visible.has(id)),`${name}/${q}: only visible employments`).toBe(true);
     for(const id of await directoryExpected(ctx,[...fixture.companyIds,...await allCompanies(ctx)],q))
      expect(candidates.includes(id),`${name}/${q}: visible match ${id} is a candidate`).toBe(true);
+   }
+   // A caller naming one company they administer (at most 1,000 employments) is not narrowed (7530): NULL.
+   for(const q of ['tan','fictional','fx-0']){
+    const [row]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates(${q}::text,${'{'+fixture.singleCompanyId+'}'}::uuid[],true) as ids`));
+    expect(row.ids,`${name}/${q}: one administered company is read as before 7320`).toBeNull();
    }
    expect(isNarrowableEmploymentSearch('am')).toBe(false);
    const [none]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates('am',null::uuid[],true) as ids`));
    expect(none.ids,`${name}: a 2-character term is not narrowed`).toBeNull();
   }
+  // Non-vacuous: the single-company administrator asking the whole group (about 5,900 employments outside their
+  // company) is narrowed, so the two guarantees above were checked on real candidates.
+  expect(narrowed.filter(n=>n.startsWith('single/')),'the single-company administrator is narrowed').toHaveLength(4);
  },180_000);
 
  it('under the caller\'s own claims, the candidate search reads the trigram indexes',async()=>{
@@ -141,7 +158,8 @@ describe('employee search trigram candidates (7320)',()=>{
   for(const q of ['bulk 01234','bk-04321','rahman','fictional person 0123']){
    await owner.client.begin(async tx=>{
     await tx.unsafe(identity.sql,identity.params as never[]);
-    const [plan]=await tx.unsafe(`explain (format json) ${search}`,[pattern(q),null,true] as never[]);
+    const [{read}]=await tx.unsafe(`select app.employment_read_companies() as read`) as unknown as {read:string[]}[];
+    const [plan]=await tx.unsafe(`explain (format json) ${search}`,[pattern(q),null,true,read] as never[]);
     type Node={'Node Type':string;'Relation Name'?:string;'Index Name'?:string;Plans?:Node[]};
     const nodes:Node[]=[];const walk=(n:Node)=>{nodes.push(n);for(const c of n.Plans??[])walk(c);};
     walk(((plan as Record<string,unknown>)['QUERY PLAN'] as [{Plan:Node}])[0].Plan);
@@ -153,6 +171,101 @@ describe('employee search trigram candidates (7320)',()=>{
   }
   expect([...used].sort()).toEqual(['employment_code_search_trgm','person_full_name_search_trgm','person_primary_email_search_trgm']);
  },120_000);
+
+ it('7530: a search costs no more than the read without candidates (before 7320), for administrators and an employee',async()=>{
+  // An employee of the group company with no grant beyond their own record: the relationship part only.
+  const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Employee EMP1',primaryEmail:`${randomUUID()}@fixture.test`}).returning({id:schema.person.id});
+  await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:p.id,companyId:b.companyId,employeeCode:'FX-EMP1',hiredOn:'2020-01-01'});
+  const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:`user_${randomUUID()}`,personId:p.id}).returning({id:schema.appUser.id});
+  await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,companyId:null,role:'employee'});
+  const employee:SessionContext={...await entitledCtx(b,['employee']),userId:u.id,personId:p.id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  // Authority on the employee's own company (7530's direct path when that scope is small): only visible ids, every
+  // visible match.
+  const employeeVisible=new Set((await withTenant(employee,tx=>tx.select({id:schema.employment.id}).from(schema.employment))).map(r=>r.id));
+  for(const q of ['tan','fictional','fx-emp']){
+   const [row]=await withTenant(employee,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates(${q}::text,${'{'+b.companyId+'}'}::uuid[],true) as ids`));
+   console.log('SEARCH_EMPLOYEE_SCOPE_7530 '+JSON.stringify({q,narrowed:row.ids!==null,candidates:row.ids?.length??null}));
+   if(row.ids===null)continue;
+   expect(row.ids.every(id=>employeeVisible.has(id)),`employee/${q}: only visible employments`).toBe(true);
+   for(const id of await directoryExpected(employee,[b.companyId],q))expect(row.ids.includes(id),`employee/${q}: visible match ${id}`).toBe(true);
+  }
+  // core/employment-search.ts: the candidates statement, and the narrowing clause it adds to the caller's statements.
+  const CANDIDATES=/^select app\.employment_search_candidates\(/i;
+  const CLAUSE=/"employment"\."id" = any\((\$\d+)::uuid\[\]\)/;
+  /** The search transaction's reads, as the app sends them (7530) and as before 7320 (no candidates statement, no clause). */
+  const searchStatements=async(work:()=>Promise<unknown>)=>{
+   const observed=await observeStatements(work);
+   const reads=observed.statements.filter(s=>!isIdentityStatement(s.sql)&&/^(select|with|\()/i.test(s.sql.trim()));
+   // At most one candidates statement: none for a group-wide administrator, who is never narrowed (7530).
+   expect(reads.filter(s=>CANDIDATES.test(s.sql.trim())).length,'at most one candidates statement per search').toBeLessThanOrEqual(1);
+   const narrowed=reads.some(s=>CLAUSE.test(s.sql));
+   const before=reads.filter(s=>!CANDIDATES.test(s.sql.trim())).map(s=>({...s,sql:s.sql.replace(CLAUSE,'($1::uuid[] is not null or true)')}));
+   for(const s of before)expect(s.sql,'one narrowing clause per statement').not.toMatch(CLAUSE);
+   return {now:reads,before,narrowed};
+  };
+  const identityOf=async(ctx:SessionContext):Promise<Captured>=>{
+   const observed=await observeStatements(()=>withTenant(ctx,tx=>tx.execute(sql`select 1`)));
+   return observed.statements.find(s=>isIdentityStatement(s.sql))!;
+  };
+  /** Execution plus planning ms and shared buffers of the statements, one EXPLAIN (ANALYZE, BUFFERS) each, as the caller. */
+  const timed=async(identity:Captured,statements:readonly Captured[])=>{
+   let ms=0,buffers=0,jit='';
+   await client.begin(async tx=>{
+    await tx.unsafe(identity.sql,identity.params as never[]);
+    jit=((await tx.unsafe(`select current_setting('jit') as jit`))[0] as unknown as {jit:string}).jit;
+    for(const s of statements){
+     const [row]=await tx.unsafe(`explain (analyze, buffers, format json) ${s.sql}`,s.params as never[]);
+     const [plan]=(row as Record<string,unknown>)['QUERY PLAN'] as [{Plan:{'Shared Hit Blocks'?:number;'Shared Read Blocks'?:number};'Execution Time':number;'Planning Time':number}];
+     ms+=plan['Execution Time']+plan['Planning Time'];buffers+=(plan.Plan['Shared Hit Blocks']??0)+(plan.Plan['Shared Read Blocks']??0);
+    }
+   });
+   return {ms,buffers,jit};
+  };
+  const median=(xs:number[])=>[...xs].sort((x,y)=>x-y)[Math.floor(xs.length/2)];
+  const ROUNDS=9;
+  type Search={now:Captured[];before:Captured[];narrowed:boolean};
+  const cases:{caller:string;ctx:SessionContext;screen:string;search:Search}[]=[];
+  const page=parseKeysetPageQuery({size:'25'});
+  const directory=(ctx:SessionContext,companyIds:string[],q:string)=>searchStatements(()=>listEmployeesDirectoryPage(ctx,{companyIds,q,limit:page.limit,size:page.size,after:page.after,before:page.before,last:page.last,exactCount:false}));
+  for(const q of ['tan','rahman','bulk 0123','bk-0042','fictional']){
+   for(const [caller,ctx] of [['group',fixture.personas.group],['multi',fixture.personas.multi],['single',fixture.personas.single]] as const){
+    const companyIds=await allCompanies(ctx);
+    cases.push({caller,ctx,screen:`directory ${q}`,search:await directory(ctx,companyIds,q)});
+    if(caller!=='multi')cases.push({caller,ctx,screen:`picker ${q}`,search:await searchStatements(()=>readEmployeeChoices(ctx,{companyIds,query:q,offset:0,limit:50}))});
+   }
+   // The production picker shape for a company-scoped administrator: only the companies they administer.
+   const own=[fixture.singleCompanyId];
+   cases.push({caller:'single',ctx:fixture.personas.single,screen:`picker ${q} (own companies)`,search:await searchStatements(()=>readEmployeeChoices(fixture.personas.single,{companyIds:own,query:q,offset:0,limit:20}))});
+   cases.push({caller:'single',ctx:fixture.personas.single,screen:`directory ${q} (own companies)`,search:await directory(fixture.personas.single,own,q)});
+   // The employee in the whole group (every company asked) and in their own company (what their screens ask).
+   cases.push({caller:'employee',ctx:employee,screen:`directory ${q} (all companies)`,search:await directory(employee,fixture.companyIds as string[],q)});
+   cases.push({caller:'employee',ctx:employee,screen:`directory ${q} (own company)`,search:await directory(employee,[b.companyId],q)});
+  }
+  const failures:string[]=[];
+  for(const c of cases){
+   const identity=await identityOf(c.ctx);
+   const runs={before7320:{ms:[] as number[],buffers:[] as number[]},now7530:{ms:[] as number[],buffers:[] as number[]}};
+   const jit=new Set<string>();
+   // One discarded warm-up of each variant first: the first measurement of a run carried cold-cache noise (focused
+   // run 45816990865: identical statements +7%), which interleaved medians alone did not remove.
+   for(const variant of ['before7320','now7530'] as const)await timed(identity,variant==='now7530'?c.search.now:c.search.before);
+   for(let round=0;round<ROUNDS;round++){
+    for(const variant of (round%2?['now7530','before7320']:['before7320','now7530']) as (keyof typeof runs)[]){
+     const r=await timed(identity,variant==='now7530'?c.search.now:c.search.before);
+     runs[variant].ms.push(r.ms);runs[variant].buffers.push(r.buffers);jit.add(r.jit);
+    }
+   }
+   // The app's identity statement turns JIT off for every transaction (db/client.ts), so both run as the app runs.
+   expect([...jit],`${c.caller} ${c.screen}: JIT as the app sets it`).toEqual(['off']);
+   const row={before7320:{medianMs:Math.round(median(runs.before7320.ms)*100)/100,buffers:median(runs.before7320.buffers)},
+    now7530:{medianMs:Math.round(median(runs.now7530.ms)*100)/100,buffers:median(runs.now7530.buffers)}};
+   console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,narrowed:c.search.narrowed,asked:c.search.now.length>c.search.before.length,statements:c.search.now.length,jit:[...jit].join(','),...row}));
+   // No slower than before 7320, with 1 ms (or 10 %) for runner noise between interleaved medians.
+   const allowance=Math.max(1,row.before7320.medianMs*0.1);
+   if(row.now7530.medianMs>row.before7320.medianMs+allowance)failures.push(`${c.caller} ${c.screen}: ${row.now7530.medianMs} ms > ${row.before7320.medianMs} ms before 7320`);
+  }
+  expect(failures).toEqual([]);
+ },900_000);
 
  it('measures each index build (the migration\'s CREATE INDEX holds a SHARE lock: reads continue, writes wait)',async()=>{
   const [{people,employments}]=await owner.client<{people:number;employments:number}[]>`select (select count(*) from person)::int as people,(select count(*) from employment)::int as employments`;

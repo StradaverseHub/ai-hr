@@ -199,7 +199,7 @@ import {
 import { payrollHistoryEffectiveBatch } from '../db/schema';
 import { ALL_ROW_CEILING, cappedTotal, keysetReadLimit, keysetSlice, listCountCap, type KeysetPageQuery, type KeysetRead } from '../lib/pagination';
 import { anyUuid, uuidArrayParam } from '../db/sql-arrays';
-import { employmentSearchNarrowing } from './employment-search';
+import { employmentSearchNarrowingTx } from './employment-search';
 import { daysInMonth } from './payroll';
 import { filterDelegationOrgScopeTx } from './approvals';
 import { payslipReleaseAt } from './payroll-policy-config';
@@ -1429,8 +1429,8 @@ export function listEmployeesPage(
   }, { existingTx });
   const read = async (tx: Tx) => {
     const currentAssignment = currentAssignmentJoin();
-    // 7320: a name / e-mail / code search narrows to the trigram candidates (a superset of the ILIKE matches).
-    const where = and(employeeListWhere(p), employmentSearchNarrowing(sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
+    // 7320/7530: a name / e-mail / code search narrows to the trigram candidates (a superset of the ILIKE matches).
+    const where = and(employeeListWhere(p), await employmentSearchNarrowingTx(tx, ctx, sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
     const rows = (await tx
       .select(employeeListRowSelection())
       .from(employment)
@@ -1480,8 +1480,8 @@ export async function listEmployeesDirectoryPage(
 ): Promise<{ rows: EmployeeListRow[] } & KeysetRead> {
   if (!Number.isSafeInteger(p.limit) || p.limit < 1 || p.limit > ALL_ROW_CEILING) throw new RangeError('Invalid directory page');
   return withTenant(ctx, async tx => {
-    // 7320: a name / e-mail / code search narrows to the trigram candidates (a superset of the ILIKE matches).
-    const where = and(employeeListWhere(p), employmentSearchNarrowing(sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
+    // 7320/7530: a name / e-mail / code search narrows to the trigram candidates (a superset of the ILIKE matches).
+    const where = and(employeeListWhere(p), await employmentSearchNarrowingTx(tx, ctx, sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
     const anchorKey = (id: string) => sql`(select anchor_person.full_name, anchor_employment.id
       from employment anchor_employment join person anchor_person on anchor_person.id = anchor_employment.person_id
       where anchor_employment.id = ${id}::uuid)`;
