@@ -7424,14 +7424,50 @@ export const employeeCp38 = pgTable(
     cp38Ref: text('cp38_ref').notNull(),
     // Monthly instalment in RM.
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
-    // Month-aligned effective window. validTo is the INCLUSIVE last month it applies (null = open-ended).
+    // Month-aligned effective window, stored as the gist rule reads it: validFrom is the first charged month and
+    // validTo the EXCLUSIVE end, the first day AFTER the last charged month (null = open-ended). bc6b5490 corrected
+    // this comment, which called it inclusive while the engine and the EXCLUDE treated it as exclusive; the screens'
+    // inclusive "Effective to" is translated by core/cp38.ts, the only writer.
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'),
+    // bc6b5490 (migration 7510) — the instalment for the LAST charged month only; null = the monthly amount
+    // throughout. CHECK: only on a bounded window (valid_to set), and never negative.
+    lastMonthAmount: numeric('last_month_amount', { precision: 12, scale: 2 }),
     remarks: text('remarks'),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('employee_cp38_employment_idx').on(t.employmentId, t.validFrom)],
+);
+
+/**
+ * bc6b5490 (migration 7510) — the CP38 correction history: one APPEND-ONLY row per edit or delete of an
+ * employee_cp38 record, with the values before and after (amounts included: the event log may not carry them,
+ * ADR-0006), the acting user and the time. Row security mirrors employee_cp38 (visible employments read; an
+ * administrator inserts); ai_hr_app has no UPDATE or DELETE grant. Written only by core/cp38.ts, in the same
+ * transaction as the change it records.
+ */
+export const employeeCp38Revision = pgTable(
+  'employee_cp38_revision',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    cp38Id: uuid('cp38_id')
+      .notNull()
+      .references(() => employeeCp38.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    action: text('action').$type<'edit' | 'delete'>().notNull(),
+    before: jsonb('before').notNull(),
+    after: jsonb('after'),
+    actorUserId: uuid('actor_user_id'),
+    at: timestamp('at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('employee_cp38_revision_cp38_idx').on(t.cp38Id, t.at),
+    index('employee_cp38_revision_employment_idx').on(t.employmentId, t.at),
+  ],
 );
 
 // One-off per-batch component values (an off-cycle allowance/deduction for this run). RLS: admin-only

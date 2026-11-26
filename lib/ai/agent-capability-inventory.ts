@@ -144,7 +144,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  // exports retain backlog status: oversized or incompletely visible timelines/catalogs hand off.
  "app/admin/personnel/[employmentId]/cost-allocation-actions.ts":{"previewCostAllocationsAction":"backlog:automatic","readCostAllocationsAction":"backlog:automatic","saveCostAllocationsAction":"backlog:approve"},
  "app/admin/personnel/[employmentId]/rehire-actions.ts":{"rehireEmploymentAction":"backlog:approve","rollBackRehireAction":"backlog:approve"},
- "app/admin/personnel/[employmentId]/cp38-actions.ts":{"addCp38Action":"backlog:approve","editCp38Action":"backlog:approve","terminateCp38Action":"backlog:approve"},
+ "app/admin/personnel/[employmentId]/cp38-actions.ts":{"addCp38Action":"backlog:approve","deleteCp38Action":"backlog:approve","editCp38Action":"backlog:approve","terminateCp38Action":"backlog:approve"},
  "app/admin/personnel/[employmentId]/dependent-actions.ts":{"addDependentAction":"registered:employees.family.maintain","archiveDependentAction":"registered:employees.family.maintain","editDependentAction":"registered:employees.family.maintain"},
  "app/admin/personnel/[employmentId]/emergency-contact-actions.ts":{"addEmergencyContactAction":"registered:employees.emergency_contact.maintain","deleteEmergencyContactAction":"registered:employees.emergency_contact.maintain","editEmergencyContactAction":"registered:employees.emergency_contact.maintain"},
  "app/admin/personnel/[employmentId]/encashment-actions.ts":{"adjustEncashmentAction":"backlog:approve","unfreezeEncashmentAction":"backlog:approve"},
@@ -400,6 +400,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/payroll/reports/ea/[employmentId]/actions.ts":{"amendEaFieldAction":"backlog:approve","clearEaFieldAction":"backlog:approve"},
  "app/payroll/statutory-adjustment/actions.ts":{"previewAdjustmentAction":"backlog:automatic","revertAdjustmentAction":"backlog:approve","saveAdjustmentAction":"backlog:approve"},
  "app/payroll/statutory-forms/[formId]/actions.ts":{"recordReportAction":"backlog:approve"},
+ "app/payroll/transactions/cp38/actions.ts":{"deleteCp38DialogAction":"backlog:approve","saveCp38DialogAction":"backlog:approve"},
  "app/payroll/transactions/deductions-actions.ts":{"adminApproveTp1":"backlog:approve","adminCancelTp1":"backlog:approve","adminDeleteTp1":"backlog:approve","adminDiscardTp1Draft":"backlog:approve","adminRejectTp1":"backlog:approve","adminTp1FormAction":"backlog:approve","saveTp1Action":"backlog:approve"},
  "app/payroll/transactions/fixed/actions.ts":{"archiveFixedTransactionAction":"registered:employees.fixed_item.archive","createFixedTransactionAction":"backlog:approve","removeFixedTransactionDialogAction":"backlog:approve","saveFixedTransactionDialogAction":"backlog:approve"},
  "app/payroll/transactions/import-excel/fixed-actions.ts":{"queueFixedTransactionImportAction":"backlog:approve"},

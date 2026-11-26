@@ -1547,6 +1547,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       // and route handlers are deliberately not on this matrix.)
       '/payroll/transactions/tp3',
       '/payroll/transactions/zakat',
+      // 038c304b: CP38 Deduction — every employee's CP38 records for the companies in scope, the same records as
+      // the employee's Payroll tab. Same scopedAdmin guard as its neighbours (this set is EXACT; see TP3 above).
+      '/payroll/transactions/cp38',
       // 6a1f2bd6: the dedicated Add/Edit page for ONE employee's zakat setup, replacing the editor that
       // opened by itself the moment somebody was selected. Same scopedAdmin guard as its list.
       '/payroll/transactions/zakat/election',

@@ -21,6 +21,7 @@ export const BREADCRUMB_FAMILIES:readonly Family[]=[
  setup('/payroll/configuration','payroll.setup.statutory.title'),
  setup('/payroll/payslip-information','payroll.setup.payslipInformation.title'),
  {path:'/payroll/transactions/zakat',owner:transactions.href,steps:[transactions,{href:'/payroll/transactions/zakat',labelKey:'payroll.transactions.zakat.title'}],preserve:['employmentId']},
+ {path:'/payroll/transactions/cp38',owner:transactions.href,steps:[transactions,{href:'/payroll/transactions/cp38',labelKey:'payroll.transactions.cp38.title'}],preserve:['employmentId']},
  {path:'/admin/loans',owner:transactions.href,steps:[transactions,{href:'/admin/loans',labelKey:'loans.title'}],preserve:['employmentId']},
  {path:'/payroll/history-import',owner:transactions.href,steps:[transactions,{href:'/payroll/history-import',labelKey:'payroll.historyImport.title'}],preserve:['companyId']},
  {path:'/payroll/history-import/logs',owner:transactions.href,steps:[transactions,{href:'/payroll/history-import',labelKey:'payroll.historyImport.title'},{href:'/payroll/history-import/logs',labelKey:'payroll.historyRevisions.logFile'}],preserve:['companyId']},

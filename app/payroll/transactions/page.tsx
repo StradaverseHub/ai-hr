@@ -8,8 +8,7 @@ import { isModuleEnabledOrFalse } from '@/core/entitlements';
  * Feature 1.2 — Transaction hub (information architecture over existing payroll capability).
  * Re-surfaces the already-wired transaction functions (Fixed / Individual incl. TP1+zakat) as a
  * card grid under the Payroll module. No schema, no kernel change. Per the approved plan we render
- * ONLY the wired functions — no "coming soon" placeholders for CP38/Loan/EA/Import (those are
- * separate backlog items, each with its own ADR).
+ * ONLY the wired functions — no "coming soon" placeholders (CP38 got its card when 038c304b built its page).
  *
  * Flag posture (plan step 1): typed pay components are read by the kernel only when
  * TYPED_PAY_COMPONENTS_ENABLED. When off, components entered via these functions do nothing to the
@@ -87,6 +86,19 @@ export default async function PayrollTransactionsPage() {
             className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             {t('hub.zakatCta')}
+          </Link>
+        </Card>
+
+        {/* 038c304b — CP38 Deduction: every employee's LHDN instalment for the companies in scope, the same
+            records as the employee's Payroll tab. Beside Zakat because the reporter asked for its layout. */}
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.cp38Title')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.cp38Desc')}</p>
+          <Link
+            href="/payroll/transactions/cp38"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.cp38Cta')}
           </Link>
         </Card>
 
