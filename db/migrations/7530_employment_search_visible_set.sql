@@ -23,8 +23,9 @@
 -- where narrowing costs more than that read, both only when at most 100 employments in scope lie outside the
 -- companies the caller administers or partners (elsewhere row security is costly per row, and the read before 7320
 -- checked it on every row in scope): the caller names companies holding at most 1,000 employments (the tenant-wide
--- trigram search costs more than reading them), or more than 1,000 matches all lie in companies the caller
--- administers or partners (fetching thousands by key costs more than the read). From 7530 the application asks the
+-- trigram search costs more than reading them), or the term is broad: more than 1,000 name or code matches in the
+-- tenant (a bounded count before the search), or more than 1,000 matches all in companies the caller administers or
+-- partners (fetching thousands by key costs more than the read). From 7530 the application asks the
 -- function once per search and passes the ids as a list. Signature, volatility, owner, search_path, grants, the
 -- NULL answer for unnarrowed terms and the sorted result are unchanged. The single statement between the $search$
 -- markers is the one test/employment-search-trigram explains, now with the read companies as $4.
@@ -68,6 +69,15 @@ DECLARE
   WHERE e.tenant_id = app.current_tenant_id() AND e.voided_at IS NULL
    AND ($2 IS NULL OR e.company_id = ANY ($2))
  $search$;
+ -- At most a few more than v_match_limit name or code matches in the tenant, counted before the search itself.
+ v_broad constant text := $broad$
+  SELECT count(*) FROM (
+   (SELECT 1 FROM public.person p WHERE p.tenant_id = app.current_tenant_id() AND lower(p.full_name COLLATE "C") LIKE $1 LIMIT $2)
+   UNION ALL
+   (SELECT 1 FROM public.employment e WHERE e.tenant_id = app.current_tenant_id() AND lower(coalesce(e.employee_code, '') COLLATE "C") LIKE $1 LIMIT $2)
+  ) m
+ $broad$;
+ v_matches integer;
  -- The read before 7320 is cheaper than narrowing only where the caller's row security is cheap per row: at most this
  -- many employments in scope lie outside the companies the caller administers or partners (each of those rows asks
  -- the per-row partner questions and the relationship set).
@@ -102,6 +112,13 @@ BEGIN
    WHERE e.tenant_id = app.current_tenant_id() AND e.company_id = ANY (p_companies) AND e.voided_at IS NULL
    LIMIT v_scope_limit + 1) s;
   IF v_scope <= v_scope_limit THEN
+   RETURN NULL;
+  END IF;
+ END IF;
+ IF v_scope_outside <= v_outside_limit THEN
+  -- A broad term for a caller with cheap row security: decide before paying for the search.
+  EXECUTE v_broad INTO v_matches USING v_pattern, v_match_limit + 1;
+  IF v_matches > v_match_limit THEN
    RETURN NULL;
   END IF;
  END IF;
