@@ -124,13 +124,16 @@ describe('18719ded — the restyle did not touch a payroll figure or a guard', (
     expect(PAGE.match(/const fmtMoney = \(n: number\) =>/g) ?? []).toHaveLength(1);
   });
 
-  it('CP38 keeps its processed-batch refusal and its terminate action', () => {
+  it('CP38 keeps its refusal banner and its terminate action, and gains Delete and History (bc6b5490)', () => {
     const cp38 = card('cp38Card');
-    // cp38Error === 'processed' is a REAL refusal from the service (Cp38PeriodProcessedError), not a
-    // validation hint — it must survive any restyle of this card.
-    expect(cp38).toContain("cp38Error === 'processed'");
-    expect(cp38).toContain("{t('cp38ProcessedError')}");
+    // bc6b5490 retired the processed-period refusal (edits after processing are allowed and mark the run). The
+    // banner now paints whatever the service refused (an overlap, a missing field), above the table.
+    expect(cp38).not.toContain("cp38Error === 'processed'");
+    expect(cp38).toContain('{cp38ErrorText}');
     expect(cp38).toContain('action={terminateCp38Action}');
+    expect(cp38).toContain('action={deleteCp38Action}');
+    expect(cp38).toContain('<ConfirmSubmit');
+    expect(cp38).toContain('<Cp38HistoryList');
   });
 
   it('every payroll section still posts to the server action it always posted to', () => {

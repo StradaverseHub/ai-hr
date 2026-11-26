@@ -175,8 +175,10 @@ import { PERSONNEL_PAY_MODES, PERSONNEL_PAYMENT_TERMS } from '@/lib/personnel-ch
 // 297ae65a — searchable ISO 4217 Currency select for the Basic Salary form + the company default it preselects.
 import { CurrencySelect } from '@/components/currency-select';
 import { getCompanyCurrency } from '@/core/read';
-import { listCp38 } from '@/core/cp38';
-import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
+import { listCp38, listCp38Revisions } from '@/core/cp38';
+import { addCp38Action, deleteCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
+import { Cp38LastMonthField } from '@/components/cp38/last-month-field';
+import { Cp38HistoryList, type Cp38HistoryEntry, type Cp38HistoryLabels } from '@/components/cp38/history-list';
 import { listDependents, qualifyingChildReliefFor, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 // Feedback a949184a — Qualification tab: per-employment academic/professional qualification register.
@@ -244,6 +246,10 @@ export default async function EmployeePage({
     error?: string;
     from?: string;
     cp38Error?: string;
+    // bc6b5490 — an overlap refusal names the clashing record (lib/cp38-form.ts cp38ErrorKey).
+    cp38Ref?: string;
+    cp38From?: string;
+    cp38To?: string;
     asOf?: string;
     encashmentError?: string;
     tab?: string;
@@ -291,6 +297,9 @@ export default async function EmployeePage({
   // `people.detail` copies, so the two surfaces can never drift into calling the same destination two
   // different things. Both keys already exist and are translated in all six catalogues.
   const tFixed = await getTranslations('payroll.transactions.fixed');
+  // 038c304b / bc6b5490 — the CP38 card shares its new words (Delete, History, Last month amount, refusals) with the
+  // Payroll > Transaction Entry > CP38 Deduction page, so both screens say the same thing.
+  const tCp38 = await getTranslations('payroll.transactions.cp38');
   const tp = await getTranslations('payrollPolicy');
   const tc = await getTranslations('people.detail.clocking');
   // 44bc1c33 — the Card ID field reuses the Attendance namespace's strings rather than minting a second
@@ -346,6 +355,9 @@ export default async function EmployeePage({
     error,
     from,
     cp38Error,
+    cp38Ref: cp38ErrorRef,
+    cp38From: cp38ErrorFrom,
+    cp38To: cp38ErrorTo,
     encashmentError,
     tab,
     movement: spMovement,
@@ -522,7 +534,17 @@ export default async function EmployeePage({
   const payComps = readProfileCards && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
   const componentCatalog = readProfileCards && payrollOn ? await listPayComponents(s, { readyOnly: true }) : [];
   // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data). r298 — Payroll-owned.
-  const cp38Records = readProfileCards && payrollOn ? await listCp38(s, { employmentId }) : [];
+  const cp38History: Cp38HistoryEntry[] = readProfileCards && payrollOn && admin
+    ? (await listCp38Revisions(s, { employmentId })).map((h) => ({ id: h.id, cp38Id: h.cp38Id, action: h.action, before: h.before, after: h.after, actorName: h.actorName, byUser: h.byUser, at: h.at.toISOString() }))
+    : [];
+  // bc6b5490 — a deleted record (supersededAt set, with its delete in the correction history) leaves the card; its history
+  // stays readable below. A record the OLD Terminate stamped (supersededAt set, no delete in history: it predates history)
+  // was never a deletion: it stays on the card, read-only and Closed, as it showed before this change.
+  const cp38Deleted = new Set(cp38History.filter((h) => h.action === 'delete').map((h) => h.cp38Id));
+  const cp38Records = readProfileCards && payrollOn
+    ? (await listCp38(s, { employmentId })).filter((r) => r.supersededAt == null || !cp38Deleted.has(r.id))
+      .map((r) => ({ ...r, legacyEnded: r.supersededAt != null }))
+    : [];
   // ADR-0069 — leave encashment snapshot, admin-only card. Null when no resignation has been frozen
   // (policy off, or the employment was terminated directly bypassing the resignation flow).
   const encashmentSnapshot = readProfileCards ? await encashmentSnapshotForEmployment(s, employmentId) : null;
@@ -1484,15 +1506,17 @@ export default async function EmployeePage({
   ) : null;
 
   // One dialog form for Add (r null) and Edit — the Qualification tab's dialogForm pattern. Both post to
-  // the actions that were already here (addCp38Action / editCp38Action), so the processed-period refusal
-  // is untouched: updateCp38 guards BOTH the stored window and the proposed one with
-  // assertNoProcessedPeriod, and a Cp38PeriodProcessedError still comes back as `?cp38Error=processed`
-  // and paints the banner above the table. Edit now offers the whole record rather than the amount alone
-  // — that is not a widening: updateCp38 has always accepted every one of these fields, the old inline
-  // editor simply omitted them, so a wrong reference or end date meant deleting the row and re-keying it.
+  // the actions that were already here (addCp38Action / editCp38Action). bc6b5490: Edit is always offered and
+  // saves the same record in place, whatever payroll used it — a processed run that is not closed is marked
+  // Reprocess Required by the service instead of the edit being refused, and a closed payslip is never
+  // recalculated. "Effective to" is the LAST month deducted (core/cp38.ts translates it to the stored end), and
+  // the shared "Last month amount" tick box (components/cp38/last-month-field.tsx, the same control as the CP38
+  // Deduction page's pop-up) gives that month its own amount. A refusal comes back as `?cp38Error=<key>` and is
+  // painted above the table.
   // Derived from the loader rather than imported, so this restyle adds no new core/* import to the page
   // (ADR-0080 drift ratchet — the allowlist only ever shrinks).
   type Cp38Record = (typeof cp38Records)[number];
+  const cp38LastMonthLabels = { toggle: tCp38('lastMonthToggle'), amount: tCp38('lastMonthAmount'), hint: tCp38('lastMonthHint') };
   const cp38DialogForm = (r: Cp38Record | null) => (
     <form action={r ? editCp38Action : addCp38Action} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
       <input type="hidden" name="employmentId" value={emp.employmentId} />
@@ -1518,6 +1542,7 @@ export default async function EmployeePage({
       <PersonnelField fieldId="payroll.cp38_deduction.validto" mode="edit">
         <DateField {...personnelControl('payroll.cp38_deduction.validto','edit')} defaultValue={r?.validTo ?? ''} className={inputCls} label={personnelLabel('payroll.cp38_deduction.validto')} />
       </PersonnelField>
+      <Cp38LastMonthField defaultAmount={r?.lastMonthAmount ?? null} labels={cp38LastMonthLabels} />
       <div className="sm:col-span-2">
         <PersonnelField fieldId="payroll.cp38_deduction.remarks" mode="edit">
           <input {...personnelInput('payroll.cp38_deduction.remarks','edit')} defaultValue={r?.remarks ?? ''} placeholder={t('cp38RemarksPlaceholder')} className={inputCls} />
@@ -1530,9 +1555,7 @@ export default async function EmployeePage({
   );
 
   // View: the SAME fields, disabled inside a fieldset with no <form> — the Qualification tab's
-  // viewDialogBody pattern (a read-only view that can never drift from Edit, and can never post). This is
-  // how a CLOSED row is readable at all: its Edit and Terminate are hidden, and before this the only way
-  // to see its reference, dates and remarks was to read them off the table.
+  // viewDialogBody pattern (a read-only view that can never drift from Edit, and can never post).
   const cp38ViewBody = (r: Cp38Record) => (
     <fieldset disabled>
       <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
@@ -1548,6 +1571,11 @@ export default async function EmployeePage({
         <PersonnelField fieldId="payroll.cp38_deduction.validto" mode="edit">
           <input {...personnelDisplay("payroll.cp38_deduction.validto")} defaultValue={r.validTo ?? t('cp38Open')} className={inputCls} />
         </PersonnelField>
+        {r.lastMonthAmount != null && (
+          <Field label={tCp38('lastMonthAmount')}>
+            <input readOnly defaultValue={fmtMoney(Number(r.lastMonthAmount))} className={inputCls} />
+          </Field>
+        )}
         <div className="sm:col-span-2">
           <PersonnelField fieldId="payroll.cp38_deduction.remarks" mode="edit">
             <input {...personnelDisplay("payroll.cp38_deduction.remarks")} defaultValue={r.remarks ?? ''} className={inputCls} />
@@ -1557,18 +1585,35 @@ export default async function EmployeePage({
     </fieldset>
   );
 
+  // bc6b5490 — the correction history, the same list the CP38 Deduction page shows (components/cp38/history-list.tsx).
+  const cp38HistoryLabels: Cp38HistoryLabels = {
+    empty: tCp38('history.empty'), edited: tCp38('history.edited'), deleted: tCp38('history.deleted'), system: tCp38('history.system'), administrator: tCp38('history.administrator'),
+    field: tCp38('history.field'), before: tCp38('history.before'), after: tCp38('history.after'), open: tCp38('open'), none: tCp38('history.none'),
+    fields: { cp38Ref: tCp38('ref'), amount: tCp38('amount'), lastMonthAmount: tCp38('lastMonthAmount'), validFrom: tCp38('from'), validTo: tCp38('to'), remarks: tCp38('remarks') },
+  };
+  // The refusal the service named (lib/cp38-form.ts), or its public text for anything else.
+  const cp38ErrorText = cp38Error
+    ? (['refRequired', 'amount', 'lastMonthAmount', 'lastMonthNeedsEnd', 'backwards', 'date', 'overlap', 'notFound', 'outOfScope', 'notStarted'] as const).includes(cp38Error as never)
+      ? tCp38(`error.${cp38Error as 'overlap'}`, { ref: cp38ErrorRef ?? '', from: cp38ErrorFrom ?? '', to: cp38ErrorTo || tCp38('open') })
+      : cp38Error
+    : null;
+
   const cp38Card = admin && payrollOn ? (
     <Card id="section-cp38" className="overflow-hidden">
       <SectionHeader title={t('cp38Title')} count={cp38Records.length} />
-      {/* The processed-period refusal. Kept ABOVE the table and outside the restyle on purpose:
-          cp38Error === 'processed' is a real refusal from the service, not a validation hint. */}
-      {cp38Error === 'processed' && (
-        <p className="mx-4 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
-          {t('cp38ProcessedError')}
+      {/* A refusal from the service (an overlap, a missing field, a record that has not started), kept ABOVE the
+          table: it is the answer to the save that was just pressed. */}
+      {cp38ErrorText && (
+        <p className="mx-4 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300" data-cp38-error="">
+          {cp38ErrorText}
         </p>
       )}
       <section className="border-t border-border">
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+          {/* Every correction of this employee's CP38, deleted records included. */}
+          <FamilyFormDialog triggerLabel={tCp38('history.button')} triggerVariant="outline" title={tCp38('history.employeeTitle')}>
+            <Cp38HistoryList entries={cp38History} labels={cp38HistoryLabels} />
+          </FamilyFormDialog>
           <FamilyFormDialog triggerLabel={t('cp38Add')} title={t('cp38AddTitle')}>
             {cp38DialogForm(null)}
           </FamilyFormDialog>
@@ -1591,15 +1636,20 @@ export default async function EmployeePage({
               </thead>
               <tbody>
                 {cp38Records.map((r) => {
-                  // CLOSED once superseded, or once its inclusive end-date is before this month. Otherwise ACTIVE.
-                  const closed =
-                    r.supersededAt != null || (r.validTo != null && r.validTo < thisMonthStart);
-                  // A closed/superseded row's period is historical → its edit/terminate is hidden (the
-                  // service guard would also block any processed period).
+                  // CLOSED once its inclusive Effective to is before this month. Otherwise ACTIVE.
+                  const closed = r.legacyEnded || (r.validTo != null && r.validTo < thisMonthStart);
+                  const rowHistory = cp38History.filter((h) => h.cp38Id === r.id);
                   return (
                     <tr key={r.id} className="border-b border-border/60 align-top">
                       <td className="py-2 pr-3 font-mono text-xs">{r.cp38Ref}</td>
-                      <td className="whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums">{fmtMoney(Number(r.amount))}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums">
+                        {fmtMoney(Number(r.amount))}
+                        {r.lastMonthAmount != null && (
+                          <span className="block text-xs font-normal text-muted-foreground">
+                            {tCp38('lastMonthShort', { amount: fmtMoney(Number(r.lastMonthAmount)) })}
+                          </span>
+                        )}
+                      </td>
                       <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{formatDmy(r.validFrom)}</td>
                       <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{r.validTo ? formatDmy(r.validTo) : t('cp38Open')}</td>
                       <td className="py-2 pr-3 text-muted-foreground">{r.remarks ?? '—'}</td>
@@ -1609,7 +1659,7 @@ export default async function EmployeePage({
                         </Badge>
                       </td>
                       <td className="py-2">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
                           <FamilyFormDialog
                             triggerLabel={t('cp38View')}
                             triggerVariant="outline"
@@ -1617,25 +1667,50 @@ export default async function EmployeePage({
                           >
                             {cp38ViewBody(r)}
                           </FamilyFormDialog>
+                          {/* bc6b5490 — Edit and Delete are offered on every record, ended ones included (not on a record
+                              the old Terminate ended: it applies to no payroll and has nothing to correct). */}
+                          {!r.legacyEnded && (
+                          <FamilyFormDialog
+                            triggerLabel={t('cp38Edit')}
+                            triggerVariant="outline"
+                            title={t('cp38EditTitle')}
+                          >
+                            {cp38DialogForm(r)}
+                          </FamilyFormDialog>
+                          )}
+                          <FamilyFormDialog triggerLabel={tCp38('history.button')} triggerVariant="outline" title={tCp38('history.title')}>
+                            <Cp38HistoryList entries={rowHistory} labels={cp38HistoryLabels} />
+                          </FamilyFormDialog>
+                          {/* Terminate stays a plain submit inside the tab shell (the shell's capture
+                              listener injects the tab). It now only sets Effective to (the month before this
+                              one); a record already ended has nothing to end. */}
                           {!closed && (
-                            <>
-                              <FamilyFormDialog
-                                triggerLabel={t('cp38Edit')}
-                                triggerVariant="outline"
-                                title={t('cp38EditTitle')}
-                              >
-                                {cp38DialogForm(r)}
-                              </FamilyFormDialog>
-                              {/* Terminate stays a plain submit inside the tab shell (the shell's capture
-                                  listener injects the tab). It is NOT wrapped in a confirmation: adding
-                                  one would be a behaviour change, and this restyle changes nothing that
-                                  writes. */}
-                              <form action={terminateCp38Action}>
-                                <input type="hidden" name="employmentId" value={emp.employmentId} />
-                                <input type="hidden" name="id" value={r.id} />
-                                <Button variant="destructive" size="sm">{t('cp38Terminate')}</Button>
-                              </form>
-                            </>
+                            <form action={terminateCp38Action}>
+                              <input type="hidden" name="employmentId" value={emp.employmentId} />
+                              <input type="hidden" name="id" value={r.id} />
+                              <Button variant="destructive" size="sm">{t('cp38Terminate')}</Button>
+                            </form>
+                          )}
+                          {/* 038c304b / bc6b5490 — Delete, behind a confirmation that names the record. Inside the
+                              tab shell, so the shell injects the tab like Terminate. */}
+                          {!r.legacyEnded && (
+                          <form action={deleteCp38Action}>
+                            <input type="hidden" name="employmentId" value={emp.employmentId} />
+                            <input type="hidden" name="id" value={r.id} />
+                            <ConfirmSubmit
+                              size="sm"
+                              title={tCp38('deleteTitle')}
+                              description={tCp38('deleteConfirm', {
+                                ref: r.cp38Ref,
+                                amount: fmtMoney(Number(r.amount)),
+                                from: formatDmy(r.validFrom),
+                                to: r.validTo ? formatDmy(r.validTo) : tCp38('open'),
+                              })}
+                              confirmLabel={tCp38('delete')}
+                            >
+                              {tCp38('delete')}
+                            </ConfirmSubmit>
+                          </form>
                           )}
                         </div>
                       </td>

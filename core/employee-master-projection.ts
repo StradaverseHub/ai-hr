@@ -21,6 +21,18 @@ import { packFor } from '../localization/registry';
 import { benefitSchemeViewTx, encashmentSnapshotForEmploymentTx, encashmentSnapshotsForEmploymentsTx, leaveBalancesTx, leaveEntitlementBreakdownTx, serviceYearsMonthsDaysAt, type EncashmentSnapshotView } from '../packs/leave/service';
 
 const nextDay=(value:unknown):string|null=>{const v=date(value);if(!v)return null;const d=new Date(v+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10);};
+/**
+ * bc6b5490 — how the master report shows one CP38 row. employee_cp38.valid_to is EXCLUSIVE (the first day of the month after
+ * the last month deducted, as core/cp38.ts stores it and cp38ForPeriod reads it), so "Effective to" and the report end are
+ * the day before it, and the record has ended once that day has passed. Reading it as the last month itself put CP38
+ * "Effective to" a month late. Pure, for the test.
+ */
+export function cp38MasterRow(row:{validFrom?:unknown;validTo?:unknown},asAt:string):{status:'future'|'ended'|'active';validTo:string|null;reportEffectiveTo:string|null}{
+ const v=typeof row.validTo==='string'?row.validTo.slice(0,10):row.validTo instanceof Date?row.validTo.toISOString().slice(0,10):null;
+ const last=v?new Date(Date.parse(v+'T00:00:00Z')-86_400_000).toISOString().slice(0,10):null;
+ const status=String(row.validFrom)>asAt?'future':v&&v<=asAt?'ended':'active';
+ return {status,validTo:last,reportEffectiveTo:last};
+}
 const nextMonth=(value:unknown):string|null=>{const v=text(value)?.slice(0,7);if(!v)return null;const d=new Date(v+'-01T00:00:00Z');d.setUTCMonth(d.getUTCMonth()+1);return d.toISOString().slice(0,10);};
 const SUBJECT_LIMIT=2000, RECORD_LIMIT=50_000, TIME_LIMIT_MS=30_000;
 const TOO_MANY_RECORDS='Too many records. Narrow the report company/employee conditions.';
@@ -293,7 +305,10 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
     install('clockingLocation',clockLinks.filter(link=>link.employmentId===employment.id).map(link=>link.site as unknown as Row),row=>({clockingLocationCode:ref(5,row.locationId,'code'),clockingLocationName:row.name,clockingLocationAddress:row.address,geofenceRadiusM:row.radiusM,clockingLocationStatus:row.archivedAt?'inactive':'active'}));
     install('shiftHistory',own(shiftHistory).sort((a,b)=>String(a.validFrom).localeCompare(String(b.validFrom))||String(a.id).localeCompare(String(b.id))),(row,index,all)=>({previousShiftCode:ref(8,all[index-1]?.shiftId,'code'),previousShiftName:ref(8,all[index-1]?.shiftId),newShiftCode:ref(8,row.shiftId,'code'),newShiftName:ref(8,row.shiftId),changedByName:actorName(row.createdBy),changedAt:row.createdAt,reportEffectiveTo:nextDay(row.validTo)}));
     install('payItem',own(payItems),row=>({componentName:ref(9,row.componentId),prorate:row.prorateOverride??ref(9,row.componentId,'prorates')}));
-    install('cp38',own(cp38),row=>({reference:row.cp38Ref,monthlyAmount:row.amount,currency:'MYR',status:String(row.validFrom)>spec.asAt?'future':row.validTo&&String(row.validTo).slice(0,7)<spec.asAt.slice(0,7)?'ended':'active',reportEffectiveTo:nextMonth(row.validTo)}));
+    // bc6b5490 — employee_cp38.valid_to is EXCLUSIVE (the first day of the month after the last month deducted, as
+    // core/cp38.ts stores it and cp38ForPeriod reads it), so the report's last day is the day before it and the record
+    // has ended once that day is reached. Reading it as the last month itself put CP38 "Effective to" a month late.
+    install('cp38',own(cp38),row=>({reference:row.cp38Ref,monthlyAmount:row.amount,currency:'MYR',...cp38MasterRow(row,spec.asAt)}));
     install('payrollProfile',[e],row=>({payrollPolicyName:ref(10,row.payrollPolicyId)}));
     install('qualification',own(qualifications),row=>({level:row.qualification,highest:row.isHighest}));
     install('document',own(documents),row=>({createdByName:actorName(row.uploadedByUserId),updatedByName:actorName(row.updatedByUserId)}));

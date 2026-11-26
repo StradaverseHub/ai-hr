@@ -56,6 +56,12 @@ From [Payroll setup](/payroll/setup), open [Correction controls](/payroll/setup/
 
 Assistant correction-controls guidance explains this route and the human decision boundary. It does not inspect payroll amounts or change settings, reset, reopen or reprocess a run. Keep the payroll administrator's decision separate from viewing guidance.
 
+## Maintain CP38 deductions
+
+Open [CP38 Deduction](/payroll/transactions/cp38) from Payroll transactions to see every employee's LHDN CP38 instalment for the companies in scope. Filter by company and status, or choose an employee on the left to narrow the list. Choose an active employee to add a record. The records are the same ones shown on the employee's Payroll tab, so a change in either place appears in both.
+
+**Effective to** is the last month deducted; leave it empty for an instalment with no end. Tick **Last month amount** when the final instalment differs, and enter that month's amount. Edit and Delete remain available after payroll has used a record. A closed payroll keeps what it deducted. A processed payroll that is not closed marks the employee **Reprocess Required**, and the corrected CP38 applies only when you reprocess. **History** shows each edit and delete with the values before and after, who made it and when. Only a payroll administrator of the employee's company can change their CP38.
+
 ## Corrections and special cases
 
 [Back pay](/payroll/back-pay), [Statutory adjustment](/payroll/statutory-adjustment) and the multi-cycle worksheet serve different correction jobs. Review the period, existing runs and signed adjustments before committing. Final pay, leave encashment, taxable benefits and special incentives need their own configured treatment; do not put every exceptional payment into Bonus.

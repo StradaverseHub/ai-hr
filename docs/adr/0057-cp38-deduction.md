@@ -53,3 +53,34 @@ never the cleartext amount, which lives on the aggregate row.
   EA Part-D lines together (CP38 already flows into the `statutory.cp38` substrate for it).
 - Bulk CSV import of CP38; cumulative-cap / running-balance auto-stop (the requirement expresses different
   amounts via explicit period rows, not a balance); a CP38 column on the PCB/CP39 *view* report.
+
+## Amendment — 26 November 2026 (board 038c304b, bc6b5490, CP38 part of 124a979e)
+
+Approved by the reporter on the board. These replace the "Processed-period guard" decision above and the "view / edit /
+terminate before processing" scope; bc6b5490 also supersedes 038c304b's "locked once a closed payroll used it".
+
+- **Corrections are always allowed; closed results are protected by immutability, not refusal.** `updateCp38`,
+  `terminateCp38` and the new `deleteCp38` no longer refuse a window that a processed or closed payroll used
+  (`Cp38PeriodProcessedError` and `assertNoProcessedPeriod` are gone). Every add, edit, end and delete calls
+  `markRunsAffectedByEmploymentChangeTx` with category `cp38` over the union of the old and new charged windows: a
+  processed run that is not closed is marked Reprocess Required (it skips closed runs and runs the caller does not
+  administer), and the reprocess reads the corrected record. Closed payslips, CP39 and EA keep what was deducted.
+- **"Effective to" is the last month deducted.** Storage stays exclusive (the gist `[)` range, setCp38's closing at the
+  successor's start and `cp38RowsForPeriod` are unchanged); `core/cp38.ts` translates at its boundary, so every service
+  input and `Cp38Row.validTo` is the inclusive last month. Rows stored before this from the screen are one month short;
+  `scripts/cp38-inclusive-effective-to-bc6b5490.ts` lists them and moves only rows the owner and reporter confirm, on each
+  installation separately (deployment does not run it).
+- **Last-month amount.** Migration 7540 adds nullable `employee_cp38.last_month_amount` (CHECK: zero or more, only with an
+  end). `cp38ForPeriod` charges it in the record's last charged month and the monthly amount otherwise.
+- **Delete** sets `superseded_at` (no hard delete) and appends `employee-cp38.deleted`. **Terminate** now only sets the end
+  to the month before the current one; it no longer stamps `superseded_at`, which had removed the record from every
+  payroll including earlier months not yet closed.
+- **Correction history.** Migration 7540 adds the append-only, row-secured `employee_cp38_revision` (before/after values,
+  actor, time). Amounts are kept there and never in events (ADR-0006 / ADR-0030 Layer 0 unchanged).
+- **Who.** Every write resolves the record to its employment and requires payroll administration of the employment's
+  company (`app.can_admin_payroll_for`), and, from the CP38 Deduction page, that company in the company-switcher scope.
+- **Overlap** with another current record is refused by name (`Cp38OverlapError`) before the gist rule; the gist rule stays
+  the concurrency backstop and its 23P01 is reported the same way.
+- **CP38 Deduction page** (`/payroll/transactions/cp38`, 038c304b) lists every current record across the companies in scope
+  with one keyset read and a capped count, and shares the Add/Edit form, Delete confirmation and History with the
+  employee's Payroll tab.
