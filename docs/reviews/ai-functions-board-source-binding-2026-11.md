@@ -177,6 +177,7 @@ Thirteen covered files differ from that alpha, and they are this candidate's own
 - `lib/ai/agent-capability-inventory.ts`, whose `backlog:approve` classification of `markGroupExpectedAction` the coordinator confirmed.
 
 Irwin's changes to `core/payroll.ts` (re-pricing formula-priced one-off rows during payslip generation), `core/payroll-history-revisions.ts`, `core/payroll-individual-txn.ts`, the inventory and the message catalogues merged without conflict. They do not touch the anomaly verdicts, the findings or the Exceptions queue. No provider contract, outbound field, approved purpose or transport is added or widened. Both pending records and the retired Attendance Formula contract keep their original values. This binding grants no production authority.
+
 ## Information-correction read lock
 
 On 12 November 2026 MYT the repository owner's pre-approval for staging releases ("Once done, release to staging, coordinate with the other sessions. And I approve fully on the rebinding and the AI approval, dont have to wait for my decision") is applied to `claude/ic-read-lock-20261112`, branched from `origin/alpha` at `69de131ecec4d132cf456d695f68337edff032e7` (the release on staging). The covered source changes from `4de1a055962d8fe58c752e7437fdfe5c25b8871ff67e11c8316d50cbbd9084aa` to the exact fingerprint `b68662143d3204ee71e6fbdb96b8fb7937c12901f9e07997a678e1d408fbc1be` over 1,563 files; the agent source manifest changes from `9a323c538e0291fc354cd2acbace37927b1e63ed765a756687072cef35710276` to `dfc7b45d47e64f6122f4a536d3bbc5c754b2fbe5b9ca044faba92d3347760d44` over 487 files.
@@ -783,6 +784,7 @@ and evaluated/promoted agent identities are unchanged. Provider payloads, purpos
 not change. The derived agent manifest is regenerated after the literal update. The existing direction
 to run the full gate and deploy only to staging after all checks pass remains in effect. No production
 installation or package publication is authorized.
+
 ## Resignation shared Configuration source binding — 17 November 2026
 
 The resignation coordinator reviewed the deterministic implementation against current upstream
@@ -1870,6 +1872,7 @@ CP38 lane review test commit, same standing approval, staging only: 28 digests `
 CP38 lane typecheck fix, same standing approval, staging only: 28 digests `34f8d5b8…` -> `3a96ca2795338c9d714b46a4ad62d95e33b8e74409d7df559c2ed817b5a5d9dd`; module-agent manifest `a70727c6e6a08d0347691d116fc5d88f47d6fd829e0f61997579cb153a986f98` -> `8092569b753525b3200d4d28dbbe4bfcfca17d4741368ef898bd70b1adda90f3`.
 
 CP38 lane renumber 7510 -> 7540, same standing approval, staging only: 28 digests `3a96ca27…` -> `353ba186ee25332d5ad76f07d1a21259f35becbfa8c21d1829ca17506dd9ae12`; module-agent manifest `8092569b753525b3200d4d28dbbe4bfcfca17d4741368ef898bd70b1adda90f3` -> `08fd4fa6b4fcbf3955310635036199cfa87094eb07e08557d6df7692688a9c65`.
+
 ## Builder branch: board 124a979e (every payroll change flags Reprocess Required), on `48409be53`, 26 November 2026
 
 Same standing owner approval (12 November 2026), staging only. Branch `claude/change-detect-124a979e` changes covered payroll and statutory files in the transform closure (`core/payroll.ts`, `core/pay-components.ts`, `core/payroll-individual-txn.ts`, `core/payroll-policy.ts`, `core/tax-relief.ts`, `core/tp3.ts`, `core/bulk-job-worker.ts`, `core/fixed-transaction-import-job.ts`, `localization/my/statutory.ts`, `localization/my/tax-selection.ts`, `app/admin/pay-components/actions.ts`): saves of fixed items, the Zakat election, tax settings, TP1/TP3 and the payroll policy now mark the processed runs they make stale. No file under `lib/ai/providers/`, `lib/ai/provider-*` or any other provider root changes, and no provider transform, outbound field, approved purpose, endpoint or transport changes.
@@ -1883,6 +1886,7 @@ Plan item 9 (same day, same standing approval): `core/payroll.ts`, `core/payroll
 Repair (same day, same standing approval): the consume statement in `core/payroll.ts` changed (run 45770342651). 28 digests `8fcf8cd7…` -> `deee6a8591d69032d794b130b16a773854f60412bf2c76ce8272a30d9d81204b`; module-agent manifest `2699d8f19e82e54565cacf083bb471e116e906056895ac29fc31ea368b11c979` -> `36623cbde33e03259ca5fb7f771f32e965fe93b7e84316297bd6c7831accc8ba`. Staging only.
 
 Repair (same day, same standing approval): migration renumbered to 7560 and the consume filter fixed; `core/payroll.ts` and `db/schema.ts` changed. 28 digests `deee6a85…` -> `4549abcfefe9ad771ac9fcc87a459f39211cc4fc68f869a3c03bead024687b9e`; module-agent manifest `36623cbde33e03259ca5fb7f771f32e965fe93b7e84316297bd6c7831accc8ba` -> `f82e310fa7cd8362d5dcd3c9788d6ed3a18341a85657ea7497c0c41983238ae7`. Staging only.
+
 ## Builder branch: board 4ce2c481 (automatic group TP3), on base `48409be53`, 26 November 2026
 
 Same standing owner approval (12 November 2026), staging only. Branch `claude/group-tax-4ce2c481` changes covered payroll files in the transform closure (`core/payroll.ts`, `core/payroll-tax-holds.ts`, `core/payroll-draft-tax-readiness.ts`, `core/payroll-tax-basis.ts`, `core/pcb-explain.ts`, `localization/my/multicycle-worksheet.ts`, `lib/payroll-tax-basis.ts`, the six `messages/*.json` files) and adds `core/payroll-group-tax-opening.ts` and `lib/payroll-group-tax-stamp.ts`: live PCB takes other group companies' earlier months as a previous-employer opening (totals only). No file under `lib/ai/providers/`, `lib/ai/provider-*` or any other provider root changes, and no outbound field, approved purpose, endpoint or transport changes.
@@ -1890,3 +1894,9 @@ Same standing owner approval (12 November 2026), staging only. Branch `claude/gr
 Exactly 28 digest literals change (`adafa2a8…` -> `f3a7f921ef470477972a03abfe89f0f87ec54dff80528a2d6877e1aba42f88ff`, 1856 files), and reversing those substitutions restores the base registry byte for byte. The module-agent manifest was regenerated afterwards (`ba9f24205fd7e464b276b8ad301bd27d320f97c8869698094786de11e7fe302e` -> `be54a7b2feac9026cd8213bc4a6ad2979db840207f1026dfc62efde8070f7933`, 497 files). Staging only; no production authority. The integrator re-binds the combined candidate from its own fingerprint.
 
 Re-bind (same day, same standing approval, staging only): the migration renumber 7520 -> 7550 touched a comment in `core/payroll-group-tax-opening.ts`, and earlier repairs on the branch changed only tests and SQL. 28 digests `f3a7f921…` -> `c18d6bab481b1477b9ef9ab55ef517a2a9bf59442c7c2b4480de70901eb7cfa7`; module-agent manifest `be54a7b2feac9026cd8213bc4a6ad2979db840207f1026dfc62efde8070f7933` -> `213eab27ff61a32c3801a218d5641a2089826e956dadc2d9a3b24e1b12ee79f7`. No provider root, outbound field, approved purpose, endpoint or transport changes.
+
+## Integration: board build 038c304b + bc6b5490 + 124a979e + 4ce2c481, branch `claude/board-int-20261126`, 26 November 2026
+
+Same standing owner approval (12 November 2026), staging only, no production authority. The three lane branches (CP38 `9f69e55f9`, change detection `c6d3e509e`, group tax `247684db8`) merge onto the board build base `4a3c24d00`; each lane's registry conflicted and the base side was taken, then re-bound once from the merged fingerprint. No provider root, outbound field, transform, purpose or approval scope changes.
+
+Exactly 28 digest literals change (`353ba186…` -> `fa33375dcf5e1141a3947d9c1a151c96fbac401b7aba63365645d490a2dea3d6`, 1856 files), and reversing those substitutions restores the merged registry byte for byte. Module-agent manifest `08fd4fa6b4fcbf3955310635036199cfa87094eb07e08557d6df7692688a9c65` -> `4ff4bacf81caa71fd680109b069a6d0197d4c08baa8220dabe0bbac520d98e55` (497 files). Both manifests pass `--check`.

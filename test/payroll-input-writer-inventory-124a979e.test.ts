@@ -40,14 +40,11 @@ const MARKERS = [
   'markFixedItemWindowsTx', // core/pay-components.ts (124a979e)
   'markTp3YearsTx', // core/tp3.ts (124a979e)
   'finishStatutoryProfileWriteMYTx', // localization/my/statutory.ts (3244584c / 124a979e)
+  'markWindowsTx', // core/cp38.ts (038c304b / bc6b5490): the CP38 writers' category 'cp38' mark
 ];
 
-const CP38 = 'marked by the CP38 lane (038c304b/bc6b5490); remove at integration';
 /** `file#function#table` → why this writer needs no mark of its own. Reviewed 26 Nov 2026 (124a979e). */
 const EXEMPT: Record<string, string> = {
-  'core/cp38.ts#setCp38#employee_cp38': CP38,
-  'core/cp38.ts#updateCp38#employee_cp38': CP38,
-  'core/cp38.ts#terminateCp38#employee_cp38': CP38,
   'core/back-pay.ts#cancelBackPayRun#payroll_individual_txn': 'back pay is cancelled only while its target run is a DRAFT (no payslip to be stale)',
   'core/payroll-individual-txn.ts#insertIndividualTxnsTx#payroll_individual_txn': 'back pay posting: the caller asserts the target run is DRAFT before inserting',
   'core/payroll-processing-job.ts#discardRun#payroll_individual_txn': 'payroll kernel bookkeeping: discarding a processing job releases the rows it attached',
@@ -152,7 +149,12 @@ describe('124a979e — every payroll input writer marks the runs it makes stale'
     expect(Object.keys(EXEMPT).filter((key) => !unmarked.has(key))).toEqual([]);
   });
 
-  it('the CP38 writers are exempt only as the CP38 lane\'s, to be removed at integration', () => {
-    for (const [key, reason] of Object.entries(EXEMPT)) if (key.startsWith('core/cp38.ts#')) expect(reason).toBe(CP38);
+  it('the CP38 writers mark their own runs (integrated with the CP38 lane, 26 Nov 2026)', () => {
+    const cp38 = sites.filter((s) => s.key.startsWith('core/cp38.ts#') && s.key.endsWith('#employee_cp38'));
+    expect(cp38.map((s) => s.key)).toEqual(expect.arrayContaining([
+      'core/cp38.ts#deleteCp38#employee_cp38', 'core/cp38.ts#setCp38#employee_cp38',
+      'core/cp38.ts#terminateCp38#employee_cp38', 'core/cp38.ts#updateCp38#employee_cp38',
+    ]));
+    expect(cp38.filter((s) => !s.marks).map((s) => s.key)).toEqual([]);
   });
 });
