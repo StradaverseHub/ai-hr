@@ -75,6 +75,8 @@ const slipOf = async (batchId: string, employmentId: string) => {
   const [row] = await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, employmentId)));
   return row;
 };
+/** The database's own refusal text (drizzle wraps it as the error's cause). */
+const refusal = (p: Promise<unknown>) => p.then(() => 'resolved', (e: {message?: string; cause?: {message?: string}}) => String(e?.cause?.message ?? e?.message));
 const pcbOf = async (batchId: string, employmentId: string) => Number((((await slipOf(batchId, employmentId))?.statutory ?? {}) as {pcb?: number}).pcb);
 const metaOf = async (batchId: string, employmentId: string) => (((await slipOf(batchId, employmentId))?.statutory ?? {}) as {pcbMeta?: Record<string, unknown>}).pcbMeta;
 
@@ -162,7 +164,7 @@ describe('a same-employment transfer: A imported January to September, B native 
     const totals = await withTenant(bOnly, tx => tx.execute<{company_id: string; period: string; y: string}>(sql`select * from app.payroll_group_tax_opening(${coB}::uuid,'2026-11',array[${moved.employmentId}::uuid])`));
     expect(totals.map(r => [r.company_id, r.period, Number(r.y)])).toEqual(months(1, 9).map(m => [b.companyId, `2026-${m}`, 5000]));
     expect(Object.keys(totals[0]).some(key => /payslip|line|item/i.test(key))).toBe(false);
-    await expect(withTenant(bOnly, tx => tx.execute(sql`select * from app.payroll_group_tax_opening(${b.companyId}::uuid,'2026-11',array[${moved.employmentId}::uuid])`))).rejects.toThrow(/Payroll administration/);
+    await expect(refusal(withTenant(bOnly, tx => tx.execute(sql`select * from app.payroll_group_tax_opening(${b.companyId}::uuid,'2026-11',array[${moved.employmentId}::uuid])`)))).resolves.toMatch(/Payroll administration/);
     const december = await run(coB, '2026-12', bOnly);
     expect(await pcbOf(december, moved.employmentId)).toBe(await pcbOf(december, control.employmentId));
 
@@ -182,7 +184,7 @@ describe('a same-employment transfer: A imported January to September, B native 
     const other = await seedBase();
     await setModule(other.tenantId, 'payroll', 'active');
     const otherCtx = await entitledCtx(other);
-    await expect(withTenant(otherCtx, tx => tx.execute(sql`select * from app.payroll_group_tax_opening(${coB}::uuid,'2026-11',array[${moved.employmentId}::uuid])`))).rejects.toThrow(/Payroll administration/);
+    await expect(refusal(withTenant(otherCtx, tx => tx.execute(sql`select * from app.payroll_group_tax_opening(${coB}::uuid,'2026-11',array[${moved.employmentId}::uuid])`)))).resolves.toMatch(/Payroll administration/);
     expect(await withTenant(otherCtx, tx => tx.execute(sql`select * from app.payroll_group_tax_opening(${other.companyId}::uuid,'2026-11',array[${moved.employmentId}::uuid])`))).toHaveLength(0);
   }, 240000);
 

@@ -283,6 +283,8 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10880,version:'7',when:1795495007480,tag:'7480_payroll_read_own_payslips',breakpoints:true},
  {idx:10890,version:'7',when:1795495007490,tag:'7490_payroll_read_history_filter',breakpoints:true},
  {idx:10900,version:'7',when:1795495007500,tag:'7500_payroll_read_history_summary',breakpoints:true},
+ // Board 4ce2c481 — the totals-only group tax opening definer.
+ {idx:10920,version:'7',when:1795495007520,tag:'7520_payroll_group_tax_opening',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
