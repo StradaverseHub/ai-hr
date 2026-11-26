@@ -1868,3 +1868,5 @@ CP38 lane review commit, same standing approval, staging only: 28 digests `651b2
 CP38 lane review test commit, same standing approval, staging only: 28 digests `86594dcb…` -> `34f8d5b8911c3571ecbcc88a588d1ae64fa5274572b6e0e1401d6de10c837ce3`; module-agent manifest `1c1938145484bcd06de620c82966321c8b53f9f430689ab2f9935a9501f6a13b` -> `a70727c6e6a08d0347691d116fc5d88f47d6fd829e0f61997579cb153a986f98`.
 
 CP38 lane typecheck fix, same standing approval, staging only: 28 digests `34f8d5b8…` -> `3a96ca2795338c9d714b46a4ad62d95e33b8e74409d7df559c2ed817b5a5d9dd`; module-agent manifest `a70727c6e6a08d0347691d116fc5d88f47d6fd829e0f61997579cb153a986f98` -> `8092569b753525b3200d4d28dbbe4bfcfca17d4741368ef898bd70b1adda90f3`.
+
+CP38 lane renumber 7510 -> 7540, same standing approval, staging only: 28 digests `3a96ca27…` -> `353ba186ee25332d5ad76f07d1a21259f35becbfa8c21d1829ca17506dd9ae12`; module-agent manifest `8092569b753525b3200d4d28dbbe4bfcfca17d4741368ef898bd70b1adda90f3` -> `08fd4fa6b4fcbf3955310635036199cfa87094eb07e08557d6df7692688a9c65`.
