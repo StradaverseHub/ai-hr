@@ -45,15 +45,27 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
 
   it('preserves independent security capabilities and the existing outer admin-group boundary', () => {
     const security = (facts:Partial<ShellNavigationFacts>) => hrefs(facts).filter(href => href.startsWith('/admin/users') || href.startsWith('/admin/security-center'));
-    expect(security({isAdmin:true})).toEqual([]);
-    expect(security({canConfigureAccess:true})).toEqual(['/admin/security-center','/admin/users/access']);
-    expect(security({isAdmin:true,canAdministerSecurity:true})).toEqual(['/admin/security-center','/admin/users/function-access','/admin/users']);
+    const landing = (facts:Partial<ShellNavigationFacts>) => resolve(facts).securityLanding;
+    // Board 8fa0a31d: the overview is no menu row; rows follow the Security Center menu order. The overview is the
+    // section's landing exactly when the former row's predicate admitted it.
+    expect(security({isAdmin:true})).toEqual([]);expect(landing({isAdmin:true})).toBeNull();
+    expect(security({canConfigureAccess:true})).toEqual(['/admin/users/access']);
+    expect(landing({canConfigureAccess:true})).toBe('/admin/security-center');
+    expect(security({isAdmin:true,canAdministerSecurity:true})).toEqual(['/admin/users/function-access','/admin/users']);
+    expect(landing({isAdmin:true,canAdministerSecurity:true})).toBe('/admin/security-center');
     expect(security({isAdmin:true,canProvisionUsers:true})).toEqual(['/admin/users/create','/admin/users/invite']);
+    expect(landing({isAdmin:true,canProvisionUsers:true})).toBeNull();
     expect(security({isAdmin:true,canConfigurePasswordPolicy:true})).toEqual(['/admin/security-center/password-policy']);
+    expect(landing({isAdmin:true,canConfigurePasswordPolicy:true})).toBeNull();
     // A provision-only/password-only capability did not itself open the legacy admin group.
     expect(security({canProvisionUsers:true,canConfigurePasswordPolicy:true})).toEqual([]);
+    // Security administration without the outer administration boundary shows no page, so no landing either.
+    expect(security({canAdministerSecurity:true})).toEqual([]);expect(landing({canAdministerSecurity:true})).toBeNull();
     expect(security({canConfigureAccess:true,canProvisionUsers:true,canConfigurePasswordPolicy:true})).toEqual([
-      '/admin/security-center','/admin/users/access','/admin/users/create','/admin/users/invite','/admin/security-center/password-policy',
+      '/admin/users/access','/admin/security-center/password-policy','/admin/users/create','/admin/users/invite',
+    ]);
+    expect(security({isAdmin:true,canAdministerSecurity:true,canConfigureAccess:true,canProvisionUsers:true,canConfigurePasswordPolicy:true})).toEqual([
+      '/admin/users/access','/admin/security-center/password-policy','/admin/users/function-access','/admin/users','/admin/users/create','/admin/users/invite',
     ]);
   });
 
@@ -197,7 +209,7 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
 
   it('keeps render policy wired to this resolver, and disabled rows out of links, active ownership, and command entries', () => {
     const sidebar = readFileSync(new URL('../components/sidebar.tsx',import.meta.url),'utf8');
-    expect(sidebar).toContain('const { destinations, lifecycleNavigation, canSeeChild } = resolveShellNavigation({');
+    expect(sidebar).toContain('const { destinations, lifecycleNavigation, canSeeChild, securityLanding } = resolveShellNavigation({');
     expect(sidebar).not.toContain('const moduleAllows');
     expect(sidebar).not.toContain('const canSeeChild');
     expect(sidebar).toContain('destinations.filter(row => !row.disabled)');

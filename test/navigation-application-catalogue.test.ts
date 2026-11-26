@@ -7,9 +7,14 @@ import {PERFORMANCE_AREA_TABS} from '../packs/performance/onehr/tab-model';
 describe('composed application navigation declarations, not permission or execution proof',()=>{
  it('preserves every existing shell identity and composes published owner references',()=>{
   const app=declaredApplicationNavigationCatalogue(),shell=declaredNavigationCatalogue();
-  // The combined inventory contains 226 durable identities, including Contract and Offboarding postings, Recruitment and employee referrals.
-  expect(app.issues).toEqual([]);expect(app.declarations).toHaveLength(226);
+  // The combined inventory contains 225 durable identities (board 8fa0a31d retired the duplicate Security Center overview row), including Contract and Offboarding postings, Recruitment and employee referrals.
+  expect(app.issues).toEqual([]);expect(app.declarations).toHaveLength(225);
   expect(app.declarations.slice(0,shell.declarations.length)).toEqual(shell.declarations);
+  // Board 8fa0a31d: the overview row's binding is retired; the moved Security Center rows keep their identities.
+  expect(app.declarations.some(row=>row.id==='shell.securityCenter')).toBe(false);
+  expect(app.declarations.filter(row=>row.sourceOwner==='lib/security-center-navigation.ts'&&row.id.startsWith('shell.')).map(row=>row.id)).toEqual([
+   'shell.securityPermissions','shell.passwordPolicy','shell.functionAccess','shell.users','shell.createLogin','shell.inviteUser',
+  ]);
   expect(app.declarations.find(row=>row.id==='shell.contractPersonnelPostings')).toMatchObject({sourceOwner:'lib/navigation/shell-inventory.ts',sourceKey:'shell-slot:contractPersonnelPostings',declaredHref:'/lifecycle/contracts/postings'});
   expect(app.declarations.find(row=>row.id==='shell.offboardingPostings')).toMatchObject({sourceOwner:'lib/navigation/shell-inventory.ts',sourceKey:'shell-slot:offboardingPostings',declaredHref:'/lifecycle/offboarding/postings'});
   expect(app.declarations.find(row=>row.id==='shell.recruitment')).toMatchObject({sourceOwner:'packs/recruitment/index.ts',sourceKey:'shell-slot:recruitment',declaredHref:'/recruitment'});
@@ -18,8 +23,8 @@ describe('composed application navigation declarations, not permission or execut
   for(const registry of MODULE_SUBMENU_REGISTRIES)sources.push(...registry.items);
   expect(sources).toHaveLength(59);
   for(const descriptor of sources)expect(app.declarations.filter(row=>row.descriptor===descriptor)).toHaveLength(1);
-  expect(new Set(app.declarations.map(row=>row.id)).size).toBe(226);
-  expect(new Set(app.declarations.map(row=>row.sourceKey)).size).toBe(226);
+  expect(new Set(app.declarations.map(row=>row.id)).size).toBe(225);
+  expect(new Set(app.declarations.map(row=>row.sourceKey)).size).toBe(225);
   expect(app.declarations.find(row=>row.id==='shell.rewardsAllReviews')).toMatchObject({
    sourceOwner:'packs/rewards/index.ts',sourceKey:'shell-slot:rewardsAllReviews',declaredHref:'/rewards/reviews',
   });
