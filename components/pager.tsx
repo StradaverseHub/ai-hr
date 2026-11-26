@@ -9,6 +9,7 @@ import {
   pageNumbers,
   showPager,
   isKeysetPageState,
+  keysetPagerHrefs,
   type PageSize,
   type PageState,
 } from '@/lib/pagination';
@@ -96,18 +97,14 @@ export async function Pager({
             : {}),
         });
   };
-  // Keyset steps (no OFFSET): Previous steps back before the first row shown (or opens the first page when that is
-  // where it lands), Next continues after the last row, Last is offered only when the total is exact.
-  const prevHref = keyset
-    ? state.page <= 1 || !keyset.firstId ? href({ page: 0 }) : href({ page: state.page - 1, before: keyset.firstId })
-    : href({ page: state.page - 1 });
-  const nextHref = keyset && keyset.lastId ? href({ page: state.page + 1, after: keyset.lastId }) : href({ page: state.page + 1 });
-  const canLast = keyset ? keyset.canLast : state.hasNext;
-  const lastHref = keyset ? href({ page: lastPage(state), last: true }) : href({ page: lastPage(state) });
+  // Keyset steps (no OFFSET), shared with list-only islands: lib/pagination.ts keysetPagerHrefs.
+  const steps = keyset ? keysetPagerHrefs(keyset, href) : null;
+  const prevHref = steps ? steps.prev ?? href({ page: 0 }) : href({ page: state.page - 1 });
+  const nextHref = steps ? steps.next ?? href({ page: state.page + 1 }) : href({ page: state.page + 1 });
+  const canLast = steps ? steps.last !== null : state.hasNext;
+  const lastHref = steps ? steps.last ?? href({ page: lastPage(state) }) : href({ page: lastPage(state) });
   // "1,000+": the count stopped at the cap. Offer the exact number on request, on the same rows.
-  const countHref = keyset?.capped
-    ? href({ page: state.page, after: keyset.after, before: keyset.before, last: keyset.last, count: 'exact' })
-    : null;
+  const countHref = steps?.countExactly ?? null;
   const rangeText = state.from > 0
     ? keyset?.capped
       ? t('rangeCapped', { from: state.from, to: state.to, total: state.total })

@@ -173,9 +173,12 @@ describe('fc776376 — one implementation, not a sixth', () => {
   ];
 
   it.each(converted)('%s pages through the shared helper and pager', (file) => {
-    const src = read(file);
+    // ADR 0181 Phase 4: the directory's list-only island renders the shared keyset pager steps
+    // (keysetPagerHrefs, the same helper the server <Pager> uses) from its server view.
+    const listOnly = file === 'app/personnel/page.tsx';
+    const src = listOnly ? read('app/personnel/directory-view.ts') + read('app/personnel/directory-list.tsx') : read(file);
     expect(src).toContain("from '@/lib/pagination'");
-    expect(src).toContain('<Pager');
+    expect(src).toContain(listOnly ? 'keysetPagerHrefs(state' : '<Pager');
     // The hand-rolled page-size constants and next-page probes are gone for good.
     expect(src).not.toMatch(/const PAGE = \d+;/);
     expect(src).not.toContain('rowsPlusOne');
@@ -197,8 +200,9 @@ describe('fc776376 — one implementation, not a sixth', () => {
       expect(read('lib/leave-inquiry-query.ts')).toContain("import { parsePageQuery } from './pagination'");
       expect(read('lib/leave-inquiry-query.ts')).toContain('const pq = parsePageQuery({ size, page })');
     } else if (['app/personnel/page.tsx', 'app/admin/audit/page.tsx', 'app/approvals/history/page.tsx'].includes(file)) {
-      // ADR 0181 Phase 4: these lists page by key; parseKeysetPageQuery reads ?size= through parsePageQuery.
-      expect(read(file)).toContain('parseKeysetPageQuery(sp)');
+      // ADR 0181 Phase 4: these lists page by key; parseKeysetPageQuery reads ?size= through parsePageQuery. The directory
+      // reads its query in app/personnel/directory-view.ts (PR 323).
+      expect(read(file === 'app/personnel/page.tsx' ? 'app/personnel/directory-view.ts' : file)).toContain('parseKeysetPageQuery(sp)');
       expect(read('lib/pagination.ts')).toContain('const base = parsePageQuery(sp);');
     } else expect(read(file)).toContain('parsePageQuery(sp)');
   });

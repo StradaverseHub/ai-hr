@@ -5,7 +5,10 @@
  * (test/helpers/ai-centre-scale-fixture.ts), for the native roles, and its statements and transactions are counted
  * (test/helpers/statement-observer.ts). It proves:
  *  - equivalence: every route renders identical output with the read join on (AIHR_DEFAULT_REQUEST_READ_JOIN=on,
- *    packages 1.1 and 1.2), off (the production default) and with no shared snapshot at all, for every role;
+ *    packages 1.1 and 1.2) with one carrier and with a pool of 2 and 3 (AIHR_DEFAULT_REQUEST_READ_CARRIERS), off (the
+ *    production default) and with no shared snapshot at all, for every role;
+ *  - pool bound: with a pool of N, no identity ever holds more than N+1 carriers at once (the pool, plus the page's own
+ *    beside a frame that holds the whole pool), and a pooled render never costs more transactions than the join off;
  *  - cost: the default join never costs more transactions than reads without it, and the frame reads in at most
  *    FRAME_TRANSACTIONS transactions;
  *  - scale: "All companies" of 71 companies costs no more transactions or statements than one company, for a group
@@ -13,6 +16,10 @@
  *  - budgets: no route exceeds its recorded budget (BUDGETS). Budgets only go down; raising one needs an ADR note;
  *  - no write on page load (package 1.3): a frame render sends no INSERT, UPDATE or DELETE and takes no exclusive
  *    advisory lock, for any role; and the inventory of frame owners that fall back to their own transaction.
+ *  - wall time: each route rendered in interleaved rounds in every mode, printed as `ROUTE_WALL {json}` (median and
+ *    spread of `ms` per mode), to compare the pool sizes against the join off. The audit log (/admin/audit) and a
+ *    processed payroll run of the work-holding company (/payroll/[batchId]) are measured the same way for a group
+ *    administrator, after the budget checks (the run is opened for them), with identical output at a pool of 3.
  * Every measurement is printed as one `ROUTE_BUDGET {json}` line for the release notes. All names are invented. */
 import {randomUUID} from 'node:crypto';
 import {createElement,type ReactNode} from 'react';
@@ -54,6 +61,10 @@ import Layout from '../app/layout';
 import HomePage from '../app/page';
 import ApprovalsPage from '../app/approvals/page';
 import PersonnelPage from '../app/personnel/page';
+import AuditPage from '../app/admin/audit/page';
+import PayrollLayout from '../app/payroll/layout';
+import PayrollRunPage from '../app/payroll/[batchId]/page';
+import {createBatch,generatePayslips} from '../core/payroll';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {explainStatements,observeStatements,type Captured} from './helpers/statement-observer';
@@ -65,7 +76,7 @@ import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
 const FRAME_TRANSACTIONS=2;
 /** Recorded budgets per route (transactions, statements) at "All companies" on the 71-company fixture, default join on.
  * Budgets only go down. Raising one needs an ADR note (docs/plans/2026-11-24-database-read-cost-phase-0-1.md 1.5). */
-const BUDGETS:Record<Route,Partial<Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll',{transactions:number;statements:number}>>>={
+const BUDGETS:Record<BudgetRoute,Partial<Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll',{transactions:number;statements:number}>>>={
  frame:{group:{transactions:2,statements:21},multi:{transactions:2,statements:21},single:{transactions:1,statements:9},
   manager:{transactions:1,statements:8},employee:{transactions:1,statements:8},payroll:{transactions:1,statements:8}},
  // Home's administrator Today keeps its payroll-history and setting owners in their own transactions (barriers).
@@ -78,13 +89,22 @@ const BUDGETS:Record<Route,Partial<Record<'group'|'multi'|'single'|'manager'|'em
   manager:{transactions:3,statements:20},employee:{transactions:3,statements:20},payroll:{transactions:3,statements:20}},
 };
 
-type Route='frame'|'home'|'approvals'|'personnel';
-const ROUTES:Record<Route,{pathname:string;page:()=>ReactNode}>={
- frame:{pathname:'/personnel',page:()=>null},
- home:{pathname:'/',page:()=>createElement(HomePage,{searchParams:Promise.resolve({})})},
- approvals:{pathname:'/approvals',page:()=>createElement(ApprovalsPage,{searchParams:Promise.resolve({})})},
- personnel:{pathname:'/personnel',page:()=>createElement(PersonnelPage,{searchParams:Promise.resolve({})})},
+type BudgetRoute='frame'|'home'|'approvals'|'personnel';
+/** Measured for wall time and equivalence only (their budgets are not recorded yet: test/read-cost-ratchets). */
+type WallRoute='audit'|'payrollRun';
+type Route=BudgetRoute|WallRoute;
+/** The processed payroll run /payroll/[batchId] shows (opened in the wall-time describe below). */
+let payrollRunId='';
+const ROUTES:Record<Route,{pathname:()=>string;page:()=>ReactNode}>={
+ frame:{pathname:()=>'/personnel',page:()=>null},
+ home:{pathname:()=>'/',page:()=>createElement(HomePage,{searchParams:Promise.resolve({})})},
+ approvals:{pathname:()=>'/approvals',page:()=>createElement(ApprovalsPage,{searchParams:Promise.resolve({})})},
+ personnel:{pathname:()=>'/personnel',page:()=>createElement(PersonnelPage,{searchParams:Promise.resolve({})})},
+ audit:{pathname:()=>'/admin/audit',page:()=>createElement(AuditPage,{searchParams:Promise.resolve({})})},
+ payrollRun:{pathname:()=>`/payroll/${payrollRunId}`,page:()=>createElement(PayrollLayout,{children:createElement(PayrollRunPage,
+  {params:Promise.resolve({batchId:payrollRunId}),searchParams:Promise.resolve({})})})},
 };
+const BUDGET_ROUTES:BudgetRoute[]=['frame','home','approvals','personnel'];
 
 let b:Base,fixture:ScaleFixture;
 let personas:Record<'group'|'multi'|'single'|'manager'|'employee'|'payroll'|'base',SessionContext>;
@@ -127,20 +147,28 @@ afterAll(async()=>{delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;delete proc
 const normalize=(key:string,value:unknown)=>key==='claimPreviewRevision'&&typeof value==='string'?'<revision>':value;
 const WRITE=/^\s*(insert\s+into|update\s+("?[a-z_][a-z0-9_.]*"?\.)?"?[a-z_][a-z0-9_]*"?\s+set\b|delete\s+from)|\bpg_(try_)?advisory_xact_lock\s*\(/i;
 
-/** default: the read join on (AIHR_DEFAULT_REQUEST_READ_JOIN=on: package 1.1 and the frame pass in one snapshot).
+/** default: the read join on (AIHR_DEFAULT_REQUEST_READ_JOIN=on: package 1.1 and the frame pass in one snapshot), one
+ * carrier per identity. pool2, pool3: the read join on with a bounded pool of 2 or 3 carriers per identity
+ * (AIHR_DEFAULT_REQUEST_READ_CARRIERS).
  * without: the production default, off (only Home's, Today's and the shell approval summary's explicit snapshots).
  * independent: no shared snapshot at all, every owner in its own transaction, as before shared snapshots existed. */
-type Mode='default'|'without'|'independent';
+type Mode='default'|'pool2'|'pool3'|'without'|'independent';
+const POOL:Partial<Record<Mode,string>>={pool2:'2',pool3:'3'};
 type Measured={route:Route;persona:string;scope:'all'|'one';mode:Mode;transactions:number;statements:number;ms:number;
- output:unknown;captured:Captured[];refused:Record<string,number>;fallbacks:number;staleSkips:number};
+ output:unknown;captured:Captured[];refused:Record<string,number>;fallbacks:number;staleSkips:number;peakCarriers:number};
 async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one',mode:Mode):Promise<Measured>{
- state.session=personas[persona];state.pathname=ROUTES[route].pathname;
+ state.session=personas[persona];state.pathname=ROUTES[route].pathname();
  state.cookies=scope==='one'?{company_scope:workCompanyId}:{};
  const requestScope={};
  // A redirect (a role that may not open the route) is the render's output, recorded by its digest.
  const run=()=>serverTreeSnapshot(createElement(Layout,{children:ROUTES[route].page()}),normalize)
   .catch((error:unknown)=>{const digest=(error as {digest?:unknown})?.digest;if(typeof digest==='string'&&digest.startsWith('NEXT_'))return {redirect:digest};throw error;});
- const observed=await withRequestReadScope(requestScope,()=>observeStatements(()=>mode==='default'?run():mode==='without'?withoutDefaultRequestJoin(run):withIndependentTransactions(run)));
+ const pool=POOL[mode];
+ if(pool)process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS=pool;else delete process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;
+ let observed:{result:unknown;ms:number;statements:Captured[];transactions:number};
+ try{
+  observed=await withRequestReadScope(requestScope,()=>observeStatements(()=>mode==='without'?withoutDefaultRequestJoin(run):mode==='independent'?withIndependentTransactions(run):run()));
+ }finally{delete process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;}
  const stats=await requestScopedReadStats(requestScope);
  const refused:Record<string,number>={},failures:Record<string,number>={};
  for(const session of stats){
@@ -157,9 +185,10 @@ async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one
   return [{barrier:text(statement),then:after}];
  });
  const measured={route,persona,scope,mode,transactions:observed.transactions,statements:observed.statements.length,ms:Math.round(observed.ms),output:observed.result,
-  captured:observed.statements,refused,fallbacks:stats.reduce((sum,session)=>sum+session.fallbacks,0),staleSkips:stats.reduce((sum,session)=>sum+session.staleSkips,0)};
+  captured:observed.statements,refused,fallbacks:stats.reduce((sum,session)=>sum+session.fallbacks,0),staleSkips:stats.reduce((sum,session)=>sum+session.staleSkips,0),
+  peakCarriers:Math.max(0,...stats.map(session=>session.peakCarriers))};
  console.log('ROUTE_BUDGET '+JSON.stringify({route,persona,scope,mode,transactions:measured.transactions,statements:measured.statements,
-  ms:measured.ms,refused,failures,fallbacks:measured.fallbacks,staleSkips:measured.staleSkips,barriers}));
+  ms:measured.ms,refused,failures,fallbacks:measured.fallbacks,staleSkips:measured.staleSkips,peakCarriers:measured.peakCarriers,identities:stats.length,barriers}));
  return measured;
 }
 
@@ -190,11 +219,11 @@ function firstDifference(a:unknown,b:unknown,path='$'):string|null{
 
 const ROLES=['group','multi','single','manager','employee','payroll'] as const;
 describe('route read budget: repeatability',()=>{
- // Equivalence is only meaningful if one mode renders the same output twice: six alternating renders of the heaviest
+ // Equivalence is only meaningful if one mode renders the same output twice: seven alternating renders of the heaviest
  // route must all equal the first, whatever the mode.
- it('renders Home for a company-by-company administrator identically six times across modes',async()=>{
+ it('renders Home for a company-by-company administrator identically eight times across modes',async()=>{
   const first=await render('home','multi','all','default');
-  const modes:Mode[]=['without','default','independent','default','without'];
+  const modes:Mode[]=['without','default','pool2','independent','pool3','default','without'];
   for(const mode of modes){
    const again=await render('home','multi','all',mode);
    expect(firstDifference(first.output,again.output),`default vs ${mode}`).toBeNull();
@@ -202,7 +231,7 @@ describe('route read budget: repeatability',()=>{
  },240_000);
 });
 
-describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
+describe.each(BUDGET_ROUTES)('route read budget: %s',route=>{
  it.each(ROLES)('renders identically with and without the default join, for %s, and never costs more transactions',async persona=>{
   // One unmeasured render first: process-level caches (tenant facts the first transaction learns) fill once.
   await render(route,persona,'all','default');
@@ -211,6 +240,14 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
   const unshared=await render(route,persona,'all','independent');
   expect(firstDifference(shared.output,independent.output),'default vs explicit snapshots only').toBeNull();
   expect(firstDifference(shared.output,unshared.output),'default vs no shared snapshot').toBeNull();
+  // The bounded pool: identical output, at most N carriers per identity at once, never more transactions than off.
+  for(const [mode,size] of [['pool2',2],['pool3',3]] as const){
+   const pooled=await render(route,persona,'all',mode);
+   expect(firstDifference(shared.output,pooled.output),`default vs ${mode}`).toBeNull();
+   // The pool, plus the page's one carrier beside a frame that holds the whole pool.
+   expect(pooled.peakCarriers,`${mode} carriers at once`).toBeLessThanOrEqual(size+1);
+   expect(pooled.transactions,`${mode} transactions`).toBeLessThanOrEqual(independent.transactions);
+  }
   // The render produced real output (a nonempty tree), not an error-shaped stub.
   const redirected=typeof shared.output==='object'&&shared.output!==null&&'redirect' in shared.output;
   if(!redirected)expect(JSON.stringify(shared.output).length).toBeGreaterThan(500);
@@ -234,6 +271,8 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
   const shared=await statementTime(await render(route,persona,'all','default'));
   const independent=await statementTime(await render(route,persona,'all','without'));
   await statementTime(await render(route,persona,'all','independent'));
+  await statementTime(await render(route,persona,'all','pool2'));
+  await statementTime(await render(route,persona,'all','pool3'));
   // The same reads are replayed either way: the default join moves no work between statements.
   expect(shared.replayed).toBeGreaterThan(0);
   expect(independent.replayed).toBeGreaterThan(0);
@@ -252,4 +291,76 @@ describe.each(Object.keys(ROUTES) as Route[])('route read budget: %s',route=>{
   expect(multi.transactions,'multi transactions').toBeLessThanOrEqual(single.transactions);
   expect(multi.statements,'multi statements').toBeLessThanOrEqual(single.statements);
  },180_000);
+});
+
+/** Wall time per mode: interleaved rounds (each round renders every mode once, in a rotated order) after one warm-up per
+ * mode, so drift and caches touch every mode alike. `ms` is the whole render, statements and server components. */
+const WALL_ROUNDS=5;
+const WALL_MODES:Mode[]=['without','default','pool2','pool3'];
+async function wallTime(route:Route,persona:keyof typeof personas,modes:Mode[]){
+ for(const mode of modes)await render(route,persona,'all',mode);
+ const samples:Record<string,number[]>={},transactions:Record<string,number>={},peak:Record<string,number>={};
+ for(let round=0;round<WALL_ROUNDS;round++){
+  for(let index=0;index<modes.length;index++){
+   const mode=modes[(index+round)%modes.length];
+   const measured=await render(route,persona,'all',mode);
+   (samples[mode]??=[]).push(measured.ms);transactions[mode]=measured.transactions;peak[mode]=Math.max(peak[mode]??0,measured.peakCarriers);
+  }
+ }
+ const median=(values:number[])=>{const sorted=[...values].sort((x,y)=>x-y);return sorted[Math.floor(sorted.length/2)];};
+ const summary=Object.fromEntries(modes.map(mode=>[mode,{median:median(samples[mode]),min:Math.min(...samples[mode]),max:Math.max(...samples[mode]),
+  transactions:transactions[mode],peakCarriers:peak[mode]}]));
+ console.log('ROUTE_WALL '+JSON.stringify({route,persona,rounds:WALL_ROUNDS,...summary}));
+ for(const mode of modes)expect(samples[mode]).toHaveLength(WALL_ROUNDS);
+}
+describe.each(BUDGET_ROUTES)('route read budget: wall time by carrier pool, %s',route=>{
+ it.each(['group','manager','employee'] as const)('measures %s in every mode',persona=>wallTime(route,persona,WALL_MODES),240_000);
+});
+
+/** The audit log and a payroll run, the two staging pages that were slower with one carrier than with the join off.
+ * Last in the file: the run opened here (its payslips, and the access log each view of it writes) is not part of the
+ * budget fixture above. */
+describe('route read budget: wall time for the audit log and a payroll run, group administrator',()=>{
+ beforeAll(async()=>{
+  // A regular run for the month after the fixture's ten processed months, processed over the work-holding company's
+  // employments (the fixture's largest company; those with a salary and statutory record get a payslip).
+  const admin=await entitledCtx(b,['hr_admin']);
+  // The fixture gives ~55% of employments a salary; a run refuses to process with any in-scope employee lacking one,
+  // so the work-holding company's other active employments get one (only this describe sees them).
+  await owner.db.execute(sql`insert into compensation (tenant_id,employment_id,basic_salary,valid_from)
+   select e.tenant_id,e.id,3200,'2024-01-01' from employment e where e.company_id=${workCompanyId}::uuid and e.terminated_on is null
+    and not exists (select 1 from compensation c where c.employment_id=e.id and c.valid_to is null)`);
+  try{
+   const run=await createBatch(admin,{companyId:workCompanyId,payPeriod:'2026-11'});
+   await generatePayslips(admin,{batchId:run.batchId});
+   payrollRunId=run.batchId;
+  }catch(error){
+   // Still a real run screen, of the latest run (a draft 2026-11 if it was opened, else a fixture month without
+   // payslips): the setup lines say which.
+   console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRun:'not processed',error:String((error as Error)?.message??error).slice(0,300)}));
+   const [latest]=await owner.db.select({id:schema.payrollBatch.id}).from(schema.payrollBatch)
+    .where(sql`${schema.payrollBatch.companyId}=${workCompanyId}::uuid`).orderBy(sql`${schema.payrollBatch.payPeriod} desc`).limit(1);
+   payrollRunId=latest.id;
+  }
+  const [row]=await owner.db.select({payslips:sql<number>`count(*)::int`}).from(schema.payslip).where(sql`${schema.payslip.batchId}=${payrollRunId}::uuid`);
+  const [run]=await owner.db.select({status:schema.payrollBatch.status,payPeriod:schema.payrollBatch.payPeriod}).from(schema.payrollBatch).where(sql`${schema.payrollBatch.id}=${payrollRunId}::uuid`);
+  console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRunPayslips:row.payslips,...run}));
+ },240_000);
+ it.each(['audit','payrollRun'] as const)('%s renders identically at a pool of 3 and with the join off, and its wall time is measured',async route=>{
+  await render(route,'group','all','pool3');
+  const off=await render(route,'group','all','without');
+  const pooled=await render(route,'group','all','pool3');
+  const redirected=typeof off.output==='object'&&off.output!==null&&'redirect' in off.output;
+  expect(redirected,`${route} opens for a group administrator`).toBe(false);
+  expect(JSON.stringify(off.output).length).toBeGreaterThan(500);
+  expect(firstDifference(off.output,pooled.output),'without vs pool3').toBeNull();
+  expect(pooled.peakCarriers,'pool3 carriers at once').toBeLessThanOrEqual(4);
+  // Unlike the four budgeted routes, these pages have owners that take a barrier and fall back to their own
+  // transaction. An owner that falls back may first have opened a pool carrier for itself alone (BEGIN, identity,
+  // COMMIT), so the bound is the join off plus the pooled render's fallbacks.
+  expect(pooled.transactions,'pool3 transactions').toBeLessThanOrEqual(off.transactions+pooled.fallbacks);
+  console.log('ROUTE_WALL_TRANSACTIONS '+JSON.stringify({route,off:off.transactions,pool3:pooled.transactions,pool3Fallbacks:pooled.fallbacks,refused:pooled.refused}));
+  await statementTime(off);await statementTime(pooled);
+  await wallTime(route,'group',['without','default','pool3']);
+ },300_000);
 });

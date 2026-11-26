@@ -14867,7 +14867,9 @@
     "details": "Butiran",
     "homePreferences": "Keutamaan Home",
     "chooseCompanies": "Pilih semula",
-    "pendingCompanySelection": "Pilih syarikat untuk mengemas kini paparan. Skop syarikat semasa belum berubah."
+    "pendingCompanySelection": "Pilih syarikat untuk mengemas kini paparan. Skop syarikat semasa belum berubah.",
+    "employerCompanies": "Tempat anda bekerja",
+    "employerCompaniesHint": "Rekod anda sendiri sahaja. Tidak diliputi oleh peranan yang ditetapkan kepada anda."
   },
   "components": {
     "plannedAbsences": {

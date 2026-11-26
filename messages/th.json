@@ -14867,7 +14867,9 @@
     "details": "รายละเอียด",
     "homePreferences": "การตั้งค่าหน้าแรก",
     "chooseCompanies": "เลือกใหม่",
-    "pendingCompanySelection": "เลือกบริษัทเพื่ออัปเดตมุมมอง ขอบเขตบริษัทปัจจุบันยังไม่เปลี่ยนแปลง"
+    "pendingCompanySelection": "เลือกบริษัทเพื่ออัปเดตมุมมอง ขอบเขตบริษัทปัจจุบันยังไม่เปลี่ยนแปลง",
+    "employerCompanies": "บริษัทที่คุณทำงาน",
+    "employerCompaniesHint": "เฉพาะข้อมูลของคุณเองเท่านั้น ไม่อยู่ในบทบาทที่คุณได้รับมอบหมาย"
   },
   "components": {
     "plannedAbsences": {

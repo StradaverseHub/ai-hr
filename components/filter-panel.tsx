@@ -16,7 +16,7 @@
  * Assignment bulk opts into the modal portal so the sidebar and table cannot clip its controls.
  */
 
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import Form from 'next/form';
 import Link from 'next/link';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -106,6 +106,12 @@ export type FilterPanelProps = {
   dataTour?: string;
   /** Opt in only on pages whose floating panel is clipped by surrounding content. */
   dialog?: { closeLabel: string };
+  /**
+   * List-only filters (ADR 0181 Phase 4). When given, applying the panel, removing a chip or clearing calls this
+   * with the address the GET form or link would have opened, instead of navigating, so the page can refresh only
+   * its list. Absent: today's GET form and links, unchanged.
+   */
+  onNavigate?: (href: string) => void;
 };
 
 // A field counts as active once when it has any value (a multi field with ≥1 selected value counts once).
@@ -120,7 +126,7 @@ const baseHref = (action: string, hidden: FilterPanelProps['hidden']) => {
   return s ? `${action}?${s}` : action;
 };
 
-export function FilterPanel({ action, fields, values, labels, hidden, dataTour, dialog }: FilterPanelProps) {
+export function FilterPanel({ action, fields, values, labels, hidden, dataTour, dialog, onNavigate }: FilterPanelProps) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   // Opened near the bottom of the window, the panel opens upwards or shrinks to fit (components/ui/fit-to-view.ts).
@@ -149,8 +155,22 @@ export function FilterPanel({ action, fields, values, labels, hidden, dataTour, 
     return () => document.removeEventListener('keydown', onKey);
   }, [open, dialog]);
 
-  const form = (
-    <Form action={action} scroll={false} prefetch={false} className="min-h-0 space-y-3 overflow-y-auto">
+  // List-only mode submits the same fields to onNavigate: the GET address the form would have opened.
+  const submitToList = (e: FormEvent<HTMLFormElement>) => {
+    if (!onNavigate) return;
+    e.preventDefault();
+    const sp = new URLSearchParams();
+    for (const [k, v] of new FormData(e.currentTarget)) if (typeof v === 'string' && v !== '') sp.append(k, v);
+    const qs = sp.toString();
+    setOpen(false);
+    onNavigate(qs ? `${action}?${qs}` : action);
+  };
+  const clearAll = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (dialog) setOpen(false);
+    if (onNavigate) { e.preventDefault(); setOpen(false); onNavigate(baseHref(action, hidden)); }
+  };
+  const formBody = (
+    <>
       {(hidden ?? []).map(([k, v], i) => (
         <input key={`${k}-${i}`} type="hidden" name={k} value={v} />
       ))}
@@ -239,12 +259,17 @@ export function FilterPanel({ action, fields, values, labels, hidden, dataTour, 
           {labels.apply}
         </Button>
         {active > 0 && (
-          <Link href={baseHref(action, hidden)} onClick={dialog ? () => setOpen(false) : undefined} className="text-sm text-muted-foreground hover:text-foreground">
+          <Link href={baseHref(action, hidden)} onClick={dialog || onNavigate ? clearAll : undefined} className="text-sm text-muted-foreground hover:text-foreground">
             {labels.clearAll}
           </Link>
         )}
       </div>
-    </Form>
+    </>
+  );
+  const form = onNavigate ? (
+    <form action={action} onSubmit={submitToList} className="min-h-0 space-y-3 overflow-y-auto">{formBody}</form>
+  ) : (
+    <Form action={action} scroll={false} prefetch={false} className="min-h-0 space-y-3 overflow-y-auto">{formBody}</Form>
   );
   const trigger = (
     <button
@@ -310,6 +335,7 @@ export function FilterChips({
   values,
   labels,
   hidden,
+  onNavigate,
 }: Omit<FilterPanelProps, 'dataTour' | 'dialog'>) {
   const active = fields.filter((f) => asArray(values[f.name]).length > 0);
   if (active.length === 0) return null;
@@ -358,6 +384,7 @@ export function FilterChips({
           <span className="truncate font-medium text-foreground">{c.display}</span>
           <Link
             href={c.href}
+            onClick={onNavigate ? (e) => { e.preventDefault(); onNavigate(c.href); } : undefined}
             aria-label={c.removeAriaLabel}
             className="grid size-5 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
@@ -366,7 +393,7 @@ export function FilterChips({
         </span>
       ))}
       {chips.length > 1 && (
-        <Link href={baseHref(action, hidden)} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
+        <Link href={baseHref(action, hidden)} onClick={onNavigate ? (e) => { e.preventDefault(); onNavigate(baseHref(action, hidden)); } : undefined} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
           {labels.clearAll}
         </Link>
       )}

@@ -357,3 +357,21 @@ export function keysetSlice<T>(
   if (backwards) return { rows: page.reverse(), hasPrev: more, hasNext: q.before !== undefined };
   return { rows: page, hasPrev: q.after !== undefined && anchorFound, hasNext: more };
 }
+
+/** A keyset pager link request (the server Pager's PagerHrefOver). */
+export type KeysetHrefOver = { page: number; size?: PageSize; after?: string; before?: string; last?: boolean; count?: 'exact' };
+
+/** The keyset pager's links, from one href builder: First, Previous (before the first row shown, or the first page
+ *  when that is where it lands), Next (after the last row), Last (only on an exact total) and "Count exactly" (only on a
+ *  capped total). Null where the step is not available. Shared by the server Pager and list-only islands so both
+ *  offer the same steps. "Count exactly", once asked, stays on every step. */
+export function keysetPagerHrefs(state: KeysetPageState, href: (over: KeysetHrefOver) => string) {
+  const go = (over: KeysetHrefOver) => href(state.exactCount && !over.count ? { ...over, count: 'exact' } : over);
+  return {
+    first: state.hasPrev ? go({ page: 0 }) : null,
+    prev: state.hasPrev ? (state.page <= 1 || !state.firstId ? go({ page: 0 }) : go({ page: state.page - 1, before: state.firstId })) : null,
+    next: state.hasNext && state.lastId ? go({ page: state.page + 1, after: state.lastId }) : null,
+    last: state.canLast ? go({ page: lastPage(state), last: true }) : null,
+    countExactly: state.capped ? go({ page: state.page, after: state.after, before: state.before, last: state.last, count: 'exact' }) : null,
+  };
+}

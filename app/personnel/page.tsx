@@ -1,22 +1,24 @@
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listDepartments, listEmployeesDirectoryPage } from '@/core/read';
-import { deriveEmploymentStatus } from '@/core/employment-status';
-import { Avatar, Card, EmployeeCode, PageHeader, StatusBadge } from '@/components/ui';
-import { employmentPhotoIds } from '@/core/person-photo';
-import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
-import { Pager } from '@/components/pager';
-import { keysetPageState, parseKeysetPageQuery } from '@/lib/pagination';
-
-import { todayInKualaLumpur } from '@/lib/hr-date';
+import { listCompanies, listDepartments } from '@/core/read';
+import { Card, PageHeader } from '@/components/ui';
+import type { FilterField } from '@/components/filter-panel';
+import { currentUiTheme } from '@/lib/ui-theme-server';
+import { directoryParams, directoryView } from './directory-view';
+import { DirectoryChips, DirectoryHeaderActions, DirectoryListProvider, DirectoryTable } from './directory-list';
 
 /**
  * Read-only staff directory (People→Personnel split). Every employee can browse colleagues by
  * name / department / company / work contact — no pay, statutory, or personal data, and no admin
  * affordances (hire form, profile-change queue, CSV import, compensation). Those live behind
  * /admin/personnel. RLS still scopes every read to what this viewer is allowed to see.
+ *
+ * ADR 0181 Phase 4 — list-only filters: the list (count, chips, pager, table) is one view rendered by
+ * ./directory-view.ts, here on first load and by POST /personnel/list for every later filter, chip, page-size and
+ * pager step, so a change refreshes only the list. Keyset paging (no OFFSET) and a total that is exact below 1,000
+ * and "1,000+" above. The Employee Status shown is the system-derived one (deriveEmploymentStatus, 5afcda91), the
+ * same as /admin/personnel; the legacy stored assignment.status never renders.
  */
 export default async function PersonnelPage({
   searchParams,
@@ -36,47 +38,14 @@ export default async function PersonnelPage({
   }>;
 }) {
   const t = await getTranslations('people.list');
-  // Employee Status sync (5afcda91): the directory shows the SAME system-derived Employee Status as
-  // /admin/personnel — deriveEmploymentStatus over the lifecycle dates, never the legacy stored
-  // assignment.status (whose obsolete values must never render anywhere).
-  const tStatus = await getTranslations('people.employeeStatus');
-  const today = todayInKualaLumpur();
   const { s: session, scopeIds } = await scopedSession();
   const sp = await searchParams;
-  const { q, company, dept, status, type } = sp;
-  // ADR 0181 Phase 4: keyset paging (no OFFSET) and a total that is exact below 1,000 and "1,000+" above.
-  const pq = parseKeysetPageQuery(sp);
-  const statusFilter = status === 'active' || status === 'terminated' ? status : undefined;
-  const hasFilters = !!(q || company || dept || status || type);
-  const [{ rows: employees, ...read }, companies, departments] = await Promise.all([
-    listEmployeesDirectoryPage(session, {
-      companyIds: scopeIds,
-      q,
-      companyId: company || undefined,
-      departmentId: dept || undefined,
-      status: statusFilter,
-      employmentType: type || undefined,
-      limit: pq.limit,
-      size: pq.size,
-      after: pq.after,
-      before: pq.before,
-      last: pq.last,
-      exactCount: pq.exactCount,
-    }),
+  const [view, companies, departments, theme] = await Promise.all([
+    directoryView(session, scopeIds, directoryParams(sp)),
     listCompanies(session),
     listDepartments(session),
+    currentUiTheme(),
   ]);
-  // 597c810a — the SAME avatar in the same place as /admin/personnel, so the two listings cannot look
-  // like one of them is faulty. ONE bulk RLS-scoped existence read for this page's rows (never an <img>
-  // per row: 89 persons, 2 photos on production means 87 pointless 404s), taken AFTER the page's rows are
-  // known. Photo visibility is unchanged and is RLS's decision, not this page's — a person whose name this
-  // viewer can see but whose photo they cannot is simply absent from the Map and keeps their initials.
-  const photoIds = await employmentPhotoIds(
-    session,
-    employees.map((e) => e.employmentId),
-  );
-  const pgState = keysetPageState(pq, read, employees.map((e) => e.employmentId));
-  const total = read.total.count;
   const EMPLOYMENT_TYPES = [
     { value: 'full_time', labelKey: 'employmentFullTime' },
     { value: 'part_time', labelKey: 'employmentPartTime' },
@@ -137,91 +106,28 @@ export default async function PersonnelPage({
       removeAriaLabel: t('removeFilter', { label: t('employmentType') }),
     },
   ];
-  const filterValues = { q, company, dept, status, type };
-  const activeFilterCount = [q, company, dept, status, type].filter(Boolean).length;
+  // The active-filter count string for every possible count (0–5 fields), so the island needs no t().
   const filterLabels = {
     filter: t('filter'),
     apply: t('applyFilters'),
     clearAll: t('clearAllFilters'),
-    activeCount: t('activeFilters', { count: activeFilterCount }),
+    activeCount: Object.fromEntries(filterFields.map((_, i) => i).concat(filterFields.length).map((n) => [n, t('activeFilters', { count: n })])),
   };
 
-  const pager = <Pager basePath="/personnel" params={{ q, company, dept, status, type }} state={pgState} />;
-
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader
-        title={t('title')}
-        actions={
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">
-              {read.total.capped ? t('employeeCountCapped', { count: total }) : t('employeeCount', { count: total })}
-            </span>
-            <FilterPanel action="/personnel" fields={filterFields} values={filterValues} labels={filterLabels} />
-          </div>
-        }
-      />
+    <DirectoryListProvider initial={view}>
+      <div className="mx-auto max-w-5xl space-y-6">
+        <PageHeader title={t('title')} actions={<DirectoryHeaderActions fields={filterFields} labels={filterLabels} />} />
 
-      <FilterChips action="/personnel" fields={filterFields} values={filterValues} labels={filterLabels} />
+        <DirectoryChips fields={filterFields} labels={filterLabels} />
 
-      <Card className="overflow-hidden">
-        {pager}
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3 font-medium">{t('colCode')}</th>
-              <th className="px-4 py-3 font-medium">{t('colName')}</th>
-              <th className="px-4 py-3 font-medium">{t('colDepartment')}</th>
-              <th className="px-4 py-3 font-medium">{t('colCompany')}</th>
-              <th className="px-4 py-3 font-medium">{t('colStatus')}</th>
-              <th className="px-4 py-3 font-medium">{t('colHired')}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {employees.map((e) => (
-              <tr key={e.employmentId} className="hover:bg-muted/40">
-                <td className="px-4 py-3">
-                  <EmployeeCode code={e.employeeCode} />
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar
-                      name={e.name}
-                      src={photoIds.has(e.employmentId) ? `/personnel/photo/${photoIds.get(e.employmentId)}` : undefined}
-                    />
-                    <div className="min-w-0">
-                      <Link
-                        href={`/personnel/${e.employmentId}`}
-                        className="font-medium text-foreground hover:text-primary"
-                      >
-                        {e.name}
-                      </Link>
-                      <div className="truncate text-xs text-muted-foreground">{e.email}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{e.department ?? '—'}</td>
-                <td className="px-4 py-3 text-muted-foreground">{e.company}</td>
-                <td className="px-4 py-3">
-                  {(() => {
-                    const st = deriveEmploymentStatus(e, today);
-                    return <StatusBadge status={st} label={tStatus(st)} />;
-                  })()}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">{e.hiredOn}</td>
-              </tr>
-            ))}
-            {employees.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                  {q ? t('emptySearch', { q }) : hasFilters ? t('emptyFiltered') : t('emptyNoEmployees')}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
-
-    </div>
+        <Card className="overflow-hidden">
+          <DirectoryTable
+            theme={theme}
+            columns={{ code: t('colCode'), name: t('colName'), department: t('colDepartment'), company: t('colCompany'), status: t('colStatus'), hired: t('colHired') }}
+          />
+        </Card>
+      </div>
+    </DirectoryListProvider>
   );
 }
