@@ -1866,3 +1866,5 @@ Exactly 28 digest literals change (`adafa2a8…` -> `651b21131326ca627bfb7b9acc0
 CP38 lane review commit, same standing approval, staging only: 28 digests `651b2113…` -> `86594dcb32d32f74ba7ed18d2487b3e9ae6d8213c045114667f864d934d147b4`; module-agent manifest `2b6101ce034d29070198d7ab8033e7efc6ce03791a712e32de5fc307f2677a89` -> `1c1938145484bcd06de620c82966321c8b53f9f430689ab2f9935a9501f6a13b`.
 
 CP38 lane review test commit, same standing approval, staging only: 28 digests `86594dcb…` -> `34f8d5b8911c3571ecbcc88a588d1ae64fa5274572b6e0e1401d6de10c837ce3`; module-agent manifest `1c1938145484bcd06de620c82966321c8b53f9f430689ab2f9935a9501f6a13b` -> `a70727c6e6a08d0347691d116fc5d88f47d6fd829e0f61997579cb153a986f98`.
+
+CP38 lane typecheck fix, same standing approval, staging only: 28 digests `34f8d5b8…` -> `3a96ca2795338c9d714b46a4ad62d95e33b8e74409d7df559c2ed817b5a5d9dd`; module-agent manifest `a70727c6e6a08d0347691d116fc5d88f47d6fd829e0f61997579cb153a986f98` -> `8092569b753525b3200d4d28dbbe4bfcfca17d4741368ef898bd70b1adda90f3`.
