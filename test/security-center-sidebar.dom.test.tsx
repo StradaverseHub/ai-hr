@@ -43,6 +43,9 @@ describe.each(['classic','monolith','atelier'])('%s Security Center navigation',
   route.path='/admin/holidays';show(theme);
   const system=screen.getAllByRole('button',{name:en.nav.systemConfiguration});expect(system).toHaveLength(1);
   expect(system[0]).toHaveAttribute('aria-controls','nav-section-systemConfiguration');
+  // Classic and Atelier headings draw the section icon beside the chevron; Monolith headings carry no icon at all.
+  const securityHeading=screen.getByRole('button',{name:en.nav.securityCenter});
+  for(const heading of [system[0],securityHeading])expect(heading.querySelectorAll('svg')).toHaveLength(theme==='monolith'?0:2);
   const config=screen.getByRole('navigation',{name:en.nav.systemConfiguration});
   expect(linkHrefs(config)).toContain('/admin/holidays');expect(linkHrefs(config).some(isSecurityDestination)).toBe(false);
   const security=open();expect(linkHrefs(security)).toEqual(hrefs);

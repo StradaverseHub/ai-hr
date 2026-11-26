@@ -42,7 +42,8 @@ describe('Atelier navigation remains reachable in actual compact CSS',()=>{
   // Exactly one control per name: no dropdown inside a section repeats the section's name.
   expect(screen.getAllByRole('button',{name:en.nav.systemConfiguration})).toEqual([system]);
   expect(screen.getAllByRole('button',{name:en.nav.securityCenter})).toEqual([heading]);
-  expect(system.querySelector('svg')).not.toBeNull();expect(heading.querySelector('svg')).not.toBeNull();
+  // Each heading draws its own section icon beside the label, plus the open/closed chevron.
+  expect(system.querySelectorAll('svg')).toHaveLength(2);expect(heading.querySelectorAll('svg')).toHaveLength(2);
   heading.scrollIntoView({block:'nearest'});
   const label=within(heading).getByText(en.nav.securityCenter),railNav=heading.closest('[data-atelier-navigation] nav')!;
   expect(box(heading).top).toBeGreaterThanOrEqual(box(railNav).top-.5);expect(box(heading).bottom).toBeLessThanOrEqual(box(railNav).bottom+.5);
