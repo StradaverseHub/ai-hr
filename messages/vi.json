@@ -1152,6 +1152,7 @@
       "cp38Title": "Khấu trừ CP38",
       "cp38Ref": "Số tham chiếu LHDN",
       "cp38Amount": "Số tiền hàng tháng (RM)",
+      "cp38LastMonthAmount": "Số tiền khấu trừ tháng cuối (RM)",
       "cp38From": "Hiệu lực từ",
       "cp38To": "Hiệu lực đến",
       "cp38Remarks": "Ghi chú",

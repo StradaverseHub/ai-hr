@@ -308,7 +308,7 @@ export async function employeeMasterSubjectsTx(tx:Tx,ctx:SessionContext,spec:Emp
     // bc6b5490 — employee_cp38.valid_to is EXCLUSIVE (the first day of the month after the last month deducted, as
     // core/cp38.ts stores it and cp38ForPeriod reads it), so the report's last day is the day before it and the record
     // has ended once that day is reached. Reading it as the last month itself put CP38 "Effective to" a month late.
-    install('cp38',own(cp38),row=>({reference:row.cp38Ref,monthlyAmount:row.amount,currency:'MYR',...cp38MasterRow(row,spec.asAt)}));
+    install('cp38',own(cp38),row=>({reference:row.cp38Ref,monthlyAmount:row.amount,lastMonthAmount:row.lastMonthAmount??null,currency:'MYR',...cp38MasterRow(row,spec.asAt)}));
     install('payrollProfile',[e],row=>({payrollPolicyName:ref(10,row.payrollPolicyId)}));
     install('qualification',own(qualifications),row=>({level:row.qualification,highest:row.isHighest}));
     install('document',own(documents),row=>({createdByName:actorName(row.uploadedByUserId),updatedByName:actorName(row.updatedByUserId)}));

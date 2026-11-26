@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { inputCls } from '@/components/ui';
+import { personnelInput } from '@/lib/personnel-form-contract';
 
 /**
  * bc6b5490 — the "Last month amount" tick box of the CP38 Add/Edit form, shared by the employee's Payroll tab and
@@ -42,10 +43,7 @@ export function Cp38LastMonthField({
         <label className="flex flex-col gap-1.5 sm:max-w-xs">
           <span className="text-xs font-medium text-muted-foreground">{labels.amount}</span>
           <input
-            type="number"
-            name="lastMonthAmount"
-            min={0}
-            step={0.01}
+            {...personnelInput('payroll.cp38_deduction.lastmonthamount', 'edit')}
             required
             inputMode="decimal"
             defaultValue={defaultAmount ?? ''}

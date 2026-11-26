@@ -1152,6 +1152,7 @@
       "cp38Title": "Potongan CP38",
       "cp38Ref": "Rujukan LHDN",
       "cp38Amount": "Jumlah bulanan (RM)",
+      "cp38LastMonthAmount": "Amaun potongan bulan terakhir (RM)",
       "cp38From": "Berkuat kuasa dari",
       "cp38To": "Berkuat kuasa hingga",
       "cp38Remarks": "Catatan",

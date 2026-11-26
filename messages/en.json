@@ -1152,6 +1152,7 @@
       "cp38Title": "CP38 Deduction",
       "cp38Ref": "LHDN reference",
       "cp38Amount": "Monthly amount (RM)",
+      "cp38LastMonthAmount": "Last month deduction amount (RM)",
       "cp38From": "Effective from",
       "cp38To": "Effective to",
       "cp38Remarks": "Remarks",

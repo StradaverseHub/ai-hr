@@ -1152,6 +1152,7 @@
       "cp38Title": "CP38 扣款",
       "cp38Ref": "LHDN 参考编号",
       "cp38Amount": "每月金额（RM）",
+      "cp38LastMonthAmount": "最后一个月扣款金额（RM）",
       "cp38From": "生效起始",
       "cp38To": "生效结束",
       "cp38Remarks": "备注",

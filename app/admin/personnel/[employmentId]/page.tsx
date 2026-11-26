@@ -1572,9 +1572,9 @@ export default async function EmployeePage({
           <input {...personnelDisplay("payroll.cp38_deduction.validto")} defaultValue={r.validTo ?? t('cp38Open')} className={inputCls} />
         </PersonnelField>
         {r.lastMonthAmount != null && (
-          <Field label={tCp38('lastMonthAmount')}>
-            <input readOnly defaultValue={fmtMoney(Number(r.lastMonthAmount))} className={inputCls} />
-          </Field>
+          <PersonnelField fieldId="payroll.cp38_deduction.lastmonthamount" mode="edit">
+            <input {...personnelDisplay("payroll.cp38_deduction.lastmonthamount")} defaultValue={fmtMoney(Number(r.lastMonthAmount))} className={inputCls} />
+          </PersonnelField>
         )}
         <div className="sm:col-span-2">
           <PersonnelField fieldId="payroll.cp38_deduction.remarks" mode="edit">
