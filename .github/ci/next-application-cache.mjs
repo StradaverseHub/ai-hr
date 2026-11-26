@@ -172,7 +172,10 @@ export async function managedApplicationBuild(){
   try{assertNextBuildSource(source,e);report.sourceRestored=true;report.controllerRestored=true;}catch(error){report.cleanupError=String(error);report.exitCode=1;}
   if(report.diskSamplingError||report.diskSamples.length===0||Math.min(...report.diskSamples.flatMap(s=>s.volumes.map(v=>v.availableBytes)))<2*1024**3)report.exitCode=1;
   report.endedAt=new Date().toISOString();save(join(out,'comparison.json'),report);
-  try{save(join(out,'memory-series.json'),series.report());}catch{}
+  try{const r=series.report();
+   // EXPERIMENT ONLY: Next's own memory-usage spans (V8 heap versus process RSS) from the build trace.
+   try{const t=readFileSync(join(source,'.next/trace'),'utf8');r.nextTraceMemory=t.split('\n').filter(Boolean).flatMap(line=>{try{return JSON.parse(line);}catch{return [];}}).filter(e=>e?.name==='memory-usage').map(e=>({timestamp:e.timestamp,tags:e.tags}));}catch(error){r.nextTraceMemoryError=String(error);}
+   save(join(out,'memory-series.json'),r);}catch{}
  }
  assert(report.exitCode===0,'Canonical build or owned cleanup failed');
  if(admission.publish&&stateBytes){

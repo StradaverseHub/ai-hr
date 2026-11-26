@@ -44,7 +44,7 @@ const systemIo={
  status:pid=>readFileSync('/proc/'+pid+'/status','utf8'),
  cmdline:pid=>{const fd=openSync('/proc/'+pid+'/cmdline','r');try{const b=Buffer.alloc(4097),n=readSync(fd,b,0,b.length,0);assert(n<=4096);return b.subarray(0,n);}finally{closeSync(fd);}},
 };
-const comm=stat=>{const start=stat.indexOf(' ('),end=stat.lastIndexOf(')');const name=stat.slice(start+2,end);return /^[\w.:@+-]{1,15}$/.test(name)?name:'unnamed';};
+const comm=stat=>{const start=stat.indexOf(' ('),end=stat.lastIndexOf(')');const name=stat.slice(start+2,end);return /^[\w.:@+() -]{1,15}$/.test(name)?name:'unnamed';};
 /** Injected IO permits pure fixtures without launching any processes. */
 export function createMemorySeries({io=systemIo,now=Date.now,rowLimit=SERIES_ROW_LIMIT,processMinKiB=SERIES_PROCESS_MIN_KIB}={}){
  const began=now(),rows=[],issues={};let vmstatStart=null,vmstatEnd=null;
