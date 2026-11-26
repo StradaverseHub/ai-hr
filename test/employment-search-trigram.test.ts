@@ -233,6 +233,10 @@ describe('employee search trigram candidates (7320)',()=>{
     cases.push({caller,ctx,screen:`directory ${q}`,search:await directory(ctx,companyIds,q)});
     if(caller!=='multi')cases.push({caller,ctx,screen:`picker ${q}`,search:await searchStatements(()=>readEmployeeChoices(ctx,{companyIds,query:q,offset:0,limit:50}))});
    }
+   // The production picker shape for a company-scoped administrator: only the companies they administer.
+   const own=[fixture.singleCompanyId];
+   cases.push({caller:'single',ctx:fixture.personas.single,screen:`picker ${q} (own companies)`,search:await searchStatements(()=>readEmployeeChoices(fixture.personas.single,{companyIds:own,query:q,offset:0,limit:20}))});
+   cases.push({caller:'single',ctx:fixture.personas.single,screen:`directory ${q} (own companies)`,search:await directory(fixture.personas.single,own,q)});
    // The employee in the whole group (every company asked) and in their own company (what their screens ask).
    cases.push({caller:'employee',ctx:employee,screen:`directory ${q} (all companies)`,search:await directory(employee,fixture.companyIds as string[],q)});
    cases.push({caller:'employee',ctx:employee,screen:`directory ${q} (own company)`,search:await directory(employee,[b.companyId],q)});
